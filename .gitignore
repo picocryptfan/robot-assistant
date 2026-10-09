@@ -1,0 +1,22 @@
+# Build output
+build/
+.gradle/
+.kotlin/
+*.apk
+*.aab
+local.properties
+
+# Signing keys never go in git
+*.keystore
+*.jks
+keystore-backup/
+
+# Robot Probe: third-party binaries and models come from tools/fetch_third_party.sh
+probe/app/src/main/jniLibs/
+probe/app/src/main/assets/kws/*.onnx
+probe/app/src/main/assets/vad/*.onnx
+
+# Editors
+.idea/
+*.iml
+.DS_Store
