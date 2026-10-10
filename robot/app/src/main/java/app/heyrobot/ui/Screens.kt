@@ -130,6 +130,7 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
             Tip(RIcons.Phone, "Swipe up from a bottom corner", "Works on the lock screen too. Robot can see the screen you're on.")
             Tip(RIcons.Mic, "Say “hey robot”", "Even with the screen off. Turn it off in Settings.")
             Tip(RIcons.Camera, "Show it a photo", "Tap the camera in the assistant panel.")
+            Tip(RIcons.Message, "Texts, email, notes and your calendar", "“Text Mom I'm running late”, “note: buy coffee filters”, “what's on my calendar tomorrow”.")
         }
         if (recent.isNotEmpty()) {
             SectionCard("Recent") {

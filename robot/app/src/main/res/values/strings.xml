@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Robot</string>
+    <string name="notes_name">Robot Notes</string>
 </resources>

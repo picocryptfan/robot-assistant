@@ -31,8 +31,8 @@ class TurnTest {
         var result: (Action) -> Executed = { Executed(ActionStatus.DONE, "Done: ${it.describe()}", launchedApp = it.leavesPanel) }
         override val locked get() = lockedNow
         override val settings get() = settings0
-        override fun prepare(action: Action): Prepared { prepared += action; return prepare.invoke(action) }
-        override fun run(action: Action): Executed {
+        override suspend fun prepare(action: Action): Prepared { prepared += action; return prepare.invoke(action) }
+        override suspend fun run(action: Action): Executed {
             ran += action
             return result(action)
         }

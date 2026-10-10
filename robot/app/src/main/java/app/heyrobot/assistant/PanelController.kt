@@ -26,7 +26,9 @@ import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.SpeechText
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.ToolCalls
+import app.heyrobot.core.ToolGroup
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.ToolRouter
 import app.heyrobot.core.TurnActions
 import app.heyrobot.core.TurnModel
 import app.heyrobot.core.TurnPhase
@@ -36,8 +38,11 @@ import app.heyrobot.core.TurnRunner
 import app.heyrobot.core.TurnSlot
 import app.heyrobot.core.TurnView
 import app.heyrobot.core.toPromptTurns
+import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.ConversationStore
+import app.heyrobot.sys.HandOffApps
+import app.heyrobot.sys.NotesFiles
 import app.heyrobot.voice.SpeechToText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -74,8 +79,24 @@ fun Phase.afterTurn(speaking: Boolean): Phase = when (this) {
     else -> this
 }
 
-/** [icon]: the real app's launcher icon on an open_app card. */
-data class UiAction(val id: String, val tool: ToolName?, val summary: String, val status: ActionStatus, val detail: String?, val icon: Bitmap? = null)
+/**
+ * [icon]: the real app's launcher icon on an open_app card. [body]: the full message, email or note, or what a read
+ * tool found. [choices]: the people or numbers to tap while it waits. [confirm]: the button ("Open in Cheogram").
+ * [undo]: a saved note's key for Undo. [content]: a read tool brought content into the conversation.
+ */
+data class UiAction(
+    val id: String,
+    val tool: ToolName?,
+    val summary: String,
+    val status: ActionStatus,
+    val detail: String?,
+    val icon: Bitmap? = null,
+    val body: String? = null,
+    val choices: List<String> = emptyList(),
+    val confirm: String? = null,
+    val undo: String? = null,
+    val content: Boolean = false,
+)
 
 data class UiTurn(
     val id: String,
@@ -156,6 +177,8 @@ object PanelController {
     private val voice = ReplyVoice()
     private val icons = HashMap<String, Bitmap?>()
     private var initialized = false
+    /** The tool groups this conversation has used: only ever added to (ToolRouter), reset with the conversation. */
+    private var groups: Set<ToolGroup> = setOf(ToolGroup.CORE)
 
     private fun newId() = UUID.randomUUID().toString()
 
@@ -260,6 +283,7 @@ object PanelController {
         stopGenerating()
         VoiceHub.tts.stop()
         chat.clear()
+        groups = setOf(ToolGroup.CORE)
         startedLocked = locked
         keptByUser = false
         lastActivity = System.currentTimeMillis()
@@ -274,6 +298,8 @@ object PanelController {
         stopGenerating()
         chat.clear()
         chat += c.turns
+        // The groups its questions and actions used: continuing it describes the same tools.
+        groups = ToolRouter.used(c.turns)
         startedLocked = false
         // Opening it from the history keeps saving it, but a screen question in it still needs "Keep" (only the
         // person's tap sets keptByUser).
@@ -286,7 +312,7 @@ object PanelController {
     }
 
     private fun ChatTurn.toUi() = UiTurn(id, role, text, attachment, null,
-        actions.map { UiAction(newId(), it.tool, it.summary, it.status, it.detail) }, stopped = stopped, error = error)
+        actions.map { UiAction(newId(), it.tool, it.summary, it.status, it.detail, content = it.content) }, stopped = stopped, error = error)
 
     /** The only way a conversation with screen content gets saved. */
     fun keepConversation() {
@@ -322,6 +348,16 @@ object PanelController {
     }
 
     fun notify(text: String) = _state.update { it.copy(notice = Notice(text)) }
+
+    /** "Allow" on a card that needs a permission: the main app's permission screen (it asks; the panel never does). */
+    fun openPermissions() {
+        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the Robot app.")
+        val h = host ?: return
+        if (h.launch(HandOffApps.robotPage(VoiceHub.app, AppPages.PERMISSIONS))) {
+            hidingFor = "action"
+            h.hidePanel()
+        }
+    }
 
     // ------------------------------------------------------------------ attachments
 
@@ -444,11 +480,13 @@ object PanelController {
         val now = System.currentTimeMillis()
         val user = ChatTurn(newId(), TurnRole.USER, q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, attachment)
         chat += user
+        // Groups are only ever added: a question that needs a new one rebuilds the conversation once (:brain).
+        groups = groups + ToolRouter.route(q)
         val replyId = newId()
         // Decided per turn: a screen turn stops saving until the person taps Keep.
         val keep = if (attachment == Attachment.SCREEN && !keptByUser) false else st.keep
-        // Screen text or a picture anywhere in this conversation: every action asks first.
-        val untrusted = TurnRules.untrusted(chat.map { it.attachment })
+        // Screen text, a picture or a read tool's findings anywhere in this conversation: every action asks first.
+        val untrusted = TurnRules.untrusted(chat)
         _state.update {
             it.copy(
                 turns = it.turns + UiTurn(user.id, TurnRole.USER, user.text, attachment, st.draft?.thumb) + UiTurn(replyId, TurnRole.ASSISTANT, "", streaming = true),
@@ -503,8 +541,10 @@ object PanelController {
         val convId = _state.value.convId
         val now = ZonedDateTime.now()
         val system = Prompt.system(now, Assistant.locked(VoiceHub.app))
+        // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
+        val tools = ToolRouter.tools(groups, VoiceHub.settings)
         // The new turn always fits the model's context: cut (and say so) rather than overflow.
-        val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system), Prompt.clock(now))
+        val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools), Prompt.clock(now))
         if (fitted.shortened) {
             notify(if (fitted.questionCut) "Your message was too long, so Robot read only its first part." else "The screen had a lot of text, so Robot read only the first part.")
         }
@@ -515,6 +555,7 @@ object PanelController {
             historyCount = history.size,
             text = fitted.text,
             hasImage = img != null,
+            tools = tools.map { it.id },
         )
         val result = TurnRunner(BrainTurn(c, convId, replyId, gen, img), PanelActions, PanelView(replyId), slot.confirmations, untrusted, ::newId).run()
         result.failure?.let { return failReply(replyId, it) }
@@ -540,15 +581,15 @@ object PanelController {
         override fun close() = c.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(convId))
     }
 
-    /** The phone side of a turn: the approval inputs and ToolExecutor. */
+    /** The phone side of a turn: the approval inputs and ToolExecutor (contacts, calendar and files off the main thread). */
     private object PanelActions : TurnActions {
         override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
         override val settings: RobotSettings get() = VoiceHub.settings
-        override fun prepare(action: Action): Prepared = executor().prepare(action)
-        override fun run(action: Action): Executed = executor().run(action)
+        override suspend fun prepare(action: Action): Prepared = withContext(Dispatchers.IO) { executor().prepare(action) }
+        override suspend fun run(action: Action): Executed = withContext(Dispatchers.IO) { executor().run(action) }
     }
 
-    private fun executor() = ToolExecutor(VoiceHub.app) { i -> host?.launch(i) ?: false }
+    private fun executor() = ToolExecutor(VoiceHub.app, VoiceHub.settings) { i -> host?.launch(i) ?: false }
 
     /** What the turn shows: the reply bubble [replyId], its cards and the panel's phase. */
     private class PanelView(private val replyId: String) : TurnView {
@@ -559,7 +600,7 @@ object PanelController {
 
         override fun card(c: Card) {
             val icon = (c.action as? Action.OpenApp)?.key?.let { key -> icons.getOrPut(key) { executor().appIcon(key) } }
-            upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon))
+            upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, c.action?.confirmLabel, c.undo, c.content))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
@@ -627,6 +668,28 @@ object PanelController {
     /** The person tapped "Do it" (true) or "Cancel" on a confirmation card. */
     fun confirm(actionId: String, yes: Boolean) {
         slot.confirmations.answer(actionId, yes)
+    }
+
+    /** The person tapped one of the people or numbers a card listed. */
+    fun choose(actionId: String, index: Int) {
+        slot.confirmations.choose(actionId, index)
+    }
+
+    /** Undo on a note Robot just saved: it leaves Robot Notes, the card says so, the history keeps it as undone. */
+    fun undo(actionId: String) {
+        val st = _state.value
+        val turn = st.turns.firstOrNull { t -> t.actions.any { it.id == actionId } } ?: return
+        val a = turn.actions.first { it.id == actionId }
+        val key = a.undo ?: return
+        upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = "Removed from Robot Notes.", undo = null))
+        scope.launch(Dispatchers.IO) { NotesFiles.store(VoiceHub.app).delete(key) }
+        // A finished reply's record changes with it (a reply still running records its cards when it ends).
+        val i = chat.indexOfFirst { it.id == turn.id }
+        if (i >= 0) {
+            val ui = _state.value.turns.first { it.id == turn.id }
+            chat[i] = chat[i].copy(actions = records(settled(ui.actions)))
+            persist()
+        }
     }
 
     private fun upsertAction(replyId: String, a: UiAction) = _state.update { st ->
@@ -701,5 +764,5 @@ object PanelController {
     /** A finished reply has no card left waiting: one still pending was not done (and is never saved as waiting). */
     private fun settled(actions: List<UiAction>) = actions.map { if (it.status == ActionStatus.PENDING) it.copy(status = ActionStatus.DECLINED) else it }
 
-    private fun records(actions: List<UiAction>) = actions.mapNotNull { a -> a.tool?.let { ActionRecord(it, a.summary, a.status, a.detail) } }
+    private fun records(actions: List<UiAction>) = actions.mapNotNull { a -> a.tool?.let { ActionRecord(it, a.summary, a.status, a.detail, a.content) } }
 }

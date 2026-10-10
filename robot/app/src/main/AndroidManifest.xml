@@ -16,6 +16,11 @@
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- The assistant check 3 minutes after BOOT_COMPLETED (as in the probe). -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Phase 2, runtime permissions asked for only by the main app, when the owner taps Allow or turns a feature on:
+         contacts (texts and emails by name, lookups), the calendar (read events, add new ones). -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
 
     <queries>
         <!-- open_app: every app with a launcher icon (no QUERY_ALL_PACKAGES). -->
@@ -49,6 +54,27 @@
             <action android:name="android.speech.RecognitionService" />
         </intent>
         <package android:name="app.organicmaps" />
+        <!-- Phase 2 hand-offs: Cheogram (texts, xmpp:), Proton Mail (mailto:), the SMS app (smsto:), the calendar
+             app's editor (INSERT). Drafts only: the owner presses Send there. -->
+        <package android:name="com.cheogram.android" />
+        <package android:name="com.cheogram.android.playstore" />
+        <package android:name="ch.protonmail.android" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="xmpp" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.INSERT" />
+            <data android:mimeType="vnd.android.cursor.dir/event" />
+        </intent>
     </queries>
 
     <application
@@ -74,6 +100,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- "Robot Notes" on the home screen: the main app, opened on the Notes screen (MainActivity reads the alias). -->
+        <activity-alias
+            android:name=".ui.NotesLauncher"
+            android:targetActivity=".ui.MainActivity"
+            android:label="@string/notes_name"
+            android:icon="@mipmap/ic_notes"
+            android:roundIcon="@mipmap/ic_notes"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- ":voice": the assistant, its session (the panel), the listener, speech engines, tools. sherpa-onnx loads only here. -->
         <service

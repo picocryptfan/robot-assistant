@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -39,7 +40,11 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -47,6 +52,11 @@ import app.heyrobot.BuildConfig
 import app.heyrobot.core.Approval
 import app.heyrobot.core.ApprovalGate
 import app.heyrobot.core.BenchState
+import app.heyrobot.core.CalendarInfo
+import app.heyrobot.core.CalendarPick
+import app.heyrobot.core.EmailApp
+import app.heyrobot.core.PhoneNumbers
+import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
 import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelSpec
@@ -236,9 +246,104 @@ private fun VoiceSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotSe
     }
 }
 
+/**
+ * Settings › People, notes and calendar: the texting app and its SMS gateway, the phone region, the email app, the
+ * calendar for new events and their length (docs/phase-2.md "Main app").
+ */
+@Composable
+private fun PeopleSettingsCard(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInfo>, update: (RobotSettings) -> Unit, a: AppActions) {
+    val f = snap.facts
+    SectionCard("People, notes and calendar") {
+        Text("Robot never sends anything itself: texts and emails open in the app as drafts, and you press Send there.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Texting app", style = MaterialTheme.typography.titleSmall)
+        val text = s.textAppFor(f?.cheogramInstalled == true)
+        for (v in TextApp.entries) {
+            ChoiceRow(v.title, when (v) {
+                TextApp.CHEOGRAM -> if (f?.cheogramInstalled == true) "Numbers go through the SMS gateway below; XMPP addresses directly." else "Not installed."
+                TextApp.SMS -> "The phone's SMS app, with the text filled in."
+                TextApp.OFF -> "Robot doesn't write texts."
+            }, text == v) { update(s.copy(textApp = v)) }
+        }
+        SettingField("SMS gateway", s.smsGateway, "The domain Cheogram texts numbers through (JMP: cheogram.com).") { v ->
+            update(s.copy(smsGateway = PhoneNumbers.gateway(v)))
+        }
+        SettingField("Phone region", s.phoneRegion, "Two letters, for numbers without a country code (CA, US, FR…).", caps = true) { v ->
+            update(s.copy(phoneRegion = PhoneNumbers.region(v)))
+        }
+        Text("Email app", style = MaterialTheme.typography.titleSmall)
+        val mail = s.emailAppFor(f?.protonInstalled == true)
+        for (v in EmailApp.entries) {
+            ChoiceRow(v.title, when (v) {
+                EmailApp.PROTON -> if (f?.protonInstalled == true) "Opens Proton Mail's composer with the draft." else "Not installed: Robot asks each time."
+                EmailApp.ASK -> "Android asks which email app to use."
+            }, mail == v) { update(s.copy(emailApp = v)) }
+        }
+        Text("Calendar for new events", style = MaterialTheme.typography.titleSmall)
+        if (f?.calendarGranted != true) {
+            StatusRow(Mark.TODO, "Allow the calendar", "Robot then adds events itself. Until then your calendar app opens with the event filled in.") {
+                FilledTonalButton(onClick = a.askCalendar) { Text("Allow") }
+            }
+        } else if (calendars.isEmpty()) {
+            Text("No calendar on this phone takes new events: your calendar app opens with the event filled in.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            val auto = CalendarPick.choose(calendars, CalendarPick.AUTO)
+            val chosen = CalendarPick.choose(calendars, s.eventCalendar)
+            ChoiceRow("Automatic", auto?.let { "Now: ${it.name}" }, s.eventCalendar == CalendarPick.AUTO || chosen == null) {
+                update(s.copy(eventCalendar = CalendarPick.AUTO))
+            }
+            for (c in calendars) {
+                ChoiceRow(c.name, c.account.takeIf { it.isNotBlank() && it != c.name }, s.eventCalendar == c.id) { update(s.copy(eventCalendar = c.id)) }
+            }
+        }
+        Text("Length of a new event", style = MaterialTheme.typography.titleSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (m in RobotSettings.EVENT_MINUTES.filter { it >= 30 }) {
+                FilterChip(selected = s.eventMinutes == m, onClick = { update(s.copy(eventMinutes = m)) },
+                    label = { Text(if (m < 60) "$m min" else if (m % 60 == 0) "${m / 60} h" else "${m / 60}.${m % 60 * 10 / 60} h") },
+                    modifier = Modifier.heightIn(min = 48.dp))
+            }
+        }
+        NavRow(RIcons.Note, "Robot Notes", "Your notes, to read, edit, search and share") { a.openTab(Tab.NOTES) }
+        NavRow(RIcons.Person, "Contacts and calendar access", "Allow or check what Robot may read") { a.openSetup() }
+    }
+}
+
+@Composable
+private fun ChoiceRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (detail != null) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** A text setting saved with the keyboard's Done or the Save button (what's saved is the cleaned value). */
+@Composable
+private fun SettingField(label: String, value: String, detail: String, caps: Boolean = false, save: (String) -> Unit) {
+    var v by remember(value) { mutableStateOf(value) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = v, onValueChange = { v = it }, label = { Text(label) }, singleLine = true,
+            supportingText = { Text(detail) },
+            keyboardOptions = KeyboardOptions(capitalization = if (caps) KeyboardCapitalization.Characters else KeyboardCapitalization.None, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { save(v) }),
+            modifier = Modifier.weight(1f),
+        )
+        if (v.trim() != value) TextButton(onClick = { save(v) }) { Text("Save") }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions, modifier: Modifier) {
+fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInfo>, update: (RobotSettings) -> Unit, a: AppActions, modifier: Modifier) {
     var confirmHistory by remember { mutableStateOf(false) }
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -265,10 +370,12 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> 
         }
         VoiceSettingsCard(s, snap, update, a)
         SectionCard("Actions") {
-            Text("What Robot may do when you ask. On the lock screen only timers and alarms work; everything else asks you to unlock.",
+            Text("What Robot may do when you ask. On the lock screen only timers and alarms work; everything else asks you to unlock. " +
+                "After Robot read a note, an event or a contact in a conversation, every action in it asks first.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             for (t in ToolName.entries) ApprovalRow(t, s.approval(t)) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
         }
+        PeopleSettingsCard(s, snap, calendars, update, a)
         SectionCard("Model memory") {
             Text("Keep Gemma loaded after the panel closes (about 2 GB of memory; it loads again in about 2 seconds).",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -337,8 +444,32 @@ private fun ApprovalRow(t: ToolName, level: Approval, onChange: (Approval) -> Un
     }
 }
 
+/** Assistant setup › People, notes and calendar: the two permissions with their grant buttons, and the hand-off apps. */
 @Composable
-fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
+private fun PeopleSetupCard(f: AssistantFacts, a: AppActions) {
+    SectionCard("People, notes and calendar") {
+        Text("Robot asks for these only when you tap Allow. What it reads stays on the phone; texts and emails open as drafts and you press Send.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        StatusRow(if (f.contactsGranted) Mark.OK else Mark.TODO, "Contacts",
+            if (f.contactsGranted) "Allowed: Robot finds the person you name." else "To text or email someone by name, and to look up a number.") {
+            if (!f.contactsGranted) FilledTonalButton(onClick = a.askContacts) { Text("Allow") }
+        }
+        StatusRow(if (f.calendarGranted) Mark.OK else Mark.TODO, "Calendar",
+            if (f.calendarGranted) "Allowed: Robot reads your events and adds new ones." else "To read your events and add new ones (without it, your calendar app opens to add one).") {
+            if (!f.calendarGranted) FilledTonalButton(onClick = a.askCalendar) { Text("Allow") }
+        }
+        StatusRow(if (f.cheogramInstalled) Mark.OK else Mark.TODO, "Cheogram",
+            if (f.cheogramInstalled) "Installed: texts open there as drafts." else "Not installed: texts use the SMS app (Settings › People, notes and calendar).")
+        StatusRow(if (f.protonInstalled) Mark.OK else Mark.TODO, "Proton Mail",
+            if (f.protonInstalled) "Installed: emails open there as drafts." else "Not installed: Android asks which email app to use.")
+        if (!f.contactsGranted || !f.calendarGranted) {
+            TextButton(onClick = a.openAppSettings) { Text("Android doesn't ask? Open Robot's app settings") }
+        }
+    }
+}
+
+@Composable
+fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit, peopleFirst: Boolean = false) {
     Scaffold(topBar = { BackBar("Assistant setup", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
         Column(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -348,6 +479,8 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                 Text("Checking…")
                 return@Column
             }
+            // Opened from a card's "Allow": the permissions first.
+            if (peopleFirst) PeopleSetupCard(f, a)
             SectionCard("Right now") {
                 StatusRow(if (f.roleHeld) Mark.OK else Mark.TODO, "Robot is the digital assistant",
                     if (f.roleHeld) "Android lists Robot as your assistant." else "Pick Robot in Settings › Apps › Default apps › Digital assistant app.")
@@ -380,6 +513,7 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                     if (!f.micGranted || !f.notificationsGranted) OutlinedButton(onClick = a.askPermissions, modifier = Modifier.heightIn(min = 52.dp)) { Text("Allow") }
                 }
             }
+            if (!peopleFirst) PeopleSetupCard(f, a)
             SectionCard("After a restart") {
                 Text(
                     "Android 17 keeps a non-system assistant across a restart only when a default speech recognizer is set, and it never " +

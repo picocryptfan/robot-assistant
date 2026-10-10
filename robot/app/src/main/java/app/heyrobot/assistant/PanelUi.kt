@@ -94,6 +94,7 @@ import app.heyrobot.core.Attachment
 import app.heyrobot.core.TurnRole
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.AssistantBubble
+import app.heyrobot.ui.common.CardActions
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.UserBubble
 import kotlinx.coroutines.launch
@@ -276,6 +277,8 @@ private fun BrainBanner(st: PanelState) {
     }
 }
 
+private val cardActions = CardActions(choose = PanelController::choose, undo = PanelController::undo, allow = PanelController::openPermissions)
+
 @Composable
 private fun Messages(st: PanelState, modifier: Modifier) {
     if (st.turns.isEmpty()) {
@@ -303,8 +306,9 @@ private fun Messages(st: PanelState, modifier: Modifier) {
             if (t.role == TurnRole.USER) UserBubble(t.text, t.attachment, t.thumb)
             else AssistantBubble(
                 text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error,
-                actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon) },
+                actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null) },
                 onConfirm = PanelController::confirm,
+                cardActions = cardActions,
             )
         }
     }
@@ -313,7 +317,7 @@ private fun Messages(st: PanelState, modifier: Modifier) {
 @Composable
 private fun Suggestions(locked: Boolean, onPick: (String) -> Unit) {
     val items = if (locked) listOf("Set a timer for 5 minutes", "Set an alarm for 7:00", "Tell me a fun fact")
-    else listOf("Set a timer for 10 minutes", "Turn on the flashlight", "What can you do?")
+    else listOf("Set a timer for 10 minutes", "What's on my calendar today?", "What can you do?")
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for (s in items) SuggestionChip(onClick = { onPick(s) }, label = { Text(s, maxLines = 2) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
     }

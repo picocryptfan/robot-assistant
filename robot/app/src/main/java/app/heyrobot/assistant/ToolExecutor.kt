@@ -13,31 +13,72 @@ import android.provider.AlarmClock
 import androidx.core.graphics.drawable.toBitmap
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
+import app.heyrobot.core.Addresses
 import app.heyrobot.core.AppEntry
 import app.heyrobot.core.AppMatcher
+import app.heyrobot.core.CalendarFormat
+import app.heyrobot.core.CalendarPick
+import app.heyrobot.core.Choice
+import app.heyrobot.core.ContactMatcher
 import app.heyrobot.core.Durations
+import app.heyrobot.core.EmailApp
+import app.heyrobot.core.EventPlan
+import app.heyrobot.core.Events
 import app.heyrobot.core.Executed
+import app.heyrobot.core.MailTarget
+import app.heyrobot.core.MailTo
+import app.heyrobot.core.NoteSearch
+import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RLog
+import app.heyrobot.core.Read
+import app.heyrobot.core.Recipients
+import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.SmsTo
+import app.heyrobot.core.TextApp
+import app.heyrobot.core.TextTarget
+import app.heyrobot.core.TextVia
+import app.heyrobot.core.WhenParser
+import app.heyrobot.core.XmppLink
+import app.heyrobot.sys.Calendars
+import app.heyrobot.sys.Contacts
+import app.heyrobot.sys.HandOffApps
+import app.heyrobot.sys.NotesFiles
+import app.heyrobot.sys.Phones
+import java.time.ZonedDateTime
 import java.util.Locale
 
 // VOICE PROCESS (the app side, never :brain). Runs an action that already passed the approval gate,
 // with intents that need no new permissions: AlarmClock (GrapheneOS Clock handles SET_TIMER with
 // EXTRA_SKIP_UI silently, verified in phase 0), the launcher's app list, Organic Maps' om:// URIs (geo:
-// as a fallback) and CameraManager's torch. The log records the tool and the outcome, never arguments.
+// as a fallback) and CameraManager's torch. Phase 2: texts and emails are handed to Cheogram, the SMS app or
+// Proton Mail as drafts (the owner presses Send there), contacts and the calendar are read with the permissions
+// the main app asked for, notes go to Robot Notes. The log records the tool and the outcome, never arguments.
 
-class ToolExecutor(private val ctx: Context, private val launch: (Intent) -> Boolean) {
+class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val launch: (Intent) -> Boolean) {
     /**
-     * Before the gate and the card: open_app becomes the installed app it will open (its real label and launcher
-     * activity), so the card shows what will actually open; a name that matches no app well enough is refused here.
+     * Before the gate and the card: what the action will really do. open_app becomes the installed app it will open
+     * (its real label and launcher activity); send_text and draft_email the person, number or address it goes to
+     * (or the choices, when several fit); add_event its dates and calendar; read_calendar its day or week. What
+     * can't be done is refused here, before any card.
      */
-    fun prepare(action: Action): Prepared = when (action) {
-        is Action.OpenApp -> {
-            val m = AppMatcher.match(action.name, launcherApps())
-            if (m == null) Prepared.Refused(ActionStatus.FAILED, "No app called “${action.name}” is installed.")
-            else Prepared.Ready(Action.OpenApp(m.app.label, m.app.key), mustAsk = m.loose)
+    fun prepare(action: Action): Prepared = try {
+        when (action) {
+            is Action.OpenApp -> {
+                val m = AppMatcher.match(action.name, launcherApps())
+                if (m == null) Prepared.Refused(ActionStatus.FAILED, "No app called “${action.name}” is installed.")
+                else Prepared.Ready(Action.OpenApp(m.app.label, m.app.key), mustAsk = m.loose)
+            }
+            is Action.SendText -> prepareText(action)
+            is Action.DraftEmail -> prepareEmail(action)
+            is Action.LookupContact -> if (Contacts.granted(ctx)) Prepared.Ready(action) else needContacts()
+            is Action.AddEvent -> prepareEvent(action)
+            is Action.ReadCalendar -> prepareRead(action)
+            else -> Prepared.Ready(action)
         }
-        else -> Prepared.Ready(action)
+    } catch (t: Throwable) {
+        RLog.w("tool_prepare", t, "tool" to action.tool)
+        Prepared.Refused(ActionStatus.FAILED, "Something went wrong.")
     }
 
     fun run(action: Action): Executed {
@@ -49,6 +90,13 @@ class ToolExecutor(private val ctx: Context, private val launch: (Intent) -> Boo
                 is Action.MapsSearch -> maps(action.query, "Opened Organic Maps search")
                 is Action.MapsNavigate -> maps(action.destination, "Opened Organic Maps on the destination: tap Route for directions")
                 is Action.Flashlight -> torch(action.on)
+                is Action.SendText -> text(action)
+                is Action.DraftEmail -> email(action)
+                is Action.LookupContact -> lookup(action)
+                is Action.AddNote -> addNote(action)
+                is Action.FindNotes -> findNotes(action)
+                is Action.AddEvent -> addEvent(action)
+                is Action.ReadCalendar -> readCalendar(action)
             }
         } catch (t: Throwable) {
             RLog.w("tool_run", t, "tool" to action.tool)
@@ -127,6 +175,180 @@ class ToolExecutor(private val ctx: Context, private val launch: (Intent) -> Boo
             ?: return Executed(ActionStatus.FAILED, "This phone has no flashlight.")
         cm.setTorchMode(id, on)
         return Executed(ActionStatus.DONE, if (on) "Flashlight on." else "Flashlight off.")
+    }
+
+    // ------------------------------------------------------------------ people
+
+    private fun needContacts() = Prepared.Refused(ActionStatus.NEEDS_PERMISSION, "Allow Robot to read your contacts in the Robot app.")
+
+    private val region get() = settings.phoneRegion
+
+    /** A number's target: its gateway address for Cheogram, the number itself for the SMS app. */
+    private fun numberTarget(name: String?, e164: String, via: TextVia, appName: String): TextTarget? {
+        val address = if (via == TextVia.CHEOGRAM) PhoneNumbers.jid(e164, settings.smsGateway) ?: return null else e164
+        return TextTarget(name, address, Phones.display(e164, region), appName, via)
+    }
+
+    private fun prepareText(a: Action.SendText): Prepared {
+        val cheogram = HandOffApps.cheogram(ctx)
+        val via = when (settings.textAppFor(cheogram != null)) {
+            TextApp.OFF -> return Prepared.Refused(ActionStatus.DISABLED, "Texts are turned off in Robot's settings.")
+            TextApp.CHEOGRAM -> TextVia.CHEOGRAM
+            TextApp.SMS -> TextVia.SMS
+        }
+        if (via == TextVia.CHEOGRAM && cheogram == null) return Prepared.Refused(ActionStatus.NO_APP, "Install Cheogram, or choose the SMS app in Robot's settings.")
+        if (via == TextVia.SMS && !HandOffApps.resolves(ctx, HandOffApps.smsIntent())) return Prepared.Refused(ActionStatus.NO_APP, "No SMS app is installed.")
+        val appName = if (via == TextVia.CHEOGRAM) "Cheogram" else HandOffApps.smsAppName(ctx) ?: "the SMS app"
+        val to = a.to.trim()
+        // An address or a number said outright: no contacts needed.
+        if (Addresses.isAddress(to)) {
+            if (via == TextVia.SMS) return Prepared.Refused(ActionStatus.FAILED, "The SMS app can't text an XMPP address.")
+            return Prepared.Ready(a.copy(target = TextTarget(null, to, to, appName, via)))
+        }
+        if (Addresses.isPhone(to)) {
+            val e = Phones.e164(to, region) ?: return Prepared.Refused(ActionStatus.INVALID, "That phone number couldn't be read.")
+            return Prepared.Ready(a.copy(target = numberTarget(null, e, via, appName) ?: return Prepared.Refused(ActionStatus.INVALID, "That phone number couldn't be read.")))
+        }
+        if (!Contacts.granted(ctx)) return needContacts()
+        val matches = ContactMatcher.best(to, Contacts.names(ctx))
+        if (matches.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.")
+        val reach = Recipients.forText(Contacts.cards(ctx, matches), xmppOk = via == TextVia.CHEOGRAM)
+        val options = reach.mapNotNull { r ->
+            val t = if (r.xmpp) TextTarget(r.name, r.address, r.address, appName, via)
+            else Phones.e164(r.address, region)?.let { numberTarget(r.name, it, via, appName) }
+            t?.let { r to it }
+        }.distinctBy { it.second.address }
+        if (options.isEmpty()) {
+            val who = matches.map { it.name }.distinct().joinToString(" or ")
+            return Prepared.Refused(ActionStatus.NOT_FOUND, "$who has no phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""} in your contacts.")
+        }
+        if (options.size == 1) return Prepared.Ready(a.copy(target = options[0].second))
+        // Several numbers or people: the card lists them, mobile first, and the owner taps one.
+        val oneName = options.map { it.first.name }.distinct().singleOrNull()
+        val choices = options.map { (r, t) ->
+            Choice(listOfNotNull(if (oneName == null) r.name else null, r.label, t.display).joinToString(" · "), a.copy(target = t))
+        }
+        return Prepared.Ready(a.copy(to = oneName ?: a.to), choices = choices)
+    }
+
+    private fun prepareEmail(a: Action.DraftEmail): Prepared {
+        if (!HandOffApps.resolves(ctx, HandOffApps.mailIntent())) return Prepared.Refused(ActionStatus.NO_APP, "No email app is installed.")
+        val proton = HandOffApps.proton(ctx)
+        val appName = if (settings.emailAppFor(proton) == EmailApp.PROTON && proton) "Proton Mail" else null
+        val to = a.to.trim()
+        if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)))
+        if (!Contacts.granted(ctx)) return needContacts()
+        val matches = ContactMatcher.best(to, Contacts.names(ctx))
+        if (matches.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.")
+        val reach = Recipients.forEmail(Contacts.cards(ctx, matches))
+        if (reach.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "${matches.map { it.name }.distinct().joinToString(" or ")} has no email address in your contacts.")
+        if (reach.size == 1) return Prepared.Ready(a.copy(target = MailTarget(reach[0].name, reach[0].address, appName)))
+        val oneName = reach.map { it.name }.distinct().singleOrNull()
+        val choices = reach.map { r -> Choice(if (oneName == null) "${r.name} · ${r.address}" else r.address, a.copy(target = MailTarget(r.name, r.address, appName))) }
+        return Prepared.Ready(a.copy(to = oneName ?: a.to), choices = choices)
+    }
+
+    /** Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until the owner presses Send. */
+    private fun text(a: Action.SendText): Executed {
+        val t = a.target ?: return Executed(ActionStatus.FAILED, "Robot didn't find who to text.")
+        val i = when (t.via) {
+            TextVia.CHEOGRAM -> {
+                val pkg = HandOffApps.cheogram(ctx) ?: return Executed(ActionStatus.NO_APP, "Install Cheogram.")
+                Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(t.address, a.message))).setPackage(pkg)
+            }
+            TextVia.SMS -> Intent(Intent.ACTION_SENDTO, Uri.parse(SmsTo.uri(t.address))).putExtra("sms_body", a.message)
+        }
+        return if (start(i)) Executed(ActionStatus.DONE, "Opened ${t.appName} with the text: the person presses Send there.", launchedApp = true)
+        else Executed(ActionStatus.NO_APP, if (t.via == TextVia.CHEOGRAM) "Install Cheogram." else "No SMS app is installed.")
+    }
+
+    /** Proton Mail (or the app picked in the chooser) opens the draft: mailto: with the same values in the extras. */
+    private fun email(a: Action.DraftEmail): Executed {
+        val t = a.target ?: return Executed(ActionStatus.FAILED, "Robot didn't find who to email.")
+        val i = Intent(Intent.ACTION_SENDTO, Uri.parse(MailTo.uri(t.address, a.subject, a.text)))
+            .putExtra(Intent.EXTRA_EMAIL, arrayOf(t.address))
+            .putExtra(Intent.EXTRA_SUBJECT, a.subject)
+            .putExtra(Intent.EXTRA_TEXT, a.text)
+        val go = if (t.appName != null) i.setPackage(HandOffApps.PROTON) else Intent.createChooser(i, "Write the email with")
+        return if (start(go)) Executed(ActionStatus.DONE, "Opened ${t.appName ?: "the email app"} with the draft: the person presses Send there.", launchedApp = true)
+        else Executed(ActionStatus.NO_APP, "No email app is installed.")
+    }
+
+    private fun lookup(a: Action.LookupContact): Executed {
+        if (!Contacts.granted(ctx)) return Executed(ActionStatus.NEEDS_PERMISSION, "Allow Robot to read your contacts in the Robot app.")
+        val matches = ContactMatcher.best(a.name, Contacts.names(ctx))
+        if (matches.isEmpty()) return Executed(ActionStatus.NOT_FOUND, "No contact matches “${a.name}”.", results = emptyList())
+        val cards = Contacts.cards(ctx, matches)
+        val results = Recipients.lookup(cards) { raw -> Phones.e164(raw, region)?.let { Phones.display(it, region) } ?: raw }
+        val lines = results.joinToString("\n") { r ->
+            listOfNotNull(r["name"] as String?, (r["numbers"] as List<*>?)?.joinToString(", "), (r["emails"] as List<*>?)?.joinToString(", "), r["xmpp"] as String?)
+                .joinToString(" · ")
+        }
+        val detail = if (results.size == 1) "Found 1 contact." else "Found ${results.size} contacts."
+        return Executed(ActionStatus.DONE, detail, results = results, body = lines, spoken = lines.replace("\n", ". "))
+    }
+
+    // ------------------------------------------------------------------ notes
+
+    private fun addNote(a: Action.AddNote): Executed {
+        val n = NotesFiles.store(ctx).add(a.text, a.title, System.currentTimeMillis())
+            ?: return Executed(ActionStatus.FAILED, "The note couldn't be saved.")
+        return Executed(ActionStatus.DONE, "Saved to Robot Notes.", undo = n.id)
+    }
+
+    private fun findNotes(a: Action.FindNotes): Executed {
+        val found = NoteSearch.find(a.query, NotesFiles.store(ctx).list())
+        if (found.isEmpty()) return Executed(ActionStatus.NOT_FOUND, "No note matches “${a.query}”.", results = emptyList())
+        val results = NoteSearch.results(found)
+        val titles = found.joinToString(", ") { it.displayTitle }
+        return Executed(ActionStatus.DONE, if (found.size == 1) "Found 1 note." else "Found ${found.size} notes.", results = results,
+            body = found.joinToString("\n") { it.displayTitle }, spoken = "Found: $titles.")
+    }
+
+    // ------------------------------------------------------------------ calendar
+
+    private fun prepareEvent(a: Action.AddEvent): Prepared {
+        val now = ZonedDateTime.now()
+        val span = when (val r = Events.times(a, now, settings.eventMinutes)) {
+            is Read.Unreadable -> return Prepared.Refused(ActionStatus.INVALID, r.detail)
+            is Read.Ok -> r.value
+        }
+        // Robot adds it itself when it may write to a calendar; otherwise the calendar app's editor opens prefilled.
+        val cal = if (Calendars.readGranted(ctx) && Calendars.writeGranted(ctx)) CalendarPick.choose(Calendars.writable(ctx), settings.eventCalendar) else null
+        if (cal == null && !HandOffApps.resolves(ctx, Calendars.editorIntent())) {
+            return if (!Calendars.writeGranted(ctx)) Prepared.Refused(ActionStatus.NEEDS_PERMISSION, "Allow Robot to use your calendar in the Robot app.")
+            else Prepared.Refused(ActionStatus.NO_APP, "No calendar app is installed.")
+        }
+        return Prepared.Ready(a.copy(plan = EventPlan(span.start, span.end!!, span.allDay, cal?.id, cal?.name, now.year)))
+    }
+
+    private fun addEvent(a: Action.AddEvent): Executed {
+        val p = a.plan ?: return Executed(ActionStatus.FAILED, "Robot couldn't read the date.")
+        if (p.calendarId != null) {
+            val id = try { Calendars.insert(ctx, a.title, p) } catch (_: SecurityException) { null }
+            if (id != null) return Executed(ActionStatus.DONE, "Added to ${p.calendarName}.")
+        }
+        return if (start(Calendars.insertIntent(a.title, p))) Executed(ActionStatus.DONE, "Opened the calendar app with the event: the person saves it there.", launchedApp = true)
+        else Executed(ActionStatus.NO_APP, "No calendar app is installed.")
+    }
+
+    private fun prepareRead(a: Action.ReadCalendar): Prepared {
+        if (!Calendars.readGranted(ctx)) return Prepared.Refused(ActionStatus.NEEDS_PERMISSION, "Allow Robot to read your calendar in the Robot app.")
+        return when (val r = WhenParser.range(a.day, ZonedDateTime.now())) {
+            is Read.Unreadable -> Prepared.Refused(ActionStatus.INVALID, r.detail)
+            is Read.Ok -> Prepared.Ready(a.copy(range = r.value))
+        }
+    }
+
+    private fun readCalendar(a: Action.ReadCalendar): Executed {
+        val range = a.range ?: return Executed(ActionStatus.FAILED, "Robot couldn't read the day.")
+        if (!Calendars.readGranted(ctx)) return Executed(ActionStatus.NEEDS_PERMISSION, "Allow Robot to read your calendar in the Robot app.")
+        val events = CalendarFormat.inRange(Calendars.events(ctx, range), range)
+        val results = CalendarFormat.results(events, range)
+        val detail = CalendarFormat.detail(events.size, range)
+        val lines = CalendarFormat.lines(results)
+        return Executed(ActionStatus.DONE, detail, results = results, body = lines.ifEmpty { null },
+            spoken = (detail + " " + lines.replace("\n", ". ").replace(" · ", " ")).trim())
     }
 
     private companion object {

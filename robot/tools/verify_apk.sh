@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks a built Robot APK: signer (Robot's release key), package and version, SDK levels, the assistant
 # components and their processes, the recognizer that keeps the assistant across restarts, permissions,
-# and the arm64-only native libraries. Usage: tools/verify_apk.sh <apk>
+# the arm64-only native libraries, and (phase 2) the Robot Notes launcher entry, the hand-off apps' <queries>
+# and the three runtime permissions. Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
 BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/36.0.0"
@@ -21,7 +22,7 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 # minSdk 34: AGP signs with v3 (API 28+) and may skip v2; either covers every phone Robot installs on.
 "$BT/apksigner" verify -v "$APK" 2>/dev/null | grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='app.heyrobot' versionCode='4' versionName='0.1.3'" "$badging" "package app.heyrobot 0.1.3 (4)"
+has "package: name='app.heyrobot' versionCode='20' versionName='0.2.0'" "$badging" "package app.heyrobot 0.2.0 (20)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"
@@ -42,8 +43,28 @@ has ':brain' "$(elem app.heyrobot.brain.BrainService)" "BrainService in :brain"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.brain.BrainService)" "BrainService not exported"
 has '"app.heyrobot.permission.INTERNAL"' "$(elem app.heyrobot.brain.BrainService)" "BrainService guarded by the signature permission"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver not exported"
-for p in CAMERA READ_EXTERNAL_STORAGE READ_MEDIA_IMAGES QUERY_ALL_PACKAGES SEND_SMS READ_CONTACTS ACCESS_FINE_LOCATION; do
+for p in CAMERA READ_EXTERNAL_STORAGE READ_MEDIA_IMAGES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
+done
+# Phase 2: contacts and the calendar, asked for at runtime by the main app only.
+for p in READ_CONTACTS READ_CALENDAR WRITE_CALENDAR; do
+  has "\"android.permission.$p\"" "$mf" "declares $p"
+done
+# "Robot Notes" on the launcher: an activity-alias of MainActivity with its own MAIN/LAUNCHER filter, label and icon.
+alias=$(echo "$mf" | awk '/^ *E: activity-alias /{ on=0 } index($0, "\"app.heyrobot.ui.NotesLauncher\""){ on=1 } /^ *E: (service|receiver|activity|provider) /{ on=0 } on')
+has 'targetActivity(0x01010202)="app.heyrobot.ui.MainActivity"' "$alias" "Robot Notes alias targets MainActivity"
+has 'exported(0x01010010)=true' "$alias" "Robot Notes alias exported (launcher)"
+has '"android.intent.action.MAIN"' "$alias" "Robot Notes alias has MAIN"
+has '"android.intent.category.LAUNCHER"' "$alias" "Robot Notes alias has LAUNCHER"
+# (Here-strings: with pipefail, "echo | grep -q" on this large dump can fail on SIGPIPE.)
+res=$("$BT/aapt2" dump resources "$APK" 2>/dev/null)
+grep -A1 'string/notes_name$' <<<"$res" | grep -qF '"Robot Notes"' && pass "Robot Notes label" || fail "Robot Notes label"
+grep -qE 'resource 0x[0-9a-f]+ mipmap/ic_notes$' <<<"$res" && pass "Robot Notes icon" || fail "Robot Notes icon"
+# Package visibility for the hand-offs, by name and by intent (no QUERY_ALL_PACKAGES).
+queries=$(echo "$mf" | awk '/^ *E: queries /{ on=1 } /^ *E: application /{ on=0 } on')
+for q in '"com.cheogram.android"' '"com.cheogram.android.playstore"' '"ch.protonmail.android"' 'scheme(0x01010027)="xmpp"' 'scheme(0x01010027)="mailto"' \
+  'scheme(0x01010027)="smsto"' 'mimeType(0x01010026)="vnd.android.cursor.dir/event"' '"android.intent.action.INSERT"' '"android.intent.action.SENDTO"'; do
+  has "$q" "$queries" "<queries> has $q"
 done
 vi=$(for f in $(unzip -Z1 "$APK" 'res/*.xml'); do "$BT/aapt2" dump xmltree --file "$f" "$APK" 2>/dev/null; done)
 has '"app.heyrobot.assistant.RobotSessionService"' "$vi" "voice-interaction sessionService"

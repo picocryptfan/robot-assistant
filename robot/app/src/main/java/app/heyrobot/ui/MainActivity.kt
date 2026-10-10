@@ -1,8 +1,10 @@
 package app.heyrobot.ui
 
 import android.Manifest
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -31,18 +33,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.heyrobot.core.Approval
+import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.ModelStatus
+import app.heyrobot.core.Note
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.ToolGroup
+import app.heyrobot.core.ToolName
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.VoiceBench
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceEngineStatus
 import app.heyrobot.core.readOrNull
+import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.AssistantFacts
+import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
+import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.VoiceModelStore
@@ -58,10 +68,29 @@ import kotlinx.coroutines.withContext
 // this app opens it with Activity.showAssist and talks to it through files and Cmd broadcasts.
 
 class MainActivity : ComponentActivity() {
+    /**
+     * Where the last intent asked the app to open: Robot Notes (the "Robot Notes" launcher entry, an activity-alias of
+     * this activity) or the permission screen (a card's "Allow" in the panel). Read once by the UI, then cleared.
+     */
+    val route = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) route.value = routeOf(intent)
         setContent { RobotTheme { RobotAppUi(this) } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        route.value = routeOf(intent)
+    }
+
+    private fun routeOf(i: Intent?): String? = when {
+        i == null -> null
+        i.component?.className == AppPages.NOTES_ALIAS -> AppPages.NOTES
+        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -71,11 +100,14 @@ class MainActivity : ComponentActivity() {
     })
 }
 
-enum class Tab(val title: String) { HOME("Home"), HISTORY("History"), MODEL("Model"), SETTINGS("Settings") }
+enum class Tab(val title: String) { HOME("Home"), NOTES("Notes"), HISTORY("History"), MODEL("Model"), SETTINGS("Settings") }
 
 sealed class Page {
-    data object Setup : Page()
+    /** [people]: opened for a permission ("People, notes and calendar" first). */
+    data class Setup(val people: Boolean = false) : Page()
     data class Conversation(val id: String) : Page()
+    /** [id] null: a new note. */
+    data class NoteEdit(val id: String?) : Page()
 }
 
 /** Live facts the screens show, refreshed every second while the app is in front. */
@@ -111,6 +143,10 @@ fun RobotAppUi(activity: MainActivity) {
     var historyTick by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf<String?>(null) }
     var voiceInstalling by remember { mutableStateOf<VoiceBundle?>(null) }
+    var notes by remember { mutableStateOf<List<Note>>(emptyList()) }
+    var notesTick by remember { mutableIntStateOf(0) }
+    var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
+    var permissionTick by remember { mutableIntStateOf(0) }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lstate by lifecycle.currentStateFlow.collectAsState()
@@ -165,10 +201,30 @@ fun RobotAppUi(activity: MainActivity) {
     LaunchedEffect(resumed, historyTick) {
         if (resumed) history = withContext(Dispatchers.IO) { ConversationStore.list(ctx) }
     }
+    // The assistant adds notes from the panel: read the folder again whenever the app comes back.
+    LaunchedEffect(resumed, notesTick) {
+        if (resumed) notes = withContext(Dispatchers.IO) { NotesFiles.store(ctx).list() }
+    }
+    LaunchedEffect(resumed, permissionTick) {
+        if (resumed) calendars = withContext(Dispatchers.IO) { Calendars.writable(ctx) }
+    }
+    val route by activity.route
+    LaunchedEffect(route) {
+        when (route) {
+            AppPages.NOTES -> { tab = Tab.NOTES; page = null }
+            AppPages.PERMISSIONS -> page = Page.Setup(people = true)
+        }
+        activity.route.value = null
+    }
 
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         // The voice process starts listening once it may.
         Cmd.send(ctx, Cmd.SETTINGS)
+    }
+    // Contacts and calendar: asked for here only, when the owner taps Allow or turns a feature on (never at first launch).
+    val peoplePermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        permissionTick++
+        if (result.values.any { !it }) say("Not allowed. If Android doesn't ask again: Settings › Apps › Robot › Permissions.")
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -194,10 +250,10 @@ fun RobotAppUi(activity: MainActivity) {
     val actions = AppActions(
         talk = { id ->
             val f = snap.facts
-            if (f?.active != true) { page = Page.Setup; say("Make Robot your digital assistant first.") }
+            if (f?.active != true) { page = Page.Setup(); say("Make Robot your digital assistant first.") }
             else if (!activity.talk(id)) say("Couldn't open the assistant.")
         },
-        openSetup = { page = Page.Setup },
+        openSetup = { page = Page.Setup() },
         openTab = { tab = it; page = null },
         openConversation = { page = Page.Conversation(it) },
         askPermissions = { permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) },
@@ -227,15 +283,47 @@ fun RobotAppUi(activity: MainActivity) {
             else Cmd.send(ctx, Cmd.VOICE_BENCH)
         },
         voiceReset = { Cmd.send(ctx, Cmd.VOICE_RESET); say("Robot will try the voice models again.") },
+        askContacts = { peoplePermissions.launch(arrayOf(Manifest.permission.READ_CONTACTS)) },
+        askCalendar = { peoplePermissions.launch(arrayOf(Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)) },
+        openAppSettings = {
+            try {
+                ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null)))
+            } catch (_: Exception) { say("Open Settings › Apps › Robot › Permissions.") }
+        },
+        openNote = { id -> page = Page.NoteEdit(id) },
+        saveNote = { old, title, text ->
+            scope.launch(Dispatchers.IO) {
+                val store = NotesFiles.store(ctx)
+                val now = System.currentTimeMillis()
+                val ok = if (old == null) store.add(text, title, now) != null else store.save(old.copy(title = title, text = text, updated = now))
+                withContext(Dispatchers.Main) { notesTick++; if (!ok) say("The note couldn't be saved.") }
+            }
+        },
+        deleteNote = { id ->
+            scope.launch(Dispatchers.IO) {
+                NotesFiles.store(ctx).delete(id)
+                withContext(Dispatchers.Main) { notesTick++; say("Note deleted.") }
+            }
+        },
     )
+
+    /** Turning a people or calendar feature on (from Off) asks for what it needs, if it isn't allowed yet. */
+    fun updateSettings(s: RobotSettings) {
+        val f = snap.facts
+        val turnedOn = ToolName.entries.filter { settings.approval(it) == Approval.OFF && s.approval(it) != Approval.OFF }
+        update(s)
+        if (f != null && turnedOn.any { it.group == ToolGroup.CALENDAR } && !f.calendarGranted) actions.askCalendar()
+        else if (f != null && turnedOn.any { it.group == ToolGroup.PEOPLE } && !f.contactsGranted) actions.askContacts()
+    }
 
     BackHandler(enabled = page != null || tab != Tab.HOME) {
         if (page != null) page = null else tab = Tab.HOME
     }
 
     when (val p = page) {
-        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null })
+        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people)
         is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, onBack = { page = null })
+        is Page.NoteEdit -> NoteScreen(p.id?.let { id -> notes.firstOrNull { it.id == id } }, actions, snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -243,7 +331,7 @@ fun RobotAppUi(activity: MainActivity) {
                     for (t in Tab.entries) {
                         NavigationBarItem(
                             selected = tab == t, onClick = { tab = t },
-                            icon = { Icon(when (t) { Tab.HOME -> RIcons.Home; Tab.HISTORY -> RIcons.History; Tab.MODEL -> RIcons.Chip; Tab.SETTINGS -> RIcons.Settings }, null) },
+                            icon = { Icon(when (t) { Tab.HOME -> RIcons.Home; Tab.NOTES -> RIcons.Note; Tab.HISTORY -> RIcons.History; Tab.MODEL -> RIcons.Chip; Tab.SETTINGS -> RIcons.Settings }, null) },
                             label = { Text(t.title) },
                         )
                     }
@@ -253,9 +341,10 @@ fun RobotAppUi(activity: MainActivity) {
             val m = Modifier.padding(pad)
             when (tab) {
                 Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
+                Tab.NOTES -> NotesScreen(notes, actions, m)
                 Tab.HISTORY -> HistoryScreen(history, actions, m)
                 Tab.MODEL -> ModelScreen(snap, busy, actions, m)
-                Tab.SETTINGS -> SettingsScreen(settings, snap, ::update, actions, m)
+                Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
             }
         }
     }
@@ -283,4 +372,10 @@ class AppActions(
     val voiceDelete: (VoiceBundle) -> Unit,
     val voiceBench: () -> Unit,
     val voiceReset: () -> Unit,
+    val askContacts: () -> Unit,
+    val askCalendar: () -> Unit,
+    val openAppSettings: () -> Unit,
+    val openNote: (String?) -> Unit,
+    val saveNote: (Note?, String, String) -> Unit,
+    val deleteNote: (String) -> Unit,
 )

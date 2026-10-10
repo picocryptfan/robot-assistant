@@ -84,8 +84,9 @@ interface TurnActions {
     /** Read when deciding and again after a confirmation (the phone may have locked meanwhile). */
     val locked: Boolean
     val settings: RobotSettings
-    fun prepare(action: Action): Prepared
-    fun run(action: Action): Executed
+    /** May read the contacts or the calendar: suspends, so the panel does that off its main thread. */
+    suspend fun prepare(action: Action): Prepared
+    suspend fun run(action: Action): Executed
 }
 
 enum class TurnPhase { THINKING, CONFIRMING }

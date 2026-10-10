@@ -22,11 +22,13 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -53,8 +55,31 @@ import app.heyrobot.core.ToolName
 
 // Main and voice processes: the chat bubbles shared by the assistant panel and the history screen.
 
-/** [icon]: the launcher icon of the app an open_app card will open (shown instead of the tool's symbol). */
-data class ActionView(val id: String, val tool: ToolName?, val summary: String, val status: ActionStatus, val detail: String?, val icon: Bitmap? = null)
+/**
+ * [icon]: the launcher icon of the app an open_app card will open (shown instead of the tool's symbol). [body]: the
+ * full message, email or note, or what a read tool found. [choices]: the people or numbers to tap while it waits.
+ * [confirm]: the button's words ("Open in Cheogram"). [undo]: the card offers Undo.
+ */
+data class ActionView(
+    val id: String,
+    val tool: ToolName?,
+    val summary: String,
+    val status: ActionStatus,
+    val detail: String?,
+    val icon: Bitmap? = null,
+    val body: String? = null,
+    val choices: List<String> = emptyList(),
+    val confirm: String? = null,
+    val undo: Boolean = false,
+)
+
+/** What a card can ask the panel for besides "Do it" and "Cancel". */
+class CardActions(
+    val choose: (String, Int) -> Unit = { _, _ -> },
+    val undo: (String) -> Unit = {},
+    /** Opens the main app's permission screen. */
+    val allow: () -> Unit = {},
+)
 
 fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.SET_TIMER -> RIcons.Timer
@@ -62,6 +87,11 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.OPEN_APP -> RIcons.Apps
     ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE -> RIcons.Place
     ToolName.FLASHLIGHT -> RIcons.Flash
+    ToolName.SEND_TEXT -> RIcons.Message
+    ToolName.DRAFT_EMAIL -> RIcons.Email
+    ToolName.LOOKUP_CONTACT -> RIcons.Person
+    ToolName.ADD_NOTE, ToolName.FIND_NOTES -> RIcons.Note
+    ToolName.ADD_EVENT, ToolName.READ_CALENDAR -> RIcons.Event
     null -> RIcons.Warning
 }
 
@@ -111,10 +141,11 @@ fun AssistantBubble(
     actions: List<ActionView>,
     modifier: Modifier = Modifier,
     onConfirm: ((String, Boolean) -> Unit)? = null,
+    cardActions: CardActions? = null,
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         for (a in actions) {
-            ActionCard(a, onConfirm)
+            ActionCard(a, onConfirm, cardActions)
             Spacer(Modifier.size(6.dp))
         }
         if (text.isNotBlank() || (streaming && actions.isEmpty())) {
@@ -136,9 +167,15 @@ fun AssistantBubble(
     }
 }
 
+/**
+ * One action: what it does (light Markdown: the person or title in bold), its state, the full text it carries, and
+ * while it waits either "Do it" (or its own words, "Open in Cheogram") or the people and numbers to pick from. The
+ * panel passes [onConfirm] and [more]; the history screen shows cards without buttons.
+ */
 @Composable
-fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?) {
-    val bad = a.status in setOf(ActionStatus.FAILED, ActionStatus.INVALID, ActionStatus.NEEDS_UNLOCK, ActionStatus.DISABLED, ActionStatus.SKIPPED)
+fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: CardActions? = null) {
+    val bad = a.status in setOf(ActionStatus.FAILED, ActionStatus.INVALID, ActionStatus.NEEDS_UNLOCK, ActionStatus.DISABLED, ActionStatus.SKIPPED,
+        ActionStatus.NEEDS_PERMISSION, ActionStatus.NOT_FOUND, ActionStatus.NO_APP)
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -156,9 +193,9 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?) {
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(a.summary, style = MaterialTheme.typography.titleSmall)
+                    Text(spans(Markdown.inline(a.summary), Color.Unspecified, caret = false), style = MaterialTheme.typography.titleSmall)
                     val line = when (a.status) {
-                        ActionStatus.PENDING -> "Do you want Robot to do this?"
+                        ActionStatus.PENDING -> if (a.choices.isNotEmpty()) "Which one?" else "Do you want Robot to do this?"
                         ActionStatus.DONE -> a.detail ?: "Done"
                         else -> listOfNotNull(a.status.label, a.detail).joinToString(". ")
                     }
@@ -168,10 +205,33 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?) {
                 if (a.status == ActionStatus.DONE) Icon(RIcons.Check, "Done", Modifier.size(22.dp))
                 if (a.status == ActionStatus.NEEDS_UNLOCK) Icon(RIcons.Lock, "Locked", Modifier.size(22.dp))
             }
+            if (!a.body.isNullOrBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f), shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                ) {
+                    Text(a.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+                }
+            }
             if (a.status == ActionStatus.PENDING && onConfirm != null) {
-                Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
-                    OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
-                    Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Do it") }
+                if (a.choices.isNotEmpty() && more != null) {
+                    Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        a.choices.forEachIndexed { i, label ->
+                            FilledTonalButton(onClick = { more.choose(a.id, i) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(label) }
+                        }
+                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("Cancel") }
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
+                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
+                        Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(a.confirm ?: "Do it") }
+                    }
+                }
+            }
+            if (more != null && (a.undo || a.status == ActionStatus.NEEDS_PERMISSION)) {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                    if (a.undo) TextButton(onClick = { more.undo(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Undo") }
+                    if (a.status == ActionStatus.NEEDS_PERMISSION) FilledTonalButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow") }
                 }
             }
         }
@@ -213,7 +273,7 @@ fun MarkdownText(text: String, streaming: Boolean = false) {
     }
 }
 
-private fun spans(spans: List<Markdown.Span>, codeBg: Color, caret: Boolean): AnnotatedString = buildAnnotatedString {
+internal fun spans(spans: List<Markdown.Span>, codeBg: Color, caret: Boolean): AnnotatedString = buildAnnotatedString {
     for (s in spans) {
         withStyle(SpanStyle(
             fontWeight = if (s.bold) FontWeight.SemiBold else null,

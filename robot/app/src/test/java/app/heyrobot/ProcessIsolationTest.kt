@@ -136,8 +136,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("4", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.1.3", m.getAttributeNS(ns, "versionName"))
+        assertEquals("20", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.2.0", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
@@ -150,9 +150,42 @@ class ProcessIsolationTest {
             "android.permission.INTERNET", "android.permission.RECORD_AUDIO", "android.permission.POST_NOTIFICATIONS",
             "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.VIBRATE", "com.android.alarm.permission.SET_ALARM",
             "android.permission.USE_EXACT_ALARM",
+            // Phase 2: asked for at runtime by the main app only.
+            "android.permission.READ_CONTACTS", "android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR",
         ), used)
+        // Package visibility through <queries> only.
+        assertTrue("android.permission.QUERY_ALL_PACKAGES" !in used && "android.permission.SEND_SMS" !in used && "android.permission.WRITE_CONTACTS" !in used)
         val app = doc.getElementsByTagName("application").item(0) as Element
         assertEquals("false", app.getAttributeNS(ns, "allowBackup"))
+    }
+
+    /** Phase 2: the "Robot Notes" launcher entry is an alias of MainActivity in the main process; <queries> names the hand-off apps. */
+    @Test fun notesAliasAndHandOffQueries() {
+        val doc = parse(mergedManifest())
+        val aliases = doc.getElementsByTagName("activity-alias").let { nl -> (0 until nl.length).map { nl.item(it) as Element } }
+        val notes = aliases.single { it.getAttributeNS(ns, "name") == "app.heyrobot.ui.NotesLauncher" }
+        assertEquals("app.heyrobot.ui.MainActivity", notes.getAttributeNS(ns, "targetActivity"))
+        assertEquals("true", notes.getAttributeNS(ns, "exported"))
+        assertEquals("", notes.getAttributeNS(ns, "process"))
+        val actions = notes.getElementsByTagName("action").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }
+        val categories = notes.getElementsByTagName("category").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }
+        assertEquals(listOf("android.intent.action.MAIN"), actions)
+        assertEquals(listOf("android.intent.category.LAUNCHER"), categories)
+        // MainActivity recognises the alias by this name (sys/People.kt AppPages).
+        assertTrue(File(java("app"), "app/heyrobot/sys/People.kt").readText().contains("\"app.heyrobot.ui.NotesLauncher\""))
+        val queries = doc.getElementsByTagName("queries").item(0) as Element
+        val packages = queries.getElementsByTagName("package").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
+        assertTrue(packages.containsAll(setOf("com.cheogram.android", "com.cheogram.android.playstore", "ch.protonmail.android")))
+        val schemes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "scheme") } }.toSet()
+        assertTrue(schemes.containsAll(setOf("xmpp", "mailto", "smsto")))
+        val mimes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "mimeType") } }.toSet()
+        assertTrue("vnd.android.cursor.dir/event" in mimes)
+    }
+
+    /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */
+    @Test fun onlyTheMainAppAsksForPermissions() {
+        val askers = usersOf(Regex("""RequestMultiplePermissions|RequestPermission\b|requestPermissions\("""))
+        assertEquals(listOf("app/ui/MainActivity.kt"), askers)
     }
 
     /** The main app opens the panel with Activity.showAssist and plain string keys (it may not import the assistant's constants). */

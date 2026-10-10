@@ -23,6 +23,8 @@ import app.heyrobot.core.RLog
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.TokenEstimate
 import app.heyrobot.core.ToolMode
+import app.heyrobot.core.ToolName
+import app.heyrobot.core.ToolRouter
 import app.heyrobot.core.ToolSpecs
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
@@ -68,10 +70,16 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     private var parked: Parked? = null
     /** Set by [shutdown] while a parked engine keeps the work thread: runs when that engine is closed. */
     private var teardown: (() -> Unit)? = null
+    /**
+     * The fixed part's real token count (system prompt plus tools) is logged once per tool set and mode per engine
+     * load (docs/phase-2.md "Logging"): counts only. [uncounted]: sets seen with history, measured when idle.
+     */
+    private val counted = HashSet<String>()
+    private val uncounted = LinkedHashMap<String, Triple<String, List<ToolName>, ToolMode>>()
 
     private class Parked(val engine: Engine, val convs: List<Conversation>, val run: Run)
 
-    private class Live(val conv: Conversation, var historyCount: Int, val mode: ToolMode, val system: String) {
+    private class Live(val conv: Conversation, var historyCount: Int, val mode: ToolMode, val system: String, val tools: List<String>) {
         var dirty = false
         var awaitingTool = false
     }
@@ -161,6 +169,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             }
         }
         engine = e
+        counted.clear()
+        uncounted.clear()
         val ms = SystemClock.elapsedRealtime() - t0
         RLog.i("brain_load", "ok" to true, "ms" to ms, "vision" to vision, "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) })
         return BrainMsg.Loaded(true, vision, ms, null)
@@ -169,6 +179,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     fun unload(why: String) {
         val e = engine ?: return
         queued = null
+        uncounted.clear()
         val r = running
         if (r != null) {
             if (r.stopReason == null) r.stopReason = DoneReason.CANCELLED
@@ -235,8 +246,12 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
 
     // ------------------------------------------------------------------ conversations
 
-    private val toolProviders: List<ToolProvider> by lazy {
-        ToolSpecs.ALL.map { spec ->
+    /** One provider per tool, made once: a conversation gets those of its own tool groups. */
+    private val providers = HashMap<ToolName, ToolProvider>()
+
+    private fun providers(tools: List<ToolName>): List<ToolProvider> = tools.map { t ->
+        providers.getOrPut(t) {
+            val spec = ToolSpecs.of(t)
             tool(object : OpenApiTool {
                 override fun getToolDescriptionJsonString(): String = spec.openApiJson()
                 // Never called: automaticToolCalling is off, the app process runs tools after its approval gate.
@@ -245,12 +260,12 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         }
     }
 
-    private fun newConversation(system: String, history: List<PromptTurn>, mode: ToolMode): Conversation {
+    private fun newConversation(system: String, history: List<PromptTurn>, mode: ToolMode, tools: List<ToolName>): Conversation {
         val e = engine ?: throw IllegalStateException("not loaded")
         val cfg = ConversationConfig(
-            systemInstruction = Contents.of(if (mode == ToolMode.TEXT_CALLS) system + Prompt.TEXT_CALL_HINT else system),
+            systemInstruction = Contents.of(if (mode == ToolMode.TEXT_CALLS) system + Prompt.textCallHint(tools) else system),
             initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(it.text) else Message.model(it.text) },
-            tools = if (mode == ToolMode.TEXT_CALLS) emptyList() else toolProviders,
+            tools = if (mode == ToolMode.TEXT_CALLS) emptyList() else providers(tools),
             samplerConfig = null,
             automaticToolCalling = false,
         )
@@ -289,7 +304,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     }
 
     private fun startGenerate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: Sink, attempt: Attempt) {
-        val fixed = Prompt.fixedTokens(req.system)
+        val tools = req.toolNames
+        val toolIds = tools.map { it.id }
+        val fixed = Prompt.fixedTokens(req.system, tools)
         val newTurn = TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text, image != null))
         // The app cuts the new turn to fit (Prompt.fitTurn); a turn that still can't fit is never sent anyway.
         if (newTurn > ContextWindow.newTurnLimit(fixed)) {
@@ -298,8 +315,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         }
         var live = convs[req.convId]
         val reuse = attempt.historyBudget == null && BrainPolicy.canReuse(
-            live?.let { LiveConv(it.historyCount, it.system, it.mode, it.dirty, it.awaitingTool, tokenCount(it.conv)) },
-            req.historyCount, req.system, toolMode, newTurn,
+            live?.let { LiveConv(it.historyCount, it.system, it.mode, it.dirty, it.awaitingTool, tokenCount(it.conv), it.tools) },
+            req.historyCount, req.system, toolMode, newTurn, toolIds,
         )
         var rebuilt = false
         var budget = attempt.historyBudget ?: ContextWindow.historyBudget(fixed, newTurn)
@@ -314,7 +331,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
                 val history = ContextWindow.fit(req.history, budget)
                 val mode = toolMode
                 val conv = try {
-                    newConversation(req.system, history, mode)
+                    newConversation(req.system, history, mode, tools)
                 } catch (ex: Exception) {
                     when (val next = BrainPolicy.afterCreateError(ex.message, mode, history.size, budget, tries++)) {
                         is BrainPolicy.Next.StepDown -> {
@@ -340,10 +357,12 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
                     budget = smaller
                     continue
                 }
-                live = Live(conv, req.historyCount, mode, req.system).also { convs[req.convId] = it }
+                live = Live(conv, req.historyCount, mode, req.system, toolIds).also { convs[req.convId] = it }
                 turns = history.size
                 rebuilt = true
-                RLog.i("brain_rebuild", "kept" to history.size, "of" to req.history.size, "budget" to budget, "real" to real, "mode" to mode)
+                RLog.i("brain_rebuild", "kept" to history.size, "of" to req.history.size, "budget" to budget, "real" to real, "mode" to mode,
+                    "groups" to RLog.Code(ToolRouter.label(tools)))
+                noteFixed(req.system, tools, mode, if (history.isEmpty()) real else null, fixed)
                 break
             }
         }
@@ -515,9 +534,54 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     }
 
     private fun runQueued() {
-        val q = queued ?: return
+        val q = queued
+        if (q == null) {
+            countIdle()
+            return
+        }
         queued = null
         q()
+    }
+
+    /**
+     * The real token count of the system prompt plus [tools] at [mode], logged once per engine load: [real] is the
+     * engine's count of a conversation built without history (exactly that); with history it is measured later, when
+     * :brain is idle, on an empty conversation of its own ([countIdle]).
+     */
+    private fun noteFixed(system: String, tools: List<ToolName>, mode: ToolMode, real: Int?, estimate: Int) {
+        val key = "${ToolRouter.label(tools)}/${tools.size}/$mode"
+        if (key in counted) return
+        if (real == null || real < 0) {
+            uncounted[key] = Triple(system, tools, mode)
+            return
+        }
+        counted += key
+        uncounted.remove(key)
+        logFixed(tools, mode, real, estimate)
+    }
+
+    private fun logFixed(tools: List<ToolName>, mode: ToolMode, real: Int, estimate: Int) {
+        RLog.i("brain_fixed_tokens", "groups" to RLog.Code(ToolRouter.label(tools)), "tools" to tools.size, "mode" to mode, "tokens" to real, "estimate" to estimate)
+    }
+
+    /**
+     * Between replies: measures one tool set seen only with history (an empty conversation, closed at once). Not while
+     * a conversation waits for tool results: those come right away and go first.
+     */
+    private fun countIdle() {
+        if (running != null || engine == null || parked != null || convs.values.any { it.awaitingTool }) return
+        val (key, v) = uncounted.entries.firstOrNull()?.toPair() ?: return
+        uncounted.remove(key)
+        if (key in counted) return
+        counted += key
+        val (system, tools, mode) = v
+        if (mode != toolMode) return
+        val conv = try { newConversation(system, emptyList(), mode, tools) } catch (ex: Exception) { RLog.w("brain_fixed_tokens", ex); return }
+        try {
+            logFixed(tools, mode, tokenCount(conv, unknown = -1), Prompt.fixedTokens(system, tools))
+        } finally {
+            closeQuietly(conv)
+        }
     }
 
     companion object {

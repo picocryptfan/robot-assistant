@@ -39,6 +39,11 @@ data class AssistantFacts(
     /** From the voice process: listening for "hey robot" right now (null = no report). */
     val listening: Boolean?,
     val listeningNote: String?,
+    /** Phase 2: contacts (texts and emails by name, lookups) and the calendar (read and write). */
+    val contactsGranted: Boolean = false,
+    val calendarGranted: Boolean = false,
+    val cheogramInstalled: Boolean = false,
+    val protonInstalled: Boolean = false,
 )
 
 object Assistant {
@@ -65,6 +70,10 @@ object Assistant {
             notificationsGranted = granted(ctx, Manifest.permission.POST_NOTIFICATIONS),
             listening = status?.optBoolean("listening"),
             listeningNote = status?.optString("note")?.takeIf { it.isNotEmpty() },
+            contactsGranted = granted(ctx, Manifest.permission.READ_CONTACTS),
+            calendarGranted = granted(ctx, Manifest.permission.READ_CALENDAR) && granted(ctx, Manifest.permission.WRITE_CALENDAR),
+            cheogramInstalled = HandOffApps.cheogram(ctx) != null,
+            protonInstalled = HandOffApps.proton(ctx),
         )
     }
 
