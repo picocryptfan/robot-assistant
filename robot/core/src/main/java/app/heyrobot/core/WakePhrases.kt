@@ -2,7 +2,7 @@ package app.heyrobot.core
 
 import java.util.Locale
 
-// Pure. The wake phrases (0.2.3): a few phrases the owner picks in Settings › Voice › Wake words, each with a
+// Pure. The wake phrases (0.2.3): a few phrases the user picks in Settings › Voice › Wake words, each with a
 // sensitivity, spelled for the keyword model on the phone (KwsSpeller, pure Kotlin, so the main app can check a
 // phrase without sherpa-onnx) and handed to the keyword spotter as one line each:
 // "<tokens> :<boost> #<threshold> @W<id>". The label says which phrase fired; "STOP" stays a separate keyword,
@@ -15,7 +15,7 @@ enum class WakeSensitivity(val title: String, val detail: String) {
     HIGH("High", "Hears you more easily, wakes by accident more often"),
 }
 
-/** One wake phrase. [id] is stable (the keyword label "W<id>" and the voice log use it); [text] as the owner typed it. */
+/** One wake phrase. [id] is stable (the keyword label "W<id>" and the voice log use it); [text] as the user typed it. */
 data class WakePhrase(val id: Int, val text: String, val sensitivity: WakeSensitivity = WakeSensitivity.MEDIUM, val enabled: Boolean = true) {
     val words: Int get() = WakePhrases.words(text).size
 }

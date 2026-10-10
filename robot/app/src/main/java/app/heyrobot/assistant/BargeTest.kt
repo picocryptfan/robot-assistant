@@ -12,10 +12,10 @@ import app.heyrobot.core.writeAtomic
 import app.heyrobot.sys.Paths
 
 // VOICE PROCESS. Settings › Voice › "Barge-in test" (0.2.3): Robot reads a fixed paragraph of about 20 s with no word
-// like "stop" and no wake phrase, and the owner says "stop" or a wake phrase at any point; the result says whether
+// like "stop" and no wake phrase, and the user says "stop" or a wake phrase at any point; the result says whether
 // she heard it and how soon she went quiet. The silent run plays the whole paragraph and counts any "stop" or wake
 // word heard although nobody spoke. With the three "Hear me while Robot talks" modes (and the two playbacks), the
-// owner compares them on the phone. Keywords go here instead of to the panel while it runs. Main thread only.
+// user compares them on the phone. Keywords go here instead of to the panel while it runs. Main thread only.
 
 object BargeTest {
     @Volatile var active = false; private set

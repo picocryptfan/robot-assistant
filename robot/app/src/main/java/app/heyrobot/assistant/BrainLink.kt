@@ -75,9 +75,8 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
                     onDeath()
                 }
 
-                // The binding will never connect again (Android gave up restarting :brain): 0.2.2 kept it and waited
-                // 15 s for nothing on every question until the voice process restarted. Unbind, so the next
-                // connect() binds afresh.
+                // The binding will never connect again (Android gave up restarting :brain). Keeping it would make every
+                // later question wait 15 s for nothing; unbind, so the next connect() binds afresh.
                 override fun onBindingDied(name: ComponentName?) {
                     RLog.i("brain_binding_died")
                     VoiceLog.add(VoiceEvent.BRAIN_DIED)

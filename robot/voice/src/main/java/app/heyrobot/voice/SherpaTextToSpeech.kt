@@ -220,7 +220,7 @@ class SherpaTextToSpeech internal constructor(
         }
         // Only the chosen voice stays loaded.
         (if (c.bundle == VoiceBundle.KOKORO) kitten else kokoro).release()
-        // No audio track (0.2.2 dropped the piece silently here): the phone's voice says it instead.
+        // No audio track: the phone's voice says it instead of dropping the piece.
         val t = ensureTrack(tts.sampleRate()) ?: return fallBack(item, c, "track")
         val t0 = SystemClock.elapsedRealtime()
         val start = synchronized(trackLock) { written }

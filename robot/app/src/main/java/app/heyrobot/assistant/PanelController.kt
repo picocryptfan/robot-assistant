@@ -495,7 +495,7 @@ object PanelController {
             override fun onFinal(text: String) {
                 main.post {
                     endListening()
-                    // 0.2.2 did nothing here when the words came back empty: the panel just went quiet.
+                    // No words came back: say so rather than going quiet.
                     if (text.isNotBlank()) sendSpoken(text) else missedQuestion(NoQuestion.EMPTY)
                 }
             }
@@ -969,7 +969,7 @@ object PanelController {
         var text = ui?.text?.trim().orEmpty()
         if (reason == DoneReason.GARBAGE) text = (text.take(200) + "\n\n(The answer went wrong, so Robot stopped it.)").trim()
         val actions = settled(ui?.actions.orEmpty())
-        // The model finished without a word or an action: an empty bubble, and silence, in 0.2.2.
+        // The model finished without a word or an action: say so rather than leave an empty bubble.
         if (text.isEmpty() && actions.isEmpty() && !stopped) {
             text = "Robot had no answer. Try asking another way."
             VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.EMPTY)

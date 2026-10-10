@@ -49,7 +49,7 @@ interface TextToSpeech {
 
     /**
      * A wake phrase heard now cannot be Robot's own voice (nothing playing says one of its words). True when there is
-     * no way to tell: a wake word acted on during speech was the behaviour before 0.2.3.
+     * no way to tell, so a wake word during speech still acts.
      */
     val wakeWordSafe: Boolean get() = true
 

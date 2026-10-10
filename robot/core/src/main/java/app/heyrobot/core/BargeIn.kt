@@ -1,6 +1,6 @@
 package app.heyrobot.core
 
-// Pure. Hearing the owner while Robot speaks (0.2.3): the microphone mode while Robot talks, how her voice is played,
+// Pure. Hearing the user while Robot speaks (0.2.3): the microphone mode while Robot talks, how her voice is played,
 // the volume key that stops her, and the barge-in test's result (written by :voice, shown by Settings › Voice).
 
 /** Settings › Voice › "Hear me while Robot talks". */
@@ -55,7 +55,7 @@ object VolumeKeyStop {
 
 /**
  * Settings › Voice › "Barge-in test": Robot reads [PARAGRAPH] (about 20 s, no word like "stop", no wake phrase) and the
- * owner says "stop" or a wake phrase at any point; or a silent run counts false detections. The :voice process writes
+ * user says "stop" or a wake phrase at any point; or a silent run counts false detections. The :voice process writes
  * the result to voice_barge_test.json (VoiceFiles.BARGE); the main app shows [BargeTestLogic.lines]. Numbers and fixed
  * texts only.
  */

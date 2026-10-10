@@ -78,7 +78,7 @@ data class RobotSettings(
     val eventCalendar: Long = CalendarPick.AUTO,
     /** Length of a new event when no end or duration was said. */
     val eventMinutes: Int = 60,
-    /** The wake phrases (Settings › Voice › Wake words); "hey robot" at Medium until the owner changes it. */
+    /** The wake phrases (Settings › Voice › Wake words); "hey robot" at Medium until the user changes it. */
     val wakePhrases: List<WakePhrase> = WakePhrases.DEFAULT,
     /** Settings › Voice › "Hear me while Robot talks". */
     val bargeIn: BargeIn = BargeIn.ECHO_CANCEL,
@@ -177,7 +177,7 @@ data class RobotSettings(
             )
         }
 
-        /** Saved wake phrases; a damaged entry is dropped, never fatal (an empty list stays empty: the owner removed them). */
+        /** Saved wake phrases; a damaged entry is dropped, never fatal (an empty list stays empty: the user removed them). */
         private fun phrases(a: org.json.JSONArray): List<WakePhrase> = WakePhrases.sanitize((0 until a.length()).mapNotNull { i ->
             val x = a.optJSONObject(i) ?: return@mapNotNull null
             WakePhrase(x.optInt("id", 0), x.optString("text", ""), enumOr(x.optString("sensitivity"), WakeSensitivity.MEDIUM), x.optBoolean("enabled", true))

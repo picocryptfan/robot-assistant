@@ -51,7 +51,7 @@ files on a computer and checks them.
 | keywords.txt (in git, generated) | `01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b` |
 
 - `bpe.model` is the model's SentencePiece file (a unigram model, despite its name; 244,837 bytes), from the same
-  archive. Since 0.2.3 the app reads it to spell the owner's wake phrases on the phone (core `SentencePiece.kt`, pure
+  archive. Since 0.2.3 the app reads it to spell the user's wake phrases on the phone (core `SentencePiece.kt`, pure
   Kotlin, checked against sherpa-onnx's `text2token` on 115 phrases); `tools/fetch_third_party.sh --install` copies it
   to `voice/src/main/assets/kws/` and to `tools/kws-build/` (for `tools/make_keywords.py`).
 - `keywords.txt` is one empty line since 0.2.3: sherpa-onnx adds every stream's keywords to this list, and Robot gives

@@ -2,7 +2,7 @@
 # Re-downloads the third-party files listed in THIRD_PARTY.md into a fresh temp directory, checks every
 # SHA-256, and (with --install) copies them into the :voice module. Needs curl, tar (bzip2) and sha256sum.
 # Same files and hashes as the phase 0 probe; Robot packages only the fp32 keyword models it loads and (since 0.2.3)
-# the keyword model's bpe.model, which the app reads to spell the owner's wake phrases, plus the 17-file English +
+# the keyword model's bpe.model, which the app reads to spell the user's wake phrases, plus the 17-file English +
 # French espeak-ng-data subset the Kokoro and Kitten voices need (docs/voice-plan.md 2.5).
 # The downloadable voice models themselves are not packaged: see tools/fetch_voice_models.sh.
 # Usage: tools/fetch_third_party.sh [--install]
