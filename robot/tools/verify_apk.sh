@@ -2,7 +2,8 @@
 # Checks a built Robot APK: signer (Robot's release key), package and version, SDK levels, the assistant
 # components and their processes, the recognizer that keeps the assistant across restarts, permissions,
 # the arm64-only native libraries, and (phase 2) the Robot Notes launcher entry, the hand-off apps' <queries>
-# and the three runtime permissions. Usage: tools/verify_apk.sh <apk>
+# and the three runtime permissions; that the main-process entries stay in the main process, that nothing beyond an
+# allowlist is exported, and that no main-process class in the dex refers to an engine. Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
 BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/36.0.0"
@@ -22,7 +23,7 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 # minSdk 34: AGP signs with v3 (API 28+) and may skip v2; either covers every phone Robot installs on.
 "$BT/apksigner" verify -v "$APK" 2>/dev/null | grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='app.heyrobot' versionCode='20' versionName='0.2.0'" "$badging" "package app.heyrobot 0.2.0 (20)"
+has "package: name='app.heyrobot' versionCode='21' versionName='0.2.1'" "$badging" "package app.heyrobot 0.2.1 (21)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"
@@ -62,6 +63,20 @@ grep -A1 'string/notes_name$' <<<"$res" | grep -qF '"Robot Notes"' && pass "Robo
 grep -qE 'resource 0x[0-9a-f]+ mipmap/ic_notes$' <<<"$res" && pass "Robot Notes icon" || fail "Robot Notes icon"
 # Package visibility for the hand-offs, by name and by intent (no QUERY_ALL_PACKAGES).
 queries=$(echo "$mf" | awk '/^ *E: queries /{ on=1 } /^ *E: application /{ on=0 } on')
+# The main process (no android:process): the app and its Robot Notes entry, where no engine may ever load.
+for c in app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher; do
+  hasnt 'process(0x01010011)' "$(elem $c)" "$c in the main process"
+done
+# Exported components: exactly this allowlist (the app, its Notes entry, the three assistant services the system
+# binds, and AndroidX's profile installer receiver).
+exported=$(echo "$mf" | awk '
+  /^ *E: (activity|activity-alias|service|receiver|provider) / { if (n != "" && ex) print n; n = ""; ex = 0; own = 1; next }
+  /^ *E: / { own = 0 }
+  own && /:name\(0x01010003\)="/ { v = $0; sub(/^.*:name\(0x01010003\)="/, "", v); sub(/".*$/, "", v); n = v }
+  own && /exported\(0x01010010\)=true/ { ex = 1 }
+  END { if (n != "" && ex) print n }' | sort | tr '\n' ' ')
+allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
+[ "$exported" = "$allow" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
 for q in '"com.cheogram.android"' '"com.cheogram.android.playstore"' '"ch.protonmail.android"' 'scheme(0x01010027)="xmpp"' 'scheme(0x01010027)="mailto"' \
   'scheme(0x01010027)="smsto"' 'mimeType(0x01010026)="vnd.android.cursor.dir/event"' '"android.intent.action.INSERT"' '"android.intent.action.SENDTO"'; do
   has "$q" "$queries" "<queries> has $q"
@@ -83,6 +98,12 @@ dexdir=$(mktemp -d)
 unzip -q -o "$APK" 'classes*.dex' -d "$dexdir" 2>/dev/null
 cbclass=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } index($0, "Class descriptor  : '\''Lapp/heyrobot/voice/TtsCallback;'\''"){ on=1 } on')
+# The main process never reaches an engine: no class of ui/, sys/, boot/ or RobotApp refers to sherpa-onnx, LiteRT or
+# the assistant, voice and brain packages in its code (ProcessIsolationTest checks the sources; this checks the dex).
+engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
+  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lapp/heyrobot/(assistant|voice|brain)/')
+[ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine (dex)" || fail "main-process classes refer to engines: $engine_refs"
 rm -rf "$dexdir"
 # One "name type access" line per field and method of the class.
 cbmembers=$(echo "$cbclass" | awk '/^ *#[0-9]+ *: \(in /{ if (n != "") print n, t, a; n = t = a = "" }
