@@ -2,7 +2,8 @@ package app.heyrobot.voice
 
 // Pure. While Robot speaks, the wake-word model also listens for "STOP" (docs/voice-plan.md 4.13, barge-in). The
 // microphone hears Robot too, and on the build machine the keyword model fired on Robot's own "stop", "bus stop",
-// "stopwatch" and "step by step" (and on none of 13 sentences without such a word). So a "STOP" that arrives while
+// "stopwatch" and "step by step" (and on none of 10 other sentences, "top story" and "the next step ... at the
+// shop" among them; it caught 29 of 30 spoken "stop"s). So a "STOP" that arrives while
 // a piece of speech containing such a word is playing, or shortly after (speaker-to-microphone echo plus the
 // keyword model's lag), is taken for Robot's own voice and ignored. The text itself is never kept: only whether a
 // piece was risky and where its audio lies in the output stream.
