@@ -284,7 +284,7 @@ fun RobotAppUi(activity: MainActivity) {
         // The voice process starts listening once it may.
         Cmd.send(ctx, Cmd.SETTINGS)
     }
-    // Contacts and calendar: asked for here only, when the owner taps Allow or turns a feature on (never at first launch).
+    // Contacts and calendar: asked for here only, when you tap Allow or turn a feature on (never at first launch).
     val peoplePermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         permissionTick++
         if (result.values.any { !it }) say("Not allowed. If Android doesn't ask again: Settings › Apps › Robot › Permissions.")

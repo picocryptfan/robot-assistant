@@ -184,7 +184,7 @@ data class RobotSettings(
             ToolName.FIND_NOTES to Approval.AUTO,
             ToolName.ADD_EVENT to Approval.ASK,
             ToolName.READ_CALENDAR to Approval.AUTO,
-            // Not a level the owner sets: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
+            // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
             ToolName.ASK_CLAUDE to Approval.ASK,
         )
 

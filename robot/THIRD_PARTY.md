@@ -111,8 +111,8 @@ which on GrapheneOS is the system's GrapheneOS Speech Services; nothing is packa
 
 The official SDK for the Claude API (https://github.com/anthropics/anthropic-sdk-java), from Maven Central, used only
 by the `:claude` module, which only the assistant package (the `:voice` process) depends on; the main process never
-loads it (`ProcessIsolationTest`, `tools/verify_apk.sh`). It talks to `api.anthropic.com` only when the owner asks for
-Claude (docs/ask-claude.md). Built in as Java/Kotlin classes (no native code). Licence: MIT.
+loads it (`ProcessIsolationTest`, `tools/verify_apk.sh`). It talks to `api.anthropic.com` only when you ask for
+Claude, or let Robot check a hard question with Claude (docs/ask-claude.md). Built in as Java/Kotlin classes (no native code). Licence: MIT.
 
 | artifact | licence | sha256 of the jar |
 |---|---|---|
@@ -126,7 +126,8 @@ What it brings with it at run time (resolved by Gradle, versions as built):
 |---|---|
 | `com.squareup.okhttp3:okhttp:4.12.0`, `com.squareup.okio:okio(-jvm):3.6.0` | Apache-2.0 |
 | `com.fasterxml.jackson.core:jackson-core`, `-databind`, `-annotations` 2.19.4; `jackson-datatype-jdk8`, `-jsr310`, `jackson-module-kotlin` 2.19.4 | Apache-2.0 |
-| `org.jetbrains.kotlin:kotlin-reflect:1.9.25` (for jackson-module-kotlin) | Apache-2.0 |
+| FastDoubleParser (bundled inside jackson-core 2.19.4, its LICENSE in the APK) | MIT |
+| `org.jetbrains.kotlin:kotlin-reflect` (for jackson-module-kotlin, which asks for 1.9.25; Gradle resolves the 2.4.0 that LiteRT-LM brings, and that one is in the APK) | Apache-2.0 |
 | `com.github.victools:jsonschema-generator`, `-module-jackson`, `-module-swagger-2` 4.38.0; `com.fasterxml:classmate:1.7.0` | Apache-2.0 |
 | `io.swagger.core.v3:swagger-annotations:2.2.50`, `com.google.errorprone:error_prone_annotations:2.50.0` | Apache-2.0 |
 | `org.slf4j:slf4j-api:2.0.16` (no binding: it logs nothing) | MIT |
@@ -221,7 +222,7 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 The icons in `app/src/main/java/app/heyrobot/ui/common/Icons.kt` are path data from Google's Material
 Icons (Apache-2.0).
 
-Phase 2 adds no dependency. Robot hands drafts to apps the owner installs (Cheogram, Proton Mail, an SMS app, a
+Phase 2 adds no dependency. Robot hands drafts to apps you install (Cheogram, Proton Mail, an SMS app, a
 calendar app) through Android intents only; nothing of them is bundled. Their source (Cheogram: GPL-3.0; Proton Mail
 for Android: GPL-3.0) was read to match what they accept (`../docs/phase-2.md`); no code was copied.
 
@@ -230,7 +231,7 @@ Build and test only (not in the APK): Android Gradle Plugin 8.8.2, Kotlin and it
 `sherpa-onnx==1.13.8` Python wheel (Apache-2.0), numpy (BSD-3-Clause), sentencepiece (Apache-2.0) and pypinyin (MIT)
 on the build machine only.
 
-## Code adapted from the phase 0 probe and the GPU lab (same owner, GPL-3.0)
+## Code adapted from the phase 0 probe and the GPU lab (same author, GPL-3.0)
 
 The listener and wake word (probe `Listener.kt`, `WakeWord.kt`), the assistant service, recognizer stub and
 session (probe `ProbeVoiceService.kt`, `ProbeSession.kt`), the brain binding and TPU load (probe

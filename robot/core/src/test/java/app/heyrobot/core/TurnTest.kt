@@ -369,7 +369,7 @@ class TurnTest {
     }
 
     @Test fun afterReadContentReadingMoreNeverAsksButWritingDoes() = runBlocking {
-        // Decision after the 0.2.0 review: read tools are exempt from "ask after read content"; add_note writes, so it asks.
+        // Read tools are exempt from "ask after read content"; add_note writes, so it asks.
         val model = FakeModel(ModelOutcome.Calls(listOf(call("read_calendar", "day" to "today"))),
             next = { if (it == 1) ModelOutcome.Calls(listOf(call("find_notes", "query" to "dentist"))) else ModelOutcome.Done(DoneReason.END) })
         val actions = FakeActions()
@@ -393,7 +393,7 @@ class TurnTest {
     }
 
     @Test fun stoppingDuringARunRecordsWhatReallyHappened() = runBlocking {
-        // Review A minor 7: the note was saved but the card said Cancelled and lost its Undo.
+        // A note saved just as the turn was stopped keeps its Done card and its Undo (not "Cancelled").
         val slot = TurnSlot(this as CoroutineScope)
         val model = FakeModel(ModelOutcome.Calls(listOf(call("add_note", "text" to "buy filters"))))
         val started = Channel<Unit>(Channel.UNLIMITED)
