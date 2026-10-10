@@ -346,6 +346,15 @@ class SherpaTextToSpeech internal constructor(
         return true
     }
 
+    /** VoiceEngines' idle check: free a voice not used for 5 minutes (never while speaking or with text queued). */
+    internal fun unloadIfIdle() {
+        worker.execute {
+            val busy = synchronized(stateLock) { speaking || queue.isNotEmpty() }
+            kokoro.releaseIfIdle(busy)
+            kitten.releaseIfIdle(busy)
+        }
+    }
+
     override fun release() {
         stop()
         worker.execute {

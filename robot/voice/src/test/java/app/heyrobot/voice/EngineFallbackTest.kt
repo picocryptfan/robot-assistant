@@ -96,4 +96,14 @@ class EngineFallbackTest {
             dir.deleteRecursively()
         }
     }
+
+    @Test fun voiceModelsAreFreedAfterFiveMinutesUnusedButNeverInUse() {
+        val t0 = 1_000_000L
+        val five = IdlePolicy.IDLE_MS
+        assertTrue(IdlePolicy.shouldUnload(loaded = true, inUse = false, lastUsedMs = t0, nowMs = t0 + five))
+        assertFalse(IdlePolicy.shouldUnload(loaded = true, inUse = false, lastUsedMs = t0, nowMs = t0 + five - 1))
+        // Listening or speaking: kept, however long ago it loaded.
+        assertFalse(IdlePolicy.shouldUnload(loaded = true, inUse = true, lastUsedMs = t0, nowMs = t0 + 10 * five))
+        assertFalse(IdlePolicy.shouldUnload(loaded = false, inUse = false, lastUsedMs = t0, nowMs = t0 + 10 * five))
+    }
 }

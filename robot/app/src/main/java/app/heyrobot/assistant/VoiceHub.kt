@@ -50,6 +50,18 @@ object VoiceHub {
     private val wakeLock = Any()
     private var lastStartE = 0L
     private var receivers = mutableListOf<BroadcastReceiver>()
+    /** Between onReady and onShutdown of the assistant service: only then may the microphone be opened. */
+    @Volatile private var active = false
+
+    /** Retries a listener that stopped (another app held the mic, a permission came later); cancelled at shutdown. */
+    private val retry = object : Runnable {
+        override fun run() {
+            if (!active) return
+            try { if (wantListening() && listener?.running != true && SystemClock.elapsedRealtime() - lastStartE > RETRY_MS) applyListening("retry") }
+            catch (t: Throwable) { RLog.w("voice_retry", t) }
+            if (active) worker.postDelayed(this, 60_000)
+        }
+    }
 
     @Synchronized
     fun init(ctx: Context) {
@@ -62,12 +74,6 @@ object VoiceHub {
         stt = VoiceEngines.speechToText(app) { listener }.also { it.configure(settings.livePartials) }
     }
 
-    /** The panel opened: start loading speech recognition (and the voice if replies will be spoken). */
-    fun prewarmVoice(speak: Boolean) {
-        stt.prewarm()
-        if (speak) tts.prewarm()
-    }
-
     /** From the panel: while Robot speaks, "stop" said aloud ends the reply (when the wake word listens). */
     fun onSpeakingChanged(speaking: Boolean) {
         listener?.stopWord = speaking
@@ -75,7 +81,8 @@ object VoiceHub {
 
     /**
      * Memory is short (RobotVoiceService.onTrimMemory): free the speech models unless they are in use. The wake
-     * word stays. Not on UI_HIDDEN: the models stay loaded while the assistant runs, as the panel comes and goes.
+     * word stays. Not on UI_HIDDEN: as the panel comes and goes, the models follow their own idle rule (VoiceEngines:
+     * loaded on first use, freed after 5 minutes unused).
      */
     @Suppress("DEPRECATION") // RUNNING_LOW / RUNNING_CRITICAL: still honoured if a platform sends them.
     fun onTrimMemory(level: Int) {
@@ -90,7 +97,11 @@ object VoiceHub {
     /** The assistant service is ready (from boot, after the first unlock, or after being chosen). */
     fun onReady(ctx: Context) {
         init(ctx)
+        active = true
         crashGuard()
+        // A second onReady without a shutdown must not double the receivers or the retry loop.
+        unregisterAll()
+        worker.removeCallbacks(retry)
         register(object : BroadcastReceiver() {
             override fun onReceive(c: Context, i: Intent) = command(i)
         }, IntentFilter(Cmd.ACTION), Cmd.PERMISSION)
@@ -99,14 +110,7 @@ object VoiceHub {
             override fun onReceive(c: Context, i: Intent) = applyListening("power")
         }, IntentFilter().apply { addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED) }, null)
         applyListening("ready")
-        worker.postDelayed(object : Runnable {
-            override fun run() {
-                // Retry a listener that stopped (another app held the mic, a permission came later).
-                try { if (wantListening() && listener?.running != true && SystemClock.elapsedRealtime() - lastStartE > RETRY_MS) applyListening("retry") }
-                catch (t: Throwable) { RLog.w("voice_retry", t) }
-                worker.postDelayed(this, 60_000)
-            }
-        }, 60_000)
+        worker.postDelayed(retry, 60_000)
     }
 
     private fun register(r: BroadcastReceiver, f: IntentFilter, permission: String?) {
@@ -117,10 +121,18 @@ object VoiceHub {
     }
 
     fun onShutdown() {
+        // First, so nothing (the retry loop, a power or settings broadcast in flight) opens the microphone again.
+        active = false
+        if (::worker.isInitialized) worker.removeCallbacks(retry)
         stopListening("shutdown")
+        if (::app.isInitialized) writeStatus(false, "Robot isn't the active assistant right now.")
+        unregisterAll()
+        BrainKeeper.release("shutdown")
+    }
+
+    private fun unregisterAll() {
         receivers.forEach { try { app.unregisterReceiver(it) } catch (_: Exception) {} }
         receivers.clear()
-        BrainKeeper.release("shutdown")
     }
 
     // ------------------------------------------------------------------ listening
@@ -129,7 +141,8 @@ object VoiceHub {
         (app.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
     } catch (_: Exception) { false }
 
-    private fun wantListening(): Boolean = settings.wakeWord && wakeDisabledReason == null &&
+    /** Only while Robot is the active assistant (its service between onReady and onShutdown). */
+    private fun wantListening(): Boolean = active && RobotVoiceService.instance != null && settings.wakeWord && wakeDisabledReason == null &&
         Assistant.granted(app, Manifest.permission.RECORD_AUDIO) && (!settings.wakeOnlyWhileCharging || charging())
 
     @Synchronized
@@ -140,6 +153,7 @@ object VoiceHub {
         if (!want) {
             stopListening(reason)
             writeStatus(false, when {
+                !active || RobotVoiceService.instance == null -> "Robot isn't the active assistant right now."
                 !settings.wakeWord -> "The wake word is off in settings."
                 wakeDisabledReason != null -> wakeDisabledReason
                 !Assistant.granted(app, Manifest.permission.RECORD_AUDIO) -> "Robot needs the microphone permission."

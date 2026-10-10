@@ -29,7 +29,8 @@ import java.util.concurrent.atomic.AtomicInteger
 //    short pre-roll; it stays in memory and is dropped after the decode: never written to disk;
 //  - a Silero VAD of its own (0.5 s minimum silence, 20 s maximum speech) ends the question, or the button;
 //  - while the person speaks, the whole buffer is decoded again about every 0.7 s for live partial text;
-//  - one decode at a time, on the "robot-stt" thread; the model loads on first use and stays loaded.
+//  - one decode at a time, on the "robot-stt" thread; the model loads on first use (a question starting, never just
+//    the panel opening) and is freed after 5 minutes unused (IdlePolicy) or on memory pressure.
 
 /** Parakeet v3 int8 in sherpa-onnx's OfflineRecognizer (nemo_transducer). Not thread-safe: one decode at a time. */
 internal class Recognizer private constructor(private val r: OfflineRecognizer) {
@@ -356,6 +357,11 @@ class SherpaSpeechToText internal constructor(
         if (session != null || slot.value == null) return false
         unload()
         return true
+    }
+
+    /** VoiceEngines' idle check: free the model if a question has not used it for 5 minutes (never mid-question). */
+    internal fun unloadIfIdle() {
+        worker.execute { slot.releaseIfIdle(inUse = session != null) }
     }
 
     /** "Test voice speed" (benchmark thread): load afresh, decode the clip 3 times and a partial-sized piece once. */
