@@ -30,9 +30,13 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
   at most two actions and three tool rounds per answer; a call written as text runs only when :brain is in text-call
   mode (its TPU build refused the tool API) and the whole reply is the call. An app name is resolved before the card,
   which shows the app that will open. One question at a time: a waiting card counts as busy, Stop declines it.
-- Context (4,096 tokens): the new message is cut to fit (the panel says so) and each question carries the time;
-  :brain checks its own token count after a rebuild and before each tool round, and steps tools down only on the
-  tool-parse error. The turn, gate and :brain decisions are pure code in `:core` (`Turn.kt`, `BrainPolicy.kt`), tested.
+- Context (4,096 tokens): the new message is cut to fit (the panel says so). A question about times or dates, an
+  alarm or a timer, or any question in a conversation using the calendar tools, carries the time after it
+  ("(Current time: 14:05.)"); others don't (0.2.1 put "[Now 14:05]" before every question and the model began its
+  replies with it). A copy of the clock at the start of a reply, or of its text after a tool round, is removed before
+  it is shown or spoken (`ClockEcho`), and a saved reply that begins with one is replayed without it. :brain checks
+  its own token count after a rebuild and before each tool round, and steps tools down only on the tool-parse error.
+  The turn, gate and :brain decisions are pure code in `:core` (`Turn.kt`, `BrainPolicy.kt`), tested.
 
 ## Building
 
@@ -155,7 +159,7 @@ exactly an allowlist (the app, Robot Notes, the three assistant services and And
 no `ui/`, `sys/`, `boot/` or `RobotApp` class in the dex refers to sherpa-onnx, LiteRT or the assistant, voice and
 brain packages.
 
-### On the phone (0.2.0, with the 0.2.1 fixes)
+### On the phone (0.2.0, with the 0.2.1 and 0.2.2 fixes)
 
 1. Assistant setup › People, notes and calendar: Allow contacts and the calendar; check that Cheogram and Proton Mail
    show as installed.
@@ -187,6 +191,8 @@ brain packages.
 11. Text someone through Cheogram, then send `adb logcat -d | grep "START u0" | grep -c xmpp` and whether the line
     shows the message: the system-log privacy note above.
 12. On a card asking for a permission, tap "Allow" while Robot is still speaking: the voice stops and the panel hides.
+13. With spoken replies on, ask "tell me a joke", then "what time is it", then "wake me in two hours": no reply starts
+    with the time or a bracket, on screen or aloud; the second says the right time and the alarm is two hours on.
 
 ## Voice (0.1.1; memory rule 0.1.2; fixes 0.1.3)
 

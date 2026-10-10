@@ -68,4 +68,20 @@ class ConversationTest {
         // Errors are not replayed; the question before one is.
         assertEquals(PromptTurn(PromptRole.USER, "and now?"), p[4])
     }
+
+    @Test fun replayNeverCarriesTheClock() {
+        // A user turn is stored as asked (the time goes only into the turn sent); a reply saved by 0.2.1 that began
+        // with a copy of the clock is replayed without it, while a time given as an answer stays.
+        val old = listOf(
+            ChatTurn("1", TurnRole.USER, "What time is it?", 1000),
+            ChatTurn("2", TurnRole.ASSISTANT, "[Now 14:05] It's 14:05.", 1100),
+            ChatTurn("3", TurnRole.USER, "Tell me a joke", 1200),
+            ChatTurn("4", TurnRole.ASSISTANT, "[Now 14:06] Why did the robot cross the road?", 1300,
+                actions = listOf(ActionRecord(ToolName.SET_TIMER, "Set a timer for 5 minutes", ActionStatus.DONE))),
+        )
+        val p = old.toPromptTurns()
+        assertEquals(listOf("What time is it?", "It's 14:05.", "Tell me a joke", "(Set a timer for 5 minutes: done.) Why did the robot cross the road?"),
+            p.map { it.text })
+        assertTrue(p.none { it.text.contains("[Now") || it.text.contains("Current time") })
+    }
 }

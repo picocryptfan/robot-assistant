@@ -45,14 +45,18 @@ data class StoredConversation(val id: String, val created: Long, val updated: Lo
     }
 }
 
-/** History as the model sees it when a conversation is rebuilt: text only, actions summarised. */
+/**
+ * History as the model sees it when a conversation is rebuilt: text only, actions summarised, never the clock. A user
+ * turn is stored as asked (the time is added only to the turn sent, [Prompt.fitTurn]); a reply saved by 0.2.1 may
+ * still start with a copy of it, which is left out so the model doesn't learn to begin with the time.
+ */
 fun List<ChatTurn>.toPromptTurns(): List<PromptTurn> = mapNotNull { t ->
     when (t.role) {
         TurnRole.USER -> PromptTurn(PromptRole.USER, Prompt.replayText(t.text, t.attachment))
         TurnRole.ASSISTANT -> {
             if (t.error) return@mapNotNull null
             val acts = t.actions.joinToString(" ") { "(${Markdown.plain(it.summary)}: ${it.status.label.lowercase()}.)" }
-            val text = listOf(acts, t.text).filter { it.isNotBlank() }.joinToString(" ").trim()
+            val text = listOf(acts, ClockEcho.strip(t.text)).filter { it.isNotBlank() }.joinToString(" ").trim()
             if (text.isEmpty()) null else PromptTurn(PromptRole.MODEL, text)
         }
     }
