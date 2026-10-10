@@ -118,7 +118,7 @@ object HandOffApps {
         true
     } catch (_: PackageManager.NameNotFoundException) { false }
 
-    /** Cheogram's package (the F-Droid build first), or null. */
+    /** Cheogram's package, or null. With both builds installed the F-Droid one is always used (README, "Texts"). */
     fun cheogram(ctx: Context): String? = listOf(CHEOGRAM, CHEOGRAM_PLAY).firstOrNull { installed(ctx, it) }
 
     fun proton(ctx: Context): Boolean = installed(ctx, PROTON)
