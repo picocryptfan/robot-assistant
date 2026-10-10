@@ -3,19 +3,26 @@ package app.heyrobot.assistant
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.os.PowerManager
+import android.os.SystemClock
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionRecord
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainMsg
+import app.heyrobot.core.BrainFail
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.Card
 import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.ClockEcho
+import app.heyrobot.core.Cue
+import app.heyrobot.core.DoneCode
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.Executed
 import app.heyrobot.core.ModelOutcome
+import app.heyrobot.core.NoQuestion
+import app.heyrobot.core.NoReply
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Prompt
 import app.heyrobot.core.RLog
@@ -23,6 +30,7 @@ import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ScreenText
+import app.heyrobot.core.ShowSource
 import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.SpeechText
 import app.heyrobot.core.StoredConversation
@@ -38,12 +46,17 @@ import app.heyrobot.core.TurnRules
 import app.heyrobot.core.TurnRunner
 import app.heyrobot.core.TurnSlot
 import app.heyrobot.core.TurnView
+import app.heyrobot.core.TtsStop
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.VolumeKeyStop
 import app.heyrobot.core.toPromptTurns
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotesFiles
+import app.heyrobot.voice.Cues
 import app.heyrobot.voice.SpeechToText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +70,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import java.time.ZonedDateTime
 import java.util.UUID
@@ -184,6 +198,9 @@ object PanelController {
     private var groups: Set<ToolGroup> = setOf(ToolGroup.CORE)
     /** Undo changed what the live conversation believes: close it once the turn under way (if any) has ended. */
     private var closeConvAfterTurn = false
+    /** For the voice log: when the panel was shown, and whether the turn under way began as a spoken question. */
+    private var shownAtE = 0L
+    private var spokenTurn = false
 
     private fun newId() = UUID.randomUUID().toString()
 
@@ -191,14 +208,15 @@ object PanelController {
         if (initialized) return
         initialized = true
         scope.launch { BrainKeeper.state.collect { s -> _state.update { it.copy(brain = s) } } }
-        VoiceHub.tts.setListener { speaking ->
-            VoiceHub.onSpeakingChanged(speaking)
-            _state.update {
-                when {
-                    !speaking && it.phase == Phase.SPEAKING -> it.copy(phase = Phase.IDLE)
-                    speaking && it.phase == Phase.IDLE -> it.copy(phase = Phase.SPEAKING)
-                    else -> it
-                }
+    }
+
+    /** From VoiceHub (which owns the voice's listener since 0.2.3): Robot's voice started or stopped. */
+    fun onSpeakingChanged(speaking: Boolean) {
+        _state.update {
+            when {
+                !speaking && it.phase == Phase.SPEAKING -> it.copy(phase = Phase.IDLE)
+                speaking && it.phase == Phase.IDLE -> it.copy(phase = Phase.SPEAKING)
+                else -> it
             }
         }
     }
@@ -245,17 +263,34 @@ object PanelController {
         // The voice models load on first use (VoiceHub's memory policy): speech recognition when the mic or the wake
         // word starts a question, the voice when a question is sent with spoken replies on. Nothing loads just for a show.
         RLog.i("panel_show", "src" to source?.let { RLog.Code(it) }, "locked" to locked, "turns" to chat.size)
+        shownAtE = SystemClock.elapsedRealtime()
+        VoiceLog.add(VoiceEvent.SESSION_SHOWN, showSource(source))
+        VoiceHub.updateCapture()
         if (source == RobotVoiceService.SRC_WAKE) startListening()
+    }
+
+    private fun showSource(src: String?): ShowSource = when (src) {
+        RobotVoiceService.SRC_WAKE -> ShowSource.WAKE
+        RobotVoiceService.SRC_KEYGUARD -> ShowSource.KEYGUARD
+        RobotVoiceService.SRC_APP -> ShowSource.APP
+        RobotVoiceService.SRC_CAPTURE -> ShowSource.CAPTURE
+        // The corner swipe (and the assist gesture) come without Robot's own source.
+        else -> ShowSource.SWIPE
     }
 
     fun onHide() {
         shown = false
+        val st0 = _state.value
+        if (st0.phase == Phase.LISTENING) VoiceLog.add(VoiceEvent.NO_QUESTION, NoQuestion.CLOSED)
+        if (st0.busy && spokenTurn && hidingFor == null) VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.STOPPED)
+        VoiceLog.add(VoiceEvent.SESSION_HIDDEN, ((SystemClock.elapsedRealtime() - shownAtE) / 1000).toInt())
         VoiceHub.stt.cancel()
         VoiceHub.listener?.wakePaused = false
         val forCapture = hidingFor == "capture"
         // A turn never goes on behind a hidden panel: closing stops it, and a card nobody can tap any more is declined.
-        if (hidingFor == null || slot.confirmations.waiting) stopGenerating()
-        if (hidingFor == null) VoiceHub.tts.stop()
+        if (hidingFor == null || slot.confirmations.waiting) stopGenerating(TtsStop.CLOSED)
+        if (hidingFor == null) VoiceHub.stopVoice(TtsStop.CLOSED)
+        VoiceHub.updateCapture()
         // Screen content lives only while the panel is open.
         screenText = null
         screenshot = null
@@ -285,8 +320,8 @@ object PanelController {
     // ------------------------------------------------------------------ conversation
 
     fun newConversation(locked: Boolean = _state.value.locked) {
-        stopGenerating()
-        VoiceHub.tts.stop()
+        stopGenerating(TtsStop.OTHER)
+        VoiceHub.stopVoice(TtsStop.OTHER)
         chat.clear()
         groups = setOf(ToolGroup.CORE)
         closeConvAfterTurn = false
@@ -337,7 +372,7 @@ object PanelController {
 
     fun toggleSpeak() {
         val on = !_state.value.speak
-        if (!on) VoiceHub.tts.stop()
+        if (!on) VoiceHub.stopVoice(TtsStop.MUTED)
         _state.update { it.copy(speak = on) }
     }
 
@@ -356,8 +391,8 @@ object PanelController {
      * nobody sees it, a "Just do it" action) behind the app.
      */
     private fun leaveForRobot(h: PanelHost, i: Intent) {
-        stopGenerating()
-        VoiceHub.tts.stop()
+        stopGenerating(TtsStop.OTHER)
+        VoiceHub.stopVoice(TtsStop.OTHER)
         if (h.launch(i)) {
             hidingFor = "action"
             h.hidePanel()
@@ -390,7 +425,7 @@ object PanelController {
         // Not while a turn runs: it would go on hidden behind the camera.
         if (_state.value.busy || slot.running) return
         val h = host ?: return
-        VoiceHub.tts.stop()
+        VoiceHub.stopVoice(TtsStop.OTHER)
         hidingFor = "capture"
         if (h.startCapture(CaptureActivity.intent(VoiceHub.app, mode))) {
             h.hidePanel()
@@ -411,7 +446,7 @@ object PanelController {
 
     fun micPressed() {
         if (_state.value.busy || slot.running) return
-        VoiceHub.tts.stop()
+        VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
         if (VoiceHub.settings.speakReplies == SpeakReplies.VOICE) _state.update { it.copy(speak = true) }
         startListening()
     }
@@ -419,10 +454,10 @@ object PanelController {
     fun micReleased() = VoiceHub.stt.stop()
 
     fun onWakeWhileShown() {
-        VoiceHub.tts.stop()
+        VoiceHub.stopVoice(TtsStop.WAKE)
         // "Hey robot" during an answer works like Stop (a waiting card is declined); the new question is taken once
         // that turn has ended (sendSpoken).
-        if (_state.value.busy || slot.running) stopGenerating()
+        if (_state.value.busy || slot.running) stopGenerating(TtsStop.WAKE)
         if (VoiceHub.settings.speakReplies == SpeakReplies.VOICE) _state.update { it.copy(speak = true) }
         startListening()
     }
@@ -430,7 +465,6 @@ object PanelController {
     private fun startListening() {
         VoiceHub.listener?.wakePaused = true
         _state.update { it.copy(phase = Phase.LISTENING, partial = "", notice = null, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint) }
-        if (_state.value.speak) VoiceHub.tts.prewarm()
         val main = VoiceHub.main
         VoiceHub.stt.start(object : SpeechToText.Listener {
             override fun onPartial(text: String) { main.post { _state.update { if (it.phase == Phase.LISTENING) it.copy(partial = text) else it } } }
@@ -444,12 +478,20 @@ object PanelController {
             override fun onFinal(text: String) {
                 main.post {
                     endListening()
-                    if (text.isNotBlank()) sendSpoken(text)
+                    // 0.2.2 did nothing here when the words came back empty: the panel just went quiet.
+                    if (text.isNotBlank()) sendSpoken(text) else missedQuestion(NoQuestion.EMPTY)
                 }
             }
             override fun onError(reason: SpeechToText.Reason, message: String) {
                 main.post {
                     endListening()
+                    VoiceLog.add(VoiceEvent.NO_QUESTION, when (reason) {
+                        SpeechToText.Reason.NO_SPEECH -> NoQuestion.NO_SPEECH
+                        SpeechToText.Reason.UNAVAILABLE -> NoQuestion.UNAVAILABLE
+                        else -> NoQuestion.ERROR
+                    })
+                    // The notice says why; the chime says so to someone across the room.
+                    cue(Cue.CHIME)
                     val unavailable = reason == SpeechToText.Reason.UNAVAILABLE
                     _state.update {
                         it.copy(
@@ -461,6 +503,26 @@ object PanelController {
                 }
             }
         })
+        // After the question's model load is queued, so the voice's load (NativeLoads, one at a time) doesn't go first.
+        if (_state.value.speak) VoiceHub.tts.prewarm()
+    }
+
+    /** A spoken question came back without words: say so, in the panel and aloud (or with a chime). */
+    private fun missedQuestion(why: NoQuestion) {
+        VoiceLog.add(VoiceEvent.NO_QUESTION, why)
+        notify(SORRY)
+        cue(Cue.SORRY)
+    }
+
+    /** "Sorry, I didn't catch that." spoken when replies are spoken, otherwise a short chime. */
+    private fun cue(c: Cue) {
+        if (c != Cue.CHIME && _state.value.speak) {
+            VoiceLog.add(VoiceEvent.CUE, c)
+            VoiceHub.tts.speak(if (c == Cue.SORRY_NO_ANSWER) SORRY_NO_ANSWER else SORRY)
+        } else {
+            VoiceLog.add(VoiceEvent.CUE, Cue.CHIME)
+            Cues.missed()
+        }
     }
 
     private fun endListening() {
@@ -479,10 +541,15 @@ object PanelController {
         val q = text.trim()
         if (q.isEmpty() && st.draft == null) return false
         if (st.busy || slot.running) {
-            if (fromVoice) notify("Robot is still on the last question. Ask again when it's done.")
+            if (fromVoice) {
+                notify("Robot is still on the last question. Ask again when it's done.")
+                VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.BUSY)
+                cue(Cue.CHIME)
+            }
             return false
         }
-        VoiceHub.tts.stop()
+        VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
+        spokenTurn = fromVoice
         val attachment = st.draft?.kind ?: Attachment.NONE
         val image = when (attachment) {
             Attachment.PHOTO -> draftJpeg
@@ -545,6 +612,7 @@ object PanelController {
         val c = BrainKeeper.ensureLoaded(VoiceHub.app)
         if (c == null) {
             val b = BrainKeeper.state.value
+            VoiceLog.add(VoiceEvent.BRAIN_FAILED, if (b.readiness == BrainKeeper.Readiness.NO_MODEL) BrainFail.NO_MODEL else BrainFail.LOAD_FAILED)
             return failReply(replyId, b.problem ?: "Robot's model isn't ready.", if (b.readiness == BrainKeeper.Readiness.NO_MODEL) NoticeAction.OPEN_APP else NoticeAction.NONE)
         }
         client = c
@@ -584,14 +652,18 @@ object PanelController {
         private val c: BrainClient, private val convId: String, private val replyId: String,
         private val gen: BrainMsg.Generate, private val img: ByteArray?,
     ) : TurnModel {
+        private var round = 0
+
         override suspend fun ask(): ModelOutcome {
             currentCoroutineContext().ensureActive()
-            return collect(c.request(BrainProtocol.REQ_GENERATE, gen, img), replyId)
+            VoiceLog.add(VoiceEvent.BRAIN_SENT, 0, if (img != null || gen.hasImage) 1 else 0)
+            return collect(c, c.request(BrainProtocol.REQ_GENERATE, gen, img), replyId)
         }
 
         override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome {
             currentCoroutineContext().ensureActive()
-            return collect(c.request(BrainProtocol.REQ_TOOL_RESULT, BrainMsg.ToolResult(convId, results)), replyId)
+            VoiceLog.add(VoiceEvent.BRAIN_SENT, ++round, 0)
+            return collect(c, c.request(BrainProtocol.REQ_TOOL_RESULT, BrainMsg.ToolResult(convId, results)), replyId)
         }
 
         override fun close() = c.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(convId))
@@ -627,28 +699,59 @@ object PanelController {
         }
     }
 
-    private suspend fun collect(req: Pair<Int, Flow<BrainMsg>>, replyId: String): ModelOutcome {
+    private suspend fun collect(c: BrainClient, req: Pair<Int, Flow<BrainMsg>>, replyId: String): ModelOutcome {
         reqId = req.first
         var calls: List<RawToolCall>? = null
         var out: ModelOutcome = ModelOutcome.Failed("The model didn't answer.")
         // Each model round (the reply, then its text after a tool round) is checked for a copy of the clock at its start.
         val echo = ClockEcho()
+        val t0 = SystemClock.elapsedRealtime()
+        var first = -1L
+        var any = false
+        var chars = 0
+        var timedOut = false
+        // A model that never answers (a hung engine) must not leave "Thinking…" for ever: nothing at all from :brain
+        // within FIRST_EVENT_MS ends the request here (it is cancelled there too).
+        val watchdog: Job = scope.launch {
+            delay(FIRST_EVENT_MS)
+            if (!any) {
+                timedOut = true
+                c.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(req.first))
+                c.abandon(req.first)
+            }
+        }
         try {
             req.second.collect { m ->
+                any = true
                 when (m) {
-                    is BrainMsg.Chunk -> if (m.text.isNotEmpty()) streamText(replyId, echo.feed(m.text))
+                    is BrainMsg.Chunk -> if (m.text.isNotEmpty()) {
+                        if (first < 0) {
+                            first = SystemClock.elapsedRealtime() - t0
+                            VoiceLog.add(VoiceEvent.BRAIN_FIRST, first.toInt())
+                        }
+                        chars += m.text.length
+                        streamText(replyId, echo.feed(m.text))
+                    }
                     is BrainMsg.ToolCallsMsg -> calls = m.calls
-                    is BrainMsg.Done -> out = calls?.takeIf { m.reason == DoneReason.TOOL_CALLS }?.let { ModelOutcome.Calls(it) }
-                        ?: ModelOutcome.Done(m.reason, m.textCalls)
-                    is BrainMsg.Error -> out = ModelOutcome.Failed(m.code.text())
+                    is BrainMsg.Done -> {
+                        out = calls?.takeIf { m.reason == DoneReason.TOOL_CALLS }?.let { ModelOutcome.Calls(it) }
+                            ?: ModelOutcome.Done(m.reason, m.textCalls)
+                        VoiceLog.add(VoiceEvent.BRAIN_DONE, (SystemClock.elapsedRealtime() - t0).toInt(), DoneCode.of(m.reason).id, chars)
+                    }
+                    is BrainMsg.Error -> {
+                        out = ModelOutcome.Failed(m.code.text())
+                        VoiceLog.add(VoiceEvent.BRAIN_FAILED, if (timedOut) BrainFail.TIMEOUT else BrainFail.of(m.code))
+                    }
                     else -> {}
                 }
             }
             // A reply shorter than the hold-back window.
             streamText(replyId, echo.flush())
         } finally {
+            watchdog.cancel()
             reqId = 0
         }
+        if (timedOut) out = ModelOutcome.Failed("Robot's model didn't answer in time. Please try again.")
         return out
     }
 
@@ -734,22 +837,34 @@ object PanelController {
     // ------------------------------------------------------------------ ending a reply
 
     /** Stop button: stops the reply (or the model load) and its voice; a waiting card is declined. */
-    fun stopGenerating() {
+    fun stopGenerating(why: TtsStop = TtsStop.BUTTON) {
         val id = reqId
         if (id != 0) client?.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(id))
         // The voice stops now: nothing already queued, and not the cut-off last sentence (finishReply drops it).
         voice.mute()
-        VoiceHub.tts.stop()
+        VoiceHub.stopVoice(why)
         // The turn ends as "stopped" (send's cancellation handler, which runs later on the main thread); :brain
         // rebuilds that conversation next time.
         slot.stop()
     }
 
-    /** "Stop" said, or a tap: the voice stops, and the rest of a reply still streaming is shown but not spoken. */
-    fun stopSpeaking() {
+    /** "Stop" said, a tap or a volume key: the voice stops, and the rest of a reply still streaming is shown but not spoken. */
+    fun stopSpeaking(why: TtsStop = TtsStop.TAP) {
         voice.mute()
-        VoiceHub.tts.stop()
+        VoiceHub.stopVoice(why)
         _state.update { if (it.phase == Phase.SPEAKING) it.copy(phase = Phase.IDLE) else it }
+    }
+
+    /**
+     * A volume key pressed in the panel's window (RobotSession): true if it stopped Robot talking, so the key is used
+     * up and the volume stays as it was (Settings › Voice › volume key). Otherwise the system changes the volume.
+     */
+    fun volumeKey(keyCode: Int): Boolean {
+        val interactive = try { VoiceHub.app.getSystemService(PowerManager::class.java).isInteractive } catch (_: Throwable) { true }
+        if (!VolumeKeyStop.stops(keyCode, VoiceHub.settings.stopKey, VoiceHub.tts.isSpeaking, shown, interactive)) return false
+        VoiceLog.add(VoiceEvent.VOLUME_KEY, keyCode)
+        stopSpeaking(TtsStop.VOLUME_KEY)
+        return true
     }
 
     /** False once the conversation moved on (a new or loaded conversation replaced the one this reply belonged to). */
@@ -764,6 +879,12 @@ object PanelController {
         var text = ui?.text?.trim().orEmpty()
         if (reason == DoneReason.GARBAGE) text = (text.take(200) + "\n\n(The answer went wrong, so Robot stopped it.)").trim()
         val actions = settled(ui?.actions.orEmpty())
+        // The model finished without a word or an action: an empty bubble, and silence, in 0.2.2.
+        if (text.isEmpty() && actions.isEmpty() && !stopped) {
+            text = "Robot had no answer. Try asking another way."
+            VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.EMPTY)
+            if (spokenTurn) cue(Cue.SORRY_NO_ANSWER)
+        }
         chat += ChatTurn(replyId, TurnRole.ASSISTANT, text, System.currentTimeMillis(), actions = records(actions), stopped = stopped)
         _state.update { st ->
             st.copy(
@@ -780,6 +901,8 @@ object PanelController {
     private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
         if (!current(replyId)) return
         voice.finish(replyId, cancelled = true, speak = false)
+        VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.FAILED)
+        if (spokenTurn) cue(Cue.SORRY_NO_ANSWER)
         // Actions that ran before the failure stay on record.
         val actions = settled(_state.value.turns.firstOrNull { it.id == replyId }?.actions.orEmpty())
         chat += ChatTurn(replyId, TurnRole.ASSISTANT, message, System.currentTimeMillis(), actions = records(actions), error = true)
@@ -798,4 +921,9 @@ object PanelController {
     private fun settled(actions: List<UiAction>) = actions.map { if (it.status == ActionStatus.PENDING) it.copy(status = ActionStatus.DECLINED) else it }
 
     private fun records(actions: List<UiAction>) = actions.mapNotNull { a -> a.tool?.let { ActionRecord(it, a.summary, a.status, a.detail, a.content) } }
+
+    /** Nothing at all from the model this long after a request: it is given up (60 s; a first word takes about 0.3 s). */
+    private const val FIRST_EVENT_MS = 60_000L
+    private const val SORRY = "Sorry, I didn't catch that."
+    private const val SORRY_NO_ANSWER = "Sorry, I couldn't answer that."
 }

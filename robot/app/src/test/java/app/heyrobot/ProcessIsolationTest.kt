@@ -136,8 +136,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("22", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.2.2", m.getAttributeNS(ns, "versionName"))
+        assertEquals("23", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.2.3", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
@@ -150,6 +150,8 @@ class ProcessIsolationTest {
             "android.permission.INTERNET", "android.permission.RECORD_AUDIO", "android.permission.POST_NOTIFICATIONS",
             "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.VIBRATE", "com.android.alarm.permission.SET_ALARM",
             "android.permission.USE_EXACT_ALARM",
+            // 0.2.3: "Call audio" playback sets the communication mode while Robot speaks.
+            "android.permission.MODIFY_AUDIO_SETTINGS",
             // Phase 2: asked for at runtime by the main app only.
             "android.permission.READ_CONTACTS", "android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR",
         ), used)
@@ -214,9 +216,11 @@ class ProcessIsolationTest {
     @Test fun keywordsFileIsTokenisedWithTheModelsTokens() {
         val assets = File(main("voice"), "assets")
         val tokens = File(assets, "kws/tokens.txt").readLines().map { it.substringBefore(' ') }.toSet()
-        val line = File(assets, "kws/keywords.txt").readText().trim()
-        assertEquals("▁HE Y ▁RO B O T @HEY_ROBOT", line)
-        line.substringBefore(" @").split(' ').forEach { assertTrue("token $it not in tokens.txt", it in tokens) }
+        // The spotter's own list is one empty line (0.2.3): every stream gets the wake phrases from Settings at runtime,
+        // so a phrase the owner removed is never spotted. Not 0 bytes (sherpa's asset reader would take it for a C string).
+        assertEquals("\n", File(assets, "kws/keywords.txt").readText())
+        // The phrases are spelled on the phone with the model's SentencePiece file (core SentencePieceTest).
+        assertTrue("kws/bpe.model missing: run tools/fetch_third_party.sh --install", File(assets, "kws/bpe.model").isFile)
         // "STOP" while Robot speaks (WakeWord adds it to the stream; tools/make_keywords.py writes it).
         val stop = File(assets, "kws/stop.txt").readText().trim()
         assertEquals("▁ST O P @STOP", stop)

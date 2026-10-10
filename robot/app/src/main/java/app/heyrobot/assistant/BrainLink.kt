@@ -15,6 +15,8 @@ import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.BrainWire
 import app.heyrobot.core.RLog
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
 import app.heyrobot.sys.ModelStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -67,17 +69,27 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
 
                 override fun onServiceDisconnected(name: ComponentName?) {
                     messenger = null
-                    // Every open request ends: the model and its conversations are gone with the process.
-                    for ((id, ch) in streams) {
-                        ch.trySend(BrainMsg.Error(BrainError.ENGINE, "model process stopped"))
-                        ch.close()
-                        streams.remove(id)
-                    }
+                    endAll()
                     RLog.i("brain_disconnected")
+                    VoiceLog.add(VoiceEvent.BRAIN_DIED)
                     onDeath()
                 }
 
-                override fun onNullBinding(name: ComponentName?) { connected?.complete(false) }
+                // The binding will never connect again (Android gave up restarting :brain): 0.2.2 kept it and waited
+                // 15 s for nothing on every question until the voice process restarted. Unbind, so the next
+                // connect() binds afresh.
+                override fun onBindingDied(name: ComponentName?) {
+                    RLog.i("brain_binding_died")
+                    VoiceLog.add(VoiceEvent.BRAIN_DIED)
+                    drop(this)
+                    connected?.complete(false)
+                    onDeath()
+                }
+
+                override fun onNullBinding(name: ComponentName?) {
+                    drop(this)
+                    connected?.complete(false)
+                }
             }
             // Foreground priority for :brain while the assistant uses it (a background process is throttled hard).
             val flags = Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_INCLUDE_CAPABILITIES
@@ -88,6 +100,32 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
             conn = c
         }
         return withTimeoutOrNull(timeoutMs) { ready.await() } ?: false
+    }
+
+    /** Every open request ends: the model and its conversations are gone with the process. */
+    private fun endAll() {
+        for ((id, ch) in streams) {
+            ch.trySend(BrainMsg.Error(BrainError.ENGINE, "model process stopped"))
+            ch.close()
+            streams.remove(id)
+        }
+    }
+
+    private fun drop(c: ServiceConnection) {
+        messenger = null
+        endAll()
+        if (conn === c) {
+            try { ctx.unbindService(c) } catch (_: Exception) {}
+            conn = null
+        }
+    }
+
+    /** Gives up on request [id] (nothing came back in time): its flow ends now with an error. */
+    fun abandon(id: Int) {
+        streams.remove(id)?.let {
+            it.trySend(BrainMsg.Error(BrainError.ENGINE, "no answer"))
+            it.close()
+        }
     }
 
     /** Sends a request; its events (ending with a terminal one) come out of the returned channel. */
