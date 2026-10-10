@@ -123,6 +123,8 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private val echo = EchoGuard(1_000)
     /** Queued sentences that say such a word, by utterance id: [RISK_STOP] and [RISK_WAKE]. */
     private val risky = ConcurrentHashMap<String, Int>()
+    /** The utterance playing now (the engine's thread, under [echo]'s guard of it). */
+    private var playingId: String? = null
 
     private val tts: android.speech.tts.TextToSpeech = android.speech.tts.TextToSpeech(app) { status ->
         main.post { onInit(status == android.speech.tts.TextToSpeech.SUCCESS) }
@@ -157,13 +159,28 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private fun started(id: String?) {
         if (!current(id)) return
         val f = risky.remove(id) ?: 0
-        echo.open(SystemClock.elapsedRealtime(), f and RISK_STOP != 0, f and RISK_WAKE != 0)
+        synchronized(echo) {
+            playingId = id
+            echo.open(SystemClock.elapsedRealtime(), f and RISK_STOP != 0, f and RISK_WAKE != 0)
+        }
     }
 
+    /** The engine's thread: a sentence played, or failed or was stopped. */
     private fun finished(id: String?) {
         if (!current(id)) return
-        // Its audio has played: the guard's window runs on from now.
-        echo.close(SystemClock.elapsedRealtime())
+        // Its audio has played: the guard's window runs on from now. Only for the sentence playing: an error for one
+        // still queued must not end the guard of the one being said.
+        synchronized(echo) {
+            if (id == playingId) {
+                echo.close(SystemClock.elapsedRealtime())
+                playingId = null
+            }
+        }
+        done()
+    }
+
+    /** One sentence fewer outstanding. */
+    private fun done() {
         main.post {
             if (outstanding.get() > 0 && outstanding.decrementAndGet() == 0) idle()
         }
@@ -214,7 +231,11 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         // Pitch applies to the next speak() call: set it for every sentence.
         tts.setPitch(if (other) OTHER_PITCH else 1.0f)
         val r = tts.speak(sentence, android.speech.tts.TextToSpeech.QUEUE_ADD, Bundle(), id)
-        if (r != android.speech.tts.TextToSpeech.SUCCESS) finished(id)
+        // Never started: the sentence playing now keeps its guard.
+        if (r != android.speech.tts.TextToSpeech.SUCCESS) {
+            risky.remove(id)
+            done()
+        }
     }
 
     private companion object {
