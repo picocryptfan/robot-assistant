@@ -36,8 +36,11 @@ class SherpaTextToSpeech internal constructor(
     private val kokoro: ModelSlot<OfflineTts>,
     private val kitten: ModelSlot<OfflineTts>,
 ) : TextToSpeech {
-    /** [speaker]: another voice of the loaded model for this piece (Claude's), null for the chosen one. */
-    private class Item(val text: String, val gen: Int, val speaker: Int? = null)
+    /**
+     * [speaker]: another voice of the loaded model for this piece (Claude's), null for the chosen one; [lang] that
+     * voice's language for this piece ("fr"), null for English.
+     */
+    private class Item(val text: String, val gen: Int, val speaker: Int? = null, val lang: String? = null)
 
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "robot-tts") }
     private val main = Handler(Looper.getMainLooper())
@@ -66,8 +69,11 @@ class SherpaTextToSpeech internal constructor(
     @Volatile private var choice = VoiceChoice.DEFAULT
     private var listener: TextToSpeech.Listener? = null
 
-    /** The voice could not be loaded: these pieces should be spoken another way (VoiceOutput uses the phone's voice). */
-    internal var onUnavailable: ((List<String>) -> Unit)? = null
+    /**
+     * The voice could not be loaded: these pieces should be spoken another way (VoiceOutput uses the phone's voice),
+     * each with whether it was another voice's (Claude's), so it keeps sounding different.
+     */
+    internal var onUnavailable: ((List<Pair<String, Boolean>>) -> Unit)? = null
 
     // One speaking run, for the log (numbers only).
     private var runStart = 0L
@@ -96,16 +102,16 @@ class SherpaTextToSpeech internal constructor(
 
     override val isSpeaking: Boolean get() = synchronized(stateLock) { speaking }
 
-    override fun speak(sentence: String) = enqueue(sentence, null)
+    override fun speak(sentence: String) = enqueue(sentence, null, null)
 
-    override fun speakOther(sentence: String, speaker: Int?) = enqueue(sentence, speaker)
+    override fun speakOther(sentence: String, speaker: Int?, lang: String?) = enqueue(sentence, speaker, lang)
 
-    private fun enqueue(sentence: String, speaker: Int?) {
+    private fun enqueue(sentence: String, speaker: Int?, lang: String?) {
         // Again here, whoever calls: sherpa logs CJK text and unpronounceable pieces whatever its debug flag.
         val text = SpeechText.sayable(sentence)
         if (text.isEmpty()) return
         synchronized(stateLock) {
-            queue.addLast(Item(text, gen, speaker))
+            queue.addLast(Item(text, gen, speaker, lang))
             if (!speaking) {
                 speaking = true
                 runStart = SystemClock.elapsedRealtime()
@@ -231,7 +237,7 @@ class SherpaTextToSpeech internal constructor(
         val start = synchronized(trackLock) { written }
         echo.open(start, item.text)
         var frames = 0L
-        val ok = generate(tts, item.text, generation(c, item.speaker)) { samples ->
+        val ok = generate(tts, item.text, generation(c, item.speaker, item.lang)) { samples ->
             if (frames == 0L) synchronized(stateLock) {
                 if (firstAudioMs < 0 && item.gen == gen) firstAudioMs = SystemClock.elapsedRealtime() - runStart
             }
@@ -252,7 +258,7 @@ class SherpaTextToSpeech internal constructor(
     /** Worker: hand [item] and the rest of its run to the phone's voice (VoiceOutput), quietly. */
     private fun fallBack(item: Item, c: VoiceChoice, why: String) {
         val rest = synchronized(stateLock) {
-            val r = listOf(item.text) + queue.filter { it.gen == item.gen }.map { it.text }
+            val r = (listOf(item) + queue.filter { it.gen == item.gen }).map { it.text to (it.speaker != null) }
             queue.clear()
             // Quietly: VoiceOutput carries on with the phone's voice, so the panel stays "speaking".
             speaking = false
@@ -282,12 +288,12 @@ class SherpaTextToSpeech internal constructor(
         return ok && cb.failure() == null
     }
 
-    private fun generation(c: VoiceChoice, other: Int? = null) = GenerationConfig(
+    private fun generation(c: VoiceChoice, other: Int? = null, otherLang: String? = null) = GenerationConfig(
         sid = other ?: c.speaker,
         speed = rate,
         // Kokoro reads French with espeak's "fr" when asked per call; English uses the model's "en-us". Another voice
-        // (Claude's) is always English.
-        extra = c.lang?.takeIf { other == null }?.let { mapOf("lang" to it) },
+        // (Claude's) says which language its sentence is in.
+        extra = (if (other == null) c.lang else otherLang)?.let { mapOf("lang" to it) },
     )
 
     /** Writes [samples] without blocking under the lock; false once a stop() made them stale. */
@@ -487,11 +493,11 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
 
     init {
         sherpa.setListener { changed() }
-        sherpa.onUnavailable = { texts ->
+        sherpa.onUnavailable = { pieces ->
             main.post {
                 val s = systemTts()
                 active = s
-                texts.forEach(s::speak)
+                replay(pieces, s)
                 changed()
             }
         }
@@ -522,10 +528,10 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
         t.speak(sentence)
     }
 
-    override fun speakOther(sentence: String, speaker: Int?) {
+    override fun speakOther(sentence: String, speaker: Int?, lang: String?) {
         if (sentence.isBlank()) return
         val t = active ?: pick().also { active = it }
-        t.speakOther(sentence, speaker)
+        t.speakOther(sentence, speaker, lang)
     }
 
     override fun stop() {
@@ -580,4 +586,9 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
 
     /** Which engine speaks now, for the voice log. */
     val usesPhoneVoice: Boolean get() = active != null && active !== sherpa
+}
+
+/** A failed voice's pieces, said by [tts] instead: another voice's (Claude's) stay in "the other voice" (a lower pitch). */
+internal fun replay(pieces: List<Pair<String, Boolean>>, tts: TextToSpeech) {
+    for ((text, other) in pieces) if (other) tts.speakOther(text, null) else tts.speak(text)
 }

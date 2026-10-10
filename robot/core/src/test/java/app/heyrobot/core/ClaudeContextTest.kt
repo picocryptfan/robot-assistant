@@ -332,6 +332,20 @@ class ClaudeContextTest {
         assertNull(ClaudeVoices.speaker(VoiceChoice.SYSTEM, "am_michael"))
     }
 
+    @Test fun claudeSpeaksFrenchInAFrenchVoice() {
+        for (f in listOf("Le ciel est bleu parce que l'air diffuse la lumière.", "Bonjour, je suis Claude.", "C'est une très bonne question.",
+            "Il fait beau aujourd'hui à Montréal.")) assertTrue(f, SpeechLang.french(f))
+        for (e in listOf("The sky is blue because air scatters light.", "Try the café on the corner, it is great.", "Hello!", "Paris is in France.",
+            "Montréal is a city in Québec.")) assertFalse(e, SpeechLang.french(e))
+        // Kokoro: French sentences in Siwis with "fr"; English in Claude's voice. Robot speaking Siwis: Claude's voice reads French.
+        assertEquals(30 to "fr", ClaudeVoices.forSentence(VoiceChoice.HEART, "am_michael", "Le ciel est bleu parce que l'air diffuse la lumière."))
+        assertEquals(16 to null, ClaudeVoices.forSentence(VoiceChoice.HEART, "am_michael", "The sky is blue."))
+        assertEquals(16 to "fr", ClaudeVoices.forSentence(VoiceChoice.SIWIS, "am_michael", "C'est une très bonne question."))
+        // Kitten and the phone's voice have no French voice: Claude's as usual.
+        assertEquals(6 to null, ClaudeVoices.forSentence(VoiceChoice.KITTEN, "am_michael", "C'est une très bonne question."))
+        assertEquals(null to null, ClaudeVoices.forSentence(VoiceChoice.SYSTEM, "am_michael", "C'est une très bonne question."))
+    }
+
     @Test fun settingsRoundTrip() {
         val s = RobotSettings(claudeEnabled = true, claudeRoute = ClaudeRoute.API, claudeModel = ClaudeModel.HAIKU.id, claudeEffort = ClaudeEffortSetting.HIGH,
             claudeSearch = false, claudeLocked = true, claudeVoice = "bf_emma", claudeShowCost = false, claudeHelp = Escalation.ASK, claudeBudgetCents = 250)

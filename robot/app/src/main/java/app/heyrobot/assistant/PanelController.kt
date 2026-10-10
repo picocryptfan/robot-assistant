@@ -1555,7 +1555,8 @@ object PanelController {
         if (!claude && (s.contains("call:") || s.contains("<start_function_call>") || ToolCalls.parseText(s).isNotEmpty())) return
         val clean = SpeechText.clean(s)
         if (clean.isEmpty()) return
-        if (claude) VoiceHub.tts.speakOther(clean, ClaudeVoices.speaker(VoiceHub.settings.voiceChoice, VoiceHub.settings.claudeVoice))
+        // Claude's voice per sentence: Kokoro's French voice for a French one, Claude's own otherwise.
+        if (claude) ClaudeVoices.forSentence(VoiceHub.settings.voiceChoice, VoiceHub.settings.claudeVoice, clean).let { (sid, lang) -> VoiceHub.tts.speakOther(clean, sid, lang) }
         else VoiceHub.tts.speak(clean)
     }
 

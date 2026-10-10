@@ -246,6 +246,20 @@ object ClaudeVoices {
     fun of(name: String?): String = KOKORO.firstOrNull { it.first == name }?.first ?: DEFAULT
 
     /**
+     * Claude's voice for one [sentence]: its speaker id and its language. A French sentence gets Kokoro's French voice
+     * (Siwis) when Robot speaks with Kokoro (or, if Robot's own voice is Siwis, Claude's voice reading French);
+     * everything else Claude's own voice in English. Null speaker: the phone's voice at a lower pitch.
+     */
+    fun forSentence(robot: VoiceChoice, claude: String?, sentence: String): Pair<Int?, String?> {
+        val french = robot.bundle == VoiceBundle.KOKORO && SpeechLang.french(sentence)
+        return when {
+            !french -> speaker(robot, claude) to null
+            robot != VoiceChoice.SIWIS -> VoiceChoice.SIWIS.speaker to "fr"
+            else -> speaker(robot, claude) to "fr"
+        }
+    }
+
+    /**
      * The speaker id Claude's sentences use with Robot's [robot] voice, or null for the phone's voice. Never Robot's
      * own speaker: if you picked Robot's voice for Claude, Claude gets the default instead.
      */
@@ -269,6 +283,29 @@ object ClaudeKeyFormat {
 
     /** "sk-ant-…AB12": shown in Settings. */
     fun mask(k: String): String = "sk-ant-…" + k.takeLast(4)
+}
+
+/**
+ * A cheap check of a sentence's language, to read Claude's French in a French voice: common French words, elisions
+ * ("l'", "qu'") and accents against common English words. Pure.
+ */
+object SpeechLang {
+    private val FRENCH = setOf("le", "la", "les", "des", "du", "de", "un", "une", "est", "et", "que", "qui", "pas", "pour", "avec", "dans",
+        "sur", "je", "tu", "il", "elle", "nous", "vous", "ils", "elles", "ce", "cette", "ces", "mais", "ou", "tres", "aussi", "sont", "etre",
+        "plus", "au", "aux", "en", "son", "sa", "ses", "leur", "mon", "ma", "mes", "votre", "notre", "peut", "fait", "comme", "bien", "y",
+        "suis", "bonjour", "merci", "oui", "voici", "voila", "tout", "rien", "aujourdhui")
+    private val ENGLISH = setOf("the", "is", "and", "of", "to", "in", "that", "it", "you", "for", "with", "are", "this", "be", "was", "at",
+        "by", "or", "not", "but", "from", "they", "we", "have", "has", "your", "my", "what", "which", "can", "will", "would", "about", "there")
+    private val ELISION = Regex("""(?i)\b(l|d|qu|c|j|n|s|m|t)['’][a-zàâäéèêëîïôöùûüç]""")
+    private val ACCENT = Regex("[àâéèêëîïôûùüç]")
+
+    fun french(sentence: String): Boolean {
+        val t = sentence.lowercase(java.util.Locale.ROOT)
+        val words = ClaudeRouter.plain(t).split(Regex("[^a-z]+")).filter { it.isNotEmpty() }
+        val fr = words.count { it in FRENCH } + ELISION.findAll(t).count() + ACCENT.findAll(t).count() / 2
+        val en = words.count { it in ENGLISH }
+        return fr >= 2 && fr > en * 2
+    }
 }
 
 /** Which way a question to Claude goes. */

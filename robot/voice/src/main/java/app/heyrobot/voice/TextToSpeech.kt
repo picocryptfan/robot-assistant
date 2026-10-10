@@ -23,10 +23,11 @@ interface TextToSpeech {
     fun speak(sentence: String)
 
     /**
-     * Queues one sentence in another voice, so the owner hears who is talking (Claude, docs/ask-claude.md): [speaker] of
-     * the same loaded model (Kokoro or Kitten), or, with the phone's voice ([speaker] null), a lower pitch.
+     * Queues one sentence in another voice, so you hear who is talking (Claude, docs/ask-claude.md): [speaker] of the
+     * same loaded model (Kokoro or Kitten), or, with the phone's voice ([speaker] null), a lower pitch. [lang]: the
+     * sentence's language for Kokoro ("fr" for a French sentence), null for the model's English.
      */
-    fun speakOther(sentence: String, speaker: Int?) = speak(sentence)
+    fun speakOther(sentence: String, speaker: Int?, lang: String? = null) = speak(sentence)
 
     /** Stops speaking and drops the queue. */
     fun stop()
@@ -164,7 +165,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     override fun speak(sentence: String) = queue(sentence, other = false)
 
     /** The phone's voice has no second speaker here: the other voice is the same one at a lower pitch. */
-    override fun speakOther(sentence: String, speaker: Int?) = queue(sentence, other = true)
+    override fun speakOther(sentence: String, speaker: Int?, lang: String?) = queue(sentence, other = true)
 
     private fun queue(sentence: String, other: Boolean) {
         if (sentence.isBlank()) return
