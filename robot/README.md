@@ -376,11 +376,13 @@ on 115 phrases (`core/src/test/resources/kws/text2token-reference.tsv`), exactly
 `keywords.txt` is one empty line, because sherpa-onnx adds it to every stream. A changed list starts a new stream
 without a restart. Any enabled phrase opens the panel exactly like "hey robot", question audio included.
 
-A phrase whose words come inside another phrase ("robot" inside "hey robot") fires when you say the longer one,
-whether the longer one is on or off: the keyword model matches the end of what it hears. So turning "hey robot" off
-while "robot" is on doesn't stop "hey robot" from waking Robot. Since 0.3.1 the longer phrase's card says so ("“robot”
-also fires when you say “hey robot”. To turn off “hey robot”, turn off “robot” too.") and the shorter one's card names
-the phrases that fire it (`WakePhrases.inside`, tested against the keyword model's own spellings).
+A phrase whose words come inside another phrase ("robot" inside "hey robot") hears the longer one too. With both on
+that is fine: saying "hey robot" fires "hey robot" itself (sherpa-onnx reports the longest match). But with "hey
+robot" off and "robot" on, the keyword model still matches the end of it, so saying "hey robot" wakes Robot as
+"robot". Since 0.3.1 the longer phrase's card warns in that case only ("“hey robot” is off, but “robot” is on and
+still hears it. Turn off “robot” too."), and the shorter one's card has a plain note ("Also hears “hey robot”: while
+this is on, saying it wakes Robot even with it off."). `WakePhrases.inside` is tested against the keyword model's own
+spellings.
 
 **Test wake words** (same screen): while it shows, Robot lists each phrase it hears, with the time, instead of opening.
 It ends when the screen is no longer visible (the app in the background, or the screen off).
@@ -436,9 +438,9 @@ region is kept.
    closed (or the screen off), volume down changes the volume as usual.
 4. Settings › Voice › Wake words: add "robot" (see the warning and Low), and "hey computer". Open Test wake words and
    say each one, near and across the room; then say other words to see what triggers by accident. Turn "robot" off
-   (or remove it), then turn "hey robot" off and check it no longer wakes Robot (no restart needed). While "robot" is
-   on, saying "hey robot" still wakes her as "robot": the "hey robot" card says so, and Test wake words and the voice
-   log name the phrase that fired.
+   (or remove it), then turn "hey robot" off and check it no longer wakes Robot (no restart needed). With "hey robot"
+   off and "robot" on, saying "hey robot" still wakes her as "robot": the "hey robot" card warns, and Test wake words
+   and the voice log name the phrase that fired.
 5. After any "she didn't respond": open Settings › Voice › Voice log right away and take a screenshot.
 6. Typed and spoken "text mom I'm running late": a card for Mom with the message. Then "text mom": Robot asks what
    the text should say; answer it (and once, say "cancel"). Then text someone who is only in Cheogram: "Choose in

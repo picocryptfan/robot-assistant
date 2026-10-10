@@ -181,7 +181,8 @@ fun WakePhrasesScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snackba
                 Text("No wake phrase is on: only the corner swipe opens Robot. “Stop” still works while Robot talks.",
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
-            // "robot" inside "hey robot": saying the longer one fires the shorter one, even with the longer one off.
+            // "robot" inside "hey robot": with "hey robot" off, saying it still fires "robot". A warning on its card in that
+            // case only; a plain note on the shorter one's.
             val inside = WakePhrases.inside(s.wakePhrases)
             for (p in s.wakePhrases) PhraseCard(p, speller, WakePhrases.insideWarning(p, inside), WakePhrases.insideNote(p, inside), onChange = { np ->
                 update(s.copy(wakePhrases = s.wakePhrases.map { if (it.id == p.id) np else it }))
@@ -228,7 +229,7 @@ private fun PhraseCard(p: WakePhrase, speller: KwsSpeller?, insideWarning: Strin
         SegmentedChoice(WakeSensitivity.entries, p.sensitivity, { it.title }) { onChange(p.copy(sensitivity = it)) }
         if (p.words == 1) Text(WakePhrases.SHORT_WARNING, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
         insideWarning?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
-        insideNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary) }
+        insideNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         (speller?.spell(p.text) as? KwsSpeller.Result.Refused)?.let {
             Text("${it.why} Robot doesn't listen for this one.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
         }

@@ -43,19 +43,23 @@ class WakeOverlapTest {
     }
 
     @Test fun theCardsSaySo() {
+        // Both on is fine: saying "hey robot" fires "hey robot" itself. No warning, only a plain note on the shorter one.
         val pairs = WakePhrases.inside(listOf(heyRobot, robot, heyComputer))
-        assertEquals("“robot” also fires when you say “hey robot”. To turn off “hey robot”, turn off “robot” too.", WakePhrases.insideWarning(heyRobot, pairs))
+        assertNull(WakePhrases.insideWarning(heyRobot, pairs))
+        assertEquals("Also hears “hey robot”: while this is on, saying it wakes Robot even with it off.", WakePhrases.insideNote(robot, pairs))
+        // The longer one off while the shorter one is on: it doesn't do what its switch says.
         val off = heyRobot.copy(enabled = false)
-        assertEquals("“hey robot” is off, but saying it still wakes Robot: “robot” is on and fires inside it. Turn off “robot” too.",
-            WakePhrases.insideWarning(off, WakePhrases.inside(listOf(off, robot))))
-        assertEquals("Also fires when you say “hey robot”.", WakePhrases.insideNote(robot, pairs))
+        val offPairs = WakePhrases.inside(listOf(off, robot))
+        assertEquals("“hey robot” is off, but “robot” is on and still hears it. Turn off “robot” too.", WakePhrases.insideWarning(off, offPairs))
+        assertEquals("Also hears “hey robot”: while this is on, saying it wakes Robot even with it off.", WakePhrases.insideNote(robot, offPairs))
         assertNull(WakePhrases.insideWarning(robot, pairs))
         assertNull(WakePhrases.insideWarning(heyComputer, pairs))
         assertNull(WakePhrases.insideNote(heyRobot, pairs))
-        val two = WakePhrases.inside(listOf(WakePhrase(1, "hey there robot"), WakePhrase(2, "robot"), WakePhrase(3, "there robot")))
-        assertEquals("“robot” and “there robot” also fire when you say “hey there robot”. To turn off “hey there robot”, turn off “robot” and “there robot” too.",
-            WakePhrases.insideWarning(WakePhrase(1, "hey there robot"), two))
-        assertEquals("Also fires when you say “hey there robot” or “there robot”.", WakePhrases.insideNote(WakePhrase(2, "robot"), two))
+        val outer = WakePhrase(1, "hey there robot", enabled = false)
+        val two = WakePhrases.inside(listOf(outer, WakePhrase(2, "robot"), WakePhrase(3, "there robot")))
+        assertEquals("“hey there robot” is off, but “robot” and “there robot” are on and still hear it. Turn them off too.", WakePhrases.insideWarning(outer, two))
+        assertEquals("Also hears “hey there robot” and “there robot”: while this is on, saying them wakes Robot even with them off.",
+            WakePhrases.insideNote(WakePhrase(2, "robot"), two))
     }
 
     /**
