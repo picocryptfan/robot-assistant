@@ -347,8 +347,11 @@ mom a text saying hi", "tell mom I'm on my way" and "let Bob know I'll be late" 
 (`core/Texting.kt`): the same preparation, card, Cheogram-pick fallback, approval gate and lock-screen rule as the
 model's call, but no model. The name ends where the longest 1 to 3 words match a contact's name or nickname (exactly
 or as its start); otherwise one word, or two when you typed a capitalised surname; family words like "mom" are names
-of their own. "text mom" asks "What should the text to Mom say?" and takes your next typed or spoken answer ("cancel"
-or "never mind" drops it). "tell me a joke", "message me later", "what's the text on this page", "text recognition" (no
+of their own. "text mom" asks "What should the text to Mom say?" and takes your next typed or spoken answer. A cancel
+drops it, said aloud: "cancel", "never mind", "forget it", "scratch that", "nah", "no", "stop", "annule", "laisse
+faire", "oublie ça", "non merci" and the like, without regard to case, accents or punctuation and with filler around
+them ("Hey robot, cancel.", "No, cancel it please"), but only as the whole answer ("cancel dinner tonight" is a
+message). A spoken answer loses a leading wake phrase ("hey robot, I'm late" texts "I'm late"). "tell me a joke", "message me later", "what's the text on this page", "text recognition" (no
 message, and no contact or family word by that name) and "write a message to Bob about the rent" (a description, not
 the text) stay with the model. Two- or three-word names must be a contact's whole words ("text Dan Can you…" is Dan).
 On the lock screen nothing is read or asked: Robot says to unlock first.
@@ -356,6 +359,24 @@ On the lock screen nothing is read or asked: Robot says to unlock first.
 When lookup_contact finds no one and Cheogram is the texting app, the model is told
 `not_in_phone_contacts_may_be_in_cheogram` and the card offers **Open Cheogram**; when send_text is offered, the system
 prompt says to text people by name even if they aren't in the contacts.
+
+### Ask about this screen
+
+Android shares the screen's text and a screenshot with the assistant only with the corner swipe, only with "Use text
+from screen" on in Settings › Apps › Default apps › Digital assistant app ("Use screenshot" adds the picture), and
+never for some screens (banking apps, private tabs). A wake-word panel gets nothing on Android 17. The chip shows on
+every corner-swipe and wake-word panel, never in Robot's own app or on the lock screen (`core/ScreenAccess.kt`):
+with the screen it attaches it; after a swipe without it, a tap says Android didn't share the screen, names both
+settings and offers **Open settings**; after "hey robot", it says to swipe up from a bottom corner. Assistant setup
+shows both settings ("Screen sharing"). The voice log records, per panel, its show flags and whether the text and the
+screenshot came.
+
+### Organic Maps
+
+maps_search and maps_navigate open `om://search` (`geo:` as a fallback) without "near me", "nearby", "around here",
+a leading "nearest" or "closest", or the French "près de moi", "à proximité", "le plus proche" (`core/Maps.kt`):
+Organic Maps already searches around you and would search those words too. It can only route between coordinates,
+so "directions to X" opens a search for X: the card says "Search Organic Maps for “X”, then tap Route".
 
 ### Survive restarts
 
