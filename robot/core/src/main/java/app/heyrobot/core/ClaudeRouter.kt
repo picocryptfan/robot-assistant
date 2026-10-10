@@ -243,6 +243,22 @@ object ClaudeRouter {
 }
 
 /**
+ * What answers a question before the local model is asked, in this order: Ask Claude's phrases (and Claude mode), then
+ * texting without the model ("text mom I'm running late", [TextCommand]), then the model. A Claude command always wins,
+ * so "ask Claude to text mom …" goes to Claude, never to the texting shortcut. "Thanks Claude" and "read Claude's
+ * answer" are handled before this.
+ */
+object FastPath {
+    enum class Way { CLAUDE, TEXT, MODEL }
+
+    fun of(cmd: ClaudeCommand?, claudeMode: Boolean, attachment: Attachment): Way = when {
+        cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join || (cmd == null && claudeMode) -> Way.CLAUDE
+        cmd == null && attachment == Attachment.NONE -> Way.TEXT
+        else -> Way.MODEL
+    }
+}
+
+/**
  * Strong signals that a question needs Claude, checked before Gemma spends a prefill (escalation trigger a). Kept
  * conservative: a question with a local action in it (a timer, an alarm, a text, a note, the calendar, an app, the maps,
  * the flashlight) never escalates; Robot handles it.

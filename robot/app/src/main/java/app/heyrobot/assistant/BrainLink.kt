@@ -15,6 +15,8 @@ import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.BrainWire
 import app.heyrobot.core.RLog
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
 import app.heyrobot.sys.ModelStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -36,7 +38,21 @@ import java.util.concurrent.atomic.AtomicInteger
 
 // VOICE PROCESS. The client side of BrainProtocol. No LiteRT here: :brain is bound by class name.
 
+/**
+ * One death of :brain is one death, however Android reports it: onServiceDisconnected, then often onBindingDied for the
+ * same failure. Counted once per connection (pure, tested).
+ */
+class DeathOnce {
+    private var counted = false
+
+    @Synchronized fun connected() { counted = false }
+
+    /** True the first time this connection is reported dead. */
+    @Synchronized fun died(): Boolean = (!counted).also { counted = true }
+}
+
 class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
+    private val death = DeathOnce()
     @Volatile private var messenger: Messenger? = null
     private var conn: ServiceConnection? = null
     @Volatile private var connected: CompletableDeferred<Boolean>? = null
@@ -61,23 +77,37 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
         if (conn == null) {
             val c = object : ServiceConnection {
                 override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                    death.connected()
                     messenger = binder?.let { Messenger(it) }
                     connected?.complete(binder != null)
                 }
 
                 override fun onServiceDisconnected(name: ComponentName?) {
                     messenger = null
-                    // Every open request ends: the model and its conversations are gone with the process.
-                    for ((id, ch) in streams) {
-                        ch.trySend(BrainMsg.Error(BrainError.ENGINE, "model process stopped"))
-                        ch.close()
-                        streams.remove(id)
-                    }
+                    endAll()
                     RLog.i("brain_disconnected")
-                    onDeath()
+                    if (death.died()) {
+                        VoiceLog.add(VoiceEvent.BRAIN_DIED)
+                        onDeath()
+                    }
                 }
 
-                override fun onNullBinding(name: ComponentName?) { connected?.complete(false) }
+                // The binding will never connect again (Android gave up restarting :brain). Keeping it would make every
+                // later question wait 15 s for nothing; unbind, so the next connect() binds afresh.
+                override fun onBindingDied(name: ComponentName?) {
+                    RLog.i("brain_binding_died")
+                    drop(this)
+                    connected?.complete(false)
+                    if (death.died()) {
+                        VoiceLog.add(VoiceEvent.BRAIN_DIED)
+                        onDeath()
+                    }
+                }
+
+                override fun onNullBinding(name: ComponentName?) {
+                    drop(this)
+                    connected?.complete(false)
+                }
             }
             // Foreground priority for :brain while the assistant uses it (a background process is throttled hard).
             val flags = Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_INCLUDE_CAPABILITIES
@@ -88,6 +118,32 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
             conn = c
         }
         return withTimeoutOrNull(timeoutMs) { ready.await() } ?: false
+    }
+
+    /** Every open request ends: the model and its conversations are gone with the process. */
+    private fun endAll() {
+        for ((id, ch) in streams) {
+            ch.trySend(BrainMsg.Error(BrainError.ENGINE, "model process stopped"))
+            ch.close()
+            streams.remove(id)
+        }
+    }
+
+    private fun drop(c: ServiceConnection) {
+        messenger = null
+        endAll()
+        if (conn === c) {
+            try { ctx.unbindService(c) } catch (_: Exception) {}
+            conn = null
+        }
+    }
+
+    /** Gives up on request [id] (nothing came back in time): its flow ends now with an error. */
+    fun abandon(id: Int) {
+        streams.remove(id)?.let {
+            it.trySend(BrainMsg.Error(BrainError.ENGINE, "no answer"))
+            it.close()
+        }
     }
 
     /** Sends a request; its events (ending with a terminal one) come out of the returned channel. */

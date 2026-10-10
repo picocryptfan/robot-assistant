@@ -7,6 +7,9 @@ import android.service.voice.VoiceInteractionSession
 import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
 import app.heyrobot.core.RLog
+import app.heyrobot.core.ShowSource
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
 import app.heyrobot.sys.BootCheck
 
 // VOICE PROCESS. The system binds RobotVoiceService while Robot is the digital assistant (from boot,
@@ -42,7 +45,15 @@ class RobotVoiceService : VoiceInteractionService() {
 
     /** API 34+: the system did not show the session although show() returned without an error. */
     override fun onShowSessionFailed(args: Bundle) {
-        RLog.i("show_failed", "src" to args.getString(ARG_SOURCE)?.let { RLog.Code(it) })
+        val src = args.getString(ARG_SOURCE)
+        RLog.i("show_failed", "src" to src?.let { RLog.Code(it) })
+        VoiceLog.add(VoiceEvent.SHOW_FAILED, when (src) {
+            SRC_WAKE -> ShowSource.WAKE
+            SRC_KEYGUARD -> ShowSource.KEYGUARD
+            SRC_APP -> ShowSource.APP
+            SRC_CAPTURE -> ShowSource.CAPTURE
+            else -> ShowSource.SWIPE
+        })
     }
 
     /**

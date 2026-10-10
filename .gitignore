@@ -19,6 +19,7 @@ probe/app/src/main/assets/vad/*.onnx
 # Robot (robot/): third-party binaries and models come from robot/tools/fetch_third_party.sh
 robot/voice/src/main/jniLibs/
 robot/voice/src/main/assets/kws/*.onnx
+robot/voice/src/main/assets/kws/bpe.model
 robot/voice/src/main/assets/vad/*.onnx
 robot/voice/src/main/assets/espeak-ng-data/
 robot/**/*.so

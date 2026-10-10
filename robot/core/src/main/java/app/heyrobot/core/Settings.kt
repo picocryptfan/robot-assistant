@@ -70,16 +70,24 @@ data class RobotSettings(
     val textApp: TextApp? = null,
     /** Where Cheogram texts phone numbers: "+<E.164 digits>@<gateway>" (JMP's is cheogram.com). */
     val smsGateway: String = PhoneNumbers.DEFAULT_GATEWAY,
-    /** For numbers written without a country code (PhoneNumberUtils' default country). */
-    val phoneRegion: String = PhoneNumbers.DEFAULT_REGION,
+    /** For numbers written without a country code (PhoneNumberUtils' default country); null: the phone's own ([regionFor]). */
+    val phoneRegion: String? = null,
     /** Null until the person picks one: Proton Mail when it is installed, else the chooser ([emailAppFor]). */
     val emailApp: EmailApp? = null,
     /** A CalendarContract calendar id for new events; [CalendarPick.AUTO]: Robot picks (CalendarPick.choose). */
     val eventCalendar: Long = CalendarPick.AUTO,
     /** Length of a new event when no end or duration was said. */
     val eventMinutes: Int = 60,
+    /** The wake phrases (Settings › Voice › Wake words); "hey robot" at Medium until the user changes it. */
+    val wakePhrases: List<WakePhrase> = WakePhrases.DEFAULT,
+    /** Settings › Voice › "Hear me while Robot talks". */
+    val bargeIn: BargeIn = BargeIn.ECHO_CANCEL,
+    /** How Robot's voice is played (the echo canceller's reference may depend on it; the barge-in test compares). */
+    val playback: Playback = Playback.ASSISTANT,
+    /** The volume key that stops Robot talking while the panel shows. */
+    val stopKey: StopKey = StopKey.VOLUME_DOWN,
     // Ask Claude (docs/ask-claude.md). Null where the default depends on whether an API key is saved (ClaudeSettings).
-    /** Ask Claude on or off; null: Off until a key is saved. */
+    /** Ask Claude on or off; null: on (the Claude app without a key, the API with one). */
     val claudeEnabled: Boolean? = null,
     /** The Claude app or the API; null: the app without a key, the API with one. */
     val claudeRoute: ClaudeRoute? = null,
@@ -105,11 +113,15 @@ data class RobotSettings(
 
     fun textAppFor(cheogramInstalled: Boolean): TextApp = textApp ?: if (cheogramInstalled) TextApp.CHEOGRAM else TextApp.SMS
 
+    /** The region for numbers without a country code: the one set, else the phone's own ([device]), else none (""). */
+    fun regionFor(device: String?): String = phoneRegion ?: device ?: ""
+
     fun emailAppFor(protonInstalled: Boolean): EmailApp = emailApp ?: if (protonInstalled) EmailApp.PROTON else EmailApp.ASK
 
     val voiceChoice: VoiceChoice get() = VoiceChoice.of(voice)
 
     fun toJson(): JSONObject = JSONObject().apply {
+        put("schema", SCHEMA)
         put("wakeWord", wakeWord)
         put("wakeOnlyWhileCharging", wakeOnlyWhileCharging)
         put("speakReplies", speakReplies.name)
@@ -121,10 +133,16 @@ data class RobotSettings(
         put("approvals", JSONObject().apply { for (t in ToolName.entries) put(t.id, approval(t).name) })
         textApp?.let { put("textApp", it.name) }
         put("smsGateway", smsGateway)
-        put("phoneRegion", phoneRegion)
+        phoneRegion?.let { put("phoneRegion", it) }
         emailApp?.let { put("emailApp", it.name) }
         put("eventCalendar", eventCalendar)
         put("eventMinutes", eventMinutes)
+        put("wakePhrases", org.json.JSONArray().apply {
+            for (p in wakePhrases) put(JSONObject().put("id", p.id).put("text", p.text).put("sensitivity", p.sensitivity.name).put("enabled", p.enabled))
+        })
+        put("bargeIn", bargeIn.name)
+        put("playback", playback.name)
+        put("stopKey", stopKey.name)
         claudeEnabled?.let { put("claudeEnabled", it) }
         claudeRoute?.let { put("claudeRoute", it.name) }
         put("claudeModel", claudeModel)
@@ -138,6 +156,12 @@ data class RobotSettings(
     }
 
     companion object {
+        /**
+         * The settings file's layout. 2 (0.2.3): the phone region is saved only when chosen. Files without it come from
+         * earlier versions, which saved "CA" whether chosen or not: there it reads as unset, so the phone's own applies.
+         * 3 (0.3.0): Ask Claude's settings (absent from older files, so they read as the defaults).
+         */
+        const val SCHEMA = 3
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -189,10 +213,16 @@ data class RobotSettings(
                 approvals = ToolName.entries.associateWith { t -> if (t.internal) DEFAULT_APPROVALS.getValue(t) else enumOr(ap?.optString(t.id), DEFAULT_APPROVALS.getValue(t)) },
                 textApp = enumValues<TextApp>().firstOrNull { it.name == o.optString("textApp") },
                 smsGateway = PhoneNumbers.gateway(o.optString("smsGateway", d.smsGateway)),
-                phoneRegion = PhoneNumbers.region(o.optString("phoneRegion", d.phoneRegion)),
+                // Kept as saved; absent or unreadable means the phone's own region, and so does the "CA" every earlier
+                // version wrote by default.
+                phoneRegion = PhoneNumbers.region(o.optString("phoneRegion", "")).takeUnless { o.optInt("schema", 1) < 2 && it == "CA" },
                 emailApp = enumValues<EmailApp>().firstOrNull { it.name == o.optString("emailApp") },
                 eventCalendar = o.optLong("eventCalendar", d.eventCalendar),
                 eventMinutes = clampEventMinutes(o.optInt("eventMinutes", d.eventMinutes)),
+                wakePhrases = o.optJSONArray("wakePhrases")?.let(::phrases) ?: d.wakePhrases,
+                bargeIn = enumOr(o.optString("bargeIn"), d.bargeIn),
+                playback = enumOr(o.optString("playback"), d.playback),
+                stopKey = enumOr(o.optString("stopKey"), d.stopKey),
                 claudeEnabled = if (o.has("claudeEnabled")) o.optBoolean("claudeEnabled") else null,
                 claudeRoute = enumValues<ClaudeRoute>().firstOrNull { it.name == o.optString("claudeRoute") },
                 claudeModel = ClaudeModel.of(o.optString("claudeModel", d.claudeModel)).id,
@@ -205,5 +235,11 @@ data class RobotSettings(
                 claudeBudgetCents = o.optInt("claudeBudgetCents", d.claudeBudgetCents).coerceIn(0, 100_000),
             )
         }
+
+        /** Saved wake phrases; a damaged entry is dropped, never fatal (an empty list stays empty: the user removed them). */
+        private fun phrases(a: org.json.JSONArray): List<WakePhrase> = WakePhrases.sanitize((0 until a.length()).mapNotNull { i ->
+            val x = a.optJSONObject(i) ?: return@mapNotNull null
+            WakePhrase(x.optInt("id", 0), x.optString("text", ""), enumOr(x.optString("sensitivity"), WakeSensitivity.MEDIUM), x.optBoolean("enabled", true))
+        })
     }
 }

@@ -24,6 +24,8 @@ class ClaudeContextTest {
         // The date and the region go in the first user turn instead.
         assertEquals("[Today is Saturday, 10 October 2026. The user is in Canada.]", ClaudePrompt.context(now, "CA"))
         assertEquals("France", ClaudePrompt.country("fr"))
+        // No region set and none from the phone: none said.
+        assertEquals("[Today is Saturday, 10 October 2026.]", ClaudePrompt.context(now, ""))
     }
 
     @Test fun oneShotSendsTheQuestionOnly() {

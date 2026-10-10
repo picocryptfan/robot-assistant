@@ -98,6 +98,10 @@ data class Executed(
     val spoken: String? = null,
     /** A key for the card's Undo (a note Robot just saved); null: nothing to undo. */
     val undo: String? = null,
+    /** What the model is told instead of [detail] (a fixed code, LookupFallback); null: [detail]. */
+    val forModel: String? = null,
+    /** An app the card offers to open (its package; launch intent only), e.g. Cheogram when no contact matched. */
+    val handOff: String? = null,
 ) {
     /** Content entered the conversation: every later action in it asks first. */
     val content: Boolean get() = !results.isNullOrEmpty()
@@ -134,9 +138,11 @@ data class Card(
     val more: Int = 0,
     /** Claude asked for it: what a read tool finds goes to Claude only after this card's tap. */
     val remote: Boolean = false,
-    /** The buttons' own words when not an action's ("Send" and "Cancel", "Include" and "Leave out"). */
+    /** The buttons' own words when not an action's ("Send" and "Cancel", "Include" and "Start fresh"). */
     val confirm: String? = null,
     val cancel: String? = null,
+    /** An app the card offers to open ([Executed.handOff]). */
+    val handOff: String? = null,
 )
 
 interface TurnView {
@@ -150,6 +156,15 @@ interface TurnView {
     fun paragraphBreak()
     /** Reads out an action's outcome (text-call mode has no follow-up reply); only if replies are spoken. */
     fun say(sentence: String)
+}
+
+/** No event for [gapMs] since the start or the last event: the other side has stopped answering (pure). */
+class StallTimer(private val gapMs: Long, start: Long) {
+    @Volatile private var last = start
+
+    fun event(now: Long) { last = now }
+
+    fun stalled(now: Long): Boolean = now - last >= gapMs
 }
 
 /**
@@ -343,8 +358,9 @@ class TurnRunner(
     private suspend fun decideAndRun(asked: Action, speak: Boolean): Pair<Pair<String, Map<String, Any?>>, Boolean> {
         val id = newId()
         fun done(a: Action, status: ActionStatus, detail: String?, launched: Boolean = false, r: Executed? = null): Pair<Pair<String, Map<String, Any?>>, Boolean> {
-            view.card(Card(id, a.tool, a.describe(), status, detail, a, body = r?.body ?: a.body(), undo = r?.undo, content = r?.content == true, remote = remote))
-            return (a.tool.id to status.toolResponse(detail, r?.results)) to launched
+            view.card(Card(id, a.tool, a.describe(), status, detail, a, body = r?.body ?: a.body(), undo = r?.undo, content = r?.content == true, remote = remote,
+                handOff = r?.handOff))
+            return (a.tool.id to status.toolResponse(r?.forModel ?: detail, r?.results)) to launched
         }
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
         when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, untrusted, remote)) {

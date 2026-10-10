@@ -7,12 +7,18 @@ package app.heyrobot.voice
 // a piece of speech containing such a word is playing, or shortly after (speaker-to-microphone echo plus the
 // keyword model's lag), is taken for Robot's own voice and ignored. The text itself is never kept: only whether a
 // piece was risky and where its audio lies in the output stream.
+//
+// 0.2.3: the same for the wake phrases, now that they are heard while Robot speaks: a piece that says the last word
+// of an enabled phrase ("robot" of "hey robot") makes a wake heard while it plays count as her own voice.
 
 class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private val afterMs: Int = 1_500) {
-    private class Piece(val start: Long, var end: Long)
+    private class Piece(val start: Long, var end: Long, val stop: Boolean, val wake: Boolean)
 
     private val risky = ArrayDeque<Piece>()
     private var open: Piece? = null
+
+    /** The wake phrases' words Robot might say herself ([wakeRegex]); null: none. */
+    @Volatile var wakeWords: Regex? = null
 
     /**
      * A piece of speech starts at output frame [start]; its end is not known until it is synthesised, and its first
@@ -21,8 +27,10 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
     @Synchronized
     fun open(start: Long, text: String) {
         open = null
-        if (!soundsLikeStop(text)) return
-        val p = Piece(start, Long.MAX_VALUE / 4)
+        val stop = soundsLikeStop(text)
+        val wake = wakeWords?.containsMatchIn(text) == true
+        if (!stop && !wake) return
+        val p = Piece(start, Long.MAX_VALUE / 4, stop, wake)
         risky.addLast(p)
         open = p
         while (risky.size > 32) risky.removeFirst()
@@ -50,10 +58,16 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
 
     /** Could a "STOP" heard while the output plays frame [played] be Robot's own voice? */
     @Synchronized
-    fun mayBeEcho(played: Long): Boolean {
+    fun mayBeEcho(played: Long): Boolean = near(played) { it.stop }
+
+    /** Could a wake phrase heard while the output plays frame [played] be Robot's own voice? */
+    @Synchronized
+    fun mayBeWakeEcho(played: Long): Boolean = near(played) { it.wake }
+
+    private fun near(played: Long, kind: (Piece) -> Boolean): Boolean {
         val before = beforeMs.toLong() * rate / 1000
         val after = afterMs.toLong() * rate / 1000
-        return risky.any { played >= it.start - before && played <= it.end + after }
+        return risky.any { kind(it) && played >= it.start - before && played <= it.end + after }
     }
 
     companion object {
@@ -61,5 +75,12 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
         private val STOP_LIKE = Regex("""\bst[a-z]{0,2}p""", RegexOption.IGNORE_CASE)
 
         fun soundsLikeStop(text: String): Boolean = STOP_LIKE.containsMatchIn(text)
+
+        /** Any of [words] as a word of its own ("robot", "Robot's", "robots"), or null for none. */
+        fun wakeRegex(words: List<String>): Regex? {
+            val w = words.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
+            if (w.isEmpty()) return null
+            return Regex("\\b(" + w.joinToString("|") { Regex.escape(it) } + ")('s|s)?\\b", RegexOption.IGNORE_CASE)
+        }
     }
 }

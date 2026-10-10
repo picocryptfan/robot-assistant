@@ -43,11 +43,12 @@ object ClaudePrompt {
             "The user confirms every action on a card, and a text or email only opens as a draft that the user sends. " +
             "Use web search for anything recent or likely to have changed."
 
-    /** "Today is Friday, 10 October 2026. The user is in Canada." First user turn only. */
+    /** "Today is Friday, 10 October 2026. The user is in Canada." First user turn only; no region known, no region said. */
     fun context(now: ZonedDateTime, region: String): String {
         val day = now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.US)
         val date = now.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US))
-        return "[Today is $day, $date. The user is in ${country(region)}.]"
+        val where = country(region).takeIf { it.isNotBlank() }?.let { " The user is in $it." } ?: ""
+        return "[Today is $day, $date.$where]"
     }
 
     /** "CA" → "Canada"; an unknown code is given as it is. */

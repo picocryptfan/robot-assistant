@@ -13,29 +13,58 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
+import app.heyrobot.core.BargeIn
+import app.heyrobot.core.KeywordBuffer
+import app.heyrobot.core.KwsThresholds
+import app.heyrobot.core.ListenWhy
+import app.heyrobot.core.MicKind
+import app.heyrobot.core.PlaybackCode
+import app.heyrobot.core.Playback
 import app.heyrobot.core.RLog
+import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.TtsStop
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.WakeAction
+import app.heyrobot.core.WakeDrop
+import app.heyrobot.core.WakePhrases
 import app.heyrobot.core.writeAtomic
 import app.heyrobot.sys.ClaudeSpendStore
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Cmd
+import app.heyrobot.sys.KwsAssets
+import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsStore
+import app.heyrobot.voice.CapturePolicy
+import app.heyrobot.voice.KeywordInputs
 import app.heyrobot.voice.Listener
 import app.heyrobot.voice.ListenerConfig
 import app.heyrobot.voice.SpeechToText
 import app.heyrobot.voice.TextToSpeech
 import app.heyrobot.voice.VoiceEngines
+import app.heyrobot.voice.VoiceOutput
 import app.heyrobot.voice.WakeWord
 import org.json.JSONObject
 
 // VOICE PROCESS. The controller shared by the assistant service, the session and the panel: settings,
-// the "hey robot" listener (mode A: in the assistant's process, as phase 0 proved), the speech engines
+// the wake-word listener (mode A: in the assistant's process, as phase 0 proved), the speech engines
 // (VoiceEngines: sherpa-onnx once the voice models are downloaded, the placeholders until then).
+//
+// 0.2.3: it owns Robot's speaking state (the TTS listener), so "stop", the capture mode for barge-in and the voice
+// log follow the voice wherever it speaks (the panel, the voice test, the barge-in test); it builds the wake phrases'
+// keyword lines from the settings and hands them to the running listener (no restart); and it writes the voice log.
 
 object VoiceHub {
     private const val DEBOUNCE_MS = 2_000L
     private const val RETRY_MS = 5 * 60_000L
+    /** A listener that died this soon after starting counts as a failed start (the retry backs off after three). */
+    private const val SHORT_RUN_MS = 60_000L
+    /** No frame for this long: the capture stalled without an error, so it is restarted. */
+    private const val STALL_MS = 15_000L
+    /** "Test wake words" ends by itself if the main app stops renewing it. */
+    private const val WAKE_TEST_MS = 15_000L
 
     lateinit var app: Context; private set
     val main = Handler(Looper.getMainLooper())
@@ -50,36 +79,120 @@ object VoiceHub {
     /** Not VoiceHub's monitor: stopListening() holds that while it joins the audio thread that calls onWake. */
     private val wakeLock = Any()
     private var lastStartE = 0L
+    /** Listeners in a row that died within [SHORT_RUN_MS]: the retry waits longer after three. */
+    private var shortRuns = 0
     private var receivers = mutableListOf<BroadcastReceiver>()
     /** Between onReady and onShutdown of the assistant service: only then may the microphone be opened. */
     @Volatile private var active = false
+    /**
+     * The wake phrases' keyword lines (core KeywordBuffer, rebuilt when the settings change) and whether Robot speaks,
+     * shared with every listener, which reads them on each frame.
+     */
+    private val inputs = KeywordInputs()
+    /** Robot's voice (main thread): when it started and stopped, and whether its stop was already logged. */
+    @Volatile private var speaking = false
+    private var speakStartE = 0L
+    private var spokeE = Long.MIN_VALUE / 2
+    private var stopLogged = false
+    /** Until when (elapsedRealtime) "Test wake words" runs. */
+    @Volatile private var wakeTestUntil = 0L
+
+    private val wakeTesting: Boolean get() = SystemClock.elapsedRealtime() < wakeTestUntil
 
     /** Retries a listener that stopped (another app held the mic, a permission came later); cancelled at shutdown. */
     private val retry = object : Runnable {
         override fun run() {
             if (!active) return
-            try { if (wantListening() && listener?.running != true && SystemClock.elapsedRealtime() - lastStartE > RETRY_MS) applyListening("retry") }
-            catch (t: Throwable) { RLog.w("voice_retry", t) }
+            try {
+                val l = listener
+                val now = SystemClock.elapsedRealtime()
+                if (l != null && l.running && now - l.lastFrameAt > STALL_MS) {
+                    // Frames stopped without an error: no wake word can fire. Start again.
+                    RLog.i("listen_stalled")
+                    VoiceLog.add(VoiceEvent.LISTEN_STOP, ListenWhy.STALLED)
+                    stopListening(ListenWhy.STALLED)
+                    applyListening(ListenWhy.RESTART)
+                } else if (wantListening() && l?.running != true && now - lastStartE > (if (shortRuns < 3) 0 else RETRY_MS)) {
+                    applyListening(ListenWhy.RETRY)
+                }
+            } catch (t: Throwable) { RLog.w("voice_retry", t) }
             if (active) worker.postDelayed(this, 60_000)
         }
     }
+
+    /** Re-evaluates the capture mode once the tail after Robot's voice is over. */
+    private val captureCheck = Runnable { updateCapture() }
 
     @Synchronized
     fun init(ctx: Context) {
         if (::app.isInitialized) return
         app = ctx.applicationContext
+        VoiceLog.init(Paths.voiceLog(app))
         worker = Handler(HandlerThread("robot-voice").apply { start() }.looper)
         // Whether a Claude key is saved and today's Claude spend, read off the main thread before the panel needs them.
         Thread({ ClaudeLink.refresh(app); ClaudeSpendStore.current(app) }, "robot-claude-init").apply { isDaemon = true; start() }
         settings = SettingsStore.load(app)
         VoiceEngines.init(app, Paths.dir(app))
-        tts = VoiceEngines.textToSpeech(app).also { it.configure(settings.speechRate, settings.voice) }
+        tts = VoiceEngines.textToSpeech(app).also {
+            it.configure(settings.speechRate, settings.voice)
+            it.setPlayback(settings.playback)
+            it.setWakeWords(WakePhrases.echoWords(settings.wakePhrases))
+            it.setListener(::onSpeakingChanged)
+        }
         stt = VoiceEngines.speechToText(app) { listener }.also { it.configure(settings.livePartials) }
+        worker.post { buildWakeLines() }
     }
 
-    /** From the panel: while Robot speaks, "stop" said aloud ends the reply (when the wake word listens). */
-    fun onSpeakingChanged(speaking: Boolean) {
-        listener?.stopWord = speaking
+    // ------------------------------------------------------------------ Robot's voice
+
+    /** Main thread, from the voice: speaking started or the queue ran empty (or was stopped). */
+    private fun onSpeakingChanged(on: Boolean) {
+        if (on == speaking) return
+        speaking = on
+        val now = SystemClock.elapsedRealtime()
+        // While Robot speaks, "stop" said aloud ends the reply (when the wake word listens).
+        inputs.speaking = on
+        if (on) {
+            speakStartE = now
+            stopLogged = false
+            val phone = (tts as? VoiceOutput)?.usesPhoneVoice == true
+            val pb = if (phone) PlaybackCode.PHONE_VOICE else if (settings.playback == Playback.CALL) PlaybackCode.CALL else PlaybackCode.ASSISTANT
+            // The capture mode changes a moment later on the audio thread: log the one wanted.
+            val l = listener
+            val mic = when {
+                l == null -> MicKind.RECOGNITION
+                settings.bargeIn.wantsCommunication() -> MicKind.COMMUNICATION
+                else -> l.micKind
+            }
+            VoiceLog.add(VoiceEvent.TTS_START, pb, mic)
+        } else {
+            spokeE = now
+            if (!stopLogged) VoiceLog.add(VoiceEvent.TTS_STOP, TtsStop.DONE, (now - speakStartE).toInt())
+            main.removeCallbacks(captureCheck)
+            main.postDelayed(captureCheck, CapturePolicy.TAIL_MS + 50)
+        }
+        updateCapture()
+        PanelController.onSpeakingChanged(on)
+        BargeTest.onSpeaking(on)
+    }
+
+    private fun BargeIn.wantsCommunication() = this != BargeIn.OFF
+
+    /** Stops Robot's voice and logs why (only if she was speaking). Every stop of the voice goes through here. */
+    fun stopVoice(why: TtsStop) {
+        if (tts.isSpeaking && !stopLogged) {
+            stopLogged = true
+            VoiceLog.add(VoiceEvent.TTS_STOP, why, (SystemClock.elapsedRealtime() - speakStartE).toInt())
+        }
+        tts.stop()
+    }
+
+    /** The capture mode for "hear me while Robot talks" (CapturePolicy); the listener applies it between questions. */
+    fun updateCapture() {
+        val l = listener ?: return
+        val since = if (speaking) 0L else SystemClock.elapsedRealtime() - spokeE
+        val want = CapturePolicy.desired(settings.bargeIn, speaking, since, PanelController.shown, BargeTest.active)
+        l.wantCommunication = want == CapturePolicy.Capture.COMMUNICATION
     }
 
     /**
@@ -112,10 +225,21 @@ object VoiceHub {
         }, IntentFilter(Cmd.ACTION), Cmd.PERMISSION)
         // "Listen only while charging".
         register(object : BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) = applyListening("power")
+            override fun onReceive(c: Context, i: Intent) = applyListening(ListenWhy.POWER)
         }, IntentFilter().apply { addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED) }, null)
-        applyListening("ready")
+        // For the voice log only: "she didn't answer" may go with the screen being off.
+        register(object : BroadcastReceiver() {
+            override fun onReceive(c: Context, i: Intent) {
+                val on = i.action == Intent.ACTION_SCREEN_ON
+                VoiceLog.add(VoiceEvent.SCREEN, if (on) 1 else 0)
+                // Nobody looks at "Test wake words" with the screen off: wake words open Robot again.
+                if (!on) wakeTestUntil = 0L
+            }
+        }, IntentFilter().apply { addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF) }, null)
+        applyListening(ListenWhy.READY)
         worker.postDelayed(retry, 60_000)
+        // Robot is the running assistant: keep the speech recognizer setting that keeps it so after a restart.
+        worker.post { try { RecognizerKeeper.check(app, RepairWhen.ASSISTANT_READY) } catch (t: Throwable) { RLog.w("recognizer", t) } }
     }
 
     private fun register(r: BroadcastReceiver, f: IntentFilter, permission: String?) {
@@ -129,7 +253,7 @@ object VoiceHub {
         // First, so nothing (the retry loop, a power or settings broadcast in flight) opens the microphone again.
         active = false
         if (::worker.isInitialized) worker.removeCallbacks(retry)
-        stopListening("shutdown")
+        stopListening(ListenWhy.SHUTDOWN)
         if (::app.isInitialized) writeStatus(false, "Robot isn't the active assistant right now.")
         unregisterAll()
         BrainKeeper.release("shutdown")
@@ -151,34 +275,65 @@ object VoiceHub {
         Assistant.granted(app, Manifest.permission.RECORD_AUDIO) && (!settings.wakeOnlyWhileCharging || charging())
 
     @Synchronized
-    fun applyListening(reason: String) {
+    fun applyListening(why: ListenWhy) {
         val want = wantListening()
         val cur = listener
         if (want && cur != null && cur.running) return writeStatus(true, null)
         if (!want) {
-            stopListening(reason)
-            writeStatus(false, when {
-                !active || RobotVoiceService.instance == null -> "Robot isn't the active assistant right now."
-                !settings.wakeWord -> "The wake word is off in settings."
-                wakeDisabledReason != null -> wakeDisabledReason
-                !Assistant.granted(app, Manifest.permission.RECORD_AUDIO) -> "Robot needs the microphone permission."
+            val reason = when {
+                !active || RobotVoiceService.instance == null -> ListenWhy.NOT_ASSISTANT
+                !settings.wakeWord -> ListenWhy.OFF
+                wakeDisabledReason != null -> ListenWhy.CRASHES
+                !Assistant.granted(app, Manifest.permission.RECORD_AUDIO) -> ListenWhy.NO_PERMISSION
+                else -> ListenWhy.NOT_CHARGING
+            }
+            stopListening(if (why == ListenWhy.SHUTDOWN) why else reason)
+            writeStatus(false, when (reason) {
+                ListenWhy.NOT_ASSISTANT -> "Robot isn't the active assistant right now."
+                ListenWhy.OFF -> "The wake word is off in settings."
+                ListenWhy.CRASHES -> wakeDisabledReason
+                ListenWhy.NO_PERMISSION -> "Robot needs the microphone permission."
                 else -> "Listening only while charging."
             })
             return
         }
-        stopListening(reason)
+        // A listener that ended by itself soon after it started counts against the quick retries.
+        if (cur != null && !cur.running) shortRuns = if (SystemClock.elapsedRealtime() - lastStartE < SHORT_RUN_MS) shortRuns + 1 else 0
+        stopListening(why)
         lastStartE = SystemClock.elapsedRealtime()
-        val l = Listener(app, ListenerConfig(), Paths.marker(app, "kws_init"), ::onWake)
-        val ok = l.start()
+        val l = Listener(app, ListenerConfig(), Paths.marker(app, "kws_init"), inputs, ::onWake)
+        val ok = l.start(why)
+        if (!ok) shortRuns++
         listener = if (ok) l else null
+        updateCapture()
         writeStatus(ok, if (ok) null else "The microphone couldn't be opened (another app may be using it).")
         RLog.i("listen_apply", "ok" to ok)
     }
 
     @Synchronized
-    fun stopListening(reason: String) {
-        listener?.stop()
+    fun stopListening(why: ListenWhy) {
+        listener?.stop(why)
         listener = null
+    }
+
+    /**
+     * Worker thread: the wake phrases' keyword lines from the settings (pure Kotlin spelling, core KeywordBuffer). If
+     * the spelling files can't be read, "hey robot" keeps its known spelling.
+     */
+    private fun buildWakeLines() {
+        val phrases = settings.wakePhrases
+        val sp = KwsAssets.speller(app)
+        val lines = if (sp != null) {
+            val b = KeywordBuffer.wake(phrases, sp)
+            if (b.refused.isNotEmpty()) RLog.i("wake_phrases_refused", "count" to b.refused.size)
+            b.text
+        } else {
+            phrases.filter { it.enabled && WakePhrases.clean(it.text).equals("hey robot", ignoreCase = true) }.joinToString("\n") {
+                KeywordBuffer.line(listOf("▁HE", "Y", "▁RO", "B", "O", "T"), KwsThresholds.wake(it.sensitivity), KeywordBuffer.label(it.id))
+            }
+        }
+        inputs.wakeLines = lines
+        RLog.i("wake_phrases", "enabled" to phrases.count { it.enabled }, "lines" to lines.lines().count { it.isNotBlank() })
     }
 
     private fun writeStatus(listening: Boolean, note: String?) {
@@ -208,26 +363,50 @@ object VoiceHub {
         }
     }
 
-    /** From the audio thread: debounce, then on the main thread. */
-    private fun onWake(keyword: String) {
-        if (keyword == WakeWord.STOP) {
+    /** From the audio thread: "stop", or a wake phrase's label ("W<id>"). */
+    private fun onWake(label: String) {
+        if (label == WakeWord.STOP) {
             main.post {
                 // Ignored when the reply itself says "stop" (or a word like it): that may be Robot's own voice.
-                val act = tts.isSpeaking && tts.stopWordSafe
-                RLog.i("stop_word", "acted" to act)
-                if (act) PanelController.stopSpeaking()
+                val playing = tts.isSpeaking
+                val safe = tts.stopWordSafe
+                if (BargeTest.active) return@post BargeTest.onKeyword(stop = true, safe = safe)
+                if (!playing) return@post VoiceLog.add(VoiceEvent.STOP_HEARD, 0)
+                RLog.i("stop_word", "acted" to safe)
+                if (!safe) return@post VoiceLog.add(VoiceEvent.STOP_SUPPRESSED)
+                VoiceLog.add(VoiceEvent.STOP_HEARD, 1)
+                PanelController.stopSpeaking(TtsStop.STOP_WORD)
             }
             return
         }
+        val id = KeywordBuffer.idOf(label) ?: -1
         val e = SystemClock.elapsedRealtime()
         synchronized(wakeLock) {
-            if (e - lastWakeE < DEBOUNCE_MS) return
+            if (e - lastWakeE < DEBOUNCE_MS) {
+                VoiceLog.add(VoiceEvent.WAKE_IGNORED, WakeDrop.DEBOUNCE, id)
+                return
+            }
             lastWakeE = e
         }
         main.post {
+            if (wakeTesting) return@post VoiceLog.add(VoiceEvent.WAKE, id, -1, WakeAction.TEST.id)
+            val safe = tts.wakeWordSafe
+            if (BargeTest.active) return@post BargeTest.onKeyword(stop = false, safe = safe)
+            if (tts.isSpeaking && !safe) return@post VoiceLog.add(VoiceEvent.WAKE_IGNORED, WakeDrop.ECHO, id)
             RLog.i("wake", "panelShown" to PanelController.shown)
-            if (PanelController.shown) PanelController.onWakeWhileShown()
-            else RobotVoiceService.instance?.show(RobotVoiceService.SRC_WAKE)
+            if (PanelController.shown) {
+                VoiceLog.add(VoiceEvent.WAKE, id, -1, WakeAction.NEW_QUESTION.id)
+                PanelController.onWakeWhileShown()
+                return@post
+            }
+            // A voice still speaking without the panel (the voice test) stops first.
+            stopVoice(TtsStop.WAKE)
+            val vis = RobotVoiceService.instance
+            when {
+                vis == null -> VoiceLog.add(VoiceEvent.WAKE_IGNORED, WakeDrop.NO_ASSISTANT, id)
+                !vis.show(RobotVoiceService.SRC_WAKE) -> VoiceLog.add(VoiceEvent.WAKE_IGNORED, WakeDrop.SHOW_FAILED, id)
+                else -> VoiceLog.add(VoiceEvent.WAKE, id, -1, WakeAction.OPENED.id)
+            }
         }
     }
 
@@ -236,10 +415,16 @@ object VoiceHub {
     private fun command(i: Intent) {
         when (i.getStringExtra("op")) {
             Cmd.SETTINGS -> {
+                val old = settings
                 settings = SettingsStore.load(app)
                 tts.configure(settings.speechRate, settings.voice)
+                tts.setPlayback(settings.playback)
+                tts.setWakeWords(WakePhrases.echoWords(settings.wakePhrases))
                 stt.configure(settings.livePartials)
-                applyListening("settings")
+                // New wake phrases go to the running listener: no restart.
+                if (old.wakePhrases != settings.wakePhrases) worker.post { buildWakeLines() }
+                applyListening(ListenWhy.SETTINGS)
+                updateCapture()
                 PanelController.settingsChanged()
             }
             Cmd.CLAUDE_KEY -> Thread({
@@ -247,12 +432,14 @@ object VoiceHub {
                 main.post { PanelController.claudeKeyChanged() }
             }, "robot-claude-key").apply { isDaemon = true; start() }
             Cmd.SPEAK_TEST -> {
-                tts.stop()
+                stopVoice(TtsStop.TEST)
                 tts.speak("Hi, I'm Robot. This is how I sound.")
             }
             Cmd.VOICE_MODELS -> VoiceEngines.modelsChanged()
             Cmd.VOICE_RESET -> VoiceEngines.reset()
             Cmd.VOICE_BENCH -> VoiceEngines.benchmark()
+            Cmd.BARGE_TEST -> BargeTest.start(i.getBooleanExtra(Cmd.EXTRA_SILENT, false))
+            Cmd.WAKE_TEST -> wakeTestUntil = if (i.getBooleanExtra(Cmd.EXTRA_ON, false)) SystemClock.elapsedRealtime() + WAKE_TEST_MS else 0L
         }
     }
 }

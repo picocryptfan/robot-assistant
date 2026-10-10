@@ -29,7 +29,11 @@ class SettingsTest {
     @Test fun phaseTwoDefaults() {
         val d = RobotSettings()
         assertEquals("cheogram.com", d.smsGateway)
-        assertEquals("CA", d.phoneRegion)
+        // No region of its own: the phone's (SIM, network, language), or none.
+        assertEquals(null, d.phoneRegion)
+        assertEquals("FR", d.regionFor("FR"))
+        assertEquals("", d.regionFor(null))
+        assertEquals("CA", d.copy(phoneRegion = "CA").regionFor("FR"))
         assertEquals(60, d.eventMinutes)
         assertEquals(CalendarPick.AUTO, d.eventCalendar)
         // Cheogram (Proton Mail) when installed, else the SMS app (the chooser); a choice made sticks.
@@ -47,10 +51,21 @@ class SettingsTest {
         val s = RobotSettings.fromJson("""{"textApp":"PIGEON","smsGateway":"not a domain","phoneRegion":"Canada","emailApp":"","eventMinutes":100000}""")
         assertEquals(null, s.textApp)
         assertEquals("cheogram.com", s.smsGateway)
-        assertEquals("CA", s.phoneRegion)
+        assertEquals(null, s.phoneRegion)
         assertEquals(null, s.emailApp)
         assertEquals(ToolCalls.MAX_EVENT_MINUTES, s.eventMinutes)
-        assertEquals("ca", RobotSettings.fromJson("""{"phoneRegion":"ca"}""").phoneRegion.lowercase())
+        // A region saved with this version is kept; "CA" from a file of an earlier version (which always wrote it) is
+        // the old default, so it reads as unset, once: the next save writes the new layout.
+        assertEquals("CA", RobotSettings.fromJson("""{"schema":2,"phoneRegion":"ca"}""").phoneRegion)
+        assertEquals(null, RobotSettings.fromJson("""{"phoneRegion":"CA"}""").phoneRegion)
+        assertEquals("FR", RobotSettings.fromJson("""{"phoneRegion":"FR"}""").phoneRegion)
+        val migrated = RobotSettings.fromJson("""{"phoneRegion":"CA","speechRate":1.5}""")
+        val json = migrated.toJson()
+        assertEquals(RobotSettings.SCHEMA, json.getInt("schema"))
+        assertEquals(false, json.has("phoneRegion"))
+        assertEquals(migrated, RobotSettings.fromJson(json.toString()))
+        // Chosen again after the migration: kept.
+        assertEquals("CA", RobotSettings.fromJson(migrated.copy(phoneRegion = "CA").toJson().toString()).phoneRegion)
     }
 
     @Test fun voiceChoiceDefaultsToKokoroHeart() {
@@ -74,5 +89,26 @@ class SettingsTest {
         assertEquals(2.0f, s.speechRate)
         assertEquals(0, s.keepModelMinutes)
         assertEquals(Approval.ASK, s.approval(ToolName.OPEN_APP))
+    }
+
+    @Test fun voiceReliabilityDefaultsAndRoundTrip() {
+        val d = RobotSettings()
+        assertEquals(listOf(WakePhrase(1, "hey robot", WakeSensitivity.MEDIUM, true)), d.wakePhrases)
+        assertEquals(BargeIn.ECHO_CANCEL, d.bargeIn)
+        assertEquals(Playback.ASSISTANT, d.playback)
+        assertEquals(StopKey.VOLUME_DOWN, d.stopKey)
+        val s = d.copy(
+            wakePhrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(3, "robot", WakeSensitivity.LOW, enabled = false), WakePhrase(4, "hey y'all", WakeSensitivity.HIGH)),
+            bargeIn = BargeIn.ALWAYS, playback = Playback.CALL, stopKey = StopKey.EITHER,
+        )
+        assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        // Settings from 0.2.2 (no such keys) get the defaults; an emptied list stays empty.
+        assertEquals(d, RobotSettings.fromJson("{}"))
+        assertEquals(emptyList<WakePhrase>(), RobotSettings.fromJson(d.copy(wakePhrases = emptyList()).toJson().toString()).wakePhrases)
+        // A damaged or invalid entry is dropped, never fatal.
+        val j = """{"wakePhrases":[{"id":1,"text":"hey robot"},{"id":2,"text":"stop"},"x",{"id":5,"text":"jarvis","sensitivity":"NOPE"}],"bargeIn":"NOPE"}"""
+        val back = RobotSettings.fromJson(j)
+        assertEquals(listOf(WakePhrase(1, "hey robot"), WakePhrase(5, "jarvis", WakeSensitivity.MEDIUM)), back.wakePhrases)
+        assertEquals(BargeIn.ECHO_CANCEL, back.bargeIn)
     }
 }

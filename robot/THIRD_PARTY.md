@@ -47,11 +47,17 @@ files on a computer and checks them.
 | decoder-epoch-12-avg-2-chunk-16-left-64.onnx | `f61ebd3eed3773a44d088d53dfae92dbb6aec4839f4dcaee2d402414741663a3` |
 | joiner-epoch-12-avg-2-chunk-16-left-64.onnx | `0d7a37e749d8055223029318d6ffae82db1dae2d315d0892a68ba5dad17c1d2d` |
 | tokens.txt (in git) | `fd2ded4050a55d2b1578870ba8697d02371980217806b7558bd0a5cc60f3ba53` |
-| keywords.txt (in git, generated) | `41f3df8797744a108b9802dc54adb57616928affe168c58a89aa05780884f0db` |
+| bpe.model (not in git; in the APK since 0.2.3) | `c8a2a0129c4ab8e463164c142f82d25649661b122c8cd0b7aab5c9e80b90ad24` |
+| keywords.txt (in git, generated) | `01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b` |
 
-- `keywords.txt` = `▁HE Y ▁RO B O T @HEY_ROBOT`, written by `tools/make_keywords.py` with sherpa-onnx's
-  `text2token` from `tools/kws-build/bpe.model` (sha256 `c8a2a0129c4ab8e463164c142f82d25649661b122c8cd0b7aab5c9e80b90ad24`,
-  build time only, not in the APK).
+- `bpe.model` is the model's SentencePiece file (a unigram model, despite its name; 244,837 bytes), from the same
+  archive. Since 0.2.3 the app reads it to spell the user's wake phrases on the phone (core `SentencePiece.kt`, pure
+  Kotlin, checked against sherpa-onnx's `text2token` on 115 phrases); `tools/fetch_third_party.sh --install` copies it
+  to `voice/src/main/assets/kws/` and to `tools/kws-build/` (for `tools/make_keywords.py`).
+- `keywords.txt` is one empty line since 0.2.3: sherpa-onnx adds every stream's keywords to this list, and Robot gives
+  each stream its keywords at runtime (the wake phrases from Settings, "STOP" while it speaks). Written by
+  `tools/make_keywords.py`, which also prints "HEY ROBOT" spelled by sherpa-onnx's `text2token`
+  (`▁HE Y ▁RO B O T`, the 0.2.2 keywords.txt).
 - `stop.txt` (in git, generated the same way) = `▁ST O P @STOP`, sha256
   `03d4910c6036aee31953f9146d8d7ab9e78aa68cbc06ce9c242bf45a2d7a5802`: added to the keyword stream only while Robot
   is speaking, so "stop" said aloud ends the reply.

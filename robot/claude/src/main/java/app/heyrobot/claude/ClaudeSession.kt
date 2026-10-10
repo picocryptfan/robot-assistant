@@ -4,8 +4,11 @@ import app.heyrobot.core.ClaudeAttempt
 import app.heyrobot.core.ClaudeBlock
 import app.heyrobot.core.ClaudeCost
 import app.heyrobot.core.ClaudeEffortSetting
+import app.heyrobot.core.ClaudeEnd
+import app.heyrobot.core.ClaudeFail
 import app.heyrobot.core.ClaudeFailure
 import app.heyrobot.core.ClaudeModel
+import app.heyrobot.core.ClaudeModelCode
 import app.heyrobot.core.ClaudePlan
 import app.heyrobot.core.ClaudeUsage
 import app.heyrobot.core.DoneReason
@@ -15,6 +18,8 @@ import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.TokenEstimate
 import app.heyrobot.core.ToolSpec
 import app.heyrobot.core.TurnModel
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
 import com.anthropic.core.JsonValue
 import com.anthropic.core.http.StreamResponse
 import com.anthropic.helpers.BetaMessageAccumulator
@@ -364,6 +369,12 @@ class ClaudeSession(
         var usage: Usage? = null
         var counted = 0.0
         val said = StringBuilder()
+        // The voice log: sent, the first event, and how it ended (numbers and codes only).
+        val t0 = System.currentTimeMillis()
+        var heard = false
+        var ended: Streamed? = null
+        fun end(r: Streamed): Streamed { ended = r; return r }
+        VoiceLog.add(VoiceEvent.CLAUDE_SENT, report.requests, ClaudeModelCode.of(model).id)
         // The request's price so far: added to the report and to today's spend as soon as it is known.
         fun count(u: Usage) {
             val d = ClaudeCost.request(model, u.model, u.total, u.attempts)
@@ -380,11 +391,15 @@ class ClaudeSession(
                 val next: Event? = if (thinking) {
                     events.receiveCatching().getOrNull()
                 } else {
-                    val r = withTimeoutOrNull(idleMs) { events.receiveCatching() } ?: return Streamed.Failure(ClaudeFailure.TIMEOUT, shown)
+                    val r = withTimeoutOrNull(idleMs) { events.receiveCatching() } ?: return end(Streamed.Failure(ClaudeFailure.TIMEOUT, shown))
                     r.getOrNull()
                 }
+                if (!heard && (next is Event.Alive || next is Event.Text || next is Event.Used)) {
+                    heard = true
+                    VoiceLog.add(VoiceEvent.CLAUDE_FIRST, (System.currentTimeMillis() - t0).toInt())
+                }
                 when (next) {
-                    null -> return Streamed.Failure(ClaudeFailure.UNKNOWN, shown)
+                    null -> return end(Streamed.Failure(ClaudeFailure.UNKNOWN, shown))
                     is Event.Alive -> {
                         thinking = next.thinking
                         if (next.started && !shown) listener.thinking()
@@ -399,17 +414,23 @@ class ClaudeSession(
                         said.append(next.delta)
                         listener.text(next.delta)
                     }
-                    is Event.Finished -> return next.ok
+                    is Event.Finished -> return end(next.ok)
                     is Event.Error -> {
                         val f = ClaudeClient.failure(next.t)
                         RLog.w("claude_request", next.t, "failure" to f)
-                        return Streamed.Failure(f, shown)
+                        return end(Streamed.Failure(f, shown))
                     }
                 }
             }
         } finally {
             // Stopped, timed out or done: the stream is closed (off the main thread) and the worker stops reading.
             gone.set(true)
+            val ms = (System.currentTimeMillis() - t0).toInt()
+            when (val e = ended) {
+                is Streamed.Ok -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, ClaudeEnd.of(e.stop).id, said.length)
+                is Streamed.Failure -> VoiceLog.add(VoiceEvent.CLAUDE_FAILED, ClaudeFail.of(e.failure))
+                null -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, ClaudeEnd.STOPPED.id, said.length)
+            }
             withContext(NonCancellable + Dispatchers.IO) {
                 try { open.get()?.close() } catch (_: Throwable) {}
             }

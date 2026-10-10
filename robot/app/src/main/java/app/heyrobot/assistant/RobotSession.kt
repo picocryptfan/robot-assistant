@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.view.KeyEvent
 import android.service.voice.VoiceInteractionSession
 import android.service.voice.VoiceInteractionSessionService
 import android.view.View
@@ -50,6 +51,9 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
 
     /** Called once the session's window exists (it does not yet in onCreate). */
     override fun onCreateContentView(): View {
+        // Volume keys stop Robot talking (Settings › Voice). The dialog's key listener sees them before its views; the
+        // KeyEvent.Callback overrides below are the session's own path for whatever reaches it after.
+        window?.setOnKeyListener { _, keyCode, event -> onVolumeKey(keyCode, event) }
         window?.window?.let { w ->
             // A wake word with the screen off lights it up.
             @Suppress("DEPRECATION")
@@ -115,6 +119,28 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
     override fun onHandleScreenshot(screenshot: Bitmap?) {
         PanelController.onScreenshot(screenshot)
     }
+
+    // ------------------------------------------------------------------ volume keys
+
+    /** The volume key whose press stopped Robot: its repeats and its release are used up too, so the volume stays. */
+    private var swallowed = 0
+
+    private fun onVolumeKey(keyCode: Int, e: KeyEvent): Boolean {
+        if (keyCode != KeyEvent.KEYCODE_VOLUME_DOWN && keyCode != KeyEvent.KEYCODE_VOLUME_UP) return false
+        return when (e.action) {
+            KeyEvent.ACTION_DOWN -> when {
+                e.repeatCount > 0 -> swallowed == keyCode
+                PanelController.volumeKey(keyCode) -> { swallowed = keyCode; true }
+                else -> { swallowed = 0; false }
+            }
+            KeyEvent.ACTION_UP -> (swallowed == keyCode).also { if (it) swallowed = 0 }
+            else -> false
+        }
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean = onVolumeKey(keyCode, event) || super.onKeyDown(keyCode, event)
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean = onVolumeKey(keyCode, event) || super.onKeyUp(keyCode, event)
 
     // ------------------------------------------------------------------ PanelHost
 

@@ -27,8 +27,8 @@ class PeopleTest {
         assertEquals("+33612345678", PhoneNumbers.e164("06 12 34 56 78", "FR", platform))
         // "00" is the international prefix.
         assertEquals("+33612345678", PhoneNumbers.e164("0033 6 12 34 56 78", "CA", platform))
-        // An unknown or bad region is the default, CA.
-        assertEquals("+15145550101", PhoneNumbers.e164("514 555 0101", "Canada", platform))
+        // An unknown or bad region is no region: a national number isn't guessed (no fixed default country).
+        assertNull(PhoneNumbers.e164("514 555 0101", "Canada", platform))
     }
 
     @Test fun withoutThePlatformOnlySafeReadingsRemain() {
@@ -53,7 +53,15 @@ class PeopleTest {
         assertNull(PhoneNumbers.jid("+0123", "cheogram.com"))
         assertEquals("cheogram.com", PhoneNumbers.gateway("https://cheogram.com"))
         assertEquals("FR", PhoneNumbers.region("fr"))
-        assertEquals("CA", PhoneNumbers.region(null))
+        assertEquals(null, PhoneNumbers.region(null))
+        assertEquals(null, PhoneNumbers.region("Canada"))
+        assertEquals("CA", PhoneNumbers.deviceRegion("ca", "us", "FR"))
+        assertEquals("US", PhoneNumbers.deviceRegion("", "us", "FR"))
+        assertEquals("FR", PhoneNumbers.deviceRegion(null, "", "FR"))
+        assertEquals(null, PhoneNumbers.deviceRegion(null, null, ""))
+        // No region: a number with its country code is still read, a national one isn't guessed.
+        assertEquals("+33612345678", PhoneNumbers.e164("+33 6 12 34 56 78", "") { _, _ -> null })
+        assertEquals(null, PhoneNumbers.e164("5145550101", "") { _, _ -> null })
     }
 
     @Test fun addressesAndNumbersAreToldApartFromNames() {

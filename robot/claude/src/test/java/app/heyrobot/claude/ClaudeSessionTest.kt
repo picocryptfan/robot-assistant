@@ -207,6 +207,21 @@ class ClaudeSessionTest {
         assertTrue((0 until tools.length()).none { tools.getJSONObject(it).optString("name") == "web_search" })
     }
 
+    @Test fun theVoiceLogGetsCodesForClaudeRequests() = runBlocking {
+        server.enqueue(textReply("Fine."))
+        server.enqueue(error(429, "rate_limit_error"))
+        val before = app.heyrobot.core.VoiceLog.entries().size
+        session().ask(ask("why is the sky blue"), voicePlan, Heard())
+        session().ask(ask("q"), voicePlan, Heard())
+        val events = app.heyrobot.core.VoiceLog.entries().take(app.heyrobot.core.VoiceLog.entries().size - before).asReversed()
+        assertEquals(listOf(app.heyrobot.core.VoiceEvent.CLAUDE_SENT, app.heyrobot.core.VoiceEvent.CLAUDE_FIRST, app.heyrobot.core.VoiceEvent.CLAUDE_DONE,
+            app.heyrobot.core.VoiceEvent.CLAUDE_SENT, app.heyrobot.core.VoiceEvent.CLAUDE_FAILED), events.map { it.event })
+        assertEquals(app.heyrobot.core.ClaudeEnd.END.id, events[2].b)
+        assertEquals("Fine.".length, events[2].c)
+        assertEquals(app.heyrobot.core.ClaudeFail.RATE_LIMITED.id, events[4].a)
+        assertEquals("Claude failed: rate limited", app.heyrobot.core.VoiceLogText.describe(events[4]))
+    }
+
     @Test fun haikuSearchesWithTheBasicWebSearchTool() = runBlocking {
         server.enqueue(textReply("Hi."))
         server.enqueue(textReply("Hi."))

@@ -76,6 +76,7 @@ import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceChoice
 import app.heyrobot.core.VoiceModelLogic
 import app.heyrobot.sys.AssistantFacts
+import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.toolIcon
 
@@ -196,10 +197,14 @@ private fun VoiceModelsCard(snap: Snapshot, a: AppActions) {
     }
 }
 
-/** Settings › Voice: the voice, its speed, live words, the engines' state and the voice speed test. */
+/**
+ * Settings › Voice: wake words, hearing you while Robot talks (and its test), the volume key, the voice log (0.2.3), then
+ * the voice, its speed, live words, the engines' state and the voice speed test.
+ */
 @Composable
 private fun VoiceSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions) {
     SectionCard("Voice") {
+        VoiceListeningSection(s, snap, update, a)
         if (!snap.voiceReady) {
             StatusRow(Mark.TODO, "Download voice models", "Speech recognition and Robot's voice (${VoiceModelLogic.size(VoiceBundle.STT.bytes + VoiceBundle.KOKORO.bytes)}). Until then you type, and Robot uses the phone's voice.") {
                 FilledTonalButton(onClick = { a.openTab(Tab.MODEL) }) { Text("Open") }
@@ -275,7 +280,11 @@ private fun PeopleSettingsCard(s: RobotSettings, snap: Snapshot, calendars: List
         SettingField("SMS gateway", s.smsGateway, "The domain Cheogram texts numbers through (JMP: cheogram.com).") { v ->
             update(s.copy(smsGateway = PhoneNumbers.gateway(v)))
         }
-        SettingField("Phone region", s.phoneRegion, "Two letters, for numbers without a country code (CA, US, FR…).", caps = true) { v ->
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        // TelephonyManager calls: once per screen, not on every recomposition.
+        val device = remember { app.heyrobot.sys.Phones.deviceRegion(ctx) }
+        SettingField("Phone region", s.phoneRegion ?: "",
+            "Two letters, for numbers without a country code (US, FR, DE…). Empty: this phone's own (${device ?: "unknown"}).", caps = true) { v ->
             update(s.copy(phoneRegion = PhoneNumbers.region(v)))
         }
         Text("Email app", style = MaterialTheme.typography.titleSmall)
@@ -398,7 +407,7 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
 }
 
 @Composable
-private fun ChoiceRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
+internal fun ChoiceRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
@@ -438,7 +447,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
     ) {
         ScreenTitle("Settings")
         SectionCard("Wake word") {
-            SwitchRow("Listen for “hey robot”", "The microphone stays on while Robot listens; nothing is recorded or saved.", s.wakeWord) { update(s.copy(wakeWord = it)) }
+            SwitchRow("Listen for wake words", "“Hey robot” and the others in Settings › Voice › Wake words. The microphone stays on while Robot listens; nothing is recorded or saved.",
+                s.wakeWord) { update(s.copy(wakeWord = it)) }
             SwitchRow("Only while charging", "Saves battery.", s.wakeOnlyWhileCharging, enabled = s.wakeWord) { update(s.copy(wakeOnlyWhileCharging = it)) }
         }
         SectionCard("Spoken replies") {
@@ -451,8 +461,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
                     ) { Text(when (v) { SpeakReplies.VOICE -> "Voice only"; SpeakReplies.ALWAYS -> "Always"; SpeakReplies.NEVER -> "Never" }) }
                 }
             }
-            Text("“Voice only” speaks when you asked by voice or with “hey robot”, not when you typed. " +
-                "Tap the conversation, or say “stop” (when “hey robot” is on), to stop Robot talking.",
+            Text("“Voice only” speaks when you asked by voice or with a wake word, not when you typed. " +
+                "Tap the conversation, press volume down, or say “stop” (when the wake word is on), to stop Robot talking.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         VoiceSettingsCard(s, snap, update, a)
@@ -483,6 +493,9 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         }
         SectionCard("Assistant") {
             NavRow(RIcons.Robot, "Assistant setup", "Check that Robot is your digital assistant", a.openSetup)
+        }
+        SectionCard("Advanced") {
+            NavRow(RIcons.Chip, "ADB fixes", "One-time fixes with a computer, such as staying the assistant after a restart") { a.openPage(Page.AdbFixes) }
         }
         SectionCard("About") {
             Text("Robot ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
@@ -586,6 +599,11 @@ private fun ClaudeSetupCard(f: AssistantFacts, a: AppActions) {
 
 @Composable
 fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit, peopleFirst: Boolean = false) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // Opening Assistant setup checks the speech recognizer setting (Robot repairs it itself with the adb grant).
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { RecognizerKeeper.check(ctx, app.heyrobot.core.RepairWhen.SETUP) }
+    }
     Scaffold(topBar = { BackBar("Assistant setup", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
         Column(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -613,11 +631,20 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                     if (f.recognizerIsRobot) "Set to Robot, so Android keeps Robot as the assistant after a restart."
                     else "Not set to Robot (${if (f.recognizer == "unset") "none set" else "another app"}; ${f.recognizersFound} installed). After a restart Android may turn Robot off: see below.",
                 )
-                StatusRow(if (f.micGranted) Mark.OK else Mark.TODO, "Microphone", if (f.micGranted) "Allowed" else "Needed for “hey robot” and voice questions.")
+                StatusRow(
+                    if (f.recognizerIsRobot) Mark.OK else Mark.WARN,
+                    "Survives restarts",
+                    (if (f.recognizerIsRobot) "Yes: Robot is the speech recognizer, so Android keeps it the assistant."
+                    else "Not yet: Android may turn Robot off at the next restart. A one-time fix with a computer solves it.") +
+                        (if (f.secureSettingsGranted) " Robot keeps this set itself." else ""),
+                ) {
+                    if (!f.recognizerIsRobot || !f.secureSettingsGranted) FilledTonalButton(onClick = { a.openPage(Page.AdbFixes) }) { Text("Fix") }
+                }
+                StatusRow(if (f.micGranted) Mark.OK else Mark.TODO, "Microphone", if (f.micGranted) "Allowed" else "Needed for wake words and voice questions.")
                 StatusRow(if (f.notificationsGranted) Mark.OK else Mark.TODO, "Notifications", if (f.notificationsGranted) "Allowed" else "Needed for the restart reminder.")
                 StatusRow(
                     when (f.listening) { true -> Mark.OK; else -> Mark.TODO },
-                    "Listening for “hey robot”",
+                    "Listening for wake words",
                     when (f.listening) {
                         true -> "Yes"
                         false -> f.listeningNote ?: "No"
@@ -640,10 +667,10 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                 )
                 Text(
                     "Robot checks 3 minutes after every restart. If it was turned off, you get a notification: tap it, choose " +
-                        "“Digital assistant app” and pick Robot again. A one-time fix with a computer (adb) that makes this permanent " +
-                        "comes in a later version.",
+                        "“Digital assistant app” and pick Robot again. To make it stay, use the one-time fix in Settings › Advanced › ADB fixes.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                OutlinedButton(onClick = { a.openPage(Page.AdbFixes) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("ADB fixes") }
             }
             Spacer(Modifier.height(12.dp))
         }

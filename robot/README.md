@@ -1,7 +1,7 @@
 # Robot (phases 1 and 2, Ask Claude)
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
-screen, or by saying "hey robot"; talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
+screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
 TPU answers, streams the reply and reads it aloud. Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
 Mail), keeps and finds notes, reads and adds calendar events and looks up contacts. Everything runs on the phone.
 Since 0.3.0, and only when you ask (or let it), Robot can hand a question to Claude: through the Claude API with your
@@ -16,8 +16,8 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
 | `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM |
-| `:voice` | `:voice` | microphone loop, Silero VAD + "HEY ROBOT" (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test |
-| `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeTurn`), the only code that links the SDK |
+| `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test |
+| `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
 
 - The main app never loads an engine or the Anthropic SDK; `ProcessIsolationTest` checks sources, Gradle files and
@@ -48,7 +48,7 @@ Needs JDK 17+, the Android SDK (platform 36, build-tools 36) and Gradle 8.x.
 ```
 cd robot
 echo "sdk.dir=/path/to/android-sdk" > local.properties
-tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models, espeak-ng subset, SHA-256 checked
+tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models (and its bpe.model), espeak-ng subset, SHA-256 checked
 gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :claude:testReleaseUnitTest :app:testReleaseUnitTest
 gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                             -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
@@ -200,6 +200,157 @@ after the panel opens warms the SDK's classes in the background.
 10. History: the conversation shows the cloud; the cost line follows "Show cost".
 11. Send `adb logcat -s Robot | grep claude_` lines: counts and codes only, never words or the key.
 
+## Voice reliability, wake words and texting (0.2.3)
+
+### Voice log
+
+Settings › Voice › Voice log lists the last 300 things the voice side did, newest first, with relative times, and
+**Copy** puts them on the clipboard as plain text. When Robot doesn't respond, take a screenshot (or Copy) right away:
+the log shows where it stopped. It holds event codes and small numbers only, never words, transcripts, audio or
+names (`core/VoiceLog.kt`: the recording API takes only fixed enums and numbers, and `VoiceLogTest` checks that). It
+lives in the `:voice` process's memory and in `files/robot/voice_log.txt`, so it survives a restart.
+
+It records: wake phrase heard (its number in Settings › Voice › Wake words; sherpa-onnx 1.13.8 reports no score), and
+wakes ignored (within 2 s of the last, Robot saying the word herself, no running assistant, the panel couldn't open);
+"stop" heard, or set aside by EchoGuard; listening started or stopped and why (assistant ready, settings, charger,
+retry, restart after a stall, microphone busy or dead, no permission, not charging), with the microphone mode and
+echo cancellation; another app taking the microphone; the wake-word model ready (and how long it waited for another
+model's load); speech the wake-word gate heard (thinned to one line per 10 s); the question's speech start and end;
+speech to text started, done (characters only), empty, or ended early (nothing said, watchdog, microphone stopped);
+the panel shown (wake word, corner swipe, lock screen, app button) and hidden; the model request sent, first words,
+finished or failed with its code; the model's process stopping; Robot's voice starting and stopping and why (done,
+"stop", tap, volume key, new question, stop button, panel closed, wake word); "panel opened but no question heard";
+"question heard but no reply"; the chime or "Sorry, I didn't catch that."; screen on and off; the barge-in test.
+
+Silent drops found and fixed while adding it: an empty transcription did nothing (now: notice plus "Sorry, I didn't
+catch that." or a chime); an empty model answer left an empty bubble; a model that never answered left "Thinking…"
+for good (now given up after 60 s without any event); a `:brain` binding that Android had given up on was kept, so
+every later question waited 15 s and failed until the voice process restarted; a capture that stopped delivering
+audio without an error was never restarted (now after 15 s); a listener that died right after starting waited up to
+5 minutes for its retry (now 60 s, three times); the listener's audio loop waited behind another model's load before
+reading any audio, so a question starting then got nothing for seconds (the wake-word model now loads on its own
+thread); the voice's prewarm could queue its load ahead of the question's model; a voice whose audio track couldn't
+be created dropped the sentence silently (now the phone's voice says it).
+
+### Hearing you while Robot talks
+
+The microphone used the speech recognition mode, which has no echo cancellation: while Robot spoke, her own voice
+drowned "stop" and the wake word. Settings › Voice › **Hear me while Robot talks**:
+
+- **Echo cancellation** (default): when Robot starts speaking the capture moves to the call mode
+  (`VOICE_COMMUNICATION`) with the platform's `AcousticEchoCanceler` and `NoiseSuppressor` on its session (when
+  `isAvailable()`), and back to speech recognition 0.8 s after she stops. It never switches in the middle of a
+  question. The new `AudioRecord` has the same format; the audio ring and sample counts carry on; the keyword stream
+  starts afresh after the few-ms gap, keeping its 1 s pre-roll. The switch back waits (up to 8 s) while the wake gate
+  hears speech, so a follow-up "hey robot" isn't cut in two (`CapturePolicy`, tested). Each old capture's recording
+  callback is unregistered before it is released.
+- **Off**: as before.
+- **Always echo cancellation**: the call mode the whole time the panel is open (no switching; questions a little less
+  accurate).
+
+While echo cancellation is on, "stop" uses a slightly lower threshold (0.20 instead of 0.25); EchoGuard still sets
+aside a "stop" heard while Robot says a word like it, and now also a wake phrase heard while she says its word
+("robot"). All keyword thresholds live in `core/WakePhrases.kt` (`KwsThresholds`).
+
+**Robot's voice plays as**: *Assistant audio* (default, as before) or *Call audio* (the phone in communication mode
+with the loudspeaker as the call device while Robot speaks, as calling apps do; it uses the call volume and needs
+`MODIFY_AUDIO_SETTINGS`, a normal permission). On Pixel the echo canceller runs in the audio DSP and takes everything
+the speaker plays as its reference, so no playback change should be needed; this could not be checked on a phone
+yet, which is what the barge-in test is for.
+
+**Barge-in test** (same screen): Robot reads a fixed 20-second paragraph with no word like "stop" and no wake phrase;
+say "stop" or a wake phrase at any point. The result says whether she heard you, when, and how soon she went quiet;
+**Silent run** plays the paragraph while nobody speaks and counts false "stop"s and wakes. Run both in each mode.
+
+**Volume key**: while Robot speaks and the panel is on screen, volume down (or either key, or off: Settings › Voice)
+stops her and doesn't change the volume. The panel's window handles it (its dialog's key listener, and the
+session's `onKeyDown`/`onKeyUp`, which `VoiceInteractionSession` implements as a `KeyEvent.Callback` on API 34 to 36).
+With the screen off or the panel closed, the key is the system's as always.
+
+### Wake words
+
+Settings › Voice › Wake words: a list of phrases (default "hey robot"), each with Add, Remove, on/off and a
+sensitivity. A phrase is 1 to 4 words of letters A to Z, spaces and apostrophes, at most 24 characters; "stop" is
+reserved; up to 8 phrases. A single word shows "Short words like 'robot' trigger by accident more often." and starts
+at Low.
+
+| Sensitivity | threshold | boost | for |
+|---|---|---|---|
+| Low | 0.35 | 1.0 | single words, noisy rooms |
+| Medium | 0.25 | 1.5 | the setting "hey robot" was tested with (10 of 10 close, 5 of 5 across the room, no false wake in 2 h) |
+| High | 0.18 | 2.0 | a quiet voice or a far phone; more accidental wakes |
+
+The keyword model needs each phrase as its SentencePiece tokens. `kws/bpe.model` (a unigram model, despite the name)
+is now in the APK, and `core/SentencePiece.kt` reads its protobuf by hand and runs the unigram Viterbi in pure Kotlin,
+so the main app checks phrases without sherpa-onnx. `SentencePieceTest` compares it with sherpa-onnx's `text2token`
+on 115 phrases (`core/src/test/resources/kws/text2token-reference.tsv`), exactly. A phrase whose tokens aren't all in
+`tokens.txt` is refused. The `:voice` process builds one line per enabled phrase, `<tokens> :<boost> #<threshold>
+@W<id>`, and gives them (plus `STOP` while Robot speaks) to `KeywordSpotter.createStream`; the spotter's own
+`keywords.txt` is one empty line, because sherpa-onnx adds it to every stream. A changed list starts a new stream
+without a restart. Any enabled phrase opens the panel exactly like "hey robot", question audio included.
+
+**Test wake words** (same screen): while it shows, Robot lists each phrase it hears, with the time, instead of opening.
+It ends when the screen is no longer visible (the app in the background, or the screen off).
+
+### Texting without the model
+
+"text mom I'm running late" (typed or spoken), "message Sarah: see you at 5", "send a text to Bob saying hi", "send
+mom a text saying hi", "tell mom I'm on my way" and "let Bob know I'll be late" become send_text directly
+(`core/Texting.kt`): the same preparation, card, Cheogram-pick fallback, approval gate and lock-screen rule as the
+model's call, but no model. The name ends where the longest 1 to 3 words match a contact's name or nickname (exactly
+or as its start); otherwise one word, or two when you typed a capitalised surname; family words like "mom" are names
+of their own. "text mom" asks "What should the text to Mom say?" and takes your next typed or spoken answer ("cancel"
+or "never mind" drops it). "tell me a joke", "message me later", "what's the text on this page", "text recognition" (no
+message, and no contact or family word by that name) and "write a message to Bob about the rent" (a description, not
+the text) stay with the model. Two- or three-word names must be a contact's whole words ("text Dan Can you…" is Dan).
+On the lock screen nothing is read or asked: Robot says to unlock first.
+
+When lookup_contact finds no one and Cheogram is the texting app, the model is told
+`not_in_phone_contacts_may_be_in_cheogram` and the card offers **Open Cheogram**; when send_text is offered, the system
+prompt says to text people by name even if they aren't in the contacts.
+
+### Survive restarts
+
+At every boot Android keeps a non-system assistant only if Settings.Secure `voice_recognition_service` names an
+installed recognizer (`VoiceInteractionManagerService.initForUser`); empty, it picks a system app and Robot is off.
+GrapheneOS has no screen to set it. Settings › Advanced › **ADB fixes** lists the one-time commands with their status
+and a Copy button. With a computer (Settings › About phone, tap Build number seven times; Developer options, USB
+debugging on):
+
+```
+adb shell settings put secure voice_recognition_service app.heyrobot/.assistant.RobotRecognitionService
+adb shell pm grant app.heyrobot android.permission.WRITE_SECURE_SETTINGS
+```
+
+Turn USB debugging off afterwards. With the second one, Robot keeps that key set itself (only that key: the assistant
+itself belongs to RoleManager): at boot (also before the first unlock; the boot receiver is direct-boot aware), when
+the app or Assistant setup opens, and when the assistant starts, if it holds the assistant role and no other installed
+recognizer is set. Each write goes to the voice log. Assistant setup shows "Survives restarts".
+
+The phone region for numbers without a country code now comes from the SIM, then the network, then the language
+setting, unless one is set in Settings. Earlier versions saved "CA" whether it was chosen or not, so a settings file
+from before 0.2.3 with "CA" reads as unset (once: the settings file now carries a schema version); any other saved
+region is kept.
+
+### On the phone (0.2.3)
+
+1. Settings › Voice › Barge-in test with "Echo cancellation": run it and say "stop" a few seconds in; then the wake
+   phrase. Then Silent run. Repeat with "Off" and "Always echo cancellation", then with "Call audio". Note which mode
+   hears you and the false counts.
+2. Ask something with a long spoken answer; say "stop" while Robot talks; then "hey robot" while she talks (a new
+   question should start).
+3. While Robot talks with the panel open, press volume down: she stops and the volume doesn't change. With the panel
+   closed (or the screen off), volume down changes the volume as usual.
+4. Settings › Voice › Wake words: add "robot" (see the warning and Low), and "hey computer". Open Test wake words and
+   say each one, near and across the room; then say other words to see what triggers by accident. Turn "hey robot"
+   off and check it no longer wakes Robot (no restart needed).
+5. After any "she didn't respond": open Settings › Voice › Voice log right away and take a screenshot.
+6. Typed and spoken "text mom I'm running late": a card for Mom with the message. Then "text mom": Robot asks what
+   the text should say; answer it (and once, say "cancel"). Then text someone who is only in Cheogram: "Choose in
+   Cheogram". Ask "look up Bob" for someone only in Cheogram: the card offers Open Cheogram.
+7. Run the two ADB fixes, restart the phone: Robot is still the assistant, and the voice log shows no write (already
+   set). Settings › Advanced › ADB fixes shows both done.
+
 ## People, notes and calendar (0.2.0; review fixes 0.2.1; Cheogram-only people 0.2.2)
 
 Seven tools (`docs/phase-2.md`). The model passes names and words ("Mom", "Tuesday at 3"); the app resolves them,
@@ -220,7 +371,7 @@ card says "Opened a draft in Cheogram: nothing is sent until Send is pressed the
 - **Texts.** Cheogram gets `xmpp:+<E.164>@<gateway>?message;body=…` (gateway `cheogram.com`, JMP's, by default), with
   the body encoded twice because Cheogram decodes it twice (`HandOff.kt`; `HandOffTest` replays Cheogram's exact
   steps). A contact's Jabber/XMPP address (ContactsContract Im) is texted directly. Numbers are normalised with
-  `PhoneNumberUtils.formatNumberToE164` and the phone region (default CA). Without Cheogram, or by choice, the SMS
+  `PhoneNumberUtils.formatNumberToE164` and the phone region (the phone's own by default). Without Cheogram, or by choice, the SMS
   app opens with `smsto:` and `sms_body`. With both Cheogram builds installed, the F-Droid build
   (`com.cheogram.android`) is always used. A JID with a character Cheogram would cut at (`" & ' / : < > ? # %`) is
   refused, and a contact's XMPP address is offered before its numbers, never instead of them.
@@ -359,7 +510,7 @@ stays the only network permission; no accessibility service; nothing shaped like
 - Text to speech: Kokoro v1.0 fp32, voice "Heart" (`af_heart`) by default, "Siwis" (`ff_siwis`, French) for later;
   Kitten nano 0.8 fp32 as the small fast voice; the phone's own voice as the fallback (`VoiceOutput`). The first
   piece of a reply is short (5+ words to the first comma, or 12 words) so audio starts fast; the rest goes
-  sentence by sentence into a streaming AudioTrack. Tap the conversation, or say "stop", while it speaks: the rest of
+  sentence by sentence into a streaming AudioTrack. Tap the conversation, press volume down, or say "stop", while it speaks: the rest of
   that reply is still shown but not spoken (the next question speaks again). Stop, closing the panel or "hey robot"
   during an answer silence it at once, and a stopped reply's unfinished last sentence is never read out.
 - sherpa-onnx calls the voice back from native code through `invoke([F)Ljava/lang/Integer;`, which a Kotlin lambda

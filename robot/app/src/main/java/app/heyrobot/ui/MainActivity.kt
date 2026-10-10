@@ -37,8 +37,10 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.core.Approval
+import app.heyrobot.core.BargeTestResult
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.ModelStatus
+import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.TextApp
@@ -57,6 +59,7 @@ import app.heyrobot.sys.ClaudeKeyFiles
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
+import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsStore
@@ -84,6 +87,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) route.value = routeOf(intent)
         setContent { RobotTheme { RobotAppUi(this) } }
+        // The speech recognizer setting that keeps Robot the assistant at the next restart (only with the adb grant).
+        val app = applicationContext
+        Thread({
+            try {
+                RecognizerKeeper.flushPending(app)
+                RecognizerKeeper.check(app, RepairWhen.APP)
+            } catch (_: Throwable) {}
+        }, "robot-recognizer").start()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -113,6 +124,12 @@ sealed class Page {
     data class Conversation(val id: String) : Page()
     /** [id] null: a new note (until its first save gives it one). */
     data class NoteEdit(val id: String?) : Page()
+    /** Settings › Voice (0.2.3). */
+    data object WakePhrases : Page()
+    data object WakeTest : Page()
+    data object VoiceLog : Page()
+    /** Settings › Advanced › ADB fixes. */
+    data object AdbFixes : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -123,6 +140,10 @@ sealed class Page {
                     is Setup -> if (p.people) "setup:1" else "setup:0"
                     is Conversation -> "conv:${p.id}"
                     is NoteEdit -> "note:${p.id.orEmpty()}"
+                    WakePhrases -> "wake"
+                    WakeTest -> "waketest"
+                    VoiceLog -> "voicelog"
+                    AdbFixes -> "adbfixes"
                 }
             },
             restore = { v ->
@@ -130,6 +151,10 @@ sealed class Page {
                     v.startsWith("setup:") -> Setup(v == "setup:1")
                     v.startsWith("conv:") -> Conversation(v.removePrefix("conv:"))
                     v.startsWith("note:") -> NoteEdit(v.removePrefix("note:").ifEmpty { null })
+                    v == "wake" -> WakePhrases
+                    v == "waketest" -> WakeTest
+                    v == "voicelog" -> VoiceLog
+                    v == "adbfixes" -> AdbFixes
                     else -> null
                 }
             },
@@ -150,6 +175,8 @@ data class Snapshot(
     /** What the voice process last reported about its speech engines, and the last voice speed test. */
     val engines: VoiceEngineStatus? = null,
     val bench: VoiceBench? = null,
+    /** The last barge-in test (Settings › Voice). */
+    val bargeTest: BargeTestResult? = null,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
 
@@ -197,6 +224,7 @@ fun RobotAppUi(activity: MainActivity) {
                     voice = VoiceBundle.entries.map { VoiceModelStore.snapshot(ctx, it) },
                     engines = VoiceEngineStatus.fromJson(readOrNull(Paths.voiceEngines(ctx))),
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
+                    bargeTest = readBargeTest(ctx),
                 )
             }
             // A finished voice download is checked and installed right away, one bundle at a time.
@@ -340,6 +368,11 @@ fun RobotAppUi(activity: MainActivity) {
                 withContext(Dispatchers.Main) { say("The Claude key was deleted.") }
             }
         },
+        openPage = { page = it },
+        bargeTest = { silent ->
+            if (snap.facts?.active != true) say("Make Robot your digital assistant first: the test runs in the assistant.")
+            else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putBoolean(Cmd.EXTRA_SILENT, silent) })
+        },
     )
 
     /** Turning a people or calendar feature on (from Off) asks for what it needs, if it isn't allowed yet. */
@@ -363,6 +396,10 @@ fun RobotAppUi(activity: MainActivity) {
         // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
         is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
             onCreated = { id -> if (page == Page.NoteEdit(null)) page = Page.NoteEdit(id) }, onBack = { page = null; notesTick++ })
+        Page.WakePhrases -> WakePhrasesScreen(settings, ::updateSettings, snackbar, onBack = { page = null })
+        Page.WakeTest -> WakeTestScreen(settings, snap, onBack = { page = null })
+        Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = { page = null })
+        Page.AdbFixes -> AdbFixesScreen(snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -418,4 +455,6 @@ class AppActions(
     /** Ask Claude's key: pasted in a window of the assistant's process (never through this one); deleted here. */
     val addClaudeKey: () -> Unit,
     val deleteClaudeKey: () -> Unit,
+    val openPage: (Page) -> Unit,
+    val bargeTest: (Boolean) -> Unit,
 )

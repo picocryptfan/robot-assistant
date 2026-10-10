@@ -150,6 +150,10 @@ class ProcessIsolationTest {
         val meta = rec.getElementsByTagName("meta-data").item(0) as Element
         assertEquals("android.speech", meta.getAttributeNS(ns, "name"))
         assertEquals("@xml/recognition_service", meta.getAttributeNS(ns, "resource"))
+        // The boot receiver also gets LOCKED_BOOT_COMPLETED (direct-boot aware, 0.2.3) to check the recognizer setting.
+        assertEquals("true", c("app.heyrobot.boot.BootReceiver").getAttributeNS(ns, "directBootAware"))
+        val bootActions = c("app.heyrobot.boot.BootReceiver").getElementsByTagName("action").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
+        assertEquals(setOf("android.intent.action.BOOT_COMPLETED", "android.intent.action.LOCKED_BOOT_COMPLETED"), bootActions)
         // Every Robot component class exists in the sources.
         for (n in ourComps) assertTrue(n, ours.values.any { Regex("""class ${n.substringAfterLast('.')}\b""").containsMatchIn(code(it)) })
     }
@@ -172,6 +176,10 @@ class ProcessIsolationTest {
             "android.permission.INTERNET", "android.permission.RECORD_AUDIO", "android.permission.POST_NOTIFICATIONS",
             "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.VIBRATE", "com.android.alarm.permission.SET_ALARM",
             "android.permission.USE_EXACT_ALARM",
+            // 0.2.3: "Call audio" playback sets the communication mode while Robot speaks.
+            "android.permission.MODIFY_AUDIO_SETTINGS",
+            // 0.2.3: only ever granted with adb (development permission); Robot then keeps voice_recognition_service set.
+            "android.permission.WRITE_SECURE_SETTINGS",
             // Phase 2: asked for at runtime by the main app only.
             "android.permission.READ_CONTACTS", "android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR",
         ), used)
@@ -240,9 +248,11 @@ class ProcessIsolationTest {
     @Test fun keywordsFileIsTokenisedWithTheModelsTokens() {
         val assets = File(main("voice"), "assets")
         val tokens = File(assets, "kws/tokens.txt").readLines().map { it.substringBefore(' ') }.toSet()
-        val line = File(assets, "kws/keywords.txt").readText().trim()
-        assertEquals("▁HE Y ▁RO B O T @HEY_ROBOT", line)
-        line.substringBefore(" @").split(' ').forEach { assertTrue("token $it not in tokens.txt", it in tokens) }
+        // The spotter's own list is one empty line (0.2.3): every stream gets the wake phrases from Settings at runtime,
+        // so a phrase the user removed is never spotted. Not 0 bytes (sherpa's asset reader would take it for a C string).
+        assertEquals("\n", File(assets, "kws/keywords.txt").readText())
+        // The phrases are spelled on the phone with the model's SentencePiece file (core SentencePieceTest).
+        assertTrue("kws/bpe.model missing: run tools/fetch_third_party.sh --install", File(assets, "kws/bpe.model").isFile)
         // "STOP" while Robot speaks (WakeWord adds it to the stream; tools/make_keywords.py writes it).
         val stop = File(assets, "kws/stop.txt").readText().trim()
         assertEquals("▁ST O P @STOP", stop)

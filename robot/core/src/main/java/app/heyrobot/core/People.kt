@@ -184,7 +184,6 @@ object Addresses {
 }
 
 object PhoneNumbers {
-    const val DEFAULT_REGION = "CA"
     const val DEFAULT_GATEWAY = "cheogram.com"
     /** The North American Numbering Plan's regions: their 10-digit numbers are +1 numbers. */
     private val NANP = setOf("US", "CA", "AG", "AI", "AS", "BB", "BM", "BS", "DM", "DO", "GD", "GU", "JM", "KN", "KY", "LC",
@@ -202,8 +201,14 @@ object PhoneNumbers {
 
     fun isE164(s: String): Boolean = Regex("""^\+[1-9]\d{6,14}$""").matches(s)
 
-    /** A two-letter region (ISO 3166), upper case; anything else is [DEFAULT_REGION]. */
-    fun region(s: String?): String = s?.trim()?.uppercase(Locale.ROOT)?.takeIf { Regex("^[A-Z]{2}$").matches(it) } ?: DEFAULT_REGION
+    /** A two-letter region (ISO 3166), upper case, or null. */
+    fun region(s: String?): String? = s?.trim()?.uppercase(Locale.ROOT)?.takeIf { Regex("^[A-Z]{2}$").matches(it) }
+
+    /**
+     * The phone's own region, for numbers written without a country code when none is set: the SIM's country, else
+     * the mobile network's, else the language setting's; null if none says.
+     */
+    fun deviceRegion(sim: String?, network: String?, locale: String?): String? = region(sim) ?: region(network) ?: region(locale)
 
     /** A plain domain name ("cheogram.com"), lower case; anything else is [DEFAULT_GATEWAY]. */
     fun gateway(s: String?): String = s?.trim()?.lowercase(Locale.ROOT)
@@ -216,7 +221,8 @@ object PhoneNumbers {
      * else is null (the card says the number couldn't be read rather than guess).
      */
     fun e164(raw: String, region: String, platform: (String, String) -> String?): String? {
-        val r = region(region)
+        // No region known: only numbers written with their country code are read.
+        val r = region(region) ?: ""
         val t = normalize(raw)
         if (!Addresses.isPhone(t)) return null
         val plain = if (t.startsWith("00")) "+" + t.substring(2) else t

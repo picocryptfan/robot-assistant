@@ -14,6 +14,7 @@ import android.provider.ContactsContract.CommonDataKinds.Phone
 import android.provider.ContactsContract.Data
 import android.provider.Telephony
 import android.telephony.PhoneNumberUtils
+import android.telephony.TelephonyManager
 import app.heyrobot.core.ContactCard
 import app.heyrobot.core.ContactMatch
 import app.heyrobot.core.ContactName
@@ -104,7 +105,17 @@ object Phones {
 
     /** "+1 514-555-0101" for the card (PhoneNumberUtils keeps the international form of an E.164 number). */
     fun display(e164: String, region: String): String =
-        try { PhoneNumberUtils.formatNumber(e164, PhoneNumbers.region(region)) } catch (_: Exception) { null } ?: e164
+        try { PhoneNumberUtils.formatNumber(e164, PhoneNumbers.region(region) ?: "") } catch (_: Exception) { null } ?: e164
+
+    /** The phone's own region (SIM, mobile network, then the language setting), for when none is set. */
+    fun deviceRegion(ctx: Context): String? {
+        val tm = try { ctx.getSystemService(TelephonyManager::class.java) } catch (_: Throwable) { null }
+        return PhoneNumbers.deviceRegion(
+            try { tm?.simCountryIso } catch (_: Throwable) { null },
+            try { tm?.networkCountryIso } catch (_: Throwable) { null },
+            java.util.Locale.getDefault().country,
+        )
+    }
 }
 
 /** The apps Robot hands drafts to. Package visibility comes from the manifest's <queries> (no QUERY_ALL_PACKAGES). */

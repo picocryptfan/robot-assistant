@@ -25,6 +25,11 @@ object Paths {
     /** Written by the voice process: its speech engines' states and the voice speed test (core VoiceStatus.kt). */
     fun voiceEngines(ctx: Context) = File(dir(ctx), VoiceFiles.ENGINES)
     fun voiceBench(ctx: Context) = File(dir(ctx), VoiceFiles.BENCH)
+    /** The voice log (core VoiceLog.kt): written by the voice process, read by Settings › Voice › Voice log. */
+    fun voiceLog(ctx: Context) = File(dir(ctx), VoiceFiles.LOG)
+    /** The main process's own few voice-log events (the recognizer repair): one writer per file. */
+    fun voiceLogMain(ctx: Context) = File(dir(ctx), VoiceFiles.LOG_MAIN)
+    fun bargeTest(ctx: Context) = File(dir(ctx), VoiceFiles.BARGE)
 
     fun bootCount(ctx: Context): Int = try {
         Settings.Global.getInt(ctx.contentResolver, Settings.Global.BOOT_COUNT, -1)
@@ -88,6 +93,15 @@ object Cmd {
     const val VOICE_BENCH = "voice_bench"
     /** The Claude API key was deleted: the voice process drops its client and ends Claude mode. */
     const val CLAUDE_KEY = "claude_key"
+    /** "Barge-in test" (extra [EXTRA_SILENT]): results come back in Paths.bargeTest. */
+    const val BARGE_TEST = "barge_test"
+    const val EXTRA_SILENT = "silent"
+    /**
+     * "Test wake words" is open (extra [EXTRA_ON]): wake words are logged, not acted on. Sent again every few seconds
+     * while the screen shows; the voice process ends the test by itself when that stops.
+     */
+    const val WAKE_TEST = "wake_test"
+    const val EXTRA_ON = "on"
 
     fun send(ctx: Context, op: String, extras: Bundle = Bundle()) {
         try {
