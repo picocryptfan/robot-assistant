@@ -9,10 +9,13 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioRecordingConfiguration
 import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AudioEffect
 import android.media.audiofx.NoiseSuppressor
 import android.os.Process
 import android.os.SystemClock
 import app.heyrobot.core.AecState
+import app.heyrobot.core.CaptureFx
+import app.heyrobot.core.KeywordBuffer
 import app.heyrobot.core.KwsThresholds
 import app.heyrobot.core.ListenWhy
 import app.heyrobot.core.MicKind
@@ -37,6 +40,9 @@ import kotlin.math.max
 // to speech recognition after (CapturePolicy decides, never mid-question). The new AudioRecord has the same format,
 // the ring and sample counts simply go on, and the keyword stream starts afresh after the few-ms gap. The wake-word
 // model loads on a thread of its own, so audio flows to a question even while another model's load holds it up.
+//
+// 0.3.1: the voice log gets every keyword the spotter fires, before any check (KWS_HIT), what each capture really
+// got (CAPTURE_INFO) and, for each stretch of Robot talking, what the microphone heard of her (SPEAK_RUN).
 
 /** MediaRecorder.AudioSource ids. */
 enum class MicSource(val id: Int) { VOICE_RECOGNITION(6), MIC(1), VOICE_COMMUNICATION(7) }
@@ -122,6 +128,8 @@ class Listener(
     /** The call mode failed to open: not tried again before this (elapsedRealtime). */
     private var commRefusedUntil = 0L
     private val gateLog = GateSpeechLog()
+    /** The current stretch of Robot talking, for SPEAK_RUN (audio thread). */
+    private val speakRun = SpeakRun()
 
     override fun addSink(sink: (FloatArray) -> Unit) { sinks.addIfAbsent(sink) }
     override fun removeSink(sink: (FloatArray) -> Unit) {
@@ -191,6 +199,7 @@ class Listener(
         if (config.wakeWord) loadWakeWord()
         thread = Thread({ loop(record) }, "robot-listen").also { it.start() }
         if (config.wakeWord) VoiceLog.add(VoiceEvent.LISTEN_START, why, micKind, aec.id)
+        captureInfo(record)
         return true
     }
 
@@ -264,6 +273,34 @@ class Listener(
         return state
     }
 
+    /**
+     * The voice log's CAPTURE_INFO for [r], just opened: whether Android silences it, the microphone's own sample rate,
+     * and the effects on it. Robot's own effects are read here; the recording configuration is a binder call, so it
+     * is asked for off the audio thread.
+     */
+    private fun captureInfo(r: AudioRecord) {
+        if (!config.wakeWord) return
+        var fx = 0
+        try {
+            if (echo?.enabled == true) fx = fx or CaptureFx.AEC
+            if (noise?.enabled == true) fx = fx or CaptureFx.NS
+        } catch (_: Throwable) {}
+        try {
+            callbackExec.execute {
+                val cfg = try { r.activeRecordingConfiguration } catch (_: Throwable) { null }
+                var f = fx
+                if (cfg == null) f = f or CaptureFx.NO_CONFIG else {
+                    val types = try { cfg.effects.map { it.type } } catch (_: Throwable) { emptyList() }
+                    if (AudioEffect.EFFECT_TYPE_AEC in types) f = f or CaptureFx.SYSTEM_AEC
+                    if (AudioEffect.EFFECT_TYPE_NS in types) f = f or CaptureFx.SYSTEM_NS
+                }
+                val rate = cfg?.format?.sampleRate?.takeIf { it > 0 }
+                val muted = cfg?.isClientSilenced
+                VoiceLog.add(VoiceEvent.CAPTURE_INFO, when (muted) { true -> 1; false -> 0; null -> -1 }, rate?.let { it / 100 } ?: -1, f)
+            }
+        } catch (_: Throwable) {}
+    }
+
     private fun releaseEffects() {
         try { echo?.release() } catch (_: Throwable) {}
         try { noise?.release() } catch (_: Throwable) {}
@@ -314,6 +351,7 @@ class Listener(
         val buf = ShortArray(FRAME)
         var errors = 0
         var wantSince = 0L
+        var wasSpeaking = false
         while (running) {
             if (ww == null) ww = synchronized(wwLock) { loadedWw }?.also { wakeWordLoaded = true }
             // The capture mode: decided under ringLock, so a question can't attach between the decision and the switch.
@@ -356,7 +394,8 @@ class Listener(
                 x[i] = v
                 ss += v * v
             }
-            levelDb = 0.8 * levelDb + 0.2 * db(ss / n)
+            val frameDb = db(ss / n)
+            levelDb = 0.8 * levelDb + 0.2 * frameDb
             // A sink attached after this block gets this frame in its pre-roll, one attached before gets it here.
             val targets = synchronized(ringLock) {
                 recent.push(x)
@@ -364,15 +403,20 @@ class Listener(
                 sinks.toTypedArray()
             }
             for (s in targets) try { s(x) } catch (t: Throwable) { RLog.w("audio_sink", t) }
-            val w = ww ?: continue
-            if (wakePaused) continue
-            val stop = if (inputs.speaking) KwsThresholds.stop(echoCancelled = communication && aec == AecState.ON) else null
-            val hit = try { w.accept(x, inputs.wakeLines, stop) } catch (t: Throwable) {
+            val speaking = inputs.speaking
+            val w = ww?.takeIf { !wakePaused }
+            val stop = if (speaking) KwsThresholds.stop(echoCancelled = communication && aec == AecState.ON) else null
+            val hit = if (w == null) null else try { w.accept(x, inputs.wakeLines, stop) } catch (t: Throwable) {
                 // Java-side errors only; a native crash takes the whole voice process.
                 RLog.w("wake_word", t)
                 null
             }
+            if (speaking) speakRun.frame(n, frameDb, gate = w?.hearing == true, stop = w?.listeningForStop == true)
+            else if (wasSpeaking) speakRun.end()?.let { (gateMs, minusDb, stopPct) -> if (config.wakeWord) VoiceLog.add(VoiceEvent.SPEAK_RUN, gateMs, minusDb, stopPct) }
+            wasSpeaking = speaking
             if (hit != null) {
+                // Before any check (EchoGuard, the debounce, the tests): the line after it in the log says what came of it.
+                VoiceLog.add(VoiceEvent.KWS_HIT, KeywordBuffer.idOf(hit) ?: 0, if (speaking) 1 else 0, micKind.id * 10 + aec.id)
                 // Only a wake phrase marks where a question starts; "stop" is followed by Robot's own voice.
                 if (PreRoll.marksQuestion(hit)) synchronized(ringLock) { wakeAt = samplesSeen }
                 onWake(hit)
@@ -412,6 +456,7 @@ class Listener(
         rec = r
         RLog.i("capture", "communication" to communication, "aec" to aec, "ns" to (noise != null))
         if (config.wakeWord) VoiceLog.add(VoiceEvent.CAPTURE, micKind, aec, if (noise?.enabled == true) 1 else 0)
+        captureInfo(r)
         r
     }
 
@@ -443,5 +488,39 @@ class Listener(
         private const val MAX_READ_ERRORS = 150
 
         fun db(meanSquare: Double): Double = if (meanSquare <= 1e-12) -120.0 else 10 * log10(meanSquare)
+    }
+}
+
+/**
+ * One stretch of Robot talking as the microphone heard it, for the voice log's SPEAK_RUN (pure): how long the
+ * speech gate heard speech, the mean level (in dB, so her loud words don't hide how quiet the rest was: with echo
+ * cancellation working it is low), and how much of the time the spotter listened for "stop".
+ */
+class SpeakRun(private val rate: Int = Listener.SAMPLE_RATE) {
+    private var samples = 0L
+    private var gateSamples = 0L
+    private var stopSamples = 0L
+    private var dbSum = 0.0
+    private var frames = 0
+
+    /** One frame of [n] samples at [db] dBFS while Robot talks; [gate]: the speech gate heard speech; [stop]: the spotter listened for "stop". */
+    fun frame(n: Int, db: Double, gate: Boolean, stop: Boolean) {
+        samples += n
+        if (gate) gateSamples += n
+        if (stop) stopSamples += n
+        dbSum += db.coerceIn(-120.0, 0.0)
+        frames++
+    }
+
+    /** (ms the gate heard speech, mean level as -dBFS, % listened for "stop"), or null if no frame came; starts over. */
+    fun end(): Triple<Int, Int, Int>? {
+        if (frames == 0 || samples == 0L) return null
+        val out = Triple((gateSamples * 1000 / rate).toInt(), Math.round(-dbSum / frames).toInt(), (stopSamples * 100 / samples).toInt())
+        samples = 0
+        gateSamples = 0
+        stopSamples = 0
+        dbSum = 0.0
+        frames = 0
+        return out
     }
 }

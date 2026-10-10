@@ -1,6 +1,7 @@
 package app.heyrobot.assistant
 
 import android.os.SystemClock
+import app.heyrobot.core.BargeHitKind
 import app.heyrobot.core.BargeTestLogic
 import app.heyrobot.core.BargeTestResult
 import app.heyrobot.core.BenchState
@@ -70,10 +71,20 @@ object BargeTest {
         finish(timedOut = false)
     }
 
-    /** From VoiceHub: "stop" ([stop]) or a wake phrase was heard; [safe]: it can't be Robot's own voice (EchoGuard). */
-    fun onKeyword(stop: Boolean, safe: Boolean) {
+    /** From VoiceHub: "stop" ([phrase] 0) or a wake phrase was heard; [safe]: it can't be Robot's own voice (EchoGuard). */
+    fun onKeyword(phrase: Int, safe: Boolean) {
+        val stop = phrase == 0
         val cur = r ?: return
-        if (!active || speakStartE == 0L || heardE > 0) return
+        if (!active) return
+        val kind = when {
+            speakStartE == 0L -> BargeHitKind.EARLY
+            heardE > 0 -> BargeHitKind.LATE
+            stop && !safe -> BargeHitKind.SET_ASIDE
+            cur.silent -> BargeHitKind.FALSE
+            else -> BargeHitKind.STOPPED_HER
+        }
+        VoiceLog.add(VoiceEvent.BARGE_HIT, phrase, if (speakStartE == 0L) -1 else (SystemClock.elapsedRealtime() - speakStartE).toInt(), kind.id)
+        if (speakStartE == 0L || heardE > 0) return
         noteCapture()
         if (stop && !safe) {
             r = cur.copy(suppressed = cur.suppressed + 1)

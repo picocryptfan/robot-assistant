@@ -51,11 +51,20 @@ class VoiceLogTest {
         assertEquals(1, VoiceEvent.WAKE.id)
         assertEquals(27, VoiceEvent.TTS_STOP.id)
         val codes: List<List<LogCode>> = listOf(WakeAction.entries, WakeDrop.entries, ListenWhy.entries, MicKind.entries, AecState.entries, SttEnd.entries,
-            ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries)
+            ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries,
+            EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
         for (r in DoneReason.entries) assertTrue(r.name, DoneCode.of(r) != DoneCode.OTHER)
+        // 0.3.1's voice events use 39 to 59 (60 and up are taken by other 0.3.1 work), and the old ones keep theirs.
+        for (e in listOf(VoiceEvent.KWS_HIT, VoiceEvent.KWS_SET, VoiceEvent.KWS_REFUSED, VoiceEvent.SPEAK_RUN, VoiceEvent.CAPTURE_INFO, VoiceEvent.BARGE_HIT)) {
+            assertTrue(e.name, e.id in 39..59)
+        }
+        assertEquals(4, VoiceEvent.STOP_SUPPRESSED.id)
+        assertEquals(31, VoiceEvent.BARGE_TEST.id)
+        // MicKind and AecState share KWS_HIT's third number as mic × 10 + aec: both must stay below 10.
+        assertTrue(MicKind.entries.all { it.id in 1..9 } && AecState.entries.all { it.id in 1..9 })
     }
 
     /**
@@ -122,6 +131,36 @@ class VoiceLogTest {
         assertEquals("Stopped listening: #99", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.LISTEN_STOP, 99)))
         // Every event has words.
         for (e in VoiceEvent.entries) assertFalse(e.name, VoiceLogText.describe(VoiceLogEntry(0, e)).isBlank())
+        // 0.3.1: what the spotter heard before any check, and what came of it.
+        val names = { id: Int -> if (id == 2) "hey robot" else null }
+        assertEquals("Spotter: “stop” while Robot talked · mic: call (echo cancellation) · echo cancellation on",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_HIT, 0, 1, MicKind.COMMUNICATION.id * 10 + AecState.ON.id)))
+        assertEquals("Spotter: wake word #2 (“hey robot”) · mic: speech recognition · echo cancellation off",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_HIT, 2, 0, MicKind.RECOGNITION.id * 10 + AecState.OFF.id), names))
+        assertEquals("“Stop” ignored: Robot was saying a word like it herself (the phone's voice, 4.2 s into her talking)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.STOP_SUPPRESSED, EchoVoice.PHONE.id, 4200)))
+        // A line from before 0.3.1 has no voice.
+        assertEquals("“Stop” ignored: Robot was saying a word like it herself", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.STOP_SUPPRESSED)))
+        assertEquals("Wake word #2 (“hey robot”) ignored: Robot was saying it herself (Kokoro or Kitten)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WAKE_IGNORED, WakeDrop.ECHO.id, 2, EchoVoice.MODEL.id), names))
+        assertEquals("Wake word #2 ignored: within 2 s of the last one", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WAKE_IGNORED, WakeDrop.DEBOUNCE.id, 2)))
+        assertEquals("Wake phrases set: 2 listened for · 1 the model can't spell", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_SET, 2, 1)))
+        assertEquals("Keyword set refused: the keyword model refused “stop”, stop by voice is off (“stop”)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_REFUSED, KwsRefusal.STOP.id, 0, 1)))
+        assertEquals("Keyword set refused: the keyword model refused the whole set, nothing is heard until it changes (2 wake phrases and “stop”)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_REFUSED, KwsRefusal.SET.id, 2, 1)))
+        assertEquals("While Robot talked: speech gate open 1.5 s · mic level -58 dBFS · listened for “stop” 100% of the time",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SPEAK_RUN, 1500, 58, 100)))
+        assertEquals("Capture opened: not silenced · microphone at 48.0 kHz · echo cancellation on · noise suppression on · Android reports no effects",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CAPTURE_INFO, 0, 480, CaptureFx.AEC or CaptureFx.NS)))
+        assertEquals("Capture opened: silencing unknown · no echo cancellation · Android reported nothing",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CAPTURE_INFO, -1, -1, CaptureFx.NO_CONFIG)))
+        assertEquals("Capture opened: silenced by Android · microphone at 16.0 kHz · no echo cancellation · Android reports echo cancellation and noise suppression",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CAPTURE_INFO, 1, 160, CaptureFx.SYSTEM_AEC or CaptureFx.SYSTEM_NS)))
+        assertEquals("Barge-in test heard wake word #2 (“hey robot”) 3.1 s in: counted",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BARGE_HIT, 2, 3100, BargeHitKind.COUNTED.id), names))
+        assertEquals("Barge-in test heard “stop”: before her voice started", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BARGE_HIT, 0, -1, BargeHitKind.EARLY.id)))
+        assertEquals("Barge-in test, count run: 4 “stop” or wake words heard", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BARGE_TEST, 2, 4)))
         assertEquals("now", VoiceLogText.ago(1_000))
         assertEquals("12 s ago", VoiceLogText.ago(12_000))
         assertEquals("3 min ago", VoiceLogText.ago(200_000))

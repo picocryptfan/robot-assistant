@@ -148,6 +148,23 @@ class CapturePolicyTest {
         assertFalse(EchoGuard.wakeRegex(listOf("robot", "computer", "buddy", "jarvis"))!!.containsMatchIn(BargeTestLogic.PARAGRAPH))
     }
 
+    @Test fun aStretchOfRobotTalkingIsSummedForTheLog() {
+        val r = SpeakRun(rate = 16_000)
+        assertNull(r.end())
+        // 1 s of her residual at -60 dBFS with the gate shut, then 0.5 s of you at -30 dBFS with it open; "stop" listened
+        // for all along except the first 0.5 s.
+        repeat(1000) { r.frame(16, -60.0, gate = false, stop = it >= 500) }
+        repeat(500) { r.frame(16, -30.0, gate = true, stop = true) }
+        val (gateMs, minusDb, stopPct) = r.end()!!
+        assertEquals(500, gateMs)
+        assertEquals(50, minusDb)
+        assertEquals(66, stopPct)
+        // It starts over, and silence counts as -120 dBFS, not minus infinity.
+        assertNull(r.end())
+        r.frame(16, Double.NEGATIVE_INFINITY, gate = false, stop = false)
+        assertEquals(Triple(0, 120, 0), r.end())
+    }
+
     @Test fun gateSpeechIsThinnedForTheLog() {
         val g = GateSpeechLog(minGapMs = 10_000)
         assertEquals(1200 to 1, g.onSpeech(1200, 0))

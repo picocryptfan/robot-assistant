@@ -14,6 +14,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
 import app.heyrobot.core.BargeIn
+import app.heyrobot.core.EchoVoice
 import app.heyrobot.core.KeywordBuffer
 import app.heyrobot.core.KwsThresholds
 import app.heyrobot.core.ListenWhy
@@ -326,11 +327,12 @@ object VoiceHub {
         val lines = if (sp != null) {
             val b = KeywordBuffer.wake(phrases, sp)
             if (b.refused.isNotEmpty()) RLog.i("wake_phrases_refused", "count" to b.refused.size)
+            VoiceLog.add(VoiceEvent.KWS_SET, b.ids.size, b.refused.size)
             b.text
         } else {
             phrases.filter { it.enabled && WakePhrases.clean(it.text).equals("hey robot", ignoreCase = true) }.joinToString("\n") {
                 KeywordBuffer.line(listOf("▁HE", "Y", "▁RO", "B", "O", "T"), KwsThresholds.wake(it.sensitivity), KeywordBuffer.label(it.id))
-            }
+            }.also { VoiceLog.add(VoiceEvent.KWS_SET, it.lines().count { l -> l.isNotBlank() }, 0, 1) }
         }
         inputs.wakeLines = lines
         RLog.i("wake_phrases", "enabled" to phrases.count { it.enabled }, "lines" to lines.lines().count { it.isNotBlank() })
@@ -363,17 +365,23 @@ object VoiceHub {
         }
     }
 
-    /** From the audio thread: "stop", or a wake phrase's label ("W<id>"). */
+    /** Which voice speaks now, for the voice log's EchoGuard lines (main thread). */
+    private fun echoVoice(): EchoVoice = if ((tts as? VoiceOutput)?.usesPhoneVoice == true) EchoVoice.PHONE else EchoVoice.MODEL
+
+    /**
+     * From the audio thread: "stop", or a wake phrase's label ("W<id>"). The listener has logged the hit (KWS_HIT);
+     * every way out of here logs what came of it.
+     */
     private fun onWake(label: String) {
         if (label == WakeWord.STOP) {
             main.post {
                 // Ignored when the reply itself says "stop" (or a word like it): that may be Robot's own voice.
                 val playing = tts.isSpeaking
                 val safe = tts.stopWordSafe
-                if (BargeTest.active) return@post BargeTest.onKeyword(stop = true, safe = safe)
+                if (BargeTest.active) return@post BargeTest.onKeyword(0, safe)
                 if (!playing) return@post VoiceLog.add(VoiceEvent.STOP_HEARD, 0)
                 RLog.i("stop_word", "acted" to safe)
-                if (!safe) return@post VoiceLog.add(VoiceEvent.STOP_SUPPRESSED)
+                if (!safe) return@post VoiceLog.add(VoiceEvent.STOP_SUPPRESSED, echoVoice(), (SystemClock.elapsedRealtime() - speakStartE).toInt())
                 VoiceLog.add(VoiceEvent.STOP_HEARD, 1)
                 PanelController.stopSpeaking(TtsStop.STOP_WORD)
             }
@@ -391,8 +399,8 @@ object VoiceHub {
         main.post {
             if (wakeTesting) return@post VoiceLog.add(VoiceEvent.WAKE, id, -1, WakeAction.TEST.id)
             val safe = tts.wakeWordSafe
-            if (BargeTest.active) return@post BargeTest.onKeyword(stop = false, safe = safe)
-            if (tts.isSpeaking && !safe) return@post VoiceLog.add(VoiceEvent.WAKE_IGNORED, WakeDrop.ECHO, id)
+            if (BargeTest.active) return@post BargeTest.onKeyword(id, safe)
+            if (tts.isSpeaking && !safe) return@post VoiceLog.add(VoiceEvent.WAKE_IGNORED, WakeDrop.ECHO, id, echoVoice().id)
             RLog.i("wake", "panelShown" to PanelController.shown)
             if (PanelController.shown) {
                 VoiceLog.add(VoiceEvent.WAKE, id, -1, WakeAction.NEW_QUESTION.id)

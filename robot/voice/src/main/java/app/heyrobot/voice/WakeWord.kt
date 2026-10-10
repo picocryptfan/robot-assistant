@@ -3,8 +3,11 @@ package app.heyrobot.voice
 import android.content.res.AssetManager
 import app.heyrobot.core.KeywordBuffer
 import app.heyrobot.core.KwsSpeller
+import app.heyrobot.core.KwsRefusal
 import app.heyrobot.core.KwsThresholds
 import app.heyrobot.core.RLog
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
 import com.k2fsa.sherpa.onnx.KeywordSpotter
 import com.k2fsa.sherpa.onnx.KeywordSpotterConfig
 import com.k2fsa.sherpa.onnx.OnlineModelConfig
@@ -53,6 +56,8 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
     private var wanted = ""
     /** A set sherpa-onnx refused: not tried again until it changes. */
     private var refused: String? = null
+    /** The lines last left out for unknown tokens, so the voice log says so once, not at every change of the set. */
+    private var droppedLogged: List<String> = emptyList()
     // The speech gate's stretches of speech, for the voice log.
     private var gateSpeaking = false
     private var gateFrom = 0L
@@ -62,6 +67,9 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
 
     /** The speech gate hears speech right now (audio thread). */
     val hearing: Boolean get() = gateSpeaking
+
+    /** A keyword stream is live and listens for "stop" (audio thread; the voice log's SPEAK_RUN). */
+    val listeningForStop: Boolean get() = stream != null && streamKeywords.contains("@${KeywordBuffer.STOP_LABEL}")
 
     init {
         fun model(part: String) = "kws/$part-epoch-12-avg-2-chunk-16-left-64.onnx"
@@ -97,7 +105,12 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
         val lines = KeywordBuffer.join(wake, stopLine).lines().filter { it.isNotBlank() }
         // Checked again here: whatever the settings say, sherpa-onnx only ever gets tokens it knows.
         val ok = lines.filter { KeywordBuffer.validLine(it, known) }
-        if (ok.size != lines.size) RLog.i("kws_lines_dropped", "count" to lines.size - ok.size)
+        val dropped = lines - ok.toSet()
+        if (dropped.isNotEmpty() && dropped != droppedLogged) {
+            RLog.i("kws_lines_dropped", "count" to dropped.size)
+            VoiceLog.add(VoiceEvent.KWS_REFUSED, KwsRefusal.LINES, dropped.count { it.contains("@W") }, if (stopLine in dropped) 1 else 0)
+            droppedLogged = dropped
+        }
         wanted = ok.joinToString("\n")
         return wanted
     }
@@ -114,7 +127,11 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
             // sherpa-onnx returns no stream for a set it can't encode; remember it rather than retrying every frame.
             RLog.w("kws_stream", t)
             refused = keywords
-            if (keywords.contains("@${KeywordBuffer.STOP_LABEL}") && !keywords.contains("@W")) stopTokens = null
+            val withStop = keywords.contains("@${KeywordBuffer.STOP_LABEL}")
+            val stopOnly = withStop && !keywords.contains("@W")
+            if (stopOnly) stopTokens = null
+            VoiceLog.add(VoiceEvent.KWS_REFUSED, if (stopOnly) KwsRefusal.STOP else KwsRefusal.SET,
+                keywords.lines().count { it.contains("@W") }, if (withStop) 1 else 0)
             null
         }
     }

@@ -24,11 +24,14 @@ interface LogCode {
 enum class VoiceEvent(val id: Int) {
     /** a = phrase id, b = score in % (-1: sherpa-onnx 1.13.8 doesn't report one), c = [WakeAction]. */
     WAKE(1),
-    /** a = [WakeDrop], b = phrase id. */
+    /** a = [WakeDrop], b = phrase id, c = [EchoVoice] when Robot was saying the word herself (0: not recorded). */
     WAKE_IGNORED(2),
     /** a = 1 if it stopped Robot's voice. */
     STOP_HEARD(3),
-    /** Robot's own reply said "stop" or a word like it just then (EchoGuard). */
+    /**
+     * Robot's own reply said "stop" or a word like it just then (EchoGuard): a = [EchoVoice] that said it (0: not
+     * recorded, before 0.3.1), b = ms after Robot started talking.
+     */
     STOP_SUPPRESSED(4),
     /** a = [ListenWhy], b = [MicKind], c = [AecState]. */
     LISTEN_START(5),
@@ -82,7 +85,10 @@ enum class VoiceEvent(val id: Int) {
     NO_REPLY(29),
     /** a = [Cue]. */
     CUE(30),
-    /** a = 1 silent run, b = detected (1/0) or false detections in a silent run, c = ms from detection to silence. */
+    /**
+     * a = 1 silent run, 2 count run (0.3.1), 0 a normal run; b = detected (1/0), false detections in a silent run, or
+     * keywords counted in a count run; c = ms from detection to silence (normal run).
+     */
     BARGE_TEST(31),
     /** A volume key stopped Robot's voice: a = key code. */
     VOLUME_KEY(32),
@@ -98,6 +104,27 @@ enum class VoiceEvent(val id: Int) {
     CLAUDE_DONE(37),
     /** a = [ClaudeFail]. */
     CLAUDE_FAILED(38),
+    /**
+     * The keyword spotter fired (0.3.1), logged before any check: a = phrase id (0: "stop"), b = 1 if Robot was talking,
+     * c = [MicKind] × 10 + [AecState] of the capture. The next "stop", wake or barge-in line says what came of it.
+     */
+    KWS_HIT(39),
+    /** The wake phrases' keyword lines were rebuilt: a = phrases listened for, b = phrases the model can't spell, c = 1 without the spelling files. */
+    KWS_SET(40),
+    /** The keyword spotter can't take (part of) its keyword set: a = [KwsRefusal], b = wake lines concerned, c = 1 if "stop" was among them. */
+    KWS_REFUSED(41),
+    /**
+     * One stretch of Robot talking, as the microphone heard it: a = ms the speech gate heard speech, b = mean mic level
+     * in -dBFS (60: -60 dBFS), c = % of the time the spotter listened for "stop".
+     */
+    SPEAK_RUN(42),
+    /**
+     * A capture opened: a = 1 if Android silences it (another app records), 0 if not, -1 unknown; b = the microphone's
+     * own sample rate / 100 (-1 unknown); c = [CaptureFx] flags.
+     */
+    CAPTURE_INFO(43),
+    /** Barge-in test, every keyword heard: a = phrase id (0: "stop"), b = ms after Robot's voice started (-1: before), c = [BargeHitKind]. */
+    BARGE_HIT(44),
     ;
 
     companion object {
@@ -112,6 +139,45 @@ enum class WakeAction(override val id: Int, override val title: String) : LogCod
 enum class WakeDrop(override val id: Int, override val title: String) : LogCode {
     DEBOUNCE(1, "within 2 s of the last one"), NO_ASSISTANT(2, "Robot isn't the running assistant"), ECHO(3, "Robot was saying it herself"),
     SHOW_FAILED(4, "the panel couldn't open"),
+}
+
+/** Which voice said the word a "stop" or wake was taken for (EchoGuard). */
+enum class EchoVoice(override val id: Int, override val title: String) : LogCode {
+    MODEL(1, "Kokoro or Kitten"), PHONE(2, "the phone's voice"),
+}
+
+enum class KwsRefusal(override val id: Int, override val title: String) : LogCode {
+    SET(1, "the keyword model refused the whole set, nothing is heard until it changes"),
+    LINES(2, "lines with sounds the model doesn't know were left out"),
+    STOP(3, "the keyword model refused “stop”, stop by voice is off"),
+}
+
+/** What came of a keyword during the barge-in test. */
+enum class BargeHitKind(override val id: Int, override val title: String) : LogCode {
+    STOPPED_HER(1, "stopped Robot"), COUNTED(2, "counted"), SET_ASIDE(3, "set aside: Robot was saying a word like it"),
+    FALSE(4, "silent run: nobody spoke"), LATE(5, "after the first one, while she went quiet"), EARLY(6, "before her voice started"),
+}
+
+/** CAPTURE_INFO's flags: the effects on the capture Robot opened, and what Android reports for it. */
+object CaptureFx {
+    /** Robot's echo canceller and noise suppressor are on (AcousticEchoCanceler, NoiseSuppressor). */
+    const val AEC = 1
+    const val NS = 2
+    /** Android reports an echo canceller or a noise suppressor on the capture (AudioRecordingConfiguration effects). */
+    const val SYSTEM_AEC = 4
+    const val SYSTEM_NS = 8
+    /** Android gave no recording configuration for it. */
+    const val NO_CONFIG = 16
+
+    fun words(c: Int): String {
+        val out = mutableListOf<String>()
+        out += if (c and AEC != 0) "echo cancellation on" else "no echo cancellation"
+        if (c and NS != 0) out += "noise suppression on"
+        if (c and NO_CONFIG != 0) out += "Android reported nothing"
+        else out += "Android reports " + listOfNotNull(if (c and SYSTEM_AEC != 0) "echo cancellation" else null, if (c and SYSTEM_NS != 0) "noise suppression" else null)
+            .joinToString(" and ").ifEmpty { "no effects" }
+        return out.joinToString(" · ")
+    }
 }
 
 enum class ListenWhy(override val id: Int, override val title: String) : LogCode {
@@ -368,11 +434,14 @@ object VoiceLogText {
     fun describe(e: VoiceLogEntry, phrase: (Int) -> String? = { null }): String {
         val (a, b, c) = Triple(e.a, e.b, e.c)
         fun wake(id: Int) = "Wake word #$id" + (phrase(id)?.let { " (“$it”)" } ?: "")
+        // 0 is "stop" in the keyword events.
+        fun keyword(id: Int) = if (id == 0) "“stop”" else "wake word #$id" + (phrase(id)?.let { " (“$it”)" } ?: "")
         return when (e.event) {
             VoiceEvent.WAKE -> wake(a) + ": " + code(WakeAction.entries, c) + (if (b >= 0) " · score $b%" else "")
-            VoiceEvent.WAKE_IGNORED -> wake(b) + " ignored: " + code(WakeDrop.entries, a)
+            VoiceEvent.WAKE_IGNORED -> wake(b) + " ignored: " + code(WakeDrop.entries, a) + (if (c > 0) " (" + code(EchoVoice.entries, c) + ")" else "")
             VoiceEvent.STOP_HEARD -> if (a == 1) "“Stop” heard: Robot stopped talking" else "“Stop” heard, nothing was playing"
-            VoiceEvent.STOP_SUPPRESSED -> "“Stop” ignored: Robot was saying a word like it herself"
+            VoiceEvent.STOP_SUPPRESSED -> "“Stop” ignored: Robot was saying a word like it herself" +
+                (if (a > 0) " (" + code(EchoVoice.entries, a) + ", " + secs(b) + " into her talking)" else "")
             VoiceEvent.LISTEN_START -> "Listening for wake words (" + code(ListenWhy.entries, a) + ") · mic: " + code(MicKind.entries, b) +
                 " · echo cancellation " + code(AecState.entries, c)
             VoiceEvent.LISTEN_STOP -> "Stopped listening: " + code(ListenWhy.entries, a)
@@ -402,14 +471,28 @@ object VoiceLogText {
             VoiceEvent.NO_QUESTION -> "Panel opened but no question heard: " + code(NoQuestion.entries, a)
             VoiceEvent.NO_REPLY -> "Question heard but no reply: " + code(NoReply.entries, a)
             VoiceEvent.CUE -> "Played " + code(Cue.entries, a)
-            VoiceEvent.BARGE_TEST -> if (a == 1) "Barge-in test, silent run: $b false “stop” or wake detections"
-                else if (b == 1) "Barge-in test: heard you, silent $c ms later" else "Barge-in test: didn't hear you"
+            VoiceEvent.BARGE_TEST -> when {
+                a == 1 -> "Barge-in test, silent run: $b false “stop” or wake detections"
+                a == 2 -> "Barge-in test, count run: $b “stop” or wake words heard"
+                b == 1 -> "Barge-in test: heard you, silent $c ms later"
+                else -> "Barge-in test: didn't hear you"
+            }
             VoiceEvent.VOLUME_KEY -> (if (a == VolumeKeyStop.KEY_VOLUME_UP) "Volume up" else "Volume down") + " stopped Robot talking"
             VoiceEvent.SCREEN -> if (a == 1) "Screen on" else "Screen off"
             VoiceEvent.CLAUDE_SENT -> (if (a == 0) "Question sent to Claude" else "More sent to Claude (request ${a + 1})") + " (" + code(ClaudeModelCode.entries, b) + ")"
             VoiceEvent.CLAUDE_FIRST -> "Claude's first event after $a ms"
             VoiceEvent.CLAUDE_DONE -> "Claude's answer ended after " + secs(a) + " (" + code(ClaudeEnd.entries, b) + ") · $c characters"
             VoiceEvent.CLAUDE_FAILED -> "Claude failed: " + code(ClaudeFail.entries, a)
+            VoiceEvent.KWS_HIT -> "Spotter: " + keyword(a) + (if (b == 1) " while Robot talked" else "") + " · mic: " + code(MicKind.entries, c / 10) +
+                " · echo cancellation " + code(AecState.entries, c % 10)
+            VoiceEvent.KWS_SET -> "Wake phrases set: $a listened for" + (if (b > 0) " · $b the model can't spell" else "") +
+                (if (c == 1) " · spelling files missing: “hey robot” only" else "")
+            VoiceEvent.KWS_REFUSED -> "Keyword set refused: " + code(KwsRefusal.entries, a) +
+                " (" + listOfNotNull(if (b > 0) "$b wake phrases" else null, if (c == 1) "“stop”" else null).joinToString(" and ").ifEmpty { "nothing" } + ")"
+            VoiceEvent.SPEAK_RUN -> "While Robot talked: speech gate open " + secs(a) + " · mic level -$b dBFS · listened for “stop” $c% of the time"
+            VoiceEvent.CAPTURE_INFO -> "Capture opened: " + (when (a) { 1 -> "silenced by Android"; 0 -> "not silenced"; else -> "silencing unknown" }) +
+                (if (b > 0) " · microphone at " + String.format(Locale.US, "%.1f kHz", b / 10.0) else "") + " · " + CaptureFx.words(c)
+            VoiceEvent.BARGE_HIT -> "Barge-in test heard " + keyword(a) + (if (b >= 0) " " + secs(b) + " in" else "") + ": " + code(BargeHitKind.entries, c)
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
         }

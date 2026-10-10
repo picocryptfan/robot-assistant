@@ -270,6 +270,14 @@ finished or failed with its code; the model's process stopping; Robot's voice st
 "stop", tap, volume key, new question, stop button, panel closed, wake word); "panel opened but no question heard";
 "question heard but no reply"; the chime or "Sorry, I didn't catch that."; screen on and off; the barge-in test.
 
+Since 0.3.1 it also shows why "stop" or a wake word over Robot's voice did or didn't work: every keyword the spotter
+fires, before any check, with whether Robot was talking and the microphone mode (the line after it says what came of
+it); the wake phrases' keyword set when it is rebuilt, and any part the keyword model refuses; for each stretch of
+Robot talking, how long the speech gate heard speech, the mean microphone level (low when echo cancellation takes her
+voice out) and how much of the time "stop" was listened for; each capture as opened (whether Android silences it, the
+microphone's own sample rate, Robot's echo canceller and noise suppressor, the effects Android reports); which voice
+an ignored "stop" or wake was put down to and how far into her talking; and every keyword heard in the barge-in test.
+
 Silent drops found and fixed while adding it: an empty transcription did nothing (now: notice plus "Sorry, I didn't
 catch that." or a chime); an empty model answer left an empty bubble; a model that never answered left "Thinking…"
 for good (now given up after 60 s without any event); a `:brain` binding that Android had given up on was kept, so
