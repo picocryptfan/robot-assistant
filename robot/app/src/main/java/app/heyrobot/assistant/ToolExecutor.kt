@@ -22,6 +22,7 @@ import app.heyrobot.core.ContactMatcher
 import app.heyrobot.core.Durations
 import app.heyrobot.core.EmailApp
 import app.heyrobot.core.EventPlan
+import app.heyrobot.core.LookupFallback
 import app.heyrobot.core.Events
 import app.heyrobot.core.Executed
 import app.heyrobot.core.MailTarget
@@ -289,7 +290,13 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun lookup(a: Action.LookupContact): Executed {
         if (!Contacts.granted(ctx)) return Executed(ActionStatus.NEEDS_PERMISSION, "Allow Robot to read your contacts in the Robot app.")
         val matches = ContactMatcher.best(a.name, Contacts.names(ctx))
-        if (matches.isEmpty()) return Executed(ActionStatus.NOT_FOUND, "No contact matches “${a.name}”.", results = emptyList())
+        if (matches.isEmpty()) {
+            // With Cheogram as the texting app the person may be in its own list: the model is told so (a fixed code),
+            // and the card offers to open Cheogram.
+            val cheogram = HandOffApps.cheogram(ctx)
+            val f = LookupFallback.notFound(a.name, settings.textAppFor(cheogram != null), cheogram != null)
+            return Executed(ActionStatus.NOT_FOUND, f.detail, results = emptyList(), forModel = f.forModel, handOff = if (f.openCheogram) cheogram else null)
+        }
         val cards = Contacts.cards(ctx, matches)
         val results = Recipients.lookup(cards) { raw -> Phones.e164(raw, region)?.let { Phones.display(it, region) } ?: raw }
         val lines = results.joinToString("\n") { r ->

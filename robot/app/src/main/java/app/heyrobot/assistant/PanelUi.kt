@@ -286,7 +286,8 @@ private fun BrainBanner(st: PanelState) {
     }
 }
 
-private val cardActions = CardActions(choose = PanelController::choose, undo = PanelController::undo, allow = PanelController::openPermissions)
+private val cardActions = CardActions(choose = PanelController::choose, undo = PanelController::undo, allow = PanelController::openPermissions,
+    openApp = PanelController::openHandOff)
 
 @Composable
 private fun Messages(st: PanelState, modifier: Modifier) {
@@ -315,7 +316,8 @@ private fun Messages(st: PanelState, modifier: Modifier) {
             if (t.role == TurnRole.USER) UserBubble(t.text, t.attachment, t.thumb)
             else AssistantBubble(
                 text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error,
-                actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more) },
+                actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
+                    openApp = if (it.handOff != null) "Open Cheogram" else null) },
                 onConfirm = PanelController::confirm,
                 cardActions = cardActions,
             )

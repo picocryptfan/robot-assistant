@@ -75,6 +75,8 @@ data class ActionView(
     val undo: Boolean = false,
     /** More people or numbers fitted than [choices] lists ("…and 3 more"). */
     val more: Int = 0,
+    /** The words of a button that opens another app (only its launcher screen): "Open Cheogram". */
+    val openApp: String? = null,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -83,6 +85,8 @@ class CardActions(
     val undo: (String) -> Unit = {},
     /** Opens the main app's permission screen. */
     val allow: () -> Unit = {},
+    /** Opens the app a card names ([ActionView.openApp]), by the card's id. */
+    val openApp: (String) -> Unit = {},
 )
 
 fun toolIcon(t: ToolName?): ImageVector = when (t) {
@@ -230,9 +234,10 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
                     }
                 }
             }
-            if (more != null && (a.undo || a.status == ActionStatus.NEEDS_PERMISSION)) {
+            if (more != null && (a.undo || a.status == ActionStatus.NEEDS_PERMISSION || a.openApp != null)) {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                     if (a.undo) TextButton(onClick = { more.undo(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Undo") }
+                    a.openApp?.let { label -> FilledTonalButton(onClick = { more.openApp(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(label) } }
                     if (a.status == ActionStatus.NEEDS_PERMISSION) FilledTonalButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow") }
                 }
             }

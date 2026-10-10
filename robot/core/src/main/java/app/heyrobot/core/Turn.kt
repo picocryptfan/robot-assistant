@@ -78,6 +78,10 @@ data class Executed(
     val spoken: String? = null,
     /** A key for the card's Undo (a note Robot just saved); null: nothing to undo. */
     val undo: String? = null,
+    /** What the model is told instead of [detail] (a fixed code, LookupFallback); null: [detail]. */
+    val forModel: String? = null,
+    /** An app the card offers to open (its package; launch intent only), e.g. Cheogram when no contact matched. */
+    val handOff: String? = null,
 ) {
     /** Content entered the conversation: every later action in it asks first. */
     val content: Boolean get() = !results.isNullOrEmpty()
@@ -112,6 +116,8 @@ data class Card(
     val content: Boolean = false,
     /** More people or numbers fitted than [choices] lists ("and 3 more"). */
     val more: Int = 0,
+    /** An app the card offers to open ([Executed.handOff]). */
+    val handOff: String? = null,
 )
 
 interface TurnView {
@@ -273,8 +279,8 @@ class TurnRunner(
     private suspend fun decideAndRun(asked: Action, speak: Boolean): Pair<Pair<String, Map<String, Any?>>, Boolean> {
         val id = newId()
         fun done(a: Action, status: ActionStatus, detail: String?, launched: Boolean = false, r: Executed? = null): Pair<Pair<String, Map<String, Any?>>, Boolean> {
-            view.card(Card(id, a.tool, a.describe(), status, detail, a, body = r?.body ?: a.body(), undo = r?.undo, content = r?.content == true))
-            return (a.tool.id to status.toolResponse(detail, r?.results)) to launched
+            view.card(Card(id, a.tool, a.describe(), status, detail, a, body = r?.body ?: a.body(), undo = r?.undo, content = r?.content == true, handOff = r?.handOff))
+            return (a.tool.id to status.toolResponse(r?.forModel ?: detail, r?.results)) to launched
         }
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
         when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, untrusted)) {

@@ -34,6 +34,8 @@ import app.heyrobot.core.ShowSource
 import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.SpeechText
 import app.heyrobot.core.StoredConversation
+import app.heyrobot.core.TextCommand
+import app.heyrobot.core.TextRequest
 import app.heyrobot.core.ToolCalls
 import app.heyrobot.core.ToolGroup
 import app.heyrobot.core.ToolName
@@ -53,6 +55,7 @@ import app.heyrobot.core.VolumeKeyStop
 import app.heyrobot.core.toPromptTurns
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
+import app.heyrobot.sys.Contacts
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotesFiles
@@ -113,6 +116,8 @@ data class UiAction(
     val content: Boolean = false,
     /** More people or numbers fitted than [choices] lists. */
     val more: Int = 0,
+    /** An app the card offers to open (Cheogram when no contact matched), by package. */
+    val handOff: String? = null,
 )
 
 data class UiTurn(
@@ -201,6 +206,10 @@ object PanelController {
     /** For the voice log: when the panel was shown, and whether the turn under way began as a spoken question. */
     private var shownAtE = 0L
     private var spokenTurn = false
+    /** Robot asked what a text should say ("text mom"): the name, until the next question answers it. */
+    private var askingTextFor: String? = null
+    /** That question was asked aloud: listen for the answer once Robot has said it. */
+    private var listenAfterSpeech = false
 
     private fun newId() = UUID.randomUUID().toString()
 
@@ -212,6 +221,11 @@ object PanelController {
 
     /** From VoiceHub (which owns the voice's listener since 0.2.3): Robot's voice started or stopped. */
     fun onSpeakingChanged(speaking: Boolean) {
+        if (!speaking && listenAfterSpeech) {
+            listenAfterSpeech = false
+            // "What should the text to Mom say?" was said aloud: the answer comes by voice too.
+            if (shown && askingTextFor != null) VoiceHub.main.post { if (shown && askingTextFor != null && _state.value.phase == Phase.IDLE) startListening() }
+        }
         _state.update {
             when {
                 !speaking && it.phase == Phase.SPEAKING -> it.copy(phase = Phase.IDLE)
@@ -286,6 +300,8 @@ object PanelController {
         VoiceLog.add(VoiceEvent.SESSION_HIDDEN, ((SystemClock.elapsedRealtime() - shownAtE) / 1000).toInt())
         VoiceHub.stt.cancel()
         VoiceHub.listener?.wakePaused = false
+        listenAfterSpeech = false
+        if (hidingFor == null) askingTextFor = null
         val forCapture = hidingFor == "capture"
         // A turn never goes on behind a hidden panel: closing stops it, and a card nobody can tap any more is declined.
         if (hidingFor == null || slot.confirmations.waiting) stopGenerating(TtsStop.CLOSED)
@@ -322,6 +338,7 @@ object PanelController {
     fun newConversation(locked: Boolean = _state.value.locked) {
         stopGenerating(TtsStop.OTHER)
         VoiceHub.stopVoice(TtsStop.OTHER)
+        askingTextFor = null
         chat.clear()
         groups = setOf(ToolGroup.CORE)
         closeConvAfterTurn = false
@@ -550,6 +567,8 @@ object PanelController {
         }
         VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
         spokenTurn = fromVoice
+        val textingFor = askingTextFor
+        askingTextFor = null
         val attachment = st.draft?.kind ?: Attachment.NONE
         val image = when (attachment) {
             Attachment.PHOTO -> draftJpeg
@@ -582,7 +601,10 @@ object PanelController {
         if (st.speak) VoiceHub.tts.prewarm()
         slot.start {
             try {
-                runTurn(replyId, user.text, attachment, sText, image, history, untrusted)
+                // A plain request to text someone (or the answer to "what should it say?") goes straight to send_text.
+                if (attachment != Attachment.NONE || !directText(replyId, q, textingFor, fromVoice, untrusted)) {
+                    runTurn(replyId, user.text, attachment, sText, image, history, untrusted)
+                }
             } catch (e: CancellationException) {
                 withContext(NonCancellable) { finishReply(replyId, DoneReason.CANCELLED) }
                 throw e
@@ -622,9 +644,9 @@ object PanelController {
         val img = if (vision) image else null
         val convId = _state.value.convId
         val now = ZonedDateTime.now()
-        val system = Prompt.system(now, Assistant.locked(VoiceHub.app))
         // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
         val tools = ToolRouter.tools(groups, VoiceHub.settings)
+        val system = Prompt.system(now, Assistant.locked(VoiceHub.app), texting = ToolName.SEND_TEXT in tools)
         // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
         val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
         // The new turn always fits the model's context: cut (and say so) rather than overflow.
@@ -645,6 +667,74 @@ object PanelController {
         result.failure?.let { return failReply(replyId, it) }
         finishReply(replyId, result.reason ?: DoneReason.END)
         if (result.launchedApp) leaveForApp()
+    }
+
+    /**
+     * Texting without the model (core TextCommand): "text mom I'm late" becomes send_text, prepared, gated and carded as
+     * the model's call would be; "text mom" asks what it should say and takes the next question as the message
+     * ("cancel" drops it). False: not a text, the model answers.
+     */
+    private suspend fun directText(replyId: String, q: String, textingFor: String?, fromVoice: Boolean, untrusted: Boolean): Boolean {
+        val typed = !fromVoice
+        val req: TextRequest = if (textingFor != null && TextCommand.parse(q, emptyList(), typed) == null) {
+            if (TextCommand.isCancel(q)) {
+                setText(replyId, "Okay, no text to ${TextCommand.display(textingFor)}.")
+                finishReply(replyId, DoneReason.END)
+                return true
+            }
+            TextRequest(textingFor, q.trim())
+        } else {
+            // Cheap first: only a question shaped like a text reads the contacts (for where the name ends).
+            TextCommand.parse(q, emptyList(), typed) ?: return false
+            val names = withContext(Dispatchers.IO) {
+                if (Contacts.granted(VoiceHub.app)) Contacts.names(VoiceHub.app).flatMap { listOf(it.name) + it.nicknames } else emptyList()
+            }
+            TextCommand.parse(q, names, typed) ?: return false
+        }
+        val name = TextCommand.display(req.name)
+        if (req.message == null) {
+            val ask = TextCommand.askMessage(req.name)
+            setText(replyId, ask)
+            askingTextFor = req.name
+            if (_state.value.speak) {
+                speakSentence(ask)
+                listenAfterSpeech = fromVoice
+            }
+            finishReply(replyId, DoneReason.END)
+            // Asked by voice with replies silent: listen for the answer now.
+            if (fromVoice && !_state.value.speak && shown) startListening()
+            return true
+        }
+        RLog.i("text_direct", "typed" to typed)
+        // A short line for the conversation, so later questions know what happened (the card has the rest).
+        setText(replyId, "Texting $name.")
+        val call = RawToolCall(ToolName.SEND_TEXT.id, mapOf("to" to req.name, "message" to req.message))
+        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, ::newId).run()
+        result.failure?.let { failReply(replyId, it); return true }
+        finishReply(replyId, result.reason ?: DoneReason.END)
+        if (result.launchedApp) leaveForApp()
+        return true
+    }
+
+    /** A turn whose one action is already known: no model asked, nothing to answer after the action. */
+    private class DirectCall(private val call: RawToolCall) : TurnModel {
+        override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(call))
+        override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = ModelOutcome.Done(DoneReason.END)
+        override fun close() {}
+    }
+
+    /** "Open Cheogram" on a card: the app's launcher activity (nothing passed to it). */
+    fun openHandOff(actionId: String) {
+        val a = _state.value.turns.flatMap { it.actions }.firstOrNull { it.id == actionId } ?: return
+        val pkg = a.handOff ?: return
+        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open Cheogram.")
+        val h = host ?: return
+        val i = VoiceHub.app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return notify("Cheogram isn't installed.")
+        stopGenerating(TtsStop.OTHER)
+        if (h.launch(i)) {
+            hidingFor = "action"
+            h.hidePanel()
+        }
     }
 
     /** The model side of a turn: :brain through [BrainClient]. Nothing is sent once the turn was stopped. */
@@ -688,7 +778,7 @@ object PanelController {
 
         override fun card(c: Card) {
             val icon = (c.action as? Action.OpenApp)?.key?.let { key -> icons.getOrPut(key) { executor().appIcon(key) } }
-            upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, c.action?.confirmLabel, c.undo, c.content, c.more))
+            upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, c.action?.confirmLabel, c.undo, c.content, c.more, c.handOff))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
