@@ -7,16 +7,21 @@ import android.os.Handler
 import android.os.SystemClock
 import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainMsg
+import app.heyrobot.core.BrainPolicy
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.DoneReason
+import app.heyrobot.core.EngineErrors
+import app.heyrobot.core.Json
 import app.heyrobot.core.Limits
+import app.heyrobot.core.LiveConv
 import app.heyrobot.core.Prompt
 import app.heyrobot.core.PromptRole
 import app.heyrobot.core.PromptTurn
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.ToolMode
 import app.heyrobot.core.ToolSpecs
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
@@ -40,29 +45,35 @@ import java.util.concurrent.CancellationException
 // Gemma 4 E2B on the Tensor G5 TPU exactly as the probe and the GPU lab (config T) load it:
 // Backend.NPU(nativeLibraryDir), the vision encoder on the NPU with a text-only fallback, maxNumTokens
 // 4096, cacheDir null, no sampler on the NPU. Every method runs on BrainService's work thread; LiteRT's
-// callbacks are posted back to it, so the state below has a single thread.
+// callbacks are posted back to it, so the state below has a single thread. The decisions (reuse, step down,
+// shorten, give up) are core's BrainPolicy; this file only acts on them.
 
 class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     fun interface Sink { fun emit(what: Int, msg: BrainMsg) }
 
     private var engine: Engine? = null
     private var vision = false
-    /**
-     * How tools reach the model, stepped down for good (until the process restarts) when this TPU build
-     * refuses a level: [TOOLS_CONSTRAINED] LiteRT-LM tools with conversation constrained decoding, [TOOLS]
-     * without it, [TEXT_CALLS] no tool API, the system prompt shows the call syntax and the app parses it.
-     */
-    private var toolMode = TOOLS_CONSTRAINED
-    private val constrained get() = toolMode == TOOLS_CONSTRAINED
+    /** How tools reach the model; stepped down for good (until the process restarts) only on the tool-parse error. */
+    private var toolMode = ToolMode.TOOLS_CONSTRAINED
     private val convs = HashMap<String, Live>()
     private var running: Run? = null
     /** A request that arrived while another was being cancelled: it starts when that one ends. */
     private var queued: (() -> Unit)? = null
+    /**
+     * An engine unloaded while LiteRT was still decoding into one of its conversations: never closed under it.
+     * Closed when that run's native callback arrives (or left to the process's end).
+     */
+    private var parked: Parked? = null
 
-    private class Live(val conv: Conversation, var historyCount: Int, val toolMode: Int, val systemKey: String) {
+    private class Parked(val engine: Engine, val convs: List<Conversation>, val run: Run)
+
+    private class Live(val conv: Conversation, var historyCount: Int, val mode: ToolMode, val system: String) {
         var dirty = false
         var awaitingTool = false
     }
+
+    /** One request's sends: the first, and those after a step down or a shorter rebuild. */
+    private class Attempt(val sends: Int, val historyBudget: Int?, val historyTurns: Int)
 
     private inner class Run(
         val reqId: Int,
@@ -70,8 +81,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val live: Live,
         val sink: Sink,
         val rebuilt: Boolean,
-        /** Resend on a fresh conversation one tool level down if the first message fails before any output. */
-        val retry: (() -> Unit)?,
+        /** Send the same request again on a fresh conversation ([BrainPolicy.Next.StepDown] / [BrainPolicy.Next.Shorten]); null for tool results. */
+        val resend: ((BrainPolicy.Next) -> Unit)?,
+        val attempt: Attempt,
     ) {
         val tSend = SystemClock.elapsedRealtime()
         var tFirst = -1L
@@ -98,10 +110,11 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         cacheDir = null,
     )
 
-    fun status() = BrainMsg.Status(loaded = engine != null, vision = vision, constrained = constrained, busy = running != null)
+    fun status() = BrainMsg.Status(loaded = engine != null, vision = vision, constrained = toolMode == ToolMode.TOOLS_CONSTRAINED, busy = running != null)
 
     fun load(path: String): BrainMsg.Loaded {
         if (engine != null) return BrainMsg.Loaded(true, vision, 0, null)
+        parked?.let { p -> if (p.run.nativeEnded) closeParked() else return BrainMsg.Loaded(false, false, 0, "The model is still stopping. Try again in a moment.") }
         val f = File(path)
         // Only the model file in Robot's own storage.
         val allowed = listOfNotNull(ctx.getExternalFilesDir(null), ctx.filesDir).any { f.canonicalPath.startsWith(it.canonicalPath + File.separator) }
@@ -110,19 +123,28 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val t0 = SystemClock.elapsedRealtime()
         var e: Engine? = null
         var visionError: String? = null
-        try {
-            e = Engine(config(path, withVision = true))
-            e.initialize()
-            // The vision encoder starts with the first conversation: open one so a TPU failure shows here.
-            e.createConversation().close()
-        } catch (ex: Exception) {
-            // The lab and Off Grid catch Exception only here; anything else is a real crash.
-            visionError = ex.javaClass.simpleName
-            try { e?.close() } catch (_: Exception) {}
-            e = null
+        // Vision with a fixed 280-token image budget (read when the engine initialises), so the 300 tokens per image
+        // Robot plans for hold; if this TPU build refuses the budget, vision without it; then text only.
+        var budgetSet = false
+        for (budget in listOf(TokenEstimate.VISUAL_TOKEN_BUDGET, null)) {
+            try {
+                ExperimentalFlags.visualTokenBudget = budget
+                e = Engine(config(path, withVision = true))
+                e.initialize()
+                // The vision encoder starts with the first conversation: open one so a TPU failure shows here.
+                e.createConversation().close()
+                budgetSet = budget != null
+                break
+            } catch (ex: Exception) {
+                // The lab and Off Grid catch Exception only here; anything else is a real crash.
+                visionError = ex.javaClass.simpleName
+                try { e?.close() } catch (_: Exception) {}
+                e = null
+            }
         }
         vision = e != null
         if (e == null) {
+            ExperimentalFlags.visualTokenBudget = null
             try {
                 e = Engine(config(path, withVision = false))
                 e.initialize()
@@ -134,25 +156,43 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         }
         engine = e
         val ms = SystemClock.elapsedRealtime() - t0
-        RLog.i("brain_load", "ok" to true, "ms" to ms, "vision" to vision, "visionError" to visionError?.let { RLog.Code(it) })
+        RLog.i("brain_load", "ok" to true, "ms" to ms, "vision" to vision, "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) })
         return BrainMsg.Loaded(true, vision, ms, null)
     }
 
     fun unload(why: String) {
         val e = engine ?: return
         queued = null
-        running?.let { r ->
+        val r = running
+        if (r != null) {
+            if (r.stopReason == null) r.stopReason = DoneReason.CANCELLED
             try { r.live.conv.cancelProcess() } catch (_: Exception) {}
             // Never close a conversation LiteRT is still decoding into: wait (bounded) for its callback.
             var waited = 0
-            while (!r.nativeEnded && waited < 3_000) { Thread.sleep(50); waited += 50 }
+            while (!r.nativeEnded && waited < UNLOAD_WAIT_MS) { Thread.sleep(50); waited += 50 }
             finish(r, DoneReason.CANCELLED)
         }
-        convs.values.forEach { closeQuietly(it.conv) }
+        val all = convs.values.map { it.conv }
         convs.clear()
         engine = null
+        if (r != null && !r.nativeEnded) {
+            // Still decoding after the wait: park the engine rather than close it under LiteRT (a native crash here
+            // would count towards the assistant's crash lockout). The run's callback closes it.
+            parked = Parked(e, all, r)
+            RLog.i("brain_unload", "why" to RLog.Code(why), "parked" to true)
+            return
+        }
+        all.forEach(::closeQuietly)
         try { e.close() } catch (ex: Exception) { RLog.w("brain_unload", ex) }
         RLog.i("brain_unload", "why" to RLog.Code(why))
+    }
+
+    private fun closeParked() {
+        val p = parked ?: return
+        parked = null
+        p.convs.forEach(::closeQuietly)
+        try { p.engine.close() } catch (ex: Exception) { RLog.w("brain_unload", ex) }
+        RLog.i("brain_unload_parked_closed")
     }
 
     // ------------------------------------------------------------------ conversations
@@ -167,33 +207,24 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         }
     }
 
-    /** System prompt plus tool descriptions, as estimated tokens (the template adds a little more). */
-    private fun fixedTokens(system: String) = TokenEstimate.text(system) + ToolSpecs.ALL.sumOf { TokenEstimate.text(it.openApiJson()) } + 40
-
-    private fun newConversation(system: String, history: List<PromptTurn>): Pair<Conversation, Int> {
+    private fun newConversation(system: String, history: List<PromptTurn>, mode: ToolMode): Conversation {
         val e = engine ?: throw IllegalStateException("not loaded")
-        while (true) {
-            val mode = toolMode
-            val cfg = ConversationConfig(
-                systemInstruction = Contents.of(if (mode == TEXT_CALLS) system + Prompt.TEXT_CALL_HINT else system),
-                initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(it.text) else Message.model(it.text) },
-                tools = if (mode == TEXT_CALLS) emptyList() else toolProviders,
-                samplerConfig = null,
-                automaticToolCalling = false,
-            )
-            try {
-                ExperimentalFlags.enableConversationConstrainedDecoding = mode == TOOLS_CONSTRAINED
-                return e.createConversation(cfg) to mode
-            } catch (ex: Exception) {
-                if (mode == TEXT_CALLS) throw ex
-                RLog.w("brain_tool_mode_down", ex, "from" to mode)
-                toolMode = mode - 1
-            } finally {
-                ExperimentalFlags.enableConversationConstrainedDecoding = false
-            }
+        val cfg = ConversationConfig(
+            systemInstruction = Contents.of(if (mode == ToolMode.TEXT_CALLS) system + Prompt.TEXT_CALL_HINT else system),
+            initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(it.text) else Message.model(it.text) },
+            tools = if (mode == ToolMode.TEXT_CALLS) emptyList() else toolProviders,
+            samplerConfig = null,
+            automaticToolCalling = false,
+        )
+        try {
+            ExperimentalFlags.enableConversationConstrainedDecoding = mode == ToolMode.TOOLS_CONSTRAINED
+            return e.createConversation(cfg)
+        } finally {
+            ExperimentalFlags.enableConversationConstrainedDecoding = false
         }
     }
 
+    /** Only for conversations LiteRT is not decoding into (every caller's run has ended natively). */
     private fun closeQuietly(c: Conversation) {
         try { if (c.isAlive) c.close() } catch (_: Exception) {}
     }
@@ -216,42 +247,77 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         if (req.hasImage && image == null) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.BAD_REQUEST, "image missing"))
         if (image != null && !vision) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NO_VISION, null))
         if (afterRunning { generate(reqId, req, image, sink) }) return
-        startGenerate(reqId, req, image, sink, allowRetry = true)
+        startGenerate(reqId, req, image, sink, Attempt(sends = 1, historyBudget = null, historyTurns = 0))
     }
 
-    private fun startGenerate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: Sink, allowRetry: Boolean) {
+    private fun startGenerate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: Sink, attempt: Attempt) {
+        val fixed = Prompt.fixedTokens(req.system)
         val newTurn = TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text, image != null))
+        // The app cuts the new turn to fit (Prompt.fitTurn); a turn that still can't fit is never sent anyway.
+        if (newTurn > ContextWindow.newTurnLimit(fixed)) {
+            RLog.i("brain_too_long", "newTurn" to newTurn, "fixed" to fixed)
+            return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.TOO_LONG, null))
+        }
         var live = convs[req.convId]
-        val reuse = live != null && !live.dirty && !live.awaitingTool && live.historyCount == req.historyCount &&
-            live.systemKey == systemKey(req.system) && !ContextWindow.needsRebuild(tokenCount(live.conv), newTurn)
+        val reuse = attempt.historyBudget == null && BrainPolicy.canReuse(
+            live?.let { LiveConv(it.historyCount, it.system, it.mode, it.dirty, it.awaitingTool, tokenCount(it.conv)) },
+            req.historyCount, req.system, toolMode, newTurn,
+        )
         var rebuilt = false
+        var budget = attempt.historyBudget ?: ContextWindow.historyBudget(fixed, newTurn)
+        // Turns of history in the conversation this message goes to (a reused one holds the client's whole history).
+        var turns = if (reuse) req.history.size else 0
         if (!reuse) {
             live?.let { closeQuietly(it.conv) }
             convs.remove(req.convId)
-            val budget = ContextWindow.historyBudget(fixedTokens(req.system), newTurn)
-            val history = ContextWindow.fit(req.history, budget)
-            val (conv, usedMode) = try {
-                newConversation(req.system, history)
-            } catch (ex: Exception) {
-                RLog.w("brain_conversation", ex)
-                return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.ENGINE, ex.javaClass.simpleName))
+            var tries = 0
+            var rebuilds = 0
+            while (true) {
+                val history = ContextWindow.fit(req.history, budget)
+                val mode = toolMode
+                val conv = try {
+                    newConversation(req.system, history, mode)
+                } catch (ex: Exception) {
+                    when (val next = BrainPolicy.afterCreateError(ex.message, mode, history.size, budget, tries++)) {
+                        is BrainPolicy.Next.StepDown -> {
+                            RLog.w("brain_tool_mode_down", ex, "from" to mode, "to" to next.to, "at" to RLog.Code("create"))
+                            toolMode = next.to
+                        }
+                        is BrainPolicy.Next.Shorten -> budget = next.historyBudget
+                        is BrainPolicy.Next.Fail -> {
+                            RLog.w("brain_conversation", ex, "code" to next.code)
+                            return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(next.code, ex.javaClass.simpleName))
+                        }
+                        is BrainPolicy.Next.Stop -> return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.ENGINE, ex.javaClass.simpleName))
+                    }
+                    continue
+                }
+                // The estimate chose the history; the engine's own count says whether the turn and a reply still fit.
+                val real = tokenCount(conv, unknown = -1)
+                val smaller = ContextWindow.shrink(budget, real, newTurn)
+                if (smaller != null && history.isNotEmpty() && rebuilds < BrainPolicy.MAX_REBUILDS) {
+                    closeQuietly(conv)
+                    rebuilds++
+                    RLog.i("brain_rebuild_shorter", "real" to real, "budget" to budget, "to" to smaller)
+                    budget = smaller
+                    continue
+                }
+                live = Live(conv, req.historyCount, mode, req.system).also { convs[req.convId] = it }
+                turns = history.size
+                rebuilt = true
+                RLog.i("brain_rebuild", "kept" to history.size, "of" to req.history.size, "budget" to budget, "real" to real, "mode" to mode)
+                break
             }
-            live = Live(conv, req.historyCount, usedMode, systemKey(req.system)).also { convs[req.convId] = it }
-            rebuilt = true
-            RLog.i("brain_rebuild", "kept" to history.size, "of" to req.history.size, "budget" to budget)
         }
-        val l = live
+        val l = live!!
         // After this exchange the client's history holds two more turns (the question and the reply).
         l.historyCount = req.historyCount + 2
-        val retry: (() -> Unit)? = if (allowRetry && l.toolMode > TEXT_CALLS) {
-            {
-                toolMode = minOf(toolMode, l.toolMode - 1)
-                l.dirty = true
-                RLog.i("brain_tool_mode_down", "to" to toolMode)
-                startGenerate(reqId, req, image, sink, allowRetry = toolMode > TEXT_CALLS)
-            }
-        } else null
-        val run = Run(reqId, req.convId, l, sink, rebuilt, retry)
+        val resend: (BrainPolicy.Next) -> Unit = { next ->
+            l.dirty = true
+            val nextBudget = (next as? BrainPolicy.Next.Shorten)?.historyBudget ?: attempt.historyBudget
+            startGenerate(reqId, req, image, sink, Attempt(attempt.sends + 1, nextBudget, turns))
+        }
+        val run = Run(reqId, req.convId, l, sink, rebuilt, resend, Attempt(attempt.sends, budget, turns))
         val parts = buildList {
             image?.let { add(Content.ImageBytes(it)) }
             add(Content.Text(req.text))
@@ -265,7 +331,17 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val l = convs[req.convId]
         if (l == null || !l.awaitingTool || l.dirty) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.BAD_REQUEST, "no tool call pending"))
         l.awaitingTool = false
-        val run = Run(reqId, req.convId, l, sink, rebuilt = false, retry = null)
+        // Room for the results and a reply after them? If not, the actions stand and the reply ends here; the
+        // conversation is rebuilt (shorter) from the history next time.
+        val responses = req.results.sumOf { (n, r) -> TokenEstimate.text(n) + TokenEstimate.text(Json.obj(r).toString()) } + TokenEstimate.TURN_OVERHEAD
+        val live = tokenCount(l.conv)
+        if (!ContextWindow.roomForToolRound(live, responses)) {
+            convs.remove(req.convId)
+            closeQuietly(l.conv)
+            RLog.i("brain_tool_round_full", "tokens" to live, "responses" to responses)
+            return sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(DoneReason.CONTEXT_FULL, live, -1, -1.0, false, l.mode == ToolMode.TEXT_CALLS))
+        }
+        val run = Run(reqId, req.convId, l, sink, rebuilt = false, resend = null, attempt = Attempt(1, null, 0))
         val parts = req.results.map { (name, response) -> Content.ToolResponse(name, response) }
         send(run) { cb -> l.conv.sendMessageAsync(Message.tool(Contents.of(parts)), cb) }
     }
@@ -288,20 +364,14 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         try { r.live.conv.cancelProcess() } catch (_: Exception) {}
     }
 
-    /**
-     * The system prompt without its clock time: a live conversation is reused while only the minutes moved,
-     * and rebuilt when the date or the lock state in the prompt changed.
-     */
-    private fun systemKey(system: String) = system.replace(Regex("""\b\d{1,2}:\d{2}\b"""), "")
-
-    private fun tokenCount(c: Conversation): Int = try { c.getTokenCount() } catch (_: Exception) { Int.MAX_VALUE / 2 }
+    private fun tokenCount(c: Conversation, unknown: Int = Int.MAX_VALUE / 2): Int = try { c.getTokenCount() } catch (_: Exception) { unknown }
 
     private fun send(run: Run, start: (MessageCallback) -> Unit) {
         running = run
         val cb = object : MessageCallback {
             override fun onMessage(message: Message) { handler.post { onChunk(run, message) } }
-            override fun onDone() { run.nativeEnded = true; handler.post { onEnd(run, null) } }
-            override fun onError(throwable: Throwable) { run.nativeEnded = true; handler.post { onEnd(run, throwable) } }
+            override fun onDone() { run.nativeEnded = true; handler.post { onEnd(run, null); afterNative(run) } }
+            override fun onError(throwable: Throwable) { run.nativeEnded = true; handler.post { onEnd(run, throwable); afterNative(run) } }
         }
         try {
             start(cb)
@@ -309,6 +379,11 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             run.nativeEnded = true
             onEnd(run, ex)
         }
+    }
+
+    /** LiteRT is done with this run's conversation: an engine parked under it can be closed now. */
+    private fun afterNative(run: Run) {
+        if (parked?.run === run) closeParked()
     }
 
     private fun onChunk(run: Run, m: Message) {
@@ -338,27 +413,50 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     private fun onEnd(run: Run, error: Throwable?) {
         if (run.ended) return
         run.ended = true
-        when {
-            error == null || error is CancellationException || run.stopReason != null -> {
-                val reason = run.stopReason ?: if (error != null) DoneReason.CANCELLED else if (run.calls.isNotEmpty()) DoneReason.TOOL_CALLS else DoneReason.END
-                if (reason == DoneReason.TOOL_CALLS) {
-                    run.live.awaitingTool = true
-                    run.sink.emit(BrainProtocol.EV_TOOL_CALLS, BrainMsg.ToolCallsMsg(run.calls))
+        if (error == null || error is CancellationException || run.stopReason != null) {
+            val reason = run.stopReason ?: if (error != null) DoneReason.CANCELLED else if (run.calls.isNotEmpty()) DoneReason.TOOL_CALLS else DoneReason.END
+            if (reason == DoneReason.TOOL_CALLS) {
+                run.live.awaitingTool = true
+                run.sink.emit(BrainProtocol.EV_TOOL_CALLS, BrainMsg.ToolCallsMsg(run.calls))
+            }
+            // A stopped reply leaves the conversation in an unknown state: rebuild it next time.
+            if (reason != DoneReason.END && reason != DoneReason.TOOL_CALLS) run.live.dirty = true
+            finish(run, reason)
+            return
+        }
+        // A failed send. The message is classified, never logged (it could quote the model's output).
+        run.live.dirty = true
+        val msg = error.message
+        val hadOutput = run.chunks > 0 || run.calls.isNotEmpty()
+        val next = if (run.resend != null) {
+            BrainPolicy.afterSendError(msg, run.live.mode, hadOutput, run.attempt.historyTurns, run.attempt.historyBudget ?: 0, run.attempt.sends)
+        } else {
+            // Tool results can't be sent again (the conversation that asked for the tools is gone with the error).
+            if (!hadOutput && EngineErrors.isContextFull(msg)) BrainPolicy.Next.Stop(DoneReason.CONTEXT_FULL)
+            else BrainPolicy.afterSendError(msg, run.live.mode, hadOutput = true, historyTurns = 0, historyBudget = 0, sends = BrainPolicy.MAX_SENDS)
+        }
+        RLog.w("brain_send", error, "chunks" to run.chunks, "next" to RLog.Code(next.javaClass.simpleName), "sends" to run.attempt.sends, "mode" to run.live.mode)
+        when (next) {
+            is BrainPolicy.Next.StepDown -> {
+                if (next.to < toolMode) toolMode = next.to
+                RLog.i("brain_tool_mode_down", "to" to toolMode, "at" to RLog.Code("send"))
+                running = null
+                run.resend!!.invoke(next)
+            }
+            is BrainPolicy.Next.Shorten -> {
+                running = null
+                run.resend!!.invoke(next)
+            }
+            is BrainPolicy.Next.Stop -> finish(run, next.reason)
+            is BrainPolicy.Next.Fail -> {
+                // Output already reached the app, so nothing is resent; a genuine parse error still lowers the level for next time.
+                val after = BrainPolicy.modeAfter(msg, run.live.mode)
+                if (after < toolMode) {
+                    toolMode = after
+                    RLog.i("brain_tool_mode_down", "to" to toolMode, "at" to RLog.Code("reply"))
                 }
-                // A stopped reply leaves the conversation in an unknown state: rebuild it next time.
-                if (reason != DoneReason.END && reason != DoneReason.TOOL_CALLS) run.live.dirty = true
-                finish(run, reason)
-            }
-            run.retry != null && run.chunks == 0 && run.calls.isEmpty() -> {
-                RLog.w("brain_send_retry", error)
                 running = null
-                run.retry.invoke()
-            }
-            else -> {
-                RLog.w("brain_send", error, "chunks" to run.chunks)
-                run.live.dirty = true
-                running = null
-                run.sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.ENGINE, error.javaClass.simpleName))
+                run.sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(next.code, error.javaClass.simpleName))
                 runQueued()
             }
         }
@@ -367,12 +465,14 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     private fun finish(run: Run, reason: DoneReason) {
         run.ended = true
         if (running === run) running = null
-        val bench = try { run.live.conv.getBenchmarkInfo() } catch (_: Throwable) { null }
-        val tokens = if (run.live.conv.isAlive) tokenCount(run.live.conv) else -1
+        // Only ask the conversation for numbers once LiteRT is done with it.
+        val idle = run.nativeEnded
+        val bench = if (idle) try { run.live.conv.getBenchmarkInfo() } catch (_: Throwable) { null } else null
+        val tokens = if (idle && run.live.conv.isAlive) tokenCount(run.live.conv) else -1
         val ttft = if (run.tFirst >= 0) run.tFirst - run.tSend else -1
-        run.sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(reason, tokens, ttft, bench?.lastDecodeTokensPerSecond ?: -1.0, run.rebuilt))
+        run.sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(reason, tokens, ttft, bench?.lastDecodeTokensPerSecond ?: -1.0, run.rebuilt, run.live.mode == ToolMode.TEXT_CALLS))
         RLog.i("brain_reply", "reason" to reason, "chunks" to run.chunks, "ttftMs" to ttft, "tokens" to tokens,
-            "tps" to (bench?.lastDecodeTokensPerSecond ?: -1.0), "rebuilt" to run.rebuilt, "calls" to run.calls.size)
+            "tps" to (bench?.lastDecodeTokensPerSecond ?: -1.0), "rebuilt" to run.rebuilt, "calls" to run.calls.size, "mode" to run.live.mode)
         runQueued()
     }
 
@@ -383,9 +483,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     }
 
     companion object {
-        const val TEXT_CALLS = 0
-        const val TOOLS = 1
-        const val TOOLS_CONSTRAINED = 2
+        /** How long unload waits for a cancelled decode to end before parking the engine instead of closing it. */
+        private const val UNLOAD_WAIT_MS = 10_000
     }
 
     /** Broken output (as the lab detects it): pad/unused tokens, or one character 32+ times in a row. */
