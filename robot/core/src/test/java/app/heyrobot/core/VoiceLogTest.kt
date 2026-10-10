@@ -51,7 +51,8 @@ class VoiceLogTest {
         assertEquals(1, VoiceEvent.WAKE.id)
         assertEquals(27, VoiceEvent.TTS_STOP.id)
         val codes: List<List<LogCode>> = listOf(WakeAction.entries, WakeDrop.entries, ListenWhy.entries, MicKind.entries, AecState.entries, SttEnd.entries,
-            ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries)
+            ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries,
+            ScreenData.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -120,6 +121,12 @@ class VoiceLogTest {
         assertEquals("Panel opened but no question heard: nothing heard", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.NO_QUESTION, NoQuestion.NO_SPEECH.id)))
         assertEquals("Question heard but no reply: the model failed", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.NO_REPLY, NoReply.FAILED.id)))
         assertEquals("Stopped listening: #99", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.LISTEN_STOP, 99)))
+        // What Android sent of the screen: codes and flags only.
+        assertEquals(60, VoiceEvent.SCREEN_SHARED.id)
+        assertEquals("Screen from Android: text nothing · screenshot not sent (asked with: text, screenshot, assist gesture)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SCREEN_SHARED, 7, ScreenData.EMPTY.id, ScreenData.NOT_SENT.id)))
+        assertEquals("Screen from Android: text shared · screenshot shared (asked with: text, screenshot)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SCREEN_SHARED, 3, ScreenData.SHARED.id, ScreenData.SHARED.id)))
         // Every event has words.
         for (e in VoiceEvent.entries) assertFalse(e.name, VoiceLogText.describe(VoiceLogEntry(0, e)).isBlank())
         assertEquals("now", VoiceLogText.ago(1_000))

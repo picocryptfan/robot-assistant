@@ -26,6 +26,7 @@ import app.heyrobot.core.BootLogic
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RecognizerRepair
 import app.heyrobot.core.RepairWhen
+import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.readOrNull
@@ -102,6 +103,15 @@ object Assistant {
             networkGranted = granted(ctx, Manifest.permission.INTERNET),
             secureSettingsGranted = RecognizerKeeper.canWrite(ctx),
         )
+    }
+
+    /**
+     * "Use text from screen" and "Use screenshot" in the Digital assistant app settings (hidden Secure keys, on unless
+     * turned off); null for one Android won't let Robot read.
+     */
+    fun screenSharing(ctx: Context): Pair<Boolean?, Boolean?> {
+        fun on(key: String): Boolean? = try { Settings.Secure.getInt(ctx.contentResolver, key, 1) != 0 } catch (_: Throwable) { null }
+        return on(ScreenAccess.TEXT_SETTING) to on(ScreenAccess.SHOT_SETTING)
     }
 
     fun granted(ctx: Context, p: String) = ctx.checkSelfPermission(p) == PackageManager.PERMISSION_GRANTED

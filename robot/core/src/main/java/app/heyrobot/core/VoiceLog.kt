@@ -98,6 +98,11 @@ enum class VoiceEvent(val id: Int) {
     CLAUDE_DONE(37),
     /** a = [ClaudeFail]. */
     CLAUDE_FAILED(38),
+    /**
+     * What Android sent of the screen for a panel (0.3.1, once per panel): a = its show flags (ScreenAccess.SHOW_*),
+     * b = [ScreenData] for the screen's text, c = [ScreenData] for the screenshot.
+     */
+    SCREEN_SHARED(60),
     ;
 
     companion object {
@@ -392,6 +397,8 @@ object VoiceLogText {
             VoiceEvent.SESSION_SHOWN -> "Panel opened (" + code(ShowSource.entries, a) + ")"
             VoiceEvent.SESSION_HIDDEN -> "Panel closed after $a s"
             VoiceEvent.SHOW_FAILED -> "Android didn't open the panel (" + code(ShowSource.entries, a) + ")"
+            VoiceEvent.SCREEN_SHARED -> "Screen from Android: text " + code(ScreenData.entries, b) + " · screenshot " + code(ScreenData.entries, c) +
+                " (asked with: " + ScreenAccess.flagWords(a) + ")"
             VoiceEvent.BRAIN_SENT -> (if (a == 0) "Question sent to the model" else "Action results sent to the model (round $a)") + (if (b == 1) " with a picture or the screen" else "")
             VoiceEvent.BRAIN_FIRST -> "First words after $a ms"
             VoiceEvent.BRAIN_DONE -> "Answer ended after " + secs(a) + " (" + code(DoneCode.entries, b) + ") · $c characters"
