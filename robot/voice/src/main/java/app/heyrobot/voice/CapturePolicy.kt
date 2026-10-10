@@ -11,6 +11,8 @@ import app.heyrobot.core.BargeIn
 object CapturePolicy {
     /** After Robot's voice stops, the call mode stays this long (her last words may still echo in the room). */
     const val TAIL_MS = 800L
+    /** Longest a switch back to speech recognition waits for the wake gate to stop hearing speech (a noisy room). */
+    const val MAX_HOLD_MS = 8_000L
 
     enum class Capture { RECOGNITION, COMMUNICATION }
 
@@ -24,6 +26,26 @@ object CapturePolicy {
         BargeIn.ECHO_CANCEL -> if (speaking || msSinceSpoke < TAIL_MS) Capture.COMMUNICATION else Capture.RECOGNITION
     }
 
-    /** What the capture switches to now: never while a question is being captured (its audio would have a gap). */
-    fun next(current: Capture, desired: Capture, questionOpen: Boolean): Capture = if (questionOpen) current else desired
+    /**
+     * What the capture switches to now: never while a question is being captured (its audio would have a gap), and
+     * not back to speech recognition while the wake gate hears speech (a "hey robot" said just after Robot stops would
+     * be cut in two), for at most [MAX_HOLD_MS] of waiting ([heldMs]).
+     */
+    fun next(current: Capture, desired: Capture, questionOpen: Boolean, gateSpeech: Boolean = false, heldMs: Long = 0L): Capture = when {
+        questionOpen -> current
+        desired == Capture.RECOGNITION && current == Capture.COMMUNICATION && gateSpeech && heldMs < MAX_HOLD_MS -> current
+        else -> desired
+    }
+}
+
+/**
+ * What the keyword spotter listens for, shared by VoiceHub and its listener and read on every frame. The wake lines are
+ * built on another thread and a listener can be replaced at any time; a value copied into a listener could be lost
+ * between the two (the wake word would stay deaf), a shared one can't.
+ */
+class KeywordInputs {
+    /** The wake phrases' keyword lines (core KeywordBuffer.wake); empty: none. */
+    @Volatile var wakeLines: String = ""
+    /** Robot is speaking: "stop" is listened for too. */
+    @Volatile var speaking: Boolean = false
 }

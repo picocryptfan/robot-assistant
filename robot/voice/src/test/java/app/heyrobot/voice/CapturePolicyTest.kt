@@ -48,6 +48,85 @@ class CapturePolicyTest {
         assertEquals(COMMUNICATION, CapturePolicy.next(RECOGNITION, COMMUNICATION, questionOpen = false))
     }
 
+    @Test fun theSwitchBackWaitsWhileTheWakeGateHearsSpeech() {
+        // A "hey robot" said just after Robot stops would straddle the switch: wait, up to MAX_HOLD_MS.
+        assertEquals(COMMUNICATION, CapturePolicy.next(COMMUNICATION, RECOGNITION, questionOpen = false, gateSpeech = true, heldMs = 500))
+        assertEquals(RECOGNITION, CapturePolicy.next(COMMUNICATION, RECOGNITION, questionOpen = false, gateSpeech = true, heldMs = CapturePolicy.MAX_HOLD_MS))
+        assertEquals(RECOGNITION, CapturePolicy.next(COMMUNICATION, RECOGNITION, questionOpen = false, gateSpeech = false, heldMs = 500))
+        // Robot's own voice is speech too: the switch into the call mode never waits for silence.
+        assertEquals(COMMUNICATION, CapturePolicy.next(RECOGNITION, COMMUNICATION, questionOpen = false, gateSpeech = true, heldMs = 0))
+    }
+
+    /**
+     * The wake lines are built on another thread while the listener starts; a value copied into the listener before
+     * it was published was lost when the build finished in between, and the wake word stayed deaf. The listener now
+     * reads the shared inputs on every frame, so whatever the order, it sees the lines.
+     */
+    @Test fun aListenerStartedBeforeTheWakeLinesAreBuiltStillGetsThem() {
+        val inputs = KeywordInputs()
+        val builtAt = java.util.concurrent.CountDownLatch(1)
+        val published = java.util.concurrent.CountDownLatch(1)
+        // The listener is made (and starts reading frames) with the lines still empty...
+        val seen = mutableListOf<String>()
+        val frames = Thread {
+            seen += inputs.wakeLines
+            builtAt.await()
+            published.countDown()
+            repeat(3) { seen += inputs.wakeLines }
+        }
+        frames.start()
+        // ... and the worker finishes the build before the listener is published.
+        val worker = Thread {
+            inputs.wakeLines = "▁HE Y ▁RO B O T :1.5 #0.25 @W1"
+            builtAt.countDown()
+        }
+        worker.start()
+        worker.join()
+        published.await()
+        frames.join()
+        assertEquals("", seen.first())
+        assertEquals("▁HE Y ▁RO B O T :1.5 #0.25 @W1", seen.last())
+        // Speaking likewise: a listener swapped in while Robot speaks still listens for "stop".
+        inputs.speaking = true
+        assertTrue(inputs.speaking)
+    }
+
+    @Test fun theSystemVoiceCountsAsStuckWhenQuiet() {
+        var q = 0
+        for (busy in listOf(false, false)) q = SpeechWatchdog.next(q, busy)
+        assertFalse(SpeechWatchdog.stuck(q, ready = true))
+        q = SpeechWatchdog.next(q, busy = false)
+        assertTrue(SpeechWatchdog.stuck(q, ready = true))
+        // Starting takes longer before it counts.
+        assertFalse(SpeechWatchdog.stuck(q, ready = false))
+        assertTrue(SpeechWatchdog.stuck(SpeechWatchdog.STARTING_CHECKS, ready = false))
+        // Any speech resets the count.
+        assertEquals(0, SpeechWatchdog.next(5, busy = true))
+    }
+
+    @Test fun callAudioTakesTheModeOnlyFromNormal() {
+        assertTrue(CallAudio.mayTake(android.media.AudioManager.MODE_NORMAL, alreadyOurs = false))
+        // Another app's call: Robot plays as assistant audio instead.
+        assertFalse(CallAudio.mayTake(android.media.AudioManager.MODE_IN_COMMUNICATION, alreadyOurs = false))
+        assertFalse(CallAudio.mayTake(android.media.AudioManager.MODE_IN_CALL, alreadyOurs = false))
+        assertTrue(CallAudio.mayTake(android.media.AudioManager.MODE_IN_COMMUNICATION, alreadyOurs = true))
+    }
+
+    /** Each capture switch must unregister the old record's recording callback, or a thread and a registration leak. */
+    @Test fun everyClosedCaptureUnregistersItsCallback() {
+        val src = java.io.File(System.getProperty("user.dir"), "src/main/java/app/heyrobot/voice/Listener.kt").readText()
+        val close = src.substringAfter("private fun close(r: AudioRecord)").substringBefore("\n    }")
+        assertTrue(close.contains("unregisterAudioRecordingCallback"))
+        assertTrue(close.indexOf("unregisterAudioRecordingCallback") < close.indexOf("release()"))
+        // reopen and stop release through close(); the only other release() calls are before a callback exists.
+        assertTrue(src.substringAfter("private fun reopen(").substringBefore("fun stop(").contains("rec?.let(::close)"))
+        assertTrue(src.substringAfter("fun stop(").contains("rec?.let(::close)"))
+        val registerAt = src.indexOf("registerAudioRecordingCallback(callbackExec")
+        val openStarted = src.substringAfter("private fun openStarted(").substringBefore("private fun close(")
+        assertTrue(openStarted.substringAfter("registerAudioRecordingCallback(callbackExec").contains("recCallback = cb"))
+        assertTrue(registerAt > 0)
+    }
+
     @Test fun robotSayingAWakeWordIsGuardedLikeStop() {
         val rate = 24_000
         val g = EchoGuard(rate)

@@ -37,6 +37,7 @@ import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.voice.CapturePolicy
+import app.heyrobot.voice.KeywordInputs
 import app.heyrobot.voice.Listener
 import app.heyrobot.voice.ListenerConfig
 import app.heyrobot.voice.SpeechToText
@@ -82,10 +83,13 @@ object VoiceHub {
     private var receivers = mutableListOf<BroadcastReceiver>()
     /** Between onReady and onShutdown of the assistant service: only then may the microphone be opened. */
     @Volatile private var active = false
-    /** The wake phrases' keyword lines for the listener (core KeywordBuffer), rebuilt when the settings change. */
-    @Volatile private var wakeLines = ""
+    /**
+     * The wake phrases' keyword lines (core KeywordBuffer, rebuilt when the settings change) and whether Robot speaks,
+     * shared with every listener, which reads them on each frame.
+     */
+    private val inputs = KeywordInputs()
     /** Robot's voice (main thread): when it started and stopped, and whether its stop was already logged. */
-    private var speaking = false
+    @Volatile private var speaking = false
     private var speakStartE = 0L
     private var spokeE = Long.MIN_VALUE / 2
     private var stopLogged = false
@@ -144,7 +148,7 @@ object VoiceHub {
         speaking = on
         val now = SystemClock.elapsedRealtime()
         // While Robot speaks, "stop" said aloud ends the reply (when the wake word listens).
-        listener?.stopWord = on
+        inputs.speaking = on
         if (on) {
             speakStartE = now
             stopLogged = false
@@ -222,7 +226,12 @@ object VoiceHub {
         }, IntentFilter().apply { addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED) }, null)
         // For the voice log only: "she didn't answer" may go with the screen being off.
         register(object : BroadcastReceiver() {
-            override fun onReceive(c: Context, i: Intent) = VoiceLog.add(VoiceEvent.SCREEN, if (i.action == Intent.ACTION_SCREEN_ON) 1 else 0)
+            override fun onReceive(c: Context, i: Intent) {
+                val on = i.action == Intent.ACTION_SCREEN_ON
+                VoiceLog.add(VoiceEvent.SCREEN, if (on) 1 else 0)
+                // Nobody looks at "Test wake words" with the screen off: wake words open Robot again.
+                if (!on) wakeTestUntil = 0L
+            }
         }, IntentFilter().apply { addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF) }, null)
         applyListening(ListenWhy.READY)
         worker.postDelayed(retry, 60_000)
@@ -289,9 +298,7 @@ object VoiceHub {
         if (cur != null && !cur.running) shortRuns = if (SystemClock.elapsedRealtime() - lastStartE < SHORT_RUN_MS) shortRuns + 1 else 0
         stopListening(why)
         lastStartE = SystemClock.elapsedRealtime()
-        val l = Listener(app, ListenerConfig(), Paths.marker(app, "kws_init"), ::onWake)
-        l.wakeKeywords = wakeLines
-        l.stopWord = speaking
+        val l = Listener(app, ListenerConfig(), Paths.marker(app, "kws_init"), inputs, ::onWake)
         val ok = l.start(why)
         if (!ok) shortRuns++
         listener = if (ok) l else null
@@ -322,8 +329,7 @@ object VoiceHub {
                 KeywordBuffer.line(listOf("▁HE", "Y", "▁RO", "B", "O", "T"), KwsThresholds.wake(it.sensitivity), KeywordBuffer.label(it.id))
             }
         }
-        wakeLines = lines
-        listener?.wakeKeywords = lines
+        inputs.wakeLines = lines
         RLog.i("wake_phrases", "enabled" to phrases.count { it.enabled }, "lines" to lines.lines().count { it.isNotBlank() })
     }
 

@@ -25,11 +25,23 @@ internal object CallAudio {
     fun focus(p: Playback): AudioFocusRequest =
         AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(attributes(p)).build()
 
-    /** [owner] starts speaking with call audio: communication mode and the loudspeaker, from the first owner on. */
+    /**
+     * May Robot take the communication mode now? Only from the normal mode (or when it is already Robot's): during
+     * another app's call, taking it would put that call on the loudspeaker and silence its microphone.
+     */
+    fun mayTake(mode: Int, alreadyOurs: Boolean): Boolean = alreadyOurs || mode == AudioManager.MODE_NORMAL
+
+    /**
+     * [owner] starts speaking with call audio: communication mode and the loudspeaker, from the first owner on. False
+     * when the phone is in another mode (a call): the caller then plays as assistant audio.
+     */
     @Synchronized
-    fun begin(ctx: Context, owner: Any) {
-        if (!owners.add(owner) || owners.size > 1) return
+    fun begin(ctx: Context, owner: Any): Boolean {
+        if (owner in owners) return true
         val am = ctx.getSystemService(AudioManager::class.java)
+        if (!mayTake(try { am.mode } catch (_: Throwable) { -1 }, owners.isNotEmpty())) return false
+        owners += owner
+        if (owners.size > 1) return true
         try {
             am.mode = AudioManager.MODE_IN_COMMUNICATION
             // A headset or car stays the call device; the earpiece gives way to the loudspeaker.
@@ -40,6 +52,7 @@ internal object CallAudio {
         } catch (t: Throwable) {
             RLog.w("call_audio", t)
         }
+        return true
     }
 
     /** [owner] stopped speaking; the last one out puts the phone back in its normal mode. */

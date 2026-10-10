@@ -70,7 +70,28 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private val main = Handler(Looper.getMainLooper())
     private val audio = app.getSystemService(AudioManager::class.java)
     @Volatile private var playback = Playback.ASSISTANT
+    /** The playback of the current speaking run (call audio only if the mode could be taken). */
+    private var runPlayback = Playback.ASSISTANT
     private var focus = CallAudio.focus(playback)
+    /** Checks in a row the engine was quiet although sentences are outstanding ([SpeechWatchdog]). */
+    private var quiet = 0
+    private val watchdog = object : Runnable {
+        override fun run() {
+            if (outstanding.get() == 0) return
+            val busy = ready && try { tts.isSpeaking } catch (_: Throwable) { false }
+            quiet = SpeechWatchdog.next(quiet, busy)
+            if (SpeechWatchdog.stuck(quiet, ready)) {
+                // The engine won't report the rest: end the run, so the voice, the call mode and the capture come back.
+                RLog.i("tts_stuck", "ready" to ready)
+                generation++
+                pending.clear()
+                try { if (ready) tts.stop() } catch (_: Throwable) {}
+                if (outstanding.getAndSet(0) > 0) idle()
+                return
+            }
+            main.postDelayed(this, SpeechWatchdog.CHECK_MS)
+        }
+    }
     private val outstanding = AtomicInteger(0)
     private val ids = AtomicLong(0)
     /** Utterances started before the last stop() are ignored by the progress callbacks. */
@@ -97,10 +118,11 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         RLog.i("tts_init", "ok" to ok)
         if (!ok) {
             pending.clear()
-            setOutstanding(0)
+            // Sentences may be waiting (and the call mode taken): end the run properly.
+            if (outstanding.getAndSet(0) > 0) idle()
             return
         }
-        tts.setAudioAttributes(CallAudio.attributes(playback))
+        tts.setAudioAttributes(CallAudio.attributes(runPlayback))
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) = finished(utteranceId)
@@ -138,8 +160,13 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         main.post {
             if (failed) return@post
             if (setOutstanding(outstanding.get() + 1) == 1) {
-                if (playback == Playback.CALL) CallAudio.begin(app, this)
+                runPlayback = if (playback == Playback.CALL && CallAudio.begin(app, this)) Playback.CALL else Playback.ASSISTANT
+                focus = CallAudio.focus(runPlayback)
+                if (ready) tts.setAudioAttributes(CallAudio.attributes(runPlayback))
                 audio.requestAudioFocus(focus)
+                quiet = 0
+                main.removeCallbacks(watchdog)
+                main.postDelayed(watchdog, SpeechWatchdog.CHECK_MS)
                 listener?.onSpeakingChanged(true)
             }
             if (EchoGuard.soundsLikeStop(sentence)) risky = true
@@ -157,6 +184,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private fun setOutstanding(n: Int): Int { outstanding.set(n); return n }
 
     private fun idle() {
+        main.removeCallbacks(watchdog)
         risky = false
         riskyWake = false
         audio.abandonAudioFocusRequest(focus)
@@ -184,12 +212,8 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     }
 
     override fun setPlayback(p: Playback) {
-        main.post {
-            if (p == playback) return@post
-            playback = p
-            focus = CallAudio.focus(p)
-            if (ready) tts.setAudioAttributes(CallAudio.attributes(p))
-        }
+        // Used from the next speaking run.
+        main.post { playback = p }
     }
 
     override fun setListener(listener: TextToSpeech.Listener?) {
@@ -199,9 +223,26 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     override fun release() {
         main.post {
             generation++
+            pending.clear()
+            if (outstanding.getAndSet(0) > 0) idle()
             try { tts.stop(); tts.shutdown() } catch (_: Exception) {}
             ready = false
             failed = true
         }
     }
+}
+
+/**
+ * Pure. When the phone's text to speech counts as stuck: sentences are outstanding but the engine has been quiet for
+ * [CHECK_MS] × [QUIET_CHECKS] (or longer while it still starts), and it never reported them done.
+ */
+object SpeechWatchdog {
+    const val CHECK_MS = 2_000L
+    const val QUIET_CHECKS = 3
+    /** The engine may take a while to start the first time. */
+    const val STARTING_CHECKS = 8
+
+    fun next(quiet: Int, busy: Boolean): Int = if (busy) 0 else quiet + 1
+
+    fun stuck(quiet: Int, ready: Boolean): Boolean = quiet >= if (ready) QUIET_CHECKS else STARTING_CHECKS
 }

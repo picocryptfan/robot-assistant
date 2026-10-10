@@ -60,6 +60,9 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
     /** Called with the length (ms) of each stretch of speech the gate heard, when it ends. */
     var onGateSpeech: ((Int) -> Unit)? = null
 
+    /** The speech gate hears speech right now (audio thread). */
+    val hearing: Boolean get() = gateSpeaking
+
     init {
         fun model(part: String) = "kws/$part-epoch-12-avg-2-chunk-16-left-64.onnx"
         kws = KeywordSpotter(assets, KeywordSpotterConfig(
@@ -102,7 +105,11 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
     private fun newStream(keywords: String): OnlineStream? {
         if (keywords.isEmpty() || keywords == refused) return null
         return try {
-            kws.createStream(keywords).also { streamKeywords = keywords }
+            // sherpa-onnx answers a set it can't encode with a null stream (the vendored OnlineStream refuses it too).
+            kws.createStream(keywords).also {
+                check(it.ptr != 0L) { "null stream" }
+                streamKeywords = keywords
+            }
         } catch (t: Throwable) {
             // sherpa-onnx returns no stream for a set it can't encode; remember it rather than retrying every frame.
             RLog.w("kws_stream", t)
@@ -179,11 +186,13 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
         return hit
     }
 
-    /** The capture changed (a new AudioRecord): no keyword or speech stretch spans the gap. */
+    /**
+     * The capture changed (a new AudioRecord): the keyword stream and the gate start again, but the pre-roll is kept,
+     * so a word said across the few-ms gap is fed again whole when the gate hears speech.
+     */
     fun reset() {
         dropStream()
         vad?.reset()
-        preRoll.drain()
         gateSpeaking = false
         lastSpeech = Long.MIN_VALUE / 2
     }

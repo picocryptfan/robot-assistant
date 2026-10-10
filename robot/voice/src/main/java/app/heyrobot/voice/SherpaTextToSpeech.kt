@@ -143,10 +143,10 @@ class SherpaTextToSpeech internal constructor(
     private fun changed(on: Boolean) {
         try {
             if (on) {
-                // A run keeps the playback it started with (the track is rebuilt for the next one if it changed).
-                runPlayback = playback
+                // A run keeps the playback it started with (the track is rebuilt for the next one if it changed); call
+                // audio only if the phone isn't in another app's call.
+                runPlayback = if (playback == Playback.CALL && CallAudio.begin(ctx, this)) Playback.CALL else Playback.ASSISTANT
                 focus = CallAudio.focus(runPlayback)
-                if (runPlayback == Playback.CALL) CallAudio.begin(ctx, this)
                 audio.requestAudioFocus(focus)
             } else {
                 audio.abandonAudioFocusRequest(focus)

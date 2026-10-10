@@ -75,6 +75,9 @@ import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.KwsAssets
 import app.heyrobot.sys.Paths
 import app.heyrobot.ui.common.RIcons
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -226,15 +229,23 @@ fun WakeTestScreen(s: RobotSettings, snap: Snapshot, onBack: () -> Unit) {
     val opened = remember { System.currentTimeMillis() }
     var hits by remember { mutableStateOf<List<VoiceLogEntry>>(emptyList()) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    // Renewed every few seconds while this screen shows; the voice process ends the test by itself otherwise.
-    LaunchedEffect(Unit) {
-        var tick = 0
-        while (true) {
-            if (tick % 5 == 0) Cmd.send(ctx, Cmd.WAKE_TEST, android.os.Bundle().apply { putBoolean(Cmd.EXTRA_ON, true) })
-            hits = withContext(Dispatchers.IO) { readLog(ctx) }.filter { it.event == VoiceEvent.WAKE && it.c == WakeAction.TEST.id && it.time >= opened }
-            now = System.currentTimeMillis()
-            tick++
-            delay(1_000)
+    // Renewed every few seconds only while this screen is started (visible): with the screen off or the app in the
+    // background the test ends, and wake words open Robot again. The voice process also ends it on its own.
+    val owner = LocalLifecycleOwner.current
+    LaunchedEffect(owner) {
+        owner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            try {
+                var tick = 0
+                while (true) {
+                    if (tick % 5 == 0) Cmd.send(ctx, Cmd.WAKE_TEST, android.os.Bundle().apply { putBoolean(Cmd.EXTRA_ON, true) })
+                    hits = withContext(Dispatchers.IO) { readLog(ctx) }.filter { it.event == VoiceEvent.WAKE && it.c == WakeAction.TEST.id && it.time >= opened }
+                    now = System.currentTimeMillis()
+                    tick++
+                    delay(1_000)
+                }
+            } finally {
+                Cmd.send(ctx, Cmd.WAKE_TEST, android.os.Bundle().apply { putBoolean(Cmd.EXTRA_ON, false) })
+            }
         }
     }
     DisposableEffect(Unit) { onDispose { Cmd.send(ctx, Cmd.WAKE_TEST, android.os.Bundle().apply { putBoolean(Cmd.EXTRA_ON, false) }) } }
