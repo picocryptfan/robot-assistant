@@ -20,6 +20,7 @@ import com.anthropic.models.beta.messages.BetaTextBlockParam
 import com.anthropic.models.beta.messages.BetaTool
 import com.anthropic.models.beta.messages.BetaToolChoiceAuto
 import com.anthropic.models.beta.messages.BetaToolResultBlockParam
+import com.anthropic.models.beta.messages.BetaWebSearchTool20250305
 import com.anthropic.models.beta.messages.BetaWebSearchTool20260209
 import com.anthropic.models.beta.messages.MessageCreateParams
 import java.util.Base64
@@ -50,7 +51,12 @@ internal object ClaudeRequests {
             .outputConfig(BetaOutputConfig.builder().effort(effort(plan.effort)).build())
             .messages(messages)
         for (t in tools) b.addTool(tool(t))
-        if (search) b.addTool(BetaWebSearchTool20260209.builder().maxUses(SEARCH_MAX_USES).build())
+        // The newer web search (dynamic filtering) is documented for Claude Opus 5.5 and Sonnet 5.5; Claude Haiku 5.5 gets the
+        // basic one.
+        if (search) {
+            if (model == ClaudeModel.HAIKU) b.addTool(BetaWebSearchTool20250305.builder().maxUses(SEARCH_MAX_USES).build())
+            else b.addTool(BetaWebSearchTool20260209.builder().maxUses(SEARCH_MAX_USES).build())
+        }
         if (tools.isNotEmpty() || search) b.toolChoice(BetaToolChoiceAuto.builder().build())
         // A classifier decline is retried on the model Anthropic recommends for its category. Claude Haiku 5.5 has no
         // server-side fallback (a list is a 400 there), so its requests go without.
@@ -68,14 +74,19 @@ internal object ClaudeRequests {
         ClaudeEffort.HIGH -> BetaOutputConfig.Effort.HIGH
     }
 
-    /** One of Robot's tools with the same schema as Gemma's (ToolSpec): its properties in order, then the required ones. */
+    /**
+     * One of Robot's tools with the same schema as Gemma's (ToolSpec): its properties in order, then the required ones,
+     * and no others. Strict, so the API only produces input that fits the schema (Robot still checks it: ClaudeTools.check).
+     */
     fun tool(spec: ToolSpec): BetaTool {
         val props = BetaTool.InputSchema.Properties.builder()
         for (p in spec.params) props.putAdditionalProperty(p.name, JsonValue.from(linkedMapOf("type" to p.type, "description" to p.description)))
         return BetaTool.builder()
             .name(spec.tool.id)
             .description(spec.description)
-            .inputSchema(BetaTool.InputSchema.builder().properties(props.build()).required(spec.params.filter { it.required }.map { it.name }).build())
+            .inputSchema(BetaTool.InputSchema.builder().properties(props.build()).required(spec.params.filter { it.required }.map { it.name })
+                .putAdditionalProperty("additionalProperties", JsonValue.from(false)).build())
+            .strict(true)
             .build()
     }
 
@@ -104,7 +115,7 @@ internal object ClaudeRequests {
         )
     }
 
-    /** Robot's statuses that mean the action didn't happen for a reason other than the owner saying no. */
+    /** Robot's statuses that mean the action didn't happen for a reason other than the user saying no. */
     private val ERRORS = setOf("failed", "invalid_arguments", "phone_locked_user_must_unlock", "turned_off_in_settings", "not_done_too_many_actions",
         "permission_needed_user_must_allow", "not_found", "app_not_installed", "not_done")
 

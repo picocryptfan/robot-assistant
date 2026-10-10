@@ -32,7 +32,7 @@ class ClaudeClient private constructor(internal val sdk: AnthropicClient) : Auto
     }
 
     companion object {
-        /** Robot's own limits (docs/ask-claude.md "Errors"): 60 s to the first token is watched by [ClaudeSession]. */
+        /** Robot's own limits (docs/ask-claude.md "Errors"); 60 s without any stream event is watched by [ClaudeSession]. */
         private val TIMEOUT: Timeout = Timeout.builder()
             .connect(Duration.ofSeconds(15))
             // No byte at all for this long (the API pings during long thinking): the connection is gone.
@@ -42,13 +42,25 @@ class ClaudeClient private constructor(internal val sdk: AnthropicClient) : Auto
             .request(Duration.ZERO)
             .build()
 
+        /**
+         * The SDK describes the device in its default headers (the kernel release with its build tag, the CPU, the Java
+         * runtime's version). Robot sends neutral values instead; the SDK's language and version stay.
+         */
+        val NEUTRAL_HEADERS: Map<String, String> = mapOf(
+            "X-Stainless-OS" to "Other",
+            "X-Stainless-OS-Version" to "unknown",
+            "X-Stainless-Arch" to "unknown",
+            "X-Stainless-Runtime-Version" to "unknown",
+        )
+
         fun create(apiKey: String, baseUrl: String? = null): ClaudeClient = ClaudeClient(
             AnthropicOkHttpClient.builder()
                 .apiKey(apiKey)
                 .apply { if (baseUrl != null) baseUrl(baseUrl) }
+                .apply { for ((k, v) in NEUTRAL_HEADERS) replaceHeaders(k, v) }
                 // Robot retries an overloaded or 5xx answer once itself, and never a rate limit (ClaudeSession).
                 .maxRetries(0)
-                // Never the SDK's own logging: requests carry the key and the owner's words.
+                // Never the SDK's own logging: requests carry the key and the user's words.
                 .logLevel(LogLevel.OFF)
                 .timeout(TIMEOUT)
                 .build(),
@@ -97,11 +109,17 @@ class ClaudeClient private constructor(internal val sdk: AnthropicClient) : Auto
             is AnthropicIoException, is AnthropicRetryableException -> io(t.cause)
             // Something the SDK couldn't read (an answer it doesn't understand).
             is AnthropicException -> ClaudeFailure.UNKNOWN
+            // OkHttp refuses a header value it can't send ("Unexpected char … in x-api-key value"): the saved key has a
+            // character a key never has. The message (which quotes the value) is never read beyond its start or logged.
+            is IllegalArgumentException -> if (t.message?.startsWith("Unexpected char") == true) ClaudeFailure.KEY_REFUSED else ClaudeFailure.UNKNOWN
             is IOException -> io(t)
             else -> ClaudeFailure.UNKNOWN
         }
 
-        /** No network, a refused connection, a DNS failure (also GrapheneOS's Network toggle off): "No internet". */
+        /**
+         * No network, a refused connection, a DNS failure (also GrapheneOS's Network toggle off): "No internet"; a socket
+         * that stayed silent (before or during the answer): "Claude took too long to answer".
+         */
         private fun io(t: Throwable?): ClaudeFailure = if (t is InterruptedIOException) ClaudeFailure.TIMEOUT else ClaudeFailure.NO_INTERNET
 
         private fun type(e: AnthropicServiceException): String? = try { e.errorType().orElse(null)?.asString() } catch (_: Throwable) { null }

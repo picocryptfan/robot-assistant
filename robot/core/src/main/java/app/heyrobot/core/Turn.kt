@@ -58,6 +58,15 @@ interface TurnModel {
     suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome
     /** Forget the live conversation; it is rebuilt from the history next time. */
     fun close()
+
+    /**
+     * The turn ends with the last round's calls answered only in part: another app opened. [results]: the calls that ran
+     * (in call order, the one that opened the app last); the rest never will.
+     */
+    fun abandon(results: List<Pair<String, Map<String, Any?>>>) = close()
+
+    /** The turn was stopped during a round: [results] of the calls that ran before the stop. Nothing by default. */
+    fun stopped(results: List<Pair<String, Map<String, Any?>>>) {}
 }
 
 /** One of the people or numbers a card offers: tapping it confirms [action], which goes to that one. */
@@ -229,6 +238,9 @@ class TurnRunner(
 
     private class Round(val responses: List<Pair<String, Map<String, Any?>>>, val launched: Boolean)
 
+    /** The round under way's results so far: a stop meanwhile tells the model what ran ([TurnModel.stopped]). */
+    private var inRound: MutableList<Pair<String, Map<String, Any?>>>? = null
+
     suspend fun run(): TurnResult {
         var outcome = model.ask()
         var rounds = 0
@@ -236,10 +248,15 @@ class TurnRunner(
             // The local model asks Claude: its turn ends here, nothing else it asked for runs.
             if (!remote && outcome.calls.any { it.asksClaude() }) return escalate()
             rounds++
-            val round = runCalls(outcome.calls, speak = false)
+            val round = try {
+                runCalls(outcome.calls, speak = false)
+            } catch (e: CancellationException) {
+                model.stopped(inRound.orEmpty().toList())
+                throw e
+            }
             if (round.launched) {
-                // Another app is opening: no follow-up reply.
-                model.close()
+                // Another app is opening: no follow-up reply. What ran (the launch included) is the model's to know.
+                model.abandon(round.responses)
                 return TurnResult(DoneReason.END, launchedApp = true)
             }
             view.phase(TurnPhase.THINKING)
@@ -293,6 +310,7 @@ class TurnRunner(
 
     private suspend fun runCalls(calls: List<RawToolCall>, speak: Boolean): Round {
         val out = mutableListOf<Pair<String, Map<String, Any?>>>()
+        inRound = out
         for (raw in calls) {
             val parsed = parse(raw)
             if (budget <= 0) {

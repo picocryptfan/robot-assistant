@@ -114,8 +114,29 @@ class ClaudeSessionTest {
         override fun declined() { declined++ }
     }
 
-    private fun session(model: ClaudeModel = ClaudeModel.OPUS, search: Boolean = true, conversation: Boolean = false, firstOutputMs: Long = 10_000) =
-        ClaudeSession(client, model, ClaudeTools.tools(RobotSettings()), search, conversation, firstOutputMs = firstOutputMs, retryDelayMs = 10)
+    private fun session(model: ClaudeModel = ClaudeModel.OPUS, search: Boolean = true, conversation: Boolean = false, idleMs: Long = 10_000, retryDelayMs: Long = 10) =
+        ClaudeSession(client, model, ClaudeTools.tools(RobotSettings()), search, conversation, idleMs = idleMs, retryDelayMs = retryDelayMs)
+
+    /** Every request Robot sent must be one the API takes: the same rules the session checks before sending. */
+    private fun valid(r: RecordedRequest): JSONObject {
+        val b = JSONObject(r.body.readUtf8())
+        val mapper = com.anthropic.core.jsonMapper()
+        val ms = b.getJSONArray("messages")
+        val messages = (0 until ms.length()).map { mapper.readValue(ms.getJSONObject(it).toString(), com.anthropic.models.beta.messages.BetaMessageParam::class.java) }
+        assertNull(b.toString(), ClaudeHistory.check(messages, messages.map { ClaudeHistory.seal(ClaudeHistory.blocks(it)) }))
+        return b
+    }
+
+    private fun take(): JSONObject = valid(server.takeRequest(5, TimeUnit.SECONDS)!!)
+
+    private fun roles(b: JSONObject): String {
+        val ms = b.getJSONArray("messages")
+        return (0 until ms.length()).joinToString(" ") { i ->
+            val m = ms.getJSONObject(i)
+            val c = m.getJSONArray("content")
+            m.getString("role") + "[" + (0 until c.length()).joinToString(",") { c.getJSONObject(it).getString("type") } + "]"
+        }
+    }
 
     private val voicePlan = ClaudePlan.of(app.heyrobot.core.ClaudeEffortSetting.AUTO, voice = true, deep = false)
     private fun ask(q: String) = ClaudeContext.oneShot(q, now, "CA")
@@ -156,9 +177,18 @@ class ClaudeSessionTest {
         val timer = tools.getJSONObject(0)
         assertEquals("integer", timer.getJSONObject("input_schema").getJSONObject("properties").getJSONObject("minutes").getString("type"))
         assertFalse(timer.has("eager_input_streaming"))
+        // Strict: the API only produces input that fits, and no property beyond the schema's.
+        assertTrue(timer.getBoolean("strict"))
+        assertFalse(timer.getJSONObject("input_schema").getBoolean("additionalProperties"))
+        // The SDK's device description is replaced with neutral values (the kernel's build tag would identify the phone).
+        assertEquals("unknown", r.getHeader("X-Stainless-OS-Version"))
+        assertEquals("unknown", r.getHeader("X-Stainless-Arch"))
+        assertEquals("Other", r.getHeader("X-Stainless-OS"))
+        assertEquals("unknown", r.getHeader("X-Stainless-Runtime-Version"))
+        assertTrue(r.headers.values("X-Stainless-OS-Version").none { it == System.getProperty("os.version") })
         // The question only, after the date and region.
         val content = b.getJSONArray("messages").getJSONObject(0).getJSONArray("content")
-        assertEquals("[Today is Saturday, 10 October 2026. The owner is in Canada.]", content.getJSONObject(0).getString("text"))
+        assertEquals("[Today is Saturday, 10 October 2026. The user is in Canada.]", content.getJSONObject(0).getString("text"))
         assertEquals("why is the sky blue", content.getJSONObject(1).getString("text"))
         assertEquals(2, content.length())
     }
@@ -175,6 +205,18 @@ class ClaudeSessionTest {
         assertEquals(16_000, b.getInt("max_tokens"))
         val tools = b.getJSONArray("tools")
         assertTrue((0 until tools.length()).none { tools.getJSONObject(it).optString("name") == "web_search" })
+    }
+
+    @Test fun haikuSearchesWithTheBasicWebSearchTool() = runBlocking {
+        server.enqueue(textReply("Hi."))
+        server.enqueue(textReply("Hi."))
+        session(ClaudeModel.HAIKU).ask(ask("hi"), voicePlan, Heard())
+        session(ClaudeModel.SONNET).ask(ask("hi"), voicePlan, Heard())
+        fun search(b: JSONObject): JSONObject { val t = b.getJSONArray("tools"); return t.getJSONObject(t.length() - 1) }
+        val haiku = search(take())
+        assertEquals("web_search_20250305", haiku.getString("type"))
+        assertEquals(3, haiku.getInt("max_uses"))
+        assertEquals("web_search_20260209", search(take()).getString("type"))
     }
 
     @Test fun screenTextAndPicturesGoOnlyWhenShared() = runBlocking {
@@ -380,21 +422,25 @@ class ClaudeSessionTest {
     @Test fun noInternet() = runBlocking {
         server.shutdown()
         assertEquals(ClaudeOutcome.Failed(ClaudeFailure.NO_INTERNET), session().ask(ask("q"), voicePlan, Heard()))
-        assertEquals("No internet.", ClaudeFailure.NO_INTERNET.text)
+        // GrapheneOS may show a revoked Network permission as no network at all: the words say where to look.
+        assertTrue(ClaudeFailure.NO_INTERNET.text.contains("Network permission"))
     }
 
-    @Test fun sixtySecondsToTheFirstTokenThenNoLimit() = runBlocking {
-        // Headers, then nothing for longer than the first-token limit (shortened for the test).
+    @Test fun sixtySecondsOfSilenceIsATimeout() = runBlocking {
+        // Headers, then nothing for longer than the limit (shortened for the test).
         server.enqueue(textReply("Late.").setBodyDelay(2, TimeUnit.SECONDS))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.TIMEOUT), session(firstOutputMs = 300).ask(ask("q"), voicePlan, Heard()))
-        assertEquals("Claude took too long to start answering.", ClaudeFailure.TIMEOUT.text)
+        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.TIMEOUT), session(idleMs = 300).ask(ask("q"), voicePlan, Heard()))
+        assertEquals("Claude took too long to answer.", ClaudeFailure.TIMEOUT.text)
     }
 
     /**
      * A one-connection server that writes [events] with [gapMs] between them (MockWebServer's throttle also slows the
      * reading of Robot's 5 KB request, so it can't show this).
      */
-    private fun slowServer(events: List<String>, gapMs: Long): java.net.ServerSocket {
+    private fun slowServer(events: List<String>, gapMs: Long): java.net.ServerSocket = slowServer(events.map { it to gapMs })
+
+    /** The same, each event followed by its own pause. */
+    private fun slowServer(events: List<Pair<String, Long>>): java.net.ServerSocket {
         val ss = java.net.ServerSocket(0, 50, java.net.InetAddress.getByName("127.0.0.1"))
         Thread {
             try {
@@ -419,7 +465,7 @@ class ClaudeSessionTest {
                     val out = sock.getOutputStream()
                     out.write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n".toByteArray())
                     out.flush()
-                    for (e in events) { out.write(e.toByteArray()); out.flush(); Thread.sleep(gapMs) }
+                    for ((e, gap) in events) { out.write(e.toByteArray()); out.flush(); Thread.sleep(gap) }
                 }
             } catch (_: Exception) {}
         }.start()
@@ -437,7 +483,7 @@ class ClaudeSessionTest {
         ClaudeClient.create(key, "http://127.0.0.1:${slow.localPort}").use { c ->
             val heard = Heard()
             val t0 = System.currentTimeMillis()
-            val s = ClaudeSession(c, ClaudeModel.OPUS, ClaudeTools.tools(RobotSettings()), search = true, conversation = false, firstOutputMs = 600)
+            val s = ClaudeSession(c, ClaudeModel.OPUS, ClaudeTools.tools(RobotSettings()), search = true, conversation = false, idleMs = 600)
             assertEquals(ClaudeOutcome.Done(), s.ask(ask("q"), voicePlan, heard))
             assertTrue(System.currentTimeMillis() - t0 > 1_200)
             assertEquals(pieces.joinToString(""), heard.text.toString())
@@ -526,5 +572,273 @@ class ClaudeSessionTest {
         val c = StoredConversation("c", 0, 0, listOf(ChatTurn("u", TurnRole.USER, "q", 0), ChatTurn("a", TurnRole.ASSISTANT, heard.text.toString(), 0, claude = true)))
         assertFalse(ConversationCodec.toJson(c).contains(key))
         // (The log check itself runs after every test, in down().)
+    }
+
+    // ------------------------------------------------------------------ the history stays one the API takes
+
+    private fun toolUse(id: String, name: String = "send_text", json: String = """{"to":"Mom","message":"Running late"}""") = sse(start(),
+        blockStart(0, """{"type":"tool_use","id":"$id","name":"$name","input":{}}"""), jsonDelta(0, json), blockStop(0), end("tool_use"), stop)
+
+    @Test fun resultsOwedFromAnAppLaunchSurviveAFailedQuestion() = runBlocking {
+        // A card opened Cheogram (the turn ended without a reply); the next question fails; the one after must still
+        // carry the result, or every later request would be a 400.
+        server.enqueue(toolUse("toolu_t"))
+        server.enqueue(error(429, "rate_limit_error"))
+        server.enqueue(textReply("Sure."))
+        val s = session(conversation = true)
+        assertTrue(s.ask(ask("text Mom I'm running late"), voicePlan, Heard()) is ClaudeOutcome.Calls)
+        s.abandon(listOf(mapOf("status" to "draft_opened", "detail" to "Opened in Cheogram.")))
+        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.RATE_LIMITED), s.ask(ClaudeContext.next("and remind me at five"), voicePlan, Heard()))
+        assertNull(s.problem())
+        assertEquals(ClaudeOutcome.Done(), s.ask(ClaudeContext.next("and remind me at five"), voicePlan, Heard()))
+        take()
+        assertEquals("user[text,text] assistant[tool_use] user[tool_result,text]", roles(take()))
+        val third = take()
+        assertEquals("user[text,text] assistant[tool_use] user[tool_result,text]", roles(third))
+        // The launched call's real result, not "not done".
+        val r = third.getJSONArray("messages").getJSONObject(2).getJSONArray("content").getJSONObject(0)
+        assertEquals("draft_opened", JSONObject(r.getString("content")).getString("status"))
+        assertNull(s.problem())
+    }
+
+    @Test fun anAppLaunchReportsWhatRanAndWhatDidNot() = runBlocking {
+        server.enqueue(sse(start(),
+            blockStart(0, """{"type":"tool_use","id":"toolu_a","name":"send_text","input":{}}"""), jsonDelta(0, """{"to":"Mom","message":"Late"}"""), blockStop(0),
+            blockStart(1, """{"type":"tool_use","id":"toolu_b","name":"set_timer","input":{}}"""), jsonDelta(1, """{"minutes":5}"""), blockStop(1),
+            end("tool_use"), stop))
+        server.enqueue(textReply("Done."))
+        val s = session(conversation = true)
+        s.ask(ask("text Mom and set a timer"), voicePlan, Heard())
+        s.abandon(listOf(mapOf("status" to "draft_opened")))
+        s.ask(ClaudeContext.next("thanks"), voicePlan, Heard())
+        take()
+        val c = take().getJSONArray("messages").getJSONObject(2).getJSONArray("content")
+        assertEquals("draft_opened", JSONObject(c.getJSONObject(0).getString("content")).getString("status"))
+        assertEquals("not_done", JSONObject(c.getJSONObject(1).getString("content")).getString("status"))
+        assertTrue(c.getJSONObject(1).getBoolean("is_error"))
+        assertEquals("text", c.getJSONObject(2).getString("type"))
+    }
+
+    @Test fun aToolRoundThatRanSurvivesAFailedFollowUp() = runBlocking {
+        server.enqueue(toolUse("toolu_x", "set_timer", """{"minutes":10}"""))
+        server.enqueue(error(500, "api_error"))
+        server.enqueue(error(500, "api_error"))
+        server.enqueue(textReply("Your timer is set."))
+        val s = session(conversation = true)
+        assertTrue(s.ask(ask("set a timer"), voicePlan, Heard()) is ClaudeOutcome.Calls)
+        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.SERVER), s.answer(listOf(mapOf("status" to "done")), Heard()))
+        // Claude learns that the timer was set: the round stays, and the next question joins its results.
+        s.ask(ClaudeContext.next("is it running?"), voicePlan, Heard())
+        repeat(3) { take() }
+        assertEquals("user[text,text] assistant[tool_use] user[tool_result,text]", roles(take()))
+    }
+
+    @Test fun aStopDuringTheRetryPauseLeavesNoTrace() = runBlocking {
+        server.enqueue(error(529, "overloaded_error"))
+        val s = session(conversation = true, retryDelayMs = 5_000)
+        val job = async { s.ask(ask("q"), voicePlan, Heard()) }
+        withTimeout(5_000) { while (server.requestCount < 1) delay(20) }
+        delay(100)
+        job.cancel()
+        job.join()
+        assertTrue(s.history.isEmpty())
+    }
+
+    @Test fun aPausedSearchContinuesInTheSameAssistantMessage() = runBlocking {
+        server.enqueue(sse(start(), *thinking(0), blockStart(1, """{"type":"server_tool_use","id":"srvtoolu_p","name":"web_search","input":{}}"""),
+            jsonDelta(1, """{"query":"aurora"}"""), blockStop(1), end("pause_turn", searches = 1), stop))
+        server.enqueue(sse(start(), blockStart(0, """{"type":"web_search_tool_result","tool_use_id":"srvtoolu_p","content":[]}"""), blockStop(0),
+            blockStart(1, """{"type":"text","text":""}"""), textDelta(1, "After midnight."), blockStop(1), end("end_turn"), stop))
+        server.enqueue(textReply("Yes."))
+        val s = session(conversation = true)
+        assertEquals(ClaudeOutcome.Done(), s.ask(ask("aurora tonight?"), voicePlan, Heard()))
+        s.ask(ClaudeContext.next("really?"), voicePlan, Heard())
+        assertEquals("user[text,text]", roles(take()))
+        // The continuation: the paused turn as it came, no "Continue." from Robot.
+        assertEquals("user[text,text] assistant[thinking,server_tool_use]", roles(take()))
+        // One assistant message: the paused turn and its continuation, the thinking block as it came.
+        val third = take()
+        assertEquals("user[text,text] assistant[thinking,server_tool_use,web_search_tool_result,text] user[text]", roles(third))
+        assertEquals("SIG0", third.getJSONArray("messages").getJSONObject(1).getJSONArray("content").getJSONObject(0).getString("signature"))
+        assertNull(s.problem())
+    }
+
+    @Test fun tooManyPausesEndWithoutAnUnansweredSearch() = runBlocking {
+        // Each continuation brings the last search's results, then pauses on a new search.
+        fun paused(n: Int) = if (n == 0) sse(start(), blockStart(0, """{"type":"server_tool_use","id":"srvtoolu_0","name":"web_search","input":{}}"""),
+            jsonDelta(0, """{"query":"q0"}"""), blockStop(0), end("pause_turn", searches = 1), stop)
+        else sse(start(), blockStart(0, """{"type":"web_search_tool_result","tool_use_id":"srvtoolu_${n - 1}","content":[]}"""), blockStop(0),
+            blockStart(1, """{"type":"server_tool_use","id":"srvtoolu_$n","name":"web_search","input":{}}"""),
+            jsonDelta(1, """{"query":"q$n"}"""), blockStop(1), end("pause_turn", searches = 1), stop)
+        repeat(ClaudeSession.MAX_CONTINUATIONS + 1) { server.enqueue(paused(it)) }
+        server.enqueue(textReply("Fine."))
+        val s = session(conversation = true)
+        assertEquals(ClaudeOutcome.Done(cut = true), s.ask(ask("search a lot"), voicePlan, Heard()))
+        assertNull(s.problem())
+        s.ask(ClaudeContext.next("and?"), voicePlan, Heard())
+        repeat(ClaudeSession.MAX_CONTINUATIONS + 1) { take() }
+        // The dangling call at the end is gone; the next request is one the API takes.
+        val last = take()
+        val assistant = last.getJSONArray("messages").getJSONObject(1).getJSONArray("content")
+        assertTrue((0 until assistant.length()).none { assistant.getJSONObject(it).getString("type") == "server_tool_use" &&
+            assistant.getJSONObject(it).getString("id") == "srvtoolu_${ClaudeSession.MAX_CONTINUATIONS}" })
+    }
+
+    @Test fun aMidAnswerFallbackDropsTheDeclinedAttemptsBlocksAndCalls() = runBlocking {
+        // Opus 5.5 declined mid-answer (after thinking, some text and the start of a call); the fallback model went on.
+        server.enqueue(sse(start(), *thinking(0),
+            blockStart(1, """{"type":"text","text":""}"""), textDelta(1, "Let me "), blockStop(1),
+            blockStart(2, """{"type":"tool_use","id":"toolu_declined","name":"set_timer","input":{}}"""), jsonDelta(2, """{"minutes":1}"""), blockStop(2),
+            blockStart(3, """{"type":"fallback","from":{"model":"claude-opus-5-5"},"to":{"model":"claude-opus-4-8"},"trigger":{"type":"refusal","category":"cyber"}}"""), blockStop(3),
+            blockStart(4, """{"type":"text","text":""}"""), textDelta(4, "set that."), blockStop(4),
+            blockStart(5, """{"type":"tool_use","id":"toolu_kept","name":"set_timer","input":{}}"""), jsonDelta(5, """{"minutes":5}"""), blockStop(5),
+            end("tool_use"), stop))
+        server.enqueue(textReply("Set."))
+        val s = session(conversation = true)
+        val o = s.ask(ask("set a timer"), voicePlan, Heard()) as ClaudeOutcome.Calls
+        // Only the call made after the switch: no card for the declined attempt's.
+        assertEquals(1, o.calls.size)
+        assertEquals("5", o.calls.single().args["minutes"].toString())
+        s.answer(listOf(mapOf("status" to "done")), Heard())
+        take()
+        val second = take()
+        // Echoed back: the text before and after the switch, the kept call; no thinking, declined call or fallback marker.
+        assertEquals("user[text,text] assistant[text,text,tool_use] user[tool_result]", roles(second))
+        val tu = second.getJSONArray("messages").getJSONObject(1).getJSONArray("content").getJSONObject(2)
+        assertEquals("toolu_kept", tu.getString("id"))
+    }
+
+    @Test fun theValidatorCatchesWhatTheApiRefuses() {
+        fun user(vararg b: com.anthropic.models.beta.messages.BetaContentBlockParam) = ClaudeHistory.message(com.anthropic.models.beta.messages.BetaMessageParam.Role.USER, b.toList())
+        fun assistant(vararg b: com.anthropic.models.beta.messages.BetaContentBlockParam) = ClaudeHistory.message(com.anthropic.models.beta.messages.BetaMessageParam.Role.ASSISTANT, b.toList())
+        val t = ClaudeHistory.text("hi")
+        val use = com.anthropic.models.beta.messages.BetaContentBlockParam.ofToolUse(com.anthropic.models.beta.messages.BetaToolUseBlockParam.builder()
+            .id("toolu_1").name("set_timer").input(com.anthropic.models.beta.messages.BetaToolUseBlockParam.Input.builder().build()).build())
+        val result = ClaudeRequests.results(listOf("toolu_1"), listOf(mapOf("status" to "done"))).single()
+        val think = com.anthropic.models.beta.messages.BetaContentBlockParam.ofThinking(com.anthropic.models.beta.messages.BetaThinkingBlockParam.builder().thinking("").signature("SIG").build())
+        val edited = com.anthropic.models.beta.messages.BetaContentBlockParam.ofThinking(com.anthropic.models.beta.messages.BetaThinkingBlockParam.builder().thinking("").signature("SIG2").build())
+        fun check(vararg m: com.anthropic.models.beta.messages.BetaMessageParam, seals: List<List<String>>? = null) =
+            ClaudeHistory.check(m.toList(), seals ?: m.map { ClaudeHistory.seal(ClaudeHistory.blocks(it)) })
+        assertNull(check(user(t)))
+        assertNull(check(user(t), assistant(think, use), user(result, t)))
+        assertEquals("roles_repeat", check(user(t), user(t)))
+        assertEquals("first_not_user", check(assistant(t), user(t)))
+        assertEquals("tool_result_missing", check(user(t), assistant(use), user(t)))
+        assertEquals("tool_result_unasked", check(user(t), assistant(t), user(result, t)))
+        assertEquals("tool_result_not_first", check(user(t), assistant(use), user(t, result)))
+        assertEquals("ends_with_assistant", check(user(t), assistant(t)))
+        // A thinking block changed after it arrived.
+        val m = listOf(user(t), assistant(edited, t), user(t))
+        assertEquals("thinking_changed", ClaudeHistory.check(m, listOf(emptyList(), ClaudeHistory.seal(listOf(think)), emptyList())))
+    }
+
+    @Test fun claudeModeKeepsItsFirstEffort() = runBlocking {
+        server.enqueue(textReply("One."))
+        server.enqueue(textReply("Two."))
+        val s = session(conversation = true)
+        s.ask(ask("spoken"), voicePlan, Heard())
+        s.ask(ClaudeContext.next("typed"), ClaudePlan.of(app.heyrobot.core.ClaudeEffortSetting.AUTO, voice = false, deep = false), Heard())
+        assertEquals("low", take().getJSONObject("output_config").getString("effort"))
+        val second = take()
+        // The effort is part of what the cache matches: it stays; the typed question still gets the longer limit.
+        assertEquals("low", second.getJSONObject("output_config").getString("effort"))
+        assertEquals(16_000, second.getInt("max_tokens"))
+    }
+
+    // ------------------------------------------------------------------ time and money
+
+    @Test fun thinkingHoldsTheSilenceClock() = runBlocking {
+        server.enqueue(textReply("Warm."))
+        session().ask(ask("q"), voicePlan, Heard())
+        // A thinking block opens, then nothing for longer than the limit, then the answer: not a timeout.
+        val events = listOf(start() to 50L, blockStart(0, """{"type":"thinking","thinking":"","signature":""}""") to 1_200L, signature(0, "SIG0") to 0L,
+            blockStop(0) to 0L, blockStart(1, """{"type":"text","text":""}""") to 0L, textDelta(1, "Thought it through.") to 0L, blockStop(1) to 0L,
+            end("end_turn") to 0L, stop to 0L)
+        val slow = slowServer(events.map { (e, gap) -> "event: ${e.first}\ndata: ${e.second}\n\n" to gap })
+        ClaudeClient.create(key, "http://127.0.0.1:${slow.localPort}").use { c ->
+            var thought = 0
+            val heard = object : ClaudeListener {
+                val text = StringBuilder()
+                override fun text(delta: String) { text.append(delta) }
+                override fun declined() {}
+                override fun thinking() { thought++ }
+            }
+            val s = ClaudeSession(c, ClaudeModel.OPUS, ClaudeTools.tools(RobotSettings()), search = true, conversation = false, idleMs = 500)
+            assertEquals(ClaudeOutcome.Done(), s.ask(ask("q"), voicePlan, heard))
+            assertEquals("Thought it through.", heard.text.toString())
+            assertEquals(1, thought)
+        }
+        slow.close()
+    }
+
+    @Test fun silenceInTheMiddleOfAnAnswerIsATimeoutToo() = runBlocking {
+        server.enqueue(textReply("Warm."))
+        session().ask(ask("q"), voicePlan, Heard())
+        val events = listOf(start() to 0L, blockStart(0, """{"type":"text","text":""}""") to 0L, textDelta(0, "Half ") to 1_500L, textDelta(0, "late.") to 0L)
+        val slow = slowServer(events.map { (e, gap) -> "event: ${e.first}\ndata: ${e.second}\n\n" to gap })
+        ClaudeClient.create(key, "http://127.0.0.1:${slow.localPort}").use { c ->
+            val s = ClaudeSession(c, ClaudeModel.OPUS, ClaudeTools.tools(RobotSettings()), search = true, conversation = false, idleMs = 400)
+            val heard = Heard()
+            assertEquals(ClaudeOutcome.Failed(ClaudeFailure.TIMEOUT), s.ask(ask("q"), voicePlan, heard))
+            // Billed all the same: the input known from message_start, the output estimated from what was said.
+            assertTrue(s.lastReport.dollars > 0)
+        }
+        slow.close()
+    }
+
+    private class Spend : ClaudeListener {
+        var dollars = 0.0
+        override fun text(delta: String) {}
+        override fun declined() {}
+        override fun spent(dollars: Double) { this.dollars += dollars }
+    }
+
+    @Test fun aStoppedRequestStillCountsItsInput() = runBlocking {
+        server.enqueue(MockResponse().setHeader("content-type", "text/event-stream")
+            .setBody("event: ${start(input = 10_000).first}\ndata: ${start(input = 10_000).second}\n\n").setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.KEEP_OPEN))
+        val s = session(conversation = true)
+        val spend = Spend()
+        val job = async { s.ask(ask("q"), voicePlan, spend) }
+        withTimeout(5_000) { while (spend.dollars == 0.0) delay(20) }
+        job.cancel()
+        job.join()
+        // 10,000 input tokens at Opus 5.5's $4 per million, counted the moment message_start arrived.
+        assertEquals(0.04, spend.dollars, 0.0005)
+        assertTrue(s.history.isEmpty())
+    }
+
+    @Test fun aFailedStreamCountsWhatItUsed() = runBlocking {
+        server.enqueue(sse(start(input = 5_000), blockStart(0, """{"type":"text","text":""}"""), textDelta(0, "Partial answer here."),
+            "error" to """{"type":"error","error":{"type":"overloaded_error","message":"x"}}"""))
+        val s = session()
+        val spend = Spend()
+        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.OVERLOADED), s.ask(ask("q"), voicePlan, spend))
+        assertTrue(s.lastReport.dollars >= 0.02)
+        assertEquals(s.lastReport.dollars, spend.dollars, 1e-9)
+    }
+
+    @Test fun aFallbackModelIsPricedAtItsOwnRates() = runBlocking {
+        // Sticky routing: message_start already names the fallback model.
+        server.enqueue(sse(start(model = "claude-opus-4-8", input = 1_000), blockStart(0, """{"type":"text","text":""}"""), textDelta(0, "x"), blockStop(0), end("end_turn", out = 100), stop))
+        val s = session()
+        s.ask(ask("q"), voicePlan, Heard())
+        assertEquals((1_000 * 5.0 + 100 * 25.0) / 1e6, s.lastReport.dollars, 1e-9)
+        // Per-attempt usage when a fallback ran within the request.
+        val iterations = ""","iterations":[{"type":"message","input_tokens":1000,"output_tokens":50,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"model":"claude-opus-5-5"},""" +
+            """{"type":"fallback_message","input_tokens":1000,"output_tokens":100,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"model":"claude-opus-4-8"}]"""
+        server.enqueue(sse(start(input = 1_000), blockStart(0, """{"type":"text","text":""}"""), textDelta(0, "x"), blockStop(0),
+            "message_delta" to """{"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":100$iterations}}""", stop))
+        val t = session()
+        t.ask(ask("q"), voicePlan, Heard())
+        assertEquals((1_000 * 4.0 + 50 * 20.0) / 1e6 + (1_000 * 5.0 + 100 * 25.0) / 1e6, t.lastReport.dollars, 1e-9)
+        assertEquals(2_000, t.lastReport.usage.input)
+    }
+
+    @Test fun aKeyWithACharacterHeadersCantCarryIsAKeyError() = runBlocking {
+        ClaudeClient.create("sk-ant-api03-ROBOTTESTKEY-é-not-a-real-key-0123456789abcdef", server.url("/").toString().removeSuffix("/")).use { c ->
+            val s = ClaudeSession(c, ClaudeModel.OPUS, ClaudeTools.tools(RobotSettings()), search = true, conversation = false)
+            assertEquals(ClaudeOutcome.Failed(ClaudeFailure.KEY_REFUSED), s.ask(ask("q"), voicePlan, Heard()))
+        }
+        assertEquals(0, server.requestCount)
     }
 }

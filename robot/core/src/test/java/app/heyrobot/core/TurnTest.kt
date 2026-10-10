@@ -21,6 +21,10 @@ class TurnTest {
             return next(answers.size)
         }
         override fun close() { closed++ }
+        var abandoned: List<Pair<String, Map<String, Any?>>>? = null
+        var stoppedWith: List<Pair<String, Map<String, Any?>>>? = null
+        override fun abandon(results: List<Pair<String, Map<String, Any?>>>) { abandoned = results; closed++ }
+        override fun stopped(results: List<Pair<String, Map<String, Any?>>>) { stoppedWith = results }
     }
 
     private class FakeActions(var settings0: RobotSettings = RobotSettings()) : TurnActions {
@@ -506,6 +510,30 @@ class TurnTest {
         assertEquals(listOf(ActionStatus.DONE, ActionStatus.DONE), view.statuses())
         // The read result went back to Claude only after its card's tap.
         assertEquals(listOf(mapOf("title" to "x")), model.answers.single()[1].second["results"])
+    }
+
+    @Test fun theModelHearsWhatRanBeforeAnAppOpenedOrAStop() = runBlocking {
+        // A timer, then a text that opens Cheogram: the model is told both results, the launch's real one included.
+        val model = FakeModel(ModelOutcome.Calls(listOf(timer, call("send_text", "to" to "Mom", "message" to "late"), timer)))
+        val actions = FakeActions()
+        actions.result = { if (it is Action.SendText) Executed(ActionStatus.DRAFT_OPENED, "Opened Cheogram.", launchedApp = true) else Executed(ActionStatus.DONE, "Timer set.") }
+        val view = FakeView()
+        val conf = Confirmations()
+        val turn = async { claudeRunner(model, actions, view, conf).run() }
+        conf.answer(withTimeout(5_000) { view.pending.receive() }, true)
+        conf.answer(withTimeout(5_000) { view.pending.receive() }, true)
+        assertTrue(turn.await().launchedApp)
+        assertEquals(listOf("done", "draft_opened_not_sent"), model.abandoned!!.map { it.second["status"] })
+        // A stop while the second card waits: the model hears that the first call ran.
+        val stopped = FakeModel(ModelOutcome.Calls(listOf(timer, timer)))
+        val view2 = FakeView()
+        val conf2 = Confirmations()
+        val turn2 = async { claudeRunner(stopped, FakeActions(), view2, conf2).run() }
+        conf2.answer(withTimeout(5_000) { view2.pending.receive() }, true)
+        withTimeout(5_000) { view2.pending.receive() }
+        turn2.cancel()
+        turn2.join()
+        assertEquals(listOf("done"), stopped.stoppedWith!!.map { it.second["status"] })
     }
 
     @Test fun claudesCallsStillFollowTheLockScreenAndOff() = runBlocking {
