@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+repositories { google(); mavenCentral() }
+android {
+    namespace 'app.heyrobot.claude'
+    compileSdk rootProject.ext.robotCompileSdk
+    defaultConfig { minSdk rootProject.ext.robotMinSdk }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+}
+dependencies {
+    implementation project(':core')
+    implementation 'com.anthropic:anthropic-java:2.71.0'
+}
