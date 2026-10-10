@@ -38,7 +38,21 @@ import java.util.concurrent.atomic.AtomicInteger
 
 // VOICE PROCESS. The client side of BrainProtocol. No LiteRT here: :brain is bound by class name.
 
+/**
+ * One death of :brain is one death, however Android reports it: onServiceDisconnected, then often onBindingDied for the
+ * same failure. Counted once per connection (pure, tested).
+ */
+class DeathOnce {
+    private var counted = false
+
+    @Synchronized fun connected() { counted = false }
+
+    /** True the first time this connection is reported dead. */
+    @Synchronized fun died(): Boolean = (!counted).also { counted = true }
+}
+
 class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
+    private val death = DeathOnce()
     @Volatile private var messenger: Messenger? = null
     private var conn: ServiceConnection? = null
     @Volatile private var connected: CompletableDeferred<Boolean>? = null
@@ -63,6 +77,7 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
         if (conn == null) {
             val c = object : ServiceConnection {
                 override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                    death.connected()
                     messenger = binder?.let { Messenger(it) }
                     connected?.complete(binder != null)
                 }
@@ -71,18 +86,22 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
                     messenger = null
                     endAll()
                     RLog.i("brain_disconnected")
-                    VoiceLog.add(VoiceEvent.BRAIN_DIED)
-                    onDeath()
+                    if (death.died()) {
+                        VoiceLog.add(VoiceEvent.BRAIN_DIED)
+                        onDeath()
+                    }
                 }
 
                 // The binding will never connect again (Android gave up restarting :brain). Keeping it would make every
                 // later question wait 15 s for nothing; unbind, so the next connect() binds afresh.
                 override fun onBindingDied(name: ComponentName?) {
                     RLog.i("brain_binding_died")
-                    VoiceLog.add(VoiceEvent.BRAIN_DIED)
                     drop(this)
                     connected?.complete(false)
-                    onDeath()
+                    if (death.died()) {
+                        VoiceLog.add(VoiceEvent.BRAIN_DIED)
+                        onDeath()
+                    }
                 }
 
                 override fun onNullBinding(name: ComponentName?) {

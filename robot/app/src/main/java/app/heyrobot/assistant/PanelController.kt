@@ -31,6 +31,7 @@ import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ScreenText
 import app.heyrobot.core.ShowSource
+import app.heyrobot.core.StallTimer
 import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.SpeechText
 import app.heyrobot.core.StoredConversation
@@ -279,8 +280,9 @@ object PanelController {
         RLog.i("panel_show", "src" to source?.let { RLog.Code(it) }, "locked" to locked, "turns" to chat.size)
         shownAtE = SystemClock.elapsedRealtime()
         VoiceLog.add(VoiceEvent.SESSION_SHOWN, showSource(source))
-        VoiceHub.updateCapture()
+        // The question first: once it is attached, the capture mode can't switch under it ("Always echo cancellation").
         if (source == RobotVoiceService.SRC_WAKE) startListening()
+        VoiceHub.updateCapture()
     }
 
     private fun showSource(src: String?): ShowSource = when (src) {
@@ -676,20 +678,27 @@ object PanelController {
      */
     private suspend fun directText(replyId: String, q: String, textingFor: String?, fromVoice: Boolean, untrusted: Boolean): Boolean {
         val typed = !fromVoice
-        val req: TextRequest = if (textingFor != null && TextCommand.parse(q, emptyList(), typed) == null) {
-            if (TextCommand.isCancel(q)) {
-                setText(replyId, "Okay, no text to ${TextCommand.display(textingFor)}.")
+        // Decided before any contact is read or anything asked: the lock first.
+        val req: TextRequest = when (TextCommand.route(q, textingFor, Assistant.locked(VoiceHub.app), typed)) {
+            TextCommand.Route.MODEL -> return false
+            TextCommand.Route.UNLOCK -> {
+                setText(replyId, "Unlock your phone to send a text.")
                 finishReply(replyId, DoneReason.END)
                 return true
             }
-            TextRequest(textingFor, q.trim())
-        } else {
-            // Cheap first: only a question shaped like a text reads the contacts (for where the name ends).
-            TextCommand.parse(q, emptyList(), typed) ?: return false
-            val names = withContext(Dispatchers.IO) {
-                if (Contacts.granted(VoiceHub.app)) Contacts.names(VoiceHub.app).flatMap { listOf(it.name) + it.nicknames } else emptyList()
+            TextCommand.Route.CANCEL -> {
+                setText(replyId, "Okay, no text to ${TextCommand.display(textingFor!!)}.")
+                finishReply(replyId, DoneReason.END)
+                return true
             }
-            TextCommand.parse(q, names, typed) ?: return false
+            // The message itself; the approval gate still checks the lock.
+            TextCommand.Route.ANSWER -> TextRequest(textingFor!!, q.trim())
+            TextCommand.Route.PARSE -> {
+                val names = withContext(Dispatchers.IO) {
+                    if (Contacts.granted(VoiceHub.app)) Contacts.names(VoiceHub.app).flatMap { listOf(it.name) + it.nicknames } else emptyList()
+                }
+                TextCommand.parse(q, names, typed) ?: return false
+            }
         }
         val name = TextCommand.display(req.name)
         if (req.message == null) {
@@ -797,22 +806,25 @@ object PanelController {
         val echo = ClockEcho()
         val t0 = SystemClock.elapsedRealtime()
         var first = -1L
-        var any = false
         var chars = 0
         var timedOut = false
-        // A model that never answers (a hung engine) must not leave "Thinking…" for ever: nothing at all from :brain
-        // within FIRST_EVENT_MS ends the request here (it is cancelled there too).
+        // A model that stops answering (a hung engine) must not leave "Thinking…" for ever: no event from :brain for
+        // EVENT_GAP_MS, before the first one or between any two, ends the request here (it is cancelled there too).
+        val stall = StallTimer(EVENT_GAP_MS, SystemClock.elapsedRealtime())
         val watchdog: Job = scope.launch {
-            delay(FIRST_EVENT_MS)
-            if (!any) {
-                timedOut = true
-                c.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(req.first))
-                c.abandon(req.first)
+            while (true) {
+                delay(WATCHDOG_TICK_MS)
+                if (stall.stalled(SystemClock.elapsedRealtime())) {
+                    timedOut = true
+                    c.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(req.first))
+                    c.abandon(req.first)
+                    break
+                }
             }
         }
         try {
             req.second.collect { m ->
-                any = true
+                stall.event(SystemClock.elapsedRealtime())
                 when (m) {
                     is BrainMsg.Chunk -> if (m.text.isNotEmpty()) {
                         if (first < 0) {
@@ -1012,8 +1024,9 @@ object PanelController {
 
     private fun records(actions: List<UiAction>) = actions.mapNotNull { a -> a.tool?.let { ActionRecord(it, a.summary, a.status, a.detail, a.content) } }
 
-    /** Nothing at all from the model this long after a request: it is given up (60 s; a first word takes about 0.3 s). */
-    private const val FIRST_EVENT_MS = 60_000L
+    /** Nothing from the model this long, before its first word or between two: it is given up (a first word takes about 0.3 s). */
+    private const val EVENT_GAP_MS = 60_000L
+    private const val WATCHDOG_TICK_MS = 5_000L
     private const val SORRY = "Sorry, I didn't catch that."
     private const val SORRY_NO_ANSWER = "Sorry, I couldn't answer that."
 }

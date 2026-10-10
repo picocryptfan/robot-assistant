@@ -59,7 +59,9 @@ object TextCommand {
         SEND_TO.find(s)?.let { return split(it.groupValues[1], contacts, typed, needMessage = false) }
         SEND_NAME.find(s)?.let { m ->
             val name = cleanName(m.groupValues[1]) ?: return null
-            return TextRequest(name, message(m.groupValues[2]))
+            val msg = message(m.groupValues[2])
+            if (describes(msg)) return null
+            return TextRequest(name, msg)
         }
         LET_KNOW.find(s)?.let { m ->
             val name = cleanName(m.groupValues[1]) ?: return null
@@ -90,40 +92,103 @@ object TextCommand {
         if (raw.size > 1 && raw[0].lowercase(Locale.ROOT) == "my") raw.removeAt(0)
         if (raw.isEmpty()) return null
         val first = bare(raw[0])
-        val k: Int = when {
-            NUMBER.matches(first) -> 1
+        val number = NUMBER.matches(first)
+        val (k, known) = when {
+            number -> 1 to true
             !NAME_WORD.matches(first) || first.lowercase(Locale.ROOT) in NOT_NAMES -> return null
-            else -> nameLength(raw, contacts, typed)
+            else -> nameBoundary(raw, contacts, typed)
         }
         val name = raw.take(k).joinToString(" ") { bare(it) }
         // Punctuation right after the name ("Mom: hi", "Mom, hi") belongs to neither.
         val msg = message(raw.drop(k).joinToString(" "))
         if (needMessage && msg == null) return null
+        // "write a message to my landlord about the heater" says what to write, not the text itself: the model's job.
+        if (describes(msg)) return null
+        // No message and nobody known by that name ("text recognition"): not a text, unless it's a family word.
+        if (msg == null && !known && first.lowercase(Locale.ROOT) !in KIN) return null
         return TextRequest(name, msg)
     }
+
+    /** A "message" that describes the text rather than being it ("about the heater"). */
+    private fun describes(msg: String?): Boolean = msg != null && Regex("^(?:about|regarding|re:?)\\b", RegexOption.IGNORE_CASE).containsMatchIn(msg)
 
     /**
      * How many words the name takes: the longest of 1 to 3 that matches a contact's name or nickname exactly or as its
      * start (ContactMatcher), else 1, or 2 when a typed second word is capitalised and no message word ("Text Sarah
      * Connor I'm late"). A family word ("mom") is a name of its own.
      */
-    fun nameLength(words: List<String>, contacts: List<String>, typed: Boolean): Int {
+    fun nameLength(words: List<String>, contacts: List<String>, typed: Boolean): Int = nameBoundary(words, contacts, typed).first
+
+    /**
+     * [nameLength] and whether the name is a contact's. Two or three words must be the contact's whole words ("Dan
+     * Can…" is not "Dan Cannon"), and a message word ("Can", "I'm") never continues a name; one word may be the start
+     * of a name ("Alex" for "Alexandra Roy").
+     */
+    fun nameBoundary(words: List<String>, contacts: List<String>, typed: Boolean): Pair<Int, Boolean> {
         val w = words.map(::bare)
         val maxK = minOf(MAX_NAME_WORDS, w.size)
         for (k in maxK downTo 1) {
             val cand = w.take(k)
             if (cand.any { !NAME_WORD.matches(it) || it.lowercase(Locale.ROOT) in NOT_NAMES }) continue
+            if (k >= 2 && cand.drop(1).any { it.lowercase(Locale.ROOT) in STARTERS }) continue
             val q = cand.joinToString(" ")
-            if (contacts.any { c -> ContactMatcher.kind(q, c).let { it == NameMatch.EXACT || it == NameMatch.PREFIX } }) return k
+            val qw = ContactMatcher.words(q)
+            val hit = contacts.any { c ->
+                if (k == 1) ContactMatcher.kind(q, c).let { it == NameMatch.EXACT || it == NameMatch.PREFIX }
+                else ContactMatcher.words(c).let { cw -> cw.size >= qw.size && cw.subList(0, qw.size) == qw }
+            }
+            if (hit) return k to true
         }
-        if (w[0].lowercase(Locale.ROOT) in KIN) return 1
+        if (w[0].lowercase(Locale.ROOT) in KIN) return 1 to false
         if (typed && w.size >= 2) {
             val second = w[1]
             val surname = second.firstOrNull()?.isUpperCase() == true && NAME_WORD.matches(second) &&
                 second.lowercase(Locale.ROOT) !in STARTERS && second.lowercase(Locale.ROOT) !in NOT_NAMES && second.length > 1
-            if (surname) return 2
+            if (surname) return 2 to false
         }
-        return 1
+        return 1 to false
+    }
+
+    /** Where a question goes, decided before any contact is read (pure). */
+    enum class Route {
+        /** Not a text: the model answers. */
+        MODEL,
+        /** A text, but the phone is locked: say so; no contact is read and nothing is asked. */
+        UNLOCK,
+        /** The answer to "what should the text say?": it is the message. */
+        ANSWER,
+        /** "cancel" while Robot waits for the message. */
+        CANCEL,
+        /** A text: read the contacts' names for where the name ends, then parse again. */
+        PARSE,
+    }
+
+    /**
+     * [pendingName]: Robot asked what the text to this person should say. A new text request replaces that question;
+     * the answer itself goes on to the approval gate, which handles a locked phone.
+     */
+    fun route(input: String, pendingName: String?, locked: Boolean, typed: Boolean): Route {
+        val parsed = parse(input, emptyList(), typed) != null
+        val shaped = parsed || looksLikeText(input)
+        return when {
+            pendingName != null && !shaped -> if (isCancel(input)) Route.CANCEL else Route.ANSWER
+            !shaped -> Route.MODEL
+            // Locked: only a sure text gets "unlock"; one that needs the contacts to tell ("text Bob") goes to the model,
+            // whose send_text meets the gate's own lock rule.
+            locked -> if (parsed) Route.UNLOCK else Route.MODEL
+            else -> Route.PARSE
+        }
+    }
+
+    /**
+     * Shaped like a text even when the parse without contacts says no (a two-word contact name with no message, which
+     * only the contacts can tell apart from "text recognition").
+     */
+    private fun looksLikeText(input: String): Boolean {
+        val s = POLITE.replace(input.trim(), "").trim()
+        val m = TEXT.find(s) ?: SEND_TO.find(s) ?: return false
+        val first = m.groupValues[1].trim().split(Regex("\\s+")).first().let(::bare)
+        return NAME_WORD.matches(first) && first.lowercase(Locale.ROOT) !in NOT_NAMES
     }
 
     /** The message: without a leading "that", "saying" or ":", and without the quotes around it; null if empty. */

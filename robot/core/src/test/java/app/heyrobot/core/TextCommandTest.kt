@@ -77,6 +77,52 @@ class TextCommandTest {
         for (s in no) assertNull(s, p(s))
     }
 
+    @Test fun twoWordNamesMatchWholeWordsOnly() {
+        // "Dan Can…" is not "Dan Cannon": the message starts at "Can".
+        assertEquals(t("Dan", "Can you grab milk"), TextCommand.parse("text Dan Can you grab milk", listOf("Dan Cannon")))
+        assertEquals(t("Dan Cannon", "the milk"), TextCommand.parse("text Dan Cannon the milk", listOf("Dan Cannon")))
+        assertEquals(t("Mary Ann", "hi"), TextCommand.parse("text Mary Ann hi", listOf("Mary Ann Smith")))
+        // A character prefix still works for one word.
+        assertEquals(t("Alex", "hi"), TextCommand.parse("text Alex hi", listOf("Alexandra Roy")))
+    }
+
+    @Test fun requestsThatOnlyLookLikeTextsGoToTheModel() {
+        for (s in listOf("text recognition", "text translation", "Text recognition", "message history",
+            "write a message to my landlord about the heater", "send a text to Bob about the party", "write Bob a message about the rent")) {
+            assertNull(s, p(s))
+            assertNull(s, TextCommand.parse(s, emptyList()))
+        }
+        // A contact or a family word with no message still asks for it.
+        assertEquals(t("Bob", null), TextCommand.parse("text Bob", listOf("Bob")))
+        assertNull(TextCommand.parse("text Bob", emptyList()))
+        assertEquals(t("mom", null), TextCommand.parse("text mom", emptyList()))
+    }
+
+    @Test fun theLockIsCheckedBeforeAnyContactIsRead() {
+        assertEquals(TextCommand.Route.UNLOCK, TextCommand.route("text mom I'm late", null, locked = true, typed = true))
+        assertEquals(TextCommand.Route.UNLOCK, TextCommand.route("text mom", null, locked = true, typed = true))
+        assertEquals(TextCommand.Route.PARSE, TextCommand.route("text mom I'm late", null, locked = false, typed = true))
+        // Needs the contacts to tell: locked, the model (and the gate's lock rule) handles it; unlocked, read them.
+        assertEquals(TextCommand.Route.MODEL, TextCommand.route("text Bob", null, locked = true, typed = true))
+        assertEquals(TextCommand.Route.PARSE, TextCommand.route("text Bob", null, locked = false, typed = true))
+        assertEquals(TextCommand.Route.MODEL, TextCommand.route("tell me a joke", null, locked = false, typed = true))
+        assertEquals(TextCommand.Route.MODEL, TextCommand.route("what's the weather", null, locked = true, typed = true))
+        // The answer to "what should it say?" and "cancel" (the gate still checks the lock for the answer).
+        assertEquals(TextCommand.Route.ANSWER, TextCommand.route("I'm running late", "mom", locked = true, typed = true))
+        assertEquals(TextCommand.Route.CANCEL, TextCommand.route("never mind", "mom", locked = false, typed = false))
+        // A new text request replaces the question.
+        assertEquals(TextCommand.Route.PARSE, TextCommand.route("text dad hi", "mom", locked = false, typed = true))
+    }
+
+    @Test fun theModelWatchdogCoversEveryGap() {
+        val s = StallTimer(60_000, start = 0)
+        assertFalse(s.stalled(59_999))
+        s.event(50_000)
+        // A first word, then nothing: still caught, counted from the last event.
+        assertFalse(s.stalled(100_000))
+        assertTrue(s.stalled(110_000))
+    }
+
     @Test fun theNameBoundaryUsesTheContacts() {
         fun n(s: String, c: List<String>, typed: Boolean = true) = TextCommand.nameLength(s.split(' '), c, typed)
         // The longest of 1 to 3 words that is a contact's name (or the start of one).

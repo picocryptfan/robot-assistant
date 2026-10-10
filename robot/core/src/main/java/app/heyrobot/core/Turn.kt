@@ -133,6 +133,15 @@ interface TurnView {
     fun say(sentence: String)
 }
 
+/** No event for [gapMs] since the start or the last event: the other side has stopped answering (pure). */
+class StallTimer(private val gapMs: Long, start: Long) {
+    @Volatile private var last = start
+
+    fun event(now: Long) { last = now }
+
+    fun stalled(now: Long): Boolean = now - last >= gapMs
+}
+
 /** How the turn ended: [reason] when the model's reply ended (or was ended), [failure] when it failed. */
 data class TurnResult(val reason: DoneReason?, val failure: String? = null, val launchedApp: Boolean = false)
 
