@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- selectableAsDefault is left at its default (true): the system must be able to make this the default
+     recognizer, or it drops the assistant at the next boot (see the manifest). -->
+<recognition-service xmlns:android="http://schemas.android.com/apk/res/android" />

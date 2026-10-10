@@ -1,0 +1,18 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+repositories { google(); mavenCentral() }
+android {
+    namespace 'app.heyrobot.voice'
+    compileSdk rootProject.ext.robotCompileSdk
+    defaultConfig { minSdk rootProject.ext.robotMinSdk }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+}
+// The :voice process's engines: microphone, VAD, wake word, speech to text, text to speech. The only module
+// that uses sherpa-onnx (its native libraries and models live in src/main/jniLibs and src/main/assets,
+// fetched by tools/fetch_third_party.sh, not stored in git).
+dependencies {
+    implementation project(':core')
+}

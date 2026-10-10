@@ -1,0 +1,70 @@
+package app.heyrobot.core
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class TextTest {
+    private val apps = listOf(
+        AppEntry("Signal", "org.thoughtcrime.securesms/.Main"),
+        AppEntry("Organic Maps", "app.organicmaps/.Splash"),
+        AppEntry("Clock", "com.android.deskclock/.Clock"),
+        AppEntry("Calculator", "calc/.Main"),
+        AppEntry("Calendar", "cal/.Main"),
+        AppEntry("Café Finder", "cafe/.Main"),
+    )
+
+    @Test fun appNamesMatchLoosely() {
+        assertEquals("Signal", AppMatcher.best("signal", apps)?.label)
+        assertEquals("Signal", AppMatcher.best("the Signal app", apps)?.label)
+        assertEquals("Organic Maps", AppMatcher.best("organic", apps)?.label)
+        assertEquals("Organic Maps", AppMatcher.best("maps", apps)?.label)
+        assertEquals("Calculator", AppMatcher.best("calculater", apps)?.label)
+        assertEquals("Café Finder", AppMatcher.best("cafe finder", apps)?.label)
+        assertNull(AppMatcher.best("telegram", apps))
+        assertNull(AppMatcher.best("", apps))
+    }
+
+    @Test fun shorterLabelWinsTies() {
+        val l = listOf(AppEntry("Notes Pro", "a"), AppEntry("Notes", "b"))
+        assertEquals("Notes", AppMatcher.best("notes", l)?.label)
+    }
+
+    @Test fun editDistance() {
+        assertEquals(0, AppMatcher.editDistance("abc", "abc"))
+        assertEquals(1, AppMatcher.editDistance("abc", "abd"))
+        assertEquals(3, AppMatcher.editDistance("", "abc"))
+    }
+
+    @Test fun screenTextIsDedupedAndCut() {
+        assertEquals("Inbox\n3 new", ScreenText.build(listOf(" Inbox ", "", "3  new", "Inbox")))
+        assertNull(ScreenText.build(listOf("  ", "\n")))
+        val big = ScreenText.build((1..1000).map { "line number $it" }, maxChars = 100)!!
+        assertTrue(big.length <= 102)
+        assertTrue(big.endsWith("…"))
+    }
+
+    @Test fun markdownBlocksAndSpans() {
+        val b = Markdown.parse("# Title\nSome **bold** and *it* and `code`.\n\n- one\n- two\n1. first\n```\nx = 1\n```")
+        assertEquals(listOf(Markdown.BlockKind.HEADING, Markdown.BlockKind.PARAGRAPH, Markdown.BlockKind.BULLET, Markdown.BlockKind.BULLET,
+            Markdown.BlockKind.NUMBERED, Markdown.BlockKind.CODE), b.map { it.kind })
+        assertEquals(listOf(
+            Markdown.Span("Some "), Markdown.Span("bold", bold = true), Markdown.Span(" and "), Markdown.Span("it", italic = true),
+            Markdown.Span(" and "), Markdown.Span("code", code = true), Markdown.Span("."),
+        ), b[1].spans)
+        assertEquals("1.", b[4].marker)
+        assertEquals("x = 1", b[5].spans.single().text)
+    }
+
+    @Test fun unfinishedMarkdownStaysText() {
+        assertEquals(listOf(Markdown.Span("so **bol")), Markdown.inline("so **bol"))
+        assertEquals(listOf(Markdown.Span("snake_case_name")), Markdown.inline("snake_case_name"))
+    }
+
+    @Test fun bootNoticeOnlyWhenRobotWasTheAssistantAndDidNotStart() {
+        assertTrue(BootLogic.shouldNotify(everReady = true, readyThisBoot = false))
+        assertTrue(!BootLogic.shouldNotify(everReady = true, readyThisBoot = true))
+        assertTrue(!BootLogic.shouldNotify(everReady = false, readyThisBoot = false))
+    }
+}

@@ -1,0 +1,93 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose'
+}
+// As in the probe: a session init script adds a mirror to project repositories, which would otherwise make
+// Gradle ignore the settings' repositories.
+repositories { google(); mavenCentral() }
+
+// Release signing: the keystore and its password stay outside the repository. Point at them with
+// Gradle properties (-Probot.keystore=... -Probot.keystorePassFile=...) or the environment variables
+// ROBOT_KEYSTORE / ROBOT_KEYSTORE_PASS_FILE. The password file holds the password on its first line.
+def ksPath = project.findProperty('robot.keystore') ?: System.getenv('ROBOT_KEYSTORE')
+def ksPassFile = project.findProperty('robot.keystorePassFile') ?: System.getenv('ROBOT_KEYSTORE_PASS_FILE')
+
+android {
+    namespace 'app.heyrobot'
+    compileSdk rootProject.ext.robotCompileSdk
+    defaultConfig {
+        applicationId 'app.heyrobot'
+        minSdk rootProject.ext.robotMinSdk
+        targetSdk rootProject.ext.robotTargetSdk
+        versionCode 1
+        versionName '0.1.0'
+        ndk { abiFilters 'arm64-v8a' }
+    }
+    signingConfigs {
+        release {
+            if (ksPath != null && ksPassFile != null) {
+                def pw = new File(ksPassFile.toString()).readLines().first().trim()
+                storeFile file(ksPath.toString())
+                storeType 'pkcs12'
+                storePassword pw
+                keyAlias 'robot'
+                keyPassword pw
+                enableV1Signing false
+                enableV2Signing true
+                enableV3Signing true
+            }
+        }
+    }
+    buildTypes {
+        // No minify, as in the probe: sherpa-onnx's JNI reads the Kotlin config classes' fields by name, and
+        // LiteRT-LM calls back into its Kotlin classes from native code.
+        release {
+            minifyEnabled false
+            if (ksPath != null && ksPassFile != null) signingConfig signingConfigs.release
+        }
+    }
+    buildFeatures { compose true; buildConfig true }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+    androidResources { noCompress += ['onnx'] }
+    // Same native packaging as the probe and the lab (Off Grid PR #702): extracted libraries, so
+    // Backend.NPU(nativeLibraryDir) finds the dispatch library.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            excludes.add('**/libLiteRtCompilerPlugin_google_tensor.so')
+            pickFirsts.add('**/libLiteRtDispatch_GoogleTensor.so')
+        }
+        resources { excludes += ['META-INF/AL2.0', 'META-INF/LGPL2.1', 'META-INF/*.kotlin_module'] }
+    }
+    testOptions {
+        unitTests.all {
+            it.systemProperty 'robot.rootDir', rootProject.projectDir.absolutePath
+            it.systemProperty 'robot.appDir', projectDir.absolutePath
+        }
+    }
+}
+
+// The isolation test also reads the merged manifest of the variant under test.
+tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { dependsOn 'processDebugMainManifest' }
+tasks.matching { it.name == 'testReleaseUnitTest' }.configureEach { dependsOn 'processReleaseMainManifest' }
+
+dependencies {
+    implementation project(':core')
+    implementation project(':voice')
+    implementation project(':brain')
+
+    implementation platform('androidx.compose:compose-bom:2025.06.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.activity:activity-compose:1.10.1'
+    implementation 'androidx.core:core-ktx:1.16.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.8.7'
+    implementation 'androidx.savedstate:savedstate-ktx:1.2.1'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20180813'
+}

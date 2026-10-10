@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Small icon for notifications (white, the system tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M11,2h2v3h-2zM6,6h12a2,2 0,0 1,2 2v9a2,2 0,0 1,-2 2H6a2,2 0,0 1,-2 -2V8a2,2 0,0 1,2 -2zM9,10a1.5,1.5 0,1 0,0 3a1.5,1.5 0,1 0,0 -3zM15,10a1.5,1.5 0,1 0,0 3a1.5,1.5 0,1 0,0 -3zM8,15h8v1.5H8zM1,10h2v5H1zM21,10h2v5h-2z" />
+</vector>

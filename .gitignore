@@ -16,6 +16,14 @@ probe/app/src/main/jniLibs/
 probe/app/src/main/assets/kws/*.onnx
 probe/app/src/main/assets/vad/*.onnx
 
+# Robot (robot/): third-party binaries and models come from robot/tools/fetch_third_party.sh
+robot/voice/src/main/jniLibs/
+robot/voice/src/main/assets/kws/*.onnx
+robot/voice/src/main/assets/vad/*.onnx
+robot/**/*.so
+robot/**/*.onnx
+robot/**/*.litertlm
+
 # Editors
 .idea/
 *.iml

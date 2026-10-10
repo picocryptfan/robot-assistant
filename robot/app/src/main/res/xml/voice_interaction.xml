@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Class names must be fully qualified: the system builds ComponentName(package, value) without expanding ".x".
+     Targeting SDK 37 would also need usesAssistData / usesAssistScreenshots here (spec); phase 1 targets 36. -->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="app.heyrobot.assistant.RobotSessionService"
+    android:recognitionService="app.heyrobot.assistant.RobotRecognitionService"
+    android:settingsActivity="app.heyrobot.ui.MainActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true"
+    android:supportsLocalInteraction="false" />

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Tensor TPU vendor libraries: used when present, never bundled (as in the probe and the lab). -->
+        <uses-native-library android:name="libedgetpu_litert.so" android:required="false" />
+        <uses-native-library android:name="libedgetpu_util.so" android:required="false" />
+        <uses-native-library android:name="libedgetpu_client.google.so" android:required="false" />
+        <uses-native-library android:name="libedgetpu_tachyon.google.so" android:required="false" />
+
+        <!-- ":brain": Gemma 4 E2B on the TPU. LiteRT-LM loads only here. Not exported, and bound only with
+             Robot's signature permission (declared by the app). -->
+        <service
+            android:name="app.heyrobot.brain.BrainService"
+            android:process=":brain"
+            android:exported="false"
+            android:permission="app.heyrobot.permission.INTERNAL" />
+    </application>
+</manifest>
