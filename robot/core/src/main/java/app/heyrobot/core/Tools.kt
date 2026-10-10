@@ -176,12 +176,13 @@ sealed class Action {
         override val tool get() = ToolName.SEND_TEXT
         override fun describe() = when {
             target == null -> "Text **$to**"
+            target.via == TextVia.CHEOGRAM_PICK -> "${target.display} Choose who to text in Cheogram"
             target.name == null -> "Text **${target.display}** in ${target.appName}"
             else -> "Text **${target.name}** (${target.display}) in ${target.appName}"
         }
         override fun body() = message
         /** The button names the person too: the card's top line may be out of sight on a long message. */
-        override val confirmLabel get() = target?.let { "Open in ${it.appName} for ${it.name ?: it.display}" }
+        override val confirmLabel get() = target?.let { if (it.via == TextVia.CHEOGRAM_PICK) "Choose in Cheogram" else "Open in ${it.appName} for ${it.name ?: it.display}" }
     }
 
     data class DraftEmail(val to: String, val subject: String, val text: String, val target: MailTarget? = null) : Action() {
@@ -251,13 +252,21 @@ data class TextTarget(
     val name: String?,
     /** For Cheogram the XMPP address (a number goes through the SMS gateway); for the SMS app the E.164 number. */
     val address: String,
-    /** What the card shows: "+1 514-555-0101" or the XMPP address. */
+    /** What the card shows: "+1 514-555-0101" or the XMPP address; for [TextVia.CHEOGRAM_PICK], why no contact fitted. */
     val display: String,
     val appName: String,
     val via: TextVia,
 )
 
-enum class TextVia { CHEOGRAM, SMS }
+enum class TextVia {
+    CHEOGRAM,
+    SMS,
+    /**
+     * No contact in the phone fitted: Cheogram's share screen opens with the message, and the owner picks the person in
+     * Cheogram's own list (its roster holds people the phone's contacts don't). No [TextTarget.address].
+     */
+    CHEOGRAM_PICK,
+}
 
 /** Where an email draft goes. [appName] null: the system chooser asks which app. */
 data class MailTarget(val name: String?, val address: String, val appName: String?)

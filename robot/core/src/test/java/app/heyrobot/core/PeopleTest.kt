@@ -191,6 +191,29 @@ class PeopleTest {
         assertEquals(asked, capped.action)
     }
 
+    @Test fun noContactWithCheogramOffersToChooseInCheogram() {
+        // Owner report (0.2.2): people who exist only in Cheogram's roster were "not found".
+        val asked = Action.SendText("Bob", "See you at 8")
+        for (reason in listOf("No contact matches “Bob”.", "No matching contact has a phone number or XMPP address.")) {
+            val pick = Recipients.notFound(asked, reason, TextVia.CHEOGRAM) as Prepared.Ready
+            // Always a card (even under "Just do it"), with one button and no choices: the person is picked in Cheogram.
+            assertTrue(pick.mustAsk)
+            assertTrue(pick.choices.isEmpty())
+            val a = pick.action as Action.SendText
+            assertEquals(TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK), a.target)
+            assertEquals("Bob", a.to)
+            assertEquals("See you at 8", a.body())
+            assertEquals("Choose in Cheogram", a.confirmLabel)
+            // The card still says why no contact fitted.
+            assertEquals("$reason Choose who to text in Cheogram", a.describe())
+        }
+        // The SMS app has no list of its own: not found, as before.
+        assertEquals(Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “Bob”."), Recipients.notFound(asked, "No contact matches “Bob”.", TextVia.SMS))
+        // A normal Cheogram hand-off keeps its button.
+        val mom = asked.copy(target = TextTarget("Mom", "+15145550101@cheogram.com", "+1 514-555-0101", "Cheogram", TextVia.CHEOGRAM))
+        assertEquals("Open in Cheogram for Mom", mom.confirmLabel)
+    }
+
     @Test fun mobileNumbersComeFirstForTexts() {
         val r = Recipients.forText(listOf(mom), xmppOk = true)
         assertEquals(listOf("+1 514-555-0101", "514 555 0199"), r.map { it.address })

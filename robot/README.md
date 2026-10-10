@@ -30,9 +30,13 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
   at most two actions and three tool rounds per answer; a call written as text runs only when :brain is in text-call
   mode (its TPU build refused the tool API) and the whole reply is the call. An app name is resolved before the card,
   which shows the app that will open. One question at a time: a waiting card counts as busy, Stop declines it.
-- Context (4,096 tokens): the new message is cut to fit (the panel says so) and each question carries the time;
-  :brain checks its own token count after a rebuild and before each tool round, and steps tools down only on the
-  tool-parse error. The turn, gate and :brain decisions are pure code in `:core` (`Turn.kt`, `BrainPolicy.kt`), tested.
+- Context (4,096 tokens): the new message is cut to fit (the panel says so). A question about times or dates, an
+  alarm or a timer, or any question in a conversation using the calendar tools, carries the time after it
+  ("(Current time: 14:05.)"); others don't (0.2.1 put "[Now 14:05]" before every question and the model began its
+  replies with it). A copy of the clock at the start of a reply, or of its text after a tool round, is removed before
+  it is shown or spoken (`ClockEcho`), and a saved reply that begins with one is replayed without it. :brain checks
+  its own token count after a rebuild and before each tool round, and steps tools down only on the tool-parse error.
+  The turn, gate and :brain decisions are pure code in `:core` (`Turn.kt`, `BrainPolicy.kt`), tested.
 
 ## Building
 
@@ -53,7 +57,7 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
-## People, notes and calendar (0.2.0; review fixes 0.2.1)
+## People, notes and calendar (0.2.0; review fixes 0.2.1; Cheogram-only people 0.2.2)
 
 Seven tools (`docs/phase-2.md`). The model passes names and words ("Mom", "Tuesday at 3"); the app resolves them,
 so the model never builds a phone number, an XMPP address or a timestamp. Robot never sends anything itself: texts
@@ -81,6 +85,14 @@ card says "Opened a draft in Cheogram: nothing is sent until Send is pressed the
   shows "already drafting message"); if the number is a contact in several Cheogram accounts, it shows a search first
   and the text is lost. Robot can't see either; the card says "If that chat already had a draft, Cheogram keeps the
   old one."
+- **People only in Cheogram (0.2.2).** Cheogram keeps its roster in its own database and only reads the phone's
+  contacts, so someone who is only in Cheogram isn't found. With Cheogram as the texting app, a text to a name that no
+  contact (or no contact with a number or XMPP address) fits shows "No contact matches “Bob”. Choose who to text in
+  Cheogram" with the message and a **Choose in Cheogram** button (always a card; Unlock on the lock screen). It opens
+  Cheogram's share screen (`ACTION_SEND` text/plain with the message, to the installed Cheogram): pick the person
+  there, and the message is in their chat's box. The model is told `draft_opened_not_sent`. With the SMS app it stays
+  "not found". To have Robot find them directly, open the contact in Cheogram, then ⋮ › "Add to address book": that
+  saves the XMPP address in the phone's contacts (an IM entry, protocol Jabber), which Robot reads.
 - **Who.** Names and nicknames, case and accents aside: exact, then prefix, then word matches, then letters off (none
   under 4 letters, one up to 5, two from 6). A text or email goes without a card (under "Just do it") only when exactly
   one contact's name or nickname matches exactly and it has exactly one number or address. Anything else shows the
@@ -155,7 +167,7 @@ exactly an allowlist (the app, Robot Notes, the three assistant services and And
 no `ui/`, `sys/`, `boot/` or `RobotApp` class in the dex refers to sherpa-onnx, LiteRT or the assistant, voice and
 brain packages.
 
-### On the phone (0.2.0, with the 0.2.1 fixes)
+### On the phone (0.2.0, with the 0.2.1 and 0.2.2 fixes)
 
 1. Assistant setup › People, notes and calendar: Allow contacts and the calendar; check that Cheogram and Proton Mail
    show as installed.
@@ -187,6 +199,11 @@ brain packages.
 11. Text someone through Cheogram, then send `adb logcat -d | grep "START u0" | grep -c xmpp` and whether the line
     shows the message: the system-log privacy note above.
 12. On a card asking for a permission, tap "Allow" while Robot is still speaking: the voice stops and the panel hides.
+13. With spoken replies on, ask "tell me a joke", then "what time is it", then "wake me in two hours": no reply starts
+    with the time or a bracket, on screen or aloud; the second says the right time and the alarm is two hours on.
+14. Text someone who exists only in Cheogram: tap "Choose in Cheogram", pick them, the message is in the box. (Tip: in
+    Cheogram, open the contact, then ⋮ › "Add to address book". That saves their XMPP address into the phone's
+    contacts, as an IM entry with protocol Jabber, which Robot already reads.)
 
 ## Voice (0.1.1; memory rule 0.1.2; fixes 0.1.3)
 

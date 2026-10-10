@@ -55,8 +55,9 @@
             <action android:name="android.speech.RecognitionService" />
         </intent>
         <package android:name="app.organicmaps" />
-        <!-- Phase 2 hand-offs: Cheogram (texts, xmpp:), Proton Mail (mailto:), the SMS app (smsto:), the calendar
-             app's editor (INSERT). Drafts only: the owner presses Send there. -->
+        <!-- Phase 2 hand-offs: Cheogram (texts, xmpp:; and SEND text/plain to its share screen when no contact fits,
+             covered by its <package> entries), Proton Mail (mailto:), the SMS app (smsto:), the calendar app's editor
+             (INSERT). Drafts only: the owner presses Send there. -->
         <package android:name="com.cheogram.android" />
         <package android:name="com.cheogram.android.playstore" />
         <package android:name="ch.protonmail.android" />

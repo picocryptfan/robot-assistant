@@ -28,6 +28,7 @@ import app.heyrobot.core.ClaudeRouter
 import app.heyrobot.core.ClaudeSettings
 import app.heyrobot.core.ClaudeVoices
 import app.heyrobot.core.ClaudeWords
+import app.heyrobot.core.ClockEcho
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.Escalation
 import app.heyrobot.core.EscalationDecision
@@ -703,8 +704,10 @@ object PanelController {
         val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude)
         // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
         val tools = ToolRouter.tools(groups, s, askClaude)
+        // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
+        val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
         // The new turn always fits the model's context: cut (and say so) rather than overflow.
-        val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools), Prompt.clock(now))
+        val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools), clock)
         if (fitted.shortened) {
             notify(if (fitted.questionCut) "Your message was too long, so Robot read only its first part." else "The screen had a lot of text, so Robot read only the first part.")
         }
@@ -944,11 +947,17 @@ object PanelController {
         _state.update { st -> st.copy(claudeStatus = st.claudeStatus ?: ClaudeWords.THINKING, turns = st.turns.map { if (it.id == replyId) it.copy(claude = true) else it }) }
         val t0 = System.currentTimeMillis()
         var first = -1L
+        // As for Robot's replies: each round's start is checked for a copied clock ("[Now 14:05]"), never shown or said.
+        var echo = ClockEcho()
+        fun stream(text: String) {
+            if (text.isEmpty()) return
+            appendText(replyId, text)
+            voice.feed(replyId, text, _state.value.speak).forEach { speakSentence(it, claude = true) }
+        }
         val heard = object : ClaudeListener {
             override fun text(delta: String) {
                 if (first < 0) first = System.currentTimeMillis() - t0
-                appendText(replyId, delta)
-                voice.feed(replyId, delta, _state.value.speak).forEach { speakSentence(it, claude = true) }
+                stream(echo.feed(delta))
             }
 
             override fun declined() {
@@ -959,8 +968,18 @@ object PanelController {
                 if (_state.value.speak) VoiceHub.tts.speak(ClaudeWords.DECLINED)
             }
         }
+        val claudeTurn = ClaudeTurn(session, blocks, plan, heard)
+        // One echo filter per round: the question's answer, then the text after each tool round.
+        val rounds = object : TurnModel {
+            override suspend fun ask(): ModelOutcome = claudeTurn.ask().also { stream(echo.flush()) }
+            override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome {
+                echo = ClockEcho()
+                return claudeTurn.answer(results).also { stream(echo.flush()) }
+            }
+            override fun close() = claudeTurn.close()
+        }
         val result = try {
-            TurnRunner(ClaudeTurn(session, blocks, plan, heard), PanelActions, PanelView(replyId), slot.confirmations, untrusted = true, remote = true, newId = ::newId).run()
+            TurnRunner(rounds, PanelActions, PanelView(replyId), slot.confirmations, untrusted = true, remote = true, newId = ::newId).run()
         } finally {
             val r = session.lastReport
             if (r.requests > 0) withContext(NonCancellable + Dispatchers.IO) { app.heyrobot.sys.ClaudeSpendStore.add(VoiceHub.app, r.dollars) }
@@ -1161,13 +1180,12 @@ object PanelController {
         reqId = req.first
         var calls: List<RawToolCall>? = null
         var out: ModelOutcome = ModelOutcome.Failed("The model didn't answer.")
+        // Each model round (the reply, then its text after a tool round) is checked for a copy of the clock at its start.
+        val echo = ClockEcho()
         try {
             req.second.collect { m ->
                 when (m) {
-                    is BrainMsg.Chunk -> if (m.text.isNotEmpty()) {
-                        appendText(replyId, m.text)
-                        voice.feed(replyId, m.text, _state.value.speak).forEach(::speakSentence)
-                    }
+                    is BrainMsg.Chunk -> if (m.text.isNotEmpty()) streamText(replyId, echo.feed(m.text))
                     is BrainMsg.ToolCallsMsg -> calls = m.calls
                     is BrainMsg.Done -> out = calls?.takeIf { m.reason == DoneReason.TOOL_CALLS }?.let { ModelOutcome.Calls(it) }
                         ?: ModelOutcome.Done(m.reason, m.textCalls)
@@ -1175,10 +1193,19 @@ object PanelController {
                     else -> {}
                 }
             }
+            // A reply shorter than the hold-back window.
+            streamText(replyId, echo.flush())
         } finally {
             reqId = 0
         }
         return out
+    }
+
+    /** Streamed reply text: into the bubble, and the sentences it completes to the voice. */
+    private fun streamText(replyId: String, text: String) {
+        if (text.isEmpty()) return
+        appendText(replyId, text)
+        voice.feed(replyId, text, _state.value.speak).forEach(::speakSentence)
     }
 
     private fun appendText(replyId: String, text: String) = _state.update { st ->

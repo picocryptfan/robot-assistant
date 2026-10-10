@@ -134,6 +134,16 @@ object Recipients {
         return Prepared.Ready(oneName?.let(named) ?: asked, choices = choices, more = options.size - choices.size + hiddenPeople)
     }
 
+    /**
+     * send_text found no one in the phone's contacts to text ([reason] says why, as the card and the model are told).
+     * With Cheogram as the texting app (installed) the card offers "Choose in Cheogram" instead: Cheogram keeps its own
+     * roster and only reads the phone's contacts, so the person may be there. It always asks. The SMS app has no such
+     * list: not found.
+     */
+    fun notFound(asked: Action.SendText, reason: String, via: TextVia): Prepared =
+        if (via == TextVia.CHEOGRAM) Prepared.Ready(asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK)), mustAsk = true)
+        else Prepared.Refused(ActionStatus.NOT_FOUND, reason)
+
     /** Mobile numbers first (texts), then the rest in the contact's order; the same digits only once. */
     fun mobileFirst(phones: List<ContactPhone>): List<ContactPhone> =
         phones.distinctBy { PhoneNumbers.digits(it.number).takeLast(10) }.sortedBy { if (it.kind == PhoneKind.MOBILE) 0 else 1 }
