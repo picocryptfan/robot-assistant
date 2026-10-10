@@ -389,6 +389,10 @@ words too. A leading "a" or "une" goes with them; "the", "la" or "des" stay, sin
 Bay", "Des Moines"). It can only route between coordinates,
 so "directions to X" opens a search for X: the card says "Search Organic Maps for “X”, then tap Route".
 
+Opening an app and Organic Maps searches run without a card by default since 0.3.1 (they only show something);
+Settings › Actions sets each action to "Just do it", "Ask first" or "Off". A settings file from before 0.3.1 saved
+"Ask first" for them whether chosen or not, so there it reads as the new default.
+
 ### Survive restarts
 
 At every boot Android keeps a non-system assistant only if Settings.Secure `voice_recognition_service` names an

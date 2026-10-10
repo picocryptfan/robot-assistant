@@ -11,7 +11,19 @@ class SettingsTest {
         assertEquals(SpeakReplies.VOICE, d.speakReplies)
         assertEquals(Approval.AUTO, d.approval(ToolName.SET_TIMER))
         assertEquals(Approval.AUTO, d.approval(ToolName.SET_ALARM))
-        assertEquals(Approval.ASK, d.approval(ToolName.OPEN_APP))
+        assertEquals(Approval.AUTO, d.approval(ToolName.OPEN_APP))
+        assertEquals(Approval.ASK, d.approval(ToolName.SEND_TEXT))
+    }
+
+    @Test fun olderFilesOpenAppsAndMapsWithoutAsking() {
+        val old = RobotSettings.fromJson("""{"schema":3,"approvals":{"open_app":"ASK","maps_search":"ASK","maps_navigate":"OFF","send_text":"ASK"}}""")
+        assertEquals(Approval.AUTO, old.approval(ToolName.OPEN_APP))
+        assertEquals(Approval.AUTO, old.approval(ToolName.MAPS_SEARCH))
+        assertEquals(Approval.OFF, old.approval(ToolName.MAPS_NAVIGATE))
+        assertEquals(Approval.ASK, old.approval(ToolName.SEND_TEXT))
+        // From schema 4 on, "Ask first" is a choice and stays.
+        val chosen = RobotSettings.fromJson("""{"schema":4,"approvals":{"open_app":"ASK"}}""")
+        assertEquals(Approval.ASK, chosen.approval(ToolName.OPEN_APP))
     }
 
     @Test fun jsonRoundTrips() {
@@ -88,7 +100,7 @@ class SettingsTest {
         assertEquals(SpeakReplies.VOICE, s.speakReplies)
         assertEquals(2.0f, s.speechRate)
         assertEquals(0, s.keepModelMinutes)
-        assertEquals(Approval.ASK, s.approval(ToolName.OPEN_APP))
+        assertEquals(Approval.AUTO, s.approval(ToolName.OPEN_APP))
     }
 
     @Test fun voiceReliabilityDefaultsAndRoundTrip() {

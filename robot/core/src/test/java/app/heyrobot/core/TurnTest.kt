@@ -95,9 +95,12 @@ class TurnTest {
         assertEquals(ActionStatus.DONE, view.cards[id]!!.status)
     }
 
+    /** Maps searches just happen by default; these tests need one that asks first. */
+    private val mapsAskFirst = RobotSettings().let { it.copy(approvals = it.approvals + (ToolName.MAPS_SEARCH to Approval.ASK)) }
+
     @Test fun cancelOnTheCardRunsNothingAndTellsTheModel() = runBlocking {
         val model = FakeModel(ModelOutcome.Calls(listOf(call("maps_search", "query" to "pharmacy"))))
-        val actions = FakeActions()
+        val actions = FakeActions(mapsAskFirst)
         val view = FakeView()
         val conf = Confirmations()
         val turn = async { runner(model, actions, view, conf).run() }
@@ -143,7 +146,7 @@ class TurnTest {
 
     @Test fun anAppOpeningEndsTheTurnWithoutAFollowUp() = runBlocking {
         val model = FakeModel(ModelOutcome.Calls(listOf(call("open_app", "name" to "Signal"), timer)))
-        val actions = FakeActions()
+        val actions = FakeActions(RobotSettings().let { it.copy(approvals = it.approvals + (ToolName.OPEN_APP to Approval.ASK)) })
         actions.prepare = { a -> Prepared.Ready(if (a is Action.OpenApp) Action.OpenApp("Signal", "org.thoughtcrime.securesms/.Main") else a) }
         val view = FakeView()
         val conf = Confirmations()
@@ -182,7 +185,7 @@ class TurnTest {
 
     @Test fun theLockIsCheckedAgainAfterTheCard() = runBlocking {
         val model = FakeModel(ModelOutcome.Calls(listOf(call("maps_search", "query" to "pharmacy"))))
-        val actions = FakeActions()
+        val actions = FakeActions(mapsAskFirst)
         val view = FakeView()
         val conf = Confirmations()
         val turn = async { runner(model, actions, view, conf).run() }
@@ -239,7 +242,7 @@ class TurnTest {
     @Test fun oneTurnAtATimeAndStopDeclinesTheCard() = runBlocking {
         val slot = TurnSlot(this as CoroutineScope)
         val model = FakeModel(ModelOutcome.Calls(listOf(call("maps_search", "query" to "pharmacy"))))
-        val actions = FakeActions()
+        val actions = FakeActions(mapsAskFirst)
         val view = FakeView()
         assertTrue(slot.start { runner(model, actions, view, slot.confirmations).run() })
         val id = withTimeout(5_000) { view.pending.receive() }
