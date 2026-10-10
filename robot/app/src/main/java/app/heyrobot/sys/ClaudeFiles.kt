@@ -20,7 +20,7 @@ import java.time.LocalDate
 
 // Main and voice processes. Ask Claude's files and the Claude app's intents, without the API key: the key is encrypted
 // and decrypted in the :voice process only (assistant/ClaudeKeys.kt). The main app reads whether a key is saved and its
-// masked form, and can delete it; it never reads the key itself.
+// masked form, and can delete it (then tells the voice process); it never reads the key itself.
 
 object ClaudeKeyFiles {
     /** The Android Keystore key that encrypts the API key (AES-GCM, not exportable). */
@@ -36,7 +36,14 @@ object ClaudeKeyFiles {
     fun masked(ctx: Context): String? = if (!saved(ctx)) null else
         readOrNull(meta(ctx))?.let { try { JSONObject(it).optString("masked").takeIf { m -> m.isNotEmpty() } } catch (_: Exception) { null } } ?: "Saved"
 
-    /** "Delete key": the files and the Keystore key go; a key in a running client is dropped at its next turn. */
+    /** A saved key couldn't be decrypted and was removed (Settings says so until a new key is saved). */
+    fun unreadable(ctx: Context): Boolean = !saved(ctx) &&
+        (readOrNull(meta(ctx))?.let { try { JSONObject(it).optBoolean("unreadable") } catch (_: Exception) { false } } ?: false)
+
+    /**
+     * "Delete key" (background thread): the files and the Keystore key go. The caller then tells the voice process
+     * ([Cmd.CLAUDE_KEY]), which drops its client.
+     */
     fun delete(ctx: Context) {
         secret(ctx).delete()
         meta(ctx).delete()
@@ -48,17 +55,32 @@ object ClaudeKeyFiles {
     }
 }
 
-/** Today's spend on Claude: written by the :voice process after each reply, shown in Settings. */
+/**
+ * Today's spend on Claude: written by the :voice process as each request's usage arrives (so a crash mid-answer loses
+ * none of it), shown in Settings. The :voice process keeps its copy in memory once read.
+ */
 object ClaudeSpendStore {
     private fun file(ctx: Context) = File(Paths.dir(ctx), "claude_spend.json")
 
+    /** [VOICE] The copy in memory, once read. */
+    @Volatile private var memo: ClaudeSpend? = null
+
+    /** From the file (Settings, in the main process). Background thread. */
     fun load(ctx: Context): ClaudeSpend = ClaudeSpend.fromJson(readOrNull(file(ctx)))
 
     fun today(ctx: Context): Long = load(ctx).on(LocalDate.now()).micros
 
-    /** [VOICE] */
+    /** [VOICE] Today's spend, from memory, or from the file the first time. Background thread. */
+    fun current(ctx: Context): ClaudeSpend = memo ?: load(ctx).also { memo = it }
+
+    /** [VOICE] Null until [current] has read the file. */
+    fun cached(): ClaudeSpend? = memo
+
+    /** [VOICE] Background thread. */
+    @Synchronized
     fun add(ctx: Context, dollars: Double): ClaudeSpend {
-        val s = load(ctx).add(LocalDate.now(), dollars)
+        val s = current(ctx).add(LocalDate.now(), dollars)
+        memo = s
         try { writeAtomic(file(ctx), s.toJson()) } catch (t: Throwable) { RLog.w("claude_spend_save", t) }
         return s
     }
@@ -69,8 +91,8 @@ data class ClaudeAppFacts(val installed: Boolean, val appLink: Boolean, val webL
 
 /**
  * The Claude app (closed source; its intent filters are unverified): the hand-off intents and which of them resolve to
- * its package on this phone, checked at run time (resolveActivity with setPackage). Robot only prefills; the owner
- * presses Send. Never accessibility, never reading the app in the background.
+ * its package on this phone, checked at run time (resolveActivity with setPackage). Robot only prefills; you press
+ * Send. Never accessibility, never reading the app in the background.
  */
 object ClaudeAppIntents {
     fun installed(ctx: Context): Boolean = HandOffApps.installed(ctx, ClaudeAppLink.PACKAGE)
@@ -96,7 +118,7 @@ object ClaudeAppIntents {
     /** The way to hand off now (a, b, c, then d), or null when the app isn't installed. */
     fun choose(ctx: Context): ClaudeAppLink.Way? = ClaudeAppLink.choose(installed(ctx)) { resolves(ctx, it) }
 
-    /** Way d: the question on the clipboard (the owner's own words, so not marked sensitive) before the app opens. */
+    /** Way d: the question on the clipboard (your own words, so not marked sensitive) before the app opens. */
     fun copy(ctx: Context, text: String) {
         try {
             val clip = ClipData.newPlainText("Question for Claude", text)

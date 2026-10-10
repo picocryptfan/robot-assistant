@@ -1,8 +1,11 @@
 package app.heyrobot.assistant
 
 import android.app.Activity
+import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
+import android.view.View
+import android.view.WindowManager
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.activity.ComponentActivity
@@ -28,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import app.heyrobot.core.ClaudeKeyFormat
 import app.heyrobot.core.RLog
 import app.heyrobot.core.writeAtomic
 import app.heyrobot.sys.ClaudeKeyFiles
@@ -46,20 +51,25 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // VOICE PROCESS. The Anthropic API key (docs/ask-claude.md "Key and settings"): pasted once into ClaudeKeyActivity, which
 // runs in the :voice process like the panel, encrypted with an Android Keystore key (AES-GCM, not exportable), and
 // decrypted only here, just before the Claude client is made. It never appears in a log, a crash text, the history, an
 // intent or an IPC message: the main app only reads whether one is saved and its masked form (sys/ClaudeFiles.kt).
+// The key window is FLAG_SECURE (no screenshots, recordings or task thumbnail), kept out of autofill, and clears the
+// clipboard if it still holds the key just saved.
 
 object ClaudeKeys {
     private const val GCM_TAG_BITS = 128
 
     /** Shape of an Anthropic API key, checked before saving (a paste of something else is refused, not stored). */
-    fun plausible(k: String): Boolean = k.startsWith("sk-ant-") && k.length in 40..400 && k.all { it.isLetterOrDigit() || it == '-' || it == '_' }
+    fun plausible(k: String): Boolean = ClaudeKeyFormat.plausible(k)
 
     /** "sk-ant-…AB12": shown in Settings. */
-    fun mask(k: String): String = "sk-ant-…" + k.takeLast(4)
+    fun mask(k: String): String = ClaudeKeyFormat.mask(k)
 
     private fun secretKey(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
@@ -73,7 +83,7 @@ object ClaudeKeys {
         return gen.generateKey()
     }
 
-    /** Encrypts and saves [key]; false (nothing saved) if it can't. */
+    /** Encrypts and saves [key]; false (nothing saved) if it can't. Background thread (Keystore and files). */
     fun save(ctx: Context, key: String): Boolean = try {
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.ENCRYPT_MODE, secretKey())
@@ -92,7 +102,7 @@ object ClaudeKeys {
         false
     }
 
-    /** The key, or null (none saved, or the Keystore key is gone: then the owner pastes it again). */
+    /** The key, or null (none saved, or the Keystore key is gone: then [forget] removes it and you paste it again). */
     fun read(ctx: Context): String? {
         val f = ClaudeKeyFiles.secret(ctx)
         if (!f.isFile) return null
@@ -109,6 +119,15 @@ object ClaudeKeys {
         }
     }
 
+    /**
+     * A key that can't be decrypted any more reads as no key: its files and the Keystore entry go, and the note left
+     * behind lets Settings say why.
+     */
+    fun forget(ctx: Context) {
+        ClaudeKeyFiles.delete(ctx)
+        try { writeAtomic(ClaudeKeyFiles.meta(ctx), JSONObject().put("unreadable", true).toString()) } catch (t: Throwable) { RLog.w("claude_key_forget", t) }
+    }
+
     /** Changes when the key file does: a cached client is rebuilt (or dropped) on the next turn. */
     fun stamp(ctx: Context): Long = ClaudeKeyFiles.secret(ctx).let { if (it.isFile) it.lastModified() xor it.length() else 0L }
 }
@@ -120,10 +139,16 @@ object ClaudeKeys {
 class ClaudeKeyActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // No screenshots, screen recording or task thumbnail of this window, and nothing in it for an autofill service
+        // to offer to save.
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        window.decorView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
         setContent {
             RobotTheme {
                 var key by remember { mutableStateOf("") }
                 var problem by remember { mutableStateOf<String?>(null) }
+                var saving by remember { mutableStateOf(false) }
+                val scope = rememberCoroutineScope()
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.36f)).imePadding(), contentAlignment = Alignment.Center) {
                 Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -141,17 +166,44 @@ class ClaudeKeyActivity : ComponentActivity() {
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
                             TextButton(onClick = { setResult(Activity.RESULT_CANCELED); finish() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                             Button(onClick = {
-                                when {
-                                    !ClaudeKeys.plausible(key) -> problem = "That doesn't look like an Anthropic API key (sk-ant-…)."
-                                    !ClaudeKeys.save(applicationContext, key) -> problem = "The key couldn't be saved on this phone."
-                                    else -> { key = ""; setResult(Activity.RESULT_OK); finish() }
+                                if (!ClaudeKeys.plausible(key)) {
+                                    problem = "That doesn't look like an Anthropic API key (sk-ant- followed by letters, digits, - and _)."
+                                    return@Button
                                 }
-                            }, enabled = key.isNotEmpty(), modifier = Modifier.heightIn(min = 48.dp)) { Text("Save") }
+                                val k = key
+                                saving = true
+                                scope.launch {
+                                    // The Keystore and the files off the main thread; a Claude-mode conversation under way keeps its client.
+                                    val ok = withContext(Dispatchers.IO) { ClaudeKeys.save(applicationContext, k).also { if (it) ClaudeLink.keyChanged(applicationContext) } }
+                                    saving = false
+                                    if (!ok) {
+                                        problem = "The key couldn't be saved on this phone."
+                                        return@launch
+                                    }
+                                    clearClipboard(k)
+                                    key = ""
+                                    setResult(Activity.RESULT_OK)
+                                    finish()
+                                }
+                            }, enabled = key.isNotEmpty() && !saving, modifier = Modifier.heightIn(min = 48.dp)) { Text("Save") }
                         }
                     }
                 }
                 }
             }
+        }
+        // Compose's own autofill bridge too (the field is a password field).
+        findViewById<android.view.ViewGroup>(android.R.id.content)?.getChildAt(0)?.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+    }
+
+    /** The key was pasted: if the clipboard still holds exactly it, it is cleared (this window has focus, so it may read it). */
+    private fun clearClipboard(key: String) {
+        try {
+            val cm = getSystemService(ClipboardManager::class.java) ?: return
+            val clip = cm.primaryClip ?: return
+            if (clip.itemCount > 0 && clip.getItemAt(0).coerceToText(this)?.toString()?.trim() == key) cm.clearPrimaryClip()
+        } catch (t: Throwable) {
+            RLog.w("claude_key_clip", t)
         }
     }
 }

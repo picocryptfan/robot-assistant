@@ -16,6 +16,7 @@ import android.os.SystemClock
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.writeAtomic
+import app.heyrobot.sys.ClaudeSpendStore
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.Paths
@@ -68,6 +69,8 @@ object VoiceHub {
         if (::app.isInitialized) return
         app = ctx.applicationContext
         worker = Handler(HandlerThread("robot-voice").apply { start() }.looper)
+        // Whether a Claude key is saved and today's Claude spend, read off the main thread before the panel needs them.
+        Thread({ ClaudeLink.refresh(app); ClaudeSpendStore.current(app) }, "robot-claude-init").apply { isDaemon = true; start() }
         settings = SettingsStore.load(app)
         VoiceEngines.init(app, Paths.dir(app))
         tts = VoiceEngines.textToSpeech(app).also { it.configure(settings.speechRate, settings.voice) }
@@ -237,7 +240,12 @@ object VoiceHub {
                 tts.configure(settings.speechRate, settings.voice)
                 stt.configure(settings.livePartials)
                 applyListening("settings")
+                PanelController.settingsChanged()
             }
+            Cmd.CLAUDE_KEY -> Thread({
+                ClaudeLink.keyChanged(app)
+                main.post { PanelController.claudeKeyChanged() }
+            }, "robot-claude-key").apply { isDaemon = true; start() }
             Cmd.SPEAK_TEST -> {
                 tts.stop()
                 tts.speak("Hi, I'm Robot. This is how I sound.")

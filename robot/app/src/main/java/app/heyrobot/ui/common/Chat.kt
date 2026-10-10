@@ -302,12 +302,14 @@ fun TypingDots(color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
 /** Light Markdown (core's parser) with a caret while the reply streams. */
 @Composable
 fun MarkdownText(text: String, streaming: Boolean = false) {
-    val blocks = remember(text) { Markdown.parse(text) }
+    // A long reply is parsed again only from its last paragraph as it streams.
+    val parser = remember { Markdown.Incremental() }
+    val blocks = remember(text) { parser.parse(text) }
     val codeBg = MaterialTheme.colorScheme.surfaceVariant
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         blocks.forEachIndexed { i, b ->
             val caret = streaming && i == blocks.lastIndex
-            val body = spans(b.spans, codeBg, caret)
+            val body = remember(b, codeBg, caret) { spans(b.spans, codeBg, caret) }
             when (b.kind) {
                 Markdown.BlockKind.HEADING -> Text(body, style = MaterialTheme.typography.titleMedium)
                 Markdown.BlockKind.BULLET, Markdown.BlockKind.NUMBERED -> Row {

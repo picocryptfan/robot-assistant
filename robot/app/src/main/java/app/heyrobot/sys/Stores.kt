@@ -86,6 +86,8 @@ object Cmd {
     const val VOICE_RESET = "voice_reset"
     /** "Test voice speed": results come back in Paths.voiceBench. */
     const val VOICE_BENCH = "voice_bench"
+    /** The Claude API key was deleted: the voice process drops its client and ends Claude mode. */
+    const val CLAUDE_KEY = "claude_key"
 
     fun send(ctx: Context, op: String, extras: Bundle = Bundle()) {
         try {

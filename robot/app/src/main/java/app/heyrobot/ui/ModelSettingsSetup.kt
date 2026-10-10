@@ -331,7 +331,7 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
         Text("Robot stays offline unless you ask for Claude: say “ask Claude …” or “go get Claude”, or let Robot check hard questions " +
             "with Claude (below). Only text leaves the phone: your voice is turned into text here, and Claude's answer is read by Robot's voices.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
-        SwitchRow("Ask Claude", if (keySaved) "Off until you turn it on, or once a key is saved." else "Off until you add a key, or turn it on to use the Claude app.",
+        SwitchRow("Ask Claude", if (keySaved) "Questions for Claude go through your API key." else "Without a key, questions for Claude open the Claude app.",
             ClaudeSettings.enabled(s, keySaved)) { update(s.copy(claudeEnabled = it)) }
         Text("Use", style = MaterialTheme.typography.titleSmall)
         val route = ClaudeSettings.route(s, keySaved)
@@ -344,9 +344,20 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
             ChoiceRow(r.title, r.detail + note, route == r) { update(s.copy(claudeRoute = r)) }
         }
         Text("API key", style = MaterialTheme.typography.titleSmall)
-        StatusRow(if (keySaved) Mark.OK else Mark.TODO, f?.claudeKey ?: "No key",
-            "From console.anthropic.com › API keys. API use is paid with API credits; a claude.ai Pro or Max plan doesn't cover it.") {
-            if (keySaved) OutlinedButton(onClick = a.deleteClaudeKey) { Text("Delete key") } else FilledTonalButton(onClick = a.addClaudeKey) { Text("Add key") }
+        var confirmDelete by remember { mutableStateOf(false) }
+        StatusRow(if (keySaved) Mark.OK else if (f?.claudeKeyUnreadable == true) Mark.WARN else Mark.TODO, f?.claudeKey ?: "No key",
+            if (f?.claudeKeyUnreadable == true) "Robot couldn't read the saved key (Android's keystore lost it), so it was removed. Add it again."
+            else "From console.anthropic.com › API keys. API use is paid with API credits; a claude.ai Pro or Max plan doesn't cover it.") {
+            if (keySaved) OutlinedButton(onClick = { confirmDelete = true }) { Text("Delete key") } else FilledTonalButton(onClick = a.addClaudeKey) { Text("Add key") }
+        }
+        if (confirmDelete) {
+            AlertDialog(
+                onDismissRequest = { confirmDelete = false },
+                title = { Text("Delete the Claude key?") },
+                text = { Text("Robot removes the key from this phone. Ask Claude stays on and uses the Claude app until you add a key again.") },
+                confirmButton = { TextButton(onClick = { confirmDelete = false; a.deleteClaudeKey() }) { Text("Delete") } },
+                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            )
         }
         Text("Model", style = MaterialTheme.typography.titleSmall)
         for (m in ClaudeModel.entries) ChoiceRow(m.title, m.detail, s.claudeModelChoice == m) { update(s.copy(claudeModel = m.id)) }
@@ -371,8 +382,9 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
         for (e in Escalation.entries) {
             ChoiceRow(e.title, e.detail + if (e == Escalation.AUTO && !keySaved) " Needs an API key: until then Robot asks first." else "", help == e) { update(s.copy(claudeHelp = e)) }
         }
-        Text("Robot sends only your question and the last two turns of plain conversation by itself. Screen text, a photo, or what it read " +
-            "from your contacts, calendar or notes go only after you tap a card that lists them.", style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text("By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
+            "a photo, or what Robot read from your contacts, calendar or notes, it sends only your question; anything more goes only after " +
+            "you tap a card that lists it.", style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("Daily budget", style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (c in RobotSettings.CLAUDE_BUDGETS) {
@@ -550,14 +562,16 @@ private fun PeopleSetupCard(f: AssistantFacts, a: AppActions) {
 
 /**
  * Assistant setup › Ask Claude: what the network is used for, GrapheneOS's Network toggle, and the Claude app with which
- * hand-off its installed version accepts (a claude:// link, a claude.ai link, a share), so the owner can tell without adb.
+ * hand-off its installed version accepts (a claude:// link, a claude.ai link, a share), so you can tell without adb.
  */
 @Composable
 private fun ClaudeSetupCard(f: AssistantFacts, a: AppActions) {
     SectionCard("Ask Claude") {
         Text("Robot uses the internet for two things only: downloading its models, and Ask Claude when you ask for Claude.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        StatusRow(if (f.networkGranted) Mark.OK else Mark.WARN, "Network", if (f.networkGranted) "Allowed." else "Turned off for Robot: Ask Claude can't reach Claude.") {
+        StatusRow(if (f.networkGranted) Mark.OK else Mark.WARN, "Network",
+            if (f.networkGranted) "Allowed, as Android reports it. If Ask Claude says “No internet” while you're online, check Robot's Network permission."
+            else "Turned off for Robot: Ask Claude can't reach Claude.") {
             if (!f.networkGranted) TextButton(onClick = a.openAppSettings) { Text("Open") }
         }
         StatusRow(if (f.claudeKey != null) Mark.OK else Mark.TODO, "Claude API key", f.claudeKey ?: "None: questions open the Claude app instead (Settings › Ask Claude).")

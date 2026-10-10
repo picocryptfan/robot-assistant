@@ -332,7 +332,14 @@ fun RobotAppUi(activity: MainActivity) {
                 ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.ClaudeKeyActivity"))
             } catch (_: Exception) { say("Couldn't open the key window.") }
         },
-        deleteClaudeKey = { ClaudeKeyFiles.delete(ctx); say("The Claude key was deleted.") },
+        deleteClaudeKey = {
+            // Off the main thread (files and the Keystore); then the assistant drops its client at once.
+            scope.launch(Dispatchers.IO) {
+                ClaudeKeyFiles.delete(ctx)
+                Cmd.send(ctx, Cmd.CLAUDE_KEY)
+                withContext(Dispatchers.Main) { say("The Claude key was deleted.") }
+            }
+        },
     )
 
     /** Turning a people or calendar feature on (from Off) asks for what it needs, if it isn't allowed yet. */

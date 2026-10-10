@@ -46,6 +46,8 @@ data class AssistantFacts(
     val protonInstalled: Boolean = false,
     /** Ask Claude: the masked API key (null: none saved), today's spend, the Claude app and which hand-off resolves. */
     val claudeKey: String? = null,
+    /** The saved key couldn't be decrypted and was removed: Settings says so. */
+    val claudeKeyUnreadable: Boolean = false,
     val claudeSpendMicros: Long = 0,
     val claudeApp: ClaudeAppFacts = ClaudeAppFacts(installed = false, appLink = false, webLink = false, send = false),
     /** GrapheneOS's per-app Network toggle (INTERNET as a runtime permission). */
@@ -81,6 +83,7 @@ object Assistant {
             cheogramInstalled = HandOffApps.cheogram(ctx) != null,
             protonInstalled = HandOffApps.proton(ctx),
             claudeKey = ClaudeKeyFiles.masked(ctx),
+            claudeKeyUnreadable = ClaudeKeyFiles.unreadable(ctx),
             claudeSpendMicros = ClaudeSpendStore.today(ctx),
             claudeApp = ClaudeAppIntents.facts(ctx),
             networkGranted = granted(ctx, Manifest.permission.INTERNET),

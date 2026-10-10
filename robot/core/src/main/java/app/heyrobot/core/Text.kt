@@ -139,6 +139,11 @@ object Markdown {
     data class Span(val text: String, val bold: Boolean = false, val italic: Boolean = false, val code: Boolean = false)
     data class Block(val kind: BlockKind, val spans: List<Span>, val marker: String = "")
 
+    private val HEADING = Regex("^#{1,6}\\s+")
+    private val BULLET = Regex("^[-*+•]\\s+")
+    private val NUMBERED = Regex("^(\\d+)[.)]\\s+")
+    private val INLINE = Regex("""\*\*(.+?)\*\*|__(.+?)__|`([^`]+)`|\*(?!\s)(.+?)(?<!\s)\*|(?<![A-Za-z0-9])_(?!\s)(.+?)(?<!\s)_(?![A-Za-z0-9])""")
+
     fun parse(src: String): List<Block> {
         val out = mutableListOf<Block>()
         val lines = src.replace("\r\n", "\n").split('\n')
@@ -163,11 +168,11 @@ object Markdown {
                     out += Block(BlockKind.CODE, listOf(Span(code.toString(), code = true)))
                 }
                 t.isEmpty() -> flushPara()
-                Regex("^#{1,6}\\s+").containsMatchIn(t) -> { flushPara(); out += Block(BlockKind.HEADING, inline(t.replace(Regex("^#{1,6}\\s+"), ""))) }
-                Regex("^[-*+•]\\s+").containsMatchIn(t) -> { flushPara(); out += Block(BlockKind.BULLET, inline(t.replace(Regex("^[-*+•]\\s+"), "")), "•") }
-                Regex("^\\d+[.)]\\s+").containsMatchIn(t) -> {
+                HEADING.containsMatchIn(t) -> { flushPara(); out += Block(BlockKind.HEADING, inline(t.replace(HEADING, ""))) }
+                BULLET.containsMatchIn(t) -> { flushPara(); out += Block(BlockKind.BULLET, inline(t.replace(BULLET, "")), "•") }
+                NUMBERED.containsMatchIn(t) -> {
                     flushPara()
-                    val m = Regex("^(\\d+)[.)]\\s+").find(t)!!
+                    val m = NUMBERED.find(t)!!
                     out += Block(BlockKind.NUMBERED, inline(t.substring(m.range.last + 1)), m.groupValues[1] + ".")
                 }
                 else -> { if (para.isNotEmpty()) para.append(' '); para.append(t) }
@@ -184,9 +189,8 @@ object Markdown {
     /** **bold**, *italic* / _italic_, `code`. Unclosed markers stay as text (useful while a reply streams). */
     fun inline(s: String): List<Span> {
         val out = mutableListOf<Span>()
-        val re = Regex("""\*\*(.+?)\*\*|__(.+?)__|`([^`]+)`|\*(?!\s)(.+?)(?<!\s)\*|(?<![A-Za-z0-9])_(?!\s)(.+?)(?<!\s)_(?![A-Za-z0-9])""")
         var last = 0
-        for (m in re.findAll(s)) {
+        for (m in INLINE.findAll(s)) {
             if (m.range.first > last) out += Span(s.substring(last, m.range.first))
             val g = m.groupValues
             out += when {
@@ -200,6 +204,45 @@ object Markdown {
         }
         if (last < s.length) out += Span(s.substring(last))
         return out
+    }
+
+    /**
+     * [parse] for a reply that grows as it streams, re-reading only its unfinished end. The blocks before the last
+     * blank line outside a code block can't change any more: [parse] works line by line and carries nothing across
+     * such a line. Same result as [parse] on the whole text, at the cost of the last paragraph.
+     */
+    class Incremental {
+        private var done = ""
+        private var doneBlocks: List<Block> = emptyList()
+
+        fun parse(src: String): List<Block> {
+            val text = src.replace("\r\n", "\n")
+            if (!text.startsWith(done)) {
+                done = ""
+                doneBlocks = emptyList()
+            }
+            val cut = cut(text, done.length)
+            if (cut > done.length) {
+                doneBlocks = doneBlocks + Markdown.parse(text.substring(done.length, cut))
+                done = text.substring(0, cut)
+            }
+            return doneBlocks + Markdown.parse(text.substring(done.length))
+        }
+
+        /** Just after the last blank line (outside a code block) that ends after [from], or [from]. */
+        private fun cut(text: String, from: Int): Int {
+            var fence = false
+            var cut = from
+            var start = from
+            while (true) {
+                val nl = text.indexOf('\n', start)
+                if (nl < 0) break
+                val t = text.substring(start, nl).trimStart()
+                if (t.startsWith("```")) fence = !fence else if (!fence && t.isEmpty()) cut = nl + 1
+                start = nl + 1
+            }
+            return cut
+        }
     }
 }
 
