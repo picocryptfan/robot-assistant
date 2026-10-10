@@ -1,4 +1,4 @@
-# Third-party components in Robot 0.1.1 (phase 1)
+# Third-party components in Robot 0.1.3 (phase 1)
 
 Robot itself is GPL-3.0-only (see `../LICENSE`). Everything below keeps its own licence; all of them
 (Apache-2.0, MIT, CC-BY-4.0 for model weights, GPL-3.0-or-later for espeak-ng) are compatible with GPL-3.0.

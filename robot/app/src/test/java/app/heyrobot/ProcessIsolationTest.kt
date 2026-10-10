@@ -21,14 +21,15 @@ class ProcessIsolationTest {
 
     private fun main(module: String) = File(root, "$module/src/main")
     private fun java(module: String) = File(main(module), "java")
-    private fun sources(dir: File) = dir.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }.toList()
+    /** Kotlin and Java (the TTS callback sherpa's JNI calls is Java), so every scan below covers both. */
+    private fun sources(dir: File) = dir.walkTopDown().filter { it.isFile && (it.name.endsWith(".kt") || it.name.endsWith(".java")) }.toList()
     private val modules = listOf("core", "brain", "voice", "app")
     /** Our code (not the copied sherpa-onnx API), as "module/relative/path.kt". */
     private val ours: Map<String, File> by lazy {
         modules.flatMap { m -> sources(File(java(m), "app/heyrobot")).map { "$m/${it.relativeTo(File(java(m), "app/heyrobot")).path}" to it } }.toMap()
     }
 
-    /** Source without comments and string literals, so only real code references count. */
+    /** Source (Kotlin or Java) without comments and string literals, so only real code references count. */
     private fun code(f: File): String = f.readText()
         .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
         .replace(Regex("//[^\n]*"), "")
@@ -135,8 +136,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("2", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.1.1", m.getAttributeNS(ns, "versionName"))
+        assertEquals("4", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.1.3", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))

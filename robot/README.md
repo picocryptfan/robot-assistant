@@ -48,7 +48,7 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
-## Voice (0.1.1, memory rule from 0.1.2)
+## Voice (0.1.1; memory rule 0.1.2; fixes 0.1.3)
 
 - Speech to text: NVIDIA Parakeet TDT 0.6B v3 int8 (`SherpaSpeechToText`). Push-to-talk, or right after "hey robot";
   a Silero VAD of its own ends the question after 0.5 s of silence (20 s max speech, 30 s cap), or the button does.
@@ -57,13 +57,21 @@ goes into the repository or the build output.
 - Text to speech: Kokoro v1.0 fp32, voice "Heart" (`af_heart`) by default, "Siwis" (`ff_siwis`, French) for later;
   Kitten nano 0.8 fp32 as the small fast voice; the phone's own voice as the fallback (`VoiceOutput`). The first
   piece of a reply is short (5+ words to the first comma, or 12 words) so audio starts fast; the rest goes
-  sentence by sentence into a streaming AudioTrack. Tap the conversation, or say "stop" while it speaks.
+  sentence by sentence into a streaming AudioTrack. Tap the conversation, or say "stop", while it speaks: the rest of
+  that reply is still shown but not spoken (the next question speaks again). Stop, closing the panel or "hey robot"
+  during an answer silence it at once, and a stopped reply's unfinished last sentence is never read out.
+- sherpa-onnx calls the voice back from native code through `invoke([F)Ljava/lang/Integer;`, which a Kotlin lambda
+  does not have (0.1.2 was silent): the callback is the Java class `TtsCallback`, checked by `TtsCallbackTest` and by
+  `tools/verify_apk.sh` in the built APK. Chinese, Japanese and Korean text is not sent to the voice (sherpa would log
+  it).
 - The models are downloaded by the app (Model › Voice models: 670 MB, 354 MB, 60 MB), from pinned Hugging Face
   commits, each file checked (size and SHA-256) while it is copied into private storage. Until then the
   placeholders run and the mic button says "Download voice models".
 - Robustness: nothing native is created before the files are verified; a load that throws falls back to the
   placeholder; a load that kills the `:voice` process twice in a row marks that engine broken until
-  Settings › Voice › "Try again" (the wake word keeps working). The wake word stays loaded; speech to text loads
+  Settings › Voice › "Try again" (the wake word keeps working). Native loads run one at a time, so a crash is blamed
+  on the engine that was loading. A question ends with what was said if the microphone stops under it, and after
+  35 s by the clock in any case. A voice-model install that fails to write waits for the Download button. The wake word stays loaded; speech to text loads
   when a question starts (mic or wake word, not when the panel opens), the voice when a spoken reply is coming; each
   is freed after 5 minutes unused (not while listening or speaking). Robot also frees them if Android reports memory
   pressure, but Android 14 and later no longer send the "running low" levels, and the "background" level needs the
