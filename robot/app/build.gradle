@@ -64,7 +64,7 @@ android {
     testOptions {
         unitTests.all {
             it.systemProperty 'robot.rootDir', rootProject.projectDir.absolutePath
-            it.systemProperty 'robot.appDir', projectDir.absolutePath
+            it.systemProperty 'robot.variant', it.name.contains('Release') ? 'release' : 'debug'
         }
     }
 }

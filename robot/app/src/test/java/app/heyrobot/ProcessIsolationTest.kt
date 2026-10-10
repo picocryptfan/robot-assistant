@@ -1,0 +1,186 @@
+package app.heyrobot
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.w3c.dom.Element
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
+
+/**
+ * Build check (source, Gradle and merged-manifest scan), as the probe's: LiteRT-LM lives only in :brain's
+ * GemmaEngine.kt and runs only in the :brain process; sherpa-onnx lives only in the :voice module and runs
+ * only in the :voice process; nothing the main (UI) process runs refers to either. Also: the components
+ * sit in their processes, the recognizer stays discoverable (the restart finding), exported components
+ * are guarded, the permissions are the expected few, nothing but DownloadManager goes online, audio is
+ * never written to disk and nothing logs except through RLog (which drops content).
+ */
+class ProcessIsolationTest {
+    private val root = File(System.getProperty("robot.rootDir") ?: File(System.getProperty("user.dir")).parent)
+    private val ns = "http://schemas.android.com/apk/res/android"
+
+    private fun main(module: String) = File(root, "$module/src/main")
+    private fun java(module: String) = File(main(module), "java")
+    private fun sources(dir: File) = dir.walkTopDown().filter { it.isFile && it.name.endsWith(".kt") }.toList()
+    private val modules = listOf("core", "brain", "voice", "app")
+    /** Our code (not the copied sherpa-onnx API), as "module/relative/path.kt". */
+    private val ours: Map<String, File> by lazy {
+        modules.flatMap { m -> sources(File(java(m), "app/heyrobot")).map { "$m/${it.relativeTo(File(java(m), "app/heyrobot")).path}" to it } }.toMap()
+    }
+
+    /** Source without comments and string literals, so only real code references count. */
+    private fun code(f: File): String = f.readText()
+        .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("//[^\n]*"), "")
+        .replace(Regex("\"\"\".*?\"\"\"", RegexOption.DOT_MATCHES_ALL), "\"\"")
+        .replace(Regex("\"(\\\\.|[^\"\\\\\n])*\""), "\"\"")
+
+    private fun usersOf(pattern: Regex, files: Map<String, File> = ours) = files.filter { pattern.containsMatchIn(code(it.value)) }.keys.sorted()
+
+    @Test fun liteRtOnlyInTheBrainEngineFile() {
+        assertEquals(listOf("brain/brain/GemmaEngine.kt"), usersOf(Regex("""\bcom\.google\.ai\.edge\.litert""")))
+    }
+
+    @Test fun sherpaOnlyInTheVoiceModule() {
+        val users = usersOf(Regex("""\bcom\.k2fsa\b"""))
+        assertTrue(users.toString(), users.isNotEmpty() && users.all { it.startsWith("voice/") })
+        assertTrue(users.contains("voice/voice/WakeWord.kt"))
+        // Only the copied sherpa-onnx API loads its native library.
+        assertEquals(emptyList<String>(), usersOf(Regex("""System\.load(Library)?\s*\(""")))
+        val sherpa = sources(File(java("voice"), "com/k2fsa"))
+        assertTrue(sherpa.any { Regex("""System\.loadLibrary\("sherpa-onnx-jni"\)""").containsMatchIn(it.readText()) })
+        for (m in listOf("core", "brain", "app")) assertTrue("$m has sherpa sources", !File(java(m), "com/k2fsa").exists())
+    }
+
+    @Test fun modulesDependOnlyWhereAllowed() {
+        fun deps(m: String) = File(root, "$m/build.gradle").readText()
+        assertTrue(!deps("core").contains("project(':"))
+        assertTrue(!deps("core").contains("litert") && !deps("voice").contains("litert") && !deps("app").contains("litert"))
+        assertTrue(deps("brain").contains("litertlm-android:0.18.0"))
+        assertTrue(!deps("brain").contains("project(':voice')") && !deps("voice").contains("project(':brain')"))
+        // The engine modules never reach into each other or into the app.
+        val brainBad = usersOf(Regex("""\bapp\.heyrobot\.(voice|assistant|ui)\b|\bcom\.k2fsa\b"""), ours.filterKeys { it.startsWith("brain/") })
+        val voiceBad = usersOf(Regex("""\bapp\.heyrobot\.(brain|assistant|ui)\b|litertlm"""), ours.filterKeys { it.startsWith("voice/") })
+        assertEquals(emptyList<String>(), brainBad + voiceBad)
+    }
+
+    /** Everything the main (UI) process can run must not touch the engines or the assistant's classes. */
+    @Test fun mainProcessCodeNeverReachesEngines() {
+        val mainFiles = ours.filterKeys { k ->
+            k.startsWith("core/") || k.startsWith("app/ui/") || k.startsWith("app/sys/") || k.startsWith("app/boot/") || k == "app/RobotApp.kt"
+        }
+        assertTrue(mainFiles.size >= 25)
+        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain)\b|\bcom\.k2fsa\b|litertlm|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService)\b""")
+        assertEquals(emptyList<String>(), usersOf(forbidden, mainFiles))
+        // And the :voice code must not load LiteRT either (it binds :brain by class name).
+        assertEquals(emptyList<String>(), usersOf(Regex("""litertlm|\bGemmaEngine\b|\bBrainService\b"""), ours.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))
+    }
+
+    private fun mergedManifest(): File {
+        val variant = System.getProperty("robot.variant") ?: "debug"
+        val cap = variant.replaceFirstChar { it.uppercase() }
+        val f = File(root, "app/build/intermediates/merged_manifest/$variant/process${cap}MainManifest/AndroidManifest.xml")
+        assertTrue("merged manifest missing: $f (run the unit test through Gradle)", f.isFile)
+        return f
+    }
+
+    private fun components(doc: org.w3c.dom.Document): Map<String, Element> = listOf("activity", "service", "receiver", "provider").flatMap { tag ->
+        val nl = doc.getElementsByTagName(tag)
+        (0 until nl.length).map { nl.item(it) as Element }
+    }.associateBy { it.getAttributeNS(ns, "name") }
+
+    private fun parse(f: File) = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder().parse(f)
+
+    @Test fun mergedManifestPutsEachComponentInItsProcess() {
+        val doc = parse(mergedManifest())
+        val comps = components(doc)
+        fun c(n: String) = comps[n] ?: throw AssertionError("$n missing from the merged manifest")
+        fun proc(n: String) = c(n).getAttributeNS(ns, "process")
+        fun exported(n: String) = c(n).getAttributeNS(ns, "exported")
+        fun perm(n: String) = c(n).getAttributeNS(ns, "permission")
+        val voice = listOf("app.heyrobot.assistant.RobotVoiceService", "app.heyrobot.assistant.RobotSessionService",
+            "app.heyrobot.assistant.RobotRecognitionService", "app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider")
+        for (n in voice) assertEquals(n, ":voice", proc(n))
+        assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
+        for (n in listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver")) assertEquals(n, "", proc(n))
+        // Every Robot component is accounted for (a new one must be placed deliberately).
+        val ourComps = comps.keys.filter { it.startsWith("app.heyrobot.") }.toSet()
+        assertEquals(setOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
+            "app.heyrobot.brain.BrainService") + voice.filter { it.startsWith("app.heyrobot.") }, ourComps)
+        // Exported components are guarded: the system-only BIND_VOICE_INTERACTION, or nothing to guard.
+        assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotVoiceService"))
+        assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotSessionService"))
+        assertEquals("false", exported("app.heyrobot.brain.BrainService"))
+        assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.brain.BrainService"))
+        for (n in listOf("app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver"))
+            assertEquals(n, "false", exported(n))
+        // The recognizer MUST stay discoverable: with no current speech recognizer Android clears a third-party
+        // assistant at every boot (VoiceInteractionManagerService.initForUser), which is how probe 1.1 failed.
+        val rec = c("app.heyrobot.assistant.RobotRecognitionService")
+        assertEquals("true", rec.getAttributeNS(ns, "exported"))
+        val filters = rec.getElementsByTagName("intent-filter")
+        assertEquals(1, filters.length)
+        assertEquals("android.speech.RecognitionService", ((filters.item(0) as Element).getElementsByTagName("action").item(0) as Element).getAttributeNS(ns, "name"))
+        val meta = rec.getElementsByTagName("meta-data").item(0) as Element
+        assertEquals("android.speech", meta.getAttributeNS(ns, "name"))
+        assertEquals("@xml/recognition_service", meta.getAttributeNS(ns, "resource"))
+        // Every Robot component class exists in the sources.
+        for (n in ourComps) assertTrue(n, ours.values.any { Regex("""class ${n.substringAfterLast('.')}\b""").containsMatchIn(code(it)) })
+    }
+
+    @Test fun mergedManifestIdentityAndPermissions() {
+        val doc = parse(mergedManifest())
+        val m = doc.documentElement
+        assertEquals("app.heyrobot", m.getAttribute("package"))
+        assertEquals("1", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.1.0", m.getAttributeNS(ns, "versionName"))
+        val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
+        assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
+        assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
+        val declared = doc.getElementsByTagName("permission").let { nl -> (0 until nl.length).map { nl.item(it) as Element } }
+        val internal = declared.single { it.getAttributeNS(ns, "name") == "app.heyrobot.permission.INTERNAL" }
+        assertEquals("signature", internal.getAttributeNS(ns, "protectionLevel"))
+        val used = doc.getElementsByTagName("uses-permission").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
+        assertEquals(setOf(
+            "app.heyrobot.permission.INTERNAL", "app.heyrobot.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+            "android.permission.INTERNET", "android.permission.RECORD_AUDIO", "android.permission.POST_NOTIFICATIONS",
+            "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.VIBRATE", "com.android.alarm.permission.SET_ALARM",
+            "android.permission.USE_EXACT_ALARM",
+        ), used)
+        val app = doc.getElementsByTagName("application").item(0) as Element
+        assertEquals("false", app.getAttributeNS(ns, "allowBackup"))
+    }
+
+    @Test fun voiceInteractionMetadataNamesTheComponents() {
+        val x = File(main("app"), "res/xml/voice_interaction.xml").readText()
+        assertTrue(x.contains("android:sessionService=\"app.heyrobot.assistant.RobotSessionService\""))
+        assertTrue(x.contains("android:recognitionService=\"app.heyrobot.assistant.RobotRecognitionService\""))
+        assertTrue(x.contains("android:supportsAssist=\"true\""))
+        assertTrue(x.contains("android:supportsLaunchVoiceAssistFromKeyguard=\"true\""))
+        val rec = File(main("app"), "res/xml/recognition_service.xml").readText()
+        assertTrue(rec.contains("<recognition-service") && !rec.contains("selectableAsDefault=\"false\""))
+    }
+
+    @Test fun keywordsFileIsTokenisedWithTheModelsTokens() {
+        val assets = File(main("voice"), "assets")
+        val tokens = File(assets, "kws/tokens.txt").readLines().map { it.substringBefore(' ') }.toSet()
+        val line = File(assets, "kws/keywords.txt").readText().trim()
+        assertEquals("▁HE Y ▁RO B O T @HEY_ROBOT", line)
+        line.substringBefore(" @").split(' ').forEach { assertTrue("token $it not in tokens.txt", it in tokens) }
+        for (f in listOf("encoder", "decoder", "joiner")) assertTrue("$f missing: run tools/fetch_third_party.sh --install", File(assets, "kws/$f-epoch-12-avg-2-chunk-16-left-64.onnx").isFile)
+        assertTrue(File(assets, "vad/silero_vad.onnx").isFile)
+        for (l in listOf("libsherpa-onnx-jni.so", "libonnxruntime.so")) assertTrue(l, File(main("voice"), "jniLibs/arm64-v8a/$l").isFile)
+    }
+
+    /** Privacy (spec item 10): no network code (DownloadManager does the one download), no audio files, no raw logging. */
+    @Test fun noNetworkNoAudioFilesNoRawLogs() {
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\.(?!URLEncoder)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b""")))
+        assertEquals(listOf("core/core/ModelState.kt"), ours.filter { it.value.readText().contains("https://") }.keys.sorted())
+        val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
+        assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
+        assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile"""), ours.filterKeys { it.startsWith("voice/") }))
+        // All logging goes through RLog, which keeps numbers, booleans and codes only.
+        assertEquals(listOf("core/core/Log.kt"), usersOf(Regex("""\bandroid\.util\.Log\b|\bLog\.[diwev]\(""")))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bprintln\(|printStackTrace\(""")))
+    }
+}

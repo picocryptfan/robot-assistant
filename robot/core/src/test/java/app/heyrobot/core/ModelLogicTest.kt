@@ -52,7 +52,9 @@ class ModelLogicTest {
 
     @Test fun downloadTextIsPlainLanguage() {
         assertEquals("Waiting to start", ModelLogic.downloadText(Download.STATUS_PENDING, 0, 0))
-        assertEquals("1.56 GB of 3.11 GB (50%)", ModelLogic.downloadText(Download.STATUS_RUNNING, 0, full / 2))
+        // Truncated, never rounded up: 100% only when every byte is there.
+        assertEquals("1.56 GB of 3.11 GB (49%)", ModelLogic.downloadText(Download.STATUS_RUNNING, 0, full / 2))
+        assertEquals(99, ModelLogic.percent(full - 1))
         assertEquals("Paused at 0.50 GB: waiting for Wi-Fi (too large for mobile data)", ModelLogic.downloadText(Download.STATUS_PAUSED, 3, 500_000_000))
         assertTrue(ModelLogic.downloadText(Download.STATUS_FAILED, 404, 0).contains("error 404"))
         assertTrue(ModelLogic.downloadText(Download.STATUS_FAILED, 1006, 0).contains("ran out of space"))
@@ -61,7 +63,7 @@ class ModelLogicTest {
     @Test fun percentIsClamped() {
         assertEquals(0, ModelLogic.percent(-5))
         assertEquals(100, ModelLogic.percent(full * 2))
-        assertEquals(25, ModelLogic.percent(full / 4))
+        assertEquals(25, ModelLogic.percent(full / 4 + 1_000_000))
     }
 
     @Test fun specMatchesThePhaseZeroFile() {
