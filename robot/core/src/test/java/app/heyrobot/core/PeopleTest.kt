@@ -163,6 +163,34 @@ class PeopleTest {
         assertTrue(ContactMatcher.sure(ContactMatcher.best("maman", listOf(ContactName(6, "Jane Doe", listOf("Maman")))), 1))
     }
 
+    @Test fun theCardRuleForTextsAndEmails() {
+        // Review A M5 (a, b) and minor 16, through the helper ToolExecutor uses.
+        val asked = Action.SendText("Alex", "hi")
+        fun opt(name: String, kind: String?, n: String) = Recipients.Option(name, kind, n,
+            asked.copy(target = TextTarget(name, "$n@cheogram.com", n, "Cheogram", TextVia.CHEOGRAM)))
+        val exact = listOf(ContactMatch(1, "Alex", NameMatch.EXACT))
+        val prefix = listOf(ContactMatch(2, "Alexandra Chen", NameMatch.PREFIX))
+        // One exact name, one place: ready, and the gate decides (no forced card).
+        assertEquals(false, (Recipients.prepare(asked, exact, listOf(opt("Alex", "Mobile", "+1")), 0) { asked.copy(to = it) } as Prepared.Ready).mustAsk)
+        // A prefix match, or several people of whom only one has a number, or people left out: the card shows.
+        assertEquals(true, (Recipients.prepare(asked, prefix, listOf(opt("Alexandra Chen", "Mobile", "+1")), 0) { asked } as Prepared.Ready).mustAsk)
+        val two = exact + ContactMatch(3, "Alex", NameMatch.EXACT)
+        assertEquals(true, (Recipients.prepare(asked, two, listOf(opt("Alex", "Mobile", "+1")), 0) { asked } as Prepared.Ready).mustAsk)
+        assertEquals(true, (Recipients.prepare(asked, exact, listOf(opt("Alex", "Mobile", "+1")), 4) { asked } as Prepared.Ready).mustAsk)
+        // Several places for one person: their kinds and numbers, the waiting card named after them.
+        val one = Recipients.prepare(asked, exact, listOf(opt("Alex", "Mobile", "+1 1"), opt("Alex", "Home", "+1 2")), 0) { asked.copy(to = it) } as Prepared.Ready
+        assertEquals(listOf("Mobile · +1 1", "Home · +1 2"), one.choices.map { it.label })
+        assertEquals("Alex", (one.action as Action.SendText).to)
+        assertEquals(0, one.more)
+        // Several people, more than fit: at most six choices, and the rest (and the people not looked at) counted.
+        val many = (1..9).map { opt("Person $it", "Mobile", "+1 $it") }
+        val capped = Recipients.prepare(asked, prefix, many, 2) { asked } as Prepared.Ready
+        assertEquals(Recipients.MAX_CHOICES, capped.choices.size)
+        assertEquals("Person 1 · Mobile · +1 1", capped.choices[0].label)
+        assertEquals(3 + 2, capped.more)
+        assertEquals(asked, capped.action)
+    }
+
     @Test fun mobileNumbersComeFirstForTexts() {
         val r = Recipients.forText(listOf(mom), xmppOk = true)
         assertEquals(listOf("+1 514-555-0101", "514 555 0199"), r.map { it.address })

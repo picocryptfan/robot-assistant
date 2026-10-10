@@ -115,6 +115,25 @@ object Recipients {
         c.emails.filter(Addresses::isAddress).distinctBy { it.lowercase(Locale.ROOT) }.map { Reach(c.id, c.name, it, null) }
     }
 
+    /** At most this many people are looked at for one name; more are counted ("and 3 more"). */
+    const val MAX_PEOPLE = 20
+
+    /** One place a text or an email can go, ready: the person, the kind ("Mobile"), what the card shows, the action. */
+    data class Option(val name: String, val kind: String?, val shown: String, val action: Action)
+
+    /**
+     * The card for a text or an email to the people [matches] named, given every place they can be reached
+     * ([options], in order; never empty). One place: that one, and the card shows it unless the name was surely
+     * meant (ContactMatcher.sure). Several: the card lists them (at most [MAX_CHOICES], [hiddenPeople] and the rest
+     * counted as "more"); [named] renames the waiting action after the one person they all belong to.
+     */
+    fun prepare(asked: Action, matches: List<ContactMatch>, options: List<Option>, hiddenPeople: Int, named: (String) -> Action): Prepared {
+        if (options.size == 1) return Prepared.Ready(options[0].action, mustAsk = hiddenPeople > 0 || !ContactMatcher.sure(matches, 1))
+        val oneName = options.map { it.name }.distinct().singleOrNull()
+        val choices = options.take(MAX_CHOICES).map { o -> Choice(listOfNotNull(if (oneName == null) o.name else null, o.kind, o.shown).joinToString(" · "), o.action) }
+        return Prepared.Ready(oneName?.let(named) ?: asked, choices = choices, more = options.size - choices.size + hiddenPeople)
+    }
+
     /** Mobile numbers first (texts), then the rest in the contact's order; the same digits only once. */
     fun mobileFirst(phones: List<ContactPhone>): List<ContactPhone> =
         phones.distinctBy { PhoneNumbers.digits(it.number).takeLast(10) }.sortedBy { if (it.kind == PhoneKind.MOBILE) 0 else 1 }

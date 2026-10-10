@@ -18,7 +18,6 @@ import app.heyrobot.core.AppEntry
 import app.heyrobot.core.AppMatcher
 import app.heyrobot.core.CalendarFormat
 import app.heyrobot.core.CalendarPick
-import app.heyrobot.core.Choice
 import app.heyrobot.core.ContactMatcher
 import app.heyrobot.core.Durations
 import app.heyrobot.core.EmailApp
@@ -200,35 +199,30 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         if (via == TextVia.SMS && !HandOffApps.resolves(ctx, HandOffApps.smsIntent())) return Prepared.Refused(ActionStatus.NO_APP, "No SMS app is installed.")
         val appName = if (via == TextVia.CHEOGRAM) "Cheogram" else HandOffApps.smsAppName(ctx) ?: "the SMS app"
         val to = a.to.trim()
-        // An address or a number said outright: no contacts needed.
+        // An address or a number the model wrote: never checked against the contacts (it may have made up digits),
+        // so the card always shows it, even when texts may just go.
         if (Addresses.isAddress(to)) {
             if (via == TextVia.SMS) return Prepared.Refused(ActionStatus.FAILED, "The SMS app can't text an XMPP address.")
-            return Prepared.Ready(a.copy(target = TextTarget(null, to, to, appName, via)))
+            if (!Addresses.isJid(to)) return Prepared.Refused(ActionStatus.INVALID, "That XMPP address can't be used.")
+            return Prepared.Ready(a.copy(target = TextTarget(null, to, to, appName, via)), mustAsk = true)
         }
         if (Addresses.isPhone(to)) {
-            val e = Phones.e164(to, region) ?: return Prepared.Refused(ActionStatus.INVALID, "That phone number couldn't be read.")
-            return Prepared.Ready(a.copy(target = numberTarget(null, e, via, appName) ?: return Prepared.Refused(ActionStatus.INVALID, "That phone number couldn't be read.")))
+            val t = Phones.e164(to, region)?.let { numberTarget(null, it, via, appName) }
+                ?: return Prepared.Refused(ActionStatus.INVALID, "That phone number couldn't be read.")
+            return Prepared.Ready(a.copy(target = t), mustAsk = true)
         }
         if (!Contacts.granted(ctx)) return needContacts()
-        val matches = ContactMatcher.best(to, Contacts.names(ctx))
-        if (matches.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.")
-        val reach = Recipients.forText(Contacts.cards(ctx, matches), xmppOk = via == TextVia.CHEOGRAM)
-        val options = reach.mapNotNull { r ->
+        val all = ContactMatcher.best(to, Contacts.names(ctx), max = Int.MAX_VALUE)
+        if (all.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.")
+        val matches = all.take(Recipients.MAX_PEOPLE)
+        val options = Recipients.forText(Contacts.cards(ctx, matches), xmppOk = via == TextVia.CHEOGRAM).mapNotNull { r ->
             val t = if (r.xmpp) TextTarget(r.name, r.address, r.address, appName, via)
             else Phones.e164(r.address, region)?.let { numberTarget(r.name, it, via, appName) }
-            t?.let { r to it }
-        }.distinctBy { it.second.address }
-        if (options.isEmpty()) {
-            val who = matches.map { it.name }.distinct().joinToString(" or ")
-            return Prepared.Refused(ActionStatus.NOT_FOUND, "$who has no phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""} in your contacts.")
-        }
-        if (options.size == 1) return Prepared.Ready(a.copy(target = options[0].second))
-        // Several numbers or people: the card lists them, mobile first, and the owner taps one.
-        val oneName = options.map { it.first.name }.distinct().singleOrNull()
-        val choices = options.map { (r, t) ->
-            Choice(listOfNotNull(if (oneName == null) r.name else null, r.label, t.display).joinToString(" · "), a.copy(target = t))
-        }
-        return Prepared.Ready(a.copy(to = oneName ?: a.to), choices = choices)
+            t?.let { Recipients.Option(r.name, r.label, it.display, a.copy(target = it)) }
+        }.distinctBy { (it.action as Action.SendText).target?.address }
+        // Fixed wording: the contacts' names are not sent to the model here.
+        if (options.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.")
+        return Recipients.prepare(a, matches, options, all.size - matches.size) { name -> a.copy(to = name) }
     }
 
     private fun prepareEmail(a: Action.DraftEmail): Prepared {
@@ -236,16 +230,17 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val proton = HandOffApps.proton(ctx)
         val appName = if (settings.emailAppFor(proton) == EmailApp.PROTON && proton) "Proton Mail" else null
         val to = a.to.trim()
-        if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)))
+        // An address the model wrote: the card always shows it.
+        if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)), mustAsk = true)
         if (!Contacts.granted(ctx)) return needContacts()
-        val matches = ContactMatcher.best(to, Contacts.names(ctx))
-        if (matches.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.")
-        val reach = Recipients.forEmail(Contacts.cards(ctx, matches))
-        if (reach.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "${matches.map { it.name }.distinct().joinToString(" or ")} has no email address in your contacts.")
-        if (reach.size == 1) return Prepared.Ready(a.copy(target = MailTarget(reach[0].name, reach[0].address, appName)))
-        val oneName = reach.map { it.name }.distinct().singleOrNull()
-        val choices = reach.map { r -> Choice(if (oneName == null) "${r.name} · ${r.address}" else r.address, a.copy(target = MailTarget(r.name, r.address, appName))) }
-        return Prepared.Ready(a.copy(to = oneName ?: a.to), choices = choices)
+        val all = ContactMatcher.best(to, Contacts.names(ctx), max = Int.MAX_VALUE)
+        if (all.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.")
+        val matches = all.take(Recipients.MAX_PEOPLE)
+        val options = Recipients.forEmail(Contacts.cards(ctx, matches)).map { r ->
+            Recipients.Option(r.name, null, r.address, a.copy(target = MailTarget(r.name, r.address, appName)))
+        }
+        if (options.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No matching contact has an email address.")
+        return Recipients.prepare(a, matches, options, all.size - matches.size) { name -> a.copy(to = name) }
     }
 
     /** Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until the owner presses Send. */
@@ -258,7 +253,12 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             }
             TextVia.SMS -> Intent(Intent.ACTION_SENDTO, Uri.parse(SmsTo.uri(t.address))).putExtra("sms_body", a.message)
         }
-        return if (start(i)) Executed(ActionStatus.DONE, "Opened ${t.appName} with the text: the person presses Send there.", launchedApp = true)
+        // A draft, not a sent text. Cheogram keeps a draft already in that chat instead of this one (it says "already
+        // drafting"), and with the number in several accounts it shows a search first: the card says so.
+        val detail = if (t.via == TextVia.CHEOGRAM) "Opened a draft in Cheogram: nothing is sent until Send is pressed there. " +
+            "If that chat already had a draft, Cheogram keeps the old one."
+        else "Opened a draft in ${t.appName}: nothing is sent until Send is pressed there."
+        return if (start(i)) Executed(ActionStatus.DRAFT_OPENED, detail, launchedApp = true)
         else Executed(ActionStatus.NO_APP, if (t.via == TextVia.CHEOGRAM) "Install Cheogram." else "No SMS app is installed.")
     }
 
@@ -270,7 +270,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             .putExtra(Intent.EXTRA_SUBJECT, a.subject)
             .putExtra(Intent.EXTRA_TEXT, a.text)
         val go = if (t.appName != null) i.setPackage(HandOffApps.PROTON) else Intent.createChooser(i, "Write the email with")
-        return if (start(go)) Executed(ActionStatus.DONE, "Opened ${t.appName ?: "the email app"} with the draft: the person presses Send there.", launchedApp = true)
+        return if (start(go)) Executed(ActionStatus.DRAFT_OPENED, "Opened a draft in ${t.appName ?: "the email app"}: nothing is sent until Send is pressed there.", launchedApp = true)
         else Executed(ActionStatus.NO_APP, "No email app is installed.")
     }
 
@@ -325,10 +325,12 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun addEvent(a: Action.AddEvent): Executed {
         val p = a.plan ?: return Executed(ActionStatus.FAILED, "Robot couldn't read the date.")
         if (p.calendarId != null) {
-            val id = try { Calendars.insert(ctx, a.title, p) } catch (_: SecurityException) { null }
-            if (id != null) return Executed(ActionStatus.DONE, "Added to ${p.calendarName}.")
+            // Any provider error (the calendar was removed while the card waited...) falls back to the editor.
+            val id = try { Calendars.insert(ctx, a.title, p) } catch (t: Exception) { RLog.w("calendar_insert", t); null }
+            // Fixed wording: a shared calendar's name is not the model's business (the card shows it).
+            if (id != null) return Executed(ActionStatus.DONE, "Added to the calendar.")
         }
-        return if (start(Calendars.insertIntent(a.title, p))) Executed(ActionStatus.DONE, "Opened the calendar app with the event: the person saves it there.", launchedApp = true)
+        return if (start(Calendars.insertIntent(a.title, p))) Executed(ActionStatus.DRAFT_OPENED, "Opened the calendar app with the event: it is added only when saved there.", launchedApp = true)
         else Executed(ActionStatus.NO_APP, "No calendar app is installed.")
     }
 

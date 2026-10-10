@@ -23,13 +23,18 @@ object Calendars {
     fun readGranted(ctx: Context): Boolean = Assistant.granted(ctx, Manifest.permission.READ_CALENDAR)
     fun writeGranted(ctx: Context): Boolean = Assistant.granted(ctx, Manifest.permission.WRITE_CALENDAR)
 
-    /** Calendars Robot may write to (contributor access or more), in the provider's order; empty without READ_CALENDAR. */
+    /**
+     * Calendars Robot may write to: contributor access or more, shown in calendar apps (visible) and synced
+     * (sync_events = 1: an unsynced calendar's events never leave the phone and some apps hide them). In the
+     * provider's order; empty without READ_CALENDAR.
+     */
     fun writable(ctx: Context): List<CalendarInfo> {
         if (!readGranted(ctx)) return emptyList()
         val out = mutableListOf<CalendarInfo>()
         val projection = arrayOf(Cal._ID, Cal.CALENDAR_DISPLAY_NAME, Cal.ACCOUNT_NAME, Cal.OWNER_ACCOUNT, Cal.IS_PRIMARY, Cal.VISIBLE)
         try {
-            ctx.contentResolver.query(Cal.CONTENT_URI, projection, "${Cal.CALENDAR_ACCESS_LEVEL} >= ?", arrayOf(Cal.CAL_ACCESS_CONTRIBUTOR.toString()), Cal._ID)
+            val sel = "${Cal.CALENDAR_ACCESS_LEVEL} >= ? AND ${Cal.SYNC_EVENTS} = 1 AND ${Cal.VISIBLE} = 1"
+            ctx.contentResolver.query(Cal.CONTENT_URI, projection, sel, arrayOf(Cal.CAL_ACCESS_CONTRIBUTOR.toString()), Cal._ID)
                 ?.use { c ->
                     while (c.moveToNext()) {
                         out += CalendarInfo(
@@ -85,12 +90,19 @@ object Calendars {
         return ctx.contentResolver.insert(Events.CONTENT_URI, v)?.let { ContentUris.parseId(it) }
     }
 
-    /** The calendar app's own editor, prefilled; the owner saves it there. */
-    fun insertIntent(title: String, plan: EventPlan): Intent = Intent(Intent.ACTION_INSERT).setData(Events.CONTENT_URI)
-        .putExtra(Events.TITLE, title)
-        .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, plan.start.toInstant().toEpochMilli())
-        .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, plan.end.toInstant().toEpochMilli())
-        .putExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, plan.allDay)
+    /**
+     * The calendar app's own editor, prefilled; the owner saves it there. An all-day event's times are UTC midnights:
+     * AOSP-derived editors (Etar) read them in UTC, so local midnight would be the day before east of UTC.
+     */
+    fun insertIntent(title: String, plan: EventPlan): Intent {
+        val begin = if (plan.allDay) plan.start.toLocalDate().atStartOfDay(ZoneOffset.UTC) else plan.start
+        val end = if (plan.allDay) plan.end.toLocalDate().atStartOfDay(ZoneOffset.UTC) else plan.end
+        return Intent(Intent.ACTION_INSERT).setData(Events.CONTENT_URI)
+            .putExtra(Events.TITLE, title)
+            .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin.toInstant().toEpochMilli())
+            .putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end.toInstant().toEpochMilli())
+            .putExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, plan.allDay)
+    }
 
     /** Any calendar app that takes ACTION_INSERT (the manifest's <queries> makes it visible). */
     fun editorIntent(): Intent = Intent(Intent.ACTION_INSERT).setData(Events.CONTENT_URI)
