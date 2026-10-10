@@ -161,9 +161,10 @@ sealed class Action {
         override fun describe() = "Search Organic Maps for “$query”"
     }
 
+    /** Organic Maps can't route to a name: this opens a search for [destination], and you pick it and tap Route. */
     data class MapsNavigate(val destination: String) : Action() {
         override val tool get() = ToolName.MAPS_NAVIGATE
-        override fun describe() = "Find “$destination” in Organic Maps for directions"
+        override fun describe() = "Search Organic Maps for “$destination”, then tap Route"
     }
 
     data class Flashlight(val on: Boolean) : Action() {
@@ -361,9 +362,10 @@ object ToolCalls {
             }
             ToolName.OPEN_APP -> textArg(a, 60, "name", "app", "app_name")?.let { ParsedCall.Ok(Action.OpenApp(it)) }
                 ?: bad("name is required")
-            ToolName.MAPS_SEARCH -> textArg(a, MAX_TEXT, "query", "q", "place")?.let { ParsedCall.Ok(Action.MapsSearch(it)) }
+            // Without "near me" (MapsQuery): the card, the record and what Organic Maps searches are the same words.
+            ToolName.MAPS_SEARCH -> textArg(a, MAX_TEXT, "query", "q", "place")?.let { ParsedCall.Ok(Action.MapsSearch(MapsQuery.clean(it))) }
                 ?: bad("query is required")
-            ToolName.MAPS_NAVIGATE -> textArg(a, MAX_TEXT, "destination", "to", "place")?.let { ParsedCall.Ok(Action.MapsNavigate(it)) }
+            ToolName.MAPS_NAVIGATE -> textArg(a, MAX_TEXT, "destination", "to", "place")?.let { ParsedCall.Ok(Action.MapsNavigate(MapsQuery.clean(it))) }
                 ?: bad("destination is required")
             ToolName.FLASHLIGHT -> {
                 val present = listOf("on", "state", "enabled").filter { a.containsKey(it) }
