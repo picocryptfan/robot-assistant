@@ -43,7 +43,10 @@ enum class VoiceEvent(val id: Int) {
     CAPTURE(8),
     /** a = 1: another app took the microphone (Robot hears silence), 0: it is back. */
     MIC_SILENCED(9),
-    /** The wake-word model is ready: a = load ms, b = ms it waited for another model's load first. */
+    /**
+     * The wake-word model is ready: a = load ms (-1: it failed), b = ms it waited for another model's load first, c = 1
+     * for the spotter used while Robot talks (0.3.1, loaded the first time she speaks).
+     */
     KWS_READY(10),
     /** The wake word's speech gate heard speech: a = ms of it, b = how many such stretches this line stands for. */
     GATE_SPEECH(11),
@@ -105,8 +108,9 @@ enum class VoiceEvent(val id: Int) {
     /** a = [ClaudeFail]. */
     CLAUDE_FAILED(38),
     /**
-     * The keyword spotter fired (0.3.1), logged before any check: a = phrase id (0: "stop"), b = 1 if Robot was talking,
-     * c = [MicKind] × 10 + [AecState] of the capture. The next "stop", wake or barge-in line says what came of it.
+     * The keyword spotter fired (0.3.1), logged before any check: a = phrase id (0: "stop"), b = [KwsSpotterCode] (which
+     * spotter, and whether Robot was talking), c = [MicKind] × 10 + [AecState] of the capture. The next "stop", wake or
+     * barge-in line says what came of it.
      */
     KWS_HIT(39),
     /** The wake phrases' keyword lines were rebuilt: a = phrases listened for, b = phrases the model can't spell, c = 1 without the spelling files. */
@@ -139,6 +143,12 @@ enum class WakeAction(override val id: Int, override val title: String) : LogCod
 enum class WakeDrop(override val id: Int, override val title: String) : LogCode {
     DEBOUNCE(1, "within 2 s of the last one"), NO_ASSISTANT(2, "Robot isn't the running assistant"), ECHO(3, "Robot was saying it herself"),
     SHOW_FAILED(4, "the panel couldn't open"),
+}
+
+/** Which keyword spotter fired: the one for when Robot is quiet, or the one for while she talks (WakeWord). */
+enum class KwsSpotterCode(override val id: Int, override val title: String) : LogCode {
+    IDLE(1, "Robot quiet"), IDLE_WHILE_TALKING(2, "while Robot talked, by the idle spotter (the other one wasn't loaded yet)"),
+    TALK(3, "while Robot talked"),
 }
 
 /** Which voice said the word a "stop" or wake was taken for (EchoGuard). */
@@ -449,7 +459,9 @@ object VoiceLogText {
             VoiceEvent.CAPTURE -> "Mic now: " + code(MicKind.entries, a) + " · echo cancellation " + code(AecState.entries, b) +
                 (if (c == 1) " · noise suppression on" else "")
             VoiceEvent.MIC_SILENCED -> if (a == 1) "Another app took the microphone: Robot hears silence" else "Microphone back"
-            VoiceEvent.KWS_READY -> "Wake-word model ready in $a ms" + (if (b > 0) " (waited $b ms for another model to load)" else "")
+            VoiceEvent.KWS_READY -> (if (c == 1) "Spotter for while Robot talks" else "Wake-word model") +
+                (if (a < 0) " couldn't load" + (if (c == 1) ": the other one listens while she talks" else "") else " ready in $a ms") +
+                (if (b > 0) " (waited $b ms for another model to load)" else "")
             VoiceEvent.GATE_SPEECH -> "Speech heard while waiting for a wake word (" + secs(a) + ")" + (if (b > 1) " · $b times" else "")
             VoiceEvent.VAD_START -> "You started speaking (" + secs(a) + " after listening began)"
             VoiceEvent.VAD_END -> "You stopped speaking (" + secs(a) + " of speech)"
@@ -483,8 +495,8 @@ object VoiceLogText {
             VoiceEvent.CLAUDE_FIRST -> "Claude's first event after $a ms"
             VoiceEvent.CLAUDE_DONE -> "Claude's answer ended after " + secs(a) + " (" + code(ClaudeEnd.entries, b) + ") · $c characters"
             VoiceEvent.CLAUDE_FAILED -> "Claude failed: " + code(ClaudeFail.entries, a)
-            VoiceEvent.KWS_HIT -> "Spotter: " + keyword(a) + (if (b == 1) " while Robot talked" else "") + " · mic: " + code(MicKind.entries, c / 10) +
-                " · echo cancellation " + code(AecState.entries, c % 10)
+            VoiceEvent.KWS_HIT -> "Spotter: " + keyword(a) + (if (b == KwsSpotterCode.IDLE.id) "" else " " + code(KwsSpotterCode.entries, b)) +
+                " · mic: " + code(MicKind.entries, c / 10) + " · echo cancellation " + code(AecState.entries, c % 10)
             VoiceEvent.KWS_SET -> "Wake phrases set: $a listened for" + (if (b > 0) " · $b the model can't spell" else "") +
                 (if (c == 1) " · spelling files missing: “hey robot” only" else "")
             VoiceEvent.KWS_REFUSED -> "Keyword set refused: " + code(KwsRefusal.entries, a) +

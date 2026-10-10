@@ -16,6 +16,7 @@ import android.os.SystemClock
 import app.heyrobot.core.AecState
 import app.heyrobot.core.CaptureFx
 import app.heyrobot.core.KeywordBuffer
+import app.heyrobot.core.KwsSpotterCode
 import app.heyrobot.core.KwsThresholds
 import app.heyrobot.core.ListenWhy
 import app.heyrobot.core.MicKind
@@ -42,7 +43,8 @@ import kotlin.math.max
 // model loads on a thread of its own, so audio flows to a question even while another model's load holds it up.
 //
 // 0.3.1: the voice log gets every keyword the spotter fires, before any check (KWS_HIT), what each capture really
-// got (CAPTURE_INFO) and, for each stretch of Robot talking, what the microphone heard of her (SPEAK_RUN).
+// got (CAPTURE_INFO) and, for each stretch of Robot talking, what the microphone heard of her (SPEAK_RUN). A hit goes
+// out with when its frame was read, so EchoGuard is checked against that, not against when another thread gets to it.
 
 /** MediaRecorder.AudioSource ids. */
 enum class MicSource(val id: Int) { VOICE_RECOGNITION(6), MIC(1), VOICE_COMMUNICATION(7) }
@@ -85,7 +87,8 @@ class Listener(
     private val initMarker: File?,
     /** The wake lines and whether Robot speaks, read on every frame. */
     private val inputs: KeywordInputs = KeywordInputs(),
-    private val onWake: (String) -> Unit,
+    /** A keyword fired: its label and when the frame it fired on was read (elapsedRealtime). On the audio thread. */
+    private val onWake: (label: String, heardAt: Long) -> Unit,
 ) : AudioFrames {
     @Volatile var running = false; private set
     @Volatile var levelDb = -120.0; private set
@@ -132,6 +135,8 @@ class Listener(
     private val speakRun = SpeakRun()
     /** The last CAPTURE_INFO per [MicKind] id (callbackExec's thread). */
     private val lastInfo = HashMap<Int, Triple<Int, Int, Int>>()
+    /** The spotter for while Robot speaks is being or was loaded (audio thread). */
+    private var talkLoadStarted = false
 
     override fun addSink(sink: (FloatArray) -> Unit) { sinks.addIfAbsent(sink) }
     override fun removeSink(sink: (FloatArray) -> Unit) {
@@ -318,6 +323,31 @@ class Listener(
         return false
     }
 
+    /**
+     * Loads the spotter for while Robot speaks on its own thread, the first time she speaks: it may wait for another
+     * model's load (her voice's, likely), and the audio must not. Until it is there the first spotter listens.
+     */
+    private fun loadTalkSpotter(ww: WakeWord) {
+        Thread({
+            val t0 = SystemClock.elapsedRealtime()
+            var waited = 0L
+            val ok = try {
+                NativeLoads.one("kws") {
+                    waited = SystemClock.elapsedRealtime() - t0
+                    initMarker?.writeText("${Process.myPid()}")
+                    try { ww.loadTalkSpotter() } finally { initMarker?.delete() }
+                }
+            } catch (t: Throwable) {
+                RLog.w("wake_word_talk_init", t)
+                false
+            }
+            val ms = SystemClock.elapsedRealtime() - t0
+            RLog.i("kws_talk_load", "ok" to ok, "initMs" to ms, "waitedMs" to waited)
+            if (config.wakeWord && ww.talkSpotterLoaded) VoiceLog.add(VoiceEvent.KWS_READY, (ms - waited).toInt(), waited.toInt(), 1)
+            else if (config.wakeWord && !ok) VoiceLog.add(VoiceEvent.KWS_READY, -1, waited.toInt(), 1)
+        }, "robot-kws-talk-load").start()
+    }
+
     /** Loads the keyword model on its own thread: it may wait for another model's load, and the audio must not. */
     private fun loadWakeWord() {
         Thread({
@@ -356,6 +386,7 @@ class Listener(
         var errors = 0
         var wantSince = 0L
         var wasSpeaking = false
+        var wasPaused = false
         while (running) {
             if (ww == null) ww = synchronized(wwLock) { loadedWw }?.also { wakeWordLoaded = true }
             // The capture mode: decided under ringLock, so a question can't attach between the decision and the switch.
@@ -408,22 +439,31 @@ class Listener(
             }
             for (s in targets) try { s(x) } catch (t: Throwable) { RLog.w("audio_sink", t) }
             val speaking = inputs.speaking
-            val w = ww?.takeIf { !wakePaused }
+            val paused = wakePaused
+            // Listening again after a question: nothing the wake word heard before it is fed again.
+            if (wasPaused && !paused) ww?.resume()
+            wasPaused = paused
+            val w = ww?.takeIf { !paused }
+            if (speaking && w != null && !talkLoadStarted) {
+                talkLoadStarted = true
+                loadTalkSpotter(w)
+            }
             val stop = if (speaking) KwsThresholds.stop(echoCancelled = communication && aec == AecState.ON) else null
-            val hit = if (w == null) null else try { w.accept(x, inputs.wakeLines, stop) } catch (t: Throwable) {
+            val hits = if (w == null) emptyList() else try { w.accept(x, inputs.wakeLines, stop) } catch (t: Throwable) {
                 // Java-side errors only; a native crash takes the whole voice process.
                 RLog.w("wake_word", t)
-                null
+                emptyList()
             }
             if (speaking) speakRun.frame(n, frameDb, gate = w?.hearing == true, stop = w?.listeningForStop == true)
             else if (wasSpeaking) speakRun.end()?.let { (gateMs, minusDb, stopPct) -> if (config.wakeWord) VoiceLog.add(VoiceEvent.SPEAK_RUN, gateMs, minusDb, stopPct) }
             wasSpeaking = speaking
-            if (hit != null) {
+            for (hit in hits) {
                 // Before any check (EchoGuard, the debounce, the tests): the line after it in the log says what came of it.
-                VoiceLog.add(VoiceEvent.KWS_HIT, KeywordBuffer.idOf(hit) ?: 0, if (speaking) 1 else 0, micKind.id * 10 + aec.id)
+                val by = if (!speaking) KwsSpotterCode.IDLE else if (w?.lastHitByTalkSpotter == true) KwsSpotterCode.TALK else KwsSpotterCode.IDLE_WHILE_TALKING
+                VoiceLog.add(VoiceEvent.KWS_HIT, KeywordBuffer.idOf(hit) ?: 0, by.id, micKind.id * 10 + aec.id)
                 // Only a wake phrase marks where a question starts; "stop" is followed by Robot's own voice.
                 if (PreRoll.marksQuestion(hit)) synchronized(ringLock) { wakeAt = samplesSeen }
-                onWake(hit)
+                onWake(hit, lastFrameAt)
             }
         }
         synchronized(wwLock) {

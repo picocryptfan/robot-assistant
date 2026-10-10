@@ -51,16 +51,17 @@ interface TextToSpeech {
     fun trim(): Boolean = false
 
     /**
-     * A "stop" heard now cannot be Robot's own voice coming back through the microphone (nothing playing says
-     * "stop" or a word like it). False when unsure.
+     * A "stop" heard at [heardAt] (elapsedRealtime: when the audio thread read the frame it fired on) cannot be Robot's
+     * own voice coming back through the microphone (nothing playing then said "stop" or a word like it). False when
+     * unsure. Safe to call from the audio thread.
      */
-    val stopWordSafe: Boolean get() = false
+    fun stopWordSafe(heardAt: Long): Boolean = false
 
     /**
-     * A wake phrase heard now cannot be Robot's own voice (nothing playing says one of its words). True when there is
-     * no way to tell, so a wake word during speech still acts.
+     * A wake phrase heard at [heardAt] cannot be Robot's own voice (nothing playing then said one of its words). True
+     * when there is no way to tell, so a wake word during speech still acts.
      */
-    val wakeWordSafe: Boolean get() = true
+    fun wakeWordSafe(heardAt: Long): Boolean = true
 
     /** The last words of the enabled wake phrases, which Robot saying would be heard as a wake ([EchoGuard]). */
     fun setWakeWords(words: List<String>) {}
@@ -242,9 +243,9 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
 
     override val isSpeaking: Boolean get() = outstanding.get() > 0
 
-    override val stopWordSafe: Boolean get() = !echo.mayBeEcho(SystemClock.elapsedRealtime())
+    override fun stopWordSafe(heardAt: Long): Boolean = !echo.mayBeEcho(heardAt)
 
-    override val wakeWordSafe: Boolean get() = !echo.mayBeWakeEcho(SystemClock.elapsedRealtime())
+    override fun wakeWordSafe(heardAt: Long): Boolean = !echo.mayBeWakeEcho(heardAt)
 
     override fun setWakeWords(words: List<String>) {
         echo.wakeWords = EchoGuard.wakeRegex(words)

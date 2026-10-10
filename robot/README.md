@@ -271,8 +271,9 @@ finished or failed with its code; the model's process stopping; Robot's voice st
 "question heard but no reply"; the chime or "Sorry, I didn't catch that."; screen on and off; the barge-in test.
 
 Since 0.3.1 it also shows why "stop" or a wake word over Robot's voice did or didn't work: every keyword the spotter
-fires, before any check, with whether Robot was talking and the microphone mode (the line after it says what came of
-it); the wake phrases' keyword set when it is rebuilt, and any part the keyword model refuses; for each stretch of
+fires, before any check, with whether Robot was talking, which spotter heard it and the microphone mode (the line
+after it says what came of it); the wake phrases' keyword set when it is rebuilt, and any part the keyword model
+refuses (once per set); the spotter for while Robot talks being loaded; for each stretch of
 Robot talking, how long the speech gate heard speech, the mean microphone level (low when echo cancellation takes her
 voice out) and how much of the time "stop" was listened for; each microphone mode as opened, and again when that
 changes (whether Android silences it, the microphone's own sample rate, Robot's echo canceller and noise suppressor,
@@ -315,11 +316,15 @@ sentence that says it, from 0.3 s before to 1.2 s after (it was 1.5 s), with the
 engine's start and done callbacks: before, one such word in a reply in the phone's voice turned "stop" off until the
 reply ended. Wake phrases said by Robot are guarded the same way.
 
-Also since 0.3.1 the keyword spotter fires once its model has output two blank frames (80 ms) after a keyword, as
-sherpa-onnx's C++ default has it, instead of three (the Kotlin API's default): Robot's voice, even echo-cancelled,
-rarely left 120 ms without a token after a "stop" said over her. And while she speaks, the wake-word speech gate no
-longer decides what the spotter hears (it needs 0.25 s of speech to open, and a short "stop" may not get there): one
-keyword stream hears every frame until she stops. When she is quiet the gate works as before.
+Also since 0.3.1, while Robot speaks a second keyword spotter listens instead of the first (it is loaded the first time
+she speaks, about 14 MB, and kept while the listener runs). It fires once the model has output two blank frames (80 ms)
+after a keyword, as sherpa-onnx's C++ default has it, instead of three (the Kotlin API's default, which the first one
+keeps): probably Robot's voice, even echo-cancelled, seldom left 120 ms without a token after a "stop" said over her.
+And while she speaks the wake-word speech gate no longer decides what the spotter hears (it needs 0.25 s of speech to
+open, and a short "stop" may not get there): one keyword stream hears every frame until she stops. When she is quiet
+the first spotter and the gate work exactly as phase 0 measured them. When wake detection goes on after a question,
+and after every hit, the gate's 1 s pre-roll is emptied, so the wake phrase that opened the panel is never fed again
+(with "Sorry, I didn't catch that." it could wake her a second time).
 
 **Robot's voice plays as**: *Assistant audio* (default, as before) or *Call audio* (the phone in communication mode
 with the loudspeaker as the call device while Robot speaks, as calling apps do; it uses the call volume and needs

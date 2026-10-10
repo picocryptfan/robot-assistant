@@ -149,18 +149,31 @@ class CapturePolicyTest {
     }
 
     /**
-     * 0.3.1: "stop" over Robot's voice. The spotter fires after 2 blank frames (sherpa-onnx's C++ default, not its
-     * Kotlin API's 3), and while she speaks the speech gate doesn't decide what it hears; when she is quiet it does.
+     * 0.3.1: "stop" over Robot's voice. While she speaks, a second spotter listens, one that fires after 2 blank frames
+     * (sherpa-onnx's C++ default), and the speech gate doesn't decide what it hears. When she is quiet the first spotter
+     * (3 blank frames, as phase 0 measured it) and the gate work as before.
      */
     @Test fun whileRobotSpeaksTheSpotterHearsEveryFrame() {
-        assertEquals(1, WakeWord.TRAILING_BLANKS)
+        assertEquals(2, WakeWord.IDLE_TRAILING_BLANKS)
+        assertEquals(1, WakeWord.TALK_TRAILING_BLANKS)
         val src = java.io.File(System.getProperty("user.dir"), "src/main/java/app/heyrobot/voice/WakeWord.kt").readText()
-        assertTrue(src.contains("numTrailingBlanks = TRAILING_BLANKS"))
+        assertTrue(src.contains("private val kws: KeywordSpotter = spotter(IDLE_TRAILING_BLANKS)"))
+        assertTrue(src.substringAfter("fun loadTalkSpotter()").contains("spotter(TALK_TRAILING_BLANKS)"))
         val accept = src.substringAfter("fun accept(").substringBefore("private fun gate(")
+        // The talk spotter only while she speaks, and a stream is dropped when its spotter isn't the one wanted.
+        assertTrue(accept.contains("val spotter = if (stop != null) talkKws ?: kws else kws"))
+        assertTrue(accept.contains("streamKws !== spotter"))
         // The bypass comes after the gate has run (it still feeds the log and the capture switch) and before its decision.
-        val bypass = accept.indexOf("if (stop != null)")
+        val bypass = accept.indexOf("if (stop != null) {")
         assertTrue(bypass > accept.indexOf("gate(speech)") && bypass > accept.indexOf("preRoll.push(samples)"))
         assertTrue(bypass < accept.indexOf("speech && s == null"))
+        // A stream is decoded by the spotter that made it; the audio before a hit, or before a pause, is never fed again.
+        val feed = src.substringAfter("private fun feed(").substringBefore("fun reset()")
+        assertTrue(feed.contains("val k = streamKws") && feed.contains("k.decode(s)") && !feed.contains("kws.decode"))
+        assertTrue(feed.contains("preRoll.clear()"))
+        assertTrue(src.substringAfter("fun resume()").substringBefore("fun release()").contains("preRoll.clear()"))
+        val listener = java.io.File(System.getProperty("user.dir"), "src/main/java/app/heyrobot/voice/Listener.kt").readText()
+        assertTrue(listener.contains("if (wasPaused && !paused) ww?.resume()"))
     }
 
     @Test fun aStretchOfRobotTalkingIsSummedForTheLog() {

@@ -372,11 +372,18 @@ class SherpaTextToSpeech internal constructor(
             "audioMs" to runFrames * 1000 / SAMPLE_RATE, "synthMs" to runSynthMs, "stopped" to stopped)
     }
 
-    override val stopWordSafe: Boolean
-        get() = synchronized(trackLock) { !echo.mayBeEcho(headLocked()) }
+    override fun stopWordSafe(heardAt: Long): Boolean = synchronized(trackLock) { !echo.mayBeEcho(headAt(heardAt)) }
 
-    override val wakeWordSafe: Boolean
-        get() = synchronized(trackLock) { !echo.mayBeWakeEcho(headLocked()) }
+    override fun wakeWordSafe(heardAt: Long): Boolean = synchronized(trackLock) { !echo.mayBeWakeEcho(headAt(heardAt)) }
+
+    /**
+     * Where the track's head was at [heardAt] (elapsedRealtime), with [trackLock] held: the head moves at most at the
+     * sample rate, so this is no later than where it was, which keeps the window after a piece no shorter than it is.
+     */
+    private fun headAt(heardAt: Long): Long {
+        val ago = (SystemClock.elapsedRealtime() - heardAt).coerceAtLeast(0L)
+        return (headLocked() - ago * SAMPLE_RATE / 1000).coerceAtLeast(0L)
+    }
 
     override fun setWakeWords(words: List<String>) {
         echo.wakeWords = EchoGuard.wakeRegex(words)
@@ -564,13 +571,10 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
 
     override fun trim(): Boolean = !isSpeaking && sherpa.trim()
 
-    override val stopWordSafe: Boolean
-        get() = when (val a = active) {
-            null -> false
-            else -> a.stopWordSafe
-        }
+    override fun stopWordSafe(heardAt: Long): Boolean = active?.stopWordSafe(heardAt) ?: false
 
-    override val wakeWordSafe: Boolean get() = active?.wakeWordSafe ?: true
+    override fun wakeWordSafe(heardAt: Long): Boolean = active?.wakeWordSafe(heardAt) ?: true
+
 
     override fun setWakeWords(words: List<String>) {
         sherpa.setWakeWords(words)

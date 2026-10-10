@@ -371,15 +371,16 @@ object VoiceHub {
     private fun echoVoice(): EchoVoice = if ((tts as? VoiceOutput)?.usesPhoneVoice == true) EchoVoice.PHONE else EchoVoice.MODEL
 
     /**
-     * From the audio thread: "stop", or a wake phrase's label ("W<id>"). The listener has logged the hit (KWS_HIT);
-     * every way out of here logs what came of it.
+     * From the audio thread: "stop", or a wake phrase's label ("W<id>"), and when the frame it fired on was read
+     * ([heardAt], elapsedRealtime). The listener has logged the hit (KWS_HIT); every way out of here logs what came of
+     * it. EchoGuard is asked here, for [heardAt]: by the time the main thread runs, Robot's voice has moved on.
      */
-    private fun onWake(label: String) {
+    private fun onWake(label: String, heardAt: Long) {
         if (label == WakeWord.STOP) {
+            // Ignored when the reply itself says "stop" (or a word like it): that may be Robot's own voice.
+            val safe = tts.stopWordSafe(heardAt)
             main.post {
-                // Ignored when the reply itself says "stop" (or a word like it): that may be Robot's own voice.
                 val playing = tts.isSpeaking
-                val safe = tts.stopWordSafe
                 if (BargeTest.active) return@post BargeTest.onKeyword(0, safe)
                 if (!playing) return@post VoiceLog.add(VoiceEvent.STOP_HEARD, 0)
                 RLog.i("stop_word", "acted" to safe)
@@ -398,9 +399,9 @@ object VoiceHub {
             }
             lastWakeE = e
         }
+        val safe = tts.wakeWordSafe(heardAt)
         main.post {
             if (wakeTesting) return@post VoiceLog.add(VoiceEvent.WAKE, id, -1, WakeAction.TEST.id)
-            val safe = tts.wakeWordSafe
             if (BargeTest.active) return@post BargeTest.onKeyword(id, safe)
             if (tts.isSpeaking && !safe) return@post VoiceLog.add(VoiceEvent.WAKE_IGNORED, WakeDrop.ECHO, id, echoVoice().id)
             RLog.i("wake", "panelShown" to PanelController.shown)

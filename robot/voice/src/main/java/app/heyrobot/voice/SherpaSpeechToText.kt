@@ -186,7 +186,7 @@ class SherpaSpeechToText internal constructor(
         var own: Listener? = null
         val src: AudioFrames = frames()?.takeIf { it.capturing } ?: run {
             // The wake word is off (or its listener stopped): open the microphone just for this question.
-            val l = Listener(ctx, ListenerConfig(wakeWord = false), null, onWake = {})
+            val l = Listener(ctx, ListenerConfig(wakeWord = false), null, onWake = { _, _ -> })
             if (!l.start()) {
                 l.stop()
                 VoiceLog.add(VoiceEvent.STT_END, SttEnd.MIC_BUSY)

@@ -52,7 +52,7 @@ class VoiceLogTest {
         assertEquals(27, VoiceEvent.TTS_STOP.id)
         val codes: List<List<LogCode>> = listOf(WakeAction.entries, WakeDrop.entries, ListenWhy.entries, MicKind.entries, AecState.entries, SttEnd.entries,
             ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries,
-            EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries)
+            EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -134,9 +134,17 @@ class VoiceLogTest {
         // 0.3.1: what the spotter heard before any check, and what came of it.
         val names = { id: Int -> if (id == 2) "hey robot" else null }
         assertEquals("Spotter: “stop” while Robot talked · mic: call (echo cancellation) · echo cancellation on",
-            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_HIT, 0, 1, MicKind.COMMUNICATION.id * 10 + AecState.ON.id)))
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_HIT, 0, KwsSpotterCode.TALK.id, MicKind.COMMUNICATION.id * 10 + AecState.ON.id)))
+        // Which spotter: the one for her talking wasn't loaded yet.
+        assertEquals("Spotter: “stop” while Robot talked, by the idle spotter (the other one wasn't loaded yet) · mic: call (echo cancellation) · echo cancellation on",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_HIT, 0, KwsSpotterCode.IDLE_WHILE_TALKING.id, MicKind.COMMUNICATION.id * 10 + AecState.ON.id)))
+        assertEquals("Spotter for while Robot talks ready in 420 ms (waited 1800 ms for another model to load)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_READY, 420, 1800, 1)))
+        assertEquals("Spotter for while Robot talks couldn't load: the other one listens while she talks",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_READY, -1, 0, 1)))
+        assertEquals("Wake-word model ready in 300 ms", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_READY, 300)))
         assertEquals("Spotter: wake word #2 (“hey robot”) · mic: speech recognition · echo cancellation off",
-            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_HIT, 2, 0, MicKind.RECOGNITION.id * 10 + AecState.OFF.id), names))
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_HIT, 2, KwsSpotterCode.IDLE.id, MicKind.RECOGNITION.id * 10 + AecState.OFF.id), names))
         assertEquals("“Stop” ignored: Robot was saying a word like it herself (the phone's voice, 4.2 s into her talking)",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.STOP_SUPPRESSED, EchoVoice.PHONE.id, 4200)))
         // A line from before 0.3.1 has no voice.

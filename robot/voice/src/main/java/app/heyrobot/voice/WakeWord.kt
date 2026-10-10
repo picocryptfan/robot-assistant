@@ -31,16 +31,29 @@ import com.k2fsa.sherpa.onnx.getFeatureConfig
  * ("<tokens> :<boost> #<threshold> @W<id>", built by core KeywordBuffer from Settings), plus "STOP" (kws/stop.txt)
  * while Robot speaks. sherpa-onnx adds a stream's keywords to the spotter's own list, so kws/keywords.txt is one empty
  * line: nothing is spotted that the settings don't ask for. A changed set starts a fresh stream (no app restart).
- * [accept] returns the label that fired: "W<id>" or [STOP].
+ * [accept] returns the labels that fired: "W<id>" or [STOP].
  *
- * 0.3.1, for "stop" and the wake phrases over Robot's voice: a keyword fires after 2 blank frames of the model's
- * output (80 ms) instead of 3, and while Robot speaks the speech gate doesn't decide what the spotter hears (a short
- * "stop" may be too short for it). When she is quiet, the gate works as before.
+ * 0.3.1, for "stop" and the wake phrases over Robot's voice: while she speaks, a second spotter listens instead of
+ * the first, one that fires after 2 blank frames of the model's output (80 ms) instead of 3, and the speech gate
+ * doesn't decide what it hears (a short "stop" may be too short to open it). It is loaded the first time she speaks
+ * ([loadTalkSpotter], about 14 MB more) and kept while this lives; until then the first spotter listens while she
+ * speaks too. When she is quiet, the first spotter and the gate work exactly as phase 0 measured them. A stream is
+ * only ever decoded by the spotter that made it.
  */
-class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
-    private val kws: KeywordSpotter
+class WakeWord(private val assets: AssetManager, vadGate: Boolean = true) {
+    /** For when Robot is quiet, behind the speech gate: [IDLE_TRAILING_BLANKS], as phase 0 measured it. */
+    private val kws: KeywordSpotter = spotter(IDLE_TRAILING_BLANKS)
+    /**
+     * For while Robot speaks ([TALK_TRAILING_BLANKS]), once [loadTalkSpotter] made it on its thread (published and
+     * released under [talkLock], read on the audio thread).
+     */
+    @Volatile private var talkKws: KeywordSpotter? = null
+    private val talkLock = Any()
+    private var released = false
     private val vad: Vad?
     private var stream: OnlineStream? = null
+    /** The spotter that made [stream]. */
+    private var streamKws: KeywordSpotter? = null
     /** The keyword set [stream] listens for. */
     private var streamKeywords = ""
     /** Every token the model knows: a line with any other token never reaches sherpa-onnx (its stream would fail). */
@@ -58,8 +71,11 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
     private var lastWake: String? = null
     private var lastStop: KwsThresholds.Preset? = null
     private var wanted = ""
-    /** A set sherpa-onnx refused: not tried again until it changes. */
-    private var refused: String? = null
+    /**
+     * Sets sherpa-onnx refused: each is tried and logged once, not again at every start and stop of Robot's voice;
+     * forgotten when the wake phrases change.
+     */
+    private val refused = HashSet<String>()
     /** The lines last left out for unknown tokens, so the voice log says so once, not at every change of the set. */
     private var droppedLogged: List<String> = emptyList()
     // The speech gate's stretches of speech, for the voice log.
@@ -75,9 +91,24 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
     /** A keyword stream is live and listens for "stop" (audio thread; the voice log's SPEAK_RUN). */
     val listeningForStop: Boolean get() = stream != null && streamKeywords.contains("@${KeywordBuffer.STOP_LABEL}")
 
+    /** The spotter for while Robot speaks is loaded. */
+    val talkSpotterLoaded: Boolean get() = talkKws != null
+
+    /** The last labels [accept] returned came from the spotter for while Robot speaks (audio thread; KWS_HIT). */
+    var lastHitByTalkSpotter = false; private set
+
     init {
+        vad = if (!vadGate) null else Vad(assets, VadModelConfig(
+            sileroVadModelConfig = SileroVadModelConfig(model = "vad/silero_vad.onnx", threshold = 0.5f,
+                minSilenceDuration = 0.25f, minSpeechDuration = 0.25f, windowSize = 512),
+            sampleRate = Listener.SAMPLE_RATE,
+            numThreads = 1,
+        ))
+    }
+
+    private fun spotter(trailingBlanks: Int): KeywordSpotter {
         fun model(part: String) = "kws/$part-epoch-12-avg-2-chunk-16-left-64.onnx"
-        kws = KeywordSpotter(assets, KeywordSpotterConfig(
+        return KeywordSpotter(assets, KeywordSpotterConfig(
             featConfig = getFeatureConfig(sampleRate = Listener.SAMPLE_RATE, featureDim = 80),
             modelConfig = OnlineModelConfig(
                 transducer = OnlineTransducerModelConfig(encoder = model("encoder"), decoder = model("decoder"), joiner = model("joiner")),
@@ -90,22 +121,33 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
             keywordsFile = "kws/keywords.txt",
             keywordsScore = KwsThresholds.MEDIUM.boost,
             keywordsThreshold = KwsThresholds.MEDIUM.threshold,
-            // sherpa-onnx's own default (keyword-spotter.h; its Kotlin API says 2): a keyword fires once the model has
-            // output more than this many blank frames (40 ms each) after its last token. With 2 it needed 120 ms with
-            // no token at all after "stop", which Robot's voice, even echo-cancelled, rarely leaves.
-            numTrailingBlanks = TRAILING_BLANKS,
+            // A keyword fires once the model has output more than this many blank frames (40 ms each) after its last
+            // token: see IDLE_TRAILING_BLANKS and TALK_TRAILING_BLANKS.
+            numTrailingBlanks = trailingBlanks,
         ))
-        vad = if (!vadGate) null else Vad(assets, VadModelConfig(
-            sileroVadModelConfig = SileroVadModelConfig(model = "vad/silero_vad.onnx", threshold = 0.5f,
-                minSilenceDuration = 0.25f, minSpeechDuration = 0.25f, windowSize = 512),
-            sampleRate = Listener.SAMPLE_RATE,
-            numThreads = 1,
-        ))
+    }
+
+    /**
+     * Makes the spotter for while Robot speaks (a loader thread: the model is loaded a second time). False if it was
+     * already there or this was released meanwhile; throws if sherpa-onnx can't make it.
+     */
+    fun loadTalkSpotter(): Boolean {
+        val k = spotter(TALK_TRAILING_BLANKS)
+        synchronized(talkLock) {
+            if (!released && talkKws == null) {
+                talkKws = k
+                return true
+            }
+        }
+        k.release()
+        return false
     }
 
     /** The lines to listen for: [wake] (already built from the settings) and "STOP" with [stop]'s threshold, if set. */
     private fun wanted(wake: String, stop: KwsThresholds.Preset?): String {
         if (wake === lastWake && stop == lastStop) return wanted
+        // New wake phrases: a set refused before may be fine now that they changed.
+        if (wake != lastWake) refused.clear()
         lastWake = wake
         lastStop = stop
         val st = stopTokens
@@ -123,18 +165,21 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
         return wanted
     }
 
-    private fun newStream(keywords: String): OnlineStream? {
-        if (keywords.isEmpty() || keywords == refused) return null
+    /** A stream of [spotter] for [keywords], made [stream]; null if there is nothing to listen for or it is refused. */
+    private fun newStream(keywords: String, spotter: KeywordSpotter): OnlineStream? {
+        if (keywords.isEmpty() || keywords in refused) return null
         return try {
             // sherpa-onnx answers a set it can't encode with a null stream (the vendored OnlineStream refuses it too).
-            kws.createStream(keywords).also {
+            spotter.createStream(keywords).also {
                 check(it.ptr != 0L) { "null stream" }
+                stream = it
+                streamKws = spotter
                 streamKeywords = keywords
             }
         } catch (t: Throwable) {
-            // sherpa-onnx returns no stream for a set it can't encode; remember it rather than retrying every frame.
+            // Remembered rather than retried every frame (or at every start and stop of Robot's voice).
             RLog.w("kws_stream", t)
-            refused = keywords
+            refused += keywords
             val withStop = keywords.contains("@${KeywordBuffer.STOP_LABEL}")
             val stopOnly = withStop && !keywords.contains("@W")
             if (stopOnly) stopTokens = null
@@ -147,21 +192,24 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
     private fun dropStream() {
         stream?.release()
         stream = null
+        streamKws = null
         streamKeywords = ""
     }
 
     /**
-     * Feeds one chunk (16 kHz mono floats) and returns the label that fired, if any. [wake]: the wake lines (may be
-     * empty); [stop]: listen for "STOP" too, with this threshold (Robot is speaking), or null.
+     * Feeds one chunk (16 kHz mono floats) and returns the labels that fired, oldest first (usually none). [wake]: the
+     * wake lines (may be empty); [stop]: listen for "STOP" too, with this threshold (Robot is speaking), or null.
      */
-    fun accept(samples: FloatArray, wake: String, stop: KwsThresholds.Preset? = null): String? {
+    fun accept(samples: FloatArray, wake: String, stop: KwsThresholds.Preset? = null): List<String> {
         seen += samples.size
         val want = wanted(wake, stop)
-        // The keyword set changed (Robot started or stopped speaking, the settings changed): a fresh stream.
-        if (stream != null && streamKeywords != want) dropStream()
+        val spotter = if (stop != null) talkKws ?: kws else kws
+        // The keyword set or the spotter changed (Robot started or stopped speaking, the settings changed, the spotter
+        // for her talking was loaded): a fresh stream.
+        if (stream != null && (streamKeywords != want || streamKws !== spotter)) dropStream()
         val v = vad
         if (v == null) {
-            if (stream == null) stream = newStream(want)
+            if (stream == null) newStream(want, spotter)
             return feed(samples)
         }
         v.acceptWaveform(samples)
@@ -176,7 +224,7 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
         // the capture switch.
         if (stop != null) {
             if (stream == null) {
-                stream = newStream(want) ?: return null
+                if (newStream(want, spotter) == null) return NONE
                 return feed(preRoll.drain())
             }
             return feed(samples)
@@ -184,15 +232,14 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
         val s = stream
         return when {
             speech && s == null && want.isNotEmpty() -> {
-                stream = newStream(want)
-                feed(preRoll.drain())
+                if (newStream(want, spotter) == null) NONE else feed(preRoll.drain())
             }
             s != null -> {
-                val hit = feed(samples)
+                val hits = feed(samples)
                 if (!speech && seen - lastSpeech > HANGOVER_SAMPLES) dropStream()
-                hit
+                hits
             }
-            else -> null
+            else -> NONE
         }
     }
 
@@ -205,20 +252,26 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
         gateSpeaking = speech
     }
 
-    private fun feed(x: FloatArray): String? {
-        val s = stream ?: return null
+    /** Every label that fires in [x] (a pre-roll may hold more than one), oldest first. */
+    private fun feed(x: FloatArray): List<String> {
+        val s = stream ?: return NONE
+        val k = streamKws ?: return NONE
         s.acceptWaveform(x, Listener.SAMPLE_RATE)
-        var hit: String? = null
-        while (kws.isReady(s)) {
-            kws.decode(s)
-            val k = kws.getResult(s).keyword
-            if (k.isNotBlank()) {
-                hit = k
+        var hits: MutableList<String>? = null
+        while (k.isReady(s)) {
+            k.decode(s)
+            val label = k.getResult(s).keyword
+            if (label.isNotBlank()) {
+                (hits ?: mutableListOf<String>().also { hits = it }).add(label)
                 // sherpa-onnx: reset the stream right after a detection.
-                kws.reset(s)
+                k.reset(s)
             }
         }
-        return hit
+        val out = hits ?: return NONE
+        // The audio that led to a hit is never fed again: a stream started later begins from what comes after it.
+        preRoll.clear()
+        lastHitByTalkSpotter = k === talkKws
+        return out
     }
 
     /**
@@ -232,19 +285,44 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
         lastSpeech = Long.MIN_VALUE / 2
     }
 
+    /**
+     * Wake detection goes on after a pause (the panel listened for a question): the stream, the gate and the pre-roll
+     * start empty. The pre-roll stood still while paused and still holds the wake phrase that opened the panel; fed
+     * into the first stream after the pause (with "Sorry, I didn't catch that." or any quick reply) it would wake
+     * Robot a second time.
+     */
+    fun resume() {
+        reset()
+        preRoll.clear()
+    }
+
     fun release() {
         dropStream()
         vad?.release()
         kws.release()
+        synchronized(talkLock) {
+            released = true
+            talkKws?.release()
+            talkKws = null
+        }
     }
 
     companion object {
         const val PRE_ROLL_SAMPLES = Listener.SAMPLE_RATE
         const val HANGOVER_SAMPLES = Listener.SAMPLE_RATE
-        /** See the spotter's config above. */
-        const val TRAILING_BLANKS = 1
+        /**
+         * When Robot is quiet: sherpa-onnx's Kotlin default, which phase 0 measured (3 blank frames, 120 ms, after the
+         * phrase).
+         */
+        const val IDLE_TRAILING_BLANKS = 2
+        /**
+         * While Robot speaks: sherpa-onnx's C++ default (2 blank frames, 80 ms). Robot's voice, even echo-cancelled,
+         * probably seldom leaves 120 ms with no token at all after a "stop" said over her.
+         */
+        const val TALK_TRAILING_BLANKS = 1
         /** The label of "STOP" (kws/stop.txt, after the @). */
         const val STOP = KeywordBuffer.STOP_LABEL
+        private val NONE = emptyList<String>()
     }
 }
 
@@ -265,6 +343,12 @@ class FloatRing(capacity: Int) {
     fun last(n: Int): FloatArray {
         val k = n.coerceIn(0, size)
         return FloatArray(k) { buf[(start + size - k + it) % buf.size] }
+    }
+
+    /** Empties the ring. */
+    fun clear() {
+        start = 0
+        size = 0
     }
 
     /** Oldest first; empties the ring. */
