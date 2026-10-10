@@ -24,3 +24,51 @@ fun readOrNull(f: File): String? = try { if (f.isFile) f.readText(Charsets.UTF_8
 
 inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =
     enumValues<T>().firstOrNull { it.name == name } ?: default
+
+enum class InstallResult { OK, WRONG_SIZE, WRONG_HASH, IO_ERROR }
+
+/**
+ * Copies [input] to [dest] through a temporary file next to it, hashing on the way, and moves it into place only
+ * if it has exactly [bytes] bytes and the SHA-256 [sha256] (lower-case hex). The copy is fsynced before the rename,
+ * so [dest] is either absent, the old file, or the complete checked one. [progress] gets the bytes copied so far.
+ * Used for the voice models (download folder → app-private storage) and the espeak-ng data (APK → files).
+ */
+fun installVerified(input: java.io.InputStream, dest: File, bytes: Long, sha256: String, progress: (Long) -> Unit = {}): InstallResult {
+    val tmp = File(dest.parentFile, ".${dest.name}.part")
+    try {
+        dest.parentFile?.mkdirs()
+        val md = java.security.MessageDigest.getInstance("SHA-256")
+        var done = 0L
+        FileOutputStream(tmp).use { out ->
+            val buf = ByteArray(1 shl 20)
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                done += n
+                if (done > bytes) break
+                md.update(buf, 0, n)
+                out.write(buf, 0, n)
+                progress(done)
+            }
+            out.fd.sync()
+        }
+        if (done != bytes) {
+            tmp.delete()
+            return InstallResult.WRONG_SIZE
+        }
+        if (hex(md.digest()) != sha256) {
+            tmp.delete()
+            return InstallResult.WRONG_HASH
+        }
+        if (!tmp.renameTo(dest)) {
+            tmp.delete()
+            return InstallResult.IO_ERROR
+        }
+        return InstallResult.OK
+    } catch (_: Exception) {
+        tmp.delete()
+        return InstallResult.IO_ERROR
+    }
+}
+
+fun hex(b: ByteArray): String = b.joinToString("") { "%02x".format(it) }

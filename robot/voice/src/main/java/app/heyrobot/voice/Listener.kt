@@ -39,6 +39,22 @@ data class ListenerConfig(
 interface AudioFrames {
     fun addSink(sink: (FloatArray) -> Unit)
     fun removeSink(sink: (FloatArray) -> Unit)
+
+    /** The microphone is open and frames flow. */
+    val capturing: Boolean get() = true
+
+    /** The system silenced this capture (another app is recording), or null if unknown. */
+    val silenced: Boolean? get() = null
+
+    /**
+     * Adds [sink] and returns the audio heard just before it, with no frame lost or repeated in between: what came
+     * after the last wake word if it fired less than [sinceWakeMs] ago (the question right after "hey robot"),
+     * else the last [otherwiseMs] (someone who starts talking as they press the button). In memory only.
+     */
+    fun attach(sink: (FloatArray) -> Unit, sinceWakeMs: Int, otherwiseMs: Int): FloatArray {
+        addSink(sink)
+        return FloatArray(0)
+    }
 }
 
 class Listener(
@@ -51,18 +67,34 @@ class Listener(
     @Volatile var running = false; private set
     @Volatile var levelDb = -120.0; private set
     /** The system silenced this capture (another app is recording), or null if unknown. */
-    @Volatile var silenced: Boolean? = null; private set
+    @Volatile override var silenced: Boolean? = null; private set
     @Volatile var wakeWordLoaded = false; private set
     /** Wake detection paused (the panel is listening for the question); capture goes on for the sinks. */
     @Volatile var wakePaused = false
+    /** Robot is speaking: also listen for "STOP" (WakeWord), so a spoken "stop" can end the reply. */
+    @Volatile var stopWord = false
 
     private val sinks = CopyOnWriteArrayList<(FloatArray) -> Unit>()
+    /** The last 2 s of audio and where the last wake word fired, for [attach] (guarded by [ringLock]). */
+    private val ringLock = Any()
+    private val recent = FloatRing(SAMPLE_RATE * 2)
+    private var samplesSeen = 0L
+    private var wakeAt = Long.MIN_VALUE / 2
     private var rec: AudioRecord? = null
     private var thread: Thread? = null
     private val callbackExec = Executors.newSingleThreadExecutor()
 
     override fun addSink(sink: (FloatArray) -> Unit) { sinks.addIfAbsent(sink) }
     override fun removeSink(sink: (FloatArray) -> Unit) { sinks.remove(sink) }
+
+    override val capturing: Boolean get() = running
+
+    override fun attach(sink: (FloatArray) -> Unit, sinceWakeMs: Int, otherwiseMs: Int): FloatArray = synchronized(ringLock) {
+        val sinceWake = samplesSeen - wakeAt
+        val n = if (sinceWake in 0..sinceWakeMs.toLong() * SAMPLE_RATE / 1000) sinceWake else otherwiseMs.toLong() * SAMPLE_RATE / 1000
+        sinks.addIfAbsent(sink)
+        recent.last(n.toInt())
+    }
 
     /** Opens the microphone (the configured source, MIC if that fails) and starts the loop. */
     @SuppressLint("MissingPermission")
@@ -154,15 +186,24 @@ class Listener(
                 ss += v * v
             }
             levelDb = 0.8 * levelDb + 0.2 * db(ss / n)
-            for (s in sinks) try { s(x) } catch (t: Throwable) { RLog.w("audio_sink", t) }
+            // A sink attached after this block gets this frame in its pre-roll, one attached before gets it here.
+            val targets = synchronized(ringLock) {
+                recent.push(x)
+                samplesSeen += n
+                sinks.toTypedArray()
+            }
+            for (s in targets) try { s(x) } catch (t: Throwable) { RLog.w("audio_sink", t) }
             val w = ww ?: continue
             if (wakePaused) continue
-            val hit = try { w.accept(x) } catch (t: Throwable) {
+            val hit = try { w.accept(x, stopWord) } catch (t: Throwable) {
                 // Java-side errors only; a native crash takes the whole voice process.
                 RLog.w("wake_word", t)
                 null
             }
-            if (hit != null) onWake(hit)
+            if (hit != null) {
+                synchronized(ringLock) { wakeAt = samplesSeen }
+                onWake(hit)
+            }
         }
         ww?.release()
         wakeWordLoaded = false

@@ -3,8 +3,15 @@ package app.heyrobot.core
 // Pure. Replies are spoken sentence by sentence while they stream (spec item 4): the splitter hands
 // out each sentence as soon as it is complete; SpeechText turns Markdown into something to say.
 
-class SentenceSplitter(private val maxChars: Int = 220) {
+/**
+ * Splits a streaming reply into pieces to speak. The first piece is short so audio starts fast (docs/voice-plan.md
+ * 4.9): it goes out at the first clause break (, ; :) after at least [firstMinWords] words, or after
+ * [firstMaxWords] words, if no sentence ended before. After that, whole sentences (the voice model speaks a whole
+ * sentence per call and pays a fixed cost per call, so smaller pieces would only add pauses).
+ */
+class SentenceSplitter(private val maxChars: Int = 220, private val firstMinWords: Int = 5, private val firstMaxWords: Int = 12) {
     private val buf = StringBuilder()
+    private var emitted = false
 
     /** Adds streamed text; returns the sentences it completed (possibly none). */
     fun feed(chunk: String): List<String> {
@@ -24,13 +31,44 @@ class SentenceSplitter(private val maxChars: Int = 220) {
             buf.delete(0, cut + 1)
             if (s.isNotEmpty()) out += s
         }
+        if (out.isEmpty() && !emitted) firstChunk()?.let { out += it }
+        if (out.isNotEmpty()) emitted = true
         return out
+    }
+
+    /** The short first piece, or null while the reply is still too short to cut. */
+    private fun firstChunk(): String? {
+        var words = 0
+        var inWord = false
+        for (i in buf.indices) {
+            val c = buf[i]
+            if (c.isWhitespace()) {
+                if (inWord) {
+                    words++
+                    inWord = false
+                    val prev = buf[i - 1]
+                    val clause = (prev == ',' || prev == ';' || prev == ':') && words >= firstMinWords
+                    if (clause || words >= firstMaxWords) {
+                        val s = buf.substring(0, i).trim()
+                        buf.delete(0, i)
+                        return s.takeIf { it.isNotEmpty() }
+                    }
+                }
+            } else {
+                inWord = true
+            }
+        }
+        return null
     }
 
     /** The rest, at the end of the reply. */
     fun flush(): String? = buf.toString().trim().also { buf.setLength(0) }.takeIf { it.isNotEmpty() }
 
-    fun reset() = buf.setLength(0)
+    /** A new reply: its first piece is short again. */
+    fun reset() {
+        buf.setLength(0)
+        emitted = false
+    }
 
     /** End index (exclusive) of the first complete sentence in [b], or null. */
     private fun boundary(b: CharSequence): Int? {
@@ -82,6 +120,8 @@ object SpeechText {
         .replace(Regex("""(?m)^\s*>\s?"""), "")
         .replace("```", " ")
         .replace(Regex("""(\*\*|__|\*|`|~~)"""), "")
+        // Emoji and pictographs (the voices would spell out or garble them); the degree sign stays.
+        .replace(Regex("""[\p{So}\p{Cs}\x{FE0F}\x{200D}&&[^\x{B0}]]"""), "")
         .replace(Regex("""\s+"""), " ")
         .trim()
 }

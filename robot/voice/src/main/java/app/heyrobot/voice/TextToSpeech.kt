@@ -12,9 +12,10 @@ import app.heyrobot.core.RLog
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
-// VOICE PROCESS. Text to speech for replies, one sentence at a time while the reply streams (spec item 4).
-// Phase 1 ships [AndroidTextToSpeech] (Android's TextToSpeech API, which on GrapheneOS is GrapheneOS
-// Speech Services, on the phone); the voice spike's sherpa-onnx voice replaces it behind this interface.
+// VOICE PROCESS. Text to speech for replies, one sentence at a time while the reply streams (spec item 4):
+// the sherpa-onnx voices (Kokoro, Kitten: SherpaTextToSpeech) once downloaded, and [AndroidTextToSpeech]
+// (Android's TextToSpeech API, which on GrapheneOS is GrapheneOS Speech Services) until then or when chosen.
+// VoiceOutput switches between them; VoiceEngines builds it.
 
 interface TextToSpeech {
     /** Queues one sentence (plain text, no Markdown) after those already queued. */
@@ -32,6 +33,18 @@ interface TextToSpeech {
     fun setListener(listener: Listener?)
 
     fun release()
+
+    /** Start loading the voice in the background (a spoken reply is likely soon). */
+    fun prewarm() {}
+
+    /** Memory is short: free the voice model unless it is speaking. True if something was freed. */
+    fun trim(): Boolean = false
+
+    /**
+     * A "stop" heard now cannot be Robot's own voice coming back through the microphone (nothing playing says
+     * "stop" or a word like it). False when unsure.
+     */
+    val stopWordSafe: Boolean get() = false
 
     fun interface Listener {
         /** Called on the main thread when speaking starts or the queue runs empty. */
@@ -56,6 +69,8 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private var listener: TextToSpeech.Listener? = null
     private var rate = 1.0f
     private var voice = ""
+    /** A sentence of this speaking run says "stop" or a word like it (no audio positions here, so the whole run counts). */
+    @Volatile private var risky = false
 
     private val tts: android.speech.tts.TextToSpeech = android.speech.tts.TextToSpeech(app) { status ->
         main.post { onInit(status == android.speech.tts.TextToSpeech.SUCCESS) }
@@ -111,6 +126,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
                 audio.requestAudioFocus(focus)
                 listener?.onSpeakingChanged(true)
             }
+            if (EchoGuard.soundsLikeStop(sentence)) risky = true
             if (ready) enqueue(sentence) else pending.addLast(sentence)
         }
     }
@@ -124,6 +140,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private fun setOutstanding(n: Int): Int { outstanding.set(n); return n }
 
     private fun idle() {
+        risky = false
         audio.abandonAudioFocusRequest(focus)
         listener?.onSpeakingChanged(false)
     }
@@ -139,6 +156,8 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
 
     override val isSpeaking: Boolean get() = outstanding.get() > 0
 
+    override val stopWordSafe: Boolean get() = !risky
+
     override fun setListener(listener: TextToSpeech.Listener?) {
         this.listener = listener
     }
@@ -151,10 +170,4 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
             failed = true
         }
     }
-}
-
-/** Where the :voice process gets its speech engines; the voice spike swaps the implementations here. */
-object VoiceEngines {
-    fun speechToText(ctx: Context, frames: () -> AudioFrames?): SpeechToText = PlaceholderSpeechToText()
-    fun textToSpeech(ctx: Context): TextToSpeech = AndroidTextToSpeech(ctx)
 }

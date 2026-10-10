@@ -20,6 +20,7 @@ probe/app/src/main/assets/vad/*.onnx
 robot/voice/src/main/jniLibs/
 robot/voice/src/main/assets/kws/*.onnx
 robot/voice/src/main/assets/vad/*.onnx
+robot/voice/src/main/assets/espeak-ng-data/
 robot/**/*.so
 robot/**/*.onnx
 robot/**/*.litertlm

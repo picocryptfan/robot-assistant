@@ -11,8 +11,12 @@ android {
     kotlinOptions { jvmTarget = '17' }
 }
 // The :voice process's engines: microphone, VAD, wake word, speech to text, text to speech. The only module
-// that uses sherpa-onnx (its native libraries and models live in src/main/jniLibs and src/main/assets,
-// fetched by tools/fetch_third_party.sh, not stored in git).
+// that uses sherpa-onnx (its native libraries, the wake-word and VAD models and the espeak-ng subset live in
+// src/main/jniLibs and src/main/assets, fetched by tools/fetch_third_party.sh, not stored in git). The speech
+// recognition and voice models are downloaded by the app (core VoiceModels.kt), never packaged.
 dependencies {
     implementation project(':core')
+    // Pure logic tests (endpointing, partial scheduling, engine fallback, echo guard); org.json for :core's codecs.
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20180813'
 }
