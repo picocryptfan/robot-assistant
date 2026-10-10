@@ -12,6 +12,8 @@ import app.heyrobot.core.VoiceFiles
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
 import java.io.File
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 // Main and voice processes. App-private storage (credential-encrypted, available after the first unlock).
 // Each file has one writer: settings.json the main app, conversations the panel (the main app only
@@ -39,10 +41,22 @@ object Paths {
 object SettingsStore {
     private fun file(ctx: Context) = File(Paths.dir(ctx), "settings.json")
 
+    /**
+     * One thread writes every save, in the order they were asked for. Each change used to start its own background
+     * write, so two quick taps (a wake phrase off, then another on) could finish out of order and leave the older
+     * settings on disk, which the voice process then kept.
+     */
+    private val writer: ExecutorService by lazy { Executors.newSingleThreadExecutor { r -> Thread(r, "robot-settings").apply { isDaemon = true } } }
+
     fun load(ctx: Context): RobotSettings = RobotSettings.fromJson(readOrNull(file(ctx)))
 
-    /** [MAIN] Saves and tells the voice process to re-read them. */
+    /** [MAIN] Saves on the settings thread, after any earlier save, and tells the voice process to re-read them. */
     fun save(ctx: Context, s: RobotSettings) {
+        val app = ctx.applicationContext
+        writer.execute { write(app, s) }
+    }
+
+    private fun write(ctx: Context, s: RobotSettings) {
         try { writeAtomic(file(ctx), s.toJson().toString(1)) } catch (t: Throwable) { RLog.w("settings_save", t) }
         Cmd.send(ctx, Cmd.SETTINGS)
     }

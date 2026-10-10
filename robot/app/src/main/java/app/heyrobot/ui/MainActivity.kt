@@ -307,7 +307,8 @@ fun RobotAppUi(activity: MainActivity) {
 
     fun update(s: RobotSettings) {
         settings = s
-        scope.launch(Dispatchers.IO) { SettingsStore.save(ctx, s) }
+        // Off the main thread, one save at a time in order (SettingsStore).
+        SettingsStore.save(ctx, s)
     }
 
     val actions = AppActions(
