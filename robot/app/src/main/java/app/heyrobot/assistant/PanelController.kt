@@ -19,9 +19,9 @@ import app.heyrobot.core.Prepared
 import app.heyrobot.core.Prompt
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RawToolCall
+import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ScreenText
-import app.heyrobot.core.SentenceSplitter
 import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.SpeechText
 import app.heyrobot.core.StoredConversation
@@ -64,6 +64,15 @@ import java.util.UUID
  * "Do it" or "Cancel"; the turn is still under way (no new question until it ends; Stop declines the card).
  */
 enum class Phase { IDLE, LISTENING, TRANSCRIBING, THINKING, ANSWERING, CONFIRMING, SPEAKING }
+
+/**
+ * The phase once a turn has ended ([speaking]: the voice is still reading the reply). Only a turn's own phases
+ * give way: listening for the next question ("hey robot" during the answer) or anything else already shown stays.
+ */
+fun Phase.afterTurn(speaking: Boolean): Phase = when (this) {
+    Phase.THINKING, Phase.ANSWERING, Phase.CONFIRMING -> if (speaking) Phase.SPEAKING else Phase.IDLE
+    else -> this
+}
 
 /** [icon]: the real app's launcher icon on an open_app card. */
 data class UiAction(val id: String, val tool: ToolName?, val summary: String, val status: ActionStatus, val detail: String?, val icon: Bitmap? = null)
@@ -143,7 +152,8 @@ object PanelController {
     private var hidingFor: String? = null
     private var reqId = 0
     private var client: BrainClient? = null
-    private val splitter = SentenceSplitter()
+    /** What of the streaming reply is read aloud (muted by "stop", silent once cancelled). */
+    private val voice = ReplyVoice()
     private val icons = HashMap<String, Bitmap?>()
     private var initialized = false
 
@@ -448,7 +458,7 @@ object PanelController {
         }
         draftJpeg = null
         lastActivity = now
-        splitter.reset()
+        voice.start(replyId)
         // The reply will be read aloud: the voice loads while the model thinks.
         if (st.speak) VoiceHub.tts.prewarm()
         slot.start {
@@ -556,7 +566,7 @@ object PanelController {
         override fun replaceText(text: String) = setText(replyId, text)
         override fun paragraphBreak() = paragraphBreak(replyId)
         override fun say(sentence: String) {
-            if (_state.value.speak) speakSentence(sentence)
+            voice.say(replyId, sentence, _state.value.speak)?.let(::speakSentence)
         }
     }
 
@@ -569,7 +579,7 @@ object PanelController {
                 when (m) {
                     is BrainMsg.Chunk -> if (m.text.isNotEmpty()) {
                         appendText(replyId, m.text)
-                        if (_state.value.speak) splitter.feed(m.text).forEach(::speakSentence)
+                        voice.feed(replyId, m.text, _state.value.speak).forEach(::speakSentence)
                     }
                     is BrainMsg.ToolCallsMsg -> calls = m.calls
                     is BrainMsg.Done -> out = calls?.takeIf { m.reason == DoneReason.TOOL_CALLS }?.let { ModelOutcome.Calls(it) }
@@ -594,7 +604,7 @@ object PanelController {
         val t = _state.value.turns.firstOrNull { it.id == replyId }?.text ?: return
         if (t.isBlank() || t.endsWith("\n\n")) return
         setText(replyId, t.trimEnd() + "\n\n")
-        if (_state.value.speak) splitter.feed("\n").forEach(::speakSentence)
+        voice.feed(replyId, "\n", _state.value.speak).forEach(::speakSentence)
     }
 
     private fun setText(replyId: String, text: String) = _state.update { st ->
@@ -629,15 +639,21 @@ object PanelController {
 
     // ------------------------------------------------------------------ ending a reply
 
-    /** Stop button: stops the reply (or the model load); a waiting card is declined. */
+    /** Stop button: stops the reply (or the model load) and its voice; a waiting card is declined. */
     fun stopGenerating() {
         val id = reqId
         if (id != 0) client?.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(id))
-        // The turn ends as "stopped" (send's cancellation handler); :brain rebuilds that conversation next time.
+        // The voice stops now: nothing already queued, and not the cut-off last sentence (finishReply drops it).
+        voice.mute()
+        VoiceHub.tts.stop()
+        // The turn ends as "stopped" (send's cancellation handler, which runs later on the main thread); :brain
+        // rebuilds that conversation next time.
         slot.stop()
     }
 
+    /** "Stop" said, or a tap: the voice stops, and the rest of a reply still streaming is shown but not spoken. */
     fun stopSpeaking() {
+        voice.mute()
         VoiceHub.tts.stop()
         _state.update { if (it.phase == Phase.SPEAKING) it.copy(phase = Phase.IDLE) else it }
     }
@@ -647,7 +663,8 @@ object PanelController {
 
     private fun finishReply(replyId: String, reason: DoneReason) {
         if (!current(replyId)) return
-        if (_state.value.speak) splitter.flush()?.let(::speakSentence)
+        // A stopped reply's last, unfinished sentence is not read out (nor anything after "stop").
+        voice.finish(replyId, cancelled = reason == DoneReason.CANCELLED, speak = _state.value.speak)?.let(::speakSentence)
         val stopped = reason == DoneReason.CANCELLED || reason == DoneReason.LENGTH || reason == DoneReason.GARBAGE
         val ui = _state.value.turns.firstOrNull { it.id == replyId }
         var text = ui?.text?.trim().orEmpty()
@@ -656,7 +673,8 @@ object PanelController {
         chat += ChatTurn(replyId, TurnRole.ASSISTANT, text, System.currentTimeMillis(), actions = records(actions), stopped = stopped)
         _state.update { st ->
             st.copy(
-                phase = if (VoiceHub.tts.isSpeaking) Phase.SPEAKING else Phase.IDLE,
+                // Only the turn's phases end here: "hey robot" during the answer is already listening.
+                phase = st.phase.afterTurn(VoiceHub.tts.isSpeaking),
                 turns = st.turns.map { if (it.id == replyId) it.copy(text = text, streaming = false, stopped = stopped, actions = actions) else it },
             )
         }
@@ -666,12 +684,13 @@ object PanelController {
 
     private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
         if (!current(replyId)) return
+        voice.finish(replyId, cancelled = true, speak = false)
         // Actions that ran before the failure stay on record.
         val actions = settled(_state.value.turns.firstOrNull { it.id == replyId }?.actions.orEmpty())
         chat += ChatTurn(replyId, TurnRole.ASSISTANT, message, System.currentTimeMillis(), actions = records(actions), error = true)
         _state.update { st ->
             st.copy(
-                phase = if (VoiceHub.tts.isSpeaking) Phase.SPEAKING else Phase.IDLE,
+                phase = st.phase.afterTurn(VoiceHub.tts.isSpeaking),
                 notice = if (action != NoticeAction.NONE) Notice(message, action) else st.notice,
                 turns = st.turns.map { if (it.id == replyId) it.copy(text = message, streaming = false, error = true, actions = actions) else it },
             )

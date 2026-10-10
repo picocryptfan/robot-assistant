@@ -291,9 +291,9 @@ private fun Messages(st: PanelState, modifier: Modifier) {
     }
     val reversed = remember(st.turns) { st.turns.asReversed() }
     LazyColumn(
-        modifier = modifier.fillMaxWidth().pointerInput(st.phase) {
-            // Tapping the conversation stops speech (spec item 4).
-            detectTapGestures { if (st.phase == Phase.SPEAKING) PanelController.stopSpeaking() }
+        modifier = modifier.fillMaxWidth().pointerInput(st.phase, st.speak) {
+            // Tapping the conversation stops speech (spec item 4), also while the spoken reply still streams.
+            detectTapGestures { if (st.phase == Phase.SPEAKING || (st.phase == Phase.ANSWERING && st.speak)) PanelController.stopSpeaking() }
         },
         reverseLayout = true,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),

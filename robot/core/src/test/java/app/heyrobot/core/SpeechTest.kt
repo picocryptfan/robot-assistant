@@ -1,6 +1,7 @@
 package app.heyrobot.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -78,5 +79,63 @@ class SpeechTest {
         assertEquals("see the docs", SpeechText.clean("see [the docs](https://x.y/z)"))
         assertEquals("go to a link now", SpeechText.clean("go to https://example.com/a?b now"))
         assertEquals("", SpeechText.clean("***"))
+    }
+
+    // ReplyVoice: what of a streaming reply is spoken (0.1.2 review, majors 2 and 3).
+
+    private val longFirst = "Sure, here is what I found for you today. "
+
+    @Test fun aFinishedReplySpeaksItsLastSentence() {
+        val v = ReplyVoice()
+        v.start("r1")
+        assertEquals(listOf("Sure, here is what I found for you today."), v.feed("r1", longFirst, speak = true))
+        assertEquals(emptyList<String>(), v.feed("r1", "It is sunny", speak = true))
+        assertEquals("It is sunny", v.finish("r1", cancelled = false, speak = true))
+        // Finished: nothing more for it.
+        assertNull(v.finish("r1", cancelled = false, speak = true))
+        assertEquals(emptyList<String>(), v.feed("r1", "late. ", speak = true))
+    }
+
+    @Test fun aCancelledReplyDropsItsCutOffSentence() {
+        val v = ReplyVoice()
+        v.start("r1")
+        v.feed("r1", longFirst, speak = true)
+        v.feed("r1", "The forecast for tomor", speak = true)
+        assertNull(v.finish("r1", cancelled = true, speak = true))
+        // The next reply starts clean, with a short first piece again.
+        v.start("r2")
+        assertEquals(listOf("Okay."), v.feed("r2", "Okay. ", speak = true))
+    }
+
+    @Test fun stopMutesTheRestOfTheStreamingReply() {
+        val v = ReplyVoice()
+        v.start("r1")
+        assertEquals(1, v.feed("r1", longFirst, speak = true).size)
+        v.mute()
+        assertFalse(v.live("r1"))
+        assertEquals(emptyList<String>(), v.feed("r1", "More words here. And more. ", speak = true))
+        assertNull(v.say("r1", "Timer set.", speak = true))
+        assertNull(v.finish("r1", cancelled = false, speak = true))
+        // The next question speaks again.
+        v.start("r2")
+        assertTrue(v.live("r2"))
+        assertEquals("Done.", v.say("r2", "Done.", speak = true))
+        assertEquals(listOf("Okay."), v.feed("r2", "Okay. ", speak = true))
+    }
+
+    @Test fun onlyTheCurrentReplyAndOnlyWithSpeechOn() {
+        val v = ReplyVoice()
+        v.start("r2")
+        // A late chunk or the end of an older reply says nothing, and does not disturb the current one.
+        assertEquals(emptyList<String>(), v.feed("r1", "Old text. ", speak = true))
+        assertNull(v.finish("r1", cancelled = false, speak = true))
+        assertTrue(v.live("r2"))
+        assertEquals(emptyList<String>(), v.feed("r2", "Quiet, please. ", speak = false))
+        assertNull(v.say("r2", "Quiet.", speak = false))
+        assertNull(v.finish("r2", cancelled = false, speak = false))
+        // Muting with no reply under way only clears what was buffered.
+        v.mute()
+        v.start("r3")
+        assertTrue(v.live("r3"))
     }
 }

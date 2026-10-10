@@ -110,6 +110,48 @@ class SentenceSplitter(private val maxChars: Int = 220, private val firstMinWord
     }
 }
 
+/**
+ * Which parts of the reply being streamed are read aloud (the panel calls it on its main thread). One reply at a
+ * time: text of any other reply, of a reply that was muted ("stop" said or tapped while it streams) or of one that
+ * was cancelled is never spoken, and a cancelled reply's unfinished last sentence is dropped, not read out. The
+ * next question speaks again.
+ */
+class ReplyVoice(private val splitter: SentenceSplitter = SentenceSplitter()) {
+    private var reply: String? = null
+    private var muted = false
+
+    /** Reply [id] starts: its first piece is short again, and it is not muted. */
+    fun start(id: String) {
+        reply = id
+        muted = false
+        splitter.reset()
+    }
+
+    /** Streamed text of reply [id]: the pieces to say now (none with [speak] off, or for a muted or old reply). */
+    fun feed(id: String, text: String, speak: Boolean): List<String> = if (speak && live(id)) splitter.feed(text) else emptyList()
+
+    /** A whole sentence reply [id]'s turn says by itself (an action's result), or null if it must stay silent. */
+    fun say(id: String, sentence: String, speak: Boolean): String? = sentence.takeIf { speak && live(id) }
+
+    /** Reply [id] ended: the rest to say, or null (cancelled, muted, speech off, or not the current reply). */
+    fun finish(id: String, cancelled: Boolean, speak: Boolean): String? {
+        if (id != reply) return null
+        val rest = if (speak && !muted && !cancelled) splitter.flush() else null
+        splitter.reset()
+        reply = null
+        return rest
+    }
+
+    /** "Stop" while the reply streams (or Stop, or a new question by voice): nothing more of it is spoken. */
+    fun mute() {
+        if (reply != null) muted = true
+        splitter.reset()
+    }
+
+    /** True while reply [id] is the current one and may still be spoken. */
+    fun live(id: String): Boolean = id == reply && !muted
+}
+
 object SpeechText {
     /** Markdown and symbols removed so a voice reads it naturally; blank when nothing is left to say. */
     fun clean(s: String): String = s
