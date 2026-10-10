@@ -3,17 +3,19 @@ package app.heyrobot.core
 import java.text.Normalizer
 import java.util.Locale
 
-// Pure. What the owner's words mean for Claude, decided by code and never by the local model (docs/ask-claude.md "How
-// it is triggered"). The router runs on the transcript or the typed text before anything reaches Gemma. Matching is
-// anchored at the start of the utterance, with only filler words ("hey robot", "please", "can you", "okay") in front,
-// so "what's the weather like on Claude's birthday" stays local. Parakeet's mishearings of "Claude" ("cloud", "clod",
-// "clawed", "claud", "klode", "clyde") count only in command position: "ask cloud about X" is a command, "what's the
-// cloud cover tomorrow" is not.
+// Pure. What your words mean for Claude, decided by code and never by the local model (docs/ask-claude.md "How it is
+// triggered"). The router runs on the transcript or the typed text before anything reaches Gemma. Matching is anchored
+// at the start of the utterance, with only filler words ("hey robot", "please", "can you", "okay") in front, so "what's
+// the weather like on Claude's birthday" stays local. Parakeet's mishearings of "Claude" ("cloud", "clod", "clawed",
+// "claud", "klode", "clyde") count only after an explicit command verb: "ask cloud about X" and "get cloud" are
+// commands, "what's the cloud cover tomorrow" and "Clyde, pass the salt" are not. The name on its own leads into a
+// question for Claude only when it is exactly "Claude" and what follows is a question or a request ("Claude, what's
+// …", "Claude explain …"), never a sentence about someone called Claude ("Claude can come over tomorrow").
 
 sealed class ClaudeCommand {
     /**
-     * One question for Claude. [deep]: the owner asked for depth ("think hard about", "take your time"). [extra]: the
-     * owner asked about the screen or a photo; it goes only after a tap on a card.
+     * One question for Claude. [deep]: you asked for depth ("think hard about", "take your time"). [extra]: you asked
+     * about the screen or a photo; it goes only after a tap on a card.
      */
     data class Ask(val question: String, val deep: Boolean = false, val extra: Attachment = Attachment.NONE) : ClaudeCommand()
 
@@ -28,8 +30,10 @@ sealed class ClaudeCommand {
 }
 
 object ClaudeRouter {
-    /** "Claude" and how Parakeet may hear it; accepted in command position only. */
+    /** "Claude" and how Parakeet may hear it; the mishearings count only after a command verb ([seq]'s "*"). */
     val ALIASES = setOf("claude", "cloud", "clod", "clawed", "claud", "klode", "clyde")
+    /** The name as written: the only form that may be addressed directly or used after a weaker verb ("switch to"). */
+    private const val NAME = "claude"
 
     /** A word of the utterance: its plain form (no accents, apostrophes or case) and where it sits in the original. */
     private class Word(val w: String, val start: Int, val end: Int, val punctAfter: Char?)
@@ -53,7 +57,7 @@ object ClaudeRouter {
     fun plain(s: String): String = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
         .lowercase(Locale.ROOT).replace("'", "").replace("’", "")
 
-    /** Filler allowed in front of a command, English and French. "hey"/"hi"/"ok" before the name make it a vocative. */
+    /** Filler allowed in front of a command, English and French. */
     private val FILLER: List<List<String>> = listOf(
         listOf("hey", "robot"), listOf("hi", "robot"), listOf("ok", "robot"), listOf("okay", "robot"), listOf("hello", "robot"),
         listOf("he", "robot"), listOf("dis", "robot"), listOf("robot"),
@@ -62,28 +66,27 @@ object ClaudeRouter {
         listOf("sil", "te", "plait"), listOf("sil", "vous", "plait"), listOf("peux", "tu"), listOf("pourrais", "tu"),
         listOf("est", "ce", "que", "tu", "peux"), listOf("dac"), listOf("daccord"),
     )
-    private val VOCATIVE_LEAD = setOf("hey", "hi", "ok", "okay", "he")
-
-    private class Head(val at: Int, val vocative: Boolean)
-
-    /** Skips the filler at the start; [Head.vocative]: the last filler word was "hey", "hi" or "ok". */
-    private fun head(ws: List<Word>): Head {
+    /** Skips the filler at the start: the index of the first word that counts. */
+    private fun head(ws: List<Word>): Int {
         var i = 0
-        var vocative = false
         while (true) {
             val f = FILLER.firstOrNull { f -> f.indices.all { k -> ws.getOrNull(i + k)?.w == f[k] } } ?: break
-            // "hey" and "ok" alone are filler only before the name or another filler; "hey robot" is always filler.
             i += f.size
-            vocative = f.size == 1 && f[0] in VOCATIVE_LEAD
         }
-        return Head(i, vocative)
+        return i
     }
 
-    private fun alias(w: Word?): Boolean = w != null && w.w in ALIASES
-
-    /** True if [ws] from [at] reads [p], where "*" is the name (an alias). */
+    /** True if [ws] from [at] reads [p], where "*" is the name or a mishearing of it and "=" the name exactly. */
     private fun seq(ws: List<Word>, at: Int, vararg p: String): Boolean =
-        p.indices.all { k -> ws.getOrNull(at + k)?.let { if (p[k] == "*") it.w in ALIASES else it.w == p[k] } == true }
+        p.indices.all { k ->
+            ws.getOrNull(at + k)?.let {
+                when (p[k]) {
+                    "*" -> it.w in ALIASES
+                    "=" -> it.w == NAME
+                    else -> it.w == p[k]
+                }
+            } == true
+        }
 
     /** The original text from word [at] on, without leading connectors ([drop]) and punctuation; null if empty. */
     private fun rest(text: String, ws: List<Word>, at: Int, drop: Set<String> = emptySet()): String? {
@@ -97,12 +100,16 @@ object ClaudeRouter {
     private val JOIN_TAIL = setOf("please", "in", "now", "back", "here", "sil", "te", "vous", "plait", "maintenant", "on", "for", "me")
     private val JOIN_LINK = setOf("and", "et", "then", "ask", "him", "her", "it", "lui", "demande", "puis")
 
+    /** Claude mode. A mishearing ("*") counts after "get" and "va chercher" only; the rest need the name ("="). */
     private val JOINS: List<Array<String>> = listOf(
-        arrayOf("go", "get", "*"), arrayOf("go", "and", "get", "*"), arrayOf("bring", "in", "*"), arrayOf("bring", "*", "in"), arrayOf("bring", "*"),
-        arrayOf("get", "*"), arrayOf("let", "me", "talk", "to", "*"), arrayOf("lets", "talk", "to", "*"), arrayOf("switch", "to", "*"),
-        arrayOf("i", "want", "to", "talk", "to", "*"), arrayOf("talk", "to", "*"), arrayOf("put", "*", "on"),
-        arrayOf("va", "chercher", "*"), arrayOf("passe", "moi", "*"), arrayOf("je", "veux", "parler", "a", "*"), arrayOf("parle", "a", "*"),
+        arrayOf("go", "get", "*"), arrayOf("go", "and", "get", "*"), arrayOf("get", "*"), arrayOf("va", "chercher", "*"),
+        arrayOf("bring", "in", "="), arrayOf("bring", "=", "in"), arrayOf("bring", "="),
+        arrayOf("let", "me", "talk", "to", "="), arrayOf("lets", "talk", "to", "="), arrayOf("switch", "to", "="),
+        arrayOf("i", "want", "to", "talk", "to", "="), arrayOf("talk", "to", "="), arrayOf("put", "=", "on"),
+        arrayOf("passe", "moi", "="), arrayOf("je", "veux", "parler", "a", "="), arrayOf("parle", "a", "="),
     )
+    /** "talk to Claude about …": the subject opens the conversation. */
+    private val ABOUT = setOf("about", "de", "sur")
     private val LEAVES: List<Array<String>> = listOf(
         arrayOf("thanks", "*"), arrayOf("thank", "you", "*"), arrayOf("thx", "*"), arrayOf("bye", "*"), arrayOf("bye", "bye", "*"), arrayOf("goodbye", "*"),
         arrayOf("thats", "all", "*"), arrayOf("that", "is", "all", "*"), arrayOf("stop", "*"), arrayOf("back", "to", "robot"),
@@ -113,8 +120,7 @@ object ClaudeRouter {
     /** The command at the start of [text], or null: ordinary talk for Robot. */
     fun route(text: String): ClaudeCommand? {
         val ws = words(text)
-        val h = head(ws)
-        val i = h.at
+        val i = head(ws)
         if (i >= ws.size) return null
 
         // Leave first: "stop Claude" and "thanks Claude" are never questions.
@@ -131,15 +137,19 @@ object ClaudeRouter {
             seq(ws, i, "demande", "*") -> i + 2
             else -> -1
         }
-        if (askAt >= 0) return rest(text, ws, askAt, ASK_DROP)?.let(::ask) ?: ClaudeCommand.Join()
+        if (askAt >= 0) {
+            // "ask Clyde if he's coming to dinner": a message for a person (Robot's to handle), not a question for Claude.
+            if (ws.getOrNull(askAt)?.w in setOf("if", "whether", "si") && ws.getOrNull(askAt + 1)?.w in PERSON) return null
+            return rest(text, ws, askAt, ASK_DROP)?.let(::ask) ?: ClaudeCommand.Join()
+        }
 
         // "what does Claude think about …", "qu'est-ce que Claude pense de …".
-        if (seq(ws, i, "what", "does", "*", "think") || seq(ws, i, "whats", "*", "think")) {
+        if (seq(ws, i, "what", "does", "=", "think") || seq(ws, i, "whats", "=", "think")) {
             val at = i + if (ws[i].w == "what") 4 else 3
             val r = rest(text, ws, at, setOf("about", "of")) ?: return ClaudeCommand.Join()
             return ask("What do you think about ${r.trimEnd('?', '.', ' ')}?")
         }
-        if (seq(ws, i, "quest", "ce", "que", "*", "pense")) {
+        if (seq(ws, i, "quest", "ce", "que", "=", "pense")) {
             val r = rest(text, ws, i + 5) ?: return ClaudeCommand.Join()
             return ask("Que penses-tu ${r.trimEnd('?', '.', ' ')} ?")
         }
@@ -151,6 +161,8 @@ object ClaudeRouter {
             while (k < ws.size && ws[k].w in JOIN_TAIL) k++
             if (k >= ws.size) return ClaudeCommand.Join()
             val nameEnd = ws[i + p.size - 1]
+            // "talk to Claude about my day".
+            if (ws[k].w in ABOUT && k + 1 < ws.size) return ClaudeCommand.Join("Let's talk about " + text.substring(ws[k + 1].start).trim().trimEnd('.', '!', ' ') + ".")
             // "get Claude, what's …" or "go get Claude and ask him …": the rest is the first question.
             if (nameEnd.punctAfter in setOf(',', ':', '—', '-') || ws[k].w in JOIN_LINK) {
                 return ClaudeCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP))
@@ -159,33 +171,55 @@ object ClaudeRouter {
             return null
         }
 
-        // The name itself, as a vocative: "Claude, …", "hey Claude …". An alias needs the comma or the "hey"; the real
-        // name may also go straight into a question ("Claude what is …"), never into a statement ("Claude Monet …").
-        if (alias(ws[i])) {
-            val w = ws[i]
-            val questionNext = w.w == "claude" && ws.getOrNull(i + 1)?.w in QUESTION_WORDS
-            if (w.punctAfter in setOf(',', ':', '—') || h.vocative || questionNext) {
-                return rest(text, ws, i + 1)?.let(::ask) ?: ClaudeCommand.Join()
-            }
+        // The name itself, addressed: "Claude, what's …", "hey Claude explain …", "Claude" alone. Only the name as
+        // written, and only into a question or a request: "Claude can come over tomorrow", "Claude Monet painted …" and
+        // "Claude please stop calling me" are about someone called Claude, and a mishearing never counts here.
+        if (ws[i].w == NAME) {
+            if (i + 1 >= ws.size) return ClaudeCommand.Join()
+            if (addressed(ws.drop(i + 1), text.trimEnd().endsWith("?"))) return rest(text, ws, i + 1)?.let(::ask) ?: ClaudeCommand.Join()
         }
         return null
     }
 
-    private val QUESTION_WORDS = setOf("what", "whats", "why", "how", "who", "whos", "when", "where", "which", "can", "could",
-        "tell", "explain", "write", "give", "help", "please", "pourquoi", "comment", "quest", "dis", "peux", "explique")
+    /** "he", "she", "they" right after "ask … if": the question is for a person ("il" is also "it" in French). */
+    private val PERSON = setOf("he", "hes", "she", "shes", "they", "theyre", "theyll", "hell", "shell", "hed", "shed", "elle", "elles")
+
+    private val WH = setOf("what", "whats", "why", "how", "hows", "who", "whos", "whose", "when", "where", "wheres", "which",
+        "pourquoi", "comment", "quest", "quel", "quelle", "quels", "quelles", "combien", "qui", "quand")
+    /** Requests that stand on their own: "Claude, explain …". */
+    private val REQUEST = setOf("explain", "summarize", "summarise", "translate", "describe", "define", "compare", "recommend", "suggest",
+        "explique", "resume", "traduis", "decris", "compare", "definis")
+    /** Requests that need "me" or "us" after them: "tell me", "help me", "write me". */
+    private val TO_ME = setOf("tell", "help", "write", "give", "show", "teach", "dis", "aide", "donne", "ecris", "montre")
+    /** Questions that start with a verb: a question only with "you" after it, or a question mark. */
+    private val AUX = setOf("can", "could", "would", "will", "do", "does", "did", "is", "are", "should", "have", "has", "peux", "pourrais", "est", "es")
+
+    /** What follows the name is a question or a request for Claude ([question]: the text ends with "?"). */
+    private fun addressed(r: List<Word>, question: Boolean): Boolean {
+        val w0 = r.firstOrNull()?.w ?: return false
+        val w1 = r.getOrNull(1)?.w
+        return when {
+            w0 in WH || w0 in REQUEST -> true
+            w0 in TO_ME -> w1 in setOf("me", "us", "moi", "nous") || (w0 == "write" && w1 in setOf("a", "an"))
+            w0 in AUX -> question || w1 in setOf("you", "tu", "vous")
+            // "Claude, please explain …" (but "Claude please stop calling me" is about someone).
+            w0 == "please" -> addressed(r.drop(1), question)
+            else -> false
+        }
+    }
 
     private fun ask(q: String) = ClaudeCommand.Ask(q, deep(q), extra(q))
 
     private val DEEP = listOf("think hard", "think carefully", "think it through", "take your time", "in depth", "in detail",
         "reflechis bien", "prends ton temps", "en detail")
 
-    /** The owner asked for depth: high effort and the longer answer limit. */
+    /** You asked for depth: high effort and the longer answer limit. */
     fun deep(text: String): Boolean = plain(text).let { t -> DEEP.any { t.contains(it) } }
 
     private val SCREEN = Regex("""\b(on|of|about) (my|the|this) screen\b|\bthis screen\b|\bmon ecran\b|\bcet ecran\b""")
     private val PHOTO = Regex("""\b(this|the|my) (photo|picture|image|pic)\b|\bcette (photo|image)\b""")
 
-    /** "about what's on my screen", "about this photo": what the owner wants to share (only after a tap). */
+    /** "about what's on my screen", "about this photo": what you want to share (only after a tap). */
     fun extra(text: String): Attachment {
         val t = plain(text)
         return when {
@@ -223,9 +257,11 @@ object PreRouter {
     private val SIGNALS: List<Pair<Signal, Regex>> = listOf(
         Signal.REASONING to Regex("""\bexplain (why|how)\b|\bcompare\b|\bstep by step\b|\bpros and cons\b|\bplan (a|my|an|the)\b|\bhelp me (plan|decide)\b|\bshould i\b.*\bor\b"""),
         Signal.WRITING to Regex("""^(please )?(write me|draft)\b|\bwrite me\b|\bwrite (a|an) (poem|story|essay|letter|speech|cover letter)\b"""),
-        Signal.CODE to Regex("""(?<!area |postal |zip |dress |promo )\bcode\b|\bpython\b|\bjavascript\b|\bkotlin\b|\bregex\b|\bsql\b"""),
+        // Codes for doors, gates, the wifi and the like are everyday questions.
+        Signal.CODE to Regex("""(?<!area |postal |zip |dress |promo |door |gate |wifi |wi fi |access |entry |pin |lock |garage |security |discount |coupon |promo |qr |bar |country |building )\bcode\b|\bpython\b|\bjavascript\b|\bkotlin\b|\bregex\b|\bsql\b"""),
         Signal.MATH to Regex("""\bcalculate\b|\bsolve\b|\bintegral\b|\bderivative\b|\bequation\b|\bpercent(age)? of\b"""),
-        Signal.CURRENT_INFO to Regex("""\blatest\b|\bnews\b|\btodays price\b|\bprice of\b|\bstock price\b|\bexchange rate\b|\bscore\b|\bweather\b|\bforecast\b|\bwho won\b"""),
+        // News from someone you know and your own scores (credit, a test) are not current events.
+        Signal.CURRENT_INFO to Regex("""\blatest\b|\bnews\b(?! from)|\btodays price\b|\bprice of\b|\bstock price\b|\bexchange rate\b|(?<!credit |fico |test |exam |sleep |health |my )\bscore\b|\bweather\b|\bforecast\b|\bwho won\b"""),
     )
 
     /** The strongest signal in [question], or null (Gemma answers). */

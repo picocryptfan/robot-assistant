@@ -62,15 +62,55 @@ class ClaudeRouterTest {
         assertEquals(ask("Que penses-tu de la pizza à l'ananas ?"), route("qu'est-ce que Claude pense de la pizza à l'ananas"))
     }
 
-    @Test fun mishearingsCountInCommandPosition() {
+    @Test fun mishearingsCountOnlyAfterACommandVerb() {
         for (a in ClaudeRouter.ALIASES) {
             assertEquals(a, ask("about black holes"), route("ask $a about black holes"))
-            assertEquals(a, ask("what's the capital of Peru?"), route("$a, what's the capital of Peru?"))
-            assertEquals(a, ask("tell me a joke"), route("hey $a tell me a joke"))
             assertEquals(a, ClaudeCommand.Join(), route("go get $a"))
+            assertEquals(a, ClaudeCommand.Join(), route("get $a"))
             assertEquals(a, ClaudeCommand.Leave, route("thanks $a"))
             assertEquals(a, ClaudeCommand.Join(), route("demande à $a"))
+            // Addressed without a command verb: only the name itself.
+            val vocative = if (a == "claude") ask("what's the capital of Peru?") else null
+            assertEquals(a, vocative, route("$a, what's the capital of Peru?"))
+            assertEquals(a, if (a == "claude") ask("tell me a joke") else null, route("hey $a tell me a joke"))
+            // A weaker verb needs the name too.
+            assertEquals(a, if (a == "claude") ClaudeCommand.Join() else null, route("switch to $a"))
         }
+    }
+
+    @Test fun wordsAboutSomeoneCalledClaudeStayLocal() {
+        // Statements about a person, with the name first.
+        assertNull(route("Claude can come over tomorrow"))
+        assertNull(route("Claude could use a haircut"))
+        assertNull(route("Claude please stop calling me"))
+        assertNull(route("Claude is coming at six"))
+        assertNull(route("hey Claude I'm home"))
+        // A mishearing is never addressed directly.
+        assertNull(route("Okay, cloud cover tomorrow?"))
+        assertNull(route("hey cloud storage is full"))
+        assertNull(route("Clyde, pass the salt"))
+        assertNull(route("hey cloud"))
+        // "ask … if he …" is a message for a person.
+        assertNull(route("ask Clyde if he's coming to dinner"))
+        assertNull(route("ask Claude if she wants pizza"))
+        assertEquals(ask("if it will rain tomorrow"), route("ask Claude if it will rain tomorrow"))
+        // The name with a real question or request still goes.
+        assertEquals(ask("can you come up with a name for my cat?"), route("Claude can you come up with a name for my cat?"))
+        assertEquals(ask("is it going to rain?"), route("Claude is it going to rain?"))
+        assertEquals(ask("please explain black holes"), route("Claude please explain black holes"))
+        assertEquals(ask("explain black holes"), route("Claude explain black holes"))
+        assertEquals(ask("write me a haiku"), route("Claude write me a haiku"))
+        assertEquals(ask("pourquoi le ciel est bleu"), route("Claude, pourquoi le ciel est bleu"))
+        assertEquals(ClaudeCommand.Join(), route("Claude"))
+        assertEquals(ClaudeCommand.Join(), route("hey Claude"))
+    }
+
+    @Test fun talkToClaudeAbout() {
+        assertEquals(ClaudeCommand.Join("Let's talk about my day."), route("talk to Claude about my day"))
+        assertEquals(ClaudeCommand.Join("Let's talk about black holes."), route("let me talk to Claude about black holes."))
+        assertEquals(ClaudeCommand.Join(), route("talk to Claude"))
+        // A mishearing after "talk to" is not enough.
+        assertNull(route("talk to cloud about my day"))
     }
 
     @Test fun mishearingsOutOfCommandPositionStayLocal() {
@@ -89,6 +129,9 @@ class ClaudeRouterTest {
         // Not the real name either: a statement, not a vocative.
         assertNull(route("Claude Monet painted water lilies"))
         assertNull(route("claude is a nice name"))
+        assertNull(route("I saw a cloud"))
+        assertNull(route("clawed at the door all night"))
+        assertNull(route("Claude's birthday is on Friday"))
     }
 
     @Test fun smallTalkAboutClaudeStaysLocal() {
