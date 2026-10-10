@@ -151,6 +151,8 @@ data class UiAction(
     val cancel: String? = null,
     /** An app the card offers to open (Cheogram when no contact matched), by package. */
     val handOff: String? = null,
+    /** The picture a share card would send. */
+    val picture: Bitmap? = null,
 )
 
 /**
@@ -279,8 +281,14 @@ object PanelController {
     private var lastToApp: String? = null
     /** The offer waiting under a reply, by reply id, with exactly what a tap would send (at most one at a time). */
     private val offers = HashMap<String, PendingOffer>()
-    /** The picture of the last question, kept for this panel session only ("ask Claude about this photo"). */
+    /**
+     * The last photo (from the camera or the picker) and its thumbnail, kept for this panel session and conversation
+     * only ("ask Claude about this photo"). Never a screenshot.
+     */
     private var lastImage: ByteArray? = null
+    private var lastThumb: Bitmap? = null
+    /** The app on screen when the corner swipe came from a single app (its screenshot's label), by package. */
+    private var screenPkg: String? = null
     /** The day the "budget used up" sentence was said (once a day). */
     private var budgetSaid: String? = null
 
@@ -337,6 +345,7 @@ object PanelController {
             screenshot = null
             claudePieces = null
             assistPieces.clear()
+            screenPkg = null
             val stale = System.currentTimeMillis() - lastActivity > CONTINUE_MS
             when {
                 convArg != null && !locked && ConversationStore.validId(convArg) -> loadConversation(convArg)
@@ -402,6 +411,7 @@ object PanelController {
         screenshot = null
         claudePieces = null
         assistPieces.clear()
+        screenPkg = null
         dropOffers()
         if (!forCapture) {
             draftJpeg = null
@@ -424,6 +434,7 @@ object PanelController {
         if (index == 0) {
             assistPieces.clear()
             claudePieces = null
+            screenPkg = pkg.takeIf { count == 1 }
         }
         assistPieces += pieces
         screenText = ScreenText.build(assistPieces)
@@ -446,6 +457,9 @@ object PanelController {
         askingTextFor = null
         endClaudeMode()
         offers.clear()
+        // A photo from the last conversation never goes with this one.
+        lastImage = null
+        lastThumb = null
         chat.clear()
         groups = setOf(ToolGroup.CORE)
         closeConvAfterTurn = false
@@ -463,6 +477,8 @@ object PanelController {
         stopGenerating()
         endClaudeMode()
         offers.clear()
+        lastImage = null
+        lastThumb = null
         chat.clear()
         chat += c.turns
         // The groups its questions and actions used: continuing it describes the same tools.
@@ -700,7 +716,12 @@ object PanelController {
             Attachment.SCREEN -> screenshot?.let { Images.jpeg(it) }
             Attachment.NONE -> null
         }
-        if (image != null) lastImage = image
+        // Only a photo: "ask Claude about this photo" must never pick up a screenshot.
+        if (attachment == Attachment.PHOTO && image != null) {
+            lastImage = image
+            lastThumb = st.draft?.thumb
+        }
+        val thumb = st.draft?.thumb
         val sText = if (attachment == Attachment.SCREEN) screenText else null
         val history = chat.toList()
         val now = System.currentTimeMillis()
@@ -722,7 +743,7 @@ object PanelController {
         _state.update {
             it.copy(
                 turns = it.turns + UiTurn(user.id, TurnRole.USER, user.text, marked, st.draft?.thumb) +
-                    UiTurn(replyId, TurnRole.ASSISTANT, "", streaming = true, claude = api && cmd != ClaudeCommand.Join(null)),
+                    UiTurn(replyId, TurnRole.ASSISTANT, "", streaming = true, claude = api && !(cmd is ClaudeCommand.Join && cmd.question == null)),
                 phase = Phase.THINKING, draft = null, partial = "", notice = null, keep = keep,
                 locked = Assistant.locked(VoiceHub.app),
                 claudeStatus = if (api) ClaudeWords.THINKING else null,
@@ -746,7 +767,7 @@ object PanelController {
                 } else {
                     localReply(replyId, ClaudeWords.SWIPE_TO_READ)
                 }
-                way == FastPath.Way.CLAUDE -> claudeTurn(replyId, cmd, user.text, attachment, sText, image, history, fromVoice)
+                way == FastPath.Way.CLAUDE -> claudeTurn(replyId, cmd, user.text, attachment, sText, image, thumb, history, fromVoice)
                 // A plain request to text someone (or the answer to "what should it say?") goes straight to send_text.
                 way == FastPath.Way.TEXT && directText(replyId, q, textingFor, fromVoice, untrusted) -> {}
                 else -> runTurn(replyId, user.text, attachment, sText, image, history, untrusted, guard, fromVoice)
@@ -1050,6 +1071,14 @@ object PanelController {
         }
     }
 
+    /** The app's name for the Send card ("a screenshot of Signal"), or null when it isn't known or visible to Robot. */
+    private fun appLabel(pkg: String?): String? = pkg?.let {
+        try {
+            val pm = VoiceHub.app.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(it, 0)).toString().trim().takeIf { l -> l.isNotEmpty() && l != it }
+        } catch (_: Exception) { null }
+    }
+
     /** No key to use: none saved, or the saved one couldn't be read (then it was removed, and Robot says so). */
     private fun noKey(replyId: String) {
         val text = if (ClaudeLink.unreadable) ClaudeWords.KEY_UNREADABLE else ClaudeFailure.NO_KEY.text
@@ -1058,7 +1087,7 @@ object PanelController {
 
     /** A question for Claude ("ask Claude …", "go get Claude", or any question in Claude mode). */
     private suspend fun claudeTurn(replyId: String, cmd: ClaudeCommand?, said: String, attachment: Attachment, sText: String?, image: ByteArray?,
-        history: List<ChatTurn>, voiceAsked: Boolean) {
+        thumb: Bitmap?, history: List<ChatTurn>, voiceAsked: Boolean) {
         val s = VoiceHub.settings
         val app = VoiceHub.app
         val keySaved = ClaudeLink.keySaved(app)
@@ -1079,7 +1108,7 @@ object PanelController {
         }
         if (!ClaudeLink.networkAllowed(app)) return networkCard(replyId)
         if (cmd is ClaudeCommand.Join) {
-            startClaudeMode(joinedAt = history.size)
+            startClaudeMode(joinedAt = history.size, misheard = cmd.misheard)
             // Nothing goes to Claude until there is a question.
             if (question == null) return localReply(replyId, ClaudeWords.JOINED, claude = false)
         }
@@ -1090,12 +1119,17 @@ object PanelController {
         var shared = Shared()
         if (extra != Attachment.NONE) {
             val screen = if (extra == Attachment.SCREEN) sText ?: screenText else null
-            val img = if (extra == Attachment.PHOTO) image ?: lastImage else screenshot?.let { Images.jpeg(it) }
+            val photo = extra == Attachment.PHOTO
+            val img = if (photo) (if (attachment == Attachment.PHOTO) image else lastImage) else screenshot?.let { Images.jpeg(it) }
             if (screen == null && img == null) {
                 return localReply(replyId, "Robot doesn't have your screen or a photo this time. Swipe up from the corner over what Claude should see, or add a photo, then ask again.", claude = false)
             }
-            val what = if (extra == Attachment.SCREEN) "your screen's text" + (if (img != null) " and a screenshot" else "") else "the photo"
-            if (!askToShare(replyId, "Send $what to Claude?", screen?.let { ToolCalls.safeTake(it, 600) }, "Send")) {
+            // The card says exactly what goes and shows the picture: the photo, or a screenshot of the app on screen.
+            val pic = if (photo) (if (attachment == Attachment.PHOTO) thumb else lastThumb) else screenshot?.let { Images.scaled(it, Images.THUMB_EDGE) }
+            val app = if (!photo && img != null) withContext(Dispatchers.IO) { appLabel(screenPkg) } else null
+            val what = if (photo) "the photo" else listOfNotNull(screen?.let { "your screen's text" },
+                img?.let { "a screenshot" + (app?.let { a -> " of $a" } ?: "") }).joinToString(" and ")
+            if (!askToShare(replyId, "Send $what to Claude?", screen?.let { ToolCalls.safeTake(it, 600) }, "Send", picture = pic)) {
                 return localReply(replyId, "Okay, nothing was sent to Claude.", claude = false)
             }
             shared = Shared(screenText = screen, image = img)
@@ -1110,10 +1144,11 @@ object PanelController {
                 session.fresh -> {
                     // Claude joins the conversation: a personal one only after "Include" ("Start fresh" sends none of it).
                     val before = history.take(claudeJoinedAt.coerceIn(0, history.size))
-                    val include = ClaudeContext.includeQuestion(before)?.let { q ->
+                    // Claude mode from a word that only sounded like the name asks too, personal or not.
+                    val include = ClaudeContext.includeQuestion(before, claudeMisheard)?.let { q ->
                         askToShare(replyId, q, null, "Include", "Start fresh", detail = "Start fresh: Claude sees only what you ask from now on.")
                     } ?: false
-                    ClaudeContext.join(before, question ?: said, now, userRegion, shared, include)
+                    ClaudeContext.join(before, question ?: said, now, userRegion, shared, include, claudeMisheard)
                 }
                 else -> ClaudeContext.next(question ?: said, shared)
             }
@@ -1213,10 +1248,10 @@ object PanelController {
      * are spoken, so you know a tap is needed.
      */
     private suspend fun askToShare(replyId: String, summary: String, body: String?, confirm: String, cancel: String = "Cancel",
-        detail: String = "Nothing goes to Claude until you tap $confirm."): Boolean {
+        detail: String = "Nothing goes to Claude until you tap $confirm.", picture: Bitmap? = null): Boolean {
         val id = newId()
         val view = PanelView(replyId)
-        view.card(Card(id, ToolName.ASK_CLAUDE, summary, ActionStatus.PENDING, detail, body = body, confirm = confirm, cancel = cancel))
+        upsertAction(replyId, UiAction(id, ToolName.ASK_CLAUDE, summary, ActionStatus.PENDING, detail, body = body, confirm = confirm, cancel = cancel, picture = picture))
         view.phase(TurnPhase.CONFIRMING)
         if (_state.value.speak) VoiceHub.tts.speak("$summary Tap $confirm or $cancel.")
         val pick = try {
@@ -1266,12 +1301,15 @@ object PanelController {
 
     /** Where Claude mode started in the conversation: what came before is what Claude joins. */
     private var claudeJoinedAt = 0
+    /** Claude mode came from a word that only sounded like the name: what came before goes only after a tap. */
+    private var claudeMisheard = false
 
-    private fun startClaudeMode(joinedAt: Int) {
+    private fun startClaudeMode(joinedAt: Int, misheard: Boolean = false) {
         if (!_state.value.claudeMode) {
             ClaudeLink.done(claudeSession)
             claudeSession = null
             claudeJoinedAt = joinedAt
+            claudeMisheard = misheard
         }
         _state.update { it.copy(claudeMode = true) }
         touchClaudeMode()

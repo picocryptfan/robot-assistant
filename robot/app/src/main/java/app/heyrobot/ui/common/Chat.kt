@@ -79,6 +79,8 @@ data class ActionView(
     val cancel: String? = null,
     /** The words of a button that opens another app (only its launcher screen): "Open Cheogram". */
     val openApp: String? = null,
+    /** The picture the card would send (a photo, or a screenshot), shown so you can see what goes. */
+    val picture: Bitmap? = null,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -249,6 +251,9 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
                 }
                 if (a.status.succeeded) Icon(RIcons.Check, a.status.label, Modifier.size(22.dp))
                 if (a.status == ActionStatus.NEEDS_UNLOCK) Icon(RIcons.Lock, "Locked", Modifier.size(22.dp))
+            }
+            a.picture?.let {
+                Image(it.asImageBitmap(), "The picture that would be sent", Modifier.padding(top = 10.dp).heightIn(max = 160.dp).clip(RoundedCornerShape(12.dp)))
             }
             if (a.status == ActionStatus.PENDING && onConfirm != null) {
                 if (a.choices.isNotEmpty() && more != null) {
