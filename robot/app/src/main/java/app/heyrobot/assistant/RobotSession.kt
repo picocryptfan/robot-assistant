@@ -126,12 +126,11 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
         false
     }
 
-    override fun startCapture(intent: Intent) {
-        try {
-            startAssistantActivity(intent)
-        } catch (t: Throwable) {
-            RLog.w("panel_capture", t)
-            PanelController.notify("Couldn't open the camera or the photo picker.")
-        }
+    override fun startCapture(intent: Intent): Boolean = try {
+        startAssistantActivity(intent)
+        true
+    } catch (t: Throwable) {
+        RLog.w("panel_capture", t)
+        false
     }
 }

@@ -15,7 +15,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 // VOICE PROCESS. Pictures for Gemma: downscaled JPEG bytes kept in memory (spec item 5/6). A camera photo
-// lands in the app cache only until it is read, then it is deleted.
+// lands in the app cache only until it is read; it is deleted on every way out (read, cancelled, failed, closed).
 
 object Images {
     /** Long edge sent to the model; Gemma 4's vision encoder resizes anyway. */
@@ -56,6 +56,8 @@ object Images {
  */
 class CaptureActivity : Activity() {
     private val shot: File get() = File(File(cacheDir, "capture").apply { mkdirs() }, "photo.jpg")
+    /** The picture is being read on its thread: the file must stay until it is. */
+    @Volatile private var decoding = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -89,6 +91,7 @@ class CaptureActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return done(null, null)
         val app = applicationContext
+        decoding = true
         Thread({
             val (bmp, error) = try {
                 val src = when (requestCode) {
@@ -101,12 +104,15 @@ class CaptureActivity : Activity() {
                 null to "Couldn't read that picture."
             } finally {
                 shot.delete()
+                decoding = false
             }
             runOnUiThread { done(bmp, error) }
         }, "robot-capture").start()
     }
 
     private fun done(bmp: Bitmap?, error: String?) {
+        // Cancelled, failed or read: the camera's file never outlives the capture.
+        if (!decoding) shot.delete()
         if (bmp != null) {
             PanelController.onImagePicked(Images.jpeg(bmp), Images.scaled(bmp, Images.THUMB_EDGE))
         } else if (error != null) {
@@ -114,6 +120,12 @@ class CaptureActivity : Activity() {
         }
         RobotVoiceService.instance?.show(RobotVoiceService.SRC_CAPTURE)
         finish()
+    }
+
+    override fun onDestroy() {
+        // Closed some other way (the task removed, the process going): no photo is left behind.
+        if (isFinishing && !decoding) shot.delete()
+        super.onDestroy()
     }
 
     companion object {

@@ -105,8 +105,10 @@ import kotlinx.coroutines.launch
 fun AssistantPanel(onClose: () -> Unit) {
     val st by PanelController.state.collectAsState()
     var input by rememberSaveable(st.convId) { mutableStateOf("") }
-    var attachOpen by remember { mutableStateOf(false) }
-    var dragY by remember { mutableFloatStateOf(0f) }
+    // The session (and this composition) survives a hide: a drag offset or an open attach row must not carry over
+    // into the next show, or the panel opens shifted down with its input row off-screen.
+    var attachOpen by remember(st.showId) { mutableStateOf(false) }
+    var dragY by remember(st.showId) { mutableFloatStateOf(0f) }
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -117,10 +119,12 @@ fun AssistantPanel(onClose: () -> Unit) {
         }
     }
 
+    // The field is cleared only when the question was taken (not while a turn is under way).
     fun send() {
-        PanelController.send(input)
-        input = ""
-        attachOpen = false
+        if (PanelController.send(input)) {
+            input = ""
+            attachOpen = false
+        }
     }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -145,7 +149,7 @@ fun AssistantPanel(onClose: () -> Unit) {
                     Modifier.fillMaxWidth().draggable(
                         orientation = Orientation.Vertical,
                         state = rememberDraggableState { d -> dragY += d },
-                        onDragStopped = { if (dragY > 140f) onClose() else dragY = 0f },
+                        onDragStopped = { if (dragY > 140f) { dragY = 0f; onClose() } else dragY = 0f },
                     ),
                 ) {
                     Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
@@ -164,7 +168,7 @@ fun AssistantPanel(onClose: () -> Unit) {
                 }
                 if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING)
                 ContextRow(st)
-                AnimatedVisibility(attachOpen && st.draft == null) { AttachRow(st.locked) { attachOpen = false } }
+                AnimatedVisibility(attachOpen && st.draft == null && !st.busy) { AttachRow(st.locked) { attachOpen = false } }
                 InputRow(
                     st = st,
                     input = input,
@@ -207,6 +211,7 @@ private fun statusLine(st: PanelState): String = when (st.phase) {
     Phase.TRANSCRIBING -> "Writing it down…"
     Phase.THINKING -> if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
     Phase.ANSWERING -> "Answering…"
+    Phase.CONFIRMING -> "Waiting for you: Do it or Cancel"
     Phase.SPEAKING -> "Speaking · tap to stop"
     Phase.IDLE -> when {
         st.locked -> "Locked: questions, timers and alarms"
@@ -225,7 +230,7 @@ private fun StatusOrb(phase: Phase) {
     val c = when (phase) {
         Phase.LISTENING, Phase.TRANSCRIBING -> MaterialTheme.colorScheme.primary
         Phase.THINKING, Phase.ANSWERING -> MaterialTheme.colorScheme.tertiary
-        Phase.SPEAKING -> MaterialTheme.colorScheme.secondary
+        Phase.SPEAKING, Phase.CONFIRMING -> MaterialTheme.colorScheme.secondary
         Phase.IDLE -> MaterialTheme.colorScheme.primary
     }
     Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
@@ -298,7 +303,7 @@ private fun Messages(st: PanelState, modifier: Modifier) {
             if (t.role == TurnRole.USER) UserBubble(t.text, t.attachment, t.thumb)
             else AssistantBubble(
                 text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error,
-                actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail) },
+                actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon) },
                 onConfirm = PanelController::confirm,
             )
         }
@@ -384,7 +389,8 @@ private fun BigChoice(icon: ImageVector, label: String, modifier: Modifier, onCl
 @Composable
 private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, onSend: () -> Unit, onAttach: () -> Unit, focus: FocusRequester) {
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onAttach, modifier = Modifier.size(52.dp)) { Icon(RIcons.Camera, "Add a photo") }
+        // No camera while a turn runs: the panel would hide with the answer still going.
+        IconButton(onClick = onAttach, enabled = !st.busy, modifier = Modifier.size(52.dp)) { Icon(RIcons.Camera, "Add a photo") }
         TextField(
             value = input,
             onValueChange = onInput,
@@ -392,7 +398,8 @@ private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, o
             shape = RoundedCornerShape(26.dp),
             maxLines = 5,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { onSend() }),
+            // While a turn runs the keyboard's Send does nothing (the text stays for later).
+            keyboardActions = KeyboardActions(onSend = { if (!st.busy) onSend() }),
             colors = TextFieldDefaults.colors(
                 focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent,
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,

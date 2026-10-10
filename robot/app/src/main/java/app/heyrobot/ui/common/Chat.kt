@@ -53,7 +53,8 @@ import app.heyrobot.core.ToolName
 
 // Main and voice processes: the chat bubbles shared by the assistant panel and the history screen.
 
-data class ActionView(val id: String, val tool: ToolName?, val summary: String, val status: ActionStatus, val detail: String?)
+/** [icon]: the launcher icon of the app an open_app card will open (shown instead of the tool's symbol). */
+data class ActionView(val id: String, val tool: ToolName?, val summary: String, val status: ActionStatus, val detail: String?, val icon: Bitmap? = null)
 
 fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.SET_TIMER -> RIcons.Timer
@@ -137,7 +138,7 @@ fun AssistantBubble(
 
 @Composable
 fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?) {
-    val bad = a.status in setOf(ActionStatus.FAILED, ActionStatus.INVALID, ActionStatus.NEEDS_UNLOCK, ActionStatus.DISABLED)
+    val bad = a.status in setOf(ActionStatus.FAILED, ActionStatus.INVALID, ActionStatus.NEEDS_UNLOCK, ActionStatus.DISABLED, ActionStatus.SKIPPED)
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.secondaryContainer,
@@ -146,8 +147,12 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?) {
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                    Icon(toolIcon(a.tool), null, Modifier.size(22.dp))
+                if (a.icon != null) {
+                    Image(a.icon.asImageBitmap(), null, Modifier.size(40.dp))
+                } else {
+                    Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+                        Icon(toolIcon(a.tool), null, Modifier.size(22.dp))
+                    }
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
