@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Writes voice/src/main/assets/kws/keywords.txt ("HEY ROBOT") and kws/stop.txt ("STOP"), tokenised with the
-KWS model's BPE.
+"""Writes voice/src/main/assets/kws/keywords.txt and kws/stop.txt for the keyword model.
 
-Uses sherpa-onnx's own text2token (pip install sherpa-onnx==1.13.8 sentencepiece pypinyin), the tool
-the sherpa-onnx KWS docs prescribe (same as the probe's script). The keyword lines carry no :boost or
-#threshold, so the app's ListenerConfig (keywordsScore / keywordsThreshold) applies. "STOP" is not in the
-default set: WakeWord adds it to the keyword stream only while Robot is speaking.
+- keywords.txt: the keyword spotter's own list, one empty line on purpose. sherpa-onnx adds a stream's keywords to
+  this list, and since 0.2.3 Robot gives every stream its keywords at runtime (the wake phrases from Settings, spelled
+  on the phone by core SentencePiece.kt, plus "STOP" while Robot speaks), so nothing is spotted that the settings
+  don't ask for. Not 0 bytes: Android's asset reader in sherpa-onnx takes a 0-length buffer for a C string.
+- stop.txt: "STOP" tokenised with the model's BPE, as sherpa-onnx's own text2token does it.
+
+Also prints the spelling of "HEY ROBOT" (the default wake phrase), which SentencePieceTest checks the on-phone
+encoder against with 114 other phrases (core/src/test/resources/kws/text2token-reference.tsv).
+
+Uses sherpa-onnx's text2token (pip install sherpa-onnx==1.13.8 sentencepiece pypinyin), the tool the sherpa-onnx KWS
+docs prescribe (same as the probe's script).
 
 Usage: python3 tools/make_keywords.py <robot project dir>
 """
@@ -14,19 +20,21 @@ from pathlib import Path
 
 from sherpa_onnx import text2token
 
-FILES = {"keywords.txt": "HEY ROBOT", "stop.txt": "STOP"}
+
+def spell(build: Path, phrase: str) -> list:
+    return text2token([phrase], tokens=str(build / "tokens.txt"), tokens_type="bpe", bpe_model=str(build / "bpe.model"))[0]
 
 
 def main() -> None:
     root = Path(sys.argv[1])
     build = root / "tools" / "kws-build"
-    for name, phrase in FILES.items():
-        tokens = text2token([phrase], tokens=str(build / "tokens.txt"), tokens_type="bpe",
-                            bpe_model=str(build / "bpe.model"))[0]
-        line = " ".join(tokens) + " @" + phrase.replace(" ", "_")
-        out = root / "voice" / "src" / "main" / "assets" / "kws" / name
-        out.write_text(line + "\n", encoding="utf-8")
-        print(f"{out}: {line}")
+    kws = root / "voice" / "src" / "main" / "assets" / "kws"
+    (kws / "keywords.txt").write_text("\n", encoding="utf-8")
+    stop = " ".join(spell(build, "STOP")) + " @STOP"
+    (kws / "stop.txt").write_text(stop + "\n", encoding="utf-8")
+    print(f"{kws / 'keywords.txt'}: (one empty line)")
+    print(f"{kws / 'stop.txt'}: {stop}")
+    print("HEY ROBOT: " + " ".join(spell(build, "HEY ROBOT")))
 
 
 if __name__ == "__main__":

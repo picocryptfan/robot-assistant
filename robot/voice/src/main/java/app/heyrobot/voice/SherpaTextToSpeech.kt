@@ -1,14 +1,13 @@
 package app.heyrobot.voice
 
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import app.heyrobot.core.Playback
 import app.heyrobot.core.RLog
 import app.heyrobot.core.SpeechText
 import app.heyrobot.core.TtsBench
@@ -28,8 +27,9 @@ import java.util.concurrent.Executors
 // ff_siwis for French later) or Kitten nano 0.8 fp32 (docs/voice-plan.md 4.8-4.9). Pieces of text are queued as
 // the reply streams (the panel's SentenceSplitter makes the first one short); one "robot-tts" thread synthesises
 // them in order, sentence by sentence (sherpa calls back once per sentence), and writes the audio into a
-// streaming AudioTrack (assistant usage, speech content) while the previous piece plays. stop() pauses and
-// flushes the track at once and drops the queue; isSpeaking stays true until the last sample has played.
+// streaming AudioTrack (assistant usage, speech content; or voice-communication usage with "Call audio", CallAudio)
+// while the previous piece plays. stop() pauses and flushes the track at once and drops the queue; isSpeaking stays
+// true until the last sample has played.
 
 class SherpaTextToSpeech internal constructor(
     private val ctx: Context,
@@ -41,9 +41,11 @@ class SherpaTextToSpeech internal constructor(
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "robot-tts") }
     private val main = Handler(Looper.getMainLooper())
     private val audio = ctx.getSystemService(AudioManager::class.java)
-    private val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
-        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
-    private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(attrs).build()
+    @Volatile private var playback = Playback.ASSISTANT
+    /** The playback the current [track] was built with, and the focus request of the speaking run. */
+    private var trackPlayback = Playback.ASSISTANT
+    private var focus = CallAudio.focus(Playback.ASSISTANT)
+    private var runPlayback = Playback.ASSISTANT
 
     /** Guards the queue, [speaking], [pumping] and the run statistics. Taken before [trackLock], never after. */
     private val stateLock = Any()
@@ -140,7 +142,16 @@ class SherpaTextToSpeech internal constructor(
     /** Called with [stateLock] held. */
     private fun changed(on: Boolean) {
         try {
-            if (on) audio.requestAudioFocus(focus) else audio.abandonAudioFocusRequest(focus)
+            if (on) {
+                // A run keeps the playback it started with (the track is rebuilt for the next one if it changed).
+                runPlayback = playback
+                focus = CallAudio.focus(runPlayback)
+                if (runPlayback == Playback.CALL) CallAudio.begin(ctx, this)
+                audio.requestAudioFocus(focus)
+            } else {
+                audio.abandonAudioFocusRequest(focus)
+                CallAudio.end(ctx, this)
+            }
         } catch (_: Throwable) {}
         main.post { listener?.onSpeakingChanged(on) }
     }
@@ -209,7 +220,8 @@ class SherpaTextToSpeech internal constructor(
         }
         // Only the chosen voice stays loaded.
         (if (c.bundle == VoiceBundle.KOKORO) kitten else kokoro).release()
-        val t = ensureTrack(tts.sampleRate()) ?: return
+        // No audio track (0.2.2 dropped the piece silently here): the phone's voice says it instead.
+        val t = ensureTrack(tts.sampleRate()) ?: return fallBack(item, c, "track")
         val t0 = SystemClock.elapsedRealtime()
         val start = synchronized(trackLock) { written }
         echo.open(start, item.text)
@@ -240,6 +252,7 @@ class SherpaTextToSpeech internal constructor(
             // Quietly: VoiceOutput carries on with the phone's voice, so the panel stays "speaking".
             speaking = false
             try { audio.abandonAudioFocusRequest(focus) } catch (_: Throwable) {}
+            CallAudio.end(ctx, this)
             r
         }
         RLog.i("tts_fallback", "voice" to RLog.Code(c.id), "why" to RLog.Code(why))
@@ -291,15 +304,16 @@ class SherpaTextToSpeech internal constructor(
     }
 
     private fun ensureTrack(rate: Int): AudioTrack? = synchronized(trackLock) {
-        track?.let { if (it.sampleRate == rate) return it }
+        track?.let { if (it.sampleRate == rate && trackPlayback == runPlayback) return it }
         track?.release()
         track = null
         written = 0
         echo.reset()
         try {
             val min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
+            val p = runPlayback
             val t = AudioTrack.Builder()
-                .setAudioAttributes(attrs)
+                .setAudioAttributes(CallAudio.attributes(p))
                 .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
                 .setTransferMode(AudioTrack.MODE_STREAM)
@@ -308,6 +322,7 @@ class SherpaTextToSpeech internal constructor(
             // Start playing after 0.1 s of audio, not once the whole multi-second buffer is full.
             try { t.setStartThresholdInFrames(rate / 10) } catch (_: Throwable) {}
             track = t
+            trackPlayback = p
             t
         } catch (e: Throwable) {
             RLog.w("tts_track", e)
@@ -347,6 +362,20 @@ class SherpaTextToSpeech internal constructor(
 
     override val stopWordSafe: Boolean
         get() = synchronized(trackLock) { !echo.mayBeEcho(headLocked()) }
+
+    override val wakeWordSafe: Boolean
+        get() = synchronized(trackLock) { !echo.mayBeWakeEcho(headLocked()) }
+
+    override fun setWakeWords(words: List<String>) {
+        echo.wakeWords = EchoGuard.wakeRegex(words)
+    }
+
+    override fun setPlayback(p: Playback) {
+        playback = p
+    }
+
+    /** Ms of audio played in the current run (for the barge-in test and the voice log). */
+    internal val playedMs: Long get() = synchronized(trackLock) { headLocked() * 1000 / SAMPLE_RATE }
 
     override fun prewarm() {
         val c = choice
@@ -444,6 +473,8 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
     @Volatile private var active: TextToSpeech? = null
     @Volatile private var choice = VoiceChoice.DEFAULT
     @Volatile private var rate = 1.0f
+    @Volatile private var playback = Playback.ASSISTANT
+    @Volatile private var wakeWords: List<String> = emptyList()
     private var listener: TextToSpeech.Listener? = null
     /** What the panel was last told (main thread). */
     private var reported = false
@@ -462,6 +493,8 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
 
     private fun systemTts(): AndroidTextToSpeech = system ?: AndroidTextToSpeech(ctx).also {
         it.configure(rate, "")
+        it.setPlayback(playback)
+        it.setWakeWords(wakeWords)
         it.setListener { changed() }
         system = it
     }
@@ -518,4 +551,21 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
             null -> false
             else -> a.stopWordSafe
         }
+
+    override val wakeWordSafe: Boolean get() = active?.wakeWordSafe ?: true
+
+    override fun setWakeWords(words: List<String>) {
+        sherpa.setWakeWords(words)
+        wakeWords = words
+        system?.setWakeWords(words)
+    }
+
+    override fun setPlayback(p: Playback) {
+        playback = p
+        sherpa.setPlayback(p)
+        system?.setPlayback(p)
+    }
+
+    /** Which engine speaks now, for the voice log. */
+    val usesPhoneVoice: Boolean get() = active != null && active !== sherpa
 }

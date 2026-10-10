@@ -7,6 +7,9 @@ import android.os.SystemClock
 import app.heyrobot.core.EngineState
 import app.heyrobot.core.RLog
 import app.heyrobot.core.SttBench
+import app.heyrobot.core.SttEnd
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.WordAccuracy
 import com.k2fsa.sherpa.onnx.FeatureConfig
@@ -171,8 +174,14 @@ class SherpaSpeechToText internal constructor(
         cancel()
         slot.refresh()
         val st = slot.state
-        if (!st.usable) return PlaceholderSpeechToText(unavailableMessage(st)).start(listener)
-        val v = endVad() ?: return listener.onError(SpeechToText.Reason.ERROR, "Voice input couldn't start. Type your question for now.")
+        if (!st.usable) {
+            VoiceLog.add(VoiceEvent.STT_END, SttEnd.UNAVAILABLE)
+            return PlaceholderSpeechToText(unavailableMessage(st)).start(listener)
+        }
+        val v = endVad() ?: run {
+            VoiceLog.add(VoiceEvent.STT_END, SttEnd.ERROR)
+            return listener.onError(SpeechToText.Reason.ERROR, "Voice input couldn't start. Type your question for now.")
+        }
         synchronized(vadLock) { v.reset() }
         var own: Listener? = null
         val src: AudioFrames = frames()?.takeIf { it.capturing } ?: run {
@@ -180,6 +189,7 @@ class SherpaSpeechToText internal constructor(
             val l = Listener(ctx, ListenerConfig(wakeWord = false), null) {}
             if (!l.start()) {
                 l.stop()
+                VoiceLog.add(VoiceEvent.STT_END, SttEnd.MIC_BUSY)
                 return listener.onError(SpeechToText.Reason.MIC, "Robot can't use the microphone. Allow it in the Robot app, or close the app that is recording.")
             }
             own = l
@@ -187,6 +197,7 @@ class SherpaSpeechToText internal constructor(
         }
         if (src.silenced == true) {
             own?.stop()
+            VoiceLog.add(VoiceEvent.STT_END, SttEnd.MIC_BUSY)
             return listener.onError(SpeechToText.Reason.MIC, "Another app is using the microphone.")
         }
         val s = Session(ids.incrementAndGet(), listener, src, own)
@@ -200,6 +211,7 @@ class SherpaSpeechToText internal constructor(
         // Loads while the person speaks (nothing to do once loaded).
         worker.execute { load() }
         RLog.i("stt_start", "ownMic" to (own != null), "preRollMs" to pre.size * 1000L / Listener.SAMPLE_RATE, "loaded" to (slot.value != null))
+        VoiceLog.add(VoiceEvent.STT_START, pre.size * 1000 / Listener.SAMPLE_RATE, if (slot.value != null) 1 else 0, if (own != null) 1 else 0)
     }
 
     /** From the audio thread. */
@@ -231,8 +243,19 @@ class SherpaSpeechToText internal constructor(
             for (f in frame) ss += f * f
             s.listener.onLevel(Listener.db(ss / n).toFloat())
             when (s.endpointer.onFrame(speech, n)) {
-                Endpointer.Event.END -> finish(s, "silence")
-                Endpointer.Event.MAX_LENGTH -> finish(s, "max")
+                Endpointer.Event.SPEECH -> {
+                    VoiceLog.add(VoiceEvent.VAD_START, ms(s.endpointer.speechStart))
+                    if (livePartials) maybePartial(s)
+                }
+                Endpointer.Event.END -> {
+                    VoiceLog.add(VoiceEvent.VAD_END, ms(s.endpointer.samples - s.endpointer.speechStart))
+                    finish(s, "silence")
+                }
+                Endpointer.Event.MAX_LENGTH -> {
+                    // A voice detector that never ends (a television, a fan) stops at the 30 s cap.
+                    VoiceLog.add(VoiceEvent.VAD_END, ms(s.endpointer.samples - maxOf(0L, s.endpointer.speechStart)))
+                    finish(s, "max")
+                }
                 Endpointer.Event.NO_SPEECH -> noSpeech(s)
                 else -> if (livePartials) maybePartial(s)
             }
@@ -295,6 +318,7 @@ class SherpaSpeechToText internal constructor(
         detach(s)
         if (session === s) session = null
         RLog.i("stt_final", "end" to RLog.Code(why))
+        VoiceLog.add(VoiceEvent.STT_END, endCode(why))
         if (s.cancelled) return
         if (why == "mic_stopped") s.listener.onError(SpeechToText.Reason.MIC, "The microphone stopped before you spoke. Tap the mic and try again.")
         else s.listener.onError(SpeechToText.Reason.NO_SPEECH, "I didn't hear anything. Tap the mic and try again.")
@@ -304,7 +328,11 @@ class SherpaSpeechToText internal constructor(
     private fun cut(s: Session, why: String) {
         if (s.ended) return
         when (s.endpointer.cut()) {
-            Endpointer.Event.END -> finish(s, why)
+            Endpointer.Event.END -> {
+                // Speech was heard: what there is gets decoded, but the log says the capture was cut.
+                VoiceLog.add(VoiceEvent.STT_END, endCode(why))
+                finish(s, why)
+            }
             Endpointer.Event.NO_SPEECH -> noSpeech(s, why)
             else -> {}
         }
@@ -322,6 +350,7 @@ class SherpaSpeechToText internal constructor(
             if (s.cancelled) return
             val r = load()
             if (r == null) {
+                VoiceLog.add(VoiceEvent.STT_END, SttEnd.UNAVAILABLE)
                 if (!s.cancelled) s.listener.onError(SpeechToText.Reason.ERROR, unavailableMessage(slot.state))
                 return
             }
@@ -333,9 +362,13 @@ class SherpaSpeechToText internal constructor(
             RLog.i("stt_final", "end" to RLog.Code(reason), "audioMs" to audio.size * 1000L / Listener.SAMPLE_RATE,
                 "decodeMs" to now - t0, "waitMs" to now - s.endedAt, "partials" to s.partials, "heard" to s.endpointer.heardSpeech,
                 "empty" to text.isEmpty())
+            val audioMs = audio.size * 1000 / Listener.SAMPLE_RATE
+            if (text.isEmpty()) VoiceLog.add(VoiceEvent.STT_EMPTY, audioMs, if (s.endpointer.heardSpeech) 1 else 0)
+            else VoiceLog.add(VoiceEvent.STT_DONE, text.length, audioMs, (now - t0).toInt())
             if (!s.cancelled) s.listener.onFinal(text)
         } catch (t: Throwable) {
             RLog.w("stt_decode", t)
+            VoiceLog.add(VoiceEvent.STT_END, SttEnd.ERROR)
             if (!s.cancelled) s.listener.onError(SpeechToText.Reason.ERROR, "Voice input failed. Type your question for now.")
         } finally {
             if (session === s) session = null
@@ -354,6 +387,7 @@ class SherpaSpeechToText internal constructor(
             if (s.ended) return
             s.ended = true
         }
+        VoiceLog.add(VoiceEvent.STT_END, SttEnd.CANCELLED)
         detach(s)
         s.partialJob?.cancel(false)
     }
@@ -399,6 +433,14 @@ class SherpaSpeechToText internal constructor(
     }).get()
 
     internal val usable: Boolean get() { slot.refresh(); return available }
+
+    private fun ms(samples: Long): Int = (samples * 1000 / Listener.SAMPLE_RATE).toInt()
+
+    private fun endCode(why: String): SttEnd = when (why) {
+        "watchdog" -> SttEnd.TIMEOUT
+        "mic_stopped" -> SttEnd.MIC_STOPPED
+        else -> SttEnd.NO_SPEECH
+    }
 
     companion object {
         const val MIN_SILENCE_S = 0.5f

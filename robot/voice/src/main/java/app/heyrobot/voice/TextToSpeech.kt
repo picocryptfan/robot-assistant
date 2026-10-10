@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.UtteranceProgressListener
+import app.heyrobot.core.Playback
 import app.heyrobot.core.RLog
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -46,6 +47,18 @@ interface TextToSpeech {
      */
     val stopWordSafe: Boolean get() = false
 
+    /**
+     * A wake phrase heard now cannot be Robot's own voice (nothing playing says one of its words). True when there is
+     * no way to tell: a wake word acted on during speech was the behaviour before 0.2.3.
+     */
+    val wakeWordSafe: Boolean get() = true
+
+    /** The last words of the enabled wake phrases, which Robot saying would be heard as a wake ([EchoGuard]). */
+    fun setWakeWords(words: List<String>) {}
+
+    /** How the voice is played (Settings › Voice); takes effect from the next piece of speech. */
+    fun setPlayback(p: Playback) {}
+
     fun interface Listener {
         /** Called on the main thread when speaking starts or the queue runs empty. */
         fun onSpeakingChanged(speaking: Boolean)
@@ -56,9 +69,8 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private val app = ctx.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val audio = app.getSystemService(AudioManager::class.java)
-    private val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT)
-        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
-    private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(attrs).build()
+    @Volatile private var playback = Playback.ASSISTANT
+    private var focus = CallAudio.focus(playback)
     private val outstanding = AtomicInteger(0)
     private val ids = AtomicLong(0)
     /** Utterances started before the last stop() are ignored by the progress callbacks. */
@@ -71,6 +83,9 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private var voice = ""
     /** A sentence of this speaking run says "stop" or a word like it (no audio positions here, so the whole run counts). */
     @Volatile private var risky = false
+    /** ... or a wake phrase's word. */
+    @Volatile private var riskyWake = false
+    @Volatile private var wakeWords: Regex? = null
 
     private val tts: android.speech.tts.TextToSpeech = android.speech.tts.TextToSpeech(app) { status ->
         main.post { onInit(status == android.speech.tts.TextToSpeech.SUCCESS) }
@@ -85,7 +100,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
             setOutstanding(0)
             return
         }
-        tts.setAudioAttributes(attrs)
+        tts.setAudioAttributes(CallAudio.attributes(playback))
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
             override fun onDone(utteranceId: String?) = finished(utteranceId)
@@ -123,10 +138,12 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         main.post {
             if (failed) return@post
             if (setOutstanding(outstanding.get() + 1) == 1) {
+                if (playback == Playback.CALL) CallAudio.begin(app, this)
                 audio.requestAudioFocus(focus)
                 listener?.onSpeakingChanged(true)
             }
             if (EchoGuard.soundsLikeStop(sentence)) risky = true
+            if (wakeWords?.containsMatchIn(sentence) == true) riskyWake = true
             if (ready) enqueue(sentence) else pending.addLast(sentence)
         }
     }
@@ -141,7 +158,9 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
 
     private fun idle() {
         risky = false
+        riskyWake = false
         audio.abandonAudioFocusRequest(focus)
+        CallAudio.end(app, this)
         listener?.onSpeakingChanged(false)
     }
 
@@ -157,6 +176,21 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     override val isSpeaking: Boolean get() = outstanding.get() > 0
 
     override val stopWordSafe: Boolean get() = !risky
+
+    override val wakeWordSafe: Boolean get() = !riskyWake
+
+    override fun setWakeWords(words: List<String>) {
+        wakeWords = EchoGuard.wakeRegex(words)
+    }
+
+    override fun setPlayback(p: Playback) {
+        main.post {
+            if (p == playback) return@post
+            playback = p
+            focus = CallAudio.focus(p)
+            if (ready) tts.setAudioAttributes(CallAudio.attributes(p))
+        }
+    }
 
     override fun setListener(listener: TextToSpeech.Listener?) {
         this.listener = listener
