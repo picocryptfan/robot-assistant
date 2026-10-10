@@ -20,3 +20,5 @@ probe/app/src/main/assets/vad/*.onnx
 .idea/
 *.iml
 .DS_Store
+*.p12
+*.pass
