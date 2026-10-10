@@ -10,7 +10,9 @@ class MapsQueryTest {
     @Test fun nearMeWordsAreLeftOut() {
         val cases = listOf(
             "pharmacy near me" to "pharmacy",
+            "a pharmacy near me" to "pharmacy",
             "a pharmacy nearby" to "pharmacy",
+            "an ATM nearby" to "ATM",
             "coffee, near me" to "coffee",
             "Coffee near me." to "Coffee",
             "the nearest gas station" to "gas station",
@@ -21,20 +23,46 @@ class MapsQueryTest {
             "pizza close by" to "pizza",
             "ATM near my location" to "ATM",
             "the nearest pharmacy near me" to "pharmacy",
-            // French.
+            // "nearest … to me": the "to me" goes with "nearest".
+            "the nearest pharmacy to me" to "pharmacy",
+            "closest gas station to here" to "gas station",
+            "the closest Tim Hortons to me" to "Tim Hortons",
+            "nearest hospital to my location" to "hospital",
+            // French: "la"/"le" stay (they can start a name), "une" goes.
             "pharmacie près de moi" to "pharmacie",
             "pharmacie pres de moi" to "pharmacie",
             "une pharmacie à proximité" to "pharmacie",
-            "la pharmacie la plus proche" to "pharmacie",
-            "le dépanneur le plus proche" to "dépanneur",
-            "l’hôpital le plus proche" to "hôpital",
+            "la pharmacie la plus proche" to "la pharmacie",
+            "la pharmacie la plus proche de moi" to "la pharmacie",
+            "la pharmacie la plus proche d'ici" to "la pharmacie",
+            "le dépanneur le plus près" to "le dépanneur",
+            "le dépanneur le plus proche" to "le dépanneur",
+            "un dépanneur proche de moi" to "dépanneur",
+            "l’hôpital le plus proche" to "l’hôpital",
             "boulangerie autour de moi" to "boulangerie",
         )
         for ((raw, want) in cases) assertEquals(raw, want, MapsQuery.clean(raw))
     }
 
+    @Test fun namesKeepTheirArticles() {
+        val cases = listOf(
+            "The Keg near me" to "The Keg",
+            "The Bay near me" to "The Bay",
+            "The Brick nearby" to "The Brick",
+            "La Baie près de moi" to "La Baie",
+            "Les Halles près de moi" to "Les Halles",
+            "La Belle Province près de moi" to "La Belle Province",
+            "Le Château près de moi" to "Le Château",
+            "L'Avenue near me" to "L'Avenue",
+            "Des Moines nearby" to "Des Moines",
+            "Any Questions Bar nearby" to "Any Questions Bar",
+        )
+        for ((raw, want) in cases) assertEquals(raw, want, MapsQuery.clean(raw))
+    }
+
     @Test fun placesAndNamesStayAsTheyAre() {
-        for (s in listOf("Central Station", "Nearby Café", "The Keg", "Restaurant near Central Park", "Gare Centrale", "1 rue de la Paix, Paris")) {
+        for (s in listOf("Central Station", "Nearby Café", "The Keg", "Restaurant near Central Park", "Gare Centrale", "1 rue de la Paix, Paris",
+                "A&W", "Une Belle Journée")) {
             assertEquals(s, MapsQuery.clean(s))
         }
         // Nothing but the "near me" words: kept, so the search isn't empty.
