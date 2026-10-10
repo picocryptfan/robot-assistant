@@ -76,22 +76,27 @@ internal class ModelSlot<T : Any>(val bundle: VoiceBundle, private val env: Voic
         if (!refresh() || guard.broken || failed) return null
         loading = true
         env.changed()
-        val t0 = SystemClock.elapsedRealtime()
-        guard.beforeLoad()
         try {
-            val v = create(dir)
-            guard.afterLoad(true)
-            value = v
-            loadMs = SystemClock.elapsedRealtime() - t0
-            touch()
-            RLog.i("voice_load", "engine" to RLog.Code(bundle.id), "ok" to true, "ms" to loadMs)
-            return v
-        } catch (t: Throwable) {
-            // A Java-side failure (a refused config, a missing file): the process lives; use the stand-in.
-            guard.afterLoad(false)
-            failed = true
-            RLog.w("voice_load", t, "engine" to RLog.Code(bundle.id))
-            return null
+            // Never beside another native load: the guard's "loading" note must name the engine that crashed.
+            return NativeLoads.one(bundle.id) {
+                val t0 = SystemClock.elapsedRealtime()
+                guard.beforeLoad()
+                try {
+                    val v = create(dir)
+                    guard.afterLoad(true)
+                    value = v
+                    loadMs = SystemClock.elapsedRealtime() - t0
+                    touch()
+                    RLog.i("voice_load", "engine" to RLog.Code(bundle.id), "ok" to true, "ms" to loadMs)
+                    v
+                } catch (t: Throwable) {
+                    // A Java-side failure (a refused config, a missing file): the process lives; use the stand-in.
+                    guard.afterLoad(false)
+                    failed = true
+                    RLog.w("voice_load", t, "engine" to RLog.Code(bundle.id))
+                    null
+                }
+            }
         } finally {
             loading = false
             env.changed()

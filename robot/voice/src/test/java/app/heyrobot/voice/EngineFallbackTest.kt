@@ -106,4 +106,36 @@ class EngineFallbackTest {
         assertFalse(IdlePolicy.shouldUnload(loaded = true, inUse = true, lastUsedMs = t0, nowMs = t0 + 10 * five))
         assertFalse(IdlePolicy.shouldUnload(loaded = false, inUse = false, lastUsedMs = t0, nowMs = t0 + 10 * five))
     }
+
+    /** 0.1.2 review, minor 7: two loads at once would both be noted "loading", so one crash counted against both. */
+    @Test fun nativeLoadsNeverOverlap() {
+        val loading = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        var most = 0
+        val seenCurrent = java.util.Collections.synchronizedList(mutableListOf<String?>())
+        val start = java.util.concurrent.CountDownLatch(1)
+        val threads = listOf("stt-parakeet-v3", "tts-kokoro-v1.0", "kws").map { name ->
+            Thread {
+                start.await()
+                repeat(5) {
+                    NativeLoads.one(name) {
+                        loading += name
+                        synchronized(loading) { most = maxOf(most, loading.size) }
+                        seenCurrent += NativeLoads.current
+                        Thread.sleep(3)
+                        loading -= name
+                    }
+                }
+            }.also { it.start() }
+        }
+        start.countDown()
+        threads.forEach { it.join(10_000) }
+        assertEquals(1, most)
+        assertEquals(15, seenCurrent.size)
+        // Each load saw its own name as the one loading.
+        assertTrue(seenCurrent.all { it in listOf("stt-parakeet-v3", "tts-kokoro-v1.0", "kws") })
+        assertEquals(null, NativeLoads.current)
+        // A load that throws lets the next one in.
+        try { NativeLoads.one("bad") { throw IllegalStateException() } } catch (_: IllegalStateException) {}
+        assertEquals(42, NativeLoads.one("next") { 42 })
+    }
 }

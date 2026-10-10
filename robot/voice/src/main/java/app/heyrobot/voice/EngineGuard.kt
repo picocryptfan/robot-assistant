@@ -56,6 +56,30 @@ object GuardLogic {
     }
 }
 
+/**
+ * One native model load at a time in the :voice process (speech to text, the voices, the wake word). Each engine's
+ * guard notes "loading" on disk; with two loads at once (a question starting loads speech to text while the voice
+ * prewarms), a crash in one would count against both, and could mark the healthy one broken. A load that waits here
+ * waits at most for the other's load (a few seconds), and no reply needs the voice before the question is decoded.
+ */
+internal object NativeLoads {
+    private val lock = java.util.concurrent.locks.ReentrantLock(true)
+
+    /** What is loading now, or null (a code like "stt-parakeet-v3", never a path). */
+    @Volatile var current: String? = null; private set
+
+    fun <T> one(what: String, block: () -> T): T {
+        lock.lock()
+        try {
+            current = what
+            return block()
+        } finally {
+            current = null
+            lock.unlock()
+        }
+    }
+}
+
 /** Which state an engine is in (pure): the fallback decision the switching engines act on. */
 object EngineFallback {
     fun state(verified: Boolean, broken: Boolean, failed: Boolean, loading: Boolean, loaded: Boolean): EngineState = when {

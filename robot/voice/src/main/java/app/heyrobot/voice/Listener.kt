@@ -177,12 +177,13 @@ class Listener(
         if (config.wakeWord) {
             val t0 = SystemClock.elapsedRealtime()
             try {
-                initMarker?.writeText("${Process.myPid()}")
-                ww = WakeWord(ctx.assets, config)
+                // Not beside a speech model's load, so a crash here is not blamed on that model (and the reverse).
+                ww = NativeLoads.one("kws") {
+                    initMarker?.writeText("${Process.myPid()}")
+                    try { WakeWord(ctx.assets, config) } finally { initMarker?.delete() }
+                }
             } catch (t: Throwable) {
                 RLog.w("wake_word_init", t)
-            } finally {
-                initMarker?.delete()
             }
             RLog.i("listen_start", "ok" to true, "wakeWord" to (ww != null), "initMs" to SystemClock.elapsedRealtime() - t0)
         }
