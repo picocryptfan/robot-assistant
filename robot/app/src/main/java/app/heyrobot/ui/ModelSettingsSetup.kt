@@ -189,10 +189,14 @@ private fun VoiceModelsCard(snap: Snapshot, a: AppActions) {
     }
 }
 
-/** Settings › Voice: the voice, its speed, live words, the engines' state and the voice speed test. */
+/**
+ * Settings › Voice: wake words, hearing you while Robot talks (and its test), the volume key, the voice log (0.2.3), then
+ * the voice, its speed, live words, the engines' state and the voice speed test.
+ */
 @Composable
 private fun VoiceSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions) {
     SectionCard("Voice") {
+        VoiceListeningSection(s, snap, update, a)
         if (!snap.voiceReady) {
             StatusRow(Mark.TODO, "Download voice models", "Speech recognition and Robot's voice (${VoiceModelLogic.size(VoiceBundle.STT.bytes + VoiceBundle.KOKORO.bytes)}). Until then you type, and Robot uses the phone's voice.") {
                 FilledTonalButton(onClick = { a.openTab(Tab.MODEL) }) { Text("Open") }
@@ -311,7 +315,7 @@ private fun PeopleSettingsCard(s: RobotSettings, snap: Snapshot, calendars: List
 }
 
 @Composable
-private fun ChoiceRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
+internal fun ChoiceRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
@@ -351,7 +355,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
     ) {
         ScreenTitle("Settings")
         SectionCard("Wake word") {
-            SwitchRow("Listen for “hey robot”", "The microphone stays on while Robot listens; nothing is recorded or saved.", s.wakeWord) { update(s.copy(wakeWord = it)) }
+            SwitchRow("Listen for wake words", "“Hey robot” and the others in Settings › Voice › Wake words. The microphone stays on while Robot listens; nothing is recorded or saved.",
+                s.wakeWord) { update(s.copy(wakeWord = it)) }
             SwitchRow("Only while charging", "Saves battery.", s.wakeOnlyWhileCharging, enabled = s.wakeWord) { update(s.copy(wakeOnlyWhileCharging = it)) }
         }
         SectionCard("Spoken replies") {
@@ -364,8 +369,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
                     ) { Text(when (v) { SpeakReplies.VOICE -> "Voice only"; SpeakReplies.ALWAYS -> "Always"; SpeakReplies.NEVER -> "Never" }) }
                 }
             }
-            Text("“Voice only” speaks when you asked by voice or with “hey robot”, not when you typed. " +
-                "Tap the conversation, or say “stop” (when “hey robot” is on), to stop Robot talking.",
+            Text("“Voice only” speaks when you asked by voice or with a wake word, not when you typed. " +
+                "Tap the conversation, press volume down, or say “stop” (when the wake word is on), to stop Robot talking.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         VoiceSettingsCard(s, snap, update, a)
