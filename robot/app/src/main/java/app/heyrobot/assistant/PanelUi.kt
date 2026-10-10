@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -69,6 +70,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -357,7 +359,22 @@ private fun Messages(st: PanelState, modifier: Modifier) {
         return
     }
     val reversed = remember(st.turns) { st.turns.asReversed() }
+    val list = rememberLazyListState()
+    // Follow the newest message. A LazyColumn keeps the item on screen in place when one is added below it, so a
+    // new message would land out of sight; jump to it unless the person has scrolled up to read.
+    var follow by remember { mutableStateOf(true) }
+    LaunchedEffect(list) {
+        snapshotFlow { list.isScrollInProgress }.collect { scrolling ->
+            if (!scrolling) follow = list.firstVisibleItemIndex == 0 && list.firstVisibleItemScrollOffset == 0
+        }
+    }
+    val newest = st.turns.last()
+    LaunchedEffect(newest.id) {
+        if (newest.role == TurnRole.USER) follow = true
+        if (follow) list.animateScrollToItem(0)
+    }
     LazyColumn(
+        state = list,
         modifier = modifier.fillMaxWidth().pointerInput(st.phase, st.speak) {
             // Tapping the conversation stops speech (spec item 4), also while the spoken reply still streams.
             detectTapGestures { if (st.phase == Phase.SPEAKING || (st.phase == Phase.ANSWERING && st.speak)) PanelController.stopSpeaking() }
