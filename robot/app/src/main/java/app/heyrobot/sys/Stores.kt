@@ -8,6 +8,7 @@ import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.StoredConversation
+import app.heyrobot.core.VoiceFiles
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
 import java.io.File
@@ -21,6 +22,9 @@ object Paths {
     fun marker(ctx: Context, name: String) = File(dir(ctx), "$name.marker")
     fun conversations(ctx: Context): File = File(ctx.filesDir, "conversations").apply { mkdirs() }
     fun voiceStatus(ctx: Context) = File(dir(ctx), "voice_status.json")
+    /** Written by the voice process: its speech engines' states and the voice speed test (core VoiceStatus.kt). */
+    fun voiceEngines(ctx: Context) = File(dir(ctx), VoiceFiles.ENGINES)
+    fun voiceBench(ctx: Context) = File(dir(ctx), VoiceFiles.BENCH)
 
     fun bootCount(ctx: Context): Int = try {
         Settings.Global.getInt(ctx.contentResolver, Settings.Global.BOOT_COUNT, -1)
@@ -76,6 +80,12 @@ object Cmd {
     const val PERMISSION = "app.heyrobot.permission.INTERNAL"
     const val SETTINGS = "settings"
     const val SPEAK_TEST = "speak_test"
+    /** Voice models were installed or deleted: the voice process re-checks them. */
+    const val VOICE_MODELS = "voice_models"
+    /** "Try again" after a voice engine was turned off. */
+    const val VOICE_RESET = "voice_reset"
+    /** "Test voice speed": results come back in Paths.voiceBench. */
+    const val VOICE_BENCH = "voice_bench"
 
     fun send(ctx: Context, op: String, extras: Bundle = Bundle()) {
         try {

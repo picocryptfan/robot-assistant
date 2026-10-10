@@ -50,6 +50,8 @@ import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.TurnRole
+import app.heyrobot.core.VoiceBundle
+import app.heyrobot.core.VoiceModelLogic
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.AssistantBubble
 import app.heyrobot.ui.common.RIcons
@@ -60,7 +62,7 @@ import app.heyrobot.ui.common.UserBubble
 @Composable
 fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, modifier: Modifier) {
     val f = snap.facts
-    val ready = f?.active == true && snap.model == ModelStatus.VERIFIED
+    val ready = f?.active == true && snap.model == ModelStatus.VERIFIED && snap.voiceReady
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -96,6 +98,22 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
                         else -> "3.1 GB, once. Wi-Fi recommended."
                     },
                 ) { if (snap.model != ModelStatus.VERIFIED) FilledTonalButton(onClick = { a.openTab(Tab.MODEL) }) { Text("Open") } }
+                val stt = snap.voice(VoiceBundle.STT)
+                val voice = snap.voice(VoiceBundle.KOKORO)
+                StatusRow(
+                    when {
+                        snap.voiceReady -> Mark.OK
+                        stt?.status == ModelStatus.BAD || voice?.status == ModelStatus.BAD -> Mark.WARN
+                        else -> Mark.TODO
+                    },
+                    "Download voice models",
+                    when {
+                        snap.voiceReady -> "Robot can hear you and answer out loud"
+                        stt?.progress != null -> "Speech recognition: ${stt.progress}"
+                        voice?.progress != null -> "Voice: ${voice.progress}"
+                        else -> "${VoiceModelLogic.size(VoiceBundle.STT.bytes + VoiceBundle.KOKORO.bytes)}, once, to talk to Robot. Wi-Fi recommended."
+                    },
+                ) { if (!snap.voiceReady) FilledTonalButton(onClick = { a.openTab(Tab.MODEL) }) { Text("Open") } }
                 StatusRow(
                     if (f?.micGranted == true && f.notificationsGranted) Mark.OK else Mark.TODO,
                     "Allow the microphone and notifications",

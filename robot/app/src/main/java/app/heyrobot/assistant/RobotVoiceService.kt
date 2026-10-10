@@ -29,6 +29,12 @@ class RobotVoiceService : VoiceInteractionService() {
         super.onShutdown()
     }
 
+    /** Memory pressure: the speech models (about 1.2 GB) go unless in use; the wake word stays. */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        VoiceHub.onTrimMemory(level)
+    }
+
     /** The lock-screen voice-assist affordance (supportsLaunchVoiceAssistFromKeyguard). */
     override fun onLaunchVoiceAssistFromKeyguard() {
         show(SRC_KEYGUARD)

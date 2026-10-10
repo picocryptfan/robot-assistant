@@ -50,7 +50,8 @@ import java.util.UUID
 // conversation survives the panel hiding for the camera or a new session object. All state changes
 // happen on the main thread. Nothing here is logged except counts and outcomes.
 
-enum class Phase { IDLE, LISTENING, THINKING, ANSWERING, SPEAKING }
+/** TRANSCRIBING: the person stopped talking and the speech is being written down. */
+enum class Phase { IDLE, LISTENING, TRANSCRIBING, THINKING, ANSWERING, SPEAKING }
 
 data class UiAction(val id: String, val tool: ToolName?, val summary: String, val status: ActionStatus, val detail: String?)
 
@@ -85,6 +86,8 @@ data class PanelState(
     /** Saved to the history (a conversation that used the screen is saved only when the person keeps it). */
     val keep: Boolean = true,
     val sttAvailable: Boolean = false,
+    /** Why voice input is unavailable (the mic button's tooltip, e.g. "Download voice models"); null when it works. */
+    val micHint: String? = null,
     /** Bumped to ask the panel to focus the text field and show the keyboard. */
     val focusRequest: Int = 0,
     val brain: BrainKeeper.State = BrainKeeper.State(),
@@ -135,6 +138,7 @@ object PanelController {
         initialized = true
         scope.launch { BrainKeeper.state.collect { s -> _state.update { it.copy(brain = s) } } }
         VoiceHub.tts.setListener { speaking ->
+            VoiceHub.onSpeakingChanged(speaking)
             _state.update {
                 when {
                     !speaking && it.phase == Phase.SPEAKING -> it.copy(phase = Phase.IDLE)
@@ -179,8 +183,10 @@ object PanelController {
             _state.update { it.copy(speak = speak, notice = null, draft = null, focusRequest = 0) }
             draftJpeg = null
         }
-        _state.update { it.copy(locked = locked, screenAvailable = false, sttAvailable = VoiceHub.stt.available, partial = "") }
+        _state.update { it.copy(locked = locked, screenAvailable = false, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint, partial = "") }
         BrainKeeper.prewarm(VoiceHub.app)
+        // Speech recognition loads while the panel opens (and the person starts talking); the voice too if replies are spoken.
+        VoiceHub.prewarmVoice(_state.value.speak || source == RobotVoiceService.SRC_WAKE)
         RLog.i("panel_show", "src" to source?.let { RLog.Code(it) }, "locked" to locked, "turns" to chat.size)
         if (source == RobotVoiceService.SRC_WAKE) startListening()
     }
@@ -229,7 +235,7 @@ object PanelController {
         startedLocked = locked
         keptByUser = false
         lastActivity = System.currentTimeMillis()
-        _state.update { PanelState(newId(), locked = locked, speak = it.speak, sttAvailable = it.sttAvailable, screenAvailable = it.screenAvailable, brain = it.brain) }
+        _state.update { PanelState(newId(), locked = locked, speak = it.speak, sttAvailable = it.sttAvailable, micHint = it.micHint, screenAvailable = it.screenAvailable, brain = it.brain) }
     }
 
     private fun loadConversation(id: String) {
@@ -240,7 +246,7 @@ object PanelController {
         startedLocked = false
         keptByUser = true
         lastActivity = System.currentTimeMillis()
-        _state.update { PanelState(c.id, turns = c.turns.map { it.toUi() }, keep = true, sttAvailable = it.sttAvailable, brain = it.brain) }
+        _state.update { PanelState(c.id, turns = c.turns.map { it.toUi() }, keep = true, sttAvailable = it.sttAvailable, micHint = it.micHint, brain = it.brain) }
     }
 
     private fun ChatTurn.toUi() = UiTurn(id, role, text, attachment, null,
@@ -326,10 +332,18 @@ object PanelController {
 
     private fun startListening() {
         VoiceHub.listener?.wakePaused = true
-        _state.update { it.copy(phase = Phase.LISTENING, partial = "", notice = null) }
+        _state.update { it.copy(phase = Phase.LISTENING, partial = "", notice = null, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint) }
+        if (_state.value.speak) VoiceHub.tts.prewarm()
         val main = VoiceHub.main
         VoiceHub.stt.start(object : SpeechToText.Listener {
-            override fun onPartial(text: String) { main.post { _state.update { it.copy(partial = text) } } }
+            override fun onPartial(text: String) { main.post { _state.update { if (it.phase == Phase.LISTENING) it.copy(partial = text) else it } } }
+            override fun onEndOfSpeech() {
+                main.post {
+                    // The wake word may listen again while the words are written down.
+                    VoiceHub.listener?.wakePaused = false
+                    _state.update { if (it.phase == Phase.LISTENING) it.copy(phase = Phase.TRANSCRIBING) else it }
+                }
+            }
             override fun onFinal(text: String) {
                 main.post {
                     endListening()
@@ -339,8 +353,13 @@ object PanelController {
             override fun onError(reason: SpeechToText.Reason, message: String) {
                 main.post {
                     endListening()
+                    val unavailable = reason == SpeechToText.Reason.UNAVAILABLE
                     _state.update {
-                        it.copy(notice = Notice(message), focusRequest = if (reason == SpeechToText.Reason.UNAVAILABLE) it.focusRequest + 1 else it.focusRequest)
+                        it.copy(
+                            // "Open Robot" leads to the voice models (the app needs the phone unlocked).
+                            notice = Notice(message, if (unavailable && !it.locked) NoticeAction.OPEN_APP else NoticeAction.NONE),
+                            focusRequest = if (unavailable) it.focusRequest + 1 else it.focusRequest,
+                        )
                     }
                 }
             }
@@ -349,7 +368,7 @@ object PanelController {
 
     private fun endListening() {
         VoiceHub.listener?.wakePaused = false
-        _state.update { it.copy(phase = if (it.phase == Phase.LISTENING) Phase.IDLE else it.phase, partial = "") }
+        _state.update { it.copy(phase = if (it.phase == Phase.LISTENING || it.phase == Phase.TRANSCRIBING) Phase.IDLE else it.phase, partial = "") }
     }
 
     // ------------------------------------------------------------------ asking

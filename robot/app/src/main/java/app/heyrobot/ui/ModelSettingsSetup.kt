@@ -11,15 +11,18 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -38,16 +41,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import app.heyrobot.BuildConfig
 import app.heyrobot.core.Approval
 import app.heyrobot.core.ApprovalGate
+import app.heyrobot.core.BenchState
+import app.heyrobot.core.EngineState
 import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelSpec
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.VoiceBenchLogic
+import app.heyrobot.core.VoiceBundle
+import app.heyrobot.core.VoiceChoice
+import app.heyrobot.core.VoiceModelLogic
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.toolIcon
@@ -108,6 +118,7 @@ fun ModelScreen(snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier
                 style = MaterialTheme.typography.bodyMedium)
             Text("${ModelSpec.FILE}\nSHA-256 ${ModelSpec.SHA256}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        VoiceModelsCard(snap, a)
         Spacer(Modifier.height(12.dp))
     }
     if (confirmDelete) {
@@ -121,9 +132,113 @@ fun ModelScreen(snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier
     }
 }
 
+/** Model › Voice models: speech recognition, the voice and the fast fallback voice, each downloaded on its own. */
+@Composable
+private fun VoiceModelsCard(snap: Snapshot, a: AppActions) {
+    var confirmDelete by remember { mutableStateOf<VoiceBundle?>(null) }
+    SectionCard("Voice models") {
+        Text("For talking to Robot and hearing it answer. They run on the phone; nothing you say leaves it. " +
+            "Each file is checked (SHA-256) before Robot uses it. Wi-Fi recommended.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        for (b in VoiceBundle.entries) {
+            val v = snap.voice(b) ?: continue
+            StatusRow(
+                when (v.status) { ModelStatus.VERIFIED -> Mark.OK; ModelStatus.BAD -> Mark.WARN; else -> Mark.TODO },
+                "${b.title} · ${VoiceModelLogic.size(b.bytes)}",
+                VoiceModelLogic.headline(v.status),
+            )
+            Text(b.about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            v.progress?.let { line ->
+                Text(line, style = MaterialTheme.typography.bodyMedium)
+                if (v.percent >= 0) LinearProgressIndicator(progress = { v.percent / 100f }, modifier = Modifier.fillMaxWidth())
+                else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            v.failure?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
+            when (v.status) {
+                ModelStatus.MISSING, ModelStatus.BAD -> Button(onClick = { a.voiceDownload(b) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) {
+                    Icon(RIcons.Download, null); Spacer(Modifier.width(8.dp)); Text("Download (${VoiceModelLogic.size(b.bytes)})")
+                }
+                ModelStatus.DOWNLOADING -> OutlinedButton(onClick = { a.voiceCancel(b) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Cancel download") }
+                ModelStatus.VERIFIED -> OutlinedButton(onClick = { confirmDelete = b }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Icon(RIcons.Delete, null); Spacer(Modifier.width(6.dp)); Text("Delete")
+                }
+                else -> {}
+            }
+        }
+        Text("Free on this phone: ${if (snap.freeBytes >= 0) ModelLogic.gb(snap.freeBytes) else "unknown"}.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    confirmDelete?.let { b ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("Delete “${b.title}”?") },
+            text = { Text("Robot falls back to the stand-in (${if (b == VoiceBundle.STT) "typing only" else "the phone's voice"}) until you download it again (${VoiceModelLogic.size(b.bytes)}).") },
+            confirmButton = { TextButton(onClick = { confirmDelete = null; a.voiceDelete(b) }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+/** Settings › Voice: the voice, its speed, live words, the engines' state and the voice speed test. */
+@Composable
+private fun VoiceSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions) {
+    SectionCard("Voice") {
+        if (!snap.voiceReady) {
+            StatusRow(Mark.TODO, "Download voice models", "Speech recognition and Robot's voice (${VoiceModelLogic.size(VoiceBundle.STT.bytes + VoiceBundle.KOKORO.bytes)}). Until then you type, and Robot uses the phone's voice.") {
+                FilledTonalButton(onClick = { a.openTab(Tab.MODEL) }) { Text("Open") }
+            }
+        }
+        Text("Robot's voice", style = MaterialTheme.typography.titleSmall)
+        for (v in VoiceChoice.entries) {
+            val installed = v.bundle.let { b -> b == null || snap.voice(b)?.status == ModelStatus.VERIFIED }
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected = s.voiceChoice == v, role = Role.RadioButton) { update(s.copy(voice = v.id)) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selected = s.voiceChoice == v, onClick = null)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(v.title, style = MaterialTheme.typography.bodyLarge)
+                    Text(if (installed) v.detail else "${v.detail}. Not downloaded: the phone's voice speaks instead.",
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        var rate by remember(s.speechRate) { mutableFloatStateOf(s.speechRate) }
+        Text("Speed: ${"%.1f".format(rate)}×", style = MaterialTheme.typography.bodyMedium)
+        Slider(value = rate, onValueChange = { rate = it }, onValueChangeFinished = { update(s.copy(speechRate = RobotSettings.clampRate(rate))) },
+            valueRange = 0.5f..2.0f, steps = 14)
+        OutlinedButton(onClick = a.speakTest, modifier = Modifier.heightIn(min = 48.dp)) { Text("Test the voice") }
+        SwitchRow("Show the words while I speak", "Writes down your question as you talk (uses more battery).", s.livePartials) { update(s.copy(livePartials = it)) }
+        val e = snap.engines
+        if (e != null) {
+            val stuck = listOf(VoiceBundle.STT, VoiceBundle.KOKORO, VoiceBundle.KITTEN).filter { e.state(it) == EngineState.BROKEN || e.state(it) == EngineState.FAILED }
+            for (b in listOf(VoiceBundle.STT, s.voiceChoice.bundle).filterNotNull().distinct()) {
+                val st = e.state(b)
+                StatusRow(when (st) { EngineState.READY, EngineState.IDLE, EngineState.LOADING -> Mark.OK; EngineState.MISSING -> Mark.TODO; else -> Mark.WARN }, b.title, st.text())
+            }
+            if (stuck.isNotEmpty()) OutlinedButton(onClick = a.voiceReset, modifier = Modifier.heightIn(min = 48.dp)) { Text("Try again") }
+        }
+        Text("Test voice speed", style = MaterialTheme.typography.titleSmall)
+        Text("Loads the downloaded models and times them on a built-in recording and two fixed sentences (nothing is played or saved).",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val bench = snap.bench
+        val running = bench?.state == BenchState.RUNNING && System.currentTimeMillis() - bench.started < 5 * 60_000L
+        OutlinedButton(onClick = a.voiceBench, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (running) "Testing…" else "Test voice speed") }
+        if (bench != null) {
+            if (running) {
+                Text(bench.step, style = MaterialTheme.typography.bodyMedium)
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            if (bench.state == BenchState.FAILED) Text(bench.step, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+            for (line in VoiceBenchLogic.lines(bench)) Text(line, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActions, modifier: Modifier) {
+fun SettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions, modifier: Modifier) {
     var confirmHistory by remember { mutableStateOf(false) }
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -144,15 +259,11 @@ fun SettingsScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActi
                     ) { Text(when (v) { SpeakReplies.VOICE -> "Voice only"; SpeakReplies.ALWAYS -> "Always"; SpeakReplies.NEVER -> "Never" }) }
                 }
             }
-            Text("“Voice only” speaks when you asked by voice or with “hey robot”, not when you typed.",
+            Text("“Voice only” speaks when you asked by voice or with “hey robot”, not when you typed. " +
+                "Tap the conversation, or say “stop” (when “hey robot” is on), to stop Robot talking.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("Voice: the phone's text-to-speech (GrapheneOS Speech Services).", style = MaterialTheme.typography.bodyMedium)
-            var rate by remember(s.speechRate) { mutableFloatStateOf(s.speechRate) }
-            Text("Speed: ${"%.1f".format(rate)}×", style = MaterialTheme.typography.bodyMedium)
-            Slider(value = rate, onValueChange = { rate = it }, onValueChangeFinished = { update(s.copy(speechRate = RobotSettings.clampRate(rate))) },
-                valueRange = 0.5f..2.0f, steps = 14)
-            OutlinedButton(onClick = a.speakTest, modifier = Modifier.heightIn(min = 48.dp)) { Text("Test the voice") }
         }
+        VoiceSettingsCard(s, snap, update, a)
         SectionCard("Actions") {
             Text("What Robot may do when you ask. On the lock screen only timers and alarms work; everything else asks you to unlock.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -178,7 +289,9 @@ fun SettingsScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActi
         SectionCard("About") {
             Text("Robot ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
             Text("Free software under the GNU GPL version 3. Third-party parts: LiteRT-LM and the Tensor NPU runtime (Apache-2.0), " +
-                "sherpa-onnx (Apache-2.0), ONNX Runtime (MIT), Silero VAD (MIT), Jetpack Compose and AndroidX (Apache-2.0), Gemma 4 (Apache-2.0).",
+                "sherpa-onnx (Apache-2.0) with espeak-ng (GPL-3.0-or-later), ONNX Runtime (MIT), Silero VAD (MIT), Jetpack Compose and AndroidX (Apache-2.0), " +
+                "Gemma 4 (Apache-2.0), Kokoro and Kitten TTS (Apache-2.0). Speech recognition: NVIDIA Parakeet TDT 0.6B v3 by NVIDIA, " +
+                "CC-BY-4.0, converted to ONNX by sherpa-onnx (huggingface.co/nvidia/parakeet-tdt-0.6b-v3).",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.height(12.dp))

@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
 import android.content.BroadcastReceiver
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -24,10 +25,12 @@ import app.heyrobot.voice.ListenerConfig
 import app.heyrobot.voice.SpeechToText
 import app.heyrobot.voice.TextToSpeech
 import app.heyrobot.voice.VoiceEngines
+import app.heyrobot.voice.WakeWord
 import org.json.JSONObject
 
 // VOICE PROCESS. The controller shared by the assistant service, the session and the panel: settings,
-// the "hey robot" listener (mode A: in the assistant's process, as phase 0 proved), the speech engines.
+// the "hey robot" listener (mode A: in the assistant's process, as phase 0 proved), the speech engines
+// (VoiceEngines: sherpa-onnx once the voice models are downloaded, the placeholders until then).
 
 object VoiceHub {
     private const val DEBOUNCE_MS = 2_000L
@@ -54,8 +57,34 @@ object VoiceHub {
         app = ctx.applicationContext
         worker = Handler(HandlerThread("robot-voice").apply { start() }.looper)
         settings = SettingsStore.load(app)
+        VoiceEngines.init(app, Paths.dir(app))
         tts = VoiceEngines.textToSpeech(app).also { it.configure(settings.speechRate, settings.voice) }
-        stt = VoiceEngines.speechToText(app) { listener }
+        stt = VoiceEngines.speechToText(app) { listener }.also { it.configure(settings.livePartials) }
+    }
+
+    /** The panel opened: start loading speech recognition (and the voice if replies will be spoken). */
+    fun prewarmVoice(speak: Boolean) {
+        stt.prewarm()
+        if (speak) tts.prewarm()
+    }
+
+    /** From the panel: while Robot speaks, "stop" said aloud ends the reply (when the wake word listens). */
+    fun onSpeakingChanged(speaking: Boolean) {
+        listener?.stopWord = speaking
+    }
+
+    /**
+     * Memory is short (RobotVoiceService.onTrimMemory): free the speech models unless they are in use. The wake
+     * word stays. Not on UI_HIDDEN: the models stay loaded while the assistant runs, as the panel comes and goes.
+     */
+    @Suppress("DEPRECATION") // RUNNING_LOW / RUNNING_CRITICAL: still honoured if a platform sends them.
+    fun onTrimMemory(level: Int) {
+        if (!::app.isInitialized) return
+        if (level < ComponentCallbacks2.TRIM_MEMORY_BACKGROUND && level != ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW &&
+            level != ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) return
+        val s = stt.trim()
+        val t = tts.trim()
+        RLog.i("voice_trim", "level" to level, "stt" to s, "tts" to t)
     }
 
     /** The assistant service is ready (from boot, after the first unlock, or after being chosen). */
@@ -162,6 +191,15 @@ object VoiceHub {
 
     /** From the audio thread: debounce, then on the main thread. */
     private fun onWake(keyword: String) {
+        if (keyword == WakeWord.STOP) {
+            main.post {
+                // Ignored when the reply itself says "stop" (or a word like it): that may be Robot's own voice.
+                val act = tts.isSpeaking && tts.stopWordSafe
+                RLog.i("stop_word", "acted" to act)
+                if (act) PanelController.stopSpeaking()
+            }
+            return
+        }
         val e = SystemClock.elapsedRealtime()
         synchronized(wakeLock) {
             if (e - lastWakeE < DEBOUNCE_MS) return
@@ -181,9 +219,16 @@ object VoiceHub {
             Cmd.SETTINGS -> {
                 settings = SettingsStore.load(app)
                 tts.configure(settings.speechRate, settings.voice)
+                stt.configure(settings.livePartials)
                 applyListening("settings")
             }
-            Cmd.SPEAK_TEST -> tts.speak("Hi, I'm Robot. This is how I sound.")
+            Cmd.SPEAK_TEST -> {
+                tts.stop()
+                tts.speak("Hi, I'm Robot. This is how I sound.")
+            }
+            Cmd.VOICE_MODELS -> VoiceEngines.modelsChanged()
+            Cmd.VOICE_RESET -> VoiceEngines.reset()
+            Cmd.VOICE_BENCH -> VoiceEngines.benchmark()
         }
     }
 }

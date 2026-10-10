@@ -40,18 +40,23 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.PlainTooltip
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,6 +65,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -90,6 +96,7 @@ import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.AssistantBubble
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.UserBubble
+import kotlinx.coroutines.launch
 
 // VOICE PROCESS. The assistant panel: a bottom sheet over whatever is on screen, with the conversation,
 // a text field, push-to-talk, the camera, "Ask about this screen" and a stop button.
@@ -151,10 +158,11 @@ fun AssistantPanel(onClose: () -> Unit) {
                 }
                 BrainBanner(st)
                 Messages(st, Modifier.weight(1f, fill = false))
-                if (st.turns.isEmpty() && st.phase != Phase.LISTENING) {
+                val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING
+                if (st.turns.isEmpty() && !hearing) {
                     Suggestions(st.locked) { input = it; send() }
                 }
-                if (st.phase == Phase.LISTENING) ListeningRow(st.partial)
+                if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING)
                 ContextRow(st)
                 AnimatedVisibility(attachOpen && st.draft == null) { AttachRow(st.locked) { attachOpen = false } }
                 InputRow(
@@ -196,6 +204,7 @@ private fun Header(st: PanelState, onClose: () -> Unit) {
 
 private fun statusLine(st: PanelState): String = when (st.phase) {
     Phase.LISTENING -> "Listening…"
+    Phase.TRANSCRIBING -> "Writing it down…"
     Phase.THINKING -> if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
     Phase.ANSWERING -> "Answering…"
     Phase.SPEAKING -> "Speaking · tap to stop"
@@ -214,7 +223,7 @@ private fun StatusOrb(phase: Phase) {
     val active = phase != Phase.IDLE
     val ring by animateFloatAsState(if (active) pulse else 1f, label = "ring")
     val c = when (phase) {
-        Phase.LISTENING -> MaterialTheme.colorScheme.primary
+        Phase.LISTENING, Phase.TRANSCRIBING -> MaterialTheme.colorScheme.primary
         Phase.THINKING, Phase.ANSWERING -> MaterialTheme.colorScheme.tertiary
         Phase.SPEAKING -> MaterialTheme.colorScheme.secondary
         Phase.IDLE -> MaterialTheme.colorScheme.primary
@@ -306,7 +315,7 @@ private fun Suggestions(locked: Boolean, onPick: (String) -> Unit) {
 }
 
 @Composable
-private fun ListeningRow(partial: String) {
+private fun ListeningRow(partial: String, transcribing: Boolean) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         val t = rememberInfiniteTransition(label = "listen")
         val s by t.animateFloat(0.85f, 1.15f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "mic")
@@ -314,8 +323,8 @@ private fun ListeningRow(partial: String) {
             Icon(RIcons.Mic, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onPrimary)
         }
         Spacer(Modifier.width(12.dp))
-        Text(partial.ifEmpty { "Listening…" }, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        TextButton(onClick = PanelController::micReleased) { Text("Done") }
+        Text(partial.ifEmpty { if (transcribing) "Writing it down…" else "Listening…" }, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        if (!transcribing) TextButton(onClick = PanelController::micReleased) { Text("Done") }
     }
 }
 
@@ -396,32 +405,49 @@ private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, o
             st.busy -> FilledIconButton(onClick = PanelController::stopGenerating, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop") }
             st.phase == Phase.SPEAKING && !canSend -> FilledTonalIconButton(onClick = PanelController::stopSpeaking, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop speaking") }
             canSend -> FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, "Send") }
-            else -> MicButton(listening = st.phase == Phase.LISTENING)
+            else -> MicButton(listening = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING, hint = st.micHint)
         }
     }
 }
 
-/** Tap to talk (ends on silence), or hold and release (push-to-talk). */
+/**
+ * Tap to talk (ends on silence), or hold and release (push-to-talk). While voice input can't work ([hint], e.g.
+ * "Download voice models"), the tooltip says why when the panel opens and on every press; the press still shows
+ * the notice and the keyboard.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MicButton(listening: Boolean) {
-    Box(
-        Modifier.size(56.dp).clip(CircleShape)
-            .background(if (listening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer)
-            .semantics {
-                contentDescription = "Talk to Robot"
-                role = Role.Button
-                onClick(label = "Talk") { PanelController.micPressed(); true }
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(onPress = {
-                    val t0 = System.currentTimeMillis()
-                    PanelController.micPressed()
-                    val released = tryAwaitRelease()
-                    if (released && System.currentTimeMillis() - t0 > 450) PanelController.micReleased()
-                })
-            },
-        contentAlignment = Alignment.Center,
+private fun MicButton(listening: Boolean, hint: String?) {
+    val tip = rememberTooltipState()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(hint) { if (hint != null) tip.show() }
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(hint.orEmpty()) } },
+        state = tip,
+        focusable = false,
+        enableUserInput = false,
     ) {
-        Icon(RIcons.Mic, null, tint = if (listening) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer)
+        Box(
+            Modifier.size(56.dp).clip(CircleShape)
+                .background(if (listening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer)
+                .semantics {
+                    contentDescription = if (hint != null) "Talk to Robot. $hint" else "Talk to Robot"
+                    role = Role.Button
+                    onClick(label = "Talk") { PanelController.micPressed(); true }
+                }
+                .pointerInput(hint) {
+                    detectTapGestures(onPress = {
+                        if (hint != null) scope.launch { tip.show() }
+                        val t0 = System.currentTimeMillis()
+                        PanelController.micPressed()
+                        val released = tryAwaitRelease()
+                        if (released && System.currentTimeMillis() - t0 > 450) PanelController.micReleased()
+                    })
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(RIcons.Mic, null, tint = if (listening) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer)
+        }
     }
 }
