@@ -64,6 +64,9 @@ data class AssistantFacts(
     val networkGranted: Boolean = true,
     /** 0.2.3: WRITE_SECURE_SETTINGS was granted with adb, so Robot keeps its recognizer set itself. */
     val secureSettingsGranted: Boolean = false,
+    /** 0.3.1: "Use text from screen" and "Use screenshot" for the assistant (null: Android wouldn't say). */
+    val screenTextOn: Boolean? = null,
+    val screenshotOn: Boolean? = null,
 )
 
 object Assistant {
@@ -78,6 +81,7 @@ object Assistant {
 
     fun facts(ctx: Context): AssistantFacts {
         val roleHeld = roleHeld(ctx)
+        val (screenText, screenshot) = screenSharing(ctx)
         val active = try { VoiceInteractionService.isActiveService(ctx, ComponentName(ctx.packageName, VIS_CLASS)) } catch (_: Throwable) { null }
         val rec = try { Settings.Secure.getString(ctx.contentResolver, "voice_recognition_service") ?: "unset" } catch (_: Throwable) { "unreadable" }
         val found = try { ctx.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0).size } catch (_: Throwable) { 0 }
@@ -102,6 +106,8 @@ object Assistant {
             claudeApp = ClaudeAppIntents.facts(ctx),
             networkGranted = granted(ctx, Manifest.permission.INTERNET),
             secureSettingsGranted = RecognizerKeeper.canWrite(ctx),
+            screenTextOn = screenText,
+            screenshotOn = screenshot,
         )
     }
 

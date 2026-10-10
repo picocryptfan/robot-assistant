@@ -2,6 +2,7 @@ package app.heyrobot.core
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -59,6 +60,17 @@ class ScreenAccessTest {
         val on = ScreenAccess.notSharedHint(true, true)
         assertTrue(on, on.contains("are on") && on.contains("private"))
         assertFalse(on, on.contains("Turn on"))
+    }
+
+    @Test fun setupShowsBothSettings() {
+        assertEquals(true, ScreenAccess.setup(true, true).ok)
+        assertTrue(ScreenAccess.setup(true, true).text.startsWith("Use text from screen ✓ · Use screenshot ✓"))
+        val noShot = ScreenAccess.setup(true, false)
+        assertEquals(false, noShot.ok)
+        assertTrue(noShot.text, noShot.text.startsWith("Use text from screen ✓ · Use screenshot ✗"))
+        val noText = ScreenAccess.setup(false, true)
+        assertTrue(noText.text, noText.text.contains("no screenshot either"))
+        assertNull(ScreenAccess.setup(null, true).ok)
     }
 
     @Test fun showFlagsAndArrivalsAreCodes() {

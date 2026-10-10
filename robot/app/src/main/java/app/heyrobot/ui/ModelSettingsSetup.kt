@@ -69,6 +69,7 @@ import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelSpec
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.VoiceBenchLogic
@@ -625,6 +626,11 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                         false -> if (f.roleHeld) "Android chose Robot but isn't running it. This happens after a restart: pick Robot again." else "Not yet."
                         null -> "Android didn't say."
                     })
+                // "Ask about this screen" needs both of the assistant's screen settings (core ScreenAccess).
+                val screen = ScreenAccess.setup(f.screenTextOn, f.screenshotOn)
+                StatusRow(when (screen.ok) { true -> Mark.OK; false -> Mark.WARN; null -> Mark.TODO }, "Screen sharing", screen.text) {
+                    if (screen.ok != true) TextButton(onClick = a.openAssistantSettings) { Text("Open") }
+                }
                 StatusRow(
                     if (f.recognizerIsRobot) Mark.OK else Mark.WARN,
                     "Default speech recognizer",

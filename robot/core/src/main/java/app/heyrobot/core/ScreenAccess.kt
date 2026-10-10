@@ -80,6 +80,21 @@ object ScreenAccess {
                 "then swipe up from a bottom corner again. Some apps, like banking apps and private tabs, never share their screen."
         }
 
+    /** Assistant setup's "Screen sharing" row: [ok] (null: Android wouldn't say) and its words. */
+    data class Setup(val ok: Boolean?, val text: String)
+
+    fun setup(textOn: Boolean?, shotOn: Boolean?): Setup {
+        fun tick(b: Boolean) = if (b) "✓" else "✗"
+        return when {
+            textOn == null || shotOn == null -> Setup(null, "Android didn't say. For “Ask about this screen”, turn on “Use text from screen” and " +
+                "“Use screenshot” in $WHERE.")
+            textOn && shotOn -> Setup(true, "Use text from screen ✓ · Use screenshot ✓. Swipe up from a bottom corner, then tap " +
+                "“Ask about this screen”.")
+            else -> Setup(false, "Use text from screen ${tick(textOn)} · Use screenshot ${tick(shotOn)}. Turn both on for “Ask about this screen”" +
+                (if (!textOn) ": without text from screen, Android sends no screenshot either." else "."))
+        }
+    }
+
     /** The show flags in words, for the voice log ("text, screenshot, assist gesture"). */
     fun flagWords(flags: Int): String {
         val w = listOfNotNull(
