@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Robot's own signature permission: only apps signed with Robot's key (keys/README.md) hold it. It guards
          the :brain service and the main app -> voice process commands. -->
     <permission
@@ -13,6 +14,10 @@
     <!-- 0.2.3, "Call audio" playback only (Settings › Voice): the phone in communication mode with the loudspeaker as the
          call device while Robot speaks, as calling apps do for the echo canceller. Normal permission, no prompt. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- 0.2.3: only if the user grants it with adb (a development permission): Robot then keeps
+         Settings.Secure voice_recognition_service set to its own recognizer, which is what keeps it the assistant across
+         restarts (core AdbFixes.kt). It writes that one key and nothing else. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -168,9 +173,12 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/capture_paths" />
         </provider>
 
-        <!-- Not exported: the system's boot broadcast still arrives, other apps cannot fake it. -->
-        <receiver android:name=".boot.BootReceiver" android:exported="false">
+        <!-- Not exported: the system's boot broadcast still arrives, other apps cannot fake it. Direct-boot aware (0.2.3)
+             so it also gets LOCKED_BOOT_COMPLETED, before the first unlock: there it only checks the speech recognizer
+             setting (no files of the credential-encrypted storage; RobotApp only logs). -->
+        <receiver android:name=".boot.BootReceiver" android:exported="false" android:directBootAware="true">
             <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>

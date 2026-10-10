@@ -27,6 +27,8 @@ object Paths {
     fun voiceBench(ctx: Context) = File(dir(ctx), VoiceFiles.BENCH)
     /** The voice log (core VoiceLog.kt): written by the voice process, read by Settings › Voice › Voice log. */
     fun voiceLog(ctx: Context) = File(dir(ctx), VoiceFiles.LOG)
+    /** The main process's own few voice-log events (the recognizer repair): one writer per file. */
+    fun voiceLogMain(ctx: Context) = File(dir(ctx), VoiceFiles.LOG_MAIN)
     fun bargeTest(ctx: Context) = File(dir(ctx), VoiceFiles.BARGE)
 
     fun bootCount(ctx: Context): Int = try {

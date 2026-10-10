@@ -21,6 +21,7 @@ import app.heyrobot.core.MicKind
 import app.heyrobot.core.PlaybackCode
 import app.heyrobot.core.Playback
 import app.heyrobot.core.RLog
+import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.TtsStop
 import app.heyrobot.core.VoiceEvent
@@ -32,6 +33,7 @@ import app.heyrobot.core.writeAtomic
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.KwsAssets
+import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.voice.CapturePolicy
@@ -219,6 +221,8 @@ object VoiceHub {
         }, IntentFilter().apply { addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF) }, null)
         applyListening(ListenWhy.READY)
         worker.postDelayed(retry, 60_000)
+        // Robot is the running assistant: keep the speech recognizer setting that keeps it so after a restart.
+        worker.post { try { RecognizerKeeper.check(app, RepairWhen.ASSISTANT_READY) } catch (t: Throwable) { RLog.w("recognizer", t) } }
     }
 
     private fun register(r: BroadcastReceiver, f: IntentFilter, permission: String?) {

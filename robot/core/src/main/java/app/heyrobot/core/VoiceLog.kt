@@ -7,11 +7,12 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 // Pure (java.io and a timer thread). The voice log (0.2.3): what the voice side did, as event codes and a few small
-// numbers, so the owner can screenshot Settings › Voice › Voice log right after "she didn't respond" and we can see
+// numbers, so after "she didn't respond" a screenshot of Settings › Voice › Voice log shows
 // where it broke (heard? woke? listened? understood? answered? spoke?). Never words, transcripts, audio or names: the
 // recording API takes only the fixed enums below and Ints (VoiceLogTest checks its signatures), and the file holds
 // only numbers. Kept in memory in the :voice process (the last [VoiceLog.CAPACITY] events) and mirrored to
 // filesDir/robot/voice_log.txt (one writer: the :voice process), so it survives a restart; the main app reads it.
+// The main process logs its few events (the recognizer repair) to a file of its own; the screen shows both.
 
 /** A reason or kind stored as a stable small number (never renumber an entry: old files keep the old numbers). */
 interface LogCode {
@@ -87,6 +88,8 @@ enum class VoiceEvent(val id: Int) {
     VOLUME_KEY(32),
     /** a = 1 screen on, 0 off. */
     SCREEN(33),
+    /** Robot set voice_recognition_service to its recognizer (it keeps it the assistant at boot): a = [RepairWhen], b = 1 if it worked. */
+    RECOGNIZER_SET(34),
     ;
 
     companion object {
@@ -162,6 +165,10 @@ enum class NoQuestion(override val id: Int, override val title: String) : LogCod
 
 enum class NoReply(override val id: Int, override val title: String) : LogCode {
     BUSY(1, "still on the last question"), FAILED(2, "the model failed"), EMPTY(3, "empty answer"), STOPPED(4, "stopped"),
+}
+
+enum class RepairWhen(override val id: Int, override val title: String) : LogCode {
+    LOCKED_BOOT(1, "at boot, before unlock"), BOOT(2, "at boot"), APP(3, "app opened"), SETUP(4, "Assistant setup"), ASSISTANT_READY(5, "assistant started"),
 }
 
 enum class Cue(override val id: Int, override val title: String) : LogCode {
@@ -262,6 +269,12 @@ object VoiceLog {
         scheduleFlush()
     }
 
+    /** Records an event that happened at [time] (wall clock, ms), noted elsewhere first (before the first unlock). */
+    fun addAt(time: Long, event: VoiceEvent, a: Int = 0, b: Int = 0, c: Int = 0) {
+        ring.add(time, event, a, b, c)
+        scheduleFlush()
+    }
+
     /** Records an event whose first number is a reason or kind. */
     fun <E> add(event: VoiceEvent, code: E, b: Int = 0, c: Int = 0) where E : Enum<E>, E : LogCode = add(event, code.id, b, c)
 
@@ -346,6 +359,8 @@ object VoiceLogText {
                 else if (b == 1) "Barge-in test: heard you, silent $c ms later" else "Barge-in test: didn't hear you"
             VoiceEvent.VOLUME_KEY -> (if (a == VolumeKeyStop.KEY_VOLUME_UP) "Volume up" else "Volume down") + " stopped Robot talking"
             VoiceEvent.SCREEN -> if (a == 1) "Screen on" else "Screen off"
+            VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
+                else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
         }
     }
 

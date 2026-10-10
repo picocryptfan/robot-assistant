@@ -40,6 +40,7 @@ import app.heyrobot.core.Approval
 import app.heyrobot.core.BargeTestResult
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.ModelStatus
+import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.TextApp
@@ -57,6 +58,7 @@ import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
+import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsStore
@@ -84,6 +86,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) route.value = routeOf(intent)
         setContent { RobotTheme { RobotAppUi(this) } }
+        // The speech recognizer setting that keeps Robot the assistant at the next restart (only with the adb grant).
+        val app = applicationContext
+        Thread({
+            try {
+                RecognizerKeeper.flushPending(app)
+                RecognizerKeeper.check(app, RepairWhen.APP)
+            } catch (_: Throwable) {}
+        }, "robot-recognizer").start()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -117,6 +127,8 @@ sealed class Page {
     data object WakePhrases : Page()
     data object WakeTest : Page()
     data object VoiceLog : Page()
+    /** Settings › Advanced › ADB fixes. */
+    data object AdbFixes : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -130,6 +142,7 @@ sealed class Page {
                     WakePhrases -> "wake"
                     WakeTest -> "waketest"
                     VoiceLog -> "voicelog"
+                    AdbFixes -> "adbfixes"
                 }
             },
             restore = { v ->
@@ -140,6 +153,7 @@ sealed class Page {
                     v == "wake" -> WakePhrases
                     v == "waketest" -> WakeTest
                     v == "voicelog" -> VoiceLog
+                    v == "adbfixes" -> AdbFixes
                     else -> null
                 }
             },
@@ -370,6 +384,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.WakePhrases -> WakePhrasesScreen(settings, ::updateSettings, snackbar, onBack = { page = null })
         Page.WakeTest -> WakeTestScreen(settings, snap, onBack = { page = null })
         Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = { page = null })
+        Page.AdbFixes -> AdbFixesScreen(snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {

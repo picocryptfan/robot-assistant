@@ -15,6 +15,8 @@ object VoiceFiles {
     const val BENCH = "voice_bench.json"
     /** The voice log (core VoiceLog.kt), written by the :voice process only. */
     const val LOG = "voice_log.txt"
+    /** ... and the main process's own events (core VoiceLog.kt), shown with it. */
+    const val LOG_MAIN = "voice_log_main.txt"
     /** The barge-in test's result (core BargeIn.kt). */
     const val BARGE = "voice_barge_test.json"
 }

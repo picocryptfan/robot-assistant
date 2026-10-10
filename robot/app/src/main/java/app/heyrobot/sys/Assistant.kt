@@ -19,9 +19,18 @@ import android.service.voice.VoiceInteractionService
 import android.speech.RecognitionService
 import app.heyrobot.R
 import app.heyrobot.boot.BootCheckReceiver
+import android.app.Application
+import android.os.UserManager
+import app.heyrobot.core.AdbFixes
 import app.heyrobot.core.BootLogic
 import app.heyrobot.core.RLog
+import app.heyrobot.core.RecognizerRepair
+import app.heyrobot.core.RepairWhen
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.readOrNull
+import app.heyrobot.core.writeAtomic
+import java.io.File
 import org.json.JSONObject
 
 // Main and voice processes. What the system says about Robot as the assistant, and the restart fallback.
@@ -44,6 +53,8 @@ data class AssistantFacts(
     val calendarGranted: Boolean = false,
     val cheogramInstalled: Boolean = false,
     val protonInstalled: Boolean = false,
+    /** 0.2.3: WRITE_SECURE_SETTINGS was granted with adb, so Robot keeps its recognizer set itself. */
+    val secureSettingsGranted: Boolean = false,
 )
 
 object Assistant {
@@ -51,11 +62,13 @@ object Assistant {
     const val VIS_CLASS = "app.heyrobot.assistant.RobotVoiceService"
     const val RECOGNIZER_CLASS = "app.heyrobot.assistant.RobotRecognitionService"
 
+    fun roleHeld(ctx: Context): Boolean = try {
+        val rm = ctx.getSystemService(RoleManager::class.java)
+        rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT) && rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)
+    } catch (_: Exception) { false }
+
     fun facts(ctx: Context): AssistantFacts {
-        val roleHeld = try {
-            val rm = ctx.getSystemService(RoleManager::class.java)
-            rm.isRoleAvailable(RoleManager.ROLE_ASSISTANT) && rm.isRoleHeld(RoleManager.ROLE_ASSISTANT)
-        } catch (_: Exception) { false }
+        val roleHeld = roleHeld(ctx)
         val active = try { VoiceInteractionService.isActiveService(ctx, ComponentName(ctx.packageName, VIS_CLASS)) } catch (_: Throwable) { null }
         val rec = try { Settings.Secure.getString(ctx.contentResolver, "voice_recognition_service") ?: "unset" } catch (_: Throwable) { "unreadable" }
         val found = try { ctx.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0).size } catch (_: Throwable) { 0 }
@@ -74,6 +87,7 @@ object Assistant {
             calendarGranted = granted(ctx, Manifest.permission.READ_CALENDAR) && granted(ctx, Manifest.permission.WRITE_CALENDAR),
             cheogramInstalled = HandOffApps.cheogram(ctx) != null,
             protonInstalled = HandOffApps.proton(ctx),
+            secureSettingsGranted = RecognizerKeeper.canWrite(ctx),
         )
     }
 
@@ -161,5 +175,80 @@ object BootCheck {
         } catch (t: Throwable) {
             RLog.w("boot_check_notify", t)
         }
+    }
+}
+
+/**
+ * Main and voice processes (0.2.3). Keeps Settings.Secure voice_recognition_service set to Robot's recognizer, which
+ * is what keeps Robot the assistant at boot (core RecognizerRepair), when the user granted WRITE_SECURE_SETTINGS with
+ * adb and Robot is the chosen assistant. Writes that one key and nothing else, and never replaces another installed
+ * recognizer. Checked at boot (also before the first unlock), when the app opens, on Assistant setup and when the
+ * assistant starts. Each write goes to the voice log.
+ */
+object RecognizerKeeper {
+    private const val PENDING = "recognizer_set_pending.txt"
+
+    fun current(ctx: Context): String? = try { Settings.Secure.getString(ctx.contentResolver, RecognizerRepair.KEY) } catch (_: Throwable) { null }
+
+    fun canWrite(ctx: Context): Boolean = Assistant.granted(ctx, Manifest.permission.WRITE_SECURE_SETTINGS)
+
+    fun isRobot(ctx: Context): Boolean = RecognizerRepair.same(current(ctx), AdbFixes.RECOGNIZER)
+
+    /** [flattened] names an installed recognition service (direct-boot unaware ones too: this may run before unlock). */
+    private fun installed(ctx: Context, flattened: String?): Boolean {
+        val cn = flattened?.let { ComponentName.unflattenFromString(it) } ?: return false
+        return try {
+            ctx.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE),
+                PackageManager.MATCH_DIRECT_BOOT_AWARE or PackageManager.MATCH_DIRECT_BOOT_UNAWARE)
+                .any { it.serviceInfo.packageName == cn.packageName && it.serviceInfo.name == cn.className }
+        } catch (_: Throwable) { false }
+    }
+
+    fun check(ctx: Context, why: RepairWhen): RecognizerRepair.Decision {
+        val cur = current(ctx)
+        val d = RecognizerRepair.decide(Assistant.roleHeld(ctx), canWrite(ctx), cur, AdbFixes.RECOGNIZER, installed(ctx, cur))
+        RLog.i("recognizer_check", "why" to why, "decision" to d)
+        if (d != RecognizerRepair.Decision.WRITE) return d
+        val ok = try {
+            Settings.Secure.putString(ctx.contentResolver, RecognizerRepair.KEY, AdbFixes.RECOGNIZER)
+        } catch (t: Throwable) {
+            RLog.w("recognizer_set", t)
+            false
+        }
+        log(ctx, why, ok)
+        return d
+    }
+
+    private fun unlocked(ctx: Context): Boolean = try { ctx.getSystemService(UserManager::class.java).isUserUnlocked } catch (_: Throwable) { true }
+
+    private fun pendingFile(ctx: Context) = File(ctx.createDeviceProtectedStorageContext().filesDir, PENDING)
+
+    private fun log(ctx: Context, why: RepairWhen, ok: Boolean) {
+        // Before the first unlock the log's file can't be written: a note in device-protected storage, logged later.
+        if (!unlocked(ctx)) {
+            try { writeAtomic(pendingFile(ctx), "${System.currentTimeMillis()} ${why.id} ${if (ok) 1 else 0}") } catch (_: Throwable) {}
+            return
+        }
+        ensureLog(ctx)
+        VoiceLog.add(VoiceEvent.RECOGNIZER_SET, why, if (ok) 1 else 0)
+        VoiceLog.flush()
+    }
+
+    /** After the unlock: a write made before it goes to the log now, with its time. */
+    fun flushPending(ctx: Context) {
+        if (!unlocked(ctx)) return
+        val f = pendingFile(ctx)
+        val p = readOrNull(f)?.trim()?.split(' ') ?: return
+        f.delete()
+        val t = p.getOrNull(0)?.toLongOrNull() ?: return
+        ensureLog(ctx)
+        VoiceLog.addAt(t, VoiceEvent.RECOGNIZER_SET, p.getOrNull(1)?.toIntOrNull() ?: 0, p.getOrNull(2)?.toIntOrNull() ?: 0)
+        VoiceLog.flush()
+    }
+
+    /** Each process logs to its own file: the voice process to the voice log, the main app to a small one of its own. */
+    private fun ensureLog(ctx: Context) {
+        val voice = Application.getProcessName().contains(':')
+        VoiceLog.init(if (voice) Paths.voiceLog(ctx) else Paths.voiceLogMain(ctx))
     }
 }

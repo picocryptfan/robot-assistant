@@ -69,6 +69,7 @@ import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceChoice
 import app.heyrobot.core.VoiceModelLogic
 import app.heyrobot.sys.AssistantFacts
+import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.toolIcon
 
@@ -399,6 +400,9 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         SectionCard("Assistant") {
             NavRow(RIcons.Robot, "Assistant setup", "Check that Robot is your digital assistant", a.openSetup)
         }
+        SectionCard("Advanced") {
+            NavRow(RIcons.Chip, "ADB fixes", "One-time fixes with a computer, such as staying the assistant after a restart") { a.openPage(Page.AdbFixes) }
+        }
         SectionCard("About") {
             Text("Robot ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
             Text("Free software under the GNU GPL version 3. Third-party parts: LiteRT-LM and the Tensor NPU runtime (Apache-2.0), " +
@@ -476,6 +480,11 @@ private fun PeopleSetupCard(f: AssistantFacts, a: AppActions) {
 
 @Composable
 fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit, peopleFirst: Boolean = false) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // Opening Assistant setup checks the speech recognizer setting (Robot repairs it itself with the adb grant).
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { RecognizerKeeper.check(ctx, app.heyrobot.core.RepairWhen.SETUP) }
+    }
     Scaffold(topBar = { BackBar("Assistant setup", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
         Column(
             Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -503,11 +512,20 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                     if (f.recognizerIsRobot) "Set to Robot, so Android keeps Robot as the assistant after a restart."
                     else "Not set to Robot (${if (f.recognizer == "unset") "none set" else "another app"}; ${f.recognizersFound} installed). After a restart Android may turn Robot off: see below.",
                 )
-                StatusRow(if (f.micGranted) Mark.OK else Mark.TODO, "Microphone", if (f.micGranted) "Allowed" else "Needed for “hey robot” and voice questions.")
+                StatusRow(
+                    if (f.recognizerIsRobot) Mark.OK else Mark.WARN,
+                    "Survives restarts",
+                    (if (f.recognizerIsRobot) "Yes: Robot is the speech recognizer, so Android keeps it the assistant."
+                    else "Not yet: Android may turn Robot off at the next restart. A one-time fix with a computer solves it.") +
+                        (if (f.secureSettingsGranted) " Robot keeps this set itself." else ""),
+                ) {
+                    if (!f.recognizerIsRobot || !f.secureSettingsGranted) FilledTonalButton(onClick = { a.openPage(Page.AdbFixes) }) { Text("Fix") }
+                }
+                StatusRow(if (f.micGranted) Mark.OK else Mark.TODO, "Microphone", if (f.micGranted) "Allowed" else "Needed for wake words and voice questions.")
                 StatusRow(if (f.notificationsGranted) Mark.OK else Mark.TODO, "Notifications", if (f.notificationsGranted) "Allowed" else "Needed for the restart reminder.")
                 StatusRow(
                     when (f.listening) { true -> Mark.OK; else -> Mark.TODO },
-                    "Listening for “hey robot”",
+                    "Listening for wake words",
                     when (f.listening) {
                         true -> "Yes"
                         false -> f.listeningNote ?: "No"
@@ -529,10 +547,10 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                 )
                 Text(
                     "Robot checks 3 minutes after every restart. If it was turned off, you get a notification: tap it, choose " +
-                        "“Digital assistant app” and pick Robot again. A one-time fix with a computer (adb) that makes this permanent " +
-                        "comes in a later version.",
+                        "“Digital assistant app” and pick Robot again. To make it stay, use the one-time fix in Settings › Advanced › ADB fixes.",
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                OutlinedButton(onClick = { a.openPage(Page.AdbFixes) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("ADB fixes") }
             }
             Spacer(Modifier.height(12.dp))
         }

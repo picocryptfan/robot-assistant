@@ -84,7 +84,7 @@ import kotlinx.coroutines.withContext
 // (KwsAssets): this process never loads sherpa-onnx. The tests run in the voice process (Cmd broadcasts) and report
 // through files, as the voice speed test does.
 
-/** The part of Settings › Voice about wake words, hearing the owner over Robot, and the log. */
+/** The part of Settings › Voice about wake words, hearing you over Robot, and the log. */
 @Composable
 fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions) {
     Text("Wake words", style = MaterialTheme.typography.titleSmall)
@@ -214,7 +214,10 @@ private fun PhraseCard(p: WakePhrase, speller: KwsSpeller?, onChange: (WakePhras
     }
 }
 
-private fun readLog(ctx: Context): List<VoiceLogEntry> = VoiceLogCodec.decode(readOrNull(Paths.voiceLog(ctx))).asReversed()
+/** Newest first: the voice process's log and the main app's few events (each process writes its own file). */
+private fun readLog(ctx: Context): List<VoiceLogEntry> =
+    (VoiceLogCodec.decode(readOrNull(Paths.voiceLog(ctx))) + VoiceLogCodec.decode(readOrNull(Paths.voiceLogMain(ctx))))
+        .sortedByDescending { it.time }
 
 /** Settings › Voice › Test wake words: while it shows, Robot lists the phrases it hears instead of opening. */
 @Composable
