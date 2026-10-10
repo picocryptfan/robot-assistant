@@ -54,8 +54,18 @@ class SettingsTest {
         assertEquals(null, s.phoneRegion)
         assertEquals(null, s.emailApp)
         assertEquals(ToolCalls.MAX_EVENT_MINUTES, s.eventMinutes)
-        // A region already saved is kept.
-        assertEquals("CA", RobotSettings.fromJson("""{"phoneRegion":"ca"}""").phoneRegion)
+        // A region saved with this version is kept; "CA" from a file of an earlier version (which always wrote it) is
+        // the old default, so it reads as unset, once: the next save writes the new layout.
+        assertEquals("CA", RobotSettings.fromJson("""{"schema":2,"phoneRegion":"ca"}""").phoneRegion)
+        assertEquals(null, RobotSettings.fromJson("""{"phoneRegion":"CA"}""").phoneRegion)
+        assertEquals("FR", RobotSettings.fromJson("""{"phoneRegion":"FR"}""").phoneRegion)
+        val migrated = RobotSettings.fromJson("""{"phoneRegion":"CA","speechRate":1.5}""")
+        val json = migrated.toJson()
+        assertEquals(RobotSettings.SCHEMA, json.getInt("schema"))
+        assertEquals(false, json.has("phoneRegion"))
+        assertEquals(migrated, RobotSettings.fromJson(json.toString()))
+        // Chosen again after the migration: kept.
+        assertEquals("CA", RobotSettings.fromJson(migrated.copy(phoneRegion = "CA").toJson().toString()).phoneRegion)
     }
 
     @Test fun voiceChoiceDefaultsToKokoroHeart() {

@@ -98,7 +98,9 @@ drowned "stop" and the wake word. Settings › Voice › **Hear me while Robot t
   (`VOICE_COMMUNICATION`) with the platform's `AcousticEchoCanceler` and `NoiseSuppressor` on its session (when
   `isAvailable()`), and back to speech recognition 0.8 s after she stops. It never switches in the middle of a
   question. The new `AudioRecord` has the same format; the audio ring and sample counts carry on; the keyword stream
-  starts afresh after the few-ms gap (`CapturePolicy`, tested).
+  starts afresh after the few-ms gap, keeping its 1 s pre-roll. The switch back waits (up to 8 s) while the wake gate
+  hears speech, so a follow-up "hey robot" isn't cut in two (`CapturePolicy`, tested). Each old capture's recording
+  callback is unregistered before it is released.
 - **Off**: as before.
 - **Always echo cancellation**: the call mode the whole time the panel is open (no switching; questions a little less
   accurate).
@@ -145,6 +147,7 @@ on 115 phrases (`core/src/test/resources/kws/text2token-reference.tsv`), exactly
 without a restart. Any enabled phrase opens the panel exactly like "hey robot", question audio included.
 
 **Test wake words** (same screen): while it shows, Robot lists each phrase it hears, with the time, instead of opening.
+It ends when the screen is no longer visible (the app in the background, or the screen off).
 
 ### Texting without the model
 
@@ -154,7 +157,10 @@ mom a text saying hi", "tell mom I'm on my way" and "let Bob know I'll be late" 
 model's call, but no model. The name ends where the longest 1 to 3 words match a contact's name or nickname (exactly
 or as its start); otherwise one word, or two when you typed a capitalised surname; family words like "mom" are names
 of their own. "text mom" asks "What should the text to Mom say?" and takes your next typed or spoken answer ("cancel"
-or "never mind" drops it). "tell me a joke", "message me later" and "what's the text on this page" stay with the model.
+or "never mind" drops it). "tell me a joke", "message me later", "what's the text on this page", "text recognition" (no
+message, and no contact or family word by that name) and "write a message to Bob about the rent" (a description, not
+the text) stay with the model. Two- or three-word names must be a contact's whole words ("text Dan Can you…" is Dan).
+On the lock screen nothing is read or asked: Robot says to unlock first.
 
 When lookup_contact finds no one and Cheogram is the texting app, the model is told
 `not_in_phone_contacts_may_be_in_cheogram` and the card offers **Open Cheogram**; when send_text is offered, the system
@@ -179,7 +185,9 @@ the app or Assistant setup opens, and when the assistant starts, if it holds the
 recognizer is set. Each write goes to the voice log. Assistant setup shows "Survives restarts".
 
 The phone region for numbers without a country code now comes from the SIM, then the network, then the language
-setting, unless one is set in Settings (a region already saved is kept).
+setting, unless one is set in Settings. Earlier versions saved "CA" whether it was chosen or not, so a settings file
+from before 0.2.3 with "CA" reads as unset (once: the settings file now carries a schema version); any other saved
+region is kept.
 
 ### On the phone (0.2.3)
 

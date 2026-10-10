@@ -273,7 +273,9 @@ private fun PeopleSettingsCard(s: RobotSettings, snap: Snapshot, calendars: List
         SettingField("SMS gateway", s.smsGateway, "The domain Cheogram texts numbers through (JMP: cheogram.com).") { v ->
             update(s.copy(smsGateway = PhoneNumbers.gateway(v)))
         }
-        val device = app.heyrobot.sys.Phones.deviceRegion(androidx.compose.ui.platform.LocalContext.current)
+        val ctx = androidx.compose.ui.platform.LocalContext.current
+        // TelephonyManager calls: once per screen, not on every recomposition.
+        val device = remember { app.heyrobot.sys.Phones.deviceRegion(ctx) }
         SettingField("Phone region", s.phoneRegion ?: "",
             "Two letters, for numbers without a country code (US, FR, DE…). Empty: this phone's own (${device ?: "unknown"}).", caps = true) { v ->
             update(s.copy(phoneRegion = PhoneNumbers.region(v)))

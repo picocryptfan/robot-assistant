@@ -99,6 +99,7 @@ data class RobotSettings(
     val voiceChoice: VoiceChoice get() = VoiceChoice.of(voice)
 
     fun toJson(): JSONObject = JSONObject().apply {
+        put("schema", SCHEMA)
         put("wakeWord", wakeWord)
         put("wakeOnlyWhileCharging", wakeOnlyWhileCharging)
         put("speakReplies", speakReplies.name)
@@ -123,6 +124,11 @@ data class RobotSettings(
     }
 
     companion object {
+        /**
+         * The settings file's layout. 2 (0.2.3): the phone region is saved only when chosen. Files without it come from
+         * earlier versions, which saved "CA" whether chosen or not: there it reads as unset, so the phone's own applies.
+         */
+        const val SCHEMA = 2
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -169,8 +175,9 @@ data class RobotSettings(
                 approvals = ToolName.entries.associateWith { t -> enumOr(ap?.optString(t.id), DEFAULT_APPROVALS.getValue(t)) },
                 textApp = enumValues<TextApp>().firstOrNull { it.name == o.optString("textApp") },
                 smsGateway = PhoneNumbers.gateway(o.optString("smsGateway", d.smsGateway)),
-                // Kept as saved; absent or unreadable means the phone's own region.
-                phoneRegion = PhoneNumbers.region(o.optString("phoneRegion", "")),
+                // Kept as saved; absent or unreadable means the phone's own region, and so does the "CA" every earlier
+                // version wrote by default.
+                phoneRegion = PhoneNumbers.region(o.optString("phoneRegion", "")).takeUnless { o.optInt("schema", 1) < 2 && it == "CA" },
                 emailApp = enumValues<EmailApp>().firstOrNull { it.name == o.optString("emailApp") },
                 eventCalendar = o.optLong("eventCalendar", d.eventCalendar),
                 eventMinutes = clampEventMinutes(o.optInt("eventMinutes", d.eventMinutes)),
