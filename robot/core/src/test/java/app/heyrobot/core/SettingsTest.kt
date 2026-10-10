@@ -75,4 +75,25 @@ class SettingsTest {
         assertEquals(0, s.keepModelMinutes)
         assertEquals(Approval.ASK, s.approval(ToolName.OPEN_APP))
     }
+
+    @Test fun voiceReliabilityDefaultsAndRoundTrip() {
+        val d = RobotSettings()
+        assertEquals(listOf(WakePhrase(1, "hey robot", WakeSensitivity.MEDIUM, true)), d.wakePhrases)
+        assertEquals(BargeIn.ECHO_CANCEL, d.bargeIn)
+        assertEquals(Playback.ASSISTANT, d.playback)
+        assertEquals(StopKey.VOLUME_DOWN, d.stopKey)
+        val s = d.copy(
+            wakePhrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(3, "robot", WakeSensitivity.LOW, enabled = false), WakePhrase(4, "hey y'all", WakeSensitivity.HIGH)),
+            bargeIn = BargeIn.ALWAYS, playback = Playback.CALL, stopKey = StopKey.EITHER,
+        )
+        assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        // Settings from 0.2.2 (no such keys) get the defaults; an emptied list stays empty.
+        assertEquals(d, RobotSettings.fromJson("{}"))
+        assertEquals(emptyList<WakePhrase>(), RobotSettings.fromJson(d.copy(wakePhrases = emptyList()).toJson().toString()).wakePhrases)
+        // A damaged or invalid entry is dropped, never fatal.
+        val j = """{"wakePhrases":[{"id":1,"text":"hey robot"},{"id":2,"text":"stop"},"x",{"id":5,"text":"jarvis","sensitivity":"NOPE"}],"bargeIn":"NOPE"}"""
+        val back = RobotSettings.fromJson(j)
+        assertEquals(listOf(WakePhrase(1, "hey robot"), WakePhrase(5, "jarvis", WakeSensitivity.MEDIUM)), back.wakePhrases)
+        assertEquals(BargeIn.ECHO_CANCEL, back.bargeIn)
+    }
 }

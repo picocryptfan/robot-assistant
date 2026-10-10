@@ -78,6 +78,14 @@ data class RobotSettings(
     val eventCalendar: Long = CalendarPick.AUTO,
     /** Length of a new event when no end or duration was said. */
     val eventMinutes: Int = 60,
+    /** The wake phrases (Settings › Voice › Wake words); "hey robot" at Medium until the owner changes it. */
+    val wakePhrases: List<WakePhrase> = WakePhrases.DEFAULT,
+    /** Settings › Voice › "Hear me while Robot talks". */
+    val bargeIn: BargeIn = BargeIn.ECHO_CANCEL,
+    /** How Robot's voice is played (the echo canceller's reference may depend on it; the barge-in test compares). */
+    val playback: Playback = Playback.ASSISTANT,
+    /** The volume key that stops Robot talking while the panel shows. */
+    val stopKey: StopKey = StopKey.VOLUME_DOWN,
 ) {
     fun approval(t: ToolName): Approval = approvals[t] ?: DEFAULT_APPROVALS.getValue(t)
 
@@ -103,6 +111,12 @@ data class RobotSettings(
         emailApp?.let { put("emailApp", it.name) }
         put("eventCalendar", eventCalendar)
         put("eventMinutes", eventMinutes)
+        put("wakePhrases", org.json.JSONArray().apply {
+            for (p in wakePhrases) put(JSONObject().put("id", p.id).put("text", p.text).put("sensitivity", p.sensitivity.name).put("enabled", p.enabled))
+        })
+        put("bargeIn", bargeIn.name)
+        put("playback", playback.name)
+        put("stopKey", stopKey.name)
     }
 
     companion object {
@@ -156,7 +170,17 @@ data class RobotSettings(
                 emailApp = enumValues<EmailApp>().firstOrNull { it.name == o.optString("emailApp") },
                 eventCalendar = o.optLong("eventCalendar", d.eventCalendar),
                 eventMinutes = clampEventMinutes(o.optInt("eventMinutes", d.eventMinutes)),
+                wakePhrases = o.optJSONArray("wakePhrases")?.let(::phrases) ?: d.wakePhrases,
+                bargeIn = enumOr(o.optString("bargeIn"), d.bargeIn),
+                playback = enumOr(o.optString("playback"), d.playback),
+                stopKey = enumOr(o.optString("stopKey"), d.stopKey),
             )
         }
+
+        /** Saved wake phrases; a damaged entry is dropped, never fatal (an empty list stays empty: the owner removed them). */
+        private fun phrases(a: org.json.JSONArray): List<WakePhrase> = WakePhrases.sanitize((0 until a.length()).mapNotNull { i ->
+            val x = a.optJSONObject(i) ?: return@mapNotNull null
+            WakePhrase(x.optInt("id", 0), x.optString("text", ""), enumOr(x.optString("sensitivity"), WakeSensitivity.MEDIUM), x.optBoolean("enabled", true))
+        })
     }
 }

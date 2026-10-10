@@ -13,6 +13,10 @@ import java.util.Locale
 object VoiceFiles {
     const val ENGINES = "voice_engines.json"
     const val BENCH = "voice_bench.json"
+    /** The voice log (core VoiceLog.kt), written by the :voice process only. */
+    const val LOG = "voice_log.txt"
+    /** The barge-in test's result (core BargeIn.kt). */
+    const val BARGE = "voice_barge_test.json"
 }
 
 /** One speech engine (a downloaded model bundle) as the :voice process sees it. */

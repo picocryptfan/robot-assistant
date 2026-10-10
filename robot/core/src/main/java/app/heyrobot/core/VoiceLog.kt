@@ -53,7 +53,7 @@ enum class VoiceEvent(val id: Int) {
     STT_DONE(15),
     /** Speech to text gave nothing: a = audio ms, b = 1 if speech was heard. */
     STT_EMPTY(16),
-    /** The question ended without text: a = [SttEnd]. */
+    /** Listening for the question ended other than by a pause: a = [SttEnd] (a cut-off question is still decoded). */
     STT_END(17),
     /** a = [ShowSource]. */
     SESSION_SHOWN(18),
@@ -328,7 +328,7 @@ object VoiceLogText {
                 (if (c == 1) " · own microphone" else "")
             VoiceEvent.STT_DONE -> "Question written down: $a characters from " + secs(b) + " of audio in $c ms"
             VoiceEvent.STT_EMPTY -> "No words found in " + secs(a) + " of audio" + (if (b == 1) " (speech was heard)" else "")
-            VoiceEvent.STT_END -> "Question ended without text: " + code(SttEnd.entries, a)
+            VoiceEvent.STT_END -> "Listening for the question ended: " + code(SttEnd.entries, a)
             VoiceEvent.SESSION_SHOWN -> "Panel opened (" + code(ShowSource.entries, a) + ")"
             VoiceEvent.SESSION_HIDDEN -> "Panel closed after $a s"
             VoiceEvent.SHOW_FAILED -> "Android didn't open the panel (" + code(ShowSource.entries, a) + ")"
