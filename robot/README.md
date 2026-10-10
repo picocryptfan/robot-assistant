@@ -21,6 +21,13 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
   it is not exported and requires Robot's signature permission `app.heyrobot.permission.INTERNAL`.
 - Tools run in the app process (`:voice`), never in `:brain`: the model only proposes calls
   (`automaticToolCalling = false`, constrained decoding when the TPU build allows it), the approval gate decides.
+  In a conversation with screen text or a picture every action needs a tap ("Just do it" turns into "Ask first");
+  at most two actions and three tool rounds per answer; a call written as text runs only when :brain is in text-call
+  mode (its TPU build refused the tool API) and the whole reply is the call. An app name is resolved before the card,
+  which shows the app that will open. One question at a time: a waiting card counts as busy, Stop declines it.
+- Context (4,096 tokens): the new message is cut to fit (the panel says so) and each question carries the time;
+  :brain checks its own token count after a rebuild and before each tool round, and steps tools down only on the
+  tool-parse error. The turn, gate and :brain decisions are pure code in `:core` (`Turn.kt`, `BrainPolicy.kt`), tested.
 
 ## Building
 
@@ -41,7 +48,7 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
-## Voice (0.1.1)
+## Voice (0.1.1, memory rule from 0.1.2)
 
 - Speech to text: NVIDIA Parakeet TDT 0.6B v3 int8 (`SherpaSpeechToText`). Push-to-talk, or right after "hey robot";
   a Silero VAD of its own ends the question after 0.5 s of silence (20 s max speech, 30 s cap), or the button does.
@@ -56,8 +63,9 @@ goes into the repository or the build output.
   placeholders run and the mic button says "Download voice models".
 - Robustness: nothing native is created before the files are verified; a load that throws falls back to the
   placeholder; a load that kills the `:voice` process twice in a row marks that engine broken until
-  Settings › Voice › "Try again" (the wake word keeps working). Models load on first use, stay loaded, and are
-  freed on memory pressure (not while listening or speaking).
+  Settings › Voice › "Try again" (the wake word keeps working). The wake word stays loaded; speech to text loads
+  when a question starts (mic or wake word, not when the panel opens), the voice when a spoken reply is coming; each
+  is freed after 5 minutes unused and on memory pressure (not while listening or speaking).
 - Settings › Voice › "Test voice speed" times the downloaded models on the phone (`tools/voice_bench.py` does the
   same on a computer).
 
