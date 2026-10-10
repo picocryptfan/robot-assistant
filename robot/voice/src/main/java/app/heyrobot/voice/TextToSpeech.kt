@@ -63,6 +63,9 @@ interface TextToSpeech {
      */
     fun wakeWordSafe(heardAt: Long): Boolean = true
 
+    /** For the voice log: Robot said a word like "stop" up to [EchoGuard.NOTE_MS] before [heardAt], guarded or not. */
+    fun saidStopLike(heardAt: Long): Boolean = false
+
     /** The last words of the enabled wake phrases, which Robot saying would be heard as a wake ([EchoGuard]). */
     fun setWakeWords(words: List<String>) {}
 
@@ -246,6 +249,8 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     override fun stopWordSafe(heardAt: Long): Boolean = !echo.mayBeEcho(heardAt)
 
     override fun wakeWordSafe(heardAt: Long): Boolean = !echo.mayBeWakeEcho(heardAt)
+
+    override fun saidStopLike(heardAt: Long): Boolean = echo.stopLikeWithin(heardAt, EchoGuard.NOTE_MS)
 
     override fun setWakeWords(words: List<String>) {
         echo.wakeWords = EchoGuard.wakeRegex(words)

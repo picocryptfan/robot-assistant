@@ -138,14 +138,31 @@ class CapturePolicyTest {
         assertTrue(g.mayBeWakeEcho(rate * 3L))
         assertFalse(g.mayBeWakeEcho(rate * 4L))
         val r = EchoGuard.wakeRegex(listOf("robot"))!!
-        for (t in listOf("Robot's turn", "two robots", "ROBOT")) assertTrue(t, r.containsMatchIn(t))
-        for (t in listOf("robotic", "a probe")) assertFalse(t, r.containsMatchIn(t))
+        // 0.3.1: any word starting with it ("robotics" fires "robot" as easily as "robots").
+        for (t in listOf("Robot's turn", "two robots", "ROBOT", "robotic", "Robotics is a broad field.")) assertTrue(t, r.containsMatchIn(t))
+        for (t in listOf("a probe", "Roberta")) assertFalse(t, r.containsMatchIn(t))
+        assertTrue(EchoGuard.wakeRegex(listOf("jarvis"))!!.containsMatchIn("Jarvis's"))
         assertNull(EchoGuard.wakeRegex(emptyList()))
     }
 
     @Test fun theBargeInParagraphHasNothingTheGuardsWouldCatch() {
         assertFalse(EchoGuard.soundsLikeStop(BargeTestLogic.PARAGRAPH))
-        assertFalse(EchoGuard.wakeRegex(listOf("robot", "computer", "buddy", "jarvis"))!!.containsMatchIn(BargeTestLogic.PARAGRAPH))
+        // Word by word, and wider than the guard: no s-t, up to three letters, p anywhere in a word.
+        for (w in BargeTestLogic.PARAGRAPH.split(Regex("[^A-Za-z']+"))) assertFalse(w, Regex("st[a-z]{0,3}p", RegexOption.IGNORE_CASE).containsMatchIn(w))
+        assertFalse(EchoGuard.wakeRegex(listOf("robot", "computer", "buddy", "jarvis", "hey"))!!.containsMatchIn(BargeTestLogic.PARAGRAPH))
+    }
+
+    @Test fun theTrickyParagraphIsAllWordsLikeStop() {
+        // Every sentence has one, and it lasts about as long as the other paragraph.
+        val sentences = BargeTestLogic.TRICKY_PARAGRAPH.split(Regex("(?<=[.!?])\\s+"))
+        assertTrue(sentences.size >= 4)
+        for (s in sentences) assertTrue(s, EchoGuard.soundsLikeStop(s))
+        val words = BargeTestLogic.TRICKY_PARAGRAPH.split(Regex("\\s+")).size
+        assertTrue("$words words", words in 45..70)
+        val lower = BargeTestLogic.TRICKY_PARAGRAPH.lowercase()
+        for (w in listOf("step", "steep", "stoop", "stamp", "stomp", "stump", "stupid", "strip", "stop", "nonstop", "doorstep")) assertTrue(w, lower.contains(w))
+        // No wake phrase: only "stop" is measured.
+        assertFalse(EchoGuard.wakeRegex(listOf("robot", "computer", "hey"))!!.containsMatchIn(BargeTestLogic.TRICKY_PARAGRAPH))
     }
 
     /**

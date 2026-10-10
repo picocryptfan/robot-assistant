@@ -7,16 +7,28 @@ import org.junit.Test
 
 class EchoGuardTest {
     @Test fun wordsTheKeywordModelConfusesWithStop() {
-        // On the build machine "STOP" fired on Robot's own "stop", "bus stop", "stopwatch" and "step by step".
+        // On the build machine "STOP" fired on Robot's own "stop", "bus stop", "stopwatch" and "step by step". "Step" has
+        // another vowel, so words with the same s-t-vowel-p sound count too until they are measured (tricky-words run).
         for (t in listOf("You can stop by the store.", "The bus stop is near.", "That stopwatch works.", "Step by step.", "STOPPED", "Keep stopping.",
-            "It runs nonstop.", "Leave it on the doorstep.", "Two steps back.", "That's unstoppable.")) {
+            "a steep hill", "Buy a stamp.", "Stomp on it.", "An old stump.", "Strip the bed.", "Don't stoop.", "That was stupid.",
+            // 0.3.1: "stop" and "step" inside a word count too.
+            "It runs nonstop.", "Leave it on the doorstep.", "Two steps back.", "That's unstoppable.", "Mind the footsteps.")) {
             assertTrue(t, EchoGuard.soundsLikeStop(t))
         }
-        // 0.3.1: words that only look alike no longer turn "stop" off.
-        for (t in listOf("The top story today.", "Turn left at the shop.", "Set a timer for ten minutes.", "It's the best plan.", "a steep hill",
-            "Buy a stamp.", "Strip the bed.", "Don't stoop.", "That was stupid.", "Ask Stephen.", "Christopher called.", "Postpone it.", "Start now.")) {
+        for (t in listOf("The top story today.", "Turn left at the shop.", "Set a timer for ten minutes.", "It's the best plan.",
+            "Ask Stephen.", "Christopher called.", "Start now.", "Mostly fine.")) {
             assertFalse(t, EchoGuard.soundsLikeStop(t))
         }
+    }
+
+    @Test fun theLogCanSayRobotSaidSuchAWordLately() {
+        // STOP_HEARD notes a word like "stop" up to 3 s back, beyond the guard's window: did she stop herself?
+        val g = EchoGuard(1_000)
+        g.open(0, stop = true, wake = false)
+        g.close(2_000)
+        assertFalse(g.mayBeEcho(4_000))
+        assertTrue(g.stopLikeWithin(4_000, EchoGuard.NOTE_MS))
+        assertFalse(g.stopLikeWithin(5_100, EchoGuard.NOTE_MS))
     }
 
     @Test fun aStopIsIgnoredWhileARiskyPieceIsPlayingAndJustAfter() {

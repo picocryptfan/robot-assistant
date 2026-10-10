@@ -85,6 +85,25 @@ class BargeInTest {
         assertEquals(listOf(BargeHit(1, 200, BargeHitKind.COUNTED)), BargeTestResult.fromJson(damaged.toString())!!.hits)
     }
 
+    /** 0.3.1: a silent run of words like "stop": everything that fires is Robot's own voice, set aside or not. */
+    @Test fun theTrickyWordsRunSaysHowOftenHerOwnWordsFire() {
+        val r = BargeTestResult(BenchState.DONE, silent = true, started = 1000, mode = BargeIn.ECHO_CANCEL, playback = Playback.ASSISTANT, tricky = true,
+            falseStops = 1, suppressed = 2, spokeMs = 18_400,
+            hits = listOf(BargeHit(0, 1200, BargeHitKind.SET_ASIDE), BargeHit(0, 9800, BargeHitKind.SET_ASIDE), BargeHit(0, 16_900, BargeHitKind.FALSE)))
+        assertEquals(BargeRun.TRICKY, r.run)
+        assertEquals(r, BargeTestResult.fromJson(r.toJson().toString()))
+        val lines = BargeTestLogic.lines(r)
+        assertEquals("Tricky words: Robot's own words fired 3 times in 18.4 s of talking: EchoGuard set aside 2, 1 got through " +
+            "(in real use each would stop her or start a question).", lines[0])
+        // Set aside or not, every one is listed.
+        assertEquals("Heard: 1.2 s “stop” (set aside) · 9.8 s “stop” (set aside) · 16.9 s “stop”", lines[1])
+        assertEquals("Tricky words: Robot's own words fired nothing in 18.4 s of talking.",
+            BargeTestLogic.lines(r.copy(falseStops = 0, suppressed = 0, hits = emptyList()))[0])
+        assertTrue(BargeTestLogic.note(BargeRun.TRICKY).contains("Stay quiet"))
+        // The paragraph is about as long as the other one.
+        assertTrue(BargeTestLogic.TRICKY_PARAGRAPH.split(Regex("\\s+")).size in 45..70)
+    }
+
     @Test fun theCountRunListsWhatRobotHeard() {
         val r = BargeTestResult(BenchState.DONE, silent = false, started = 1000, mode = BargeIn.ECHO_CANCEL, playback = Playback.ASSISTANT, count = true,
             counted = 3, spokeMs = 19_600, hits = listOf(BargeHit(0, 2500, BargeHitKind.COUNTED), BargeHit(1, 6000, BargeHitKind.COUNTED), BargeHit(0, 9800, BargeHitKind.COUNTED)))

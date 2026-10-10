@@ -23,7 +23,8 @@ import app.heyrobot.voice.VoiceOutput
 //
 // 0.3.1: every keyword heard is kept, with its phrase id (the first one used to end the test, so "stop, then hey
 // robot" could only ever show the first), and the count run lets Robot read to the end while you say "stop" and the
-// wake phrases as often as you like.
+// wake phrases as often as you like. The tricky-words run is a silent run of a paragraph full of words like "stop":
+// whatever fires is her own voice, set aside by EchoGuard or not.
 
 object BargeTest {
     @Volatile var active = false; private set
@@ -38,8 +39,8 @@ object BargeTest {
     fun start(run: BargeRun) {
         if (active) return
         val hub = VoiceHub
-        val base = BargeTestResult(BenchState.RUNNING, run == BargeRun.SILENT, System.currentTimeMillis(), hub.settings.bargeIn, hub.settings.playback,
-            count = run == BargeRun.COUNT)
+        val base = BargeTestResult(BenchState.RUNNING, run == BargeRun.SILENT || run == BargeRun.TRICKY, System.currentTimeMillis(), hub.settings.bargeIn,
+            hub.settings.playback, count = run == BargeRun.COUNT, tricky = run == BargeRun.TRICKY)
         val l = hub.listener
         if (l == null || !l.running || !l.wakeWordLoaded) {
             write(base.copy(state = BenchState.FAILED, note = "Robot isn't listening for wake words right now. Turn the wake word on (Settings › Voice) " +
@@ -57,7 +58,8 @@ object BargeTest {
         r = base.copy(note = BargeTestLogic.note(run))
         write(r!!)
         hub.updateCapture()
-        for (s in BargeTestLogic.PARAGRAPH.split(Regex("(?<=[.!?])\\s+"))) hub.tts.speak(s)
+        val text = if (run == BargeRun.TRICKY) BargeTestLogic.TRICKY_PARAGRAPH else BargeTestLogic.PARAGRAPH
+        for (s in text.split(Regex("(?<=[.!?])\\s+"))) hub.tts.speak(s)
         hub.main.postDelayed(timeout, BargeTestLogic.TIMEOUT_MS)
         RLog.i("barge_test", "run" to run, "mode" to base.mode, "playback" to base.playback)
     }
@@ -144,6 +146,7 @@ object BargeTest {
         val (run, detected) = when (res.run) {
             BargeRun.SILENT -> 1 to res.falseStops + res.falseWakes
             BargeRun.COUNT -> 2 to res.counted
+            BargeRun.TRICKY -> 3 to res.falseStops + res.falseWakes + res.suppressed
             BargeRun.FIRST -> 0 to if (res.heard != BargeTestResult.HEARD_NOTHING) 1 else 0
         }
         VoiceLog.add(VoiceEvent.BARGE_TEST, run, detected, res.stopMs.toInt())

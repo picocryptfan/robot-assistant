@@ -376,6 +376,8 @@ class SherpaTextToSpeech internal constructor(
 
     override fun wakeWordSafe(heardAt: Long): Boolean = synchronized(trackLock) { !echo.mayBeWakeEcho(headAt(heardAt)) }
 
+    override fun saidStopLike(heardAt: Long): Boolean = synchronized(trackLock) { echo.stopLikeWithin(headAt(heardAt), EchoGuard.NOTE_MS) }
+
     /**
      * Where the track's head was at [heardAt] (elapsedRealtime), with [trackLock] held: the head moves at most at the
      * sample rate, so this is no later than where it was, which keeps the window after a piece no shorter than it is.
@@ -575,6 +577,7 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
 
     override fun wakeWordSafe(heardAt: Long): Boolean = active?.wakeWordSafe(heardAt) ?: true
 
+    override fun saidStopLike(heardAt: Long): Boolean = active?.saidStopLike(heardAt) ?: false
 
     override fun setWakeWords(words: List<String>) {
         sherpa.setWakeWords(words)

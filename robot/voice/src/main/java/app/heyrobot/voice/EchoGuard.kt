@@ -11,10 +11,12 @@ package app.heyrobot.voice
 // 0.2.3: the same for the wake phrases, now that they are heard while Robot speaks: a piece that says the last word
 // of an enabled phrase ("robot" of "hey robot") makes a wake heard while it plays count as her own voice.
 //
-// 0.3.1: only "stop" and "step" (and their forms) count, the words the keyword model actually took for "stop"; "steep",
-// "stamp", "strip" and the like no longer turn "stop" off. The window after a piece is 1.2 s instead of 1.5 s. The
-// phone's voice (positions in ms of elapsedRealtime, from its start and done callbacks) is guarded sentence by
-// sentence, as Robot's own voices are, instead of for the whole reply.
+// 0.3.1: the phone's voice (positions in ms of elapsedRealtime, from its start and done callbacks) is guarded sentence
+// by sentence, as Robot's own voices are, instead of for the whole reply. The words stay generous ("step" fired
+// "STOP" although its vowel differs, so "steep", "stoop", "stamp" and the like may too) until the barge-in test's
+// tricky-words run measures them with 0.3.1's spotter; "stop" or "step" inside a word ("nonstop", "doorstep") counts
+// now too. A wake phrase's word counts with any ending ("robotic"). Hits are checked against when their frame was
+// read, not when the main thread gets to them, so the window after a piece is 1.2 s instead of 1.5 s.
 
 class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private val afterMs: Int = AFTER_MS) {
     private class Piece(val start: Long, var end: Long, val stop: Boolean, val wake: Boolean)
@@ -75,7 +77,11 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
     @Synchronized
     fun mayBeWakeEcho(played: Long): Boolean = near(played) { it.wake }
 
-    private fun near(played: Long, kind: (Piece) -> Boolean): Boolean {
+    /** Robot said a word like "stop" up to [ms] before frame [played] (more than the guard covers), for the voice log. */
+    @Synchronized
+    fun stopLikeWithin(played: Long, ms: Int): Boolean = near(played, ms) { it.stop }
+
+    private fun near(played: Long, afterMs: Int = this.afterMs, kind: (Piece) -> Boolean): Boolean {
         val before = beforeMs.toLong() * rate / 1000
         val after = afterMs.toLong() * rate / 1000
         return risky.any { kind(it) && played >= it.start - before && played <= it.end + after }
@@ -85,23 +91,27 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
         /**
          * After a piece ends, a keyword heard this long can still be its echo: the sound leaves the speaker a little after
          * the track's head passes it, and the spotter reports a keyword up to about a second after it is said (a 320 ms
-         * chunk, its lookahead and the blank frames after the word).
+         * chunk, its lookahead and the blank frames after the word). Measured from when the hit's frame was read.
          */
         const val AFTER_MS = 1_200
 
+        /** How far back STOP_HEARD notes a word like "stop" Robot said, outside the guard too. */
+        const val NOTE_MS = 3_000
+
         /**
-         * "stop", "stops", "stopped", "stopping", "stopwatch", "nonstop", "step", "steps", "doorstep": the words the
-         * keyword model fired "STOP" on. Not "Stephen" or "Christopher" (a "ph"), nor "steep", "stamp", "strip" or "stoop".
+         * A word starting with "st", up to two letters and "p" ("stop", "step", "steep", "stoop", "stamp", "stomp",
+         * "stump", "stupid", "strip"), or "stop"/"step" inside a word ("nonstop", "doorstep", "unstoppable"); not with
+         * "ph" after it ("Stephen", "Christopher").
          */
-        private val STOP_LIKE = Regex("""st[eo]p(?!h)""", RegexOption.IGNORE_CASE)
+        private val STOP_LIKE = Regex("""\bst[a-z]{0,2}p(?!h)|st[eo]p(?!h)""", RegexOption.IGNORE_CASE)
 
         fun soundsLikeStop(text: String): Boolean = STOP_LIKE.containsMatchIn(text)
 
-        /** Any of [words] as a word of its own ("robot", "Robot's", "robots"), or null for none. */
+        /** Any word starting with one of [words] ("robot", "Robot's", "robots", "robotic"), or null for none. */
         fun wakeRegex(words: List<String>): Regex? {
             val w = words.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
             if (w.isEmpty()) return null
-            return Regex("\\b(" + w.joinToString("|") { Regex.escape(it) } + ")('s|s)?\\b", RegexOption.IGNORE_CASE)
+            return Regex("\\b(" + w.joinToString("|") { Regex.escape(it) } + ")[a-z']*", RegexOption.IGNORE_CASE)
         }
     }
 }

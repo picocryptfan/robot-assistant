@@ -143,6 +143,10 @@ class VoiceLogTest {
         assertEquals("Spotter for while Robot talks couldn't load: the other one listens while she talks",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_READY, -1, 0, 1)))
         assertEquals("Wake-word model ready in 300 ms", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_READY, 300)))
+        assertEquals("“Stop” heard: Robot stopped talking (she said a word like it in the 3 s before)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.STOP_HEARD, 1, 1)))
+        assertEquals("“Stop” heard: Robot stopped talking", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.STOP_HEARD, 1)))
+        assertEquals("Barge-in test, tricky words: 3 “stop” or wake detections from Robot's own words", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BARGE_TEST, 3, 3)))
         assertEquals("Spotter: wake word #2 (“hey robot”) · mic: speech recognition · echo cancellation off",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.KWS_HIT, 2, KwsSpotterCode.IDLE.id, MicKind.RECOGNITION.id * 10 + AecState.OFF.id), names))
         assertEquals("“Stop” ignored: Robot was saying a word like it herself (the phone's voice, 4.2 s into her talking)",

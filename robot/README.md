@@ -273,12 +273,13 @@ finished or failed with its code; the model's process stopping; Robot's voice st
 Since 0.3.1 it also shows why "stop" or a wake word over Robot's voice did or didn't work: every keyword the spotter
 fires, before any check, with whether Robot was talking, which spotter heard it and the microphone mode (the line
 after it says what came of it); the wake phrases' keyword set when it is rebuilt, and any part the keyword model
-refuses (once per set); the spotter for while Robot talks being loaded; for each stretch of
-Robot talking, how long the speech gate heard speech, the mean microphone level (low when echo cancellation takes her
-voice out) and how much of the time "stop" was listened for; each microphone mode as opened, and again when that
-changes (whether Android silences it, the microphone's own sample rate, Robot's echo canceller and noise suppressor,
-the effects Android reports); which voice an ignored "stop" or wake was put down to and how far into her talking; and
-every keyword heard in the barge-in test.
+refuses (once per set); the spotter for while Robot talks being loaded; for each stretch of Robot talking, how long
+the speech gate heard speech, the mean microphone level (low when echo cancellation takes her voice out) and how much
+of the time "stop" was listened for; each microphone mode as opened, and again when that changes (whether Android
+silences it, the microphone's own sample rate, Robot's echo canceller and noise suppressor, the effects Android
+reports); which voice an ignored "stop" or wake was put down to and how far into her talking; whether Robot said a
+word like "stop" in the 3 s before a "stop" that was acted on (did she stop herself?); and every keyword heard in the
+barge-in test.
 
 Silent drops found and fixed while adding it: an empty transcription did nothing (now: notice plus "Sorry, I didn't
 catch that." or a chime); an empty model answer left an empty bubble; a model that never answered left "Thinking…"
@@ -310,11 +311,14 @@ While echo cancellation is on, "stop" uses a slightly lower threshold (0.20 inst
 aside a "stop" heard while Robot says a word like it, and now also a wake phrase heard while she says its word
 ("robot"). All keyword thresholds live in `core/WakePhrases.kt` (`KwsThresholds`).
 
-Since 0.3.1 "a word like it" means "stop" or "step" in any form ("stopped", "nonstop", "steps"), the words the keyword
-model actually took for "stop", and no longer "steep", "stamp", "strip", "stoop" or "stupid". The guard covers the
-sentence that says it, from 0.3 s before to 1.2 s after (it was 1.5 s), with the phone's voice too, timed by the
-engine's start and done callbacks: before, one such word in a reply in the phone's voice turned "stop" off until the
-reply ended. Wake phrases said by Robot are guarded the same way.
+Since 0.3.1 the guard covers the sentence that says such a word, from 0.3 s before to 1.2 s after (it was 1.5 s), with
+the phone's voice too, timed by the engine's start and done callbacks: before, one such word in a reply in the phone's
+voice turned "stop" off until the reply ended. A hit is checked against when the audio thread read the frame it fired
+on, not when the main thread gets to it, which is why the window could be shorter. "A word like it" stays generous:
+any word starting with "st", up to two letters and "p" ("stop", "step", "steep", "stoop", "stamp", "stomp", "stump",
+"stupid", "strip"), and now also "stop" or "step" inside a word ("nonstop", "doorstep"), but not "Stephen". The model
+fired "STOP" on "step", whose vowel differs, so the others may fire too; the barge-in test's tricky-words run measures
+it. Wake phrases said by Robot are guarded the same way, their last word with any ending ("robotic", "robots").
 
 Also since 0.3.1, while Robot speaks a second keyword spotter listens instead of the first (it is loaded the first time
 she speaks, about 14 MB, and kept while the listener runs). It fires once the model has output two blank frames (80 ms)
@@ -339,8 +343,11 @@ Since 0.3.1 the first keyword still stops her in the normal run, so say one word
 listed with its time, the wake phrase by name and whether EchoGuard set it aside (0.3.0 kept only the first and said
 "wake word" without which). **Count run** lets her read to the end while you say "stop" and your wake phrases as
 often as you like, a few seconds apart (wakes closer than 2 s count once), and lists what she heard: compare with
-what you said. The screen shows the "Hear me while Robot talks" mode and playback the test will use, and the
-result the ones it ran with (and whether the phone's voice spoke).
+what you said. **Tricky words** is a silent run of a paragraph full of words like "stop" ("step", "steep", "stoop",
+"stamp", "stomp", "stump", "stupid", "strip", "bus stop", "nonstop"): it lists every "stop" her own words fired, set
+aside by EchoGuard or not; any that got through would stop her in real use. The screen shows the "Hear me while Robot
+talks" mode and playback the test will use, and the result the ones it ran with (and whether the phone's voice
+spoke).
 
 **Volume key**: while Robot speaks and the panel is on screen, volume down (or either key, or off: Settings › Voice)
 stops her and doesn't change the volume. The panel's window handles it (its dialog's key listener, and the

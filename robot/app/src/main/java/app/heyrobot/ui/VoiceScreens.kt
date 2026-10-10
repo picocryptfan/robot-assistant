@@ -119,17 +119,19 @@ fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettin
     Text("Robot reads a paragraph of about 20 seconds. Run the test: say “stop” or one wake phrase, once; she stops when she hears it, and the " +
         "result says what she heard and how fast she went quiet. Count run: she reads to the end while you say “stop” and your wake phrases as often " +
         "as you like, a few seconds apart; the result lists each one she heard. Silent run: stay quiet; it counts anything she hears anyway. " +
-        "Try each mode above.",
+        "Tricky words: stay quiet while she reads words like “stop” (step, steep, stamp, bus stop); it shows how often her own words fire, and " +
+        "how many of those are set aside. Try each mode above.",
         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     // What the test will run with; the result says what it ran with.
     Text(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM), style = MaterialTheme.typography.bodyMedium)
     val r = snap.bargeTest
     val running = r?.state == BenchState.RUNNING && System.currentTimeMillis() - r.started < BargeTestLogic.TIMEOUT_MS + 10_000
-    // Three buttons may not fit side by side on a phone: they wrap.
+    // Four buttons don't fit side by side on a phone: they wrap.
     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton(onClick = { a.bargeTest(BargeRun.FIRST) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (running) "Testing…" else "Run the test") }
         OutlinedButton(onClick = { a.bargeTest(BargeRun.COUNT) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text("Count run") }
         OutlinedButton(onClick = { a.bargeTest(BargeRun.SILENT) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text("Silent run") }
+        OutlinedButton(onClick = { a.bargeTest(BargeRun.TRICKY) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text("Tricky words") }
     }
     val names = s.wakePhrases.associate { it.id to it.text }
     if (r != null) for (line in BargeTestLogic.lines(r) { names[it] }) {

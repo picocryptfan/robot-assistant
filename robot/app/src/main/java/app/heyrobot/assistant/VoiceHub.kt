@@ -379,13 +379,15 @@ object VoiceHub {
         if (label == WakeWord.STOP) {
             // Ignored when the reply itself says "stop" (or a word like it): that may be Robot's own voice.
             val safe = tts.stopWordSafe(heardAt)
+            // For the log: she said such a word lately, even outside the guard (did she stop herself?).
+            val near = if (tts.saidStopLike(heardAt)) 1 else 0
             main.post {
                 val playing = tts.isSpeaking
                 if (BargeTest.active) return@post BargeTest.onKeyword(0, safe)
-                if (!playing) return@post VoiceLog.add(VoiceEvent.STOP_HEARD, 0)
+                if (!playing) return@post VoiceLog.add(VoiceEvent.STOP_HEARD, 0, near)
                 RLog.i("stop_word", "acted" to safe)
                 if (!safe) return@post VoiceLog.add(VoiceEvent.STOP_SUPPRESSED, echoVoice(), (SystemClock.elapsedRealtime() - speakStartE).toInt())
-                VoiceLog.add(VoiceEvent.STOP_HEARD, 1)
+                VoiceLog.add(VoiceEvent.STOP_HEARD, 1, near)
                 PanelController.stopSpeaking(TtsStop.STOP_WORD)
             }
             return

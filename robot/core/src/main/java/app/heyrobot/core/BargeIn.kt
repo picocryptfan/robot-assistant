@@ -53,8 +53,11 @@ object VolumeKeyStop {
         speaking && panelShown && interactive && matches(keyCode, setting)
 }
 
-/** The barge-in test's runs (0.3.1): stop at the first keyword heard, count every keyword while Robot reads on, or nobody speaks. */
-enum class BargeRun { FIRST, COUNT, SILENT }
+/**
+ * The barge-in test's runs (0.3.1): stop at the first keyword heard, count every keyword while Robot reads on, nobody
+ * speaks, or nobody speaks while she reads [BargeTestLogic.TRICKY_PARAGRAPH] (words like "stop").
+ */
+enum class BargeRun { FIRST, COUNT, SILENT, TRICKY }
 
 /** One keyword heard during the barge-in test: [phrase] id (0: "stop"), [atMs] after Robot's voice started (-1: before), what came of it. */
 data class BargeHit(val phrase: Int, val atMs: Long, val kind: BargeHitKind)
@@ -97,8 +100,11 @@ data class BargeTestResult(
     val hits: List<BargeHit> = emptyList(),
     /** Robot spoke with the phone's voice (its EchoGuard and its echo differ from Kokoro's). */
     val phoneVoice: Boolean = false,
+    /** A silent run of [BargeTestLogic.TRICKY_PARAGRAPH]: what fires is Robot's own words. */
+    val tricky: Boolean = false,
 ) {
     val run: BargeRun get() = when {
+        silent && tricky -> BargeRun.TRICKY
         silent -> BargeRun.SILENT
         count -> BargeRun.COUNT
         else -> BargeRun.FIRST
@@ -111,7 +117,7 @@ data class BargeTestResult(
         put("state", state.name); put("silent", silent); put("started", started); put("mode", mode.name); put("playback", playback.name)
         put("mic", mic); put("aec", aec); put("heard", heard); put("atMs", atMs); put("stopMs", stopMs)
         put("falseStops", falseStops); put("falseWakes", falseWakes); put("suppressed", suppressed); put("spokeMs", spokeMs); put("note", note)
-        put("count", count); put("counted", counted); put("phoneVoice", phoneVoice)
+        put("count", count); put("counted", counted); put("phoneVoice", phoneVoice); put("tricky", tricky)
         put("hits", org.json.JSONArray().apply { for (h in hits) put(org.json.JSONArray().put(h.phrase).put(h.atMs).put(h.kind.id)) })
     }
 
@@ -137,6 +143,7 @@ data class BargeTestResult(
                 falseStops = o.optInt("falseStops"), falseWakes = o.optInt("falseWakes"), suppressed = o.optInt("suppressed"),
                 spokeMs = o.optLong("spokeMs"), note = o.optString("note"),
                 count = o.optBoolean("count"), counted = o.optInt("counted"), hits = hits, phoneVoice = o.optBoolean("phoneVoice"),
+                tricky = o.optBoolean("tricky"),
             )
         } catch (_: Exception) { null }
     }
@@ -148,6 +155,15 @@ object BargeTestLogic {
         "counting the geese as they landed on the water. Later, clouds gathered over the hills, and a soft rain began to fall " +
         "on the fields and gardens. By evening the air was cool and clear again, and lights came on in the windows."
 
+    /**
+     * About 20 seconds of words like "stop" (0.3.1): "step", "steep", "stoop", "stamp", "stomp", "stump", "stupid",
+     * "strip", and "stop" itself. Read in a silent run, it shows how often Robot's own words fire "stop" and how many of
+     * those EchoGuard sets aside; any it lets through would stop her in real use.
+     */
+    const val TRICKY_PARAGRAPH = "Take one step at a time on the steep trail. Stoop under the branch, then stamp and stomp the snow off your " +
+        "boots by the old stump. It would be stupid to strip off your coat at the bus stop. The stopwatch ran nonstop as footsteps crossed " +
+        "the doorstep. Step by step, we stopped."
+
     /** Longer than the paragraph takes at the slowest speed, so a test always ends. */
     const val TIMEOUT_MS = 60_000L
 
@@ -158,6 +174,7 @@ object BargeTestLogic {
         BargeRun.FIRST -> "Robot is reading the test paragraph. Say “stop” or one wake phrase, once."
         BargeRun.COUNT -> "Robot is reading the test paragraph to the end. Say “stop” and your wake phrases as often as you like, a few seconds apart."
         BargeRun.SILENT -> "Robot is reading the test paragraph. Stay quiet until she's done."
+        BargeRun.TRICKY -> "Robot is reading words like “stop”. Stay quiet until she's done."
     }
 
     /** The settings a test runs with (and ran with): "Hear me while Robot talks", how her voice plays, and which voice. */
@@ -176,7 +193,11 @@ object BargeTestLogic {
             BenchState.FAILED -> out += r.note
             BenchState.DONE -> {
                 val first = r.hits.firstOrNull { it.kind == BargeHitKind.STOPPED_HER }
+                val fired = r.falseStops + r.falseWakes + r.suppressed
                 out += when {
+                    r.tricky -> if (fired == 0) "Tricky words: Robot's own words fired nothing in ${s(r.spokeMs)} of talking."
+                        else "Tricky words: Robot's own words fired $fired times in ${s(r.spokeMs)} of talking: EchoGuard set aside ${r.suppressed}, " +
+                            "${r.falseStops + r.falseWakes} got through (in real use each would stop her or start a question)."
                     r.silent -> if (r.falseStops == 0 && r.falseWakes == 0) "Silent run: no false “stop” or wake word in ${s(r.spokeMs)} of Robot talking."
                         else "Silent run: ${r.falseStops} false “stop”, ${r.falseWakes} false wake word in ${s(r.spokeMs)} of Robot talking."
                     r.count -> if (r.counted == 0) "Count run: Robot heard nothing in ${s(r.spokeMs)} of talking."
@@ -196,7 +217,7 @@ object BargeTestLogic {
                         else -> ""
                     }
                 }
-                if (r.suppressed > 0) out += "${r.suppressed} set aside as possibly Robot's own voice."
+                if (r.suppressed > 0 && !r.tricky) out += "${r.suppressed} set aside as possibly Robot's own voice."
             }
         }
         if (r.state != BenchState.FAILED) {

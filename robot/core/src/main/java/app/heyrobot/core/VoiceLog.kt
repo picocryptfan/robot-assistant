@@ -26,7 +26,10 @@ enum class VoiceEvent(val id: Int) {
     WAKE(1),
     /** a = [WakeDrop], b = phrase id, c = [EchoVoice] when Robot was saying the word herself (0: not recorded). */
     WAKE_IGNORED(2),
-    /** a = 1 if it stopped Robot's voice. */
+    /**
+     * a = 1 if it stopped Robot's voice; b = 1 if Robot herself said a word like "stop" in the 3 s before (0.3.1: was it
+     * her own voice?).
+     */
     STOP_HEARD(3),
     /**
      * Robot's own reply said "stop" or a word like it just then (EchoGuard): a = [EchoVoice] that said it (0: not
@@ -89,8 +92,9 @@ enum class VoiceEvent(val id: Int) {
     /** a = [Cue]. */
     CUE(30),
     /**
-     * a = 1 silent run, 2 count run (0.3.1), 0 a normal run; b = detected (1/0), false detections in a silent run, or
-     * keywords counted in a count run; c = ms from detection to silence (normal run).
+     * a = 1 silent run, 2 count run, 3 tricky-words run (0.3.1), 0 a normal run; b = detected (1/0), false detections
+     * in a silent run, keywords counted in a count run, or detections of Robot's own words (set aside or not) in a
+     * tricky-words run; c = ms from detection to silence (normal run).
      */
     BARGE_TEST(31),
     /** A volume key stopped Robot's voice: a = key code. */
@@ -449,7 +453,8 @@ object VoiceLogText {
         return when (e.event) {
             VoiceEvent.WAKE -> wake(a) + ": " + code(WakeAction.entries, c) + (if (b >= 0) " · score $b%" else "")
             VoiceEvent.WAKE_IGNORED -> wake(b) + " ignored: " + code(WakeDrop.entries, a) + (if (c > 0) " (" + code(EchoVoice.entries, c) + ")" else "")
-            VoiceEvent.STOP_HEARD -> if (a == 1) "“Stop” heard: Robot stopped talking" else "“Stop” heard, nothing was playing"
+            VoiceEvent.STOP_HEARD -> (if (a == 1) "“Stop” heard: Robot stopped talking" else "“Stop” heard, nothing was playing") +
+                (if (b == 1) " (she said a word like it in the 3 s before)" else "")
             VoiceEvent.STOP_SUPPRESSED -> "“Stop” ignored: Robot was saying a word like it herself" +
                 (if (a > 0) " (" + code(EchoVoice.entries, a) + ", " + secs(b) + " into her talking)" else "")
             VoiceEvent.LISTEN_START -> "Listening for wake words (" + code(ListenWhy.entries, a) + ") · mic: " + code(MicKind.entries, b) +
@@ -486,6 +491,7 @@ object VoiceLogText {
             VoiceEvent.BARGE_TEST -> when {
                 a == 1 -> "Barge-in test, silent run: $b false “stop” or wake detections"
                 a == 2 -> "Barge-in test, count run: $b “stop” or wake words heard"
+                a == 3 -> "Barge-in test, tricky words: $b “stop” or wake detections from Robot's own words"
                 b == 1 -> "Barge-in test: heard you, silent $c ms later"
                 else -> "Barge-in test: didn't hear you"
             }
