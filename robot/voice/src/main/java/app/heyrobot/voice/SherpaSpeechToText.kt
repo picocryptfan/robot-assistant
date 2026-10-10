@@ -112,8 +112,8 @@ class SherpaSpeechToText internal constructor(
         @Volatile var ended = false
         @Volatile var cancelled = false
         @Volatile var partialRunning = false
-        /** Audio thread only. */
-        var partialJob: Future<*>? = null
+        /** Set on the audio thread, cancelled from finish/cancel. */
+        @Volatile var partialJob: Future<*>? = null
         var partials = 0
         var lastPartial = ""
         @Volatile var endedAt = 0L

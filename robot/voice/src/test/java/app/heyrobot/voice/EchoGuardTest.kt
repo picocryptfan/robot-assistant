@@ -29,4 +29,20 @@ class EchoGuardTest {
         g.reset()
         assertFalse(g.mayBeEcho(rate * 4L))
     }
+
+    @Test fun aPieceStillBeingSynthesisedIsGuardedFromItsStart() {
+        // "Don't stop. Here's more.": the first sentence plays while the second is still being made.
+        val rate = 24_000
+        val g = EchoGuard(rate)
+        g.open(rate * 3L, "Don't stop. Here's more.")
+        assertTrue(g.mayBeEcho(rate * 4L))
+        assertTrue(g.mayBeEcho(rate * 60L))
+        g.close(rate * 6L)
+        assertFalse(g.mayBeEcho(rate * 60L))
+        assertTrue(g.mayBeEcho(rate * 7L))
+        // A harmless piece opened after it leaves it closed.
+        g.open(rate * 6L, "All done.")
+        g.close(rate * 8L)
+        assertFalse(g.mayBeEcho(rate * 9L))
+    }
 }

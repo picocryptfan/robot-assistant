@@ -8,21 +8,44 @@ package app.heyrobot.voice
 // piece was risky and where its audio lies in the output stream.
 
 class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private val afterMs: Int = 1_500) {
-    private class Piece(val start: Long, val end: Long)
+    private class Piece(val start: Long, var end: Long)
 
     private val risky = ArrayDeque<Piece>()
+    private var open: Piece? = null
 
-    /** A piece of speech was written to the output stream at frames [start, end). */
+    /**
+     * A piece of speech starts at output frame [start]; its end is not known until it is synthesised, and its first
+     * sentence may already play before then, so it counts as open-ended until [close].
+     */
     @Synchronized
-    fun onPiece(start: Long, end: Long, text: String) {
-        if (end <= start || !soundsLikeStop(text)) return
-        risky.addLast(Piece(start, end))
+    fun open(start: Long, text: String) {
+        open = null
+        if (!soundsLikeStop(text)) return
+        val p = Piece(start, Long.MAX_VALUE / 4)
+        risky.addLast(p)
+        open = p
         while (risky.size > 32) risky.removeFirst()
+    }
+
+    /** The open piece ended at output frame [end] (or was dropped: [end] = its start). */
+    @Synchronized
+    fun close(end: Long) {
+        open?.end = end
+        open = null
+    }
+
+    /** A whole piece written at frames [start, end). */
+    fun onPiece(start: Long, end: Long, text: String) {
+        open(start, text)
+        close(end)
     }
 
     /** The output was flushed (stop) or ran dry: frame numbers start again at 0. */
     @Synchronized
-    fun reset() = risky.clear()
+    fun reset() {
+        risky.clear()
+        open = null
+    }
 
     /** Could a "STOP" heard while the output plays frame [played] be Robot's own voice? */
     @Synchronized

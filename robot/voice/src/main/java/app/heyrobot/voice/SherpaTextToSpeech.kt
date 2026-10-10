@@ -219,6 +219,7 @@ class SherpaTextToSpeech internal constructor(
         val t = ensureTrack(tts.sampleRate()) ?: return
         val t0 = SystemClock.elapsedRealtime()
         val start = synchronized(trackLock) { written }
+        echo.open(start, item.text)
         var frames = 0L
         try {
             tts.generateWithConfigAndCallback(item.text, generation(c)) { samples ->
@@ -231,8 +232,8 @@ class SherpaTextToSpeech internal constructor(
         } catch (t2: Throwable) {
             RLog.w("tts_generate", t2)
         }
-        val end = synchronized(trackLock) { if (gen == item.gen) written else -1L }
-        if (end > start) echo.onPiece(start, end, item.text)
+        // After a stop() the frame count restarted (and the guard was reset): close at the start.
+        echo.close(synchronized(trackLock) { if (gen == item.gen) written else start })
         synchronized(stateLock) {
             runPieces++
             runFrames += frames
@@ -271,6 +272,7 @@ class SherpaTextToSpeech internal constructor(
         track?.release()
         track = null
         written = 0
+        echo.reset()
         try {
             val min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
             val t = AudioTrack.Builder()
