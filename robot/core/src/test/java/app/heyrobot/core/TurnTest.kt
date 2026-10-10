@@ -320,6 +320,45 @@ class TurnTest {
         assertTrue(model.answers.isEmpty())
     }
 
+    @Test fun chooseInCheogramStaysBehindTheGate() = runBlocking {
+        fun model() = FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "Bob", "message" to "See you at 8"))))
+        val auto = RobotSettings().let { it.copy(approvals = it.approvals + (ToolName.SEND_TEXT to Approval.AUTO)) }
+        val notFound: (Action) -> Prepared = { a -> Recipients.notFound(a as Action.SendText, "No contact matches “Bob”.", TextVia.CHEOGRAM) }
+        // Locked: nothing is looked up, nothing opens.
+        val locked = FakeActions(auto).apply { lockedNow = true; prepare = notFound }
+        val lockedView = FakeView()
+        runner(model(), locked, lockedView).run()
+        assertTrue(locked.prepared.isEmpty() && locked.ran.isEmpty())
+        assertEquals(listOf(ActionStatus.NEEDS_UNLOCK), lockedView.statuses())
+        // Unlocked, even under "Just do it": the card asks first, with its own button and the message.
+        val actions = FakeActions(auto).apply { prepare = notFound }
+        actions.result = { Executed(ActionStatus.DRAFT_OPENED, "Opened Cheogram with the message.", launchedApp = true) }
+        val view = FakeView()
+        val conf = Confirmations()
+        val turn = async { runner(model(), actions, view, conf).run() }
+        val id = withTimeout(5_000) { view.pending.receive() }
+        val card = view.cards[id]!!
+        assertEquals("Choose in Cheogram", card.action!!.confirmLabel)
+        assertEquals("No contact matches “Bob”. Choose who to text in Cheogram", card.summary)
+        assertEquals("See you at 8", card.body)
+        assertTrue(actions.ran.isEmpty())
+        assertTrue(conf.answer(id, true))
+        // Cheogram opens (the panel leaves, as for any hand-off); a draft, told as not sent.
+        assertEquals(TurnResult(DoneReason.END, launchedApp = true), turn.await())
+        assertEquals(TextVia.CHEOGRAM_PICK, (actions.ran.single() as Action.SendText).target!!.via)
+        assertEquals(ActionStatus.DRAFT_OPENED, view.cards[id]!!.status)
+        assertEquals("draft_opened_not_sent", ActionStatus.DRAFT_OPENED.toolResponse(null)["status"])
+        // Cancel opens nothing.
+        val cancelActions = FakeActions(auto).apply { prepare = notFound }
+        val cancelView = FakeView()
+        val cancelConf = Confirmations()
+        val cancelled = async { runner(model(), cancelActions, cancelView, cancelConf).run() }
+        cancelConf.answer(withTimeout(5_000) { cancelView.pending.receive() }, false)
+        cancelled.await()
+        assertTrue(cancelActions.ran.isEmpty())
+        assertEquals(listOf(ActionStatus.DECLINED), cancelView.statuses())
+    }
+
     @Test fun aDraftOpenedIsToldAsNotSent() {
         assertEquals(mapOf("status" to "draft_opened_not_sent", "detail" to "x"), ActionStatus.DRAFT_OPENED.toolResponse("x"))
         assertTrue(ActionStatus.DRAFT_OPENED.succeeded && ActionStatus.DONE.succeeded && !ActionStatus.FAILED.succeeded)

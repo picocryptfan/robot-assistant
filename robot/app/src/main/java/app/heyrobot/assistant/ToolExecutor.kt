@@ -213,7 +213,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         }
         if (!Contacts.granted(ctx)) return needContacts()
         val all = ContactMatcher.best(to, Contacts.names(ctx), max = Int.MAX_VALUE)
-        if (all.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.")
+        // Not in the phone's contacts: with Cheogram, the person may be in its own roster (the card offers its list).
+        if (all.isEmpty()) return Recipients.notFound(a, "No contact matches “$to”.", via)
         val matches = all.take(Recipients.MAX_PEOPLE)
         val options = Recipients.forText(Contacts.cards(ctx, matches), xmppOk = via == TextVia.CHEOGRAM).mapNotNull { r ->
             val t = if (r.xmpp) TextTarget(r.name, r.address, r.address, appName, via)
@@ -221,7 +222,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             t?.let { Recipients.Option(r.name, r.label, it.display, a.copy(target = it)) }
         }.distinctBy { (it.action as Action.SendText).target?.address }
         // Fixed wording: the contacts' names are not sent to the model here.
-        if (options.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.")
+        if (options.isEmpty()) return Recipients.notFound(a, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.", via)
         return Recipients.prepare(a, matches, options, all.size - matches.size) { name -> a.copy(to = name) }
     }
 
@@ -243,7 +244,11 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         return Recipients.prepare(a, matches, options, all.size - matches.size) { name -> a.copy(to = name) }
     }
 
-    /** Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until the owner presses Send. */
+    /**
+     * Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until the owner presses Send.
+     * With no contact to text, Cheogram's share screen (ShareWithActivity, exported for SEND text/plain) opens with the
+     * message instead: the owner picks the person in Cheogram's list, and the text is in that chat's box.
+     */
     private fun text(a: Action.SendText): Executed {
         val t = a.target ?: return Executed(ActionStatus.FAILED, "Robot didn't find who to text.")
         val i = when (t.via) {
@@ -251,15 +256,22 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 val pkg = HandOffApps.cheogram(ctx) ?: return Executed(ActionStatus.NO_APP, "Install Cheogram.")
                 Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(t.address, a.message))).setPackage(pkg)
             }
+            TextVia.CHEOGRAM_PICK -> {
+                val pkg = HandOffApps.cheogram(ctx) ?: return Executed(ActionStatus.NO_APP, "Install Cheogram.")
+                Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, a.message).setPackage(pkg)
+            }
             TextVia.SMS -> Intent(Intent.ACTION_SENDTO, Uri.parse(SmsTo.uri(t.address))).putExtra("sms_body", a.message)
         }
         // A draft, not a sent text. Cheogram keeps a draft already in that chat instead of this one (it says "already
         // drafting"), and with the number in several accounts it shows a search first: the card says so.
-        val detail = if (t.via == TextVia.CHEOGRAM) "Opened a draft in Cheogram: nothing is sent until Send is pressed there. " +
-            "If that chat already had a draft, Cheogram keeps the old one."
-        else "Opened a draft in ${t.appName}: nothing is sent until Send is pressed there."
+        val detail = when (t.via) {
+            TextVia.CHEOGRAM -> "Opened a draft in Cheogram: nothing is sent until Send is pressed there. " +
+                "If that chat already had a draft, Cheogram keeps the old one."
+            TextVia.CHEOGRAM_PICK -> "Opened Cheogram with the message: choose who it goes to there. Nothing is sent until Send is pressed."
+            TextVia.SMS -> "Opened a draft in ${t.appName}: nothing is sent until Send is pressed there."
+        }
         return if (start(i)) Executed(ActionStatus.DRAFT_OPENED, detail, launchedApp = true)
-        else Executed(ActionStatus.NO_APP, if (t.via == TextVia.CHEOGRAM) "Install Cheogram." else "No SMS app is installed.")
+        else Executed(ActionStatus.NO_APP, if (t.via == TextVia.SMS) "No SMS app is installed." else "Install Cheogram.")
     }
 
     /** Proton Mail (or the app picked in the chooser) opens the draft: mailto: with the same values in the extras. */

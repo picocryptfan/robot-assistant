@@ -57,7 +57,7 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
-## People, notes and calendar (0.2.0; review fixes 0.2.1)
+## People, notes and calendar (0.2.0; review fixes 0.2.1; Cheogram-only people 0.2.2)
 
 Seven tools (`docs/phase-2.md`). The model passes names and words ("Mom", "Tuesday at 3"); the app resolves them,
 so the model never builds a phone number, an XMPP address or a timestamp. Robot never sends anything itself: texts
@@ -85,6 +85,14 @@ card says "Opened a draft in Cheogram: nothing is sent until Send is pressed the
   shows "already drafting message"); if the number is a contact in several Cheogram accounts, it shows a search first
   and the text is lost. Robot can't see either; the card says "If that chat already had a draft, Cheogram keeps the
   old one."
+- **People only in Cheogram (0.2.2).** Cheogram keeps its roster in its own database and only reads the phone's
+  contacts, so someone who is only in Cheogram isn't found. With Cheogram as the texting app, a text to a name that no
+  contact (or no contact with a number or XMPP address) fits shows "No contact matches “Bob”. Choose who to text in
+  Cheogram" with the message and a **Choose in Cheogram** button (always a card; Unlock on the lock screen). It opens
+  Cheogram's share screen (`ACTION_SEND` text/plain with the message, to the installed Cheogram): pick the person
+  there, and the message is in their chat's box. The model is told `draft_opened_not_sent`. With the SMS app it stays
+  "not found". To have Robot find them directly, open the contact in Cheogram, then ⋮ › "Add to address book": that
+  saves the XMPP address in the phone's contacts (an IM entry, protocol Jabber), which Robot reads.
 - **Who.** Names and nicknames, case and accents aside: exact, then prefix, then word matches, then letters off (none
   under 4 letters, one up to 5, two from 6). A text or email goes without a card (under "Just do it") only when exactly
   one contact's name or nickname matches exactly and it has exactly one number or address. Anything else shows the
@@ -193,6 +201,9 @@ brain packages.
 12. On a card asking for a permission, tap "Allow" while Robot is still speaking: the voice stops and the panel hides.
 13. With spoken replies on, ask "tell me a joke", then "what time is it", then "wake me in two hours": no reply starts
     with the time or a bracket, on screen or aloud; the second says the right time and the alarm is two hours on.
+14. Text someone who exists only in Cheogram: tap "Choose in Cheogram", pick them, the message is in the box. (Tip: in
+    Cheogram, open the contact, then ⋮ › "Add to address book". That saves their XMPP address into the phone's
+    contacts, as an IM entry with protocol Jabber, which Robot already reads.)
 
 ## Voice (0.1.1; memory rule 0.1.2; fixes 0.1.3)
 
