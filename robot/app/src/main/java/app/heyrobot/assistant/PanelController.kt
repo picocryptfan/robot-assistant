@@ -1460,9 +1460,10 @@ object PanelController {
     private suspend fun directText(replyId: String, q: String, textingFor: String?, fromVoice: Boolean, untrusted: Boolean): Boolean {
         val typed = !fromVoice
         // The wake word is paused while Robot waits for the message, so a spoken "hey robot, …" comes back whole.
-        val answer = if (fromVoice && textingFor != null) TextCommand.stripWake(q, VoiceHub.settings.wakePhrases.filter { it.enabled }.map { it.text }) else q
+        val wakes = VoiceHub.settings.wakePhrases.filter { it.enabled }.map { it.text }
+        val answer = if (fromVoice && textingFor != null) TextCommand.stripWake(q, wakes) else q
         // Decided before any contact is read or anything asked: the lock first.
-        val req: TextRequest = when (TextCommand.route(answer, textingFor, Assistant.locked(VoiceHub.app), typed)) {
+        val req: TextRequest = when (TextCommand.route(answer, textingFor, Assistant.locked(VoiceHub.app), typed, wakes)) {
             TextCommand.Route.MODEL -> return false
             // Said aloud as well: the question may have come by voice from across the room.
             TextCommand.Route.UNLOCK -> {
@@ -1470,7 +1471,8 @@ object PanelController {
                 return true
             }
             TextCommand.Route.CANCEL -> {
-                localReply(replyId, "Okay, no text to ${TextCommand.display(textingFor!!)}.")
+                val kind = TextCommand.cancelKind(answer, wakes) ?: TextCommand.Cancel.EXPLICIT
+                localReply(replyId, TextCommand.cancelReply(textingFor!!, answer, kind, wakes))
                 return true
             }
             // The message itself; the approval gate still checks the lock. Only the wake phrase: Robot asks again.
