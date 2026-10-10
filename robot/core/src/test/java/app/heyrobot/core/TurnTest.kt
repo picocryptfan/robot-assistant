@@ -549,6 +549,9 @@ class TurnTest {
         assertEquals("Open Claude with: «why is the sky blue»", view.cards[id]!!.summary)
         conf.answer(id, true)
         assertTrue(turn.await().launchedApp)
+        // Nothing to say: the app opens without text.
+        assertEquals(ParsedCall.Ok(Action.AskClaude("")), ToolCalls.parse(call("ask_claude")))
+        assertEquals("Open Claude", Action.AskClaude("").describe())
         // Locked: never.
         actions.lockedNow = true
         val v2 = FakeView()

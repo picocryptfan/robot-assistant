@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelStatus
+import app.heyrobot.core.ClaudeCost
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.TurnRole
 import app.heyrobot.core.VoiceBundle
@@ -56,6 +57,7 @@ import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.AssistantBubble
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.UserBubble
+import app.heyrobot.ui.common.claudeFooter
 
 // MAIN PROCESS. Home, history and one saved conversation.
 
@@ -161,7 +163,14 @@ private fun ConversationRow(c: StoredConversation, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text(c.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Claude took part: a small cloud.
+                if (c.claude) {
+                    Icon(RIcons.Cloud, "With Claude", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(c.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             if (c.preview.isNotEmpty()) Text(c.preview, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(12.dp))
@@ -208,7 +217,7 @@ fun HistoryScreen(list: List<StoredConversation>, a: AppActions, modifier: Modif
 }
 
 @Composable
-fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
+fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: SnackbarHostState, showCost: Boolean, onBack: () -> Unit) {
     val ctx = LocalContext.current
     var confirm by remember { mutableStateOf(false) }
     Scaffold(
@@ -243,7 +252,9 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
             items(c.turns, key = { it.id }) { t ->
                 if (t.role == TurnRole.USER) UserBubble(t.text, t.attachment, null)
                 else AssistantBubble(t.text, streaming = false, stopped = t.stopped, error = t.error,
-                    actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) })
+                    actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
+                    claude = t.claude, readBack = t.readBack,
+                    footer = claudeFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { ClaudeCost.line(it / 1e6) }))
             }
         }
     }

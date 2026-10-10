@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -98,6 +99,7 @@ import app.heyrobot.ui.common.AssistantBubble
 import app.heyrobot.ui.common.CardActions
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.UserBubble
+import app.heyrobot.ui.common.claudeFooter
 import kotlinx.coroutines.launch
 
 // VOICE PROCESS. The assistant panel: a bottom sheet over whatever is on screen, with the conversation,
@@ -171,6 +173,7 @@ fun AssistantPanel(onClose: () -> Unit) {
                     st.notice?.let { NoticeBar(it) }
                 }
                 BrainBanner(st)
+                if (st.claudeMode) ClaudeModeChip()
                 Messages(st, Modifier.weight(1f, fill = false))
                 val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING
                 if (st.turns.isEmpty() && !hearing) {
@@ -219,14 +222,61 @@ private fun Header(st: PanelState, onClose: () -> Unit) {
 private fun statusLine(st: PanelState): String = when (st.phase) {
     Phase.LISTENING -> "Listening…"
     Phase.TRANSCRIBING -> "Writing it down…"
-    Phase.THINKING -> if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
-    Phase.ANSWERING -> "Answering…"
+    // "Claude is thinking…" (or "Checking with Claude…") until Claude's first words.
+    Phase.THINKING -> st.claudeStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
+    Phase.ANSWERING -> if (st.turns.lastOrNull()?.claude == true) "Claude is answering…" else "Answering…"
     Phase.CONFIRMING -> "Waiting for you: Do it or Cancel"
     Phase.SPEAKING -> "Speaking · tap to stop"
     Phase.IDLE -> when {
+        st.claudeMode -> "Talking with Claude: your questions go online"
         st.locked -> "Locked: questions, timers and alarms"
         st.brain.readiness == BrainKeeper.Readiness.LOADING -> "Getting ready…"
         else -> "On this phone, private"
+    }
+}
+
+/** Claude mode is on: every question goes to Claude until "Back to Robot". */
+@Composable
+private fun ClaudeModeChip() {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+        AssistChip(
+            onClick = PanelController::endClaudeMode,
+            label = { Text("Talking with Claude · Back to Robot") },
+            leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize), tint = MaterialTheme.colorScheme.tertiary) },
+            colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer, labelColor = MaterialTheme.colorScheme.onTertiaryContainer),
+            modifier = Modifier.heightIn(min = 48.dp),
+        )
+    }
+}
+
+/**
+ * "Want me to check with Claude?" under a reply, with what would be sent; or, without an API key, "Open Claude with:
+ * «…»". Nothing happens until the tap (or a yes).
+ */
+@Composable
+private fun OfferCard(replyId: String, o: Offer) {
+    Surface(
+        shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = Modifier.padding(top = 6.dp).widthIn(max = 340.dp).fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(RIcons.Cloud, null, Modifier.size(22.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(if (o.api) "Want me to check with Claude?" else "Open Claude with: «${o.text.take(120)}${if (o.text.length > 120) "…" else ""}»",
+                    style = MaterialTheme.typography.titleSmall)
+            }
+            if (o.sends.isNotEmpty()) {
+                Text("Sends: " + o.sends.joinToString(", ").lowercase().replaceFirstChar { it.uppercase() } + ".", style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(top = 6.dp))
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
+                TextButton(onClick = { PanelController.dismissOffer(replyId) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("No thanks") }
+                FilledTonalButton(onClick = { PanelController.acceptOffer(replyId) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text(if (o.api) "Check with Claude" else "Open Claude")
+                }
+            }
+        }
     }
 }
 
@@ -313,12 +363,16 @@ private fun Messages(st: PanelState, modifier: Modifier) {
     ) {
         items(reversed, key = { it.id }) { t ->
             if (t.role == TurnRole.USER) UserBubble(t.text, t.attachment, t.thumb)
-            else AssistantBubble(
-                text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error,
-                actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more) },
-                onConfirm = PanelController::confirm,
-                cardActions = cardActions,
-            )
+            else Column {
+                AssistantBubble(
+                    text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error,
+                    actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more, it.cancel) },
+                    onConfirm = PanelController::confirm,
+                    cardActions = cardActions,
+                    claude = t.claude, readBack = t.readBack, footer = claudeFooter(t.sources, t.cost),
+                )
+                t.offer?.let { OfferCard(t.id, it) }
+            }
         }
     }
 }
@@ -368,14 +422,25 @@ private fun ContextRow(st: PanelState) {
             }
             IconButton(onClick = PanelController::removeDraft, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Remove") }
         }
-    } else if (st.screenAvailable && !st.busy) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
-            AssistChip(
-                onClick = PanelController::attachScreen,
-                label = { Text("Ask about this screen") },
-                leadingIcon = { Icon(RIcons.Phone, null, Modifier.size(AssistChipDefaults.IconSize)) },
-                modifier = Modifier.heightIn(min = 48.dp),
-            )
+    } else if ((st.screenAvailable || st.claudeScreen) && !st.busy) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Over the Claude app (the owner's corner swipe): its last answer, read aloud in Claude's voice.
+            if (st.claudeScreen) {
+                AssistChip(
+                    onClick = PanelController::readClaudeAnswer,
+                    label = { Text("Read Claude's answer") },
+                    leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                )
+            }
+            if (st.screenAvailable) {
+                AssistChip(
+                    onClick = PanelController::attachScreen,
+                    label = { Text("Ask about this screen") },
+                    leadingIcon = { Icon(RIcons.Phone, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                )
+            }
         }
     }
 }

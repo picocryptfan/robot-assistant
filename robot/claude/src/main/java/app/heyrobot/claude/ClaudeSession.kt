@@ -92,6 +92,9 @@ class ClaudeSession(
     /** Messages so far (tests read the shape; the panel never does). */
     internal val history: List<BetaMessageParam> get() = messages.toList()
 
+    /** Nothing has been said to Claude in this conversation yet (Claude mode's first question carries what came before). */
+    val fresh: Boolean get() = messages.isEmpty()
+
     /** The numbers of the last turn ([ask] starts a new one). */
     val lastReport: ClaudeTurnReport get() = report
 

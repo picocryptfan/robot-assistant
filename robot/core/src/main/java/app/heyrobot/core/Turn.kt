@@ -125,6 +125,9 @@ data class Card(
     val more: Int = 0,
     /** Claude asked for it: what a read tool finds goes to Claude only after this card's tap. */
     val remote: Boolean = false,
+    /** The buttons' own words when not an action's ("Send" and "Cancel", "Include" and "Leave out"). */
+    val confirm: String? = null,
+    val cancel: String? = null,
 )
 
 interface TurnView {

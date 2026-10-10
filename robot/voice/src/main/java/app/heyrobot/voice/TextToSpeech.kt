@@ -21,6 +21,12 @@ interface TextToSpeech {
     /** Queues one sentence (plain text, no Markdown) after those already queued. */
     fun speak(sentence: String)
 
+    /**
+     * Queues one sentence in another voice, so the owner hears who is talking (Claude, docs/ask-claude.md): [speaker] of
+     * the same loaded model (Kokoro or Kitten), or, with the phone's voice ([speaker] null), a lower pitch.
+     */
+    fun speakOther(sentence: String, speaker: Int?) = speak(sentence)
+
     /** Stops speaking and drops the queue. */
     fun stop()
 
@@ -63,7 +69,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private val ids = AtomicLong(0)
     /** Utterances started before the last stop() are ignored by the progress callbacks. */
     @Volatile private var generation = 0L
-    private val pending = ArrayDeque<String>()
+    private val pending = ArrayDeque<Pair<String, Boolean>>()
     private var ready = false
     private var failed = false
     private var listener: TextToSpeech.Listener? = null
@@ -95,7 +101,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
             override fun onStop(utteranceId: String?, interrupted: Boolean) = finished(utteranceId)
         })
         applyConfig()
-        while (pending.isNotEmpty()) enqueue(pending.removeFirst())
+        while (pending.isNotEmpty()) pending.removeFirst().let { (t, other) -> enqueue(t, other) }
     }
 
     private fun finished(id: String?) {
@@ -118,7 +124,12 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         }
     }
 
-    override fun speak(sentence: String) {
+    override fun speak(sentence: String) = queue(sentence, other = false)
+
+    /** The phone's voice has no second speaker here: the other voice is the same one at a lower pitch. */
+    override fun speakOther(sentence: String, speaker: Int?) = queue(sentence, other = true)
+
+    private fun queue(sentence: String, other: Boolean) {
         if (sentence.isBlank()) return
         main.post {
             if (failed) return@post
@@ -127,14 +138,21 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
                 listener?.onSpeakingChanged(true)
             }
             if (EchoGuard.soundsLikeStop(sentence)) risky = true
-            if (ready) enqueue(sentence) else pending.addLast(sentence)
+            if (ready) enqueue(sentence, other) else pending.addLast(sentence to other)
         }
     }
 
-    private fun enqueue(sentence: String) {
+    private fun enqueue(sentence: String, other: Boolean) {
         val id = "$generation:${ids.incrementAndGet()}"
+        // Pitch applies to the next speak() call: set it for every sentence.
+        tts.setPitch(if (other) OTHER_PITCH else 1.0f)
         val r = tts.speak(sentence, android.speech.tts.TextToSpeech.QUEUE_ADD, Bundle(), id)
         if (r != android.speech.tts.TextToSpeech.SUCCESS) finished(id)
+    }
+
+    private companion object {
+        /** app.heyrobot.core.ClaudeVoices.SYSTEM_PITCH (the voice module doesn't read Ask Claude's settings). */
+        const val OTHER_PITCH = 0.82f
     }
 
     private fun setOutstanding(n: Int): Int { outstanding.set(n); return n }

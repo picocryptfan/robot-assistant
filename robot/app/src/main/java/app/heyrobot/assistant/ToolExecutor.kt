@@ -17,6 +17,7 @@ import app.heyrobot.core.Addresses
 import app.heyrobot.core.AppEntry
 import app.heyrobot.core.AppMatcher
 import app.heyrobot.core.CalendarFormat
+import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.CalendarPick
 import app.heyrobot.core.ContactMatcher
 import app.heyrobot.core.Durations
@@ -40,6 +41,7 @@ import app.heyrobot.core.TextVia
 import app.heyrobot.core.WhenParser
 import app.heyrobot.core.XmppLink
 import app.heyrobot.sys.Calendars
+import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Contacts
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotesFiles
@@ -73,6 +75,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.LookupContact -> if (Contacts.granted(ctx)) Prepared.Ready(action) else needContacts()
             is Action.AddEvent -> prepareEvent(action)
             is Action.ReadCalendar -> prepareRead(action)
+            // The Claude app: installed or "Install Claude" before any card.
+            is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
             else -> Prepared.Ready(action)
         }
     } catch (t: Throwable) {
@@ -96,6 +100,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.FindNotes -> findNotes(action)
                 is Action.AddEvent -> addEvent(action)
                 is Action.ReadCalendar -> readCalendar(action)
+                is Action.AskClaude -> openClaude(action)
             }
         } catch (t: Throwable) {
             RLog.w("tool_run", t, "tool" to action.tool)
@@ -351,6 +356,28 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val lines = CalendarFormat.lines(results)
         return Executed(ActionStatus.DONE, detail, results = results, body = lines.ifEmpty { null },
             spoken = (detail + " " + lines.replace("\n", ". ").replace(" · ", " ")).trim())
+    }
+
+    // ------------------------------------------------------------------ the Claude app
+
+    /**
+     * Opens the Claude app with the question by the first way that resolves on this phone (docs/ask-claude.md "The
+     * Claude app route"): its claude:// link, its claude.ai link, a share, or just the app with the question on the
+     * clipboard. Robot only prefills; the owner presses Send there. The log has the way, never the words.
+     */
+    private fun openClaude(a: Action.AskClaude): Executed {
+        val way = ClaudeAppIntents.choose(ctx) ?: return Executed(ActionStatus.NO_APP, "Install Claude.")
+        val text = ClaudeAppLink.cap(a.text)
+        if (way == ClaudeAppLink.Way.LAUNCH && text.isNotEmpty()) ClaudeAppIntents.copy(ctx, text)
+        val i = ClaudeAppIntents.intent(ctx, way, text) ?: return Executed(ActionStatus.NO_APP, "Install Claude.")
+        RLog.i("claude_app", "way" to way)
+        if (!start(i)) return Executed(ActionStatus.FAILED, "Claude didn't open.")
+        val detail = when {
+            text.isEmpty() -> "Opened Claude."
+            way == ClaudeAppLink.Way.LAUNCH -> "Opened Claude. Paste your question in Claude: it's on the clipboard."
+            else -> "Opened Claude with your question: press Send there if it isn't sent."
+        }
+        return Executed(ActionStatus.DONE, detail, launchedApp = true)
     }
 
     private companion object {

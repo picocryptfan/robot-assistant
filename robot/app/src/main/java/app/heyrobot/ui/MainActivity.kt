@@ -53,6 +53,7 @@ import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.Calendars
+import app.heyrobot.sys.ClaudeKeyFiles
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
@@ -325,6 +326,13 @@ fun RobotAppUi(activity: MainActivity) {
             } catch (_: Exception) { say("Open Settings › Apps › Robot › Permissions.") }
         },
         openNote = { id -> page = Page.NoteEdit(id) },
+        addClaudeKey = {
+            // By name: the main process never refers to the assistant's classes.
+            try {
+                ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.ClaudeKeyActivity"))
+            } catch (_: Exception) { say("Couldn't open the key window.") }
+        },
+        deleteClaudeKey = { ClaudeKeyFiles.delete(ctx); say("The Claude key was deleted.") },
     )
 
     /** Turning a people or calendar feature on (from Off) asks for what it needs, if it isn't allowed yet. */
@@ -344,7 +352,7 @@ fun RobotAppUi(activity: MainActivity) {
 
     when (val p = page) {
         is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people)
-        is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, onBack = { page = null })
+        is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.claudeShowCost, onBack = { page = null })
         // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
         is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
             onCreated = { id -> if (page == Page.NoteEdit(null)) page = Page.NoteEdit(id) }, onBack = { page = null; notesTick++ })
@@ -400,4 +408,7 @@ class AppActions(
     val askCalendar: () -> Unit,
     val openAppSettings: () -> Unit,
     val openNote: (String?) -> Unit,
+    /** Ask Claude's key: pasted in a window of the assistant's process (never through this one); deleted here. */
+    val addClaudeKey: () -> Unit,
+    val deleteClaudeKey: () -> Unit,
 )

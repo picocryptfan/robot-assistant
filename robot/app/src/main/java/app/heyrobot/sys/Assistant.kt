@@ -44,6 +44,12 @@ data class AssistantFacts(
     val calendarGranted: Boolean = false,
     val cheogramInstalled: Boolean = false,
     val protonInstalled: Boolean = false,
+    /** Ask Claude: the masked API key (null: none saved), today's spend, the Claude app and which hand-off resolves. */
+    val claudeKey: String? = null,
+    val claudeSpendMicros: Long = 0,
+    val claudeApp: ClaudeAppFacts = ClaudeAppFacts(installed = false, appLink = false, webLink = false, send = false),
+    /** GrapheneOS's per-app Network toggle (INTERNET as a runtime permission). */
+    val networkGranted: Boolean = true,
 )
 
 object Assistant {
@@ -74,6 +80,10 @@ object Assistant {
             calendarGranted = granted(ctx, Manifest.permission.READ_CALENDAR) && granted(ctx, Manifest.permission.WRITE_CALENDAR),
             cheogramInstalled = HandOffApps.cheogram(ctx) != null,
             protonInstalled = HandOffApps.proton(ctx),
+            claudeKey = ClaudeKeyFiles.masked(ctx),
+            claudeSpendMicros = ClaudeSpendStore.today(ctx),
+            claudeApp = ClaudeAppIntents.facts(ctx),
+            networkGranted = granted(ctx, Manifest.permission.INTERNET),
         )
     }
 

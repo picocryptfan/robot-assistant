@@ -23,7 +23,7 @@ class ProcessIsolationTest {
     private fun java(module: String) = File(main(module), "java")
     /** Kotlin and Java (the TTS callback sherpa's JNI calls is Java), so every scan below covers both. */
     private fun sources(dir: File) = dir.walkTopDown().filter { it.isFile && (it.name.endsWith(".kt") || it.name.endsWith(".java")) }.toList()
-    private val modules = listOf("core", "brain", "voice", "app")
+    private val modules = listOf("core", "brain", "voice", "claude", "app")
     /** Our code (not the copied sherpa-onnx API), as "module/relative/path.kt". */
     private val ours: Map<String, File> by lazy {
         modules.flatMap { m -> sources(File(java(m), "app/heyrobot")).map { "$m/${it.relativeTo(File(java(m), "app/heyrobot")).path}" to it } }.toMap()
@@ -56,6 +56,26 @@ class ProcessIsolationTest {
         for (m in listOf("core", "brain", "app")) assertTrue("$m has sherpa sources", !File(java(m), "com/k2fsa").exists())
     }
 
+    /** Ask Claude: the Anthropic SDK lives only in the :claude module, which only the assistant (the :voice process) uses. */
+    @Test fun anthropicSdkOnlyInTheClaudeModule() {
+        val users = usersOf(Regex("""\bcom\.anthropic\b"""))
+        assertTrue(users.toString(), users.isNotEmpty() && users.all { it.startsWith("claude/") })
+        val claudeUsers = usersOf(Regex("""\bapp\.heyrobot\.claude\b"""), ours.filterKeys { !it.startsWith("claude/") })
+        assertTrue(claudeUsers.toString(), claudeUsers.isNotEmpty() && claudeUsers.all { it.startsWith("app/assistant/") })
+        fun deps(m: String) = File(root, "$m/build.gradle").readText()
+        assertTrue(deps("claude").contains("com.anthropic:anthropic-java:"))
+        for (m in listOf("core", "brain", "voice", "app")) assertTrue(m, !deps(m).contains("com.anthropic"))
+        for (m in listOf("core", "brain", "voice")) assertTrue(m, !deps(m).contains("project(':claude')"))
+        assertTrue(deps("app").contains("project(':claude')"))
+        assertTrue(!deps("claude").contains("litert") && !deps("claude").contains("project(':voice')") && !deps("claude").contains("project(':brain')"))
+        // The API key is decrypted in one place, in the :voice process, and handed only to the SDK client.
+        assertEquals(listOf("app/assistant/ClaudeLink.kt"), usersOf(Regex("""\bClaudeKeys\.read\(""")))
+        assertTrue(usersOf(Regex("""\bClaudeKeys\b""")).all { it.startsWith("app/assistant/") })
+        // The SDK never logs (its requests carry the key), and never retries on its own.
+        val client = File(java("claude"), "app/heyrobot/claude/ClaudeClient.kt").readText()
+        assertTrue(client.contains(".logLevel(LogLevel.OFF)") && client.contains(".maxRetries(0)"))
+    }
+
     @Test fun modulesDependOnlyWhereAllowed() {
         fun deps(m: String) = File(root, "$m/build.gradle").readText()
         assertTrue(!deps("core").contains("project(':"))
@@ -74,7 +94,7 @@ class ProcessIsolationTest {
             k.startsWith("core/") || k.startsWith("app/ui/") || k.startsWith("app/sys/") || k.startsWith("app/boot/") || k == "app/RobotApp.kt"
         }
         assertTrue(mainFiles.size >= 25)
-        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain)\b|\bcom\.k2fsa\b|litertlm|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService)\b""")
+        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|ClaudeLink|ClaudeKeys|ClaudeSession|ClaudeClient|ClaudeKeyActivity)\b""")
         assertEquals(emptyList<String>(), usersOf(forbidden, mainFiles))
         // And the :voice code must not load LiteRT either (it binds :brain by class name).
         assertEquals(emptyList<String>(), usersOf(Regex("""litertlm|\bGemmaEngine\b|\bBrainService\b"""), ours.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))
@@ -103,7 +123,8 @@ class ProcessIsolationTest {
         fun exported(n: String) = c(n).getAttributeNS(ns, "exported")
         fun perm(n: String) = c(n).getAttributeNS(ns, "permission")
         val voice = listOf("app.heyrobot.assistant.RobotVoiceService", "app.heyrobot.assistant.RobotSessionService",
-            "app.heyrobot.assistant.RobotRecognitionService", "app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider")
+            "app.heyrobot.assistant.RobotRecognitionService", "app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider",
+            "app.heyrobot.assistant.ClaudeKeyActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         for (n in listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver")) assertEquals(n, "", proc(n))
@@ -116,7 +137,8 @@ class ProcessIsolationTest {
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotSessionService"))
         assertEquals("false", exported("app.heyrobot.brain.BrainService"))
         assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.brain.BrainService"))
-        for (n in listOf("app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver"))
+        for (n in listOf("app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
+            "app.heyrobot.assistant.ClaudeKeyActivity"))
             assertEquals(n, "false", exported(n))
         // The recognizer MUST stay discoverable: with no current speech recognizer Android clears a third-party
         // assistant at every boot (VoiceInteractionManagerService.initForUser), which is how probe 1.1 failed.
@@ -136,8 +158,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("21", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.2.1", m.getAttributeNS(ns, "versionName"))
+        assertEquals("30", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.3.0", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
@@ -155,6 +177,8 @@ class ProcessIsolationTest {
         ), used)
         // Package visibility through <queries> only.
         assertTrue("android.permission.QUERY_ALL_PACKAGES" !in used && "android.permission.SEND_SMS" !in used && "android.permission.WRITE_CONTACTS" !in used)
+        // Ask Claude needs nothing new: INTERNET stays the only network permission.
+        assertTrue(used.none { it.contains("NETWORK_STATE") || it.contains("WIFI") || it.contains("ACCESSIBILITY") })
         val app = doc.getElementsByTagName("application").item(0) as Element
         assertEquals("false", app.getAttributeNS(ns, "allowBackup"))
     }
@@ -175,9 +199,11 @@ class ProcessIsolationTest {
         assertTrue(File(java("app"), "app/heyrobot/sys/People.kt").readText().contains("\"app.heyrobot.ui.NotesLauncher\""))
         val queries = doc.getElementsByTagName("queries").item(0) as Element
         val packages = queries.getElementsByTagName("package").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
-        assertTrue(packages.containsAll(setOf("com.cheogram.android", "com.cheogram.android.playstore", "ch.protonmail.android")))
+        assertTrue(packages.containsAll(setOf("com.cheogram.android", "com.cheogram.android.playstore", "ch.protonmail.android", "com.anthropic.claude")))
         val schemes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "scheme") } }.toSet()
-        assertTrue(schemes.containsAll(setOf("xmpp", "mailto", "smsto")))
+        assertTrue(schemes.containsAll(setOf("xmpp", "mailto", "smsto", "claude", "https")))
+        val hosts = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "host") } }.toSet()
+        assertTrue("claude.ai" in hosts)
         val mimes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "mimeType") } }.toSet()
         assertTrue("vnd.android.cursor.dir/event" in mimes)
     }
@@ -228,11 +254,17 @@ class ProcessIsolationTest {
         for (l in listOf("libsherpa-onnx-jni.so", "libonnxruntime.so")) assertTrue(l, File(main("voice"), "jniLibs/arm64-v8a/$l").isFile)
     }
 
-    /** Privacy (spec item 10): no network code (DownloadManager does the one download), no audio files, no raw logging. */
+    /**
+     * Privacy (spec item 10): no network code but the :claude module's SDK client (DownloadManager does the model
+     * downloads), no audio files, no raw logging, never an accessibility service (Ask Claude must not drive the Claude app).
+     */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\.(?!URLEncoder)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b""")))
-        // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager.
-        assertEquals(listOf("core/core/ModelState.kt", "core/core/VoiceModels.kt"), ours.filter { it.value.readText().contains("https://") }.keys.sorted())
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
+            ours.filterKeys { !it.startsWith("claude/") }))
+        assertEquals(emptyList<String>(), usersOf(Regex("""AccessibilityService|accessibilityservice""")))
+        // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, and the
+        // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own).
+        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/VoiceModels.kt"), ours.filter { it.value.readText().contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
         assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)"""), ours.filterKeys { it.startsWith("voice/") }))

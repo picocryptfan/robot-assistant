@@ -396,8 +396,8 @@ object ToolCalls {
                 if (m != null && (m % 1.0 != 0.0 || m < 1 || m > MAX_EVENT_MINUTES)) return bad("duration_minutes must be a whole number from 1 to $MAX_EVENT_MINUTES")
                 ParsedCall.Ok(Action.AddEvent(title, whenText, m?.toInt()))
             }
-            ToolName.ASK_CLAUDE -> longArg(a, ClaudeAppLink.MAX_CHARS, "question", "query", "q", "text", "prompt")?.let { ParsedCall.Ok(Action.AskClaude(it)) }
-                ?: bad("question is required")
+            // Empty: "go get Claude" with nothing to summarise opens the app without text.
+            ToolName.ASK_CLAUDE -> ParsedCall.Ok(Action.AskClaude(longArg(a, ClaudeAppLink.MAX_CHARS, "question", "query", "q", "text", "prompt").orEmpty()))
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
                 val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }

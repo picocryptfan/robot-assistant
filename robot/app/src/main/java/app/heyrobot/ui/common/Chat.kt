@@ -75,6 +75,8 @@ data class ActionView(
     val undo: Boolean = false,
     /** More people or numbers fitted than [choices] lists ("…and 3 more"). */
     val more: Int = 0,
+    /** The Cancel button's own words ("Leave out"). */
+    val cancel: String? = null,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -96,6 +98,7 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.LOOKUP_CONTACT -> RIcons.Person
     ToolName.ADD_NOTE, ToolName.FIND_NOTES -> RIcons.Note
     ToolName.ADD_EVENT, ToolName.READ_CALENDAR -> RIcons.Event
+    ToolName.ASK_CLAUDE -> RIcons.Cloud
     null -> RIcons.Warning
 }
 
@@ -136,6 +139,11 @@ private fun AttachmentTag(a: Attachment) {
     }
 }
 
+/**
+ * A reply. [claude]: Claude wrote it (Ask Claude): a small "Claude" label ("Claude, from the app" when [readBack]) and the
+ * dynamic colour's tertiary tone, so a Claude turn is never mistaken for Robot's. [footer]: "Claude searched the web ·
+ * nasa.gov" and the cost line, under the bubble.
+ */
 @Composable
 fun AssistantBubble(
     text: String,
@@ -146,16 +154,34 @@ fun AssistantBubble(
     modifier: Modifier = Modifier,
     onConfirm: ((String, Boolean) -> Unit)? = null,
     cardActions: CardActions? = null,
+    claude: Boolean = false,
+    readBack: Boolean = false,
+    footer: List<String> = emptyList(),
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
+        if (claude && !error) {
+            Row(Modifier.padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(RIcons.Cloud, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
+                Spacer(Modifier.width(5.dp))
+                Text(if (readBack) "Claude, from the Claude app" else "Claude", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+            }
+        }
         for (a in actions) {
             ActionCard(a, onConfirm, cardActions)
             Spacer(Modifier.size(6.dp))
         }
         if (text.isNotBlank() || (streaming && actions.isEmpty())) {
             Surface(
-                color = if (error) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                contentColor = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface,
+                color = when {
+                    error -> MaterialTheme.colorScheme.errorContainer
+                    claude -> MaterialTheme.colorScheme.tertiaryContainer
+                    else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                },
+                contentColor = when {
+                    error -> MaterialTheme.colorScheme.onErrorContainer
+                    claude -> MaterialTheme.colorScheme.onTertiaryContainer
+                    else -> MaterialTheme.colorScheme.onSurface
+                },
                 shape = RoundedCornerShape(22.dp, 22.dp, 22.dp, 6.dp),
                 modifier = Modifier.widthIn(max = 340.dp),
             ) {
@@ -168,8 +194,18 @@ fun AssistantBubble(
             Text("Stopped", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 4.dp))
         }
+        for (line in footer) {
+            Text(line, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp, top = 4.dp))
+        }
     }
 }
+
+/** The lines under a Claude reply: the search and its domains, then the cost. */
+fun claudeFooter(sources: List<String>, cost: String?): List<String> = listOfNotNull(
+    if (sources.isNotEmpty()) "Claude searched the web · " + sources.joinToString(", ") else null,
+    cost,
+)
 
 /**
  * One action: what it does (light Markdown: the person or title in bold), its state, and right under it the buttons
@@ -200,7 +236,7 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
                 Column(Modifier.weight(1f)) {
                     Text(spans(Markdown.inline(a.summary), Color.Unspecified, caret = false), style = MaterialTheme.typography.titleSmall)
                     val line = when (a.status) {
-                        ActionStatus.PENDING -> if (a.choices.isNotEmpty()) "Which one?" else "Do you want Robot to do this?"
+                        ActionStatus.PENDING -> a.detail ?: if (a.choices.isNotEmpty()) "Which one?" else "Do you want Robot to do this?"
                         ActionStatus.DONE, ActionStatus.DRAFT_OPENED -> a.detail ?: a.status.label
                         else -> listOfNotNull(a.status.label, a.detail).joinToString(". ")
                     }
@@ -225,7 +261,7 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
                 } else {
                     Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
                         verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
+                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(a.cancel ?: "Cancel") }
                         Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp)) { Text(a.confirm ?: "Do it") }
                     }
                 }

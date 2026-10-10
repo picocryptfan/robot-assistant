@@ -36,7 +36,8 @@ class SherpaTextToSpeech internal constructor(
     private val kokoro: ModelSlot<OfflineTts>,
     private val kitten: ModelSlot<OfflineTts>,
 ) : TextToSpeech {
-    private class Item(val text: String, val gen: Int)
+    /** [speaker]: another voice of the loaded model for this piece (Claude's), null for the chosen one. */
+    private class Item(val text: String, val gen: Int, val speaker: Int? = null)
 
     private val worker = Executors.newSingleThreadExecutor { r -> Thread(r, "robot-tts") }
     private val main = Handler(Looper.getMainLooper())
@@ -93,12 +94,16 @@ class SherpaTextToSpeech internal constructor(
 
     override val isSpeaking: Boolean get() = synchronized(stateLock) { speaking }
 
-    override fun speak(sentence: String) {
+    override fun speak(sentence: String) = enqueue(sentence, null)
+
+    override fun speakOther(sentence: String, speaker: Int?) = enqueue(sentence, speaker)
+
+    private fun enqueue(sentence: String, speaker: Int?) {
         // Again here, whoever calls: sherpa logs CJK text and unpronounceable pieces whatever its debug flag.
         val text = SpeechText.sayable(sentence)
         if (text.isEmpty()) return
         synchronized(stateLock) {
-            queue.addLast(Item(text, gen))
+            queue.addLast(Item(text, gen, speaker))
             if (!speaking) {
                 speaking = true
                 runStart = SystemClock.elapsedRealtime()
@@ -214,7 +219,7 @@ class SherpaTextToSpeech internal constructor(
         val start = synchronized(trackLock) { written }
         echo.open(start, item.text)
         var frames = 0L
-        val ok = generate(tts, item.text, generation(c)) { samples ->
+        val ok = generate(tts, item.text, generation(c, item.speaker)) { samples ->
             if (frames == 0L) synchronized(stateLock) {
                 if (firstAudioMs < 0 && item.gen == gen) firstAudioMs = SystemClock.elapsedRealtime() - runStart
             }
@@ -264,11 +269,12 @@ class SherpaTextToSpeech internal constructor(
         return ok && cb.failure() == null
     }
 
-    private fun generation(c: VoiceChoice) = GenerationConfig(
-        sid = c.speaker,
+    private fun generation(c: VoiceChoice, other: Int? = null) = GenerationConfig(
+        sid = other ?: c.speaker,
         speed = rate,
-        // Kokoro reads French with espeak's "fr" when asked per call; English uses the model's "en-us".
-        extra = c.lang?.let { mapOf("lang" to it) },
+        // Kokoro reads French with espeak's "fr" when asked per call; English uses the model's "en-us". Another voice
+        // (Claude's) is always English.
+        extra = c.lang?.takeIf { other == null }?.let { mapOf("lang" to it) },
     )
 
     /** Writes [samples] without blocking under the lock; false once a stop() made them stale. */
@@ -481,6 +487,12 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
         if (sentence.isBlank()) return
         val t = active ?: pick().also { active = it }
         t.speak(sentence)
+    }
+
+    override fun speakOther(sentence: String, speaker: Int?) {
+        if (sentence.isBlank()) return
+        val t = active ?: pick().also { active = it }
+        t.speakOther(sentence, speaker)
     }
 
     override fun stop() {
