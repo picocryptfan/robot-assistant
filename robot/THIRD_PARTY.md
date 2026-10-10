@@ -1,4 +1,4 @@
-# Third-party components in Robot 0.1.3 (phase 1)
+# Third-party components in Robot 0.2.0 (phases 1 and 2)
 
 Robot itself is GPL-3.0-only (see `../LICENSE`). Everything below keeps its own licence; all of them
 (Apache-2.0, MIT, CC-BY-4.0 for model weights, GPL-3.0-or-later for espeak-ng) are compatible with GPL-3.0.
@@ -186,6 +186,10 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 
 The icons in `app/src/main/java/app/heyrobot/ui/common/Icons.kt` are path data from Google's Material
 Icons (Apache-2.0).
+
+Phase 2 adds no dependency. Robot hands drafts to apps the owner installs (Cheogram, Proton Mail, an SMS app, a
+calendar app) through Android intents only; nothing of them is bundled. Their source (Cheogram: GPL-3.0; Proton Mail
+for Android: GPL-3.0) was read to match what they accept (`../docs/phase-2.md`); no code was copied.
 
 Build and test only (not in the APK): Android Gradle Plugin 8.8.2, Kotlin and its Compose compiler plugin
 2.4.0, JUnit 4.13.2 (EPL-1.0), org.json 20180813 (JSON licence, tests only). The tools in `tools/` use the

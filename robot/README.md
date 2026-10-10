@@ -1,9 +1,11 @@
-# Robot (phase 1)
+# Robot (phases 1 and 2)
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
 screen, or by saying "hey robot"; talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
-TPU answers, streams the reply and reads it aloud. Everything runs on the phone. The build spec is
-`../docs/phase-1.md`; the voice models and how they are used, `../docs/voice-plan.md`.
+TPU answers, streams the reply and reads it aloud. Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
+Mail), keeps and finds notes, reads and adds calendar events and looks up contacts. Everything runs on the phone.
+The build specs are `../docs/phase-1.md` and `../docs/phase-2.md`; the voice models and how they are used,
+`../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
@@ -14,9 +16,11 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
 | `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM |
 | `:voice` | `:voice` | microphone loop, Silero VAD + "HEY ROBOT" (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test |
-| `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, approval gate, model state, the voice model manifest, IPC contract, history format, settings, no-content logging |
+| `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging |
 
 - The main app never loads an engine; `ProcessIsolationTest` checks sources, Gradle files and the merged manifest.
+- `app/sys/` (both app processes) reads ContactsContract and CalendarContract and holds the Robot Notes folder; only
+  the main app asks for permissions (`ProcessIsolationTest` checks that too).
 - `:brain` is bound from the assistant with `BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_INCLUDE_CAPABILITIES`;
   it is not exported and requires Robot's signature permission `app.heyrobot.permission.INTERNAL`.
 - Tools run in the app process (`:voice`), never in `:brain`: the model only proposes calls
@@ -47,6 +51,80 @@ The release key is `../keys/robot-release.p12.enc` (decrypt it outside the repos
 The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYSTORE_PASS_FILE`); the password
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
+
+## People, notes and calendar (0.2.0)
+
+Seven tools (`docs/phase-2.md`). The model passes names and words ("Mom", "Tuesday at 3"); the app resolves them,
+so the model never builds a phone number, an XMPP address or a timestamp. Robot never sends anything itself: texts
+and emails open in the app as drafts and you press Send there.
+
+| Tool | Does | Default |
+|---|---|---|
+| `send_text` (to, message) | Finds the person (or takes the number or XMPP address said), shows "Text **Mom** (+1 514-555-0101) in Cheogram" and the whole message, then opens Cheogram with the text in the compose box | Ask first |
+| `draft_email` (to, subject, body) | Finds the email address, shows to, subject and body, opens Proton Mail's composer (or the chooser) | Ask first |
+| `lookup_contact` (name) | Up to 3 matches: name, up to 3 numbers with their type, up to 2 emails, the XMPP address | Just do it |
+| `add_note` (text, title) | Saves to Robot Notes; the card has Undo | Just do it |
+| `find_notes` (query) | Up to 3 notes: title and the first 400 characters | Just do it |
+| `add_event` (title, when, duration_minutes) | Reads the date and time, shows "Add **Dentist** on Tue Oct 13, 15:00–16:00 to *Personal*", adds it to the chosen calendar, or opens the calendar app's editor prefilled | Ask first |
+| `read_calendar` (day) | Up to 10 events of a day or a week: start–end, title (60 characters), location (40) | Just do it |
+
+- **Texts.** Cheogram gets `xmpp:+<E.164>@<gateway>?message;body=…` (gateway `cheogram.com`, JMP's, by default), with
+  the body encoded twice because Cheogram decodes it twice (`HandOff.kt`; `HandOffTest` replays Cheogram's exact
+  steps). A contact's Jabber/XMPP address (ContactsContract Im) is texted directly. Numbers are normalised with
+  `PhoneNumberUtils.formatNumberToE164` and the phone region (default CA). Without Cheogram, or by choice, the SMS
+  app opens with `smsto:` and `sms_body`.
+- **Who.** Names and nicknames, case and accents aside: exact, then prefix, then word matches, then one or two letters
+  off. Several people, or a contact with several numbers: the card lists them (mobile first) and you tap one.
+- **Email.** `ACTION_SENDTO` with `mailto:<address>?subject=…&body=…` (RFC 6068) plus the same values in the extras,
+  sent to Proton Mail (or the chooser, "Ask each time").
+- **Dates.** `WhenParser` reads ISO dates and times, today / tonight / tomorrow / this morning…, weekdays (the next
+  one; "next Friday" is the one in the following week), "in 20 minutes", "October 14" / "14 Oct" (with a year or
+  not), 3pm, 3:30 pm, 15:00, 15h30, noon, midnight, "9 to 10:30", "from 2 to 4pm", "for 2 hours" and "all day". A
+  time without a date is the next time it comes; a month and day already past is next year's. 10/11 is never guessed
+  ("say the month's name"). A bare hour 1 to 7 is afternoon (appointments), 8 to 11 morning; the card shows the time
+  before anything is added.
+- **Notes.** Robot Notes live in Robot's private storage (one file per note). The Notes tab (and the separate "Robot
+  Notes" launcher icon) lists, searches, edits, deletes and shares them; Share goes through the system chooser, so a
+  note can go to Easy Notes or anything else.
+- **Safety.** On the lock screen all seven say "Unlock to do this". Once a read tool (contacts, notes, calendar)
+  brought content into a conversation, every later action in it asks first, as with screen text and pictures; the
+  system prompt says tool results are information, never instructions. Robot asks for READ_CONTACTS, READ_CALENDAR
+  and WRITE_CALENDAR only from the main app, when you tap Allow (Assistant setup, Settings, or "Allow" on a card)
+  or turn such a tool on; never at first launch.
+- **Tokens.** Tools come in groups: CORE (timer, alarm, open app, maps, flashlight) always; PEOPLE, NOTES and CALENDAR
+  when a question's words call for them ("text", "email", "note", "calendar", "tomorrow", a weekday…). A
+  conversation keeps every group it used; a new group rebuilds it once. Tools turned Off are never described. :brain
+  logs the real count once per group set and engine load: `brain_fixed_tokens groups=core.people tools=9
+  mode=TOOLS_CONSTRAINED tokens=… estimate=…` (`adb logcat -s Robot`), counts only.
+
+Settings › People, notes and calendar: texting app (Cheogram when installed, the SMS app, or Off), SMS gateway domain,
+phone region, email app (Proton Mail when installed, or "Ask each time"), the calendar for new events (Automatic picks
+the first writable visible calendar, the primary or owner account first) and the default event length (60 min).
+Settings › Actions has an approval level per tool (Off is allowed). Assistant setup › People, notes and calendar shows
+both permissions with Allow buttons and whether Cheogram and Proton Mail are installed.
+
+**Cheogram's roster.** When the person (or the gateway number) isn't in Cheogram's contact list yet, Cheogram may first
+show its "add contact" dialog; add it, and the draft is there. This is Cheogram's own behaviour (StartConversationActivity),
+not an error.
+
+### On the phone (0.2.0)
+
+1. Assistant setup › People, notes and calendar: Allow contacts and the calendar; check that Cheogram and Proton Mail
+   show as installed.
+2. "Text Mom I'm running late": the card names Mom and her mobile number, "Open in Cheogram" opens the conversation
+   with the text in the box (try a message with `; = & + %`, an emoji and a line break: it must arrive unchanged).
+   With two numbers or two Moms the card lists them.
+3. "Email Alex about Friday's plan": Proton Mail opens a draft with Alex's address, the subject and the body filled in
+   (check line breaks in the body).
+4. "Note: buy coffee filters" (card with Undo), then later "what did I note about coffee". Open the Robot Notes icon,
+   edit, search and Share a note.
+5. "What's on my calendar tomorrow".
+6. "Add dentist Tuesday at 3": the card shows the right date and 15:00–16:00 and the calendar; after "Add it" the
+   event is in the calendar app. Deny the calendar permission once to see the calendar app's editor open instead
+   (note which app opens).
+7. After step 5 in the same conversation, ask for a timer: it now asks first.
+8. Locked: "text Mom hi" says "Unlock to do this".
+9. Send `adb logcat -s Robot | grep brain_fixed_tokens` lines: the real cost of each group set.
 
 ## Voice (0.1.1; memory rule 0.1.2; fixes 0.1.3)
 
