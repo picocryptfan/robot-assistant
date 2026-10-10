@@ -74,6 +74,10 @@ grep -A1 'string/notes_name$' <<<"$res" | grep -qF '"Robot Notes"' && pass "Robo
 grep -qE 'resource 0x[0-9a-f]+ mipmap/ic_notes$' <<<"$res" && pass "Robot Notes icon" || fail "Robot Notes icon"
 # Package visibility for the hand-offs, by name and by intent (no QUERY_ALL_PACKAGES).
 queries=$(echo "$mf" | awk '/^ *E: queries /{ on=1 } /^ *E: application /{ on=0 } on')
+# One line per <intent> inside <queries>, with everything it declares, so an action is checked with its own data.
+intents=$(echo "$queries" | awk '/^ *E: intent /{ if (b != "") print b; b = "intent" ; next } /^ *E: (package|provider) /{ if (b != "") print b; b = ""; next } b != "" { gsub(/^ +/, ""); b = b " " $0 } END { if (b != "") print b }')
+# An <intent> that declares all of the given strings.
+intent_has() { local line; while IFS= read -r line; do local ok=1; for w in "$@"; do [[ "$line" == *"$w"* ]] || ok=0; done; [ $ok = 1 ] && return 0; done <<<"$intents"; return 1; }
 # The main process (no android:process): the app and its Robot Notes entry, where no engine may ever load.
 for c in app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher; do
   hasnt 'process(0x01010011)' "$(elem $c)" "$c in the main process"
@@ -91,9 +95,10 @@ allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.R
 # Ask Claude: the key window runs in :voice and isn't exported (the main app never sees the key).
 has ':voice' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity not exported"
-for q in '"com.anthropic.claude"' 'scheme(0x01010027)="claude"' 'host(0x01010028)="claude.ai"' '"android.intent.action.SEND"'; do
-  has "$q" "$queries" "<queries> has $q (Claude app hand-off)"
-done
+has '"com.anthropic.claude"' "$queries" "<queries> has the Claude app's package"
+intent_has '"android.intent.action.VIEW"' 'scheme(0x01010027)="claude"' && pass "<queries> has VIEW claude:// (Claude app hand-off a)" || fail "<queries> VIEW claude://"
+intent_has '"android.intent.action.VIEW"' 'scheme(0x01010027)="https"' 'host(0x01010028)="claude.ai"' && pass "<queries> has VIEW https://claude.ai (hand-off b)" || fail "<queries> VIEW https://claude.ai"
+intent_has '"android.intent.action.SEND"' 'mimeType(0x01010026)="text/plain"' && pass "<queries> has SEND text/plain (hand-off c)" || fail "<queries> SEND text/plain"
 for q in '"com.cheogram.android"' '"com.cheogram.android.playstore"' '"ch.protonmail.android"' 'scheme(0x01010027)="xmpp"' 'scheme(0x01010027)="mailto"' \
   'scheme(0x01010027)="smsto"' 'mimeType(0x01010026)="vnd.android.cursor.dir/event"' '"android.intent.action.INSERT"' '"android.intent.action.SENDTO"'; do
   has "$q" "$queries" "<queries> has $q"
@@ -112,18 +117,26 @@ echo "$libs" | grep -q CompilerPlugin && fail "compiler plugin packaged" || pass
 # (v1.13.8 jni/offline-tts.cc). A Kotlin lambda has no such method and every voice is silent (0.1.2), so the
 # callback class must really declare it, public and not as a bridge, in the dex code that ships.
 dexdir=$(mktemp -d)
+trap 'rm -rf "$dexdir"' EXIT
 unzip -q -o "$APK" 'classes*.dex' -d "$dexdir" 2>/dev/null
 cbclass=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } index($0, "Class descriptor  : '\''Lapp/heyrobot/voice/TtsCallback;'\''"){ on=1 } on')
-# The main process never reaches an engine: no class of ui/, sys/, boot/ or RobotApp refers to sherpa-onnx, LiteRT or
-# the assistant, voice and brain packages in its code (ProcessIsolationTest checks the sources; this checks the dex).
+# The main process never reaches an engine: no class of ui/, sys/, boot/, core/ (pure, loaded everywhere) or RobotApp
+# refers to sherpa-onnx, LiteRT or the assistant, voice and brain packages in its code (ProcessIsolationTest checks the
+# sources; this checks the dex).
 engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
-  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|core)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
   grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude)/')
 [ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine or the Anthropic SDK (dex)" || fail "main-process classes refer to engines or the SDK: $engine_refs"
 # The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load.
 sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession);'"; done | wc -l)
 [ "$sdk_classes" = "2" ] && pass "Anthropic SDK client and ClaudeSession in the dex" || fail "Anthropic SDK classes in the dex: $sdk_classes"
+# No JVM-only API that ART lacks: none of these packages is referred to anywhere in the dex, and of java.beans only
+# what Android has, plus the two annotations Jackson looks up defensively (its optional Java 7 support).
+jvm_only=$(LC_ALL=C grep -aohE 'L(java/net/http|java/awt|javax/swing|javax/naming|java/lang/management|javax/management|java/rmi|javax/script|java/util/prefs|javax/xml/bind)/[A-Za-z0-9_$/]*;' "$dexdir"/classes*.dex | sort -u | tr '\n' ' ')
+[ -z "$jvm_only" ] && pass "no JVM-only API referred to in the dex" || fail "JVM-only API in the dex: $jvm_only"
+beans=$(LC_ALL=C grep -aohE 'Ljava/beans/[A-Za-z0-9_$]*;' "$dexdir"/classes*.dex | sort -u | grep -vxE 'Ljava/beans/(ConstructorProperties|Transient|PropertyChange(Event|Listener|ListenerProxy|Support)|IndexedPropertyChangeEvent);' | tr '\n' ' ')
+[ -z "$beans" ] && pass "java.beans: only what ART has and Jackson's optional annotations" || fail "java.beans types ART lacks: $beans"
 # No API key anywhere in the APK (resources, assets, dex): nothing shaped like sk-ant-<20+ characters>.
 keys=0
 for e in $(unzip -Z1 "$APK" | grep -vE '^lib/|\.onnx$'); do
