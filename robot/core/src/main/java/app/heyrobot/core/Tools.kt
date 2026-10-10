@@ -2,20 +2,33 @@ package app.heyrobot.core
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.ZonedDateTime
 import java.util.Locale
 import kotlin.math.roundToLong
 
-// Pure. The fixed tool set of phase 1 (spec item 7): what the model is told (OpenAPI JSON, at most two
-// arguments each), and the validation of what it asks for. :brain only describes the tools; the app
-// process validates and runs them (ToolExecutor), after the approval gate.
+// Pure. The fixed tool set (phase 1 spec item 7, phase 2 "New tools"): what the model is told (OpenAPI JSON, at
+// most three arguments each), and the validation of what it asks for. :brain only describes the tools; the app
+// process validates and runs them (ToolExecutor), after the approval gate. The model gives names and words ("Mom",
+// "tomorrow 3pm"); the app resolves them: the model never builds phone numbers, XMPP addresses or timestamps.
 
-enum class ToolName(val id: String, val title: String) {
-    SET_TIMER("set_timer", "Timers"),
-    SET_ALARM("set_alarm", "Alarms"),
-    OPEN_APP("open_app", "Open apps"),
-    MAPS_SEARCH("maps_search", "Maps search"),
-    MAPS_NAVIGATE("maps_navigate", "Maps directions"),
-    FLASHLIGHT("flashlight", "Flashlight");
+/**
+ * [group]: which tool group describes it (ToolRouter). [reads]: it brings content Robot didn't write into the
+ * conversation (a note, a calendar invite, a contact): every later action in that conversation asks first.
+ */
+enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false) {
+    SET_TIMER("set_timer", "Timers", ToolGroup.CORE),
+    SET_ALARM("set_alarm", "Alarms", ToolGroup.CORE),
+    OPEN_APP("open_app", "Open apps", ToolGroup.CORE),
+    MAPS_SEARCH("maps_search", "Maps search", ToolGroup.CORE),
+    MAPS_NAVIGATE("maps_navigate", "Maps directions", ToolGroup.CORE),
+    FLASHLIGHT("flashlight", "Flashlight", ToolGroup.CORE),
+    SEND_TEXT("send_text", "Texts", ToolGroup.PEOPLE),
+    DRAFT_EMAIL("draft_email", "Email drafts", ToolGroup.PEOPLE),
+    LOOKUP_CONTACT("lookup_contact", "Contact lookups", ToolGroup.PEOPLE, reads = true),
+    ADD_NOTE("add_note", "New notes", ToolGroup.NOTES),
+    FIND_NOTES("find_notes", "Note searches", ToolGroup.NOTES, reads = true),
+    ADD_EVENT("add_event", "New events", ToolGroup.CALENDAR),
+    READ_CALENDAR("read_calendar", "Calendar lookups", ToolGroup.CALENDAR, reads = true);
 
     companion object {
         fun of(id: String?): ToolName? = entries.firstOrNull { it.id == id?.trim()?.lowercase(Locale.ROOT) }
@@ -25,7 +38,12 @@ enum class ToolName(val id: String, val title: String) {
 data class ToolParam(val name: String, val type: String, val description: String, val required: Boolean)
 
 data class ToolSpec(val tool: ToolName, val description: String, val params: List<ToolParam>) {
-    init { require(params.size <= 2) { "phase 1 tools take at most two arguments" } }
+    init { require(params.size <= MAX_PARAMS) { "tools take at most $MAX_PARAMS arguments" } }
+
+    companion object {
+        /** Phase 1 allowed two; draft_email and add_event need three (to, subject, body; title, when, length). */
+        const val MAX_PARAMS = 3
+    }
 
     /** {"name", "description", "parameters": {"type":"object", "properties", "required"}} as LiteRT-LM's OpenApiTool wants it. */
     fun openApiJson(): String = JSONObject().apply {
@@ -43,7 +61,7 @@ data class ToolSpec(val tool: ToolName, val description: String, val params: Lis
 
 object ToolSpecs {
     val ALL: List<ToolSpec> = listOf(
-        ToolSpec(ToolName.SET_TIMER, "Start a countdown timer in the Clock app. Give minutes, seconds, or both.", listOf(
+        ToolSpec(ToolName.SET_TIMER, "Start a countdown timer in the Clock app (minutes, seconds or both).", listOf(
             ToolParam("minutes", "integer", "Whole minutes of the timer, e.g. 5", false),
             ToolParam("seconds", "integer", "Extra seconds of the timer, e.g. 30", false),
         )),
@@ -63,6 +81,34 @@ object ToolSpecs {
         ToolSpec(ToolName.FLASHLIGHT, "Turn the phone's flashlight on or off.", listOf(
             ToolParam("on", "boolean", "true to turn it on, false to turn it off", true),
         )),
+        // Phase 2: one sentence each and short parameter text (every token here is paid on every rebuild).
+        ToolSpec(ToolName.SEND_TEXT, "Draft a text message; the person sends it.", listOf(
+            ToolParam("to", "string", "Name, number or XMPP address", true),
+            ToolParam("message", "string", "The text", true),
+        )),
+        ToolSpec(ToolName.DRAFT_EMAIL, "Draft an email; the person sends it.", listOf(
+            ToolParam("to", "string", "Name or email address", true),
+            ToolParam("subject", "string", "Subject", false),
+            ToolParam("body", "string", "The text", true),
+        )),
+        ToolSpec(ToolName.LOOKUP_CONTACT, "Find someone's numbers and emails in the contacts.", listOf(
+            ToolParam("name", "string", "Their name", true),
+        )),
+        ToolSpec(ToolName.ADD_NOTE, "Save a note in Robot Notes.", listOf(
+            ToolParam("text", "string", "What to note", true),
+            ToolParam("title", "string", "Short title", false),
+        )),
+        ToolSpec(ToolName.FIND_NOTES, "Search Robot Notes.", listOf(
+            ToolParam("query", "string", "Words to find", true),
+        )),
+        ToolSpec(ToolName.ADD_EVENT, "Add an event to the calendar.", listOf(
+            ToolParam("title", "string", "What, e.g. Dentist", true),
+            ToolParam("when", "string", "As said, e.g. Friday 9 to 10:30", true),
+            ToolParam("duration_minutes", "integer", "Length if no end was said", false),
+        )),
+        ToolSpec(ToolName.READ_CALENDAR, "List calendar events for a day or a week.", listOf(
+            ToolParam("day", "string", "e.g. today, Friday, next week", true),
+        )),
     )
 
     fun of(tool: ToolName): ToolSpec = ALL.first { it.tool == tool }
@@ -71,10 +117,17 @@ object ToolSpecs {
 /** A validated request to do something on the phone. */
 sealed class Action {
     abstract val tool: ToolName
-    /** Plain language for the confirmation card and the log-free history ("Set a timer for 5 minutes"). */
+    /**
+     * Plain language for the confirmation card and the log-free history ("Set a timer for 5 minutes"). The person or
+     * thing it is about may be marked **bold** and the calendar *italic* (the card renders light Markdown).
+     */
     abstract fun describe(): String
     /** Opens another app on top of the assistant panel. */
     open val leavesPanel: Boolean get() = false
+    /** What the card shows under the summary: a message's full text, an email's subject and body, a note. */
+    open fun body(): String? = null
+    /** The card's button when it asks first ("Open in Cheogram"); null = "Do it". */
+    open val confirmLabel: String? get() = null
 
     data class SetTimer(val seconds: Long) : Action() {
         override val tool get() = ToolName.SET_TIMER
@@ -112,7 +165,95 @@ sealed class Action {
         override val tool get() = ToolName.FLASHLIGHT
         override fun describe() = if (on) "Turn the flashlight on" else "Turn the flashlight off"
     }
+
+    /** [to] as the model gave it until the app resolves it to a [target] (what the card shows is where it goes). */
+    data class SendText(val to: String, val message: String, val target: TextTarget? = null) : Action() {
+        override val tool get() = ToolName.SEND_TEXT
+        override fun describe() = when {
+            target == null -> "Text **$to**"
+            target.name == null -> "Text **${target.display}** in ${target.appName}"
+            else -> "Text **${target.name}** (${target.display}) in ${target.appName}"
+        }
+        override fun body() = message
+        override val leavesPanel get() = true
+        override val confirmLabel get() = target?.let { "Open in ${it.appName}" }
+    }
+
+    data class DraftEmail(val to: String, val subject: String, val text: String, val target: MailTarget? = null) : Action() {
+        override val tool get() = ToolName.DRAFT_EMAIL
+        override fun describe(): String {
+            val t = target ?: return "Email **$to**"
+            val who = if (t.name == null) "**${t.address}**" else "**${t.name}** (${t.address})"
+            return if (t.appName == null) "Email $who" else "Email $who in ${t.appName}"
+        }
+        override fun body() = listOfNotNull(subject.takeIf { it.isNotBlank() }?.let { "Subject: $it" }, text.takeIf { it.isNotBlank() }).joinToString("\n\n")
+        override val leavesPanel get() = true
+        override val confirmLabel get() = target?.let { t -> t.appName?.let { "Open in $it" } ?: "Choose the email app" }
+    }
+
+    data class LookupContact(val name: String) : Action() {
+        override val tool get() = ToolName.LOOKUP_CONTACT
+        override fun describe() = "Look up **$name** in your contacts"
+    }
+
+    data class AddNote(val text: String, val title: String? = null) : Action() {
+        override val tool get() = ToolName.ADD_NOTE
+        override fun describe() = if (title == null) "Save a note in Robot Notes" else "Save the note **$title** in Robot Notes"
+        override fun body() = text
+    }
+
+    data class FindNotes(val query: String) : Action() {
+        override val tool get() = ToolName.FIND_NOTES
+        override fun describe() = "Search your notes for “$query”"
+    }
+
+    /** [whenText] in the person's words until the app reads it into a [plan] (the dates and the calendar it goes to). */
+    data class AddEvent(val title: String, val whenText: String, val minutes: Int? = null, val plan: EventPlan? = null) : Action() {
+        override val tool get() = ToolName.ADD_EVENT
+        override fun describe(): String {
+            val p = plan ?: return "Add **$title** ($whenText)"
+            val span = EventText.span(p.start, p.end, p.allDay, p.currentYear)
+            return if (p.calendarName != null) "Add **$title** on $span to *${p.calendarName}*" else "Add **$title** on $span in your calendar app"
+        }
+        /** Without a calendar Robot may write to, the calendar app's own editor opens prefilled. */
+        override val leavesPanel get() = plan != null && plan.calendarId == null
+        override val confirmLabel get() = plan?.let { if (it.calendarId == null) "Open the calendar app" else "Add it" }
+    }
+
+    /** [day] in the person's words until the app reads it into a [range]. */
+    data class ReadCalendar(val day: String, val range: DayRange? = null) : Action() {
+        override val tool get() = ToolName.READ_CALENDAR
+        override fun describe() = "Check your calendar for ${range?.let { EventText.range(it) } ?: day}"
+    }
 }
+
+/** Where a text goes: a contact's (or the given) number or XMPP address, and the app that opens with the draft. */
+data class TextTarget(
+    /** The contact's name; null when a number or address was given directly. */
+    val name: String?,
+    /** For Cheogram the XMPP address (a number goes through the SMS gateway); for the SMS app the E.164 number. */
+    val address: String,
+    /** What the card shows: "+1 514-555-0101" or the XMPP address. */
+    val display: String,
+    val appName: String,
+    val via: TextVia,
+)
+
+enum class TextVia { CHEOGRAM, SMS }
+
+/** Where an email draft goes. [appName] null: the system chooser asks which app. */
+data class MailTarget(val name: String?, val address: String, val appName: String?)
+
+/** A resolved add_event: when, and the calendar it goes into ([calendarId] null: the calendar app's editor). */
+data class EventPlan(
+    val start: ZonedDateTime,
+    val end: ZonedDateTime,
+    val allDay: Boolean,
+    val calendarId: Long?,
+    val calendarName: String?,
+    /** The year it is now: the card shows the event's year only when it differs. */
+    val currentYear: Int,
+)
 
 sealed class ParsedCall {
     data class Ok(val action: Action) : ParsedCall()
@@ -147,6 +288,13 @@ object Durations {
 
 object ToolCalls {
     private const val MAX_TEXT = 200
+    private const val MAX_NAME = 120
+    private const val MAX_TITLE = 80
+    /** A text message: long enough for anything said aloud; the card shows all of it before anything opens. */
+    const val MAX_MESSAGE = 2_000
+    /** An email body or a note. */
+    const val MAX_LONG = 4_000
+    const val MAX_EVENT_MINUTES = 24 * 60
 
     /**
      * Validates one call. Unknown argument names are ignored; missing or out-of-range ones are refused, and so is
@@ -197,6 +345,40 @@ object ToolCalls {
                 else if (values.distinct().size > 1) bad("on must be true or false")
                 else ParsedCall.Ok(Action.Flashlight(values.first()!!))
             }
+            ToolName.SEND_TEXT -> {
+                val to = textArg(a, MAX_NAME, "to", "recipient", "contact", "name", "number") ?: return bad("to is required")
+                val message = longArg(a, MAX_MESSAGE, "message", "text", "body") ?: return bad("message is required")
+                ParsedCall.Ok(Action.SendText(to, message))
+            }
+            ToolName.DRAFT_EMAIL -> {
+                val to = textArg(a, MAX_NAME, "to", "recipient", "email", "address") ?: return bad("to is required")
+                val subject = textArg(a, MAX_TEXT, "subject", "title").orEmpty()
+                val body = longArg(a, MAX_LONG, "body", "text", "message").orEmpty()
+                if (subject.isEmpty() && body.isEmpty()) return bad("give the email a body")
+                ParsedCall.Ok(Action.DraftEmail(to, subject, body))
+            }
+            ToolName.LOOKUP_CONTACT -> textArg(a, MAX_NAME, "name", "query", "contact", "who")?.let { ParsedCall.Ok(Action.LookupContact(it)) }
+                ?: bad("name is required")
+            ToolName.ADD_NOTE -> {
+                val text = longArg(a, MAX_LONG, "text", "note", "content", "body") ?: return bad("text is required")
+                ParsedCall.Ok(Action.AddNote(text, textArg(a, MAX_TITLE, "title")))
+            }
+            ToolName.FIND_NOTES -> textArg(a, MAX_NAME, "query", "q", "text", "search")?.let { ParsedCall.Ok(Action.FindNotes(it)) }
+                ?: bad("query is required")
+            ToolName.ADD_EVENT -> {
+                val title = textArg(a, MAX_TITLE, "title", "name", "event", "what") ?: return bad("title is required")
+                val whenText = textArg(a, MAX_NAME, "when", "time", "date", "start") ?: return bad("when is required")
+                val minutes = numberArg(a, "duration_minutes", "duration", "minutes", "length") ?: return bad("duration_minutes must be a number")
+                val m = minutes.value
+                if (m != null && (m % 1.0 != 0.0 || m < 1 || m > MAX_EVENT_MINUTES)) return bad("duration_minutes must be a whole number from 1 to $MAX_EVENT_MINUTES")
+                ParsedCall.Ok(Action.AddEvent(title, whenText, m?.toInt()))
+            }
+            // No day said: today (the person asked "what's on my calendar").
+            ToolName.READ_CALENDAR -> {
+                val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }
+                val day = if (present == null) "today" else text(a[present], MAX_NAME) ?: return bad("day must be text like today or Friday")
+                ParsedCall.Ok(Action.ReadCalendar(day))
+            }
         }
     }
 
@@ -216,6 +398,10 @@ object ToolCalls {
     /** The first present name's text; null when it's missing, blank or not text (a present but empty name is not skipped). */
     private fun textArg(a: Map<String, Any?>, max: Int, vararg names: String): String? =
         names.firstOrNull { a.containsKey(it) }?.let { text(a[it], max) }
+
+    /** Like [textArg] but keeps the line breaks (a message, an email body, a note): spaces within a line are tidied. */
+    private fun longArg(a: Map<String, Any?>, max: Int, vararg names: String): String? =
+        names.firstOrNull { a.containsKey(it) }?.let { longText(a[it], max) }
 
     fun number(v: Any?): Double? = when (v) {
         is Number -> v.toDouble().takeIf { it.isFinite() }
@@ -237,6 +423,14 @@ object ToolCalls {
     private fun text(v: Any?, max: Int): String? {
         val s = (v as? String ?: (v as? Number)?.toString())?.replace(Regex("\\s+"), " ")?.trim()?.trim('"', '\'')
         return s?.takeIf { it.isNotEmpty() }?.take(max)
+    }
+
+    private fun longText(v: Any?, max: Int): String? {
+        val raw = v as? String ?: (v as? Number)?.toString() ?: return null
+        val s = raw.replace("\r\n", "\n").replace('\r', '\n').lines()
+            .joinToString("\n") { it.replace(Regex("[ \\t\\u00A0]+"), " ").trim() }
+            .replace(Regex("\n{3,}"), "\n\n").trim().trim('"', '\'').trim()
+        return s.takeIf { it.isNotEmpty() }?.take(max)
     }
 
     // ------------------------------------------------------------------ text fallback

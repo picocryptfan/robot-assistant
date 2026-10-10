@@ -114,6 +114,16 @@ class BrainPolicyTest {
         assertFalse(BrainPolicy.canReuse(live(tokens = Int.MAX_VALUE / 2), 4, "S", m, 100))
     }
 
+    @Test fun aQuestionThatAddsAToolGroupRebuildsTheConversationOnce() {
+        val m = ToolMode.TOOLS_CONSTRAINED
+        val core = Prompt.CORE_TOOLS.map { it.id }
+        val people = ToolRouter.tools(setOf(ToolGroup.CORE, ToolGroup.PEOPLE), RobotSettings()).map { it.id }
+        assertTrue(BrainPolicy.canReuse(live(), 4, "S", m, 100, core))
+        assertFalse(BrainPolicy.canReuse(live(), 4, "S", m, 100, people))
+        // Built with the new tools, the next question reuses it again.
+        assertTrue(BrainPolicy.canReuse(live().copy(tools = people), 4, "S", m, 100, people))
+    }
+
     /** 0.1.2 review, minor 5: a parked engine must be closed even after its service is gone, and never doubled. */
     @Test fun aParkedEngineOutlivesTheServiceButNotForEver() {
         assertEquals(EngineTeardown.Step.QUIT_THREAD, EngineTeardown.afterDestroy(parked = false, sinceDestroyMs = 0))

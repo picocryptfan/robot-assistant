@@ -57,6 +57,8 @@ data class LiveConv(
     val awaitingTool: Boolean,
     /** The engine's own count; Int.MAX_VALUE / 2 when it could not say. */
     val tokens: Int,
+    /** The tool ids it describes. */
+    val tools: List<String> = Prompt.CORE_TOOLS.map { it.id },
 )
 
 object BrainPolicy {
@@ -67,12 +69,13 @@ object BrainPolicy {
 
     /**
      * Reuse the live conversation (its KV cache) for the next message: it is clean, it ended its last reply, it holds
-     * exactly the history the client has, its system prompt is the same, it runs at the current tool level, and the
-     * engine's own count leaves room for the new turn and a reply.
+     * exactly the history the client has, its system prompt and its tools are the same (a question that added a tool
+     * group rebuilds it once), it runs at the current tool level, and the engine's own count leaves room for the new
+     * turn and a reply.
      */
-    fun canReuse(live: LiveConv?, historyCount: Int, system: String, mode: ToolMode, newTurnTokens: Int): Boolean =
+    fun canReuse(live: LiveConv?, historyCount: Int, system: String, mode: ToolMode, newTurnTokens: Int, tools: List<String> = Prompt.CORE_TOOLS.map { it.id }): Boolean =
         live != null && !live.dirty && !live.awaitingTool && live.historyCount == historyCount && live.system == system &&
-            live.mode == mode && !ContextWindow.needsRebuild(live.tokens, newTurnTokens)
+            live.mode == mode && live.tools == tools && !ContextWindow.needsRebuild(live.tokens, newTurnTokens)
 
     /** What GemmaEngine does next. */
     sealed class Next {

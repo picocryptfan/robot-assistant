@@ -1,7 +1,9 @@
 package app.heyrobot.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ConversationTest {
@@ -18,6 +20,21 @@ class ConversationTest {
 
     @Test fun codecRoundTrips() {
         assertEquals(conv, ConversationCodec.fromJson(ConversationCodec.toJson(conv)))
+    }
+
+    @Test fun readContentIsRememberedAndCardsReplayWithoutMarkers() {
+        val read = ChatTurn("7", TurnRole.ASSISTANT, "You have the dentist at 3.", 1600, actions = listOf(
+            ActionRecord(ToolName.READ_CALENDAR, "Check your calendar for Sun Oct 11", ActionStatus.DONE, "1 event on Sun Oct 11.", content = true),
+            ActionRecord(ToolName.SEND_TEXT, "Text **Mom** (+1 514-555-0101) in Cheogram", ActionStatus.DONE, "Opened Cheogram."),
+        ))
+        val c = StoredConversation("r", 1, 2, listOf(ChatTurn("6", TurnRole.USER, "calendar?", 1500), read))
+        assertEquals(c, ConversationCodec.fromJson(ConversationCodec.toJson(c)))
+        assertEquals("(Check your calendar for Sun Oct 11: done.) (Text Mom (+1 514-555-0101) in Cheogram: done.) You have the dentist at 3.",
+            c.turns.toPromptTurns()[1].text)
+        // Every later action in that conversation asks first, also after it was saved and opened again.
+        assertTrue(TurnRules.untrusted(c.turns))
+        assertFalse(TurnRules.untrusted(turns.filter { it.attachment == Attachment.NONE }))
+        assertTrue(TurnRules.untrusted(turns))
     }
 
     @Test fun badJsonIsNull() {

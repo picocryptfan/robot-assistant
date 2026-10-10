@@ -2,6 +2,7 @@ package app.heyrobot.core
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -18,13 +19,17 @@ class ToolCallsTest {
         return (p as ParsedCall.Invalid).reason
     }
 
-    @Test fun everySpecHasAtMostTwoArgumentsAndValidJson() {
+    @Test fun everySpecHasAtMostThreeArgumentsAndValidJson() {
         assertEquals(ToolName.entries.toSet(), ToolSpecs.ALL.map { it.tool }.toSet())
+        // Phase 2 raised the limit to three for draft_email and add_event only; everything else stays at two or fewer.
+        assertEquals(setOf(ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT), ToolSpecs.ALL.filter { it.params.size == 3 }.map { it.tool }.toSet())
         for (s in ToolSpecs.ALL) {
             val o = JSONObject(s.openApiJson())
             assertEquals(s.tool.id, o.getString("name"))
+            // One sentence each.
+            assertEquals(s.tool.id, 1, Regex("[.!?](\\s|$)").findAll(s.description).count())
             val props = o.getJSONObject("parameters").getJSONObject("properties")
-            assertTrue(props.length() <= 2)
+            assertTrue(props.length() <= 3)
             val required = o.getJSONObject("parameters").getJSONArray("required")
             for (i in 0 until required.length()) assertTrue(props.has(required.getString(i)))
         }
@@ -91,6 +96,94 @@ class ToolCallsTest {
         assertEquals(Action.Flashlight(true), ok("flashlight", "on" to 1))
         bad("flashlight")
         bad("flashlight", "on" to "maybe")
+    }
+
+    @Test fun sendTextNeedsWhoAndWhatAndKeepsLineBreaks() {
+        assertEquals(Action.SendText("Mom", "I'm running late"), ok("send_text", "to" to " Mom ", "message" to "I'm running late"))
+        assertEquals(Action.SendText("+1 514 555 0101", "Line one\nLine two"), ok("send_text", "to" to "+1 514 555 0101", "message" to "Line one\r\nLine \t two"))
+        assertEquals(Action.SendText("Alex", "hi"), ok("send_text", "recipient" to "Alex", "text" to "hi"))
+        bad("send_text", "message" to "hi")
+        bad("send_text", "to" to "Mom")
+        bad("send_text", "to" to "Mom", "message" to "   ")
+        bad("send_text", "to" to "", "message" to "hi")
+        assertEquals(ToolCalls.MAX_MESSAGE, (ok("send_text", "to" to "Mom", "message" to "x".repeat(5_000)) as Action.SendText).message.length)
+    }
+
+    @Test fun draftEmailNeedsAnAddresseeAndSomethingToSay() {
+        assertEquals(Action.DraftEmail("Alex", "Friday's plan", "Hi Alex,\n\nSee you then."),
+            ok("draft_email", "to" to "Alex", "subject" to "Friday's plan", "body" to "Hi Alex,\n\n\n\nSee you then."))
+        assertEquals(Action.DraftEmail("alex@example.org", "", "Hi"), ok("draft_email", "to" to "alex@example.org", "body" to "Hi"))
+        assertEquals(Action.DraftEmail("Alex", "Lunch?", ""), ok("draft_email", "to" to "Alex", "subject" to "Lunch?"))
+        bad("draft_email", "subject" to "x", "body" to "y")
+        bad("draft_email", "to" to "Alex")
+        bad("draft_email", "to" to "Alex", "subject" to " ", "body" to "")
+    }
+
+    @Test fun lookupAndNotesTakeText() {
+        assertEquals(Action.LookupContact("Alex"), ok("lookup_contact", "name" to "Alex"))
+        bad("lookup_contact")
+        bad("lookup_contact", "name" to null)
+        assertEquals(Action.AddNote("buy coffee filters"), ok("add_note", "text" to "buy coffee filters"))
+        assertEquals(Action.AddNote("milk\neggs", "Groceries"), ok("add_note", "text" to "milk\neggs", "title" to "Groceries"))
+        bad("add_note", "title" to "Groceries")
+        bad("add_note", "text" to "  ")
+        assertEquals(Action.FindNotes("coffee"), ok("find_notes", "query" to "coffee"))
+        bad("find_notes")
+        bad("find_notes", "query" to "")
+    }
+
+    @Test fun addEventTakesWordsForWhenAndAnOptionalWholeLength() {
+        assertEquals(Action.AddEvent("Dentist", "Tuesday at 3"), ok("add_event", "title" to "Dentist", "when" to "Tuesday at 3"))
+        assertEquals(Action.AddEvent("Dentist", "Tuesday at 3", 30), ok("add_event", "title" to "Dentist", "when" to "Tuesday at 3", "duration_minutes" to 30))
+        assertEquals(Action.AddEvent("Dentist", "Tuesday at 3", 45), ok("add_event", "title" to "Dentist", "when" to "Tuesday at 3", "duration_minutes" to "45"))
+        bad("add_event", "when" to "Tuesday")
+        bad("add_event", "title" to "Dentist")
+        bad("add_event", "title" to "Dentist", "when" to "Tuesday", "duration_minutes" to "an hour")
+        bad("add_event", "title" to "Dentist", "when" to "Tuesday", "duration_minutes" to 0)
+        bad("add_event", "title" to "Dentist", "when" to "Tuesday", "duration_minutes" to 2.5)
+        bad("add_event", "title" to "Dentist", "when" to "Tuesday", "duration_minutes" to 24 * 60 + 1)
+        // The model never builds a timestamp: the words are kept for the app to read.
+        assertEquals("2026-10-14T15:00", (ok("add_event", "title" to "x", "when" to "2026-10-14T15:00") as Action.AddEvent).whenText)
+    }
+
+    @Test fun readCalendarDefaultsToToday() {
+        assertEquals(Action.ReadCalendar("tomorrow"), ok("read_calendar", "day" to "tomorrow"))
+        assertEquals(Action.ReadCalendar("next week"), ok("read_calendar", "date" to "next week"))
+        assertEquals(Action.ReadCalendar("today"), ok("read_calendar"))
+        bad("read_calendar", "day" to "")
+        bad("read_calendar", "day" to true)
+    }
+
+    @Test fun phaseTwoActionsDescribeWhatWillHappen() {
+        val target = TextTarget("Mom", "+15145550101@cheogram.com", "+1 514-555-0101", "Cheogram", TextVia.CHEOGRAM)
+        val t = Action.SendText("mom", "I'm late", target)
+        assertEquals("Text **Mom** (+1 514-555-0101) in Cheogram", t.describe())
+        assertEquals("I'm late", t.body())
+        assertEquals("Open in Cheogram", t.confirmLabel)
+        assertTrue(t.leavesPanel)
+        assertEquals("Text **+1 514-555-0101** in Cheogram", t.copy(target = target.copy(name = null)).describe())
+        assertEquals("Text **mom**", t.copy(target = null).describe())
+        val e = Action.DraftEmail("Alex", "Friday", "Hi", MailTarget("Alex Martin", "alex@example.org", "Proton Mail"))
+        assertEquals("Email **Alex Martin** (alex@example.org) in Proton Mail", e.describe())
+        assertEquals("Subject: Friday\n\nHi", e.body())
+        assertEquals("Open in Proton Mail", e.confirmLabel)
+        assertEquals("Choose the email app", e.copy(target = MailTarget(null, "alex@example.org", null)).confirmLabel)
+        val zone = java.time.ZoneId.of("America/Toronto")
+        val start = java.time.ZonedDateTime.of(2026, 10, 14, 15, 0, 0, 0, zone)
+        val ev = Action.AddEvent("Dentist", "Wednesday at 3", plan = EventPlan(start, start.plusHours(1), false, 3L, "Personal", 2026))
+        assertEquals("Add **Dentist** on Wed Oct 14, 15:00–16:00 to *Personal*", ev.describe())
+        assertFalse(ev.leavesPanel)
+        val fallback = ev.copy(plan = ev.plan!!.copy(calendarId = null, calendarName = null))
+        assertEquals("Add **Dentist** on Wed Oct 14, 15:00–16:00 in your calendar app", fallback.describe())
+        assertTrue(fallback.leavesPanel)
+        assertEquals("Add **Dentist** (Wednesday at 3)", Action.AddEvent("Dentist", "Wednesday at 3").describe())
+    }
+
+    @Test fun phaseTwoTextCallsAreReadBack() {
+        val c = ToolCalls.wholeReplyCalls("call:send_text{to:Mom,message:<escape>I'm late, sorry<escape>}")
+        assertEquals(Action.SendText("Mom", "I'm late, sorry"), (ToolCalls.parse(c.single().call) as ParsedCall.Ok).action)
+        val e = ToolCalls.parseText("call:add_event{title:Dentist,when:<escape>Tuesday 3pm<escape>,duration_minutes:30}")
+        assertEquals(Action.AddEvent("Dentist", "Tuesday 3pm", 30), (ToolCalls.parse(e.single().call) as ParsedCall.Ok).action)
     }
 
     @Test fun unknownToolsAreRefused() {

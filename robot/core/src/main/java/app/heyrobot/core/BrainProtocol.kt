@@ -89,11 +89,17 @@ sealed class BrainMsg {
         val historyCount: Int,
         val text: String,
         val hasImage: Boolean,
+        /** The tools this conversation describes (ToolRouter: its groups, minus what's turned off), by id. */
+        val tools: List<String> = Prompt.CORE_TOOLS.map { it.id },
     ) : BrainMsg() {
         override fun toJson() = JSONObject().apply {
             put("convId", convId); put("system", system); put("historyCount", historyCount); put("text", text); put("hasImage", hasImage)
             put("history", JSONArray().apply { history.forEach { put(JSONObject().put("role", it.role.name).put("text", it.text)) } })
+            put("tools", JSONArray(tools))
         }
+
+        /** The known tools among [tools], in ToolName order (an unknown id is never described). */
+        val toolNames: List<ToolName> get() = ToolName.entries.filter { it.id in tools }
     }
 
     data class ToolResult(val convId: String, val results: List<Pair<String, Map<String, Any?>>>) : BrainMsg() {
@@ -165,6 +171,7 @@ sealed class BrainMsg {
                         historyCount = o.optInt("historyCount", h.length()),
                         text = o.getString("text"),
                         hasImage = o.optBoolean("hasImage", false),
+                        tools = o.optJSONArray("tools")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: Prompt.CORE_TOOLS.map { it.id },
                     )
                 }
                 BrainProtocol.REQ_TOOL_RESULT -> {

@@ -10,8 +10,11 @@ enum class Attachment { NONE, PHOTO, SCREEN }
 
 enum class TurnRole { USER, ASSISTANT }
 
-/** An action in a reply, as it ended up. */
-data class ActionRecord(val tool: ToolName, val summary: String, val status: ActionStatus, val detail: String? = null)
+/**
+ * An action in a reply, as it ended up. [content]: a read tool brought content Robot didn't write into the
+ * conversation (its findings themselves are not stored), so every later action in it asks first.
+ */
+data class ActionRecord(val tool: ToolName, val summary: String, val status: ActionStatus, val detail: String? = null, val content: Boolean = false)
 
 data class ChatTurn(
     val id: String,
@@ -48,7 +51,7 @@ fun List<ChatTurn>.toPromptTurns(): List<PromptTurn> = mapNotNull { t ->
         TurnRole.USER -> PromptTurn(PromptRole.USER, Prompt.replayText(t.text, t.attachment))
         TurnRole.ASSISTANT -> {
             if (t.error) return@mapNotNull null
-            val acts = t.actions.joinToString(" ") { "(${it.summary}: ${it.status.label.lowercase()}.)" }
+            val acts = t.actions.joinToString(" ") { "(${Markdown.plain(it.summary)}: ${it.status.label.lowercase()}.)" }
             val text = listOf(acts, t.text).filter { it.isNotBlank() }.joinToString(" ").trim()
             if (text.isEmpty()) null else PromptTurn(PromptRole.MODEL, text)
         }
@@ -87,7 +90,10 @@ object ConversationCodec {
         if (t.error) put("error", true)
         if (t.actions.isNotEmpty()) put("actions", JSONArray().apply {
             t.actions.forEach { a ->
-                put(JSONObject().put("tool", a.tool.id).put("summary", a.summary).put("status", a.status.name).apply { a.detail?.let { put("detail", it) } })
+                put(JSONObject().put("tool", a.tool.id).put("summary", a.summary).put("status", a.status.name).apply {
+                    a.detail?.let { put("detail", it) }
+                    if (a.content) put("content", true)
+                })
             }
         })
     }
@@ -108,7 +114,7 @@ object ConversationCodec {
                 val tool = ToolName.of(a.optString("tool")) ?: return@mapNotNull null
                 // A stored card can't be waiting any more (0.1.0 could save one that was): it was not done.
                 val status = enumOr(a.optString("status"), ActionStatus.DONE).let { if (it == ActionStatus.PENDING) ActionStatus.DECLINED else it }
-                ActionRecord(tool, a.optString("summary"), status, a.optString("detail").takeIf { it.isNotEmpty() })
+                ActionRecord(tool, a.optString("summary"), status, a.optString("detail").takeIf { it.isNotEmpty() }, a.optBoolean("content", false))
             },
         )
     }

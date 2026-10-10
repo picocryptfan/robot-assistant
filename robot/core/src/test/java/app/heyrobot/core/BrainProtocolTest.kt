@@ -15,6 +15,13 @@ class BrainProtocolTest {
             historyCount = 3, text = "what now?", hasImage = true,
         )
         assertEquals(gen, roundTrip(BrainProtocol.REQ_GENERATE, gen))
+        // The conversation's tools travel with the request; an unknown id is never described.
+        val withTools = gen.copy(tools = listOf("set_timer", "send_text", "launch_rocket"))
+        assertEquals(withTools, roundTrip(BrainProtocol.REQ_GENERATE, withTools))
+        assertEquals(listOf(ToolName.SET_TIMER, ToolName.SEND_TEXT), withTools.toolNames)
+        // An older request without the list: the phase 1 tools.
+        val old = BrainMsg.decode(BrainProtocol.REQ_GENERATE, """{"convId":"c","system":"s","text":"t"}""") as BrainMsg.Generate
+        assertEquals(Prompt.CORE_TOOLS, old.toolNames)
         assertEquals(BrainMsg.Load("/data/x.litertlm"), roundTrip(BrainProtocol.REQ_LOAD, BrainMsg.Load("/data/x.litertlm")))
         assertEquals(BrainMsg.Cancel(42), roundTrip(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(42)))
         assertEquals(BrainMsg.CloseConv("c-1"), roundTrip(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv("c-1")))

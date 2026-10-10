@@ -37,6 +37,19 @@ enum class VoiceChoice(val id: String, val title: String, val detail: String, va
     }
 }
 
+/** Which app opens with a text: Cheogram (texts and XMPP, through the SMS gateway), the phone's SMS app, or none. */
+enum class TextApp(val title: String) {
+    CHEOGRAM("Cheogram"),
+    SMS("SMS app"),
+    OFF("Off"),
+}
+
+/** Which app opens with an email draft: Proton Mail, or the system chooser every time. */
+enum class EmailApp(val title: String) {
+    PROTON("Proton Mail"),
+    ASK("Ask each time"),
+}
+
 data class RobotSettings(
     /** Listen for "hey robot" (needs the microphone permission and Robot as the digital assistant). */
     val wakeWord: Boolean = true,
@@ -53,8 +66,24 @@ data class RobotSettings(
     /** Save conversations to the history on this phone (screen conversations only when kept). */
     val saveHistory: Boolean = true,
     val approvals: Map<ToolName, Approval> = DEFAULT_APPROVALS,
+    /** Null until the person picks one: Cheogram when it is installed, else the SMS app ([textAppFor]). */
+    val textApp: TextApp? = null,
+    /** Where Cheogram texts phone numbers: "+<E.164 digits>@<gateway>" (JMP's is cheogram.com). */
+    val smsGateway: String = PhoneNumbers.DEFAULT_GATEWAY,
+    /** For numbers written without a country code (PhoneNumberUtils' default country). */
+    val phoneRegion: String = PhoneNumbers.DEFAULT_REGION,
+    /** Null until the person picks one: Proton Mail when it is installed, else the chooser ([emailAppFor]). */
+    val emailApp: EmailApp? = null,
+    /** A CalendarContract calendar id for new events; [CalendarPick.AUTO]: Robot picks (CalendarPick.choose). */
+    val eventCalendar: Long = CalendarPick.AUTO,
+    /** Length of a new event when no end or duration was said. */
+    val eventMinutes: Int = 60,
 ) {
     fun approval(t: ToolName): Approval = approvals[t] ?: DEFAULT_APPROVALS.getValue(t)
+
+    fun textAppFor(cheogramInstalled: Boolean): TextApp = textApp ?: if (cheogramInstalled) TextApp.CHEOGRAM else TextApp.SMS
+
+    fun emailAppFor(protonInstalled: Boolean): EmailApp = emailApp ?: if (protonInstalled) EmailApp.PROTON else EmailApp.ASK
 
     val voiceChoice: VoiceChoice get() = VoiceChoice.of(voice)
 
@@ -68,13 +97,23 @@ data class RobotSettings(
         put("keepModelMinutes", keepModelMinutes)
         put("saveHistory", saveHistory)
         put("approvals", JSONObject().apply { for (t in ToolName.entries) put(t.id, approval(t).name) })
+        textApp?.let { put("textApp", it.name) }
+        put("smsGateway", smsGateway)
+        put("phoneRegion", phoneRegion)
+        emailApp?.let { put("emailApp", it.name) }
+        put("eventCalendar", eventCalendar)
+        put("eventMinutes", eventMinutes)
     }
 
     companion object {
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
-        /** Timers and alarms: just do it (spec item 7). Flashlight is harmless and undone in one word. */
+        /**
+         * Timers and alarms: just do it (spec item 7). Flashlight is harmless and undone in one word. Phase 2: texts,
+         * emails and new events ask first (they go to someone, or into the calendar); looking things up and saving a
+         * note (Undo on its card) just happen.
+         */
         val DEFAULT_APPROVALS: Map<ToolName, Approval> = mapOf(
             ToolName.SET_TIMER to Approval.AUTO,
             ToolName.SET_ALARM to Approval.AUTO,
@@ -82,10 +121,20 @@ data class RobotSettings(
             ToolName.OPEN_APP to Approval.ASK,
             ToolName.MAPS_SEARCH to Approval.ASK,
             ToolName.MAPS_NAVIGATE to Approval.ASK,
+            ToolName.SEND_TEXT to Approval.ASK,
+            ToolName.DRAFT_EMAIL to Approval.ASK,
+            ToolName.LOOKUP_CONTACT to Approval.AUTO,
+            ToolName.ADD_NOTE to Approval.AUTO,
+            ToolName.FIND_NOTES to Approval.AUTO,
+            ToolName.ADD_EVENT to Approval.ASK,
+            ToolName.READ_CALENDAR to Approval.AUTO,
         )
+
+        val EVENT_MINUTES = listOf(15, 30, 45, 60, 90, 120)
 
         fun clampRate(v: Float): Float = if (v.isNaN()) 1.0f else v.coerceIn(0.5f, 2.0f)
         fun clampKeep(v: Int): Int = if (v == KEEP_ALWAYS) v else v.coerceIn(0, 120)
+        fun clampEventMinutes(v: Int): Int = v.coerceIn(5, ToolCalls.MAX_EVENT_MINUTES)
 
         fun fromJson(text: String?): RobotSettings {
             val o = try { JSONObject(text ?: return RobotSettings()) } catch (_: Exception) { return RobotSettings() }
@@ -101,6 +150,12 @@ data class RobotSettings(
                 keepModelMinutes = clampKeep(o.optInt("keepModelMinutes", d.keepModelMinutes)),
                 saveHistory = o.optBoolean("saveHistory", d.saveHistory),
                 approvals = ToolName.entries.associateWith { t -> enumOr(ap?.optString(t.id), DEFAULT_APPROVALS.getValue(t)) },
+                textApp = enumValues<TextApp>().firstOrNull { it.name == o.optString("textApp") },
+                smsGateway = PhoneNumbers.gateway(o.optString("smsGateway", d.smsGateway)),
+                phoneRegion = PhoneNumbers.region(o.optString("phoneRegion", d.phoneRegion)),
+                emailApp = enumValues<EmailApp>().firstOrNull { it.name == o.optString("emailApp") },
+                eventCalendar = o.optLong("eventCalendar", d.eventCalendar),
+                eventMinutes = clampEventMinutes(o.optInt("eventMinutes", d.eventMinutes)),
             )
         }
     }

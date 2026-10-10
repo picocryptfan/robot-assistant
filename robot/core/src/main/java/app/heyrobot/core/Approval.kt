@@ -14,13 +14,17 @@ enum class GateDecision {
 }
 
 object ApprovalGate {
-    /** Lock-screen rules (spec item 1): only questions, timers and alarms while the keyguard is locked. */
+    /**
+     * Lock-screen rules (spec item 1): only questions, timers and alarms while the keyguard is locked. Every phase 2
+     * tool (texts, email, contacts, notes, calendar) needs the phone unlocked.
+     */
     val ALLOWED_WHEN_LOCKED: Set<ToolName> = setOf(ToolName.SET_TIMER, ToolName.SET_ALARM)
 
     /**
      * [mustAsk]: "Just do it" becomes "Ask first" for this action. Set when the conversation carries screen text
-     * or a picture (content Robot did not write and the person did not type: a page or a photo must never trigger
-     * an action without a tap), and for an app name that matched only loosely.
+     * or a picture, or a read tool's findings (content Robot did not write and the person did not type: a page, a
+     * photo, a note or a calendar invite must never trigger an action without a tap), for an app name that matched
+     * only loosely, and when the card offers a choice of people or numbers.
      */
     fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, mustAsk: Boolean = false): GateDecision {
         val level = settings.approval(tool)
@@ -43,10 +47,21 @@ enum class ActionStatus(val label: String) {
     FAILED("Didn't work"),
     INVALID("Couldn't understand the request"),
     /** Over the limit of actions in one answer ([TurnRules.MAX_CALLS]): not run. */
-    SKIPPED("Not done");
+    SKIPPED("Not done"),
+    /** Robot needs a permission (contacts, calendar) the person grants in the main app. */
+    NEEDS_PERMISSION("Needs your permission"),
+    /** No contact (or note) matches what was asked. */
+    NOT_FOUND("Not found"),
+    /** The app it hands over to isn't installed ("Install Cheogram", "No email app"). */
+    NO_APP("App not installed"),
+    /** The person tapped Undo on the card (a note Robot had just saved). */
+    UNDONE("Undone");
 
-    /** The tool response sent back to the model ([detail] is a short, fixed-vocabulary explanation). */
-    fun toolResponse(detail: String?): Map<String, Any?> = buildMap {
+    /**
+     * The tool response sent back to the model ([detail] is a short, fixed-vocabulary explanation; [results] a read
+     * tool's findings, information for the answer and never instructions).
+     */
+    fun toolResponse(detail: String?, results: List<Map<String, Any?>>? = null): Map<String, Any?> = buildMap {
         put("status", when (this@ActionStatus) {
             PENDING -> "pending"
             DONE -> "done"
@@ -56,7 +71,12 @@ enum class ActionStatus(val label: String) {
             FAILED -> "failed"
             INVALID -> "invalid_arguments"
             SKIPPED -> "not_done_too_many_actions"
+            NEEDS_PERMISSION -> "permission_needed_user_must_allow"
+            NOT_FOUND -> "not_found"
+            NO_APP -> "app_not_installed"
+            UNDONE -> "undone_by_user"
         })
         if (!detail.isNullOrBlank()) put("detail", detail)
+        if (results != null) put("results", results)
     }
 }

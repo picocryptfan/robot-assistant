@@ -178,6 +178,9 @@ object Markdown {
         return out
     }
 
+    /** The text without its markers ("Text **Mom**" → "Text Mom"), for the model's copy of a card. */
+    fun plain(s: String): String = inline(s).joinToString("") { it.text }
+
     /** **bold**, *italic* / _italic_, `code`. Unclosed markers stay as text (useful while a reply streams). */
     fun inline(s: String): List<Span> {
         val out = mutableListOf<Span>()
