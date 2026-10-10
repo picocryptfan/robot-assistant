@@ -89,7 +89,11 @@ class PeopleTest {
         assertEquals(NameMatch.PREFIX, ContactMatcher.kind("Mom", "Momo Takeda"))
         assertEquals(NameMatch.WORD, ContactMatcher.kind("Roy", "Alexandra Roy"))
         assertEquals(NameMatch.WORD, ContactMatcher.kind("Alex", "Dr. Alex Chen"))
-        assertEquals(NameMatch.FUZZY, ContactMatcher.kind("Jon", "John"))
+        assertEquals(NameMatch.FUZZY, ContactMatcher.kind("Johm", "John"))
+        // Under 4 letters a letter off is a guess (review A M5): "Mom" is not Tom, "Dan" is not Don.
+        assertNull(ContactMatcher.kind("Jon", "John"))
+        assertNull(ContactMatcher.kind("Mom", "Tom Smith"))
+        assertNull(ContactMatcher.kind("Dan", "Don Lee"))
         assertNull(ContactMatcher.kind("Bob", "Alex Martin"))
         // The best kind only: "Mom" is Mom, not Momo.
         assertEquals(listOf(1L), best("Mom"))
@@ -135,17 +139,68 @@ class PeopleTest {
         emails = listOf("mom@example.org", "MOM@example.org", "not an address"))
     private val alex = ContactCard(3, "Alex Martin", phones = listOf(ContactPhone("613 555 0123", PhoneKind.WORK, "Work")), xmpp = listOf("alex@jabber.example.org"))
 
+    @Test fun onlyOneExactPersonWithOneDestinationGoesWithoutACard() {
+        // Review A M5: a single fuzzy or prefix match, or several people, ran without a card under "Just do it".
+        fun m(id: Long, kind: NameMatch) = ContactMatch(id, "x$id", kind)
+        assertTrue(ContactMatcher.sure(listOf(m(1, NameMatch.EXACT)), 1))
+        assertFalse(ContactMatcher.sure(listOf(m(1, NameMatch.EXACT)), 2))
+        assertFalse(ContactMatcher.sure(listOf(m(1, NameMatch.PREFIX)), 1))
+        assertFalse(ContactMatcher.sure(listOf(m(1, NameMatch.WORD)), 1))
+        assertFalse(ContactMatcher.sure(listOf(m(1, NameMatch.FUZZY)), 1))
+        assertFalse(ContactMatcher.sure(listOf(m(1, NameMatch.EXACT), m(2, NameMatch.EXACT)), 1))
+        assertFalse(ContactMatcher.sure(emptyList(), 1))
+        // The review's cases.
+        val tomMaman = listOf(ContactName(1, "Tom Smith"), ContactName(2, "Maman"))
+        assertEquals(emptyList<ContactMatch>(), ContactMatcher.best("Mom", tomMaman))
+        val momo = ContactMatcher.best("Mom", listOf(ContactName(1, "Tom Smith"), ContactName(3, "Momo Diallo")))
+        assertEquals(listOf(3L), momo.map { it.id })
+        assertFalse(ContactMatcher.sure(momo, 1))
+        // Five letters may still be one off, but such a match always shows the card.
+        val salah = ContactMatcher.best("Sarah", listOf(ContactName(19, "Mo Salah")))
+        assertEquals(listOf(NameMatch.FUZZY), salah.map { it.kind })
+        assertFalse(ContactMatcher.sure(salah, 1))
+        assertFalse(ContactMatcher.sure(ContactMatcher.best("Alexandre", listOf(ContactName(3, "Alexandra Chen"))), 1))
+        assertTrue(ContactMatcher.sure(ContactMatcher.best("maman", listOf(ContactName(6, "Jane Doe", listOf("Maman")))), 1))
+    }
+
     @Test fun mobileNumbersComeFirstForTexts() {
         val r = Recipients.forText(listOf(mom), xmppOk = true)
         assertEquals(listOf("+1 514-555-0101", "514 555 0199"), r.map { it.address })
         assertEquals(listOf("Mobile", "Home"), r.map { it.label })
     }
 
-    @Test fun anXmppAddressIsTextedDirectlyByCheogram() {
-        assertEquals(listOf(Reach(3, "Alex Martin", "alex@jabber.example.org", "XMPP", xmpp = true)), Recipients.forText(listOf(alex), xmppOk = true))
-        // The SMS app can't: the number then.
+    @Test fun anXmppAddressComesFirstButNumbersAreStillOffered() {
+        // Review A minor 16: a stale Jabber address hid the mobile number.
+        assertEquals(listOf(Reach(3, "Alex Martin", "alex@jabber.example.org", "XMPP", xmpp = true), Reach(3, "Alex Martin", "613 555 0123", "Work")),
+            Recipients.forText(listOf(alex), xmppOk = true))
+        // The SMS app can't text an address: the number only.
         assertEquals(listOf("613 555 0123"), Recipients.forText(listOf(alex), xmppOk = false).map { it.address })
-        assertEquals(3, Recipients.forText(listOf(mom, alex), xmppOk = true).size)
+        assertEquals(4, Recipients.forText(listOf(mom, alex), xmppOk = true).size)
+        // An address Cheogram would cut short is never offered.
+        val odd = ContactCard(9, "Odd", xmpp = listOf("a?b@x.org", "c/d@x.org", "ok@x.org"))
+        assertEquals(listOf("ok@x.org"), Recipients.forText(listOf(odd), xmppOk = true).map { it.address })
+    }
+
+    @Test fun jidsWithCharactersCheogramCutsAreRefused() {
+        // Review A minor 4: "a?b@x.org" opened the chat with "a".
+        assertTrue(Addresses.isJid("mom@example.org"))
+        assertTrue(Addresses.isJid("first.last+tag@jabber.example.org"))
+        for (j in listOf("a?b@x.org", "a#b@x.org", "a/b@x.org", "a:b@x.org", "a&b@x.org", "a'b@x.org", "a%b@x.org", "mom")) assertFalse(j, Addresses.isJid(j))
+    }
+
+    @Test fun extensionsAndBidiMarksAreCleanedAndPlusOneNeedsTenDigits() {
+        // Review A minor 3.
+        assertNull(PhoneNumbers.e164("+1 514 555 0101 22", "CA", platform))
+        assertEquals("+15145550101", PhoneNumbers.e164("+1 (514) 555-0101 / 0102", "CA", platform))
+        assertEquals("+15145550101", PhoneNumbers.e164("514-555-0101 x23", "CA", platform))
+        assertEquals("+15145550101", PhoneNumbers.e164("514-555-0101 ext. 23", "CA", platform))
+        assertEquals("+15145550101", PhoneNumbers.e164("514-555-0101;23", "CA", platform))
+        assertEquals("+15145550101", PhoneNumbers.e164("514-555-0101,23", "CA", platform))
+        assertEquals("+15145550101", PhoneNumbers.e164("\u202A+1 514 555 0101\u202C", "CA", platform))
+        assertEquals("+15145550101", PhoneNumbers.e164("+1\u00A0514\u00A0555\u00A00101", "CA", platform))
+        assertTrue(Addresses.isPhone("514-555-0101 x23"))
+        assertEquals("+16135550199", PhoneNumbers.e164("+1 613 555 0199", "FR") { _, _ -> null })
+        assertNull(PhoneNumbers.e164("+1 013 555 0199", "FR") { _, _ -> null })
     }
 
     @Test fun emailsAreValidAndOnce() {

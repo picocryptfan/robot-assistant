@@ -53,14 +53,22 @@ class HandOffTest {
         while (i < s.length) {
             val c = s[i]
             if (c == '%') {
-                val v = if (i + 3 <= s.length) s.substring(i + 1, i + 3).takeIf { h -> h.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' } }?.toInt(16) else null
-                if (v == null) {
+                // As libcore's UriCodec (throwOnFailure false): the end of the input ends decoding with U+FFFD; a
+                // character that isn't hex is consumed and becomes U+FFFD.
+                val hi = s.getOrNull(i + 1)?.digitToIntOrNull(16)
+                val lo = s.getOrNull(i + 2)?.digitToIntOrNull(16)
+                if (i + 1 >= s.length || (hi != null && i + 2 >= s.length)) {
                     flush()
                     out.append('�')
-                    i += 1
+                    return out.toString()
+                }
+                if (hi == null || lo == null) {
+                    flush()
+                    out.append('�')
+                    i += if (hi == null) 2 else 3
                     continue
                 }
-                bytes.write(v)
+                bytes.write(hi * 16 + lo)
                 i += 3
             } else {
                 flush()
@@ -144,6 +152,14 @@ class HandOffTest {
         val odd = XmppLink.message("we?ird#user@example.org", "x")
         assertEquals("we%3Fird%23user@example.org", odd.removePrefix("xmpp:").substringBefore('?'))
         assertEquals("x", cheogramBody(odd))
+        // Cheogram reads the address from the decoded part before '?': such an address would open "we" (review A
+        // minor 4), so Robot never builds a link for it (Addresses.isJid); real addresses come back whole.
+        assertEquals("we", cheogramJid(odd))
+        assertFalse(Addresses.isJid("we?ird#user@example.org"))
+        for (j in listOf("mom@example.org", "+15145550101@cheogram.com", "first.last+tag@jabber.example.org", "x_y-z@chat.example.co.uk")) {
+            assertTrue(j, Addresses.isJid(j))
+            assertEquals(j, cheogramJid(XmppLink.message(j, "hi; there")))
+        }
     }
 
     /** Why the body is encoded twice: once is not enough for Cheogram's double decode. */
@@ -189,7 +205,9 @@ class HandOffTest {
         assertEquals("Friday's plan & more", p["subject"])
         // RFC 6068: line breaks in the body are CRLF (%0D%0A).
         assertEquals("Hi Alex,\r\nSee you at 7 = sharp + bring 100%.\r\n\r\n— Me 😀", p["body"])
-        assertEquals("mailto:a.b+tag@example.org", MailTo.uri("a.b+tag@example.org", "", ""))
+        // '+' in the address as %2B (review A minor 5): a form-style decoder would make it a space.
+        assertEquals("mailto:a.b%2Btag@example.org", MailTo.uri("a.b+tag@example.org", "", ""))
+        assertEquals("a.b+tag@example.org", mailtoParams(MailTo.uri("a.b+tag@example.org", "", "")).first)
         assertEquals("mailto:x@example.org?body=only%20a%20body", MailTo.uri("x@example.org", "", "only a body"))
         assertEquals(mapOf("subject" to "?&=#"), mailtoParams(MailTo.uri("x@example.org", "?&=#", "")).second)
     }

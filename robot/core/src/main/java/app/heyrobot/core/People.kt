@@ -41,7 +41,8 @@ object ContactMatcher {
     /**
      * How [query] matches [name], or null. Exact (case and accents aside), then the name starting with it ("Alex" →
      * "Alexandra Roy"), then a word of the name being or starting with each word asked ("Roy" → "Alexandra Roy"), then
-     * one or two letters off ("Jon" → "John") for names long enough that this isn't a guess.
+     * one or two letters off ("Smyth" → "Smith") for names of 4 letters or more: under that ("Mom"/"Tom", "Dan"/"Don")
+     * it would be a guess.
      */
     fun kind(query: String, name: String): NameMatch? {
         val q = words(query).filter { it !in FILLER }
@@ -61,7 +62,7 @@ object ContactMatcher {
 
     private fun fuzzy(q: String, n: String): Boolean {
         val allowed = when {
-            q.length <= 2 -> 0
+            q.length < 4 -> 0
             q.length <= 5 -> 1
             else -> 2
         }
@@ -82,6 +83,15 @@ object ContactMatcher {
         val top = all.firstOrNull()?.kind ?: return emptyList()
         return all.filter { it.kind == top }.take(max)
     }
+
+    /**
+     * Robot may go ahead without showing who (when texts or emails are set to "Just do it") only when exactly one
+     * contact's name or nickname is exactly what was asked and it has exactly one place to send to. A prefix, word or
+     * fuzzy match, several people, several numbers, or a number or address the model wrote itself (never checked
+     * against the contacts) always show the card.
+     */
+    fun sure(matches: List<ContactMatch>, destinations: Int): Boolean =
+        matches.size == 1 && matches[0].kind == NameMatch.EXACT && destinations == 1
 }
 
 /** One place a text or an email can go, as the card lists it ([label]: "Mobile", "Work", "XMPP"). */
@@ -92,18 +102,18 @@ object Recipients {
     const val MAX_CHOICES = 6
 
     /**
-     * Where a text can go for these contacts, in order. A contact's XMPP addresses go first and alone: Cheogram texts
-     * them directly ([xmppOk]: the texting app is Cheogram). Otherwise its numbers, mobile first, each number once.
+     * Where a text can go for these contacts, in order: a contact's XMPP addresses first (Cheogram texts them directly;
+     * [xmppOk]: the texting app is Cheogram), then its numbers, mobile first, each number once. All of them: the caller
+     * shows [MAX_CHOICES] and says how many more there are.
      */
     fun forText(cards: List<ContactCard>, xmppOk: Boolean): List<Reach> = cards.flatMap { c ->
-        val jids = c.xmpp.filter(Addresses::isAddress).distinctBy { it.lowercase(Locale.ROOT) }
-        if (xmppOk && jids.isNotEmpty()) jids.map { Reach(c.id, c.name, it, "XMPP", xmpp = true) }
-        else mobileFirst(c.phones).map { Reach(c.id, c.name, it.number, it.label) }
-    }.take(MAX_CHOICES)
+        val jids = if (xmppOk) c.xmpp.filter(Addresses::isJid).distinctBy { it.lowercase(Locale.ROOT) } else emptyList()
+        jids.map { Reach(c.id, c.name, it, "XMPP", xmpp = true) } + mobileFirst(c.phones).map { Reach(c.id, c.name, it.number, it.label) }
+    }
 
     fun forEmail(cards: List<ContactCard>): List<Reach> = cards.flatMap { c ->
         c.emails.filter(Addresses::isAddress).distinctBy { it.lowercase(Locale.ROOT) }.map { Reach(c.id, c.name, it, null) }
-    }.take(MAX_CHOICES)
+    }
 
     /** Mobile numbers first (texts), then the rest in the contact's order; the same digits only once. */
     fun mobileFirst(phones: List<ContactPhone>): List<ContactPhone> =
@@ -128,13 +138,19 @@ object Recipients {
 object Addresses {
     private val ADDRESS = Regex("""^[^\s@<>()",;:\[\]]+@[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?)+$""")
 
-    /** user@domain.tld: an email address, or for a text an XMPP address (Cheogram texts it directly). */
+    /** user@domain.tld: an email address. */
     fun isAddress(s: String): Boolean = ADDRESS.matches(s.trim())
+
+    /**
+     * user@domain.tld for Cheogram: also none of the characters RFC 7622 forbids in the local part (" & ' / : < > @),
+     * nor '?' or '#', which would cut the address short in Cheogram's xmpp: link ("a?b@x.org" opens "a").
+     */
+    fun isJid(s: String): Boolean = isAddress(s) && s.trim().substringBeforeLast('@').none { it in "\"&'/:<>?#%" }
 
     /** Only digits and the usual separators, with 3 to 15 digits: a number to text, not a name. */
     fun isPhone(s: String): Boolean {
-        val t = s.trim()
-        return t.isNotEmpty() && Regex("""^\+?[\d\s().\-/]+$""").matches(t) && PhoneNumbers.digits(t).length in 3..15
+        val t = PhoneNumbers.normalize(s)
+        return t.isNotEmpty() && Regex("""^\+?[\d\s().\-]+$""").matches(t) && PhoneNumbers.digits(t).length in 3..15
     }
 }
 
@@ -146,6 +162,14 @@ object PhoneNumbers {
         "MP", "MS", "PR", "SX", "TC", "TT", "VC", "VG", "VI")
 
     fun digits(s: String): String = s.filter(Char::isDigit)
+
+    /**
+     * A number as dialled: bidi marks and odd spaces out, and no extension or second number ("x23", "ext. 23", ";23",
+     * ",23", "/ 0102"): only the number itself is texted.
+     */
+    fun normalize(raw: String): String = raw.replace(Regex("[\u200E\u200F\u202A-\u202E\u2066-\u2069]"), "")
+        .replace(Regex("[\u00A0\u2007\u202F]"), " ")
+        .replace(Regex("""(?i)\s*(?:ext\.?|x|#|;|,|/|p|w).*$"""), "").trim()
 
     fun isE164(s: String): Boolean = Regex("""^\+[1-9]\d{6,14}$""").matches(s)
 
@@ -164,12 +188,14 @@ object PhoneNumbers {
      */
     fun e164(raw: String, region: String, platform: (String, String) -> String?): String? {
         val r = region(region)
-        val t = raw.trim()
+        val t = normalize(raw)
         if (!Addresses.isPhone(t)) return null
         val plain = if (t.startsWith("00")) "+" + t.substring(2) else t
         platform(plain, r)?.takeIf(::isE164)?.let { return it }
         val d = digits(plain)
         return when {
+            // +1 is North America: exactly 10 digits after it ("+1 514 555 0101 22" is not a number).
+            plain.startsWith("+1") -> "+$d".takeIf { d.length == 11 && d[1] in '2'..'9' }
             plain.startsWith("+") -> "+$d".takeIf(::isE164)
             r in NANP && d.length == 10 && d[0] in '2'..'9' -> "+1$d"
             r in NANP && d.length == 11 && d[0] == '1' && d[1] in '2'..'9' -> "+$d"

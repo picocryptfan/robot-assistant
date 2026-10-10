@@ -4,7 +4,9 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // Pure (coroutines, no Android). One question and its answer, as the assistant panel runs it: the model's reply,
 // the tool calls it asks for, the approval gate, the confirmation cards, the tool results going back. The panel
@@ -56,10 +58,11 @@ data class Choice(val label: String, val action: Action)
  */
 sealed class Prepared {
     /**
-     * [mustAsk]: show the card even where the action could just run (an app name that matched loosely). [choices]:
-     * several people or numbers fit; the card lists them and the person taps one (so it always asks).
+     * [mustAsk]: show the card even where the action could just run (an app name that matched loosely, a person not
+     * surely the one named). [choices]: several people or numbers fit; the card lists them and the person taps one
+     * (so it always asks). [more]: how many more fitted than the card lists.
      */
-    data class Ready(val action: Action, val mustAsk: Boolean = false, val choices: List<Choice> = emptyList()) : Prepared()
+    data class Ready(val action: Action, val mustAsk: Boolean = false, val choices: List<Choice> = emptyList(), val more: Int = 0) : Prepared()
     data class Refused(val status: ActionStatus, val detail: String) : Prepared()
 }
 
@@ -107,6 +110,8 @@ data class Card(
     val choices: List<Choice> = emptyList(),
     val undo: String? = null,
     val content: Boolean = false,
+    /** More people or numbers fitted than [choices] lists ("and 3 more"). */
+    val more: Int = 0,
 )
 
 interface TurnView {
@@ -284,7 +289,7 @@ class TurnRunner(
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, untrusted || a.mustAsk || a.choices.isNotEmpty())
         val chosen = when (decision) {
             GateDecision.RUN -> a.action
-            GateDecision.CONFIRM -> confirm(id, a.action, a.choices)
+            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more)
             GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
@@ -292,20 +297,24 @@ class TurnRunner(
         if (actions.locked && chosen.tool !in ApprovalGate.ALLOWED_WHEN_LOCKED) {
             return done(chosen, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
         }
-        val r = actions.run(chosen)
-        // What a read tool found is content: from now on every action in this conversation asks first.
-        if (r.content) untrusted = true
-        val launched = r.launchedApp && r.status == ActionStatus.DONE
-        if (speak && !launched) view.say(r.spoken ?: r.detail)
-        return done(chosen, r.status, r.detail, launched, r)
+        // Once it runs it runs to the end, and its card says what really happened, even if Stop comes meanwhile: a saved
+        // note keeps its Undo, an added event isn't recorded as cancelled.
+        return withContext(NonCancellable) {
+            val r = actions.run(chosen)
+            // What a read tool found is content: from now on every action in this conversation asks first.
+            if (r.content) untrusted = true
+            val launched = r.launchedApp && r.status.succeeded
+            if (speak && !launched) view.say(r.spoken ?: r.detail)
+            done(chosen, r.status, r.detail, launched, r)
+        }
     }
 
     /**
      * Shows the card and waits: the action ("Do it"), the person or number tapped among [choices], or null (Cancel). A
      * turn stopped meanwhile leaves the card declined, never waiting.
      */
-    private suspend fun confirm(id: String, a: Action, choices: List<Choice>): Action? {
-        view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, null, a, body = a.body(), choices = choices))
+    private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int): Action? {
+        view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, null, a, body = a.body(), choices = choices, more = more))
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
             confirmations.ask(id)

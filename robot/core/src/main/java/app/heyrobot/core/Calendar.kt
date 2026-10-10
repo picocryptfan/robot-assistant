@@ -5,6 +5,7 @@ import java.time.LocalDate
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 // Pure. The calendar side of add_event and read_calendar (docs/phase-2.md "Calendar"): which calendar a new event goes
@@ -36,18 +37,26 @@ object CalendarPick {
 data class CalendarEvent(val begin: Long, val end: Long, val allDay: Boolean, val title: String, val location: String?)
 
 object Events {
+    /** add_event for a time already gone ("today at 8" said at 9, "Friday this week" on a Saturday). */
+    const val PASSED = "that time has passed"
+
     /**
      * The start and end add_event means: the end that was said, else the tool's duration_minutes, else
-     * [defaultMinutes] (Settings); a whole day ends at the next midnight.
+     * [defaultMinutes] (Settings); a whole day ends at the next midnight. A start already past (a day before today for
+     * a whole day) is refused rather than added silently.
      */
     fun times(a: Action.AddEvent, now: ZonedDateTime, defaultMinutes: Int): Read<WhenSpan> =
         when (val r = WhenParser.parse(a.whenText, now)) {
             is Read.Unreadable -> r
             is Read.Ok -> {
                 val s = r.value
-                val end = s.end ?: if (s.allDay) s.start.toLocalDate().plusDays(1).atStartOfDay(s.start.zone)
-                else s.start.plusMinutes((a.minutes ?: defaultMinutes).toLong())
-                Read.Ok(s.copy(end = end))
+                val passed = if (s.allDay) s.start.toLocalDate().isBefore(now.toLocalDate()) else s.start.isBefore(now.truncatedTo(ChronoUnit.MINUTES))
+                if (passed) Read.Unreadable(PASSED)
+                else {
+                    val end = s.end ?: if (s.allDay) s.start.toLocalDate().plusDays(1).atStartOfDay(s.start.zone)
+                    else s.start.plusMinutes((a.minutes ?: defaultMinutes).toLong())
+                    Read.Ok(s.copy(end = end))
+                }
             }
         }
 }

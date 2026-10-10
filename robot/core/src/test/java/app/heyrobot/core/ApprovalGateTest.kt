@@ -39,10 +39,14 @@ class ApprovalGateTest {
     }
 
     @Test fun screenTextOrAPictureTurnsJustDoItIntoAsk() {
-        for (t in ToolName.entries) {
-            val d = ApprovalGate.decide(t, locked = false, settings = defaults, mustAsk = true)
-            assertEquals(t.name, GateDecision.CONFIRM, d)
+        // Every tool that writes or leaves the phone; the read tools only bring more to read (below).
+        val allAuto = defaults.copy(approvals = ToolName.entries.associateWith { Approval.AUTO })
+        for (t in ToolName.entries.filter { !it.reads }) {
+            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, locked = false, settings = defaults, mustAsk = true))
+            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, locked = false, settings = allAuto, mustAsk = true))
         }
+        assertEquals(setOf(ToolName.LOOKUP_CONTACT, ToolName.FIND_NOTES, ToolName.READ_CALENDAR), ToolName.entries.filter { it.reads }.toSet())
+        for (t in ToolName.entries.filter { it.reads }) assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, defaults, mustAsk = true))
         // Never looser than without it: off stays off, the lock screen still says unlock.
         val off = defaults.copy(approvals = defaults.approvals + (ToolName.SET_TIMER to Approval.OFF))
         assertEquals(GateDecision.DISABLED, ApprovalGate.decide(ToolName.SET_TIMER, false, off, mustAsk = true))
@@ -69,8 +73,16 @@ class ApprovalGateTest {
         for (t in listOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT)) assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, defaults))
         for (t in listOf(ToolName.LOOKUP_CONTACT, ToolName.ADD_NOTE, ToolName.FIND_NOTES, ToolName.READ_CALENDAR)) {
             assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, defaults))
-            // After a read tool brought content in: ask first.
-            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, defaults, mustAsk = true))
+        }
+        // After a read tool brought content in: a new note (it writes) asks first; reading more never does.
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.ADD_NOTE, false, defaults, mustAsk = true))
+        for (t in listOf(ToolName.LOOKUP_CONTACT, ToolName.FIND_NOTES, ToolName.READ_CALENDAR)) {
+            assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, defaults, mustAsk = true))
+            // A read set to "Ask first" still asks, and Off stays off.
+            val ask = defaults.copy(approvals = defaults.approvals + (t to Approval.ASK))
+            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, ask, mustAsk = true))
+            val off = defaults.copy(approvals = defaults.approvals + (t to Approval.OFF))
+            assertEquals(t.name, GateDecision.DISABLED, ApprovalGate.decide(t, false, off, mustAsk = true))
         }
     }
 

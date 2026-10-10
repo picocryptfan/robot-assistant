@@ -65,7 +65,8 @@ object MailTo {
             if (subject.isNotEmpty()) add("subject=" + UriText.strict(subject))
             if (body.isNotEmpty()) add("body=" + UriText.strict(body.replace("\r\n", "\n").replace("\n", "\r\n")))
         }
-        return "mailto:" + UriText.encode(address, "@+") + if (params.isEmpty()) "" else "?" + params.joinToString("&")
+        // '+' as %2B: RFC 6068 allows it raw, but a form-style decoder would read it as a space.
+        return "mailto:" + UriText.encode(address, "@") + if (params.isEmpty()) "" else "?" + params.joinToString("&")
     }
 }
 

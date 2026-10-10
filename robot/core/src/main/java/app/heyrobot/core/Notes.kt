@@ -99,6 +99,6 @@ object NoteSearch {
     /** At most [max] characters, whitespace tidied; a cut ends with "…". */
     fun cut(s: String, max: Int): String {
         val t = s.replace(Regex("[ \\t]+"), " ").trim()
-        return if (t.length <= max) t else t.take(max - 1).trimEnd() + "…"
+        return if (t.length <= max) t else ToolCalls.safeTake(t, max - 1).trimEnd() + "…"
     }
 }

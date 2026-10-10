@@ -122,8 +122,6 @@ sealed class Action {
      * thing it is about may be marked **bold** and the calendar *italic* (the card renders light Markdown).
      */
     abstract fun describe(): String
-    /** Opens another app on top of the assistant panel. */
-    open val leavesPanel: Boolean get() = false
     /** What the card shows under the summary: a message's full text, an email's subject and body, a note. */
     open fun body(): String? = null
     /** The card's button when it asks first ("Open in Cheogram"); null = "Do it". */
@@ -146,19 +144,16 @@ sealed class Action {
     data class OpenApp(val name: String, val key: String? = null) : Action() {
         override val tool get() = ToolName.OPEN_APP
         override fun describe() = "Open $name"
-        override val leavesPanel get() = true
     }
 
     data class MapsSearch(val query: String) : Action() {
         override val tool get() = ToolName.MAPS_SEARCH
         override fun describe() = "Search Organic Maps for “$query”"
-        override val leavesPanel get() = true
     }
 
     data class MapsNavigate(val destination: String) : Action() {
         override val tool get() = ToolName.MAPS_NAVIGATE
         override fun describe() = "Find “$destination” in Organic Maps for directions"
-        override val leavesPanel get() = true
     }
 
     data class Flashlight(val on: Boolean) : Action() {
@@ -175,8 +170,8 @@ sealed class Action {
             else -> "Text **${target.name}** (${target.display}) in ${target.appName}"
         }
         override fun body() = message
-        override val leavesPanel get() = true
-        override val confirmLabel get() = target?.let { "Open in ${it.appName}" }
+        /** The button names the person too: the card's top line may be out of sight on a long message. */
+        override val confirmLabel get() = target?.let { "Open in ${it.appName} for ${it.name ?: it.display}" }
     }
 
     data class DraftEmail(val to: String, val subject: String, val text: String, val target: MailTarget? = null) : Action() {
@@ -187,8 +182,7 @@ sealed class Action {
             return if (t.appName == null) "Email $who" else "Email $who in ${t.appName}"
         }
         override fun body() = listOfNotNull(subject.takeIf { it.isNotBlank() }?.let { "Subject: $it" }, text.takeIf { it.isNotBlank() }).joinToString("\n\n")
-        override val leavesPanel get() = true
-        override val confirmLabel get() = target?.let { t -> t.appName?.let { "Open in $it" } ?: "Choose the email app" }
+        override val confirmLabel get() = target?.let { t -> "${t.appName?.let { "Open in $it" } ?: "Choose the email app"} for ${t.name ?: t.address}" }
     }
 
     data class LookupContact(val name: String) : Action() {
@@ -215,9 +209,7 @@ sealed class Action {
             val span = EventText.span(p.start, p.end, p.allDay, p.currentYear)
             return if (p.calendarName != null) "Add **$title** on $span to *${p.calendarName}*" else "Add **$title** on $span in your calendar app"
         }
-        /** Without a calendar Robot may write to, the calendar app's own editor opens prefilled. */
-        override val leavesPanel get() = plan != null && plan.calendarId == null
-        override val confirmLabel get() = plan?.let { if (it.calendarId == null) "Open the calendar app" else "Add it" }
+        override val confirmLabel get() = plan?.let { if (it.calendarId == null) "Open the calendar app" else "Add to ${it.calendarName}" }
     }
 
     /** [day] in the person's words until the app reads it into a [range]. */
@@ -367,7 +359,12 @@ object ToolCalls {
                 ?: bad("query is required")
             ToolName.ADD_EVENT -> {
                 val title = textArg(a, MAX_TITLE, "title", "name", "event", "what") ?: return bad("title is required")
-                val whenText = textArg(a, MAX_NAME, "when", "time", "date", "start") ?: return bad("when is required")
+                // Small models split the date and the time ({date: Tuesday, time: 3pm}, {start, end}): all of it counts,
+                // in the order date, day, when, start, time, then "to <end>".
+                val parts = listOf("date", "day", "when", "start", "time").filter { a.containsKey(it) }.map { text(a[it], MAX_NAME) ?: return bad("$it must be text") }
+                if (parts.isEmpty()) return bad("when is required")
+                val endPart = if (a.containsKey("end")) text(a["end"], MAX_NAME) ?: return bad("end must be text") else null
+                val whenText = (parts.joinToString(" ") + (endPart?.let { " to $it" } ?: "")).take(MAX_NAME)
                 val minutes = numberArg(a, "duration_minutes", "duration", "minutes", "length") ?: return bad("duration_minutes must be a number")
                 val m = minutes.value
                 if (m != null && (m % 1.0 != 0.0 || m < 1 || m > MAX_EVENT_MINUTES)) return bad("duration_minutes must be a whole number from 1 to $MAX_EVENT_MINUTES")
@@ -421,16 +418,34 @@ object ToolCalls {
     }
 
     private fun text(v: Any?, max: Int): String? {
-        val s = (v as? String ?: (v as? Number)?.toString())?.replace(Regex("\\s+"), " ")?.trim()?.trim('"', '\'')
-        return s?.takeIf { it.isNotEmpty() }?.take(max)
+        val s = raw(v)?.replace(Regex("\\s+"), " ")?.trim()?.let(::unquote)?.trim()
+        return s?.takeIf { it.isNotEmpty() }?.let { safeTake(it, max) }
     }
 
     private fun longText(v: Any?, max: Int): String? {
-        val raw = v as? String ?: (v as? Number)?.toString() ?: return null
-        val s = raw.replace("\r\n", "\n").replace('\r', '\n').lines()
+        val s = (raw(v) ?: return null).replace("\r\n", "\n").replace('\r', '\n').lines()
             .joinToString("\n") { it.replace(Regex("[ \\t\\u00A0]+"), " ").trim() }
-            .replace(Regex("\n{3,}"), "\n\n").trim().trim('"', '\'').trim()
-        return s.takeIf { it.isNotEmpty() }?.take(max)
+            .replace(Regex("\n{3,}"), "\n\n").trim().let(::unquote).trim()
+        return s.takeIf { it.isNotEmpty() }?.let { safeTake(it, max) }
+    }
+
+    /** Text, or a number written out in full (a phone number sent as 5.145550101E9 is "5145550101"). */
+    private fun raw(v: Any?): String? = when (v) {
+        is String -> v
+        is Double, is Float -> v.toString().toBigDecimalOrNull()?.stripTrailingZeros()?.toPlainString()
+        is Number -> v.toString()
+        else -> null
+    }
+
+    /** One pair of quotes around the whole value comes off; a quote inside the text stays (Tell him "yes", 'sup). */
+    private fun unquote(s: String): String =
+        if (s.length >= 2 && (s.first() == '"' && s.last() == '"' || s.first() == '\'' && s.last() == '\'') && s.count { it == s.first() } == 2) s.substring(1, s.length - 1) else s
+
+    /** At most [max] characters, never half of an emoji (a lone surrogate would reach Cheogram as "?"). */
+    fun safeTake(s: String, max: Int): String {
+        if (s.length <= max) return s
+        val t = s.take(max)
+        return if (t.isNotEmpty() && Character.isHighSurrogate(t.last())) t.dropLast(1) else t
     }
 
     // ------------------------------------------------------------------ text fallback
@@ -448,7 +463,8 @@ object ToolCalls {
     fun parseText(text: String): List<TextCall> {
         val out = mutableListOf<TextCall>()
         val names = ToolName.entries.joinToString("|") { it.id }
-        Regex("""(?:<start_function_call>\s*)?call:($names)\s*\{(.*?)\}(?:\s*<end_function_call>)?""", RegexOption.DOT_MATCHES_ALL).findAll(text).forEach { m ->
+        // The body runs to the first '}' outside <escape>...<escape>, so a message may contain a brace.
+        Regex("""(?:<start_function_call>\s*)?call:($names)\s*\{((?:<escape>.*?<escape>|[^}])*)\}(?:\s*<end_function_call>)?""", RegexOption.DOT_MATCHES_ALL).findAll(text).forEach { m ->
             out += TextCall(RawToolCall(m.groupValues[1], gemmaArgs(m.groupValues[2])), m.range)
         }
         if (out.isEmpty()) {
@@ -484,8 +500,9 @@ object ToolCalls {
 
     private fun gemmaArgs(body: String): Map<String, Any?> {
         val m = linkedMapOf<String, Any?>()
-        // key:value pairs; values may be wrapped in <escape>...<escape> or quotes and may contain commas then.
-        val re = Regex("""(\w+)\s*:\s*(<escape>(.*?)<escape>|"((?:[^"\\]|\\.)*)"|'([^']*)'|[^,]*)""", RegexOption.DOT_MATCHES_ALL)
+        // key:value pairs; values may be wrapped in <escape>...<escape> or quotes and may contain commas then. A bare
+        // value runs to the next ", key:" (not the first comma), so "message:I'm late, sorry" keeps all of it.
+        val re = Regex("""(\w+)\s*:\s*(<escape>(.*?)<escape>|"((?:[^"\\]|\\.)*)"|'([^']*)'|(?:(?!,\s*\w+\s*:).)*)""", RegexOption.DOT_MATCHES_ALL)
         re.findAll(body).forEach { r ->
             val whole = r.groupValues[2]
             m[r.groupValues[1]] = when {

@@ -28,7 +28,7 @@ class TurnTest {
         val ran = mutableListOf<Action>()
         val prepared = mutableListOf<Action>()
         var prepare: (Action) -> Prepared = { Prepared.Ready(it) }
-        var result: (Action) -> Executed = { Executed(ActionStatus.DONE, "Done: ${it.describe()}", launchedApp = it.leavesPanel) }
+        var result: (Action) -> Executed = { Executed(ActionStatus.DONE, "Done: ${it.describe()}", launchedApp = it is Action.OpenApp || it is Action.MapsSearch || it is Action.MapsNavigate) }
         override val locked get() = lockedNow
         override val settings get() = settings0
         override suspend fun prepare(action: Action): Prepared { prepared += action; return prepare.invoke(action) }
@@ -301,18 +301,79 @@ class TurnTest {
         fun target(name: String, n: String) = TextTarget(name, "$n@cheogram.com", n, "Cheogram", TextVia.CHEOGRAM)
         val martin = Action.SendText("Alex", "Lunch?", target("Alex Martin", "+16135550123"))
         val roy = Action.SendText("Alex", "Lunch?", target("Alexandra Roy", "+15145550111"))
-        actions.prepare = { a -> Prepared.Ready(a, choices = listOf(Choice("Alex Martin · Mobile", martin), Choice("Alexandra Roy · Work", roy))) }
+        actions.prepare = { a -> Prepared.Ready(a, choices = listOf(Choice("Alex Martin · Mobile", martin), Choice("Alexandra Roy · Work", roy)), more = 3) }
+        actions.result = { Executed(ActionStatus.DRAFT_OPENED, "Opened a draft in Cheogram.", launchedApp = true) }
         val view = FakeView()
         val conf = Confirmations()
         val turn = async { runner(model, actions, view, conf).run() }
         val id = withTimeout(5_000) { view.pending.receive() }
         // Several choices: the card waits even though texts may just run.
         assertEquals(listOf("Alex Martin · Mobile", "Alexandra Roy · Work"), view.cards[id]!!.choices.map { it.label })
+        assertEquals(3, view.cards[id]!!.more)
         assertEquals("Lunch?", view.cards[id]!!.body)
         assertTrue(conf.choose(id, 1))
         assertEquals(TurnResult(DoneReason.END, launchedApp = true), turn.await())
         assertEquals(listOf<Action>(roy), actions.ran)
         assertEquals("Text **Alexandra Roy** (+15145550111) in Cheogram", view.cards[id]!!.summary)
+        // A hand-off is a draft, not "done": the model hears that nothing was sent.
+        assertEquals(ActionStatus.DRAFT_OPENED, view.cards[id]!!.status)
+        assertTrue(model.answers.isEmpty())
+    }
+
+    @Test fun aDraftOpenedIsToldAsNotSent() {
+        assertEquals(mapOf("status" to "draft_opened_not_sent", "detail" to "x"), ActionStatus.DRAFT_OPENED.toolResponse("x"))
+        assertTrue(ActionStatus.DRAFT_OPENED.succeeded && ActionStatus.DONE.succeeded && !ActionStatus.FAILED.succeeded)
+    }
+
+    @Test fun afterReadContentReadingMoreNeverAsksButWritingDoes() = runBlocking {
+        // Decision after the 0.2.0 review: read tools are exempt from "ask after read content"; add_note writes, so it asks.
+        val model = FakeModel(ModelOutcome.Calls(listOf(call("read_calendar", "day" to "today"))),
+            next = { if (it == 1) ModelOutcome.Calls(listOf(call("find_notes", "query" to "dentist"))) else ModelOutcome.Done(DoneReason.END) })
+        val actions = FakeActions()
+        actions.result = { Executed(ActionStatus.DONE, "found", results = calendarResults) }
+        val view = FakeView()
+        runner(model, actions, view).run()
+        assertEquals(listOf(ToolName.READ_CALENDAR, ToolName.FIND_NOTES), actions.ran.map { it.tool })
+        assertFalse(view.phases.contains(TurnPhase.CONFIRMING))
+        // In a conversation that already holds read content, a new note waits for a tap.
+        val noteModel = FakeModel(ModelOutcome.Calls(listOf(call("add_note", "text" to "call the dentist"))))
+        val noteActions = FakeActions()
+        val noteView = FakeView()
+        val conf = Confirmations()
+        val turn = async { runner(noteModel, noteActions, noteView, conf, untrusted = true).run() }
+        val id = withTimeout(5_000) { noteView.pending.receive() }
+        assertEquals(ToolName.ADD_NOTE, noteView.cards[id]!!.tool)
+        assertTrue(noteActions.ran.isEmpty())
+        conf.answer(id, false)
+        turn.await()
+        Unit
+    }
+
+    @Test fun stoppingDuringARunRecordsWhatReallyHappened() = runBlocking {
+        // Review A minor 7: the note was saved but the card said Cancelled and lost its Undo.
+        val slot = TurnSlot(this as CoroutineScope)
+        val model = FakeModel(ModelOutcome.Calls(listOf(call("add_note", "text" to "buy filters"))))
+        val started = Channel<Unit>(Channel.UNLIMITED)
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val actions = object : TurnActions {
+            override val locked get() = false
+            override val settings get() = RobotSettings()
+            override suspend fun prepare(action: Action) = Prepared.Ready(action)
+            override suspend fun run(action: Action): Executed {
+                started.trySend(Unit)
+                release.await()
+                return Executed(ActionStatus.DONE, "Saved to Robot Notes.", undo = "note-1")
+            }
+        }
+        val view = FakeView()
+        assertTrue(slot.start { TurnRunner(model, actions, view, slot.confirmations, false) { "x1" }.run() })
+        withTimeout(5_000) { started.receive() }
+        slot.stop()
+        release.complete(Unit)
+        slot.join()
+        val card = view.cards.values.single()
+        assertEquals(ActionStatus.DONE, card.status)
+        assertEquals("note-1", card.undo)
     }
 
     @Test fun cancelOnAChoiceCardSendsNothing() = runBlocking {

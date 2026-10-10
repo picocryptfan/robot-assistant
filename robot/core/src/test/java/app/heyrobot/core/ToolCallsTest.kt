@@ -146,6 +146,50 @@ class ToolCallsTest {
         assertEquals("2026-10-14T15:00", (ok("add_event", "title" to "x", "when" to "2026-10-14T15:00") as Action.AddEvent).whenText)
     }
 
+    @Test fun addEventJoinsASplitDateAndTime() {
+        // Review A M4: only the first of when/time/date/start was kept, so the date was lost.
+        fun w(vararg args: Pair<String, Any?>) = (ok("add_event", "title" to "Dentist", *args) as Action.AddEvent).whenText
+        assertEquals("Tuesday 3pm", w("date" to "Tuesday", "time" to "3pm"))
+        assertEquals("Tuesday 3pm", w("time" to "3pm", "date" to "Tuesday"))
+        assertEquals("Tuesday 3pm", w("when" to "Tuesday", "time" to "3pm"))
+        assertEquals("Tuesday 3pm", w("day" to "Tuesday", "start" to "3pm"))
+        assertEquals("2026-10-14T15:00 to 2026-10-14T16:30", w("start" to "2026-10-14T15:00", "end" to "2026-10-14T16:30"))
+        assertEquals("Friday 9 to 10:30", w("when" to "Friday 9", "end" to "10:30"))
+        bad("add_event", "title" to "Dentist", "date" to "Tuesday", "time" to true)
+        bad("add_event", "title" to "Dentist", "end" to "4pm")
+        // An unknown key is ignored as before; the parser then reads the joined words.
+        assertEquals("Tuesday", w("when" to "Tuesday", "colour" to "blue"))
+        val now = java.time.ZonedDateTime.of(2026, 10, 10, 9, 5, 0, 0, java.time.ZoneId.of("America/Toronto"))
+        val a = ok("add_event", "title" to "Dentist", "date" to "Tuesday", "time" to "3pm") as Action.AddEvent
+        assertEquals(java.time.ZonedDateTime.of(2026, 10, 13, 15, 0, 0, 0, now.zone), (Events.times(a, now, 60) as Read.Ok).value.start)
+    }
+
+    @Test fun quotesNumbersAndEmojiSurviveValidation() {
+        // Review A minors 1, 2, 15.
+        assertEquals("Tell him \"yes\"", (ok("send_text", "to" to "Mom", "message" to "Tell him \"yes\"") as Action.SendText).message)
+        assertEquals("'sup", (ok("send_text", "to" to "Mom", "message" to "'sup") as Action.SendText).message)
+        assertEquals("on my way", (ok("send_text", "to" to "Mom", "message" to "\"on my way\"") as Action.SendText).message)
+        assertEquals("Signal", (ok("open_app", "name" to "'Signal'") as Action.OpenApp).name)
+        assertEquals("5145550101", (ok("send_text", "to" to 5.145550101E9, "message" to "hi") as Action.SendText).to)
+        assertEquals("5145550101", (ok("send_text", "to" to 5145550101L, "message" to "hi") as Action.SendText).to)
+        // A cut never splits an emoji in two.
+        val msg = "a".repeat(ToolCalls.MAX_MESSAGE - 1) + "😀😀"
+        val cut = (ok("send_text", "to" to "Mom", "message" to msg) as Action.SendText).message
+        assertEquals(ToolCalls.MAX_MESSAGE - 1, cut.length)
+        assertFalse(Character.isHighSurrogate(cut.last()))
+        assertEquals("ab", ToolCalls.safeTake("ab😀", 3))
+        assertEquals("ab😀", ToolCalls.safeTake("ab😀", 4))
+    }
+
+    @Test fun textCallMessagesKeepCommasAndBraces() {
+        // Review A minor 14: a bare value stopped at the first comma, the body at the first brace.
+        val bare = ToolCalls.parseText("call:send_text{to:Mom,message:I'm late, sorry}").single().call
+        assertEquals(mapOf("to" to "Mom", "message" to "I'm late, sorry"), bare.args)
+        val braces = ToolCalls.parseText("call:add_note{text:<escape>use {braces} here<escape>}").single().call
+        assertEquals(mapOf("text" to "use {braces} here"), braces.args)
+        assertEquals(mapOf("hour" to 7L, "minute" to 30L), ToolCalls.parseText("call:set_alarm{hour:7,minute:30}").single().call.args)
+    }
+
     @Test fun readCalendarDefaultsToToday() {
         assertEquals(Action.ReadCalendar("tomorrow"), ok("read_calendar", "day" to "tomorrow"))
         assertEquals(Action.ReadCalendar("next week"), ok("read_calendar", "date" to "next week"))
@@ -159,23 +203,24 @@ class ToolCallsTest {
         val t = Action.SendText("mom", "I'm late", target)
         assertEquals("Text **Mom** (+1 514-555-0101) in Cheogram", t.describe())
         assertEquals("I'm late", t.body())
-        assertEquals("Open in Cheogram", t.confirmLabel)
-        assertTrue(t.leavesPanel)
+        // The button names the person: on a long message the card's top line can be out of sight.
+        assertEquals("Open in Cheogram for Mom", t.confirmLabel)
+        assertEquals("Open in Cheogram for +1 514-555-0101", t.copy(target = target.copy(name = null)).confirmLabel)
         assertEquals("Text **+1 514-555-0101** in Cheogram", t.copy(target = target.copy(name = null)).describe())
         assertEquals("Text **mom**", t.copy(target = null).describe())
         val e = Action.DraftEmail("Alex", "Friday", "Hi", MailTarget("Alex Martin", "alex@example.org", "Proton Mail"))
         assertEquals("Email **Alex Martin** (alex@example.org) in Proton Mail", e.describe())
         assertEquals("Subject: Friday\n\nHi", e.body())
-        assertEquals("Open in Proton Mail", e.confirmLabel)
-        assertEquals("Choose the email app", e.copy(target = MailTarget(null, "alex@example.org", null)).confirmLabel)
+        assertEquals("Open in Proton Mail for Alex Martin", e.confirmLabel)
+        assertEquals("Choose the email app for alex@example.org", e.copy(target = MailTarget(null, "alex@example.org", null)).confirmLabel)
         val zone = java.time.ZoneId.of("America/Toronto")
         val start = java.time.ZonedDateTime.of(2026, 10, 14, 15, 0, 0, 0, zone)
         val ev = Action.AddEvent("Dentist", "Wednesday at 3", plan = EventPlan(start, start.plusHours(1), false, 3L, "Personal", 2026))
         assertEquals("Add **Dentist** on Wed Oct 14, 15:00–16:00 to *Personal*", ev.describe())
-        assertFalse(ev.leavesPanel)
+        assertEquals("Add to Personal", ev.confirmLabel)
         val fallback = ev.copy(plan = ev.plan!!.copy(calendarId = null, calendarName = null))
         assertEquals("Add **Dentist** on Wed Oct 14, 15:00–16:00 in your calendar app", fallback.describe())
-        assertTrue(fallback.leavesPanel)
+        assertEquals("Open the calendar app", fallback.confirmLabel)
         assertEquals("Add **Dentist** (Wednesday at 3)", Action.AddEvent("Dentist", "Wednesday at 3").describe())
     }
 
@@ -195,8 +240,6 @@ class ToolCallsTest {
         assertEquals("Set a timer for 5 minutes", Action.SetTimer(300).describe())
         assertEquals("Set a timer for 1 hour, 1 minute and 1 second", Action.SetTimer(3661).describe())
         assertEquals("Set an alarm for 07:05", Action.SetAlarm(7, 5).describe())
-        assertTrue(Action.OpenApp("Signal").leavesPanel)
-        assertTrue(!Action.SetTimer(5).leavesPanel)
     }
 
     @Test fun textFallbackReadsGemmaStyleCalls() {

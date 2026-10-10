@@ -104,7 +104,9 @@ class WhenParserTest {
         timed("2026-10-14 15:30", at(10, 14, 15, 30))
         // With an offset: the same instant in the phone's zone (EDT is UTC-4).
         timed("2026-10-14T19:00Z", at(10, 14, 15))
-        timed("2026-10-14T15:00-04:00", at(10, 14, 15))
+        // Without seconds a "-hh:mm" is the end of a range (docs: RFC 3339 puts an offset after the seconds).
+        timed("2026-10-14T15:00-04:00", at(10, 14, 15), at(10, 15, 4))
+        timed("2026-10-14T15:00:00-04:00", at(10, 14, 15))
         timed("2026-10-14T21:00+02:00", at(10, 14, 15))
         // An ISO date in the past stays (the year was said).
         day("2026-01-02", 1, 2)
@@ -194,6 +196,115 @@ class WhenParserTest {
         assertNull(s.end)
     }
 
+    // ------------------------------------------------------------------ 0.2.0 review A (B1, M1, M2, M3, minor 10)
+
+    @Test fun relativeFormsAreReadOrRefusedNeverGuessed() {
+        // B1: these read a stray number as a clock time in 0.2.0.
+        day("two weeks from now", 10, 24)
+        day("3 days from now", 10, 13)
+        day("in 1 month", 11, 10)
+        day("in 6 months", 4, 10, 2027)
+        timed("1 hour from now", at(10, 10, 10, 5))
+        timed("an hour from now", at(10, 10, 10, 5))
+        timed("20 minutes from now", at(10, 10, 9, 25))
+        timed("half an hour from now", at(10, 10, 9, 35))
+        timed("in one and a half hours", at(10, 10, 10, 35))
+        timed("in 2 and a half hours", at(10, 10, 11, 35))
+        timed("in an hour and a half", at(10, 10, 10, 35))
+        day("a week from Friday", 10, 23)
+        day("two weeks from today", 10, 24)
+        day("a week from tomorrow", 10, 18)
+        day("Friday after next", 10, 23)
+        timed("Friday after next at 3", at(10, 23, 15))
+        day("Friday the week after next", 10, 23)
+        // Allowed to stay unreadable, as long as they never give a wrong date.
+        unreadable("first Monday of November")
+        unreadable("the 14th of next month")
+        unreadable("dentist in 2 months")
+        unreadable("in 1.5 days")
+        unreadable("3 days ago")
+        unreadable("Tuesday or Wednesday")
+        unreadable("week of the 19th")
+    }
+
+    @Test fun leftoverWordsOrNumbersMakeItUnreadable() {
+        unreadable("Tuesday at 3 with Sam")
+        unreadable("Tuesday 3 4")
+        unreadable("at 3 and 4")
+        unreadable("half 3")
+        unreadable("tomorrow at 3 before lunch")
+        // Filler is fine.
+        timed("on Tuesday at 3", at(10, 13, 15))
+        day("this coming Friday", 10, 16)
+        timed("Tuesday at 3pm sharp", at(10, 13, 15))
+    }
+
+    @Test fun nightHoursAreThatNightsEarlyMorning() {
+        // M1: tonight at 12 / 12 midnight became noon, tonight at 1 became 13:00, tonight at 2am was in the past.
+        timed("tonight at 12", at(10, 11, 0))
+        timed("at 12 midnight", at(10, 11, 0))
+        timed("12 midnight", at(10, 11, 0))
+        timed("tonight at midnight", at(10, 11, 0))
+        timed("tomorrow at midnight", at(10, 12, 0))
+        timed("tonight at 1", at(10, 11, 1))
+        timed("tonight at 2am", at(10, 11, 2))
+        timed("tonight at 4", at(10, 11, 4))
+        timed("tonight at 5", at(10, 10, 17))
+        timed("tonight at 11", at(10, 10, 23))
+        timed("tomorrow night at 1", at(10, 12, 1))
+        timed("Friday night at 2", at(10, 17, 2))
+        timed("this evening at 12", at(10, 11, 0))
+        timed("this evening at 8", at(10, 10, 20))
+        timed("12 noon", at(10, 10, 12))
+        // Said after midnight, "tonight" is the night under way.
+        timed("tonight at 1", at(10, 11, 1), n = ZonedDateTime.of(2026, 10, 11, 0, 30, 0, 0, zone))
+    }
+
+    @Test fun aRangeCrossingMidnightEndsThatNight() {
+        // M2: these ended the next afternoon.
+        timed("10pm to 2", at(10, 10, 22), at(10, 11, 2))
+        timed("11pm to 12", at(10, 10, 23), at(10, 11, 0))
+        timed("9pm to 1", at(10, 10, 21), at(10, 11, 1))
+        timed("8pm-2", at(10, 10, 20), at(10, 11, 2))
+        timed("20:00 to 2", at(10, 10, 20), at(10, 11, 2))
+        timed("22h to 1", at(10, 10, 22), at(10, 11, 1))
+        timed("tonight at 11 to 1", at(10, 10, 23), at(10, 11, 1))
+        timed("11pm to midnight", at(10, 10, 23), at(10, 11, 0))
+        timed("22:00 to 03:00", at(10, 10, 22), at(10, 11, 3))
+    }
+
+    @Test fun anIsoTimeWithADashIsARangeNotAnOffset() {
+        // M3: read as a UTC offset in 0.2.0.
+        timed("2026-10-14 15:00-16:00", at(10, 14, 15), at(10, 14, 16))
+        timed("2026-10-14T09:00-10:30", at(10, 14, 9), at(10, 14, 10, 30))
+        timed("2026-10-14 9:00-10:00", at(10, 14, 9), at(10, 14, 10))
+        timed("2026-10-14T15:00 to 16:30", at(10, 14, 15), at(10, 14, 16, 30))
+        timed("2026-10-14T15:00 to 2026-10-14T16:30", at(10, 14, 15), at(10, 14, 16, 30))
+        // With seconds (RFC 3339), a "-hh:mm" is the offset; "+hh:mm" and Z are offsets either way.
+        timed("2026-10-14T15:00:00-04:00", at(10, 14, 15))
+        timed("2026-10-14T19:00:00Z", at(10, 14, 15))
+        timed("2026-10-14T21:00+02:00", at(10, 14, 15))
+        // An offset that doesn't exist is unreadable (0.2.0 threw, which became "Something went wrong").
+        unreadable("2026-10-14T15:00:00+19:00")
+        unreadable("2026-10-14T15:00+15:00")
+        unreadable("2026-10-14T15:00:00-13:00")
+    }
+
+    @Test fun addEventRefusesATimeThatHasPassed() {
+        fun times(w: String, n: ZonedDateTime = now) = Events.times(Action.AddEvent("x", w), n, 60)
+        val evening = ZonedDateTime.of(2026, 10, 10, 21, 0, 0, 0, zone)
+        assertEquals(Read.Unreadable(Events.PASSED), times("Friday this week"))
+        assertEquals(Read.Unreadable(Events.PASSED), times("today at 8", evening))
+        assertEquals(Read.Unreadable(Events.PASSED), times("tonight", evening))
+        assertEquals(Read.Unreadable(Events.PASSED), times("this evening", evening))
+        assertEquals(Read.Unreadable(Events.PASSED), times("yesterday"))
+        assertEquals("that time has passed", Events.PASSED)
+        // Today all day, and later today, are fine; read_calendar may still read past days.
+        assertTrue(times("today") is Read.Ok)
+        assertTrue(times("tonight at 11", evening) is Read.Ok)
+        assertTrue(WhenParser.range("yesterday", now) is Read.Ok)
+    }
+
     // ------------------------------------------------------------------ read_calendar's days and weeks
 
     private fun range(text: String, from: ZonedDateTime, to: ZonedDateTime, n: ZonedDateTime = now) {
@@ -216,7 +327,14 @@ class WhenParserTest {
         range("the weekend", at(10, 10), at(10, 12))
         range("this weekend", at(10, 17), at(10, 19), monday)
         range("next weekend", at(10, 17), at(10, 19))
+        range("the week after next", at(10, 19), at(10, 26))
+        range("the weekend after next", at(10, 24), at(10, 26))
+        range("week", at(10, 10), at(10, 12))
         assertEquals(7L, (WhenParser.range("next week", now) as Read.Ok).value.days)
+        // The week words count only as the whole text (0.2.0 read "two weeks from now" as today).
+        range("two weeks from now", at(10, 24), at(10, 25))
+        assertEquals(Read.Unreadable(WhenParser.SAY_DATE), WhenParser.range("week of the 19th", now))
+        assertEquals(Read.Unreadable(WhenParser.SAY_DATE), WhenParser.range("my weekend plans", now))
         assertEquals(Read.Unreadable(WhenParser.SAY_MONTH), WhenParser.range("10/11", now))
         assertEquals(Read.Unreadable(WhenParser.SAY_DATE), WhenParser.range("my birthday", now))
     }

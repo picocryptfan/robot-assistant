@@ -42,6 +42,27 @@ class ToolRouterTest {
         assertEquals(ToolGroup.entries.toSet(), route("Text Sam the list of meetings"))
     }
 
+    @Test fun reviewPhrasingsReachTheirGroups() {
+        // Review A M6: each of these routed to CORE only in 0.2.0.
+        val people = listOf("what's Alex's cell", "ping Sam", "let Sarah know I'm late", "let my sister know", "write Sarah that I'm late",
+            "msg Sam", "DM Sam", "how do I reach Sam", "what's Sam's address", "écris à Marie que j'arrive", "dis à Marie que j'arrive",
+            "what's Alex's mobile")
+        for (q in people) assertTrue(q, ToolGroup.PEOPLE in route(q))
+        val notes = listOf("remind me to call the bank", "save this: buy milk", "what did I save about coffee", "rappelle-moi d'acheter du lait")
+        for (q in notes) assertTrue(q, ToolGroup.NOTES in route(q))
+        val calendar = listOf("what's on next week", "what do I have this week", "anything this afternoon?", "add gym this evening",
+            "add dentist at 3pm", "dentist at 3 p.m.", "lunch at 12:30", "rdv à 15h", "dentist on the 14th at 3", "dentist March 3",
+            "lunch with Bob May 5", "the 3rd of March", "what's coming up", "remind me to call the bank at 3", "anything this morning")
+        for (q in calendar) assertTrue(q, ToolGroup.CALENDAR in route(q))
+        // "remind me" is both a note and a calendar thing.
+        assertEquals(setOf(ToolGroup.CORE, ToolGroup.NOTES, ToolGroup.CALENDAR), route("remind me to buy milk"))
+        // March and May alone are verbs, not dates.
+        assertEquals(core, route("may I ask something"))
+        assertEquals(core, route("they march on"))
+        // An alarm question may bring the calendar too (only tokens), never the other groups.
+        assertEquals(setOf(ToolGroup.CORE, ToolGroup.CALENDAR), route("set an alarm for 7am"))
+    }
+
     @Test fun toolsFollowTheGroupsAndTheSettings() {
         val d = RobotSettings()
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d))

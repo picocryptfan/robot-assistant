@@ -24,14 +24,16 @@ object ApprovalGate {
      * [mustAsk]: "Just do it" becomes "Ask first" for this action. Set when the conversation carries screen text
      * or a picture, or a read tool's findings (content Robot did not write and the person did not type: a page, a
      * photo, a note or a calendar invite must never trigger an action without a tap), for an app name that matched
-     * only loosely, and when the card offers a choice of people or numbers.
+     * only loosely, and when the card must show who a text or email goes to (several people, a guessed name, a number
+     * the model wrote). The read tools ([ToolName.reads]: lookup_contact, find_notes, read_calendar) are exempt: they
+     * only bring more to read, nothing leaves the phone or changes; anything that writes or leaves still asks.
      */
     fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, mustAsk: Boolean = false): GateDecision {
         val level = settings.approval(tool)
         return when {
             level == Approval.OFF -> GateDecision.DISABLED
             locked && tool !in ALLOWED_WHEN_LOCKED -> GateDecision.NEEDS_UNLOCK
-            level == Approval.AUTO && !mustAsk -> GateDecision.RUN
+            level == Approval.AUTO && (!mustAsk || tool.reads) -> GateDecision.RUN
             else -> GateDecision.CONFIRM
         }
     }
@@ -41,6 +43,11 @@ object ApprovalGate {
 enum class ActionStatus(val label: String) {
     PENDING("Waiting for you"),
     DONE("Done"),
+    /**
+     * Handed to another app as a draft (Cheogram, the SMS app, Proton Mail, the calendar app's editor): nothing is
+     * sent or saved until the person does it there, so the model is never told "done".
+     */
+    DRAFT_OPENED("Draft opened"),
     DECLINED("Cancelled"),
     NEEDS_UNLOCK("Unlock to do this"),
     DISABLED("Turned off in settings"),
@@ -65,6 +72,7 @@ enum class ActionStatus(val label: String) {
         put("status", when (this@ActionStatus) {
             PENDING -> "pending"
             DONE -> "done"
+            DRAFT_OPENED -> "draft_opened_not_sent"
             DECLINED -> "cancelled_by_user"
             NEEDS_UNLOCK -> "phone_locked_user_must_unlock"
             DISABLED -> "turned_off_in_settings"
@@ -79,4 +87,7 @@ enum class ActionStatus(val label: String) {
         if (!detail.isNullOrBlank()) put("detail", detail)
         if (results != null) put("results", results)
     }
+
+    /** It happened (or its draft opened). */
+    val succeeded: Boolean get() = this == DONE || this == DRAFT_OPENED
 }

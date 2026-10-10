@@ -17,13 +17,17 @@ enum class ToolGroup {
 }
 
 object ToolRouter {
-    /** English plus the obvious French words. Single words also match their plain endings (texts, texting, notes). */
+    /**
+     * English plus the obvious French words. Single words also match their plain endings (texts, texting, notes).
+     * A word too many only costs tokens; a word too few costs a turn in which the model can't do what was asked.
+     */
     private val PEOPLE = setOf("text", "message", "tell", "reply", "email", "mail", "write to", "number", "contact", "phone",
-        "sms", "e mail", "texto", "courriel", "telephone")
-    private val NOTES = setOf("note", "remember", "write down", "list", "jot", "liste")
+        "sms", "e mail", "texto", "courriel", "telephone", "write", "cell", "mobile", "msg", "dm", "ping", "reach", "address",
+        "ecris", "ecrire", "dis a", "dire a")
+    private val NOTES = setOf("note", "remember", "write down", "list", "jot", "liste", "save", "remind", "reminder", "rappelle")
     private val CALENDAR = setOf("calendar", "event", "appointment", "meeting", "schedule", "agenda", "busy", "free", "today",
-        "tomorrow", "tonight", "weekend", "rendez vous", "rdv", "calendrier", "reunion", "demain", "aujourdhui") +
-        WEEKDAYS + MONTHS + JOURS
+        "tomorrow", "tonight", "weekend", "week", "morning", "afternoon", "evening", "coming up", "remind", "reminder",
+        "rendez vous", "rdv", "calendrier", "reunion", "demain", "aujourdhui", "rappelle") + WEEKDAYS + MONTHS + JOURS
     private val WEEKDAYS get() = setOf("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
     private val JOURS get() = setOf("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
     /** Not "march" or "may": they are everyday verbs as well. */
@@ -32,19 +36,25 @@ object ToolRouter {
     /** "tell me a joke" is not about telling someone: "tell" counts only when it isn't followed by me or us. */
     private val NOT_PEOPLE = setOf("tell me", "tell us")
 
+    /** "let Sarah know", "let my sister know". */
+    private val LET_KNOW = Regex("""\blet (?:\w+ ){1,3}know\b""")
+    /** A clock time ("3pm", "3 p.m.", "15:30", "15h", "15h30"), an ordinal day ("the 14th"), March or May with a day. */
+    private val WHEN = Regex("""\d\s?[ap]\.?m\b|\d:\d\d|\b\d{1,2}h\d{0,2}\b|\b\d{1,2}(?:st|nd|rd|th)\b|\b(?:march|may) \d{1,2}\b|\b\d{1,2} (?:of )?(?:march|may)\b""")
+
     /** The groups this question needs: always CORE, plus each group one of its words appears in. */
     fun route(question: String): Set<ToolGroup> {
         val words = words(question)
         val padded = " " + words.joinToString(" ") + " "
+        val plain = Normalizer.normalize(question, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
         fun has(keys: Set<String>) = keys.any { k ->
             if (' ' in k) padded.contains(" $k ")
             else words.withIndex().any { (i, w) -> inflects(w, k) && !(k == "tell" && i + 1 < words.size && "tell ${words[i + 1]}" in NOT_PEOPLE) }
         }
         return buildSet {
             add(ToolGroup.CORE)
-            if (has(PEOPLE)) add(ToolGroup.PEOPLE)
+            if (has(PEOPLE) || LET_KNOW.containsMatchIn(padded)) add(ToolGroup.PEOPLE)
             if (has(NOTES)) add(ToolGroup.NOTES)
-            if (has(CALENDAR)) add(ToolGroup.CALENDAR)
+            if (has(CALENDAR) || WHEN.containsMatchIn(plain)) add(ToolGroup.CALENDAR)
         }
     }
 
