@@ -75,7 +75,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -404,7 +407,11 @@ private fun MicButton(listening: Boolean) {
     Box(
         Modifier.size(56.dp).clip(CircleShape)
             .background(if (listening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer)
-            .semantics { contentDescription = "Talk to Robot" }
+            .semantics {
+                contentDescription = "Talk to Robot"
+                role = Role.Button
+                onClick(label = "Talk") { PanelController.micPressed(); true }
+            }
             .pointerInput(Unit) {
                 detectTapGestures(onPress = {
                     val t0 = System.currentTimeMillis()
