@@ -166,4 +166,24 @@ object SpeechText {
         .replace(Regex("""[\p{So}\p{Cs}\x{FE0F}\x{200D}\x{20E3}\x{1F3FB}-\x{1F3FF}&&[^\x{B0}]]"""), "")
         .replace(Regex("""\s+"""), " ")
         .trim()
+        .let(::sayable)
+
+    /**
+     * Chinese, Japanese and Korean script (Han, kana, Hangul, Bopomofo, Yi, CJK symbols, punctuation and
+     * compatibility forms, the supplementary ideograph planes).
+     */
+    private val CJK = Regex("""[\x{1100}-\x{11FF}\x{2E80}-\x{2FFF}\x{3000}-\x{9FFF}\x{A000}-\x{A4CF}\x{AC00}-\x{D7AF}\x{F900}-\x{FAFF}\x{FE30}-\x{FE4F}\x{FF00}-\x{FFEF}\x{20000}-\x{3134F}]+""")
+
+    /**
+     * Only what Robot's voices can say, and nothing sherpa-onnx would write to the log. CJK text is dropped: with no
+     * lexicon, Kokoro (1.13.8) sends every U+4E00-9FFF character through its Chinese path, which logs it ("Ignore
+     * OOV") whatever the debug setting, and the voices read English and French only. Fullwidth ASCII becomes ASCII.
+     * Blank when no letter or digit is left: sherpa logs a piece it cannot turn into sounds whole ("Failed to convert").
+     */
+    fun sayable(s: String): String {
+        val ascii = buildString(s.length) { for (c in s) append(if (c in '\uFF01'..'\uFF5E') c - 0xFEE0 else c) }
+        val out = ascii.replace(CJK, " ").replace(Regex("""\(\s*\)|\[\s*]"""), " ").replace(Regex("""\s+"""), " ").replace(Regex(""" ([,.;:!?])"""), "$1")
+            .trim().trimStart(',', ';', ':', '.', ' ')
+        return if (out.any { it.isLetterOrDigit() }) out else ""
+    }
 }

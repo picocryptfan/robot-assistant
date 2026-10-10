@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import app.heyrobot.core.RLog
+import app.heyrobot.core.SpeechText
 import app.heyrobot.core.TtsBench
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceChoice
@@ -93,7 +94,8 @@ class SherpaTextToSpeech internal constructor(
     override val isSpeaking: Boolean get() = synchronized(stateLock) { speaking }
 
     override fun speak(sentence: String) {
-        val text = sentence.trim()
+        // Again here, whoever calls: sherpa logs CJK text and unpronounceable pieces whatever its debug flag.
+        val text = SpeechText.sayable(sentence)
         if (text.isEmpty()) return
         synchronized(stateLock) {
             queue.addLast(Item(text, gen))

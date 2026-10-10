@@ -81,6 +81,28 @@ class SpeechTest {
         assertEquals("", SpeechText.clean("***"))
     }
 
+    /** 0.1.2 review, minor 8: sherpa logs CJK characters it is given (and a piece it cannot say), whatever its debug flag. */
+    @Test fun cjkTextIsNeverHandedToTheVoice() {
+        assertEquals("The word means cat.", SpeechText.clean("The word 猫 means cat."))
+        assertEquals("", SpeechText.clean("你好世界"))
+        assertEquals("", SpeechText.clean("你好。"))
+        assertEquals("Robot", SpeechText.clean("こんにちは, Robot"))
+        assertEquals("hello", SpeechText.clean("안녕 hello"))
+        assertEquals("Ext B test", SpeechText.clean("Ext B \uD840\uDC00 test"))
+        assertEquals("In Tokyo, it is sunny.", SpeechText.clean("In Tokyo（東京）, it is sunny."))
+        // Fullwidth ASCII is read as ASCII.
+        assertEquals("OK 42!", SpeechText.clean("ＯＫ ４２！"))
+        // Nothing left to pronounce: nothing to say (sherpa would log the piece whole).
+        assertEquals("", SpeechText.clean("?!"))
+        assertEquals("", SpeechText.sayable("— …"))
+        // French and other Latin text is untouched.
+        assertEquals("Réveille-moi à 6h30, s'il te plaît.", SpeechText.clean("Réveille-moi à 6h30, s'il te plaît."))
+        assertEquals("It's 20°C.", SpeechText.sayable("It's 20°C."))
+        for (c in listOf(0x4E00, 0x9FFF, 0x3400, 0x3042, 0x30A2, 0xAC00, 0xF900, 0x3001)) {
+            assertEquals(Integer.toHexString(c), "", SpeechText.sayable(String(Character.toChars(c))))
+        }
+    }
+
     // ReplyVoice: what of a streaming reply is spoken (0.1.2 review, majors 2 and 3).
 
     private val longFirst = "Sure, here is what I found for you today. "
