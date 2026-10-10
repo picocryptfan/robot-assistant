@@ -371,7 +371,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         VoiceSettingsCard(s, snap, update, a)
         SectionCard("Actions") {
             Text("What Robot may do when you ask. On the lock screen only timers and alarms work; everything else asks you to unlock. " +
-                "After Robot read a note, an event or a contact in a conversation, every action in it asks first.",
+                "After Robot read a note, an event or a contact in a conversation, everything in it that writes or leaves the phone asks first " +
+                "(reading more doesn't).",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             for (t in ToolName.entries) ApprovalRow(t, s.approval(t)) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
         }

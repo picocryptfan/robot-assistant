@@ -6,6 +6,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +20,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -33,7 +37,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,9 +52,16 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.core.Note
 import app.heyrobot.core.NoteSearch
+import app.heyrobot.sys.NotesFiles
 import app.heyrobot.ui.common.RIcons
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 // MAIN PROCESS. Robot Notes (docs/phase-2.md "Notes"): the list with search, one note to read and edit, Delete and
 // Share. The assistant adds notes from the panel; this screen re-reads the folder whenever it is shown.
@@ -104,24 +119,92 @@ private fun NoteRow(n: Note, onClick: () -> Unit) {
 }
 
 /**
- * One note: title and text to edit, saved when you leave (an empty new note is dropped), Share (the system chooser,
- * so it can go to Easy Notes or anything else) and Delete.
+ * One note: title and text to edit, saved as you type (about 0.6 s after the last change), when the app goes to the
+ * background and when the editor closes, so nothing typed is lost to a rotation, a route from the launcher or the
+ * panel, or the process being killed. A new note keeps its id after its first save (one note, not one per save).
+ * If the note disappears underneath (the panel's Undo), the editor says so and offers Restore: it never brings the
+ * note back by itself, nor blanks what is shown. Share goes through the system chooser (Easy Notes or anything else).
  */
 @Composable
-fun NoteScreen(note: Note?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
+fun NoteScreen(noteId: String?, version: Int, a: AppActions, snackbar: SnackbarHostState, onCreated: (String) -> Unit, onBack: () -> Unit) {
     val ctx = LocalContext.current
-    var title by rememberSaveable(note?.id) { mutableStateOf(note?.title.orEmpty()) }
-    var text by rememberSaveable(note?.id) { mutableStateOf(note?.text.orEmpty()) }
+    val store = remember { NotesFiles.store(ctx) }
+    var id by rememberSaveable { mutableStateOf(noteId) }
+    var title by rememberSaveable { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
+    var created by rememberSaveable { mutableLongStateOf(0L) }
+    var updated by rememberSaveable { mutableLongStateOf(0L) }
+    /** Title and text as last written; the editor writes only when they change. */
+    var saved by rememberSaveable { mutableStateOf<String?>(null) }
+    /** False until an existing note was read (saveable: after a rotation the edited text is kept, not re-read). */
+    var loaded by rememberSaveable { mutableStateOf(noteId == null) }
+    var deleted by rememberSaveable { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    val created1 by rememberUpdatedState(onCreated)
+
+    fun key(t: String, x: String) = t.trim() + "\u0000" + x.trim()
+
+    /** Writes the note now if it changed (a small file: on the main thread, also from onDispose and onStop). */
+    fun save() {
+        if (!loaded || deleted) return
+        val k = key(title, text)
+        if (k == saved) return
+        val cur = id
+        if (cur == null && title.isBlank() && text.isBlank()) return
+        val now = System.currentTimeMillis()
+        if (cur == null) {
+            val n = store.add(text.trim(), title.trim(), now) ?: return
+            id = n.id
+            created = now
+            created1(n.id)
+        } else {
+            // Gone underneath (Undo in the panel): never written back silently.
+            if (store.get(cur) == null) { deleted = true; return }
+            if (!store.save(Note(cur, title.trim(), text.trim(), if (created > 0) created else now, now))) return
+        }
+        saved = k
+        updated = now
+    }
+
+    LaunchedEffect(Unit) {
+        val cur = id
+        if (!loaded && cur != null) {
+            val n = withContext(Dispatchers.IO) { store.get(cur) }
+            if (n == null) deleted = true
+            else {
+                title = n.title; text = n.text; created = n.created; updated = n.updated
+                saved = key(n.title, n.text)
+            }
+            loaded = true
+        }
+    }
+    // The app came back to the front (the panel may have undone this note): is it still there?
+    LaunchedEffect(version) {
+        val cur = id
+        if (loaded && !deleted && cur != null && withContext(Dispatchers.IO) { store.get(cur) } == null) deleted = true
+    }
+    LaunchedEffect(title, text) {
+        delay(AUTOSAVE_MS)
+        save()
+    }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, e -> if (e == Lifecycle.Event.ON_PAUSE || e == Lifecycle.Event.ON_STOP) save() }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            save()
+        }
+    }
+
     fun leave() {
-        val changed = title.trim() != note?.title.orEmpty() || text.trim() != note?.text.orEmpty()
-        if (changed && (text.isNotBlank() || title.isNotBlank())) a.saveNote(note, title.trim(), text.trim())
+        save()
         onBack()
     }
     BackHandler { leave() }
     Scaffold(
         topBar = {
-            BackBar(if (note == null) "New note" else "Note", ::leave) {
+            BackBar(if (id == null) "New note" else "Note", ::leave) {
                 IconButton(onClick = {
                     val subject = title.trim()
                     val body = listOf(subject, text.trim()).filter { it.isNotEmpty() }.joinToString("\n\n")
@@ -130,35 +213,65 @@ fun NoteScreen(note: Note?, a: AppActions, snackbar: SnackbarHostState, onBack: 
                     if (subject.isNotEmpty()) send.putExtra(Intent.EXTRA_SUBJECT, subject)
                     try { ctx.startActivity(Intent.createChooser(send, "Share the note")) } catch (_: Exception) { a.say("Nothing on this phone can take the note.") }
                 }) { Icon(RIcons.Share, "Share") }
-                if (note != null) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, "Delete") }
+                if (!deleted) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, "Delete") }
             }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad).imePadding().padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
-                value = title, onValueChange = { title = it }, singleLine = true, label = { Text("Title") },
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = text, onValueChange = { text = it }, label = { Text("Note") },
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-            if (note != null) {
-                Text("Changed ${DateUtils.getRelativeTimeSpanString(note.updated)}", style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
+        // Scrolls, so in landscape with the keyboard up the note field keeps a usable height.
+        BoxWithConstraints(Modifier.fillMaxSize().padding(pad).imePadding()) {
+            val noteMin = (maxHeight - 150.dp).coerceAtLeast(120.dp)
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (deleted) {
+                    Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                        Row(Modifier.padding(start = 14.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("This note was deleted.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                            TextButton(onClick = {
+                                val cur = id
+                                val now = System.currentTimeMillis()
+                                val ok = if (cur == null) false else store.save(Note(cur, title.trim(), text.trim(), if (created > 0) created else now, now))
+                                if (ok) { deleted = false; saved = key(title, text); updated = now } else a.say("The note couldn't be restored.")
+                            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Restore") }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = title, onValueChange = { title = it }, singleLine = true, label = { Text("Title") }, enabled = loaded,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it }, label = { Text("Note") }, enabled = loaded,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = noteMin),
+                )
+                if (updated > 0) {
+                    Text(if (deleted) "Not saved: restore it to keep it" else "Saved ${DateUtils.getRelativeTimeSpanString(updated)}",
+                        style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 12.dp))
+                }
             }
         }
     }
-    if (confirmDelete && note != null) {
+    if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             title = { Text("Delete this note?") },
             text = { Text("It can't be brought back.") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; a.deleteNote(note.id); onBack() }) { Text("Delete") } },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = false
+                    deleted = true
+                    id?.let { store.delete(it) }
+                    a.say("Note deleted.")
+                    onBack()
+                }) { Text("Delete") }
+            },
             dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
         )
     }
 }
+
+/** Typing pauses this long before the note is written. */
+private const val AUTOSAVE_MS = 600L

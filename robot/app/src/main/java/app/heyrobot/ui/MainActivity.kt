@@ -28,9 +28,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.core.Approval
@@ -38,6 +41,7 @@ import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.Note
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.TextApp
 import app.heyrobot.core.ToolGroup
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.StoredConversation
@@ -106,8 +110,30 @@ sealed class Page {
     /** [people]: opened for a permission ("People, notes and calendar" first). */
     data class Setup(val people: Boolean = false) : Page()
     data class Conversation(val id: String) : Page()
-    /** [id] null: a new note. */
+    /** [id] null: a new note (until its first save gives it one). */
     data class NoteEdit(val id: String?) : Page()
+
+    companion object {
+        /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
+        val Saver: Saver<Page?, String> = Saver(
+            save = { p ->
+                when (p) {
+                    null -> ""
+                    is Setup -> if (p.people) "setup:1" else "setup:0"
+                    is Conversation -> "conv:${p.id}"
+                    is NoteEdit -> "note:${p.id.orEmpty()}"
+                }
+            },
+            restore = { v ->
+                when {
+                    v.startsWith("setup:") -> Setup(v == "setup:1")
+                    v.startsWith("conv:") -> Conversation(v.removePrefix("conv:"))
+                    v.startsWith("note:") -> NoteEdit(v.removePrefix("note:").ifEmpty { null })
+                    else -> null
+                }
+            },
+        )
+    }
 }
 
 /** Live facts the screens show, refreshed every second while the app is in front. */
@@ -136,7 +162,9 @@ fun RobotAppUi(activity: MainActivity) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
-    var page by remember { mutableStateOf<Page?>(null) }
+    var page by rememberSaveable(stateSaver = Page.Saver) { mutableStateOf(null) }
+    /** Opened from the "Robot Notes" icon and still on Notes: Back leaves the app, as from any app's first screen. */
+    var fromNotesIcon by rememberSaveable { mutableStateOf(false) }
     var settings by remember { mutableStateOf(SettingsStore.load(ctx)) }
     var snap by remember { mutableStateOf(Snapshot()) }
     var history by remember { mutableStateOf<List<StoredConversation>>(emptyList()) }
@@ -201,17 +229,23 @@ fun RobotAppUi(activity: MainActivity) {
     LaunchedEffect(resumed, historyTick) {
         if (resumed) history = withContext(Dispatchers.IO) { ConversationStore.list(ctx) }
     }
-    // The assistant adds notes from the panel: read the folder again whenever the app comes back.
+    // The assistant adds (and undoes) notes from the panel, which opens over this window without pausing it: read the
+    // folder again when the app comes back and whenever the window gets the focus back from the panel.
     LaunchedEffect(resumed, notesTick) {
         if (resumed) notes = withContext(Dispatchers.IO) { NotesFiles.store(ctx).list() }
+    }
+    val windowInfo = LocalWindowInfo.current
+    LaunchedEffect(windowInfo) {
+        snapshotFlow { windowInfo.isWindowFocused }.collect { focused -> if (focused) notesTick++ }
     }
     LaunchedEffect(resumed, permissionTick) {
         if (resumed) calendars = withContext(Dispatchers.IO) { Calendars.writable(ctx) }
     }
     val route by activity.route
+    // An open note editor saves when it closes (its onDispose), so switching pages here never loses text.
     LaunchedEffect(route) {
         when (route) {
-            AppPages.NOTES -> { tab = Tab.NOTES; page = null }
+            AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
             AppPages.PERMISSIONS -> page = Page.Setup(people = true)
         }
         activity.route.value = null
@@ -291,46 +325,36 @@ fun RobotAppUi(activity: MainActivity) {
             } catch (_: Exception) { say("Open Settings › Apps › Robot › Permissions.") }
         },
         openNote = { id -> page = Page.NoteEdit(id) },
-        saveNote = { old, title, text ->
-            scope.launch(Dispatchers.IO) {
-                val store = NotesFiles.store(ctx)
-                val now = System.currentTimeMillis()
-                val ok = if (old == null) store.add(text, title, now) != null else store.save(old.copy(title = title, text = text, updated = now))
-                withContext(Dispatchers.Main) { notesTick++; if (!ok) say("The note couldn't be saved.") }
-            }
-        },
-        deleteNote = { id ->
-            scope.launch(Dispatchers.IO) {
-                NotesFiles.store(ctx).delete(id)
-                withContext(Dispatchers.Main) { notesTick++; say("Note deleted.") }
-            }
-        },
     )
 
     /** Turning a people or calendar feature on (from Off) asks for what it needs, if it isn't allowed yet. */
     fun updateSettings(s: RobotSettings) {
         val f = snap.facts
         val turnedOn = ToolName.entries.filter { settings.approval(it) == Approval.OFF && s.approval(it) != Approval.OFF }
+        // Texting turned back on (from Off) needs the contacts as much as the send_text level does.
+        val textingOn = settings.textApp == TextApp.OFF && s.textApp != TextApp.OFF
         update(s)
         if (f != null && turnedOn.any { it.group == ToolGroup.CALENDAR } && !f.calendarGranted) actions.askCalendar()
-        else if (f != null && turnedOn.any { it.group == ToolGroup.PEOPLE } && !f.contactsGranted) actions.askContacts()
+        else if (f != null && (textingOn || turnedOn.any { it.group == ToolGroup.PEOPLE }) && !f.contactsGranted) actions.askContacts()
     }
 
-    BackHandler(enabled = page != null || tab != Tab.HOME) {
+    BackHandler(enabled = page != null || (tab != Tab.HOME && !(tab == Tab.NOTES && fromNotesIcon))) {
         if (page != null) page = null else tab = Tab.HOME
     }
 
     when (val p = page) {
         is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people)
         is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, onBack = { page = null })
-        is Page.NoteEdit -> NoteScreen(p.id?.let { id -> notes.firstOrNull { it.id == id } }, actions, snackbar, onBack = { page = null })
+        // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
+        is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
+            onCreated = { id -> if (page == Page.NoteEdit(null)) page = Page.NoteEdit(id) }, onBack = { page = null; notesTick++ })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
                 NavigationBar {
                     for (t in Tab.entries) {
                         NavigationBarItem(
-                            selected = tab == t, onClick = { tab = t },
+                            selected = tab == t, onClick = { tab = t; fromNotesIcon = false },
                             icon = { Icon(when (t) { Tab.HOME -> RIcons.Home; Tab.NOTES -> RIcons.Note; Tab.HISTORY -> RIcons.History; Tab.MODEL -> RIcons.Chip; Tab.SETTINGS -> RIcons.Settings }, null) },
                             label = { Text(t.title) },
                         )
@@ -376,6 +400,4 @@ class AppActions(
     val askCalendar: () -> Unit,
     val openAppSettings: () -> Unit,
     val openNote: (String?) -> Unit,
-    val saveNote: (Note?, String, String) -> Unit,
-    val deleteNote: (String) -> Unit,
 )
