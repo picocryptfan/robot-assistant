@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -63,7 +62,7 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
     val f = snap.facts
     val ready = f?.active == true && snap.model == ModelStatus.VERIFIED
     Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 20.dp),
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Spacer(Modifier.height(8.dp))
@@ -154,7 +153,7 @@ private fun ConversationRow(c: StoredConversation, onClick: () -> Unit) {
 @Composable
 fun HistoryScreen(list: List<StoredConversation>, a: AppActions, modifier: Modifier) {
     var confirmAll by remember { mutableStateOf(false) }
-    Column(modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 20.dp)) {
+    Column(modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { ScreenTitle("History", "Saved on this phone only.") }
             if (list.isNotEmpty()) TextButton(onClick = { confirmAll = true }) { Text("Delete all") }

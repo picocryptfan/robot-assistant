@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -60,7 +59,7 @@ fun ModelScreen(snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier
     var confirmDelete by remember { mutableStateOf(false) }
     val st = snap.model
     Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 20.dp),
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ScreenTitle("Model", "Gemma 4 E2B runs on the phone's TPU. It never goes online.")
@@ -127,7 +126,7 @@ fun ModelScreen(snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier
 fun SettingsScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActions, modifier: Modifier) {
     var confirmHistory by remember { mutableStateOf(false) }
     Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().padding(horizontal = 20.dp),
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ScreenTitle("Settings")

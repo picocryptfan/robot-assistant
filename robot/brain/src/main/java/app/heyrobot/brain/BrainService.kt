@@ -36,7 +36,7 @@ class BrainService : Service() {
 
     override fun onBind(intent: Intent?): IBinder = messenger.binder
 
-    /** Every client left: free the model's memory (about 2 GB) right away. */
+    /** Every client left: free the model's memory (about 2 GB) right away; onDestroy follows. */
     override fun onUnbind(intent: Intent?): Boolean {
         handler.post { engine.unload("unbound") }
         return false
@@ -74,7 +74,9 @@ class BrainService : Service() {
     }
 
     override fun onDestroy() {
-        try { engine.unload("destroy") } catch (_: Throwable) {}
+        // On the work thread like every other engine call (never two threads in LiteRT at once); quitSafely
+        // runs what is already queued first.
+        handler.post { try { engine.unload("destroy") } catch (_: Throwable) {} }
         work.quitSafely()
         RLog.i("brain_service", "op" to RLog.Code("destroy"))
         super.onDestroy()

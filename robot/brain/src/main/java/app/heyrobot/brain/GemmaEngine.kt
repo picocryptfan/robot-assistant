@@ -75,6 +75,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         var stopReason: DoneReason? = null
         var thoughtSent = false
         var ended = false
+        /** Set from LiteRT's own thread when it called onDone/onError: the native side is finished with the conversation. */
+        @Volatile var nativeEnded = false
     }
 
     // ------------------------------------------------------------------ load
@@ -135,6 +137,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         queued = null
         running?.let { r ->
             try { r.live.conv.cancelProcess() } catch (_: Exception) {}
+            // Never close a conversation LiteRT is still decoding into: wait (bounded) for its callback.
+            var waited = 0
+            while (!r.nativeEnded && waited < 3_000) { Thread.sleep(50); waited += 50 }
             finish(r, DoneReason.CANCELLED)
         }
         convs.values.forEach { closeQuietly(it.conv) }
@@ -281,12 +286,13 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         running = run
         val cb = object : MessageCallback {
             override fun onMessage(message: Message) { handler.post { onChunk(run, message) } }
-            override fun onDone() { handler.post { onEnd(run, null) } }
-            override fun onError(throwable: Throwable) { handler.post { onEnd(run, throwable) } }
+            override fun onDone() { run.nativeEnded = true; handler.post { onEnd(run, null) } }
+            override fun onError(throwable: Throwable) { run.nativeEnded = true; handler.post { onEnd(run, throwable) } }
         }
         try {
             start(cb)
         } catch (ex: Exception) {
+            run.nativeEnded = true
             onEnd(run, ex)
         }
     }
