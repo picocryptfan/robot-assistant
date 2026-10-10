@@ -2,6 +2,7 @@ package app.heyrobot.core
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -79,8 +80,8 @@ class VoiceModelsTest {
         }
     }
 
-    private fun facts(vouched: Int = 0, dl: Boolean = false, done: Boolean = false, inst: Boolean = false, bad: Boolean = false) =
-        VoiceFacts(vouched, dl, done, inst, bad)
+    private fun facts(vouched: Int = 0, dl: Boolean = false, done: Boolean = false, inst: Boolean = false, bad: Boolean = false, failed: Boolean = false) =
+        VoiceFacts(vouched, dl, done, inst, bad, failed)
 
     @Test fun statusFollowsTheFacts() {
         assertEquals(ModelStatus.MISSING, VoiceModelLogic.status(b, facts()))
@@ -92,6 +93,55 @@ class VoiceModelsTest {
         assertEquals(ModelStatus.BAD, VoiceModelLogic.status(b, facts(bad = true)))
         // A new download wins over the old bad mark.
         assertEquals(ModelStatus.DOWNLOADING, VoiceModelLogic.status(b, facts(dl = true, bad = true)))
+    }
+
+    /** 0.1.2 review, minor 4: an install that could not write must not reinstall by itself every second. */
+    @Test fun aFailedInstallWaitsForDownload() {
+        // Still downloaded, but not UNVERIFIED (which the app installs automatically): MISSING shows why and offers Download.
+        assertEquals(ModelStatus.MISSING, VoiceModelLogic.status(b, facts(done = true, failed = true)))
+        assertNotNull(VoiceModelLogic.refuseDownload(b, ModelStatus.UNVERIFIED, b.files, Long.MAX_VALUE / 2))
+        assertNull(VoiceModelLogic.refuseDownload(b, VoiceModelLogic.status(b, facts(done = true, failed = true)), b.files, Long.MAX_VALUE / 2))
+        // A running install or a new download still shows as such; the flag only stops the automatic retry.
+        assertEquals(ModelStatus.VERIFYING, VoiceModelLogic.status(b, facts(done = true, inst = true, failed = true)))
+        assertEquals(ModelStatus.DOWNLOADING, VoiceModelLogic.status(b, facts(dl = true, failed = true)))
+        assertEquals(ModelStatus.VERIFIED, VoiceModelLogic.status(b, facts(vouched = 3, failed = true)))
+    }
+
+    @Test fun downloadedFilesNeedOnlyTheirCopy() {
+        val rem = VoiceBundle.STT.files
+        val all = rem.map { it.name }.toSet()
+        // Everything downloaded already (Download after a failed install): only the largest copy and the headroom.
+        assertEquals(652_184_281L + VoiceModelLogic.HEADROOM, VoiceModelLogic.needBytes(rem, all))
+        assertEquals(VoiceModelLogic.needBytes(rem) - 93_939L, VoiceModelLogic.needBytes(rem, setOf("tokens.txt")))
+        assertNull(VoiceModelLogic.spaceProblem(VoiceBundle.STT, rem, 652_184_281L + VoiceModelLogic.HEADROOM, all))
+        assertNotNull(VoiceModelLogic.spaceProblem(VoiceBundle.STT, rem, 652_184_281L + VoiceModelLogic.HEADROOM - 1, all))
+    }
+
+    @Test fun downloadsUnderWayCountAgainstTheFreeSpace() {
+        val kokoro = VoiceBundle.KOKORO.files
+        fun row(st: Int, soFar: Long) = FileDownload(st, soFar, 0)
+        // Nothing in flight (done, failed, or no row): nothing pending.
+        assertEquals(0L, VoiceModelLogic.pendingBytes(kokoro, emptyMap()))
+        assertEquals(0L, VoiceModelLogic.pendingBytes(kokoro, kokoro.associate { it.name to row(Download.STATUS_SUCCESSFUL, it.bytes) }))
+        assertEquals(0L, VoiceModelLogic.pendingBytes(kokoro, mapOf("model.onnx" to row(Download.STATUS_FAILED, 5))))
+        // The rest of each file in flight, plus the copy of the bundle's largest file when it installs.
+        val model = kokoro.first { it.name == "model.onnx" }
+        val voices = kokoro.first { it.name == "voices.bin" }
+        val rows = mapOf("model.onnx" to row(Download.STATUS_RUNNING, 25_560_556), "voices.bin" to row(Download.STATUS_PAUSED, 0),
+            "tokens.txt" to row(Download.STATUS_SUCCESSFUL, 687))
+        assertEquals((model.bytes - 25_560_556) + voices.bytes + model.bytes, VoiceModelLogic.pendingBytes(kokoro, rows))
+        assertEquals(model.bytes + model.bytes, VoiceModelLogic.pendingBytes(kokoro, mapOf("model.onnx" to row(Download.STATUS_PENDING, -1))))
+        assertFalse(VoiceModelLogic.inFlight(null))
+        // Speech recognition with Gemma (3.1 GB) and Kokoro still downloading: what fits alone no longer fits.
+        val stt = VoiceBundle.STT.files
+        val need = VoiceModelLogic.needBytes(stt)
+        assertNull(VoiceModelLogic.spaceProblem(VoiceBundle.STT, stt, need, pendingBytes = 0))
+        val why = VoiceModelLogic.spaceProblem(VoiceBundle.STT, stt, need, pendingBytes = 3_000_000_000L)!!
+        assertTrue(why, why.endsWith("needs 1.62 GB while it downloads and installs, and only 0 MB will be left once the downloads already under way finish."))
+        val tight = VoiceModelLogic.spaceProblem(VoiceBundle.STT, stt, need + 1_000_000_000L, pendingBytes = 1_000_000_001L)!!
+        assertTrue(tight, tight.endsWith("and only 1.62 GB will be left once the downloads already under way finish."))
+        assertNull(VoiceModelLogic.spaceProblem(VoiceBundle.STT, stt, need + 3_000_000_000L, pendingBytes = 3_000_000_000L))
+        assertNotNull(VoiceModelLogic.refuseDownload(VoiceBundle.STT, ModelStatus.MISSING, stt, need, pendingBytes = 1))
     }
 
     @Test fun freeSpaceCoversTheDownloadAndItsInstalledCopy() {

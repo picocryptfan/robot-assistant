@@ -33,6 +33,16 @@ class ModelLogicTest {
         assertNull(ModelLogic.refuseDownload(ModelStatus.MISSING, -1, 0))
     }
 
+    /** 0.1.2 review, minor 4: voice models still downloading take space Gemma's check must not count as free. */
+    @Test fun voiceDownloadsUnderWayCountAgainstGemmasSpace() {
+        val need = ModelSpec.BYTES + ModelSpec.HEADROOM
+        assertNull(ModelLogic.refuseDownload(ModelStatus.MISSING, need, 0, pendingBytes = 0))
+        val why = ModelLogic.refuseDownload(ModelStatus.MISSING, need, 0, pendingBytes = 1_000_000_000L)!!
+        assertTrue(why, why.endsWith("needs 4.11 GB (the file plus 1 GB to spare) and only 3.11 GB will be left once the voice models still downloading finish."))
+        assertNull(ModelLogic.refuseDownload(ModelStatus.MISSING, need + 1_000_000_000L, 0, pendingBytes = 1_000_000_000L))
+        assertTrue(ModelLogic.refuseImport(ModelStatus.MISSING, ModelSpec.BYTES, need, 0, pendingBytes = 1) != null)
+    }
+
     @Test fun downloadIsRefusedWhileBusyOrPresent() {
         for (s in listOf(ModelStatus.DOWNLOADING, ModelStatus.IMPORTING, ModelStatus.VERIFYING, ModelStatus.VERIFIED, ModelStatus.UNVERIFIED)) {
             assertTrue(s.name, ModelLogic.refuseDownload(s, Long.MAX_VALUE / 2, 0) != null)

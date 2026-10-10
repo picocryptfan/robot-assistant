@@ -111,6 +111,11 @@ data class VoiceFacts(
     val installing: Boolean,
     /** The last install found a file whose SHA-256 was wrong. */
     val bad: Boolean,
+    /**
+     * The last install could not write the files (an I/O error, a full disk): the downloads are still complete, but
+     * nothing installs again by itself (it would rewrite hundreds of MB every second) until the person taps Download.
+     */
+    val installFailed: Boolean = false,
 )
 
 /** One DownloadManager row of a bundle's download ([Download] status and reason codes). */
@@ -124,31 +129,57 @@ object VoiceModelLogic {
         f.installing -> ModelStatus.VERIFYING
         f.vouched >= b.files.size -> ModelStatus.VERIFIED
         f.downloading -> ModelStatus.DOWNLOADING
-        f.downloaded -> ModelStatus.UNVERIFIED
+        // UNVERIFIED installs by itself (the app checks every second): never after an install that failed to write.
+        f.downloaded && !f.installFailed -> ModelStatus.UNVERIFIED
         f.bad -> ModelStatus.BAD
         else -> ModelStatus.MISSING
     }
 
     /**
-     * Space for downloading [remaining]: DownloadManager keeps every file in Robot's download folder, then each
+     * Space for installing [remaining]: DownloadManager keeps every file in Robot's download folder, then each
      * is copied into app-private storage and its download deleted, so the peak is all of them plus the largest twice.
+     * Files named in [staged] are downloaded already (their space is taken): only their copy still counts.
      */
-    fun needBytes(remaining: List<VoiceFile>): Long = remaining.sumOf { it.bytes } + (remaining.maxOfOrNull { it.bytes } ?: 0) + HEADROOM
+    fun needBytes(remaining: List<VoiceFile>, staged: Set<String> = emptySet()): Long =
+        remaining.filter { it.name !in staged }.sumOf { it.bytes } + (remaining.maxOfOrNull { it.bytes } ?: 0) + HEADROOM
 
-    /** Null when [remaining] fits, else why not in plain words. [freeBytes] < 0 = unknown (allowed). */
-    fun spaceProblem(b: VoiceBundle, remaining: List<VoiceFile>, freeBytes: Long): String? {
-        if (freeBytes < 0) return null
-        val need = needBytes(remaining)
-        if (freeBytes >= need) return null
-        return "Not enough free space: “${b.title}” needs ${size(need)} while it downloads and installs, and ${size(freeBytes)} is free."
+    /** A DownloadManager row that will still write: pending, running or paused. */
+    fun inFlight(r: FileDownload?): Boolean =
+        r != null && (r.status == Download.STATUS_PENDING || r.status == Download.STATUS_RUNNING || r.status == Download.STATUS_PAUSED)
+
+    /**
+     * What a bundle's downloads under way will still take from the free space: the rest of each file in flight
+     * ([rows] by file name), then the copy of its largest file when it installs. 0 when nothing is in flight.
+     */
+    fun pendingBytes(remaining: List<VoiceFile>, rows: Map<String, FileDownload>): Long {
+        val flying = remaining.filter { inFlight(rows[it.name]) }
+        if (flying.isEmpty()) return 0
+        return flying.sumOf { (it.bytes - rows.getValue(it.name).soFar.coerceAtLeast(0)).coerceAtLeast(0) } + remaining.maxOf { it.bytes }
     }
 
-    fun refuseDownload(b: VoiceBundle, status: ModelStatus, remaining: List<VoiceFile>, freeBytes: Long): String? = when (status) {
+    /**
+     * Null when [remaining] fits, else why not in plain words. [freeBytes] < 0 = unknown (allowed). [pendingBytes]:
+     * what other downloads under way (Gemma, other voice models) will still take, since DownloadManager does not
+     * reserve their space up front.
+     */
+    fun spaceProblem(b: VoiceBundle, remaining: List<VoiceFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0): String? {
+        if (freeBytes < 0) return null
+        val need = needBytes(remaining, staged)
+        val pending = pendingBytes.coerceAtLeast(0)
+        if (freeBytes - pending >= need) return null
+        val left = if (pending > 0) "only ${size((freeBytes - pending).coerceAtLeast(0))} will be left once the downloads already under way finish"
+        else "${size(freeBytes)} is free"
+        return "Not enough free space: “${b.title}” needs ${size(need)} while it downloads and installs, and $left."
+    }
+
+    fun refuseDownload(
+        b: VoiceBundle, status: ModelStatus, remaining: List<VoiceFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0,
+    ): String? = when (status) {
         ModelStatus.DOWNLOADING -> "The download is already running."
         ModelStatus.VERIFYING, ModelStatus.UNVERIFIED -> "The files are being checked and installed."
         ModelStatus.VERIFIED -> "Already on this phone."
         ModelStatus.IMPORTING -> "An import is running."
-        ModelStatus.MISSING, ModelStatus.BAD -> spaceProblem(b, remaining, freeBytes)
+        ModelStatus.MISSING, ModelStatus.BAD -> spaceProblem(b, remaining, freeBytes, staged, pendingBytes)
     }
 
     fun headline(status: ModelStatus): String = when (status) {

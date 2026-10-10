@@ -83,31 +83,38 @@ object ModelLogic {
         else -> ModelStatus.UNVERIFIED
     }
 
-    /** Null when [needBytes] (default: the model plus headroom) fits; else why not, in plain words. [freeBytes] < 0 = unknown (allowed). */
-    fun spaceProblem(freeBytes: Long, reclaimableBytes: Long, needBytes: Long = ModelSpec.BYTES + ModelSpec.HEADROOM): String? {
+    /**
+     * Null when [needBytes] (default: the model plus headroom) fits; else why not, in plain words. [freeBytes] < 0 =
+     * unknown (allowed). [pendingBytes]: what the voice-model downloads under way will still take (DownloadManager
+     * does not reserve their space).
+     */
+    fun spaceProblem(freeBytes: Long, reclaimableBytes: Long, needBytes: Long = ModelSpec.BYTES + ModelSpec.HEADROOM, pendingBytes: Long = 0): String? {
         if (freeBytes < 0) return null
+        val pending = pendingBytes.coerceAtLeast(0)
         val free = freeBytes + reclaimableBytes
-        if (free >= needBytes) return null
-        return String.format(Locale.US, "Not enough free space: Gemma needs %s (the file plus 1 GB to spare) and %s is free.", gb(needBytes), gb(free))
+        if (free - pending >= needBytes) return null
+        val left = if (pending > 0) "only ${gb((free - pending).coerceAtLeast(0))} will be left once the voice models still downloading finish"
+        else "${gb(free)} is free"
+        return "Not enough free space: Gemma needs ${gb(needBytes)} (the file plus 1 GB to spare) and $left."
     }
 
     /** Null when a download may start, else why not. */
-    fun refuseDownload(status: ModelStatus, freeBytes: Long, existingBytes: Long): String? = when (status) {
+    fun refuseDownload(status: ModelStatus, freeBytes: Long, existingBytes: Long, pendingBytes: Long = 0): String? = when (status) {
         ModelStatus.DOWNLOADING -> "The download is already running."
         ModelStatus.IMPORTING -> "An import is running."
         ModelStatus.VERIFYING -> "The model is being checked."
         ModelStatus.VERIFIED, ModelStatus.UNVERIFIED -> "The model is already on this phone."
-        ModelStatus.MISSING, ModelStatus.BAD -> spaceProblem(freeBytes, existingBytes)
+        ModelStatus.MISSING, ModelStatus.BAD -> spaceProblem(freeBytes, existingBytes, pendingBytes = pendingBytes)
     }
 
     /** Null when an import of [docBytes] (-1 = the picker didn't say) may start, else why not. */
-    fun refuseImport(status: ModelStatus, docBytes: Long, freeBytes: Long, reclaimableBytes: Long): String? = when {
+    fun refuseImport(status: ModelStatus, docBytes: Long, freeBytes: Long, reclaimableBytes: Long, pendingBytes: Long = 0): String? = when {
         status == ModelStatus.IMPORTING -> "An import is already running."
         status == ModelStatus.VERIFYING -> "The model is being checked."
         status == ModelStatus.VERIFIED -> "The model is already on this phone and checked."
         docBytes >= 0 && docBytes != ModelSpec.BYTES -> String.format(Locale.US,
             "That file isn't the model: it has %,d bytes and %s has %,d.", docBytes, ModelSpec.FILE, ModelSpec.BYTES)
-        else -> spaceProblem(freeBytes, reclaimableBytes)
+        else -> spaceProblem(freeBytes, reclaimableBytes, pendingBytes = pendingBytes)
     }
 
     /** One line for the model card. */

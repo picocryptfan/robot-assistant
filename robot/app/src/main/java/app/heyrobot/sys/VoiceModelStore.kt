@@ -90,7 +90,20 @@ object VoiceModelStore {
         } catch (_: Exception) { emptyMap() }
     }
 
-    private fun running(r: FileDownload?) = r != null && (r.status == DownloadManager.STATUS_PENDING || r.status == DownloadManager.STATUS_RUNNING || r.status == DownloadManager.STATUS_PAUSED)
+    private fun running(r: FileDownload?) = VoiceModelLogic.inFlight(r)
+
+    /** What [b]'s downloads under way will still take from the free space (0 when none runs). */
+    private fun bundlePendingBytes(ctx: Context, b: VoiceBundle): Long {
+        val ids = ids(ctx, b)
+        if (ids.isEmpty()) return 0
+        val rows = query(ctx, ids.values)
+        val byName = ids.mapNotNull { (name, id) -> rows[id]?.let { name to it } }.toMap()
+        return VoiceModelLogic.pendingBytes(remaining(ctx, b), byName)
+    }
+
+    /** What the voice-model downloads under way, other than [except]'s, will still take (for every space check). */
+    fun pendingBytes(ctx: Context, except: VoiceBundle? = null): Long =
+        VoiceBundle.entries.filter { it != except }.sumOf { try { bundlePendingBytes(ctx, it) } catch (_: Exception) { 0L } }
 
     // ------------------------------------------------------------------ status
 
@@ -117,6 +130,7 @@ object VoiceModelStore {
             downloaded = rem.isNotEmpty() && !downloading && rem.all { stagedComplete(ctx, b, it) },
             installing = installing == b,
             bad = prefs(ctx).contains("bad_${b.id}"),
+            installFailed = prefs(ctx).contains("installfail_${b.id}"),
         )
         val status = VoiceModelLogic.status(b, facts)
         var percent = -1
@@ -142,10 +156,15 @@ object VoiceModelStore {
     /** Null when the download started (or goes on), else why not in plain words. */
     fun startDownload(ctx: Context, b: VoiceBundle): String? {
         val rem = remaining(ctx, b)
-        VoiceModelLogic.refuseDownload(b, snapshot(ctx, b).status, rem, freeBytes(ctx))?.let { return it }
+        // Files already downloaded (an install that failed to write) are not fetched again; other downloads under way
+        // (Gemma, the other voice models) will still need their space.
+        val staged = rem.filter { stagedComplete(ctx, b, it) }.map { it.name }.toSet()
+        val pending = pendingBytes(ctx, except = b) + ModelStore.pendingBytes(ctx)
+        VoiceModelLogic.refuseDownload(b, snapshot(ctx, b).status, rem, freeBytes(ctx), staged, pending)?.let { return it }
         val dir = staging(ctx, b) ?: return "The phone's storage isn't available right now."
         dir.mkdirs()
-        prefs(ctx).edit().remove("bad_${b.id}").remove("fail_${b.id}").apply()
+        // Download again: a failed install may run again (once).
+        prefs(ctx).edit().remove("bad_${b.id}").remove("fail_${b.id}").remove("installfail_${b.id}").apply()
         val dm = ctx.getSystemService(DownloadManager::class.java)
         val ids = ids(ctx, b).toMutableMap()
         val rows = query(ctx, ids.values)
@@ -212,7 +231,9 @@ object VoiceModelStore {
                 } catch (_: Exception) { InstallResult.IO_ERROR }
                 if (r != InstallResult.OK) {
                     if (r == InstallResult.IO_ERROR) {
-                        prefs(ctx).edit().putString("fail_${b.id}", "Robot couldn't copy the files into its storage. Tap Download to try again.").apply()
+                        // No automatic retry (the app would copy hundreds of MB every second): the person taps Download.
+                        prefs(ctx).edit().putString("fail_${b.id}", "Robot couldn't copy the files into its storage (is the phone full?). " +
+                            "Free some space, then tap Download to try again.").putBoolean("installfail_${b.id}", true).apply()
                     } else {
                         // The download is damaged: delete it so the next attempt fetches it again.
                         prefs(ctx).edit().putString("bad_${b.id}", f.name).apply()
@@ -233,14 +254,14 @@ object VoiceModelStore {
                 done += f.bytes
             }
             staging(ctx, b)?.deleteRecursively()
-            prefs(ctx).edit().remove("bad_${b.id}").remove("fail_${b.id}").apply()
+            prefs(ctx).edit().remove("bad_${b.id}").remove("fail_${b.id}").remove("installfail_${b.id}").apply()
             val ok = verified(ctx, b)
             RLog.i("voice_install", "bundle" to RLog.Code(b.id), "ok" to ok)
             if (ok) Cmd.send(ctx, Cmd.VOICE_MODELS)
             return ok
         } catch (t: Throwable) {
             RLog.w("voice_install", t, "bundle" to RLog.Code(b.id))
-            prefs(ctx).edit().putString("fail_${b.id}", "Installing failed. Tap Download to try again.").apply()
+            prefs(ctx).edit().putString("fail_${b.id}", "Installing failed. Tap Download to try again.").putBoolean("installfail_${b.id}", true).apply()
             return false
         } finally {
             installing = null
@@ -249,7 +270,7 @@ object VoiceModelStore {
 
     fun delete(ctx: Context, b: VoiceBundle) {
         cancelDownload(ctx, b)
-        prefs(ctx).edit().remove("bad_${b.id}").remove("fail_${b.id}").apply()
+        prefs(ctx).edit().remove("bad_${b.id}").remove("fail_${b.id}").remove("installfail_${b.id}").apply()
         dir(ctx, b).deleteRecursively()
         RLog.i("voice_delete", "bundle" to RLog.Code(b.id))
         Cmd.send(ctx, Cmd.VOICE_MODELS)

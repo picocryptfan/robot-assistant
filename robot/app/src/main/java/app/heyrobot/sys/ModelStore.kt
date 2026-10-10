@@ -66,7 +66,8 @@ object ModelStore {
     /** Null when the download started, else why not (plain words). */
     fun startDownload(ctx: Context): String? {
         val existing = listOf(file(ctx), part(ctx)).filter { it.isFile }.sumOf { it.length() }
-        ModelLogic.refuseDownload(status(ctx), freeBytes(ctx), existing)?.let { return it }
+        // Voice-model downloads under way still need their space (DownloadManager reserves none).
+        ModelLogic.refuseDownload(status(ctx), freeBytes(ctx), existing, VoiceModelStore.pendingBytes(ctx))?.let { return it }
         file(ctx).delete()
         part(ctx).delete()
         verifiedMark(ctx).delete()
@@ -85,6 +86,14 @@ object ModelStore {
             RLog.w("model_download", t)
             "The download couldn't start."
         }
+    }
+
+    /** What Gemma's download under way will still write (0 when none runs), for the voice models' space check. */
+    fun pendingBytes(ctx: Context): Long {
+        val id = prefs(ctx).getLong("download_id", -1).takeIf { it >= 0 } ?: return 0
+        val q = query(ctx, id) ?: return 0
+        val flying = q.status == DownloadManager.STATUS_PENDING || q.status == DownloadManager.STATUS_RUNNING || q.status == DownloadManager.STATUS_PAUSED
+        return if (flying) (ModelSpec.BYTES - q.soFar.coerceAtLeast(0)).coerceAtLeast(0) else 0
     }
 
     /** The running (pending, running or paused) download's id, or null. */
@@ -141,7 +150,7 @@ object ModelStore {
     /** Null when an import may start, else why not. */
     fun refuseImport(ctx: Context, uri: Uri): String? {
         val reclaim = listOf(file(ctx), part(ctx)).filter { it.isFile }.sumOf { it.length() }
-        return ModelLogic.refuseImport(status(ctx), docSize(ctx, uri), freeBytes(ctx), reclaim)
+        return ModelLogic.refuseImport(status(ctx), docSize(ctx, uri), freeBytes(ctx), reclaim, VoiceModelStore.pendingBytes(ctx))
     }
 
     /**
