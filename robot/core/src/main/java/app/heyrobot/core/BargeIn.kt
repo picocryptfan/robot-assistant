@@ -177,9 +177,13 @@ object BargeTestLogic {
         BargeRun.TRICKY -> "Robot is reading words like “stop”. Stay quiet until she's done."
     }
 
-    /** The settings a test runs with (and ran with): "Hear me while Robot talks", how her voice plays, and which voice. */
-    fun setup(mode: BargeIn, playback: Playback, phoneVoice: Boolean): String =
-        "Hear me while Robot talks: ${mode.title} · Robot's voice plays as ${playback.title}" + if (phoneVoice) " · the phone's voice" else ""
+    /**
+     * The settings a test runs with (and ran with): "Hear me while Robot talks", how her voice plays, and whether the
+     * phone's voice speaks ([missing]: the voice model chosen isn't installed, so the phone's voice stands in).
+     */
+    fun setup(mode: BargeIn, playback: Playback, phoneVoice: Boolean, missing: String? = null): String =
+        "Hear me while Robot talks: ${mode.title} · Robot's voice plays as ${playback.title}" +
+            (if (phoneVoice) " · the phone's voice" + (missing?.let { " ($it isn't installed)" } ?: "") else "")
 
     /**
      * The result in words. [name]: a wake phrase's text by id, for display only (the result keeps ids); null shows
@@ -216,7 +220,7 @@ object BargeTestLogic {
                         BargeHitKind.EARLY -> " (before she spoke)"
                         else -> ""
                     }
-                }
+                } + if (r.hits.size >= BargeTestResult.MAX_HITS) " · …" else ""
                 if (r.suppressed > 0 && !r.tricky) out += "${r.suppressed} set aside as possibly Robot's own voice."
             }
         }

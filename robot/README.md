@@ -346,8 +346,8 @@ often as you like, a few seconds apart (wakes closer than 2 s count once), and l
 what you said. **Tricky words** is a silent run of a paragraph full of words like "stop" ("step", "steep", "stoop",
 "stamp", "stomp", "stump", "stupid", "strip", "bus stop", "nonstop"): it lists every "stop" her own words fired, set
 aside by EchoGuard or not; any that got through would stop her in real use. The screen shows the "Hear me while Robot
-talks" mode and playback the test will use, and the result the ones it ran with (and whether the phone's voice
-spoke).
+talks" mode and playback the test will use (and the phone's voice when the chosen voice model isn't installed), and
+the result the ones it ran with (and whether the phone's voice spoke).
 
 **Volume key**: while Robot speaks and the panel is on screen, volume down (or either key, or off: Settings › Voice)
 stops her and doesn't change the volume. The panel's window handles it (its dialog's key listener, and the

@@ -62,9 +62,11 @@ import app.heyrobot.core.BargeTestResult
 import app.heyrobot.core.BenchState
 import app.heyrobot.core.KwsSpeller
 import app.heyrobot.core.KwsThresholds
+import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.Playback
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.StopKey
+import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceChoice
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLogCodec
@@ -122,8 +124,17 @@ fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettin
         "Tricky words: stay quiet while she reads words like “stop” (step, steep, stamp, bus stop); it shows how often her own words fire, and " +
         "how many of those are set aside. Try each mode above.",
         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    // What the test will run with; the result says what it ran with.
-    Text(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM), style = MaterialTheme.typography.bodyMedium)
+    // What the test will run with (the phone's voice stands in while the chosen model isn't installed); the result says
+    // what it ran with.
+    val model = s.voiceChoice.bundle
+    val missing = model != null && snap.voice.firstOrNull { it.bundle == model }?.let { it.status != ModelStatus.VERIFIED } == true
+    val modelName = when (model) {
+        VoiceBundle.KOKORO -> "Kokoro"
+        VoiceBundle.KITTEN -> "Kitten"
+        else -> null
+    }
+    Text(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM || missing, if (missing) modelName else null),
+        style = MaterialTheme.typography.bodyMedium)
     val r = snap.bargeTest
     val running = r?.state == BenchState.RUNNING && System.currentTimeMillis() - r.started < BargeTestLogic.TIMEOUT_MS + 10_000
     // Four buttons don't fit side by side on a phone: they wrap.

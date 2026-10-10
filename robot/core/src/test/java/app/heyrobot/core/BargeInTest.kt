@@ -81,6 +81,9 @@ class BargeInTest {
         var many = wake.copy(hits = emptyList())
         repeat(BargeTestResult.MAX_HITS + 5) { many = many.plus(BargeHit(0, it * 100L, BargeHitKind.LATE)) }
         assertEquals(BargeTestResult.MAX_HITS, many.hits.size)
+        // The list says when it was cut short.
+        assertTrue(BargeTestLogic.lines(many)[1].endsWith(" · …"))
+        assertFalse(BargeTestLogic.lines(wake)[1].endsWith("…"))
         val damaged = wake.toJson().put("hits", org.json.JSONArray().put(org.json.JSONArray().put(0).put(100).put(99)).put("x").put(org.json.JSONArray().put(1).put(200).put(2)))
         assertEquals(listOf(BargeHit(1, 200, BargeHitKind.COUNTED)), BargeTestResult.fromJson(damaged.toString())!!.hits)
     }
@@ -102,6 +105,13 @@ class BargeInTest {
         assertTrue(BargeTestLogic.note(BargeRun.TRICKY).contains("Stay quiet"))
         // The paragraph is about as long as the other one.
         assertTrue(BargeTestLogic.TRICKY_PARAGRAPH.split(Regex("\\s+")).size in 45..70)
+    }
+
+    @Test fun theSetupSaysWhenThePhonesVoiceStandsIn() {
+        assertEquals("Hear me while Robot talks: Echo cancellation · Robot's voice plays as Assistant audio",
+            BargeTestLogic.setup(BargeIn.ECHO_CANCEL, Playback.ASSISTANT, phoneVoice = false))
+        assertEquals("Hear me while Robot talks: Off · Robot's voice plays as Call audio · the phone's voice (Kokoro isn't installed)",
+            BargeTestLogic.setup(BargeIn.OFF, Playback.CALL, phoneVoice = true, missing = "Kokoro"))
     }
 
     @Test fun theCountRunListsWhatRobotHeard() {

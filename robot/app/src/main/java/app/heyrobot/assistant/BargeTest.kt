@@ -86,8 +86,10 @@ object BargeTest {
      * Every one is kept and logged; in the normal run the first one stops Robot.
      */
     fun onKeyword(phrase: Int, safe: Boolean) {
-        val cur = r ?: return
         if (!active) return
+        // First, so what it notes (the phone's voice taking over) is in the copy made below.
+        noteCapture()
+        val cur = r ?: return
         val stop = phrase == 0
         val now = SystemClock.elapsedRealtime()
         val kind = when {
@@ -100,7 +102,6 @@ object BargeTest {
         }
         val at = if (speakStartE == 0L) -1L else now - speakStartE
         VoiceLog.add(VoiceEvent.BARGE_HIT, phrase, at.toInt(), kind.id)
-        noteCapture()
         val next = cur.plus(BargeHit(phrase, at, kind))
         r = when (kind) {
             BargeHitKind.EARLY, BargeHitKind.LATE -> next
