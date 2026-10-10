@@ -69,10 +69,12 @@ object ToolRouter {
 
     /**
      * The tools described for [groups], in a fixed order. Tools turned Off in settings are never described, nor
-     * send_text when the texting app is Off.
+     * send_text when the texting app is Off. ask_claude only with [askClaude] (Ask Claude on, escalation not Off:
+     * ClaudeSettings.localTool).
      */
-    fun tools(groups: Set<ToolGroup>, settings: RobotSettings): List<ToolName> = ToolName.entries.filter { t ->
-        t.group in groups && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF)
+    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
+        t.group in groups && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
+            (t != ToolName.ASK_CLAUDE || askClaude)
     }
 
     /** "core.people" for the logs (a fixed identifier, never the question). */

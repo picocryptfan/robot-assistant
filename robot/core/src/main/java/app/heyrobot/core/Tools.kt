@@ -14,8 +14,9 @@ import kotlin.math.roundToLong
 /**
  * [group]: which tool group describes it (ToolRouter). [reads]: it brings content Robot didn't write into the
  * conversation (a note, a calendar invite, a contact): every later action in that conversation asks first.
+ * [internal]: Robot's own, not an action on the phone with an approval level (not under Settings › Actions).
  */
-enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false) {
+enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false, val internal: Boolean = false) {
     SET_TIMER("set_timer", "Timers", ToolGroup.CORE),
     SET_ALARM("set_alarm", "Alarms", ToolGroup.CORE),
     OPEN_APP("open_app", "Open apps", ToolGroup.CORE),
@@ -28,7 +29,13 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
     ADD_NOTE("add_note", "New notes", ToolGroup.NOTES),
     FIND_NOTES("find_notes", "Note searches", ToolGroup.NOTES, reads = true),
     ADD_EVENT("add_event", "New events", ToolGroup.CALENDAR),
-    READ_CALENDAR("read_calendar", "Calendar lookups", ToolGroup.CALENDAR, reads = true);
+    READ_CALENDAR("read_calendar", "Calendar lookups", ToolGroup.CALENDAR, reads = true),
+    /**
+     * Ask Claude (docs/ask-claude.md "When Robot needs help"): described to Gemma only with Ask Claude on and escalation
+     * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
+     * the Claude app it is the hand-off, always behind a card.
+     */
+    ASK_CLAUDE("ask_claude", "Ask Claude", ToolGroup.CORE, internal = true);
 
     companion object {
         fun of(id: String?): ToolName? = entries.firstOrNull { it.id == id?.trim()?.lowercase(Locale.ROOT) }
@@ -108,6 +115,9 @@ object ToolSpecs {
         )),
         ToolSpec(ToolName.READ_CALENDAR, "List calendar events for a day or a week.", listOf(
             ToolParam("day", "string", "e.g. today, Friday, next week", true),
+        )),
+        ToolSpec(ToolName.ASK_CLAUDE, "Ask Claude, a stronger AI online, instead of guessing.", listOf(
+            ToolParam("question", "string", "The person's question", true),
         )),
     )
 
@@ -210,6 +220,22 @@ sealed class Action {
             return if (p.calendarName != null) "Add **$title** on $span to *${p.calendarName}*" else "Add **$title** on $span in your calendar app"
         }
         override val confirmLabel get() = plan?.let { if (it.calendarId == null) "Open the calendar app" else "Add to ${it.calendarName}" }
+    }
+
+    /**
+     * The Claude app route: open the Claude app with [text] (the owner's question, or a short summary of the
+     * conversation; empty: the app opens without text). The owner presses Send there; Robot steps aside.
+     */
+    data class AskClaude(val text: String) : Action() {
+        override val tool get() = ToolName.ASK_CLAUDE
+        override fun describe() = if (text.isBlank()) "Open Claude" else "Open Claude with: «${short(text)}»"
+        override fun body() = text.takeIf { it.length > SHORT }
+        override val confirmLabel get() = "Open Claude"
+
+        private companion object {
+            const val SHORT = 120
+            fun short(t: String) = t.replace(Regex("\\s+"), " ").trim().let { if (it.length <= SHORT) it else ToolCalls.safeTake(it, SHORT - 1).trimEnd() + "…" }
+        }
     }
 
     /** [day] in the person's words until the app reads it into a [range]. */
@@ -370,6 +396,8 @@ object ToolCalls {
                 if (m != null && (m % 1.0 != 0.0 || m < 1 || m > MAX_EVENT_MINUTES)) return bad("duration_minutes must be a whole number from 1 to $MAX_EVENT_MINUTES")
                 ParsedCall.Ok(Action.AddEvent(title, whenText, m?.toInt()))
             }
+            ToolName.ASK_CLAUDE -> longArg(a, ClaudeAppLink.MAX_CHARS, "question", "query", "q", "text", "prompt")?.let { ParsedCall.Ok(Action.AskClaude(it)) }
+                ?: bad("question is required")
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
                 val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }

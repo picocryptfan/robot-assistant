@@ -78,7 +78,29 @@ data class RobotSettings(
     val eventCalendar: Long = CalendarPick.AUTO,
     /** Length of a new event when no end or duration was said. */
     val eventMinutes: Int = 60,
+    // Ask Claude (docs/ask-claude.md). Null where the default depends on whether an API key is saved (ClaudeSettings).
+    /** Ask Claude on or off; null: Off until a key is saved. */
+    val claudeEnabled: Boolean? = null,
+    /** The Claude app or the API; null: the app without a key, the API with one. */
+    val claudeRoute: ClaudeRoute? = null,
+    /** A [ClaudeModel] id. */
+    val claudeModel: String = ClaudeModel.DEFAULT.id,
+    val claudeEffort: ClaudeEffortSetting = ClaudeEffortSetting.AUTO,
+    /** "Let Claude search the web". */
+    val claudeSearch: Boolean = true,
+    /** "Allow on lock screen": off, because a locked phone can't show who is asking. */
+    val claudeLocked: Boolean = false,
+    /** Claude's Kokoro voice ([ClaudeVoices]). */
+    val claudeVoice: String = ClaudeVoices.DEFAULT,
+    /** "Show cost" under each Claude reply. */
+    val claudeShowCost: Boolean = true,
+    /** "When Robot needs help"; null: Automatic once a key is saved, Ask me first before. */
+    val claudeHelp: Escalation? = null,
+    /** Daily budget for Claude in cents (default $1.00); once reached, Automatic asks first for the rest of the day. */
+    val claudeBudgetCents: Int = 100,
 ) {
+    val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
+
     fun approval(t: ToolName): Approval = approvals[t] ?: DEFAULT_APPROVALS.getValue(t)
 
     fun textAppFor(cheogramInstalled: Boolean): TextApp = textApp ?: if (cheogramInstalled) TextApp.CHEOGRAM else TextApp.SMS
@@ -103,6 +125,16 @@ data class RobotSettings(
         emailApp?.let { put("emailApp", it.name) }
         put("eventCalendar", eventCalendar)
         put("eventMinutes", eventMinutes)
+        claudeEnabled?.let { put("claudeEnabled", it) }
+        claudeRoute?.let { put("claudeRoute", it.name) }
+        put("claudeModel", claudeModel)
+        put("claudeEffort", claudeEffort.name)
+        put("claudeSearch", claudeSearch)
+        put("claudeLocked", claudeLocked)
+        put("claudeVoice", claudeVoice)
+        put("claudeShowCost", claudeShowCost)
+        claudeHelp?.let { put("claudeHelp", it.name) }
+        put("claudeBudgetCents", claudeBudgetCents)
     }
 
     companion object {
@@ -128,9 +160,14 @@ data class RobotSettings(
             ToolName.FIND_NOTES to Approval.AUTO,
             ToolName.ADD_EVENT to Approval.ASK,
             ToolName.READ_CALENDAR to Approval.AUTO,
+            // Not a level the owner sets: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
+            ToolName.ASK_CLAUDE to Approval.ASK,
         )
 
         val EVENT_MINUTES = listOf(15, 30, 45, 60, 90, 120)
+
+        /** Daily Claude budgets offered in Settings, in cents. */
+        val CLAUDE_BUDGETS = listOf(25, 50, 100, 200, 500)
 
         fun clampRate(v: Float): Float = if (v.isNaN()) 1.0f else v.coerceIn(0.5f, 2.0f)
         fun clampKeep(v: Int): Int = if (v == KEEP_ALWAYS) v else v.coerceIn(0, 120)
@@ -149,13 +186,23 @@ data class RobotSettings(
                 livePartials = o.optBoolean("livePartials", d.livePartials),
                 keepModelMinutes = clampKeep(o.optInt("keepModelMinutes", d.keepModelMinutes)),
                 saveHistory = o.optBoolean("saveHistory", d.saveHistory),
-                approvals = ToolName.entries.associateWith { t -> enumOr(ap?.optString(t.id), DEFAULT_APPROVALS.getValue(t)) },
+                approvals = ToolName.entries.associateWith { t -> if (t.internal) DEFAULT_APPROVALS.getValue(t) else enumOr(ap?.optString(t.id), DEFAULT_APPROVALS.getValue(t)) },
                 textApp = enumValues<TextApp>().firstOrNull { it.name == o.optString("textApp") },
                 smsGateway = PhoneNumbers.gateway(o.optString("smsGateway", d.smsGateway)),
                 phoneRegion = PhoneNumbers.region(o.optString("phoneRegion", d.phoneRegion)),
                 emailApp = enumValues<EmailApp>().firstOrNull { it.name == o.optString("emailApp") },
                 eventCalendar = o.optLong("eventCalendar", d.eventCalendar),
                 eventMinutes = clampEventMinutes(o.optInt("eventMinutes", d.eventMinutes)),
+                claudeEnabled = if (o.has("claudeEnabled")) o.optBoolean("claudeEnabled") else null,
+                claudeRoute = enumValues<ClaudeRoute>().firstOrNull { it.name == o.optString("claudeRoute") },
+                claudeModel = ClaudeModel.of(o.optString("claudeModel", d.claudeModel)).id,
+                claudeEffort = enumOr(o.optString("claudeEffort"), d.claudeEffort),
+                claudeSearch = o.optBoolean("claudeSearch", d.claudeSearch),
+                claudeLocked = o.optBoolean("claudeLocked", d.claudeLocked),
+                claudeVoice = ClaudeVoices.of(o.optString("claudeVoice", d.claudeVoice)),
+                claudeShowCost = o.optBoolean("claudeShowCost", d.claudeShowCost),
+                claudeHelp = enumValues<Escalation>().firstOrNull { it.name == o.optString("claudeHelp") },
+                claudeBudgetCents = o.optInt("claudeBudgetCents", d.claudeBudgetCents).coerceIn(0, 100_000),
             )
         }
     }

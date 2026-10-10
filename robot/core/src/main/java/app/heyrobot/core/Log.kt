@@ -35,13 +35,23 @@ object RLog {
         }
     }
 
+    /**
+     * Every line also goes here when set: the tests that grep what Robot logs (an API key must never appear) hook in
+     * through it. Null in the app.
+     */
+    @Volatile var sink: ((String) -> Unit)? = null
+
     fun i(event: String, vararg fields: Pair<String, Any?>) {
-        try { Log.i(TAG, format(event, fields)) } catch (_: Throwable) {}
+        val line = format(event, fields)
+        sink?.invoke(line)
+        try { Log.i(TAG, line) } catch (_: Throwable) {}
     }
 
     /** A failure: the exception's class name only (messages can hold paths or text). */
     fun w(event: String, t: Throwable? = null, vararg fields: Pair<String, Any?>) {
         val all = if (t == null) fields else arrayOf(*fields, "error" to Code(t.javaClass.simpleName))
-        try { Log.w(TAG, format(event, all)) } catch (_: Throwable) {}
+        val line = format(event, all)
+        sink?.invoke(line)
+        try { Log.w(TAG, line) } catch (_: Throwable) {}
     }
 }

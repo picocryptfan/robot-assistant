@@ -28,11 +28,14 @@ object ApprovalGate {
      * the model wrote). The read tools ([ToolName.reads]: lookup_contact, find_notes, read_calendar) are exempt: they
      * only bring more to read, nothing leaves the phone or changes; anything that writes or leaves still asks.
      */
-    fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, mustAsk: Boolean = false): GateDecision {
+    fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, mustAsk: Boolean = false, remote: Boolean = false): GateDecision {
         val level = settings.approval(tool)
         return when {
             level == Approval.OFF -> GateDecision.DISABLED
             locked && tool !in ALLOWED_WHEN_LOCKED -> GateDecision.NEEDS_UNLOCK
+            // [remote]: Claude asked for it (its input may come from web pages): a card, always, read tools included.
+            // The Claude app hand-off always shows "Open Claude with: «…»" first.
+            remote || tool == ToolName.ASK_CLAUDE -> GateDecision.CONFIRM
             level == Approval.AUTO && (!mustAsk || tool.reads) -> GateDecision.RUN
             else -> GateDecision.CONFIRM
         }

@@ -442,4 +442,118 @@ class TurnTest {
         assertTrue(TurnRules.untrusted(listOf(Attachment.NONE, Attachment.PHOTO)))
         assertNull(Confirmations().answer("nothing", true).takeIf { it })
     }
+
+    // ------------------------------------------------------------------ Ask Claude
+
+    private fun claudeRunner(model: TurnModel, actions: FakeActions, view: FakeView, conf: Confirmations) =
+        TurnRunner(model, actions, view, conf, untrusted = true, remote = true) { "c${++ids}" }
+
+    @Test fun everythingClaudeAsksForShowsACardEvenATimerOrARead() = runBlocking {
+        val model = FakeModel(ModelOutcome.Calls(listOf(timer, call("read_calendar", "day" to "tomorrow"))))
+        val actions = FakeActions()
+        actions.result = { Executed(ActionStatus.DONE, "ok", results = if (it is Action.ReadCalendar) listOf(mapOf("title" to "x")) else null) }
+        val view = FakeView()
+        val conf = Confirmations()
+        val turn = async { claudeRunner(model, actions, view, conf).run() }
+        // Under "Just do it" both would run at once for Gemma; for Claude each waits for its own tap.
+        val first = withTimeout(5_000) { view.pending.receive() }
+        assertTrue(actions.ran.isEmpty())
+        assertTrue(view.cards[first]!!.remote)
+        conf.answer(first, true)
+        val second = withTimeout(5_000) { view.pending.receive() }
+        assertEquals(1, actions.ran.size)
+        conf.answer(second, true)
+        assertEquals(TurnResult(DoneReason.END), turn.await())
+        assertEquals(listOf(ActionStatus.DONE, ActionStatus.DONE), view.statuses())
+        // The read result went back to Claude only after its card's tap.
+        assertEquals(listOf(mapOf("title" to "x")), model.answers.single()[1].second["results"])
+    }
+
+    @Test fun claudesCallsStillFollowTheLockScreenAndOff() = runBlocking {
+        val actions = FakeActions(RobotSettings(approvals = RobotSettings.DEFAULT_APPROVALS + (ToolName.SET_ALARM to Approval.OFF)))
+        actions.lockedNow = true
+        val view = FakeView()
+        val model = FakeModel(ModelOutcome.Calls(listOf(call("add_note", "text" to "x"), call("set_alarm", "hour" to 7))))
+        claudeRunner(model, actions, view, Confirmations()).run()
+        assertEquals(listOf(ActionStatus.NEEDS_UNLOCK, ActionStatus.DISABLED), view.statuses())
+        assertTrue(actions.ran.isEmpty())
+    }
+
+    @Test fun claudesInputMustFitTheSchemaAndItsToolSet() = runBlocking {
+        val model = FakeModel(ModelOutcome.Calls(listOf(call("set_timer", "minutes" to "5"), call("open_app", "name" to "Signal"))))
+        val actions = FakeActions()
+        val view = FakeView()
+        claudeRunner(model, actions, view, Confirmations()).run()
+        assertTrue(actions.ran.isEmpty())
+        assertEquals(listOf(ActionStatus.INVALID, ActionStatus.INVALID), view.statuses())
+        val answers = model.answers.single()
+        assertEquals("minutes must be an integer", answers[0].second["detail"])
+        // open_app, the flashlight and lookup_contact are Robot's, not offered to Claude.
+        assertEquals("unknown tool", answers[1].second["detail"])
+        // A string "5" is fine from Gemma, whose arguments are read loosely.
+        val g = FakeModel(ModelOutcome.Calls(listOf(call("set_timer", "minutes" to "5"))))
+        val ga = FakeActions()
+        runner(g, ga, FakeView()).run()
+        assertEquals(listOf<Action>(Action.SetTimer(300)), ga.ran)
+    }
+
+    @Test fun claudeGetsThreeToolRoundsAndStillTwoCalls() = runBlocking {
+        assertEquals(3, TurnRules.CLAUDE_MAX_ROUNDS)
+        assertEquals(2, TurnRules.MAX_CALLS)
+        // Claude keeps asking: three rounds, then the turn ends; only two calls ever run.
+        val model = FakeModel(ModelOutcome.Calls(listOf(call("set_timer", "minutes" to 1)))) { ModelOutcome.Calls(listOf(call("set_timer", "minutes" to 2))) }
+        val actions = FakeActions()
+        val view = FakeView()
+        val conf = Confirmations()
+        val turn = async { claudeRunner(model, actions, view, conf).run() }
+        repeat(2) { conf.answer(withTimeout(5_000) { view.pending.receive() }, true) }
+        assertEquals(TurnResult(DoneReason.END), turn.await())
+        assertEquals(3, model.answers.size)
+        assertEquals(2, actions.ran.size)
+        assertEquals(1, model.closed)
+    }
+
+    @Test fun askClaudeEndsTheLocalTurnAndNothingElseRuns() = runBlocking {
+        val model = FakeModel(ModelOutcome.Calls(listOf(timer, call("ask_claude", "question" to "why is the sky blue"))))
+        val actions = FakeActions()
+        val view = FakeView()
+        val r = runner(model, actions, view).run()
+        assertEquals(TurnResult(DoneReason.END, escalate = true), r)
+        assertTrue(actions.ran.isEmpty() && view.cards.isEmpty())
+        assertEquals(1, model.closed)
+        // In text-call mode too, when the whole reply is the call.
+        val text = FakeModel(ModelOutcome.Done(DoneReason.END, textCalls = true))
+        val tv = FakeView("call:ask_claude{question:<escape>why<escape>}")
+        assertEquals(TurnResult(DoneReason.END, escalate = true), runner(text, FakeActions(), tv).run())
+        assertEquals("", tv.text)
+    }
+
+    @Test fun claudeNeverEscalatesAgain() = runBlocking {
+        // A call named ask_claude from Claude is not one of its tools: refused, the turn goes on.
+        val model = FakeModel(ModelOutcome.Calls(listOf(call("ask_claude", "question" to "x"))))
+        val view = FakeView()
+        val r = claudeRunner(model, FakeActions(), view, Confirmations()).run()
+        assertEquals(TurnResult(DoneReason.END), r)
+        assertEquals(listOf(ActionStatus.INVALID), view.statuses())
+    }
+
+    @Test fun theClaudeAppHandOffAlwaysShowsItsCard() = runBlocking {
+        val actions = FakeActions(RobotSettings(approvals = RobotSettings.DEFAULT_APPROVALS + (ToolName.ASK_CLAUDE to Approval.AUTO)))
+        actions.result = { Executed(ActionStatus.DONE, "Opened Claude.", launchedApp = true) }
+        val view = FakeView()
+        val conf = Confirmations()
+        val model = FakeModel(ModelOutcome.Calls(listOf(call("ask_claude", "question" to "why is the sky blue"))))
+        // The panel runs the hand-off as a remote-free, card-only turn (TurnRunner with the scripted call).
+        val turn = async { TurnRunner(model, actions, view, conf, untrusted = false, remote = false, maxRounds = 1) { "h${++ids}" }.runHandOff() }
+        val id = withTimeout(5_000) { view.pending.receive() }
+        assertEquals("Open Claude with: «why is the sky blue»", view.cards[id]!!.summary)
+        conf.answer(id, true)
+        assertTrue(turn.await().launchedApp)
+        // Locked: never.
+        actions.lockedNow = true
+        val v2 = FakeView()
+        TurnRunner(FakeModel(ModelOutcome.Calls(listOf(call("ask_claude", "question" to "x")))), actions, v2, Confirmations(), untrusted = false) { "l${++ids}" }.runHandOff()
+        assertEquals(listOf(ActionStatus.NEEDS_UNLOCK), v2.statuses())
+    }
 }
+

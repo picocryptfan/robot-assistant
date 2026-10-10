@@ -51,8 +51,11 @@ class PromptTest {
     @Test fun eachToolGroupCostsTokensOnlyWhenUsed() {
         val system = Prompt.system(now, locked = false)
         val core = Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
-        val all = Prompt.fixedTokens(system, ToolName.entries)
+        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal })
         assertEquals(core, Prompt.fixedTokens(system))
+        // ask_claude (Ask Claude on): one short tool and one line of the system prompt.
+        val withClaude = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true), Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE)
+        assertTrue("ask_claude ${withClaude - core}", withClaude - core in 1..160)
         assertTrue("core $core all $all", all > core + 300)
         // Every group at once (estimated on the high side: JSON punctuation counts a token per mark) still leaves
         // about half of the 4,096 tokens for the conversation and the reply. :brain logs the real count per group set.

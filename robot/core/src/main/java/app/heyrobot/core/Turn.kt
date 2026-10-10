@@ -18,6 +18,11 @@ object TurnRules {
     const val MAX_CALLS = 2
     /** Tool rounds (calls, results, the model again) in one answer at most. */
     const val MAX_ROUNDS = 3
+    /**
+     * Claude's tool rounds in one answer at most ("plan my week and add these to my calendar"): each call behind a card,
+     * and still at most [MAX_CALLS] calls in the answer. Server-side web search continuations (pause_turn) are not rounds.
+     */
+    const val CLAUDE_MAX_ROUNDS = 3
 
     /**
      * Robot asks before any action in a conversation that carries screen text or a picture (this turn's or an
@@ -30,7 +35,10 @@ object TurnRules {
      * contact) that brought content Robot didn't write into it. Every later action asks first.
      */
     @JvmName("untrustedTurns")
-    fun untrusted(turns: List<ChatTurn>): Boolean = untrusted(turns.map { it.attachment }) || turns.any { t -> t.actions.any { it.content } }
+    fun untrusted(turns: List<ChatTurn>): Boolean =
+        untrusted(turns.map { it.attachment }) || turns.any { t -> t.actions.any { it.content } } ||
+            // Claude's answers (and one read off the Claude app's screen) are content Robot didn't write either.
+            turns.any { it.claude || it.readBack }
 }
 
 /** How a request to the model ended, as the turn sees it. */
@@ -40,6 +48,9 @@ sealed class ModelOutcome {
     data class Calls(val calls: List<RawToolCall>) : ModelOutcome()
     data class Failed(val message: String) : ModelOutcome()
 }
+
+/** Robot's call to ask Claude (ask_claude): the turn ends there and EscalationPolicy decides what happens. */
+private fun RawToolCall.asksClaude(): Boolean = ToolName.of(name) == ToolName.ASK_CLAUDE
 
 /** The model side of a turn. The reply's text reaches the view as it streams (the port's job). */
 interface TurnModel {
@@ -112,6 +123,8 @@ data class Card(
     val content: Boolean = false,
     /** More people or numbers fitted than [choices] lists ("and 3 more"). */
     val more: Int = 0,
+    /** Claude asked for it: what a read tool finds goes to Claude only after this card's tap. */
+    val remote: Boolean = false,
 )
 
 interface TurnView {
@@ -127,8 +140,11 @@ interface TurnView {
     fun say(sentence: String)
 }
 
-/** How the turn ended: [reason] when the model's reply ended (or was ended), [failure] when it failed. */
-data class TurnResult(val reason: DoneReason?, val failure: String? = null, val launchedApp: Boolean = false)
+/**
+ * How the turn ended: [reason] when the model's reply ended (or was ended), [failure] when it failed. [escalate]: the
+ * local model called ask_claude; nothing else of that reply ran, and the panel brings Claude in (or offers to).
+ */
+data class TurnResult(val reason: DoneReason?, val failure: String? = null, val launchedApp: Boolean = false, val escalate: Boolean = false)
 
 /** The person's answers to confirmation cards. Thread-safe. */
 class Confirmations {
@@ -198,6 +214,12 @@ class TurnRunner(
      * ([TurnRules.untrusted]). Becomes true during the turn once a read tool returns content.
      */
     private var untrusted: Boolean,
+    /**
+     * Claude is the model (the API route): every call shows a card, only [ClaudeTools.OFFERED] exist, and each input
+     * is checked against its schema before it is read. Claude never calls ask_claude.
+     */
+    private val remote: Boolean = false,
+    private val maxRounds: Int = if (remote) TurnRules.CLAUDE_MAX_ROUNDS else TurnRules.MAX_ROUNDS,
     private val newId: () -> String,
 ) {
     private var budget = TurnRules.MAX_CALLS
@@ -207,7 +229,9 @@ class TurnRunner(
     suspend fun run(): TurnResult {
         var outcome = model.ask()
         var rounds = 0
-        while (outcome is ModelOutcome.Calls && rounds < TurnRules.MAX_ROUNDS) {
+        while (outcome is ModelOutcome.Calls && rounds < maxRounds) {
+            // The local model asks Claude: its turn ends here, nothing else it asked for runs.
+            if (!remote && outcome.calls.any { it.asksClaude() }) return escalate()
             rounds++
             val round = runCalls(outcome.calls, speak = false)
             if (round.launched) {
@@ -231,6 +255,7 @@ class TurnRunner(
                 val found = if (outcome.reason == DoneReason.END && outcome.textCalls) ToolCalls.wholeReplyCalls(view.text) else emptyList()
                 if (found.isEmpty()) return TurnResult(outcome.reason)
                 view.replaceText("")
+                if (found.any { it.call.asksClaude() }) return escalate()
                 val round = runCalls(found.map { it.call }, speak = true)
                 // No tool results in this mode: the conversation is rebuilt from the history next time.
                 model.close()
@@ -239,24 +264,48 @@ class TurnRunner(
         }
     }
 
+    /**
+     * The Claude app route: the model's one call is the hand-off (ask_claude, Action.AskClaude), shown on its card
+     * ("Open Claude with: «…»") and run only after the tap; then Robot steps aside. No model reply follows.
+     */
+    suspend fun runHandOff(): TurnResult {
+        val calls = (model.ask() as? ModelOutcome.Calls)?.calls.orEmpty()
+        val round = runCalls(calls, speak = false)
+        model.close()
+        return TurnResult(DoneReason.END, launchedApp = round.launched)
+    }
+
+    private fun escalate(): TurnResult {
+        model.close()
+        return TurnResult(DoneReason.END, escalate = true)
+    }
+
+    /** Claude's call checked first: one of the tools offered to it, its input fitting the schema; then the usual reading. */
+    private fun parse(raw: RawToolCall): ParsedCall {
+        if (!remote) return ToolCalls.parse(raw)
+        val tool = ToolName.of(raw.name)?.takeIf { it in ClaudeTools.OFFERED } ?: return ParsedCall.Invalid(raw.name.take(40), "unknown tool")
+        ClaudeTools.check(ToolSpecs.of(tool), raw.args)?.let { return ParsedCall.Invalid(tool.id, it) }
+        return ToolCalls.parse(raw)
+    }
+
     private suspend fun runCalls(calls: List<RawToolCall>, speak: Boolean): Round {
         val out = mutableListOf<Pair<String, Map<String, Any?>>>()
         for (raw in calls) {
-            val parsed = ToolCalls.parse(raw)
+            val parsed = parse(raw)
             if (budget <= 0) {
                 val why = "Robot does at most ${TurnRules.MAX_CALLS} actions per answer."
                 val (tool, summary) = when (parsed) {
                     is ParsedCall.Ok -> parsed.action.tool to parsed.action.describe()
                     is ParsedCall.Invalid -> ToolName.of(parsed.tool) to "Couldn't do “${parsed.tool}”"
                 }
-                view.card(Card(newId(), tool, summary, ActionStatus.SKIPPED, why))
+                view.card(Card(newId(), tool, summary, ActionStatus.SKIPPED, why, remote = remote))
                 out += raw.name to ActionStatus.SKIPPED.toolResponse(why)
                 continue
             }
             budget--
             when (parsed) {
                 is ParsedCall.Invalid -> {
-                    view.card(Card(newId(), ToolName.of(parsed.tool), "Couldn't do “${parsed.tool}”", ActionStatus.INVALID, parsed.reason))
+                    view.card(Card(newId(), ToolName.of(parsed.tool), "Couldn't do “${parsed.tool}”", ActionStatus.INVALID, parsed.reason, remote = remote))
                     out += raw.name to ActionStatus.INVALID.toolResponse(parsed.reason)
                 }
                 is ParsedCall.Ok -> {
@@ -273,11 +322,11 @@ class TurnRunner(
     private suspend fun decideAndRun(asked: Action, speak: Boolean): Pair<Pair<String, Map<String, Any?>>, Boolean> {
         val id = newId()
         fun done(a: Action, status: ActionStatus, detail: String?, launched: Boolean = false, r: Executed? = null): Pair<Pair<String, Map<String, Any?>>, Boolean> {
-            view.card(Card(id, a.tool, a.describe(), status, detail, a, body = r?.body ?: a.body(), undo = r?.undo, content = r?.content == true))
+            view.card(Card(id, a.tool, a.describe(), status, detail, a, body = r?.body ?: a.body(), undo = r?.undo, content = r?.content == true, remote = remote))
             return (a.tool.id to status.toolResponse(detail, r?.results)) to launched
         }
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
-        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, untrusted)) {
+        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, untrusted, remote)) {
             GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
             else -> {}
@@ -286,7 +335,7 @@ class TurnRunner(
             is Prepared.Refused -> return done(asked, p.status, p.detail)
             is Prepared.Ready -> p
         }
-        val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, untrusted || a.mustAsk || a.choices.isNotEmpty())
+        val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, untrusted || a.mustAsk || a.choices.isNotEmpty(), remote)
         val chosen = when (decision) {
             GateDecision.RUN -> a.action
             GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more)
@@ -314,12 +363,12 @@ class TurnRunner(
      * turn stopped meanwhile leaves the card declined, never waiting.
      */
     private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int): Action? {
-        view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, null, a, body = a.body(), choices = choices, more = more))
+        view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, null, a, body = a.body(), choices = choices, more = more, remote = remote))
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
             confirmations.ask(id)
         } catch (e: CancellationException) {
-            view.card(Card(id, a.tool, a.describe(), ActionStatus.DECLINED, null, a, body = a.body()))
+            view.card(Card(id, a.tool, a.describe(), ActionStatus.DECLINED, null, a, body = a.body(), remote = remote))
             throw e
         }
         view.phase(TurnPhase.THINKING)

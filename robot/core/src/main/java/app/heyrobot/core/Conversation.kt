@@ -27,11 +27,21 @@ data class ChatTurn(
     val stopped: Boolean = false,
     /** The reply failed; [text] holds the plain-language error. */
     val error: Boolean = false,
+    /** Claude wrote this reply (Ask Claude): content Robot didn't write, so every later action in the conversation asks first. */
+    val claude: Boolean = false,
+    /** Claude's answer read from the Claude app's screen (the owner's corner swipe): screen content. */
+    val readBack: Boolean = false,
+    /** The web domains Claude searched for this reply ("Claude searched the web"). */
+    val sources: List<String> = emptyList(),
+    /** The reply's estimated price in millionths of a dollar (the cost line), 0 when not a Claude reply. */
+    val costMicros: Long = 0,
 )
 
 data class StoredConversation(val id: String, val created: Long, val updated: Long, val turns: List<ChatTurn>) {
     val title: String get() = titleOf(turns)
     val preview: String get() = turns.lastOrNull { it.role == TurnRole.ASSISTANT && !it.error }?.text?.let(::oneLine)?.take(120) ?: ""
+    /** Claude took part: the History screen shows a small cloud. */
+    val claude: Boolean get() = turns.any { it.claude }
 
     companion object {
         fun titleOf(turns: List<ChatTurn>): String {
@@ -52,7 +62,9 @@ fun List<ChatTurn>.toPromptTurns(): List<PromptTurn> = mapNotNull { t ->
         TurnRole.ASSISTANT -> {
             if (t.error) return@mapNotNull null
             val acts = t.actions.joinToString(" ") { "(${Markdown.plain(it.summary)}: ${it.status.label.lowercase()}.)" }
-            val text = listOf(acts, t.text).filter { it.isNotBlank() }.joinToString(" ").trim()
+            // Claude's answer joins Robot's context cut to about 600 tokens, marked as Claude's (information, not Robot's).
+            val said = if (t.claude && t.text.isNotBlank()) "[Claude answered] " + ClaudeContext.forLocal(t.text) else t.text
+            val text = listOf(acts, said).filter { it.isNotBlank() }.joinToString(" ").trim()
             if (text.isEmpty()) null else PromptTurn(PromptRole.MODEL, text)
         }
     }
@@ -88,6 +100,10 @@ object ConversationCodec {
         if (t.attachment != Attachment.NONE) put("attachment", t.attachment.name)
         if (t.stopped) put("stopped", true)
         if (t.error) put("error", true)
+        if (t.claude) put("claude", true)
+        if (t.readBack) put("readBack", true)
+        if (t.sources.isNotEmpty()) put("sources", JSONArray(t.sources))
+        if (t.costMicros > 0) put("costMicros", t.costMicros)
         if (t.actions.isNotEmpty()) put("actions", JSONArray().apply {
             t.actions.forEach { a ->
                 put(JSONObject().put("tool", a.tool.id).put("summary", a.summary).put("status", a.status.name).apply {
@@ -109,6 +125,10 @@ object ConversationCodec {
             attachment = enumOr(o.optString("attachment"), Attachment.NONE),
             stopped = o.optBoolean("stopped", false),
             error = o.optBoolean("error", false),
+            claude = o.optBoolean("claude", false),
+            readBack = o.optBoolean("readBack", false),
+            sources = o.optJSONArray("sources")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotEmpty() } } }.orEmpty(),
+            costMicros = o.optLong("costMicros", 0).coerceAtLeast(0),
             actions = if (acts == null) emptyList() else (0 until acts.length()).mapNotNull { i ->
                 val a = acts.optJSONObject(i) ?: return@mapNotNull null
                 val tool = ToolName.of(a.optString("tool")) ?: return@mapNotNull null
