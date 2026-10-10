@@ -202,16 +202,7 @@ class SherpaTextToSpeech internal constructor(
         val tts = s?.get { create(c.bundle!!, it) }
         if (tts == null) {
             // Missing, broken or failed to load: hand this run to the phone's voice.
-            val rest = synchronized(stateLock) {
-                val r = listOf(item.text) + queue.filter { it.gen == item.gen }.map { it.text }
-                queue.clear()
-                // Quietly: VoiceOutput carries on with the phone's voice, so the panel stays "speaking".
-                speaking = false
-                try { audio.abandonAudioFocusRequest(focus) } catch (_: Throwable) {}
-                r
-            }
-            RLog.i("tts_fallback", "voice" to RLog.Code(c.id), "state" to s?.state)
-            onUnavailable?.invoke(rest)
+            fallBack(item, c, s?.state?.name ?: "none")
             return
         }
         // Only the chosen voice stays loaded.
@@ -221,16 +212,12 @@ class SherpaTextToSpeech internal constructor(
         val start = synchronized(trackLock) { written }
         echo.open(start, item.text)
         var frames = 0L
-        try {
-            tts.generateWithConfigAndCallback(item.text, generation(c)) { samples ->
-                if (frames == 0L) synchronized(stateLock) {
-                    if (firstAudioMs < 0 && item.gen == gen) firstAudioMs = SystemClock.elapsedRealtime() - runStart
-                }
-                frames += samples.size
-                if (write(t, samples, item.gen)) 1 else 0
+        val ok = generate(tts, item.text, generation(c)) { samples ->
+            if (frames == 0L) synchronized(stateLock) {
+                if (firstAudioMs < 0 && item.gen == gen) firstAudioMs = SystemClock.elapsedRealtime() - runStart
             }
-        } catch (t2: Throwable) {
-            RLog.w("tts_generate", t2)
+            frames += samples.size
+            write(t, samples, item.gen)
         }
         // After a stop() the frame count restarted (and the guard was reset): close at the start.
         echo.close(synchronized(trackLock) { if (gen == item.gen) written else start })
@@ -239,6 +226,40 @@ class SherpaTextToSpeech internal constructor(
             runFrames += frames
             runSynthMs += SystemClock.elapsedRealtime() - t0
         }
+        // The voice loaded but sherpa failed before any audio: say it with the phone's voice rather than nothing.
+        if (!ok && frames == 0L && item.gen == gen) fallBack(item, c, "generate")
+    }
+
+    /** Worker: hand [item] and the rest of its run to the phone's voice (VoiceOutput), quietly. */
+    private fun fallBack(item: Item, c: VoiceChoice, why: String) {
+        val rest = synchronized(stateLock) {
+            val r = listOf(item.text) + queue.filter { it.gen == item.gen }.map { it.text }
+            queue.clear()
+            // Quietly: VoiceOutput carries on with the phone's voice, so the panel stays "speaking".
+            speaking = false
+            try { audio.abandonAudioFocusRequest(focus) } catch (_: Throwable) {}
+            r
+        }
+        RLog.i("tts_fallback", "voice" to RLog.Code(c.id), "why" to RLog.Code(why))
+        onUnavailable?.invoke(rest)
+    }
+
+    /**
+     * The only way Robot runs sherpa's TTS: [sink] always goes in a [TtsCallback], whose class declares the
+     * invoke([F)Ljava/lang/Integer; the JNI looks up (a Kotlin lambda has no such method, and nothing plays).
+     * False if sherpa or the sink failed (logged, numbers only).
+     */
+    private fun generate(tts: OfflineTts, text: String, config: GenerationConfig, sink: TtsSink): Boolean {
+        val cb = TtsCallback(sink)
+        val ok = try {
+            tts.generateWithConfigAndCallback(text, config, cb)
+            true
+        } catch (e: Throwable) {
+            RLog.w("tts_generate", e)
+            false
+        }
+        cb.failure()?.let { RLog.w("tts_callback", it) }
+        return ok && cb.failure() == null
     }
 
     private fun generation(c: VoiceChoice) = GenerationConfig(
@@ -382,11 +403,13 @@ class SherpaTextToSpeech internal constructor(
             val start = SystemClock.elapsedRealtime()
             var first = -1L
             var frames = 0L
-            tts.generateWithConfigAndCallback(text, GenerationConfig(sid = c.speaker, speed = 1.0f, extra = c.lang?.let { mapOf("lang" to it) })) { x ->
+            val ok = generate(tts, text, GenerationConfig(sid = c.speaker, speed = 1.0f, extra = c.lang?.let { mapOf("lang" to it) })) { x ->
                 if (first < 0) first = SystemClock.elapsedRealtime() - start
                 frames += x.size
-                1
+                true
             }
+            // No audio is a failed test, not a 0 ms "result".
+            check(ok && frames > 0) { "no audio" }
             return Triple(first, SystemClock.elapsedRealtime() - start, frames * 1000 / tts.sampleRate())
         }
         run(firstChunk)
