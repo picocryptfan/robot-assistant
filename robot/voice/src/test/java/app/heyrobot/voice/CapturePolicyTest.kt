@@ -148,6 +148,21 @@ class CapturePolicyTest {
         assertFalse(EchoGuard.wakeRegex(listOf("robot", "computer", "buddy", "jarvis"))!!.containsMatchIn(BargeTestLogic.PARAGRAPH))
     }
 
+    /**
+     * 0.3.1: "stop" over Robot's voice. The spotter fires after 2 blank frames (sherpa-onnx's C++ default, not its
+     * Kotlin API's 3), and while she speaks the speech gate doesn't decide what it hears; when she is quiet it does.
+     */
+    @Test fun whileRobotSpeaksTheSpotterHearsEveryFrame() {
+        assertEquals(1, WakeWord.TRAILING_BLANKS)
+        val src = java.io.File(System.getProperty("user.dir"), "src/main/java/app/heyrobot/voice/WakeWord.kt").readText()
+        assertTrue(src.contains("numTrailingBlanks = TRAILING_BLANKS"))
+        val accept = src.substringAfter("fun accept(").substringBefore("private fun gate(")
+        // The bypass comes after the gate has run (it still feeds the log and the capture switch) and before its decision.
+        val bypass = accept.indexOf("if (stop != null)")
+        assertTrue(bypass > accept.indexOf("gate(speech)") && bypass > accept.indexOf("preRoll.push(samples)"))
+        assertTrue(bypass < accept.indexOf("speech && s == null"))
+    }
+
     @Test fun aStretchOfRobotTalkingIsSummedForTheLog() {
         val r = SpeakRun(rate = 16_000)
         assertNull(r.end())

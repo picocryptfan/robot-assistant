@@ -32,6 +32,10 @@ import com.k2fsa.sherpa.onnx.getFeatureConfig
  * while Robot speaks. sherpa-onnx adds a stream's keywords to the spotter's own list, so kws/keywords.txt is one empty
  * line: nothing is spotted that the settings don't ask for. A changed set starts a fresh stream (no app restart).
  * [accept] returns the label that fired: "W<id>" or [STOP].
+ *
+ * 0.3.1, for "stop" and the wake phrases over Robot's voice: a keyword fires after 2 blank frames of the model's
+ * output (80 ms) instead of 3, and while Robot speaks the speech gate doesn't decide what the spotter hears (a short
+ * "stop" may be too short for it). When she is quiet, the gate works as before.
  */
 class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
     private val kws: KeywordSpotter
@@ -86,6 +90,10 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
             keywordsFile = "kws/keywords.txt",
             keywordsScore = KwsThresholds.MEDIUM.boost,
             keywordsThreshold = KwsThresholds.MEDIUM.threshold,
+            // sherpa-onnx's own default (keyword-spotter.h; its Kotlin API says 2): a keyword fires once the model has
+            // output more than this many blank frames (40 ms each) after its last token. With 2 it needed 120 ms with
+            // no token at all after "stop", which Robot's voice, even echo-cancelled, rarely leaves.
+            numTrailingBlanks = TRAILING_BLANKS,
         ))
         vad = if (!vadGate) null else Vad(assets, VadModelConfig(
             sileroVadModelConfig = SileroVadModelConfig(model = "vad/silero_vad.onnx", threshold = 0.5f,
@@ -163,6 +171,16 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
         gate(speech)
         preRoll.push(samples)
         if (speech) lastSpeech = seen
+        // While Robot speaks ("stop" listened for), one stream hears every frame: the gate needs 0.25 s of speech
+        // before it opens and a short "stop" over her voice may not get there. The gate still runs, for the log and
+        // the capture switch.
+        if (stop != null) {
+            if (stream == null) {
+                stream = newStream(want) ?: return null
+                return feed(preRoll.drain())
+            }
+            return feed(samples)
+        }
         val s = stream
         return when {
             speech && s == null && want.isNotEmpty() -> {
@@ -223,6 +241,8 @@ class WakeWord(assets: AssetManager, vadGate: Boolean = true) {
     companion object {
         const val PRE_ROLL_SAMPLES = Listener.SAMPLE_RATE
         const val HANGOVER_SAMPLES = Listener.SAMPLE_RATE
+        /** See the spotter's config above. */
+        const val TRAILING_BLANKS = 1
         /** The label of "STOP" (kws/stop.txt, after the @). */
         const val STOP = KeywordBuffer.STOP_LABEL
     }

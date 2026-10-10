@@ -314,6 +314,12 @@ sentence that says it, from 0.3 s before to 1.2 s after (it was 1.5 s), with the
 engine's start and done callbacks: before, one such word in a reply in the phone's voice turned "stop" off until the
 reply ended. Wake phrases said by Robot are guarded the same way.
 
+Also since 0.3.1 the keyword spotter fires once its model has output two blank frames (80 ms) after a keyword, as
+sherpa-onnx's C++ default has it, instead of three (the Kotlin API's default): Robot's voice, even echo-cancelled,
+rarely left 120 ms without a token after a "stop" said over her. And while she speaks, the wake-word speech gate no
+longer decides what the spotter hears (it needs 0.25 s of speech to open, and a short "stop" may not get there): one
+keyword stream hears every frame until she stops. When she is quiet the gate works as before.
+
 **Robot's voice plays as**: *Assistant audio* (default, as before) or *Call audio* (the phone in communication mode
 with the loudspeaker as the call device while Robot speaks, as calling apps do; it uses the call volume and needs
 `MODIFY_AUDIO_SETTINGS`, a normal permission). On Pixel the echo canceller runs in the audio DSP and takes everything
