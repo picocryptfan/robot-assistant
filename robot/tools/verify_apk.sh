@@ -44,6 +44,7 @@ has ':brain' "$(elem app.heyrobot.brain.BrainService)" "BrainService in :brain"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.brain.BrainService)" "BrainService not exported"
 has '"app.heyrobot.permission.INTERNAL"' "$(elem app.heyrobot.brain.BrainService)" "BrainService guarded by the signature permission"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver not exported"
+has '"android.permission.MODIFY_AUDIO_SETTINGS"' "$mf" "declares MODIFY_AUDIO_SETTINGS (call audio playback)"
 for p in CAMERA READ_EXTERNAL_STORAGE READ_MEDIA_IMAGES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
@@ -113,9 +114,15 @@ echo "$cbmembers" | grep -qxF "'invoke' '([F)Ljava/lang/Integer;' 0x0001" \
   && pass "TtsCallback declares public invoke([F)Ljava/lang/Integer; (what sherpa's JNI looks up)" \
   || fail "TtsCallback lacks public invoke([F)Ljava/lang/Integer;: downloaded voices would be silent"
 assets=$(unzip -Z1 "$APK" 'assets/*')
-for a in kws/encoder-epoch-12-avg-2-chunk-16-left-64.onnx kws/decoder-epoch-12-avg-2-chunk-16-left-64.onnx kws/joiner-epoch-12-avg-2-chunk-16-left-64.onnx kws/tokens.txt kws/keywords.txt kws/stop.txt vad/silero_vad.onnx bench/test-clip.s16 bench/test-clip.txt; do
+for a in kws/encoder-epoch-12-avg-2-chunk-16-left-64.onnx kws/decoder-epoch-12-avg-2-chunk-16-left-64.onnx kws/joiner-epoch-12-avg-2-chunk-16-left-64.onnx kws/tokens.txt kws/keywords.txt kws/stop.txt kws/bpe.model vad/silero_vad.onnx bench/test-clip.s16 bench/test-clip.txt; do
   has "assets/$a" "$assets" "asset $a"
 done
+# 0.2.3: the wake phrases are spelled on the phone with the keyword model's own SentencePiece file (THIRD_PARTY.md),
+# and the spotter's own keyword list is one empty line (every stream gets its keywords at runtime).
+bpe=$(unzip -p "$APK" assets/kws/bpe.model | sha256sum | cut -d' ' -f1)
+[ "$bpe" = c8a2a0129c4ab8e463164c142f82d25649661b122c8cd0b7aab5c9e80b90ad24 ] && pass "kws/bpe.model sha256 matches" || fail "kws/bpe.model sha256 $bpe"
+[ "$(unzip -p "$APK" assets/kws/keywords.txt | od -An -c | tr -d ' ')" = '\n' ] && pass "kws/keywords.txt is one empty line" || fail "kws/keywords.txt is not one empty line"
+[ "$(unzip -p "$APK" assets/kws/stop.txt | tr -d '\n')" = "▁ST O P @STOP" ] && pass "kws/stop.txt is STOP" || fail "kws/stop.txt"
 # The espeak-ng English + French subset (17 files) the voices need; nothing more of espeak-ng-data.
 n=$(echo "$assets" | grep -c '^assets/espeak-ng-data/')
 [ "$n" -eq 17 ] && pass "espeak-ng-data subset (17 files)" || fail "espeak-ng-data has $n files, want 17"

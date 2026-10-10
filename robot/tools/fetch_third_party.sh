@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Re-downloads the third-party files listed in THIRD_PARTY.md into a fresh temp directory, checks every
 # SHA-256, and (with --install) copies them into the :voice module. Needs curl, tar (bzip2) and sha256sum.
-# Same files and hashes as the phase 0 probe; Robot packages only the fp32 keyword models it loads, plus the
-# 17-file English + French espeak-ng-data subset the Kokoro and Kitten voices need (docs/voice-plan.md 2.5).
+# Same files and hashes as the phase 0 probe; Robot packages only the fp32 keyword models it loads and (since 0.2.3)
+# the keyword model's bpe.model, which the app reads to spell the owner's wake phrases, plus the 17-file English +
+# French espeak-ng-data subset the Kokoro and Kitten voices need (docs/voice-plan.md 2.5).
 # The downloadable voice models themselves are not packaged: see tools/fetch_voice_models.sh.
 # Usage: tools/fetch_third_party.sh [--install]
 set -euo pipefail
@@ -71,7 +72,7 @@ if [ "${1:-}" = "--install" ]; then
   mkdir -p "$VOICE/jniLibs/arm64-v8a" "$VOICE/assets/kws" "$VOICE/assets/vad" "$HERE/tools/kws-build"
   cp "$TMP"/jni/jniLibs/arm64-v8a/*.so "$VOICE/jniLibs/arm64-v8a/"
   for p in encoder decoder joiner; do cp "$TMP/kws/$M/$p-epoch-12-avg-2-chunk-16-left-64.onnx" "$VOICE/assets/kws/"; done
-  cp "$TMP/kws/$M/tokens.txt" "$VOICE/assets/kws/"
+  cp "$TMP/kws/$M/tokens.txt" "$TMP/kws/$M/bpe.model" "$VOICE/assets/kws/"
   cp "$TMP/kws/$M/bpe.model" "$TMP/kws/$M/tokens.txt" "$HERE/tools/kws-build/"
   cp "$TMP/vad/silero_vad.onnx" "$VOICE/assets/vad/"
   rm -rf "$VOICE/assets/espeak-ng-data"
@@ -79,6 +80,6 @@ if [ "${1:-}" = "--install" ]; then
     mkdir -p "$(dirname "$VOICE/assets/espeak-ng-data/$f")"
     cp "$TMP/espeak/espeak-ng-data/$f" "$VOICE/assets/espeak-ng-data/$f"
   done <<<"$ESPEAK_FILES"
-  echo "installed (keywords.txt is in git; to regenerate it: python3 tools/make_keywords.py .)"
+  echo "installed (keywords.txt and stop.txt are in git; to regenerate them: python3 tools/make_keywords.py .)"
 fi
 echo "all third-party files verified"
