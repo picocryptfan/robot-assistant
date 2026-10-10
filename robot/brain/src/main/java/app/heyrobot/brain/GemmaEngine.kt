@@ -53,7 +53,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     /** A request that arrived while another was being cancelled: it starts when that one ends. */
     private var queued: (() -> Unit)? = null
 
-    private class Live(val conv: Conversation, var historyCount: Int, val constrained: Boolean) {
+    private class Live(val conv: Conversation, var historyCount: Int, val constrained: Boolean, val systemKey: String) {
         var dirty = false
         var awaitingTool = false
     }
@@ -216,7 +216,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val newTurn = TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text, image != null))
         var live = convs[req.convId]
         val reuse = live != null && !live.dirty && !live.awaitingTool && live.historyCount == req.historyCount &&
-            !ContextWindow.needsRebuild(tokenCount(live.conv), newTurn)
+            live.systemKey == systemKey(req.system) && !ContextWindow.needsRebuild(tokenCount(live.conv), newTurn)
         var rebuilt = false
         if (!reuse) {
             live?.let { closeQuietly(it.conv) }
@@ -229,7 +229,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
                 RLog.w("brain_conversation", ex)
                 return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.ENGINE, ex.javaClass.simpleName))
             }
-            live = Live(conv, req.historyCount, usedConstrained).also { convs[req.convId] = it }
+            live = Live(conv, req.historyCount, usedConstrained, systemKey(req.system)).also { convs[req.convId] = it }
             rebuilt = true
             RLog.i("brain_rebuild", "kept" to history.size, "of" to req.history.size, "budget" to budget)
         }
@@ -279,6 +279,12 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         r.stopReason = DoneReason.CANCELLED
         try { r.live.conv.cancelProcess() } catch (_: Exception) {}
     }
+
+    /**
+     * The system prompt without its clock time: a live conversation is reused while only the minutes moved,
+     * and rebuilt when the date or the lock state in the prompt changed.
+     */
+    private fun systemKey(system: String) = system.replace(Regex("""\b\d{1,2}:\d{2}\b"""), "")
 
     private fun tokenCount(c: Conversation): Int = try { c.getTokenCount() } catch (_: Exception) { Int.MAX_VALUE / 2 }
 

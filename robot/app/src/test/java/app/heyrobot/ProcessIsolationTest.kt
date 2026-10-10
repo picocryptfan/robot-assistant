@@ -16,7 +16,7 @@ import javax.xml.parsers.DocumentBuilderFactory
  * never written to disk and nothing logs except through RLog (which drops content).
  */
 class ProcessIsolationTest {
-    private val root: File = System.getProperty("robot.rootDir")?.let(::File) ?: File(System.getProperty("user.dir")).absoluteFile.parentFile
+    private val root: File = System.getProperty("robot.rootDir")?.let(::File) ?: File(System.getProperty("user.dir") ?: ".").absoluteFile.parentFile
     private val ns = "http://schemas.android.com/apk/res/android"
 
     private fun main(module: String) = File(root, "$module/src/main")
