@@ -71,11 +71,12 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     /** Set by [shutdown] while a parked engine keeps the work thread: runs when that engine is closed. */
     private var teardown: (() -> Unit)? = null
     /**
-     * The fixed part's real token count (system prompt plus tools) is logged once per tool set and mode per engine
-     * load (docs/phase-2.md "Logging"): counts only. [uncounted]: sets seen with history, measured when idle.
+     * The fixed part's token count (system prompt plus tools) is logged once per tool set and mode per engine load
+     * (docs/phase-2.md "Logging"): counts only. [counted] holds the sets logged exactly; [estimated] those logged as an
+     * estimate, which an exact count later replaces.
      */
     private val counted = HashSet<String>()
-    private val uncounted = LinkedHashMap<String, Triple<String, List<ToolName>, ToolMode>>()
+    private val estimated = HashSet<String>()
 
     private class Parked(val engine: Engine, val convs: List<Conversation>, val run: Run)
 
@@ -170,7 +171,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         }
         engine = e
         counted.clear()
-        uncounted.clear()
+        estimated.clear()
         val ms = SystemClock.elapsedRealtime() - t0
         RLog.i("brain_load", "ok" to true, "ms" to ms, "vision" to vision, "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) })
         return BrainMsg.Loaded(true, vision, ms, null)
@@ -179,7 +180,6 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     fun unload(why: String) {
         val e = engine ?: return
         queued = null
-        uncounted.clear()
         val r = running
         if (r != null) {
             if (r.stopReason == null) r.stopReason = DoneReason.CANCELLED
@@ -323,8 +323,10 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         // Turns of history in the conversation this message goes to (a reused one holds the client's whole history).
         var turns = if (reuse) req.history.size else 0
         if (!reuse) {
-            live?.let { closeQuietly(it.conv) }
-            convs.remove(req.convId)
+            // One LiteRT conversation at a time: this one's old state and any other (idle: a request waits for a
+            // running reply to end) are closed before a new one is built.
+            convs.values.forEach { closeQuietly(it.conv) }
+            convs.clear()
             var tries = 0
             var rebuilds = 0
             while (true) {
@@ -362,7 +364,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
                 rebuilt = true
                 RLog.i("brain_rebuild", "kept" to history.size, "of" to req.history.size, "budget" to budget, "real" to real, "mode" to mode,
                     "groups" to RLog.Code(ToolRouter.label(tools)))
-                noteFixed(req.system, tools, mode, if (history.isEmpty()) real else null, fixed)
+                noteFixed(tools, mode, real, history, fixed)
                 break
             }
         }
@@ -534,54 +536,27 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     }
 
     private fun runQueued() {
-        val q = queued
-        if (q == null) {
-            countIdle()
-            return
-        }
+        val q = queued ?: return
         queued = null
         q()
     }
 
     /**
-     * The real token count of the system prompt plus [tools] at [mode], logged once per engine load: [real] is the
-     * engine's count of a conversation built without history (exactly that); with history it is measured later, when
-     * :brain is idle, on an empty conversation of its own ([countIdle]).
+     * Logs the fixed cost of [tools] at [mode] once per engine load, from the conversation just built (never a second
+     * one: one LiteRT conversation at a time is what the TPU was proven with). LiteRT-LM 0.18 takes the history only
+     * at creation, so [real] counts system, tools and [history]: exact when there was no history, otherwise [real] less
+     * the history's estimate, logged as estimated until an exact count comes.
      */
-    private fun noteFixed(system: String, tools: List<ToolName>, mode: ToolMode, real: Int?, estimate: Int) {
+    private fun noteFixed(tools: List<ToolName>, mode: ToolMode, real: Int, history: List<PromptTurn>, estimate: Int) {
+        if (real <= 0) return
         val key = "${ToolRouter.label(tools)}/${tools.size}/$mode"
         if (key in counted) return
-        if (real == null || real < 0) {
-            uncounted[key] = Triple(system, tools, mode)
-            return
-        }
-        counted += key
-        uncounted.remove(key)
-        logFixed(tools, mode, real, estimate)
-    }
-
-    private fun logFixed(tools: List<ToolName>, mode: ToolMode, real: Int, estimate: Int) {
-        RLog.i("brain_fixed_tokens", "groups" to RLog.Code(ToolRouter.label(tools)), "tools" to tools.size, "mode" to mode, "tokens" to real, "estimate" to estimate)
-    }
-
-    /**
-     * Between replies: measures one tool set seen only with history (an empty conversation, closed at once). Not while
-     * a conversation waits for tool results: those come right away and go first.
-     */
-    private fun countIdle() {
-        if (running != null || engine == null || parked != null || convs.values.any { it.awaitingTool }) return
-        val (key, v) = uncounted.entries.firstOrNull()?.toPair() ?: return
-        uncounted.remove(key)
-        if (key in counted) return
-        counted += key
-        val (system, tools, mode) = v
-        if (mode != toolMode) return
-        val conv = try { newConversation(system, emptyList(), mode, tools) } catch (ex: Exception) { RLog.w("brain_fixed_tokens", ex); return }
-        try {
-            logFixed(tools, mode, tokenCount(conv, unknown = -1), Prompt.fixedTokens(system, tools))
-        } finally {
-            closeQuietly(conv)
-        }
+        val exact = history.isEmpty()
+        if (!exact && key in estimated) return
+        val tokens = if (exact) real else real - history.sumOf(TokenEstimate::turn)
+        if (exact) counted += key else estimated += key
+        RLog.i("brain_fixed_tokens", "groups" to RLog.Code(ToolRouter.label(tools)), "tools" to tools.size, "mode" to mode, "tokens" to tokens,
+            "kind" to RLog.Code(if (exact) "exact" else "estimated"), "estimate" to estimate)
     }
 
     companion object {
