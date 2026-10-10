@@ -13,7 +13,9 @@ android {
     kotlinOptions { jvmTarget = '17' }
 }
 // Pure Kotlin plus a few Android helpers (logging, storage). No engines: this module runs in every process.
+// Coroutines for the turn runner (Turn.kt), the same version the app and :brain already use.
 dependencies {
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
     testImplementation 'junit:junit:4.13.2'
     // Real org.json for JVM tests (android.jar's copy is a stub that throws).
     testImplementation 'org.json:json:20180813'

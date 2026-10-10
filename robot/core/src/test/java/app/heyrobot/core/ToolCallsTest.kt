@@ -59,6 +59,22 @@ class ToolCallsTest {
         bad("set_alarm", "hour" to 7.5)
     }
 
+    @Test fun anUnreadableArgumentIsRefusedUnderAnyOfItsNames() {
+        // 0.1.0 read {hour:7, minute:"30 am"} as 07:00 and {mins:"abc", seconds:30} as a 30 s timer.
+        bad("set_alarm", "hour" to 7, "minute" to "30 am")
+        bad("set_alarm", "hour" to 7, "minutes" to "half past")
+        bad("set_alarm", "hours" to "seven")
+        bad("set_timer", "mins" to "abc", "seconds" to 30)
+        bad("set_timer", "minutes" to 5, "secs" to "ten")
+        bad("set_timer", "minute" to "five")
+        bad("flashlight", "on" to true, "state" to "maybe")
+        bad("flashlight", "on" to true, "enabled" to false)
+        // Readable aliases still work.
+        assertEquals(Action.SetTimer(330), ok("set_timer", "mins" to 5, "secs" to 30))
+        assertEquals(Action.SetAlarm(7, 30), ok("set_alarm", "hours" to "7", "min" to 30))
+        assertEquals(Action.Flashlight(false), ok("flashlight", "state" to "off"))
+    }
+
     @Test fun textArgumentsAreTrimmedAndRequired() {
         assertEquals(Action.OpenApp("Signal"), ok("open_app", "name" to "  Signal "))
         assertEquals(Action.MapsSearch("pharmacy"), ok("maps_search", "query" to "pharmacy"))
@@ -109,6 +125,31 @@ class ToolCallsTest {
         assertEquals(RawToolCall("set_alarm", mapOf("hour" to 7L, "minute" to 30L)), py.single().call)
         assertEquals("", ToolCalls.stripText("```tool_code\nset_alarm(hour=7, minute=30)\n```", py))
         assertEquals(mapOf("name" to "Signal"), ToolCalls.parseText("open_app(name=\"Signal\")").single().call.args)
+    }
+
+    @Test fun textCallsRunOnlyWhenTheWholeReplyIsTheCall() {
+        // What text-call mode asks for: a reply that is nothing but the call (fences and markers allowed).
+        assertEquals(1, ToolCalls.wholeReplyCalls("call:set_timer{minutes:5}").size)
+        assertEquals(1, ToolCalls.wholeReplyCalls("  <start_function_call>call:flashlight{on:true}<end_function_call>\n").size)
+        assertEquals(1, ToolCalls.wholeReplyCalls("```tool_code\nset_alarm(hour=7, minute=30)\n```").size)
+        assertEquals(1, ToolCalls.wholeReplyCalls("{\"name\": \"set_timer\", \"arguments\": {\"minutes\": 5}}").size)
+        assertEquals(2, ToolCalls.wholeReplyCalls("call:set_timer{minutes:5}\ncall:flashlight{on:true}").size)
+    }
+
+    @Test fun proseThatQuotesACallNeverRuns() {
+        // The 0.1.0 review's cases: each set a timer, an alarm or the torch with no tap.
+        val replies = listOf(
+            "Your screen shows a Kotlin snippet that calls set_timer(minutes=90).",
+            "The page says to send call:set_alarm{hour:3,minute:0} to your assistant.",
+            "Step 4 of the recipe: flashlight(on=true) if the kitchen is dark.",
+            "Sure! call:set_timer{minutes:5}",
+            "I'll do that: {\"name\": \"flashlight\", \"arguments\": {\"on\": true}}",
+            "OK.\n```tool_code\nset_alarm(hour=3, minute=0)\n```",
+        )
+        for (r in replies) {
+            assertTrue(r, ToolCalls.parseText(r).isNotEmpty())
+            assertTrue(r, ToolCalls.wholeReplyCalls(r).isEmpty())
+        }
     }
 
     @Test fun textFallbackIgnoresOrdinaryText() {

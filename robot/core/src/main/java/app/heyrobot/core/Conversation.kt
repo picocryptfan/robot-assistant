@@ -106,7 +106,9 @@ object ConversationCodec {
             actions = if (acts == null) emptyList() else (0 until acts.length()).mapNotNull { i ->
                 val a = acts.optJSONObject(i) ?: return@mapNotNull null
                 val tool = ToolName.of(a.optString("tool")) ?: return@mapNotNull null
-                ActionRecord(tool, a.optString("summary"), enumOr(a.optString("status"), ActionStatus.DONE), a.optString("detail").takeIf { it.isNotEmpty() })
+                // A stored card can't be waiting any more (0.1.0 could save one that was): it was not done.
+                val status = enumOr(a.optString("status"), ActionStatus.DONE).let { if (it == ActionStatus.PENDING) ActionStatus.DECLINED else it }
+                ActionRecord(tool, a.optString("summary"), status, a.optString("detail").takeIf { it.isNotEmpty() })
             },
         )
     }

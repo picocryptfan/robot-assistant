@@ -20,10 +20,34 @@ class TextTest {
         assertEquals("Signal", AppMatcher.best("the Signal app", apps)?.label)
         assertEquals("Organic Maps", AppMatcher.best("organic", apps)?.label)
         assertEquals("Organic Maps", AppMatcher.best("maps", apps)?.label)
-        assertEquals("Calculator", AppMatcher.best("calculater", apps)?.label)
         assertEquals("Café Finder", AppMatcher.best("cafe finder", apps)?.label)
+        assertEquals("Signal", AppMatcher.best("Signal messenger", apps)?.label)
         assertNull(AppMatcher.best("telegram", apps))
         assertNull(AppMatcher.best("", apps))
+    }
+
+    @Test fun nearMissesNeverOpenTheWrongApp() {
+        val phone = listOf(
+            AppEntry("Tiles", "tiles/.Main"), AppEntry("Bitwarden", "bw/.Main"), AppEntry("Cal", "cal/.Main"),
+            AppEntry("Calculator", "calc/.Main"), AppEntry("Signal", "sig/.Main"), AppEntry("Keynotes", "kn/.Main"),
+        )
+        // "Open Files" launched Tiles in 0.1.0 (one letter off): a spelling-only match is no match.
+        assertNull(AppMatcher.match("Files", phone))
+        assertNull(AppMatcher.match("calculater", phone))
+        assertNull(AppMatcher.match("Signel", phone))
+        // A longer name never matches a short label it merely starts with ("calendar" is not "Cal").
+        assertNull(AppMatcher.match("calendar", phone))
+        // "Warden" is inside Bitwarden: a loose match, so the card (showing "Bitwarden") is always shown first.
+        val w = AppMatcher.match("Warden", phone)!!
+        assertEquals("Bitwarden", w.app.label)
+        assertTrue(w.loose)
+        assertTrue(AppMatcher.match("notes", phone)!!.loose)
+        // Clear matches are not loose.
+        assertEquals(MatchKind.EXACT, AppMatcher.match("signal", phone)!!.kind)
+        assertEquals(MatchKind.PREFIX, AppMatcher.match("calc", phone)!!.kind)
+        assertEquals(false, AppMatcher.match("the signal app", phone)!!.loose)
+        // Too short to mean anything.
+        assertNull(AppMatcher.match("ca", phone))
     }
 
     @Test fun shorterLabelWinsTies() {

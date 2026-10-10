@@ -86,7 +86,11 @@ sealed class Action {
         override fun describe() = String.format(Locale.US, "Set an alarm for %02d:%02d", hour, minute)
     }
 
-    data class OpenApp(val name: String) : Action() {
+    /**
+     * [name] is what the model asked for until the app process resolves it to an installed app: then [name] is
+     * that app's real label and [key] its launcher activity (what the card shows is what opens).
+     */
+    data class OpenApp(val name: String, val key: String? = null) : Action() {
         override val tool get() = ToolName.OPEN_APP
         override fun describe() = "Open $name"
         override val leavesPanel get() = true
@@ -144,19 +148,21 @@ object Durations {
 object ToolCalls {
     private const val MAX_TEXT = 200
 
-    /** Validates one call. Unknown argument names are ignored; missing or out-of-range ones are refused. */
+    /**
+     * Validates one call. Unknown argument names are ignored; missing or out-of-range ones are refused, and so is
+     * any argument (under any of its accepted names) whose value can't be read: "30 am" for a minute is refused,
+     * never read as 0.
+     */
     fun parse(call: RawToolCall): ParsedCall {
         val tool = ToolName.of(call.name) ?: return ParsedCall.Invalid(call.name.take(40), "unknown tool")
         val a = call.args.mapKeys { it.key.trim().lowercase(Locale.ROOT) }
         fun bad(why: String) = ParsedCall.Invalid(tool.id, why)
         return when (tool) {
             ToolName.SET_TIMER -> {
-                val min = number(a["minutes"] ?: a["minute"] ?: a["mins"])
-                val sec = number(a["seconds"] ?: a["second"] ?: a["secs"])
-                if (a.containsKey("minutes") && min == null) return bad("minutes must be a number")
-                if (a.containsKey("seconds") && sec == null) return bad("seconds must be a number")
-                if ((min ?: 0.0) < 0 || (sec ?: 0.0) < 0) return bad("the timer cannot be negative")
-                val total = ((min ?: 0.0) * 60 + (sec ?: 0.0)).roundToLong()
+                val min = numberArg(a, "minutes", "minute", "mins", "min") ?: return bad("minutes must be a number")
+                val sec = numberArg(a, "seconds", "second", "secs", "sec") ?: return bad("seconds must be a number")
+                if ((min.value ?: 0.0) < 0 || (sec.value ?: 0.0) < 0) return bad("the timer cannot be negative")
+                val total = ((min.value ?: 0.0) * 60 + (sec.value ?: 0.0)).roundToLong()
                 when {
                     total <= 0 -> bad("give the timer's length in minutes or seconds")
                     total > Durations.MAX_TIMER_S -> bad("timers can be at most 24 hours")
@@ -167,23 +173,49 @@ object ToolCalls {
                 val rawHour = a["hour"] ?: a["hours"]
                 // "7:30" in the hour argument: small models do this.
                 val clock = (rawHour as? String)?.let { Regex("""^\s*(\d{1,2})\s*[:.h]\s*(\d{2})\s*$""").find(it) }
-                val hour = clock?.groupValues?.get(1)?.toDoubleOrNull() ?: number(rawHour) ?: return bad("hour is required")
-                val minute = clock?.groupValues?.get(2)?.toDoubleOrNull() ?: number(a["minute"] ?: a["minutes"]) ?: 0.0
+                val minuteArg = numberArg(a, "minute", "minutes", "min", "mins") ?: return bad("minute must be a number")
+                val hour = if (clock != null) clock.groupValues[1].toDouble() else {
+                    val h = numberArg(a, "hour", "hours") ?: return bad("hour must be a number")
+                    h.value ?: return bad("hour is required")
+                }
+                val minute = clock?.groupValues?.get(2)?.toDouble() ?: minuteArg.value ?: 0.0
                 if (hour % 1.0 != 0.0 || minute % 1.0 != 0.0) return bad("hour and minute must be whole numbers")
                 if (hour !in 0.0..23.0) return bad("hour must be 0 to 23")
                 if (minute !in 0.0..59.0) return bad("minute must be 0 to 59")
                 ParsedCall.Ok(Action.SetAlarm(hour.toInt(), minute.toInt()))
             }
-            ToolName.OPEN_APP -> text(a["name"] ?: a["app"] ?: a["app_name"], 60)?.let { ParsedCall.Ok(Action.OpenApp(it)) }
+            ToolName.OPEN_APP -> textArg(a, 60, "name", "app", "app_name")?.let { ParsedCall.Ok(Action.OpenApp(it)) }
                 ?: bad("name is required")
-            ToolName.MAPS_SEARCH -> text(a["query"] ?: a["q"] ?: a["place"], MAX_TEXT)?.let { ParsedCall.Ok(Action.MapsSearch(it)) }
+            ToolName.MAPS_SEARCH -> textArg(a, MAX_TEXT, "query", "q", "place")?.let { ParsedCall.Ok(Action.MapsSearch(it)) }
                 ?: bad("query is required")
-            ToolName.MAPS_NAVIGATE -> text(a["destination"] ?: a["to"] ?: a["place"], MAX_TEXT)?.let { ParsedCall.Ok(Action.MapsNavigate(it)) }
+            ToolName.MAPS_NAVIGATE -> textArg(a, MAX_TEXT, "destination", "to", "place")?.let { ParsedCall.Ok(Action.MapsNavigate(it)) }
                 ?: bad("destination is required")
-            ToolName.FLASHLIGHT -> bool(a["on"] ?: a["state"] ?: a["enabled"])?.let { ParsedCall.Ok(Action.Flashlight(it)) }
-                ?: bad("on must be true or false")
+            ToolName.FLASHLIGHT -> {
+                val present = listOf("on", "state", "enabled").filter { a.containsKey(it) }
+                val values = present.map { bool(a[it]) }
+                if (values.isEmpty() || values.any { it == null }) bad("on must be true or false")
+                else if (values.distinct().size > 1) bad("on must be true or false")
+                else ParsedCall.Ok(Action.Flashlight(values.first()!!))
+            }
         }
     }
+
+    /** A numeric argument that may be absent ([value] null), or null itself when a name for it is present but unreadable. */
+    private class NumArg(val value: Double?)
+
+    private fun numberArg(a: Map<String, Any?>, vararg names: String): NumArg? {
+        var first: Double? = null
+        for (n in names) {
+            if (!a.containsKey(n)) continue
+            val v = number(a[n]) ?: return null
+            if (first == null) first = v
+        }
+        return NumArg(first)
+    }
+
+    /** The first present name's text; null when it's missing, blank or not text (a present but empty name is not skipped). */
+    private fun textArg(a: Map<String, Any?>, max: Int, vararg names: String): String? =
+        names.firstOrNull { a.containsKey(it) }?.let { text(a[it], max) }
 
     fun number(v: Any?): Double? = when (v) {
         is Number -> v.toDouble().takeIf { it.isFinite() }
@@ -236,6 +268,17 @@ object ToolCalls {
             }
         }
         return out
+    }
+
+    /**
+     * Text-call mode only (no tool API on this TPU build, :brain says so per reply): the calls in a reply that is
+     * nothing but calls, as the text-call hint asks. A reply with any other text (prose that explains, quotes or
+     * mentions a call, screen text repeated back) yields no calls: nothing written in passing ever runs.
+     */
+    fun wholeReplyCalls(text: String): List<TextCall> {
+        val found = parseText(text)
+        if (found.isEmpty()) return emptyList()
+        return if (stripText(text, found).isBlank()) found else emptyList()
     }
 
     /** The reply with the textual tool calls (and any code fences or markers around them) removed. */

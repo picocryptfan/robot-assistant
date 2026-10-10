@@ -38,6 +38,18 @@ class ApprovalGateTest {
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.OPEN_APP, true, s))
     }
 
+    @Test fun screenTextOrAPictureTurnsJustDoItIntoAsk() {
+        for (t in ToolName.entries) {
+            val d = ApprovalGate.decide(t, locked = false, settings = defaults, mustAsk = true)
+            assertEquals(t.name, GateDecision.CONFIRM, d)
+        }
+        // Never looser than without it: off stays off, the lock screen still says unlock.
+        val off = defaults.copy(approvals = defaults.approvals + (ToolName.SET_TIMER to Approval.OFF))
+        assertEquals(GateDecision.DISABLED, ApprovalGate.decide(ToolName.SET_TIMER, false, off, mustAsk = true))
+        assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.FLASHLIGHT, true, defaults, mustAsk = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SET_ALARM, true, defaults, mustAsk = true))
+    }
+
     @Test fun toolResponsesTellTheModelWhatHappened() {
         assertEquals(mapOf("status" to "done", "detail" to "Timer set"), ActionStatus.DONE.toolResponse("Timer set"))
         assertEquals(mapOf("status" to "phone_locked_user_must_unlock"), ActionStatus.NEEDS_UNLOCK.toolResponse(null))

@@ -17,12 +17,17 @@ object ApprovalGate {
     /** Lock-screen rules (spec item 1): only questions, timers and alarms while the keyguard is locked. */
     val ALLOWED_WHEN_LOCKED: Set<ToolName> = setOf(ToolName.SET_TIMER, ToolName.SET_ALARM)
 
-    fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings): GateDecision {
+    /**
+     * [mustAsk]: "Just do it" becomes "Ask first" for this action. Set when the conversation carries screen text
+     * or a picture (content Robot did not write and the person did not type: a page or a photo must never trigger
+     * an action without a tap), and for an app name that matched only loosely.
+     */
+    fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, mustAsk: Boolean = false): GateDecision {
         val level = settings.approval(tool)
         return when {
             level == Approval.OFF -> GateDecision.DISABLED
             locked && tool !in ALLOWED_WHEN_LOCKED -> GateDecision.NEEDS_UNLOCK
-            level == Approval.AUTO -> GateDecision.RUN
+            level == Approval.AUTO && !mustAsk -> GateDecision.RUN
             else -> GateDecision.CONFIRM
         }
     }
@@ -36,7 +41,9 @@ enum class ActionStatus(val label: String) {
     NEEDS_UNLOCK("Unlock to do this"),
     DISABLED("Turned off in settings"),
     FAILED("Didn't work"),
-    INVALID("Couldn't understand the request");
+    INVALID("Couldn't understand the request"),
+    /** Over the limit of actions in one answer ([TurnRules.MAX_CALLS]): not run. */
+    SKIPPED("Not done");
 
     /** The tool response sent back to the model ([detail] is a short, fixed-vocabulary explanation). */
     fun toolResponse(detail: String?): Map<String, Any?> = buildMap {
@@ -48,6 +55,7 @@ enum class ActionStatus(val label: String) {
             DISABLED -> "turned_off_in_settings"
             FAILED -> "failed"
             INVALID -> "invalid_arguments"
+            SKIPPED -> "not_done_too_many_actions"
         })
         if (!detail.isNullOrBlank()) put("detail", detail)
     }

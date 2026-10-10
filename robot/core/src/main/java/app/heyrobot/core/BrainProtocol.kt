@@ -50,10 +50,17 @@ enum class DoneReason {
     LENGTH,
     /** Stopped because the output turned into garbage (repeated characters, pad tokens). */
     GARBAGE,
+    /**
+     * No room left in the context for the tool results and a reply after them: the actions ran, the conversation
+     * was closed (it is rebuilt from the history, shorter, next time) and the reply ends here.
+     */
+    CONTEXT_FULL,
 }
 
 enum class BrainError {
-    NOT_LOADED, NO_VISION, BAD_REQUEST, ENGINE, BUSY;
+    NOT_LOADED, NO_VISION, BAD_REQUEST, ENGINE, BUSY,
+    /** The new message alone does not fit in the model's context (it is never sent cut off by the engine). */
+    TOO_LONG;
 
     /** Plain language for the panel. */
     fun text(): String = when (this) {
@@ -62,6 +69,7 @@ enum class BrainError {
         BAD_REQUEST -> "Robot sent the model a request it couldn't read."
         ENGINE -> "The model ran into a problem."
         BUSY -> "The model is busy with another answer."
+        TOO_LONG -> "That's too long for Robot to read at once. Try a shorter question."
     }
 }
 
@@ -126,9 +134,13 @@ sealed class BrainMsg {
         })
     }
 
-    data class Done(val reason: DoneReason, val tokens: Int, val ttftMs: Long, val decodeTps: Double, val rebuilt: Boolean) : BrainMsg() {
+    /**
+     * [textCalls]: this conversation runs without LiteRT-LM's tool API ([ToolMode.TEXT_CALLS]); only then may the
+     * app read a reply that is nothing but a call as a tool call.
+     */
+    data class Done(val reason: DoneReason, val tokens: Int, val ttftMs: Long, val decodeTps: Double, val rebuilt: Boolean, val textCalls: Boolean = false) : BrainMsg() {
         override fun toJson() = JSONObject().put("reason", reason.name).put("tokens", tokens).put("ttftMs", ttftMs)
-            .put("decodeTps", if (decodeTps.isFinite()) decodeTps else -1.0).put("rebuilt", rebuilt)
+            .put("decodeTps", if (decodeTps.isFinite()) decodeTps else -1.0).put("rebuilt", rebuilt).put("textCalls", textCalls)
     }
 
     data class Error(val code: BrainError, val detail: String?) : BrainMsg() {
@@ -175,7 +187,8 @@ sealed class BrainMsg {
                         RawToolCall(x.getString("name"), Json.toMap(x.optJSONObject("args") ?: JSONObject()))
                     })
                 }
-                BrainProtocol.EV_DONE -> Done(enumValueOf(o.getString("reason")), o.optInt("tokens"), o.optLong("ttftMs", -1), o.optDouble("decodeTps", -1.0), o.optBoolean("rebuilt"))
+                BrainProtocol.EV_DONE -> Done(enumValueOf(o.getString("reason")), o.optInt("tokens"), o.optLong("ttftMs", -1), o.optDouble("decodeTps", -1.0),
+                    o.optBoolean("rebuilt"), o.optBoolean("textCalls", false))
                 BrainProtocol.EV_ERROR -> Error(enumOr(o.optString("code"), BrainError.ENGINE), o.optString("detail").takeIf { o.has("detail") })
                 else -> null
             }
