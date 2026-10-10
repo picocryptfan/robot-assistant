@@ -13,6 +13,7 @@ import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.BrainWire
+import app.heyrobot.core.EngineTeardown
 import app.heyrobot.core.RLog
 
 // :BRAIN PROCESS ONLY (android:process=":brain"). A native crash in LiteRT-LM or the TPU stack kills
@@ -74,10 +75,19 @@ class BrainService : Service() {
     }
 
     override fun onDestroy() {
-        // On the work thread like every other engine call (never two threads in LiteRT at once); quitSafely
-        // runs what is already queued first.
-        handler.post { try { engine.unload("destroy") } catch (_: Throwable) {} }
-        work.quitSafely()
+        // On the work thread like every other engine call (never two threads in LiteRT at once). The thread stays
+        // while an engine is parked: LiteRT posts the callback that closes it there (quitting at once, as 0.1.2 did,
+        // dropped that callback and kept ~2 GB and the TPU until :brain died). If LiteRT never lets go, :brain ends.
+        handler.post {
+            try {
+                engine.shutdown { step ->
+                    if (step == EngineTeardown.Step.END_PROCESS) Process.killProcess(Process.myPid()) else work.quitSafely()
+                }
+            } catch (t: Throwable) {
+                RLog.w("brain_teardown", t)
+                work.quitSafely()
+            }
+        }
         RLog.i("brain_service", "op" to RLog.Code("destroy"))
         super.onDestroy()
     }

@@ -113,4 +113,18 @@ class BrainPolicyTest {
         assertFalse(BrainPolicy.canReuse(live(tokens = 3_300), 4, "S", m, 100))
         assertFalse(BrainPolicy.canReuse(live(tokens = Int.MAX_VALUE / 2), 4, "S", m, 100))
     }
+
+    /** 0.1.2 review, minor 5: a parked engine must be closed even after its service is gone, and never doubled. */
+    @Test fun aParkedEngineOutlivesTheServiceButNotForEver() {
+        assertEquals(EngineTeardown.Step.QUIT_THREAD, EngineTeardown.afterDestroy(parked = false, sinceDestroyMs = 0))
+        // Parked at destroy: the work thread stays for LiteRT's callback (quitting it dropped that callback in 0.1.2).
+        assertEquals(EngineTeardown.Step.WAIT, EngineTeardown.afterDestroy(parked = true, sinceDestroyMs = 0))
+        assertEquals(EngineTeardown.Step.WAIT, EngineTeardown.afterDestroy(parked = true, sinceDestroyMs = EngineTeardown.PARKED_LIMIT_MS - 1))
+        assertEquals(EngineTeardown.Step.END_PROCESS, EngineTeardown.afterDestroy(parked = true, sinceDestroyMs = EngineTeardown.PARKED_LIMIT_MS))
+        // The callback closed it in time.
+        assertEquals(EngineTeardown.Step.QUIT_THREAD, EngineTeardown.afterDestroy(parked = false, sinceDestroyMs = 5_000))
+        // A new BrainService in the same process does not load a second engine beside a parked one.
+        assertTrue(EngineTeardown.mayLoad(0))
+        assertFalse(EngineTeardown.mayLoad(1))
+    }
 }

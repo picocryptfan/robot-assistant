@@ -120,3 +120,32 @@ object BrainPolicy {
      */
     fun modeAfter(msg: String?, mode: ToolMode): ToolMode = if (EngineErrors.isToolParseError(msg)) mode.lower ?: mode else mode
 }
+
+/**
+ * An engine unloaded while LiteRT still decodes into one of its conversations is parked, never closed under it
+ * (GemmaEngine); LiteRT's onDone/onError, posted to :brain's work thread, closes it. These rules keep that
+ * callback deliverable after the service is destroyed, and keep a second engine from loading beside a parked one.
+ */
+object EngineTeardown {
+    /** How long :brain waits after its service was destroyed for a parked engine's callback before ending itself. */
+    const val PARKED_LIMIT_MS = 20_000L
+
+    enum class Step {
+        /** Nothing is parked: the work thread can stop. */
+        QUIT_THREAD,
+        /** Keep the work thread: LiteRT's callback is posted to it, and closes the parked engine. */
+        WAIT,
+        /** LiteRT never let go: ending the process is the only way to free the engine's memory and the TPU. */
+        END_PROCESS,
+    }
+
+    /** A new engine may load only when no engine is parked anywhere in the :brain process (~2 GB and the TPU each). */
+    fun mayLoad(parkedInProcess: Int): Boolean = parkedInProcess <= 0
+
+    /** At, and after, the service's destroy ([sinceDestroyMs] ago), with an engine still [parked] or not. */
+    fun afterDestroy(parked: Boolean, sinceDestroyMs: Long): Step = when {
+        !parked -> Step.QUIT_THREAD
+        sinceDestroyMs < PARKED_LIMIT_MS -> Step.WAIT
+        else -> Step.END_PROCESS
+    }
+}

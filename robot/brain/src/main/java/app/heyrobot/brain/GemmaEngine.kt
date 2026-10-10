@@ -12,6 +12,7 @@ import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.EngineErrors
+import app.heyrobot.core.EngineTeardown
 import app.heyrobot.core.Json
 import app.heyrobot.core.Limits
 import app.heyrobot.core.LiveConv
@@ -39,6 +40,7 @@ import com.google.ai.edge.litertlm.ToolProvider
 import com.google.ai.edge.litertlm.tool
 import java.io.File
 import java.util.concurrent.CancellationException
+import java.util.concurrent.atomic.AtomicInteger
 
 // :BRAIN PROCESS ONLY. The one file that uses LiteRT-LM (ProcessIsolationTest enforces that).
 //
@@ -64,6 +66,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
      * Closed when that run's native callback arrives (or left to the process's end).
      */
     private var parked: Parked? = null
+    /** Set by [shutdown] while a parked engine keeps the work thread: runs when that engine is closed. */
+    private var teardown: (() -> Unit)? = null
 
     private class Parked(val engine: Engine, val convs: List<Conversation>, val run: Run)
 
@@ -114,7 +118,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
 
     fun load(path: String): BrainMsg.Loaded {
         if (engine != null) return BrainMsg.Loaded(true, vision, 0, null)
-        parked?.let { p -> if (p.run.nativeEnded) closeParked() else return BrainMsg.Loaded(false, false, 0, "The model is still stopping. Try again in a moment.") }
+        parked?.let { p -> if (p.run.nativeEnded) closeParked() else return BrainMsg.Loaded(false, false, 0, STOPPING) }
+        // Nor beside an engine an earlier BrainService in this process parked: that would be a second ~2 GB on the TPU.
+        if (!EngineTeardown.mayLoad(parkedInProcess.get())) return BrainMsg.Loaded(false, false, 0, STOPPING)
         val f = File(path)
         // Only the model file in Robot's own storage.
         val allowed = listOfNotNull(ctx.getExternalFilesDir(null), ctx.filesDir).any { f.canonicalPath.startsWith(it.canonicalPath + File.separator) }
@@ -179,6 +185,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             // Still decoding after the wait: park the engine rather than close it under LiteRT (a native crash here
             // would count towards the assistant's crash lockout). The run's callback closes it.
             parked = Parked(e, all, r)
+            parkedInProcess.incrementAndGet()
             RLog.i("brain_unload", "why" to RLog.Code(why), "parked" to true)
             return
         }
@@ -190,9 +197,40 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     private fun closeParked() {
         val p = parked ?: return
         parked = null
-        p.convs.forEach(::closeQuietly)
-        try { p.engine.close() } catch (ex: Exception) { RLog.w("brain_unload", ex) }
+        try {
+            p.convs.forEach(::closeQuietly)
+            try { p.engine.close() } catch (ex: Exception) { RLog.w("brain_unload", ex) }
+        } finally {
+            parkedInProcess.decrementAndGet()
+        }
         RLog.i("brain_unload_parked_closed")
+        teardown?.invoke()
+    }
+
+    /**
+     * BrainService was destroyed (work thread): unload, then tell [step] once when the work thread may stop. With an
+     * engine parked the thread must stay, since LiteRT posts the callback that closes it there; if that callback
+     * never comes, END_PROCESS (EngineTeardown).
+     */
+    fun shutdown(step: (EngineTeardown.Step) -> Unit) {
+        unload("destroy")
+        parked?.let { if (it.run.nativeEnded) closeParked() }
+        val t0 = SystemClock.elapsedRealtime()
+        var told = false
+        val check = {
+            if (!told) {
+                val s = EngineTeardown.afterDestroy(parked != null, SystemClock.elapsedRealtime() - t0)
+                if (s != EngineTeardown.Step.WAIT) {
+                    told = true
+                    teardown = null
+                    RLog.i("brain_teardown", "step" to s)
+                    step(s)
+                }
+            }
+        }
+        teardown = check
+        check()
+        if (!told) handler.postDelayed({ check() }, EngineTeardown.PARKED_LIMIT_MS)
     }
 
     // ------------------------------------------------------------------ conversations
@@ -485,6 +523,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     companion object {
         /** How long unload waits for a cancelled decode to end before parking the engine instead of closing it. */
         private const val UNLOAD_WAIT_MS = 10_000
+        private const val STOPPING = "The model is still stopping. Try again in a moment."
+        /** Engines parked in this process, by any BrainService instance (a new one may be created before the old one's closes). */
+        private val parkedInProcess = AtomicInteger()
     }
 
     /** Broken output (as the lab detects it): pad/unused tokens, or one character 32+ times in a row. */
