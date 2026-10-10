@@ -14,6 +14,7 @@ import android.os.HandlerThread
 import android.os.Looper
 import android.os.SystemClock
 import app.heyrobot.core.BargeIn
+import app.heyrobot.core.BargeRun
 import app.heyrobot.core.EchoVoice
 import app.heyrobot.core.KeywordBuffer
 import app.heyrobot.core.KwsThresholds
@@ -30,6 +31,7 @@ import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.WakeAction
 import app.heyrobot.core.WakeDrop
 import app.heyrobot.core.WakePhrases
+import app.heyrobot.core.enumOr
 import app.heyrobot.core.writeAtomic
 import app.heyrobot.sys.ClaudeSpendStore
 import app.heyrobot.sys.Assistant
@@ -446,7 +448,7 @@ object VoiceHub {
             Cmd.VOICE_MODELS -> VoiceEngines.modelsChanged()
             Cmd.VOICE_RESET -> VoiceEngines.reset()
             Cmd.VOICE_BENCH -> VoiceEngines.benchmark()
-            Cmd.BARGE_TEST -> BargeTest.start(i.getBooleanExtra(Cmd.EXTRA_SILENT, false))
+            Cmd.BARGE_TEST -> BargeTest.start(enumOr(i.getStringExtra(Cmd.EXTRA_RUN), BargeRun.FIRST))
             Cmd.WAKE_TEST -> wakeTestUntil = if (i.getBooleanExtra(Cmd.EXTRA_ON, false)) SystemClock.elapsedRealtime() + WAKE_TEST_MS else 0L
         }
     }

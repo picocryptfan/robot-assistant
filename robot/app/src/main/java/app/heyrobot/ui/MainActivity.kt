@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.core.Approval
+import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestResult
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.ModelStatus
@@ -370,9 +371,9 @@ fun RobotAppUi(activity: MainActivity) {
             }
         },
         openPage = { page = it },
-        bargeTest = { silent ->
+        bargeTest = { run ->
             if (snap.facts?.active != true) say("Make Robot your digital assistant first: the test runs in the assistant.")
-            else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putBoolean(Cmd.EXTRA_SILENT, silent) })
+            else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putString(Cmd.EXTRA_RUN, run.name) })
         },
     )
 
@@ -457,5 +458,5 @@ class AppActions(
     val addClaudeKey: () -> Unit,
     val deleteClaudeKey: () -> Unit,
     val openPage: (Page) -> Unit,
-    val bargeTest: (Boolean) -> Unit,
+    val bargeTest: (BargeRun) -> Unit,
 )

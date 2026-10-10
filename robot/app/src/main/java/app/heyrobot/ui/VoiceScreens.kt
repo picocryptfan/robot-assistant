@@ -5,6 +5,8 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import app.heyrobot.BuildConfig
 import app.heyrobot.core.BargeIn
+import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestLogic
 import app.heyrobot.core.BargeTestResult
 import app.heyrobot.core.BenchState
@@ -62,6 +65,7 @@ import app.heyrobot.core.KwsThresholds
 import app.heyrobot.core.Playback
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.StopKey
+import app.heyrobot.core.VoiceChoice
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLogCodec
 import app.heyrobot.core.VoiceLogEntry
@@ -88,6 +92,7 @@ import kotlinx.coroutines.withContext
 // through files, as the voice speed test does.
 
 /** The part of Settings › Voice about wake words, hearing you over Robot, and the log. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions) {
     Text("Wake words", style = MaterialTheme.typography.titleSmall)
@@ -111,16 +116,23 @@ fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettin
         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
     Text("Barge-in test", style = MaterialTheme.typography.titleSmall)
-    Text("Robot reads a paragraph of about 20 seconds. Say “stop” or a wake word at any point: the result says whether she heard you and how fast " +
-        "she went quiet. The silent run counts anything she hears while nobody speaks. Try each mode above.",
+    Text("Robot reads a paragraph of about 20 seconds. Run the test: say “stop” or one wake phrase, once; she stops when she hears it, and the " +
+        "result says what she heard and how fast she went quiet. Count run: she reads to the end while you say “stop” and your wake phrases as often " +
+        "as you like, a few seconds apart; the result lists each one she heard. Silent run: stay quiet; it counts anything she hears anyway. " +
+        "Try each mode above.",
         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    // What the test will run with; the result says what it ran with.
+    Text(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM), style = MaterialTheme.typography.bodyMedium)
     val r = snap.bargeTest
     val running = r?.state == BenchState.RUNNING && System.currentTimeMillis() - r.started < BargeTestLogic.TIMEOUT_MS + 10_000
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        OutlinedButton(onClick = { a.bargeTest(false) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (running) "Testing…" else "Run the test") }
-        OutlinedButton(onClick = { a.bargeTest(true) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text("Silent run") }
+    // Three buttons may not fit side by side on a phone: they wrap.
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { a.bargeTest(BargeRun.FIRST) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (running) "Testing…" else "Run the test") }
+        OutlinedButton(onClick = { a.bargeTest(BargeRun.COUNT) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text("Count run") }
+        OutlinedButton(onClick = { a.bargeTest(BargeRun.SILENT) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text("Silent run") }
     }
-    if (r != null) for (line in BargeTestLogic.lines(r)) {
+    val names = s.wakePhrases.associate { it.id to it.text }
+    if (r != null) for (line in BargeTestLogic.lines(r) { names[it] }) {
         Text(line, style = MaterialTheme.typography.bodyMedium, color = if (r.state == BenchState.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
     }
     NavRow(RIcons.History, "Voice log", "What the voice side did, for when Robot didn't respond") { a.openPage(Page.VoiceLog) }

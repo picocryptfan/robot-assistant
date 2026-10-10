@@ -329,6 +329,12 @@ yet, which is what the barge-in test is for.
 **Barge-in test** (same screen): Robot reads a fixed 20-second paragraph with no word like "stop" and no wake phrase;
 say "stop" or a wake phrase at any point. The result says whether she heard you, when, and how soon she went quiet;
 **Silent run** plays the paragraph while nobody speaks and counts false "stop"s and wakes. Run both in each mode.
+Since 0.3.1 the first keyword still stops her in the normal run, so say one word per run; every keyword heard is
+listed with its time, the wake phrase by name and whether EchoGuard set it aside (0.3.0 kept only the first and said
+"wake word" without which). **Count run** lets her read to the end while you say "stop" and your wake phrases as
+often as you like, a few seconds apart (wakes closer than 2 s count once), and lists what she heard: compare with
+what you said. The screen shows the "Hear me while Robot talks" mode and playback the test will use, and the
+result the ones it ran with (and whether the phone's voice spoke).
 
 **Volume key**: while Robot speaks and the panel is on screen, volume down (or either key, or off: Settings › Voice)
 stops her and doesn't change the volume. The panel's window handles it (its dialog's key listener, and the

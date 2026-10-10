@@ -107,9 +107,9 @@ object Cmd {
     const val VOICE_BENCH = "voice_bench"
     /** The Claude API key was deleted: the voice process drops its client and ends Claude mode. */
     const val CLAUDE_KEY = "claude_key"
-    /** "Barge-in test" (extra [EXTRA_SILENT]): results come back in Paths.bargeTest. */
+    /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
-    const val EXTRA_SILENT = "silent"
+    const val EXTRA_RUN = "run"
     /**
      * "Test wake words" is open (extra [EXTRA_ON]): wake words are logged, not acted on. Sent again every few seconds
      * while the screen shows; the voice process ends the test by itself when that stops.
