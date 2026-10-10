@@ -65,33 +65,73 @@ object ScreenAccess {
         else -> ScreenChip.WAITING
     }
 
-    const val WAITING_HINT = "Android is still sending your screen. Try again in a moment."
+    /** What a tap on the chip says without the screen, and whether the notice offers "Open settings". */
+    data class Hint(val text: String, val openSettings: Boolean)
 
-    const val SWIPE_HINT = "Android shares your screen with Robot only when you open it by swiping up from a bottom corner. " +
+    val WAITING_HINT = Hint("Android is still sending your screen. Try again in a moment.", false)
+
+    private const val SWIPE = "Android shares your screen with Robot only when you open it by swiping up from a bottom corner. " +
         "Swipe up from a corner over the screen, then ask about it."
 
-    /** A tap on the chip when the corner swipe came without the screen. [textOn], [shotOn]: the two settings, null if unreadable. */
-    fun notSharedHint(textOn: Boolean?, shotOn: Boolean?): String =
-        if (textOn == true && shotOn == true) {
-            "Android didn't share this screen with Robot. “Use text from screen” and “Use screenshot” are on in $WHERE, " +
-                "so this app may keep its screen private (banking apps and private tabs do)."
-        } else {
-            "Android didn't share this screen with Robot. Turn on “Use text from screen” and “Use screenshot” in $WHERE, " +
-                "then swipe up from a bottom corner again. Some apps, like banking apps and private tabs, never share their screen."
-        }
+    /** A tap on the chip in a wake-word panel. [textOn] false: that setting must be turned on as well. */
+    fun swipeHint(textOn: Boolean?): Hint =
+        if (textOn == false) Hint("$SWIPE “Use text from screen” is off: turn it on first in $WHERE.", true) else Hint(SWIPE, false)
 
-    /** Assistant setup's "Screen sharing" row: [ok] (null: Android wouldn't say) and its words. */
-    data class Setup(val ok: Boolean?, val text: String)
-
-    fun setup(textOn: Boolean?, shotOn: Boolean?): Setup {
-        fun tick(b: Boolean) = if (b) "✓" else "✗"
+    /**
+     * A tap on the chip when the corner swipe came without the screen. [textOn], [shotOn]: the two settings, null if
+     * unreadable. Names only the settings that are off; with both on, the app keeps its screen to itself, and there is
+     * nothing to open.
+     */
+    fun notSharedHint(textOn: Boolean?, shotOn: Boolean?): Hint {
+        val start = "Android didn't share this screen with Robot."
+        val private = "this app may keep its screen private (banking apps and private tabs do)"
         return when {
-            textOn == null || shotOn == null -> Setup(null, "Android didn't say. For “Ask about this screen”, turn on “Use text from screen” and " +
+            textOn == false -> Hint(
+                "$start Turn on “Use text from screen”" + (if (shotOn == false) " and “Use screenshot”" else "") + " in $WHERE, then swipe up " +
+                    "from a bottom corner again." + (if (shotOn == false) "" else " Without it, Android sends no screenshot either."),
+                true,
+            )
+            textOn == null -> Hint(
+                "$start Check that “Use text from screen” and “Use screenshot” are on in $WHERE, then swipe up from a bottom corner " +
+                    "again. Some apps, like banking apps and private tabs, never share their screen.",
+                true,
+            )
+            shotOn == false -> Hint(
+                "$start “Use text from screen” is on, so $private. “Use screenshot” is off in $WHERE: turn it on to send a picture of " +
+                    "the screen as well.",
+                true,
+            )
+            shotOn == true -> Hint("$start “Use text from screen” and “Use screenshot” are on, so $private.", false)
+            else -> Hint("$start “Use text from screen” is on, so $private.", false)
+        }
+    }
+
+    /** What TalkBack says for the chip's icon: whether the screen is there, and that a tap explains when it isn't. */
+    fun iconDescription(chip: ScreenChip): String? = when (chip) {
+        ScreenChip.READY -> "Screen ready"
+        ScreenChip.WAITING -> "Screen still coming"
+        ScreenChip.NOT_SHARED -> "Screen not shared: tap to see why"
+        ScreenChip.SWIPE_ONLY -> "No screen this time: tap to see how to share it"
+        ScreenChip.HIDDEN -> null
+    }
+
+    /** How Assistant setup marks its "Screen sharing" row: only "Use text from screen" off is a problem. */
+    enum class Level { OK, INFO, WARN }
+
+    data class Setup(val level: Level, val text: String)
+
+    /** Assistant setup's "Screen sharing" row. [textOn], [shotOn]: null when Android wouldn't say. */
+    fun setup(textOn: Boolean?, shotOn: Boolean?): Setup {
+        fun tick(b: Boolean?) = when (b) { true -> "✓"; false -> "✗"; null -> "?" }
+        val both = "Use text from screen ${tick(textOn)} · Use screenshot ${tick(shotOn)}."
+        return when {
+            textOn == false -> Setup(Level.WARN, "$both Turn on Use text from screen for “Ask about this screen”: without it, Android sends no " +
+                "screenshot either.")
+            textOn == null -> Setup(Level.INFO, "Android didn't say. For “Ask about this screen”, turn on “Use text from screen” and " +
                 "“Use screenshot” in $WHERE.")
-            textOn && shotOn -> Setup(true, "Use text from screen ✓ · Use screenshot ✓. Swipe up from a bottom corner, then tap " +
-                "“Ask about this screen”.")
-            else -> Setup(false, "Use text from screen ${tick(textOn)} · Use screenshot ${tick(shotOn)}. Turn both on for “Ask about this screen”" +
-                (if (!textOn) ": without text from screen, Android sends no screenshot either." else "."))
+            shotOn != true -> Setup(Level.INFO, "$both “Ask about this screen” sends the screen's text; turn on Use screenshot to send a " +
+                "picture of it too.")
+            else -> Setup(Level.OK, "$both Swipe up from a bottom corner, then tap “Ask about this screen”.")
         }
     }
 

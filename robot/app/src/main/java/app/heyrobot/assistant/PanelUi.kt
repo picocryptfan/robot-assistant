@@ -95,6 +95,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.Attachment
+import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.TurnRole
 import app.heyrobot.ui.common.ActionView
@@ -465,7 +466,9 @@ private fun ContextRow(st: PanelState) {
                 AssistChip(
                     onClick = PanelController::attachScreen,
                     label = { Text("Ask about this screen") },
-                    leadingIcon = { Icon(if (st.screenAvailable) RIcons.Phone else RIcons.Info, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                    leadingIcon = {
+                        Icon(if (st.screenAvailable) RIcons.Phone else RIcons.Info, ScreenAccess.iconDescription(st.screenChip), Modifier.size(AssistChipDefaults.IconSize))
+                    },
                     modifier = Modifier.heightIn(min = 48.dp),
                 )
             }

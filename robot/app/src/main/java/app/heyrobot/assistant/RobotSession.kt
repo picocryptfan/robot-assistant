@@ -99,7 +99,7 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
     /** Screen text from the corner swipe (never stored, never logged). */
     override fun onHandleAssist(state: AssistState) {
         // None: "Use text from screen" is off or the app keeps its screen private. The panel says so when you tap the chip.
-        val s = state.assistStructure ?: return PanelController.onAssistText(emptyList(), null, state.index, state.count)
+        val s = state.assistStructure ?: return PanelController.onAssistNone()
         val pieces = ArrayList<String>()
         fun walk(n: AssistStructure.ViewNode, depth: Int) {
             if (depth > 60 || pieces.size > 2_000) return

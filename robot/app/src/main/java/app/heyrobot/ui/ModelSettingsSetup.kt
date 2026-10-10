@@ -628,8 +628,9 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                     })
                 // "Ask about this screen" needs both of the assistant's screen settings (core ScreenAccess).
                 val screen = ScreenAccess.setup(f.screenTextOn, f.screenshotOn)
-                StatusRow(when (screen.ok) { true -> Mark.OK; false -> Mark.WARN; null -> Mark.TODO }, "Screen sharing", screen.text) {
-                    if (screen.ok != true) TextButton(onClick = a.openAssistantSettings) { Text("Open") }
+                StatusRow(when (screen.level) { ScreenAccess.Level.OK -> Mark.OK; ScreenAccess.Level.INFO -> Mark.TODO; ScreenAccess.Level.WARN -> Mark.WARN },
+                    "Screen sharing", screen.text) {
+                    if (screen.level != ScreenAccess.Level.OK) TextButton(onClick = a.openAssistantSettings) { Text("Open") }
                 }
                 StatusRow(
                     if (f.recognizerIsRobot) Mark.OK else Mark.WARN,

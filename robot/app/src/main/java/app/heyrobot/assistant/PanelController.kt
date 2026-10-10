@@ -298,7 +298,8 @@ object PanelController {
     private var screenPkg: String? = null
     /**
      * For "Ask about this screen" (core ScreenAccess): how this panel was opened, its show flags, and what Android sent
-     * of the screen so far (null: nothing yet, false: it called with nothing). Logged once per panel (SCREEN_SHARED).
+     * of the screen so far (null: nothing yet, false: it called with nothing). Cleared when the panel hides, not when
+     * it shows: on a reused session Android sends its "nothing" before the show. Logged once per panel (SCREEN_SHARED).
      */
     private var shownFrom = ShowSource.APP
     private var showFlags = 0
@@ -308,6 +309,8 @@ object PanelController {
     private var screenSettings: Pair<Boolean?, Boolean?> = null to null
     private var screenWait: Job? = null
     private var screenLogged = true
+    /** The notice a tap on the chip put up: taken down if the screen comes after all. */
+    private var screenNotice: Notice? = null
     /** The day the "budget used up" sentence was said (once a day). */
     private var budgetSaid: String? = null
 
@@ -430,6 +433,8 @@ object PanelController {
         // Screen content lives only while the panel is open, and so do offers.
         screenWait?.cancel()
         logScreen()
+        textCame = null
+        shotCame = null
         screenText = null
         screenshot = null
         claudePieces = null
@@ -449,7 +454,7 @@ object PanelController {
 
     /**
      * AssistStructure text (corner swipe only). Over the Claude app ([pkg]) the panel also offers "Read Claude's answer":
-     * your own swipe, never a background read of the app. No pieces at all: Android called without the screen.
+     * your own swipe, never a background read of the app.
      */
     fun onAssistText(pieces: List<String>, pkg: String? = null, index: Int = 0, count: Int = 1) {
         if (ignoreAssist || !shown) return
@@ -468,20 +473,31 @@ object PanelController {
         refreshScreen()
     }
 
-    /** Null: Android called without a picture (a setting is off, or the app keeps its screen private). */
+    /**
+     * Android called without the screen's text: "Use text from screen" is off, or the screen is private. Noted even
+     * before the panel shows (a reused session gets it ahead of the show), so the chip can say why at once.
+     */
+    fun onAssistNone() {
+        if (textCame != true) textCame = false
+        if (shown) refreshScreen()
+    }
+
+    /** Null: Android called without a picture. As with [onAssistNone], a "no" counts before the show; a picture doesn't. */
     fun onScreenshot(bmp: Bitmap?) {
-        if (ignoreAssist || !shown) return
-        if (bmp != null) screenshot = bmp
-        shotCame = screenshot != null
-        refreshScreen()
+        if (bmp == null) {
+            if (shotCame != true) shotCame = false
+        } else {
+            if (ignoreAssist || !shown) return
+            screenshot = bmp
+            shotCame = true
+        }
+        if (shown) refreshScreen()
     }
 
     /** A new panel: nothing of the screen yet; the chip explains if it hasn't come in [ScreenAccess.WAIT_MS]. */
     private fun startScreen(source: ShowSource, flags: Int) {
         shownFrom = source
         showFlags = flags
-        textCame = null
-        shotCame = null
         screenSettings = Assistant.screenSharing(VoiceHub.app)
         screenLogged = ignoreAssist
         screenWait?.cancel()
@@ -495,10 +511,18 @@ object PanelController {
 
     private fun refreshScreen() {
         val chip = ScreenAccess.chip(shownFrom, _state.value.locked, textCame, shotCame, SystemClock.elapsedRealtime() - shownAtE, screenSettings.first)
-        _state.update { it.copy(screenChip = chip) }
+        _state.update { st ->
+            // The screen came after a tap said it hadn't ("still sending", "didn't share"): that notice no longer holds.
+            val stale = chip == ScreenChip.READY && st.notice != null && st.notice === screenNotice
+            st.copy(screenChip = chip, notice = if (stale) null else st.notice)
+        }
     }
 
-    /** Once per panel: its show flags and whether the screen's text and a screenshot came (codes only, never content). */
+    /**
+     * Once per panel: its show flags and whether the screen's text and a screenshot came (codes only, never content).
+     * Written 2 s after the panel opened, or when it closes if that is sooner, so it says what a tap on the chip
+     * would have found by then; a screen that comes later changes the chip but isn't logged again.
+     */
     private fun logScreen() {
         if (screenLogged) return
         screenLogged = true
@@ -613,13 +637,17 @@ object PanelController {
     fun attachScreen() {
         when (_state.value.screenChip) {
             ScreenChip.READY -> _state.update { it.copy(draft = Draft(Attachment.SCREEN, screenshot?.let { b -> Images.scaled(b, Images.THUMB_EDGE) })) }
-            ScreenChip.WAITING -> notify(ScreenAccess.WAITING_HINT)
-            ScreenChip.NOT_SHARED -> _state.update {
-                it.copy(notice = Notice(ScreenAccess.notSharedHint(screenSettings.first, screenSettings.second), NoticeAction.OPEN_ASSIST_SETTINGS))
-            }
-            ScreenChip.SWIPE_ONLY -> notify(ScreenAccess.SWIPE_HINT)
+            ScreenChip.WAITING -> screenHint(ScreenAccess.WAITING_HINT)
+            ScreenChip.NOT_SHARED -> screenHint(ScreenAccess.notSharedHint(screenSettings.first, screenSettings.second))
+            ScreenChip.SWIPE_ONLY -> screenHint(ScreenAccess.swipeHint(screenSettings.first))
             ScreenChip.HIDDEN -> {}
         }
+    }
+
+    private fun screenHint(h: ScreenAccess.Hint) {
+        val n = Notice(h.text, if (h.openSettings) NoticeAction.OPEN_ASSIST_SETTINGS else NoticeAction.NONE)
+        screenNotice = n
+        _state.update { it.copy(notice = n) }
     }
 
     /** "Open settings" under that notice: Settings › Apps › Default apps › Digital assistant app (voice input settings first). */
@@ -627,6 +655,9 @@ object PanelController {
         if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open Settings.")
         val h = host ?: return
         val i = Assistant.settingsIntent(VoiceHub.app) ?: return notify("Settings didn't open. Go to Settings › Apps › Default apps › Digital assistant app.")
+        // A pending "what should the text say?" ends here: the next question after Settings must not become that text.
+        askingTextFor = null
+        listenAfterSpeech = false
         // As for Robot's own app: nothing goes on behind Settings.
         leaveForRobot(h, i)
     }
