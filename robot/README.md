@@ -65,7 +65,9 @@ goes into the repository or the build output.
   placeholder; a load that kills the `:voice` process twice in a row marks that engine broken until
   Settings › Voice › "Try again" (the wake word keeps working). The wake word stays loaded; speech to text loads
   when a question starts (mic or wake word, not when the panel opens), the voice when a spoken reply is coming; each
-  is freed after 5 minutes unused and on memory pressure (not while listening or speaking).
+  is freed after 5 minutes unused (not while listening or speaking). Robot also frees them if Android reports memory
+  pressure, but Android 14 and later no longer send the "running low" levels, and the "background" level needs the
+  `:voice` process to become cached, which the assistant's process does not: in practice the 5-minute rule frees them.
 - Settings › Voice › "Test voice speed" times the downloaded models on the phone (`tools/voice_bench.py` does the
   same on a computer).
 

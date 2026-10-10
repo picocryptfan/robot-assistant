@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger
 //  - a Silero VAD of its own (0.5 s minimum silence, 20 s maximum speech) ends the question, or the button;
 //  - while the person speaks, the whole buffer is decoded again about every 0.7 s for live partial text;
 //  - one decode at a time, on the "robot-stt" thread; the model loads on first use (a question starting, never just
-//    the panel opening) and is freed after 5 minutes unused (IdlePolicy) or on memory pressure.
+//    the panel opening) and is freed after 5 minutes unused (IdlePolicy), or on the rare memory-pressure signal.
 
 /** Parakeet v3 int8 in sherpa-onnx's OfflineRecognizer (nemo_transducer). Not thread-safe: one decode at a time. */
 internal class Recognizer private constructor(private val r: OfflineRecognizer) {

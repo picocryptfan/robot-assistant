@@ -29,7 +29,7 @@ class RobotVoiceService : VoiceInteractionService() {
         super.onShutdown()
     }
 
-    /** Memory pressure: the speech models (about 1.2 GB) go unless in use; the wake word stays. */
+    /** Memory pressure, if Android says so (rare since API 34, see VoiceHub): the speech models go unless in use. */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         VoiceHub.onTrimMemory(level)

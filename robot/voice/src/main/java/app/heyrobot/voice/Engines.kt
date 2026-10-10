@@ -32,7 +32,7 @@ internal class VoiceEnv(val ctx: Context, val stateDir: File, private val onChan
 
 /**
  * The voice models' memory rule (pure): the wake word stays loaded; speech to text and the voice load on first use
- * and are freed after [IDLE_MS] without use (and on memory pressure), never while in use.
+ * and are freed after [IDLE_MS] without use (and on the rare memory-pressure signal), never while in use.
  */
 object IdlePolicy {
     const val IDLE_MS = 5 * 60_000L
@@ -43,8 +43,9 @@ object IdlePolicy {
 
 /**
  * One downloaded model bundle and the native engine made from it. Loaded on first use (on the engine's worker
- * thread, which is the only thread that calls [get] and [release]), freed after [IdlePolicy.IDLE_MS] unused and on
- * memory pressure. Never created unless the verified mark vouches for every file, and always behind the crash guard.
+ * thread, which is the only thread that calls [get] and [release]), freed after [IdlePolicy.IDLE_MS] unused (and on
+ * the rare memory-pressure signal). Never created unless the verified mark vouches for every file, always behind the
+ * crash guard, and never beside another native load ([NativeLoads]).
  */
 internal class ModelSlot<T : Any>(val bundle: VoiceBundle, private val env: VoiceEnv, private val free: (T) -> Unit) {
     private val guard by lazy { EngineGuard(bundle.id, File(env.stateDir, "guard-${bundle.id}.txt"), env::lastVoiceExit) }

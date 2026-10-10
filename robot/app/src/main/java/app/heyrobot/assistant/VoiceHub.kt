@@ -82,7 +82,9 @@ object VoiceHub {
     /**
      * Memory is short (RobotVoiceService.onTrimMemory): free the speech models unless they are in use. The wake
      * word stays. Not on UI_HIDDEN: as the panel comes and goes, the models follow their own idle rule (VoiceEngines:
-     * loaded on first use, freed after 5 minutes unused).
+     * loaded on first use, freed after 5 minutes unused). This rarely runs: Android 14+ no longer sends the
+     * RUNNING_* levels, and BACKGROUND comes only once the process is cached, which the bound assistant process
+     * does not become. The 5-minute rule is what frees the models in practice (README).
      */
     @Suppress("DEPRECATION") // RUNNING_LOW / RUNNING_CRITICAL: still honoured if a platform sends them.
     fun onTrimMemory(level: Int) {
