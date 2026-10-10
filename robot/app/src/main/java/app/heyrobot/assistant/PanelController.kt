@@ -8,6 +8,7 @@ import app.heyrobot.core.ActionRecord
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.ApprovalGate
 import app.heyrobot.core.Attachment
+import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.ChatTurn
@@ -154,7 +155,8 @@ object PanelController {
         shown = true
         val source = args?.getString(RobotVoiceService.ARG_SOURCE)
         val convArg = args?.getString(RobotVoiceService.ARG_CONVERSATION)
-        val returning = source == RobotVoiceService.SRC_CAPTURE || hidingFor == "capture"
+        // Only an explicit return from CaptureActivity keeps the picture (an abandoned capture does not).
+        val returning = source == RobotVoiceService.SRC_CAPTURE
         hidingFor = null
         ignoreAssist = source == RobotVoiceService.SRC_APP || returning
         val s = VoiceHub.settings
@@ -173,7 +175,8 @@ object PanelController {
                 SpeakReplies.NEVER -> false
                 SpeakReplies.VOICE -> source == RobotVoiceService.SRC_WAKE
             }
-            _state.update { it.copy(speak = speak, notice = null, draft = null) }
+            // focusRequest restarts at 0 so a new panel's first composition does not pop the keyboard.
+            _state.update { it.copy(speak = speak, notice = null, draft = null, focusRequest = 0) }
             draftJpeg = null
         }
         _state.update { it.copy(locked = locked, screenAvailable = false, sttAvailable = VoiceHub.stt.available, partial = "") }
@@ -407,6 +410,10 @@ object PanelController {
             return failReply(replyId, b.problem ?: "Robot's model isn't ready.", if (b.readiness == BrainKeeper.Readiness.NO_MODEL) NoticeAction.OPEN_APP else NoticeAction.NONE)
         }
         client = c
+        // The TPU build loaded without its vision encoder: a screen question still has the screen's text.
+        val vision = BrainKeeper.state.value.vision
+        if (image != null && !vision && attachment == Attachment.PHOTO) return failReply(replyId, BrainError.NO_VISION.text())
+        val img = if (vision) image else null
         val convId = _state.value.convId
         val gen = BrainMsg.Generate(
             convId = convId,
@@ -414,9 +421,9 @@ object PanelController {
             history = history.toPromptTurns(),
             historyCount = history.size,
             text = Prompt.userText(question, screen, attachment),
-            hasImage = image != null,
+            hasImage = img != null,
         )
-        var outcome = collect(c.request(BrainProtocol.REQ_GENERATE, gen, image), replyId)
+        var outcome = collect(c.request(BrainProtocol.REQ_GENERATE, gen, img), replyId)
         var rounds = 0
         while (outcome is Outcome.Calls && rounds < MAX_TOOL_ROUNDS) {
             rounds++
@@ -429,6 +436,7 @@ object PanelController {
                 return
             }
             _state.update { it.copy(phase = Phase.THINKING) }
+            paragraphBreak(replyId)
             outcome = collect(c.request(BrainProtocol.REQ_TOOL_RESULT, BrainMsg.ToolResult(convId, results.map { it.name to it.response })), replyId)
         }
         when (outcome) {
@@ -469,6 +477,14 @@ object PanelController {
 
     private fun appendText(replyId: String, text: String) = _state.update { st ->
         st.copy(phase = Phase.ANSWERING, turns = st.turns.map { if (it.id == replyId) it.copy(text = it.text + text) else it })
+    }
+
+    /** The model's text after a tool round starts a new paragraph (and a new sentence for speech). */
+    private fun paragraphBreak(replyId: String) {
+        val t = _state.value.turns.firstOrNull { it.id == replyId }?.text ?: return
+        if (t.isBlank() || t.endsWith("\n\n")) return
+        setText(replyId, t.trimEnd() + "\n\n")
+        if (_state.value.speak) splitter.feed("\n").forEach(::speakSentence)
     }
 
     private fun setText(replyId: String, text: String) = _state.update { st ->

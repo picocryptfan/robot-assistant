@@ -16,7 +16,7 @@ import javax.xml.parsers.DocumentBuilderFactory
  * never written to disk and nothing logs except through RLog (which drops content).
  */
 class ProcessIsolationTest {
-    private val root = File(System.getProperty("robot.rootDir") ?: File(System.getProperty("user.dir")).parent)
+    private val root: File = System.getProperty("robot.rootDir")?.let(::File) ?: File(System.getProperty("user.dir")).absoluteFile.parentFile
     private val ns = "http://schemas.android.com/apk/res/android"
 
     private fun main(module: String) = File(root, "$module/src/main")
@@ -149,6 +149,19 @@ class ProcessIsolationTest {
         ), used)
         val app = doc.getElementsByTagName("application").item(0) as Element
         assertEquals("false", app.getAttributeNS(ns, "allowBackup"))
+    }
+
+    /** The main app opens the panel with Activity.showAssist and plain string keys (it may not import the assistant's constants). */
+    @Test fun showAssistArgumentsMatchTheAssistant() {
+        val vis = File(java("app"), "app/heyrobot/assistant/RobotVoiceService.kt").readText()
+        fun const(name: String) = Regex("""const val $name = "([^"]+)"""").find(vis)!!.groupValues[1]
+        val ui = File(java("app"), "app/heyrobot/ui/MainActivity.kt").readText()
+        assertTrue(ui.contains("putString(\"${const("ARG_SOURCE")}\", \"${const("SRC_APP")}\")"))
+        assertTrue(ui.contains("putString(\"${const("ARG_CONVERSATION")}\", it)"))
+        // Class names the main and voice processes use as strings.
+        val sys = File(java("app"), "app/heyrobot/sys/Assistant.kt").readText()
+        assertTrue(sys.contains("\"app.heyrobot.assistant.RobotVoiceService\"") && File(java("app"), "app/heyrobot/assistant/RobotVoiceService.kt").isFile)
+        assertTrue(File(java("app"), "app/heyrobot/ui/MainActivity.kt").isFile)
     }
 
     @Test fun voiceInteractionMetadataNamesTheComponents() {
