@@ -98,4 +98,51 @@ class UtteranceTest {
         // No speech yet: never.
         assertEquals(PartialScheduler.Decision.NONE, PartialScheduler().decide(Endpointer.RATE * 5L, -1, queued = false, running = false))
     }
+
+    /** 0.1.2 review, minor 6: a question whose microphone stops still ends. */
+    @Test fun aQuestionCutShortEndsWithWhatWasHeard() {
+        val e = Endpointer()
+        run(e, 2_000) { t -> t >= 600 }
+        // The capture stops mid-sentence: decode what there is.
+        assertEquals(Endpointer.Event.END, e.cut())
+        assertEquals(Endpointer.Event.NONE, e.cut())
+        assertEquals(Endpointer.Event.NONE, e.onFrame(true, frame))
+        // Nothing said before it stopped.
+        val quiet = Endpointer()
+        run(quiet, 1_000) { false }
+        assertEquals(Endpointer.Event.NO_SPEECH, quiet.cut())
+        // A question that already ended is not ended twice.
+        val done = Endpointer()
+        run(done, 6_000) { t -> t in 600..3_500 }
+        assertEquals(Endpointer.Event.NONE, done.cut())
+    }
+
+    @Test fun theWatchdogOnlyCatchesAStalledCapture() {
+        val cfg = Endpointer.Config()
+        // A microphone that delivers frames always ends by samples first (30 s cap), well before the wall-clock cap.
+        assertTrue(cfg.watchdogMs > cfg.maxSamples * 1000 / Endpointer.RATE)
+        assertTrue(cfg.watchdogMs <= 40_000)
+        assertEquals(cfg.watchdogMs, Endpointer().watchdogMs)
+    }
+
+    /** 0.1.2 review, minor 9: "stop" is not a wake word, and the ring holds what a question after "hey robot" needs. */
+    @Test fun onlyHeyRobotMarksTheStartOfAQuestion() {
+        assertFalse(PreRoll.marksQuestion(WakeWord.STOP))
+        assertTrue(PreRoll.marksQuestion("HEY_ROBOT"))
+    }
+
+    @Test fun preRollReachesBackToTheWakeWordAndNoFurtherThanTheRing() {
+        val rate = Endpointer.RATE.toLong()
+        assertTrue(PreRoll.SINCE_WAKE_MS <= PreRoll.RING_MS)
+        // "Hey robot" 1.2 s ago: the question starts there.
+        assertEquals((1.2 * rate).toInt(), PreRoll.samples((1.2 * rate).toLong()))
+        // 2.5 s ago (the limit): all of it, which the ring still holds.
+        assertEquals((2.5 * rate).toInt(), PreRoll.samples(PreRoll.SINCE_WAKE_MS * rate / 1000))
+        // Longer ago, or never (a huge or negative distance): a button press gets 0.3 s.
+        assertEquals((0.3 * rate).toInt(), PreRoll.samples(PreRoll.SINCE_WAKE_MS * rate / 1000 + 1))
+        assertEquals((0.3 * rate).toInt(), PreRoll.samples(Long.MAX_VALUE / 2))
+        assertEquals((0.3 * rate).toInt(), PreRoll.samples(-5))
+        // Never more than the ring.
+        assertEquals((PreRoll.RING_MS * rate / 1000).toInt(), PreRoll.samples(10 * rate, sinceWakeMs = 20_000))
+    }
 }

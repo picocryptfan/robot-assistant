@@ -191,8 +191,11 @@ class SherpaSpeechToText internal constructor(
         }
         val s = Session(ids.incrementAndGet(), listener, src, own)
         session = s
-        val pre = src.attach(s.sink, SINCE_WAKE_MS, PRE_ROLL_MS)
+        // If the microphone is closed under the question ("listen only while charging" and the charger is pulled,
+        // another app takes it), the question ends with what was said; the watchdog catches a capture that stalls.
+        val pre = src.attach(s.sink, PreRoll.SINCE_WAKE_MS, PreRoll.OTHERWISE_MS) { cut(s, "mic_stopped") }
         s.preRoll = pre
+        main.postDelayed({ cut(s, "watchdog") }, s.endpointer.watchdogMs)
         listener.onListening()
         // Loads while the person speaks (nothing to do once loaded).
         worker.execute { load() }
@@ -284,15 +287,27 @@ class SherpaSpeechToText internal constructor(
         worker.execute { final(s, reason) }
     }
 
-    private fun noSpeech(s: Session) {
+    private fun noSpeech(s: Session, why: String = "no_speech") {
         synchronized(s) {
             if (s.ended) return
             s.ended = true
         }
         detach(s)
         if (session === s) session = null
-        RLog.i("stt_final", "end" to RLog.Code("no_speech"))
-        if (!s.cancelled) s.listener.onError(SpeechToText.Reason.NO_SPEECH, "I didn't hear anything. Tap the mic and try again.")
+        RLog.i("stt_final", "end" to RLog.Code(why))
+        if (s.cancelled) return
+        if (why == "mic_stopped") s.listener.onError(SpeechToText.Reason.MIC, "The microphone stopped before you spoke. Tap the mic and try again.")
+        else s.listener.onError(SpeechToText.Reason.NO_SPEECH, "I didn't hear anything. Tap the mic and try again.")
+    }
+
+    /** No more audio will come for [s] (its capture stopped, or the watchdog fired): end it with what was heard. */
+    private fun cut(s: Session, why: String) {
+        if (s.ended) return
+        when (s.endpointer.cut()) {
+            Endpointer.Event.END -> finish(s, why)
+            Endpointer.Event.NO_SPEECH -> noSpeech(s, why)
+            else -> {}
+        }
     }
 
     private fun detach(s: Session) {
@@ -392,9 +407,5 @@ class SherpaSpeechToText internal constructor(
         private const val MAX_SAMPLES = 31 * Listener.SAMPLE_RATE
         /** Less than this is a tap, not speech. */
         private const val MIN_SAMPLES = Listener.SAMPLE_RATE * 3 / 10
-        /** After "hey robot", the question starts where the keyword fired, if that was this recent. */
-        private const val SINCE_WAKE_MS = 2_500
-        /** Otherwise a little audio from before the button press. */
-        private const val PRE_ROLL_MS = 300
     }
 }

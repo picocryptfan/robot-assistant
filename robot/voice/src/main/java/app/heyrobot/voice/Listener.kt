@@ -12,6 +12,7 @@ import android.os.Process
 import android.os.SystemClock
 import app.heyrobot.core.RLog
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import kotlin.math.log10
@@ -50,8 +51,9 @@ interface AudioFrames {
      * Adds [sink] and returns the audio heard just before it, with no frame lost or repeated in between: what came
      * after the last wake word if it fired less than [sinceWakeMs] ago (the question right after "hey robot"),
      * else the last [otherwiseMs] (someone who starts talking as they press the button). In memory only.
+     * [onEnded] runs once if the capture stops while [sink] is still attached (no more frames will come).
      */
-    fun attach(sink: (FloatArray) -> Unit, sinceWakeMs: Int, otherwiseMs: Int): FloatArray {
+    fun attach(sink: (FloatArray) -> Unit, sinceWakeMs: Int, otherwiseMs: Int, onEnded: () -> Unit = {}): FloatArray {
         addSink(sink)
         return FloatArray(0)
     }
@@ -75,9 +77,11 @@ class Listener(
     @Volatile var stopWord = false
 
     private val sinks = CopyOnWriteArrayList<(FloatArray) -> Unit>()
-    /** The last 2 s of audio and where the last wake word fired, for [attach] (guarded by [ringLock]). */
+    /** What to tell attached sinks when the capture ends ([attach]). */
+    private val ends = ConcurrentHashMap<(FloatArray) -> Unit, () -> Unit>()
+    /** The last [PreRoll.RING_MS] of audio and where the last wake word fired, for [attach] (guarded by [ringLock]). */
     private val ringLock = Any()
-    private val recent = FloatRing(SAMPLE_RATE * 2)
+    private val recent = FloatRing(SAMPLE_RATE * PreRoll.RING_MS / 1000)
     private var samplesSeen = 0L
     private var wakeAt = Long.MIN_VALUE / 2
     private var rec: AudioRecord? = null
@@ -85,15 +89,32 @@ class Listener(
     private val callbackExec = Executors.newSingleThreadExecutor()
 
     override fun addSink(sink: (FloatArray) -> Unit) { sinks.addIfAbsent(sink) }
-    override fun removeSink(sink: (FloatArray) -> Unit) { sinks.remove(sink) }
+    override fun removeSink(sink: (FloatArray) -> Unit) {
+        sinks.remove(sink)
+        ends.remove(sink)
+    }
 
     override val capturing: Boolean get() = running
 
-    override fun attach(sink: (FloatArray) -> Unit, sinceWakeMs: Int, otherwiseMs: Int): FloatArray = synchronized(ringLock) {
-        val sinceWake = samplesSeen - wakeAt
-        val n = if (sinceWake in 0..sinceWakeMs.toLong() * SAMPLE_RATE / 1000) sinceWake else otherwiseMs.toLong() * SAMPLE_RATE / 1000
-        sinks.addIfAbsent(sink)
-        recent.last(n.toInt())
+    override fun attach(sink: (FloatArray) -> Unit, sinceWakeMs: Int, otherwiseMs: Int, onEnded: () -> Unit): FloatArray {
+        val pre = synchronized(ringLock) {
+            sinks.addIfAbsent(sink)
+            ends[sink] = onEnded
+            recent.last(PreRoll.samples(samplesSeen - wakeAt, sinceWakeMs, otherwiseMs))
+        }
+        // Stopped just before: no frame will come, so say so now.
+        if (!running) endSinks()
+        return pre
+    }
+
+    /** The capture ended (stopped, or the microphone died): attached sinks get nothing more, and are told once. */
+    private fun endSinks() {
+        val gone = ends.keys.toList()
+        for (k in gone) {
+            val cb = ends.remove(k) ?: continue
+            sinks.remove(k)
+            try { cb() } catch (t: Throwable) { RLog.w("audio_sink_end", t) }
+        }
     }
 
     /** Opens the microphone (the configured source, MIC if that fails) and starts the loop. */
@@ -201,12 +222,14 @@ class Listener(
                 null
             }
             if (hit != null) {
-                synchronized(ringLock) { wakeAt = samplesSeen }
+                // Only "hey robot" marks where a question starts; "stop" is followed by Robot's own voice.
+                if (PreRoll.marksQuestion(hit)) synchronized(ringLock) { wakeAt = samplesSeen }
                 onWake(hit)
             }
         }
         ww?.release()
         wakeWordLoaded = false
+        endSinks()
     }
 
     fun stop() {
@@ -218,6 +241,8 @@ class Listener(
             try { r.release() } catch (_: Throwable) {}
         }
         rec = null
+        // The loop tells them as it exits; also here in case it is still stuck in a read.
+        endSinks()
         callbackExec.shutdown()
         RLog.i("listen_stop")
     }
