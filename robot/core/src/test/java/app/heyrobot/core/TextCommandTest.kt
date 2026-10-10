@@ -110,6 +110,8 @@ class TextCommandTest {
         // The answer to "what should it say?" and "cancel" (the gate still checks the lock for the answer).
         assertEquals(TextCommand.Route.ANSWER, TextCommand.route("I'm running late", "mom", locked = true, typed = true))
         assertEquals(TextCommand.Route.CANCEL, TextCommand.route("never mind", "mom", locked = false, typed = false))
+        for (s in listOf("Hey Robot, cancel.", "Cancel?", "Laisse faire.", "Annule ça.")) assertEquals(s, TextCommand.Route.CANCEL, TextCommand.route(s, "mom", locked = false, typed = false))
+        assertEquals(TextCommand.Route.ANSWER, TextCommand.route("Cancel dinner tonight", "mom", locked = false, typed = false))
         // A new text request replaces the question.
         assertEquals(TextCommand.Route.PARSE, TextCommand.route("text dad hi", "mom", locked = false, typed = true))
     }
@@ -155,8 +157,72 @@ class TextCommandTest {
     }
 
     @Test fun cancelWords() {
-        for (s in listOf("cancel", "Never mind.", "nevermind", "forget it", "No")) assertTrue(s, TextCommand.isCancel(s))
-        for (s in listOf("I'm late", "no worries, see you", "cancel the meeting tomorrow")) assertFalse(s, TextCommand.isCancel(s))
+        val english = listOf(
+            "cancel", "Cancel.", "CANCEL", "Cancel!", "Cancel?", "Cancel,", "Cancel…", "Cancel...", "cancel it", "Cancel that.", "cancel the text",
+            "Cancel that text.", "Cancel this text", "Cancel text", "Cancel my text", "Cancel the text message", "Cancel that message",
+            "Cancel please.", "Please cancel.", "No, cancel.", "No cancel", "Okay, cancel.", "Hey robot, cancel.", "Hey Robot cancel",
+            "Never mind.", "nevermind", "Never mind that.", "Never mind then.", "Oh, never mind", "forget it", "Forget about it.",
+            "Forget the text.", "Forget about the text.", "Scratch that.", "Don't send it.", "Sorry, never mind.", "Just cancel it.",
+            "Abort.", "Skip it.", "I changed my mind.", "Changed my mind.", "I've changed my mind, cancel it",
+            // Two at once, or a hesitation first.
+            "Never mind, cancel.", "Cancel, never mind.", "Forget it, never mind.", "Stop, cancel.", "Nope, never mind.", "Nah, forget it.",
+            "Nah never mind", "Cancel. Cancel.", "cancel, cancel", "Abort, abort", "Wait, cancel.", "Hold on, cancel.", "Hmm, never mind.",
+            "On second thought, never mind.", "Oops, cancel that", "Actually, cancel.",
+        )
+        val french = listOf(
+            "annule", "Annule.", "Annuler.", "Annule ça !", "Annule ça.", "Annulez.", "Laisse faire.", "Laissez faire.", "Laisse tomber.",
+            "Laissez tomber.", "Oublie ça.", "Oubliez ça.", "Oublie ça, merci.", "Non, annule.", "Dis robot, annule le texto.",
+            "J'ai changé d'avis.", "Attends, annule.",
+        )
+        for (s in english + french) assertEquals(s, TextCommand.Cancel.EXPLICIT, TextCommand.cancelKind(s))
+        // A bare "no" or "stop": only as the whole answer, punctuation aside.
+        val bare = listOf("No", "No!", "no.", "Nope.", "Nah.", "Stop.", "Don't.", "Don’t.", "Nothing.", "No thanks.", "No thank you.", "Don't bother.",
+            "Non.", "Non merci.", "Non merci !", "Arrête.", "Arrêtez.", "Rien.")
+        for (s in bare) assertEquals(s, TextCommand.Cancel.BARE, TextCommand.cancelKind(s))
+        // Only the whole answer counts, and filler never turns a bare "no" into a cancel: these are messages.
+        val messages = listOf(
+            "I'm late", "no worries, see you", "cancel the meeting tomorrow", "Cancel dinner tonight", "No problem see you soon", "No problem!",
+            "Stop by the store", "Nothing much, you?", "Don't forget the milk", "OK", "Thanks", "Sorry, I'm running late", "Please don't cancel",
+            "Sorry, no.", "Okay, no.", "Well, no.", "Actually, no.", "Just no.", "Please don't.", "Please stop.", "Stop it.", "Stop that.",
+            "No, thanks.", "Nothing, thanks.", "Nah thanks.", "Non, merci.", "Désolé, non.", "Arrête ça.", "Wait", "Text",
+            "Non, je suis en retard", "Annule le souper de demain", "Rien de spécial", "Arrête de m'appeler", "Never mind, I'll call her", "",
+        )
+        for (s in messages) assertNull(s, TextCommand.cancelKind(s))
+    }
+
+    @Test fun aBareNoSaysHowToSendItAnyway() {
+        assertEquals("Okay, no text to Mom.", TextCommand.cancelReply("mom", "Cancel.", TextCommand.Cancel.EXPLICIT))
+        assertEquals("Okay, no text to Mom. To send “No”, say “text Mom no”.", TextCommand.cancelReply("mom", "No.", TextCommand.Cancel.BARE))
+        assertEquals("Okay, no text to Mom. To send “No thanks”, say “text Mom no thanks”.",
+            TextCommand.cancelReply("mom", "Hey robot, no thanks!", TextCommand.Cancel.BARE))
+        // That is a text request Robot reads as such.
+        assertEquals(TextRequest("Mom", "no thanks"), TextCommand.parse("text Mom no thanks", emptyList(), typed = false))
+    }
+
+    @Test fun aSpokenAnswerLosesTheWakePhraseOnly() {
+        assertEquals("I'm running late", TextCommand.stripWake("Hey Robot, I'm running late"))
+        assertEquals("I'm running late", TextCommand.stripWake("hey robot I'm running late"))
+        assertEquals("on my way", TextCommand.stripWake("OK Robot. on my way"))
+        assertEquals("I'm late", TextCommand.stripWake("Robot, I'm late"))
+        assertEquals("I'm late", TextCommand.stripWake("Hey robot… I'm late"))
+        assertEquals("j'arrive", TextCommand.stripWake("He robot, j'arrive"))
+        assertEquals("j'arrive", TextCommand.stripWake("Hé Robot ! j'arrive"))
+        assertEquals("I'm late", TextCommand.stripWake("Hey robot, hey robot, I'm late"))
+        assertEquals("“I'm late”", TextCommand.stripWake("Hey robot, “I'm late”"))
+        // Your own wake phrase too, typed apostrophes or not.
+        assertEquals("see you soon", TextCommand.stripWake("Hey Jarvis, see you soon", listOf("hey jarvis")))
+        assertEquals("yes", TextCommand.stripWake("Computer’s on, yes", listOf("computer's on")))
+        // Only the wake phrase: nothing is left (Robot asks again).
+        assertEquals("", TextCommand.stripWake("Hey Robot."))
+        // Everything else is the text.
+        for (s in listOf("Okay, see you at 5", "Please call me back", "Robot vacuum is fixed", "Hey, are you up?", "Robots are cool", "Computer is fixed")) {
+            assertEquals(s, TextCommand.stripWake(s, listOf("computer")))
+        }
+        // Before a cancel, a one-word wake phrase needs no comma.
+        assertTrue(TextCommand.isCancel("Computer cancel", listOf("computer")))
+        assertEquals(TextCommand.Cancel.BARE, TextCommand.cancelKind("Computer, no", listOf("computer")))
+        assertEquals(TextCommand.Route.CANCEL, TextCommand.route("Computer cancel", "mom", locked = false, typed = false, wakePhrases = listOf("computer")))
+        assertFalse(TextCommand.isCancel("Computer cancel"))
     }
 
     // ------------------------------------------------------------------ lookup_contact NOT_FOUND (D2)

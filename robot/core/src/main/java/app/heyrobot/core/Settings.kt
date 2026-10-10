@@ -160,23 +160,26 @@ data class RobotSettings(
          * The settings file's layout. 2 (0.2.3): the phone region is saved only when chosen. Files without it come from
          * earlier versions, which saved "CA" whether chosen or not: there it reads as unset, so the phone's own applies.
          * 3 (0.3.0): Ask Claude's settings (absent from older files, so they read as the defaults).
+         * 4 (0.3.1): opening apps and Organic Maps just happen by default. Older files saved "Ask first" for them
+         * whether chosen or not, so there it reads as the new default; "Off" stays off.
          */
-        const val SCHEMA = 3
+        const val SCHEMA = 4
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
         /**
-         * Timers and alarms: just do it (spec item 7). Flashlight is harmless and undone in one word. Phase 2: texts,
-         * emails and new events ask first (they go to someone, or into the calendar); looking things up and saving a
-         * note (Undo on its card) just happen.
+         * Timers and alarms: just do it (spec item 7). Flashlight is harmless and undone in one word. Opening an app or
+         * a search in Organic Maps only shows something, so it just happens (0.3.1). Phase 2: texts, emails and new
+         * events ask first (they go to someone, or into the calendar); looking things up and saving a note (Undo on its
+         * card) just happen.
          */
         val DEFAULT_APPROVALS: Map<ToolName, Approval> = mapOf(
             ToolName.SET_TIMER to Approval.AUTO,
             ToolName.SET_ALARM to Approval.AUTO,
             ToolName.FLASHLIGHT to Approval.AUTO,
-            ToolName.OPEN_APP to Approval.ASK,
-            ToolName.MAPS_SEARCH to Approval.ASK,
-            ToolName.MAPS_NAVIGATE to Approval.ASK,
+            ToolName.OPEN_APP to Approval.AUTO,
+            ToolName.MAPS_SEARCH to Approval.AUTO,
+            ToolName.MAPS_NAVIGATE to Approval.AUTO,
             ToolName.SEND_TEXT to Approval.ASK,
             ToolName.DRAFT_EMAIL to Approval.ASK,
             ToolName.LOOKUP_CONTACT to Approval.AUTO,
@@ -187,6 +190,9 @@ data class RobotSettings(
             // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
             ToolName.ASK_CLAUDE to Approval.ASK,
         )
+
+        /** The actions whose default became "Just do it" in schema 4. */
+        private val OPENS_WITHOUT_ASKING = setOf(ToolName.OPEN_APP, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE)
 
         val EVENT_MINUTES = listOf(15, 30, 45, 60, 90, 120)
 
@@ -210,7 +216,11 @@ data class RobotSettings(
                 livePartials = o.optBoolean("livePartials", d.livePartials),
                 keepModelMinutes = clampKeep(o.optInt("keepModelMinutes", d.keepModelMinutes)),
                 saveHistory = o.optBoolean("saveHistory", d.saveHistory),
-                approvals = ToolName.entries.associateWith { t -> if (t.internal) DEFAULT_APPROVALS.getValue(t) else enumOr(ap?.optString(t.id), DEFAULT_APPROVALS.getValue(t)) },
+                approvals = ToolName.entries.associateWith { t ->
+                    if (t.internal) return@associateWith DEFAULT_APPROVALS.getValue(t)
+                    val saved = enumOr(ap?.optString(t.id), DEFAULT_APPROVALS.getValue(t))
+                    if (o.optInt("schema", 1) < 4 && t in OPENS_WITHOUT_ASKING && saved == Approval.ASK) Approval.AUTO else saved
+                },
                 textApp = enumValues<TextApp>().firstOrNull { it.name == o.optString("textApp") },
                 smsGateway = PhoneNumbers.gateway(o.optString("smsGateway", d.smsGateway)),
                 // Kept as saved; absent or unreadable means the phone's own region, and so does the "CA" every earlier

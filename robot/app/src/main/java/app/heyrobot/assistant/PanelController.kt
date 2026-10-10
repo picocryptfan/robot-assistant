@@ -58,6 +58,9 @@ import app.heyrobot.core.Prompt
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.ScreenAccess
+import app.heyrobot.core.ScreenChip
+import app.heyrobot.core.ScreenData
 import app.heyrobot.core.ScreenText
 import app.heyrobot.core.ShowSource
 import app.heyrobot.core.StallTimer
@@ -184,7 +187,8 @@ data class UiTurn(
 
 data class Draft(val kind: Attachment, val thumb: Bitmap?)
 
-enum class NoticeAction { NONE, OPEN_APP }
+/** OPEN_ASSIST_SETTINGS: the Digital assistant app page, where "Use text from screen" and "Use screenshot" are. */
+enum class NoticeAction { NONE, OPEN_APP, OPEN_ASSIST_SETTINGS }
 
 data class Notice(val text: String, val action: NoticeAction = NoticeAction.NONE)
 
@@ -195,7 +199,8 @@ data class PanelState(
     val partial: String = "",
     val notice: Notice? = null,
     val draft: Draft? = null,
-    val screenAvailable: Boolean = false,
+    /** "Ask about this screen" (core ScreenAccess): hidden, or what a tap does. */
+    val screenChip: ScreenChip = ScreenChip.HIDDEN,
     val locked: Boolean = false,
     val speak: Boolean = false,
     /** Saved to the history (a conversation that used the screen is saved only when the person keeps it). */
@@ -217,6 +222,8 @@ data class PanelState(
 ) {
     /** A turn is under way, a confirmation card included: no new question, no mic, no camera until it ends. */
     val busy: Boolean get() = phase == Phase.THINKING || phase == Phase.ANSWERING || phase == Phase.CONFIRMING
+    /** The screen's text or a screenshot came with this panel. */
+    val screenAvailable: Boolean get() = screenChip == ScreenChip.READY
 }
 
 /** What the session offers the controller. */
@@ -289,6 +296,21 @@ object PanelController {
     private var lastThumb: Bitmap? = null
     /** The app on screen when the corner swipe came from a single app (its screenshot's label), by package. */
     private var screenPkg: String? = null
+    /**
+     * For "Ask about this screen" (core ScreenAccess): how this panel was opened, its show flags, and what Android sent
+     * of the screen so far (null: nothing yet, false: it called with nothing). Cleared when the panel hides, not when
+     * it shows: on a reused session Android sends its "nothing" before the show. Logged once per panel (SCREEN_SHARED).
+     */
+    private var shownFrom = ShowSource.APP
+    private var showFlags = 0
+    private var textCame: Boolean? = null
+    private var shotCame: Boolean? = null
+    /** "Use text from screen" and "Use screenshot", read at each show (null: Android wouldn't say). */
+    private var screenSettings: Pair<Boolean?, Boolean?> = null to null
+    private var screenWait: Job? = null
+    private var screenLogged = true
+    /** The notice a tap on the chip put up: taken down if the screen comes after all. */
+    private var screenNotice: Notice? = null
     /** The day the "budget used up" sentence was said (once a day). */
     private var budgetSaid: String? = null
 
@@ -330,7 +352,8 @@ object PanelController {
 
     // ------------------------------------------------------------------ show / hide
 
-    fun onShow(args: Bundle?, locked: Boolean) {
+    /** [showFlags]: VoiceInteractionSession's, for the voice log. */
+    fun onShow(args: Bundle?, locked: Boolean, showFlags: Int = 0) {
         init()
         shown = true
         val source = args?.getString(RobotVoiceService.ARG_SOURCE)
@@ -365,7 +388,7 @@ object PanelController {
         // Claude mode never carries over onto the lock screen unless Claude is allowed there.
         if (locked && !s.claudeLocked) endClaudeMode()
         _state.update {
-            it.copy(locked = locked, screenAvailable = false, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint, partial = "",
+            it.copy(locked = locked, screenChip = ScreenChip.HIDDEN, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint, partial = "",
                 showId = it.showId + 1, claudeScreen = false)
         }
         BrainKeeper.prewarm(VoiceHub.app)
@@ -375,6 +398,7 @@ object PanelController {
         RLog.i("panel_show", "src" to source?.let { RLog.Code(it) }, "locked" to locked, "turns" to chat.size)
         shownAtE = SystemClock.elapsedRealtime()
         VoiceLog.add(VoiceEvent.SESSION_SHOWN, showSource(source))
+        startScreen(showSource(source), showFlags)
         // The question first: once it is attached, the capture mode can't switch under it ("Always echo cancellation").
         if (source == RobotVoiceService.SRC_WAKE) startListening()
         VoiceHub.updateCapture()
@@ -407,6 +431,10 @@ object PanelController {
         // Claude mode ends when the panel closes (not when it hides for the camera or an app Claude opened).
         if (hidingFor == null) endClaudeMode()
         // Screen content lives only while the panel is open, and so do offers.
+        screenWait?.cancel()
+        logScreen()
+        textCame = null
+        shotCame = null
         screenText = null
         screenshot = null
         claudePieces = null
@@ -418,7 +446,7 @@ object PanelController {
             lastImage = null
             _state.update { it.copy(draft = null) }
         }
-        _state.update { it.copy(phase = if (it.busy) it.phase else Phase.IDLE, partial = "", screenAvailable = false, claudeScreen = false) }
+        _state.update { it.copy(phase = if (it.busy) it.phase else Phase.IDLE, partial = "", screenChip = ScreenChip.HIDDEN, claudeScreen = false) }
         lastActivity = System.currentTimeMillis()
         // Whatever the reason (a camera left with Home must not keep Gemma loaded): showing the panel again cancels it.
         BrainKeeper.scheduleUnload(VoiceHub.settings.keepModelMinutes)
@@ -440,13 +468,65 @@ object PanelController {
         screenText = ScreenText.build(assistPieces)
         // Only the Claude app's own window, and only when an answer can be found in it (a secure window gives no text).
         if (pkg == ClaudeAppLink.PACKAGE && ClaudeAppAnswer.extract(pieces, lastToApp) != null) claudePieces = pieces
-        _state.update { it.copy(screenAvailable = screenText != null || screenshot != null, claudeScreen = claudePieces != null) }
+        textCame = screenText != null
+        _state.update { it.copy(claudeScreen = claudePieces != null) }
+        refreshScreen()
     }
 
+    /**
+     * Android called without the screen's text: "Use text from screen" is off, or the screen is private. Noted even
+     * before the panel shows (a reused session gets it ahead of the show), so the chip can say why at once.
+     */
+    fun onAssistNone() {
+        if (textCame != true) textCame = false
+        if (shown) refreshScreen()
+    }
+
+    /** Null: Android called without a picture. As with [onAssistNone], a "no" counts before the show; a picture doesn't. */
     fun onScreenshot(bmp: Bitmap?) {
-        if (ignoreAssist || !shown || bmp == null) return
-        screenshot = bmp
-        _state.update { it.copy(screenAvailable = true) }
+        if (bmp == null) {
+            if (shotCame != true) shotCame = false
+        } else {
+            if (ignoreAssist || !shown) return
+            screenshot = bmp
+            shotCame = true
+        }
+        if (shown) refreshScreen()
+    }
+
+    /** A new panel: nothing of the screen yet; the chip explains if it hasn't come in [ScreenAccess.WAIT_MS]. */
+    private fun startScreen(source: ShowSource, flags: Int) {
+        shownFrom = source
+        showFlags = flags
+        screenSettings = Assistant.screenSharing(VoiceHub.app)
+        screenLogged = ignoreAssist
+        screenWait?.cancel()
+        screenWait = scope.launch {
+            delay(ScreenAccess.WAIT_MS)
+            refreshScreen()
+            logScreen()
+        }
+        refreshScreen()
+    }
+
+    private fun refreshScreen() {
+        val chip = ScreenAccess.chip(shownFrom, _state.value.locked, textCame, shotCame, SystemClock.elapsedRealtime() - shownAtE, screenSettings.first)
+        _state.update { st ->
+            // The screen came after a tap said it hadn't ("still sending", "didn't share"): that notice no longer holds.
+            val stale = chip == ScreenChip.READY && st.notice != null && st.notice === screenNotice
+            st.copy(screenChip = chip, notice = if (stale) null else st.notice)
+        }
+    }
+
+    /**
+     * Once per panel: its show flags and whether the screen's text and a screenshot came (codes only, never content).
+     * Written 2 s after the panel opened, or when it closes if that is sooner, so it says what a tap on the chip
+     * would have found by then; a screen that comes later changes the chip but isn't logged again.
+     */
+    private fun logScreen() {
+        if (screenLogged) return
+        screenLogged = true
+        VoiceLog.add(VoiceEvent.SCREEN_SHARED, showFlags, ScreenData.of(textCame).id, ScreenData.of(shotCame).id)
     }
 
     // ------------------------------------------------------------------ conversation
@@ -467,7 +547,7 @@ object PanelController {
         keptByUser = false
         lastActivity = System.currentTimeMillis()
         _state.update {
-            PanelState(newId(), locked = locked, speak = it.speak, sttAvailable = it.sttAvailable, micHint = it.micHint, screenAvailable = it.screenAvailable,
+            PanelState(newId(), locked = locked, speak = it.speak, sttAvailable = it.sttAvailable, micHint = it.micHint, screenChip = it.screenChip,
                 showId = it.showId, brain = it.brain)
         }
     }
@@ -553,9 +633,33 @@ object PanelController {
 
     // ------------------------------------------------------------------ attachments
 
+    /** "Ask about this screen": the screen goes with the next question, or the panel says why it can't. */
     fun attachScreen() {
-        if (!_state.value.screenAvailable) return
-        _state.update { it.copy(draft = Draft(Attachment.SCREEN, screenshot?.let { b -> Images.scaled(b, Images.THUMB_EDGE) })) }
+        when (_state.value.screenChip) {
+            ScreenChip.READY -> _state.update { it.copy(draft = Draft(Attachment.SCREEN, screenshot?.let { b -> Images.scaled(b, Images.THUMB_EDGE) })) }
+            ScreenChip.WAITING -> screenHint(ScreenAccess.WAITING_HINT)
+            ScreenChip.NOT_SHARED -> screenHint(ScreenAccess.notSharedHint(screenSettings.first, screenSettings.second))
+            ScreenChip.SWIPE_ONLY -> screenHint(ScreenAccess.swipeHint(screenSettings.first))
+            ScreenChip.HIDDEN -> {}
+        }
+    }
+
+    private fun screenHint(h: ScreenAccess.Hint) {
+        val n = Notice(h.text, if (h.openSettings) NoticeAction.OPEN_ASSIST_SETTINGS else NoticeAction.NONE)
+        screenNotice = n
+        _state.update { it.copy(notice = n) }
+    }
+
+    /** "Open settings" under that notice: Settings › Apps › Default apps › Digital assistant app (voice input settings first). */
+    fun openAssistSettings() {
+        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open Settings.")
+        val h = host ?: return
+        val i = Assistant.settingsIntent(VoiceHub.app) ?: return notify("Settings didn't open. Go to Settings › Apps › Default apps › Digital assistant app.")
+        // A pending "what should the text say?" ends here: the next question after Settings must not become that text.
+        askingTextFor = null
+        listenAfterSpeech = false
+        // As for Robot's own app: nothing goes on behind Settings.
+        leaveForRobot(h, i)
     }
 
     fun removeDraft() {
@@ -1386,26 +1490,29 @@ object PanelController {
      */
     private suspend fun directText(replyId: String, q: String, textingFor: String?, fromVoice: Boolean, untrusted: Boolean): Boolean {
         val typed = !fromVoice
+        // The wake word is paused while Robot waits for the message, so a spoken "hey robot, …" comes back whole.
+        val wakes = VoiceHub.settings.wakePhrases.filter { it.enabled }.map { it.text }
+        val answer = if (fromVoice && textingFor != null) TextCommand.stripWake(q, wakes) else q
         // Decided before any contact is read or anything asked: the lock first.
-        val req: TextRequest = when (TextCommand.route(q, textingFor, Assistant.locked(VoiceHub.app), typed)) {
+        val req: TextRequest = when (TextCommand.route(answer, textingFor, Assistant.locked(VoiceHub.app), typed, wakes)) {
             TextCommand.Route.MODEL -> return false
+            // Said aloud as well: the question may have come by voice from across the room.
             TextCommand.Route.UNLOCK -> {
-                setText(replyId, "Unlock your phone to send a text.")
-                finishReply(replyId, DoneReason.END)
+                localReply(replyId, "Unlock your phone to send a text.")
                 return true
             }
             TextCommand.Route.CANCEL -> {
-                setText(replyId, "Okay, no text to ${TextCommand.display(textingFor!!)}.")
-                finishReply(replyId, DoneReason.END)
+                val kind = TextCommand.cancelKind(answer, wakes) ?: TextCommand.Cancel.EXPLICIT
+                localReply(replyId, TextCommand.cancelReply(textingFor!!, answer, kind, wakes))
                 return true
             }
-            // The message itself; the approval gate still checks the lock.
-            TextCommand.Route.ANSWER -> TextRequest(textingFor!!, q.trim())
+            // The message itself; the approval gate still checks the lock. Only the wake phrase: Robot asks again.
+            TextCommand.Route.ANSWER -> TextRequest(textingFor!!, answer.trim().ifEmpty { null })
             TextCommand.Route.PARSE -> {
                 val names = withContext(Dispatchers.IO) {
                     if (Contacts.granted(VoiceHub.app)) Contacts.names(VoiceHub.app).flatMap { listOf(it.name) + it.nicknames } else emptyList()
                 }
-                TextCommand.parse(q, names, typed) ?: return false
+                TextCommand.parse(answer, names, typed) ?: return false
             }
         }
         val name = TextCommand.display(req.name)

@@ -84,6 +84,8 @@ class ToolCallsTest {
         assertEquals(Action.OpenApp("Signal"), ok("open_app", "name" to "  Signal "))
         assertEquals(Action.MapsSearch("pharmacy"), ok("maps_search", "query" to "pharmacy"))
         assertEquals(Action.MapsNavigate("Central Station"), ok("maps_navigate", "destination" to "Central  Station"))
+        assertEquals(Action.MapsSearch("pharmacy"), ok("maps_search", "query" to "a pharmacy near me"))
+        assertEquals(Action.MapsNavigate("pharmacy"), ok("maps_navigate", "destination" to "the nearest pharmacy"))
         bad("open_app")
         bad("open_app", "name" to "   ")
         bad("maps_search", "query" to null)
@@ -250,7 +252,8 @@ class ToolCallsTest {
         assertEquals("", ToolCalls.stripText(text, calls))
         val q = ToolCalls.parseText("call:maps_search{query:<escape>coffee, near me<escape>}")
         assertEquals(mapOf("query" to "coffee, near me"), q.single().call.args)
-        assertEquals(Action.MapsSearch("coffee, near me"), (ToolCalls.parse(q.single().call) as ParsedCall.Ok).action)
+        // Organic Maps searches around you already: "near me" is left out of what it searches (MapsQuery).
+        assertEquals(Action.MapsSearch("coffee"), (ToolCalls.parse(q.single().call) as ParsedCall.Ok).action)
     }
 
     @Test fun textFallbackReadsJsonAndPythonCalls() {

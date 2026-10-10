@@ -95,6 +95,8 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.Attachment
+import app.heyrobot.core.ScreenAccess
+import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.TurnRole
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.AssistantBubble
@@ -318,6 +320,7 @@ private fun NoticeBar(n: Notice) {
             Spacer(Modifier.width(10.dp))
             Text(n.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
             if (n.action == NoticeAction.OPEN_APP) TextButton(onClick = PanelController::openRobotApp) { Text("Open Robot") }
+            if (n.action == NoticeAction.OPEN_ASSIST_SETTINGS) TextButton(onClick = PanelController::openAssistSettings) { Text("Open settings") }
             IconButton(onClick = PanelController::dismissNotice, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Dismiss", Modifier.size(18.dp)) }
         }
     }
@@ -423,7 +426,10 @@ private fun ListeningRow(partial: String, transcribing: Boolean) {
     }
 }
 
-/** "Ask about this screen", or the picture that goes with the next question. */
+/**
+ * "Ask about this screen", or the picture that goes with the next question. The chip shows on every corner-swipe and
+ * wake-word panel: without the screen it has an info icon, and a tap says why (core ScreenAccess).
+ */
 @Composable
 private fun ContextRow(st: PanelState) {
     val d = st.draft
@@ -445,7 +451,7 @@ private fun ContextRow(st: PanelState) {
             }
             IconButton(onClick = PanelController::removeDraft, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Remove") }
         }
-    } else if ((st.screenAvailable || st.claudeScreen) && !st.busy) {
+    } else if ((st.screenChip != ScreenChip.HIDDEN || st.claudeScreen) && !st.busy) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             // Over the Claude app (your corner swipe): its last answer, read aloud in Claude's voice.
             if (st.claudeScreen) {
@@ -456,11 +462,13 @@ private fun ContextRow(st: PanelState) {
                     modifier = Modifier.heightIn(min = 48.dp),
                 )
             }
-            if (st.screenAvailable) {
+            if (st.screenChip != ScreenChip.HIDDEN) {
                 AssistChip(
                     onClick = PanelController::attachScreen,
                     label = { Text("Ask about this screen") },
-                    leadingIcon = { Icon(RIcons.Phone, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                    leadingIcon = {
+                        Icon(if (st.screenAvailable) RIcons.Phone else RIcons.Info, ScreenAccess.iconDescription(st.screenChip), Modifier.size(AssistChipDefaults.IconSize))
+                    },
                     modifier = Modifier.heightIn(min = 48.dp),
                 )
             }

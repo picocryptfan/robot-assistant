@@ -19,11 +19,14 @@ class ApprovalGateTest {
         }
     }
 
-    @Test fun unlockedDefaultsAskForAppsAndMaps() {
-        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.OPEN_APP, false, defaults))
-        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.MAPS_SEARCH, false, defaults))
-        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, defaults))
+    @Test fun unlockedDefaultsOpenAppsAndMapsButAskBeforeWriting() {
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.OPEN_APP, false, defaults))
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_SEARCH, false, defaults))
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, defaults))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.FLASHLIGHT, false, defaults))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SEND_TEXT, false, defaults))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.DRAFT_EMAIL, false, defaults))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.ADD_EVENT, false, defaults))
     }
 
     @Test fun settingsChangeTheLevel() {

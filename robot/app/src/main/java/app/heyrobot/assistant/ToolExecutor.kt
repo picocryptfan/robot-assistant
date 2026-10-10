@@ -92,7 +92,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.SetAlarm -> alarm(action.hour, action.minute)
                 is Action.OpenApp -> openApp(action)
                 is Action.MapsSearch -> maps(action.query, "Opened Organic Maps search")
-                is Action.MapsNavigate -> maps(action.destination, "Opened Organic Maps on the destination: tap Route for directions")
+                // A search, not a route (om://route needs coordinates): say what to tap next.
+                is Action.MapsNavigate -> maps(action.destination, "Opened an Organic Maps search for it: pick the place, then tap Route for directions")
                 is Action.Flashlight -> torch(action.on)
                 is Action.SendText -> text(action)
                 is Action.DraftEmail -> email(action)
