@@ -23,7 +23,7 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 # minSdk 34: AGP signs with v3 (API 28+) and may skip v2; either covers every phone Robot installs on.
 "$BT/apksigner" verify -v "$APK" 2>/dev/null | grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='app.heyrobot' versionCode='22' versionName='0.2.2'" "$badging" "package app.heyrobot 0.2.2 (22)"
+has "package: name='app.heyrobot' versionCode='30' versionName='0.3.0'" "$badging" "package app.heyrobot 0.3.0 (30)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"
@@ -44,6 +44,12 @@ has ':brain' "$(elem app.heyrobot.brain.BrainService)" "BrainService in :brain"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.brain.BrainService)" "BrainService not exported"
 has '"app.heyrobot.permission.INTERNAL"' "$(elem app.heyrobot.brain.BrainService)" "BrainService guarded by the signature permission"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver not exported"
+# Ask Claude needs nothing new: INTERNET stays the only network permission, and nothing reads other apps' screens.
+for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE BIND_ACCESSIBILITY_SERVICE; do
+  hasnt "android.permission.$p\"" "$mf" "no $p permission"
+done
+has '"android.permission.INTERNET"' "$mf" "declares INTERNET (model downloads and Ask Claude)"
+hasnt '"android.accessibilityservice.AccessibilityService"' "$mf" "no accessibility service (Robot never drives the Claude app)"
 for p in CAMERA READ_EXTERNAL_STORAGE READ_MEDIA_IMAGES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
@@ -77,6 +83,12 @@ exported=$(echo "$mf" | awk '
   END { if (n != "" && ex) print n }' | sort | tr '\n' ' ')
 allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
 [ "$exported" = "$allow" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
+# Ask Claude: the key window runs in :voice and isn't exported (the main app never sees the key).
+has ':voice' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity in :voice"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity not exported"
+for q in '"com.anthropic.claude"' 'scheme(0x01010027)="claude"' 'host(0x01010028)="claude.ai"' '"android.intent.action.SEND"'; do
+  has "$q" "$queries" "<queries> has $q (Claude app hand-off)"
+done
 for q in '"com.cheogram.android"' '"com.cheogram.android.playstore"' '"ch.protonmail.android"' 'scheme(0x01010027)="xmpp"' 'scheme(0x01010027)="mailto"' \
   'scheme(0x01010027)="smsto"' 'mimeType(0x01010026)="vnd.android.cursor.dir/event"' '"android.intent.action.INSERT"' '"android.intent.action.SENDTO"'; do
   has "$q" "$queries" "<queries> has $q"
@@ -102,8 +114,17 @@ cbclass=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null; do
 # the assistant, voice and brain packages in its code (ProcessIsolationTest checks the sources; this checks the dex).
 engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
-  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lapp/heyrobot/(assistant|voice|brain)/')
-[ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine (dex)" || fail "main-process classes refer to engines: $engine_refs"
+  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude)/')
+[ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine or the Anthropic SDK (dex)" || fail "main-process classes refer to engines or the SDK: $engine_refs"
+# The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load.
+sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession);'"; done | wc -l)
+[ "$sdk_classes" = "2" ] && pass "Anthropic SDK client and ClaudeSession in the dex" || fail "Anthropic SDK classes in the dex: $sdk_classes"
+# No API key anywhere in the APK (resources, assets, dex): nothing shaped like sk-ant-<20+ characters>.
+keys=0
+for e in $(unzip -Z1 "$APK" | grep -vE '^lib/|\.onnx$'); do
+  unzip -p "$APK" "$e" 2>/dev/null | LC_ALL=C grep -aqE 'sk-ant-[A-Za-z0-9_-]{20,}' && { echo "      key-shaped string in $e"; keys=$((keys + 1)); }
+done
+[ "$keys" = "0" ] && pass "no API key string in the APK" || fail "API key-shaped strings in $keys entries"
 rm -rf "$dexdir"
 # One "name type access" line per field and method of the class.
 cbmembers=$(echo "$cbclass" | awk '/^ *#[0-9]+ *: \(in /{ if (n != "") print n, t, a; n = t = a = "" }

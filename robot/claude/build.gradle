@@ -6,7 +6,11 @@ repositories { google(); mavenCentral() }
 android {
     namespace 'app.heyrobot.claude'
     compileSdk rootProject.ext.robotCompileSdk
-    defaultConfig { minSdk rootProject.ext.robotMinSdk }
+    defaultConfig {
+        minSdk rootProject.ext.robotMinSdk
+        // Applies only if the app is ever minified (it isn't today): keeps the SDK's Jackson-bound models intact.
+        consumerProguardFiles 'consumer-rules.pro'
+    }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = '17' }
 }

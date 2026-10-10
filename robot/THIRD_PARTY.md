@@ -1,4 +1,4 @@
-# Third-party components in Robot 0.2.0 (phases 1 and 2)
+# Third-party components in Robot 0.3.0 (phases 1 and 2, Ask Claude)
 
 Robot itself is GPL-3.0-only (see `../LICENSE`). Everything below keeps its own licence; all of them
 (Apache-2.0, MIT, CC-BY-4.0 for model weights, GPL-3.0-or-later for espeak-ng) are compatible with GPL-3.0.
@@ -100,6 +100,34 @@ sentence in `bench/test-clip.txt`. No person's voice. Used only by Settings › 
 
 While a sherpa-onnx voice is not downloaded, or when it is chosen, Robot speaks through Android's TextToSpeech API,
 which on GrapheneOS is the system's GrapheneOS Speech Services; nothing is packaged.
+
+### Anthropic Java SDK 2.71.0 (MIT): Ask Claude's API client (`:claude` module)
+
+The official SDK for the Claude API (https://github.com/anthropics/anthropic-sdk-java), from Maven Central, used only
+by the `:claude` module, which only the assistant package (the `:voice` process) depends on; the main process never
+loads it (`ProcessIsolationTest`, `tools/verify_apk.sh`). It talks to `api.anthropic.com` only when the owner asks for
+Claude (docs/ask-claude.md). Built in as Java/Kotlin classes (no native code). Licence: MIT.
+
+| artifact | licence | sha256 of the jar |
+|---|---|---|
+| `com.anthropic:anthropic-java:2.71.0` | MIT | `f460c0b24bd6d72c17acd479024490b4f7b39da014f58e482621bcd69bb4dcfc` |
+| `com.anthropic:anthropic-java-core:2.71.0` | MIT | `9958b59277bf01bcd70d3c8856a7ca20bfe78a35e87b82e26f432d0f185c500f` |
+| `com.anthropic:anthropic-java-client-okhttp:2.71.0` | MIT | `ab0870957cf8abf401ed8a0be3d823a894b9156fd3350a5c58e305b3fec09ac1` |
+
+What it brings with it at run time (resolved by Gradle, versions as built):
+
+| artifact | licence |
+|---|---|
+| `com.squareup.okhttp3:okhttp:4.12.0`, `com.squareup.okio:okio(-jvm):3.6.0` | Apache-2.0 |
+| `com.fasterxml.jackson.core:jackson-core`, `-databind`, `-annotations` 2.19.4; `jackson-datatype-jdk8`, `-jsr310`, `jackson-module-kotlin` 2.19.4 | Apache-2.0 |
+| `org.jetbrains.kotlin:kotlin-reflect:1.9.25` (for jackson-module-kotlin) | Apache-2.0 |
+| `com.github.victools:jsonschema-generator`, `-module-jackson`, `-module-swagger-2` 4.38.0; `com.fasterxml:classmate:1.7.0` | Apache-2.0 |
+| `io.swagger.core.v3:swagger-annotations:2.2.50`, `com.google.errorprone:error_prone_annotations:2.50.0` | Apache-2.0 |
+| `org.slf4j:slf4j-api:2.0.16` (no binding: it logs nothing) | MIT |
+| `com.standardwebhooks:standardwebhooks:1.2.0` | MIT |
+
+Tests only (not in the APK): `com.squareup.okhttp3:mockwebserver:4.12.0` (Apache-2.0), the local mock server the
+network tests talk to through the SDK's base-URL override.
 
 ## Downloaded by the app (not in the APK; Model › Voice models)
 
