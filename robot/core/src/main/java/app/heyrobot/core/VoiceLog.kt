@@ -119,8 +119,8 @@ enum class VoiceEvent(val id: Int) {
      */
     SPEAK_RUN(42),
     /**
-     * A capture opened: a = 1 if Android silences it (another app records), 0 if not, -1 unknown; b = the microphone's
-     * own sample rate / 100 (-1 unknown); c = [CaptureFx] flags.
+     * A capture opened (logged when it differs from the last one in the same mode): a = 1 if Android silences it
+     * (another app records), 0 if not, -1 unknown; b = the microphone's own sample rate / 100 (-1 unknown); c = [CaptureFx] flags.
      */
     CAPTURE_INFO(43),
     /** Barge-in test, every keyword heard: a = phrase id (0: "stop"), b = ms after Robot's voice started (-1: before), c = [BargeHitKind]. */

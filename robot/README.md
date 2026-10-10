@@ -274,9 +274,10 @@ Since 0.3.1 it also shows why "stop" or a wake word over Robot's voice did or di
 fires, before any check, with whether Robot was talking and the microphone mode (the line after it says what came of
 it); the wake phrases' keyword set when it is rebuilt, and any part the keyword model refuses; for each stretch of
 Robot talking, how long the speech gate heard speech, the mean microphone level (low when echo cancellation takes her
-voice out) and how much of the time "stop" was listened for; each capture as opened (whether Android silences it, the
-microphone's own sample rate, Robot's echo canceller and noise suppressor, the effects Android reports); which voice
-an ignored "stop" or wake was put down to and how far into her talking; and every keyword heard in the barge-in test.
+voice out) and how much of the time "stop" was listened for; each microphone mode as opened, and again when that
+changes (whether Android silences it, the microphone's own sample rate, Robot's echo canceller and noise suppressor,
+the effects Android reports); which voice an ignored "stop" or wake was put down to and how far into her talking; and
+every keyword heard in the barge-in test.
 
 Silent drops found and fixed while adding it: an empty transcription did nothing (now: notice plus "Sorry, I didn't
 catch that." or a chime); an empty model answer left an empty bubble; a model that never answered left "Thinking…"

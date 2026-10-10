@@ -130,6 +130,8 @@ class Listener(
     private val gateLog = GateSpeechLog()
     /** The current stretch of Robot talking, for SPEAK_RUN (audio thread). */
     private val speakRun = SpeakRun()
+    /** The last CAPTURE_INFO per [MicKind] id (callbackExec's thread). */
+    private val lastInfo = HashMap<Int, Triple<Int, Int, Int>>()
 
     override fun addSink(sink: (FloatArray) -> Unit) { sinks.addIfAbsent(sink) }
     override fun removeSink(sink: (FloatArray) -> Unit) {
@@ -275,11 +277,13 @@ class Listener(
 
     /**
      * The voice log's CAPTURE_INFO for [r], just opened: whether Android silences it, the microphone's own sample rate,
-     * and the effects on it. Robot's own effects are read here; the recording configuration is a binder call, so it
-     * is asked for off the audio thread.
+     * and the effects on it; only when that differs from the last time this mode was opened, so each switch doesn't
+     * add a line. Robot's own effects are read here; the recording configuration is a binder call, so it is asked for
+     * off the audio thread.
      */
     private fun captureInfo(r: AudioRecord) {
         if (!config.wakeWord) return
+        val kind = micKind.id
         var fx = 0
         try {
             if (echo?.enabled == true) fx = fx or CaptureFx.AEC
@@ -295,8 +299,8 @@ class Listener(
                     if (AudioEffect.EFFECT_TYPE_NS in types) f = f or CaptureFx.SYSTEM_NS
                 }
                 val rate = cfg?.format?.sampleRate?.takeIf { it > 0 }
-                val muted = cfg?.isClientSilenced
-                VoiceLog.add(VoiceEvent.CAPTURE_INFO, when (muted) { true -> 1; false -> 0; null -> -1 }, rate?.let { it / 100 } ?: -1, f)
+                val info = Triple(when (cfg?.isClientSilenced) { true -> 1; false -> 0; null -> -1 }, rate?.let { it / 100 } ?: -1, f)
+                if (lastInfo.put(kind, info) != info) VoiceLog.add(VoiceEvent.CAPTURE_INFO, info.first, info.second, info.third)
             }
         } catch (_: Throwable) {}
     }
