@@ -27,7 +27,7 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import kotlin.math.log10
 import kotlin.math.max
@@ -122,7 +122,8 @@ class Listener(
     private var echo: AcousticEchoCanceler? = null
     private var noise: NoiseSuppressor? = null
     private var thread: Thread? = null
-    private val callbackExec = Executors.newSingleThreadExecutor()
+    /** The recording callbacks and CAPTURE_INFO's delayed look; what is still scheduled at [stop] is dropped. */
+    private val callbackExec = ScheduledThreadPoolExecutor(1).apply { executeExistingDelayedTasksAfterShutdownPolicy = false }
     private val audio = ctx.getSystemService(AudioManager::class.java)
     /** The wake-word model, once its loader thread is done (guarded by [wwLock] until the loop takes it). */
     private val wwLock = Any()
@@ -206,7 +207,6 @@ class Listener(
         if (config.wakeWord) loadWakeWord()
         thread = Thread({ loop(record) }, "robot-listen").also { it.start() }
         if (config.wakeWord) VoiceLog.add(VoiceEvent.LISTEN_START, why, micKind, aec.id)
-        captureInfo(record)
         return true
     }
 
@@ -239,9 +239,12 @@ class Listener(
         }
         communication = comm
         openedPlain = src == MicSource.MIC
+        val info = CaptureInfo(r, micKind.id, ownEffects())
         val cb = object : AudioManager.AudioRecordingCallback() {
             override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
-                val now = configs?.firstOrNull { it.clientAudioSessionId == r.audioSessionId }?.isClientSilenced ?: return
+                val mine = configs?.firstOrNull { it.clientAudioSessionId == r.audioSessionId } ?: return
+                info.report(mine)
+                val now = mine.isClientSilenced
                 if (now != silenced) {
                     silenced = now
                     RLog.i("mic_silenced", "value" to now)
@@ -251,6 +254,7 @@ class Listener(
         }
         r.registerAudioRecordingCallback(callbackExec, cb)
         recCallback = cb
+        info.later()
         return r
     }
 
@@ -280,34 +284,50 @@ class Listener(
         return state
     }
 
-    /**
-     * The voice log's CAPTURE_INFO for [r], just opened: whether Android silences it, the microphone's own sample rate,
-     * and the effects on it; only when that differs from the last time this mode was opened, so each switch doesn't
-     * add a line. Robot's own effects are read here; the recording configuration is a binder call, so it is asked for
-     * off the audio thread.
-     */
-    private fun captureInfo(r: AudioRecord) {
-        if (!config.wakeWord) return
-        val kind = micKind.id
+    /** [CaptureFx] flags for the echo canceller and noise suppressor Robot just put on the capture (under [recLock]). */
+    private fun ownEffects(): Int {
         var fx = 0
         try {
             if (echo?.enabled == true) fx = fx or CaptureFx.AEC
             if (noise?.enabled == true) fx = fx or CaptureFx.NS
         } catch (_: Throwable) {}
-        try {
-            callbackExec.execute {
-                val cfg = try { r.activeRecordingConfiguration } catch (_: Throwable) { null }
-                var f = fx
-                if (cfg == null) f = f or CaptureFx.NO_CONFIG else {
-                    val types = try { cfg.effects.map { it.type } } catch (_: Throwable) { emptyList() }
-                    if (AudioEffect.EFFECT_TYPE_AEC in types) f = f or CaptureFx.SYSTEM_AEC
-                    if (AudioEffect.EFFECT_TYPE_NS in types) f = f or CaptureFx.SYSTEM_NS
-                }
-                val rate = cfg?.format?.sampleRate?.takeIf { it > 0 }
-                val info = Triple(when (cfg?.isClientSilenced) { true -> 1; false -> 0; null -> -1 }, rate?.let { it / 100 } ?: -1, f)
-                if (lastInfo.put(kind, info) != info) VoiceLog.add(VoiceEvent.CAPTURE_INFO, info.first, info.second, info.third)
+        return fx
+    }
+
+    /**
+     * The voice log's CAPTURE_INFO for one capture [r] (of [MicKind] id [kind], with Robot's effects [fx]): whether
+     * Android silences it, the microphone's own sample rate and the effects Android reports. Taken from the first
+     * recording configuration Android sends for it, or asked for once [INFO_DELAY_MS] later if none came (Android
+     * learns of a new recording a moment after it starts, so asking at once often finds nothing). Logged only when it
+     * differs from the last capture in the same mode, so switching back and forth doesn't add lines. callbackExec's
+     * thread only.
+     */
+    private inner class CaptureInfo(private val r: AudioRecord, private val kind: Int, private val fx: Int) {
+        private var done = false
+
+        fun report(cfg: AudioRecordingConfiguration?) {
+            if (done || !config.wakeWord) return
+            done = true
+            var f = fx
+            if (cfg == null) f = f or CaptureFx.NO_CONFIG else {
+                val types = try { cfg.effects.map { it.type } } catch (_: Throwable) { emptyList() }
+                if (AudioEffect.EFFECT_TYPE_AEC in types) f = f or CaptureFx.SYSTEM_AEC
+                if (AudioEffect.EFFECT_TYPE_NS in types) f = f or CaptureFx.SYSTEM_NS
             }
-        } catch (_: Throwable) {}
+            val rate = cfg?.format?.sampleRate?.takeIf { it > 0 }
+            val info = Triple(when (cfg?.isClientSilenced) { true -> 1; false -> 0; null -> -1 }, rate?.let { it / 100 } ?: -1, f)
+            if (lastInfo.put(kind, info) != info) VoiceLog.add(VoiceEvent.CAPTURE_INFO, info.first, info.second, info.third)
+        }
+
+        fun later() {
+            if (!config.wakeWord) return
+            try {
+                callbackExec.schedule({
+                    // A capture already closed again (another switch) has nothing to report.
+                    if (!done && synchronized(recLock) { rec === r }) report(try { r.activeRecordingConfiguration } catch (_: Throwable) { null })
+                }, INFO_DELAY_MS, TimeUnit.MILLISECONDS)
+            } catch (_: Throwable) {}
+        }
     }
 
     private fun releaseEffects() {
@@ -500,7 +520,6 @@ class Listener(
         rec = r
         RLog.i("capture", "communication" to communication, "aec" to aec, "ns" to (noise != null))
         if (config.wakeWord) VoiceLog.add(VoiceEvent.CAPTURE, micKind, aec, if (noise?.enabled == true) 1 else 0)
-        captureInfo(r)
         r
     }
 
@@ -530,6 +549,8 @@ class Listener(
         const val FRAME = 512
         /** Failed reads in a row (20 ms apart) before the capture counts as dead: 3 s. */
         private const val MAX_READ_ERRORS = 150
+        /** CAPTURE_INFO asks Android this long after a capture opened if its callback said nothing by then. */
+        private const val INFO_DELAY_MS = 500L
 
         fun db(meanSquare: Double): Double = if (meanSquare <= 1e-12) -120.0 else 10 * log10(meanSquare)
     }
