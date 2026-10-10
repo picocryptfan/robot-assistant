@@ -11,6 +11,7 @@ import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.Limits
+import app.heyrobot.core.Prompt
 import app.heyrobot.core.PromptRole
 import app.heyrobot.core.PromptTurn
 import app.heyrobot.core.RLog
@@ -46,14 +47,19 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
 
     private var engine: Engine? = null
     private var vision = false
-    /** Conversation constrained decoding for tool calls; turned off for good if this TPU build refuses it. */
-    private var constrained = true
+    /**
+     * How tools reach the model, stepped down for good (until the process restarts) when this TPU build
+     * refuses a level: [TOOLS_CONSTRAINED] LiteRT-LM tools with conversation constrained decoding, [TOOLS]
+     * without it, [TEXT_CALLS] no tool API, the system prompt shows the call syntax and the app parses it.
+     */
+    private var toolMode = TOOLS_CONSTRAINED
+    private val constrained get() = toolMode == TOOLS_CONSTRAINED
     private val convs = HashMap<String, Live>()
     private var running: Run? = null
     /** A request that arrived while another was being cancelled: it starts when that one ends. */
     private var queued: (() -> Unit)? = null
 
-    private class Live(val conv: Conversation, var historyCount: Int, val constrained: Boolean, val systemKey: String) {
+    private class Live(val conv: Conversation, var historyCount: Int, val toolMode: Int, val systemKey: String) {
         var dirty = false
         var awaitingTool = false
     }
@@ -64,7 +70,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val live: Live,
         val sink: Sink,
         val rebuilt: Boolean,
-        /** Resend on a fresh, unconstrained conversation if the first message fails before any output. */
+        /** Resend on a fresh conversation one tool level down if the first message fails before any output. */
         val retry: (() -> Unit)?,
     ) {
         val tSend = SystemClock.elapsedRealtime()
@@ -164,27 +170,28 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     /** System prompt plus tool descriptions, as estimated tokens (the template adds a little more). */
     private fun fixedTokens(system: String) = TokenEstimate.text(system) + ToolSpecs.ALL.sumOf { TokenEstimate.text(it.openApiJson()) } + 40
 
-    private fun newConversation(system: String, history: List<PromptTurn>): Pair<Conversation, Boolean> {
+    private fun newConversation(system: String, history: List<PromptTurn>): Pair<Conversation, Int> {
         val e = engine ?: throw IllegalStateException("not loaded")
-        val cfg = ConversationConfig(
-            systemInstruction = Contents.of(system),
-            initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(it.text) else Message.model(it.text) },
-            tools = toolProviders,
-            samplerConfig = null,
-            automaticToolCalling = false,
-        )
-        if (constrained) {
+        while (true) {
+            val mode = toolMode
+            val cfg = ConversationConfig(
+                systemInstruction = Contents.of(if (mode == TEXT_CALLS) system + Prompt.TEXT_CALL_HINT else system),
+                initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(it.text) else Message.model(it.text) },
+                tools = if (mode == TEXT_CALLS) emptyList() else toolProviders,
+                samplerConfig = null,
+                automaticToolCalling = false,
+            )
             try {
-                ExperimentalFlags.enableConversationConstrainedDecoding = true
-                return e.createConversation(cfg) to true
+                ExperimentalFlags.enableConversationConstrainedDecoding = mode == TOOLS_CONSTRAINED
+                return e.createConversation(cfg) to mode
             } catch (ex: Exception) {
-                RLog.w("brain_constrained_off", ex)
-                constrained = false
+                if (mode == TEXT_CALLS) throw ex
+                RLog.w("brain_tool_mode_down", ex, "from" to mode)
+                toolMode = mode - 1
             } finally {
                 ExperimentalFlags.enableConversationConstrainedDecoding = false
             }
         }
-        return e.createConversation(cfg) to false
     }
 
     private fun closeQuietly(c: Conversation) {
@@ -223,24 +230,25 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             convs.remove(req.convId)
             val budget = ContextWindow.historyBudget(fixedTokens(req.system), newTurn)
             val history = ContextWindow.fit(req.history, budget)
-            val (conv, usedConstrained) = try {
+            val (conv, usedMode) = try {
                 newConversation(req.system, history)
             } catch (ex: Exception) {
                 RLog.w("brain_conversation", ex)
                 return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.ENGINE, ex.javaClass.simpleName))
             }
-            live = Live(conv, req.historyCount, usedConstrained, systemKey(req.system)).also { convs[req.convId] = it }
+            live = Live(conv, req.historyCount, usedMode, systemKey(req.system)).also { convs[req.convId] = it }
             rebuilt = true
             RLog.i("brain_rebuild", "kept" to history.size, "of" to req.history.size, "budget" to budget)
         }
         val l = live
         // After this exchange the client's history holds two more turns (the question and the reply).
         l.historyCount = req.historyCount + 2
-        val retry: (() -> Unit)? = if (allowRetry && l.constrained) {
+        val retry: (() -> Unit)? = if (allowRetry && l.toolMode > TEXT_CALLS) {
             {
-                constrained = false
+                toolMode = minOf(toolMode, l.toolMode - 1)
                 l.dirty = true
-                startGenerate(reqId, req, image, sink, allowRetry = false)
+                RLog.i("brain_tool_mode_down", "to" to toolMode)
+                startGenerate(reqId, req, image, sink, allowRetry = toolMode > TEXT_CALLS)
             }
         } else null
         val run = Run(reqId, req.convId, l, sink, rebuilt, retry)
@@ -372,6 +380,12 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val q = queued ?: return
         queued = null
         q()
+    }
+
+    companion object {
+        const val TEXT_CALLS = 0
+        const val TOOLS = 1
+        const val TOOLS_CONSTRAINED = 2
     }
 
     /** Broken output (as the lab detects it): pad/unused tokens, or one character 32+ times in a row. */

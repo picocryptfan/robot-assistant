@@ -31,6 +31,14 @@ object Prompt {
         }
     }
 
+    /**
+     * Only when this TPU build refuses LiteRT-LM's tool API: the call syntax in the system prompt instead
+     * (the app's ToolCalls.parseText reads it back). Kept to one short paragraph.
+     */
+    const val TEXT_CALL_HINT = "\n\nTo act on the phone, answer with only one of these lines and nothing else: " +
+        "call:set_timer{minutes:5} (or seconds:30), call:set_alarm{hour:7,minute:30}, call:open_app{name:Signal}, " +
+        "call:maps_search{query:pharmacy}, call:maps_navigate{destination:Central Station}, call:flashlight{on:true}."
+
     /** The text of the newest user turn: the question, after the screen's text when the person asked about the screen. */
     fun userText(question: String, screenText: String?, attachment: Attachment): String {
         val q = question.trim().ifEmpty { defaultQuestion(attachment) }

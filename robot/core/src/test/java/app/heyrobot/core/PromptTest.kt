@@ -19,6 +19,16 @@ class PromptTest {
         assertTrue(TokenEstimate.text(s) < 200)
     }
 
+    @Test fun textCallHintParsesBackIntoValidActions() {
+        val calls = Regex("call:[a-z_]+\\{[^}]*\\}").findAll(Prompt.TEXT_CALL_HINT).map { it.value }.toList()
+        assertEquals(ToolName.entries.size, calls.size)
+        for (c in calls) {
+            val found = ToolCalls.parseText(c)
+            assertEquals(c, 1, found.size)
+            assertTrue(c, ToolCalls.parse(found[0].call) is ParsedCall.Ok)
+        }
+    }
+
     @Test fun lockedPromptStatesTheLimits() {
         assertTrue(Prompt.system(now, locked = true).contains("The phone is locked"))
     }
