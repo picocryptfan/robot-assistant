@@ -45,6 +45,9 @@ class ProcessIsolationTest {
         val users = usersOf(Regex("""\bcom\.k2fsa\b"""))
         assertTrue(users.toString(), users.isNotEmpty() && users.all { it.startsWith("voice/") })
         assertTrue(users.contains("voice/voice/WakeWord.kt"))
+        // Speech to text and text to speech (the voice plan's Kotlin API files) are sherpa-onnx too.
+        assertTrue(users.toString(), users.containsAll(listOf("voice/voice/SherpaSpeechToText.kt", "voice/voice/SherpaTextToSpeech.kt")))
+        for (f in listOf("OfflineRecognizer.kt", "OfflineStream.kt", "Tts.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
         // Only the copied sherpa-onnx API loads its native library.
         assertEquals(emptyList<String>(), usersOf(Regex("""System\.load(Library)?\s*\(""")))
         val sherpa = sources(File(java("voice"), "com/k2fsa"))
@@ -132,8 +135,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("1", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.1.0", m.getAttributeNS(ns, "versionName"))
+        assertEquals("2", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.1.1", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
@@ -180,6 +183,12 @@ class ProcessIsolationTest {
         val line = File(assets, "kws/keywords.txt").readText().trim()
         assertEquals("▁HE Y ▁RO B O T @HEY_ROBOT", line)
         line.substringBefore(" @").split(' ').forEach { assertTrue("token $it not in tokens.txt", it in tokens) }
+        // "STOP" while Robot speaks (WakeWord adds it to the stream; tools/make_keywords.py writes it).
+        val stop = File(assets, "kws/stop.txt").readText().trim()
+        assertEquals("▁ST O P @STOP", stop)
+        stop.substringBefore(" @").split(' ').forEach { assertTrue("token $it not in tokens.txt", it in tokens) }
+        assertTrue("espeak-ng-data missing: run tools/fetch_third_party.sh --install", File(assets, "espeak-ng-data/phontab").isFile)
+        assertTrue(File(assets, "bench/test-clip.s16").isFile && File(assets, "bench/test-clip.txt").isFile)
         for (f in listOf("encoder", "decoder", "joiner")) assertTrue("$f missing: run tools/fetch_third_party.sh --install", File(assets, "kws/$f-epoch-12-avg-2-chunk-16-left-64.onnx").isFile)
         assertTrue(File(assets, "vad/silero_vad.onnx").isFile)
         for (l in listOf("libsherpa-onnx-jni.so", "libonnxruntime.so")) assertTrue(l, File(main("voice"), "jniLibs/arm64-v8a/$l").isFile)
@@ -188,10 +197,13 @@ class ProcessIsolationTest {
     /** Privacy (spec item 10): no network code (DownloadManager does the one download), no audio files, no raw logging. */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
         assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\.(?!URLEncoder)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b""")))
-        assertEquals(listOf("core/core/ModelState.kt"), ours.filter { it.value.readText().contains("https://") }.keys.sorted())
+        // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager.
+        assertEquals(listOf("core/core/ModelState.kt", "core/core/VoiceModels.kt"), ours.filter { it.value.readText().contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
-        assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile"""), ours.filterKeys { it.startsWith("voice/") }))
+        assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)"""), ours.filterKeys { it.startsWith("voice/") }))
+        // Sherpa's debug output can carry recognised or spoken text: never switched on.
+        assertEquals(emptyList<String>(), usersOf(Regex("""debug\s*=\s*true"""), ours))
         // All logging goes through RLog, which keeps numbers, booleans and codes only.
         assertEquals(listOf("core/core/Log.kt"), usersOf(Regex("""\bandroid\.util\.Log\b|\bLog\.[diwev]\(""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""\bprintln\(|printStackTrace\(""")))

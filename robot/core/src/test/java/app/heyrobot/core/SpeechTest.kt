@@ -40,6 +40,36 @@ class SpeechTest {
         assertTrue(out[0].length <= 51)
     }
 
+    @Test fun theFirstPieceIsShortSoSpeechStartsFast() {
+        // At the first clause break after 5 words (docs/voice-plan.md 4.9), then whole sentences.
+        val s = SentenceSplitter()
+        assertEquals(emptyList<String>(), s.feed("Sure, here's what I"))
+        assertEquals(listOf("Sure, here's what I found today,"), s.feed(" found today, and it"))
+        assertEquals(emptyList<String>(), s.feed(" looks good, overall"))
+        assertEquals(listOf("and it looks good, overall."), s.feed(". Next"))
+        // A new reply gets a short first piece again.
+        s.reset()
+        assertEquals(listOf("One two three four five six seven eight nine ten eleven twelve"),
+            s.feed("One two three four five six seven eight nine ten eleven twelve thirteen"))
+        assertEquals("thirteen", s.flush())
+    }
+
+    @Test fun aShortSentenceIsItsOwnFirstPiece() {
+        val s = SentenceSplitter()
+        assertEquals(listOf("Sure!"), s.feed("Sure! The weather today is sunny, warm and calm, with"))
+        // Already spoken: no early cut any more, wait for the sentence.
+        assertEquals(emptyList<String>(), s.feed(" a light breeze all afternoon long and into the evening"))
+        // Fewer than five words before the comma: no cut.
+        val t = SentenceSplitter()
+        assertEquals(emptyList<String>(), t.feed("Well, I think "))
+        assertEquals(emptyList<String>(), t.feed("3,5 "))
+    }
+
+    @Test fun emojiAreNotRead() {
+        assertEquals("Great job! It's 20°C.", SpeechText.clean("Great job! 🎉👍🏽 It's 20°C. ✨"))
+        assertEquals("Family", SpeechText.clean("Family 👨‍👩‍👧"))
+    }
+
     @Test fun markdownIsRemovedForSpeech() {
         assertEquals("Bold and code", SpeechText.clean("**Bold** and `code`"))
         assertEquals("Title", SpeechText.clean("## Title"))

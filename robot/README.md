@@ -1,9 +1,9 @@
 # Robot (phase 1)
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
-screen, or by saying "hey robot"; type (voice input comes with the next build) or show it a photo or the
-screen; Gemma 4 E2B on the Tensor G5 TPU answers, streams the reply and can read it aloud. Everything runs
-on the phone. The build spec is `../docs/phase-1.md`.
+screen, or by saying "hey robot"; talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
+TPU answers, streams the reply and reads it aloud. Everything runs on the phone. The build spec is
+`../docs/phase-1.md`; the voice models and how they are used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
@@ -13,8 +13,8 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
 | `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM |
-| `:voice` | `:voice` | microphone loop, Silero VAD + "HEY ROBOT" (sherpa-onnx), `SpeechToText` / `TextToSpeech` interfaces with the phase 1 placeholders |
-| `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, approval gate, model state, IPC contract, history format, settings, no-content logging |
+| `:voice` | `:voice` | microphone loop, Silero VAD + "HEY ROBOT" (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test |
+| `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, approval gate, model state, the voice model manifest, IPC contract, history format, settings, no-content logging |
 
 - The main app never loads an engine; `ProcessIsolationTest` checks sources, Gradle files and the merged manifest.
 - `:brain` is bound from the assistant with `BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_INCLUDE_CAPABILITIES`;
@@ -29,8 +29,8 @@ Needs JDK 17+, the Android SDK (platform 36, build-tools 36) and Gradle 8.x.
 ```
 cd robot
 echo "sdk.dir=/path/to/android-sdk" > local.properties
-tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models, SHA-256 checked
-gradle :core:testReleaseUnitTest :app:testReleaseUnitTest
+tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models, espeak-ng subset, SHA-256 checked
+gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :app:testReleaseUnitTest
 gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                             -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk
@@ -41,12 +41,32 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
-## Hand-off points for the voice spike
+## Voice (0.1.1)
 
-- `voice/.../SpeechToText.kt`: start / stop / cancel with onListening, onLevel, onPartial, onFinal, onError.
-  `PlaceholderSpeechToText` answers "Voice input arrives in the next build" and the panel falls back to the keyboard.
-- `voice/.../TextToSpeech.kt`: speak(sentence) / stop / isSpeaking / configure(rate, voice). `AndroidTextToSpeech`
-  uses the system engine.
-- `VoiceEngines` picks the implementations; `Listener` is an `AudioFrames` source, so speech to text can share
-  the always-on microphone instead of opening a second one (pause the wake word with `Listener.wakePaused`).
-- Keep sherpa-onnx inside `:voice` (the isolation test enforces it) and list new models in `THIRD_PARTY.md`.
+- Speech to text: NVIDIA Parakeet TDT 0.6B v3 int8 (`SherpaSpeechToText`). Push-to-talk, or right after "hey robot";
+  a Silero VAD of its own ends the question after 0.5 s of silence (20 s max speech, 30 s cap), or the button does.
+  The words appear while you talk (the buffer is decoded again about every 0.7 s, one decode at a time; can be
+  turned off). Audio stays in memory.
+- Text to speech: Kokoro v1.0 fp32, voice "Heart" (`af_heart`) by default, "Siwis" (`ff_siwis`, French) for later;
+  Kitten nano 0.8 fp32 as the small fast voice; the phone's own voice as the fallback (`VoiceOutput`). The first
+  piece of a reply is short (5+ words to the first comma, or 12 words) so audio starts fast; the rest goes
+  sentence by sentence into a streaming AudioTrack. Tap the conversation, or say "stop" while it speaks.
+- The models are downloaded by the app (Model › Voice models: 670 MB, 354 MB, 60 MB), from pinned Hugging Face
+  commits, each file checked (size and SHA-256) while it is copied into private storage. Until then the
+  placeholders run and the mic button says "Download voice models".
+- Robustness: nothing native is created before the files are verified; a load that throws falls back to the
+  placeholder; a load that kills the `:voice` process twice in a row marks that engine broken until
+  Settings › Voice › "Try again" (the wake word keeps working). Models load on first use, stay loaded, and are
+  freed on memory pressure (not while listening or speaking).
+- Settings › Voice › "Test voice speed" times the downloaded models on the phone (`tools/voice_bench.py` does the
+  same on a computer).
+
+First run on the phone: Model › Voice models › Download "Speech recognition" and "Voice" (Wi-Fi; they install by
+themselves once downloaded, with Robot open), optionally "Fast voice". Then Settings › Voice › "Test voice speed".
+
+Tools: `tools/fetch_voice_models.sh <dir>` (the same files and hashes as the app), `tools/make_test_clip.py`
+(regenerates the benchmark clip), `tools/voice_bench.py` (desktop benchmark), `tools/make_keywords.py`
+(`keywords.txt` and `stop.txt`).
+
+Keep sherpa-onnx inside `:voice` (the isolation test enforces it) and list new models in `THIRD_PARTY.md`
+(`VoiceManifestTest` checks the manifest against it and the tools).

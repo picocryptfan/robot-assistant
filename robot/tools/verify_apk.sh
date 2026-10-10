@@ -21,7 +21,7 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 # minSdk 34: AGP signs with v3 (API 28+) and may skip v2; either covers every phone Robot installs on.
 "$BT/apksigner" verify -v "$APK" 2>/dev/null | grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='app.heyrobot' versionCode='1' versionName='0.1.0'" "$badging" "package app.heyrobot 0.1.0 (1)"
+has "package: name='app.heyrobot' versionCode='2' versionName='0.1.1'" "$badging" "package app.heyrobot 0.1.1 (2)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"
@@ -56,9 +56,18 @@ for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDis
 echo "$libs" | grep -v '^lib/arm64-v8a/' | grep -q . && fail "non-arm64 libraries" || pass "no other ABIs"
 echo "$libs" | grep -q CompilerPlugin && fail "compiler plugin packaged" || pass "no compiler plugin"
 assets=$(unzip -Z1 "$APK" 'assets/*')
-for a in kws/encoder-epoch-12-avg-2-chunk-16-left-64.onnx kws/decoder-epoch-12-avg-2-chunk-16-left-64.onnx kws/joiner-epoch-12-avg-2-chunk-16-left-64.onnx kws/tokens.txt kws/keywords.txt vad/silero_vad.onnx; do
+for a in kws/encoder-epoch-12-avg-2-chunk-16-left-64.onnx kws/decoder-epoch-12-avg-2-chunk-16-left-64.onnx kws/joiner-epoch-12-avg-2-chunk-16-left-64.onnx kws/tokens.txt kws/keywords.txt kws/stop.txt vad/silero_vad.onnx bench/test-clip.s16 bench/test-clip.txt; do
   has "assets/$a" "$assets" "asset $a"
 done
+# The espeak-ng English + French subset (17 files) the voices need; nothing more of espeak-ng-data.
+n=$(echo "$assets" | grep -c '^assets/espeak-ng-data/')
+[ "$n" -eq 17 ] && pass "espeak-ng-data subset (17 files)" || fail "espeak-ng-data has $n files, want 17"
+has "assets/espeak-ng-data/phontab" "$assets" "asset espeak-ng-data/phontab"
+has "assets/espeak-ng-data/lang/gmw/en-US" "$assets" "asset espeak-ng-data/lang/gmw/en-US"
+# The speech recognition and voice models are downloaded by the app, never packaged.
+echo "$assets" | grep -qE '(encoder|decoder|joiner)\.int8\.onnx|/model(\.fp32|\.int8)?\.onnx|voices\.bin' && fail "a downloadable voice model is packaged" || pass "no downloadable voice model packaged"
+clip=$(unzip -l "$APK" assets/bench/test-clip.s16 | awk 'NR==4{print $1}')
+[ -n "$clip" ] && [ "$clip" -le 200000 ] && pass "benchmark clip ${clip} bytes (<= 200 KB)" || fail "benchmark clip size '$clip'"
 unzip -Z1 "$APK" | grep -qiE '\.(p12|jks|keystore|pass|litertlm)$' && fail "key or model file inside the APK" || pass "no key or model file inside the APK"
 echo; [ "$fails" -eq 0 ] && echo "ALL CHECKS PASSED" || echo "$fails CHECK(S) FAILED"
 exit $((fails > 0))
