@@ -10,8 +10,13 @@ package app.heyrobot.voice
 //
 // 0.2.3: the same for the wake phrases, now that they are heard while Robot speaks: a piece that says the last word
 // of an enabled phrase ("robot" of "hey robot") makes a wake heard while it plays count as her own voice.
+//
+// 0.3.1: only "stop" and "step" (and their forms) count, the words the keyword model actually took for "stop"; "steep",
+// "stamp", "strip" and the like no longer turn "stop" off. The window after a piece is 1.2 s instead of 1.5 s. The
+// phone's voice (positions in ms of elapsedRealtime, from its start and done callbacks) is guarded sentence by
+// sentence, as Robot's own voices are, instead of for the whole reply.
 
-class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private val afterMs: Int = 1_500) {
+class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private val afterMs: Int = AFTER_MS) {
     private class Piece(val start: Long, var end: Long, val stop: Boolean, val wake: Boolean)
 
     private val risky = ArrayDeque<Piece>()
@@ -24,11 +29,14 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
      * A piece of speech starts at output frame [start]; its end is not known until it is synthesised, and its first
      * sentence may already play before then, so it counts as open-ended until [close].
      */
+    fun open(start: Long, text: String) = open(start, soundsLikeStop(text), saysWakeWord(text))
+
+    /** As [open], for a piece already found to say a word like "stop" ([stop]) or a wake phrase's word ([wake]). */
     @Synchronized
-    fun open(start: Long, text: String) {
+    fun open(start: Long, stop: Boolean, wake: Boolean) {
+        // A piece whose end never came (a callback lost) ends where the next one starts.
+        open?.let { if (it.end > start) it.end = start }
         open = null
-        val stop = soundsLikeStop(text)
-        val wake = wakeWords?.containsMatchIn(text) == true
         if (!stop && !wake) return
         val p = Piece(start, Long.MAX_VALUE / 4, stop, wake)
         risky.addLast(p)
@@ -42,6 +50,9 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
         open?.end = end
         open = null
     }
+
+    /** [text] says the last word of an enabled wake phrase ([wakeWords]). */
+    fun saysWakeWord(text: String): Boolean = wakeWords?.containsMatchIn(text) == true
 
     /** A whole piece written at frames [start, end). */
     fun onPiece(start: Long, end: Long, text: String) {
@@ -71,8 +82,18 @@ class EchoGuard(private val rate: Int, private val beforeMs: Int = 300, private 
     }
 
     companion object {
-        /** "stop", "stops", "stopped", "stopwatch", "step", "stoop", "stamp", "strip"...: generous on purpose. */
-        private val STOP_LIKE = Regex("""\bst[a-z]{0,2}p""", RegexOption.IGNORE_CASE)
+        /**
+         * After a piece ends, a keyword heard this long can still be its echo: the sound leaves the speaker a little after
+         * the track's head passes it, and the spotter reports a keyword up to about a second after it is said (a 320 ms
+         * chunk, its lookahead and the blank frames after the word).
+         */
+        const val AFTER_MS = 1_200
+
+        /**
+         * "stop", "stops", "stopped", "stopping", "stopwatch", "nonstop", "step", "steps", "doorstep": the words the
+         * keyword model fired "STOP" on. Not "Stephen" or "Christopher" (a "ph"), nor "steep", "stamp", "strip" or "stoop".
+         */
+        private val STOP_LIKE = Regex("""st[eo]p(?!h)""", RegexOption.IGNORE_CASE)
 
         fun soundsLikeStop(text: String): Boolean = STOP_LIKE.containsMatchIn(text)
 

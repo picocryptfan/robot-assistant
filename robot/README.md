@@ -308,6 +308,12 @@ While echo cancellation is on, "stop" uses a slightly lower threshold (0.20 inst
 aside a "stop" heard while Robot says a word like it, and now also a wake phrase heard while she says its word
 ("robot"). All keyword thresholds live in `core/WakePhrases.kt` (`KwsThresholds`).
 
+Since 0.3.1 "a word like it" means "stop" or "step" in any form ("stopped", "nonstop", "steps"), the words the keyword
+model actually took for "stop", and no longer "steep", "stamp", "strip", "stoop" or "stupid". The guard covers the
+sentence that says it, from 0.3 s before to 1.2 s after (it was 1.5 s), with the phone's voice too, timed by the
+engine's start and done callbacks: before, one such word in a reply in the phone's voice turned "stop" off until the
+reply ended. Wake phrases said by Robot are guarded the same way.
+
 **Robot's voice plays as**: *Assistant audio* (default, as before) or *Call audio* (the phone in communication mode
 with the loudspeaker as the call device while Robot speaks, as calling apps do; it uses the call volume and needs
 `MODIFY_AUDIO_SETTINGS`, a normal permission). On Pixel the echo canceller runs in the audio DSP and takes everything

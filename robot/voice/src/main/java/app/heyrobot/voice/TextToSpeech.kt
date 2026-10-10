@@ -7,9 +7,11 @@ import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.speech.tts.UtteranceProgressListener
 import app.heyrobot.core.Playback
 import app.heyrobot.core.RLog
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
@@ -109,11 +111,14 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private var listener: TextToSpeech.Listener? = null
     private var rate = 1.0f
     private var voice = ""
-    /** A sentence of this speaking run says "stop" or a word like it (no audio positions here, so the whole run counts). */
-    @Volatile private var risky = false
-    /** ... or a wake phrase's word. */
-    @Volatile private var riskyWake = false
-    @Volatile private var wakeWords: Regex? = null
+    /**
+     * Which sentence says "stop" or a word like it, or a wake phrase's word, and when it played: from the engine's
+     * start and done callbacks, in ms of elapsedRealtime (there are no audio positions here). Until 0.3.1 one such
+     * word turned "stop" off for the whole reply.
+     */
+    private val echo = EchoGuard(1_000)
+    /** Queued sentences that say such a word, by utterance id: [RISK_STOP] and [RISK_WAKE]. */
+    private val risky = ConcurrentHashMap<String, Int>()
 
     private val tts: android.speech.tts.TextToSpeech = android.speech.tts.TextToSpeech(app) { status ->
         main.post { onInit(status == android.speech.tts.TextToSpeech.SUCCESS) }
@@ -131,7 +136,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         }
         tts.setAudioAttributes(CallAudio.attributes(runPlayback))
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {}
+            override fun onStart(utteranceId: String?) = started(utteranceId)
             override fun onDone(utteranceId: String?) = finished(utteranceId)
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) = finished(utteranceId)
@@ -142,8 +147,19 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
         while (pending.isNotEmpty()) pending.removeFirst().let { (t, other) -> enqueue(t, other) }
     }
 
+    private fun current(id: String?): Boolean = id?.substringBefore(':')?.toLongOrNull() == generation
+
+    /** The engine's thread: a sentence starts playing (the engine plays them one after another). */
+    private fun started(id: String?) {
+        if (!current(id)) return
+        val f = risky.remove(id) ?: 0
+        echo.open(SystemClock.elapsedRealtime(), f and RISK_STOP != 0, f and RISK_WAKE != 0)
+    }
+
     private fun finished(id: String?) {
-        if (id?.substringBefore(':')?.toLongOrNull() != generation) return
+        if (!current(id)) return
+        // Its audio has played: the guard's window runs on from now.
+        echo.close(SystemClock.elapsedRealtime())
         main.post {
             if (outstanding.get() > 0 && outstanding.decrementAndGet() == 0) idle()
         }
@@ -179,16 +195,18 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
                 quiet = 0
                 main.removeCallbacks(watchdog)
                 main.postDelayed(watchdog, SpeechWatchdog.CHECK_MS)
+                echo.reset()
+                risky.clear()
                 listener?.onSpeakingChanged(true)
             }
-            if (EchoGuard.soundsLikeStop(sentence)) risky = true
-            if (wakeWords?.containsMatchIn(sentence) == true) riskyWake = true
             if (ready) enqueue(sentence, other) else pending.addLast(sentence to other)
         }
     }
 
     private fun enqueue(sentence: String, other: Boolean) {
         val id = "$generation:${ids.incrementAndGet()}"
+        val f = (if (EchoGuard.soundsLikeStop(sentence)) RISK_STOP else 0) or (if (echo.saysWakeWord(sentence)) RISK_WAKE else 0)
+        if (f != 0) risky[id] = f
         // Pitch applies to the next speak() call: set it for every sentence.
         tts.setPitch(if (other) OTHER_PITCH else 1.0f)
         val r = tts.speak(sentence, android.speech.tts.TextToSpeech.QUEUE_ADD, Bundle(), id)
@@ -198,14 +216,16 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     private companion object {
         /** app.heyrobot.core.ClaudeVoices.SYSTEM_PITCH (the voice module doesn't read Ask Claude's settings). */
         const val OTHER_PITCH = 0.82f
+        const val RISK_STOP = 1
+        const val RISK_WAKE = 2
     }
 
     private fun setOutstanding(n: Int): Int { outstanding.set(n); return n }
 
     private fun idle() {
         main.removeCallbacks(watchdog)
-        risky = false
-        riskyWake = false
+        echo.reset()
+        risky.clear()
         audio.abandonAudioFocusRequest(focus)
         CallAudio.end(app, this)
         listener?.onSpeakingChanged(false)
@@ -222,12 +242,12 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
 
     override val isSpeaking: Boolean get() = outstanding.get() > 0
 
-    override val stopWordSafe: Boolean get() = !risky
+    override val stopWordSafe: Boolean get() = !echo.mayBeEcho(SystemClock.elapsedRealtime())
 
-    override val wakeWordSafe: Boolean get() = !riskyWake
+    override val wakeWordSafe: Boolean get() = !echo.mayBeWakeEcho(SystemClock.elapsedRealtime())
 
     override fun setWakeWords(words: List<String>) {
-        wakeWords = EchoGuard.wakeRegex(words)
+        echo.wakeWords = EchoGuard.wakeRegex(words)
     }
 
     override fun setPlayback(p: Playback) {
