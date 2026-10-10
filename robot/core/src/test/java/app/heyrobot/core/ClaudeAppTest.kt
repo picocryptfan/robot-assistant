@@ -103,9 +103,20 @@ class ClaudeAppTest {
         assertTrue(ClaudeAppAnswer.extract(older)!!.startsWith("Here are a few ideas"))
     }
 
+    @Test fun anAnswerThatNamesAModelIsKept() {
+        val nodes = listOf("Claude", "Which model should I use?",
+            "Claude Opus 5.5 is the most capable, and Sonnet 5.5 costs half as much for most everyday work.",
+            "Haiku 5.5 is the fastest of the three.",
+            "Copy", "Reply to Claude", "Sonnet 5.5 · Extended", "Opus 5.5")
+        assertEquals("Claude Opus 5.5 is the most capable, and Sonnet 5.5 costs half as much for most everyday work.\n\nHaiku 5.5 is the fastest of the three.",
+            ClaudeAppAnswer.extract(nodes, asked = "Which model should I use?"))
+    }
+
     @Test fun nothingUsable() {
         assertNull(ClaudeAppAnswer.extract(emptyList()))
-        assertNull(ClaudeAppAnswer.extract(listOf("Claude", "New chat", "Copy", "Reply to Claude", "Opus 5.5")))
+        assertNull(ClaudeAppAnswer.extract(listOf("Claude", "New chat", "Copy", "Reply to Claude", "Opus 5.5", "Claude Sonnet 5.5", "Haiku 5.5 · Extended")))
+        // A secure window gives no text at all.
+        assertNull(ClaudeAppAnswer.extract(listOf("", "  ")))
         assertNull(ClaudeAppAnswer.extract(listOf("Hi", "OK", "Settings")))
         // The question is found but nothing came after it yet (still answering, or not sent).
         assertNull(ClaudeAppAnswer.extract(listOf("Claude", "Why is the sky blue?", "Reply to Claude"), asked = "Why is the sky blue?"))

@@ -13,7 +13,7 @@ import kotlin.math.roundToLong
 data class ClaudePrices(val input: Double, val output: Double, val cacheRead: Double, val cacheWrite: Double)
 
 /**
- * The three models the owner can pick. Exact model ID strings, never with a date suffix. [fallback]: the request carries
+ * The three models you can pick. Exact model ID strings, never with a date suffix. [fallback]: the request carries
  * the server-side refusal fallback (`fallbacks: "default"`); Claude Haiku 5.5 has none, and a fallback list there is a 400.
  */
 enum class ClaudeModel(val id: String, val title: String, val detail: String, private val prices: ClaudePrices, private val longPrices: ClaudePrices?, val fallback: Boolean) {
@@ -49,22 +49,30 @@ data class ClaudePlan(val effort: ClaudeEffort, val maxTokens: Long) {
     companion object {
         /** A spoken answer: short, and thinking counts towards it too (never lowball it). */
         const val VOICE_TOKENS = 4_000L
-        /** Typed, or the owner asked for depth. */
+        /** Typed, asked for depth, or high effort (thinking would use up a short limit). */
         const val DEEP_TOKENS = 16_000L
 
         /**
-         * Automatic: low for a voice question, medium for a typed one, high when the owner asked for depth ("think hard
-         * about", "take your time"). A fixed setting wins over all three.
+         * Automatic: low for a voice question, medium for a typed one, high when the user asked for depth ("think hard
+         * about", "take your time"). A fixed setting wins over all three. High effort always gets the long limit: its
+         * thinking alone can use up a short one and leave no answer.
          */
-        fun of(setting: ClaudeEffortSetting, voice: Boolean, deep: Boolean): ClaudePlan = ClaudePlan(
-            effort = setting.level ?: when {
+        fun of(setting: ClaudeEffortSetting, voice: Boolean, deep: Boolean): ClaudePlan {
+            val effort = setting.level ?: when {
                 deep -> ClaudeEffort.HIGH
                 voice -> ClaudeEffort.LOW
                 else -> ClaudeEffort.MEDIUM
-            },
-            maxTokens = if (voice && !deep) VOICE_TOKENS else DEEP_TOKENS,
-        )
+            }
+            return ClaudePlan(effort, if (voice && !deep && effort != ClaudeEffort.HIGH) VOICE_TOKENS else DEEP_TOKENS)
+        }
     }
+
+    /**
+     * This question's plan in a Claude-mode conversation whose first question had [first]: the effort stays the same
+     * for the whole conversation (a change would restart the prompt cache); the length still follows this question.
+     */
+    fun keeping(first: ClaudePlan): ClaudePlan =
+        ClaudePlan(first.effort, if (first.effort == ClaudeEffort.HIGH) DEEP_TOKENS else maxTokens)
 }
 
 /** What one request used, from its `usage` (numbers only). */
@@ -72,16 +80,46 @@ data class ClaudeUsage(val input: Long = 0, val output: Long = 0, val cacheRead:
     val prompt: Long get() = input + cacheRead + cacheWrite
 }
 
+/** One attempt within a request (`usage.iterations`): the model that ran it, if the API said, and its tokens. */
+data class ClaudeAttempt(val model: String?, val usage: ClaudeUsage)
+
 object ClaudeCost {
     /** Web search: \$10 per 1,000 searches. */
     const val SEARCH_DOLLARS = 0.01
 
-    /** The estimated price of one request, in dollars. */
-    fun dollars(model: ClaudeModel, u: ClaudeUsage): Double {
-        val p = model.prices(u.prompt)
-        return (u.input * p.input + u.output * p.output + u.cacheRead * p.cacheRead + u.cacheWrite * p.cacheWrite) / 1_000_000.0 +
-            u.searches * SEARCH_DOLLARS
+    /**
+     * The server-side fallback's models (Claude Opus 4.8 and Claude Opus 5, chosen by the API): \$5 in, \$25 out, cache
+     * reads \$0.50, writes \$6.25. Any model that isn't one of the three Robot asks for is priced like this.
+     */
+    val FALLBACK_PRICES = ClaudePrices(5.0, 25.0, 0.50, 6.25)
+
+    /** The estimated price of one request, in dollars, at [model]'s rates. */
+    fun dollars(model: ClaudeModel, u: ClaudeUsage): Double = tokens(model.prices(u.prompt), u) + u.searches * SEARCH_DOLLARS
+
+    private fun tokens(p: ClaudePrices, u: ClaudeUsage): Double =
+        (u.input * p.input + u.output * p.output + u.cacheRead * p.cacheRead + u.cacheWrite * p.cacheWrite) / 1_000_000.0
+
+    /** The rates of the model that ran a request: one of Robot's three by its ID, any other at the fallback's. */
+    fun prices(served: String?, requested: ClaudeModel, promptTokens: Long): ClaudePrices {
+        if (served.isNullOrEmpty()) return requested.prices(promptTokens)
+        return ClaudeModel.entries.firstOrNull { served == it.id || served.startsWith(it.id + "-") }?.prices(promptTokens) ?: FALLBACK_PRICES
     }
+
+    /**
+     * A request's price as the API bills it: each attempt in [attempts] (`usage.iterations`, the per-attempt record when
+     * a fallback ran) at the rates of the model that ran it, otherwise [total] at the rates of [served] (the model the
+     * response names, which sticky fallback routing can change). Searches at a cent each.
+     */
+    fun request(requested: ClaudeModel, served: String?, total: ClaudeUsage, attempts: List<ClaudeAttempt> = emptyList()): Double =
+        (if (attempts.isEmpty()) tokens(prices(served, requested, total.prompt), total)
+        else attempts.sumOf { tokens(prices(it.model ?: served, requested, it.usage.prompt), it.usage) }) + total.searches * SEARCH_DOLLARS
+
+    /** The tokens a request used in all: the attempts' sum when there are attempts, otherwise [total]. */
+    fun used(total: ClaudeUsage, attempts: List<ClaudeAttempt>): ClaudeUsage = if (attempts.isEmpty()) total else
+        attempts.fold(ClaudeUsage(searches = total.searches)) { a, t ->
+            a.copy(input = a.input + t.usage.input, output = a.output + t.usage.output, cacheRead = a.cacheRead + t.usage.cacheRead,
+                cacheWrite = a.cacheWrite + t.usage.cacheWrite)
+        }
 
     /** Millionths of a dollar, for the budget file (whole numbers). */
     fun micros(dollars: Double): Long = (dollars * 1_000_000).roundToLong().coerceAtLeast(0)
@@ -133,9 +171,12 @@ enum class ClaudeFailure(val text: String, val retry: Boolean = false) {
     SERVER("Claude isn't answering right now. Try again in a minute.", retry = true),
     BAD_REQUEST("Claude couldn't take that request."),
     TOO_LONG("That was too long for Claude."),
-    NO_INTERNET("No internet."),
+    NO_INTERNET("No internet. If you're online, check that Robot's Network permission is on (Settings › Apps › Robot › Permissions)."),
     NO_NETWORK_PERMISSION("Robot isn't allowed to use the network. Turn on Network for Robot in Android's app settings."),
-    TIMEOUT("Claude took too long to start answering."),
+    /** 60 seconds without anything from Claude (a thinking block in progress counts as something). */
+    TIMEOUT("Claude took too long to answer."),
+    /** Robot's copy of the conversation with Claude no longer made a request the API takes: Claude mode starts over. */
+    RESET("Robot lost track of the conversation with Claude, so Claude mode has ended. Ask again to start fresh."),
     NO_KEY("Add your Claude API key in Robot's settings first, or choose the Claude app there."),
     UNKNOWN("Something went wrong with Claude.");
 
@@ -171,7 +212,11 @@ object ClaudeWords {
     const val LEFT = "Back to Robot."
     const val NOT_HERE = "Claude isn't in this conversation."
     const val BUDGET = "Today's Claude budget is used up, so Robot will ask before checking with Claude again today."
+    const val KEY_UNREADABLE = "Robot couldn't read your saved Claude key, so it was removed. Add it again in Robot's settings, under Ask Claude."
     const val SWIPE_TO_READ = "Open the Claude app, then swipe up from the corner and tap “Read Claude's answer”."
+
+    /** A spoken yes to an offer that would send personal content [p]: only a tap sends it. */
+    fun tapToInclude(p: Set<Personal>): String = "Tap Send to include ${Personal.list(p)}."
 }
 
 /**
@@ -202,7 +247,7 @@ object ClaudeVoices {
 
     /**
      * The speaker id Claude's sentences use with Robot's [robot] voice, or null for the phone's voice. Never Robot's
-     * own speaker: if the owner picked Robot's voice for Claude, Claude gets the default instead.
+     * own speaker: if you picked Robot's voice for Claude, Claude gets the default instead.
      */
     fun speaker(robot: VoiceChoice, claude: String?): Int? = when (robot.bundle) {
         VoiceBundle.KOKORO -> KOKORO.first { it.first == of(claude) }.second.let { id -> if (id != robot.speaker) id else KOKORO.first { it.second != robot.speaker }.second }
@@ -210,6 +255,20 @@ object ClaudeVoices {
         VoiceBundle.KITTEN -> robot.speaker xor 1
         else -> null
     }
+}
+
+/** The API key's shape, checked before it is saved (pure; the key itself is handled in the :voice process only). */
+object ClaudeKeyFormat {
+    /**
+     * An Anthropic API key: "sk-ant-", then ASCII letters, digits, "-" and "_" only. Anything else (an accented letter,
+     * a Cyrillic look-alike, full-width digits) is refused before saving: HTTP headers can't carry it, and the HTTP
+     * client's error for a bad header character quotes the whole value.
+     */
+    fun plausible(k: String): Boolean = k.startsWith("sk-ant-") && k.length in 40..400 &&
+        k.all { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '-' || it == '_' }
+
+    /** "sk-ant-…AB12": shown in Settings. */
+    fun mask(k: String): String = "sk-ant-…" + k.takeLast(4)
 }
 
 /** Which way a question to Claude goes. */
@@ -225,12 +284,16 @@ enum class Escalation(val title: String, val detail: String) {
     AUTO("Automatic", "Robot checks with Claude by itself for hard questions (API key only)."),
 }
 
-/** The owner's Ask Claude settings with the defaults that depend on whether an API key is saved. Pure. */
+/** The Ask Claude settings, with the defaults that depend on whether an API key is saved. Pure. */
 object ClaudeSettings {
-    /** Ask Claude on or off: Off until a key is saved, unless the owner chose. */
-    fun enabled(s: RobotSettings, keySaved: Boolean): Boolean = s.claudeEnabled ?: keySaved
+    /**
+     * Ask Claude on or off: on unless you turned it off, with or without a key (without one, questions go to the
+     * Claude app). [keySaved] is kept for callers that pass it; it no longer changes the answer.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    fun enabled(s: RobotSettings, keySaved: Boolean = false): Boolean = s.claudeEnabled ?: true
 
-    /** "Claude app" without a key, "Claude API" once a key is saved, unless the owner chose. */
+    /** "Claude app" without a key, "Claude API" once a key is saved, unless you chose. */
     fun route(s: RobotSettings, keySaved: Boolean): ClaudeRoute = s.claudeRoute ?: if (keySaved) ClaudeRoute.API else ClaudeRoute.APP
 
     /** Automatic once a key is saved, Ask me first before; never Automatic without a key (the app can't escalate by itself). */
@@ -243,11 +306,48 @@ object ClaudeSettings {
     fun localTool(s: RobotSettings, keySaved: Boolean): Boolean = enabled(s, keySaved) && escalation(s, keySaved) != Escalation.OFF
 }
 
-/** What the turn that would go to Claude carries besides plain conversation text. */
+/**
+ * Personal content in a conversation (docs/ask-claude.md "What Claude receives"). From the first turn that carries one,
+ * the conversation is personal: Robot checking with Claude by itself sends only the question, and Claude joining it
+ * sees what came before only after a tap on Include. [label] completes "It contains …".
+ */
 enum class Personal(val label: String) {
-    SCREEN("Your screen's text"),
-    PHOTO("The photo"),
-    READ("What Robot read from your contacts, calendar or notes"),
+    SCREEN("screen text"),
+    PHOTO("a photo"),
+    CALENDAR("your calendar"),
+    NOTES("your notes"),
+    CONTACTS("your contacts"),
+    /** Claude's answer read off the Claude app's screen. */
+    CLAUDE_APP("text from the Claude app"),
+    /** Another read tool's findings (none today besides the three above). */
+    READ("what Robot read on your phone"),
+    ;
+
+    companion object {
+        fun of(a: Attachment): Personal? = when (a) {
+            Attachment.SCREEN -> SCREEN
+            Attachment.PHOTO -> PHOTO
+            Attachment.NONE -> null
+        }
+
+        /** What a read tool's findings were. */
+        fun of(tool: ToolName): Personal = when (tool) {
+            ToolName.READ_CALENDAR -> CALENDAR
+            ToolName.FIND_NOTES -> NOTES
+            ToolName.LOOKUP_CONTACT -> CONTACTS
+            else -> READ
+        }
+
+        /** "screen text, a photo and your calendar", in the enum's order. */
+        fun list(p: Set<Personal>): String {
+            val l = entries.filter { it in p }.map { it.label }
+            return when (l.size) {
+                0 -> ""
+                1 -> l[0]
+                else -> l.dropLast(1).joinToString(", ") + " and " + l.last()
+            }
+        }
+    }
 }
 
 enum class EscalationDecision {
@@ -267,9 +367,10 @@ enum class EscalationTrigger { PRE_ROUTER, LOCAL_TOOL, HEDGE }
 /** The escalation policy: pure, so its whole matrix is tested (EscalationTest). */
 object EscalationPolicy {
     /**
-     * [personal]: the turn carries screen text, a picture or a read tool's findings: always asks first, with a card
-     * listing what would be sent. [budgetReached]: Automatic drops to Ask first for the rest of the day.
-     * [alreadyEscalated]: at most one escalation per turn. [fromClaude]: a Claude answer is never re-escalated.
+     * [personal]: what would be sent includes this question's screen text or picture: always asks first, with a card
+     * listing it (earlier personal turns are never sent by an escalation, so they don't need one). [budgetReached]:
+     * Automatic drops to Ask first for the rest of the day. [alreadyEscalated]: at most one escalation per turn.
+     * [fromClaude]: a Claude answer is never re-escalated.
      */
     fun decide(
         s: RobotSettings,

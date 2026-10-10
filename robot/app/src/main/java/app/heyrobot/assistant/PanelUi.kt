@@ -225,7 +225,7 @@ private fun statusLine(st: PanelState): String = when (st.phase) {
     // "Claude is thinking…" (or "Checking with Claude…") until Claude's first words.
     Phase.THINKING -> st.claudeStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
     Phase.ANSWERING -> if (st.turns.lastOrNull()?.claude == true) "Claude is answering…" else "Answering…"
-    Phase.CONFIRMING -> "Waiting for you: Do it or Cancel"
+    Phase.CONFIRMING -> "Waiting for you: tap a button on the card"
     Phase.SPEAKING -> "Speaking · tap to stop"
     Phase.IDLE -> when {
         st.claudeMode -> "Talking with Claude: your questions go online"
@@ -250,8 +250,8 @@ private fun ClaudeModeChip() {
 }
 
 /**
- * "Want me to check with Claude?" under a reply, with what would be sent; or, without an API key, "Open Claude with:
- * «…»". Nothing happens until the tap (or a yes).
+ * "Want me to check with Claude?" under a reply, with what Send would send (and the start of the screen's text); or,
+ * without an API key, "Open Claude with: «…»". Nothing happens until the tap (or a yes, when nothing personal goes).
  */
 @Composable
 private fun OfferCard(replyId: String, o: Offer) {
@@ -270,10 +270,14 @@ private fun OfferCard(replyId: String, o: Offer) {
                 Text("Sends: " + o.sends.joinToString(", ").lowercase().replaceFirstChar { it.uppercase() } + ".", style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 6.dp))
             }
+            o.preview?.let {
+                Text("“" + it.take(300).trim() + (if (it.length > 300) "…" else "") + "”", style = MaterialTheme.typography.bodySmall, maxLines = 6,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+            }
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
                 TextButton(onClick = { PanelController.dismissOffer(replyId) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("No thanks") }
                 FilledTonalButton(onClick = { PanelController.acceptOffer(replyId) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(if (o.api) "Check with Claude" else "Open Claude")
+                    Text(if (o.api) "Send" else "Open Claude")
                 }
             }
         }
@@ -424,7 +428,7 @@ private fun ContextRow(st: PanelState) {
         }
     } else if ((st.screenAvailable || st.claudeScreen) && !st.busy) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Over the Claude app (the owner's corner swipe): its last answer, read aloud in Claude's voice.
+            // Over the Claude app (your corner swipe): its last answer, read aloud in Claude's voice.
             if (st.claudeScreen) {
                 AssistChip(
                     onClick = PanelController::readClaudeAnswer,

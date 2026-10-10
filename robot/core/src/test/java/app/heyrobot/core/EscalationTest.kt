@@ -42,6 +42,12 @@ class EscalationTest {
         assertNull(PreRouter.signal("what's the capital of France"))
         assertNull(PreRouter.signal("tell me a joke"))
         assertNull(PreRouter.signal("what's the area code for Montreal"))
+        // Codes, news and scores from everyday life.
+        assertNull(PreRouter.signal("what's the door code"))
+        assertNull(PreRouter.signal("what's the wifi code"))
+        assertNull(PreRouter.signal("what's the gate code again"))
+        assertNull(PreRouter.signal("any news from my sister"))
+        assertNull(PreRouter.signal("what's my credit score"))
         assertNull(PreRouter.signal("how are you"))
         assertNull(PreRouter.signal(""))
         assertNull(PreRouter.signal((1..40).joinToString(" ") { "w$it" }))
@@ -97,10 +103,10 @@ class EscalationTest {
 
     @Test fun askClaudeOffMeansNoEscalation() {
         assertEquals(EscalationDecision.NONE, d(RobotSettings(claudeEnabled = false), keySaved = true))
-        // Off until a key is saved, by default.
-        assertEquals(EscalationDecision.NONE, d(RobotSettings(), keySaved = false))
+        // On by default: without a key Robot offers the Claude app, with one it checks by itself.
+        assertEquals(EscalationDecision.OFFER, d(RobotSettings(), keySaved = false))
         assertEquals(EscalationDecision.AUTO, d(RobotSettings(), keySaved = true))
-        assertFalse(ClaudeSettings.localTool(RobotSettings(), keySaved = false))
+        assertTrue(ClaudeSettings.localTool(RobotSettings(), keySaved = false))
         assertTrue(ClaudeSettings.localTool(RobotSettings(), keySaved = true))
         assertFalse(ClaudeSettings.localTool(RobotSettings(claudeHelp = Escalation.OFF), keySaved = true))
     }
@@ -121,10 +127,11 @@ class EscalationTest {
     @Test fun defaultRouteFollowsTheKey() {
         assertEquals(ClaudeRoute.APP, ClaudeSettings.route(RobotSettings(), keySaved = false))
         assertEquals(ClaudeRoute.API, ClaudeSettings.route(RobotSettings(), keySaved = true))
-        // The owner's choice stands either way.
+        // Your choice stands either way.
         assertEquals(ClaudeRoute.APP, ClaudeSettings.route(RobotSettings(claudeRoute = ClaudeRoute.APP), keySaved = true))
         assertEquals(ClaudeRoute.API, ClaudeSettings.route(RobotSettings(claudeRoute = ClaudeRoute.API), keySaved = false))
-        assertFalse(ClaudeSettings.enabled(RobotSettings(), keySaved = false))
+        // Deleting the key doesn't turn Ask Claude off: the Claude app takes the questions.
+        assertTrue(ClaudeSettings.enabled(RobotSettings(), keySaved = false))
         assertTrue(ClaudeSettings.enabled(RobotSettings(), keySaved = true))
         assertTrue(ClaudeSettings.enabled(RobotSettings(claudeEnabled = true), keySaved = false))
     }

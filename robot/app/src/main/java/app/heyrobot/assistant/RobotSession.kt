@@ -107,8 +107,9 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
         } catch (t: Throwable) {
             RLog.w("assist_walk", t)
         }
-        // Which app was on screen: over the Claude app the panel offers "Read Claude's answer" (the owner's swipe only).
-        PanelController.onAssistText(pieces, try { s.activityComponent?.packageName } catch (_: Throwable) { null })
+        // Which app was on screen: over the Claude app the panel offers "Read Claude's answer" (your swipe only). With
+        // several windows (split screen) this runs once per activity: the panel puts them together.
+        PanelController.onAssistText(pieces, try { s.activityComponent?.packageName } catch (_: Throwable) { null }, state.index, state.count)
     }
 
     override fun onHandleScreenshot(screenshot: Bitmap?) {

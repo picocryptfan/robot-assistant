@@ -22,6 +22,7 @@ import app.heyrobot.core.ClaudeCommand
 import app.heyrobot.core.ClaudeContext
 import app.heyrobot.core.ClaudeCost
 import app.heyrobot.core.ClaudeFailure
+import app.heyrobot.core.ClaudePayload
 import app.heyrobot.core.ClaudePlan
 import app.heyrobot.core.ClaudeRoute
 import app.heyrobot.core.ClaudeRouter
@@ -65,6 +66,7 @@ import app.heyrobot.core.TurnSlot
 import app.heyrobot.core.TurnView
 import app.heyrobot.core.toPromptTurns
 import app.heyrobot.sys.AppPages
+import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.HandOffApps
@@ -131,10 +133,11 @@ data class UiAction(
 )
 
 /**
- * "Want me to check with Claude?" under a reply (docs/ask-claude.md "When Robot needs help"): a tap or a yes asks Claude
- * through the API ([api], listing what goes: [sends]) or opens the Claude app with [text]. Nothing happens without it.
+ * "Want me to check with Claude?" under a reply (docs/ask-claude.md "When Robot needs help"): a tap (or a yes, when
+ * nothing personal would go) asks Claude through the API ([api], listing what goes: [sends], with the start of the
+ * screen's text in [preview]) or opens the Claude app with [text]. Nothing happens without it.
  */
-data class Offer(val api: Boolean, val text: String, val sends: List<String>)
+data class Offer(val api: Boolean, val text: String, val sends: List<String>, val preview: String? = null)
 
 data class UiTurn(
     val id: String,
@@ -218,6 +221,8 @@ object PanelController {
     private var host: PanelHost? = null
     private val chat = mutableListOf<ChatTurn>()
     private var screenText: String? = null
+    /** The text of every window the corner swipe described, in order (split screen gives several). */
+    private val assistPieces = ArrayList<String>()
     private var screenshot: Bitmap? = null
     private var draftJpeg: ByteArray? = null
     private var lastActivity = 0L
@@ -244,17 +249,20 @@ object PanelController {
     private var claudePieces: List<String>? = null
     /** The question Robot last handed to the Claude app, to find Claude's answer after it. */
     private var lastToApp: String? = null
-    /** Offers waiting under replies, by reply id, with what a tap would send. */
+    /** The offer waiting under a reply, by reply id, with exactly what a tap would send (at most one at a time). */
     private val offers = HashMap<String, PendingOffer>()
-    /** The picture of the last question, kept for this panel session only, so an offer's tap can share it. */
+    /** The picture of the last question, kept for this panel session only ("ask Claude about this photo"). */
     private var lastImage: ByteArray? = null
     /** The day the "budget used up" sentence was said (once a day). */
     private var budgetSaid: String? = null
 
-    /** What an offer's tap does: the owner's [question], the conversation before it, what it may share. */
-    private class PendingOffer(val api: Boolean, val question: String, val history: List<ChatTurn>, val attachment: Attachment, val personal: Set<Personal>)
+    /**
+     * What an offer's tap does, fixed when it was made: the API request's [payload], or the user's [question] for the
+     * Claude app. It never picks up a screen or a picture that arrived later.
+     */
+    private class PendingOffer(val api: Boolean, val question: String, val payload: ClaudePayload?, val voiceAsked: Boolean)
 
-    private val ownerRegion get() = VoiceHub.settings.phoneRegion
+    private val userRegion get() = VoiceHub.settings.phoneRegion
 
     private fun newId() = UUID.randomUUID().toString()
 
@@ -293,6 +301,7 @@ object PanelController {
             screenText = null
             screenshot = null
             claudePieces = null
+            assistPieces.clear()
             val stale = System.currentTimeMillis() - lastActivity > CONTINUE_MS
             when {
                 convArg != null && !locked && ConversationStore.validId(convArg) -> loadConversation(convArg)
@@ -316,7 +325,7 @@ object PanelController {
                 showId = it.showId + 1, claudeScreen = false)
         }
         BrainKeeper.prewarm(VoiceHub.app)
-        if (ClaudeSettings.route(s, ClaudeLink.keySaved(VoiceHub.app)) == ClaudeRoute.API) ClaudeLink.warm(VoiceHub.app, s)
+        ClaudeLink.warm(VoiceHub.app, s)
         // The voice models load on first use (VoiceHub's memory policy): speech recognition when the mic or the wake
         // word starts a question, the voice when a question is sent with spoken replies on. Nothing loads just for a show.
         RLog.i("panel_show", "src" to source?.let { RLog.Code(it) }, "locked" to locked, "turns" to chat.size)
@@ -333,10 +342,12 @@ object PanelController {
         if (hidingFor == null) VoiceHub.tts.stop()
         // Claude mode ends when the panel closes (not when it hides for the camera or an app Claude opened).
         if (hidingFor == null) endClaudeMode()
-        // Screen content lives only while the panel is open.
+        // Screen content lives only while the panel is open, and so do offers.
         screenText = null
         screenshot = null
         claudePieces = null
+        assistPieces.clear()
+        dropOffers()
         if (!forCapture) {
             draftJpeg = null
             lastImage = null
@@ -350,12 +361,19 @@ object PanelController {
 
     /**
      * AssistStructure text (corner swipe only). Over the Claude app ([pkg]) the panel also offers "Read Claude's answer":
-     * the owner's own swipe, never a background read of the app.
+     * your own swipe, never a background read of the app.
      */
-    fun onAssistText(pieces: List<String>, pkg: String? = null) {
+    fun onAssistText(pieces: List<String>, pkg: String? = null, index: Int = 0, count: Int = 1) {
         if (ignoreAssist || !shown) return
-        screenText = ScreenText.build(pieces)
-        claudePieces = pieces.takeIf { pkg == ClaudeAppLink.PACKAGE }
+        // One call per visible activity ([index] of [count]): the screen's text is all of them together.
+        if (index == 0) {
+            assistPieces.clear()
+            claudePieces = null
+        }
+        assistPieces += pieces
+        screenText = ScreenText.build(assistPieces)
+        // Only the Claude app's own window, and only when an answer can be found in it (a secure window gives no text).
+        if (pkg == ClaudeAppLink.PACKAGE && ClaudeAppAnswer.extract(pieces, lastToApp) != null) claudePieces = pieces
         _state.update { it.copy(screenAvailable = screenText != null || screenshot != null, claudeScreen = claudePieces != null) }
     }
 
@@ -573,9 +591,9 @@ object PanelController {
             if (fromVoice) notify("Robot is still on the last question. Ask again when it's done.")
             return false
         }
-        // An offer under the last reply waits for a tap or a short yes.
+        // An offer under the last reply waits for a tap or a short yes (a yes never sends anything personal).
         if (st.draft == null && ClaudeRouter.isYes(q)) offers.keys.lastOrNull { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.let {
-            acceptOffer(it)
+            acceptOffer(it, tapped = false)
             return true
         }
         VoiceHub.tts.stop()
@@ -595,20 +613,23 @@ object PanelController {
         val sText = if (attachment == Attachment.SCREEN) screenText else null
         val history = chat.toList()
         val now = System.currentTimeMillis()
-        val user = ChatTurn(newId(), TurnRole.USER, q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, attachment)
+        // "Ask Claude about my screen" said without attaching it is still a screen question: the conversation is
+        // personal from here on, and it is saved only with Keep.
+        val marked = if (attachment != Attachment.NONE) attachment else (cmd as? ClaudeCommand.Ask)?.extra ?: Attachment.NONE
+        val user = ChatTurn(newId(), TurnRole.USER, q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, marked)
         chat += user
         val toClaude = cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join || (cmd == null && _state.value.claudeMode)
         // Groups are only ever added: a question that needs a new one rebuilds the conversation once (:brain).
         if (cmd == null && !toClaude) groups = groups + ToolRouter.route(q)
         val replyId = newId()
         // Decided per turn: a screen turn stops saving until the person taps Keep.
-        val keep = if (attachment == Attachment.SCREEN && !keptByUser) false else st.keep
+        val keep = if (marked == Attachment.SCREEN && !keptByUser) false else st.keep
         // Screen text, a picture, a read tool's findings or Claude's words anywhere in this conversation: every action asks first.
         val untrusted = TurnRules.untrusted(chat)
         val api = toClaude && ClaudeSettings.route(VoiceHub.settings, ClaudeLink.keySaved(VoiceHub.app)) == ClaudeRoute.API
         _state.update {
             it.copy(
-                turns = it.turns + UiTurn(user.id, TurnRole.USER, user.text, attachment, st.draft?.thumb) +
+                turns = it.turns + UiTurn(user.id, TurnRole.USER, user.text, marked, st.draft?.thumb) +
                     UiTurn(replyId, TurnRole.ASSISTANT, "", streaming = true, claude = api && cmd != ClaudeCommand.Join(null)),
                 phase = Phase.THINKING, draft = null, partial = "", notice = null, keep = keep,
                 locked = Assistant.locked(VoiceHub.app),
@@ -678,10 +699,11 @@ object PanelController {
         var offerAfter: EscalationTrigger? = null
         if (attachment == Attachment.NONE) PreRouter.signal(question)?.let { signal ->
             RLog.i("claude_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
-            when (decide(history, attachment, guardFree = !guard.used)) {
+            when (decide(attachment, guardFree = !guard.used)) {
                 EscalationDecision.AUTO -> {
                     guard.take(fromClaude = false)
-                    return escalateNow(replyId, question, history, attachment, voiceAsked, reuseBubble = true)
+                    val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personalNow(null))
+                    return escalateNow(replyId, question, blocks, voiceAsked, reuseBubble = true)
                 }
                 EscalationDecision.OFFER -> offerAfter = EscalationTrigger.PRE_ROUTER
                 else -> {}
@@ -699,8 +721,10 @@ object PanelController {
         val img = if (vision) image else null
         val convId = _state.value.convId
         val now = ZonedDateTime.now()
-        // ask_claude is described (with its one line in the system prompt) only with Ask Claude on and escalation not Off.
-        val askClaude = ClaudeSettings.localTool(s, keySaved)
+        // ask_claude is described (with its one line in the system prompt) only with Ask Claude on, escalation not Off, and
+        // somewhere for the question to go (the API with a key, or the Claude app installed).
+        val api = keySaved && ClaudeSettings.route(s, keySaved) == ClaudeRoute.API
+        val askClaude = ClaudeSettings.localTool(s, keySaved) && (api || withContext(Dispatchers.IO) { ClaudeAppIntents.installed(VoiceHub.app) })
         val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude)
         // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
         val tools = ToolRouter.tools(groups, s, askClaude)
@@ -725,7 +749,7 @@ object PanelController {
         // Escalation trigger b: Gemma called ask_claude. Its turn ended there; Claude answers (or is offered).
         if (result.escalate) {
             RLog.i("claude_trigger", "kind" to EscalationTrigger.LOCAL_TOOL)
-            return afterLocal(replyId, question, history, attachment, voiceAsked, guard, EscalationTrigger.LOCAL_TOOL)
+            return afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, EscalationTrigger.LOCAL_TOOL)
         }
         finishReply(replyId, result.reason ?: DoneReason.END)
         if (result.launchedApp) return leaveForApp()
@@ -733,26 +757,33 @@ object PanelController {
         val reply = chat.lastOrNull { it.id == replyId }
         if (result.reason == DoneReason.END && reply != null && reply.actions.isEmpty() && Hedge.detect(reply.text)) {
             RLog.i("claude_trigger", "kind" to EscalationTrigger.HEDGE)
-            return afterLocal(replyId, question, history, attachment, voiceAsked, guard, EscalationTrigger.HEDGE)
+            return afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, EscalationTrigger.HEDGE)
         }
-        offerAfter?.let { afterLocal(replyId, question, history, attachment, voiceAsked, guard, it, offerOnly = true) }
+        offerAfter?.let { afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, it, offerOnly = true) }
     }
 
-    /** The escalation policy for this conversation now. */
-    private fun decide(history: List<ChatTurn>, attachment: Attachment, guardFree: Boolean): EscalationDecision {
+    /** The escalation policy for this question now ([attachment]: its screen or photo, which only a tap may send). */
+    private suspend fun decide(attachment: Attachment, guardFree: Boolean): EscalationDecision {
         val s = VoiceHub.settings
         val app = VoiceHub.app
-        val personal = ClaudeContext.personal(ClaudeContext.recent(history), attachment)
-        return EscalationPolicy.decide(s, ClaudeLink.keySaved(app), personal.isNotEmpty(), Assistant.locked(app), ClaudeLink.budgetReached(app, s), !guardFree)
+        return EscalationPolicy.decide(s, ClaudeLink.keySaved(app), attachment != Attachment.NONE, Assistant.locked(app), ClaudeLink.budgetReached(app, s), !guardFree)
+    }
+
+    /** The personal content in the conversation now, the reply [replyId] included while it is still on screen only. */
+    private fun personalNow(replyId: String?): Set<Personal> {
+        val ui = replyId?.takeIf { id -> chat.none { it.id == id } }?.let { id -> _state.value.turns.firstOrNull { it.id == id } }
+        val reply = ui?.let { listOf(ChatTurn(it.id, TurnRole.ASSISTANT, it.text, 0, actions = records(it.actions))) }.orEmpty()
+        return ClaudeContext.personal(chat + reply)
     }
 
     /**
      * Robot's reply [replyId] is in (or Gemma handed over with ask_claude): bring Claude in now, offer it, or say why not.
-     * At most one escalation per turn ([guard]); [offerOnly]: the pre-router's offer, after Gemma's answer.
+     * At most one escalation per turn ([guard]); [offerOnly]: the pre-router's offer, after Gemma's answer. [screen] and
+     * [image]: this question's screen text and picture, which only an offer's tap may send.
      */
-    private suspend fun afterLocal(replyId: String, question: String, history: List<ChatTurn>, attachment: Attachment, voiceAsked: Boolean,
-        guard: EscalationGuard, trigger: EscalationTrigger, offerOnly: Boolean = false) {
-        val decision = decide(history, attachment, guardFree = !guard.used)
+    private suspend fun afterLocal(replyId: String, question: String, history: List<ChatTurn>, attachment: Attachment, screen: String?, image: ByteArray?,
+        voiceAsked: Boolean, guard: EscalationGuard, trigger: EscalationTrigger, offerOnly: Boolean = false) {
+        val decision = decide(attachment, guardFree = !guard.used)
         if (!guard.take(fromClaude = false)) return finishOrDrop(replyId)
         val s = VoiceHub.settings
         val app = VoiceHub.app
@@ -766,20 +797,31 @@ object PanelController {
                 if (_state.value.speak) VoiceHub.tts.speak(ClaudeWords.BUDGET)
             }
         }
+        // A personal conversation (this reply's read included): Robot sends only the question.
+        val personal = personalNow(replyId)
         when (decision) {
             EscalationDecision.AUTO -> if (offerOnly) finishOrDrop(replyId) else {
+                val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personal)
                 finishOrDrop(replyId)
-                escalateNow(null, question, history, attachment, voiceAsked, reuseBubble = false)
+                escalateNow(null, question, blocks, voiceAsked, reuseBubble = false)
             }
             EscalationDecision.OFFER -> {
-                val personal = ClaudeContext.personal(ClaudeContext.recent(history), attachment)
                 val api = keySaved && ClaudeSettings.route(s, keySaved) == ClaudeRoute.API
+                // No Claude app to open: nothing to offer.
+                if (!api && !withContext(Dispatchers.IO) { ClaudeAppIntents.installed(app) }) {
+                    if (chat.none { it.id == replyId } && _state.value.turns.firstOrNull { it.id == replyId }?.text.isNullOrBlank()) sayInto(replyId, "I'm not sure about that one.")
+                    finishOrDrop(replyId)
+                    return RLog.i("claude_escalation", "trigger" to trigger, "decision" to EscalationDecision.NONE)
+                }
                 if (chat.none { it.id == replyId }) {
                     // Gemma said nothing before asking for Claude: the offer stands on its own.
                     if (_state.value.turns.firstOrNull { it.id == replyId }?.text.isNullOrBlank()) sayInto(replyId, if (api) "I'd rather check that with Claude." else "Claude could help with that.")
                     finishReply(replyId, DoneReason.END)
                 }
-                offer(replyId, PendingOffer(api, question, history, attachment, personal))
+                // What the tap sends is fixed now: this question's screen or picture, never one that arrives later.
+                val payload = if (!api) null else ClaudeContext.payload(question, history, ZonedDateTime.now(), userRegion, personal, attachment,
+                    Shared(screenText = screen, image = image))
+                offer(replyId, PendingOffer(api, question, payload, voiceAsked))
             }
             EscalationDecision.NEEDS_UNLOCK -> {
                 if (chat.none { it.id == replyId }) {
@@ -812,11 +854,11 @@ object PanelController {
 
     /** Shows "Want me to check with Claude?" under [replyId] (the Claude app: "Open Claude with: «…»"). */
     private fun offer(replyId: String, o: PendingOffer) {
+        dropOffers()
         offers[replyId] = o
-        val sends = if (!o.api) emptyList() else listOf("Your question", "The last ${ClaudeContext.RECENT_TURNS} turns of this conversation") + o.personal.map { it.label }
         val text = if (o.api) o.question else ClaudeAppLink.cap(o.question)
-        _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(o.api, text, sends)) else it }) }
-        // Said too, so the owner knows a yes will do.
+        _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(o.api, text, o.payload?.sends.orEmpty(), o.payload?.preview)) else it }) }
+        // Said too, so you know a yes will do.
         if (_state.value.speak) VoiceHub.tts.speak(if (o.api) "Want me to check with Claude?" else "Want me to open Claude?")
     }
 
@@ -826,13 +868,29 @@ object PanelController {
         _state.update { st -> st.copy(turns = st.turns.map { if (it.offer != null) it.copy(offer = null) else it }) }
     }
 
-    /** The owner tapped the offer under [replyId] (or said yes): ask Claude, or open the Claude app. */
-    fun acceptOffer(replyId: String) {
+    /**
+     * The offer under [replyId] was accepted: [tapped] on its Send button, or a yes. A yes sends only an offer with
+     * nothing personal in it; otherwise Robot says what needs the tap and waits for it.
+     */
+    fun acceptOffer(replyId: String, tapped: Boolean = true) {
         if (_state.value.busy || slot.running) return
-        val o = offers.remove(replyId) ?: return
+        val o = offers[replyId] ?: return
+        // Ask Claude was turned off since the offer was made.
+        if (!ClaudeSettings.enabled(VoiceHub.settings)) {
+            dropOffers()
+            return notify(ClaudeWords.OFF)
+        }
+        val personal = o.payload?.personal.orEmpty()
+        if (!tapped && personal.isNotEmpty()) {
+            val say = ClaudeWords.tapToInclude(personal)
+            notify(say)
+            if (_state.value.speak) VoiceHub.tts.speak(say)
+            return
+        }
+        offers.remove(replyId)
         _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = null) else it }) }
         VoiceHub.tts.stop()
-        RLog.i("claude_offer", "accepted" to true, "api" to o.api)
+        RLog.i("claude_offer", "accepted" to true, "api" to o.api, "tapped" to tapped)
         if (!o.api) {
             // The offer was the card: the Claude app opens now (never on the lock screen).
             if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone to open Claude.")
@@ -843,18 +901,29 @@ object PanelController {
             }
             return
         }
+        val p = o.payload ?: return
         val id = claudeBubble()
-        startTurn(id) { escalateNow(id, o.question, o.history, o.attachment, _state.value.speak, reuseBubble = true, shared = sharedFor(o.personal)) }
+        startTurn(id) { escalateNow(id, p.question, p.blocks, _state.value.speak, reuseBubble = true) }
     }
-
-    /** What an accepted offer may share: the screen's text and the picture while this panel still has them, and what Robot read. */
-    private fun sharedFor(p: Set<Personal>) = if (p.isEmpty()) Shared() else
-        Shared(screenText = screenText.takeIf { Personal.SCREEN in p }, image = lastImage.takeIf { Personal.PHOTO in p }, readResults = Personal.READ in p)
 
     fun dismissOffer(replyId: String) {
         offers.remove(replyId) ?: return
         RLog.i("claude_offer", "accepted" to false)
         _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = null) else it }) }
+    }
+
+    /** The key was saved or deleted: without one, Claude mode and API offers end (the old client closes with them). */
+    fun claudeKeyChanged() {
+        if (ClaudeLink.keySaved(VoiceHub.app)) return
+        if (offers.values.any { it.api }) dropOffers()
+        endClaudeMode()
+    }
+
+    /** Settings changed in the main app: with Ask Claude turned off, offers and Claude mode end. */
+    fun settingsChanged() {
+        if (ClaudeSettings.enabled(VoiceHub.settings)) return
+        dropOffers()
+        endClaudeMode()
     }
 
     /** A new, empty Claude reply bubble at the end of the conversation. */
@@ -866,11 +935,10 @@ object PanelController {
     }
 
     /**
-     * Robot checks with Claude (automatically, or after the owner's tap): "Checking with Claude…" in Robot's voice, then
-     * Claude's answer in Claude's. Only the owner's question and the last turns go, plus what a tap [shared].
+     * Robot checks with Claude (automatically, or after your tap): "Checking with Claude…" in Robot's voice, then Claude's
+     * answer in Claude's. [blocks]: exactly what goes (ClaudeContext.escalation, or an offer's frozen payload).
      */
-    private suspend fun escalateNow(replyId: String?, question: String, history: List<ChatTurn>, attachment: Attachment, voiceAsked: Boolean,
-        reuseBubble: Boolean, shared: Shared = Shared()) {
+    private suspend fun escalateNow(replyId: String?, question: String, blocks: List<ClaudeBlock>, voiceAsked: Boolean, reuseBubble: Boolean) {
         val s = VoiceHub.settings
         val app = VoiceHub.app
         val id = if (reuseBubble && replyId != null) replyId.also { r -> _state.update { st -> st.copy(claudeStatus = ClaudeWords.CHECKING, turns = st.turns.map { if (it.id == r) it.copy(claude = true) else it }) } }
@@ -879,9 +947,18 @@ object PanelController {
         if (Assistant.locked(app) && !s.claudeLocked) return localReply(id, ClaudeWords.LOCKED, claude = false)
         if (!ClaudeLink.networkAllowed(app)) return networkCard(id)
         // The key is decrypted and the client made off the main thread.
-        val session = withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = false) } ?: return failReply(id, ClaudeFailure.NO_KEY.text)
-        val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), ownerRegion, shared)
-        runClaude(id, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, ClaudeRouter.deep(question)))
+        val session = withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = false) } ?: return noKey(id)
+        try {
+            runClaude(id, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, ClaudeRouter.deep(question)))
+        } finally {
+            ClaudeLink.done(session)
+        }
+    }
+
+    /** No key to use: none saved, or the saved one couldn't be read (then it was removed, and Robot says so). */
+    private fun noKey(replyId: String) {
+        val text = if (ClaudeLink.unreadable) ClaudeWords.KEY_UNREADABLE else ClaudeFailure.NO_KEY.text
+        failReply(replyId, text)
     }
 
     /** A question for Claude ("ask Claude …", "go get Claude", or any question in Claude mode). */
@@ -930,22 +1007,25 @@ object PanelController {
         }
         // The key is decrypted and the client made off the main thread.
         val session = (if (mode) claudeSession ?: withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = true) }?.also { claudeSession = it }
-            else withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = false) }) ?: return failReply(replyId, ClaudeFailure.NO_KEY.text)
+            else withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = false) }) ?: return noKey(replyId)
         val now = ZonedDateTime.now()
-        val blocks = when {
-            !mode -> ClaudeContext.oneShot(question ?: said, now, ownerRegion, shared)
-            session.fresh -> {
-                // Claude joins the conversation: what came before, with what Robot read only after "Include".
-                val before = history.take(claudeJoinedAt.coerceIn(0, history.size))
-                if (ClaudeContext.personal(before, Attachment.NONE).contains(Personal.READ) &&
-                    askToShare(replyId, "Include what Robot read from your contacts, calendar or notes?", null, "Include", "Leave out")) {
-                    shared = shared.copy(readResults = true)
+        try {
+            val blocks = when {
+                !mode -> ClaudeContext.oneShot(question ?: said, now, userRegion, shared)
+                session.fresh -> {
+                    // Claude joins the conversation: a personal one only after "Include" ("Start fresh" sends none of it).
+                    val before = history.take(claudeJoinedAt.coerceIn(0, history.size))
+                    val include = ClaudeContext.includeQuestion(before)?.let { q ->
+                        askToShare(replyId, q, null, "Include", "Start fresh", detail = "Start fresh: Claude sees only what you ask from now on.")
+                    } ?: false
+                    ClaudeContext.join(before, question ?: said, now, userRegion, shared, include)
                 }
-                ClaudeContext.join(before, question ?: said, now, ownerRegion, shared)
+                else -> ClaudeContext.next(question ?: said, shared)
             }
-            else -> ClaudeContext.next(question ?: said, shared)
+            runClaude(replyId, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, deep))
+        } finally {
+            if (!mode) ClaudeLink.done(session)
         }
-        runClaude(replyId, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, deep))
         if (mode) touchClaudeMode()
     }
 
@@ -971,11 +1051,21 @@ object PanelController {
             }
 
             override fun declined() {
-                // Robot's own words, in Robot's voice, in place of what was shown.
+                // Robot's own words, in Robot's voice and Robot's bubble, in place of what was shown.
                 voice.mute()
                 VoiceHub.tts.stop()
                 setText(replyId, ClaudeWords.DECLINED)
+                _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(claude = false) else it }) }
                 if (_state.value.speak) VoiceHub.tts.speak(ClaudeWords.DECLINED)
+            }
+
+            override fun thinking() {
+                _state.update { st -> if (st.phase == Phase.THINKING) st.copy(claudeStatus = ClaudeWords.THINKING) else st }
+            }
+
+            override fun spent(dollars: Double) {
+                // Into today's spend as soon as it is known, so a crash mid-answer loses none of it.
+                scope.launch(Dispatchers.IO) { app.heyrobot.sys.ClaudeSpendStore.add(VoiceHub.app, dollars) }
             }
         }
         val claudeTurn = ClaudeTurn(session, blocks, plan, heard)
@@ -987,18 +1077,21 @@ object PanelController {
                 return claudeTurn.answer(results).also { stream(echo.flush()) }
             }
             override fun close() = claudeTurn.close()
+            override fun abandon(results: List<Pair<String, Map<String, Any?>>>) = claudeTurn.abandon(results)
+            override fun stopped(results: List<Pair<String, Map<String, Any?>>>) = claudeTurn.stopped(results)
         }
         val result = try {
             TurnRunner(rounds, PanelActions, PanelView(replyId), slot.confirmations, untrusted = true, remote = true, newId = ::newId).run()
         } finally {
             val r = session.lastReport
-            if (r.requests > 0) withContext(NonCancellable + Dispatchers.IO) { app.heyrobot.sys.ClaudeSpendStore.add(VoiceHub.app, r.dollars) }
             RLog.i("claude_turn", "model" to session.model, "effort" to plan.effort, "firstMs" to first, "ms" to (System.currentTimeMillis() - t0),
                 "requests" to r.requests, "searches" to r.searches, "searchErrors" to r.searchErrors, "cache_read_input_tokens" to r.usage.cacheRead)
         }
         _state.update { it.copy(claudeStatus = null) }
         val report = session.lastReport
         result.failure?.let {
+            // Robot's copy of the conversation can't make a valid request any more: Claude mode starts over.
+            if (it == ClaudeFailure.RESET.text) endClaudeMode()
             // Said aloud, in Robot's voice ("No internet", "Claude is busy, try again in a minute").
             if (_state.value.speak) VoiceHub.tts.speak(it)
             return failReply(replyId, it)
@@ -1015,12 +1108,17 @@ object PanelController {
         if (result.launchedApp) leaveForApp()
     }
 
-    /** "Send …to Claude?" with Send and Cancel (or Include and Leave out): true only after the tap. */
-    private suspend fun askToShare(replyId: String, summary: String, body: String?, confirm: String, cancel: String = "Cancel"): Boolean {
+    /**
+     * "Send …to Claude?" with Send and Cancel (or Include and Start fresh): true only after the tap. Said too when replies
+     * are spoken, so you know a tap is needed.
+     */
+    private suspend fun askToShare(replyId: String, summary: String, body: String?, confirm: String, cancel: String = "Cancel",
+        detail: String = "Nothing goes to Claude until you tap $confirm."): Boolean {
         val id = newId()
         val view = PanelView(replyId)
-        view.card(Card(id, ToolName.ASK_CLAUDE, summary, ActionStatus.PENDING, "Nothing goes to Claude until you tap $confirm.", body = body, confirm = confirm, cancel = cancel))
+        view.card(Card(id, ToolName.ASK_CLAUDE, summary, ActionStatus.PENDING, detail, body = body, confirm = confirm, cancel = cancel))
         view.phase(TurnPhase.CONFIRMING)
+        if (_state.value.speak) VoiceHub.tts.speak("$summary Tap $confirm or $cancel.")
         val pick = try {
             slot.confirmations.ask(id)
         } catch (e: CancellationException) {
@@ -1032,16 +1130,17 @@ object PanelController {
         return pick >= 0
     }
 
-    /** GrapheneOS's Network toggle is off for Robot: a card that says so (Claude can't be reached at all). */
+    /** GrapheneOS's Network toggle is off for Robot: a card that says so (Claude can't be reached at all), said too. */
     private fun networkCard(replyId: String) {
         PanelView(replyId).card(Card(newId(), ToolName.ASK_CLAUDE, "Robot can't use the network", ActionStatus.FAILED, ClaudeFailure.NO_NETWORK_PERMISSION.text))
+        if (_state.value.speak) VoiceHub.tts.speak(ClaudeFailure.NO_NETWORK_PERMISSION.text)
         _state.update { it.copy(claudeStatus = null) }
         finishReply(replyId, DoneReason.END)
     }
 
     /**
      * The Claude app route: the card "Open Claude with: «…»", then the app opens with the question and the panel steps
-     * aside (the launchedApp path). Robot never hears the answer; the owner can read it back with the corner swipe.
+     * aside (the launchedApp path). Robot never hears the answer; you can read it back with the corner swipe.
      */
     private suspend fun handOff(replyId: String, text: String) {
         lastToApp = text.takeIf { it.isNotBlank() }
@@ -1070,6 +1169,7 @@ object PanelController {
 
     private fun startClaudeMode(joinedAt: Int) {
         if (!_state.value.claudeMode) {
+            ClaudeLink.done(claudeSession)
             claudeSession = null
             claudeJoinedAt = joinedAt
         }
@@ -1097,6 +1197,7 @@ object PanelController {
         claudeIdle?.cancel()
         claudeIdle = null
         if (claudeSession == null && !_state.value.claudeMode) return
+        ClaudeLink.done(claudeSession)
         claudeSession = null
         _state.update { it.copy(claudeMode = false) }
         RLog.i("claude_mode", "on" to false)
@@ -1105,7 +1206,7 @@ object PanelController {
     // ------------------------------------------------------------------ reading Claude's answer off the Claude app
 
     /**
-     * "Read Claude's answer": the last answer on the Claude app's screen, from the text the owner's corner swipe gave
+     * "Read Claude's answer": the last answer on the Claude app's screen, from the text your corner swipe gave
      * the panel. It is spoken in Claude's voice and joins Robot's conversation as screen content (later actions ask
      * first). Nothing usable found: "Ask about this screen" instead.
      */
