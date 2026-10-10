@@ -629,7 +629,7 @@ object PanelController {
                 }
                 cmd == ClaudeCommand.ReadAnswer -> if (claudePieces != null) {
                     finishOrDrop(replyId)
-                    readClaudeAnswer()
+                    readBack()
                 } else {
                     localReply(replyId, ClaudeWords.SWIPE_TO_READ)
                 }
@@ -776,14 +776,14 @@ object PanelController {
                 val api = keySaved && ClaudeSettings.route(s, keySaved) == ClaudeRoute.API
                 if (chat.none { it.id == replyId }) {
                     // Gemma said nothing before asking for Claude: the offer stands on its own.
-                    if (_state.value.turns.firstOrNull { it.id == replyId }?.text.isNullOrBlank()) setText(replyId, if (api) "I'd rather check that with Claude." else "Claude could help with that.")
+                    if (_state.value.turns.firstOrNull { it.id == replyId }?.text.isNullOrBlank()) sayInto(replyId, if (api) "I'd rather check that with Claude." else "Claude could help with that.")
                     finishReply(replyId, DoneReason.END)
                 }
                 offer(replyId, PendingOffer(api, question, history, attachment, personal))
             }
             EscalationDecision.NEEDS_UNLOCK -> {
                 if (chat.none { it.id == replyId }) {
-                    if (_state.value.turns.firstOrNull { it.id == replyId }?.text.isNullOrBlank()) setText(replyId, "Unlock your phone to check with Claude.")
+                    if (_state.value.turns.firstOrNull { it.id == replyId }?.text.isNullOrBlank()) sayInto(replyId, "Unlock your phone to check with Claude.")
                     finishReply(replyId, DoneReason.END)
                 }
             }
@@ -792,13 +792,19 @@ object PanelController {
         RLog.i("claude_escalation", "trigger" to trigger, "decision" to decision)
     }
 
+    /** Robot's own words into its empty reply [replyId], spoken in Robot's voice when replies are spoken. */
+    private fun sayInto(replyId: String, text: String) {
+        setText(replyId, text)
+        voice.feed(replyId, text, _state.value.speak).forEach { speakSentence(it) }
+    }
+
     /** Finishes Robot's reply [replyId]; an empty one with no card is dropped instead (Gemma handed straight over). */
     private fun finishOrDrop(replyId: String) {
         if (!current(replyId)) return
         val ui = _state.value.turns.firstOrNull { it.id == replyId } ?: return
         if (ui.text.isBlank() && ui.actions.isEmpty()) {
             voice.finish(replyId, cancelled = true, speak = false)
-            _state.update { st -> st.copy(turns = st.turns.filter { it.id != replyId }) }
+            _state.update { st -> st.copy(phase = st.phase.afterTurn(VoiceHub.tts.isSpeaking), claudeStatus = null, turns = st.turns.filter { it.id != replyId }) }
         } else {
             finishReply(replyId, DoneReason.END)
         }
@@ -810,6 +816,8 @@ object PanelController {
         val sends = if (!o.api) emptyList() else listOf("Your question", "The last ${ClaudeContext.RECENT_TURNS} turns of this conversation") + o.personal.map { it.label }
         val text = if (o.api) o.question else ClaudeAppLink.cap(o.question)
         _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(o.api, text, sends)) else it }) }
+        // Said too, so the owner knows a yes will do.
+        if (_state.value.speak) VoiceHub.tts.speak(if (o.api) "Want me to check with Claude?" else "Want me to open Claude?")
     }
 
     private fun dropOffers() {
@@ -1100,8 +1108,12 @@ object PanelController {
      * first). Nothing usable found: "Ask about this screen" instead.
      */
     fun readClaudeAnswer() {
+        if (_state.value.busy || slot.running) return
+        readBack()
+    }
+
+    private fun readBack() {
         val st = _state.value
-        if (st.busy) return
         val pieces = claudePieces ?: return notify(ClaudeWords.SWIPE_TO_READ)
         val answer = ClaudeAppAnswer.extract(pieces, lastToApp)
         RLog.i("claude_read_back", "found" to (answer != null), "chars" to (answer?.length ?: 0))
