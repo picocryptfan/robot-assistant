@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -71,6 +73,8 @@ data class ActionView(
     val choices: List<String> = emptyList(),
     val confirm: String? = null,
     val undo: Boolean = false,
+    /** More people or numbers fitted than [choices] lists ("…and 3 more"). */
+    val more: Int = 0,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -168,9 +172,10 @@ fun AssistantBubble(
 }
 
 /**
- * One action: what it does (light Markdown: the person or title in bold), its state, the full text it carries, and
- * while it waits either "Do it" (or its own words, "Open in Cheogram") or the people and numbers to pick from. The
- * panel passes [onConfirm] and [more]; the history screen shows cards without buttons.
+ * One action: what it does (light Markdown: the person or title in bold), its state, and right under it the buttons
+ * while it waits: "Do it" (or its own words, "Open in Cheogram for Mom") or the people and numbers to pick from. The
+ * full text it carries comes last, at most about 8 lines tall and scrolling inside the card, so a long message never
+ * pushes who it goes to and the buttons apart. The panel passes [onConfirm] and [more]; the history shows no buttons.
  */
 @Composable
 fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: CardActions? = null) {
@@ -196,22 +201,14 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
                     Text(spans(Markdown.inline(a.summary), Color.Unspecified, caret = false), style = MaterialTheme.typography.titleSmall)
                     val line = when (a.status) {
                         ActionStatus.PENDING -> if (a.choices.isNotEmpty()) "Which one?" else "Do you want Robot to do this?"
-                        ActionStatus.DONE -> a.detail ?: "Done"
+                        ActionStatus.DONE, ActionStatus.DRAFT_OPENED -> a.detail ?: a.status.label
                         else -> listOfNotNull(a.status.label, a.detail).joinToString(". ")
                     }
                     Text(line, style = MaterialTheme.typography.bodyMedium,
                         color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
                 }
-                if (a.status == ActionStatus.DONE) Icon(RIcons.Check, "Done", Modifier.size(22.dp))
+                if (a.status.succeeded) Icon(RIcons.Check, a.status.label, Modifier.size(22.dp))
                 if (a.status == ActionStatus.NEEDS_UNLOCK) Icon(RIcons.Lock, "Locked", Modifier.size(22.dp))
-            }
-            if (!a.body.isNullOrBlank()) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f), shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                ) {
-                    Text(a.body, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-                }
             }
             if (a.status == ActionStatus.PENDING && onConfirm != null) {
                 if (a.choices.isNotEmpty() && more != null) {
@@ -219,12 +216,17 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
                         a.choices.forEachIndexed { i, label ->
                             FilledTonalButton(onClick = { more.choose(a.id, i) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(label) }
                         }
+                        if (a.more > 0) {
+                            Text("…and ${a.more} more. Say the full name to pick one of those.", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
+                        }
                         OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("Cancel") }
                     }
                 } else {
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
-                        Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(a.confirm ?: "Do it") }
+                        Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp)) { Text(a.confirm ?: "Do it") }
                     }
                 }
             }
@@ -234,9 +236,21 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
                     if (a.status == ActionStatus.NEEDS_PERMISSION) FilledTonalButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow") }
                 }
             }
+            if (!a.body.isNullOrBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f), shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                ) {
+                    Text(a.body, style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.heightIn(max = BODY_MAX).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp))
+                }
+            }
         }
     }
 }
+
+/** About 8 lines of body text on a card; more scrolls inside it. */
+private val BODY_MAX = 176.dp
 
 @Composable
 fun TypingDots(color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {

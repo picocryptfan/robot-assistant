@@ -96,6 +96,8 @@ data class UiAction(
     val confirm: String? = null,
     val undo: String? = null,
     val content: Boolean = false,
+    /** More people or numbers fitted than [choices] lists. */
+    val more: Int = 0,
 )
 
 data class UiTurn(
@@ -179,6 +181,8 @@ object PanelController {
     private var initialized = false
     /** The tool groups this conversation has used: only ever added to (ToolRouter), reset with the conversation. */
     private var groups: Set<ToolGroup> = setOf(ToolGroup.CORE)
+    /** Undo changed what the live conversation believes: close it once the turn under way (if any) has ended. */
+    private var closeConvAfterTurn = false
 
     private fun newId() = UUID.randomUUID().toString()
 
@@ -284,6 +288,7 @@ object PanelController {
         VoiceHub.tts.stop()
         chat.clear()
         groups = setOf(ToolGroup.CORE)
+        closeConvAfterTurn = false
         startedLocked = locked
         keptByUser = false
         lastActivity = System.currentTimeMillis()
@@ -300,6 +305,7 @@ object PanelController {
         chat += c.turns
         // The groups its questions and actions used: continuing it describes the same tools.
         groups = ToolRouter.used(c.turns)
+        closeConvAfterTurn = false
         startedLocked = false
         // Opening it from the history keeps saving it, but a screen question in it still needs "Keep" (only the
         // person's tap sets keptByUser).
@@ -341,6 +347,16 @@ object PanelController {
         if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the Robot app.")
         val h = host ?: return
         val i = Intent().setClassName(VoiceHub.app.packageName, "app.heyrobot.ui.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        leaveForRobot(h, i)
+    }
+
+    /**
+     * Robot's own app over the panel: the turn and the voice stop first, so nothing goes on (a card waiting where
+     * nobody sees it, a "Just do it" action) behind the app.
+     */
+    private fun leaveForRobot(h: PanelHost, i: Intent) {
+        stopGenerating()
+        VoiceHub.tts.stop()
         if (h.launch(i)) {
             hidingFor = "action"
             h.hidePanel()
@@ -353,10 +369,7 @@ object PanelController {
     fun openPermissions() {
         if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the Robot app.")
         val h = host ?: return
-        if (h.launch(HandOffApps.robotPage(VoiceHub.app, AppPages.PERMISSIONS))) {
-            hidingFor = "action"
-            h.hidePanel()
-        }
+        leaveForRobot(h, HandOffApps.robotPage(VoiceHub.app, AppPages.PERMISSIONS))
     }
 
     // ------------------------------------------------------------------ attachments
@@ -600,7 +613,7 @@ object PanelController {
 
         override fun card(c: Card) {
             val icon = (c.action as? Action.OpenApp)?.key?.let { key -> icons.getOrPut(key) { executor().appIcon(key) } }
-            upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, c.action?.confirmLabel, c.undo, c.content))
+            upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, c.action?.confirmLabel, c.undo, c.content, c.more))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
@@ -683,6 +696,8 @@ object PanelController {
         val key = a.undo ?: return
         upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = "Removed from Robot Notes.", undo = null))
         scope.launch(Dispatchers.IO) { NotesFiles.store(VoiceHub.app).delete(key) }
+        // The live conversation still believes the note was saved: it is rebuilt from the history ("undone") next time.
+        if (slot.running) closeConvAfterTurn = true else closeLiveConversation()
         // A finished reply's record changes with it (a reply still running records its cards when it ends).
         val i = chat.indexOfFirst { it.id == turn.id }
         if (i >= 0) {
@@ -690,6 +705,11 @@ object PanelController {
             chat[i] = chat[i].copy(actions = records(settled(ui.actions)))
             persist()
         }
+    }
+
+    private fun closeLiveConversation() {
+        closeConvAfterTurn = false
+        client?.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(_state.value.convId))
     }
 
     private fun upsertAction(replyId: String, a: UiAction) = _state.update { st ->
@@ -743,6 +763,7 @@ object PanelController {
         }
         lastActivity = System.currentTimeMillis()
         persist()
+        if (closeConvAfterTurn) closeLiveConversation()
     }
 
     private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
@@ -759,6 +780,7 @@ object PanelController {
             )
         }
         persist()
+        if (closeConvAfterTurn) closeLiveConversation()
     }
 
     /** A finished reply has no card left waiting: one still pending was not done (and is never saved as waiting). */

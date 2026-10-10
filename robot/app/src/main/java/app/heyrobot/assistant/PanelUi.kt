@@ -80,6 +80,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -117,6 +118,14 @@ fun AssistantPanel(onClose: () -> Unit) {
         if (st.focusRequest > 0) {
             try { focus.requestFocus() } catch (_: Exception) {}
             keyboard?.show()
+        }
+    }
+    // A card waiting for a tap gets the room: the keyboard goes away, so who it goes to and its buttons are in view.
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(st.phase) {
+        if (st.phase == Phase.CONFIRMING) {
+            keyboard?.hide()
+            focusManager.clearFocus()
         }
     }
 
@@ -306,7 +315,7 @@ private fun Messages(st: PanelState, modifier: Modifier) {
             if (t.role == TurnRole.USER) UserBubble(t.text, t.attachment, t.thumb)
             else AssistantBubble(
                 text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error,
-                actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null) },
+                actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more) },
                 onConfirm = PanelController::confirm,
                 cardActions = cardActions,
             )
