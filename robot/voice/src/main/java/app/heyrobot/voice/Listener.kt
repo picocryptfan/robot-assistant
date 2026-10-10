@@ -167,10 +167,7 @@ class Listener(
             var r: AudioRecord? = null
             for (src in listOf(config.micSource, MicSource.MIC).distinct()) {
                 r = openStarted(src)
-                if (r != null) {
-                    openedPlain = src == MicSource.MIC
-                    break
-                }
+                if (r != null) break
             }
             r?.also { rec = it }
         } ?: return fail("open", ListenWhy.MIC_BUSY)
@@ -211,6 +208,7 @@ class Listener(
             return null
         }
         communication = comm
+        openedPlain = src == MicSource.MIC
         r.registerAudioRecordingCallback(callbackExec, object : AudioManager.AudioRecordingCallback() {
             override fun onRecordingConfigChanged(configs: MutableList<AudioRecordingConfiguration>?) {
                 val now = configs?.firstOrNull { it.clientAudioSessionId == r.audioSessionId }?.isClientSilenced ?: return
@@ -368,7 +366,7 @@ class Listener(
             RLog.i("capture_comm_refused")
             r = openStarted(config.micSource)
         }
-        if (r == null) r = openStarted(MicSource.MIC)?.also { openedPlain = true }
+        if (r == null) r = openStarted(MicSource.MIC)
         if (r == null) {
             running = false
             VoiceLog.add(VoiceEvent.LISTEN_STOP, ListenWhy.DEAD)

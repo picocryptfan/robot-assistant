@@ -151,7 +151,12 @@ object VoiceHub {
             val phone = (tts as? VoiceOutput)?.usesPhoneVoice == true
             val pb = if (phone) PlaybackCode.PHONE_VOICE else if (settings.playback == Playback.CALL) PlaybackCode.CALL else PlaybackCode.ASSISTANT
             // The capture mode changes a moment later on the audio thread: log the one wanted.
-            val mic = if (settings.bargeIn.wantsCommunication()) MicKind.COMMUNICATION else listener?.micKind ?: MicKind.RECOGNITION
+            val l = listener
+            val mic = when {
+                l == null -> MicKind.RECOGNITION
+                settings.bargeIn.wantsCommunication() -> MicKind.COMMUNICATION
+                else -> l.micKind
+            }
             VoiceLog.add(VoiceEvent.TTS_START, pb, mic)
         } else {
             spokeE = now
