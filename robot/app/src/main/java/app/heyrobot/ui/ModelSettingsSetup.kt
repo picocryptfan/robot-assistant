@@ -273,7 +273,9 @@ private fun PeopleSettingsCard(s: RobotSettings, snap: Snapshot, calendars: List
         SettingField("SMS gateway", s.smsGateway, "The domain Cheogram texts numbers through (JMP: cheogram.com).") { v ->
             update(s.copy(smsGateway = PhoneNumbers.gateway(v)))
         }
-        SettingField("Phone region", s.phoneRegion, "Two letters, for numbers without a country code (CA, US, FR…).", caps = true) { v ->
+        val device = app.heyrobot.sys.Phones.deviceRegion(androidx.compose.ui.platform.LocalContext.current)
+        SettingField("Phone region", s.phoneRegion ?: "",
+            "Two letters, for numbers without a country code (US, FR, DE…). Empty: this phone's own (${device ?: "unknown"}).", caps = true) { v ->
             update(s.copy(phoneRegion = PhoneNumbers.region(v)))
         }
         Text("Email app", style = MaterialTheme.typography.titleSmall)

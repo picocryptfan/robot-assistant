@@ -29,7 +29,11 @@ class SettingsTest {
     @Test fun phaseTwoDefaults() {
         val d = RobotSettings()
         assertEquals("cheogram.com", d.smsGateway)
-        assertEquals("CA", d.phoneRegion)
+        // No region of its own: the phone's (SIM, network, language), or none.
+        assertEquals(null, d.phoneRegion)
+        assertEquals("FR", d.regionFor("FR"))
+        assertEquals("", d.regionFor(null))
+        assertEquals("CA", d.copy(phoneRegion = "CA").regionFor("FR"))
         assertEquals(60, d.eventMinutes)
         assertEquals(CalendarPick.AUTO, d.eventCalendar)
         // Cheogram (Proton Mail) when installed, else the SMS app (the chooser); a choice made sticks.
@@ -47,10 +51,11 @@ class SettingsTest {
         val s = RobotSettings.fromJson("""{"textApp":"PIGEON","smsGateway":"not a domain","phoneRegion":"Canada","emailApp":"","eventMinutes":100000}""")
         assertEquals(null, s.textApp)
         assertEquals("cheogram.com", s.smsGateway)
-        assertEquals("CA", s.phoneRegion)
+        assertEquals(null, s.phoneRegion)
         assertEquals(null, s.emailApp)
         assertEquals(ToolCalls.MAX_EVENT_MINUTES, s.eventMinutes)
-        assertEquals("ca", RobotSettings.fromJson("""{"phoneRegion":"ca"}""").phoneRegion.lowercase())
+        // A region already saved is kept.
+        assertEquals("CA", RobotSettings.fromJson("""{"phoneRegion":"ca"}""").phoneRegion)
     }
 
     @Test fun voiceChoiceDefaultsToKokoroHeart() {

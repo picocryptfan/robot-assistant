@@ -181,7 +181,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
 
     private fun needContacts() = Prepared.Refused(ActionStatus.NEEDS_PERMISSION, "Allow Robot to read your contacts in the Robot app.")
 
-    private val region get() = settings.phoneRegion
+    private val region by lazy { settings.regionFor(Phones.deviceRegion(ctx)) }
 
     /** A number's target: its gateway address for Cheogram, the number itself for the SMS app. */
     private fun numberTarget(name: String?, e164: String, via: TextVia, appName: String): TextTarget? {

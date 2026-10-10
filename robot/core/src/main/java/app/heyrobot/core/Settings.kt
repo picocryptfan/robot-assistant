@@ -70,8 +70,8 @@ data class RobotSettings(
     val textApp: TextApp? = null,
     /** Where Cheogram texts phone numbers: "+<E.164 digits>@<gateway>" (JMP's is cheogram.com). */
     val smsGateway: String = PhoneNumbers.DEFAULT_GATEWAY,
-    /** For numbers written without a country code (PhoneNumberUtils' default country). */
-    val phoneRegion: String = PhoneNumbers.DEFAULT_REGION,
+    /** For numbers written without a country code (PhoneNumberUtils' default country); null: the phone's own ([regionFor]). */
+    val phoneRegion: String? = null,
     /** Null until the person picks one: Proton Mail when it is installed, else the chooser ([emailAppFor]). */
     val emailApp: EmailApp? = null,
     /** A CalendarContract calendar id for new events; [CalendarPick.AUTO]: Robot picks (CalendarPick.choose). */
@@ -91,6 +91,9 @@ data class RobotSettings(
 
     fun textAppFor(cheogramInstalled: Boolean): TextApp = textApp ?: if (cheogramInstalled) TextApp.CHEOGRAM else TextApp.SMS
 
+    /** The region for numbers without a country code: the one set, else the phone's own ([device]), else none (""). */
+    fun regionFor(device: String?): String = phoneRegion ?: device ?: ""
+
     fun emailAppFor(protonInstalled: Boolean): EmailApp = emailApp ?: if (protonInstalled) EmailApp.PROTON else EmailApp.ASK
 
     val voiceChoice: VoiceChoice get() = VoiceChoice.of(voice)
@@ -107,7 +110,7 @@ data class RobotSettings(
         put("approvals", JSONObject().apply { for (t in ToolName.entries) put(t.id, approval(t).name) })
         textApp?.let { put("textApp", it.name) }
         put("smsGateway", smsGateway)
-        put("phoneRegion", phoneRegion)
+        phoneRegion?.let { put("phoneRegion", it) }
         emailApp?.let { put("emailApp", it.name) }
         put("eventCalendar", eventCalendar)
         put("eventMinutes", eventMinutes)
@@ -166,7 +169,8 @@ data class RobotSettings(
                 approvals = ToolName.entries.associateWith { t -> enumOr(ap?.optString(t.id), DEFAULT_APPROVALS.getValue(t)) },
                 textApp = enumValues<TextApp>().firstOrNull { it.name == o.optString("textApp") },
                 smsGateway = PhoneNumbers.gateway(o.optString("smsGateway", d.smsGateway)),
-                phoneRegion = PhoneNumbers.region(o.optString("phoneRegion", d.phoneRegion)),
+                // Kept as saved; absent or unreadable means the phone's own region.
+                phoneRegion = PhoneNumbers.region(o.optString("phoneRegion", "")),
                 emailApp = enumValues<EmailApp>().firstOrNull { it.name == o.optString("emailApp") },
                 eventCalendar = o.optLong("eventCalendar", d.eventCalendar),
                 eventMinutes = clampEventMinutes(o.optInt("eventMinutes", d.eventMinutes)),
