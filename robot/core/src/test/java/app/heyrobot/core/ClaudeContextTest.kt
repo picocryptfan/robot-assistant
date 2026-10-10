@@ -59,6 +59,11 @@ class ClaudeContextTest {
         assertFalse(t.contains("model isn't ready"))
         assertTrue(t.endsWith("and what do you think"))
         assertNull(ClaudeContext.includeQuestion(history))
+        // Claude mode from a word that only sounded like the name ("get cloud"): the same conversation only after a tap.
+        assertEquals("Include the conversation so far?", ClaudeContext.includeQuestion(history, misheard = true))
+        assertFalse(texts(ClaudeContext.join(history, "q", now, "CA", misheard = true)).contains("joke"))
+        assertTrue(texts(ClaudeContext.join(history, "q", now, "CA", include = true, misheard = true)).contains("joke"))
+        assertNull(ClaudeContext.includeQuestion(emptyList(), misheard = true))
         // Later questions in Claude mode are just the question.
         assertEquals(listOf<ClaudeBlock>(ClaudeBlock.Text("next one")), ClaudeContext.next("next one"))
     }

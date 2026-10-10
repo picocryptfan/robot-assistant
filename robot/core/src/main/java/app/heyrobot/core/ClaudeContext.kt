@@ -76,9 +76,10 @@ object ClaudeContext {
      * question if there is one. A personal conversation goes only when the user tapped Include ([include]); otherwise
      * Claude starts fresh and sees none of it.
      */
-    fun join(history: List<ChatTurn>, question: String?, now: ZonedDateTime, region: String, shared: Shared = Shared(), include: Boolean = false): List<ClaudeBlock> = buildList {
+    fun join(history: List<ChatTurn>, question: String?, now: ZonedDateTime, region: String, shared: Shared = Shared(), include: Boolean = false,
+        misheard: Boolean = false): List<ClaudeBlock> = buildList {
         add(ClaudeBlock.Text(ClaudePrompt.context(now, region)))
-        if (include || personal(history).isEmpty()) transcript(history)?.let {
+        if (include || includeQuestion(history, misheard) == null) transcript(history)?.let {
             add(ClaudeBlock.Text("You are joining a conversation the user was having with Robot. It went like this:\n$it"))
         }
         addAll(sharedBlocks(shared))
@@ -86,12 +87,18 @@ object ClaudeContext {
     }
 
     /**
-     * The card Claude mode shows before joining a personal conversation, or null when there is nothing personal in it:
-     * "Include the conversation so far? It contains screen text and your calendar."
+     * The card Claude mode shows before joining, or null when the conversation goes without one: "Include the
+     * conversation so far? It contains screen text and your calendar." for a personal conversation, and "Include the
+     * conversation so far?" for any conversation when Claude mode came from a word that only sounded like the name
+     * ([misheard]: "get cloud" may not have meant Claude at all).
      */
-    fun includeQuestion(history: List<ChatTurn>): String? {
+    fun includeQuestion(history: List<ChatTurn>, misheard: Boolean = false): String? {
         val p = personal(history)
-        return if (p.isEmpty()) null else "Include the conversation so far? It contains ${Personal.list(p)}."
+        return when {
+            p.isNotEmpty() -> "Include the conversation so far? It contains ${Personal.list(p)}."
+            misheard && transcript(history) != null -> "Include the conversation so far?"
+            else -> null
+        }
     }
 
     /**

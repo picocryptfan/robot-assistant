@@ -65,10 +65,12 @@ class ClaudeRouterTest {
     @Test fun mishearingsCountOnlyAfterACommandVerb() {
         for (a in ClaudeRouter.ALIASES) {
             assertEquals(a, ask("about black holes"), route("ask $a about black holes"))
-            assertEquals(a, ClaudeCommand.Join(), route("go get $a"))
-            assertEquals(a, ClaudeCommand.Join(), route("get $a"))
+            // A Claude mode from a mishearing is marked: the conversation so far goes only after a tap.
+            val join = ClaudeCommand.Join(misheard = a != "claude")
+            assertEquals(a, join, route("go get $a"))
+            assertEquals(a, join, route("get $a"))
             assertEquals(a, ClaudeCommand.Leave, route("thanks $a"))
-            assertEquals(a, ClaudeCommand.Join(), route("demande à $a"))
+            assertEquals(a, join, route("demande à $a"))
             // Addressed without a command verb: only the name itself.
             val vocative = if (a == "claude") ask("what's the capital of Peru?") else null
             assertEquals(a, vocative, route("$a, what's the capital of Peru?"))
@@ -96,7 +98,7 @@ class ClaudeRouterTest {
         assertEquals(ask("if it will rain tomorrow"), route("ask Claude if it will rain tomorrow"))
         // The name with a real question or request still goes.
         assertEquals(ask("can you come up with a name for my cat?"), route("Claude can you come up with a name for my cat?"))
-        assertEquals(ask("is it going to rain?"), route("Claude is it going to rain?"))
+        assertEquals(ask("is it going to rain?"), route("Claude, is it going to rain?"))
         assertEquals(ask("please explain black holes"), route("Claude please explain black holes"))
         assertEquals(ask("explain black holes"), route("Claude explain black holes"))
         assertEquals(ask("write me a haiku"), route("Claude write me a haiku"))
@@ -117,6 +119,37 @@ class ClaudeRouterTest {
         // In Claude mode a request to text goes to Claude (whose call shows a card); a question about a photo goes to the model.
         assertEquals(FastPath.Way.CLAUDE, FastPath.of(route(t), claudeMode = true, attachment = Attachment.NONE))
         assertEquals(FastPath.Way.MODEL, FastPath.of(route("what is this"), claudeMode = false, attachment = Attachment.PHOTO))
+    }
+
+    @Test fun sentencesAboutAPersonCalledClaudeOrClydeStayLocal() {
+        for (s in listOf(
+            // A verb after the name, question mark or not: about someone, unless "you" follows or a comma sets the name off.
+            "Claude has a fever, what should I do?", "Claude is coming over tonight?", "Claude did his homework?", "Claude should call his grandma?",
+            // A mishearing after "get": Claude mode alone, never with words about a person.
+            "go get Clyde and the kids from school", "get Clyde, he's at the door", "go get Clyde and bring him here", "can you get Clyde in here please",
+            // "ask <mishearing> to / whether / if …" is a message for a person.
+            "ask Clyde to pick up milk", "ask Clyde whether dinner is ready",
+            // More in the same spirit.
+            "Claude's birthday is Friday?", "go get Clyde from the airport", "Claude will be late tonight?", "Claude does karate on Tuesdays?",
+            "get cloud backups working again", "go get clod and the shovel", "ask cloud to back up my photos", "demande à Clyde de venir",
+            "Claude a de la fièvre, qu'est-ce que je fais ?", "Claude est malade ?", "ask Clyde if dinner is ready", "get Clyde now, he's waiting",
+        )) assertNull(s, route(s))
+    }
+
+    @Test fun realCommandsStillGoToClaude() {
+        assertEquals(ask("about black holes"), route("ask cloud about black holes"))
+        assertEquals(ask("explain black holes"), route("Claude, explain black holes"))
+        assertEquals(ClaudeCommand.Join(), route("go get Claude"))
+        assertEquals(ClaudeCommand.Join(misheard = true), route("hey robot, get cloud"))
+        assertEquals(ClaudeCommand.Join(misheard = true), route("go get Clyde please"))
+        assertEquals(ClaudeCommand.Join("Let's talk about cooking."), route("talk to Claude about cooking"))
+        assertEquals(Attachment.PHOTO, (route("ask Claude about this photo") as ClaudeCommand.Ask).extra)
+        assertEquals(ask("text mom I'm running late"), route("ask Claude to text mom I'm running late"))
+        // A question with a mishearing needs an explicit "and ask"; with the name itself, "you" or a comma.
+        assertEquals(ClaudeCommand.Join("what a black hole is", misheard = true), route("go get cloud and ask what a black hole is"))
+        assertEquals(ask("is it going to rain tomorrow"), route("Claude, is it going to rain tomorrow"))
+        assertEquals(ask("can you help me with my essay?"), route("Claude can you help me with my essay?"))
+        assertEquals(ClaudeCommand.Join("what's a good name for a cat"), route("go get Claude and ask him what's a good name for a cat"))
     }
 
     @Test fun talkToClaudeAbout() {

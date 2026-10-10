@@ -19,8 +19,11 @@ sealed class ClaudeCommand {
      */
     data class Ask(val question: String, val deep: Boolean = false, val extra: Attachment = Attachment.NONE) : ClaudeCommand()
 
-    /** Claude mode: the following turns go to Claude. [question]: said in the same breath ("go get Claude and ask …"). */
-    data class Join(val question: String? = null) : ClaudeCommand()
+    /**
+     * Claude mode: the following turns go to Claude. [question]: said in the same breath ("go get Claude and ask …").
+     * [misheard]: a word that only sounded like the name ("get cloud"): the conversation so far goes only after a tap.
+     */
+    data class Join(val question: String? = null, val misheard: Boolean = false) : ClaudeCommand()
 
     /** Leave Claude mode ("thanks Claude", "back to Robot"); outside Claude mode it is ordinary talk. */
     data object Leave : ClaudeCommand()
@@ -99,6 +102,8 @@ object ClaudeRouter {
     private val ASK_DROP = setOf("to", "de", "d")
     private val JOIN_TAIL = setOf("please", "in", "now", "back", "here", "sil", "te", "vous", "plait", "maintenant", "on", "for", "me")
     private val JOIN_LINK = setOf("and", "et", "then", "ask", "him", "her", "it", "lui", "demande", "puis")
+    /** After a mishearing only polite words may follow a bare "get cloud" ("get Clyde in here" is about a person). */
+    private val BARE_TAIL = setOf("please", "now", "sil", "te", "vous", "plait", "maintenant")
 
     /** Claude mode. A mishearing ("*") counts after "get" and "va chercher" only; the rest need the name ("="). */
     private val JOINS: List<Array<String>> = listOf(
@@ -138,9 +143,14 @@ object ClaudeRouter {
             else -> -1
         }
         if (askAt >= 0) {
+            val next = ws.getOrNull(askAt)?.w
             // "ask Clyde if he's coming to dinner": a message for a person (Robot's to handle), not a question for Claude.
-            if (ws.getOrNull(askAt)?.w in setOf("if", "whether", "si") && ws.getOrNull(askAt + 1)?.w in PERSON) return null
-            return rest(text, ws, askAt, ASK_DROP)?.let(::ask) ?: ClaudeCommand.Join()
+            if (next in setOf("if", "whether", "si") && ws.getOrNull(askAt + 1)?.w in PERSON) return null
+            // After a word that only sounds like the name, "ask Clyde to pick up milk" or "… whether dinner is ready" is
+            // a message for a person too: only the name itself carries a request like that.
+            val misheard = ws[askAt - 1].w != NAME
+            if (misheard && next in setOf("to", "if", "whether", "si", "de", "d")) return null
+            return rest(text, ws, askAt, ASK_DROP)?.let(::ask) ?: ClaudeCommand.Join(misheard = misheard)
         }
 
         // "what does Claude think about …", "qu'est-ce que Claude pense de …".
@@ -158,9 +168,19 @@ object ClaudeRouter {
         for (p in JOINS) {
             if (!seq(ws, i, *p)) continue
             var k = i + p.size
+            val nameEnd = ws[i + p.size - 1]
+            // A word that only sounded like the name ("get cloud", "go get Clyde"): Claude mode alone, or with an
+            // explicit "and ask …". "Go get Clyde and the kids from school" or "get Clyde, he's at the door" is about a
+            // person.
+            if (ws[i + p.indexOfFirst { it == "*" || it == "=" }].w != NAME) {
+                while (k < ws.size && ws[k].w in BARE_TAIL) k++
+                if (k >= ws.size) return ClaudeCommand.Join(misheard = true)
+                val asks = (ws[k].w in setOf("and", "then", "et", "puis") && ws.getOrNull(k + 1)?.w in setOf("ask", "demande", "demandes")) ||
+                    ws[k].w in setOf("ask", "demande")
+                return if (asks) ClaudeCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP + "demandes"), misheard = true) else null
+            }
             while (k < ws.size && ws[k].w in JOIN_TAIL) k++
             if (k >= ws.size) return ClaudeCommand.Join()
-            val nameEnd = ws[i + p.size - 1]
             // "talk to Claude about my day".
             if (ws[k].w in ABOUT && k + 1 < ws.size) return ClaudeCommand.Join("Let's talk about " + text.substring(ws[k + 1].start).trim().trimEnd('.', '!', ' ') + ".")
             // "get Claude, what's …" or "go get Claude and ask him …": the rest is the first question.
@@ -176,7 +196,7 @@ object ClaudeRouter {
         // "Claude please stop calling me" are about someone called Claude, and a mishearing never counts here.
         if (ws[i].w == NAME) {
             if (i + 1 >= ws.size) return ClaudeCommand.Join()
-            if (addressed(ws.drop(i + 1), text.trimEnd().endsWith("?"))) return rest(text, ws, i + 1)?.let(::ask) ?: ClaudeCommand.Join()
+            if (addressed(ws.drop(i + 1), comma = ws[i].punctAfter in setOf(',', ':', '—'))) return rest(text, ws, i + 1)?.let(::ask) ?: ClaudeCommand.Join()
         }
         return null
     }
@@ -191,19 +211,23 @@ object ClaudeRouter {
         "explique", "resume", "traduis", "decris", "compare", "definis")
     /** Requests that need "me" or "us" after them: "tell me", "help me", "write me". */
     private val TO_ME = setOf("tell", "help", "write", "give", "show", "teach", "dis", "aide", "donne", "ecris", "montre")
-    /** Questions that start with a verb: a question only with "you" after it, or a question mark. */
+    /**
+     * Questions that start with a verb: for Claude only with "you" after it ("Claude, can you …"), or when the name is
+     * set off by a comma ("Claude, is it going to rain?"). "Claude has a fever, what should I do?" and "Claude is
+     * coming over tonight?" are about someone, question mark or not.
+     */
     private val AUX = setOf("can", "could", "would", "will", "do", "does", "did", "is", "are", "should", "have", "has", "peux", "pourrais", "est", "es")
 
-    /** What follows the name is a question or a request for Claude ([question]: the text ends with "?"). */
-    private fun addressed(r: List<Word>, question: Boolean): Boolean {
+    /** What follows the name is a question or a request for Claude ([comma]: the name is set off by a comma). */
+    private fun addressed(r: List<Word>, comma: Boolean): Boolean {
         val w0 = r.firstOrNull()?.w ?: return false
         val w1 = r.getOrNull(1)?.w
         return when {
             w0 in WH || w0 in REQUEST -> true
             w0 in TO_ME -> w1 in setOf("me", "us", "moi", "nous") || (w0 == "write" && w1 in setOf("a", "an"))
-            w0 in AUX -> question || w1 in setOf("you", "tu", "vous")
+            w0 in AUX -> comma || w1 in setOf("you", "tu", "vous")
             // "Claude, please explain …" (but "Claude please stop calling me" is about someone).
-            w0 == "please" -> addressed(r.drop(1), question)
+            w0 == "please" -> addressed(r.drop(1), comma)
             else -> false
         }
     }
@@ -270,21 +294,35 @@ object PreRouter {
     const val LONG_WORDS = 40
 
     private val LOCAL = Regex("""\b(timer|alarm|wake me|remind|reminder|text|texto|sms|message|email|e mail|mail|courriel|note|notes|jot|calendar|calendrier|event|appointment|meeting|schedule|agenda|open|launch|flashlight|torch|lampe|navigate|directions|route to|map|maps|call|contact)\b""")
+    /**
+     * Everyday codes, news and scores, in any word order: "the wifi code", "the code for the front door", "news from
+     * my sister", "the latest from Sarah", "my credit score", "the score of my exam". They are taken out before the
+     * signals are looked for, so they never escalate (the rest of the question still counts).
+     */
+    private val EVERYDAY: List<Regex> = listOf(
+        Regex("""\b(area|postal|zip|dress|promo|discount|coupon|qr|bar|country|door|gate|wifi|wi fi|access|entry|pin|lock|garage|security|building|alarm|locker|safe|parking|router|network) code\b"""),
+        Regex("""\bcodes? (for|to|of|on) (the |my |our |your |a )?(front |back |side |main |garage |building |apartment )?(wifi|wi fi|door|gate|garage|building|lock|locker|safe|alarm|apartment|house|router|network|entry|parking|bike lock|mailbox|elevator)\b"""),
+        Regex("""\b(news|latest) (from|with|on|about) (my|our|your|his|her|their) \w+"""),
+        Regex("""\bnews from \w+"""),
+        Regex("""\blatest (from|with) \w+( \w+)?$"""),
+        Regex("""\b(credit|fico|test|exam|sleep|health|my|our|his|her|their|your) scores?\b"""),
+        Regex("""\bscores? (of|on|for|in|from) (my|our|his|her|their|your)\b( \w+)?"""),
+        Regex("""\bscores? (of|on|for|in|from) (the |a )?(exam|test|quiz|midterm|final|essay|assignment|homework|credit check|sat|act)\b"""),
+    )
     private val SIGNALS: List<Pair<Signal, Regex>> = listOf(
         Signal.REASONING to Regex("""\bexplain (why|how)\b|\bcompare\b|\bstep by step\b|\bpros and cons\b|\bplan (a|my|an|the)\b|\bhelp me (plan|decide)\b|\bshould i\b.*\bor\b"""),
         Signal.WRITING to Regex("""^(please )?(write me|draft)\b|\bwrite me\b|\bwrite (a|an) (poem|story|essay|letter|speech|cover letter)\b"""),
-        // Codes for doors, gates, the wifi and the like are everyday questions.
-        Signal.CODE to Regex("""(?<!area |postal |zip |dress |promo |door |gate |wifi |wi fi |access |entry |pin |lock |garage |security |discount |coupon |promo |qr |bar |country |building )\bcode\b|\bpython\b|\bjavascript\b|\bkotlin\b|\bregex\b|\bsql\b"""),
+        Signal.CODE to Regex("""\bcode\b|\bpython\b|\bjavascript\b|\bkotlin\b|\bregex\b|\bsql\b"""),
         Signal.MATH to Regex("""\bcalculate\b|\bsolve\b|\bintegral\b|\bderivative\b|\bequation\b|\bpercent(age)? of\b"""),
-        // News from someone you know and your own scores (credit, a test) are not current events.
-        Signal.CURRENT_INFO to Regex("""\blatest\b|\bnews\b(?! from)|\btodays price\b|\bprice of\b|\bstock price\b|\bexchange rate\b|(?<!credit |fico |test |exam |sleep |health |my )\bscore\b|\bweather\b|\bforecast\b|\bwho won\b"""),
+        Signal.CURRENT_INFO to Regex("""\blatest\b|\bnews\b|\btodays price\b|\bprice of\b|\bstock price\b|\bexchange rate\b|\bscore\b|\bweather\b|\bforecast\b|\bwho won\b"""),
     )
 
     /** The strongest signal in [question], or null (Gemma answers). */
     fun signal(question: String): Signal? {
         val t = ClaudeRouter.plain(question).replace(Regex("[^a-z0-9]+"), " ").trim()
         if (t.isEmpty() || LOCAL.containsMatchIn(t)) return null
-        SIGNALS.firstOrNull { it.second.containsMatchIn(t) }?.let { return it.first }
+        val rest = EVERYDAY.fold(t) { acc, r -> r.replace(acc, " ") }
+        SIGNALS.firstOrNull { it.second.containsMatchIn(rest) }?.let { return it.first }
         return if (t.split(' ').size > LONG_WORDS) Signal.LONG else null
     }
 }
