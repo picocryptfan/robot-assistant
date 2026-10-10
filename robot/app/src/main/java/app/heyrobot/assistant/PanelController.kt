@@ -878,7 +878,8 @@ object PanelController {
         if (_state.value.speak) VoiceHub.tts.speak(ClaudeWords.CHECKING.trimEnd('…') + ".")
         if (Assistant.locked(app) && !s.claudeLocked) return localReply(id, ClaudeWords.LOCKED, claude = false)
         if (!ClaudeLink.networkAllowed(app)) return networkCard(id)
-        val session = ClaudeLink.session(app, s, conversation = false) ?: return failReply(id, ClaudeFailure.NO_KEY.text)
+        // The key is decrypted and the client made off the main thread.
+        val session = withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = false) } ?: return failReply(id, ClaudeFailure.NO_KEY.text)
         val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), ownerRegion, shared)
         runClaude(id, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, ClaudeRouter.deep(question)))
     }
@@ -927,8 +928,9 @@ object PanelController {
             }
             shared = Shared(screenText = screen, image = img)
         }
-        val session = (if (mode) claudeSession ?: ClaudeLink.session(app, s, conversation = true)?.also { claudeSession = it }
-            else ClaudeLink.session(app, s, conversation = false)) ?: return failReply(replyId, ClaudeFailure.NO_KEY.text)
+        // The key is decrypted and the client made off the main thread.
+        val session = (if (mode) claudeSession ?: withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = true) }?.also { claudeSession = it }
+            else withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = false) }) ?: return failReply(replyId, ClaudeFailure.NO_KEY.text)
         val now = ZonedDateTime.now()
         val blocks = when {
             !mode -> ClaudeContext.oneShot(question ?: said, now, ownerRegion, shared)

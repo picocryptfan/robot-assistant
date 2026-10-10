@@ -55,9 +55,12 @@ object ClaudeLink {
 
     fun budgetReached(ctx: Context, s: RobotSettings): Boolean = ClaudeSpendStore.load(ctx).reached(LocalDate.now(), s.claudeBudgetCents)
 
-    /** The panel opened with the API route ready: load the SDK's classes off the main thread (no network). */
+    @Volatile private var warmed = false
+
+    /** The panel opened with the API route ready: load the SDK's classes off the main thread (no network), once. */
     fun warm(ctx: Context, s: RobotSettings) {
-        if (!keySaved(ctx) || !ClaudeSettings.enabled(s, true)) return
+        if (warmed || !keySaved(ctx) || !ClaudeSettings.enabled(s, true)) return
+        warmed = true
         Thread({ ClaudeClient.warm() }, "robot-claude-warm").apply { isDaemon = true; start() }
     }
 }
