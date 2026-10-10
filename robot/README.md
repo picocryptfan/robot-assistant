@@ -265,7 +265,8 @@ retry, restart after a stall, microphone busy or dead, no permission, not chargi
 echo cancellation; another app taking the microphone; the wake-word model ready (and how long it waited for another
 model's load); speech the wake-word gate heard (thinned to one line per 10 s); the question's speech start and end;
 speech to text started, done (characters only), empty, or ended early (nothing said, watchdog, microphone stopped);
-the panel shown (wake word, corner swipe, lock screen, app button) and hidden; the model request sent, first words,
+the panel shown (wake word, corner swipe, lock screen, app button) and hidden, and what Android shared of the
+screen with it (show flags; whether the text and a screenshot came within 2 s); the model request sent, first words,
 finished or failed with its code; the model's process stopping; Robot's voice starting and stopping and why (done,
 "stop", tap, volume key, new question, stop button, panel closed, wake word); "panel opened but no question heard";
 "question heard but no reply"; the chime or "Sorry, I didn't catch that."; screen on and off; the barge-in test.
@@ -347,13 +348,20 @@ mom a text saying hi", "tell mom I'm on my way" and "let Bob know I'll be late" 
 (`core/Texting.kt`): the same preparation, card, Cheogram-pick fallback, approval gate and lock-screen rule as the
 model's call, but no model. The name ends where the longest 1 to 3 words match a contact's name or nickname (exactly
 or as its start); otherwise one word, or two when you typed a capitalised surname; family words like "mom" are names
-of their own. "text mom" asks "What should the text to Mom say?" and takes your next typed or spoken answer. A cancel
-drops it, said aloud: "cancel", "never mind", "forget it", "scratch that", "nah", "no", "stop", "annule", "laisse
-faire", "oublie ça", "non merci" and the like, without regard to case, accents or punctuation and with filler around
-them ("Hey robot, cancel.", "No, cancel it please"), but only as the whole answer ("cancel dinner tonight" is a
-message). A spoken answer loses a leading wake phrase ("hey robot, I'm late" texts "I'm late"). "tell me a joke", "message me later", "what's the text on this page", "text recognition" (no
-message, and no contact or family word by that name) and "write a message to Bob about the rent" (a description, not
-the text) stay with the model. Two- or three-word names must be a contact's whole words ("text Dan Can you…" is Dan).
+of their own. "text mom" asks "What should the text to Mom say?" and takes your next typed or spoken answer.
+
+A cancel drops it: "cancel", "never mind", "forget it", "scratch that", "I changed my mind", "annule", "laisse
+tomber", "oublie ça", "j'ai changé d'avis" and the like, without regard to case, accents or punctuation, with filler
+around them ("Wait, cancel that text", "No, cancel it please") or two together ("Nah, forget it"). The whole answer
+must be used up, so "cancel dinner tonight" is a message. A bare "no", "nope", "stop", "nothing", "no thanks", "non"
+or "non merci" cancels only as the whole answer: "Sorry, no.", "No, thanks." and "Please stop." are messages. Robot
+says "Okay, no text to Mom." (aloud when it speaks replies), and after a bare "no" how to send it anyway ("To send
+“No”, say “text Mom no”."). A spoken answer loses the wake phrases at its start ("hey robot, I'm late" texts
+"I'm late").
+
+"tell me a joke", "message me later", "what's the text on this page", "text recognition" (no message, and no
+contact or family word by that name) and "write a message to Bob about the rent" (a description, not the text) stay
+with the model. Two- or three-word names must be a contact's whole words ("text Dan Can you…" is Dan).
 On the lock screen nothing is read or asked: Robot says to unlock first.
 
 When lookup_contact finds no one and Cheogram is the texting app, the model is told
@@ -366,16 +374,19 @@ Android shares the screen's text and a screenshot with the assistant only with t
 from screen" on in Settings › Apps › Default apps › Digital assistant app ("Use screenshot" adds the picture), and
 never for some screens (banking apps, private tabs). A wake-word panel gets nothing on Android 17. The chip shows on
 every corner-swipe and wake-word panel, never in Robot's own app or on the lock screen (`core/ScreenAccess.kt`):
-with the screen it attaches it; after a swipe without it, a tap says Android didn't share the screen, names both
-settings and offers **Open settings**; after "hey robot", it says to swipe up from a bottom corner. Assistant setup
-shows both settings ("Screen sharing"). The voice log records, per panel, its show flags and whether the text and the
-screenshot came.
+with the screen it attaches it; after a swipe without it, a tap says Android didn't share the screen and names the
+settings that are off, with **Open settings** (with both on, it says the app may keep its screen private); after "hey
+robot", it says to swipe up from a bottom corner. A screen that comes after such a tap takes the notice down.
+Android's "no screen" can come before the panel shows (Robot's session is reused); it counts either way. Assistant
+setup shows both settings ("Screen sharing"), and warns only when "Use text from screen" is off.
 
 ### Organic Maps
 
 maps_search and maps_navigate open `om://search` (`geo:` as a fallback) without "near me", "nearby", "around here",
-a leading "nearest" or "closest", or the French "près de moi", "à proximité", "le plus proche" (`core/Maps.kt`):
-Organic Maps already searches around you and would search those words too. It can only route between coordinates,
+a leading "nearest" or "closest" (and the "to me" after it), or the French "près de moi", "à proximité", "le plus
+proche (de moi)", "le plus près" (`core/Maps.kt`): Organic Maps already searches around you and would search those
+words too. A leading "a" or "une" goes with them; "the", "la" or "des" stay, since they often start a name ("The
+Bay", "Des Moines"). It can only route between coordinates,
 so "directions to X" opens a search for X: the card says "Search Organic Maps for “X”, then tap Route".
 
 ### Survive restarts
