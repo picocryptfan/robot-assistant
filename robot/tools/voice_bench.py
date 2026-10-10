@@ -9,7 +9,7 @@ Measures, as the app does (voice/.../VoiceBenchmark.kt):
   - speech recognition (Parakeet v3 int8, 4 threads): load, 3 decodes of the clip (median), real-time factor,
     word accuracy against bench/test-clip.txt, simulated-streaming partial decodes every 0.7 s, and where the
     end-of-utterance VAD (Silero, 0.5 s silence, 20 s max speech) ends the clip;
-  - each voice (Kokoro v1.0 fp32 af_heart, Kitten nano 0.8 fp32), 4 threads: load, time to first audio for the
+  - each voice (Kokoro v1.0 fp32 af_heart, Kitten nano 0.8 fp32 expr-voice-5-f), 4 threads: load, time to first audio for the
     5-word first chunk and the 16-word sentence, and real-time factor of the 16-word sentence.
 
 Usage: python3 -I tools/voice_bench.py <robot project dir> <voice models dir>
@@ -117,7 +117,7 @@ def tts(root: Path, models: Path, name: str) -> None:
         mc = so.OfflineTtsModelConfig(kitten=so.OfflineTtsKittenModelConfig(
             model=str(d / "model.fp32.onnx"), voices=str(d / "voices.bin"), tokens=str(d / "tokens.txt"), data_dir=espeak),
             num_threads=THREADS, debug=False, provider="cpu")
-        sid = 1
+        sid = 7  # expr-voice-5-f, as the app (VoiceChoice.KITTEN)
     t0 = time.time()
     t = so.OfflineTts(so.OfflineTtsConfig(model=mc, max_num_sentences=1, silence_scale=0.2))
     load = time.time() - t0

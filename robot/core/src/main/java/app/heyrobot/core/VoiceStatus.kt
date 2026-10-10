@@ -9,6 +9,12 @@ import java.util.Locale
 // shows them; the requests go the other way as Cmd broadcasts (voice_models, voice_reset, voice_bench). Numbers,
 // states and fixed identifiers only: nothing that was said or read aloud.
 
+/** The files the :voice process writes in filesDir/robot for the main app. */
+object VoiceFiles {
+    const val ENGINES = "voice_engines.json"
+    const val BENCH = "voice_bench.json"
+}
+
 /** One speech engine (a downloaded model bundle) as the :voice process sees it. */
 enum class EngineState {
     /** The model is not downloaded (or not verified): the placeholder runs instead. */
@@ -147,6 +153,6 @@ object WordAccuracy {
             prev = cur
         }
         val errors = prev[h.size]
-        return (100 - errors * 100 / maxOf(1, r.size)).coerceAtLeast(0)
+        return maxOf(0, r.size - errors) * 100 / maxOf(1, r.size)
     }
 }

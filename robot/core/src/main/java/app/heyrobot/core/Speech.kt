@@ -120,8 +120,8 @@ object SpeechText {
         .replace(Regex("""(?m)^\s*>\s?"""), "")
         .replace("```", " ")
         .replace(Regex("""(\*\*|__|\*|`|~~)"""), "")
-        // Emoji and pictographs (the voices would spell out or garble them); the degree sign stays.
-        .replace(Regex("""[\p{So}\p{Cs}\x{FE0F}\x{200D}&&[^\x{B0}]]"""), "")
+        // Emoji, pictographs, skin tones, joiners (the voices would spell out or garble them); the degree sign stays.
+        .replace(Regex("""[\p{So}\p{Cs}\x{FE0F}\x{200D}\x{20E3}\x{1F3FB}-\x{1F3FF}&&[^\x{B0}]]"""), "")
         .replace(Regex("""\s+"""), " ")
         .trim()
 }
