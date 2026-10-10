@@ -199,11 +199,77 @@ object TextCommand {
         return m.ifEmpty { null }
     }
 
-    /** "cancel", "never mind": the person changed their mind while Robot asked what the text should say. */
-    fun isCancel(input: String): Boolean =
-        input.trim().trimEnd('.', '!').lowercase(Locale.ROOT).replace('’', '\'') in setOf(
-            "cancel", "never mind", "nevermind", "forget it", "no", "nothing", "stop", "don't", "dont", "cancel it", "no thanks", "nope",
-        )
+    /**
+     * What "cancel" can be, in plain words (ClaudeRouter.plain: no case, accents or apostrophes, so "don't" is "dont"
+     * and "oublie ça" is "oublie ca"). Always the whole answer, filler aside: "cancel dinner tonight" is a message.
+     */
+    private val CANCEL = setOf(
+        "cancel", "never mind", "nevermind", "forget it", "forget about it", "scratch that", "nah", "no", "nope", "stop", "dont",
+        "dont send", "dont send it", "dont bother", "nothing", "abort", "skip it", "no thanks", "no thank you",
+        "annule", "annuler", "annulez", "laisse faire", "laisse tomber", "laisse ca", "oublie", "oublie ca", "non",
+        "non merci", "arrete", "arrete ca", "rien",
+    )
+    /** Allowed in front of a cancel word: the wake phrase (heard whole while Robot waits), "no,", "please", "okay"… */
+    private val CANCEL_LEAD: List<List<String>> = listOf(
+        listOf("hey", "robot"), listOf("hi", "robot"), listOf("ok", "robot"), listOf("okay", "robot"), listOf("he", "robot"),
+        listOf("dis", "robot"), listOf("robot"), listOf("oh"), listOf("ah"), listOf("um"), listOf("uh"), listOf("euh"), listOf("well"),
+        listOf("ok"), listOf("okay"), listOf("no"), listOf("non"), listOf("please"), listOf("sorry"), listOf("actually"),
+        listOf("en", "fait"), listOf("finalement"), listOf("desole"), listOf("just"),
+    )
+    /** ... and after it: "that", "it", "ça", "the text", "please", "merci"… */
+    private val CANCEL_TAIL: List<List<String>> = listOf(
+        listOf("please"), listOf("thanks"), listOf("thank", "you"), listOf("merci"), listOf("sil", "te", "plait"),
+        listOf("sil", "vous", "plait"), listOf("that"), listOf("it"), listOf("this"), listOf("ca"), listOf("then"), listOf("alors"),
+        listOf("the", "text"), listOf("the", "message"), listOf("le", "texto"), listOf("le", "texte"), listOf("le", "message"),
+        listOf("for", "now"), listOf("robot"),
+    )
+
+    /** [w] without one [filler] at its front (or back); null if none is there or nothing would be left. */
+    private fun strip(w: List<String>, filler: List<List<String>>, front: Boolean): List<String>? {
+        val f = filler.firstOrNull { f -> w.size > f.size && (if (front) w.subList(0, f.size) else w.subList(w.size - f.size, w.size)) == f } ?: return null
+        return if (front) w.drop(f.size) else w.dropLast(f.size)
+    }
+
+    /**
+     * "cancel", "never mind", "annule": you changed your mind while Robot asked what the text should say. Case, accents
+     * and punctuation don't count ("Cancel?", "Annule ça !"), nor filler around the words ("Hey robot, cancel.", "No,
+     * cancel it please", "Oublie ça, merci"). The whole answer must be one of them: "no problem, see you soon" is a message.
+     */
+    fun isCancel(input: String): Boolean {
+        var w = ClaudeRouter.plain(input).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+        // Each lead taken off, then each tail: "no" and "non" are cancel words before they are filler.
+        while (w.isNotEmpty()) {
+            var t: List<String>? = w
+            while (t != null) {
+                if (t.joinToString(" ") in CANCEL) return true
+                t = strip(t, CANCEL_TAIL, front = false)
+            }
+            w = strip(w, CANCEL_LEAD, front = true) ?: break
+        }
+        return false
+    }
+
+    /** A wake phrase heard at the start of a spoken answer ("Hey Robot, I'm running late"): never part of the text. */
+    private val DEFAULT_WAKE = listOf("hey robot", "hi robot", "ok robot", "okay robot", "hé robot", "dis robot")
+
+    /**
+     * The spoken answer to "what should it say?" without a leading wake phrase: the wake word is paused while Robot
+     * listens, so "hey robot, I'm running late" comes back whole. [phrases]: your wake phrases. A single word ("robot")
+     * counts only with punctuation after it ("Robot, I'm late"), so "Robot vacuum is fixed" stays. Nothing else goes:
+     * "Okay, see you at 5" is the text.
+     */
+    fun stripWake(answer: String, phrases: List<String> = emptyList()): String {
+        val s = answer.trim()
+        val all = (phrases.map(WakePhrases::clean) + DEFAULT_WAKE + "robot").filter { it.isNotBlank() }.distinct().sortedByDescending { it.length }
+        for (p in all) {
+            // Letters as they are, an apostrophe either way; the words may be split by commas ("Hey, robot").
+            val words = p.split(' ').joinToString("[\\s,]+") { w -> w.map { c -> if (c == '\'') "['’]" else Regex.escape(c.toString()) }.joinToString("") }
+            val after = if (p.contains(' ')) "\\s*[,.!?:;—–-]+\\s*|\\s+|$" else "\\s*[,.!?:;—–-]+\\s*|$"
+            val m = Regex("^$words(?:$after)", RegexOption.IGNORE_CASE).find(s) ?: continue
+            return s.substring(m.range.last + 1).trim()
+        }
+        return s
+    }
 
     /** "What should the text to Mom say?" (the name as asked, capitalised). */
     fun askMessage(name: String): String = "What should the text to ${display(name)} say?"

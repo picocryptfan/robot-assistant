@@ -110,6 +110,8 @@ class TextCommandTest {
         // The answer to "what should it say?" and "cancel" (the gate still checks the lock for the answer).
         assertEquals(TextCommand.Route.ANSWER, TextCommand.route("I'm running late", "mom", locked = true, typed = true))
         assertEquals(TextCommand.Route.CANCEL, TextCommand.route("never mind", "mom", locked = false, typed = false))
+        for (s in listOf("Hey Robot, cancel.", "Cancel?", "Laisse faire.", "Annule ça.")) assertEquals(s, TextCommand.Route.CANCEL, TextCommand.route(s, "mom", locked = false, typed = false))
+        assertEquals(TextCommand.Route.ANSWER, TextCommand.route("Cancel dinner tonight", "mom", locked = false, typed = false))
         // A new text request replaces the question.
         assertEquals(TextCommand.Route.PARSE, TextCommand.route("text dad hi", "mom", locked = false, typed = true))
     }
@@ -155,8 +157,41 @@ class TextCommandTest {
     }
 
     @Test fun cancelWords() {
-        for (s in listOf("cancel", "Never mind.", "nevermind", "forget it", "No")) assertTrue(s, TextCommand.isCancel(s))
-        for (s in listOf("I'm late", "no worries, see you", "cancel the meeting tomorrow")) assertFalse(s, TextCommand.isCancel(s))
+        val english = listOf(
+            "cancel", "Cancel.", "CANCEL", "Cancel!", "Cancel?", "Cancel,", "Cancel…", "Cancel...", "cancel it", "Cancel that.", "cancel the text",
+            "Cancel please.", "Please cancel.", "No, cancel.", "No cancel", "Okay, cancel.", "Hey robot, cancel.", "Hey Robot cancel",
+            "Never mind.", "nevermind", "Never mind that.", "Oh, never mind", "forget it", "Forget about it.", "Scratch that.", "Nah.",
+            "No", "No!", "Nope.", "No thanks.", "No, thanks.", "No thank you.", "Stop.", "Stop it.", "Don't.", "Don’t.", "Don't send it.",
+            "Nothing.", "Sorry, never mind.", "Just cancel it.",
+        )
+        val french = listOf(
+            "annule", "Annule.", "Annuler.", "Annule ça !", "Annule ça.", "Laisse faire.", "Laisse tomber.", "Oublie ça.", "Oublie ça, merci.",
+            "Non.", "Non merci.", "Non, merci.", "Arrête.", "Arrête ça.", "Rien.", "Non, annule.", "Dis robot, annule le texto.",
+        )
+        for (s in english + french) assertTrue(s, TextCommand.isCancel(s))
+        // Only the whole answer counts: these are messages.
+        val messages = listOf(
+            "I'm late", "no worries, see you", "cancel the meeting tomorrow", "Cancel dinner tonight", "No problem see you soon", "No problem!",
+            "Stop by the store", "Nothing much, you?", "Don't forget the milk", "OK", "Thanks", "Sorry, I'm running late",
+            "Non, je suis en retard", "Annule le souper de demain", "Rien de spécial", "Arrête de m'appeler", "",
+        )
+        for (s in messages) assertFalse(s, TextCommand.isCancel(s))
+    }
+
+    @Test fun aSpokenAnswerLosesTheWakePhraseOnly() {
+        assertEquals("I'm running late", TextCommand.stripWake("Hey Robot, I'm running late"))
+        assertEquals("I'm running late", TextCommand.stripWake("hey robot I'm running late"))
+        assertEquals("on my way", TextCommand.stripWake("OK Robot. on my way"))
+        assertEquals("I'm late", TextCommand.stripWake("Robot, I'm late"))
+        // Your own wake phrase too, typed apostrophes or not.
+        assertEquals("see you soon", TextCommand.stripWake("Hey Jarvis, see you soon", listOf("hey jarvis")))
+        assertEquals("yes", TextCommand.stripWake("Computer’s on, yes", listOf("computer's on")))
+        // Only the wake phrase: nothing is left (Robot asks again).
+        assertEquals("", TextCommand.stripWake("Hey Robot."))
+        // Everything else is the text.
+        for (s in listOf("Okay, see you at 5", "Please call me back", "Robot vacuum is fixed", "Hey, are you up?", "Robots are cool")) {
+            assertEquals(s, TextCommand.stripWake(s))
+        }
     }
 
     // ------------------------------------------------------------------ lookup_contact NOT_FOUND (D2)

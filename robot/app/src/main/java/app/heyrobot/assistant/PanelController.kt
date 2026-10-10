@@ -1386,26 +1386,27 @@ object PanelController {
      */
     private suspend fun directText(replyId: String, q: String, textingFor: String?, fromVoice: Boolean, untrusted: Boolean): Boolean {
         val typed = !fromVoice
+        // The wake word is paused while Robot waits for the message, so a spoken "hey robot, …" comes back whole.
+        val answer = if (fromVoice && textingFor != null) TextCommand.stripWake(q, VoiceHub.settings.wakePhrases.filter { it.enabled }.map { it.text }) else q
         // Decided before any contact is read or anything asked: the lock first.
-        val req: TextRequest = when (TextCommand.route(q, textingFor, Assistant.locked(VoiceHub.app), typed)) {
+        val req: TextRequest = when (TextCommand.route(answer, textingFor, Assistant.locked(VoiceHub.app), typed)) {
             TextCommand.Route.MODEL -> return false
+            // Said aloud as well: the question may have come by voice from across the room.
             TextCommand.Route.UNLOCK -> {
-                setText(replyId, "Unlock your phone to send a text.")
-                finishReply(replyId, DoneReason.END)
+                localReply(replyId, "Unlock your phone to send a text.")
                 return true
             }
             TextCommand.Route.CANCEL -> {
-                setText(replyId, "Okay, no text to ${TextCommand.display(textingFor!!)}.")
-                finishReply(replyId, DoneReason.END)
+                localReply(replyId, "Okay, no text to ${TextCommand.display(textingFor!!)}.")
                 return true
             }
-            // The message itself; the approval gate still checks the lock.
-            TextCommand.Route.ANSWER -> TextRequest(textingFor!!, q.trim())
+            // The message itself; the approval gate still checks the lock. Only the wake phrase: Robot asks again.
+            TextCommand.Route.ANSWER -> TextRequest(textingFor!!, answer.trim().ifEmpty { null })
             TextCommand.Route.PARSE -> {
                 val names = withContext(Dispatchers.IO) {
                     if (Contacts.granted(VoiceHub.app)) Contacts.names(VoiceHub.app).flatMap { listOf(it.name) + it.nicknames } else emptyList()
                 }
-                TextCommand.parse(q, names, typed) ?: return false
+                TextCommand.parse(answer, names, typed) ?: return false
             }
         }
         val name = TextCommand.display(req.name)
