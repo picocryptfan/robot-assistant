@@ -113,6 +113,45 @@ object WakePhrases {
     /** The last word of each enabled phrase, for EchoGuard: Robot saying it may wake her through the microphone. */
     fun echoWords(list: List<WakePhrase>): List<String> =
         list.filter { it.enabled }.mapNotNull { words(it.text).lastOrNull()?.lowercase(Locale.ROOT)?.trim('\'') }.filter { it.isNotEmpty() }.distinct()
+
+    /**
+     * Enabled phrases whose words come, whole and in a row, inside a longer phrase, as (inner, outer) pairs: "robot"
+     * inside "hey robot". The keyword model matches the end of what it hears, so saying "hey robot" fires "robot"
+     * whether "hey robot" is on or off: turning only the outer one off doesn't stop it waking Robot (0.3.0 on the
+     * phone). Words, not tokens: the model spells each word on its own, so the same words are the same tokens.
+     */
+    fun inside(list: List<WakePhrase>): List<Pair<WakePhrase, WakePhrase>> {
+        fun key(p: WakePhrase) = words(p.text).map { it.uppercase(Locale.ROOT) }
+        val out = mutableListOf<Pair<WakePhrase, WakePhrase>>()
+        for (inner in list) {
+            if (!inner.enabled) continue
+            val iw = key(inner)
+            if (iw.isEmpty()) continue
+            for (outer in list) {
+                val ow = key(outer)
+                if (outer.id != inner.id && ow.size > iw.size && ow.windowed(iw.size).any { it == iw }) out += inner to outer
+            }
+        }
+        return out
+    }
+
+    /** For [outer]'s card: what saying it fires although it may be off, from [inside]'s pairs; null if nothing. */
+    fun insideWarning(outer: WakePhrase, pairs: List<Pair<WakePhrase, WakePhrase>>): String? {
+        val inners = pairs.filter { it.second.id == outer.id }.map { it.first }
+        if (inners.isEmpty()) return null
+        val names = inners.joinToString(" and ") { "“${it.text}”" }
+        val one = inners.size == 1
+        return if (outer.enabled) "$names also ${if (one) "fires" else "fire"} when you say “${outer.text}”. To turn off “${outer.text}”, turn off $names too."
+        else "“${outer.text}” is off, but saying it still wakes Robot: $names ${if (one) "is" else "are"} on and ${if (one) "fires" else "fire"} " +
+            "inside it. Turn off $names too."
+    }
+
+    /** For [inner]'s card: the longer phrases that fire it too; null if none. */
+    fun insideNote(inner: WakePhrase, pairs: List<Pair<WakePhrase, WakePhrase>>): String? {
+        val outers = pairs.filter { it.first.id == inner.id }.map { it.second }
+        if (outers.isEmpty()) return null
+        return "Also fires when you say " + outers.joinToString(" or ") { "“${it.text}”" } + "."
+    }
 }
 
 /**

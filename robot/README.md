@@ -357,6 +357,12 @@ on 115 phrases (`core/src/test/resources/kws/text2token-reference.tsv`), exactly
 `keywords.txt` is one empty line, because sherpa-onnx adds it to every stream. A changed list starts a new stream
 without a restart. Any enabled phrase opens the panel exactly like "hey robot", question audio included.
 
+A phrase whose words come inside another phrase ("robot" inside "hey robot") fires when you say the longer one,
+whether the longer one is on or off: the keyword model matches the end of what it hears. So turning "hey robot" off
+while "robot" is on doesn't stop "hey robot" from waking Robot. Since 0.3.1 the longer phrase's card says so ("“robot”
+also fires when you say “hey robot”. To turn off “hey robot”, turn off “robot” too.") and the shorter one's card names
+the phrases that fire it (`WakePhrases.inside`, tested against the keyword model's own spellings).
+
 **Test wake words** (same screen): while it shows, Robot lists each phrase it hears, with the time, instead of opening.
 It ends when the screen is no longer visible (the app in the background, or the screen off).
 
@@ -410,8 +416,10 @@ region is kept.
 3. While Robot talks with the panel open, press volume down: she stops and the volume doesn't change. With the panel
    closed (or the screen off), volume down changes the volume as usual.
 4. Settings › Voice › Wake words: add "robot" (see the warning and Low), and "hey computer". Open Test wake words and
-   say each one, near and across the room; then say other words to see what triggers by accident. Turn "hey robot"
-   off and check it no longer wakes Robot (no restart needed).
+   say each one, near and across the room; then say other words to see what triggers by accident. Turn "robot" off
+   (or remove it), then turn "hey robot" off and check it no longer wakes Robot (no restart needed). While "robot" is
+   on, saying "hey robot" still wakes her as "robot": the "hey robot" card says so, and Test wake words and the voice
+   log name the phrase that fired.
 5. After any "she didn't respond": open Settings › Voice › Voice log right away and take a screenshot.
 6. Typed and spoken "text mom I'm running late": a card for Mom with the message. Then "text mom": Robot asks what
    the text should say; answer it (and once, say "cancel"). Then text someone who is only in Cheogram: "Choose in

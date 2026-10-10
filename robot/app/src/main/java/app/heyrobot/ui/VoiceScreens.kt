@@ -167,7 +167,9 @@ fun WakePhrasesScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snackba
                 Text("No wake phrase is on: only the corner swipe opens Robot. “Stop” still works while Robot talks.",
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
-            for (p in s.wakePhrases) PhraseCard(p, speller, onChange = { np ->
+            // "robot" inside "hey robot": saying the longer one fires the shorter one, even with the longer one off.
+            val inside = WakePhrases.inside(s.wakePhrases)
+            for (p in s.wakePhrases) PhraseCard(p, speller, WakePhrases.insideWarning(p, inside), WakePhrases.insideNote(p, inside), onChange = { np ->
                 update(s.copy(wakePhrases = s.wakePhrases.map { if (it.id == p.id) np else it }))
             }, onRemove = { update(s.copy(wakePhrases = s.wakePhrases.filter { it.id != p.id })) })
             SectionCard("Add a wake phrase") {
@@ -199,7 +201,7 @@ fun WakePhrasesScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snackba
 }
 
 @Composable
-private fun PhraseCard(p: WakePhrase, speller: KwsSpeller?, onChange: (WakePhrase) -> Unit, onRemove: () -> Unit) {
+private fun PhraseCard(p: WakePhrase, speller: KwsSpeller?, insideWarning: String?, insideNote: String?, onChange: (WakePhrase) -> Unit, onRemove: () -> Unit) {
     SectionCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -211,6 +213,8 @@ private fun PhraseCard(p: WakePhrase, speller: KwsSpeller?, onChange: (WakePhras
         }
         SegmentedChoice(WakeSensitivity.entries, p.sensitivity, { it.title }) { onChange(p.copy(sensitivity = it)) }
         if (p.words == 1) Text(WakePhrases.SHORT_WARNING, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary)
+        insideWarning?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
+        insideNote?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.tertiary) }
         (speller?.spell(p.text) as? KwsSpeller.Result.Refused)?.let {
             Text("${it.why} Robot doesn't listen for this one.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
         }
