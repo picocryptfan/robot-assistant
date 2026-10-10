@@ -212,6 +212,8 @@ object ClaudeWords {
     const val LEFT = "Back to Robot."
     const val NOT_HERE = "Claude isn't in this conversation."
     const val BUDGET = "Today's Claude budget is used up, so Robot will ask before checking with Claude again today."
+    /** A reply cut at its length limit before it said anything (its thinking used the room). */
+    const val CUT_EMPTY = "Claude ran out of room before it could answer. Ask again, or ask for a shorter answer."
     const val KEY_UNREADABLE = "Robot couldn't read your saved Claude key, so it was removed. Add it again in Robot's settings, under Ask Claude."
     const val SWIPE_TO_READ = "Open the Claude app, then swipe up from the corner and tap “Read Claude's answer”."
 

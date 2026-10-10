@@ -1197,6 +1197,11 @@ object PanelController {
                     cost = ClaudeCost.line(report.dollars).takeIf { VoiceHub.settings.claudeShowCost && report.requests > 0 }) else it
             })
         }
+        // Cut off before it said anything (its thinking used the room): say so rather than leave an empty bubble.
+        if (result.reason == DoneReason.LENGTH && _state.value.turns.firstOrNull { it.id == replyId }?.let { it.text.isBlank() && it.actions.isEmpty() } == true) {
+            _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(claude = false) else it }) }
+            sayInto(replyId, ClaudeWords.CUT_EMPTY)
+        }
         finishReply(replyId, result.reason ?: DoneReason.END, costMicros = ClaudeCost.micros(report.dollars))
         // Claude's answer joins Robot's own conversation: :brain rebuilds it from the history next time.
         closeLiveConversation()
