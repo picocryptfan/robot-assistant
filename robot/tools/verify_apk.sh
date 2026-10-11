@@ -5,7 +5,8 @@
 # and the three runtime permissions; that the main-process entries stay in the main process, that nothing beyond an
 # allowlist is exported, and that no main-process class in the dex refers to an engine. 0.4.5: the native libraries are
 # exactly an allowlist of names, and Robot's llama.cpp library (when this build has it) exports only its JNI bridge, is
-# reached only from :brain's classes and can't go online or start a process. Usage: tools/verify_apk.sh <apk>
+# reached only from the isolated :llama service's classes and can't go online or start a process; that service is
+# declared isolated and not exported. Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
 BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/36.0.0"
@@ -47,6 +48,18 @@ has ':brain' "$(elem app.heyrobot.brain.BrainService)" "BrainService in :brain"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.brain.BrainService)" "BrainService not exported"
 has '"app.heyrobot.permission.INTERNAL"' "$(elem app.heyrobot.brain.BrainService)" "BrainService guarded by the signature permission"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver not exported"
+# 0.4.5: llama.cpp runs in its own isolated process (a uid of its own: no permissions, no network, none of Robot's files),
+# which only :brain binds: not exported, no permission either way, no shared isolated process, not from the app zygote.
+llm=$(elem app.heyrobot.brain.LlamaService)
+has '"app.heyrobot.brain.LlamaService"' "$mf" "manifest has brain.LlamaService"
+has 'process(0x01010011)=":llama"' "$llm" "LlamaService in :llama"
+has 'isolatedProcess(0x010103a9)=true' "$llm" "LlamaService runs in an isolated process"
+has 'exported(0x01010010)=false' "$llm" "LlamaService not exported"
+for a in 'permission(0x01010006)' allowSharedIsolatedProcess useAppZygote externalService; do
+  hasnt "$a" "$llm" "LlamaService has no $a"
+done
+hasnt '"android.intent.action' "$(subtree app.heyrobot.brain.LlamaService)" "LlamaService has no intent filter"
+[ "$(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")" = 1 ] && pass "LlamaService is the only isolated component" || fail "isolated components: $(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")"
 # Ask Claude needs nothing new: INTERNET stays the only network permission, and nothing reads other apps' screens.
 for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE BIND_ACCESSIBILITY_SERVICE; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
@@ -184,6 +197,11 @@ llama_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/nu
   awk '/^Class #/{ on=0 } /Class descriptor  : .L/{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/brain\//) } on' |
   grep -cE 'Lapp/heyrobot/brain/(LlamaNative|LlamaEngine)')
 [ "$llama_refs" = "0" ] && pass "only :brain's classes refer to LlamaNative and LlamaEngine (dex)" || fail "classes outside :brain refer to llama.cpp's bridge: $llama_refs"
+# 0.4.5: of those, only the isolated service's own classes reach the bridge (it loads the library only in that process).
+native_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .L/{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/brain\/(LlamaNative|LlamaService)[;$]/) } on' |
+  grep -c 'Lapp/heyrobot/brain/LlamaNative')
+[ "$native_refs" = "0" ] && pass "only LlamaService's classes refer to LlamaNative: llama.cpp loads only in the isolated process (dex)" || fail "classes besides LlamaService refer to LlamaNative: $native_refs"
 # The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load.
 sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession);'"; done | wc -l)
 [ "$sdk_classes" = "2" ] && pass "Anthropic SDK client and ClaudeSession in the dex" || fail "Anthropic SDK classes in the dex: $sdk_classes"
