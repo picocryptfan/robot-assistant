@@ -190,5 +190,17 @@ echo "$assets" | grep -qE '(encoder|decoder|joiner)\.int8\.onnx|/model(\.fp32|\.
 clip=$(unzip -l "$APK" assets/bench/test-clip.s16 | awk 'NR==4{print $1}')
 [ -n "$clip" ] && [ "$clip" -le 200000 ] && pass "benchmark clip ${clip} bytes (<= 200 KB)" || fail "benchmark clip size '$clip'"
 unzip -Z1 "$APK" | grep -qiE '\.(p12|jks|keystore|pass|litertlm)$' && fail "key or model file inside the APK" || pass "no key or model file inside the APK"
+# 1.0: Settings › About › Licences. The list, the licence texts and the notices ship (LiteRT's copied from its AARs by
+# :brain's aarNotices task), and Robot's GPL is the repository's LICENSE.
+for a in licenses/components.json licenses/GPL-3.0.txt licenses/Apache-2.0.txt licenses/MPL-2.0.txt licenses/CC-BY-4.0.txt \
+    licenses/notices/onnxruntime-ThirdPartyNotices.txt licenses/notices/java-libraries-NOTICE.txt \
+    licenses/notices/litertlm-android-LICENSE.txt licenses/notices/litertlm-android-THIRD_PARTY_NOTICE.txt \
+    licenses/notices/litert-npu-runtime-google-tensor-LICENSE.txt licenses/notices/litert-npu-runtime-google-tensor-THIRD_PARTY_NOTICE.txt; do
+  has "assets/$a" "$assets" "asset $a"
+done
+lic=$(unzip -p "$APK" assets/licenses/GPL-3.0.txt | sha256sum | cut -d' ' -f1)
+[ "$lic" = "$(sha256sum "$(dirname "$0")/../../LICENSE" | cut -d' ' -f1)" ] && pass "licenses/GPL-3.0.txt is Robot's LICENSE" || fail "licenses/GPL-3.0.txt differs from LICENSE"
+notice=$(unzip -l "$APK" assets/licenses/notices/litertlm-android-THIRD_PARTY_NOTICE.txt | awk 'NR==4{print $1}')
+[ -n "$notice" ] && [ "$notice" -ge 1000000 ] && pass "LiteRT-LM's notices ${notice} bytes" || fail "LiteRT-LM's notices size '$notice'"
 echo; [ "$fails" -eq 0 ] && echo "ALL CHECKS PASSED" || echo "$fails CHECK(S) FAILED"
 exit $((fails > 0))
