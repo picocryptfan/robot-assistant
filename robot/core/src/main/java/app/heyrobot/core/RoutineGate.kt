@@ -16,8 +16,8 @@ enum class StepClass(val badge: String) {
     SPEAK("runs by itself"),
     /** The calendar, notes, phone status, brief reminders, unread count (0.7): personal, so locked only at "Everything". */
     READ_LOCAL("runs by itself"),
-    /** The weather: only if routines may go online and the save card listed the service. */
-    READ_ONLINE("runs by itself, goes online"),
+    /** The weather: only if routines may go online and the save card listed the service ("goes online: Open-Meteo"). */
+    READ_ONLINE("runs by itself"),
     /** Timers, alarms, the flashlight, a note with fixed text; locked only those that work on the lock screen. */
     LOCAL_ACTION("runs by itself"),
     /** Opening an app or a draft, maps, a new event: never unattended, a Ready card you tap. */
