@@ -3,10 +3,11 @@ package app.heyrobot.core.web
 import app.heyrobot.core.TokenEstimate
 import kotlin.math.ln
 
-// Pure. Which parts of the pages Gemma reads (design A6.1 Passages, A8): the pages' text is cut into passages of about a
-// paragraph or two, ranked against the question with BM25 (k1 1.2, b 0.75) over every passage of every page read, the
-// lead passage of a page gets a small bonus, and the best are taken until the budget is full: 2,000 tokens in all, 900 at
-// most from one page. They go to the prompt in page order, so each page's part reads as it was written.
+// Pure. Which parts of the pages Gemma reads (design A6.1 Passages, A8): the pages' text is cut into passages, one a
+// paragraph (shorter paragraphs and list items join the next until 25 words, longer ones are cut at sentences), ranked
+// against the question with BM25 (k1 1.2, b 0.75) over every passage of every page read (a section heading's words count
+// half), the lead passage of a page gets a small bonus, and the best are taken until the budget is full: 2,000 tokens in
+// all, 900 at most from one page. They go to the prompt in page order, so each page's part reads as it was written.
 
 /**
  * A piece of a page: [source] the number of the result it came from (1-based, as the answer cites it), [index] its
@@ -23,10 +24,12 @@ object Passages {
     const val TOTAL_TOKENS = 2_000
     /** One page's at most. */
     const val PAGE_TOKENS = 900
-    /** A passage gathers blocks up to about this many words… */
-    const val TARGET_WORDS = 90
+    /** A paragraph shorter than this joins the next one in its section… */
+    const val MIN_WORDS = 25
     /** …and a longer block is cut at sentences into pieces of at most this many. */
     const val MAX_WORDS = 160
+    /** A section heading's words count this much against the passage's own. */
+    const val HEADING_WEIGHT = 0.5
     /** The first passage of a page usually says what the page is about. */
     const val LEAD_BONUS = 1.2
     /** Lets a lead passage that matches nothing still come before other passages that match nothing. */
@@ -64,7 +67,7 @@ object Passages {
                 if (buf.isNotEmpty()) buf.append(' ')
                 buf.append(piece)
                 words += n
-                if (words >= TARGET_WORDS) emit()
+                if (words >= MIN_WORDS) emit()
             }
         }
         emit()
@@ -100,19 +103,25 @@ object Passages {
     fun rank(question: String, passages: List<Passage>): List<Passage> {
         if (passages.isEmpty()) return passages
         val terms = WebWords.terms(question).distinct()
-        val docs = passages.map { p -> WebWords.terms((p.heading?.let { "$it " } ?: "") + p.text) }
-        val avg = docs.sumOf { it.size }.toDouble() / docs.size
+        // Term frequencies, a heading's words at half weight; a passage's length likewise.
+        val docs = passages.map { p ->
+            val tf = HashMap<String, Double>()
+            WebWords.terms(p.text).forEach { tf[it] = (tf[it] ?: 0.0) + 1.0 }
+            p.heading?.let { h -> WebWords.terms(h).forEach { tf[it] = (tf[it] ?: 0.0) + HEADING_WEIGHT } }
+            tf
+        }
+        val lengths = docs.map { it.values.sum() }
+        val avg = lengths.sum() / docs.size
         val df = HashMap<String, Int>()
-        docs.forEach { d -> d.toSet().forEach { t -> df[t] = (df[t] ?: 0) + 1 } }
+        docs.forEach { d -> d.keys.forEach { t -> df[t] = (df[t] ?: 0) + 1 } }
         val n = docs.size.toDouble()
         return passages.mapIndexed { i, p ->
-            val d = docs[i]
-            val tf = d.groupingBy { it }.eachCount()
+            val tf = docs[i]
             var s = 0.0
             for (t in terms) {
                 val f = tf[t] ?: continue
                 val idf = ln(1 + (n - (df[t] ?: 0) + 0.5) / ((df[t] ?: 0) + 0.5))
-                s += idf * f * (K1 + 1) / (f + K1 * (1 - B + B * d.size / avg.coerceAtLeast(1.0)))
+                s += idf * f * (K1 + 1) / (f + K1 * (1 - B + B * lengths[i] / avg.coerceAtLeast(1.0)))
             }
             if (p.index == 0) s = s * LEAD_BONUS + LEAD_FLOOR
             p.copy(score = s)

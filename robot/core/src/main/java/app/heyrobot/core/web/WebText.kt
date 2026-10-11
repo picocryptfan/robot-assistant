@@ -143,10 +143,13 @@ object WebWords {
     /** The words of [s] that carry meaning, stemmed. */
     fun terms(s: String): List<String> = words(s).filter { it !in STOP }.map(::stem)
 
-    /** Plurals and a few English endings: "stations" → "station", "chevaux" → "cheval", "bateaux" → "bateau", "running" → "runn". */
+    /**
+     * Plurals, a few English endings and a final "e": "stations" → "station", "chevaux" → "cheval", "bateaux" →
+     * "bateau", "descaling" and "descale" → "descal", "machines" → "machin". The same on both sides of every comparison.
+     */
     fun stem(w: String): String {
         if (w.length <= 3 || w.any { it.isDigit() }) return w
-        return when {
+        val s = when {
             w.endsWith("ies") && w.length > 4 -> w.dropLast(3) + "y"
             w.endsWith("eaux") -> w.dropLast(1)
             w.endsWith("aux") && w.length > 4 -> w.dropLast(3) + "al"
@@ -157,6 +160,7 @@ object WebWords {
             w.endsWith("s") || w.endsWith("x") -> w.dropLast(1)
             else -> w
         }
+        return if (s.length >= 4 && s.endsWith("e")) s.dropLast(1) else s
     }
 
     /** English and French words that say nothing about the subject (folded, without accents). */
