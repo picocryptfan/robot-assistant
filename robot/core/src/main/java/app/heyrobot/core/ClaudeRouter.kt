@@ -11,32 +11,72 @@ import java.util.Locale
 // commands, "what's the cloud cover tomorrow" and "Clyde, pass the salt" are not. The name on its own leads into a
 // question for Claude only when it is exactly "Claude" and what follows is a question or a request ("Claude, what's
 // …", "Claude explain …"), never a sentence about someone called Claude ("Claude can come over tomorrow").
+//
+// 0.6.0: the same rules for every helper, by its name ([HelperName]): a name may be several words ("chat gpt", "deep
+// seek"), and a "*" slot takes the longest name that fits. Curated mishearings ship for Claude only; any other name of
+// five letters or more (or two syllables) also matches a word that sounds like it ([Phonetic]), but only where a
+// mishearing may count (after a command verb), so it is marked misheard and its conversation asks before anything earlier goes.
 
 sealed class ClaudeCommand {
     /**
      * One question for Claude. [deep]: you asked for depth ("think hard about", "take your time"). [extra]: you asked
      * about the screen or a photo; it goes only after a tap on a card.
      */
-    data class Ask(val question: String, val deep: Boolean = false, val extra: Attachment = Attachment.NONE) : ClaudeCommand()
+    data class Ask(val question: String, val deep: Boolean = false, val extra: Attachment = Attachment.NONE, val helper: String = HelperName.CLAUDE_ID) : ClaudeCommand()
 
     /**
      * Claude mode: the following turns go to Claude. [question]: said in the same breath ("go get Claude and ask …").
      * [misheard]: a word that only sounded like the name ("get cloud"): the conversation so far goes only after a tap.
      */
-    data class Join(val question: String? = null, val misheard: Boolean = false) : ClaudeCommand()
+    data class Join(val question: String? = null, val misheard: Boolean = false, val helper: String = HelperName.CLAUDE_ID) : ClaudeCommand()
 
-    /** Leave Claude mode ("thanks Claude", "back to Robot"); outside Claude mode it is ordinary talk. */
+    /** Leave Claude mode, or any helper's ("thanks Claude", "back to Robot"); outside it, ordinary talk. */
     data object Leave : ClaudeCommand()
 
     /** "Read Claude's answer": the Claude app's last answer, from the corner swipe's screen data. */
     data object ReadAnswer : ClaudeCommand()
 }
 
+/**
+ * A helper's name as the router hears it: [forms] mean it exactly (its name, other ways speech recognition writes it,
+ * your own aliases), each a list of plain words; [misheard] count only after a command verb (Claude's curated list);
+ * [phonetic]: a word that sounds like the name counts there too (any name without a curated list, see [Phonetic]).
+ * [app]: "read X's answer" reads its app (the Claude app).
+ */
+data class HelperName(val id: String, val forms: List<List<String>>, val misheard: List<List<String>> = emptyList(), val phonetic: Boolean = false,
+    val app: Boolean = false) {
+    companion object {
+        const val CLAUDE_ID = "claude"
+
+        /** Claude as 0.3 to 0.5 heard it. */
+        val CLAUDE = HelperName(CLAUDE_ID, listOf(listOf("claude")), listOf("cloud", "clod", "clawed", "claud", "klode", "clyde").map { listOf(it) }, app = true)
+
+        /** A word sequence in the router's plain form ("ChatGPT" → [chatgpt], "Deep Seek" → [deep, seek]). */
+        fun words(s: String): List<String> = ClaudeRouter.plain(s).split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+
+        /** How [h] is heard: its name, the preset's spellings and mishearings when it keeps the preset's name, and your aliases. */
+        fun of(h: app.heyrobot.core.helpers.HelperConfig): HelperName {
+            val p = h.presetOf
+            val default = words(h.name) == words(p.defaultName)
+            val forms = (listOf(words(h.name)) + (if (default) p.spoken.map(::words) else emptyList()) + h.aliases.map(::words)).filter { it.isNotEmpty() }.distinct()
+            val misheard = if (default) p.misheard.map(::words).filter { it.isNotEmpty() } else emptyList()
+            return HelperName(h.id, forms, misheard, phonetic = misheard.isEmpty() && forms.any { it.size == 1 && Phonetic.eligible(it[0]) },
+                app = default && p.app == ClaudeAppLink.PACKAGE)
+        }
+
+        /** Every helper in settings, on or off (off ones are recognised so Robot can say they are off). */
+        fun all(s: RobotSettings): List<HelperName> = s.helpers.map(::of)
+    }
+}
+
+/** Where a name was found in what was said: whose, where it ends, and whether it was the name itself ([exact]). */
+class HeardName(val id: String, val end: Int, val exact: Boolean)
+
 object ClaudeRouter {
     /** "Claude" and how Parakeet may hear it; the mishearings count only after a command verb ([seq]'s "*"). */
     val ALIASES = setOf("claude", "cloud", "clod", "clawed", "claud", "klode", "clyde")
-    /** The name as written: the only form that may be addressed directly or used after a weaker verb ("switch to"). */
-    private const val NAME = "claude"
+
+    private val CLAUDE = listOf(HelperName.CLAUDE)
 
     /** A word of the utterance: its plain form (no accents, apostrophes or case) and where it sits in the original. */
     private class Word(val w: String, val start: Int, val end: Int, val punctAfter: Char?)
@@ -69,6 +109,10 @@ object ClaudeRouter {
         listOf("sil", "te", "plait"), listOf("sil", "vous", "plait"), listOf("peux", "tu"), listOf("pourrais", "tu"),
         listOf("est", "ce", "que", "tu", "peux"), listOf("dac"), listOf("daccord"),
     )
+
+    /** The filler words, which no helper may be called (core HelperNames). */
+    val FILLER_WORDS: Set<String> = FILLER.flatten().toSet()
+
     /** Skips the filler at the start: the index of the first word that counts. */
     private fun head(ws: List<Word>): Int {
         var i = 0
@@ -79,17 +123,48 @@ object ClaudeRouter {
         return i
     }
 
-    /** True if [ws] from [at] reads [p], where "*" is the name or a mishearing of it and "=" the name exactly. */
-    private fun seq(ws: List<Word>, at: Int, vararg p: String): Boolean =
-        p.indices.all { k ->
-            ws.getOrNull(at + k)?.let {
-                when (p[k]) {
-                    "*" -> it.w in ALIASES
-                    "=" -> it.w == NAME
-                    else -> it.w == p[k]
-                }
-            } == true
+    /** True if [ws] from [at] reads [p], word for word (no name slots). */
+    private fun seq(ws: List<Word>, at: Int, vararg p: String): Boolean = p.indices.all { k -> ws.getOrNull(at + k)?.w == p[k] }
+
+    private fun form(ws: List<Word>, at: Int, f: List<String>): Boolean = f.isNotEmpty() && f.indices.all { k -> ws.getOrNull(at + k)?.w == f[k] }
+
+    /**
+     * A helper's name at [at]: the longest of its exact forms first; unless [exactOnly], then a curated mishearing, then a
+     * word that sounds like a name without one ([Phonetic]).
+     */
+    private fun nameAt(ws: List<Word>, at: Int, names: List<HelperName>, exactOnly: Boolean): HeardName? {
+        fun longest(pick: (HelperName) -> List<List<String>>): HeardName? {
+            var best: HeardName? = null
+            for (n in names) for (f in pick(n)) if (form(ws, at, f) && (best == null || at + f.size > best.end)) best = HeardName(n.id, at + f.size, false)
+            return best
         }
+        longest { it.forms }?.let { return HeardName(it.id, it.end, exact = true) }
+        if (exactOnly) return null
+        longest { it.misheard }?.let { return it }
+        val w = ws.getOrNull(at)?.w ?: return null
+        for (n in names) if (n.phonetic) for (f in n.forms) if (f.size == 1 && Phonetic.close(w, f[0])) return HeardName(n.id, at + 1, false)
+        return null
+    }
+
+    /**
+     * [p] at [at], where "*" is a helper's name or a word that may be a mishearing of one, and "=" a name exactly (the
+     * slot takes a whole name, the longest that fits): where it ends and whose name it was.
+     */
+    private fun seqName(ws: List<Word>, at: Int, p: Array<String>, names: List<HelperName>): Pair<Int, HeardName>? {
+        var k = at
+        var m: HeardName? = null
+        for (e in p) {
+            if (e == "*" || e == "=") {
+                val n = nameAt(ws, k, names, exactOnly = e == "=") ?: return null
+                m = n
+                k = n.end
+            } else {
+                if (ws.getOrNull(k)?.w != e) return null
+                k++
+            }
+        }
+        return if (m == null) null else k to m
+    }
 
     /** The original text from word [at] on, without leading connectors ([drop]) and punctuation; null if empty. */
     private fun rest(text: String, ws: List<Word>, at: Int, drop: Set<String> = emptySet()): String? {
@@ -117,75 +192,72 @@ object ClaudeRouter {
     private val ABOUT = setOf("about", "de", "sur")
     private val LEAVES: List<Array<String>> = listOf(
         arrayOf("thanks", "*"), arrayOf("thank", "you", "*"), arrayOf("thx", "*"), arrayOf("bye", "*"), arrayOf("bye", "bye", "*"), arrayOf("goodbye", "*"),
-        arrayOf("thats", "all", "*"), arrayOf("that", "is", "all", "*"), arrayOf("stop", "*"), arrayOf("back", "to", "robot"),
-        arrayOf("go", "back", "to", "robot"), arrayOf("switch", "back", "to", "robot"),
-        arrayOf("merci", "*"), arrayOf("au", "revoir", "*"), arrayOf("cest", "tout", "*"), arrayOf("retour", "a", "robot"),
+        arrayOf("thats", "all", "*"), arrayOf("that", "is", "all", "*"), arrayOf("stop", "*"),
+        arrayOf("merci", "*"), arrayOf("au", "revoir", "*"), arrayOf("cest", "tout", "*"),
     )
+    private val BACK: List<Array<String>> = listOf(
+        arrayOf("back", "to", "robot"), arrayOf("go", "back", "to", "robot"), arrayOf("switch", "back", "to", "robot"), arrayOf("retour", "a", "robot"),
+    )
+    private val ASKS: List<Array<String>> = listOf(arrayOf("ask", "*"), arrayOf("demande", "a", "*"), arrayOf("demande", "*"))
 
-    /** The command at the start of [text], or null: ordinary talk for Robot. */
-    fun route(text: String): ClaudeCommand? {
+    /** The command at the start of [text] for one of [names] (Claude alone by default), or null: ordinary talk for Robot. */
+    fun route(text: String, names: List<HelperName> = CLAUDE): ClaudeCommand? {
         val ws = words(text)
         val i = head(ws)
         if (i >= ws.size) return null
 
         // Leave first: "stop Claude" and "thanks Claude" are never questions.
-        LEAVES.firstOrNull { seq(ws, i, *it) }?.let { return ClaudeCommand.Leave }
+        if (LEAVES.any { seqName(ws, i, it, names) != null } || BACK.any { seq(ws, i, *it) }) return ClaudeCommand.Leave
 
-        // "read Claude's answer".
-        if (ws.getOrNull(i)?.w == "read" && ws.getOrNull(i + 1)?.w?.let { it.endsWith("s") && it.dropLast(1) in ALIASES } == true &&
-            ws.getOrNull(i + 2)?.w in setOf("answer", "reply", "response")) return ClaudeCommand.ReadAnswer
+        // "read Claude's answer" (an app Robot reads back).
+        if (ws.getOrNull(i)?.w == "read" && ws.getOrNull(i + 2)?.w in setOf("answer", "reply", "response")) {
+            val w = ws.getOrNull(i + 1)?.w
+            if (w != null && w.endsWith("s") && names.any { n -> n.app && (n.forms + n.misheard).any { it == listOf(w.dropLast(1)) } }) return ClaudeCommand.ReadAnswer
+        }
 
         // "ask Claude …", "demande à Claude …" (and "demande Claude", when the "à" was not heard).
-        val askAt = when {
-            seq(ws, i, "ask", "*") -> i + 2
-            seq(ws, i, "demande", "a", "*") -> i + 3
-            seq(ws, i, "demande", "*") -> i + 2
-            else -> -1
-        }
-        if (askAt >= 0) {
+        ASKS.firstNotNullOfOrNull { seqName(ws, i, it, names) }?.let { (askAt, m) ->
             val next = ws.getOrNull(askAt)?.w
             // "ask Clyde if he's coming to dinner": a message for a person (Robot's to handle), not a question for Claude.
             if (next in setOf("if", "whether", "si") && ws.getOrNull(askAt + 1)?.w in PERSON) return null
             // After a word that only sounds like the name, "ask Clyde to pick up milk" or "… whether dinner is ready" is
             // a message for a person too: only the name itself carries a request like that.
-            val misheard = ws[askAt - 1].w != NAME
-            if (misheard && next in setOf("to", "if", "whether", "si", "de", "d")) return null
-            return rest(text, ws, askAt, ASK_DROP)?.let(::ask) ?: ClaudeCommand.Join(misheard = misheard)
+            if (!m.exact && next in setOf("to", "if", "whether", "si", "de", "d")) return null
+            return rest(text, ws, askAt, ASK_DROP)?.let { ask(it, m.id) } ?: ClaudeCommand.Join(misheard = !m.exact, helper = m.id)
         }
 
         // "what does Claude think about …", "qu'est-ce que Claude pense de …".
-        if (seq(ws, i, "what", "does", "=", "think") || seq(ws, i, "whats", "=", "think")) {
-            val at = i + if (ws[i].w == "what") 4 else 3
-            val r = rest(text, ws, at, setOf("about", "of")) ?: return ClaudeCommand.Join()
-            return ask("What do you think about ${r.trimEnd('?', '.', ' ')}?")
+        (seqName(ws, i, arrayOf("what", "does", "=", "think"), names) ?: seqName(ws, i, arrayOf("whats", "=", "think"), names))?.let { (at, m) ->
+            val r = rest(text, ws, at, setOf("about", "of")) ?: return ClaudeCommand.Join(helper = m.id)
+            return ask("What do you think about ${r.trimEnd('?', '.', ' ')}?", m.id)
         }
-        if (seq(ws, i, "quest", "ce", "que", "=", "pense")) {
-            val r = rest(text, ws, i + 5) ?: return ClaudeCommand.Join()
-            return ask("Que penses-tu ${r.trimEnd('?', '.', ' ')} ?")
+        seqName(ws, i, arrayOf("quest", "ce", "que", "=", "pense"), names)?.let { (at, m) ->
+            val r = rest(text, ws, at) ?: return ClaudeCommand.Join(helper = m.id)
+            return ask("Que penses-tu ${r.trimEnd('?', '.', ' ')} ?", m.id)
         }
 
         // "go get Claude", "va chercher Claude": nothing after the name but a polite word, or "and" with a question.
         for (p in JOINS) {
-            if (!seq(ws, i, *p)) continue
-            var k = i + p.size
-            val nameEnd = ws[i + p.size - 1]
+            val (end, m) = seqName(ws, i, p, names) ?: continue
+            var k = end
+            val nameEnd = ws[end - 1]
             // A word that only sounded like the name ("get cloud", "go get Clyde"): Claude mode alone, or with an
             // explicit "and ask …". "Go get Clyde and the kids from school" or "get Clyde, he's at the door" is about a
             // person.
-            if (ws[i + p.indexOfFirst { it == "*" || it == "=" }].w != NAME) {
+            if (!m.exact) {
                 while (k < ws.size && ws[k].w in BARE_TAIL) k++
-                if (k >= ws.size) return ClaudeCommand.Join(misheard = true)
+                if (k >= ws.size) return ClaudeCommand.Join(misheard = true, helper = m.id)
                 val asks = (ws[k].w in setOf("and", "then", "et", "puis") && ws.getOrNull(k + 1)?.w in setOf("ask", "demande", "demandes")) ||
                     ws[k].w in setOf("ask", "demande")
-                return if (asks) ClaudeCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP + "demandes"), misheard = true) else null
+                return if (asks) ClaudeCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP + "demandes"), misheard = true, helper = m.id) else null
             }
             while (k < ws.size && ws[k].w in JOIN_TAIL) k++
-            if (k >= ws.size) return ClaudeCommand.Join()
+            if (k >= ws.size) return ClaudeCommand.Join(helper = m.id)
             // "talk to Claude about my day".
-            if (ws[k].w in ABOUT && k + 1 < ws.size) return ClaudeCommand.Join("Let's talk about " + text.substring(ws[k + 1].start).trim().trimEnd('.', '!', ' ') + ".")
+            if (ws[k].w in ABOUT && k + 1 < ws.size) return ClaudeCommand.Join("Let's talk about " + text.substring(ws[k + 1].start).trim().trimEnd('.', '!', ' ') + ".", helper = m.id)
             // "get Claude, what's …" or "go get Claude and ask him …": the rest is the first question.
             if (nameEnd.punctAfter in setOf(',', ':', '—', '-') || ws[k].w in JOIN_LINK) {
-                return ClaudeCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP))
+                return ClaudeCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP), helper = m.id)
             }
             // "get cloud storage prices": not a command.
             return null
@@ -194,9 +266,9 @@ object ClaudeRouter {
         // The name itself, addressed: "Claude, what's …", "hey Claude explain …", "Claude" alone. Only the name as
         // written, and only into a question or a request: "Claude can come over tomorrow", "Claude Monet painted …" and
         // "Claude please stop calling me" are about someone called Claude, and a mishearing never counts here.
-        if (ws[i].w == NAME) {
-            if (i + 1 >= ws.size) return ClaudeCommand.Join()
-            if (addressed(ws.drop(i + 1), comma = ws[i].punctAfter in setOf(',', ':', '—'))) return rest(text, ws, i + 1)?.let(::ask) ?: ClaudeCommand.Join()
+        nameAt(ws, i, names, exactOnly = true)?.let { m ->
+            if (m.end >= ws.size) return ClaudeCommand.Join(helper = m.id)
+            if (addressed(ws.drop(m.end), comma = ws[m.end - 1].punctAfter in setOf(',', ':', '—'))) return rest(text, ws, m.end)?.let { ask(it, m.id) } ?: ClaudeCommand.Join(helper = m.id)
         }
         return null
     }
@@ -232,7 +304,7 @@ object ClaudeRouter {
         }
     }
 
-    private fun ask(q: String) = ClaudeCommand.Ask(q, deep(q), extra(q))
+    private fun ask(q: String, helper: String) = ClaudeCommand.Ask(q, deep(q), extra(q), helper)
 
     private val DEEP = listOf("think hard", "think carefully", "think it through", "take your time", "in depth", "in detail",
         "reflechis bien", "prends ton temps", "en detail")
@@ -256,11 +328,12 @@ object ClaudeRouter {
     // ------------------------------------------------------------------ "not Claude"
 
     /**
-     * You turned Claude down: "not Claude", "no Claude", "don't ask Claude", "don't check with Claude", "without Claude",
-     * "leave Claude out of it", "you tell me", "tell me yourself", "answer it yourself", "on your own", "pas Claude", "sans
-     * Claude", "ne demande pas à Claude", "réponds toi-même". Anywhere in what you said, not only at the start ("tell me
-     * about this screen. Not Claude"). Robot then answers itself and doesn't bring Claude in for the rest of the
-     * conversation, until you ask for Claude again ("ask Claude …", "go get Claude").
+     * You turned Claude down (any helper, by its name, since 0.6.0): "not Claude", "no Claude", "don't ask Claude",
+     * "don't check with Claude", "without Claude", "leave Claude out of it", "you tell me", "tell me yourself", "answer it
+     * yourself", "on your own", "pas Claude", "sans Claude", "ne demande pas à Claude", "réponds toi-même". Anywhere in
+     * what you said, not only at the start ("tell me about this screen. Not Claude"). Robot then answers itself and
+     * doesn't bring a helper in for the rest of the conversation, until you ask for one again ("ask Claude …", "go get
+     * Claude").
      *
      * Parakeet's mishearings count after a refusal word too ("not cloud", "don't ask clod"), but only where nothing could
      * follow them but a pause or a polite word: "no cloud today?", "not cloud storage", "don't ask Clyde to pick up milk"
@@ -268,11 +341,12 @@ object ClaudeRouter {
      * "is it not Claude's birthday", "Claude is not available", "it's not Claude, it's Sam", "whether or not Claude
      * comes", "don't tell Claude", "tell me about yourself", "can you set alarms on your own?".
      */
-    fun declines(text: String): Boolean {
+    fun declines(text: String, names: List<HelperName> = CLAUDE): Boolean {
         val ws = words(text)
         if (ws.isEmpty()) return false
         val start = head(ws)
-        return ws.indices.any { i -> contrast(text, ws, i) || verbFirst(text, ws, i) || yourself(text, ws, i, start) || french(text, ws, i) }
+        val d = Declines(text, ws, names)
+        return ws.indices.any { i -> d.contrast(i) || d.verbFirst(i) || yourself(text, ws, i, start) || d.french(i) }
     }
 
     /** Words after "not Claude" that keep it a refusal: "not Claude please", "not Claude this time", "pas Claude, toi". */
@@ -295,32 +369,6 @@ object ClaudeRouter {
         return p in PAUSES && !(p == '-' && text.getOrNull(ws[k].end) == '-')
     }
 
-    /** The name (or a mishearing of it) at [k], and nothing after it but a pause or a word that can't go on about a person. */
-    private fun nameEnds(text: String, ws: List<Word>, k: Int): Boolean {
-        val w = ws.getOrNull(k)?.w ?: return false
-        if (w !in ALIASES) return false
-        return pauseAfter(text, ws, k) || ws[k + 1].w in (if (w == NAME) NOT_AFTER else NOT_AFTER_HEARD)
-    }
-
-    /** The name after a refusal verb ("don't ask Claude …"): anything may follow the name itself, but "if he …" is a person. */
-    private fun nameAfterVerb(text: String, ws: List<Word>, k: Int): Boolean {
-        val w = ws.getOrNull(k)?.w ?: return false
-        if (w != NAME) return nameEnds(text, ws, k)
-        return !(ws.getOrNull(k + 1)?.w in setOf("if", "whether", "si") && ws.getOrNull(k + 2)?.w in PERSON)
-    }
-
-    /** "not Claude", "no Claude", "without Claude", "pas Claude", "sans Claude", "not to Claude", "pas à Claude". */
-    private fun contrast(text: String, ws: List<Word>, i: Int): Boolean {
-        val neg = ws[i].w
-        if (neg !in setOf("not", "no", "pas", "sans", "without") || ws[i].punctAfter != null) return false
-        if (ws.getOrNull(i - 1)?.w in BE) return false
-        var k = i + 1
-        if (neg in setOf("not", "pas") && ws.getOrNull(k)?.w in setOf("to", "a", "au", "with", "avec")) k++
-        // "without cloud" is about storage: only the name itself counts after "without" and "sans".
-        if (neg in setOf("sans", "without") && ws.getOrNull(k)?.w != NAME) return false
-        return nameEnds(text, ws, k)
-    }
-
     private val REFUSE_FIRST: List<Array<String>> = listOf(arrayOf("dont"), arrayOf("do", "not"), arrayOf("never"), arrayOf("stop"),
         arrayOf("no", "need", "to"), arrayOf("without"))
     /** What you might not want done with Claude: "don't ask / check with / use / bring in / send it to Claude". */
@@ -330,31 +378,116 @@ object ClaudeRouter {
     /** Between the verb and the name: "check with", "send it to", "hand it over to", "run this by". */
     private val CONNECT = setOf("with", "to", "in", "it", "this", "that", "over", "on", "through", "by", "past", "for", "the", "question", "one", "up", "at")
 
-    /**
-     * "don't ask Claude", "do not check with Claude", "never mind Claude", "stop asking Claude", "no need to ask Claude",
-     * "without asking Claude", "no need for Claude", "leave Claude out of it", "keep Claude out of this", "forget Claude".
-     */
-    private fun verbFirst(text: String, ws: List<Word>, i: Int): Boolean {
-        REFUSE_FIRST.firstOrNull { seq(ws, i, *it) }?.let { p ->
-            val v = i + p.size
-            if (ws.getOrNull(v)?.w !in REFUSED) return@let
-            var k = v + 1
-            while (k < ws.size && k - v <= 3 && ws[k].w in CONNECT) k++
-            // "don't use the cloud" is about storage: after "the", only the name itself.
-            if (ws.getOrNull(k - 1)?.w == "the" && ws.getOrNull(k)?.w != NAME) return@let
-            if (nameAfterVerb(text, ws, k)) return true
+    private val FR_VERBS = setOf("demande", "demandes", "demandez", "appelle", "appelles", "appelez", "consulte", "consultes", "consultez", "utilise",
+        "utilises", "utilisez", "verifie", "verifies", "verifiez", "interroge", "interroges", "interrogez", "passe", "passes", "passez", "envoie", "envoies",
+        "envoyez", "va", "vas", "allez")
+    private val FR_INF = setOf("demander", "appeler", "consulter", "utiliser", "verifier", "interroger", "passer", "envoyer", "chercher", "solliciter")
+    private val FR_CONNECT = setOf("a", "au", "avec", "de", "par", "ca", "cela", "le", "la", "chercher", "lui")
+    private val FR_SELF = setOf("reponds", "repond", "repondez", "dis", "dites", "fais", "faites", "explique", "expliquez", "decris", "resume", "reflechis",
+        "trouve", "lis")
+
+    /** The refusal rules over one utterance, for the helpers' [names]. */
+    private class Declines(val text: String, val ws: List<Word>, val names: List<HelperName>) {
+        fun name(k: Int, exactOnly: Boolean = false): HeardName? = nameAt(ws, k, names, exactOnly)
+
+        /** A name (or a mishearing of one) at [k], and nothing after it but a pause or a word that can't go on about a person. */
+        fun nameEnds(k: Int): Boolean {
+            val m = name(k) ?: return false
+            val last = m.end - 1
+            return pauseAfter(text, ws, last) || ws[last + 1].w in (if (m.exact) NOT_AFTER else NOT_AFTER_HEARD)
         }
-        if (seq(ws, i, "no", "need", "for")) return nameEnds(text, ws, i + 3)
-        val w = ws[i].w
-        // "leave Claude out of it", "keep cloud out of this", "leave out Claude", "leave Claude alone".
-        if (w in setOf("leave", "keep")) {
-            val k = ws.getOrNull(i + 1)?.takeIf { it.w == "out" }?.let { i + 2 } ?: (i + 1)
-            if (ws.getOrNull(k)?.w !in ALIASES) return false
-            return k == i + 2 || ws.getOrNull(k + 1)?.w == "out" || (ws[k].w == NAME && ws.getOrNull(k + 1)?.w == "alone")
+
+        /** A name after a refusal verb ("don't ask Claude …"): anything may follow the name itself, but "if he …" is a person. */
+        fun nameAfterVerb(k: Int): Boolean {
+            val m = name(k) ?: return false
+            if (!m.exact) return nameEnds(k)
+            return !(ws.getOrNull(m.end)?.w in setOf("if", "whether", "si") && ws.getOrNull(m.end + 1)?.w in PERSON)
         }
-        // "forget Claude", "forget about Claude", "skip Claude".
-        if (w in setOf("forget", "skip")) return nameEnds(text, ws, if (ws.getOrNull(i + 1)?.w == "about") i + 2 else i + 1)
-        return false
+
+        /** "not Claude", "no Claude", "without Claude", "pas Claude", "sans Claude", "not to Claude", "pas à Claude". */
+        fun contrast(i: Int): Boolean {
+            val neg = ws[i].w
+            if (neg !in setOf("not", "no", "pas", "sans", "without") || ws[i].punctAfter != null) return false
+            if (ws.getOrNull(i - 1)?.w in BE) return false
+            var k = i + 1
+            if (neg in setOf("not", "pas") && ws.getOrNull(k)?.w in setOf("to", "a", "au", "with", "avec")) k++
+            // "without cloud" is about storage: only the name itself counts after "without" and "sans".
+            if (neg in setOf("sans", "without") && name(k, exactOnly = true) == null) return false
+            return nameEnds(k)
+        }
+
+        /**
+         * "don't ask Claude", "do not check with Claude", "never mind Claude", "stop asking Claude", "no need to ask Claude",
+         * "without asking Claude", "no need for Claude", "leave Claude out of it", "keep Claude out of this", "forget Claude".
+         */
+        fun verbFirst(i: Int): Boolean {
+            REFUSE_FIRST.firstOrNull { seq(ws, i, *it) }?.let { p ->
+                val v = i + p.size
+                if (ws.getOrNull(v)?.w !in REFUSED) return@let
+                var k = v + 1
+                while (k < ws.size && k - v <= 3 && ws[k].w in CONNECT) k++
+                // "don't use the cloud" is about storage: after "the", only the name itself.
+                if (ws.getOrNull(k - 1)?.w == "the" && name(k, exactOnly = true) == null) return@let
+                if (nameAfterVerb(k)) return true
+            }
+            if (seq(ws, i, "no", "need", "for")) return nameEnds(i + 3)
+            val w = ws[i].w
+            // "leave Claude out of it", "keep cloud out of this", "leave out Claude", "leave Claude alone".
+            if (w in setOf("leave", "keep")) {
+                val k = ws.getOrNull(i + 1)?.takeIf { it.w == "out" }?.let { i + 2 } ?: (i + 1)
+                val m = name(k) ?: return false
+                return k == i + 2 || ws.getOrNull(m.end)?.w == "out" || (m.exact && ws.getOrNull(m.end)?.w == "alone")
+            }
+            // "forget Claude", "forget about Claude", "skip Claude".
+            if (w in setOf("forget", "skip")) return nameEnds(if (ws.getOrNull(i + 1)?.w == "about") i + 2 else i + 1)
+            return false
+        }
+
+        /**
+         * "ne demande pas à Claude", "n'appelle pas Claude", "ne va pas chercher Claude", "ne pas demander à Claude", "sans
+         * passer par Claude", "pas besoin de Claude", "laisse Claude en dehors", "toi-même", "réponds tout seul".
+         */
+        fun french(i: Int): Boolean {
+            val w = ws[i].w
+            // "toi-même", "vous-même": you, yourself.
+            if (w in setOf("toi", "vous") && ws.getOrNull(i + 1)?.w == "meme") return true
+            // "réponds tout seul".
+            if (w in FR_SELF) {
+                for (k in i + 1..minOf(i + 4, ws.size - 2)) if (ws[k].w == "tout" && ws[k + 1].w == "seul" || ws[k].w == "toute" && ws[k + 1].w == "seule") return true
+            }
+            fun connectedName(from: Int): Boolean {
+                var k = from
+                while (k < ws.size && k - from < 3 && ws[k].w in FR_CONNECT) k++
+                return nameAfterVerb(k)
+            }
+            // "(ne) demande pas à Claude", "n'appelle pas Claude" (the "n'" joins the verb), "ne va pas chercher Claude". Not
+            // "demande pas, Claude" or "ça va pas, Claude ?", which speak to someone.
+            val verb = if (w in FR_VERBS) w else w.drop(1).takeIf { w.startsWith("n") && it in FR_VERBS }
+            if (verb != null && ws.getOrNull(i + 1)?.w == "pas" && ws[i + 1].punctAfter == null) {
+                if (verb in setOf("va", "vas", "allez") && ws.getOrNull(i + 2)?.w != "chercher") return false
+                return connectedName(i + 2)
+            }
+            // "ne pas demander à Claude", "sans demander à Claude", "pas besoin de demander à Claude".
+            val inf = when {
+                seq(ws, i, "ne", "pas") -> i + 2
+                w == "sans" -> i + 1
+                seq(ws, i, "pas", "besoin", "de") -> i + 3
+                seq(ws, i, "inutile", "de") -> i + 2
+                else -> -1
+            }
+            if (inf >= 0) {
+                if (ws.getOrNull(inf)?.w in FR_INF) return connectedName(inf + 1)
+                // "pas besoin de Claude".
+                if (w == "pas" || w == "inutile") return nameEnds(inf)
+            }
+            // "laisse Claude en dehors (de ça)", "laisse Claude de côté", "laisse tomber Claude".
+            if (w in setOf("laisse", "laissez", "laisser")) {
+                if (ws.getOrNull(i + 1)?.w == "tomber") return nameEnds(i + 2)
+                val m = name(i + 1) ?: return false
+                return seq(ws, m.end, "en", "dehors") || seq(ws, m.end, "de", "cote")
+            }
+            return false
+        }
     }
 
     /** "tell me yourself": an answer the way you want it from Robot. Not after "don't" ("don't answer yourself, ask Claude"). */
@@ -409,70 +542,91 @@ object ClaudeRouter {
         return before !in NEGATED && !seq(ws, j - 2, "do", "not") && !(before == "you" && ws.getOrNull(j - 2)?.w in setOf("did", "do", "does", "have", "had"))
     }
 
-    private val FR_VERBS = setOf("demande", "demandes", "demandez", "appelle", "appelles", "appelez", "consulte", "consultes", "consultez", "utilise",
-        "utilises", "utilisez", "verifie", "verifies", "verifiez", "interroge", "interroges", "interrogez", "passe", "passes", "passez", "envoie", "envoies",
-        "envoyez", "va", "vas", "allez")
-    private val FR_INF = setOf("demander", "appeler", "consulter", "utiliser", "verifier", "interroger", "passer", "envoyer", "chercher", "solliciter")
-    private val FR_CONNECT = setOf("a", "au", "avec", "de", "par", "ca", "cela", "le", "la", "chercher", "lui")
-    private val FR_SELF = setOf("reponds", "repond", "repondez", "dis", "dites", "fais", "faites", "explique", "expliquez", "decris", "resume", "reflechis",
-        "trouve", "lis")
-
-    /**
-     * "ne demande pas à Claude", "n'appelle pas Claude", "ne va pas chercher Claude", "ne pas demander à Claude", "sans
-     * passer par Claude", "pas besoin de Claude", "laisse Claude en dehors", "toi-même", "réponds tout seul".
-     */
-    private fun french(text: String, ws: List<Word>, i: Int): Boolean {
-        val w = ws[i].w
-        // "toi-même", "vous-même": you, yourself.
-        if (w in setOf("toi", "vous") && ws.getOrNull(i + 1)?.w == "meme") return true
-        // "réponds tout seul".
-        if (w in FR_SELF) {
-            for (k in i + 1..minOf(i + 4, ws.size - 2)) if (ws[k].w == "tout" && ws[k + 1].w == "seul" || ws[k].w == "toute" && ws[k + 1].w == "seule") return true
-        }
-        fun connectedName(from: Int): Boolean {
-            var k = from
-            while (k < ws.size && k - from < 3 && ws[k].w in FR_CONNECT) k++
-            return nameAfterVerb(text, ws, k)
-        }
-        // "(ne) demande pas à Claude", "n'appelle pas Claude" (the "n'" joins the verb), "ne va pas chercher Claude". Not
-        // "demande pas, Claude" or "ça va pas, Claude ?", which speak to someone.
-        val verb = if (w in FR_VERBS) w else w.drop(1).takeIf { w.startsWith("n") && it in FR_VERBS }
-        if (verb != null && ws.getOrNull(i + 1)?.w == "pas" && ws[i + 1].punctAfter == null) {
-            if (verb in setOf("va", "vas", "allez") && ws.getOrNull(i + 2)?.w != "chercher") return false
-            return connectedName(i + 2)
-        }
-        // "ne pas demander à Claude", "sans demander à Claude", "pas besoin de demander à Claude".
-        val inf = when {
-            seq(ws, i, "ne", "pas") -> i + 2
-            w == "sans" -> i + 1
-            seq(ws, i, "pas", "besoin", "de") -> i + 3
-            seq(ws, i, "inutile", "de") -> i + 2
-            else -> -1
-        }
-        if (inf >= 0) {
-            if (ws.getOrNull(inf)?.w in FR_INF) return connectedName(inf + 1)
-            // "pas besoin de Claude".
-            if (w == "pas" || w == "inutile") return nameEnds(text, ws, inf)
-        }
-        // "laisse Claude en dehors (de ça)", "laisse Claude de côté", "laisse tomber Claude".
-        if (w in setOf("laisse", "laissez", "laisser")) {
-            if (ws.getOrNull(i + 1)?.w == "tomber") return nameEnds(text, ws, i + 2)
-            if (ws.getOrNull(i + 1)?.w !in ALIASES) return false
-            return seq(ws, i + 2, "en", "dehors") || seq(ws, i + 2, "de", "cote")
-        }
-        return false
-    }
-
     private val YES = setOf("yes", "yeah", "yep", "yup", "sure", "please", "ok", "okay", "go", "ahead", "do", "it", "check", "oui",
         "daccord", "vas", "y", "please", "absolutely", "definitely", "go ahead", "with", "claude", "ask", "him")
 
-    /** A short yes to an offer ("yes", "sure, go ahead", "oui"), never a question of its own. */
-    fun isYes(text: String): Boolean {
+    /** A short yes to an offer ("yes", "sure, go ahead", "oui"), never a question of its own ([names]: "yes, check with Jarvis"). */
+    fun isYes(text: String, names: List<HelperName> = CLAUDE): Boolean {
         val ws = words(text).map { it.w }
         if (ws.isEmpty() || ws.size > 6) return false
         val first = ws.first()
+        val named = names.flatMap { n -> n.forms.flatten() }.toSet()
         return first in setOf("yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "oui", "daccord", "absolutely", "definitely", "go") &&
-            ws.all { it in YES }
+            ws.all { it in YES || it in named }
+    }
+}
+
+/**
+ * A rough English sound key for a helper's name (0.6.0), so a word Parakeet writes for a name it doesn't know ("Jervis"
+ * for "Jarvis") still counts after a command verb. Voiced and unvoiced pairs share a letter (b/p, d/t, g/k, v/f, z/s),
+ * vowels other than a first one are dropped, doubles collapse. Two words are close when their keys start alike and differ
+ * by one edit at most. Pure; only for names of five letters or two syllables (short words collide too easily).
+ */
+object Phonetic {
+    fun eligible(name: String): Boolean = name.length >= 5 || Regex("[aeiouy]+").findAll(name).count() >= 2
+
+    fun key(word: String): String {
+        val w = word.lowercase(Locale.ROOT).filter { it in 'a'..'z' }
+        if (w.isEmpty()) return ""
+        val s = when {
+            w.startsWith("kn") || w.startsWith("gn") || w.startsWith("pn") || w.startsWith("wr") -> w.substring(1)
+            else -> w
+        }
+        val out = StringBuilder()
+        var i = 0
+        fun vowel(c: Char?) = c != null && c in "aeiouy"
+        while (i < s.length) {
+            val c = s[i]
+            val n = s.getOrNull(i + 1)
+            val code: String = when {
+                vowel(c) -> if (i == 0) "A" else ""
+                c == 'p' && n == 'h' -> { i++; "F" }
+                c == 's' && n == 'h' -> { i++; "X" }
+                c == 'c' && n == 'h' -> { i++; "X" }
+                c == 't' && n == 'h' -> { i++; "0" }
+                c == 'c' && n == 'k' -> { i++; "K" }
+                c == 'c' -> if (n != null && n in "eiy") "S" else "K"
+                c == 'g' -> if (n != null && n in "eiy") "J" else "K"
+                c == 'q' || c == 'k' -> "K"
+                c == 'x' -> "KS"
+                c == 'z' || c == 's' -> "S"
+                c == 'v' || c == 'f' -> "F"
+                c == 'b' || c == 'p' -> "P"
+                c == 'd' || c == 't' -> "T"
+                c == 'j' -> "J"
+                c == 'w' || c == 'h' -> if (vowel(n) && (i == 0 || !vowel(s[i - 1]))) c.uppercaseChar().toString() else ""
+                else -> c.uppercaseChar().toString()
+            }
+            for (ch in code) if (out.isEmpty() || out.last() != ch) out.append(ch)
+            i++
+        }
+        return out.toString()
+    }
+
+    /** [heard] may be [name] misheard: not the same word, both long enough, keys that start alike within one edit. */
+    fun close(heard: String, name: String): Boolean {
+        if (heard == name || heard.length < 4 || !eligible(name)) return false
+        val a = key(heard)
+        val b = key(name)
+        if (a.isEmpty() || b.isEmpty() || a[0] != b[0]) return false
+        return distance(a, b) <= 1
+    }
+
+    /** Two names a helper's can't share: the same key ("Groq" and "Grok"). */
+    fun same(a: String, b: String): Boolean = a == b || (key(a).isNotEmpty() && key(a) == key(b))
+
+    fun distance(a: String, b: String): Int {
+        val d = IntArray(b.length + 1) { it }
+        for (i in 1..a.length) {
+            var prev = d[0]
+            d[0] = i
+            for (j in 1..b.length) {
+                val t = d[j]
+                d[j] = minOf(d[j] + 1, d[j - 1] + 1, prev + if (a[i - 1] == b[j - 1]) 0 else 1)
+                prev = t
+            }
+        }
+        return d[b.length]
     }
 }
 

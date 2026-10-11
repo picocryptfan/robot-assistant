@@ -394,7 +394,8 @@ enum class ClaudeFail(override val id: Int, override val title: String) : LogCod
     NO_INTERNET(10, "no internet"), NO_NETWORK_PERMISSION(11, "no network permission"), TIMEOUT(12, "no answer in time"), NO_KEY(13, "no key"),
     UNKNOWN(14, "other error"), RESET(15, "conversation reset"),
     // 0.6.0: helpers on your network and other companies.
-    UNREACHABLE(16, "server not answering"), NOT_LOCAL(17, "address not on your network"), CERTIFICATE(18, "certificate not trusted");
+    UNREACHABLE(16, "server not answering"), NOT_LOCAL(17, "address not on your network"), CERTIFICATE(18, "certificate not trusted"),
+    NO_ADDRESS(19, "server's port not found yet");
 
     companion object {
         fun of(f: ClaudeFailure): ClaudeFail = entries.firstOrNull { it.name == f.name } ?: UNKNOWN

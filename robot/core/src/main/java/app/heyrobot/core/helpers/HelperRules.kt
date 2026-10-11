@@ -122,3 +122,29 @@ class HelperWords(w: HelperWho) {
 
     fun tapToInclude(p: Set<Personal>): String = "Tap Send to include ${Personal.list(p)}."
 }
+
+/** A helper's API key's shape, checked before it is saved (pure; the key itself is handled in the :voice process only). */
+object HelperKeyFormat {
+    /**
+     * Claude's: "sk-ant-" and ASCII letters, digits, "-" and "_" (as since 0.3.0). Any other: printable ASCII without
+     * spaces, 8 to 512 characters (an HTTP header can't carry anything else, and the HTTP client's error for a bad header
+     * character quotes the whole value). The usual start of a company's keys is only a warning ([warning]).
+     */
+    fun plausible(p: Preset, k: String): Boolean =
+        if (p.kind == HelperKind.ANTHROPIC) app.heyrobot.core.ClaudeKeyFormat.plausible(k) else k.length in 8..512 && k.all { it.code in 0x21..0x7E }
+
+    /** A note when [k] doesn't start the way [p]'s keys usually do (never a refusal: a wrong guess must not block a key). */
+    fun warning(p: Preset, k: String): String? =
+        if (p.keyPrefixes.isEmpty() || p.keyPrefixes.any { k.startsWith(it) }) null
+        else "${p.company} keys usually start with ${p.keyPrefixes.first()}. Robot will try this one anyway."
+
+    /** "sk-ant-…AB12", "gsk_…AB12", "…AB12": the usual start when it has one, and the last four characters. */
+    fun mask(p: Preset, k: String): String {
+        val start = p.keyPrefixes.firstOrNull { k.startsWith(it) }.orEmpty()
+        return start + "…" + k.takeLast(4)
+    }
+
+    /** What the key window says about [p]'s key. */
+    fun refusal(p: Preset): String = if (p.kind == HelperKind.ANTHROPIC) "That doesn't look like an Anthropic API key (sk-ant- followed by letters, digits, - and _)."
+        else "That doesn't look like an API key: it should be 8 to 512 letters, digits and symbols, with no spaces."
+}

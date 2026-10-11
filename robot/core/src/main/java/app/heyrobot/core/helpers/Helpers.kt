@@ -378,9 +378,51 @@ data class HelperConfig(
     }
 }
 
+/** What a name check found: fine, a problem (the name can't be saved), or a warning (it can, but you should know). */
+sealed class NameCheck {
+    data object Ok : NameCheck()
+    data class Problem(val why: String) : NameCheck()
+    data class Warning(val why: String) : NameCheck()
+}
+
 /** Names and the words around them: what a helper may be called (pure, tested). */
 object HelperNames {
     /** Letters, digits and single spaces, at most three words; anything else is taken out. */
     fun clean(s: String): String = s.replace(Regex("[^\\p{L}\\p{N} ]"), " ").replace(Regex("\\s+"), " ").trim().split(' ').filter { it.isNotEmpty() }.take(3)
         .joinToString(" ").take(40)
+
+    /** Words that are commands of their own: a helper called one of them would turn every "thanks" or "stop" into a name. */
+    private val COMMANDS = setOf("stop", "thanks", "thank", "back", "yes", "no", "cancel", "okay", "ok", "bye", "goodbye", "ask", "get", "go", "read",
+        "merci", "oui", "non", "annule", "demande", "help", "wait", "not", "you", "me", "it", "the", "a", "an")
+
+    /** Common words and names that are often said for something else: allowed, with a warning. */
+    private val COMMON = setOf("max", "echo", "sage", "nova", "ray", "sky", "alex", "sam", "jo", "joe", "jack", "kim", "lee", "mark", "will", "grace",
+        "hope", "joy", "rose", "april", "may", "june", "august", "summer", "river", "star", "sunny", "honey", "buddy", "friend", "bob", "ben")
+
+    /**
+     * Whether [name] may be the voice name of helper [id]: one to three words of letters and digits; not "robot", a word
+     * of your wake phrases ([wakeWords]), a command word or the filler Robot skips before a command; and not the same
+     * name, or one that sounds the same ("Groq" and "Grok"), as another helper's. A common word is allowed with a warning.
+     */
+    fun check(name: String, id: String, s: app.heyrobot.core.RobotSettings, wakeWords: Set<String>): NameCheck {
+        val raw = name.trim()
+        if (raw.isEmpty()) return NameCheck.Problem("Give it a name of one to three words.")
+        if (raw.any { !(it.isLetterOrDigit() || it == ' ') }) return NameCheck.Problem("Use letters, digits and spaces only.")
+        val words = app.heyrobot.core.HelperName.words(raw)
+        if (words.isEmpty() || words.size > 3) return NameCheck.Problem("Give it a name of one to three words.")
+        for (w in words) {
+            if (w == "robot" || w in wakeWords) return NameCheck.Problem("“$w” is in a wake phrase: Robot would mix them up.")
+            if (w in COMMANDS || w in app.heyrobot.core.ClaudeRouter.FILLER_WORDS) return NameCheck.Problem("“$w” is a word Robot listens for in commands.")
+        }
+        for (other in s.helpers) {
+            if (other.id == id) continue
+            val theirs = app.heyrobot.core.HelperName.of(other)
+            if (theirs.forms.any { it == words } || theirs.misheard.any { it == words }) return NameCheck.Problem("${other.name} is already called that.")
+            if (words.size == 1 && theirs.forms.any { it.size == 1 && app.heyrobot.core.Phonetic.same(it[0], words[0]) })
+                return NameCheck.Problem("That sounds like ${other.name}: Robot couldn't tell them apart.")
+        }
+        if (words.size == 1 && words[0] in COMMON) return NameCheck.Warning("“${raw}” is a common word or name: “ask ${raw} …” will go to this helper, " +
+            "never to someone called ${raw}.")
+        return NameCheck.Ok
+    }
 }
