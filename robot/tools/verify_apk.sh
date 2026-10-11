@@ -136,7 +136,7 @@ has 'networkSecurityConfig(' "$(echo "$mf" | awk '/^ *E: application /{ on=1 } o
 nsc=$(echo "$vi" | awk '/E: network-security-config/{ on=1 } on')
 has 'E: domain-config' "$nsc" "network security config has a domain-config"
 echo "$nsc" | grep -A3 'E: domain-config' | grep -qE 'cleartextTrafficPermitted.*false' && pass "domain-config denies cleartext" || fail "domain-config doesn't deny cleartext"
-for d in anthropic.com openai.com googleapis.com mistral.ai x.ai deepseek.com groq.com openrouter.ai huggingface.co; do
+for d in anthropic.com openai.com googleapis.com mistral.ai x.ai deepseek.com groq.com openrouter.ai huggingface.co open-meteo.com openstreetmap.org; do
   has "'$d'" "$nsc" "no cleartext to $d"
 done
 has '"system"' "$nsc" "trusts the system's CAs"

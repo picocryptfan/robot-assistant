@@ -223,7 +223,8 @@ class ProcessIsolationTest {
         assertEquals("@xml/network_security_config", app.getAttributeNS(ns, "networkSecurityConfig"))
         val nsc = File(main("app"), "res/xml/network_security_config.xml").readText()
         assertTrue(Regex("""<domain-config cleartextTrafficPermitted="false">""").containsMatchIn(nsc))
-        for (d in listOf("anthropic.com", "openai.com", "googleapis.com", "mistral.ai", "x.ai", "deepseek.com", "groq.com", "openrouter.ai", "huggingface.co"))
+        for (d in listOf("anthropic.com", "openai.com", "googleapis.com", "mistral.ai", "x.ai", "deepseek.com", "groq.com", "openrouter.ai", "huggingface.co",
+            "open-meteo.com", "openstreetmap.org"))
             assertTrue(d, nsc.contains("<domain includeSubdomains=\"true\">$d</domain>"))
         assertTrue(!nsc.contains("src=\"user\"") && nsc.contains("<certificates src=\"system\" />"))
     }

@@ -124,8 +124,8 @@ helper follows; this section for what 0.6.0 adds.
   On mobile data an `http://192.168…` helper says it isn't answering (or that the address "isn't on your home
   network"), and nothing goes anywhere else.
 - `res/xml/network_security_config.xml` (new): cleartext is allowed app-wide only so OkHttp can try a home server; it is
-  never allowed to the companies' domains or the model downloads, and only the system's CAs are trusted (never one a
-  user added). A company's client refuses `http://` in code too.
+  never allowed to the companies' domains, the model downloads, Open-Meteo or OpenStreetMap, and only the system's CAs
+  are trusted (never one a user added). A company's client refuses `http://` in code too.
 - **https** works with a real certificate (Tailscale HTTPS gives one). A self-signed certificate fails with a
   plain message suggesting Tailscale HTTPS or `http://` on your network: trusting a certificate on first use (pinning)
   isn't in 0.6.0.
