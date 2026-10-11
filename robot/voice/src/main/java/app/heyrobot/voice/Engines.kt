@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import app.heyrobot.core.EngineState
+import app.heyrobot.core.Heard
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceEngineStatus
@@ -173,6 +174,19 @@ object VoiceEngines {
 
     fun speechToText(ctx: Context, frames: () -> AudioFrames?): SpeechToText =
         SherpaSpeechToText(ctx.applicationContext, sttSlot, frames).also { stt = it }
+
+    /**
+     * Conversation mode's decoder (0.5.0): the same Parakeet as questions, on the same worker, so one model is in memory
+     * and one decode runs at a time. Null before [speechToText] made the engine.
+     */
+    fun segmentDecoder(): SegmentDecoder? {
+        val s = stt ?: return null
+        return object : SegmentDecoder {
+            override val available: Boolean get() = s.usable
+            override fun hold(on: Boolean) = s.hold(on)
+            override fun decode(samples: FloatArray): Pair<Heard, Long>? = s.decodeHeard(samples)
+        }
+    }
 
     fun textToSpeech(ctx: Context): TextToSpeech {
         val s = SherpaTextToSpeech(ctx.applicationContext, kokoroSlot, kittenSlot).also { tts = it }
