@@ -120,6 +120,16 @@ int main(int argc, char** argv) {
     int error = 0;
     robotmt::translate(e, direction == "fr-en" ? "Bonjour." : "Hello.", &out, &error);
   }
+  // A line with no letter or digit is kept as it is, without the engine.
+  int kept_wrong = 0;
+  for (const std::string& s : {std::string("…"), std::string("?!"), std::string("🙂"), std::string("« ? »")}) {
+    std::string out;
+    int error = 0;
+    if (!robotmt::translate(engines.begin()->second, s, &out, &error) || out != s) {
+      ++kept_wrong;
+      std::printf("KEPT DIFF [%s] -> [%s]\n", s.c_str(), out.c_str());
+    }
+  }
   std::vector<long> times;
   int same = 0;
   int bergamot = 0;
@@ -144,5 +154,5 @@ int main(int argc, char** argv) {
   long max = sorted.empty() ? 0 : sorted.back();
   std::printf("%d of %zu the same as the reference (%d the same as the bergamot wheel's); median %ld ms, max %ld ms per line; "
               "peak RSS %ld MB (both directions)\n", same, rows.size(), bergamot, median, max, peak_rss_kb() / 1024);
-  return same == static_cast<int>(rows.size()) ? 0 : 1;
+  return same == static_cast<int>(rows.size()) && kept_wrong == 0 ? 0 : 1;
 }

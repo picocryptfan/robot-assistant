@@ -79,10 +79,22 @@ bool is_upper(char32_t c) {
   return c >= 0x400 && c <= 0x42F;
 }
 
+// A letter or digit, roughly: ASCII ones, and any code point outside the punctuation, symbol and emoji blocks.
+bool is_word_char(char32_t c) {
+  if (c < 0x80) return (c >= '0' && c <= '9') || ((c | 0x20) >= 'a' && (c | 0x20) <= 'z');
+  if (c < 0xC0) return false;                     // Latin-1 punctuation and symbols: « » ¿ ¡ °
+  if (c == 0xD7 || c == 0xF7) return false;       // × ÷
+  if (c >= 0x2000 && c <= 0x2BFF) return false;   // punctuation (… “ ”), symbols, arrows, dingbats
+  if (c >= 0x3000 && c <= 0x303F) return false;   // CJK punctuation
+  if (c >= 0xFE00 && c <= 0xFE0F) return false;   // variation selectors
+  return c < 0x1F000;                             // emoji and pictographs
+}
+
 bool has_word(const std::string& s, size_t begin, size_t end) {
-  for (size_t i = begin; i < end; ++i) {
-    auto b = static_cast<unsigned char>(s[i]);
-    if (b >= 0x80 || (b >= '0' && b <= '9') || ((b | 0x20) >= 'a' && (b | 0x20) <= 'z')) return true;
+  for (size_t i = begin; i < end;) {
+    auto [c, n] = at(s, i);
+    if (is_word_char(c)) return true;
+    i += n;
   }
   return false;
 }
