@@ -172,16 +172,22 @@ class PromptTest {
     @Test fun eachToolGroupCostsTokensOnlyWhenUsed() {
         val system = Prompt.system(now, locked = false)
         val core = Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
-        // The phase 1 and 2 groups (the 0.4.0 ones are measured in their own tests).
-        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal && it.group in setOf(ToolGroup.CORE, ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR) })
+        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal })
         assertEquals(core, Prompt.fixedTokens(system))
         // ask_claude (Ask Claude on): one short tool and one line of the system prompt.
         val withClaude = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true), Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE)
         assertTrue("ask_claude ${withClaude - core}", withClaude - core in 1..160)
         assertTrue("core $core all $all", all > core + 300)
-        // Every group at once (estimated on the high side: JSON punctuation counts a token per mark) still leaves
-        // about half of the 4,096 tokens for the conversation and the reply. :brain logs the real count per group set.
-        assertTrue("all $all", all < 2_100)
+        // Every group at once (estimated on the high side: JSON punctuation counts a token per mark) still leaves about
+        // 750 tokens for the new turn and some history beside the reply (0.4.0 added the weather and phone groups:
+        // under 2,100 before). :brain logs the real count per group set.
+        assertTrue("all $all", all < 2_600)
+        // The worst case: every group, Ask Claude on (its tool and line) and every optional system line. About 500 tokens
+        // are left for the new turn: screen text is cut to fit (fitTurn) and older turns are dropped first.
+        val worst = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true),
+            ToolName.entries.toList())
+        assertTrue("worst $worst", worst < 2_850)
+        assertTrue(ContextWindow.newTurnLimit(worst) > 450)
         for (g in listOf(ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR)) {
             val tools = ToolRouter.tools(setOf(ToolGroup.CORE, g), RobotSettings())
             assertTrue(g.name, Prompt.fixedTokens(system, tools) in (core + 1) until all)

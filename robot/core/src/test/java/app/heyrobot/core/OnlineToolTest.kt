@@ -69,6 +69,27 @@ class OnlineToolTest {
         assertEquals(ActionStatus.DONE, view.cards.values.single().status)
     }
 
+    @Test fun aFullContextAfterTheResultsSaysWhatTheCardsSay() = runBlocking {
+        val model = object : TurnModel {
+            override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(RawToolCall("weather", emptyMap())))
+            override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = ModelOutcome.Done(DoneReason.CONTEXT_FULL)
+            override fun close() {}
+        }
+        val actions = Actions { Executed(ActionStatus.DONE, "Forecast for where you are, from Open-Meteo.", results = listOf(mapOf("day" to "today")),
+            spoken = "Where you are. today, Sat Oct 10: overcast, high 13°C") }
+        val said = mutableListOf<String>()
+        val view = object : TurnView {
+            override fun phase(p: TurnPhase) {}
+            override fun card(c: Card) {}
+            override var text = ""
+            override fun replaceText(text: String) { this.text = text }
+            override fun paragraphBreak() {}
+            override fun say(sentence: String) { said += sentence }
+        }
+        TurnRunner(model, actions, view, Confirmations(), untrusted = false) { "c${++ids}" }.run()
+        assertEquals(listOf("Where you are. today, Sat Oct 10: overcast, high 13°C"), said)
+    }
+
     @Test fun abortRunsItsHooksOnceAndKnowsItsDeadline() {
         var now = 1_000L
         val a = Abort(15_000) { now }

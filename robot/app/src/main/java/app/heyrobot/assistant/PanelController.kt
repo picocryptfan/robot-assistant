@@ -58,6 +58,10 @@ import app.heyrobot.core.NoQuestion
 import app.heyrobot.core.NoReply
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Prompt
+import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.PromptTurn
+import app.heyrobot.core.PromptRole
+import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
@@ -975,6 +979,11 @@ object PanelController {
             hasImage = img != null,
             tools = tools.map { it.id },
         )
+        // About what the context has left for a tool's answer beside the reply (as :brain will fit the history): the weather
+        // gives fewer days when it is short.
+        val fixedTokens = Prompt.fixedTokens(system, tools)
+        val budget = ContextWindow.historyBudget(fixedTokens, TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, img != null)))
+        toolRoom = budget - ContextWindow.fit(gen.history, budget).sumOf(TokenEstimate::turn) - TOOL_CALL_TOKENS
         val result = TurnRunner(BrainTurn(c, convId, replyId, gen, img), PanelActions, PanelView(replyId), slot.confirmations, untrusted, newId = ::newId).run()
         result.failure?.let { return failReply(replyId, it) }
         // Escalation trigger b: Gemma called ask_claude. Its turn ended there; Claude answers (or is offered).
@@ -1622,7 +1631,13 @@ object PanelController {
         }
     }
 
-    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort) { i -> host?.launch(i) ?: false }
+    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom) { i -> host?.launch(i) ?: false }
+
+    /** The room for a tool's answer in the turn under way (runTurn's estimate); no limit outside one. */
+    @Volatile private var toolRoom = Int.MAX_VALUE
+
+    /** The model's tool call itself, about. */
+    private const val TOOL_CALL_TOKENS = 40
 
     /** What the turn shows: the reply bubble [replyId], its cards and the panel's phase. */
     private class PanelView(private val replyId: String) : TurnView {

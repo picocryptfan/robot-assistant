@@ -83,8 +83,12 @@ import java.util.Locale
 // the main app asked for, notes go to Robot Notes. 0.4.0: the weather comes from Open-Meteo over the internet (this is
 // the process that goes online for it). The log records the tool and the outcome, never arguments.
 
-/** [abort]: an online tool's (the weather's) Stop and deadline (OnlineRun); the others run to the end. */
-class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val abort: Abort = Abort(), private val launch: (Intent) -> Boolean) {
+/**
+ * [abort]: an online tool's (the weather's) Stop and deadline (OnlineRun); the others run to the end. [roomTokens]: about
+ * what is left of the model's context for a tool's answer (PanelController's estimate): the weather gives fewer days.
+ */
+class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val abort: Abort = Abort(),
+    private val roomTokens: Int = Int.MAX_VALUE, private val launch: (Intent) -> Boolean) {
     /**
      * Before the gate and the card: what the action will really do. open_app becomes the installed app it will open
      * (its real label and launcher activity); send_text and draft_email the person, number or address it goes to
@@ -464,7 +468,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             }
             val found = SystemClock.elapsedRealtime()
             val f = OpenMeteoClient.forecast(ctx, place, WeatherAsk.fetchDays(range, now), units, abort)
-            val report = WeatherText.report(f, range, WeatherAsk.relative(a.day), now, units) ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
+            val report = WeatherText.reportFitting(f, range, WeatherAsk.relative(a.day), now, units, roomTokens - PLACE_TOKENS)
+                ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
             VoiceLog.add(VoiceEvent.WEATHER, source, if (source == WeatherSource.HOME) 0 else (found - started).toInt(), (SystemClock.elapsedRealtime() - found).toInt())
             // The card's line is saved with the conversation, so it names no place; the place goes in the results (for
             // the model) and the body (shown, never saved), with what Open-Meteo was sent.
@@ -617,5 +622,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         const val ICON_PX = 96
         /** The place name of a forecast for where the phone is (Open-Meteo has no reverse lookup, and none is wanted). */
         const val HERE = "where you are"
+        /** The weather's status, detail and place beside its days, about. */
+        const val PLACE_TOKENS = 60
     }
 }

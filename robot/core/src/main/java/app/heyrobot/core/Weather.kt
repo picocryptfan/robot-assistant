@@ -302,7 +302,7 @@ object PlaceNames {
 
 /** The tool's place and day arguments, read before anything goes online. */
 object WeatherAsk {
-    /** At most this many days in one answer (about 40 tokens each). */
+    /** At most this many days in one answer (about 30 tokens each, WeatherText.short). */
     const val MAX_SHOWN = 7
     /** The whole lookup, place and forecast, at most: then it gives up ([WeatherFail.TIMEOUT]). */
     const val DEADLINE_MS = 15_000L
@@ -426,11 +426,48 @@ object WeatherText {
         val wanted = f.days.filter { !it.date.isBefore(from) && it.date.isBefore(to) }
         val days = wanted.take(maxDays.coerceAtLeast(1))
         if (days.isEmpty()) return null
-        val results: List<Map<String, Any?>> = days.map { d ->
-            linkedMapOf<String, Any?>("day" to label(d.date, today), "weather" to line(d, if (d.date == today) f.now else null, units))
-        } + listOfNotNull(if (wanted.size > days.size) mapOf("note" to "Only the first ${days.size} of the ${wanted.size} days asked are given.") else null)
-        val lines = results.filter { it.containsKey("day") }.joinToString("\n") { "${it["day"]}: ${it["weather"]}" }
+        // The card and the voice get whole lines; the model one line for one day, or a few tokens a day for several.
+        val lines = days.joinToString("\n") { d -> "${label(d.date, today)}: ${line(d, if (d.date == today) f.now else null, units)}" }
+        val results: List<Map<String, Any?>> = (if (days.size == 1) listOf(linkedMapOf<String, Any?>("day" to label(days[0].date, today),
+            "weather" to line(days[0], if (days[0].date == today) f.now else null, units)))
+        else listOf(linkedMapOf<String, Any?>("units" to unitsLine(units),
+            "days" to days.joinToString("\n") { d -> short(d, label(d.date, today), if (d.date == today) f.now else null) }))) +
+            listOfNotNull(if (wanted.size > days.size) mapOf("note" to "Only the first ${days.size} of the ${wanted.size} days asked are given.") else null)
         return WeatherReport(results, lines, lines.replace("\n", ". "))
+    }
+
+    /**
+     * [report] with as many days as fit in [roomTokens] (what is left of the context for this tool's answer beside the
+     * place), at least one; the model is told when days were left out.
+     */
+    fun reportFitting(f: Forecast, range: DayRange, relative: Boolean, phoneNow: ZonedDateTime, units: WeatherUnits, roomTokens: Int): WeatherReport? {
+        var n = WeatherAsk.MAX_SHOWN
+        while (true) {
+            val r = report(f, range, relative, phoneNow, units, n) ?: return null
+            if (n == 1 || tokens(r.results) <= roomTokens) return r
+            n--
+        }
+    }
+
+    /** The estimated tokens of [results] as the model gets them (JSON). */
+    fun tokens(results: List<Map<String, Any?>>): Int = TokenEstimate.text(Json.toJson(results).toString())
+
+    /** Said once above several short lines: what their numbers are. */
+    fun unitsLine(u: WeatherUnits) = "conditions, high/low ${u.temp}, chance of rain or snow, wind ${u.wind}, cloud cover"
+
+    /**
+     * "Mon Oct 12: drizzle 16/8 67% wind 21 cloud 98%": about 30 tokens (35 estimated on the high side), the units in
+     * [unitsLine]; the conditions say whether it is rain or snow.
+     */
+    fun short(d: WeatherDay, label: String, now: WeatherNow?): String {
+        val parts = mutableListOf<String>()
+        now?.temp?.let { t -> parts += "now ${t.roundToInt()}" + (Wmo.words(now.code)?.let { " $it;" } ?: ";") }
+        Wmo.words(d.code)?.let { parts += it }
+        if (d.high != null || d.low != null) parts += "${d.high?.roundToInt() ?: "?"}/${d.low?.roundToInt() ?: "?"}"
+        d.chance?.let { parts += "$it%" }
+        d.wind?.let { parts += "wind ${it.roundToInt()}" }
+        d.cloud?.let { parts += "cloud $it%" }
+        return "$label: " + parts.joinToString(" ")
     }
 
     /** "today, Sat Oct 10", "tomorrow, Sun Oct 11", "Mon Oct 12". */

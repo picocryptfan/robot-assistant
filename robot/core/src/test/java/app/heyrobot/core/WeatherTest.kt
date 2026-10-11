@@ -94,7 +94,11 @@ class WeatherTest {
         assertEquals("Mon Oct 12: drizzle, high 16°C, low 8°C, 67% chance of rain (about 1.3 mm), wind up to 21 km/h (gusts 39), cloud cover 98%", monday.lines)
         // Every day it has, at most a week: this week is today to Sunday.
         val week = report(f, "this week", now, WeatherUnits.METRIC)!!
-        assertEquals(listOf("today, Sat Oct 10", "tomorrow, Sun Oct 11"), week.results.map { it["day"] })
+        assertEquals(listOf("today, Sat Oct 10", "tomorrow, Sun Oct 11"), week.lines.lines().map { it.substringBefore(":") })
+        // Several days reach the model in few tokens, the units said once; the card keeps the whole lines.
+        assertEquals("conditions, high/low °C, chance of rain or snow, wind km/h, cloud cover", week.results.single()["units"])
+        assertEquals("today, Sat Oct 10: now 8 clear; overcast 13/3 0% wind 10 cloud 8%\ntomorrow, Sun Oct 11: overcast 18/6 5% wind 11 cloud 100%",
+            week.results.single()["days"])
         assertEquals(week.lines.replace("\n", ". "), week.spoken)
         // A day the answer doesn't hold.
         assertNull(report(f, "Friday", now, WeatherUnits.METRIC))
@@ -107,7 +111,11 @@ class WeatherTest {
         assertEquals("rain, high 65°F, low 55°F, 92% chance of rain (about 0.49 in), wind up to 14 mph (gusts 32), cloud cover 100%", r.results.single()["weather"])
         // Next week from a Saturday is Monday to Sunday: the sample holds Monday to Friday.
         val next = report(f, "next week", ny, WeatherUnits.IMPERIAL)!!
-        assertEquals(listOf("Mon Oct 12", "Tue Oct 13", "Wed Oct 14", "Thu Oct 15", "Fri Oct 16"), next.results.map { it["day"] })
+        assertEquals(listOf("Mon Oct 12", "Tue Oct 13", "Wed Oct 14", "Thu Oct 15", "Fri Oct 16"), next.lines.lines().map { it.substringBefore(":") })
+        // About 30 tokens a day for the model (estimated on the high side: every digit counts).
+        val perDay = (WeatherText.tokens(next.results) - TokenEstimate.text(WeatherText.unitsLine(WeatherUnits.IMPERIAL))) / 5
+        assertTrue("per day $perDay", perDay <= 37)
+        assertTrue((next.results.single()["days"] as String).startsWith("Mon Oct 12: light rain 73/58 56% wind 13 cloud 43%"))
         assertTrue(next.lines.contains("Wed Oct 14: drizzle, high 78°F, low 61°F, 13% chance of rain (about 0.03 in)"))
     }
 
@@ -135,9 +143,19 @@ class WeatherTest {
         val f = OpenMeteo.forecast(sample("forecast_newyork_imperial.json"))!!
         val ny = ZonedDateTime.of(2026, 10, 10, 20, 5, 0, 0, ZoneId.of("America/New_York"))
         val r = report(f, "next week", ny, WeatherUnits.IMPERIAL, maxDays = 3)!!
-        assertEquals(listOf("Mon Oct 12", "Tue Oct 13", "Wed Oct 14", null), r.results.map { it["day"] })
+        assertEquals(3, (r.results.first()["days"] as String).lines().size)
         assertEquals("Only the first 3 of the 5 days asked are given.", r.results.last()["note"])
         assertEquals(3, r.lines.lines().size)
+        // A full context gets fewer days, at least one, and the note.
+        val range = (WeatherAsk.days("next week", ny) as Read.Ok).value
+        val all = WeatherText.reportFitting(f, range, false, ny, WeatherUnits.IMPERIAL, roomTokens = 10_000)!!
+        assertEquals(5, all.lines.lines().size)
+        val tight = WeatherText.reportFitting(f, range, false, ny, WeatherUnits.IMPERIAL, roomTokens = 120)!!
+        assertTrue(WeatherText.tokens(tight.results) <= 120)
+        assertTrue(tight.lines.lines().size in 1..3)
+        assertTrue((tight.results.last()["note"] as String).startsWith("Only the first"))
+        val none = WeatherText.reportFitting(f, range, false, ny, WeatherUnits.IMPERIAL, roomTokens = 0)!!
+        assertEquals(1, none.lines.lines().size)
     }
 
     @Test fun snowAndMixedDaysSayWhatFalls() {
