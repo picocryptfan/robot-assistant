@@ -1957,9 +1957,14 @@ object PanelController {
         override suspend fun run(action: Action): Executed {
             if (!action.online) return withContext(Dispatchers.IO) { executor().run(action) }
             val weather = action.tool == ToolName.WEATHER
+            val deadline = if (weather) WeatherAsk.DEADLINE_MS else Nearby.DEADLINE_MS
+            val abort = Abort(deadline)
             return try {
-                OnlineRun.run(if (weather) WeatherAsk.DEADLINE_MS else Nearby.DEADLINE_MS) { abort -> executor(abort).run(action) } ?: if (weather) {
+                OnlineRun.run(abort, deadline) { a -> executor(a).run(action) } ?: if (weather) {
                     Executed(ActionStatus.FAILED, WeatherFail.TIMEOUT.text).also { VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.TIMEOUT) }
+                } else if (!abort.claim()) {
+                    // The lookup got to open Organic Maps just as its time ran out: that one stays, nothing opens twice.
+                    Executed(ActionStatus.DONE, "Opened Organic Maps.", launchedApp = true)
                 } else {
                     // The nearest place took too long to find: Organic Maps' search instead, as with it turned off.
                     RLog.i("maps_nearest", "found" to false, "why" to NearbyFail.TIMEOUT)

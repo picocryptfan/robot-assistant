@@ -11,8 +11,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 object OnlineRun {
     /** [block]'s result, or null when [deadlineMs] passed first. Cancellation aborts the work and is rethrown. */
-    suspend fun <T : Any> run(deadlineMs: Long, block: (Abort) -> T): T? {
-        val abort = Abort(deadlineMs)
+    suspend fun <T : Any> run(deadlineMs: Long, block: (Abort) -> T): T? = run(Abort(deadlineMs), deadlineMs, block)
+
+    /** [run] with the caller's [abort], so it can [Abort.claim] what to open once the deadline has passed. */
+    suspend fun <T : Any> run(abort: Abort, deadlineMs: Long, block: (Abort) -> T): T? {
         val result = CompletableDeferred<T>()
         val worker = Thread({
             try { result.complete(block(abort)) } catch (t: Throwable) { result.completeExceptionally(t) }

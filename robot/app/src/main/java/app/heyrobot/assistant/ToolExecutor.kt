@@ -247,13 +247,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val ms = SystemClock.elapsedRealtime() - started
         if (r is NearbyLookup.Instead) {
             RLog.i("maps_nearest", "found" to false, "why" to r.why, "requests" to requests, "ms" to ms)
-            if (abort.cancelled) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
+            // Stopped, or its time ran out and the panel opens the search itself: only one app ever opens ([Abort.claim]).
+            if (abort.cancelled || !abort.claim()) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
             val m = maps(what, searchDone)
             return if (m.status.succeeded) m.copy(detail = Nearby.instead(r.why, navigate = searchDone == NAVIGATE_DONE)) else m
         }
         val f = r as NearbyLookup.Found
         val place = f.place
-        if (abort.cancelled) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
+        if (abort.cancelled || !abort.claim()) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
         val opened = start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.uri(f.lat, f.lon, START_NAME, place.lat, place.lon, place.name))))
             || start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.geo(place.lat, place.lon, place.name))))
         if (!opened) return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")

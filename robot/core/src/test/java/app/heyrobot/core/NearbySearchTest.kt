@@ -90,6 +90,17 @@ class NearbySearchTest {
         assertEquals(before, urls.size)
     }
 
+    /** What a late lookup and its fallback both want to open: the first to claim it only. */
+    @Test fun onlyTheFirstClaimOpensAnApp() {
+        val a = abort()
+        assertTrue(a.claim())
+        assertTrue(!a.claim())
+        a.cancel()
+        assertTrue(!a.claim())
+        val b = abort().also { it.cancel() }
+        assertTrue(b.claim())
+    }
+
     @Test fun aRecentAnswerIsReusedAndRequestsAreCounted() {
         var counted = -1
         val body = sample("pharmacy-montreal.json")
