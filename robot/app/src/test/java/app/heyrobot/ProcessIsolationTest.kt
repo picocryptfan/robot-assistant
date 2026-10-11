@@ -234,6 +234,18 @@ class ProcessIsolationTest {
         assertTrue("vnd.android.cursor.dir/event" in mimes)
     }
 
+    /**
+     * 0.4.1, Settings › Model: every model still downloads by DownloadManager from the main app's stores, and only the main
+     * app downloads, imports, checks or deletes one; the voice process only asks which file to load (ModelStore.plan), and
+     * :brain reads a model's header (core LiteRtLm, no network) before it loads it.
+     */
+    @Test fun modelsDownloadOnlyFromTheMainApp() {
+        assertEquals(listOf("app/sys/ModelStore.kt", "app/sys/VoiceModelStore.kt"), usersOf(Regex("""\bDownloadManager\b""")))
+        assertEquals(listOf("app/ui/MainActivity.kt"), usersOf(Regex("""\bModelStore\.(startDownload|import|verify|delete|allowOwnTpu|cancelDownload)\(""")))
+        assertEquals(listOf("app/assistant/BrainLink.kt"), usersOf(Regex("""\bModelStore\.plan\(""")))
+        assertEquals(listOf("brain/brain/GemmaEngine.kt", "app/sys/ModelStore.kt").sorted(), usersOf(Regex("""\bLiteRtLmCheck\.check\(""")))
+    }
+
     /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */
     @Test fun onlyTheMainAppAsksForPermissions() {
         val askers = usersOf(Regex("""RequestMultiplePermissions|RequestPermission\b|requestPermissions\("""))

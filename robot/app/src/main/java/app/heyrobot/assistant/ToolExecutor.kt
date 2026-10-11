@@ -13,7 +13,6 @@ import android.net.Uri
 import android.os.SystemClock
 import android.provider.AlarmClock
 import androidx.core.graphics.drawable.toBitmap
-import app.heyrobot.core.BrainModel
 import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
@@ -21,6 +20,7 @@ import app.heyrobot.core.Addresses
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.AppEntry
 import app.heyrobot.core.AppMatcher
+import app.heyrobot.core.BrainModel
 import app.heyrobot.core.CalendarFormat
 import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.CalendarPick
@@ -71,7 +71,6 @@ import app.heyrobot.core.WeatherUnits
 import app.heyrobot.core.WeatherWhere
 import app.heyrobot.core.WhenParser
 import app.heyrobot.core.XmppLink
-import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.CheogramIntents
@@ -83,6 +82,7 @@ import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Contacts
 import app.heyrobot.sys.HandOffApps
+import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.Phones
