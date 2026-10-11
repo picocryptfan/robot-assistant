@@ -11,7 +11,8 @@
         </trust-anchors>
     </base-config>
     <!-- Never cleartext to a company, the model downloads or the services Robot asks by itself (the weather, the nearest
-         place), whatever the code does: before 0.6.0 no cleartext was allowed at all, and these keep that. -->
+         place, GitHub for the updater), whatever the code does: before 0.6.0 no cleartext was allowed at all, and these
+         keep that. -->
     <domain-config cleartextTrafficPermitted="false">
         <domain includeSubdomains="true">anthropic.com</domain>
         <domain includeSubdomains="true">openai.com</domain>
@@ -27,5 +28,7 @@
         <domain includeSubdomains="true">huggingface.co</domain>
         <domain includeSubdomains="true">open-meteo.com</domain>
         <domain includeSubdomains="true">openstreetmap.org</domain>
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">githubusercontent.com</domain>
     </domain-config>
 </network-security-config>

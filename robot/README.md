@@ -1,6 +1,7 @@
 # Robot (phases 1 and 2, Ask Claude, Helpers)
 
-A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
+A private voice assistant for GrapheneOS on the Pixel 10 Pro (since 0.4.7 also the Pixel 9a and other Pixels: "What's new
+in 0.4.7" below). Open it with the corner swipe, from the lock
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
 TPU answers, streams the reply and reads it aloud (since 0.4.1 you can choose a smarter but slower model instead, or
 your own model file: "Model choice" below; since 0.4.3 also a file built for a shorter context, such as MedGemma, as chat
@@ -15,7 +16,8 @@ key, or by opening the Claude app (see "Ask Claude" below). Since 0.4.5 Settings
 Robot is made of, with its licence, and the look has begun to move to stock Android ("What's new in 0.4.5" below). Since
 0.6.0 it also transcribes a conversation in French and English, on the phone, translates it (also face to face, aloud)
 and summarizes it (see "Conversation mode (0.5.0)" below), and it can hand a question to any company's model or to a
-model on your own computer the way it hands one to Claude (see "Helpers (0.6.0)" below). The build specs are
+model on your own computer the way it hands one to Claude (see "Helpers (0.6.0)" below). Settings › About › Updates
+finds Robot's new releases on GitHub and installs them after checking each one ("Updates" below). The build specs are
 `../docs/phase-1.md`, `../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models
 and how they are used, `../docs/voice-plan.md`.
 
@@ -23,8 +25,9 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 
 ## What's new in 0.6.0
 
-Robot 0.6.0 is 0.4.6 (0.4.5 with the fixes from the phone tests, "What's new in 0.4.6" below) with two pieces of work
-that were built beside it; each has its section below, with its phone tests.
+Robot 0.6.0 is 0.4.7 (0.4.6, which is 0.4.5 with the fixes from the phone tests, and Pixel 9a support: "What's new in
+0.4.7" and "What's new in 0.4.6" below) with four pieces of work that were built beside it: conversation mode, the
+helpers, the engine hardening and the built-in updater; each has its section below, with its phone tests.
 
 - **Conversation mode** ([Conversation mode](#conversation-mode-050)): Robot writes down a conversation in French and
   English, word for word, on the phone ([Transcribing](#transcribing)); tells the speakers apart by their voices, yours
@@ -46,9 +49,34 @@ that were built beside it; each has its section below, with its phone tests.
   company's chat API (OpenAI, Gemini, Mistral, DeepSeek, Groq, OpenRouter, xAI, or another) or a model on your own
   computer, each with its own key, name, voice, price and trust (off by default for every helper); a server on your
   network may use `http://` only at a private address.
-- **Settings file schema 13.** A 0.4.6 or 0.4.5 file (schema 12), a 0.4.4 file (7) or older keeps every choice: Ask Claude's
+- **The engine hardening** ([llama.cpp in its own isolated process](#llamacpp-in-its-own-isolated-process),
+  [Turn markers in text](#turn-markers-in-text-with-robots-own-models-too)): llama.cpp runs your GGUF file in an
+  isolated, unexported process (`:llama`: no permissions, no network, none of Robot's files) that gets the checked file
+  open from `:brain` and is ended alone when it stops answering; a LiteRT-LM file's own special tokens and the known turn
+  and tool markers are broken in every text from outside Robot's prompt (screen text, a question, a past reply, a tool's
+  result), as a GGUF file's already were. Its phone checks are steps 20 to 26 of "On the phone (0.4.5)".
+- **The built-in updater** ([Updates](#updates)): Settings › About › **Updates**, beside Licences, finds Robot's new
+  releases on GitHub (once a day, or when you tap Check now), downloads one on Wi-Fi, checks it against the release's
+  `SHA256SUMS` and Robot's signing key, and hands it to Android's install window; after an update Robot does what it does
+  after a restart. Every helper's API key and the updater's access token are now kept by one class
+  ([Keys](#keys)): a key the Keystore can't read just now is kept, and Robot says so in the helper's name; only one that
+  can never be decrypted again is removed.
+- **Pixel 9a support** ([What's new in 0.4.7](#whats-new-in-047)): Settings › Model shows this phone and its chip; a
+  Pixel 10's Fast is the Tensor G5 TPU build as before, and every other phone's (a Pixel 9a's Tensor G4) is Google's
+  general Gemma 4 E2B, on the GPU by default (Settings › Model › Where Fast runs › Use the GPU) or the CPU. A GPU that
+  fails is remembered and Robot uses the CPU until you tap Try the GPU again; any model crash keeps a problem report you
+  can read, copy or share (Robot never sends it). With 0.6.0's work: translations and summary steps run on the model as
+  it is loaded, on the GPU too, and a GPU that fails or stops under one falls back to the CPU as under a question (that
+  line or step ends once, with its error, and the fast engine or the summary's saved notes take over as for any failure);
+  on the GPU, which writes about half as fast as the TPU by the estimates, translations and summary steps get the CPU's
+  deadlines and the fast engine leads the interpreter; the general file's own tokenizer is read at load and its markers
+  broken like the Tensor G5 build's; the report says which process stopped, `:brain` (LiteRT-LM) or `:llama` (your GGUF
+  file: never Fast's or the GPU's), and never holds a helper's name, address or key, a transcript's words or the
+  updater's token. Its phone checks are "On the phone (0.4.7)" on 0.6.0, with steps 20 to 23 there for 0.6.0's parts.
+- **Settings file schema 13.** A 0.4.7, 0.4.6 or 0.4.5 file (schema 12; 0.4.7's "Use the GPU" kept, absent meaning on), a 0.4.4 file (7) or older keeps every choice: Ask Claude's
   settings become the Claude helper (and are still written for one release, so going back to 0.4.6 or 0.4.5 keeps Claude), and
   conversation mode starts from its defaults, live words in a conversation following "Show the words while you speak".
+  The updater keeps its own two files beside it (`updates.json`, `update_state.json`), not in it.
 - **Settings › About › Licences** names slimt and the parts built into it (ruy, cpuinfo, SentencePiece with
   protobuf-lite, Abseil and Darts-clone), the Bergamot and TitaNet models and Tatoeba's CC0 data, with their texts.
 - **0.4.6's fixes** ([What's new in 0.4.6](#whats-new-in-046)): the interrupt sensitivity a tap saves, "stop" ending a
@@ -64,8 +92,8 @@ that were built beside it; each has its section below, with its phone tests.
 
 | Module | Runs in | Holds |
 |---|---|---|
-| `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
-| `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU or the CPU), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
+| `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/`, `update/` (main: the updater, Settings › About › Updates) |
+| `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU, the CPU, or since 0.4.7 the GPU for the general Gemma 4 E2B where Robot offers it), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
 | `:mt` | `:mt` | since 0.5.0, the fast translation engine: `MtService` (Messenger), `BergamotEngine` and `Slimt`, the only code that loads `librobotmt.so` (slimt, built by `tools/build_robotmt.sh`, not in git) |
@@ -75,8 +103,8 @@ that were built beside it; each has its section below, with its phone tests.
   the merged manifest, and `tools/verify_apk.sh` checks the dex.
 - `app/sys/` (both app processes) reads ContactsContract and CalendarContract and holds the Robot Notes folder; only
   the main app asks for permissions (`ProcessIsolationTest` checks that too). Since 0.4.0 it also holds the Open-Meteo
-  client and the Nominatim client for the nearest place (the only HTTP code outside the Claude SDK), the coarse
-  location reader and what phone_status reads.
+  client and the Nominatim client for the nearest place, the coarse location reader and what phone_status reads. With
+  the updater's `update/GitHubClient` (main process only) they are the only HTTP code outside the Claude SDK.
 - `:brain` is bound from the assistant with `BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_INCLUDE_CAPABILITIES`;
   it is not exported and requires Robot's signature permission `app.heyrobot.permission.INTERNAL`.
 - `:llama` (0.4.5) is an `android:isolatedProcess` service that only `:brain` binds (`BIND_AUTO_CREATE | BIND_IMPORTANT`),
@@ -159,10 +187,367 @@ source:
    `tools/build_robotmt.sh` writes them out (`git archive --format=tar <commit>` from `mt/native/git/<name>`; their
    SHA-256 are in `THIRD_PARTY.md`, "In the `:mt` process only").
 
+**The release format the updater reads** (Settings › About › Updates, "Updates" below). Anything else is not offered:
+
+- the tag is `v<version>` (`v0.4.6`, `v0.6.0-rc1`), and the APK inside has exactly that `versionName` and a higher
+  `versionCode` than the release before;
+- the APK is attached as `Robot-<version>.apk` (`Robot-0.4.6.apk`: capital R, the version as in the tag, no `v`);
+- `SHA256SUMS` is attached, one line per file as `sha256sum` writes it, `<sha256>  <file>` (two spaces; ` *<file>` works
+  too), with a line for that APK;
+- a test build is marked **Set as a pre-release** on GitHub (a version with a suffix, such as `0.6.0-rc1`, counts as a
+  test build either way); a draft is never offered;
+- the APK is signed with Robot's release key (or a key rotated from it, "Updates" › "If the signing key ever changes").
+
+```
+cp app/build/outputs/apk/release/app-release.apk Robot-0.4.6.apk
+sha256sum Robot-0.4.6.apk robot-0.4.6-third-party-sources.tar.gz > SHA256SUMS
+gh release create v0.4.6 Robot-0.4.6.apk SHA256SUMS robot-0.4.6-third-party-sources.tar.gz \
+    robot-0.4.6-third-party-sources.tar.gz.sha256 --title "Robot 0.4.6" --notes-file notes.md   # --prerelease for a test build
+```
+
+The release notes are shown on the phone as plain text (the first 40 lines, 3,000 characters): Markdown marks and HTML
+tags are dropped and links show only their words, so write them to read well that way.
+
 Settings › About › Licences names both places, from `app/src/main/assets/licenses/components.json` (`robot.sourceTag`,
 `robot.sourceBundle`, "{version}" filled in): `<repository>/tree/v<version>` and
 `<repository>/releases/download/v<version>/robot-<version>-third-party-sources.tar.gz`. The repository link there is
 today's (`picocryptfan/robot-gos-assistant`); change it in that one file if the public repository has another name.
+
+## Updates
+
+Robot updates itself from its GitHub releases, without an app store or Obtainium: Settings › About › **Updates**. It finds
+a new release, downloads it, checks it, and hands it to Android, whose own window asks you to confirm.
+
+### How it works
+
+- **Where:** the GitHub Releases of one repository. By default it is the one Settings › About › Licences names as Robot's
+  source (`robot.source` in `app/src/main/assets/licenses/components.json`, today `picocryptfan/robot-gos-assistant`):
+  the only place it is written, so a renamed repository is one change there. Robot asks
+  `GET https://api.github.com/repos/{owner}/{repo}/releases?per_page=20` and takes the highest version above the one
+  installed, whatever order GitHub lists them in. (Not `/releases/latest`: for a repository without releases it answers
+  404, which can't be told from a private repository without a token.) Drafts are never offered; test builds only with
+  **Include test builds**; a version you skipped is not announced again, a newer one is.
+- **When:** once a day (a JobScheduler job in the main process, on any network: one small request) while **Check for
+  updates automatically** is on, and whenever you tap **Check now**. A new release posts a notification on the
+  **Updates** channel, "Robot 0.4.6 is available", which opens Settings › Updates.
+- **Download updates on Wi-Fi** (on with automatic checks): a second job downloads the release when Android sees an
+  unmetered network (Robot can't tell itself: it has no network-state permission, and the job's constraint decides),
+  checks it, and only then says "Robot 0.4.6 is ready to install". Without Wi-Fi for two days, the notification says it is
+  available anyway. A download that is stopped continues where it stopped (an HTTP Range request, only ever of the same
+  release file: an APK replaced on GitHub starts over) or starts over; a partial file is never installed. A file that
+  failed a check isn't downloaded again by itself, only when you tap Download. A release whose APK Android's checks
+  refused (another signer, package or version; "What is checked" below) is passed over from the next check on, without a
+  notification, so it can't hide an older release that installs.
+- **Download** on the page downloads at once, on any network (the page shows the size first).
+- **Install**: Robot checks the file again and opens a PackageInstaller session (`REQUEST_INSTALL_PACKAGES`). Until you
+  allow it, the page shows **Allow Robot to install updates** with an **Open** button for Settings › Apps › Special app
+  access › Install unknown apps › Robot: Android asks this once, and Robot installs only its own updates. Then Android's
+  window asks you to confirm. Its result comes back in plain words: installed, cancelled, a conflict (another key or copy),
+  not enough storage, incompatible, blocked.
+- **Install updates without asking** (off by default): Robot asks Android to skip its confirmation window for Robot's own
+  update (Android 12 and later, `setRequireUserAction(USER_ACTION_NOT_REQUIRED)`; Android honours it only for an app
+  that declares the normal permission `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, which Robot does for this switch alone).
+  Android still asks when another app store keeps Robot's updates (Android 14's update ownership; the switch is then
+  greyed out and says so), and whenever it decides an update needs you.
+- **After an update** Android ends every Robot process, as a restart does, and tells the new Robot
+  (`MY_PACKAGE_REPLACED`, `boot/UpdatedReceiver`). It does what it does after a restart ("Survive restarts": the speech
+  recognizer setting, and 3 minutes later the check that Robot is still the assistant, which says "during the update" if
+  not; the system binds the assistant and its wake word again by itself), deletes the downloads, schedules the daily check
+  again and says once "Robot updated to 0.4.6" (a notification, or in the app the next time it opens). Nothing else of
+  0.6.0 needs a step of its own, after a restart or an update: `:brain`, its isolated `:llama` process and `:mt` start when
+  something asks them (a question, a GGUF file, a translation), and a conversation that was being transcribed is closed
+  when the assistant comes back, with "Transcription stopped unexpectedly. Saved up to …" and **Resume**, as after a
+  restart (Robot never restarts it by itself).
+
+### What is checked before an install (never skipped)
+
+1. The release has its `SHA256SUMS` and a line in it for `Robot-<version>.apk`; otherwise nothing is downloaded. The file
+   is refused whole if any line is malformed, a name has a path or an invisible character, or one name has two sums.
+2. The downloaded file's SHA-256 is the one in that line (a wrong one is deleted).
+3. Android reads the APK (`getPackageArchiveInfo` with its signing certificates, which verifies its signature): package
+   `app.heyrobot`, `versionName` the release's version, `versionCode` higher than the installed one (never the same again,
+   never a downgrade), and signed by the key the installed Robot is signed with now, or by a newer key whose APK
+   Signature Scheme v3 lineage contains it. Android refuses another signer anyway; Robot says why first.
+4. Just before installing, all of it again on the file as it is then, and its SHA-256 a third time while Robot writes it
+   into the install session: the session is committed only if it matches.
+
+What each check is worth: `SHA256SUMS` comes from the same release as the APK, so it catches a damaged, cut or mixed-up
+download, but anyone who can publish to the repository (a stolen GitHub account or token) can replace both. What they
+can't make is Robot's signature: check 3, which Android repeats when it installs, is what keeps an APK that isn't Robot's
+off the phone, and a release whose APK fails it is passed over (above). They could still publish a release that is never
+installed, or hold updates back by deleting releases; nothing on the phone can tell that from a quiet repository.
+
+The download stays in Robot's private storage (`files/updates/`), with a free-space check first (the rest of the file,
+room for Android's copy of it and 64 MB). Caps: 1 MB of JSON from the API, 64 KB of `SHA256SUMS`, the APK's size as
+GitHub gives it (at most 300 MB).
+
+### What is sent
+
+To GitHub only: HTTPS `GET` requests to `api.github.com` and the download servers a release file redirects to
+(`objects.githubusercontent.com`, `release-assets.githubusercontent.com`, and `github.com` if GitHub redirects there).
+Robot follows redirects itself: HTTPS only, those hosts only, at most five. Each request carries
+`User-Agent: Robot/<version>` (GitHub requires one; nothing about the phone), the `Accept` header and, to the API,
+`X-GitHub-Api-Version`. GitHub sees your IP address and Robot's version; nothing else is sent. The access token, if you
+add one, goes in the `Authorization` header of requests to `api.github.com` and nowhere else (a download server never
+sees it), and is never logged. Without a token GitHub allows 60 requests an hour from one IP address; Robot says when
+that limit is reached and when it lifts. The logs hold codes and numbers only (never a URL, a name or the token).
+
+### Settings › Updates
+
+This version; **Check now** with when Robot last checked and what it found; for a release on offer, its version, date,
+size and release notes (plain text, shortened; no links), **Download** or **Install**, **Skip this version** (or **Don't
+skip**), and **See it on GitHub** (the release's page, built from the repository and tag). The switches, with their
+defaults: Check for updates automatically (on), Download updates on Wi-Fi (on), Include test builds (off), Install updates
+without asking (off). **Advanced**:
+
+- **Repository** (for a fork): `owner/name`, or its link. Empty, or **Use Robot's own repository**, goes back to the
+  default. A fork's releases must follow the same format ("Releasing" above) and be signed with the key of the Robot
+  installed on the phone: Android never updates an app with another signer, so a fork's users install the fork's own
+  build first, and the fork's repository then updates it.
+- **Access token**, only while the repository is private: a fine-grained personal access token for that repository with
+  **Contents: Read-only** (or a classic token with the `repo` scope). It is pasted into a window that can't be captured
+  and is kept out of autofill, encrypted exactly as every helper's API key is (AES-GCM with its own non-exportable Android
+  Keystore key, `robot_github_token`; one class, `sys/KeystoreSecret`, keeps them all), decrypted only by
+  `update/GitHubClient` just before a request, shown masked ("github_pat_…AB12"), and **Remove** deletes it. A private
+  repository without a token gets "GitHub didn't find the repository. If it's private, add an access token…". A token
+  the keystore can't read just now (busy, or the phone locked) is kept, never removed: the check goes without it, says
+  "Robot couldn't read your access token just now" for a private repository, and the next check reads it again.
+
+The settings are in their own small file, `files/robot/updates.json`, and what the updater found and did in
+`update_state.json`, beside `settings.json` but not in it (`core/update/UpdateFiles.kt`; read forward-compatibly).
+
+### If the signing key ever changes
+
+Every installed Robot only accepts updates signed with its key. If Robot's release key is ever replaced, the new key must
+be **rotated** from the old one with APK Signature Scheme v3, so that existing installs accept it:
+
+```
+apksigner rotate --out robot.lineage --old-signer --ks old-release.p12 --new-signer --ks new-release.p12
+apksigner sign --ks old-release.p12 --next-signer --ks new-release.p12 --lineage robot.lineage Robot-<version>.apk
+```
+
+Robot's updater accepts an APK whose lineage, ending at the key that signed it, contains the installed signer; Android
+checks the same when it installs (each step of a lineage is signed by the key before it, so only the old key's holder can
+add a new key after it), and also that the lineage leaves the old key its "installed data" capability. That is
+apksigner's default: don't take it away, since Android doesn't show apps a lineage's capabilities, so Robot can't check
+it first and would only report Android's refusal. An APK simply signed with a new key is refused by both, and everyone
+would have to uninstall Robot (losing its data) to move to it. Update `EXPECT_CERT` in `tools/verify_apk.sh` and keep the
+old key safe as well.
+
+### Code and tests
+
+The decisions are pure code in `core/update/` (`app.heyrobot.core.update`), tested in `core` with GitHub's real answer
+shape and hostile ones (wrong types, missing fields, huge or deeply nested answers, `../Robot-1.0.apk`, look-alike
+characters, malformed `SHA256SUMS`): versions and their order (`RobotVersion`), releases and their files
+(`GitHubReleases`, `ReleaseAssets`, `Sha256Sums`, `ReleaseNotes`), hosts, redirects and the token's one destination
+(`GitHubHosts`), GitHub's errors, the decision table (`UpdatePick`, `UpdateDecision`), the APK's checks
+(`ArchiveCheck`), every message (`UpdateText`) and the two files. The app's side is `app/update/`: `GitHubClient`
+(the only code that reaches GitHub), `Updater`, `UpdateInstaller` and `ApkInspector`, `UpdateJobs` (and its
+`UpdateJobService`), `UpdateNotices`, `UpdateStore` and `UpdateToken`, and the page, `ui/settings/UpdatesSettings.kt`.
+`ProcessIsolationTest` keeps the updater in the main process, GitHub's addresses in core's `GitHub.kt`, the token's
+decryption in `GitHubClient` and its header behind `GitHubHosts.mayAuthorize`, and the checks before the install in
+order; `tools/verify_apk.sh` checks the two permissions, the job service and receivers (main process, not exported), the
+dex, and that no GitHub token is in the APK. `UpdatesSettingsTest` (debug unit tests) drives the page and keeps its
+screenshots (`updates_light`, `updates_dark`, `updates_font200`).
+
+### On the phone (updater)
+
+Not yet checked. You need a 0.6.0 build installed as the release-signed app (the updater refuses a debug-signed APK
+against a release-signed install, as Android does), a test repository or the real one, and a GitHub token for it while
+it is private. Watch Settings › Voice › Voice log and `adb logcat -s Robot` (codes only).
+
+1. **Up to date.** With no newer release (or none at all), Settings › About › Updates › **Check now**: "Last checked today
+   at …. You're up to date." The About row says "Checked today at …".
+2. **Private repository, no token.** With the repository still private and no token: Check now says "GitHub didn't find
+   the repository. If it's private, add an access token in Advanced below; otherwise check its name."
+3. **Token.** Advanced › Access token: the window can't be screenshotted, a wrong paste keeps Save off, a fine-grained
+   token (Contents: Read-only) saves and shows masked; the clipboard is cleared if it still held it. Remove asks first and
+   deletes it.
+4. **Test build.** Publish `v<next>-rc1` as a pre-release with `Robot-<next>-rc1.apk` (versionCode higher, release key)
+   and its `SHA256SUMS`. Check now with **Include test builds** off: up to date. Turn it on, Check now: "Test build
+   <next>-rc1" with its date, size and notes (plain text; a link shows only its words); See it on GitHub opens the
+   release page.
+5. **Download on Wi-Fi.** On mobile data with automatic checks and Download updates on Wi-Fi on, wait for the daily
+   check (or `adb shell cmd jobscheduler run -f app.heyrobot 4801`): no notification yet. Join Wi-Fi: the download job
+   (`… run -f app.heyrobot 4802`) downloads and checks it, and the notification says "Robot <next>-rc1 is ready to
+   install"; tapping it opens Settings › Updates with **Install**. Airplane mode during a download, then back: it continues.
+6. **Checksum refused.** Publish a release whose `SHA256SUMS` line for the APK is wrong (edit one hex digit): Download says
+   "The downloaded file doesn't match its SHA-256 in SHA256SUMS, so Robot deleted it and won't install it", and
+   `files/updates/` is empty. A release without `SHA256SUMS`, or without the APK's line: refused before anything is
+   downloaded. An APK signed with another key: "isn't signed with Robot's key".
+7. **Install.** Without Install unknown apps: the page shows Allow Robot to install updates; Open goes to Robot's switch
+   there; back in Robot, the row is gone. Install: Android's window asks "Do you want to update this app?". Cancel: "The
+   update was cancelled. Robot stays as it is." Install again and confirm.
+8. **After the update.** Robot closes; within a few seconds "Robot updated to <next>-rc1" (a notification, or a line the
+   next time the app opens, if notifications are off). Say "hey robot": the wake word works without opening the app.
+   `adb logcat -s Robot` shows `updated` and `recognizer_check why=UPDATE` (with the adb grant, a write it had to make is in
+   the voice log as "after an update"); 3 minutes later no "Turn Robot back on" notification.
+   Settings › About shows the new version and Updates "You're up to date"; `files/updates/` is empty. Then a question to
+   your GGUF file if you use one (a new `app.heyrobot:llama`), Settings › Conversation › Fast translation › Test
+   translation speed (`:mt`), "hey robot, transcribe this conversation", and a question to a helper with a saved key: each
+   works as after a restart, with nothing to do first.
+9. **Install without asking.** Turn it on, publish the next test build, Install: no Android window, Robot restarts
+   updated. If Robot was installed by another app store that keeps its updates, the switch is greyed out and says why.
+10. **Skip.** With a release on offer, **Skip this version**: the page says you skipped it, no notification for it, the
+    About row doesn't announce it; a newer release is offered again. **Don't skip** brings it back.
+11. **Switches off.** Turn Check for updates automatically off: `adb shell dumpsys jobscheduler | grep app.heyrobot`
+    shows no job 4801 (or 4802), and nothing is asked of GitHub for days. Turn it on: the job is back.
+12. **Rate limit.** Without a token, Check now about 60 times in an hour (or from a network that used the limit): "GitHub's
+    limit on checks from your network was reached (60 an hour without a token). Try again after …".
+13. **Fork.** Advanced › Repository: `nobody/x x` keeps Save off; a fork's `owner/name` (or its link) saves, Check now asks
+    that repository; Use Robot's own repository goes back.
+
+## What's new in 0.4.7
+
+Robot on a **Pixel 9a** (and every other phone without a Tensor G5): until now Fast was Google's Tensor G5 TPU build,
+which only a Pixel 10 runs, so a 9a had no working built-in model.
+
+- **Fast on every phone.** Settings › Model shows "This phone: Pixel 9a (Tensor G4)" and whether Robot uses its TPU, with
+  the short list of which Pixels it does (core `Phones`, from `Build.SOC_MODEL`, read from each Pixel's factory image; the
+  Pixel's name when Android doesn't say):
+  - **Tensor G5** (Pixel 10, 10 Pro, 10 Pro XL, 10 Pro Fold): TPU supported. Fast is the TPU build, exactly as before;
+    nothing changes on a Pixel 10.
+  - **Tensor G6** (Pixel 11 series): Google publishes a TPU build (`gemma-4-E2B-it_Google_Tensor_G6.litertlm`, same
+    commit), but Robot hasn't run it on a Pixel 11 and its content check knows the Tensor G5 stamp only, so it isn't
+    offered yet: Fast is the general build on the CPU there.
+  - **Tensor G1 to G4** (Pixel 6 to 9 and their a models, the Pixel 10a, Fold, Tablet) and other phones: no TPU build
+    exists. Fast is **Gemma 4 E2B's general build** (`gemma-4-E2B-it.litertlm`, 2.59 GB, the same repository and commit as
+    the TPU build, Apache-2.0), on the **GPU** by default, or the CPU.
+  Only this phone's Fast is listed. A settings file that names the other one (the default, or Fast chosen on a Pixel 10)
+  reads as this phone's Fast; the file is left as it is, and Settings › Model says so in a line.
+- **The GPU, with the CPU as the safety net.** Settings › Model › Where Fast runs › **Use the GPU** (on). LiteRT-LM 0.18.0
+  already links its GPU accelerator (OpenCL, ML Drift) into `liblitertlm_jni.so`; Robot now declares the phone's own
+  `libOpenCL.so` (the Pixel 9a's vendor image lists it as a public library), runs the text on the GPU and the vision
+  encoder on the CPU, and keeps the GPU's caches (about 0.8 GB, written on the first load) in the model's folder. If the
+  GPU doesn't load the model, its process stops while it loads or answers, or the engine fails a reply on the GPU, Robot
+  switches to the CPU at once, says so once ("Fast stopped on the GPU, so Robot switched to the CPU."), and keeps to the
+  CPU, across restarts, until you tap **Try the GPU again**. A GPU load that takes the phone or Robot down is counted the
+  same way at the next start, so it can never loop. Never on a PowerVR GPU (the Tensor G5 and G6): the GPU lab ran this
+  file on the Pixel 10 Pro's at about a third of the TPU's writing speed.
+- **Speeds, measured or estimated.** Each model says how fast it is on this phone, labelled "Measured" (Robot's Pixel 10
+  Pro figures, on a Tensor G5) or "Estimate", with where the figures come from. On a Pixel 9a (estimates): on the GPU a new
+  conversation starts answering in about 3–5 s, later answers in about 1 s, then about 6–11 words a second; on the CPU
+  about 9–14 s, 1 s, 9–12 words a second. The GPU figures are scaled from the GPU lab's run of this file on the Pixel 10
+  Pro's GPU (about 540 tokens a second read, 12 written), not Google's Galaxy S26 Ultra figures (3,808 and 52.1), which a
+  Mali GPU won't reach; the CPU's are two thirds to four fifths of the Pixel 10 Pro's (about 160–210 read, 19–20 written).
+  The phone tests below replace them with measurements.
+- **Memory.** Fast's general build takes about 2.6 GB (the lab's CPU figure), which fits an 8 GB phone beside the voice.
+  The E4B models (about 4 GB) say on a phone with 8 GB or less that Android may stop them while they answer.
+- **Problem report.** When the model fails or crashes, on the GPU, the CPU or the TPU, Robot notes it (codes and
+  numbers only) and tells you once, in the panel and with a notification. Settings › Model then shows the problem with
+  **Copy report** and **Share report** (Android's share sheet, plain text) and **Show the report** to read it first: the
+  time, Robot's version, the phone, its chip and Android build, the model file with the start of its SHA-256 (never your
+  own file's name or hash), where it ran, at which stage, the failure, the memory, Android's record of how the model
+  process ended (`ApplicationExitInfo`: reason, status, description with paths removed, importance, memory) and the last
+  50 voice log events, wake phrases by number. Never what you said, asked or were answered. Robot sends nothing itself.
+- Photos: the general build has its vision encoder (Robot's content check of the pinned file finds it), run on the CPU,
+  so Fast still sees photos and the screen on a Pixel 9a.
+- Settings: one new switch, "Use the GPU", stored as `modelGpu` with no schema bump (absent means on): `settings.json`
+  stays schema 12. The voice log has one new event, 135 ("The GPU failed for …").
+- Later (0.4.8): the crash trace (tombstone) in the report, a "report on GitHub" button, a list of past reports, and
+  the Tensor G6's TPU build once Robot has run on a Pixel 11.
+
+### On the phone (0.4.7)
+
+Install the release over 0.4.6 (or fresh). Settings › About shows 0.4.7. `adb logcat -s Robot` alongside: codes and
+numbers only.
+
+**Pixel 9a: the phone and Fast**
+
+1. Model tab: the first card says "Pixel 9a (Tensor G4)" and "Google publishes no TPU build of Gemma for the Tensor G4:
+   Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.", then the three-line TPU list. "Robot uses"
+   lists Fast, Smarter, Uncensored and your own file; there is no "Gemma 4 E2B (Tensor G5)" card anywhere. Fast's line
+   ends with "Estimate: a new conversation starts answering in about 3–5 s, …". Smarter and Uncensored say "This phone has
+   7.5 GB of memory: …" (or what the 9a reports).
+2. Home › Get started says "2.6 GB, once". The Fast card: Gemma 4 E2B, `gemma-4-E2B-it.litertlm`, SHA-256
+   `1819381…a63c`, "Download 2.59 GB, plus a cache its first load writes: about 0.90 GB on the GPU, up to 2.00 GB on the
+   CPU". Tap Download (Wi-Fi): it completes, is checked ("“Fast” is ready."), and Free on this phone drops by 2.6 GB.
+3. "Where Fast runs": Use the GPU is on; "On the GPU (now)" and "On the CPU" each with an estimate and its source.
+4. **First load on the GPU**: open the panel and ask "what's two plus two". The first load writes the GPU cache (expect
+   up to about 30 s; Settings › Voice › Voice log: "Model loaded: Fast (Gemma 4 E2B, general build) on the GPU in …").
+   Close the panel, wait for the model to unload (Settings › Model keep time, or Always off), ask again: the load now takes
+   a few seconds. Write down both load times.
+5. **Speed on the GPU**: a new conversation, "Tell me about the history of the bicycle in five sentences." Write down the
+   time to the first word (voice log "First words after … ms") and the words per second (count the words, divide by the
+   writing time; or the `brain_reply` line's `tps`, tokens a second). A second question in the same conversation: its first
+   word time. Repeat three times.
+6. **Speed on the CPU**: switch Use the GPU off. Settings › Model now marks "On the CPU (now)"; the next question loads on
+   the CPU (the first CPU load writes up to about 2 GB of cache). Repeat step 5. Then switch the GPU back on.
+7. **Actions and cards**: "set a timer for 2 minutes", "text mom I'm running late" (the card), "what's on my calendar
+   today", "add a note: buy milk": each works as on the Pixel 10, on the GPU.
+8. **Photos**: the panel's camera, a photo of a plant: "what is this?" answers about the plant (the vision encoder runs on
+   the CPU). "What's on my screen?" with screen sharing on: it reads it.
+9. **Screen off and long answers**: ask for a long story and let it read with the screen timing out: it keeps going; say
+   "stop": it stops.
+10. **Memory beside the voice**: with Kokoro and Parakeet installed, keep the model loaded Always, use the phone for an
+    hour with a few questions: no "stopped unexpectedly". Settings › Voice › Voice log has no "The model's process
+    stopped" lines. `adb shell dumpsys meminfo app.heyrobot:brain` while loaded on the GPU: write down TOTAL PSS and the
+    Graphics line.
+11. Five or more turns in one conversation, one with a photo: no "The model ran into a problem" (Tensor G4 Mali GPUs have
+    shown OpenCL queue errors after a few turns elsewhere; if one comes, the next step's fallback should follow by itself).
+
+**Pixel 9a: when the GPU fails**
+
+12. **A crash while loading**: make the next GPU load a long first one (Settings › Model › Fast › Delete this model, then
+    Download again: the cache goes with it). Open the panel, ask something, and while it loads (the first ~20 s) run
+    `adb shell am crash $(adb shell pidof app.heyrobot:brain)`. The answer comes from the CPU instead (its first CPU load
+    takes longer); the panel says "Fast didn't load on the GPU, so Robot switched to the CPU. The Robot app › Model has a
+    report you can copy or share." once; a "Robot's model had a problem" notification opens the Model tab. Voice log: "The
+    GPU failed for Fast … while loading (the model process stopped): the CPU from now on".
+13. **A crash while answering**: Try the GPU again (step 14), ask for a long story on the GPU and, while it writes, run the
+    same `am crash` command. The answer ends; the next question is answered on the CPU, with "Fast stopped on the GPU, so
+    Robot switched to the CPU. …" once and a notification. (If `am crash` is refused: a debug build and
+    `adb shell run-as app.heyrobot kill -9 <pid>`. A force stop of Robot during a GPU load counts as a failed load at the
+    next start too.)
+14. After either: Settings › Model › Where Fast runs says "The GPU didn't load (…)" or "The GPU stopped while writing the
+    answer" with the date, "so Robot runs Fast on the CPU.", and **Try the GPU again**; Use the GPU is still on. Close and
+    reopen Robot, restart the phone: still the CPU, no new notice. Tap Try the GPU again: the next question loads on the GPU.
+15. **The report**: the Model tab's "Model problem" card. Show the report: it reads "Robot problem report", the headline,
+    When, Robot 0.4.7 (47), Phone Pixel 9a · chip Tensor G4, Android and build fingerprint, Model Fast (e2b) ·
+    gemma-4-E2B-it.litertlm · SHA-256 18193810…, Ran on: GPU, the stage, Memory then, "How the model process ended" with a
+    line for :brain (reason CRASH after `am crash`, SIGNALED after kill -9; a real GPU driver crash would say CRASH_NATIVE),
+    and the voice log's last events. Check that nothing you said or Robot answered is in it, no contact or wake phrase text (wake words by
+    number), no path but library names. Copy report: "The report is on the clipboard"; paste it into a note: the same text.
+    Share report: Android's share sheet; pick an app, or back out (nothing is sent). Dismiss: the card goes; the GPU
+    failure stays until Try the GPU again.
+16. A model you chose that crashes on the CPU (Smarter, with heavy memory use) also shows the card ("Smarter, slower
+    stopped on the CPU, so Robot is using Fast on the GPU.").
+
+**Pixel 10 Pro: unchanged**
+
+17. Model tab: "Pixel 10 Pro (Tensor G5)", "Its TPU is supported: Fast is Google's Tensor G5 build of Gemma 4 E2B, on the
+    TPU."; Fast is "Gemma 4 E2B (Tensor G5)" as before, already checked (no new download); no "Where Fast runs" card, no
+    GPU switch, no general build. Its line keeps "Writes about 17 tokens (word pieces) a second; …".
+18. Ask a question: "Model loaded: Fast (Gemma 4 E2B, TPU) on the TPU in …", first word and speed as on 0.4.6. Photos
+    and actions as before. Smarter and Uncensored show no memory warning (16 GB).
+19. Your own Tensor G5 build (if you have one): its TPU card as before. On the Pixel 9a the same file says it was compiled
+    for the Tensor G5's TPU, which this phone doesn't have, and can't be chosen.
+
+**0.6.0 on the Pixel 9a** (steps 1 to 19 hold on 0.6.0: the report says Robot 0.6.0 (60), and its "Ran on" line "GPU ·
+LiteRT-LM in :brain")
+
+20. **One-shots on the GPU.** Fast loaded on the GPU (step 4), the fast translation engine's files downloaded: Transcribe
+    with Translate on, speak French and English for a few minutes. Each line gets the fast engine's translation at once,
+    then Robot's model's in its place (`adb logcat -s Robot`: `brain_one_shot` lines, after `brain_load … backend=gpu`).
+    The interpreter: the fast engine's translation is read first (on the GPU, as on the CPU, it leads). Summarize the
+    transcript on the phone: it finishes (a part may take a minute); the summary's record names `e2b`.
+21. **A GPU failure under a one-shot.** Try the GPU again if it failed earlier. While the model improves a transcript's
+    lines (or makes a summary), run `adb shell am crash $(adb shell pidof app.heyrobot:brain)`. That line keeps its fast
+    translation (a summary stops, and goes on from its saved notes when you ask again); the notification "Robot's model had
+    a problem" comes once, Settings › Model › Where Fast runs says the GPU stopped while reading the prompt or writing the
+    answer, and the next lines' better translations come from the CPU (`backend=cpu`). Voice log: "The GPU failed for Fast
+    while … (its process stopped): the CPU from now on". The panel's next question says "Fast stopped on the GPU, so
+    Robot switched to the CPU." once.
+22. **A GGUF file's crash is :llama's.** With your own GGUF file chosen ("GGUF models" below), ask for a long story and,
+    while it writes, end llama.cpp's process (`adb shell am crash $(adb shell pidof app.heyrobot:llama)`, or the ways
+    "On the phone (0.4.5)" lists). The problem card says "Your own model file stopped on the CPU, so Robot is using Fast.";
+    Show the report: "Ran on: CPU · llama.cpp in :llama, an isolated process (your GGUF file, never Fast)", "failure: the
+    model process stopped (:llama)", and Android's records of :llama (or "none found": write down which). Where Fast
+    runs still says the GPU: a GGUF crash is never the GPU's.
+23. **Nothing of yours in the report.** With a helper set up (its name, key and, for your own server, its address), a
+    transcript, and an updater access token saved: Show the report after step 21. None of the helper's name, address or
+    key, no word of the transcript, no token; helpers and translations appear only as voice log codes ("Summary with
+    Claude API", "Line translated by Gemma").
 
 ## What's new in 0.4.6
 
@@ -478,7 +863,8 @@ your own `.litertlm`, has the same problem, and Robot now defends it the same wa
   takes `<|image|>` or `<start_of_image>` in the rendered text for a picture's place, so such text on the screen made the
   question fail.
 - **What Robot does.** At every load `:brain` reads the file's own tokenizer (`LiteRtLmCheck.tokens`: the SentencePiece
-  model, or the zlib-compressed `tokenizer.json`), takes its control tokens and its marker-shaped user-defined ones
+  model, or the zlib-compressed `tokenizer.json`; 0.4.7's general E2B, Fast on a Pixel 9a's GPU or CPU, as much as the
+  Tensor G5 build), takes its control tokens and its marker-shaped user-defined ones
   (`PromptMarkers`: in brackets, with a bar or an underscore; never `<think>`, an HTML tag or the `<escape>` of Robot's own
   text calls) plus the known markers of the model families LiteRT-LM and llama.cpp run, and breaks every one of them in
   your question with the screen's text, every turn of the history (Robot's and Claude's replies) and, with LiteRT-LM's tool
@@ -703,7 +1089,7 @@ stays schema 13).
   in the footers, word for word; keys still only ever pasted in the helper's own window), **Conversation** (the speaker
   model and the fast engine as status rows with Download, Cancel or Delete; the consent text under "Telling people"),
   **History** (the main switch "Save conversations"; Delete all works either way), **Advanced** (ADB fixes, voice log),
-  **About** (version, Licences) and **Assistant setup** (status rows in groups, each with its button; the Claude app's
+  **About** (version, **Updates** with when Robot last checked or the release on offer, Licences) and **Assistant setup** (status rows in groups, each with its button; the Claude app's
   hand-offs in words; what happens after a restart in the footer).
 - **ADB fixes**: a status row per fix; each opens a page with why it is needed, the commands (selectable, monospace) and
   Copy.
@@ -713,10 +1099,25 @@ stays schema 13).
   says what Robot found inside, and "Run on the TPU" opens the risks in a dialog bound to that file's SHA-256 (it was an
   inline card). Thinking, and "Keep the model loaded" (moved here from the old Settings page), then the voice models, each
   with its page.
+- **0.4.7's parts in the Model tab** (merged from 0.6.0): only this phone's Fast is listed. A **Model problem** group
+  comes first while there is one: the headline and its time, what the report holds, **Copy report**, **Share report**,
+  **Show the report** (selectable, monospace) and **Dismiss**. **This phone** follows "Robot uses": the phone and its chip
+  with whether Robot uses its TPU, and, where Fast is the general build, **Use the GPU** (a switch; not offered on a
+  PowerVR GPU, where a row says Fast runs on the CPU), the GPU's failure as a problem row with **Try the GPU again**, and
+  this phone's estimates on the GPU and the CPU with their sources ("(now)" on the one in use). An E4B model's row says
+  "Tight on this phone's memory" on 8 GB or less, its page the warning in full; each model's page says its speed on this
+  phone and the general build's page both caches. Your own Tensor G5 build says it can't run on a phone without that TPU,
+  and offers no "Run on the TPU" there. The TPU list, the GPU's trade-off and "Fast on this phone is Gemma 4 E2B's general
+  build" (for a file that names the Pixel 10's Fast) are in the footer. Settings › Model's row says "Fast on the GPU" or
+  "on the CPU" there. Like every Settings page, these are the same in the standard and the Classic look.
+- **Settings › About › Updates** (the built-in updater, merged from 0.6.0): a row of About's group with its state ("Checks
+  once a day", "Checked today at 14:05", "Robot 0.7.1 is available"), opening the Updates page ("Updates" above), built
+  from the same `ui/pref/` rows. Its notifications open it alone, and Back then goes to About.
 - **Back goes up one page**, as in Android's Settings (Settings › Voice › Barge-in test › Back shows Voice; ADB fixes
   opened from Assistant setup goes back to Assistant setup). The open pages survive a rotation; a page opened by a link
   from elsewhere goes back to its parent. The links from outside (the panel's "Open Model" and "Allow", the transcript
-  and summary screens, the tile's long press, the Robot Notes icon) are in `ui/settings/SettingsNav.kt` (`AppRoutes`), each
+  and summary screens, the tile's long press, the Robot Notes icon, the model problem's and the updater's notifications)
+  are in `ui/settings/SettingsNav.kt` (`AppRoutes`), each
   tested.
 - **Wording**: "you", never "I" or "the owner"; Robot is "it". Core's own strings that say "me" or "she" ("Ask me first",
   "When I ask by voice", the barge-in modes' long texts) are untouched, since core is shared with other branches; the pages
@@ -725,8 +1126,9 @@ stays schema 13).
   overlapping, each switch and choice writes exactly its setting, a main switch disables the rest, a radio dialog closes on
   a pick, an edit dialog's Save stays off while the text is wrong), `PageSaverTest` over every page and the back stack,
   `AppRoutesTest` over every outside link, and screenshots: `settings_root`, `voice_light`, `voice_font200`,
-  `actions_light`, `actions_dialog`, `safety_light`, `helpers_light`, `display_dark`, `model_light`, `conversation_light`,
-  `people_light`.
+  `actions_light`, `actions_dialog`, `safety_light`, `helpers_light`, `display_dark`, `model_light` (a Pixel 10 Pro),
+  `model_9a_problem` (a Pixel 9a with a model problem), `conversation_light`, `people_light`, and 0.6.0's `updates_light`,
+  `updates_dark` and `updates_font200`.
 
 ### On the phone (step (b), Settings)
 
@@ -780,6 +1182,17 @@ colours" on for all of them unless a step says otherwise.
 - With them: **Back.** Settings › Voice › Barge-in test, then Back twice: Voice, then Settings. Assistant setup › Fix,
   then Back: Assistant setup. Rotate the phone on Settings › Helpers › Claude: the same page stays, and Back still goes
   to Helpers.
+- **0.6.0's parts in the new pages**, in the standard look and again with Settings › Display › Classic look on:
+  1. Pixel 9a, Model tab: "Robot uses" lists one Fast ("Gemma 4 E2B"); This phone says "Pixel 9a (Tensor G4)"; Use the
+     GPU is on and "Fast on the GPU (now)" shows its estimate. Turn it off: "Fast on the CPU (now)", and Settings › Model's
+     row reads "Fast on the CPU · …". Turn it back on.
+  2. After 0.4.7's phone checks 12 or 13 (a GPU crash): a Model problem group at the top; Show the report, Copy report
+     ("The report is on the clipboard"), Share report, then Dismiss: the group goes. This phone shows "The GPU …" as a
+     problem row and Try the GPU again; tap it: the row goes and the next question loads on the GPU.
+  3. Pixel 10 Pro, Model tab: "Pixel 10 Pro (Tensor G5)", no Use the GPU row, Fast is "Gemma 4 E2B (Tensor G5)".
+  4. Settings › About: Version, Updates ("Checks once a day" or when it last checked), Licences. Updates opens the page;
+     Check now works as in "On the phone (updater)". From an updater notification, Updates opens alone and Back goes to
+     About.
 
 ### Step (c): the assistant panel
 
@@ -1138,7 +1551,8 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
 
 ### Translation and the interpreter
 
-- **Robot's model translates**, the one chosen in Settings › Model (Fast on the TPU by default), through a **one-shot
+- **Robot's model translates**, the one chosen in Settings › Model (Fast by default: on the TPU on a Pixel 10, on the GPU
+  or the CPU elsewhere, 0.4.7), through a **one-shot
   request** to `:brain` (`REQ_ONE_SHOT`): one message to a conversation of its own, with the plan's fixed prompt for the
   direction ("Translate the user's message from Québec French to natural English. Keep the tone and register…", and
   English to Québec French "as a Quebecer would say it (tu unless the message is formal)"), no earlier line, **no tools**
@@ -1159,9 +1573,10 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
   are downloaded and verified (Settings › Conversation › Fast translation; a session sees a download within about
   10 s). Then it gives each transcript line a translation at once (marked "fast") that Robot's model then replaces with
   its own, and it stands in for the interpreter when the model hasn't started within 1.5 s of the turn's request (the
-  panel's question ahead, or `:brain` busy), fails, or fails a guard; with a model on the CPU (about 8 tokens a second), it leads the interpreter and the model
+  panel's question ahead, or `:brain` busy), fails, or fails a guard; with a model on the CPU (about 8 tokens a second),
+  or on the GPU (0.4.7's Fast on a Pixel 9a: about 8 to 14 by the estimates), it leads the interpreter and the model
   stands in. Without it, Robot's model translates alone, with longer deadlines (8 s to start on the TPU, 10 s on the
-  CPU; a transcript's first translation waits up to 2 minutes), and the interpreter says "Translated by Robot's model on
+  CPU or the GPU; a transcript's first translation waits up to 2 minutes), and the interpreter says "Translated by Robot's model on
   this phone". A fast engine that fails in a way that may last (its files didn't load, `:mt` stopped) rests for a minute,
   so the model gets its longer deadlines meanwhile; a new session tries it again. The voice process binds `:mt` only
   while a session translates (both directions load as it starts: voice log 118) and lets it go when it stops, so `:mt`
@@ -1194,7 +1609,7 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
 Mozilla's Bergamot French ↔ English models (the ones Firefox translates with), run by slimt in a process of its own,
 `:mt`. It translates a line in tens of milliseconds, so every transcript line can have a translation at once, which
 Robot's model then replaces; it stands in for the model in the interpreter, and leads it when the model runs on the CPU
-("Translation and the interpreter" above). The voice process reaches it through core's `BergamotTranslator` (behind the
+or the GPU ("Translation and the interpreter" above). The voice process reaches it through core's `BergamotTranslator` (behind the
 same `Translator` interface as Robot's model, with `MtGuard`), offered by `FastEngineGate` only while the library is in
 the build and both directions' files are verified.
 - **The library.** `tools/build_robotmt.sh` fetches slimt (DavidVentura's fork @ `2beb403a`, the one Offline Translator
@@ -1542,9 +1957,13 @@ helper follows; this section for what 0.6.0 adds.
 One key per helper, pasted in the helper's connection window in the assistant's process (`HelperConnectionActivity`,
 FLAG_SECURE, out of autofill, the clipboard cleared if it still holds the key), encrypted there with its own Android
 Keystore key (AES-GCM) and decrypted only there: by `HelperLink` just before a client is made, and by Test
-connection. Claude keeps its key files and Keystore alias from 0.3.0; another helper's are in `helpers/<id>/`. Settings
-shows the key masked ("gsk_…AB12"); a key that doesn't start the company's usual way is only a warning. **Remove
-helper** deletes its key file and its Keystore key (crypto-shred) and what Test connection found. Changing a helper's
+connection. Claude keeps its key files and Keystore alias from 0.3.0; another helper's are in `helpers/<id>/`. One
+class, `sys/KeystoreSecret`, keeps them all and the updater's access token: a key the Keystore can't read just now
+(busy, restarting, the phone locked, an I/O error) is kept, file and Keystore key, nothing is sent without it, and Robot
+says "Robot couldn't read your saved Groq key just now. It's still saved, so try again in a moment."; only a key that
+can never be decrypted again (its Keystore key gone or replaced, the file damaged) is removed, and Robot and Settings
+say so. Settings shows the key masked ("gsk_…AB12"); a key that doesn't start the company's usual way is only a
+warning. **Remove helper** deletes its key file and its Keystore key (crypto-shred) and what Test connection found. Changing a helper's
 address to another host removes its key first (the same computer on another port or path keeps it), so a key never
 goes to a host it wasn't saved for. Backups and device
 transfer include nothing (`allowBackup="false"`, the data extraction rules exclude everything).
@@ -1628,11 +2047,15 @@ connection, a timeout), Robot answers itself instead, with a short notice why. G
 | `core/helpers/` | `Helpers.kt` (presets, quirks, catalog, `HelperConfig`, names), `HelperRules.kt` (routes, the default helper, trust, words), `Pricing.kt`, `LanRule.kt`, `HelperFacts.kt`, `wire/` (Chat Completions and Responses mappers, errors, `<think>` filter) |
 | `:claude` module, `app.heyrobot.helpers` | `HelperSession` (Claude's session implements it too), `openai/OpenAiSession`, `http/HelperHttp` (OkHttp with the LAN rules), `HelperProbe` (Test connection). The module keeps its name so the build's test tasks stay as they are |
 | `app/assistant/` | `HelperLink` (one client per helper and key), `HelperKeys`, `HelperConnectionActivity`; `PanelController` routes each turn to its helper |
+| `app/sys/` | `HelperFiles.kt` (`HelperKeyFiles`: each helper's key files and Keystore alias, as `KeystoreSecret`s; what Test connection found; the spend), `KeystoreSecret.kt` (shared with the updater's token) |
 | `app/ui/HelpersScreens.kt` | the Helpers card, Settings › Helpers, Add a helper, a helper's page |
 
 `ProcessIsolationTest` checks that only the assistant uses `app.heyrobot.helpers` and OkHttp, that keys are read only
-in `HelperLink` and the connection window, and the network security config; `tools/verify_apk.sh` checks the
-connection window's process, the compiled network security config, the client classes and every company's key shape.
+in `HelperLink` and the connection window (through `HelperKeys` alone), and the network security config;
+`tools/verify_apk.sh` checks the connection window's process, the compiled network security config, the client classes
+and every company's key shape. `KeystoreSecretTest` and `KeystoreSecretReadTest` check that a key saved by 0.4.x (Ask
+Claude) or by an earlier 0.6.0 build (any helper) still decrypts from its file and alias, that one saved now reads as
+they read it, and that only a key that can never be read again is removed.
 
 ### Not in 0.6.0, and not verified yet
 
@@ -2488,6 +2911,8 @@ an API key, questions for Claude open the Claude app. Spec: `../docs/ask-claude.
    drops the key at once). The window can't be captured in screenshots or the recent-apps thumbnail, is kept out of
    autofill, and clears the clipboard if it still holds the key. A key is "sk-ant-" and ASCII letters, digits, "-" and
    "_" only. If Android's keystore ever loses the key that encrypts it, Robot removes the saved key and Settings says so.
+   An error that may pass (the keystore busy or the phone locked) removes nothing: Robot says it couldn't read your key
+   just now and reads it again at the next question.
 
 GrapheneOS's per-app **Network** toggle must stay on for Robot. When Android reports Robot's network permission off, the
 panel shows a card saying so (and says it aloud); when the toggle shows as no network at all, "No internet" says to
@@ -2930,7 +3355,8 @@ adb shell pm grant app.heyrobot android.permission.WRITE_SECURE_SETTINGS
 Turn USB debugging off afterwards. With the second one, Robot keeps that key set itself (only that key: the assistant
 itself belongs to RoleManager): at boot (also before the first unlock; the boot receiver is direct-boot aware), when
 the app or Assistant setup opens, and when the assistant starts, if it holds the assistant role and no other installed
-recognizer is set. Each write goes to the voice log. Assistant setup shows "Survives restarts".
+recognizer is set. Each write goes to the voice log. Assistant setup shows "Survives restarts". The same runs after
+Robot is updated, which ends its processes as a restart does (`MY_PACKAGE_REPLACED`; "Updates" above).
 
 The phone region for numbers without a country code now comes from the SIM, then the network, then the language
 setting, unless one is set in Settings. Earlier versions saved "CA" whether it was chosen or not, so a settings file

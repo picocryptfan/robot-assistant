@@ -10,6 +10,7 @@ import app.heyrobot.core.Approval
 import app.heyrobot.core.Escalation
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.LookSettings
+import app.heyrobot.core.ModelCatalogue
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.ToolName
@@ -47,7 +48,7 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
             PreferenceItem("Conversation", conversationSummary(s), RIcons.Transcribe, onClick = { a.openPage(Page.ConversationSettings) })
         }
         preferenceGroup(null, "app") {
-            PreferenceItem("Model", modelSummary(s), RIcons.Chip, onClick = { a.openTab(Tab.MODEL) })
+            PreferenceItem("Model", modelSummary(s, snap), RIcons.Chip, onClick = { a.openTab(Tab.MODEL) })
             PreferenceItem("History", if (s.saveHistory) "Saving conversations" else "Not saving conversations", RIcons.History,
                 onClick = { go(SettingsRoutes.HISTORY) })
             PreferenceItem("Display", displaySummary(look), RIcons.Palette, onClick = { go(SettingsRoutes.DISPLAY) })
@@ -118,9 +119,12 @@ fun escalationLabel(e: Escalation): String = when (e) {
 internal fun conversationSummary(s: RobotSettings): String =
     "Live words " + (if (s.convPartials) "on" else "off") + if (s.convTranslate) " · translating" else ""
 
-/** "Fast · stays loaded 5 min". */
-internal fun modelSummary(s: RobotSettings): String = s.brainModelChoice.title + " · " +
-    if (s.keepModelMinutes == RobotSettings.KEEP_ALWAYS) "always loaded" else "stays loaded ${s.keepModelMinutes} min"
+/** "Fast · stays loaded 5 min"; 0.4.7, the general E2B (Fast without the Tensor G5's TPU): "Fast on the GPU · …". */
+internal fun modelSummary(s: RobotSettings, snap: Snapshot): String {
+    val m = ModelCatalogue.resolve(s.brainModelChoice, snap.phone)
+    val where = if (m.gpu) " on the " + ModelCatalogue.backend(m, snap.phone, s.modelGpu, snap.gpuFailure?.model == m).title else ""
+    return m.title + where + " · " + if (s.keepModelMinutes == RobotSettings.KEEP_ALWAYS) "always loaded" else "stays loaded ${s.keepModelMinutes} min"
+}
 
 /** Whether Assistant setup has something to fix (null: not known yet). */
 internal fun setupNeedsAttention(f: AssistantFacts?): Boolean? =

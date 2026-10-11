@@ -249,6 +249,12 @@ class HelperSettingsTest {
         assertEquals("Jarvis doesn't have that model any more. Pick another one in Robot's settings, under Helpers.", ClaudeFailure.MODEL_UNAVAILABLE.say(jarvis))
         assertEquals("Jarvis is loading its model…", HelperWords(jarvis).loading)
         assertEquals("Want me to check with Jarvis?", HelperWords(jarvis).offer)
+        // A saved key the Keystore couldn't read just now is kept, and Robot says so in the helper's name (the updater's
+        // words for Claude's key); one that could never be read again was removed.
+        assertEquals("Robot couldn't read your saved Claude key just now. It's still saved, so try again in a moment.", ClaudeWords.KEY_UNAVAILABLE)
+        assertEquals("Robot couldn't read your saved ChatGPT key just now. It's still saved, so try again in a moment.", HelperWords(gpt).keyUnavailable)
+        assertEquals("Robot couldn't read your saved Jarvis key just now. It's still saved, so try again in a moment.", HelperWords(jarvis).keyUnavailable)
+        assertEquals("Robot couldn't read your saved ChatGPT key, so it was removed. Add it again in Robot's settings, under Helpers.", HelperWords(gpt).keyUnreadable)
     }
 
     @Test fun failuresReadTheCodeBeforeTheStatus() {

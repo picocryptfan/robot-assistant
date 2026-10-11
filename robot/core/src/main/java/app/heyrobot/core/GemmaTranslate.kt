@@ -76,7 +76,9 @@ enum class TranslateUse(val priority: Priority) {
  * in about a second (EST), so it leads the interpreter, with the fast engine taking over when it hasn't started within
  * [START_WITHIN_MS]. A model on the CPU (0.4.1's E4B, or your own file) writes about 8 tokens a second, so with the fast
  * engine there it leads instead and the model only improves transcript lines; without it, the model is the only engine,
- * with longer deadlines. A short-context model (0.4.3, chat only) translates too: a one-shot is chat only anyway.
+ * with longer deadlines. A short-context model (0.4.3, chat only) translates too: a one-shot is chat only anyway. 0.4.7's
+ * GPU (Fast on a Pixel 9a's Mali) counts as the CPU here: about 8 to 14 tokens a second by the estimates, about half the
+ * TPU's and no faster than a Tensor G4's CPU with the same file ([slow]).
  */
 object TranslatePolicy {
     /** A translation someone waits for that Robot's model hasn't started within this goes to the fast engine instead. */
@@ -90,8 +92,14 @@ object TranslatePolicy {
     /** A first translation (no fast engine) waits this long for Robot's model at most (the panel's question, the interpreter). */
     const val FIRST_WAIT_MS = 120_000L
 
+    /**
+     * Robot's model writes a line well under the interpreter's deadlines only on the TPU: on the CPU, and on 0.4.7's GPU
+     * (estimated, unmeasured), it gets the longer ones and the fast engine leads when it is there. Unknown (null): as before.
+     */
+    fun slow(backend: ModelBackend?): Boolean = backend == ModelBackend.CPU || backend == ModelBackend.GPU
+
     /** Robot's model leads the interpreter: on the TPU, or when there is no fast engine. */
-    fun modelLeads(backend: ModelBackend?, fast: Boolean): Boolean = !fast || backend != ModelBackend.CPU
+    fun modelLeads(backend: ModelBackend?, fast: Boolean): Boolean = !fast || !slow(backend)
 
     /**
      * The interpreter's engines in order, for LineTranslator.firstThen: Robot's [model] first and the [fast] engine
@@ -109,7 +117,7 @@ object TranslatePolicy {
     fun modelWork(screenOn: Boolean, hot: Boolean): Boolean = screenOn && !hot
 
     fun budget(use: TranslateUse, backend: ModelBackend?, fast: Boolean): OneShotBudget {
-        val cpu = backend == ModelBackend.CPU
+        val cpu = slow(backend)
         return when (use) {
             TranslateUse.INTERPRETER -> when {
                 fast -> OneShotBudget(START_WITHIN_MS, if (cpu) 20_000 else 8_000, waitForLoad = false)

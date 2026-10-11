@@ -43,6 +43,8 @@ object SettingsRoutes {
     const val DISPLAY = "display"
     const val ADVANCED = "advanced"
     const val ABOUT = "about"
+    /** Settings › About › Updates (the built-in updater); its notifications open it too. */
+    const val UPDATES = "updates"
     /** Settings › Advanced › ADB fixes › one fix, by its id (core AdbFixes). */
     fun adbFix(id: String) = "adb/$id"
     /** Settings › People › Notification access: the three steps. */
@@ -77,6 +79,7 @@ fun SettingsNav(
         SettingsRoutes.HISTORY -> HistorySettingsScreen(s, update, a, snackbar, onBack)
         SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)
         SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
+        SettingsRoutes.UPDATES -> UpdatesRoute(snackbar, onBack)
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)
@@ -92,6 +95,8 @@ fun SettingsNav(
 fun parentOf(p: Page): Page? = when (p) {
     is Page.Settings -> when {
         p.route == SettingsRoutes.NOTIFICATION_ACCESS -> Page.People
+        // Settings › About › Updates, which the updater's notifications open alone.
+        p.route == SettingsRoutes.UPDATES -> Page.Settings(SettingsRoutes.ABOUT)
         p.route.startsWith("adb/") -> Page.AdbFixes
         // A model's page sits under the Model tab.
         p.route.startsWith("model/") -> null
@@ -158,7 +163,7 @@ fun rememberPageStack(): PageStack = rememberSaveable(saver = PageStack.Saver) {
 /**
  * Where the app opens when another screen or app asks for a page (AppPages): the Robot Notes icon, a card's "Allow"
  * (Assistant setup's permissions), a chat-only model's "Open Model", the transcript screen's links, the tile's long press,
- * the summary screen's "Helpers".
+ * the summary screen's "Helpers", the updater's notifications.
  */
 object AppRoutes {
     /** What [i] asks for, as a route [target] understands, or null. */
@@ -175,9 +180,9 @@ object AppRoutes {
                 "${AppPages.TRANSCRIPTS}:$id" + if (line >= 0) ":$line" else ""
             } ?: AppPages.TRANSCRIPTS
         // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
-        // Model from a chat-only model's answer to an action (0.4.3).
+        // Model from a chat-only model's answer to an action (0.4.3); Settings › About › Updates from the updater's notifications.
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL || it == AppPages.HELPERS }
+            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.UPDATES }
     }
 
     /** What a route opens: a [tab] (every page closed), or a [page] over the one showing; [notesIcon]: from Robot Notes' icon. */
@@ -191,6 +196,7 @@ object AppRoutes {
         r == AppPages.CONVERSATION_SETTINGS -> Target(page = Page.ConversationSettings)
         r == AppPages.HELPERS -> Target(page = Page.Helpers)
         r == AppPages.MODEL -> Target(tab = Tab.MODEL)
+        r == AppPages.UPDATES -> Target(page = Page.Settings(SettingsRoutes.UPDATES))
         else -> null
     }
 }

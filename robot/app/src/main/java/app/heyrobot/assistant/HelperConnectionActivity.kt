@@ -1,7 +1,6 @@
 package app.heyrobot.assistant
 
 import android.app.Activity
-import android.content.ClipboardManager
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -42,10 +41,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.RLog
+import app.heyrobot.core.SecretRead
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperFacts
 import app.heyrobot.core.helpers.HelperKeyFormat
 import app.heyrobot.core.helpers.HelperWho
+import app.heyrobot.core.helpers.HelperWords
 import app.heyrobot.core.helpers.LanRule
 import app.heyrobot.core.helpers.Protocol
 import app.heyrobot.helpers.HelperProbe
@@ -140,7 +141,7 @@ class HelperConnectionActivity : ComponentActivity() {
                                             problem = "The key couldn't be saved on this phone."
                                             return@launch
                                         }
-                                        clearClipboard(k)
+                                        HelperKeys.clearClipboard(this@HelperConnectionActivity, h.id, k)
                                         key = ""
                                         setResult(Activity.RESULT_OK)
                                         // Claude's key is checked by the first question, as before; any other helper's now.
@@ -158,7 +159,11 @@ class HelperConnectionActivity : ComponentActivity() {
                         }
                         Step.RESULT -> {
                             val r = result
-                            Text(if (r?.ok == true) "${h.name} is ready" else "${h.name} didn't answer", style = MaterialTheme.typography.headlineSmall)
+                            Text(when {
+                                r?.ok == true -> "${h.name} is ready"
+                                keyNote != null -> "${h.name}: API key"
+                                else -> "${h.name} didn't answer"
+                            }, style = MaterialTheme.typography.headlineSmall)
                             Text(r?.let { words(h, it) }.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
                                 if (r?.ok == true && h.actions) OutlinedButton(onClick = { test(actions = true) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Check actions") }
@@ -174,14 +179,36 @@ class HelperConnectionActivity : ComponentActivity() {
 
     private enum class Step { KEY, TESTING, RESULT }
 
+    /**
+     * What the saved key's read said when it gave no key (Test connection then sends nothing): it couldn't be read just now
+     * (kept), or it could never be read again (removed). Null when it was read, or none is saved.
+     */
+    @Volatile private var keyNote: String? = null
+
     /** Test connection, its facts kept for Settings (background thread). */
     private suspend fun probe(h: HelperConfig, actions: Boolean): ProbeResult {
         val ctx = applicationContext
+        keyNote = null
         val candidates = h.presetOf.baseUrl?.let { listOf(it) } ?: h.baseUrl?.let { LanRule.normalize(it)?.candidates }.orEmpty()
         if (candidates.isEmpty()) return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NOT_LOCAL)
         // GrapheneOS's Network toggle is off for Robot: say so rather than "isn't answering" (nothing could be sent).
         if (!HelperLink.networkAllowed(ctx)) return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NO_NETWORK_PERMISSION)
-        val key = HelperKeys.read(ctx, h.id)
+        val key = when (val r = HelperKeys.read(ctx, h.id)) {
+            is SecretRead.Present -> r.value
+            SecretRead.Absent -> null
+            // Kept: nothing is tested without it (a server that answers without a key would look fine), and nothing is
+            // written to the facts; Test connection again in a moment reads it again.
+            is SecretRead.Unavailable -> {
+                keyNote = HelperWords(HelperWho.of(h)).keyUnavailable
+                return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NO_KEY)
+            }
+            // Removed as it was read: Settings says so, the panel's client goes, and Add key is offered.
+            is SecretRead.Invalidated -> {
+                keyNote = HelperWords(HelperWho.of(h)).keyUnreadable
+                HelperLink.keyChanged(ctx, h.id)
+                return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NO_KEY, needsKey = true)
+            }
+        }
         val r = try {
             HelperProbe.run(h, key, candidates, question = true, actions = actions) { dollars -> HelperSpendStore.add(ctx, h.id, dollars) }
         } catch (t: Throwable) {
@@ -203,6 +230,10 @@ class HelperConnectionActivity : ComponentActivity() {
 
     /** What Test connection found, in words (no address, no key). */
     private fun words(h: HelperConfig, r: ProbeResult): String = buildString {
+        keyNote?.let {
+            append(it)
+            return@buildString
+        }
         val failure = r.failure
         if (failure != null) {
             append(failure.say(HelperWho.of(h)))
@@ -220,17 +251,6 @@ class HelperConnectionActivity : ComponentActivity() {
         }
         if (r.dropped.isNotEmpty()) append(" Robot will leave out what the server didn't take: ${r.dropped.joinToString { it.name.lowercase().replace('_', ' ') }}.")
         if (h.baseUrl?.startsWith("http://") == true || r.base?.startsWith("http://") == true) append(" This connection isn't encrypted: anyone on your network can read it.")
-    }
-
-    /** The key was pasted: if the clipboard still holds exactly it, it is cleared (this window has focus, so it may read it). */
-    private fun clearClipboard(key: String) {
-        try {
-            val cm = getSystemService(ClipboardManager::class.java) ?: return
-            val clip = cm.primaryClip ?: return
-            if (clip.itemCount > 0 && clip.getItemAt(0).coerceToText(this)?.toString()?.trim() == key) cm.clearPrimaryClip()
-        } catch (t: Throwable) {
-            RLog.w("helper_key_clip", t)
-        }
     }
 
     companion object {

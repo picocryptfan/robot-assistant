@@ -9,17 +9,19 @@ import app.heyrobot.ui.pref.PreferenceScreen
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
 
-// MAIN PROCESS. Settings › About (0.4.x redesign): the version, the Licences (0.4.5), and room for more rows in the same
-// group (Settings › About › Updates goes there).
+// MAIN PROCESS. Settings › About (0.4.x redesign): the version, Updates (the built-in updater, 0.6.0) and the Licences
+// (0.4.5), and room for more rows in the same group.
 
 @Composable
 fun AboutSettingsScreen(a: AppActions, onBack: () -> Unit) {
     PreferenceScreen("About", onBack) {
         preferenceGroup(null, "about") {
             PreferenceItem("Version", "Robot ${BuildConfig.VERSION_NAME}")
+            // The built-in updater (0.6.0): an update on offer, or when Robot last checked.
+            UpdatesEntry(a)
             PreferenceItem("Licences", "Robot's licence and source code, and every part it uses with its licence and notices",
                 onClick = { a.openPage(Page.Licences) })
-            // More rows of About go here, one line each (Updates: its entry row).
+            // More rows of About go here, one line each.
         }
         preferenceFooter(
             "Free software under the GNU GPL version 3, with NO WARRANTY. It uses LiteRT-LM, sherpa-onnx with espeak-ng, ONNX Runtime, " +

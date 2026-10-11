@@ -149,6 +149,18 @@ class GemmaTranslateTest {
         val up = TranslatePolicy.budget(TranslateUse.TRANSCRIPT_UPGRADE, ModelBackend.TPU, fast = true)
         assertEquals(60_000L, up.startWithinMs)
         assertFalse(up.waitForLoad)
+        // 0.4.7's GPU (Fast on a Pixel 9a, about half the TPU's writing speed by the estimates) counts as the CPU: the fast
+        // engine leads when it is there, and the model gets the CPU's longer deadlines.
+        assertFalse(TranslatePolicy.modelLeads(ModelBackend.GPU, fast = true))
+        assertTrue(TranslatePolicy.modelLeads(ModelBackend.GPU, fast = false))
+        assertEquals("fast" to "model", TranslatePolicy.order(ModelBackend.GPU, "model", "fast"))
+        for (use in TranslateUse.entries) for (fast in listOf(true, false)) {
+            assertEquals("$use $fast", TranslatePolicy.budget(use, ModelBackend.CPU, fast), TranslatePolicy.budget(use, ModelBackend.GPU, fast))
+        }
+        assertTrue(TranslatePolicy.slow(ModelBackend.GPU) && TranslatePolicy.slow(ModelBackend.CPU) && !TranslatePolicy.slow(ModelBackend.TPU))
+        // A summary step on the GPU gets the CPU's limit too.
+        assertEquals(SummaryBudget.of(ModelBackend.CPU), SummaryBudget.of(ModelBackend.GPU))
+        assertTrue(SummaryBudget.of(ModelBackend.GPU).totalMs > SummaryBudget.of(ModelBackend.TPU).totalMs)
         assertTrue(TranslatePolicy.modelWork(screenOn = true, hot = false))
         assertFalse(TranslatePolicy.modelWork(screenOn = false, hot = false))
         assertFalse(TranslatePolicy.modelWork(screenOn = true, hot = true))

@@ -10,6 +10,7 @@ import app.heyrobot.core.ClaudePrompt
 import app.heyrobot.core.ClaudeTools
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.SecretRead
 import app.heyrobot.core.ToolSpec
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperFacts
@@ -30,7 +31,8 @@ import java.util.concurrent.ConcurrentHashMap
 // VOICE PROCESS. The panel's way to its helpers (the :claude module): one client per helper and saved key (and, for a
 // server, its address), and a session per question or per conversation ("go get …"). A client stays open while a session
 // still uses it, so saving a new key doesn't break a conversation under way; it closes when its last session ends.
-// Keys are decrypted here only (HelperKeys.read), just before a client is made. Nothing here logs content.
+// Keys are decrypted here only (HelperKeys.read), just before a client is made; one the Keystore can't read just now is
+// kept, and the question says so. Nothing here logs content.
 
 object HelperLink {
     /** A helper's client and how many sessions use it; [retired]: its key or address changed, or it was removed. */
@@ -50,14 +52,22 @@ object HelperLink {
     /** Whether each helper's key is saved, kept in memory: this process saves keys, and the main app says when it deleted one. */
     private val saved = ConcurrentHashMap<String, Boolean>()
 
-    /** Helpers whose saved key couldn't be decrypted (Android's keystore lost its key): it was removed, and Robot says why. */
+    /** Helpers whose saved key could never be decrypted again (Android's keystore lost its key): it was removed, and Robot says why. */
     private val unreadable: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /**
+     * Helpers whose saved key couldn't be read just now (a passing Keystore error) on the last try: it is kept, file and
+     * Keystore key, Robot says so, and the next question reads it again.
+     */
+    private val unavailable: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     fun keySaved(ctx: Context, id: String): Boolean = saved[id] ?: HelperKeyFiles.saved(ctx, id).also { saved[id] = it }
 
     fun keySaved(ctx: Context, h: HelperConfig?): Boolean = h != null && keySaved(ctx, h.id)
 
     fun unreadable(id: String): Boolean = id in unreadable
+
+    fun unavailable(id: String): Boolean = id in unavailable
 
     /** Background thread: reads again whether each helper's key is saved. */
     fun refresh(ctx: Context, s: RobotSettings) {
@@ -97,8 +107,9 @@ object HelperLink {
     }
 
     /**
-     * A new conversation with [h] ([conversation]: "go get …"), or why not: no key where one is needed (or it couldn't be
-     * read), a server whose port Test connection hasn't found, or an address Robot won't use. Background thread.
+     * A new conversation with [h] ([conversation]: "go get …"), or why not: no key where one is needed (or it could never
+     * be read again, [unreadable]), a saved key that couldn't be read just now ([unavailable]; NO_KEY too, never a request
+     * without it), a server whose port Test connection hasn't found, or an address Robot won't use. Background thread.
      */
     @Synchronized
     fun session(ctx: Context, s: RobotSettings, h: HelperConfig, conversation: Boolean): Made {
@@ -144,6 +155,7 @@ object HelperLink {
 
     /** The client for [h], made (its key decrypted) when there is none or its key or address changed. */
     private fun held(ctx: Context, h: HelperConfig, facts: HelperFacts): Made? {
+        unavailable.remove(h.id)
         val needsKey = h.presetOf.keyRequired
         val stamp = HelperKeys.stamp(ctx, h.id)
         if (stamp == 0L && needsKey) {
@@ -154,14 +166,29 @@ object HelperLink {
         val address = if (h.presetOf.protocol == Protocol.ANTHROPIC) null else facts.address(h) ?: return Made.Not(ClaudeFailure.NO_ADDRESS)
         current[h.id]?.takeIf { it.stamp == stamp && it.address == address }?.let { return null }
         current.remove(h.id)?.let(::retire)
-        val key = if (stamp == 0L) null else HelperKeys.read(ctx, h.id)
-        if (stamp != 0L && key == null) {
-            // It reads as no key from now on, and Settings says why.
-            HelperKeys.forget(ctx, h.id)
-            saved[h.id] = false
-            unreadable += h.id
-            RLog.i("helper_key", "op" to RLog.Code("unreadable"))
-            if (needsKey) return Made.Not(ClaudeFailure.NO_KEY)
+        val key = if (stamp == 0L) null else when (val r = HelperKeys.read(ctx, h.id)) {
+            is SecretRead.Present -> r.value
+            // Deleted just now.
+            SecretRead.Absent -> {
+                saved[h.id] = false
+                if (needsKey) return Made.Not(ClaudeFailure.NO_KEY)
+                null
+            }
+            is SecretRead.Invalidated -> {
+                // Removed as it was read: it reads as no key from now on, and Settings says why.
+                saved[h.id] = false
+                unreadable += h.id
+                RLog.i("helper_key", "op" to RLog.Code("unreadable"))
+                if (needsKey) return Made.Not(ClaudeFailure.NO_KEY)
+                null
+            }
+            is SecretRead.Unavailable -> {
+                // Kept, file and Keystore key: this question says so (PanelController.noKey), and the next one reads it
+                // again. Nothing goes to the helper without the key you saved, even one that may not need it.
+                unavailable += h.id
+                RLog.i("helper_key", "op" to RLog.Code("unavailable"))
+                return Made.Not(ClaudeFailure.NO_KEY)
+            }
         }
         val made = if (h.presetOf.protocol == Protocol.ANTHROPIC) Held(ClaudeClient.create(key!!), null, stamp, null)
         else Held(null, HelperHttp.create(address!!, key, h.home) ?: return Made.Not(ClaudeFailure.NOT_LOCAL), stamp, address)

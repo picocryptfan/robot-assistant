@@ -28,6 +28,7 @@ import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelFiles
 import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.OneShotRules
+import app.heyrobot.core.Phone
 import app.heyrobot.core.Priority
 import app.heyrobot.core.Prompt
 import app.heyrobot.core.PromptMarkers
@@ -78,7 +79,12 @@ import java.util.concurrent.CancellationException
 // only (ToolMode.CHAT_ONLY): no tools described, no text-call hint, no step down, its calls dropped, its history
 // alternating, every budget from its context. 0.4.5: one of :brain's two engines (Engine.kt); the process's one slot is
 // EngineSlot, shared with LlamaEngine. Your own Qwen3 or MiniCPM 5 file is told what Settings › Model › "Let the model
-// think first" says (core Thinking), and its thinking is kept out of the reply. LiteRT-LM encodes the rendered
+// think first" says (core Thinking), and its thinking is kept out of the reply. 0.4.7: the general E2B (Fast on a phone
+// without the Tensor G5's TPU build, a Pixel 9a) on the GPU: Backend.GPU() (LiteRT-LM's OpenCL accelerator, linked into
+// liblitertlm_jni.so, with the phone's own libOpenCL.so, declared in this module's manifest), its vision encoder on the
+// CPU (the general file's vision runs only there), the model's cache folder for the GPU's program and weight caches, no
+// sampler and MTP off, as on the TPU. Backend.NPU, and with it the TPU dispatch library, only ever for a TPU load, and only
+// on a Tensor G5 (core LoadCheck, with this phone's Build fields). LiteRT-LM encodes the rendered
 // conversation with the model's tokenizer, which reads Gemma 4's "<|turn>", "<|tool_call>"… (SentencePiece user-defined
 // pieces) wherever the text has them: your question, the history and the tools' results reach it with the file's special
 // tokens broken (core ControlText, from its tokenizer: LiteRtLmCheck.tokens); Robot's own system prompt as it is.
@@ -175,12 +181,25 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
 
     private fun npu() = Backend.NPU(nativeLibraryDir = ctx.applicationInfo.nativeLibraryDir)
 
-    private fun backend(b: ModelBackend): Backend = if (b == ModelBackend.TPU) npu() else Backend.CPU()
+    private fun backend(b: ModelBackend): Backend = when (b) {
+        ModelBackend.TPU -> npu()
+        ModelBackend.GPU -> Backend.GPU()
+        ModelBackend.CPU -> Backend.CPU()
+    }
+
+    /** The general file's vision encoder runs on the CPU only (LiteRT-LM's ModelInfo: vision backends CPU), whatever the text does on the GPU. */
+    private fun visionBackend(b: ModelBackend): Backend = if (b == ModelBackend.GPU) Backend.CPU() else backend(b)
+
+    /** This phone, as :brain checks it (core Phones): the TPU only on a Tensor G5, the GPU only where Robot offers it. */
+    private val phone: Phone by lazy {
+        Phone(android.os.Build.MANUFACTURER.orEmpty(), android.os.Build.MODEL.orEmpty(), android.os.Build.SOC_MANUFACTURER.orEmpty(),
+            android.os.Build.SOC_MODEL.orEmpty())
+    }
 
     private fun config(req: BrainMsg.Load, withVision: Boolean, cacheDir: File?) = EngineConfig(
         modelPath = req.path,
         backend = backend(req.backend),
-        visionBackend = if (withVision) backend(req.backend) else null,
+        visionBackend = if (withVision) visionBackend(req.backend) else null,
         audioBackend = null,
         maxNumTokens = req.maxTokens,
         cacheDir = cacheDir?.path,
@@ -230,7 +249,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()),
             mark = if (req.model.builtIn) readOrNull(File(records, ModelFiles.verifiedMark(req.model))) else null,
             ownRecord = if (req.model == BrainModel.OWN) readOrNull(File(records, ModelFiles.OWN_RECORD)) else null,
-            maxTokens = req.maxTokens, format = ModelFormat.LITERT_LM,
+            maxTokens = req.maxTokens, format = ModelFormat.LITERT_LM, phone = phone,
         )?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
         // The TPU only for Fast's pinned file (its SHA-256 mark, just above) or a file whose contents prove a Tensor G5
         // build and that you allowed there; and never TPU code on the CPU. Read here again, from the file about to load,
@@ -240,7 +259,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             val r = LiteRtLmCheck.check(f)
             val ok = when (req.backend) {
                 ModelBackend.TPU -> r.tensorG5Build
-                ModelBackend.CPU -> r.backend == ModelBackend.CPU
+                // The GPU runs a general (not NPU-compiled) file, as the CPU does; LoadCheck allowed the general E2B only.
+                ModelBackend.CPU, ModelBackend.GPU -> r.backend == ModelBackend.CPU
             }
             if (!ok) return failed(req, LoadFailure.NOT_ALLOWED, r.unusable ?: "Robot's check of the file says it can't run on the ${req.backend.title}.")
             if (r.contextTokens != req.maxTokens) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.wrongContext(r.contextTokens))
@@ -249,11 +269,11 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val cacheDir = ModelFiles.cacheDir(req.model, req.backend)?.let { File(ctx.filesDir, it) }
         if (cacheDir != null) {
             cacheDir.mkdirs()
-            // The first load writes the weight cache (about 2.5 GB for E4B): never start one that can't finish.
-            // Every file under it, as Settings › Model counts it (ModelStore.cacheBytes), so a cache already written is
-            // never taken for one still to write.
+            // The first load writes the weight cache (about 2.5 GB for E4B; 0.4.7: about 0.8 GB on the GPU): never start one
+            // that can't finish. Every file under it, as Settings › Model counts it (ModelStore.cacheBytes), so a cache already
+            // written is never taken for one still to write.
             val cached = try { cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } catch (_: Exception) { 0L }
-            val need = (if (req.model == BrainModel.OWN) ModelFiles.cacheEstimate(f.length()) else req.model.cacheBytes) - cached
+            val need = ModelFiles.cacheBytes(req.model, req.backend, f.length()) - cached
             if (need > 0 && cacheDir.usableSpace in 0 until need + CACHE_SPARE) {
                 return failed(req, LoadFailure.NO_SPACE, "There isn't enough free space for the cache it writes on its first load (about ${gb(need)}).")
             }
@@ -272,8 +292,12 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         }
         if (current != null && current.model != req.model) toolMode = ToolMode.TOOLS_CONSTRAINED
         ExperimentalFlags.enableBenchmark = true
-        // MTP drafting: LiteRT-LM's default (off) on the TPU, as since 0.1; the A/B constant on the CPU.
-        ExperimentalFlags.enableSpeculativeDecoding = if (req.backend == ModelBackend.CPU) CPU_MTP else null
+        // MTP drafting: LiteRT-LM's default (off) on the TPU, as since 0.1; the A/B constants on the CPU and the GPU.
+        ExperimentalFlags.enableSpeculativeDecoding = when (req.backend) {
+            ModelBackend.CPU -> CPU_MTP
+            ModelBackend.GPU -> GPU_MTP
+            ModelBackend.TPU -> null
+        }
         val t0 = SystemClock.elapsedRealtime()
         var e: Engine? = null
         var visionError: String? = null
@@ -329,14 +353,16 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             counted.clear()
             estimated.clear()
             val ms = SystemClock.elapsedRealtime() - t0
-            // Its tokenizer's special tokens, which no text from outside Robot's prompt may write. A built-in file (its
-            // SHA-256 checked above) is Gemma 4's, whose tokenizer encodes the joiner as itself; your own file whose tokenizer
-            // can't be read gets the known markers broken by a plain space, which every tokenizer reads as a space.
+            // Its tokenizer's special tokens, which no text from outside Robot's prompt may write, read from the file just
+            // loaded, whichever backend runs it: the Tensor G5 build's on the TPU, 0.4.7's general E2B's on the GPU or the CPU
+            // (the same SentencePiece model), an E4B file's, your own. A built-in file (its SHA-256 checked above) is Gemma
+            // 4's, whose tokenizer encodes the joiner as itself; your own file whose tokenizer can't be read gets the known
+            // markers broken by a plain space, which every tokenizer reads as a space.
             val tokens = try { FileByteSource(f).use { LiteRtLmCheck.tokens(it) } } catch (_: Exception) { null }
             controls = tokens?.controlText() ?: ControlText(PromptMarkers.KNOWN, if (req.model.builtIn) ControlText.JOINER else ControlText.SPACE)
             val tokensMs = SystemClock.elapsedRealtime() - t0 - ms
             RLog.i("brain_load", "ok" to true, "ms" to ms, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "vision" to vision,
-                "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) }, "mtp" to (req.backend == ModelBackend.CPU && CPU_MTP == true),
+                "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) }, "mtp" to ((req.backend == ModelBackend.CPU && CPU_MTP == true) || (req.backend == ModelBackend.GPU && GPU_MTP == true)),
                 "sampler" to (req.backend == ModelBackend.CPU && CPU_SAMPLER), "maxTokens" to req.maxTokens,
                 "chatOnly" to ContextWindow.chatOnly(req.maxTokens), "controls" to controls.size, "tokenizer" to (tokens != null),
                 "breaker" to RLog.Code(breakerCode(controls.breaker)), "tokensMs" to tokensMs)
@@ -952,6 +978,11 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
          * CPU; on this phone's GPU it was slower, and on its CPU it is unmeasured. Try true.
          */
         private val CPU_MTP: Boolean? = null
+        /**
+         * A/B on the phone (README "On the phone (0.4.7)"): MTP on the GPU. Google recommends it for GPU backends; on the
+         * Pixel 10 Pro's PowerVR GPU it made writing slower (the lab). Unmeasured on a Mali GPU: null (off) until it is.
+         */
+        private val GPU_MTP: Boolean? = null
         /**
          * A/B: a sampler for the CPU models (false: none, as on the TPU). Abliterated models can ramble without one; try
          * true with Gemma's own values below, and compare the answers.
