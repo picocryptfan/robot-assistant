@@ -23,6 +23,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -118,12 +120,13 @@ fun PreferenceScreen(
         snackbarHost = { if (snackbar != null) SnackbarHost(snackbar) },
     ) { pad ->
         val dir = LocalLayoutDirection.current
+        // Below the top bar, not under it: a row scrolled up is cut at the bar's edge, so its touch area never lies under
+        // Back or the bar's actions.
         LazyColumn(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().padding(top = pad.calculateTopPadding()),
             contentPadding = PaddingValues(
                 start = pad.calculateStartPadding(dir) + RobotTokens.pagePadding,
                 end = pad.calculateEndPadding(dir) + RobotTokens.pagePadding,
-                top = pad.calculateTopPadding(),
                 bottom = pad.calculateBottomPadding() + 24.dp,
             ),
             content = content,
@@ -139,6 +142,31 @@ fun LazyListScope.preferenceGroup(title: String?, key: String, content: @Composa
 /** The page's footer: the explanations, after the last group. */
 fun LazyListScope.preferenceFooter(text: String, key: String = "footer") {
     item(key = key, contentType = "footer") { FooterPreference(text) }
+}
+
+/**
+ * A long group (People, a server's models) as lazy rows under [title]: each of [items] is its own list item, drawn as
+ * one group (20 dp corners at its ends, 4 dp between, 2 dp apart), so thousands of rows scroll without composing them all.
+ */
+fun <T> LazyListScope.preferenceItems(
+    title: String?,
+    key: String,
+    items: List<T>,
+    itemKey: (T) -> Any,
+    content: @Composable (T) -> Unit,
+) {
+    item(key = key, contentType = "category") { if (title != null) PreferenceCategory(title) else Spacer(Modifier.height(16.dp)) }
+    itemsIndexed(items, key = { _, it -> itemKey(it) }, contentType = { _, _ -> "row" }) { i, it ->
+        if (RobotTokens.groupedSettings) {
+            val top = if (i == 0) RobotTokens.groupCorner else RobotTokens.itemCorner
+            val bottom = if (i == items.lastIndex) RobotTokens.groupCorner else RobotTokens.itemCorner
+            Box(Modifier.padding(top = if (i == 0) 0.dp else RobotTokens.groupGap).clip(RoundedCornerShape(top, top, bottom, bottom))) {
+                CompositionLocalProvider(LocalInGroup provides true) { content(it) }
+            }
+        } else {
+            content(it)
+        }
+    }
 }
 
 /**
@@ -192,6 +220,23 @@ private fun PrefFrame(
             .semantics(mergeDescendants = true) {}
             .padding(horizontal = RobotTokens.prefPaddingH, vertical = RobotTokens.prefPaddingV),
         verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+/**
+ * A row of its own making inside a group (a slider with labels, numbered steps, a test's result lines): the row's
+ * background, corners and padding, its [content] in a column.
+ */
+@Composable
+fun PreferenceBlock(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val grouped = RobotTokens.groupedSettings && LocalInGroup.current
+    Column(
+        modifier.fillMaxWidth()
+            .clip(if (grouped) RoundedCornerShape(RobotTokens.itemCorner) else RectangleShape)
+            .background(if (grouped) MaterialTheme.colorScheme.surfaceBright else Color.Transparent)
+            .padding(horizontal = RobotTokens.prefPaddingH, vertical = RobotTokens.prefPaddingV),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         content = content,
     )
 }
@@ -391,13 +436,14 @@ fun TextPreference(
     supporting: String,
     icon: ImageVector? = null,
     enabled: Boolean = true,
+    keyboard: KeyboardOptions = KeyboardOptions.Default,
     validate: (String) -> String? = { null },
     onSave: (String) -> Unit,
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
     PreferenceItem(title, value.ifEmpty { emptySummary }, icon, enabled, onClick = { open = true })
     if (open) {
-        EditDialog(title, value, fieldLabel, supporting, validate, onDismiss = { open = false }, onSave = { open = false; onSave(it) })
+        EditDialog(title, value, fieldLabel, supporting, validate, keyboard = keyboard, onDismiss = { open = false }, onSave = { open = false; onSave(it) })
     }
 }
 
