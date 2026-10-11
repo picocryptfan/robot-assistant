@@ -23,6 +23,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 | `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
+| `:mt` | `:mt` | since 0.5.0, the fast translation engine: `MtService` (Messenger), `BergamotEngine` and `Slimt`, the only code that loads `librobotmt.so` (slimt, built by `tools/build_robotmt.sh`, not in git) |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
 
 - The main app never loads an engine or the Anthropic SDK; `ProcessIsolationTest` checks sources, Gradle files and
@@ -33,6 +34,9 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
   location reader and what phone_status reads.
 - `:brain` is bound from the assistant with `BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_INCLUDE_CAPABILITIES`;
   it is not exported and requires Robot's signature permission `app.heyrobot.permission.INTERNAL`.
+- `:mt` (0.5.0) is bound by class name (`app/sys/MtLink.kt`, `BIND_AUTO_CREATE`), from the main app for Test translation
+  speed and, from phase 5.4, from the voice process; not exported, the same signature permission. Its module has no
+  network code and writes no file (`ProcessIsolationTest`).
 - Tools run in the app process (`:voice`), never in `:brain`: the model only proposes calls
   (`automaticToolCalling = false`, constrained decoding when the TPU build allows it), the approval gate decides.
   In a conversation with screen text, a picture or something Robot read, an action that writes or leaves the phone and
@@ -58,6 +62,7 @@ Needs JDK 17+, the Android SDK (platform 36, build-tools 36) and Gradle 8.x.
 cd robot
 echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models (and its bpe.model), espeak-ng subset, SHA-256 checked
+tools/build_robotmt.sh                        # 0.5.0: librobotmt.so, the fast translation engine (optional; NDK 27.1.12297006, CMake 3.22.1)
 gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :claude:testReleaseUnitTest :app:testReleaseUnitTest
 gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                             -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
@@ -72,8 +77,9 @@ goes into the repository or the build output.
 ## Conversation mode (0.5.0)
 
 Robot writes down a conversation, word for word as it hears it, in French and English, on the phone (the design is
-`../docs/conversation-mode.md`). Built so far: the Transcription check (phase 5.0(a)), capture and transcription (5.2)
-and the Transcripts library (5.5). Not yet: speaker labels (5.3: every line is "Speaker" for now), translation and the
+`../docs/conversation-mode.md`). Built so far: the Transcription check (phase 5.0(a)), capture and transcription (5.2),
+the Transcripts library (5.5), and the fast translation engine with its speed test (5.0(b) and the Bergamot half of
+5.4). Not yet: speaker labels (5.3: every line is "Speaker" for now), translated transcripts, Gemma's translations and the
 interpreter (5.4), summaries (5.6), keeping the audio.
 
 ### Transcribing
@@ -211,6 +217,70 @@ installed, the wake word is on.
     transcribing"); a session recording with no notification is a failure. The first transcript is saved whole.
 14. **Recents.** Start from the tile, press Back, stop from the notification; then open the transcript screen from
     Recents: it opens on "Saved" and records nothing (no notification). The same after a Resume.
+
+### Fast translation engine (0.5.0)
+
+Mozilla's Bergamot French ↔ English models (the ones Firefox translates with), run by slimt in a process of its own,
+`:mt`. It translates a line in tens of milliseconds, so every transcript line can have a translation at once; Gemma will
+improve them and lead the interpreter (5.4). Built so far: the engine, its download and its speed test; nothing
+translates conversations yet. The core's `BergamotTranslator` (behind the same `Translator` interface as Gemma's, with
+`MtGuard`) is ready for 5.4 to call.
+- **The library.** `tools/build_robotmt.sh` fetches slimt (DavidVentura's fork @ `2beb403a`, the one Offline Translator
+  uses) and the commits of ruy, cpuinfo and SentencePiece it pins, checks the SHA-256 of each tree, and builds
+  `librobotmt.so` for arm64-v8a with NDK 27.1.12297006 and CMake 3.22.1 from Robot's own wrapper (`mt/src/main/cpp/`:
+  slimt's C++ API, a sentence splitter, three JNI functions; nothing logged). It goes into `mt/src/main/jniLibs/` (not in
+  git), where Gradle packages it; the same sources give the same bytes (THIRD_PARTY.md has the hash). Without it the app
+  still builds, and Settings › Conversation says the fast engine isn't in this build. `--check` also builds the wrapper
+  for the computer, downloads and checks the model files, and translates the test set (`tools/lang/fr-CA/mt-test.tsv`),
+  comparing each line with its "fast engine output" column. `ROBOTMT_NEON=ON` turns on slimt's own NEON float code
+  (maybe faster on the phone, but then the phone no longer gives the build machine's exact outputs).
+- **The files.** Settings › Conversation › Translation › **Fast translation engine (52 MB)** › Download: five files at
+  pinned Mozilla URLs (the training run's id is in each path). Each `.gz` is checked (size, SHA-256), unpacked as a stream
+  and checked again before the `:mt` process may load it; 73 MB in Robot's private storage. Delete removes them.
+- **The process.** One engine, both directions at most (about 300 MB with both loaded on the build machine), loaded on
+  first use and let go after five idle minutes, when Android is short of memory with the process in the background, or
+  when nothing is bound. A request is up to 64 lines of one direction, each translated on its own (sentence by sentence)
+  before its deadline; an interactive line goes before a waiting backlog, so it waits at most one line. slimt can
+  `abort()` on a bad model file: that ends `:mt` only (the transcript, the panel and Gemma go on), and the next request
+  starts it again. It never goes online and logs codes and numbers only; the voice log gets "Fast translation loaded in
+  … ms (2 directions)".
+- **Test translation speed** (Settings › Conversation › Translation, the phone gate of phase 5.0(b)): Robot's 23 test
+  lines (15 Québec French, 8 English) through the engine, timed line by line inside `:mt`, then its memory, each output
+  compared with what the same engine gave on the build machine. The mark: a **median of 60 ms a line or less**, **450 MB
+  or less** at most with both directions loaded, and **23 of 23 the same**. Copy the result copies the numbers and every
+  line that differed. While the screen shows, the engine stays loaded for `dumpsys meminfo`.
+- **Build machine** (x86, 4 vCPU Xeon, 2026-10-11): 23 of 23 the same; median 36–40 ms, slowest 69–79 ms a line; peak
+  RSS 293 MB with both directions; 0.17–0.21 s to load a direction. The arm64 build, run as a static program under
+  qemu-aarch64, gave the same 23 outputs (no phone timing). The bergamot 0.4.5 wheel of phase 4 agrees with this engine on
+  13 of the 23 lines only: the two engines quantize and decode differently, so the gate compares with this engine's own
+  outputs.
+
+### On the phone (0.5.0 translation engine)
+
+Phase 5.0(b) is done when steps 2 to 4 pass (design §9.1).
+1. **Build with the engine.** Run `tools/build_robotmt.sh` before `gradle :app:assembleRelease`; `tools/verify_apk.sh`
+   then shows "packages librobotmt.so (the fast translation engine)", "librobotmt.so exports only its three JNI
+   functions" and "only app.heyrobot.mt.Slimt loads librobotmt (dex)". (Without the script it prints a NOTE instead.)
+2. **Download.** Settings › Conversation › Translation › Download (52 MB): progress, then "Checking and installing", then
+   "Ready" and "The fast translation engine is ready." `adb shell run-as app.heyrobot ls -l files/models/mt-fr-en` lists the
+   five files and `.verified` (73,135,034 bytes of files).
+3. **Test translation speed.** Tap it and note the four lines: the median (the mark is ≤ 60 ms) and the slowest line;
+   the memory, at most and now (≤ 450 MB); "23 of 23 the same"; the load times. Tap Copy the result and keep the text.
+   Tap again: "The engine was loaded already", and the times without the first-load cost.
+4. **Memory.** With the result on screen: `adb shell dumpsys meminfo app.heyrobot:mt`. Note TOTAL PSS and TOTAL RSS (the
+   mark is 450 MB with both directions loaded) and the native heap.
+5. **Lines that differ.** If fewer than 23 are the same, the copied result lists each line with what was expected and
+   what came: note them. The engine is meant to give the build machine's exact words; a difference is a finding for
+   docs/conversation-mode.md 9.6, not a reason to change the reference.
+6. **A crash stays in `:mt`.** Start a transcript (Home › Transcribe), then open Settings › Conversation, start the test
+   and at once `adb shell am crash $(adb shell pidof app.heyrobot:mt)`: the test says the fast engine stopped; the
+   transcript goes on (its notification stays, new lines arrive). Test again: it works (Android started `:mt` again).
+7. **Letting go.** Leave Settings › Conversation; after a few seconds `adb shell dumpsys meminfo app.heyrobot:mt` shows
+   no process, or one without the engine's memory.
+8. **Delete.** Translation › Delete: `files/models/mt-fr-en` is gone and Test translation speed is greyed out. Download
+   again works.
+9. **No network.** With the files there, turn on airplane mode and run the test: it works the same.
+10. **Voice log.** Settings › Voice › Voice log: "Fast translation loaded in … ms (2 directions)" for each first load.
 
 ## Weather, phone status and freeing space (0.4.0)
 
