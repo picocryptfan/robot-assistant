@@ -1,7 +1,9 @@
 # Robot's privacy policy
 
-> **Draft for review.** Written against Robot 0.4.3's code (the `feature/compliance` branch). Re-check it against the
-> merged 1.0 before publishing: conversation mode and transcripts (0.5.0) and the other helpers (0.6.0) add to it.
+> **Draft for review.** Written against Robot 0.4.3's code (the `feature/compliance` branch). Re-check it before
+> publishing: 0.6.0 adds what it doesn't cover yet: conversation mode and its transcripts (kept on the phone), the fast
+> translation engine's model download (Mozilla's storage.googleapis.com bucket), the speaker model's (huggingface.co), a
+> summary sent to Claude after its card, and the other helpers (any company's API, or a server on your own network).
 > Replace CONTACT with a real address.
 
 ## The short version
