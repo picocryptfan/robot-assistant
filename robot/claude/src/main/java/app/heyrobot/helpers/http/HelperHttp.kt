@@ -32,6 +32,12 @@ import java.util.concurrent.TimeUnit
 //   rules), no cookies or cache, and a neutral User-Agent ("Robot") instead of OkHttp's, without device details. The
 //   key goes in an Authorization header only, and never into a log: Robot logs status codes and exception class names.
 
+/** At most [max] bytes of a reply's body as text: a server can't fill the voice process's memory with one answer. */
+fun BufferedSource.textUpTo(max: Long): String {
+    request(max)
+    return buffer.readUtf8(minOf(buffer.size, max))
+}
+
 /** The connection is refused because the address isn't on your network (core LanRule). */
 class NotLocalException : UnknownHostException("not on your network")
 
@@ -127,14 +133,15 @@ object LanGuard : Interceptor {
  * Server-sent events, one `data:` payload at a time (several data lines join with a newline). Comment lines (": …",
  * OpenRouter's keep-alives) and `event:` lines only show the line is alive.
  */
-class SseReader(private val source: BufferedSource) {
+class SseReader(private val source: BufferedSource, private val maxLine: Long = MAX_LINE) {
     /** The next event's data, or null at the end of the stream. [alive] is called for every line read. */
     @Throws(IOException::class)
     fun next(alive: () -> Unit = {}): String? {
         val data = StringBuilder()
         var any = false
         while (true) {
-            val line = source.readUtf8Line() ?: return if (any) data.toString() else null
+            val line = line() ?: return if (any) data.toString() else null
+            if (data.length + line.length > maxLine) throw IOException("event too long")
             alive()
             when {
                 line.isEmpty() -> if (any) return data.toString()
@@ -148,5 +155,16 @@ class SseReader(private val source: BufferedSource) {
                 else -> {}
             }
         }
+    }
+
+    /** One line, never longer than [maxLine] (a server can't fill the voice process's memory with one). */
+    private fun line(): String? {
+        if (source.indexOf('\n'.code.toByte(), 0, maxLine) < 0 && source.buffer.size >= maxLine) throw IOException("line too long")
+        return source.readUtf8Line()
+    }
+
+    companion object {
+        /** No event of a helper's stream is near this long (a whole answer sent as one event included). */
+        const val MAX_LINE = 8L * 1024 * 1024
     }
 }

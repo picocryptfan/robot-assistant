@@ -13,6 +13,7 @@ import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.wire.Extra
 import app.heyrobot.core.helpers.wire.WireErrors
 import app.heyrobot.helpers.http.HelperHttp
+import app.heyrobot.helpers.http.textUpTo
 import app.heyrobot.helpers.openai.OpenAiSession
 import okhttp3.Dns
 import org.json.JSONArray
@@ -66,6 +67,8 @@ object HelperProbe {
     /** Each address gets this long to connect while looking for the server (a wrong port fails fast). */
     const val FIND_CONNECT_MS = 2_000L
     const val MAX_MODELS = 2_000
+    /** A model list larger than this isn't read (OpenRouter's, with every model's details, is about a tenth of it). */
+    const val MAX_LIST_BYTES = 16L * 1024 * 1024
 
     /**
      * Finds the server at [candidates] (in order), lists its models and, when [question], asks the tiny question with
@@ -135,7 +138,7 @@ object HelperProbe {
     private fun models(http: HelperHttp): Found {
         val base = http.base.toString().trimEnd('/')
         http.get("models").execute().use { r ->
-            val body = r.body?.string().orEmpty()
+            val body = r.body?.source()?.textUpTo(MAX_LIST_BYTES).orEmpty()
             when {
                 r.isSuccessful -> return Found(base, if (base.endsWith("/api")) "openwebui" else "openai", ids(body))
                 r.code == 401 || r.code == 403 -> return Found(base, null, emptyList(), needsKey = true)
@@ -143,10 +146,10 @@ object HelperProbe {
             }
         }
         http.get("/api/tags").execute().use { r ->
-            if (r.isSuccessful) return Found(base, "ollama", ids(r.body?.string().orEmpty()))
+            if (r.isSuccessful) return Found(base, "ollama", ids(r.body?.source()?.textUpTo(MAX_LIST_BYTES).orEmpty()))
         }
         http.get("/api/models").execute().use { r ->
-            if (r.isSuccessful) return Found(base, "openwebui", ids(r.body?.string().orEmpty()))
+            if (r.isSuccessful) return Found(base, "openwebui", ids(r.body?.source()?.textUpTo(MAX_LIST_BYTES).orEmpty()))
             if (r.code == 401 || r.code == 403) return Found(base, "openwebui", emptyList(), needsKey = true)
         }
         return Found(failure = ClaudeFailure.UNREACHABLE)

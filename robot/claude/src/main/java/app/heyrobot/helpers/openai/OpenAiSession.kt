@@ -37,6 +37,7 @@ import app.heyrobot.helpers.HelperSession
 import app.heyrobot.helpers.http.HelperHttp
 import app.heyrobot.helpers.http.NotLocalException
 import app.heyrobot.helpers.http.SseReader
+import app.heyrobot.helpers.http.textUpTo
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -320,7 +321,7 @@ class OpenAiSession(
                         }
                     } else {
                         // A server that answered without streaming: the whole reply at once.
-                        feed(source.readUtf8())
+                        feed(source.textUpTo(MAX_WHOLE_BYTES))
                     }
                     if (chat != null) {
                         val d = chat.done()
@@ -457,6 +458,8 @@ class OpenAiSession(
         /** The failures a refused optional part can cause (Ollama says "does not support tools" as an api_error with a 400). */
         private val ADAPTABLE = setOf(ClaudeFailure.BAD_REQUEST, ClaudeFailure.SERVER, ClaudeFailure.UNKNOWN)
         private const val MAX_ERROR_BYTES = 16_384L
+        /** A reply that came whole (not streamed) is read up to this much. */
+        private const val MAX_WHOLE_BYTES = 8L * 1024 * 1024
 
         /**
          * An exception to Robot's words (its class only; the message can quote the request). [opened]: the server had

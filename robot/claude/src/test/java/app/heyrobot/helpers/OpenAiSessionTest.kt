@@ -346,6 +346,21 @@ class OpenAiSessionTest {
         assertNull(HelperHttp.create("http://10.1:11434/v1", key, home = true))
     }
 
+    @Test fun eventsAreReadWhateverTheirPiecesAndNeverTooLong() = runBlocking {
+        val r = app.heyrobot.helpers.http.SseReader(okio.Buffer().writeUtf8(": keep-alive\n\ndata: {\"a\":1}\r\n\ndata: x\ndata: y\n\nevent: done\ndata: [DONE]"))
+        assertEquals("""{"a":1}""", r.next())
+        assertEquals("x\ny", r.next())
+        assertEquals("[DONE]", r.next())
+        assertNull(r.next())
+        val long = app.heyrobot.helpers.http.SseReader(okio.Buffer().writeUtf8("data: " + "x".repeat(100) + "\n\n"), maxLine = 50)
+        try { long.next(); throw AssertionError("a line too long was read") } catch (_: java.io.IOException) {}
+        // The stream arriving one byte at a time (an accented letter and an emoji split inside their bytes, a tag split too).
+        server.enqueue(answer("Café ", "<thi", "nk>hmm</think>", "déjà 👍").throttleBody(1, 1, TimeUnit.MILLISECONDS))
+        val h = Heard()
+        assertEquals(ClaudeOutcome.Done(), session().ask(q, voice, h))
+        assertEquals("Café déjà 👍", h.text.toString())
+    }
+
     @Test fun anUnreachableServerSaysSo() = runBlocking {
         val port = server.port
         server.shutdown()
