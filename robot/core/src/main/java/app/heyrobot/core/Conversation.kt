@@ -160,8 +160,9 @@ object ConversationCodec {
         t.screenText?.let { put("screenText", it) }
         if (t.actions.isNotEmpty()) put("actions", JSONArray().apply {
             t.actions.forEach { a ->
-                put(JSONObject().put("tool", a.tool.id).put("summary", a.summary).put("status", a.status.name).apply {
-                    a.detail?.let { put("detail", it) }
+                // With messages in the conversation, a card's words may be a message's ("Add *Dinner at Mom's*"): its kind only.
+                put(JSONObject().put("tool", a.tool.id).put("summary", if (t.messages) a.tool.title else a.summary).put("status", a.status.name).apply {
+                    if (!t.messages) a.detail?.let { put("detail", it) }
                     if (a.content) put("content", true)
                 })
             }
