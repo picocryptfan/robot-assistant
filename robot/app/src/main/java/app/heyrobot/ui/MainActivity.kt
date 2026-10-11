@@ -69,6 +69,8 @@ import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
+import app.heyrobot.sys.Transcripts
+import app.heyrobot.core.ConvEntry
 import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.theme.RobotTheme
@@ -112,6 +114,11 @@ class MainActivity : ComponentActivity() {
     private fun routeOf(i: Intent?): String? = when {
         i == null -> null
         i.component?.className == AppPages.NOTES_ALIAS -> AppPages.NOTES
+        // 0.5.0: a long press on the "Transcribe" tile.
+        i.action == "android.service.quicksettings.action.QS_TILE_PREFERENCES" -> AppPages.CONVERSATION_SETTINGS
+        // 0.5.0: the Transcripts library, or one transcript (the transcript screen's "Open", the "Transcripts" shortcut).
+        i.getStringExtra(AppPages.EXTRA) == AppPages.TRANSCRIPTS ->
+            i.getStringExtra(AppPages.EXTRA_TRANSCRIPT)?.takeIf { app.heyrobot.core.TranscriptIds.valid(it) }?.let { "${AppPages.TRANSCRIPTS}:$it" } ?: AppPages.TRANSCRIPTS
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS }
     }
 
@@ -141,6 +148,10 @@ sealed class Page {
     data class PersonEdit(val id: String?) : Page()
     /** Settings › Safety & privacy (0.4.0). */
     data object Safety : Page()
+    /** 0.5.0: the Transcripts library, one transcript (and the line a search found), Settings › Conversation. */
+    data object Transcripts : Page()
+    data class Transcript(val id: String, val line: Int? = null) : Page()
+    data object ConversationSettings : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -158,6 +169,9 @@ sealed class Page {
                     People -> "people"
                     is PersonEdit -> "person:${p.id.orEmpty()}"
                     Safety -> "safety"
+                    Transcripts -> "transcripts"
+                    is Transcript -> "transcript:${p.id}:${p.line ?: -1}"
+                    ConversationSettings -> "convsettings"
                 }
             },
             restore = { v ->
@@ -172,6 +186,9 @@ sealed class Page {
                     v == "people" -> People
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
                     v == "safety" -> Safety
+                    v == "transcripts" -> Transcripts
+                    v.startsWith("transcript:") -> v.split(':').let { Transcript(it[1], it.getOrNull(2)?.toIntOrNull()?.takeIf { n -> n >= 0 }) }
+                    v == "convsettings" -> ConversationSettings
                     else -> null
                 }
             },
@@ -293,9 +310,13 @@ fun RobotAppUi(activity: MainActivity) {
     val route by activity.route
     // An open note editor saves when it closes (its onDispose), so switching pages here never loses text.
     LaunchedEffect(route) {
-        when (route) {
-            AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
-            AppPages.PERMISSIONS -> page = Page.Setup(people = true)
+        val r = route
+        when {
+            r == AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
+            r == AppPages.PERMISSIONS -> page = Page.Setup(people = true)
+            r == AppPages.TRANSCRIPTS -> page = Page.Transcripts
+            r != null && r.startsWith(AppPages.TRANSCRIPTS + ":") -> page = Page.Transcript(r.substringAfter(':'))
+            r == AppPages.CONVERSATION_SETTINGS -> page = Page.ConversationSettings
         }
         activity.route.value = null
     }
@@ -424,6 +445,13 @@ fun RobotAppUi(activity: MainActivity) {
             mediaPermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
         },
+        transcribe = {
+            // By name: the screen runs in the voice process, which starts the session.
+            try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name)) } catch (_: Exception) { say("Couldn't open the transcript screen.") }
+        },
+        openTranscriptionCheck = {
+            try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { say("Couldn't open the Transcription check.") }
+        },
         openUsageAccess = {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
             if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
@@ -458,6 +486,9 @@ fun RobotAppUi(activity: MainActivity) {
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
         Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = { page = null })
+        is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = { page = Page.Transcripts })
+        Page.ConversationSettings -> ConversationSettingsScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -531,4 +562,7 @@ class AppActions(
     val openUsageAccess: () -> Unit = {},
     /** 0.4.0: photos and videos (Android offers all of them or the ones you pick). */
     val askMedia: () -> Unit = {},
+    /** 0.5.0: the transcript screen (voice process), to start transcribing; Settings › Voice › Transcription check. */
+    val transcribe: () -> Unit = {},
+    val openTranscriptionCheck: () -> Unit = {},
 )

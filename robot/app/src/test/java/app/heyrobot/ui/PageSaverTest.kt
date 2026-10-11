@@ -12,7 +12,8 @@ class PageSaverTest {
 
     @Test fun everyPageRoundTrips() {
         for (p in listOf(Page.Setup(), Page.Setup(true), Page.Conversation("abc-123"), Page.NoteEdit("4f1c-uuid"), Page.NoteEdit(null), Page.Safety,
-                Page.People, Page.PersonEdit("p1"), Page.WakePhrases, null)) {
+                Page.People, Page.PersonEdit("p1"), Page.WakePhrases, Page.Transcripts, Page.Transcript("20261011-1402-7f3a"),
+                Page.Transcript("20261011-1402-7f3a", 12), Page.ConversationSettings, null)) {
             assertEquals(p, Page.Saver.restore(save(p)))
         }
     }
