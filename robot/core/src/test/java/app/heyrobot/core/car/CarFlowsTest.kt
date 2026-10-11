@@ -255,3 +255,108 @@ class DrivingTest {
         assertEquals(DriveBriefPlan(listOf(DriveItem.WEATHER), listOf(DriveItem.NEXT_EVENT), emptyList()), DriveBrief.plan(on, ctx(true, true), GuardSettings()))
     }
 }
+
+/** The call and message flows as state machines, driven by what is heard (§4.2 stories 3 and 4, §4.11). */
+class CarFlowMachinesTest {
+    private val mom = listOf(PhoneCandidate("Martine Martin", "5145550101", PhoneLabel.MOBILE), PhoneCandidate("Martine Martin", "5145550202", PhoneLabel.WORK))
+    private val marie = MessageNotice("CHEOGRAM:me#marie", "Marie", "k1", "T'es où?", "Cheogram", replyable = true)
+    private val c = MessageFlowContext(CarSettings(), HandsFreeSafety(), locked = false, trusted = false, lang = EN)
+
+    private fun call(vararg heard: String, plan: CallPlan): Pair<CallFlowState, List<List<FlowEffect>>> {
+        var (st, fx) = CallFlow.start(plan, "Mom", EN)
+        val out = mutableListOf(fx)
+        for (h in heard) { val (n, f) = CallFlow.on(st, h, EN); st = n; out += f }
+        return st to out
+    }
+
+    @Test fun twoMomsTheSecondThenYes() {
+        val plan = CallTarget.plan("Mom", mom, CallRules(), false, false, EN) { false }
+        val (st, fx) = call("la deuxième", "yes", plan = plan)
+        assertEquals(listOf(FlowEffect.Say("Call Mom: Martine Martin, mobile, or Martine Martin, work?", true)), fx[0])
+        assertEquals(listOf(FlowEffect.Say("Call Martine Martin, work, ending 0202?", true)), fx[1])
+        assertEquals(listOf(FlowEffect.Place("5145550202", CallWay.DIAL)), fx[2])
+        assertTrue(st.done)
+        // Nothing more once done.
+        assertEquals(emptyList<FlowEffect>(), CallFlow.on(st, "yes", EN).second)
+    }
+
+    @Test fun robotsOwnPromptIsNotAnAnswerAndSilenceTwiceIsParked() {
+        val plan = CallTarget.plan("Mom", mom, CallRules(), false, false, EN) { false }
+        val (st, fx) = call("Martine Martin mobile or Martine Martin work", "", plan = plan)
+        assertEquals(listOf(FlowEffect.Say("Say the first or the second, or no.", true)), fx[1])
+        assertEquals(listOf(FlowEffect.Say("I'll keep that for when you park.", false), FlowEffect.Park(ParkCode.NO_ANSWER, "Call Mom")), fx[2])
+        assertTrue(st.done)
+    }
+
+    @Test fun emergencyAndRefusals() {
+        val (st, fx) = CallFlow.start(CallTarget.plan("911", emptyList(), CallRules(CallSetting.CALL_AFTER_YES, true), false, false, EN) { it == "911" }, "911", EN)
+        assertEquals(FlowEffect.Place("911", CallWay.DIAL), fx[0])
+        assertTrue(st.done)
+        val (_, held) = CallFlow.start(CallTarget.plan("Marie", listOf(mom[0].copy(learned = true)), CallRules(), false, false, EN) { false }, "Marie", EN)
+        assertEquals(FlowEffect.Park(ParkCode.LEARNED_NAME, "Call Marie"), held[1])
+        val (_, refused) = CallFlow.start(CallTarget.plan("Mom", mom, CallRules(), true, false, EN) { false }, "Mom", EN)
+        assertEquals(listOf(FlowEffect.Say("Unlock to call.", false)), refused)
+        // "Repeat" re-reads; "no" ends it.
+        val plan = CallTarget.plan("Mom", mom.take(1), CallRules(), false, false, EN) { false }
+        val (st2, fx2) = call("repeat", "no", plan = plan)
+        assertEquals(fx2[0], fx2[1])
+        assertEquals(listOf(FlowEffect.Say("Okay, no call.", false)), fx2[2])
+        assertTrue(st2.done)
+    }
+
+    private fun msg(start: Pair<MessageFlowState?, List<FlowEffect>>, vararg heard: String, ctx: MessageFlowContext = c): Pair<MessageFlowState?, List<List<FlowEffect>>> {
+        var st = start.first
+        val out = mutableListOf(start.second)
+        for (h in heard) { val (n, f) = MessageFlow.on(st!!, h, ctx); st = n; out += f }
+        return st to out
+    }
+
+    @Test fun announceReadReplyReadBackSend() {
+        val (st, fx) = msg(MessageFlow.start(marie, c, senderAllowed = true), "yes", "yes", "tell her I'm 10 minutes away", "send")
+        assertEquals(listOf(FlowEffect.Say("Message from Marie. Read it?", true)), fx[0])
+        assertEquals(listOf(FlowEffect.Say("Marie says: T'es où?", false), FlowEffect.Say("Reply?", true)), fx[1])
+        assertEquals(listOf(FlowEffect.Say("What should the reply say?", true)), fx[2])
+        assertEquals(listOf(FlowEffect.Say("Reply to Marie: I'm 10 minutes away. Send?", true)), fx[3])
+        // What is sent is exactly what was read back.
+        assertEquals(listOf(FlowEffect.Send("CHEOGRAM:me#marie", "I'm 10 minutes away")), fx[4])
+        assertEquals(MessageStep.DONE, st!!.step)
+    }
+
+    @Test fun theReplyCanComeAtOnceAndNoSendsNothing() {
+        val (_, fx) = msg(MessageFlow.start(marie, c, true), "oui", "dis-lui que j'arrive", "non")
+        assertEquals(listOf(FlowEffect.Say("Reply to Marie: j'arrive. Send?", true)), fx[2])
+        assertEquals(listOf(FlowEffect.Say("Okay, not sent.", false)), fx[3])
+        assertFalse(fx.flatten().any { it is FlowEffect.Send })
+        // Robot's read-back heard back is not a "send"; nothing heard twice keeps the reply for parking.
+        val (st2, fx2) = msg(MessageFlow.start(marie, c, true), "yes", "tell her I'm late", "Reply to Marie I'm late send", "")
+        assertFalse(fx2.flatten().any { it is FlowEffect.Send })
+        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie"), fx2.last().last())
+        assertEquals(MessageStep.DONE, st2!!.step)
+    }
+
+    @Test fun messagesThatEndEarly() {
+        // "No" to "Read it?": quiet, the message stays in its app.
+        val (st, fx) = msg(MessageFlow.start(marie, c, true), "no")
+        assertEquals(emptyList<FlowEffect>(), fx[1])
+        assertEquals(MessageStep.DONE, st!!.step)
+        // No reply offered for a group: read, then done.
+        val (gst, gfx) = msg(MessageFlow.start(marie.copy(group = "Famille"), c, true), "yes")
+        assertEquals(listOf(FlowEffect.Say("Marie says: T'es où?", false)), gfx[1])
+        assertEquals(MessageStep.DONE, gst!!.step)
+        // Off, or locked without trust: nothing at all.
+        assertEquals(null to emptyList<FlowEffect>(), MessageFlow.start(marie, c.copy(settings = CarSettings(announce = CarAnnounce.OFF)), true))
+        assertEquals(null to emptyList<FlowEffect>(), MessageFlow.start(marie, c.copy(locked = true), true))
+        // Read at once (both settings), then the reply offer.
+        val whole = c.copy(settings = CarSettings(announce = CarAnnounce.READ_WHOLE, readAloud = ReadAloud.ALWAYS))
+        assertEquals(listOf(FlowEffect.Say("Marie says: T'es où?", false), FlowEffect.Say("Reply?", true)), MessageFlow.start(marie, whole, true).second)
+        // "Reply …" straight from the router, for an app without a Reply action: kept for parking.
+        val (_, rfx) = MessageFlow.reply(marie.copy(replyable = false), "reply I'm late", c)
+        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie"), rfx.last())
+        // Dictation that says nothing twice: kept.
+        val (dst, dfx) = msg(MessageFlow.start(marie, c, true), "yes", "yes", "", "")
+        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie"), dfx.last().last())
+        assertEquals(MessageStep.DONE, dst!!.step)
+        // "Read my messages".
+        assertEquals(MessageStep.OFFERED, MessageFlow.read(marie, c).first.step)
+    }
+}

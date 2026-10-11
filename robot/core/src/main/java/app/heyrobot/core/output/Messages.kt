@@ -83,15 +83,20 @@ object ReplyWords {
 
     /** [dictated] without its lead-in words and the wake phrase, trimmed, its own words otherwise untouched. */
     fun body(dictated: String): String {
-        var s = TextCommand.stripWake(dictated).trim()
+        val s = TextCommand.stripWake(dictated).trim()
+        val end = leadEnd(s) ?: return s
+        return s.substring(end).trimStart(' ', ',', ':', '-', '—').trim()
+    }
+
+    /** [said] begins with a reply's lead-in ("tell her …", "dis-lui que …"), the wake phrase aside. */
+    fun hasLead(said: String): Boolean = leadEnd(TextCommand.stripWake(said).trim()) != null
+
+    /** Where the lead-in of [s] ends, or null without one. */
+    private fun leadEnd(s: String): Int? {
         // Words with where they are in [s], to cut the lead off the original text.
         val words = Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*").findAll(s).map { ClaudeRouter.plain(it.value) to it.range }.toList()
         val split = words.flatMap { (w, r) -> w.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.map { it to r } }
-        val lead = LEADS.firstOrNull { l -> l.size <= split.size && l.indices.all { split[it].first == l[it] } }
-        if (lead != null) {
-            val end = split[lead.size - 1].second.last + 1
-            s = s.substring(end).trimStart(' ', ',', ':', '-', '—')
-        }
-        return s.trim()
+        val lead = LEADS.firstOrNull { l -> l.size <= split.size && l.indices.all { split[it].first == l[it] } } ?: return null
+        return split[lead.size - 1].second.last + 1
     }
 }
