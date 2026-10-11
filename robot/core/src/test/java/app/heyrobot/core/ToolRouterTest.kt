@@ -107,16 +107,32 @@ class ToolRouterTest {
         assertTrue(ToolName.OPEN_APP in asked("open Signal"))
         assertTrue(ToolName.MAPS_NAVIGATE in asked("directions to the nearest pharmacy"))
         assertTrue(ToolName.MAPS_SEARCH in asked("where's the closest gas station"))
-        assertTrue(ToolName.SEND_TEXT in asked("text Mom I'm late") && ToolName.DRAFT_EMAIL in asked("text Mom I'm late"))
+        assertTrue(ToolName.SEND_TEXT in asked("text Mom I'm late") && ToolName.DRAFT_EMAIL !in asked("text Mom I'm late"))
+        assertTrue(ToolName.SEND_TEXT in asked("tell Sam I'm on my way") && ToolName.SEND_TEXT in asked("let my sister know I landed"))
+        assertTrue(ToolName.SEND_TEXT in asked("send this to Sam") && ToolName.DRAFT_EMAIL in asked("send this to Sam"))
+        assertTrue(ToolName.DRAFT_EMAIL in asked("Email Sam about dinner on Friday"))
         assertTrue(ToolName.ADD_NOTE in asked("note that the wifi code is 1234"))
+        assertTrue(ToolName.ADD_NOTE in asked("Remember that I parked on level 3"))
+        assertTrue(ToolName.ADD_NOTE in asked("add milk to my list") && ToolName.ADD_EVENT !in asked("add milk to my list"))
         assertTrue(ToolName.ADD_EVENT in asked("add the dentist to my calendar on Friday"))
+        assertTrue(ToolName.ADD_EVENT in asked("Add lunch with Alex on Friday at noon"))
+        assertTrue(ToolName.ADD_EVENT in asked("remind me to call the dentist tomorrow"))
         assertTrue(ToolName.WEATHER in asked("will it rain tomorrow"))
-        assertTrue(ToolName.FREE_STORAGE in asked("free up some space"))
+        assertTrue(ToolName.FREE_STORAGE in asked("free up some space") && ToolName.FREE_STORAGE in asked("Help me free up space"))
+        assertTrue(ToolName.FREE_MEMORY in asked("close YouTube"))
         // A question about the screen asks for no action: what the page says never counts as your words.
         assertEquals(emptySet<ToolName>(), asked("what does this page say?"))
         assertEquals(emptySet<ToolName>(), asked("summarize this"))
         assertFalse(ToolName.SET_TIMER in asked("what's the weather tomorrow"))
         assertFalse(ToolName.OPEN_APP in asked("tell me a joke"))
+        // Words that only name a thing on the screen (or a topic) ask for nothing that writes or leaves the phone.
+        val writes = setOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ADD_NOTE, ToolName.ADD_EVENT, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE)
+        for (q in listOf("what does this message say?", "read me the email", "check my email", "any new messages?", "what's in this text",
+                "can you tell what this is", "what's on this list", "is this event today?", "what's on my calendar today?", "am I free on Friday",
+                "what's the phone number on this page", "what's this address", "how much space is free?", "how's my battery?",
+                "what does cette note dit", "c'est quoi ce message")) {
+            assertEquals(q, emptySet<ToolName>(), asked(q).intersect(writes))
+        }
         // Robot's own hand-off never counts: it always shows its card.
         assertFalse(ToolName.ASK_CLAUDE in asked("ask Claude to open the maps"))
     }
