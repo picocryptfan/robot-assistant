@@ -3,7 +3,9 @@
 # components and their processes, the recognizer that keeps the assistant across restarts, permissions,
 # the arm64-only native libraries, and (phase 2) the Robot Notes launcher entry, the hand-off apps' <queries>
 # and the three runtime permissions; that the main-process entries stay in the main process, that nothing beyond an
-# allowlist is exported, and that no main-process class in the dex refers to an engine. Usage: tools/verify_apk.sh <apk>
+# allowlist is exported, and that no main-process class in the dex refers to an engine; since 0.5.0, the fast translation
+# engine's :mt process and its library, allowed by exact name and loaded only by the :mt module's class. Usage:
+# tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
 BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/36.0.0"
@@ -30,7 +32,7 @@ has "application-label:'Robot'" "$badging" "label Robot"
 has "native-code: 'arm64-v8a'" "$badging" "arm64-v8a only"
 hasnt "application-debuggable" "$badging" "not debuggable"
 mf=$("$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" 2>/dev/null)
-for c in assistant.RobotVoiceService assistant.RobotSessionService assistant.RobotRecognitionService assistant.CaptureActivity brain.BrainService boot.BootReceiver boot.BootCheckReceiver ui.MainActivity; do
+for c in assistant.RobotVoiceService assistant.RobotSessionService assistant.RobotRecognitionService assistant.CaptureActivity brain.BrainService mt.MtService boot.BootReceiver boot.BootCheckReceiver ui.MainActivity; do
   has "\"app.heyrobot.$c\"" "$mf" "manifest has $c"
 done
 has '"android.service.voice.VoiceInteractionService"' "$mf" "VIS intent filter"
@@ -43,6 +45,12 @@ has ':voice' "$(elem app.heyrobot.assistant.RobotVoiceService)" "assistant in :v
 has ':brain' "$(elem app.heyrobot.brain.BrainService)" "BrainService in :brain"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.brain.BrainService)" "BrainService not exported"
 has '"app.heyrobot.permission.INTERNAL"' "$(elem app.heyrobot.brain.BrainService)" "BrainService guarded by the signature permission"
+# 0.5.0: the fast translation engine runs in a process of its own (an abort in slimt ends only that one), bound only by
+# Robot's own processes. It never goes online (ProcessIsolationTest checks its module's code).
+mtsvc=$(elem app.heyrobot.mt.MtService)
+has ':mt' "$mtsvc" "MtService in :mt (the fast translation engine)"
+has 'exported(0x01010010)=false' "$mtsvc" "MtService not exported"
+has '"app.heyrobot.permission.INTERNAL"' "$mtsvc" "MtService guarded by the signature permission"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver not exported"
 # Ask Claude needs nothing new: INTERNET stays the only network permission, and nothing reads other apps' screens.
 for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE BIND_ACCESSIBILITY_SERVICE; do
@@ -150,6 +158,25 @@ has 'supportsLaunchVoiceAssistFromKeyguard(0x010104f1)=true' "$vi" "supportsLaun
 libs=$(unzip -Z1 "$APK" 'lib/*')
 for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
 echo "$libs" | grep -v '^lib/arm64-v8a/' | grep -q . && fail "non-arm64 libraries" || pass "no other ABIs"
+# Every packaged library by its exact name: sherpa-onnx's two (:voice), LiteRT-LM's and the TPU dispatch library (:brain),
+# and since 0.5.0 librobotmt.so (:mt), which is there only when tools/build_robotmt.sh built it.
+extra=$(echo "$libs" | sed 's|^lib/arm64-v8a/||' | grep -vxE 'libsherpa-onnx-jni\.so|libonnxruntime\.so|liblitertlm_jni\.so|libLiteRtDispatch_GoogleTensor\.so|librobotmt\.so' | tr '\n' ' ')
+[ -z "$extra" ] && pass "native libraries are the allowlist" || fail "native libraries not on the allowlist: $extra"
+if echo "$libs" | grep -qx 'lib/arm64-v8a/librobotmt.so'; then
+  pass "packages librobotmt.so (the fast translation engine)"
+  RE=$(ls "${ANDROID_HOME:-/opt/android-sdk}"/ndk/*/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf 2>/dev/null | head -1)
+  [ -n "$RE" ] || RE=readelf
+  mtdir=$(mktemp -d)
+  unzip -q -o "$APK" lib/arm64-v8a/librobotmt.so -d "$mtdir"
+  needed=$("$RE" -d "$mtdir/lib/arm64-v8a/librobotmt.so" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort | tr '\n' ' ')
+  [ "$needed" = "libc.so libdl.so liblog.so libm.so " ] && pass "librobotmt.so needs only libc, libdl, liblog and libm" || fail "librobotmt.so needs: $needed"
+  exports=$("$RE" --dyn-syms "$mtdir/lib/arm64-v8a/librobotmt.so" 2>/dev/null | awk '$5 == "GLOBAL" && $7 != "UND" { print $8 }' | sort | tr '\n' ' ')
+  [ "$exports" = "Java_app_heyrobot_mt_Slimt_nativeClose Java_app_heyrobot_mt_Slimt_nativeOpen Java_app_heyrobot_mt_Slimt_nativeTranslate " ] \
+    && pass "librobotmt.so exports only its three JNI functions" || fail "librobotmt.so exports: $exports"
+  rm -rf "$mtdir"
+else
+  echo "NOTE  no librobotmt.so: this build has no fast translation engine (tools/build_robotmt.sh builds it)"
+fi
 echo "$libs" | grep -q CompilerPlugin && fail "compiler plugin packaged" || pass "no compiler plugin"
 # sherpa-onnx's JNI calls the TTS callback through GetMethodID(cls, "invoke", "([F)Ljava/lang/Integer;")
 # (v1.13.8 jni/offline-tts.cc). A Kotlin lambda has no such method and every voice is silent (0.1.2), so the
@@ -164,8 +191,12 @@ cbclass=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null; do
 # sources; this checks the dex).
 engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|people|core)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
-  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude)/')
+  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude|mt)/')
 [ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine or the Anthropic SDK (dex)" || fail "main-process classes refer to engines or the SDK: $engine_refs"
+# Only the :mt module's JNI class loads the fast translation engine (its library name appears in no other class's code).
+mt_loaders=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/Class descriptor  :/{ c = $4 } /const-string/ && /"robotmt"/ { print c }' | sort -u | tr '\n' ' ')
+[ "$mt_loaders" = "'Lapp/heyrobot/mt/Slimt;' " ] && pass "only app.heyrobot.mt.Slimt loads librobotmt (dex)" || fail "classes that name librobotmt: $mt_loaders"
 # The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load.
 sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession);'"; done | wc -l)
 [ "$sdk_classes" = "2" ] && pass "Anthropic SDK client and ClaudeSession in the dex" || fail "Anthropic SDK classes in the dex: $sdk_classes"

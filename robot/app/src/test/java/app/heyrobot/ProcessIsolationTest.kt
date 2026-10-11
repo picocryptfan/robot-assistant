@@ -10,7 +10,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 /**
  * Build check (source, Gradle and merged-manifest scan), as the probe's: LiteRT-LM lives only in :brain's
  * GemmaEngine.kt and runs only in the :brain process; sherpa-onnx lives only in the :voice module and runs
- * only in the :voice process; nothing the main (UI) process runs refers to either. Also: the components
+ * only in the :voice process; the fast translation engine (librobotmt.so, 0.5.0) lives only in the :mt module and runs
+ * only in the :mt process, which never goes online; nothing the main (UI) process runs refers to any of them. Also: the components
  * sit in their processes, the recognizer stays discoverable (the restart finding), exported components
  * are guarded, the permissions are the expected few, nothing but DownloadManager, the Claude SDK, the Open-Meteo client
  * (the weather) and the Nominatim client (the nearest place, 0.4.0) goes online, and those two only from the :voice
@@ -24,7 +25,7 @@ class ProcessIsolationTest {
     private fun java(module: String) = File(main(module), "java")
     /** Kotlin and Java (the TTS callback sherpa's JNI calls is Java), so every scan below covers both. */
     private fun sources(dir: File) = dir.walkTopDown().filter { it.isFile && (it.name.endsWith(".kt") || it.name.endsWith(".java")) }.toList()
-    private val modules = listOf("core", "brain", "voice", "claude", "app")
+    private val modules = listOf("core", "brain", "voice", "claude", "mt", "app")
     /** Our code (not the copied sherpa-onnx API), as "module/relative/path.kt". */
     private val ours: Map<String, File> by lazy {
         modules.flatMap { m -> sources(File(java(m), "app/heyrobot")).map { "$m/${it.relativeTo(File(java(m), "app/heyrobot")).path}" to it } }.toMap()
@@ -50,11 +51,45 @@ class ProcessIsolationTest {
         // Speech to text and text to speech (the voice plan's Kotlin API files) are sherpa-onnx too.
         assertTrue(users.toString(), users.containsAll(listOf("voice/voice/SherpaSpeechToText.kt", "voice/voice/SherpaTextToSpeech.kt")))
         for (f in listOf("OfflineRecognizer.kt", "OfflineStream.kt", "Tts.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
-        // Only the copied sherpa-onnx API loads its native library.
-        assertEquals(emptyList<String>(), usersOf(Regex("""System\.load(Library)?\s*\(""")))
+        // Only the copied sherpa-onnx API loads its native library (and, in the :mt module, the fast engine's JNI).
+        assertEquals(listOf("mt/mt/Slimt.kt"), usersOf(Regex("""System\.load(Library)?\s*\(""")))
         val sherpa = sources(File(java("voice"), "com/k2fsa"))
         assertTrue(sherpa.any { Regex("""System\.loadLibrary\("sherpa-onnx-jni"\)""").containsMatchIn(it.readText()) })
-        for (m in listOf("core", "brain", "app")) assertTrue("$m has sherpa sources", !File(java(m), "com/k2fsa").exists())
+        for (m in listOf("core", "brain", "mt", "app")) assertTrue("$m has sherpa sources", !File(java(m), "com/k2fsa").exists())
+    }
+
+    /**
+     * 0.5.0 (docs/conversation-mode.md 4.5): the fast translation engine. librobotmt.so is loaded by one file of the :mt
+     * module, whose classes run only in the :mt process (MtService); that module has no network code, writes no file,
+     * reaches no other engine, depends on :core only and never builds native code in Gradle (tools/build_robotmt.sh does).
+     * Clients reach it by class name through core MtProtocol.
+     */
+    @Test fun fastEngineOnlyInTheMtProcess() {
+        val mt = ours.filterKeys { it.startsWith("mt/") }
+        assertEquals(setOf("mt/mt/BergamotEngine.kt", "mt/mt/MtService.kt", "mt/mt/Slimt.kt"), mt.keys)
+        val slimt = File(java("mt"), "app/heyrobot/mt/Slimt.kt").readText()
+        assertTrue(slimt.contains("System.loadLibrary(\"robotmt\")"))
+        assertEquals(1, Regex("""System\.load""").findAll(slimt).count())
+        // The engine's classes are used only inside the module.
+        assertEquals(emptyList<String>(), usersOf(Regex("""\b(Slimt|BergamotEngine|MtService)\b|\bapp\.heyrobot\.mt\b"""), ours.filterKeys { !it.startsWith("mt/") }))
+        // No network, no file written, no other engine, no app or assistant code.
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bSocket\b|okhttp|DownloadManager|\bWebView\b|ConnectivityManager|\bURL\("""), mt))
+        assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)|writeText|writeBytes|openFileOutput|writeAtomic"""), mt))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.(voice|assistant|ui|sys|brain|claude|people|boot)\b|\bcom\.k2fsa\b|litert|\bcom\.anthropic\b"""), mt))
+        fun deps(m: String) = File(root, "$m/build.gradle").readText()
+        assertEquals(listOf("project(':core')"), Regex("""^\s*(implementation|api)\s+(.+)$""", RegexOption.MULTILINE).findAll(deps("mt")).map { it.groupValues[2].trim() }.toList())
+        assertTrue(!deps("mt").contains("externalNativeBuild") && !deps("mt").contains("ndkVersion"))
+        assertTrue(deps("app").contains("implementation project(':mt')"))
+        for (m in listOf("core", "brain", "voice", "claude")) assertTrue(m, !deps(m).contains("project(':mt')"))
+        // The library is never packaged by another module, and never in git (.gitignore).
+        assertTrue(!File(main("voice"), "jniLibs/arm64-v8a/librobotmt.so").exists())
+        assertTrue(File(root.parentFile, ".gitignore").readText().contains("robot/mt/src/main/jniLibs/"))
+        // Clients bind it by name, and only through MtLink (the main app's speed test; the voice process from phase 5.4).
+        assertEquals("app.heyrobot.mt.MtService", Regex("""const val SERVICE_CLASS = "([^"]+)"""").find(File(java("core"), "app/heyrobot/core/MtProtocol.kt").readText())!!.groupValues[1])
+        assertEquals(listOf("app/sys/MtLink.kt"), usersOf(Regex("""\bMtProtocol\.SERVICE_CLASS\b""")))
+        assertEquals(listOf("app/sys/MtLink.kt", "app/sys/MtSpeedRun.kt", "app/ui/ConversationSettings.kt"), usersOf(Regex("""\bMtLink\b""")))
+        // The service checks who sent each message, as BrainService does.
+        assertTrue(code(File(java("mt"), "app/heyrobot/mt/MtService.kt")).contains("msg.sendingUid != Process.myUid()"))
     }
 
     /** Ask Claude: the Anthropic SDK lives only in the :claude module, which only the assistant (the :voice process) uses. */
@@ -96,10 +131,11 @@ class ProcessIsolationTest {
                 k == "app/RobotApp.kt"
         }
         assertTrue(mainFiles.size >= 25)
-        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|ClaudeLink|ClaudeKeys|ClaudeSession|ClaudeClient|ClaudeKeyActivity)\b""")
+        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude|mt)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|ClaudeLink|ClaudeKeys|ClaudeSession|ClaudeClient|ClaudeKeyActivity|MtService|BergamotEngine|Slimt)\b""")
         assertEquals(emptyList<String>(), usersOf(forbidden, mainFiles))
-        // And the :voice code must not load LiteRT either (it binds :brain by class name).
-        assertEquals(emptyList<String>(), usersOf(Regex("""litertlm|\bGemmaEngine\b|\bBrainService\b"""), ours.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))
+        // And the :voice code must not load LiteRT or the fast translation engine either (it binds :brain and :mt by class name).
+        assertEquals(emptyList<String>(), usersOf(Regex("""litertlm|\bGemmaEngine\b|\bBrainService\b|\bapp\.heyrobot\.mt\b|\b(MtService|BergamotEngine|Slimt)\b"""),
+            ours.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))
     }
 
     private fun mergedManifest(): File {
@@ -133,12 +169,16 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.conversation.TranscriptionCheckActivity", "app.heyrobot.assistant.conversation.ConversationTileService")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
+        // 0.5.0: the fast translation engine in a process of its own, bound only by Robot's own processes.
+        assertEquals(":mt", proc("app.heyrobot.mt.MtService"))
+        assertEquals("false", exported("app.heyrobot.mt.MtService"))
+        assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.mt.MtService"))
         val main = listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
             "app.heyrobot.people.CheogramListener", "app.heyrobot.sys.ExportProvider")
         for (n in main) assertEquals(n, "", proc(n))
         // Every Robot component is accounted for (a new one must be placed deliberately).
         val ourComps = comps.keys.filter { it.startsWith("app.heyrobot.") }.toSet()
-        assertEquals(main.toSet() + "app.heyrobot.brain.BrainService" + voice.filter { it.startsWith("app.heyrobot.") }, ourComps)
+        assertEquals(main.toSet() + "app.heyrobot.brain.BrainService" + "app.heyrobot.mt.MtService" + voice.filter { it.startsWith("app.heyrobot.") }, ourComps)
         // Exported components are guarded: the system-only BIND_VOICE_INTERACTION, or nothing to guard.
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotVoiceService"))
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotSessionService"))
@@ -324,9 +364,11 @@ class ProcessIsolationTest {
         assertTrue(meteo.contains("private fun get(") && !meteo.contains("    fun get("))
         assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/OpenMeteoClient.kt", "app/ui/ToolsSettings.kt"), usersOf(Regex("""\bOpenMeteoClient\b""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""AccessibilityService|accessibilityservice""")))
-        // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, the
-        // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0).
-        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
+        // The only URLs: Gemma's and the voice models' pinned Hugging Face files and the fast translation engine's pinned
+        // Mozilla files (0.5.0), fetched by DownloadManager, the claude.ai link the Claude app hand-off tries (the API's
+        // host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0).
+        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt",
+            "core/core/Weather.kt"),
             ours.filter { it.value.readText().contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))

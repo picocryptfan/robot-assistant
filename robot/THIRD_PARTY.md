@@ -1,7 +1,8 @@
 # Third-party components in Robot 0.3.0 (phases 1 and 2, Ask Claude)
 
 Robot itself is GPL-3.0-only (see `../LICENSE`). Everything below keeps its own licence; all of them
-(Apache-2.0, MIT, CC-BY-4.0 for model weights, GPL-3.0-or-later for espeak-ng) are compatible with GPL-3.0.
+(Apache-2.0, MIT, BSD, CC-BY-4.0 for model weights, GPL-3.0-or-later for espeak-ng, GPL-2.0-or-later with MPL-2.0 parts
+for slimt, MPL-2.0 for the translation models) are compatible with GPL-3.0.
 Native libraries, models and the espeak-ng data are not stored in git: `tools/fetch_third_party.sh` downloads
 the exact files below and checks every SHA-256 (same sources and hashes as the phase 0 probe, see
 `../probe/THIRD_PARTY.md`). The speech recognition and voice models are not in the APK at all: the app
@@ -186,6 +187,59 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 | model.fp32.onnx | 56,768,002 | `2174dbf67b58b7b50d7b65294f89c2c53c172834533519b853c579879a04cc22` |
 | voices.bin | 3,276,800 | `d520519c4a3519d44fcfcd943ed0b1e3c5da5cee0eea501d922fac1a93cd24dc` |
 | tokens.txt | 1,064 | `934a4188addc7665dd3410256bb622169242357fbb99d840d9351209b486dabb` |
+
+## In the `:mt` process only (0.5.0): the fast translation engine
+
+`librobotmt.so` (arm64-v8a) is Mozilla Bergamot translation run by slimt, built by `tools/build_robotmt.sh` from Robot's
+own sources in `mt/src/main/cpp/` (`robotmt.cpp`: a wrapper over slimt's synchronous C++ API with a sentence splitter;
+`robotmt_jni.cpp`: three JNI functions) and the four pinned trees below, all statically linked into one library. It is
+not stored in git; Gradle packages it when the script has built it (`mt/src/main/jniLibs/`), and only the `:mt` process
+loads it (`ProcessIsolationTest`, `tools/verify_apk.sh`). slimt-sys's C wrapper is not used (it logs input text when a
+translation fails).
+
+- Toolchain: Android NDK 27.1.12297006 (clang 18.0.2), CMake 3.22.1, `ANDROID_PLATFORM=android-34`, `c++_static`,
+  `-O3 -ffp-contract=off`, slimt's own NEON float code off (`ROBOTMT_NEON=OFF`, so the arm64 build's outputs equal the
+  x86 build's); ruy's NEON and dot-product int8 kernels are in (chosen at run time). Needs only Android's `libc.so`,
+  `libm.so`, `libdl.so` and `liblog.so` (cpuinfo's own error lines about the processor); exports the three JNI functions
+  only; 16 KB page aligned.
+- The build of 2026-10-11 on the build machine: 1,268,112 bytes, sha256
+  `67dbb4767751e1a46dfd97922a591e9a26aa3c53d078ce9ace09c93077a1c8ec`; the same bytes again from another directory.
+- Corresponding source: Robot's `mt/src/main/cpp/` plus the trees below, which the script fetches. Each is fetched with git
+  at its commit, written out with `git archive --format=tar <commit>` (git 2.43.0), and that tar's SHA-256 is checked
+  before anything is unpacked:
+
+| part | repository @ commit | sha256 of the `git archive` tar | licence |
+|---|---|---|---|
+| slimt (DavidVentura's fork; the commit translation-plan.md 1.4 named) | https://github.com/DavidVentura/slimt @ `2beb403abfff5b2f4c165a6d51362c973d037e97` | `7cc3027038b1553eca66523bb758abcb12527002bd20c94d459ed1ac3d55f6f9` | **GPL-2.0-or-later** (its COPYRIGHT file), used here under GPL-3.0; contains MPL-2.0 code derived from browsermt/bergamot-translator and browsermt/marian-dev, and Apache-2.0 code from browsermt/ssplit. No "Incompatible With Secondary Licenses" notice in the tree. `third_party/LICENSE-slimt.txt` |
+| ruy (slimt's submodule) | https://github.com/google/ruy @ `c04e5e52ae6b144f74ac032652e3c538bda15c9b` | `76c5f5b732a853ab2abbd08bea17d29e03a7b1bca6f6631f231bccdc74005e10` | Apache-2.0, `third_party/LICENSE-ruy.txt` |
+| cpuinfo (ruy's submodule) | https://github.com/pytorch/cpuinfo @ `082deffc80ce517f81dc2f3aebe6ba671fcd09c9` | `8b169d6e14c83c6ee14f3f5f39db254ad60916417d4d88c3dcb7ff2458d92747` | BSD-2-Clause, `third_party/LICENSE-cpuinfo.txt` |
+| SentencePiece (slimt's submodule) | https://github.com/browsermt/sentencepiece @ `8cbdf13794284c30877936f91c6f31e2c1d5aef7` | `0e18f5be9f6e0cd6aee3ce9364c6c3ff9c97dee1c02b1c137232c0c3830228ff` | Apache-2.0; bundles protobuf-lite (BSD-3-Clause), absl (Apache-2.0), darts_clone (BSD-3-Clause style) and esaxx (MIT), all in `third_party/LICENSE-sentencepiece.txt` |
+
+The sentence splitter in `robotmt.cpp` is Robot's own, drawn the way ssplit-cpp's fallback (no prefix file) and Offline
+Translator's translator-rs (`DavidVentura/translator-rs`, MIT) draw sentences; no code was copied.
+
+### Bergamot fr-en and en-fr models (MPL-2.0; downloaded by the app, not in the APK)
+
+Mozilla's `base-memory` models from the Firefox Translations bucket
+(`https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/…`, the training run's id in
+each path; `models.json` generated 2026-10-10), downloaded only when you tap Download in Settings › Conversation (core
+`MtBundle.kt`): each `.gz` is checked against its size and SHA-256, unpacked as a stream, and the result checked again
+(`uncompressedHash` for the models) before the `:mt` process may load it. Stored in Robot's private storage,
+`files/models/mt-fr-en/` (73,135,034 bytes; 51,577,481 to download). The two vocabularies are byte-identical, so only
+fr-en's is downloaded. Re-checked on the build machine on 2026-10-11 with `tools/build_robotmt.sh --check`. Licence:
+MPL-2.0, the licence of `mozilla/firefox-translations-models` and `mozilla/translations`; that it covers the bucket's
+current files is still UNVERIFIED (no per-file notice in the bucket, docs/translation-plan.md 1.4).
+
+| file (as installed) | .gz bytes | .gz sha256 | bytes | sha256 |
+|---|---|---|---|---|
+| model.fren.intgemm.alphas.bin | 23,175,075 | `06b1eeedd3944260d00a393d12ec7192490c5b7c930b97212faf4d5f5c90a2ee` | 31,561,787 | `15f997bc0d13808b0b0fbd0786e684a3c8a52adcd8071844b76123fdacbf2b90` |
+| lex.50.50.fren.s2t.bin | 2,649,934 | `395aa7767220e1bcfc085f2b2787ff98005d0075e55451f1e0832885e3d9642a` | 4,824,120 | `87c6752ea908f5f0347c10ac0cf7d80d9c2f4f20c81c90168f3e8230b56d4440` |
+| vocab.fren.spm (both directions) | 409,706 | `8d15b219ffd32327b4cabf0d94a05a4fecb8923a4f386badbcbe5e86ede453a7` | 814,404 | `783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a` |
+| model.enfr.intgemm.alphas.bin | 23,045,432 | `22cdaf3dc9a1da6e5818b5576737182467f3cd97e6fd6f94e4273eb7b56d1e3f` | 31,561,787 | `6322e296d4fecfe395a8d5723da4ec37ecbe6d7613bb1dfcf4b28e2a47498b68` |
+| lex.50.50.enfr.s2t.bin | 2,297,334 | `055987f0b585b61c4914fb4469e2392fda0b25d3f7784275974f920e7b631997` | 4,372,936 | `2585ed98d3af0bc949865aedeb390493d591f56870814376e73e4144c41ed059` |
+
+The test set the speed test runs (`core/src/main/assets/mt/fr-CA-test.tsv`, a copy of `tools/lang/fr-CA/mt-test.tsv`)
+was written for Robot.
 
 ## In the `:brain` process only
 
