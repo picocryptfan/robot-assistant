@@ -24,8 +24,9 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 
 ## What's new in 0.6.0
 
-Robot 0.6.0 is 0.4.6 (0.4.5 with the fixes from the phone tests, "What's new in 0.4.6" below) with two pieces of work
-that were built beside it; each has its section below, with its phone tests.
+Robot 0.6.0 is 0.4.6 (0.4.5 with the fixes from the phone tests, "What's new in 0.4.6" below) with four pieces of work
+that were built beside it: conversation mode, the helpers, the engine hardening and the built-in updater; each has its
+section below, with its phone tests.
 
 - **Conversation mode** ([Conversation mode](#conversation-mode-050)): Robot writes down a conversation in French and
   English, word for word, on the phone ([Transcribing](#transcribing)); tells the speakers apart by their voices, yours
@@ -47,9 +48,22 @@ that were built beside it; each has its section below, with its phone tests.
   company's chat API (OpenAI, Gemini, Mistral, DeepSeek, Groq, OpenRouter, xAI, or another) or a model on your own
   computer, each with its own key, name, voice, price and trust (off by default for every helper); a server on your
   network may use `http://` only at a private address.
+- **The engine hardening** ([llama.cpp in its own isolated process](#llamacpp-in-its-own-isolated-process),
+  [Turn markers in text](#turn-markers-in-text-with-robots-own-models-too)): llama.cpp runs your GGUF file in an
+  isolated, unexported process (`:llama`: no permissions, no network, none of Robot's files) that gets the checked file
+  open from `:brain` and is ended alone when it stops answering; a LiteRT-LM file's own special tokens and the known turn
+  and tool markers are broken in every text from outside Robot's prompt (screen text, a question, a past reply, a tool's
+  result), as a GGUF file's already were. Its phone checks are steps 20 to 26 of "On the phone (0.4.5)".
+- **The built-in updater** ([Updates](#updates)): Settings › About › **Updates**, beside Licences, finds Robot's new
+  releases on GitHub (once a day, or when you tap Check now), downloads one on Wi-Fi, checks it against the release's
+  `SHA256SUMS` and Robot's signing key, and hands it to Android's install window; after an update Robot does what it does
+  after a restart. Every helper's API key and the updater's access token are now kept by one class
+  ([Keys](#keys)): a key the Keystore can't read just now is kept, and Robot says so in the helper's name; only one that
+  can never be decrypted again is removed.
 - **Settings file schema 13.** A 0.4.6 or 0.4.5 file (schema 12), a 0.4.4 file (7) or older keeps every choice: Ask Claude's
   settings become the Claude helper (and are still written for one release, so going back to 0.4.6 or 0.4.5 keeps Claude), and
   conversation mode starts from its defaults, live words in a conversation following "Show the words while you speak".
+  The updater keeps its own two files beside it (`updates.json`, `update_state.json`), not in it.
 - **Settings › About › Licences** names slimt and the parts built into it (ruy, cpuinfo, SentencePiece with
   protobuf-lite, Abseil and Darts-clone), the Bergamot and TitaNet models and Tatoeba's CC0 data, with their texts.
 - **0.4.6's fixes** ([What's new in 0.4.6](#whats-new-in-046)): the interrupt sensitivity a tap saves, "stop" ending a
@@ -226,7 +240,11 @@ a new release, downloads it, checks it, and hands it to Android, whose own windo
   (`MY_PACKAGE_REPLACED`, `boot/UpdatedReceiver`). It does what it does after a restart ("Survive restarts": the speech
   recognizer setting, and 3 minutes later the check that Robot is still the assistant, which says "during the update" if
   not; the system binds the assistant and its wake word again by itself), deletes the downloads, schedules the daily check
-  again and says once "Robot updated to 0.4.6" (a notification, or in the app the next time it opens).
+  again and says once "Robot updated to 0.4.6" (a notification, or in the app the next time it opens). Nothing else of
+  0.6.0 needs a step of its own, after a restart or an update: `:brain`, its isolated `:llama` process and `:mt` start when
+  something asks them (a question, a GGUF file, a translation), and a conversation that was being transcribed is closed
+  when the assistant comes back, with "Transcription stopped unexpectedly. Saved up to …" and **Resume**, as after a
+  restart (Robot never restarts it by itself).
 
 ### What is checked before an install (never skipped)
 
@@ -275,8 +293,8 @@ without asking (off). **Advanced**:
   build first, and the fork's repository then updates it.
 - **Access token**, only while the repository is private: a fine-grained personal access token for that repository with
   **Contents: Read-only** (or a classic token with the `repo` scope). It is pasted into a window that can't be captured
-  and is kept out of autofill, encrypted exactly as Ask Claude's key is (AES-GCM with its own non-exportable Android
-  Keystore key, `robot_github_token`; one class, `sys/KeystoreSecret`, does both), decrypted only by
+  and is kept out of autofill, encrypted exactly as every helper's API key is (AES-GCM with its own non-exportable Android
+  Keystore key, `robot_github_token`; one class, `sys/KeystoreSecret`, keeps them all), decrypted only by
   `update/GitHubClient` just before a request, shown masked ("github_pat_…AB12"), and **Remove** deletes it. A private
   repository without a token gets "GitHub didn't find the repository. If it's private, add an access token…". A token
   the keystore can't read just now (busy, or the phone locked) is kept, never removed: the check goes without it, says
@@ -351,7 +369,10 @@ token for it while it is private. Watch Settings › Voice › Voice log and `ad
    next time the app opens, if notifications are off). Say "hey robot": the wake word works without opening the app.
    `adb logcat -s Robot` shows `updated` and `recognizer_check why=UPDATE` (with the adb grant, a write it had to make is in
    the voice log as "after an update"); 3 minutes later no "Turn Robot back on" notification.
-   Settings › About shows the new version and Updates "You're up to date"; `files/updates/` is empty.
+   Settings › About shows the new version and Updates "You're up to date"; `files/updates/` is empty. Then a question to
+   your GGUF file if you use one (a new `app.heyrobot:llama`), Settings › Conversation › Fast translation › Test
+   translation speed (`:mt`), "hey robot, transcribe this conversation", and a question to a helper with a saved key: each
+   works as after a restart, with nothing to do first.
 9. **Install without asking.** Turn it on, publish the next test build, Install: no Android window, Robot restarts
    updated. If Robot was installed by another app store that keeps its updates, the switch is greyed out and says why.
 10. **Skip.** With a release on offer, **Skip this version**: the page says you skipped it, no notification for it, the
@@ -1457,9 +1478,13 @@ helper follows; this section for what 0.6.0 adds.
 One key per helper, pasted in the helper's connection window in the assistant's process (`HelperConnectionActivity`,
 FLAG_SECURE, out of autofill, the clipboard cleared if it still holds the key), encrypted there with its own Android
 Keystore key (AES-GCM) and decrypted only there: by `HelperLink` just before a client is made, and by Test
-connection. Claude keeps its key files and Keystore alias from 0.3.0; another helper's are in `helpers/<id>/`. Settings
-shows the key masked ("gsk_…AB12"); a key that doesn't start the company's usual way is only a warning. **Remove
-helper** deletes its key file and its Keystore key (crypto-shred) and what Test connection found. Changing a helper's
+connection. Claude keeps its key files and Keystore alias from 0.3.0; another helper's are in `helpers/<id>/`. One
+class, `sys/KeystoreSecret`, keeps them all and the updater's access token: a key the Keystore can't read just now
+(busy, restarting, the phone locked, an I/O error) is kept, file and Keystore key, nothing is sent without it, and Robot
+says "Robot couldn't read your saved Groq key just now. It's still saved, so try again in a moment."; only a key that
+can never be decrypted again (its Keystore key gone or replaced, the file damaged) is removed, and Robot and Settings
+say so. Settings shows the key masked ("gsk_…AB12"); a key that doesn't start the company's usual way is only a
+warning. **Remove helper** deletes its key file and its Keystore key (crypto-shred) and what Test connection found. Changing a helper's
 address to another host removes its key first (the same computer on another port or path keeps it), so a key never
 goes to a host it wasn't saved for. Backups and device
 transfer include nothing (`allowBackup="false"`, the data extraction rules exclude everything).
@@ -1543,11 +1568,15 @@ connection, a timeout), Robot answers itself instead, with a short notice why. G
 | `core/helpers/` | `Helpers.kt` (presets, quirks, catalog, `HelperConfig`, names), `HelperRules.kt` (routes, the default helper, trust, words), `Pricing.kt`, `LanRule.kt`, `HelperFacts.kt`, `wire/` (Chat Completions and Responses mappers, errors, `<think>` filter) |
 | `:claude` module, `app.heyrobot.helpers` | `HelperSession` (Claude's session implements it too), `openai/OpenAiSession`, `http/HelperHttp` (OkHttp with the LAN rules), `HelperProbe` (Test connection). The module keeps its name so the build's test tasks stay as they are |
 | `app/assistant/` | `HelperLink` (one client per helper and key), `HelperKeys`, `HelperConnectionActivity`; `PanelController` routes each turn to its helper |
+| `app/sys/` | `HelperFiles.kt` (`HelperKeyFiles`: each helper's key files and Keystore alias, as `KeystoreSecret`s; what Test connection found; the spend), `KeystoreSecret.kt` (shared with the updater's token) |
 | `app/ui/HelpersScreens.kt` | the Helpers card, Settings › Helpers, Add a helper, a helper's page |
 
 `ProcessIsolationTest` checks that only the assistant uses `app.heyrobot.helpers` and OkHttp, that keys are read only
-in `HelperLink` and the connection window, and the network security config; `tools/verify_apk.sh` checks the
-connection window's process, the compiled network security config, the client classes and every company's key shape.
+in `HelperLink` and the connection window (through `HelperKeys` alone), and the network security config;
+`tools/verify_apk.sh` checks the connection window's process, the compiled network security config, the client classes
+and every company's key shape. `KeystoreSecretTest` and `KeystoreSecretReadTest` check that a key saved by 0.4.x (Ask
+Claude) or by an earlier 0.6.0 build (any helper) still decrypts from its file and alias, that one saved now reads as
+they read it, and that only a key that can never be read again is removed.
 
 ### Not in 0.6.0, and not verified yet
 

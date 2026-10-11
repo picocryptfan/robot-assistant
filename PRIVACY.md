@@ -29,9 +29,9 @@ can turn off.
   the question you asked.
 - **Names learned from Cheogram** (off unless you turn on Settings › People › "Learn names from Cheogram
   notifications"): who messages you in Cheogram (name, address, account), never the messages.
-- **API keys** you add for Claude, and the **access token** you may add for a private update repository (Settings ›
-  About › Updates › Advanced). They are encrypted with a key that never leaves your phone's secure hardware (Android
-  Keystore, AES-GCM), and decrypted only when Robot calls Claude, or GitHub's API for the token.
+- **API keys** you add for Claude (or another helper), and the **access token** you may add for a private update
+  repository (Settings › About › Updates › Advanced). They are encrypted with a key that never leaves your phone's secure
+  hardware (Android Keystore, AES-GCM), and decrypted only when Robot calls that helper, or GitHub's API for the token.
 - **Robot's diagnostic logs** (Settings › Voice › Voice log, and Android's log) hold codes and numbers only, never what
   you said or what Robot answered. They stay on the phone; you can copy the Voice log yourself for a bug report.
 
@@ -64,7 +64,7 @@ can turn off.
    or of the one you set in Advanced, and downloads an update through api.github.com from GitHub's servers
    (objects.githubusercontent.com, release-assets.githubusercontent.com, or github.com if GitHub sends it there) when you
    tap Download, or by itself on Wi-Fi if "Download updates on Wi-Fi" is on (the default). To GitHub: your IP address and
-   Robot's version in the request ("Robot/0.4.5"); nothing else is sent. An access token, if you add one, goes to
+   Robot's version in the request ("Robot/0.6.0"); nothing else is sent. An access token, if you add one, goes to
    api.github.com only. GitHub handles the requests under its own privacy statement. Turn the automatic check off and
    Robot asks GitHub only when you tap Check now (and downloads only when you tap Download).
 
@@ -87,7 +87,7 @@ network permissions are granted at install; GrapheneOS lets you turn the network
 - **Usage access** (optional, in Android's settings): which apps use the most space.
 - **Notification access** (optional, only for learning names from Cheogram).
 - **Network** (at install): the online features above.
-- **Install unknown apps** (optional, in Android's settings, which Settings › Updates opens): so Robot can install its own
+- **Install unknown apps** (optional, in Android's settings, which Settings › About › Updates opens): so Robot can install its own
   updates. It installs nothing else. "Install updates without asking" (off by default) uses a permission granted at
   install that lets Robot ask Android to skip its confirmation for Robot's own update.
 
