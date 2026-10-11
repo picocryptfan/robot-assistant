@@ -19,6 +19,13 @@ object CheogramLinks {
     const val START_CONVERSATION = "eu.siacs.conversations.ui.StartConversationActivity"
     /** StartConversationActivity's extra (XmppActivity.EXTRA_ACCOUNT): the account's bare address. */
     const val EXTRA_ACCOUNT = "account"
+    /**
+     * Exported for SEND text/plain: Cheogram's share screen ("Choose in Cheogram"), launchMode singleTop in Cheogram's own
+     * task. Started by name, in a task of its own (CheogramIntents.FRESH): sent as a plain SEND to the package, Android
+     * found Cheogram's task rooted at an earlier share (the same intent but for its text) and only brought it to the
+     * front, on whatever chat that share had opened.
+     */
+    const val SHARE_ACTIVITY = "eu.siacs.conversations.ui.ShareWithActivity"
 
     /**
      * Cheogram's answer to the pick (EXTRA_SHORTCUT_NAME, and EXTRA_SHORTCUT_INTENT's data and "account" extra), or null

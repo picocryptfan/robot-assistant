@@ -192,18 +192,27 @@ object CheogramIntents {
     fun canPick(ctx: Context, pkg: String): Boolean = HandOffApps.resolves(ctx, pick(pkg))
 
     /**
+     * Each hand-off starts in a task of its own (0.4.0), so it always runs: started into Cheogram's existing task, an intent
+     * equal to that task's first one (Android ignores the extras, so the share screen's text) only brought the task to the
+     * front, on Cheogram's last screen. Cheogram's screens finish once they open the chat (ConversationsActivity, in
+     * Cheogram's own task), and Android then drops the extra task from Recents. Cheogram's own back stack is left alone.
+     */
+    const val FRESH = Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+
+    /**
      * The chat with [jid] in your [account], with [body] in its box: StartConversationActivity reads the xmpp: link (body
      * encoded twice, as XmppLink writes it) and the "account" extra, so a contact in several accounts needs no search.
      */
     fun chat(pkg: String, jid: String, account: String, body: String): Intent =
         Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(jid, body))).setClassName(pkg, CheogramLinks.START_CONVERSATION)
-            .putExtra(CheogramLinks.EXTRA_ACCOUNT, account)
+            .putExtra(CheogramLinks.EXTRA_ACCOUNT, account).addFlags(FRESH)
 
     /** The xmpp: link alone (Cheogram picks the account; with the contact in several, it shows a search first). */
-    fun link(pkg: String, jid: String, body: String): Intent = Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(jid, body))).setPackage(pkg)
+    fun link(pkg: String, jid: String, body: String): Intent = Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(jid, body))).setPackage(pkg).addFlags(FRESH)
 
-    /** Cheogram's share screen with [body]: you choose who it goes to there. */
-    fun share(pkg: String, body: String): Intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, body).setPackage(pkg)
+    /** Cheogram's share screen with [body], by name and fresh ([CheogramLinks.SHARE_ACTIVITY]): you choose who it goes to there. */
+    fun share(pkg: String, body: String): Intent = Intent(Intent.ACTION_SEND).setClassName(pkg, CheogramLinks.SHARE_ACTIVITY).setType("text/plain")
+        .putExtra(Intent.EXTRA_TEXT, body).addFlags(FRESH)
 
     /**
      * Who was picked, from the list's result: EXTRA_SHORTCUT_NAME, and EXTRA_SHORTCUT_INTENT's xmpp: link and "account"
