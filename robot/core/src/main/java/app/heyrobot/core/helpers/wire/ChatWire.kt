@@ -29,7 +29,11 @@ import java.util.Base64
  * [ZDR] is listed only so a request can say it carries it: OpenRouter's "only providers that keep nothing" is your
  * privacy setting and is never dropped by Robot (a server that refuses it fails, and the helper's page has the switch).
  */
-enum class Extra { STREAM_OPTIONS, STRICT, TOOL_CHOICE, EFFORT, TOOLS, IMAGES, SEARCH, ZDR }
+enum class Extra {
+    STREAM_OPTIONS, STRICT, TOOL_CHOICE, EFFORT, TOOLS, IMAGES, SEARCH, ZDR,
+    /** The Responses API's `include: ["reasoning.encrypted_content"]` (RespWire). */
+    ENCRYPTED_REASONING,
+}
 
 /**
  * One request's settings: [model], the provider's [quirks], how [effort] is sent for this model, the [plan] (effort and
@@ -96,7 +100,8 @@ object ChatWire {
     fun nextToDrop(carried: Set<Extra>, refused: Set<Extra>): Extra? =
         DROP_ORDER.firstOrNull { it in carried && it !in refused }
 
-    private val DROP_ORDER = listOf(Extra.STREAM_OPTIONS, Extra.TOOL_CHOICE, Extra.STRICT, Extra.EFFORT, Extra.SEARCH, Extra.IMAGES, Extra.TOOLS)
+    private val DROP_ORDER = listOf(Extra.STREAM_OPTIONS, Extra.TOOL_CHOICE, Extra.STRICT, Extra.EFFORT, Extra.SEARCH, Extra.IMAGES, Extra.TOOLS,
+        Extra.ENCRYPTED_REASONING)
 
     /**
      * What to try without after a 400 or 422 before any answer. When the error names the part it refused ([param], as
@@ -120,6 +125,7 @@ object ChatWire {
             p.startsWith("stream_options") -> Extra.STREAM_OPTIONS
             p.startsWith("tool_choice") -> Extra.TOOL_CHOICE
             p.startsWith("reasoning") -> Extra.EFFORT
+            p.startsWith("include") -> Extra.ENCRYPTED_REASONING
             p.startsWith("provider") || p.startsWith("zdr") -> Extra.ZDR
             p.startsWith("tools") -> when {
                 "strict" in p -> Extra.STRICT

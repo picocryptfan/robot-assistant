@@ -12,8 +12,11 @@ import java.util.Base64
 
 // Pure (org.json). The OpenAI Responses API, needed for OpenAI and xAI: OpenAI's GPT-6 models call tools only there, and
 // both companies' web search is only there. Requests always say `store: false`, so the provider keeps nothing for later
-// retrieval, and the whole conversation is sent each time (as for Claude); the reasoning items come back with their
-// encrypted content and go back exactly as they came. Events read (OpenAI's streaming events reference, 2026-10-11):
+// retrieval, and the whole conversation is sent each time (as for Claude). With nothing stored, a reasoning item can go
+// back only with its encrypted content, which comes only when the request asks for it (`include:
+// ["reasoning.encrypted_content"]`, OpenAI's "Encrypted reasoning items"): without it, the follow-up after a tool round
+// or a conversation's next question names a reasoning item the provider no longer has, and is refused. The reasoning
+// items then go back exactly as they came. Events read (OpenAI's streaming events reference, 2026-10-11):
 // response.output_text.delta, response.refusal.delta, response.reasoning_text.delta and
 // response.reasoning_summary_text.delta (thinking, never shown), response.function_call_arguments.delta/done,
 // response.output_item.done, response.output_text.annotation.added, response.completed, response.incomplete,
@@ -25,6 +28,7 @@ object RespWire {
         put("model", o.model)
         put("stream", true)
         put("store", false)
+        if (Extra.ENCRYPTED_REASONING !in o.dropped) put("include", JSONArray().put(ENCRYPTED_REASONING))
         put("instructions", o.system)
         put("input", JSONArray().apply { for (i in input) put(if (Extra.IMAGES in o.dropped) withoutImages(i) else i) })
         put("max_output_tokens", o.plan.maxTokens)
@@ -42,6 +46,7 @@ object RespWire {
     fun extras(o: ChatOptions): Set<Extra> = buildSet {
         val r = request(o, emptyList())
         if (r.has("reasoning")) add(Extra.EFFORT)
+        if (r.has("include")) add(Extra.ENCRYPTED_REASONING)
         if (r.has("tool_choice")) add(Extra.TOOL_CHOICE)
         val tools = r.optJSONArray("tools")
         if (tools != null) {
@@ -50,6 +55,9 @@ object RespWire {
             if ((0 until tools.length()).any { tools.getJSONObject(it).optBoolean("strict") }) add(Extra.STRICT)
         }
     }
+
+    /** What a stateless request asks to get back so its reasoning items can be sent again. */
+    const val ENCRYPTED_REASONING = "reasoning.encrypted_content"
 
     /** A function tool, Responses style (flat: name, description, parameters, strict). */
     fun tool(spec: ToolSpec, strict: Boolean): JSONObject {

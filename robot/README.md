@@ -82,7 +82,7 @@ helper follows; this section for what 0.6.0 adds.
 | Helper | How Robot talks to it | Models it lists first | Web search |
 | --- | --- | --- | --- |
 | Anthropic (Claude) | the Anthropic Java SDK, as since 0.3.0 (or the Claude app without a key) | Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1 | yes, $10 per 1,000 |
-| OpenAI (GPT) | the Responses API (`store: false`) | gpt-6.1-sol, gpt-6-astra, gpt-6-luna | yes, $10 per 1,000 |
+| OpenAI (GPT) | the Responses API (`store: false`, reasoning sent back encrypted) | gpt-6.1-sol, gpt-6-astra, gpt-6-luna | yes, $10 per 1,000 |
 | Google (Gemini) | its OpenAI-compatible Chat Completions | gemini-3.8-flash, gemini-3.1-pro-preview, gemini-3.5-flash-lite | no (not through this connection) |
 | Mistral | Chat Completions | mistral-medium-3-5, mistral-large-4-0, mistral-small-latest | no (Agents API only) |
 | DeepSeek | Chat Completions | deepseek-flash, deepseek-v4-pro | no |

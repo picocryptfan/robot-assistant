@@ -9,6 +9,7 @@ import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolSpecs
 import app.heyrobot.core.helpers.wire.ChatOptions
+import app.heyrobot.core.helpers.wire.ChatWire
 import app.heyrobot.core.helpers.wire.Extra
 import app.heyrobot.core.helpers.wire.RespDone
 import app.heyrobot.core.helpers.wire.RespHistory
@@ -34,6 +35,9 @@ class RespWireTest {
         // Nothing kept by OpenAI for later retrieval: the whole conversation goes each time.
         assertFalse(r.getBoolean("store"))
         assertFalse(r.has("previous_response_id"))
+        // So the reasoning items can go back with nothing stored: their encrypted content is asked for.
+        assertEquals("reasoning.encrypted_content", r.getJSONArray("include").getString(0))
+        assertFalse(RespWire.request(options().copy(dropped = setOf(Extra.ENCRYPTED_REASONING)), emptyList()).has("include"))
         assertTrue(r.getString("instructions").startsWith("You are ChatGPT. "))
         assertEquals(16_000, r.getInt("max_output_tokens"))
         assertEquals("high", r.getJSONObject("reasoning").getString("effort"))
@@ -45,7 +49,10 @@ class RespWireTest {
         assertFalse(fn.getJSONObject("parameters").getBoolean("additionalProperties"))
         assertEquals("web_search", tools.getJSONObject(1).getString("type"))
         assertEquals("auto", r.getString("tool_choice"))
-        assertEquals(setOf(Extra.EFFORT, Extra.TOOL_CHOICE, Extra.TOOLS, Extra.SEARCH, Extra.STRICT), RespWire.extras(options()))
+        assertEquals(setOf(Extra.EFFORT, Extra.TOOL_CHOICE, Extra.TOOLS, Extra.SEARCH, Extra.STRICT, Extra.ENCRYPTED_REASONING), RespWire.extras(options()))
+        // Dropped last when a server names nothing, and at once when it names it.
+        assertEquals(Extra.TOOL_CHOICE, ChatWire.toDrop(RespWire.extras(options()), emptySet(), null, 1))
+        assertEquals(Extra.ENCRYPTED_REASONING, ChatWire.toDrop(RespWire.extras(options()), emptySet(), "include[0]", 1))
         // xAI: the same shape, its own model.
         assertEquals("grok-4.7", RespWire.request(options(Presets.XAI), emptyList()).getString("model"))
         val user = RespWire.user(listOf(ClaudeBlock.Text("what is this"), ClaudeBlock.Image(byteArrayOf(1, 2, 3))))

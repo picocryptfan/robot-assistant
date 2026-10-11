@@ -337,6 +337,7 @@ class OpenAiSessionTest {
         assertEquals("/v1/responses", first.path)
         val b1 = body(first)
         assertFalse(b1.getBoolean("store"))
+        assertEquals("reasoning.encrypted_content", b1.getJSONArray("include").getString(0))
         assertEquals("medium", b1.getJSONObject("reasoning").getString("effort"))
         assertEquals(ClaudeOutcome.Done(), s.answer(listOf(mapOf("status" to "done")), h))
         val input = body(take()).getJSONArray("input")
