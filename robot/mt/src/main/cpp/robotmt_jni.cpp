@@ -1,6 +1,6 @@
 // The JNI surface of librobotmt.so: three functions for app.heyrobot.mt.Slimt (the :mt process only).
 // Paths and text cross as UTF-8 byte arrays, never through GetStringUTFChars (modified UTF-8 mangles emoji).
-// Nothing is logged; a failure is the robotmt::Error code written into err[0].
+// Nothing is logged; a failure is the robotmt::Error code written into err[0], and no C++ exception leaves a function.
 #include <jni.h>
 
 #include <cstdint>
@@ -29,7 +29,12 @@ void set_error(JNIEnv* env, jintArray err, int code) {
 extern "C" JNIEXPORT jlong JNICALL Java_app_heyrobot_mt_Slimt_nativeOpen(JNIEnv* env, jclass, jbyteArray model, jbyteArray vocabulary,
                                                                            jbyteArray shortlist, jintArray err) {
   int error = robotmt::kOk;
-  robotmt::Engine* e = robotmt::open(bytes(env, model), bytes(env, vocabulary), bytes(env, shortlist), &error);
+  robotmt::Engine* e = nullptr;
+  try {
+    e = robotmt::open(bytes(env, model), bytes(env, vocabulary), bytes(env, shortlist), &error);
+  } catch (...) {  // copying the paths ran out of memory: no C++ exception crosses JNI
+    error = robotmt::kFiles;
+  }
   set_error(env, err, error);
   return static_cast<jlong>(reinterpret_cast<intptr_t>(e));
 }
@@ -42,7 +47,12 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_app_heyrobot_mt_Slimt_nativeTransla
                                                                                    jintArray err) {
   int error = robotmt::kOk;
   std::string target;
-  bool ok = robotmt::translate(reinterpret_cast<robotmt::Engine*>(static_cast<intptr_t>(handle)), bytes(env, utf8), &target, &error);
+  bool ok = false;
+  try {
+    ok = robotmt::translate(reinterpret_cast<robotmt::Engine*>(static_cast<intptr_t>(handle)), bytes(env, utf8), &target, &error);
+  } catch (...) {  // copying the line ran out of memory: no C++ exception crosses JNI
+    error = robotmt::kTranslate;
+  }
   set_error(env, err, error);
   if (!ok) return nullptr;
   jbyteArray out = env->NewByteArray(static_cast<jsize>(target.size()));

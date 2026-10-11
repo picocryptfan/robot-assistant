@@ -2,8 +2,9 @@
 // computer, runs a translation test set (tools/lang/<tag>/mt-test.tsv: direction, source, meaning, Bergamot output, ...,
 // fast engine output) and compares each output with the fast engine's reference column, as Settings › Conversation ›
 // Test translation speed does on the phone. Usage: robotmt_check <dir with the five model files the app downloads> <test.tsv>
-// Prints one line per test line (same/DIFF, ms) and a summary; exits 1 if any output differs. --split-test checks the
-// sentence splitter on its own cases.
+// Prints one line per test line (same/DIFF, ms) and a summary; exits 1 if any output differs, or if a line without a
+// letter or a short sentence the models would double comes out wrong. --split-test checks the sentence splitter on its
+// own cases.
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
@@ -128,6 +129,23 @@ int main(int argc, char** argv) {
     if (!robotmt::translate(engines.begin()->second, s, &out, &error) || out != s) {
       ++kept_wrong;
       std::printf("KEPT DIFF [%s] -> [%s]\n", s.c_str(), out.c_str());
+    }
+  }
+  // Bergamot's doubled short sentence ("Oui." gives "Yes. Yes.", "Je ne sais pas." "I don't know. I don't know.") comes
+  // out once, inside a line too (robotmt::translate's guard).
+  const std::vector<Row> once = {
+      {"fr-en", "Oui.", "", "Yes."},
+      {"fr-en", "Oui. Je viens demain.", "", "Yes. I'm coming tomorrow."},
+      {"fr-en", "Je ne sais pas.", "", "I don't know."},
+      {"fr-en", "Le prix est 3.5 dollars. Ok.", "", "The price is 3.5 dollars. Okay."},
+      {"en-fr", "Nope.", "", "Non."},
+  };
+  for (const Row& r : once) {
+    std::string out;
+    int error = 0;
+    if (!robotmt::translate(engines[r.direction], r.source, &out, &error) || out != r.reference) {
+      ++kept_wrong;
+      std::printf("ONCE DIFF [%s] -> [%s], want [%s]\n", r.source.c_str(), out.c_str(), r.reference.c_str());
     }
   }
   std::vector<long> times;

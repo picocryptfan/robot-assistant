@@ -202,8 +202,8 @@ translation fails).
   x86 build's); ruy's NEON and dot-product int8 kernels are in (chosen at run time). Needs only Android's `libc.so`,
   `libm.so`, `libdl.so` and `liblog.so` (cpuinfo's own error lines about the processor); exports the three JNI functions
   only; 16 KB page aligned.
-- The build of 2026-10-11 on the build machine: 1,268,400 bytes, sha256
-  `28d3259a94fbdcd871e25bda00a6d79f16659b445656d61310819d5603f321b5` (the build is reproducible: the same sources gave the
+- The build of 2026-10-11 on the build machine, after the review's wrapper changes: 1,277,296 bytes, sha256
+  `aa18c9c03e2df98fa9dcf35259fdc18767fa25b68a84409d1c18342064fd2ba0` (the build is reproducible: the same sources gave the
   same bytes from another directory).
 - Corresponding source: Robot's `mt/src/main/cpp/` plus the trees below, which the script fetches. Each is fetched with git
   at its commit, written out with `git archive --format=tar <commit>` (git 2.43.0), and that tar's SHA-256 is checked

@@ -35,7 +35,9 @@ void close(Engine* engine);
 
 // Translates one line (UTF-8) into *target: each sentence on its own ([split_sentences]), joined with the line's own
 // spaces between them, as Bergamot does. One sentence per decode, so a sentence's translation never depends on what
-// else was asked. False on failure, with *error set.
+// else was asked. Each sentence gets core MtGuard's guard against Bergamot's doubled sentence ("Oui." gives "Yes. Yes."):
+// one of at most two words loses its final full stop on the way in and gets it back after, and an output that is the
+// same sentence twice or more is kept once. False on failure, with *error set.
 bool translate(Engine* engine, const std::string& source, std::string* target, int* error);
 
 // A sentence of a line: its bytes [begin, end), and the bytes [end, next) of the spaces after it.

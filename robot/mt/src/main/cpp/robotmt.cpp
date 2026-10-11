@@ -99,6 +99,100 @@ bool has_word(const std::string& s, size_t begin, size_t end) {
   return false;
 }
 
+// Bergamot's base models write a short sentence twice when it ends with a full stop ("Oui." gives "Yes. Yes.", "Je ne
+// sais pas." gives "I don't know. I don't know."). Each sentence of a line is decoded on its own, so each gets the guard
+// core MtGuard gives a whole line (which no longer sees the sentences inside one): a sentence of at most kShortWords
+// words loses its final full stop on the way in and gets it back after, and an output that is one sentence written twice
+// or more is kept once.
+constexpr size_t kShortWords = 2;
+
+// Words: runs between spaces with a letter or digit in them ("D'accord" is one).
+size_t count_words(const std::string& s) {
+  size_t words = 0;
+  bool in_word = false;
+  bool has = false;
+  for (size_t i = 0; i < s.size();) {
+    auto [c, n] = at(s, i);
+    if (is_space(c)) {
+      words += in_word && has ? 1 : 0;
+      in_word = has = false;
+    } else {
+      in_word = true;
+      has = has || is_word_char(c);
+    }
+    i += n;
+  }
+  return words + (in_word && has ? 1 : 0);
+}
+
+// Without its trailing spaces.
+std::string trim_end(std::string s) {
+  while (!s.empty()) {
+    size_t i = s.size() - 1;
+    while (i > 0 && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) --i;  // the last code point's first byte
+    if (!is_space(at(s, i).first)) break;
+    s.resize(i);
+  }
+  return s;
+}
+
+bool ends_terminal(const std::string& s) {
+  std::string t = trim_end(s);
+  if (t.empty()) return false;
+  size_t i = t.size() - 1;
+  while (i > 0 && (static_cast<unsigned char>(t[i]) & 0xC0) == 0x80) --i;
+  return is_terminal(at(t, i).first);
+}
+
+// The sentences of an output as core MtGuard.sentences cuts them: a run of anything but . ! ? … with the marks after
+// it, trimmed, those without a letter or digit left out.
+std::vector<std::string> pieces(const std::string& s) {
+  std::vector<std::string> out;
+  size_t i = 0;
+  while (i < s.size()) {
+    size_t b = i;
+    while (i < s.size() && !is_terminal(at(s, i).first)) i += at(s, i).second;
+    if (i == b) {  // marks with no text before them
+      i += at(s, i).second;
+      continue;
+    }
+    while (i < s.size() && is_terminal(at(s, i).first)) i += at(s, i).second;
+    size_t first = b;
+    while (first < i && is_space(at(s, first).first)) first += at(s, first).second;
+    std::string piece = trim_end(s.substr(first, i - first));
+    if (has_word(piece, 0, piece.size())) out.push_back(std::move(piece));
+  }
+  return out;
+}
+
+// What two sentences are compared by: lower case (ASCII), without the marks and spaces at the end.
+std::string repeat_key(const std::string& s) {
+  std::string k = s;
+  for (char& ch : k) {
+    if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch - 'A' + 'a');
+  }
+  while (!k.empty()) {
+    std::string t = trim_end(k);
+    if (t.size() >= 3 && t.compare(t.size() - 3, 3, "\xE2\x80\xA6") == 0) t.resize(t.size() - 3);
+    else if (!t.empty() && (t.back() == '.' || t.back() == '!' || t.back() == '?')) t.pop_back();
+    if (t == k) break;
+    k = std::move(t);
+  }
+  return k;
+}
+
+// [output], a translation of the one sentence [source]: once, when it is the same sentence written twice or more.
+std::string collapse_repeats(const std::string& source, const std::string& output) {
+  if (pieces(source).size() != 1) return output;
+  std::vector<std::string> p = pieces(output);
+  if (p.size() < 2) return output;
+  const std::string first = repeat_key(p[0]);
+  for (const std::string& x : p) {
+    if (repeat_key(x) != first) return output;
+  }
+  return p[0];
+}
+
 // Words that end with a full stop inside a sentence, before a name: English and French titles. A lone capital (an
 // initial, or French "M." for Monsieur) is checked apart.
 const char* const kTitles[] = {"Mr", "Mrs", "Ms", "Dr", "Drs", "Dre", "Prof", "Pr", "St", "Ste", "Jr", "Sr", "Mt", "vs",
@@ -226,6 +320,24 @@ std::vector<Sentence> split_sentences(const std::string& text) {
   return out;
 }
 
+namespace {
+
+// One sentence through the engine, with the short-sentence guard above.
+std::string translate_sentence(Engine* engine, const std::string& sentence) {
+  std::string in = sentence;
+  bool stop = false;
+  if (!in.empty() && in.back() == '.' && (in.size() < 2 || in[in.size() - 2] != '.') && count_words(in) <= kShortWords) {
+    in = trim_end(in.substr(0, in.size() - 1));
+    stop = !in.empty();
+    if (!stop) in = sentence;
+  }
+  std::string out = collapse_repeats(sentence, engine->translate(in));
+  if (stop && !trim_end(out).empty() && !ends_terminal(out)) out = trim_end(out) + ".";
+  return out;
+}
+
+}  // namespace
+
 bool translate(Engine* engine, const std::string& source, std::string* target, int* error) {
   *error = kOk;
   if (engine == nullptr) {
@@ -236,7 +348,7 @@ bool translate(Engine* engine, const std::string& source, std::string* target, i
     std::string out;
     for (const Sentence& s : split_sentences(source)) {
       // A "sentence" with no letter or digit ("…", "?!") is kept as it is.
-      if (has_word(source, s.begin, s.end)) out += engine->translate(source.substr(s.begin, s.end - s.begin));
+      if (has_word(source, s.begin, s.end)) out += translate_sentence(engine, source.substr(s.begin, s.end - s.begin));
       else out.append(source, s.begin, s.end - s.begin);
       out.append(source, s.end, s.next - s.end);
     }
