@@ -19,6 +19,7 @@ class ModelProblemsTest {
         assertEquals(stopped, GpuFailure.decode(stopped.encode()))
         assertEquals("didn't load (engine error)", f.what)
         assertEquals("stopped while writing the answer", stopped.what)
+        assertEquals("failed while reading the prompt (engine error)", GpuFailure(BrainModel.GENERAL, t, ProblemStage.READING, LoadFailure.ENGINE).what)
         for (bad in listOf(null, "", "e2b", "e2b x 1 0", "nope $t 1 0", "e2b $t 9 0", "e2b $t 1 99", "e2b 0 1 0")) assertNull(bad, GpuFailure.decode(bad))
         val trying = GpuTrying(BrainModel.GENERAL, t, 4242)
         assertEquals(trying, GpuTrying.decode(trying.encode()))
@@ -33,6 +34,8 @@ class ModelProblemsTest {
         val load = p.copy(failure = LoadFailure.ENGINE, stage = ProblemStage.LOADING)
         assertEquals(load, ModelProblem.decode(load.encode()))
         assertEquals("Fast didn't load on the GPU, so Robot switched to the CPU.", load.headline())
+        // The engine failed a reply on the GPU (an OpenCL error, not a crash).
+        assertEquals("Fast failed on the GPU, so Robot switched to the CPU.", p.copy(failure = LoadFailure.ENGINE).headline())
         val e4b = ModelProblem(t, BrainModel.SMARTER, ModelBackend.CPU, ProblemStage.READING, null, BrainModel.GENERAL, ModelBackend.GPU)
         assertEquals("Smarter, slower stopped on the CPU, so Robot is using Fast on the GPU.", e4b.headline())
         val alone = ModelProblem(t, BrainModel.FAST, ModelBackend.TPU, ProblemStage.LOADING, LoadFailure.TIMEOUT, null, null)

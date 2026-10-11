@@ -280,8 +280,9 @@ private fun ModelChoiceCard(s: RobotSettings, update: (RobotSettings) -> Unit, s
             val short = if (m == BrainModel.OWN && ready) snap.own?.takeIf { it.shortContext }
                 ?.let { o -> " Chat only (short context): no actions." + if (o.vision) " Can see photos." else "" } else null
             // 0.4.7: this phone's figures for it (measured or estimated, Speeds), and a memory warning on 8 GB or less.
-            val here = Speeds.of(m, ModelCatalogue.backend(m, snap.phone, s.modelGpu, snap.gpuFailure?.model == m), snap.phone)
-                ?.let { " This phone: " + it.text().replaceFirstChar { c -> c.lowercase() } } ?: ""
+            // (Fast on a Tensor G5 says its measured figures itself.)
+            val here = if (m == BrainModel.FAST) "" else Speeds.of(m, ModelCatalogue.backend(m, snap.phone, s.modelGpu, snap.gpuFailure?.model == m), snap.phone)
+                ?.let { " " + it.text() } ?: ""
             val warning = ModelCatalogue.memoryWarning(m, snap.phone)?.let { " $it" } ?: ""
             ChoiceRow(m.title, m.speed + here + warning + (short ?: "") + (note?.let { " $it" } ?: ""), chosen == m, enabled = ready || chosen == m) {
                 // Tapping the chosen one again saves too: Robot then retries a model that didn't load.

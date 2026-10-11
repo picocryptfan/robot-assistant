@@ -22,8 +22,12 @@ enum class ProblemStage(override val id: Int, override val title: String) : LogC
 data class GpuFailure(val model: BrainModel, val time: Long, val stage: ProblemStage, val failure: LoadFailure?) {
     fun encode(): String = "${model.id} $time ${stage.id} ${failure?.id ?: 0}"
 
-    /** "didn't load (engine error)", "stopped while writing the answer". */
-    val what: String get() = if (failure != null) "didn't load (${failure.title})" else "stopped while ${stage.title}"
+    /** "didn't load (engine error)", "failed while writing the answer (engine error)", "stopped while writing the answer". */
+    val what: String get() = when {
+        failure != null && stage == ProblemStage.LOADING -> "didn't load (${failure.title})"
+        failure != null -> "failed while ${stage.title} (${failure.title})"
+        else -> "stopped while ${stage.title}"
+    }
 
     companion object {
         const val FILE = "gpu_failed.txt"
@@ -88,7 +92,11 @@ data class ModelProblem(
     /** "Fast stopped on the GPU, so Robot switched to the CPU." */
     fun headline(): String {
         val name = model.title
-        val what = if (failure != null) "$name didn't load on the ${backend.title}" else "$name stopped on the ${backend.title}"
+        val what = when {
+            failure != null && stage == ProblemStage.LOADING -> "$name didn't load on the ${backend.title}"
+            failure != null -> "$name failed on the ${backend.title}"
+            else -> "$name stopped on the ${backend.title}"
+        }
         return what + when {
             then == null -> "."
             then == model && thenBackend != null -> ", so Robot switched to the ${thenBackend.title}."

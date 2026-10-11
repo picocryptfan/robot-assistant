@@ -72,7 +72,12 @@ class DeathOnce {
     @Synchronized fun died(): Boolean = (!counted).also { counted = true }
 }
 
-class BrainClient(private val ctx: Context, private val onDeath: (ProblemStage?) -> Unit) {
+class BrainClient(
+    private val ctx: Context,
+    private val onDeath: (ProblemStage?) -> Unit,
+    /** 0.4.7: the engine itself failed a reply (BrainError.ENGINE) at this stage; on the GPU that is the GPU failing. */
+    private val onEngineError: (ProblemStage) -> Unit = {},
+) {
     private val death = DeathOnce()
     @Volatile private var messenger: Messenger? = null
     private var conn: ServiceConnection? = null
@@ -87,12 +92,14 @@ class BrainClient(private val ctx: Context, private val onDeath: (ProblemStage?)
     @Volatile private var stageReq = 0
 
     private fun onReply(m: Message) {
+        val msg = BrainWire.decode(m) ?: BrainMsg.Error(BrainError.BAD_REQUEST, "unreadable reply")
         if (m.arg1 == stageReq && stageReq != 0) {
+            val at = stage
             if (m.what == BrainProtocol.EV_CHUNK) stage = ProblemStage.WRITING
             else if (m.what in BrainProtocol.TERMINAL || m.what == BrainProtocol.EV_TOOL_CALLS) stage = null
+            if (m.what == BrainProtocol.EV_ERROR && (msg as? BrainMsg.Error)?.code == BrainError.ENGINE && at != null) onEngineError(at)
         }
         val ch = streams[m.arg1] ?: return
-        val msg = BrainWire.decode(m) ?: BrainMsg.Error(BrainError.BAD_REQUEST, "unreadable reply")
         ch.trySend(msg)
         if (m.what in BrainProtocol.TERMINAL) {
             streams.remove(m.arg1)
@@ -362,7 +369,7 @@ object BrainKeeper {
                 return@withLock null
             }
         }
-        val c = client ?: BrainClient(ctx.applicationContext) { stage -> onDeath(stage) }.also { client = it }
+        val c = client ?: BrainClient(ctx.applicationContext, { stage -> onDeath(stage) }, { stage -> onEngineError(stage) }).also { client = it }
         if (!c.connect()) {
             _state.value = State(Readiness.FAILED, problem = "Robot couldn't start its model process.")
             return@withLock null
@@ -515,6 +522,25 @@ object BrainKeeper {
         unloadJob = scope.launch {
             delay(minutes * 60_000L)
             release("idle")
+        }
+    }
+
+    /**
+     * 0.4.7: the engine failed a reply on the GPU (an OpenCL error, as a Tensor G4's Mali GPU can give after a few turns):
+     * the GPU counts as failed, as if it had crashed. The engine goes now, so the next question loads the model on the CPU;
+     * this reply's own error is shown as before. On the CPU or the TPU nothing changes (the panel says the model failed).
+     */
+    private fun onEngineError(stage: ProblemStage) {
+        val p = holding ?: return
+        val ctx = appCtx ?: return
+        if (p.backend != ModelBackend.GPU || loading) return
+        scope.launch {
+            if (Problems.gpuFailure(ctx)?.model == p.model) return@launch
+            Problems.gpuFailed(ctx, GpuFailure(p.model, System.currentTimeMillis(), stage, LoadFailure.ENGINE))
+            VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(p.model), stage, LoadFailure.ENGINE.id)
+            RLog.i("brain_gpu_failed", "stage" to stage, "failure" to RLog.Code(LoadFailure.ENGINE.name))
+            pendingNotice = gpuNotice(noteProblem(ctx, p, stage, LoadFailure.ENGINE, p.model, ModelBackend.CPU))
+            release("gpu_failed")
         }
     }
 

@@ -162,8 +162,7 @@ enum class BrainModel(
     val speed: String get() = when (this) {
         FAST -> "Writes about 17 tokens (word pieces) a second; a new conversation starts answering in about 3 s. " +
             "About 2 GB of memory, light on the battery. Sees photos."
-        GENERAL -> "The same model as the Pixel 10's Fast, built to run on the GPU or the CPU: Settings › Model shows " +
-            "this phone's estimate. About 2.6 GB of memory. Sees photos."
+        GENERAL -> "The same model as the Pixel 10's Fast, built to run on the GPU or the CPU. About 2.6 GB of memory. Sees photos."
         SMARTER -> "Better answers, slower: about 8 tokens a second, and about 21 s before the first word of a new " +
             "conversation (later answers about 1 to 3 s). About 4 GB of memory and more battery (about 9 W while it writes, " +
             "against 3.5 W). Sees photos, more slowly."
