@@ -37,14 +37,15 @@ interface OneShotTransport {
  * a higher priority and will start over, so what came is dropped. EV_DONE CANCELLED or EV_ERROR end it.
  */
 class OneShotFold(private val t0: Long) {
-    var started = false
+    /** Read by the client's start deadline on another thread. */
+    @Volatile var started = false
         private set
     /** Times it gave way and started over. */
     var restarts = 0
         private set
     private val text = StringBuilder()
     private var startedAt = -1L
-    var result: OneShotResult? = null
+    @Volatile var result: OneShotResult? = null
         private set
 
     val soFar: String get() = text.toString()
