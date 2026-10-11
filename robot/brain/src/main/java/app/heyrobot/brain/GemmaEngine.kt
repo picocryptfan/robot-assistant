@@ -353,9 +353,11 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             counted.clear()
             estimated.clear()
             val ms = SystemClock.elapsedRealtime() - t0
-            // Its tokenizer's special tokens, which no text from outside Robot's prompt may write. A built-in file (its
-            // SHA-256 checked above) is Gemma 4's, whose tokenizer encodes the joiner as itself; your own file whose tokenizer
-            // can't be read gets the known markers broken by a plain space, which every tokenizer reads as a space.
+            // Its tokenizer's special tokens, which no text from outside Robot's prompt may write, read from the file just
+            // loaded, whichever backend runs it: the Tensor G5 build's on the TPU, 0.4.7's general E2B's on the GPU or the CPU
+            // (the same SentencePiece model), an E4B file's, your own. A built-in file (its SHA-256 checked above) is Gemma
+            // 4's, whose tokenizer encodes the joiner as itself; your own file whose tokenizer can't be read gets the known
+            // markers broken by a plain space, which every tokenizer reads as a space.
             val tokens = try { FileByteSource(f).use { LiteRtLmCheck.tokens(it) } } catch (_: Exception) { null }
             controls = tokens?.controlText() ?: ControlText(PromptMarkers.KNOWN, if (req.model.builtIn) ControlText.JOINER else ControlText.SPACE)
             val tokensMs = SystemClock.elapsedRealtime() - t0 - ms
