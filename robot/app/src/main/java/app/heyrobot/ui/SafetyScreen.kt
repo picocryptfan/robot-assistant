@@ -44,7 +44,7 @@ import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.toolIcon
 
 // MAIN PROCESS. Settings › Safety & privacy (0.4.0): every rule about when Robot asks first, what works on the lock
-// screen, what helpers (Claude) may get without a tap, how direct the local model is, and what History keeps. Nothing is
+// screen, what helpers (Claude, or any other since 0.6.0) may get without a tap, how direct the local model is, and what History keeps. Nothing is
 // fixed in code: each is a switch here with a sensible default (core Safety.kt, ApprovalGate).
 
 @Composable
@@ -59,12 +59,12 @@ fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
             Text("Choose how careful Robot is. Each action's own level (Just do it, Ask first, Off) is in Settings › Actions; these rules " +
                 "decide when “Just do it” still shows a card first.", style = MaterialTheme.typography.bodyMedium, color = muted)
             SectionCard("Safety cards") {
-                Text("When something Robot read (a screen, a photo, a note, an event, a contact, the weather, Claude's answer) makes an action ask first.",
+                Text("When something Robot read (a screen, a photo, a note, an event, a contact, the weather, a helper's answer) makes an action ask first.",
                     style = MaterialTheme.typography.bodyMedium, color = muted)
                 for (m in SafetyCards.entries) {
                     ChoiceRow(m.title + if (m == SafetyCards.UNASKED) " (default)" else "", m.detail, s.safetyCards == m) { update(s.copy(safetyCards = m)) }
                 }
-                SwitchRow("Card when Claude asks Robot to do something", "Claude's input may come from web pages. Off: Claude's actions follow the rules above.",
+                SwitchRow("Card when a helper asks Robot to do something", "A helper's input may come from web pages. Off: a helper's actions follow the rules above.",
                     s.claudeActionCards) { update(s.copy(claudeActionCards = it)) }
                 SwitchRow("Card when who-to isn't certain", "Several people or numbers fit, a name only nearly matches, the model wrote a number " +
                     "or address itself, or an app name matched loosely. Off: Robot takes the best match.", s.whoCards) { update(s.copy(whoCards = it)) }
@@ -86,12 +86,15 @@ fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
                 if (s.lockedTools != LockScreen.DEFAULT) TextButton(onClick = { update(s.copy(lockedTools = LockScreen.DEFAULT)) }) { Text("Back to timers and alarms") }
             }
             SectionCard("Helpers") {
-                SwitchRow("Send personal content to helpers automatically", "When Robot checks with Claude by itself, it may include the " +
-                    "conversation's screen text, photos and what it read (your calendar, notes, contacts, location), and what Robot reads for " +
-                    "Claude goes without “Share with Claude”. Off: only your question goes, and anything more needs a tap. " +
+                SwitchRow("Send personal content to helpers automatically", "For every helper. When Robot checks with a helper by itself, it may " +
+                    "include the conversation's screen text, photos and what it read (your calendar, notes, contacts, location), and what Robot " +
+                    "reads for a helper goes without “Share with …”. Off: only your question goes, and anything more needs a tap. " +
                     "“Go get Claude” and “ask Claude about my screen” always ask first.", s.personalToHelpers) { update(s.copy(personalToHelpers = it)) }
-                SwitchRow("Voice yes can send personal content", "Off: a spoken or typed “yes” never sends your screen, a photo or what " +
-                    "Robot read to Claude; only a tap does.", s.voiceYesPersonal) { update(s.copy(voiceYesPersonal = it)) }
+                SwitchRow("Voice yes can send personal content", "For every helper. Off: a spoken or typed “yes” never sends your screen, a " +
+                    "photo or what Robot read to a helper; only a tap does.", s.voiceYesPersonal) { update(s.copy(voiceYesPersonal = it)) }
+                Text("A helper you trust with personal content (on its page in Settings › Helpers) gets what Robot read without asking, " +
+                    "but your screen and photos still need a tap. These two switches go further, for every helper.",
+                    style = MaterialTheme.typography.bodyMedium, color = muted)
             }
             SectionCard("Answers") {
                 SwitchRow("Direct answers", "Robot helps with whatever you ask without refusing or adding warnings; it still says when something isn't possible.",
@@ -100,7 +103,7 @@ fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
             SectionCard("History") {
                 SwitchRow("Keep screenshots and photos in history", "Off: Robot saves only that a question had a screen or a photo. On: a " +
                     "small thumbnail and the screen's text are saved with the conversation, in Robot's private storage on this phone, for you to " +
-                    "see in History (a screen conversation is still saved only after Keep). They are never sent to Claude or read to the model again.",
+                    "see in History (a screen conversation is still saved only after Keep). They are never sent to a helper or read to the model again.",
                     s.keepMedia, enabled = s.saveHistory) { update(s.copy(keepMedia = it)) }
                 if (!s.saveHistory) Text("Saving conversations is off (Settings › History).", style = MaterialTheme.typography.bodyMedium, color = muted)
                 OutlinedButton(onClick = { confirmRemove = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Remove saved screenshots and photos") }

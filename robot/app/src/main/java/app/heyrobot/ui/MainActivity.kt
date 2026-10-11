@@ -59,7 +59,8 @@ import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.Calendars
-import app.heyrobot.sys.ClaudeKeyFiles
+import app.heyrobot.sys.HelperKeyFiles
+import app.heyrobot.sys.HelperWindow
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
@@ -141,6 +142,10 @@ sealed class Page {
     data class PersonEdit(val id: String?) : Page()
     /** Settings › Safety & privacy (0.4.0). */
     data object Safety : Page()
+    /** Settings › Helpers (0.6.0), one helper's page, and "Add a helper". */
+    data object Helpers : Page()
+    data class Helper(val id: String) : Page()
+    data object AddHelper : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -158,6 +163,9 @@ sealed class Page {
                     People -> "people"
                     is PersonEdit -> "person:${p.id.orEmpty()}"
                     Safety -> "safety"
+                    Helpers -> "helpers"
+                    is Helper -> "helper:${p.id}"
+                    AddHelper -> "addhelper"
                 }
             },
             restore = { v ->
@@ -172,6 +180,9 @@ sealed class Page {
                     v == "people" -> People
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
                     v == "safety" -> Safety
+                    v == "helpers" -> Helpers
+                    v.startsWith("helper:") -> Helper(v.removePrefix("helper:"))
+                    v == "addhelper" -> AddHelper
                     else -> null
                 }
             },
@@ -400,18 +411,32 @@ fun RobotAppUi(activity: MainActivity) {
             } catch (_: Exception) { say("Open Settings › Apps › Robot › Permissions.") }
         },
         openNote = { id -> page = Page.NoteEdit(id) },
-        addClaudeKey = {
+        helperWindow = { id, mode ->
             // By name: the main process never refers to the assistant's classes.
             try {
-                ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.ClaudeKeyActivity"))
-            } catch (_: Exception) { say("Couldn't open the key window.") }
+                ctx.startActivity(Intent().setClassName(ctx.packageName, HelperWindow.CLASS).putExtra(HelperWindow.EXTRA_HELPER, id)
+                    .putExtra(HelperWindow.EXTRA_MODE, mode))
+            } catch (_: Exception) { say("Couldn't open the connection window.") }
         },
-        deleteClaudeKey = {
+        deleteHelperKey = { id ->
+            val name = settings.helper(id)?.name ?: "helper's"
             // Off the main thread (files and the Keystore); then the assistant drops its client at once.
             scope.launch(Dispatchers.IO) {
-                ClaudeKeyFiles.delete(ctx)
-                Cmd.send(ctx, Cmd.CLAUDE_KEY)
-                withContext(Dispatchers.Main) { say("The Claude key was deleted.") }
+                HelperKeyFiles.delete(ctx, id)
+                Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+                withContext(Dispatchers.Main) { say("The $name key was deleted.") }
+            }
+        },
+        removeHelper = { id ->
+            settings.helper(id)?.let { h ->
+                update(settings.copy(helpers = settings.helpers.filter { it.id != id }, helpDefault = settings.helpDefault.takeIf { it != id }))
+                page = Page.Helpers
+                // Its key (crypto-shredded), what Test connection found and its folder; the assistant ends its conversation.
+                scope.launch(Dispatchers.IO) {
+                    HelperKeyFiles.removeAll(ctx, id)
+                    Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+                    withContext(Dispatchers.Main) { say("${h.name} was removed.") }
+                }
             }
         },
         openPage = { page = it },
@@ -442,11 +467,11 @@ fun RobotAppUi(activity: MainActivity) {
     }
 
     BackHandler(enabled = page != null || (tab != Tab.HOME && !(tab == Tab.NOTES && fromNotesIcon))) {
-        if (page != null) page = null else tab = Tab.HOME
+        if (page != null) page = if (page is Page.Helper || page == Page.AddHelper) Page.Helpers else null else tab = Tab.HOME
     }
 
     when (val p = page) {
-        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people)
+        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people, helpers = settings.helpers)
         is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.helperShowCost, onBack = { page = null })
         // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
         is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
@@ -458,6 +483,9 @@ fun RobotAppUi(activity: MainActivity) {
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
         Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.Helpers -> HelpersScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
+        is Page.Helper -> HelperScreen(p.id, settings, snap, ::updateSettings, actions, snackbar, onBack = { page = Page.Helpers })
+        Page.AddHelper -> AddHelperScreen(settings, ::updateSettings, actions, snackbar, onAdded = { page = Page.Helper(it) }, onBack = { page = Page.Helpers })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -521,9 +549,13 @@ class AppActions(
     val askCalendar: () -> Unit,
     val openAppSettings: () -> Unit,
     val openNote: (String?) -> Unit,
-    /** Ask Claude's key: pasted in a window of the assistant's process (never through this one); deleted here. */
-    val addClaudeKey: () -> Unit,
-    val deleteClaudeKey: () -> Unit,
+    /**
+     * Helpers (0.6.0): a helper's connection window, in the assistant's process (its key is pasted and Test connection
+     * runs there, never through this one; [HelperWindow] modes); its key deleted here; the helper removed with its files.
+     */
+    val helperWindow: (id: String, mode: String) -> Unit = { _, _ -> },
+    val deleteHelperKey: (String) -> Unit = {},
+    val removeHelper: (String) -> Unit = {},
     val openPage: (Page) -> Unit,
     val bargeTest: (BargeRun) -> Unit,
     /** 0.4.0: approximate location for the weather (asked here only), and Android's Usage access page for Robot. */

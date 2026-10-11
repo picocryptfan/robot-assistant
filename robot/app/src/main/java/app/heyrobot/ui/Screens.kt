@@ -165,9 +165,10 @@ private fun ConversationRow(c: StoredConversation, onClick: () -> Unit) {
     ) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Claude took part: a small cloud.
+                // A helper took part: a small cloud, or a house when only your own server did.
                 if (c.claude) {
-                    Icon(RIcons.Cloud, "With Claude", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
+                    val names = c.turns.filter { it.claude }.map { it.author }.distinct().joinToString(", ")
+                    Icon(if (c.homeOnly) RIcons.Home else RIcons.Cloud, "With $names", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
                     Spacer(Modifier.width(6.dp))
                 }
                 Text(c.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -258,8 +259,8 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                 }
                 else AssistantBubble(t.text, streaming = false, stopped = t.stopped, error = t.error,
                     actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
-                    claude = t.claude, readBack = t.readBack,
-                    footer = claudeFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { ClaudeCost.line(it / 1e6) }))
+                    claude = t.claude, readBack = t.readBack, by = t.by, home = t.home,
+                    footer = claudeFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { ClaudeCost.line(it / 1e6) }, t.by))
             }
         }
     }

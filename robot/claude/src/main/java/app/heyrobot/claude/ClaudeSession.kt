@@ -625,6 +625,10 @@ class ClaudeTurn(
     /** How a failure is said: Claude's words, or another helper's (HelperWho). */
     private val say: (ClaudeFailure) -> String = { it.text },
 ) : TurnModel {
+    /** Why the last request failed, if it did (a server that can't be reached may give the question back to Robot). */
+    var failure: ClaudeFailure? = null
+        private set
+
     override suspend fun ask(): ModelOutcome = outcome(session.ask(first, plan, listener))
 
     override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = outcome(session.answer(results.map { it.second }, listener))
@@ -640,6 +644,9 @@ class ClaudeTurn(
         is ClaudeOutcome.Calls -> ModelOutcome.Calls(o.calls)
         // The listener already put "Claude declined that one." in place of the reply.
         ClaudeOutcome.Declined -> ModelOutcome.Done(DoneReason.END)
-        is ClaudeOutcome.Failed -> ModelOutcome.Failed(say(o.failure))
+        is ClaudeOutcome.Failed -> {
+            failure = o.failure
+            ModelOutcome.Failed(say(o.failure))
+        }
     }
 }

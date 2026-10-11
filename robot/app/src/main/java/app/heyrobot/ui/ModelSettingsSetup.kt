@@ -330,88 +330,6 @@ private fun PeopleSettingsCard(s: RobotSettings, snap: Snapshot, calendars: List
     }
 }
 
-/**
- * Settings › Ask Claude (docs/ask-claude.md "Key and settings"): on or off, the route (the Claude app or the API), the API
- * key (added in a small window of the assistant's process, shown masked here, deleted here), the model, how hard Claude
- * thinks, web search, the lock screen, Claude's voice, the cost line, when Robot may bring Claude in, and the daily budget.
- */
-@Composable
-private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions) {
-    val f = snap.facts
-    val keySaved = f?.claudeKey != null
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    SectionCard("Ask Claude") {
-        Text("Nothing goes to Claude unless you ask for Claude: say “ask Claude …” or “go get Claude”, or let Robot check hard questions " +
-            "with Claude (below). Only text leaves the phone: your voice is turned into text here, and Claude's answer is read by Robot's voices.",
-            style = MaterialTheme.typography.bodyMedium, color = muted)
-        SwitchRow("Ask Claude", if (keySaved) "Questions for Claude go through your API key." else "Without a key, questions for Claude open the Claude app.",
-            ClaudeSettings.enabled(s, keySaved)) { update(s.withClaude { c -> c.copy(enabled = it) }) }
-        Text("Use", style = MaterialTheme.typography.titleSmall)
-        val route = ClaudeSettings.route(s, keySaved)
-        for (r in ClaudeRoute.entries) {
-            val note = when {
-                r == ClaudeRoute.APP && f?.claudeApp?.installed == false -> " The Claude app isn't installed."
-                r == ClaudeRoute.API && !keySaved -> " Add a key first."
-                else -> ""
-            }
-            ChoiceRow(r.title, r.detail + note, route == r) { update(s.withClaude { it.copy(route = r) }) }
-        }
-        Text("API key", style = MaterialTheme.typography.titleSmall)
-        var confirmDelete by remember { mutableStateOf(false) }
-        StatusRow(if (keySaved) Mark.OK else if (f?.claudeKeyUnreadable == true) Mark.WARN else Mark.TODO, f?.claudeKey ?: "No key",
-            if (f?.claudeKeyUnreadable == true) "Robot couldn't read the saved key (Android's keystore lost it), so it was removed. Add it again."
-            else "From console.anthropic.com › API keys. API use is paid with API credits; a claude.ai Pro or Max plan doesn't cover it.") {
-            if (keySaved) OutlinedButton(onClick = { confirmDelete = true }) { Text("Delete key") } else FilledTonalButton(onClick = a.addClaudeKey) { Text("Add key") }
-        }
-        if (confirmDelete) {
-            AlertDialog(
-                onDismissRequest = { confirmDelete = false },
-                title = { Text("Delete the Claude key?") },
-                text = { Text("Robot removes the key from this phone. Ask Claude stays on and uses the Claude app until you add a key again.") },
-                confirmButton = { TextButton(onClick = { confirmDelete = false; a.deleteClaudeKey() }) { Text("Delete") } },
-                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-            )
-        }
-        Text("Model", style = MaterialTheme.typography.titleSmall)
-        for (m in ClaudeModel.entries) ChoiceRow(m.title, m.detail, s.claudeModelChoice == m) { update(s.withClaude { it.copy(model = m.id) }) }
-        Text("How hard Claude thinks", style = MaterialTheme.typography.titleSmall)
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            ClaudeEffortSetting.entries.forEachIndexed { i, v ->
-                SegmentedButton(selected = s.claude?.effort == v, onClick = { update(s.withClaude { it.copy(effort = v) }) },
-                    shape = SegmentedButtonDefaults.itemShape(i, ClaudeEffortSetting.entries.size)) { Text(v.title) }
-            }
-        }
-        Text("Automatic: low for spoken questions (fast), medium for typed ones, high when you ask Claude to “think hard” or “take your time”.",
-            style = MaterialTheme.typography.bodyMedium, color = muted)
-        SwitchRow("Let Claude search the web", "Up to 3 searches per question, about 1¢ each. The answer lists the sites.", s.claude?.search == true) { update(s.withClaude { c -> c.copy(search = it) }) }
-        SwitchRow("Allow on lock screen", "Off: a locked phone can't show who is asking.", s.claude?.locked == true) { update(s.withClaude { c -> c.copy(locked = it) }) }
-        Text("Claude's voice", style = MaterialTheme.typography.titleSmall)
-        for ((name, _) in ClaudeVoices.KOKORO) ChoiceRow(ClaudeVoices.title(name), null, ClaudeVoices.of(s.claude?.voice) == name) { update(s.withClaude { it.copy(voice = name) }) }
-        Text("A Kokoro voice, so you hear who is talking. With the Kitten voice Claude uses Kitten's other voice; with the phone's voice, a lower pitch.",
-            style = MaterialTheme.typography.bodyMedium, color = muted)
-        SwitchRow("Show cost", "“≈ 1¢” under each Claude reply, estimated from the published prices.", s.helperShowCost) { update(s.copy(helperShowCost = it)) }
-        Text("When Robot needs help", style = MaterialTheme.typography.titleSmall)
-        val help = ClaudeSettings.escalation(s, keySaved)
-        for (e in Escalation.entries) {
-            ChoiceRow(e.title, e.detail + if (e == Escalation.AUTO && !keySaved) " Needs an API key: until then Robot asks first." else "", help == e) { update(s.copy(help = e)) }
-        }
-        Text(if (s.personalToHelpers) "By itself, Robot sends your question and the last two turns of the conversation, with any screen text, " +
-            "photo or what it read (Safety & privacy › Send personal content to helpers automatically is on)."
-            else "By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
-            "a photo, or what Robot read from your contacts, calendar or notes, the weather (where you are) or your phone's status, it sends " +
-            "only your question; anything more goes only after you tap a card that lists it.", style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("Daily budget", style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (c in RobotSettings.CLAUDE_BUDGETS) {
-                FilterChip(selected = s.helperBudgetCents == c, onClick = { update(s.copy(helperBudgetCents = c)) },
-                    label = { Text(ClaudeCost.dollarsText(c * 10_000L).removeSuffix(".00")) }, modifier = Modifier.heightIn(min = 48.dp))
-            }
-        }
-        Text("Today: ${ClaudeCost.dollarsText(f?.spend?.total ?: 0)} of ${ClaudeCost.dollarsText(s.helperBudgetCents * 10_000L)} (an estimate). " +
-            "Once it's reached, Robot asks before checking with Claude by itself until tomorrow.", style = MaterialTheme.typography.bodyMedium, color = muted)
-    }
-}
-
 @Composable
 internal fun ChoiceRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
     Row(
@@ -429,7 +347,7 @@ internal fun ChoiceRow(title: String, detail: String?, selected: Boolean, onClic
 
 /** A text setting saved with the keyboard's Done or the Save button (what's saved is the cleaned value). */
 @Composable
-private fun SettingField(label: String, value: String, detail: String, caps: Boolean = false, save: (String) -> Unit) {
+internal fun SettingField(label: String, value: String, detail: String, caps: Boolean = false, save: (String) -> Unit) {
     var v by remember(value) { mutableStateOf(value) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
@@ -473,26 +391,26 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         }
         SectionCard("Safety & privacy") {
             NavRow(RIcons.Lock, "Safety & privacy", "When Robot asks first (${s.safetyCards.title.replaceFirstChar { it.lowercase() }}), the lock screen, " +
-                "what Claude may get, direct answers (${if (s.directAnswers) "on" else "off"}), screenshots in history") { a.openPage(Page.Safety) }
+                "what helpers may get, direct answers (${if (s.directAnswers) "on" else "off"}), screenshots in history") { a.openPage(Page.Safety) }
         }
         VoiceSettingsCard(s, snap, update, a)
         SectionCard("Actions") {
             Text("What Robot may do when you ask. On the lock screen: ${LockScreen.allowed(s.lockedTools)}; everything else asks you to unlock. " +
-                "When “Just do it” still shows a card (after Robot read something, a name it isn't sure of, Claude's requests) is in " +
+                "When “Just do it” still shows a card (after Robot read something, a name it isn't sure of, a helper's requests) is in " +
                 "Safety & privacy.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            // Ask Claude's own settings decide about ask_claude (it has no level of its own).
+            // The helpers' own settings decide about ask_claude (it has no level of its own).
             for (t in ToolName.entries.filter { !it.internal }) {
                 ApprovalRow(t, s.approval(t), t in s.lockedTools) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
                 // Part of the maps actions (0.4.0): "the nearest …" found online, asked the first time by default.
                 if (t == ToolName.MAPS_NAVIGATE) NearestOnlineChoice(s, snap, update)
             }
-            Text(if (s.claudeActionCards) "Anything Claude asks Robot to do shows a card first." else "Claude's requests follow the levels above and Safety cards.",
+            Text(if (s.claudeActionCards) "Anything a helper asks Robot to do always shows a card first." else "A helper's requests follow the levels above and Safety cards.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         PeopleSettingsCard(s, snap, calendars, update, a)
         WeatherSettingsCard(s, snap, update, a)
-        ClaudeSettingsCard(s, snap, update, a)
+        HelpersCard(s, snap, a)
         SectionCard("Model memory") {
             Text("Keep Gemma loaded after the panel closes (about 2 GB of memory; it loads again in about 2 seconds).",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -625,21 +543,25 @@ private fun PeopleSetupCard(f: AssistantFacts, a: AppActions) {
 }
 
 /**
- * Assistant setup › Ask Claude: what the network is used for, GrapheneOS's Network toggle, and the Claude app with which
- * hand-off its installed version accepts (a claude:// link, a claude.ai link, a share), so you can tell without adb.
+ * Assistant setup › Helpers: what the network is used for, GrapheneOS's Network toggle, each helper's key, and the Claude
+ * app with which hand-off its installed version accepts (a claude:// link, a claude.ai link, a share), so you can tell
+ * without adb.
  */
 @Composable
-private fun ClaudeSetupCard(f: AssistantFacts, a: AppActions) {
-    SectionCard("Ask Claude") {
-        Text("Robot uses the internet for three things only: downloading its models, Ask Claude when you ask for Claude, and the " +
-            "weather (Open-Meteo) when you ask for it.",
+private fun HelpersSetupCard(f: AssistantFacts, helpers: List<app.heyrobot.core.helpers.HelperConfig>, a: AppActions) {
+    SectionCard("Helpers") {
+        Text("Robot uses the network for four things only: downloading its models, a helper when you ask for one, the weather " +
+            "(Open-Meteo) when you ask for it, and your own AI server, if you add one.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         StatusRow(if (f.networkGranted) Mark.OK else Mark.WARN, "Network",
-            if (f.networkGranted) "Allowed, as Android reports it. If Ask Claude says “No internet” while you're online, check Robot's Network permission."
-            else "Turned off for Robot: Ask Claude can't reach Claude.") {
+            if (f.networkGranted) "Allowed, as Android reports it. If a helper says “No internet” while you're online, check Robot's Network permission."
+            else "Turned off for Robot: no helper can be reached.") {
             if (!f.networkGranted) TextButton(onClick = a.openAppSettings) { Text("Open") }
         }
-        StatusRow(if (f.claudeKey != null) Mark.OK else Mark.TODO, "Claude API key", f.claudeKey ?: "None: questions open the Claude app instead (Settings › Ask Claude).")
+        for (h in helpers.filter { it.presetOf.keyRequired }) {
+            StatusRow(if (f.keys[h.id] != null) Mark.OK else Mark.TODO, "${h.name} API key", f.keys[h.id]
+                ?: if (h.presetOf.app != null) "None: questions open the ${h.presetOf.defaultName} app instead (Settings › Helpers › ${h.name})." else "None (Settings › Helpers › ${h.name}).")
+        }
         val c = f.claudeApp
         fun tick(b: Boolean) = if (b) "✓" else "✗"
         StatusRow(if (c.installed) Mark.OK else Mark.TODO, "Claude app",
@@ -650,7 +572,8 @@ private fun ClaudeSetupCard(f: AssistantFacts, a: AppActions) {
 }
 
 @Composable
-fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit, peopleFirst: Boolean = false) {
+fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit, peopleFirst: Boolean = false,
+    helpers: List<app.heyrobot.core.helpers.HelperConfig> = emptyList()) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     // Opening Assistant setup checks the speech recognizer setting (Robot repairs it itself with the adb grant).
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -717,7 +640,7 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
             }
             if (!peopleFirst) PeopleSetupCard(f, a)
             if (!peopleFirst) ToolsSetupCard(f, a)
-            ClaudeSetupCard(f, a)
+            HelpersSetupCard(f, helpers, a)
             SectionCard("After a restart") {
                 Text(
                     "Android 17 keeps a non-system assistant across a restart only when a default speech recognizer is set, and it never " +

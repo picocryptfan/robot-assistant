@@ -11,6 +11,7 @@ import android.os.PersistableBundle
 import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.ClaudeSpend
 import app.heyrobot.core.helpers.HelperConfig
+import app.heyrobot.core.helpers.HelperFacts
 import app.heyrobot.core.helpers.HelperSpend
 import app.heyrobot.core.RLog
 import app.heyrobot.core.readOrNull
@@ -20,40 +21,81 @@ import java.io.File
 import java.security.KeyStore
 import java.time.LocalDate
 
-// Main and voice processes. Ask Claude's files and the Claude app's intents, without the API key: the key is encrypted
-// and decrypted in the :voice process only (assistant/ClaudeKeys.kt). The main app reads whether a key is saved and its
-// masked form, and can delete it (then tells the voice process); it never reads the key itself.
+// Main and voice processes. The helpers' files (0.6.0; Ask Claude's before) and the Claude app's intents, without any API
+// key: keys are encrypted and decrypted in the :voice process only (assistant/HelperKeys.kt). The main app reads whether
+// a key is saved and its masked form, and can delete it (then tells the voice process); it never reads a key itself.
 
-object ClaudeKeyFiles {
-    /** The Android Keystore key that encrypts the API key (AES-GCM, not exportable). */
-    const val ALIAS = "robot_claude_api_key"
+/**
+ * Where a helper's key lives: files/robot/helpers/<id>/key.bin (IV and ciphertext, :voice only) and key.json (the masked
+ * form and when it was saved), encrypted with the Android Keystore key robot_helper_<id>. Claude (id "claude") keeps
+ * the files and key from before 0.6.0 (claude_key.bin, claude_key.json, robot_claude_api_key): nothing moved, nothing
+ * was encrypted again.
+ */
+object HelperKeyFiles {
+    /** Claude's Keystore key since 0.3.0. */
+    const val CLAUDE_ALIAS = "robot_claude_api_key"
+    private val SAFE = Regex("[a-z0-9_]{1,16}")
+
+    fun alias(id: String): String = if (id == HelperConfig.CLAUDE_ID) CLAUDE_ALIAS else "robot_helper_$id"
+
+    /** The helper's own folder (not Claude's: its files sit where they always were). */
+    fun dir(ctx: Context, id: String): File {
+        require(SAFE.matches(id)) { "helper id" }
+        return File(File(Paths.dir(ctx), "helpers"), id)
+    }
 
     /** IV and ciphertext, written and read only by the :voice process. */
-    fun secret(ctx: Context) = File(Paths.dir(ctx), "claude_key.bin")
+    fun secret(ctx: Context, id: String): File = if (id == HelperConfig.CLAUDE_ID) File(Paths.dir(ctx), "claude_key.bin") else File(dir(ctx, id), "key.bin")
+
     /** Not secret: the masked form ("sk-ant-…AB12") and when it was saved, for Settings. */
-    fun meta(ctx: Context) = File(Paths.dir(ctx), "claude_key.json")
+    fun meta(ctx: Context, id: String): File = if (id == HelperConfig.CLAUDE_ID) File(Paths.dir(ctx), "claude_key.json") else File(dir(ctx, id), "key.json")
 
-    fun saved(ctx: Context): Boolean = secret(ctx).isFile
+    fun saved(ctx: Context, id: String): Boolean = secret(ctx, id).isFile
 
-    fun masked(ctx: Context): String? = if (!saved(ctx)) null else
-        readOrNull(meta(ctx))?.let { try { JSONObject(it).optString("masked").takeIf { m -> m.isNotEmpty() } } catch (_: Exception) { null } } ?: "Saved"
+    fun masked(ctx: Context, id: String): String? = if (!saved(ctx, id)) null else
+        readOrNull(meta(ctx, id))?.let { try { JSONObject(it).optString("masked").takeIf { m -> m.isNotEmpty() } } catch (_: Exception) { null } } ?: "Saved"
 
     /** A saved key couldn't be decrypted and was removed (Settings says so until a new key is saved). */
-    fun unreadable(ctx: Context): Boolean = !saved(ctx) &&
-        (readOrNull(meta(ctx))?.let { try { JSONObject(it).optBoolean("unreadable") } catch (_: Exception) { false } } ?: false)
+    fun unreadable(ctx: Context, id: String): Boolean = !saved(ctx, id) &&
+        (readOrNull(meta(ctx, id))?.let { try { JSONObject(it).optBoolean("unreadable") } catch (_: Exception) { false } } ?: false)
 
     /**
      * "Delete key" (background thread): the files and the Keystore key go. The caller then tells the voice process
-     * ([Cmd.CLAUDE_KEY]), which drops its client.
+     * ([Cmd.HELPER_KEY]), which drops its client.
      */
-    fun delete(ctx: Context) {
-        secret(ctx).delete()
-        meta(ctx).delete()
+    fun delete(ctx: Context, id: String) {
+        secret(ctx, id).delete()
+        meta(ctx, id).delete()
         try {
-            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(ALIAS)
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias(id))
         } catch (t: Throwable) {
-            RLog.w("claude_key_delete", t)
+            RLog.w("helper_key_delete", t)
         }
+    }
+
+    /** "Remove helper": its key (crypto-shredded with the Keystore key), what Test connection found, its folder. */
+    fun removeAll(ctx: Context, id: String) {
+        delete(ctx, id)
+        if (id != HelperConfig.CLAUDE_ID) dir(ctx, id).deleteRecursively()
+        HelperFactsStore.file(ctx, id).delete()
+    }
+}
+
+/** What Test connection found about each helper, and the extras its server refused (core HelperFacts). */
+object HelperFactsStore {
+    fun file(ctx: Context, id: String): File =
+        if (id == HelperConfig.CLAUDE_ID) File(Paths.dir(ctx), "claude_facts.json") else File(HelperKeyFiles.dir(ctx, id), "facts.json")
+
+    fun load(ctx: Context, id: String): HelperFacts = HelperFacts.fromJson(readOrNull(file(ctx, id)))
+
+    /** [VOICE] Background thread. */
+    @Synchronized
+    fun update(ctx: Context, id: String, f: (HelperFacts) -> HelperFacts) {
+        val next = f(load(ctx, id))
+        try {
+            file(ctx, id).parentFile?.mkdirs()
+            writeAtomic(file(ctx, id), next.toJson().toString())
+        } catch (t: Throwable) { RLog.w("helper_facts_save", t) }
     }
 }
 

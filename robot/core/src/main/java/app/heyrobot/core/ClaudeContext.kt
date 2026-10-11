@@ -191,7 +191,7 @@ object ClaudeContext {
                 Attachment.SCREEN -> " [about their screen]"
                 Attachment.NONE -> ""
             }
-            TurnRole.ASSISTANT -> (if (t.claude) "Claude: " else "Robot: ") + oneLine(t.text)
+            TurnRole.ASSISTANT -> t.author + ": " + oneLine(t.text)
         }
     }.joinToString("\n").ifEmpty { null }
 

@@ -448,6 +448,16 @@ object AskClaudeTool {
     fun offered(s: RobotSettings, keySaved: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): Boolean =
         leftOut(s, keySaved, reachable, declined, attachment) == null
 
+    /** The same for any helper (0.6.0): [localTool] is ClaudeSettings.localTool for the helper Robot checks with. */
+    fun leftOut(localTool: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): ClaudeLeftOut? = when {
+        !localTool -> ClaudeLeftOut.OFF
+        !reachable -> ClaudeLeftOut.NOWHERE
+        declined -> ClaudeLeftOut.DECLINED
+        attachment == Attachment.SCREEN -> ClaudeLeftOut.SCREEN
+        attachment == Attachment.PHOTO -> ClaudeLeftOut.PHOTO
+        else -> null
+    }
+
     /**
      * The screen or photo a question to the local model is about: its own, else the newest one earlier in the
      * conversation ([history]). A follow-up ("and the second one?") is about it too, and the live conversation still

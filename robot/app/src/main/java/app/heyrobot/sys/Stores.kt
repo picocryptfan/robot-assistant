@@ -130,8 +130,11 @@ object Cmd {
     const val VOICE_RESET = "voice_reset"
     /** "Test voice speed": results come back in Paths.voiceBench. */
     const val VOICE_BENCH = "voice_bench"
-    /** The Claude API key was deleted: the voice process drops its client and ends Claude mode. */
-    const val CLAUDE_KEY = "claude_key"
+    /**
+     * A helper's key was deleted, or the helper was removed or changed (extra [EXTRA_ID]: the helper's id, which is not
+     * secret): the voice process drops its client and ends that helper's conversation. ("claude_key" before 0.6.0.)
+     */
+    const val HELPER_KEY = "helper_key"
     /**
      * "Remove saved screenshots and photos" ran: the voice process drops them from the conversation it still holds, which
      * would otherwise write them back with its next save.
@@ -160,4 +163,18 @@ object Cmd {
             RLog.w("cmd_send", t)
         }
     }
+}
+
+/**
+ * A helper's connection window (assistant HelperConnectionActivity, in the :voice process, where keys are decrypted):
+ * opened by class name from the main app, which never refers to the assistant's classes. [EXTRA_HELPER]: the helper's
+ * id; [EXTRA_MODE]: [MODE_KEY] (add or replace its key, then Test connection) or [MODE_TEST] (Test connection only).
+ */
+object HelperWindow {
+    const val CLASS = "app.heyrobot.assistant.HelperConnectionActivity"
+    const val EXTRA_HELPER = "helper"
+    const val EXTRA_MODE = "mode"
+    const val MODE_KEY = "key"
+    const val MODE_TEST = "test"
+    const val MODE_ACTIONS = "actions"
 }
