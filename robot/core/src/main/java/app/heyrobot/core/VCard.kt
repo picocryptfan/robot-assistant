@@ -36,10 +36,23 @@ object VCard {
     /** Robot's own parameter on IMPP, so an export keeps the Cheogram account an address was seen in. */
     private const val ACCOUNT_PARAM = "X-CHEOGRAM-ACCOUNT"
 
-    /** A file's bytes as text: UTF-8 (a byte-order mark aside), or Windows-1252 when they aren't valid UTF-8. */
+    /**
+     * A file's bytes as text: UTF-16 when it starts with that byte-order mark (or every other byte of its first
+     * characters is zero), else UTF-8 (a byte-order mark aside), or Windows-1252 when they aren't valid UTF-8.
+     */
     fun decode(bytes: ByteArray): String {
-        val b = if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) bytes.copyOfRange(3, bytes.size) else bytes
-        return strict(b, Charsets.UTF_8) ?: String(b, Charset.forName("windows-1252"))
+        fun at(i: Int) = bytes[i].toInt() and 0xFF
+        val n = bytes.size
+        return when {
+            n >= 2 && at(0) == 0xFF && at(1) == 0xFE -> String(bytes, 2, n - 2, Charsets.UTF_16LE)
+            n >= 2 && at(0) == 0xFE && at(1) == 0xFF -> String(bytes, 2, n - 2, Charsets.UTF_16BE)
+            n >= 4 && at(0) != 0 && at(1) == 0 && at(2) != 0 && at(3) == 0 -> String(bytes, Charsets.UTF_16LE)
+            n >= 4 && at(0) == 0 && at(1) != 0 && at(2) == 0 && at(3) != 0 -> String(bytes, Charsets.UTF_16BE)
+            else -> {
+                val b = if (n >= 3 && at(0) == 0xEF && at(1) == 0xBB && at(2) == 0xBF) bytes.copyOfRange(3, n) else bytes
+                strict(b, Charsets.UTF_8) ?: String(b, Charset.forName("windows-1252"))
+            }
+        }
     }
 
     private fun strict(b: ByteArray, cs: Charset): String? = try {
@@ -61,27 +74,46 @@ object VCard {
         val qp: Boolean get() = param("ENCODING")?.equals("QUOTED-PRINTABLE", ignoreCase = true) == true || has("QUOTED-PRINTABLE")
     }
 
+    /** Properties whose values Robot never reads and that can be long (base64 pictures, sounds, keys): dropped as read. */
+    private val BINARY = setOf("PHOTO", "LOGO", "SOUND", "KEY")
+
+    /** A content line's property name, upper case, without its group ("item1.TEL;TYPE=CELL:…" is TEL). */
+    private fun nameOf(raw: String): String = raw.substringBefore(':').substringBefore(';').substringAfterLast('.').trim().uppercase(Locale.ROOT)
+
     /**
-     * The file's physical lines joined into content lines: a line starting with a space or a tab continues the one
-     * before (the space goes), and a quoted-printable value ending in "=" goes on on the next line (vCard 2.1).
+     * The file's physical lines joined into content lines, in one pass: a line starting with a space or a tab continues
+     * the one before (the space goes), and a quoted-printable value ending in "=" (a soft line break, vCard 2.1) goes on
+     * on the next line, whose leading space, if any, is folding too. The values of [BINARY] properties are dropped on
+     * the way, however long.
      */
     private fun unfold(text: String): List<String> {
         val out = ArrayList<String>()
+        var cur: StringBuilder? = null
+        var qp = false
+        var skipping = false
         for (raw in text.replace("\r\n", "\n").replace('\r', '\n').split('\n')) {
-            val last = out.lastOrNull()
+            val folded = raw.isNotEmpty() && (raw[0] == ' ' || raw[0] == '\t')
+            val c = cur
             when {
-                last != null && raw.isNotEmpty() && (raw[0] == ' ' || raw[0] == '\t') -> out[out.size - 1] = last + raw.substring(1)
-                last != null && last.endsWith("=") && softBreak(last) -> out[out.size - 1] = last.dropLast(1) + raw
-                else -> out += raw
+                skipping && folded -> continue
+                c != null && qp && c.endsWith("=") -> {
+                    c.setLength(c.length - 1)
+                    c.append(raw, if (folded) 1 else 0, raw.length)
+                }
+                c != null && folded -> c.append(raw, 1, raw.length)
+                else -> {
+                    c?.let { out += it.toString() }
+                    cur = null
+                    skipping = nameOf(raw) in BINARY
+                    if (!skipping) {
+                        cur = StringBuilder(raw)
+                        qp = raw.substringBefore(':', "").uppercase(Locale.ROOT).contains("QUOTED-PRINTABLE")
+                    }
+                }
             }
         }
+        cur?.let { out += it.toString() }
         return out
-    }
-
-    /** A quoted-printable line (its parameters say so) whose value ends in a soft line break. */
-    private fun softBreak(line: String): Boolean {
-        val head = line.substringBefore(':', "").uppercase(Locale.ROOT)
-        return head.contains("QUOTED-PRINTABLE")
     }
 
     /** "item1.TEL;TYPE=CELL:+1 514…": the colon ending the name and parameters is the first one outside quotes. */
@@ -205,8 +237,10 @@ object VCard {
                 "TEL" -> {
                     val num = text(v).let { if (it.lowercase(Locale.ROOT).startsWith("tel:")) UriText.decode(it.substring(4)).substringBefore(';') else it }.trim()
                     if (Addresses.isPhone(num)) {
-                        val k = kind(l.types)
-                        phones += ContactPhone(num, k, l.group?.let { labels[it.lowercase(Locale.ROOT)] }?.takeIf { it.isNotEmpty() } ?: People.label(k))
+                        val label = l.group?.let { labels[it.lowercase(Locale.ROOT)] }?.takeIf { it.isNotEmpty() }
+                        // Apple's "Mobile" (or "iPhone", "Home", "Work") label says the kind when the type doesn't.
+                        val k = kind(l.types).let { k -> if (k == PhoneKind.OTHER && label != null) kind(setOf(label.uppercase(Locale.ROOT))) else k }
+                        phones += ContactPhone(num, k, label ?: People.label(k))
                     }
                 }
                 "EMAIL" -> text(v).removePrefix("mailto:").trim().takeIf(Addresses::isAddress)?.let { emails += it }
@@ -259,6 +293,11 @@ object VCard {
                 }
                 depth == 1 -> card += l
             }
+        }
+        // A last card the file never ended (END:VCARD missing) is kept too.
+        if (depth > 0) {
+            val e = entry(card)
+            if (e != null && e.reachable && entries.size < MAX_CARDS) entries += e else skipped++
         }
         return VCardFile(entries, skipped)
     }
