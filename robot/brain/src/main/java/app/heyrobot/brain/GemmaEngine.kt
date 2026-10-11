@@ -193,6 +193,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val t0 = SystemClock.elapsedRealtime()
         var e: Engine? = null
         var visionError: String? = null
+        // Marked from the start: the app must not delete the file (or its cache) while it loads, either.
+        markLoaded(req)
+        var ok = false
         try {
             // Vision with a fixed 280-token image budget (read when the engine initialises), so the 300 tokens per image
             // Robot plans for hold; if this build refuses the budget, vision without it; then text only.
@@ -228,9 +231,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             }
             engine = e
             loaded = req
+            ok = true
             counted.clear()
             estimated.clear()
-            markLoaded(req)
             val ms = SystemClock.elapsedRealtime() - t0
             RLog.i("brain_load", "ok" to true, "ms" to ms, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "vision" to vision,
                 "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) }, "mtp" to (req.backend == ModelBackend.CPU && CPU_MTP == true),
@@ -238,6 +241,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             return BrainMsg.Loaded(true, vision, ms, null, req.model, req.backend)
         } finally {
             ExperimentalFlags.enableSpeculativeDecoding = null
+            if (!ok) markUnloaded()
         }
     }
 
