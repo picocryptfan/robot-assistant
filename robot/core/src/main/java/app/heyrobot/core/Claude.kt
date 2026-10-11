@@ -234,14 +234,14 @@ enum class ClaudeFailure(val retry: Boolean = false) {
          */
         fun of(status: Int?, type: String?, code: String? = null): ClaudeFailure = when {
             code in CREDIT_CODES || type == "insufficient_quota" || (code != null && code.endsWith("_spend_limit_exceeded")) -> NO_CREDITS
-            type == "authentication_error" || status == 401 -> KEY_REFUSED
+            type == "authentication_error" || status == 401 || code == "invalid_api_key" -> KEY_REFUSED
             type == "billing_error" || status == 402 -> NO_CREDITS
             type == "permission_error" || status == 403 -> NOT_ALLOWED
             type == "not_found_error" || status == 404 -> MODEL_UNAVAILABLE
-            type == "request_too_large" || status == 413 -> TOO_LONG
-            type == "rate_limit_error" || status == 429 -> RATE_LIMITED
+            type == "request_too_large" || status == 413 || code == "context_length_exceeded" -> TOO_LONG
+            type == "rate_limit_error" || status == 429 || code == "rate_limit_exceeded" -> RATE_LIMITED
             type == "overloaded_error" || status == 529 || code == "server_is_overloaded" || status == 498 -> OVERLOADED
-            type == "api_error" || type == "timeout_error" || (status != null && status >= 500) -> SERVER
+            type == "api_error" || type == "timeout_error" || code == "server_error" || (status != null && status >= 500) -> SERVER
             type == "invalid_request_error" || status == 400 || status == 422 -> BAD_REQUEST
             else -> UNKNOWN
         }
