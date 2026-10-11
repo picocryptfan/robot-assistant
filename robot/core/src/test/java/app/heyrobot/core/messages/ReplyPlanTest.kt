@@ -139,4 +139,14 @@ class ReplyPlanTest {
         assertFalse(p.toString().contains("address") || p.toString().contains("Mom"))
         assertFalse(ReplyPlan.HandOff(MessageApp.SIGNAL, "c", "secret plan", HandOffWhy.NO_REPLY_ACTION).toString().contains("secret"))
     }
+
+    @Test fun openTheChatFindsCheogramsChatByItsShortcut() {
+        assertEquals("sam@cheogram.com" to "+15145550101@cheogram.com", ChatLinks.cheogram("sam@cheogram.com#+15145550101@cheogram.com"))
+        assertEquals("sam@cheogram.com" to "famille@muc.example", ChatLinks.cheogram("sam@cheogram.com#famille@muc.example"))
+        // A notification key (quiet hours: no shortcut), Signal's or Messaging's ids: not Cheogram's.
+        assertEquals(null, ChatLinks.cheogram("0|com.cheogram.android|1003|null|10123"))
+        assertEquals(null, ChatLinks.cheogram("42"))
+        assertEquals(null, ChatLinks.cheogram("conv-17"))
+        assertEquals(null, ChatLinks.cheogram("#x@y"))
+    }
 }

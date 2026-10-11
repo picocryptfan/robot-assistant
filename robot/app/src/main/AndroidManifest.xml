@@ -108,6 +108,12 @@
             <action android:name="android.intent.action.INSERT" />
             <data android:mimeType="vnd.android.cursor.dir/event" />
         </intent>
+        <!-- 0.7, Settings › Messages: the messaging apps whose notifications Robot may read (each a switch, all off), so
+             Settings can say which are installed and "Open the chat" can hand your reply to them as a draft. -->
+        <package android:name="org.thoughtcrime.securesms" />
+        <package android:name="im.molly.app" />
+        <package android:name="com.android.messaging" />
+        <package android:name="com.google.android.apps.messaging" />
         <!-- Ask Claude's app route: the official Claude app, resolved at run time (claude://, https claude.ai, a share). -->
         <package android:name="com.anthropic.claude" />
         <intent>
@@ -304,9 +310,11 @@
 
         <!-- "Learn names from Cheogram notifications" (0.4.0): off until you turn it on in Settings › People and allow
              notification access. Reads only Cheogram's 1:1 chats: the sender's name, address and your account, never
-             message text. Main process: no model, no voice process; it unbinds itself while the switch is off. Only the
-             system can bind it (BIND_NOTIFICATION_LISTENER_SERVICE). It asks for conversations only, never ongoing or
-             silent notifications. -->
+             message text. 0.7: the same listener reads your messages when Settings › Messages is on, for the apps you
+             turned on there only, into RAM only (people.MessageTap). Main process: no model, no voice process; it unbinds
+             itself while both are off. Only the system can bind it (BIND_NOTIFICATION_LISTENER_SERVICE). It asks for
+             conversations only; 0.7 no longer greys out Silent in Android's page for it, so you may allow quiet messages
+             (Cheogram's quiet hours) there yourself. Never ongoing notifications. -->
         <service
             android:name=".people.CheogramListener"
             android:exported="true"
@@ -315,7 +323,7 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
             <meta-data android:name="android.service.notification.default_filter_types" android:value="conversations" />
-            <meta-data android:name="android.service.notification.disabled_filter_types" android:value="ongoing|silent" />
+            <meta-data android:name="android.service.notification.disabled_filter_types" android:value="ongoing" />
         </service>
 
         <!-- Not exported: the system's boot broadcast still arrives, other apps cannot fake it. Direct-boot aware (0.2.3)

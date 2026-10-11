@@ -27,22 +27,33 @@ import java.util.concurrent.TimeUnit
 // the sender's name and address and your account (core CheogramNotices). It never keeps or logs message text, and never
 // logs who. Only the Cheogram build Robot hands texts to counts, posting for itself and signed as it was the first time
 // Robot saw it after learning was turned on (core CheogramSigners). Cheap on purpose: no model and no voice process, and the People file is written only when something is new.
-// With the switch off it asks Android to unbind it, and ignores anything that still arrives.
+// With the switch off it learns nothing from what still arrives.
+//
+// 0.7: the same listener (the same component, so the grant you gave holds) reads your messages when Settings › Messages
+// says so: MessageTap, for the apps you turned on there only, in RAM only. It asks Android to unbind it only when both
+// are off.
 
 class CheogramListener : NotificationListenerService() {
     /** Off the main thread (the app's UI thread when it is open): reading the settings and writing People. */
     private val worker: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "robot-people").apply { isDaemon = true } }
 
     override fun onListenerConnected() {
-        // Turning the switch on asks for this binding before the settings are written: look a little later.
-        worker.schedule({ if (!on()) unbind() }, OFF_CHECK_S, TimeUnit.SECONDS)
+        MessageTap.connected(this)
+        // Turning a switch on asks for this binding before the settings are written: look a little later.
+        worker.schedule({ unbindIfIdle() }, OFF_CHECK_S, TimeUnit.SECONDS)
+    }
+
+    override fun onListenerDisconnected() {
+        MessageTap.disconnected(this)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         val n = sbn ?: return
+        // 0.7: an app turned on in Settings › Messages, into RAM; every other package is dropped there at once.
+        MessageTap.posted(applicationContext, n)
         if (n.packageName != HandOffApps.CHEOGRAM && n.packageName != HandOffApps.CHEOGRAM_PLAY) return
         worker.execute {
-            if (!on()) return@execute unbind()
+            if (!on()) return@execute unbindIfIdle()
             val opPkg = try { n.opPkg } catch (_: Throwable) { null }
             if (!CheogramSigners.fromCheogram(n.packageName, opPkg, HandOffApps.cheogram(applicationContext))) return@execute
             if (!signedAsFirstSeen(n.packageName)) return@execute
@@ -51,14 +62,26 @@ class CheogramListener : NotificationListenerService() {
         }
     }
 
+    override fun onNotificationRemoved(sbn: StatusBarNotification?) {
+        sbn?.let(MessageTap::removed)
+    }
+
     override fun onDestroy() {
+        MessageTap.disconnected(this)
         worker.shutdown()
         super.onDestroy()
     }
 
     private fun on(): Boolean = try { SettingsStore.load(applicationContext).learnFromCheogram } catch (_: Throwable) { false }
 
-    private fun unbind() = try { requestUnbind() } catch (_: Throwable) {}
+    /** [unbindIfIdle] off the main thread (it reads the settings file). */
+    fun checkIdle() = try { worker.execute { unbindIfIdle() } } catch (_: Throwable) {}
+
+    /** Neither name learning nor reading messages is on: Android may unbind the listener (a switch turned on binds it again). */
+    private fun unbindIfIdle() {
+        if (on() || MessageTap.on(applicationContext)) return
+        try { requestUnbind() } catch (_: Throwable) {}
+    }
 
     /** The last answer of [signedAsFirstSeen]: for the package as installed then, and the pins file as it was (worker thread only). */
     private var trust: Pair<String, Boolean>? = null

@@ -24,6 +24,8 @@ object MessagesProtocol {
     const val REQ_MARK_READ = 4
     /** Dismiss the conversation's notification. */
     const val REQ_CLEAR = 5
+    /** "Always for Mom": a person's replies go in a language (or not any more); the main process writes messages.json. */
+    const val REQ_REPLY_LANG = 6
     /** Every answer. */
     const val ANSWER = 100
 
@@ -155,6 +157,17 @@ object MessageWire {
         (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotEmpty() } }
     } catch (_: Exception) {
         emptyList()
+    }
+
+    fun replyLang(person: String, lang: Lang?): String = JSONObject().put("person", person).apply { lang?.let { put("lang", it.name) } }.toString()
+
+    /** A person's id and the language, null to forget it; null when damaged. */
+    fun replyLang(text: String?): Pair<String, Lang?>? = try {
+        val o = JSONObject(text ?: "")
+        val id = o.getString("person").takeIf { it.isNotBlank() } ?: return null
+        id to o.optString("lang").takeIf { it.isNotEmpty() }?.let { l -> Lang.entries.firstOrNull { it.name == l } }
+    } catch (_: Exception) {
+        null
     }
 
     fun ok(ok: Boolean): String = JSONObject().put("ok", ok).toString()
