@@ -254,7 +254,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             var tokens: Int
             var kept: Int
             while (true) {
-                val history = ContextWindow.fit(req.history, budget)
+                val history = PromptFit.alternating(ContextWindow.fit(req.history, budget))
                 val roles = ArrayList<ByteArray>()
                 val texts = ArrayList<ByteArray>()
                 fun add(role: String, text: String) { roles += role.toByteArray(); texts += text.toByteArray(Charsets.UTF_8) }

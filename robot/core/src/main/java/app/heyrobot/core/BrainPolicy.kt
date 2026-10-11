@@ -217,6 +217,27 @@ object PromptFit {
         data object TooLong : Step()
     }
 
+    /**
+     * The history as a chat template wants it: user and model turns alternating, starting with a user turn and ending
+     * with a model turn (the new question follows). Strict templates (Gemma 3's) stop with an error otherwise, and Robot's
+     * history can have two in a row: a question whose reply failed (it isn't replayed) is dropped when another follows, and
+     * two model turns in a row (Robot's reply, then Claude's) are joined.
+     */
+    fun alternating(history: List<PromptTurn>): List<PromptTurn> {
+        val out = ArrayList<PromptTurn>()
+        for (t in history) {
+            val last = out.lastOrNull()
+            when {
+                t.role == PromptRole.USER && last?.role == PromptRole.USER -> out[out.size - 1] = t
+                t.role == PromptRole.MODEL && last == null -> {}
+                t.role == PromptRole.MODEL && last?.role == PromptRole.MODEL -> out[out.size - 1] = last.copy(text = last.text + "\n\n" + t.text)
+                else -> out += t
+            }
+        }
+        if (out.lastOrNull()?.role == PromptRole.USER) out.removeAt(out.size - 1)
+        return out
+    }
+
     /** [realTokens]: the whole prompt as the model's tokenizer counts it; [historyTurns] of history in it, chosen within [budget]. */
     fun after(realTokens: Int, historyTurns: Int, budget: Int, rebuilds: Int): Step = when {
         realTokens + ContextWindow.REPLY_RESERVE <= ContextWindow.MAX_TOKENS -> Step.Send

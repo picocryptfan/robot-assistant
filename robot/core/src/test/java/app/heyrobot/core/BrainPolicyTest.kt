@@ -211,4 +211,27 @@ class BrainPolicyTest {
         assertEquals(LlamaCpu.REQUIRED, LlamaCpu.missing(null))
         assertEquals(LlamaCpu.REQUIRED, LlamaCpu.missing("processor : 0"))
     }
+
+    /** A chat template gets user and model turns alternating, whatever Robot's history holds. */
+    @Test fun aGgufTemplateGetsAlternatingTurns() {
+        fun u(t: String) = PromptTurn(PromptRole.USER, t)
+        fun m(t: String) = PromptTurn(PromptRole.MODEL, t)
+        assertEquals(listOf(u("a"), m("b")), PromptFit.alternating(listOf(u("a"), m("b"))))
+        // A question whose reply failed (not replayed), then another: only the later one, with its reply.
+        assertEquals(listOf(u("q2"), m("r2")), PromptFit.alternating(listOf(u("q1"), u("q2"), m("r2"))))
+        // Robot's reply, then Claude's: one model turn.
+        assertEquals(listOf(u("q"), m("mine\n\n[Claude answered] theirs")), PromptFit.alternating(listOf(u("q"), m("mine"), m("[Claude answered] theirs"))))
+        // A leading model turn, and a last question that got no reply, never reach the template.
+        assertEquals(listOf(u("q"), m("r")), PromptFit.alternating(listOf(m("hello"), u("q"), m("r"), u("unanswered"))))
+        assertEquals(emptyList<PromptTurn>(), PromptFit.alternating(listOf(u("unanswered"))))
+        assertEquals(emptyList<PromptTurn>(), PromptFit.alternating(emptyList()))
+        // Whatever the mix, the result alternates, starts with a user turn and ends with a model turn.
+        val rnd = java.util.Random(5)
+        repeat(200) {
+            val h = (0 until rnd.nextInt(12)).map { if (rnd.nextBoolean()) u("u$it") else m("m$it") }
+            val a = PromptFit.alternating(h)
+            a.forEachIndexed { i, t -> assertEquals(h.toString(), if (i % 2 == 0) PromptRole.USER else PromptRole.MODEL, t.role) }
+            assertTrue(a.isEmpty() || a.last().role == PromptRole.MODEL)
+        }
+    }
 }
