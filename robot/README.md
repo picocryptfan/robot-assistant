@@ -1491,6 +1491,28 @@ is now read from the slider's position when the gesture ends (`InterruptSensitiv
 taps the track). 0.4.0 to 0.4.5 also moved the thresholds by only 0.05 and the boosts by 0.25, too little to tell the
 levels apart in a few runs.
 
+**Stopping a long reply** (0.4.6). "Stop" didn't stop a long story being read, though it stopped a short one. Three
+things differed for a long reply, and each is changed:
+
+- *She was still writing it.* With a story of several hundred words the model is still writing for up to a minute after
+  she starts reading. "Stop" (and a tap, volume down or "Stop speaking") only quieted her voice and left the turn
+  running: the rest was written on screen, the mic button did nothing, and a new question got "Robot is still on the
+  last question" until the model was done. Now any of them, while the reply (Robot's or Claude's) is still being
+  written, ends the turn as the Stop button does: the voice stops at once, :brain is told to stop, the reply is kept as
+  "stopped", and the next question works right away. A card waiting for a yes or no still only quiets her "Say yes or
+  no." (`Phase.stopEndsTurn`, tested).
+- *EchoGuard set aside "stop" for whole sentences.* A long story says "steep", "stepped", "stopped" or "stamped" in a
+  good share of its sentences (in a sample dragon story, 7 of 45 sentences: about a quarter of the talking, with the
+  1.5 s around each), and every "stop" during such a sentence was put down to her own voice. Now, in a piece longer than
+  4 s whose words are known (Kokoro and Kitten), only the stretch around each word like "stop" is set aside: where its
+  place in the text puts it, give or take a second or a fifth of the piece, and 1.2 s after (`EchoGuard`, tested). A
+  shorter piece, a piece still being made, and the phone's voice (which doesn't say where its words fall) are guarded
+  whole, as before. The barge-in test's tricky-words run measures what gets through.
+- *The screen timed out.* A long story outlasts the screen timeout; with the screen off the panel isn't visible, and
+  Android runs the voice process in the background (`../docs/voice-plan.md`: hard throttling), where the microphone and
+  the spotter may not keep up and the Stop button can't be seen. The panel now keeps the screen on while Robot thinks,
+  writes or talks, and lets the phone's timeout run again once she is done or stopped.
+
 **Robot's voice plays as**: *Assistant audio* (default, as before) or *Call audio* (the phone in communication mode
 with the loudspeaker as the call device while Robot speaks, as calling apps do; it uses the call volume and needs
 `MODIFY_AUDIO_SETTINGS`, a normal permission). On Pixel the echo canceller runs in the audio DSP and takes everything
@@ -1964,7 +1986,9 @@ stays the only network permission; no accessibility service; nothing shaped like
   piece of a reply is short (5+ words to the first comma, or 12 words) so audio starts fast; the rest goes
   sentence by sentence into a streaming AudioTrack. Tap the conversation, press volume down, or say "stop", while it speaks: the rest of
   that reply is still shown but not spoken (the next question speaks again). Stop, closing the panel or "hey robot"
-  during an answer silence it at once, and a stopped reply's unfinished last sentence is never read out.
+  during an answer silence it at once, and a stopped reply's unfinished last sentence is never read out. Since 0.4.6 a
+  tap, volume down, "stop" or "Stop speaking" while the reply is still being written ends it there, as Stop does
+  ("Stopping a long reply" below).
 - sherpa-onnx calls the voice back from native code through `invoke([F)Ljava/lang/Integer;`, which a Kotlin lambda
   does not have (0.1.2 was silent): the callback is the Java class `TtsCallback`, checked by `TtsCallbackTest` and by
   `tools/verify_apk.sh` in the built APK. Chinese, Japanese and Korean text is not sent to the voice (sherpa would log

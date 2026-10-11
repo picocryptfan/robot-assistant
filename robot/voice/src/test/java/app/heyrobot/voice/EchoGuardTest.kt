@@ -99,4 +99,56 @@ class EchoGuardTest {
         g.close(9_000)
         assertFalse(g.mayBeEcho(9_500))
     }
+
+    /**
+     * 0.4.6: a long piece (Kokoro and Kitten know where it ends) sets "stop" aside only around its word like "stop", not
+     * all through it: in a long story most sentences that say "steep" or "stepped" are long ones.
+     */
+    @Test fun aLongPieceIsGuardedOnlyAroundItsWordLikeStop() {
+        val rate = 24_000
+        val g = EchoGuard(rate)
+        val text = "Every morning, Ignis would step out of his cave, stretch his enormous wings and fly over the valley until sunset."
+        // "step" is about a quarter of the way in.
+        val at = text.indexOf("step") / text.length.toFloat()
+        assertTrue(at in 0.2f..0.3f)
+        assertEquals(2, EchoGuard.stopSpans(text).size)
+        // Ten seconds, from 2 s to 12 s of the output.
+        g.open(rate * 2L, text)
+        // Still being made: all of it, as before.
+        assertTrue(g.mayBeEcho(rate * 11L))
+        g.close(rate * 12L)
+        // Around the word: ten seconds × a quarter = about 4.4 s in, give or take 2 s (a fifth of the piece), and 1.2 s after.
+        assertTrue(g.mayBeEcho(rate * 4L))
+        assertTrue(g.mayBeEcho(rate * 5L))
+        assertTrue(g.mayBeEcho(rate * 7L))
+        // Further on in the same sentence, "stop" is heard.
+        assertFalse(g.mayBeEcho(rate * 9L))
+        assertFalse(g.mayBeEcho(rate * 11L))
+        assertFalse(g.mayBeEcho(rate * 13L))
+        // Never wider than the whole piece was: before it starts nothing is set aside.
+        assertFalse(g.mayBeEcho(rate * 1L))
+        // The voice log's "did she say such a word lately" still counts the whole piece.
+        assertTrue(g.stopLikeWithin(rate * 11L, EchoGuard.NOTE_MS))
+    }
+
+    @Test fun aShortPieceOrThePhonesVoiceIsGuardedAllThrough() {
+        val rate = 24_000
+        val g = EchoGuard(rate)
+        // Three seconds: shorter than NARROW_FROM_MS, so all of it.
+        g.onPiece(0, rate * 3L, "Step one, then rest for a while.")
+        assertTrue(g.mayBeEcho(rate * 3L))
+        g.reset()
+        // The phone's voice: where the word is isn't known, however long the sentence.
+        val p = EchoGuard(1_000)
+        p.open(0, stop = true, wake = false)
+        p.close(10_000)
+        assertTrue(p.mayBeEcho(9_000))
+        // Two words like "stop" far apart in one long piece: around each, not between.
+        val text = "Stop and look around the old house, then walk slowly down the long and winding road to the doorstep."
+        g.onPiece(0, rate * 12L, text)
+        assertTrue(g.mayBeEcho(rate * 1L))
+        assertFalse(g.mayBeEcho(rate * 6L))
+        assertTrue(g.mayBeEcho(rate * 11L))
+        assertEquals(0, EchoGuard.stopSpans("Nothing like it here.").size)
+    }
 }
