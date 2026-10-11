@@ -44,13 +44,14 @@ has ':brain' "$(elem app.heyrobot.brain.BrainService)" "BrainService in :brain"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.brain.BrainService)" "BrainService not exported"
 has '"app.heyrobot.permission.INTERNAL"' "$(elem app.heyrobot.brain.BrainService)" "BrainService guarded by the signature permission"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver not exported"
-# Ask Claude needs nothing new: INTERNET stays the only network permission, and nothing reads other apps' screens.
-for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE BIND_ACCESSIBILITY_SERVICE; do
+# Helpers need nothing new: INTERNET stays the only network permission (a server on your network too, at targetSdk 36),
+# and nothing reads other apps' screens.
+for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE ACCESS_LOCAL_NETWORK BIND_ACCESSIBILITY_SERVICE; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
 # 0.4.0: the weather (Open-Meteo) and the nearest place (OpenStreetMap's Nominatim) need nothing more: both go online
 # from the :voice process's tools only, which ProcessIsolationTest checks in the source.
-has '"android.permission.INTERNET"' "$mf" "declares INTERNET (model downloads, Ask Claude, the weather, the nearest place)"
+has '"android.permission.INTERNET"' "$mf" "declares INTERNET (model downloads, helpers, your own server, the weather, the nearest place)"
 hasnt '"android.accessibilityservice.AccessibilityService"' "$mf" "no accessibility service (Robot never drives the Claude app)"
 has '"android.permission.MODIFY_AUDIO_SETTINGS"' "$mf" "declares MODIFY_AUDIO_SETTINGS (call audio playback)"
 has '"android.permission.WRITE_SECURE_SETTINGS"' "$mf" "declares WRITE_SECURE_SETTINGS (adb grant only: keeps the recognizer set)"
@@ -111,9 +112,10 @@ has '"android.service.notification.NotificationListenerService"' "$(subtree app.
 # "Pick in Cheogram" runs in :voice and isn't exported (only the panel's card starts it).
 has ':voice' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity not exported"
-# Ask Claude: the key window runs in :voice and isn't exported (the main app never sees the key).
-has ':voice' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity in :voice"
-has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity not exported"
+# Helpers (0.6.0): the connection window (keys, Test connection) runs in :voice and isn't exported (the main app never sees a key).
+has ':voice' "$(elem app.heyrobot.assistant.HelperConnectionActivity)" "HelperConnectionActivity in :voice"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.HelperConnectionActivity)" "HelperConnectionActivity not exported"
+hasnt '"app.heyrobot.assistant.ClaudeKeyActivity"' "$mf" "no ClaudeKeyActivity (replaced by HelperConnectionActivity)"
 has '"com.anthropic.claude"' "$queries" "<queries> has the Claude app's package"
 intent_has '"android.intent.action.VIEW"' 'scheme(0x01010027)="claude"' && pass "<queries> has VIEW claude:// (Claude app hand-off a)" || fail "<queries> VIEW claude://"
 intent_has '"android.intent.action.VIEW"' 'scheme(0x01010027)="https"' 'host(0x01010028)="claude.ai"' && pass "<queries> has VIEW https://claude.ai (hand-off b)" || fail "<queries> VIEW https://claude.ai"
@@ -128,6 +130,17 @@ has '"app.heyrobot.assistant.RobotRecognitionService"' "$vi" "voice-interaction 
 hasnt 'selectableAsDefault' "$vi" "recognizer selectableAsDefault left at its default (true)"
 has 'supportsAssist(0x010104f0)=true' "$vi" "supportsAssist"
 has 'supportsLaunchVoiceAssistFromKeyguard(0x010104f1)=true' "$vi" "supportsLaunchVoiceAssistFromKeyguard"
+# 0.6.0: the network security config. Cleartext only where Robot's own rule allows it (a server on your network, checked
+# in code), never to a company or the model downloads; only the system's CAs, never ones a user added.
+has 'networkSecurityConfig(' "$(echo "$mf" | awk '/^ *E: application /{ on=1 } on && /^ *E: / && !/application/{ exit } on')" "application has a networkSecurityConfig"
+nsc=$(echo "$vi" | awk '/E: network-security-config/{ on=1 } on')
+has 'E: domain-config' "$nsc" "network security config has a domain-config"
+echo "$nsc" | grep -A3 'E: domain-config' | grep -qE 'cleartextTrafficPermitted.*false' && pass "domain-config denies cleartext" || fail "domain-config doesn't deny cleartext"
+for d in anthropic.com openai.com googleapis.com mistral.ai x.ai deepseek.com groq.com openrouter.ai huggingface.co; do
+  has "'$d'" "$nsc" "no cleartext to $d"
+done
+has '"system"' "$nsc" "trusts the system's CAs"
+hasnt '"user"' "$nsc" "never trusts user-added CAs"
 libs=$(unzip -Z1 "$APK" 'lib/*')
 for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
 echo "$libs" | grep -v '^lib/arm64-v8a/' | grep -q . && fail "non-arm64 libraries" || pass "no other ABIs"
@@ -145,21 +158,24 @@ cbclass=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null; do
 # sources; this checks the dex).
 engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|people|core)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
-  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude)/')
+  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude|helpers)/')
 [ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine or the Anthropic SDK (dex)" || fail "main-process classes refer to engines or the SDK: $engine_refs"
-# The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load.
-sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession);'"; done | wc -l)
-[ "$sdk_classes" = "2" ] && pass "Anthropic SDK client and ClaudeSession in the dex" || fail "Anthropic SDK classes in the dex: $sdk_classes"
+# The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load, and
+# (0.6.0) the other helpers' client, on plain OkHttp.
+sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession|app/heyrobot/helpers/openai/OpenAiSession);'"; done | wc -l)
+[ "$sdk_classes" = "3" ] && pass "Anthropic SDK client, ClaudeSession and OpenAiSession in the dex" || fail "helper client classes in the dex: $sdk_classes"
 # No JVM-only API that ART lacks: none of these packages is referred to anywhere in the dex, and of java.beans only
 # what Android has, plus the two annotations Jackson looks up defensively (its optional Java 7 support).
 jvm_only=$(LC_ALL=C grep -aohE 'L(java/net/http|java/awt|javax/swing|javax/naming|java/lang/management|javax/management|java/rmi|javax/script|java/util/prefs|javax/xml/bind)/[A-Za-z0-9_$/]*;' "$dexdir"/classes*.dex | sort -u | tr '\n' ' ')
 [ -z "$jvm_only" ] && pass "no JVM-only API referred to in the dex" || fail "JVM-only API in the dex: $jvm_only"
 beans=$(LC_ALL=C grep -aohE 'Ljava/beans/[A-Za-z0-9_$]*;' "$dexdir"/classes*.dex | sort -u | grep -vxE 'Ljava/beans/(ConstructorProperties|Transient|PropertyChange(Event|Listener|ListenerProxy|Support)|IndexedPropertyChangeEvent);' | tr '\n' ' ')
 [ -z "$beans" ] && pass "java.beans: only what ART has and Jackson's optional annotations" || fail "java.beans types ART lacks: $beans"
-# No API key anywhere in the APK (resources, assets, dex): nothing shaped like sk-ant-<20+ characters>.
+# No API key anywhere in the APK (resources, assets, dex): nothing shaped like an Anthropic, OpenAI, OpenRouter, Groq, xAI
+# or Google key.
 keys=0
 for e in $(unzip -Z1 "$APK" | grep -vE '^lib/|\.onnx$'); do
-  unzip -p "$APK" "$e" 2>/dev/null | LC_ALL=C grep -aqE 'sk-ant-[A-Za-z0-9_-]{20,}' && { echo "      key-shaped string in $e"; keys=$((keys + 1)); }
+  unzip -p "$APK" "$e" 2>/dev/null | LC_ALL=C grep -aqE 'sk-(ant|proj|or)-[A-Za-z0-9_-]{20,}|gsk_[A-Za-z0-9]{20,}|xai-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{35}' &&
+    { echo "      key-shaped string in $e"; keys=$((keys + 1)); }
 done
 [ "$keys" = "0" ] && pass "no API key string in the APK" || fail "API key-shaped strings in $keys entries"
 rm -rf "$dexdir"
