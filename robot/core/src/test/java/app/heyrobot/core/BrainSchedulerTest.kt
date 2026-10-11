@@ -175,4 +175,18 @@ class BrainSchedulerTest {
         assertNull(sched.running)
         assertTrue(sched.waiting.isEmpty())
     }
+
+    /** Asked to give way just as it ended on its own (its cap reached): its client has its end, so it is never run again. */
+    @Test fun aStepThatEndedAsItWasAskedToGiveWayIsNotRunAgain() {
+        val s = submit(voice, 1, FakeWork("summary", Priority.SUMMARY))
+        submit(panel, 1, FakeWork("panel", Priority.PANEL))
+        assertEquals(true, s.stopped)
+        events.clear()
+        // The engine's run had already ended (LENGTH): it sends EV_DONE, not a requeue.
+        events += "summary:done"
+        sched.ended(s.id, terminalSent = true)
+        assertEquals(listOf("summary:done", "panel:queued 0", "panel:start"), events)
+        assertTrue(sched.waiting.isEmpty())
+        assertEquals(1, s.starts)
+    }
 }

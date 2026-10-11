@@ -138,4 +138,14 @@ class BrainQueueTest {
         assertTrue(q.queue.isEmpty())
         assertNull(q.done(1).start)
     }
+
+    @Test fun aStepThatFinishedWhileGivingWayIsNotQueuedAgain() {
+        val q = BrainQueue()
+        q.submit(job(1, Priority.SUMMARY))
+        assertTrue(q.submit(job(2, Priority.INTERPRETER)).cancelRunning)
+        val end = q.done(1, finished = true)
+        assertNull(end.requeued)
+        assertEquals(2, end.start?.id)
+        assertTrue(q.queue.isEmpty())
+    }
 }

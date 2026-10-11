@@ -95,7 +95,8 @@ class BrainScheduler(private val clock: () -> Long, val toolHoldMs: Long = TOOL_
     fun ended(id: Int, terminalSent: Boolean = true) = step {
         if (queue.running?.id != id) return@step
         val w = works[id]
-        val s = queue.done(id)
+        // A request whose client already got its end (it finished just as it was asked to give way) is never run again.
+        val s = queue.done(id, finished = terminalSent)
         if (s.requeued?.id == id && w != null) {
             told += id
             w.queued(queue.position(id).coerceAtLeast(1))

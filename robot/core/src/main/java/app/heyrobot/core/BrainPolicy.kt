@@ -261,12 +261,15 @@ class BrainQueue {
         return Step(cancelRunning = cancel, dropped = dropped)
     }
 
-    /** The running request ended (done, failed, or cancelled): the next one starts. */
-    fun done(id: Int): Step {
+    /**
+     * The running request ended (done, failed, or cancelled): the next one starts. One that was giving way is queued
+     * again, unless it [finished] on its own meanwhile (its reply was whole, or cut at its cap: nothing to start over).
+     */
+    fun done(id: Int, finished: Boolean = false): Step {
         val r = running?.takeIf { it.id == id } ?: return Step()
         running = null
         cancelling = false
-        val again = if (yielding.remove(r.id)) r.also { enqueue(it, front = true) } else null
+        val again = if (yielding.remove(r.id) && !finished) r.also { enqueue(it, front = true) } else null
         return Step(start = next(), requeued = again)
     }
 
