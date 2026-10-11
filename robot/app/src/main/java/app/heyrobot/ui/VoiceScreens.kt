@@ -114,10 +114,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-// MAIN PROCESS. Settings › Voice, 0.2.3: the wake phrases, "Hear me while Robot talks" with its barge-in test, the
-// volume key, "Test wake words" and the voice log. Wake phrases are spelled here with core's pure Kotlin
+// MAIN PROCESS. Settings › Wake word and the voice's tools (0.2.3; 0.4.x redesign): the wake phrases, the barge-in test,
+// "Interrupt sensitivity", "Test wake words" and the voice log. Wake phrases are spelled here with core's pure Kotlin
 // (KwsAssets): this process never loads sherpa-onnx. The tests run in the voice process (Cmd broadcasts) and report
-// through files, as the voice speed test does.
+// through files, as the voice speed test does. The rest of Settings › Voice is ui/settings/VoiceSettings.kt.
 
 /**
  * Settings › Voice › "Interrupt sensitivity": three steps, Low, Medium (as before 0.4.0) and High. Only while Robot talks;

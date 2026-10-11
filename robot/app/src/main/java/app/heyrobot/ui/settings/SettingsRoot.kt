@@ -97,7 +97,7 @@ internal fun safetySummary(s: RobotSettings): String = s.safetyCards.title + " �
 internal fun peopleSummary(s: RobotSettings, f: AssistantFacts?): String =
     s.textAppFor(f?.cheogramInstalled == true).title + " · " + s.emailAppFor(f?.protonInstalled == true).title
 
-/** "Claude · Ask me first", "Claude, Jarvis · Automatic", "None on". */
+/** "Claude · Ask first", "Claude, Jarvis · Automatic", "None on". */
 internal fun helpersSummary(s: RobotSettings, f: AssistantFacts?): String {
     val on = s.helpers.filter { it.on }
     if (on.isEmpty()) return if (s.helpers.isEmpty()) "None" else "None on"

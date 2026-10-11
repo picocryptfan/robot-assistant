@@ -432,7 +432,7 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
         }
         preferenceGroup("Cost", "cost") {
             PreferenceBlock { Text(priceText(h), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            PreferenceItem(if (h.yourPrices != null) "Edit my prices" else if (h.home) "Add a price" else "Enter prices",
+            PreferenceItem(if (h.yourPrices != null) "Edit your prices" else if (h.home) "Add a price" else "Enter prices",
                 h.yourPrices?.let { "${usd(it.input)} in, ${usd(it.output)} out, per million tokens" } ?: "Dollars per million tokens", enabled = on,
                 onClick = { editPrices = true })
             if (h.yourPrices != null) {

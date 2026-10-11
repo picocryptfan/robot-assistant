@@ -1,7 +1,10 @@
 package app.heyrobot.ui
 
 import androidx.compose.runtime.saveable.SaverScope
+import app.heyrobot.core.BrainModel
+import app.heyrobot.core.VoiceBundle
 import app.heyrobot.sys.AppPages
+import app.heyrobot.ui.model.ModelRoutes
 import app.heyrobot.ui.settings.AppRoutes
 import app.heyrobot.ui.settings.PageStack
 import app.heyrobot.ui.settings.SettingsRoutes
@@ -101,6 +104,9 @@ class PageSaverTest {
             Page.Settings(SettingsRoutes.adbFix("recognizer")) to Page.AdbFixes,
             Page.Settings("voice/barge-in") to Page.Settings("voice"),
             Page.Settings("display") to null,
+            // A model's page sits under the Model tab.
+            Page.Settings(ModelRoutes.model(BrainModel.SMARTER)) to null,
+            Page.Settings(ModelRoutes.voice(VoiceBundle.STT)) to null,
             Page.Transcripts to null,
             Page.Helpers to null,
             Page.ConversationSettings to null,
@@ -130,6 +136,7 @@ class PageSaverTest {
         /** Every route ui/settings/SettingsNav.kt opens. */
         val SETTINGS_ROUTES = listOf(SettingsRoutes.VOICE, SettingsRoutes.BARGE_IN, SettingsRoutes.ACTIONS, SettingsRoutes.PEOPLE_NOTES_CALENDAR,
             SettingsRoutes.WEATHER, SettingsRoutes.HISTORY, SettingsRoutes.DISPLAY, SettingsRoutes.ADVANCED, SettingsRoutes.ABOUT,
-            SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer"))
+            SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer")) +
+            BrainModel.entries.map(ModelRoutes::model) + VoiceBundle.entries.map(ModelRoutes::voice)
     }
 }
