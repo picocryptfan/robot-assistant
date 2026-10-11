@@ -192,6 +192,35 @@ class OpenAiSessionTest {
         assertEquals(ClaudeOutcome.Failed(ClaudeFailure.BAD_REQUEST), bare.ask(q, voice, Heard()))
     }
 
+    @Test fun zeroDataRetentionIsNeverDroppedAndATooLongQuestionDropsNothing() = runBlocking {
+        val or = HelperConfig.of(Presets.OPENROUTER, "h5", "am_puck", "OpenRouter").copy(model = "some/model")
+        fun openRouter(onDropped: (Extra) -> Unit) = OpenAiSession(http(), or, emptyList(), false, onDropped = onDropped,
+            timing = Timing(2_000, 2_000, 2_000, 2_000, 500), retryDelayMs = 10)
+        // A 400 that names no part: effort goes (the only optional part Robot may drop), zero data retention never does.
+        server.enqueue(error(400, """{"error":{"message":"bad","type":"invalid_request_error"}}"""))
+        server.enqueue(error(400, """{"error":{"message":"bad","type":"invalid_request_error"}}"""))
+        val dropped = mutableListOf<Extra>()
+        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.BAD_REQUEST), openRouter { dropped += it }.ask(q, voice, Heard()))
+        assertEquals(listOf(Extra.EFFORT), dropped)
+        repeat(2) { assertTrue(body(take()).getJSONObject("provider").getBoolean("zdr")) }
+        assertEquals(2, server.requestCount)
+        // A 400 that names zero data retention (no provider keeps nothing for this model): said, nothing dropped or sent again.
+        server.enqueue(error(400, """{"error":{"message":"no zdr","type":"invalid_request_error","param":"provider.zdr"}}"""))
+        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.BAD_REQUEST), openRouter { dropped += it }.ask(q, voice, Heard()))
+        assertEquals(3, server.requestCount)
+        // Too long: no part is to blame, so none is dropped for later questions.
+        server.enqueue(error(400, """{"error":{"message":"too long","type":"invalid_request_error","code":"context_length_exceeded"}}"""))
+        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.TOO_LONG), openRouter { dropped += it }.ask(q, voice, Heard()))
+        assertEquals(4, server.requestCount)
+        // A 400 that names the part it refused: that part only.
+        server.enqueue(error(400, """{"error":{"message":"no","type":"invalid_request_error","param":"stream_options"}}"""))
+        server.enqueue(answer("OK"))
+        val named = mutableListOf<Extra>()
+        assertEquals(ClaudeOutcome.Done(), session(onDropped = { named += it }).ask(q, voice, Heard()))
+        assertEquals(listOf(Extra.STREAM_OPTIONS), named)
+        assertEquals(listOf(Extra.EFFORT), dropped)
+    }
+
     @Test fun aServerThatLoadsItsModelThenAnswers() = runBlocking {
         server.enqueue(answer("Hello").setHeadersDelay(900, TimeUnit.MILLISECONDS))
         val h = Heard()

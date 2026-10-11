@@ -98,7 +98,9 @@ helper follows; this section for what 0.6.0 adds.
   differences are data (`Quirks`: the length parameter, streamed usage, strict tools, `tool_choice`, how effort and
   search are sent, reported cost, zero data retention), not code paths. A server that refuses an optional part
   (`stream_options`, effort, strict tools, tools, images) before sending anything gets the same question again without
-  it, once per part, and Robot remembers it for that model (`helpers/<id>/facts.json`).
+  it, once per part, and Robot remembers it for that model (`helpers/<id>/facts.json`). When the error names the part
+  (OpenAI-style `param`), only that part goes; an error that names another part, a question that was too long or a key
+  problem drops nothing. OpenRouter's zero data retention is never dropped by Robot: only its switch turns it off.
 - **The same promises as Claude's session** (`HelperSession`): a failed, declined or stopped question leaves no trace;
   tool rounds that ran stay with their results; the helper's own turns go back byte for byte (reasoning, thinking
   chunks and encrypted reasoning included); a history the server would refuse ends the conversation with a plain

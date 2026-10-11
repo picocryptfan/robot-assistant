@@ -107,15 +107,44 @@ class ChatWireTest {
         val o = options(Presets.OPENROUTER, "x", search = true)
         val carried = ChatWire.extras(o)
         assertEquals(setOf(Extra.ZDR, Extra.TOOL_CHOICE, Extra.STRICT, Extra.EFFORT, Extra.SEARCH, Extra.TOOLS), carried)
-        assertEquals(Extra.ZDR, ChatWire.nextToDrop(carried, emptySet()))
-        assertEquals(Extra.TOOL_CHOICE, ChatWire.nextToDrop(carried, setOf(Extra.ZDR)))
+        // Zero data retention is your privacy setting: Robot never drops it by itself.
+        assertEquals(Extra.TOOL_CHOICE, ChatWire.nextToDrop(carried, emptySet()))
+        assertEquals(Extra.STRICT, ChatWire.nextToDrop(carried, setOf(Extra.TOOL_CHOICE)))
+        assertNull(ChatWire.nextToDrop(carried, carried - Extra.ZDR))
         assertNull(ChatWire.nextToDrop(carried, carried))
         val dropped = ChatWire.request(o.copy(dropped = setOf(Extra.TOOLS, Extra.EFFORT, Extra.ZDR)), listOf(user))
-        // Only the search tool is left.
+        // Only the search tool is left, and zero data retention stays on (even for a file that once said it was dropped).
         assertEquals(1, dropped.getJSONArray("tools").length())
-        assertFalse(dropped.has("reasoning") || dropped.has("provider"))
+        assertFalse(dropped.has("reasoning"))
+        assertTrue(dropped.getJSONObject("provider").getBoolean("zdr"))
+        assertFalse(ChatWire.request(o.copy(zdr = false), listOf(user)).has("provider"))
         val noTools = ChatWire.request(o.copy(dropped = setOf(Extra.TOOLS, Extra.SEARCH)), listOf(user))
         assertFalse(noTools.has("tools") || noTools.has("tool_choice"))
+    }
+
+    @Test fun aRefusalThatNamesItsPartDropsOnlyThatPart() {
+        val o = options(Presets.OPENROUTER, "x", search = true)
+        val carried = ChatWire.extras(o)
+        assertEquals(Extra.EFFORT, ChatWire.toDrop(carried, emptySet(), "reasoning.effort", 1))
+        assertEquals(Extra.TOOL_CHOICE, ChatWire.toDrop(carried, emptySet(), "tool_choice", 1))
+        // Robot's one tool is tools[0]; the search tool after it.
+        assertEquals(Extra.SEARCH, ChatWire.toDrop(carried, emptySet(), "tools[1]", 1))
+        assertEquals(Extra.STRICT, ChatWire.toDrop(carried, emptySet(), "tools[0].function.strict", 1))
+        assertEquals(Extra.STRICT, ChatWire.toDrop(carried, emptySet(), "tools[0]", 1))
+        assertEquals(Extra.TOOLS, ChatWire.toDrop(carried, setOf(Extra.STRICT), "tools[0]", 1))
+        assertEquals(Extra.SEARCH, ChatWire.toDrop(carried - Extra.TOOLS - Extra.STRICT, emptySet(), "tools", 0))
+        // Another part of the request, or zero data retention: nothing is dropped (the request itself is wrong).
+        assertNull(ChatWire.toDrop(carried, emptySet(), "messages[1].content", 1))
+        assertNull(ChatWire.toDrop(carried, emptySet(), "provider.zdr", 1))
+        assertNull(ChatWire.toDrop(carried, emptySet(), "model", 1))
+        // A part the request didn't carry, or one already dropped: nothing.
+        assertNull(ChatWire.toDrop(carried, emptySet(), "stream_options", 1))
+        assertNull(ChatWire.toDrop(carried, setOf(Extra.EFFORT), "reasoning", 1))
+        // No name: the order.
+        assertEquals(Extra.TOOL_CHOICE, ChatWire.toDrop(carried, emptySet(), null, 1))
+        // Errors carry the name of the part.
+        assertEquals("tool_choice", WireErrors.parse("""{"error":{"message":"…","type":"invalid_request_error","param":"tool_choice","code":"unsupported_parameter"}}""").param)
+        assertNull(WireErrors.parse("""{"error":{"message":"…","type":"invalid_request_error","param":null}}""").param)
     }
 
     @Test fun userMessagesAndResults() {

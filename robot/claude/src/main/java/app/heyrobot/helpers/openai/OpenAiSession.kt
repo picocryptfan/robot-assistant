@@ -187,10 +187,12 @@ class OpenAiSession(
                             delay(retryDelayMs)
                             continue
                         }
-                        // A 400 or 422 before any answer, with something optional in the request: once more without it.
-                        if (r.status in setOf(400, 422) && !r.shown && adapted < MAX_ADAPT) {
+                        // A 400 or 422 before any answer, with something optional in the request: once more without it (the
+                        // part the error names, when it names one). Not for a request that was too long or a key or account
+                        // problem: dropping a part wouldn't help, and it would be lost for every later question.
+                        if (r.status in setOf(400, 422) && !r.shown && adapted < MAX_ADAPT && r.failure in ADAPTABLE) {
                             val carried = (if (responses) RespWire.extras(o) else ChatWire.extras(o)) + (if (hasImages()) setOf(Extra.IMAGES) else emptySet())
-                            ChatWire.nextToDrop(carried, refused)?.let { extra ->
+                            ChatWire.toDrop(carried, refused, r.param, o.tools.size.takeIf { Extra.TOOLS !in refused } ?: 0)?.let { extra ->
                                 adapted++
                                 refused += extra
                                 onDropped(extra)
@@ -252,7 +254,7 @@ class OpenAiSession(
 
     private sealed class Streamed {
         class Ok(val echo: List<JSONObject>, val stop: Stop, val calls: List<Pair<String, RawToolCall>>, val domains: List<String>, val searches: Int) : Streamed()
-        class Failure(val failure: ClaudeFailure, val shown: Boolean, val status: Int = 0) : Streamed()
+        class Failure(val failure: ClaudeFailure, val shown: Boolean, val status: Int = 0, val param: String? = null) : Streamed()
     }
 
     private sealed class Event {
@@ -260,7 +262,7 @@ class OpenAiSession(
         class Alive(val thinking: Boolean) : Event()
         class Used(val usage: HelperUsage) : Event()
         class Finished(val ok: Streamed.Ok) : Event()
-        class Failed(val failure: ClaudeFailure, val status: Int) : Event()
+        class Failed(val failure: ClaudeFailure, val status: Int, val param: String? = null) : Event()
         class Cut : Event()
     }
 
@@ -280,8 +282,9 @@ class OpenAiSession(
                     if (!resp.isSuccessful) {
                         val text = try { resp.body?.source()?.let { s -> s.request(MAX_ERROR_BYTES); s.buffer.readUtf8(minOf(s.buffer.size, MAX_ERROR_BYTES)) } } catch (_: Exception) { null }
                         val status = resp.code
-                        val f = if (home && status == 404) ClaudeFailure.MODEL_UNAVAILABLE else WireErrors.parse(text).failure(status)
-                        events.trySend(Event.Failed(f, status))
+                        val e = WireErrors.parse(text)
+                        val f = if (home && status == 404) ClaudeFailure.MODEL_UNAVAILABLE else e.failure(status)
+                        events.trySend(Event.Failed(f, status, e.param))
                         return@Thread
                     }
                     val source = resp.body?.source() ?: throw java.io.IOException("no body")
@@ -396,7 +399,7 @@ class OpenAiSession(
                         listener.text(next.delta)
                     }
                     is Event.Finished -> return end(next.ok)
-                    is Event.Failed -> return end(Streamed.Failure(next.failure, shown, next.status))
+                    is Event.Failed -> return end(Streamed.Failure(next.failure, shown, next.status, next.param))
                 }
             }
         } finally {
@@ -448,6 +451,9 @@ class OpenAiSession(
         const val MAX_DOMAINS = 5
         /** Extras dropped for one question at most. */
         const val MAX_ADAPT = 4
+
+        /** The failures a refused optional part can cause (Ollama says "does not support tools" as an api_error with a 400). */
+        private val ADAPTABLE = setOf(ClaudeFailure.BAD_REQUEST, ClaudeFailure.SERVER, ClaudeFailure.UNKNOWN)
         private const val MAX_ERROR_BYTES = 16_384L
 
         /**

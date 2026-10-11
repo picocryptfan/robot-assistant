@@ -24,7 +24,11 @@ import java.util.Base64
 // must go back with tools or it is a 400, OpenRouter wants reasoning_details back, Google keeps thought signatures,
 // Mistral its thinking chunks), and echoed back unchanged. `name` is never sent in a message (Groq refuses it).
 
-/** Optional parts of a request a server may refuse: dropped once after a 400 or 422 before any answer, then remembered. */
+/**
+ * Optional parts of a request a server may refuse: dropped once after a 400 or 422 before any answer, then remembered.
+ * [ZDR] is listed only so a request can say it carries it: OpenRouter's "only providers that keep nothing" is your
+ * privacy setting and is never dropped by Robot (a server that refuses it fails, and the helper's page has the switch).
+ */
 enum class Extra { STREAM_OPTIONS, STRICT, TOOL_CHOICE, EFFORT, TOOLS, IMAGES, SEARCH, ZDR }
 
 /**
@@ -65,7 +69,8 @@ object ChatWire {
         if (Extra.EFFORT !in o.dropped) o.effort.wire(o.plan.effort)?.let { e ->
             if (o.effort == EffortStyle.OPENROUTER) put("reasoning", JSONObject().put("effort", e)) else put("reasoning_effort", e)
         }
-        if (o.zdr && o.quirks.zdr && Extra.ZDR !in o.dropped) put("provider", JSONObject().put("zdr", true))
+        // Never left out once on, whatever a server refused before (a file from a build that dropped it included).
+        if (o.zdr && o.quirks.zdr) put("provider", JSONObject().put("zdr", true))
     }
 
     /** The optional extras [request] carries: what a 400 might be about. */
@@ -84,12 +89,47 @@ object ChatWire {
     }
 
     /**
-     * Which extra to try without after a 400 or 422 ([carried]: what the request had, [refused]: already dropped), from the
-     * least to the most useful. Null: nothing left to drop, the request really is wrong.
+     * Which extra to try without after a 400 or 422 that named no part of the request ([carried]: what the request had,
+     * [refused]: already dropped), from the least to the most useful. Never [Extra.ZDR]. Null: nothing left to drop, the
+     * request really is wrong.
      */
     fun nextToDrop(carried: Set<Extra>, refused: Set<Extra>): Extra? =
-        listOf(Extra.STREAM_OPTIONS, Extra.ZDR, Extra.TOOL_CHOICE, Extra.STRICT, Extra.EFFORT, Extra.SEARCH, Extra.IMAGES, Extra.TOOLS)
-            .firstOrNull { it in carried && it !in refused }
+        DROP_ORDER.firstOrNull { it in carried && it !in refused }
+
+    private val DROP_ORDER = listOf(Extra.STREAM_OPTIONS, Extra.TOOL_CHOICE, Extra.STRICT, Extra.EFFORT, Extra.SEARCH, Extra.IMAGES, Extra.TOOLS)
+
+    /**
+     * What to try without after a 400 or 422 before any answer. When the error names the part it refused ([param], as
+     * OpenAI-style errors do), that part only, if the request carried it and Robot may drop it; nothing when it names
+     * another part of the request (the request itself is wrong: dropping something else would only lose it for good) or
+     * OpenRouter's zero data retention. Without a name, the next in [nextToDrop]'s order. [functions]: how many of the
+     * request's tools are Robot's (a provider's search tool comes after them).
+     */
+    fun toDrop(carried: Set<Extra>, refused: Set<Extra>, param: String?, functions: Int): Extra? {
+        if (param.isNullOrBlank()) return nextToDrop(carried, refused)
+        val named = extraNamed(param, functions)?.let { if (it == Extra.TOOLS && Extra.TOOLS !in carried) Extra.SEARCH else it } ?: return null
+        // A refused tool list may only be its strict form: that goes first.
+        if (named == Extra.TOOLS && Extra.STRICT in carried && Extra.STRICT !in refused) return Extra.STRICT
+        return named.takeIf { it in DROP_ORDER && it in carried && it !in refused }
+    }
+
+    /** The extra an error's `param` names ("stream_options", "tool_choice", "reasoning_effort", "tools[2].function.strict"…), or null. */
+    fun extraNamed(param: String, functions: Int): Extra? {
+        val p = param.trim().lowercase(java.util.Locale.ROOT)
+        return when {
+            p.startsWith("stream_options") -> Extra.STREAM_OPTIONS
+            p.startsWith("tool_choice") -> Extra.TOOL_CHOICE
+            p.startsWith("reasoning") -> Extra.EFFORT
+            p.startsWith("provider") || p.startsWith("zdr") -> Extra.ZDR
+            p.startsWith("tools") -> when {
+                "strict" in p -> Extra.STRICT
+                (Regex("""^tools\[(\d+)]""").find(p)?.groupValues?.get(1)?.toIntOrNull() ?: -1) >= functions -> Extra.SEARCH
+                else -> Extra.TOOLS
+            }
+            "image" in p -> Extra.IMAGES
+            else -> null
+        }
+    }
 
     /**
      * One of Robot's tools: its properties in order and no others. Strict (OpenAI's rules): every property listed as
