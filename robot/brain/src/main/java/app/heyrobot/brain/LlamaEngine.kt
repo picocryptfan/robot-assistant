@@ -636,10 +636,16 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
 
     private fun onEnd(run: Run, code: Int, stats: LongArray?) {
         if (run.ended) return
-        // It never came back from its stop, and its process was ended for it (watchStop): the model is lost, as in a crash.
-        if (code == LOST && run.overdue) {
-            run.giveWay = false
-            return fail(run, BrainError.STOPPED, "model process stopped")
+        if (code == LOST) {
+            // Its process stopped under it: the model is lost (gone() lets the slot go when Binder says the process is).
+            // The requests waiting for it end now as not loaded, as gone() ends them, rather than start on a process that
+            // isn't there; this one can't start over on it either. It ends with STOPPED unless its client had already
+            // stopped it (a cancel, its cap): one that never came back from its stop (watchStop) is lost, as in a crash.
+            scheduler.dropWaiting()
+            if (run.overdue || run.giveWay || run.stopReason == null) {
+                run.giveWay = false
+                return fail(run, BrainError.STOPPED, "model process stopped")
+            }
         }
         if (run.stopReason == null) run.filter?.flush()?.takeIf { it.isNotEmpty() }?.let { emitText(run, it) }
         val reason = run.stopReason ?: when (code) {
@@ -647,11 +653,6 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             // The context filled up while it wrote: the reply ends where it got to, as with LiteRT-LM.
             LlamaIpc.GEN_LENGTH, LlamaIpc.GEN_CONTEXT_FULL -> DoneReason.LENGTH
             LlamaIpc.GEN_CANCELLED -> DoneReason.CANCELLED
-            // Its process stopped under the reply: the model is lost (gone() lets the slot go when it is).
-            LOST -> {
-                run.giveWay = false
-                return fail(run, BrainError.STOPPED, "model process stopped")
-            }
             else -> return fail(run, BrainError.ENGINE, "decode")
         }
         finish(run, reason, stats)

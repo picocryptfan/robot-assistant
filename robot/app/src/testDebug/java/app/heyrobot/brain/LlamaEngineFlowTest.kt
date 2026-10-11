@@ -247,14 +247,54 @@ class LlamaEngineFlowTest {
         pump("both ends") { c.terminals.isNotEmpty() && waiting.terminals.isNotEmpty() }
         settle()
         assertEquals(BrainError.STOPPED, c.error())
-        // The request waiting behind it ends once too (how depends on which news of the process comes first).
-        assertTrue("${waiting.events}", waiting.error() == BrainError.NOT_LOADED || waiting.error() == BrainError.STOPPED)
+        // The request waiting behind it ends once too, never started on a process that is gone.
+        assertEquals(BrainError.NOT_LOADED, waiting.error())
         assertFalse(engine.status().loaded)
         // Stopped while idle next time: nothing is lost, the next request finds no model (the app loads it again).
         val later = Client()
         ask(later, id = 2)
         settle()
         assertEquals(BrainError.NOT_LOADED, later.error())
+    }
+
+    @Test fun aRequestWaitingBehindAReplyWhoseProcessStoppedNeverStartsOnIt() {
+        // The reply's call fails before Binder's death notice arrives (the other order of the two news).
+        fake.holdEnd = setOf(1)
+        val c = Client()
+        ask(c)
+        pump("the first piece") { c.text.isNotEmpty() }
+        val waiting = Client()
+        oneShot(waiting, priority = Priority.TRANSCRIPT)
+        fake.dead = true
+        pump("both ends") { c.terminals.isNotEmpty() && waiting.terminals.isNotEmpty() }
+        settle()
+        assertEquals(BrainError.STOPPED, c.error())
+        assertEquals(BrainError.NOT_LOADED, waiting.error())
+        assertEquals(1, fake.generates.get())
+        died(link)
+        settle()
+        assertFalse(engine.status().loaded)
+        assertEquals(1, c.terminals.size)
+        assertEquals(1, waiting.terminals.size)
+    }
+
+    @Test fun aSummaryGivingWayWhenItsProcessStopsEndsOnceAsStoppedNeverQueuedAgain() {
+        fake.holdPrompt = setOf(1)
+        fake.honourCancel = false
+        val summary = Client()
+        oneShot(summary)
+        pump("the summary's prompt") { fake.generates.get() == 1 }
+        val panel = Client()
+        ask(panel)
+        settle()
+        assertTrue(summary.terminals.isEmpty())
+        fake.dead = true
+        pump("both ends") { summary.terminals.isNotEmpty() && panel.terminals.isNotEmpty() }
+        settle()
+        assertEquals(BrainError.STOPPED, summary.error())
+        assertEquals(BrainError.NOT_LOADED, panel.error())
+        assertEquals(0, summary.requeued)
+        assertEquals(1, fake.generates.get())
     }
 
     @Test fun theProcessStoppingInsideThePromptEndsItOnceAsStopped() {
