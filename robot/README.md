@@ -22,7 +22,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 | Module | Runs in | Holds |
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
-| `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM: the model you chose, on the TPU or the CPU, one at a time |
+| `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM: the model you chose, on the TPU or the CPU, one at a time; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
@@ -73,10 +73,12 @@ goes into the repository or the build output.
 
 ## Conversation mode (0.5.0)
 
-Robot writes down a conversation, word for word as it hears it, in French and English, on the phone (the design is
-`../docs/conversation-mode.md`). Built so far: the Transcription check (phase 5.0(a)), capture and transcription (5.2),
-speaker labels (5.3) and the Transcripts library (5.5). Not yet: translation and the interpreter (5.4), summaries (5.6),
-keeping the audio.
+Robot writes down a conversation, word for word as it hears it, in French and English, on the phone, translates it
+(also face to face, aloud) and summarizes it (the design is `../docs/conversation-mode.md`). Built so far: the
+Transcription check (phase 5.0(a)), capture and transcription (5.2), speaker labels (5.3), the Transcripts library
+(5.5), translation by Robot's own model and the interpreter (5.4's Gemma half) and summaries (5.6). Not yet: the fast
+translation engine (Bergamot in its own `:mt` process, built on its own branch: until it is merged, Robot's model
+translates alone and the screens say so), keeping the audio.
 
 ### Transcribing
 
@@ -130,7 +132,10 @@ keeping the audio.
 - **Voice log** (numbers only): 100 start (how, locked), 101 stop (why, minutes, lines), 102/103 pause and resume, 104
   each minute's segments and median decode time, 105 French/English/not-sure lines, 106 speakers told apart, merges
   proposed and whether your voice was seeded, 109 a line that couldn't be saved, 110 recovered (and resumed), 111 the
-  microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the Transcription check, 119 re-heard.
+  microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the Transcription check, 119 re-heard; since 5.4 and
+  5.6: 107 a line translated (engine, ms, the guard's verdict), 108 a translation read aloud (language, ms after the
+  speech ended; or stopped by a tap), 113 Robot's summary (parts, seconds, how it ended), 114 a stronger AI's (which,
+  words ÷ 100, how it ended).
 
 ### Speaker labels
 
@@ -208,6 +213,87 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
   4.4): try Gemma's own audio input for short recordings, the Whisper-turbo QC model for recordings only, hotwords
   (needs a `bpe.vocab` Parakeet's export lacks), or a fine-tuned Parakeet; and record the number either way.
 
+### Translation and the interpreter
+
+- **Robot's model translates**, the one chosen in Settings › Model (Fast on the TPU by default), through a **one-shot
+  request** to `:brain` (`REQ_ONE_SHOT`): one message to a conversation of its own, with the plan's fixed prompt for the
+  direction ("Translate the user's message from Québec French to natural English. Keep the tone and register…", and
+  English to Québec French "as a Quebecer would say it (tu unless the message is formal)"), no earlier line, **no tools**
+  (none described, constrained decoding off, any call it writes dropped), streamed, then closed. It never sees or
+  changes the assistant's conversation: `:brain` still keeps one LiteRT conversation at a time, so a one-shot closes the
+  assistant's, which is rebuilt from the app's own history at your next question (a few seconds on the TPU; on a CPU
+  model, its long first-word wait again).
+- **`:brain`'s queue** (`BrainScheduler`, `BrainQueue`): the panel first (your newest question still cancels your older
+  one), then the interpreter's turns, then transcript translations, then summary steps. The panel never cancels an
+  interpreter turn (about a second) but goes next; a transcript translation gives way to the panel and the interpreter,
+  and a summary step to anything, and starts over afterwards. While the panel waits for its actions' results (a card
+  open), only the panel's own requests start, for at most 90 s. A request learns its place (`EV_QUEUED`) and when it
+  starts, and is cancelled if it hasn't started when its deadline passes.
+- **Every translation is checked** (`MtGuard`) before it is shown or spoken: in the language asked for, about as long as
+  what was said, at most three lines, without "Translation:", quotes or notes around it. A meaning error gets through:
+  the translation is marked as a machine's.
+- **The fast engine** (Bergamot, `../docs/conversation-mode.md` §4.3) is a seam here (`FastTranslation`): when it is
+  there, it gives each transcript line a translation at once (marked "fast") that Robot's model then improves, and it
+  stands in for the interpreter when the model hasn't started within 1.5 s (the panel's question ahead), fails, or fails
+  a guard; with a model on the CPU (about 8 tokens a second), it leads the interpreter. Without it, Robot's model
+  translates alone, with longer deadlines, and the interpreter says "Translated by Robot's model on this phone".
+- **A transcript's Translate** (top bar; its default in Settings › Conversation): each new line, in the other language
+  of the pair, in small italics under it (turned on mid-session, the latest 20 lines too). Robot's model works on the
+  newest lines on screen first, one at a time, skips a better translation for a line more than 60 s old, and works only
+  with the screen on and the phone not too hot (SEVERE heat: the fast engine only; voice log 112). Tap a translation (or
+  "Translate" under a line) for Robot's model's own. Changing a line's language translates it again. Translations are
+  events in the transcript's file and in exports.
+- **The interpreter** (Home › Conversation › Translate, the transcript screen's Interpreter, or "hey robot, translate
+  this conversation" / "be my interpreter" / "traduis cette conversation"): the phone flat between two people; the top
+  half turned to the other person, in their language (French by default on an English phone; ⋮ › Their language), the
+  bottom half yours. Each half shows, large, what the other side last said, translated; small, what Robot heard its own
+  side say. The direction follows each line's language; a half's microphone button forces its language (hold it while
+  you speak, or tap it on and off). Translations are read aloud (Speak, on by default here): English in Robot's voice,
+  French in Kokoro's French voice (Siwis) when Robot speaks with Kokoro. **Robot never translates itself**: it doesn't
+  listen while it speaks, nor for 300 ms after. A tap anywhere stops the reading. The screen stays on. At most two
+  speakers. The same session can switch between Transcribe and Interpreter; its file keeps every line.
+- **Speak in a transcript** (top bar, off by default): each line's first translation is read aloud, once, while it is
+  fresh; Robot doesn't listen meanwhile, and the screen says so once.
+- **The model stays loaded** while a session translates (and while a summary is made): the unload after the panel closes
+  waits until they end. Settings › Model's choice applies; a short-context model (0.4.3) translates too (a one-shot is
+  chat only anyway), within its own context.
+
+### Summaries
+
+- **Summarize** (a transcript in Robot › Transcripts › ⋮, "Summarize" on the saved transcript screen, or "hey robot,
+  summarize this conversation", which stops the session) opens the summary screen in the `:voice` process. The phone
+  must be unlocked.
+- **Robot's summary** is made on the phone by Robot's model: the transcript in parts of about 2,400 estimated tokens (8–10
+  minutes of talk; smaller for a short-context model), each part's notes ("at most 12 short bullet points… Add the time
+  of the line each bullet comes from, like [14:03]"), then the notes merged (in levels past 12 parts) into "a 2–3
+  sentence overview, then Decisions, To do, Numbers and dates, Open questions", in the language set in Settings ›
+  Conversation (yours by default). Every call fits the loaded model's window with room for its reply. It runs at the
+  lowest priority (your questions and translations go first; a step that gave way starts over), with a progress bar and
+  Cancel; each part's notes are kept as they come (`summary-draft.json`), so a summary stopped or failed halfway goes on
+  from the next part.
+- **Its label:** "Robot's summary — made on this phone by Gemma 4 E2B. It can miss or mix up details; check the
+  transcript." (the model it was made with). Each [14:03] links to that line in the transcript. **The number check**
+  (`SummaryCheck`): every number, name and [time] in the summary must be in the transcript (its lines and translations),
+  among the speakers' names or in your People; what isn't is listed under it ("Robot couldn't find “17 h” in the
+  transcript").
+- **A stronger AI:** for a conversation longer than about 25–30 minutes (more than 3 parts), one marked important (⋮ ›
+  Mark important on the transcript in the library), or
+  a summary the check flagged, Robot offers it first ("This conversation is long; a stronger AI will summarize it more
+  accurately": Summarize with Claude, Robot's summary anyway, Not now; Settings › Conversation › Translation and
+  summaries turns the offer off, and sets the summary's language).
+  **Nothing leaves the phone before Send on the card**, which says what goes ("41 min · 2 speakers · 6,120 words · French
+  and English. It includes what other people said and the names you gave them."), where ("Goes to: Anthropic (Claude
+  Opus 5.5), over the internet, with your API key. ≈ 9¢."), and offers "Replace names with “Speaker 1, 2”" (also where
+  the names were said). **The Claude API** (your key; Ask Claude on): one question with its own fixed prompt
+  (`ClaudePrompt.TRANSCRIPT_SYSTEM`), no tools, no web search, medium effort, room for 16,000 tokens; the answer streams,
+  is saved as "Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52.", and its cost is shown and counted in
+  the daily budget (which warns, never blocks what you asked for). **The Claude app:** the same text in a share to the
+  app (or, if it doesn't take one, on the clipboard marked sensitive, and the app opens): you press Send there; Robot
+  doesn't hear the answer. Too long for the app (over 100,000 characters): export the transcript and attach it.
+- **Where:** each summary is `summary-<n>.json` in the transcript's folder (who made it, with which model, how, when,
+  and your consent for a helper), listed on the transcript in the library (newest first, with its label and [time]
+  links, and Delete), not part of the transcript's exports, and deleted with the transcript.
+
 ### On the phone (0.5.0 capture)
 
 Phases 5.0(a), 5.2 and 5.5 are done when these pass (design §9.1). Robot is the assistant, the voice models are
@@ -240,7 +326,8 @@ installed, the wake word is on.
    unlock, Stop, "New transcript", and with Live words on and the screen in front, lock the phone and wake it: the
    lock screen shows, not the transcript (no lines, no grey words).
 9. **Voice start.** "Hey robot, transcribe this conversation": Robot says "Transcribing.", the screen opens and the panel
-   goes; nothing of the panel is transcribed. "Translate this conversation": not in this version, said so.
+   goes; nothing of the panel is transcribed. ("Translate this conversation" starts the interpreter since 5.4: see
+   "On the phone (0.5.0 translation and summaries)".)
 10. **Library.** Search a word from the session (with and without its accent); rename; Share: pick another app (Files,
     a Markdown reader, a mail draft): the Markdown file opens there correctly (title, header, times, FR/EN). Save as
     Markdown into Downloads and open it with another app. Copy and paste in a note.
@@ -292,6 +379,55 @@ models are installed, nothing is recording.
 8. **Crash.** Kill `:voice` during a two-person session (step 6 of the capture checks), Resume: new lines are S1′/S2′;
    "Same person as…" on S1′ offers S1, and merging joins them.
 9. **Off.** "Tell speakers apart" off: the next session's lines are all "Speaker" and the 106 line isn't logged.
+
+### On the phone (0.5.0 translation and summaries)
+
+Phases 5.4 (Robot's model's half) and 5.6 are done when these pass (design §9.1). Robot is the assistant, the voice
+models are installed, Fast is the model, the phone is unlocked unless a step says otherwise. Without the fast engine
+installed (its own branch), steps that mention it are skipped and noted.
+1. **One-shots beside the panel.** Start a transcript with Translate on and talk French and English: each line gets an
+   italic English or French line within a few seconds. Meanwhile open the panel and ask "what time is it?": it answers
+   (the transcript pauses while the panel is open, as before); ask a second question that needs a card (a text to
+   someone, don't send): while the card is open, translations wait; tap Cancel: they go on. `adb logcat -s Robot | grep
+   -E "brain_one_shot|one_shot|brain_reply"`: one-shots with `oneShot=true`, never `calls>0`; the panel's replies rebuild
+   their conversation after a one-shot (`brain_rebuild`). Ask the panel about something said earlier in the panel
+   (not in the transcript): it remembers the panel's own conversation and knows nothing of the transcript.
+2. **The interpreter, 10 turns (the phase-4 4.2 criteria).** Home › Conversation › Translate (first time: the reminder).
+   Phone flat between you and a French speaker; take 10 turns. Pass: **the direction is right at least 9 times** (the
+   large text in the listener's half is in their language); **Robot never translates itself** (no line of Robot's own
+   voice in the transcript afterwards: open it in Robot › Transcripts); **the median from the end of speech to the first
+   translated audio is ≤ 3.0 s** (time it on a recording, or read voice log 108's ms, which is up to the hand-off to the
+   voice, and add the voice's first-chunk time from "Test voice speed"); with the fast engine, ≤ 2.0 s in its turns.
+   Then hold the bottom half's button and say a French sentence: it is taken as yours (English) only while held, and
+   translated into French; tap it on, speak English, tap it off. A tap on the screen while it reads stops it.
+3. **The panel during a session.** In the interpreter, "hey robot" (with "Hey robot works during a conversation" on) or
+   the corner swipe, ask a question: **the panel still answers** (the session pauses meanwhile); close it: the
+   interpreter goes on. Do it once while a translation is being made: the panel's answer comes after that turn.
+4. **Heat and screen.** In a transcript with Translate on, turn the screen off for a minute and on again: lines said
+   meanwhile get their translations once the screen is on (newest on screen first). (SEVERE heat can't be forced: note
+   it if it happens; voice log 112 "fast translation only".)
+5. **CPU model.** Settings › Model › Smarter (E4B, CPU): the interpreter still translates (slower; note the time per
+   turn); with the fast engine installed, its translations lead. Back to Fast.
+6. **Robot's summary of an hour (≤ 4 min).** Record (or resume) a transcript of about an hour; Robot › Transcripts › that
+   transcript › ⋮ › Summarize: the stronger-AI offer appears first (it is long); "Robot's summary anyway": the progress
+   goes part by part, then "Putting the notes together…". Pass: **done in 4 minutes or less, no error** (`adb logcat -s
+   Robot | grep -E "brain_one_shot_too_long|TOO_LONG"` empty); the label names the model; each [14:03] opens the
+   transcript at that line; the number check lists any number or name not in the transcript (say "Paul owes forty
+   dollars" nowhere, then compare). Cancel one halfway, Summarize again: it goes on from the next part (fewer parts
+   read; `summary_local` in the log). Voice log 113: parts, seconds.
+7. **Summarize with Claude, network off then on.** Turn Wi-Fi and mobile data off (or Robot's Network permission off).
+   Summarize › A stronger AI: the card shows what goes, where, and the price, with nothing sent (`adb logcat -s Robot`
+   has no `claude_` request line before Send; a proxy or the router shows no connection to api.anthropic.com). Tick
+   "Replace names": the speakers become "Speaker 1, 2". Send with the network off: "No internet…", nothing kept. Network
+   on, Send: Claude's summary streams in, labelled "Claude's summary — sent to Anthropic with your OK on …", with its cost;
+   today's spend in Settings › Ask Claude went up by about that. Voice log 114.
+8. **The Claude app.** With the app installed: Summarize › "Share it with the Claude app instead" › Send: the app opens
+   with the text (or "It's copied: paste it…"); note which way worked on the installed version (design T11).
+9. **Library.** The transcript's page lists the summaries, newest first, with their labels; a [14:03] scrolls to the
+   line; Delete removes one (`adb shell run-as app.heyrobot ls files/transcripts/<id>` no longer lists that
+   `summary-<n>.json`); exports and Share still carry the translations ("> EN: …"), not the summaries.
+10. **Voice.** "Hey robot, summarize this conversation" during a session: the session stops and the summary screen opens
+    (locked: "Unlock your phone, then …").
 
 ## Short-context models (0.4.3)
 

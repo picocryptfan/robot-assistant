@@ -132,6 +132,13 @@ class TranscriptStore(val root: File) {
 
     // ------------------------------------------------------------------ summaries (phase 5.6)
 
+    /** [MAIN] You marked it important (the stronger AI is offered first for its summary), or not. */
+    @Synchronized
+    fun setImportant(id: String, on: Boolean): Boolean {
+        val m = meta(id) ?: return false
+        return m.important == on || writeMeta(m.copy(important = on)) == null
+    }
+
     /** [id]'s summaries (summary-<n>.json: Robot's own, or a helper's), oldest first, with their numbers. */
     fun summaries(id: String): List<Pair<Int, SummaryRecord>> {
         if (id in forgotten) return emptyList()

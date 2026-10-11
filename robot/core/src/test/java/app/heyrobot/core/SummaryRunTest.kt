@@ -133,6 +133,10 @@ class SummaryRunTest {
         assertTrue(s.deleteSummary(w.id, 1))
         assertEquals(listOf(2 to claude), s.summaries(w.id))
         assertEquals(3, s.addSummary(w.id, robot))
+        // Marked important: the stronger AI is offered first.
+        assertTrue(s.setImportant(w.id, true))
+        assertTrue(s.meta(w.id)!!.important)
+        assertTrue(SummaryOffer.helperFirst(RobotSettings(), 1, s.meta(w.id)!!.important, flagged = false))
         // The draft of one under way.
         val d = SummaryDraft("k", listOf("- a", null))
         assertNull(s.saveDraft(w.id, d))

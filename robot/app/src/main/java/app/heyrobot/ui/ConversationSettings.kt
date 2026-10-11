@@ -81,8 +81,22 @@ fun ConversationSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotS
                 Text("Transcripts are kept in Robot's private storage on this phone and never backed up. The audio is never kept.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("Coming later: translation and the interpreter, summaries.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // 0.5.0, phases 5.4 and 5.6.
+            SectionCard("Translation and summaries") {
+                SwitchRow("Translate transcripts", "Each line in the other language (" + s.convPairChoice.title + "), under it, by Robot's model " +
+                    "on this phone. The transcript screen's Translate turns it on or off for one transcript. The interpreter always translates.",
+                    s.convTranslate) { update(s.copy(convTranslate = it)) }
+                Text("Summaries in", style = MaterialTheme.typography.titleSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for ((lang, label) in listOf(null to "Your language", "en" to "English", "fr" to "Français")) {
+                        FilterChip(selected = s.convSummaryLang == lang, onClick = { update(s.copy(convSummaryLang = lang)) }, label = { Text(label) },
+                            modifier = Modifier.heightIn(min = 48.dp))
+                    }
+                }
+                SwitchRow("Offer a stronger AI first", "For a long conversation (about half an hour or more), one marked important, or a summary " +
+                    "whose check found something missing, Robot offers Claude first. Nothing is sent before you tap Send on its card.",
+                    s.convAutoOfferHelper) { update(s.copy(convAutoOfferHelper = it)) }
+            }
             Spacer(Modifier.height(12.dp))
         }
     }

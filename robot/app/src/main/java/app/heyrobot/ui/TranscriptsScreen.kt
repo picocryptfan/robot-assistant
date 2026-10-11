@@ -331,6 +331,13 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                                 menu = false
                                 try { ctx.startActivity(Transcripts.summaryIntent(ctx, id)) } catch (_: Exception) {}
                             })
+                            DropdownMenuItem(text = { Text(if (m.important) "Not important" else "Mark important") }, onClick = {
+                                menu = false
+                                scope.launch {
+                                    withContext(Dispatchers.IO) { Transcripts.store(ctx).setImportant(id, !m.important) }
+                                    tick++
+                                }
+                            })
                             DropdownMenuItem(text = { Text("Rename") }, enabled = !live, onClick = { menu = false; renaming = true })
                             DropdownMenuItem(text = { Text("Save as Markdown (.md)") }, onClick = { menu = false; saveMd.launch(TranscriptExport.fileName(m, "md", zone)) })
                             DropdownMenuItem(text = { Text("Save as text (.txt)") }, onClick = { menu = false; saveTxt.launch(TranscriptExport.fileName(m, "txt", zone)) })
