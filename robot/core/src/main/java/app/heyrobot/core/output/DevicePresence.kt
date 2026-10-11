@@ -1,5 +1,9 @@
 package app.heyrobot.core.output
 
+import app.heyrobot.core.DeviceKind
+import app.heyrobot.core.RoutineTrigger
+import app.heyrobot.core.TriggerEvent
+
 // Pure. Which remembered headsets and cars are connected now, from AudioManager's device list after every
 // AudioDeviceCallback (design §2.1 "Headphones or car connect / disconnect", §4.8 CarModeController). One physical
 // device comes and goes as several entries (A2DP, SCO, LE), and Bluetooth links flap (a case opened and closed, a car
@@ -89,6 +93,13 @@ object DevicePresence {
 object DeviceTriggers {
     fun matches(event: PresenceEvent, kind: String, deviceId: String?, connect: Boolean): Boolean =
         event.connected == connect && event.device.role.id == kind && (deviceId == null || deviceId == event.device.id)
+
+    /** [matches] for the routine's own trigger: [DeviceKind] and [DeviceRole] are one by their ids. */
+    fun matches(event: PresenceEvent, trigger: RoutineTrigger.Device): Boolean = matches(event, trigger.type.id, trigger.deviceId, trigger.connect)
+
+    /** [event] as the routines' TriggerEvent (RoutineTriggers.fired): the device's role as a [DeviceKind], its id, connected or not. */
+    fun event(event: PresenceEvent): TriggerEvent.Device? =
+        DeviceKind.of(event.device.role.id)?.let { TriggerEvent.Device(it, event.device.id, event.connected) }
 
     /** The routine editor's device list for [kind]: remembered devices of that role, by number. */
     fun choices(memory: DeviceMemory, kind: String): List<RememberedDevice> = memory.devices.filter { it.role.id == kind }

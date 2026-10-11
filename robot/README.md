@@ -2749,6 +2749,15 @@ nothing new on the phone. Each section says what exists and what is left to wire
 comments and not yet in `VoiceEvent`, are past the ones 0.6.0 uses (1 to 134): routines 140–159, web search 160–169,
 Termux 170–179, memory 180–189, messages 190–199, headset 200–209 and car mode 210–219.
 
+Where they meet: a remembered headset or car becomes the routines' `TriggerEvent.Device` through `DeviceTriggers.event`,
+and `DeviceTriggers.matches` takes a routine's `RoutineTrigger.Device` (`DeviceRole` and `DeviceKind` are one by their
+ids); a 0.7 `MessageThread` is the `MessageNotice` the headset and the car speak through `notice()`, and the
+`MessageBuffer` their `MessageFeed` through `BufferFeed` (`output/DevicePresence.kt`, `output/MessageThreads.kt`). Still
+to settle when wiring: in the car or a headset a reply is sent after a spoken yes under `HandsFreeSafety` (on), while
+`ReplyPlanner` sends only after a tap unless "Answer reply cards by voice" is on; `ReplyResult` has no outcome for a
+message that came after the read-back (`ReplyGuard`'s `NewMessages`); and messages' `Lang` is the hands-free side's
+`SpokenLang` and the brief's `BriefLang` by name only.
+
 ### Routines and the morning brief (core only)
 
 The pure logic of routines and the morning brief (`../docs/plans/routines-headset-car-design.md`, §2) is in `:core`
