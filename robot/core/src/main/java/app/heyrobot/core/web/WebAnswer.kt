@@ -115,6 +115,14 @@ object WebPrompt {
     fun data(s: String, maxChars: Int = Int.MAX_VALUE): String =
         SearchWire.cut(Passages.clean(MARKERS.replace(Invisible.strip(s), " ")), maxChars)
 
+    /**
+     * The input budget in a context of [maxTokens] (the loaded model's: 4,096, or a short-context file's own, 0.4.3):
+     * [INPUT_TOKENS] at 4,096; less in a shorter context, keeping the answer's room and an eighth of the context (at most
+     * [MARGIN]) free.
+     */
+    fun budget(maxTokens: Int, spoken: Boolean): Int =
+        minOf(INPUT_TOKENS, maxTokens - (if (spoken) SPOKEN_TOKENS else TYPED_TOKENS) - minOf(MARGIN, maxTokens / 8)).coerceAtLeast(0)
+
     private fun french(lang: String?) = lang?.lowercase(Locale.ROOT)?.startsWith("fr") == true
 
     /** "Today is Saturday, 11 October 2026. Answer in English." or its French. */

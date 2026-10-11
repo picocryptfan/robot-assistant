@@ -143,6 +143,18 @@ class WebAnswerTest {
         }
     }
 
+    @Test fun aShortContextModelGetsASmallerBudget() {
+        assertEquals(WebPrompt.INPUT_TOKENS, WebPrompt.budget(ContextWindow.MAX_TOKENS, spoken = true))
+        assertEquals(WebPrompt.INPUT_TOKENS, WebPrompt.budget(ContextWindow.MAX_TOKENS, spoken = false))
+        assertEquals(2048 - 350 - 256, WebPrompt.budget(ContextWindow.MIN_TOKENS, spoken = true))
+        assertEquals(2048 - 700 - 256, WebPrompt.budget(ContextWindow.MIN_TOKENS, spoken = false))
+        val sentence = "The Florida Panthers won the Stanley Cup after a long playoff run with many close games. "
+        val results = (1..6).map { r("Result $it", "https://site$it.example/", sentence.repeat(3)) }
+        val passages = (1..3).map { Passage(it, 0, sentence.repeat(8), score = it.toDouble()) }
+        val o = WebPrompt.build("who won", "en", now, emptyList(), results, passages, spoken = true, budget = WebPrompt.budget(ContextWindow.MIN_TOKENS, true))
+        assertTrue(o.inputTokens + o.maxOutputTokens <= ContextWindow.MIN_TOKENS)
+    }
+
     @Test fun trimmingOrderIsPassagesThenResultsThenTurns() {
         val word = "word ".repeat(400)
         val results = (1..6).map { r("Title $it", "https://s$it.example/", word) }
