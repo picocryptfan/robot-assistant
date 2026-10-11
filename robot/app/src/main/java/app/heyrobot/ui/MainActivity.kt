@@ -72,6 +72,8 @@ import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.Transcripts
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.sys.VoiceModelStore
+import app.heyrobot.sys.MtModelStore
+import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
@@ -213,6 +215,8 @@ data class Snapshot(
     val bargeTest: BargeTestResult? = null,
     /** The panel's answer to the nearest place's first-use card (Settings › Actions shows it when newer than its own). */
     val nearestAnswer: NearestAnswer? = null,
+    /** 0.5.0: the fast translation engine's files (Settings › Conversation). */
+    val mt: MtModelStore.Snap? = null,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
 
@@ -235,6 +239,7 @@ fun RobotAppUi(activity: MainActivity) {
     var historyTick by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf<String?>(null) }
     var voiceInstalling by remember { mutableStateOf<VoiceBundle?>(null) }
+    var mtInstalling by remember { mutableStateOf(false) }
     var notes by remember { mutableStateOf<List<Note>>(emptyList()) }
     var notesTick by remember { mutableIntStateOf(0) }
     var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
@@ -262,6 +267,7 @@ fun RobotAppUi(activity: MainActivity) {
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
                     bargeTest = readBargeTest(ctx),
                     nearestAnswer = NearestAnswers.load(ctx),
+                    mt = MtModelStore.snapshot(ctx, MtBundle.FR_EN),
                 )
             }
             // A finished voice download is checked and installed right away, one bundle at a time.
@@ -277,6 +283,18 @@ fun RobotAppUi(activity: MainActivity) {
                         }
                     }, "robot-voice-install").start()
                 }
+            }
+            // The fast translation engine's files too, the same way.
+            if (snap.mt?.status == ModelStatus.UNVERIFIED && !mtInstalling) {
+                mtInstalling = true
+                val app = ctx.applicationContext
+                Thread({
+                    val ok = MtModelStore.install(app, MtBundle.FR_EN)
+                    scope.launch {
+                        mtInstalling = false
+                        say(if (ok) "The fast translation engine is ready." else "The fast translation engine couldn't be installed. See Settings › Conversation.")
+                    }
+                }, "robot-mt-install").start()
             }
             // A finished download (or import) is checked right away: the model is never loaded unchecked.
             if (snap.model == ModelStatus.UNVERIFIED && busy == null) {
@@ -452,6 +470,9 @@ fun RobotAppUi(activity: MainActivity) {
         openTranscriptionCheck = {
             try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { say("Couldn't open the Transcription check.") }
         },
+        mtDownload = { MtModelStore.startDownload(ctx, MtBundle.FR_EN)?.let(::say) },
+        mtCancel = { MtModelStore.cancelDownload(ctx, MtBundle.FR_EN) },
+        mtDelete = { MtModelStore.delete(ctx, MtBundle.FR_EN); say("The fast translation engine's files were deleted.") },
         openUsageAccess = {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
             if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
@@ -488,7 +509,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
         Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = { page = null })
         is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = { page = Page.Transcripts })
-        Page.ConversationSettings -> ConversationSettingsScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -565,4 +586,8 @@ class AppActions(
     /** 0.5.0: the transcript screen (voice process), to start transcribing; Settings › Voice › Transcription check. */
     val transcribe: () -> Unit = {},
     val openTranscriptionCheck: () -> Unit = {},
+    /** 0.5.0: the fast translation engine's files (Settings › Conversation › Translation). */
+    val mtDownload: () -> Unit = {},
+    val mtCancel: () -> Unit = {},
+    val mtDelete: () -> Unit = {},
 )

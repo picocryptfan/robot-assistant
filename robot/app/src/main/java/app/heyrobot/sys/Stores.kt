@@ -34,6 +34,8 @@ object Paths {
     /** The main process's own few voice-log events (the recognizer repair): one writer per file. */
     fun voiceLogMain(ctx: Context) = File(dir(ctx), VoiceFiles.LOG_MAIN)
     fun bargeTest(ctx: Context) = File(dir(ctx), VoiceFiles.BARGE)
+    /** The last Test translation speed (core MtSpeedReport): the main app writes it. */
+    fun mtSpeed(ctx: Context) = File(dir(ctx), "mt_speed.json")
     /** The panel's lasting answer to the nearest place's first-use card (core NearestAnswer): the voice process writes it. */
     fun nearestAnswer(ctx: Context) = File(dir(ctx), "nearest_answer.json")
 

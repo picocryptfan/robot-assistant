@@ -8,9 +8,11 @@
         android:protectionLevel="signature" />
     <uses-permission android:name="app.heyrobot.permission.INTERNAL" />
 
-    <!-- Three uses only: the model downloads (DownloadManager, huggingface.co); when you ask, Ask Claude (the :voice
-         process, api.anthropic.com); and when you ask for the weather (0.4.0), Open-Meteo (the :voice process, and the
-         main app once to look up your Home for weather). Everything else runs on the phone. The only network permission. -->
+    <!-- Three uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
+         engine's files from Mozilla's storage.googleapis.com bucket); when you ask, Ask Claude (the :voice process,
+         api.anthropic.com); and when you ask for the weather (0.4.0), Open-Meteo (the :voice process, and the main app once
+         to look up your Home for weather). Everything else runs on the phone; the :mt process never goes online. The only
+         network permission. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 0.2.3, "Call audio" playback only (Settings › Voice): the phone in communication mode with the loudspeaker as the

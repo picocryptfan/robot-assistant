@@ -67,7 +67,7 @@ object ModelStore {
     fun startDownload(ctx: Context): String? {
         val existing = listOf(file(ctx), part(ctx)).filter { it.isFile }.sumOf { it.length() }
         // Voice-model downloads under way still need their space (DownloadManager reserves none).
-        ModelLogic.refuseDownload(status(ctx), freeBytes(ctx), existing, VoiceModelStore.pendingBytes(ctx))?.let { return it }
+        ModelLogic.refuseDownload(status(ctx), freeBytes(ctx), existing, VoiceModelStore.pendingBytes(ctx) + MtModelStore.pendingBytes(ctx))?.let { return it }
         file(ctx).delete()
         part(ctx).delete()
         verifiedMark(ctx).delete()
@@ -150,7 +150,7 @@ object ModelStore {
     /** Null when an import may start, else why not. */
     fun refuseImport(ctx: Context, uri: Uri): String? {
         val reclaim = listOf(file(ctx), part(ctx)).filter { it.isFile }.sumOf { it.length() }
-        return ModelLogic.refuseImport(status(ctx), docSize(ctx, uri), freeBytes(ctx), reclaim, VoiceModelStore.pendingBytes(ctx))
+        return ModelLogic.refuseImport(status(ctx), docSize(ctx, uri), freeBytes(ctx), reclaim, VoiceModelStore.pendingBytes(ctx) + MtModelStore.pendingBytes(ctx))
     }
 
     /**
