@@ -221,7 +221,9 @@ Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-
   (https://ai.google.dev/gemma/prohibited_use_policy) applies.
 - **Your own model file.** Whatever `.litertlm` you import keeps its own licence. Robot doesn't ship it; it shows the
   file's SHA-256 and size and reads what its header says it is (`core/LiteRtLm.kt`, written for Robot from LiteRT-LM's
-  published header schema and LlmMetadata protos, Apache-2.0; no code copied).
+  published header schema and LlmMetadata protos, Apache-2.0; no code copied). For example MedGemma 1.5 4B (0.4.3, README
+  "Short-context models"): Google's Health AI Developer Foundations terms of use, not Apache-2.0; Robot neither ships nor
+  downloads it.
 - Not offered: no Gemma 4 E4B build for the Tensor TPU exists. `safecircleai/horizon-edge-4b` (a renamed CPU export of a
   child-safety classifier fine-tune, under the non-commercial "SafeCircle Research License") is never offered.
 
