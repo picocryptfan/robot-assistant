@@ -83,9 +83,29 @@ object ChatOnly {
         "s il te plait", "s il vous plait", "stp", "svp", "merci de")
 
     private const val DAY = "monday|tuesday|wednesday|thursday|friday|saturday|sunday|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche"
-    /** "open wound", "close the cut": a body or a wound after open or close is never an app. */
+    /**
+     * When a calendar question asks about: "today", "this week", "next Monday", "Friday". Never "this" or "next" alone:
+     * "what's on this X-ray?" and "what do I have on my arm?" are questions about a photo or the body.
+     */
+    private const val WHEN = "today|tomorrow|tonight|this (morning|afternoon|evening|week|weekend|month)|next (week|weekend|month|$DAY)|$DAY"
+    /** The same in French: "qu'est-ce que j'ai de prévu demain", never "qu'est-ce que j'ai au bras". */
+    private const val QUAND = "de prevu|prevu|au programme|aujourd ?hui|demain|ce (soir|matin|midi|week end|weekend)|cette (semaine|apres midi)|$DAY"
+    /** "open wound", "close the cut", "open-angle glaucoma": a body, a wound or a diagnosis after open or close is never an app. */
     private const val NOT_APP = "(?!(?:the |a |an |my |your )?(?:wounds?|cuts?|fractures?|sores?|heart|surgery|mouth|eyes?|skin|blisters?|bites?|" +
-        "lesions?|incisions?|gap|up|wide|plaie|blessure|bouche|yeux)\\b)"
+        "lesions?|incisions?|gap|up|wide|angle|pneumothorax|reduction|airways?|pores?|bowels?|chest|abdomen|ulcers?|abscess(?:es)?|sinuses|" +
+        "nose|jaw|fist|hands?|plaie|blessure|bouche|yeux)\\b)"
+    /**
+     * A word that can start a person's name before "'s number": never an article, a possessive or a word that describes a
+     * count ("what is the white cells number", "a normal platelets number" are questions about blood tests).
+     */
+    private const val NAME = "(?!(?:the|a|an|this|that|these|those|my|your|his|her|its|our|their|normal|average|usual|typical|healthy|good|" +
+        "bad|high|low|white|red|blood)\\b)\\S+"
+    /** A verb after "directions to": "directions to take metformin" are instructions, not a route. */
+    private const val HOW_TO = "(?!(?:take|use|apply|make|do|follow|treat|prevent|stop|reduce|lower|clean|dress|inject|mix|store|give|get|" +
+        "administer|prepare|swallow|inhale|insert|change|remove|wash|measure|check|calculate|keep)\\b)"
+    /** After "forecast for" or "temperature in": a person or a body, never a place ("the forecast for recovery"). */
+    private const val NOT_PLACE = "(?!(?:a|an|the|my|your|his|her|their|recovery|healing|survival|cancer|patients?|people|someone|children|" +
+        "kids|adults|babies|infants|pregnancy|fever)\\b)"
 
     /** Requests worded as an action from their first word (after the fillers). */
     private val COMMANDS: List<Pair<ToolName, Regex>> = listOf(
@@ -101,17 +121,17 @@ object ChatOnly {
         ToolName.ADD_NOTE to """^(take|make|write|jot|add|create|save)( down)?( (a|an|the|this|that|my))? (note|memo)\b|^(note|jot)( down| that| this| it)\b""",
         ToolName.ADD_NOTE to """^(write|put) (that|this|it) down\b|^write down\b|^(add|put)\b.*\b(to|on|in|onto) (my|the) (\S+ )?(list|notes)\b""",
         ToolName.ADD_NOTE to """^(prends|prendre|fais|ecris|cree)( une)? note\b|^note (que|ca|cela)\b|^retiens (que|ca)\b|^(ajoute|mets)\b.*\b(liste|notes)\b""",
-        ToolName.SEND_TEXT to """^(text|sms|txt|msg|dm) \S+|^message (\S+ ){1,3}(that|to|saying|i|im|we)\b|^let (?!(me|us)\b)\S+( \S+){0,2} know\b|^ping \S+""",
+        ToolName.SEND_TEXT to """^(text|sms|txt|msg|dm) (?!(neck|thumb|claw)\b)\S+|^message (\S+ ){1,3}(that|to|saying|i|im|we)\b|^let (?!(me|us)\b)\S+( \S+){0,2} know\b|^ping \S+""",
         ToolName.SEND_TEXT to """^(send|shoot|drop)( \S+){0,3} (a |an )?(text|message|sms|msg)\b|^send (this|that|it|these|those|the photo|the picture|my location)( \S+)? to\b""",
         ToolName.SEND_TEXT to """^tell (?!(me|us|what|whether|if|how|why|who|when|where|which|the|a|apart|them|him|her|you|it|about|more)\b)\S+ (that|to|i|im|we|were|my|about|ill)\b""",
         ToolName.SEND_TEXT to """^(envoie|envoyer|ecris|ecrire)( \S+){0,3} (texto|sms|message|mot)\b|^(dis|ecris|reponds) a \S+|^previens \S+""",
-        ToolName.DRAFT_EMAIL to """^(email|e mail|mail) \S+|^(send|write|draft|compose)( \S+){0,3} (an |a )?(email|e mail|mail)\b|^reply to \S+""",
+        ToolName.DRAFT_EMAIL to """^(email|e mail|mail) (?!order\b)\S+|^(send|write|draft|compose)( \S+){0,3} (an |a )?(email|e mail|mail)\b|^reply to \S+""",
         ToolName.DRAFT_EMAIL to """^(envoie|envoyer|ecris|ecrire)( \S+){0,3} (mail|courriel|email)\b""",
         ToolName.OPEN_APP to """^(open|launch)( up)? $NOT_APP(the |my )?\S+( \S+)?( app| application)?$|^(start|run) (the )?\S+( \S+)? (app|application)$""",
         ToolName.OPEN_APP to """^(ouvre|ouvrir|lance|lancer|demarre)( l| le| la| les| mon| ma)? $NOT_APP\S+( \S+)?( appli| application| app)?$""",
-        ToolName.MAPS_NAVIGATE to """^(navigate|navigation|directions?|route)( me)? (to|for|home|back)\b|^(take|get|drive|bring|guide|walk) me (to|home|back)\b""",
+        ToolName.MAPS_NAVIGATE to """^(navigate|navigation|directions?|route)( me)? (to $HOW_TO\S|home\b|back\b)|^(take|get|drive|bring|guide|walk) me (to|home|back)\b""",
         ToolName.MAPS_NAVIGATE to """^(emmene|amene|guide|conduis) moi\b|^itineraire (vers|pour|jusqu)\b""",
-        ToolName.MAPS_SEARCH to """^(find|show|search|look)( for| me)?\b.*\b(nearest|closest|near me|nearby|around here|close by|on the map|on a map|in maps)\b""",
+        ToolName.MAPS_SEARCH to """^(find|show|search|look for|look up)( for| me)?\b.*\b(nearest|closest|near me|nearby|around here|close by|on the map|on a map|in maps)\b""",
         ToolName.MAPS_SEARCH to """^(trouve|cherche|montre)( moi)?\b.*\b(plus proche|pres d|autour d)""",
         ToolName.FLASHLIGHT to """^(turn|switch|put|flip)( the| my)? (flashlight|torch|flash|light|lamp|lights)( on| off)\b|^(turn|switch|put|flip) (on|off) (the |my )?(flashlight|torch|flash|light|lamp|lights)\b""",
         ToolName.FLASHLIGHT to """^(flashlight|torch)( on| off)?$|^lights? (on|off)$|^(allume|eteins|allumer|eteindre)( la| le| ma| mon)? (lampe|torche|flash|lumiere)\b""",
@@ -122,19 +142,23 @@ object ChatOnly {
 
     /** Questions only the phone's tools can answer (the weather, your calendar, contacts, notes, the phone, the nearest place). */
     private val QUESTIONS: List<Pair<ToolName, Regex>> = listOf(
-        ToolName.WEATHER to """^(whats|what is|hows|how is|what will|whats going to be)( be)? the (weather|forecast|temperature)\b|^(weather|forecast)( for| in| at| today| tomorrow| tonight| this| on| next|$)""",
+        ToolName.WEATHER to """^(whats|what is|hows|how is|what will|whats going to be)( be)? the (weather\b|forecast( (in|at|on|today|tomorrow|tonight|this|next|like)\b| for $NOT_PLACE|$)|""" +
+            """temperature( (outside|out|today|tomorrow|tonight|now|right now|here|there|this (morning|afternoon|evening|week|weekend))\b| in $NOT_PLACE\S+( \S+)?$|$))|""" +
+            """^weather( for| in| at| today| tomorrow| tonight| this| on| next|$)|^forecast( (in|at|on|today|tomorrow|tonight|this|next)\b| for $NOT_PLACE|$)""",
         ToolName.WEATHER to """^(check|get|give me|tell me|show me|read me)( the)? (weather|forecast)\b|^(will|is) it (going to )?(rain|snow|storm)\b|^do i need (an |a )?(umbrella|coat|jacket)\b""",
-        ToolName.WEATHER to """^(how hot|how cold|how warm) (is it|will it be)\b|^(quel temps|quelle meteo|meteo)\b|^(va t il|est ce qu il va|il va) (pleuvoir|neiger)\b""",
-        ToolName.READ_CALENDAR to """^(whats|what is|whats on|what do i have|do i have anything|anything) (on )?(my )?(calendar|agenda|schedule)\b|^(whats|what is) on (for )?(today|tomorrow|tonight|this|next|$DAY)\b""",
-        ToolName.READ_CALENDAR to """^what do i have (on |going on )?(today|tomorrow|tonight|this|next|on|$DAY)\b|^(am i|are we) (free|busy|available)( today| tomorrow| tonight| this| next| on| at| $DAY|$)|^when is my next (appointment|meeting|event)\b""",
-        ToolName.READ_CALENDAR to """^(check|read|show|open)( me)? my (calendar|agenda|schedule|appointments)\b|^(qu est ce que j ai|quoi de prevu|j ai quoi)\b|^(suis je|je suis) (libre|occupe)\b""",
-        ToolName.LOOKUP_CONTACT to """^(whats|what is)( \S+){0,2} \S+s (phone number|number|phone|email address|email|e mail|address|birthday)\b""",
-        ToolName.LOOKUP_CONTACT to """^(look up|lookup|find|get|give me|show me)( me)?( \S+){0,2} \S+s (phone number|number|phone|email address|email|address)\b""",
+        ToolName.WEATHER to """^(how hot|how cold|how warm) (is it|will it be)\b(?! (safe|ok|okay|alright|dangerous|normal|healthy|too|bad|good|for|to|when|if)\b)|""" +
+            """^quel temps( (fait il|fera t il|va t il faire|il fait|il va faire|il fera|est prevu|prevu|aujourd ?hui|demain|ce (soir|matin|week end|weekend)|""" +
+            """cette semaine|a \S+|$DAY)\b|$)|^(quelle meteo|meteo)\b|^(va t il|est ce qu il va|il va) (pleuvoir|neiger)\b""",
+        ToolName.READ_CALENDAR to """^(whats|what is|whats on|what do i have|do i have anything|anything) (on )?(my )?(calendar|agenda|schedule)\b|^(whats|what is) on (for )?($WHEN)\b""",
+        ToolName.READ_CALENDAR to """^what do i have (going on |on |planned |scheduled )?($WHEN)\b|^what do i have (going )?on$|^(am i|are we) (free|busy|available)( today| tomorrow| tonight| this| next| on| at| $DAY|$)|^when is my next (appointment|meeting|event)\b""",
+        ToolName.READ_CALENDAR to """^(check|read|show|open)( me)? my (calendar|agenda|schedule|appointments)\b|^(qu est ce que j ai|j ai quoi) ($QUAND)\b|^quoi de prevu\b|^(suis je|je suis) (libre|occupe)\b""",
+        ToolName.LOOKUP_CONTACT to """^(whats|what is)( my)?( $NAME)? ${NAME}s (phone number|number|phone|email address|email|e mail|address|birthday)\b""",
+        ToolName.LOOKUP_CONTACT to """^(look up|lookup|find|get|give me|show me)( me)?( my)?( $NAME)? ${NAME}s (phone number|number|phone|email address|email|address)\b""",
         ToolName.FIND_NOTES to """^(find|show|read|search|open|list|check)( me)? (my )?notes\b|^(what|whats) (are|is)? ?(in |on )?my (notes|\S+ list|list)\b|^what did i (note|write down|save)\b""",
         ToolName.FIND_NOTES to """^(montre|lis|cherche|trouve)( moi)? (mes )?notes\b""",
         ToolName.PHONE_STATUS to """^how much (battery|charge|storage|free space)\b|^(whats|what is) (my |the )?(battery|storage|free space)\b|^(battery|storage) (level|left|status|percentage)\b""",
         ToolName.PHONE_STATUS to """^combien (de batterie|d espace|de stockage)\b""",
-        ToolName.MAPS_SEARCH to """^(where is|wheres) (the )?(nearest|closest)\b|^how do i get to\b|^(is there|are there) (a |an |any )?\S+( \S+)? (near me|nearby|around here|close by)\b""",
+        ToolName.MAPS_SEARCH to """^(where is|wheres) (the )?(nearest|closest)\b|^how do i get to (the )?(nearest|closest)\b|^(is there|are there) (a |an |any )?\S+( \S+)? (near me|nearby|around here|close by)\b""",
         ToolName.MAPS_SEARCH to """^ou est (le |la |l )?plus proche\b|^(ou est|ou se trouve) (le |la |l )?\S+ le plus proche\b""",
     ).map { (t, p) -> t to Regex(p) }
 }

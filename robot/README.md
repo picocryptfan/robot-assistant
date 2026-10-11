@@ -116,7 +116,10 @@ answers" applies as you set it.
   in Settings › Model.", spoken without the "›", and a notice "For actions, choose Fast in Settings › Model." whose **Open
   Model** button opens Settings › Model. Robot never switches the model for you. The list is narrow on purpose
   (`ChatOnly.actionAsked`, tested both ways): "Open wound on my knee, should I cover it?", "light sensitivity and a
-  headache", "can cold weather trigger asthma?" go to the model, which is told it can't act and says so if asked.
+  headache", "can cold weather trigger asthma?", "what do I have on my arm?", "what's on this X-ray?", "what is the
+  temperature for a fever?", "how do I get to sleep faster?" go to the model, which is told it can't act and says so if
+  asked. A calendar question names its day ("what do I have today", "what's on this week"), a weather question about the
+  temperature asks about outside, a time or a place, and "how do I get to…" counts only for the nearest place.
 - **Logs** (codes and numbers only): `brain_load` adds `maxTokens` and `chatOnly`, `brain_ready` `chatOnly`, the panel
   `chat_only_action` (which tool the request named), :brain `brain_calls_dropped`.
 

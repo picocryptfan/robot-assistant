@@ -54,8 +54,51 @@ class ChatOnlyTest {
             "How much battery do I have left?" to ToolName.PHONE_STATUS,
             "free up some space" to ToolName.FREE_STORAGE,
             "close the YouTube app" to ToolName.FREE_MEMORY,
+            "What do I have on Monday?" to ToolName.READ_CALENDAR,
+            "what's on this week" to ToolName.READ_CALENDAR,
+            "Qu'est-ce que j'ai de prévu demain ?" to ToolName.READ_CALENDAR,
+            "What's the temperature outside?" to ToolName.WEATHER,
+            "what's the temperature in Paris" to ToolName.WEATHER,
+            "directions to the hospital" to ToolName.MAPS_NAVIGATE,
+            "what's John Smith's number" to ToolName.LOOKUP_CONTACT,
         )
         for ((q, tool) in asked) assertEquals(q, tool, ChatOnly.actionAsked(q))
+    }
+
+    /**
+     * A photo or a body is no calendar, a fever's temperature no forecast, a blood count no contact: these words of an
+     * action in a medical question never turn it away (and a question about a photo least of all).
+     */
+    @Test fun medicalQuestionsWithAnActionsWordsGoToTheModel() {
+        for (q in listOf(
+            "What do I have on my arm?",
+            "what do I have on my skin",
+            "What do I have? This rash on my leg itches",
+            "What's on this X-ray?",
+            "what is on this photo",
+            "Qu'est-ce que j'ai au bras ?",
+            "qu'est-ce que j'ai",
+            "J'ai quoi comme maladie ?",
+            "What is the temperature for a fever?",
+            "what is the temperature of a healthy adult",
+            "what's the temperature in children with a fever",
+            "whats the forecast for recovery after knee surgery",
+            "How do I get to sleep faster?",
+            "How hot is it safe for a sauna when pregnant?",
+            "how cold is it dangerous for a baby",
+            "Quel temps de récupération après une entorse ?",
+            "quel temps faut-il pour guérir",
+            "What is the white cells number?",
+            "what is a normal platelets number",
+            "look at this mole, is there another one close by",
+            "open angle glaucoma",
+            "open pneumothorax",
+            "text neck",
+            "mail order pharmacy",
+            "directions for use of amoxicillin",
+            "Directions to take metformin",
+            "route for insulin injection",
+        )) assertNull(q, ChatOnly.actionAsked(q))
     }
 
     /** Questions for the model: about the body, symptoms, medicines and the like, even with an action's word in them. */
