@@ -180,6 +180,13 @@ object FakeLiteRtLm {
         pbBytes(2, pbBytes(1, pbStr(1, "\u0001"))) + (if (maxTokens > 0) pbInt(5, maxTokens.toLong()) else ByteArray(0)) +
             pbBytes(6, modelType) + pbStr(7, "{{ messages }}")
 
+    /**
+     * gemma3n with its image tokens and image size, as MedGemma 1.5 4B's LiteRT-LM files have it (read from the vision
+     * file's header, 0.4.3): no tool tokens.
+     */
+    fun gemma3n(): ByteArray = pbBytes(2, pbBytes(1, pbStr(2, "<start_of_image>")) + pbBytes(2, pbStr(2, "<end_of_image>")) +
+        pbInt(3, 896) + pbInt(4, 896))
+
     /** generic_model, empty (as the renamed "Tensor G5" CPU export has it). */
     val GENERIC: ByteArray get() = pbBytes(1, ByteArray(0))
 }

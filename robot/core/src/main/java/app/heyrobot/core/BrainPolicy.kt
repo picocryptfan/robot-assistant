@@ -9,9 +9,15 @@ import java.util.Locale
 /**
  * How tools reach the model, best last. :brain starts at [TOOLS_CONSTRAINED] and steps down for
  * the rest of the process (or until another model loads, 0.4.1) only when the build's tool-call parser rejects a level ([EngineErrors.isToolParseError]),
- * never because of other errors (a full context, a native failure).
+ * never because of other errors (a full context, a native failure). [CHAT_ONLY] (0.4.3) is no level of that ladder: a
+ * short-context model gets it for as long as it is loaded, and nothing steps to it or from it.
  */
 enum class ToolMode {
+    /**
+     * 0.4.3, a model loaded with less than 4,096 tokens of context (ContextWindow.chatOnly): no tools described, no
+     * text-call hint, no constrained decoding, and any call it makes anyway is dropped (BrainPolicy.acceptsCalls).
+     */
+    CHAT_ONLY,
     /** No tool API: the system prompt shows the call syntax and the app reads a reply that is nothing but calls. */
     TEXT_CALLS,
     /** LiteRT-LM tools, no constrained decoding. */
@@ -19,8 +25,16 @@ enum class ToolMode {
     /** LiteRT-LM tools with conversation constrained decoding. */
     TOOLS_CONSTRAINED;
 
-    /** The next level down, or null at the bottom. */
-    val lower: ToolMode? get() = entries.getOrNull(ordinal - 1)
+    /** A level of the tool ladder (every mode but [CHAT_ONLY]). */
+    val tools: Boolean get() = this != CHAT_ONLY
+
+    /** The next level down, or null at the bottom (and for [CHAT_ONLY], which is off the ladder). */
+    val lower: ToolMode? get() = if (this == CHAT_ONLY || this == TEXT_CALLS) null else entries[ordinal - 1]
+
+    companion object {
+        /** The ladder's levels: TEXT_CALLS, TOOLS, TOOLS_CONSTRAINED. */
+        val LEVELS: Int = entries.count { it.tools }
+    }
 }
 
 /** Classifies LiteRT-LM's error messages (the messages themselves are never logged). */
@@ -73,9 +87,28 @@ object BrainPolicy {
      * group rebuilds it once), it runs at the current tool level, and the engine's own count leaves room for the new
      * turn and a reply.
      */
-    fun canReuse(live: LiveConv?, historyCount: Int, system: String, mode: ToolMode, newTurnTokens: Int, tools: List<String> = Prompt.CORE_TOOLS.map { it.id }): Boolean =
+    fun canReuse(live: LiveConv?, historyCount: Int, system: String, mode: ToolMode, newTurnTokens: Int, tools: List<String> = Prompt.CORE_TOOLS.map { it.id },
+        maxTokens: Int = ContextWindow.MAX_TOKENS): Boolean =
         live != null && !live.dirty && !live.awaitingTool && live.historyCount == historyCount && live.system == system &&
-            live.mode == mode && live.tools == tools && !ContextWindow.needsRebuild(live.tokens, newTurnTokens)
+            live.mode == mode && live.tools == tools && !ContextWindow.needsRebuild(live.tokens, newTurnTokens, maxTokens)
+
+    /**
+     * The tool level a conversation is built at: [ToolMode.CHAT_ONLY] for a model loaded with a short context (0.4.3),
+     * else the engine's current level [level] (which only the tool-parse error lowers).
+     */
+    fun modeFor(maxTokens: Int, level: ToolMode): ToolMode = if (ContextWindow.chatOnly(maxTokens)) ToolMode.CHAT_ONLY else level
+
+    /** The tools described to a conversation at [mode]: none in chat only, whatever the request lists. */
+    fun toolsFor(mode: ToolMode, requested: List<ToolName>): List<ToolName> = if (mode.tools) requested else emptyList()
+
+    /** Whether a call the model makes at [mode] reaches the app: never in chat only (no tool was described to it). */
+    fun acceptsCalls(mode: ToolMode): Boolean = mode.tools
+
+    /**
+     * The history a conversation at [mode] is built from: chat only, strictly alternating ([Prompt.alternate]), as the
+     * chat templates of models other than Gemma 4 insist; otherwise as the app sent it.
+     */
+    fun historyFor(mode: ToolMode, history: List<PromptTurn>): List<PromptTurn> = if (mode.tools) history else Prompt.alternate(history)
 
     /** What GemmaEngine does next. */
     sealed class Next {
@@ -93,7 +126,7 @@ object BrainPolicy {
     fun afterCreateError(msg: String?, mode: ToolMode, historyTurns: Int, historyBudget: Int, attempt: Int): Next {
         val lower = mode.lower
         return when {
-            attempt >= MAX_REBUILDS + ToolMode.entries.size -> Next.Fail(BrainError.ENGINE)
+            attempt >= MAX_REBUILDS + ToolMode.LEVELS -> Next.Fail(BrainError.ENGINE)
             EngineErrors.isContextFull(msg) -> if (historyTurns > 0) Next.Shorten(historyBudget / 2) else Next.Fail(BrainError.TOO_LONG)
             lower != null && EngineErrors.isToolSetupError(msg) -> Next.StepDown(lower)
             else -> Next.Fail(BrainError.ENGINE)
@@ -176,7 +209,7 @@ object EngineTeardown {
 }
 
 /**
- * 0.4.4: the two engines :brain can run, by the kind of file asked for: LiteRT-LM (Robot's models and your own .litertlm)
+ * 0.4.5: the two engines :brain can run, by the kind of file asked for: LiteRT-LM (Robot's models and your own .litertlm)
  * and llama.cpp (your own .gguf). Still one engine in the process: the other one lets its model go before this one loads,
  * and the process's one engine slot (EngineTeardown.forLoad) keeps the new one waiting until it has.
  */
@@ -202,10 +235,11 @@ object EngineSwitch {
 }
 
 /**
- * llama.cpp's prompt (0.4.4): the conversation formatted by the model's own template is counted by the model's own
- * tokenizer, and must leave the reply its room in Robot's 4,096 tokens ([ContextWindow]); else older turns go first, as
- * with LiteRT-LM (at most [BrainPolicy.MAX_REBUILDS] times, then all of them). A question alone that the app's estimate let
- * through but the real count doesn't still gets a shorter reply when at least [MIN_REPLY] tokens are left.
+ * llama.cpp's prompt (0.4.5): the conversation formatted by the model's own template is counted by the model's own
+ * tokenizer, and must leave the reply its room in the model's context ([ContextWindow]: 4,096 tokens, or a short file's
+ * own, chat only); else older turns go first, as with LiteRT-LM (at most [BrainPolicy.MAX_REBUILDS] times, then all of
+ * them). A question alone that the app's estimate let through but the real count doesn't still gets a shorter reply when
+ * at least [MIN_REPLY] tokens are left.
  */
 object PromptFit {
     const val MIN_REPLY = 128
@@ -238,12 +272,15 @@ object PromptFit {
         return out
     }
 
-    /** [realTokens]: the whole prompt as the model's tokenizer counts it; [historyTurns] of history in it, chosen within [budget]. */
-    fun after(realTokens: Int, historyTurns: Int, budget: Int, rebuilds: Int): Step = when {
-        realTokens + ContextWindow.REPLY_RESERVE <= ContextWindow.MAX_TOKENS -> Step.Send
-        historyTurns > 0 && rebuilds < BrainPolicy.MAX_REBUILDS -> Step.Shorten(ContextWindow.shrink(budget, realTokens, 0) ?: 0)
+    /**
+     * [realTokens]: the whole prompt as the model's tokenizer counts it; [historyTurns] of history in it, chosen within
+     * [budget]; [maxTokens]: the context the model was loaded with.
+     */
+    fun after(realTokens: Int, historyTurns: Int, budget: Int, rebuilds: Int, maxTokens: Int = ContextWindow.MAX_TOKENS): Step = when {
+        realTokens + ContextWindow.replyReserve(maxTokens) <= maxTokens -> Step.Send
+        historyTurns > 0 && rebuilds < BrainPolicy.MAX_REBUILDS -> Step.Shorten(ContextWindow.shrink(budget, realTokens, 0, maxTokens) ?: 0)
         historyTurns > 0 -> Step.Shorten(0)
-        realTokens + MIN_REPLY <= ContextWindow.MAX_TOKENS -> Step.Send
+        realTokens + MIN_REPLY <= maxTokens -> Step.Send
         else -> Step.TooLong
     }
 }

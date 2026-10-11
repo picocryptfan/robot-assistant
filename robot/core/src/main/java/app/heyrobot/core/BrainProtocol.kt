@@ -78,9 +78,10 @@ sealed class BrainMsg {
 
     // ---------------------------------------------------------------- requests
     /**
-     * Load [model]'s file at [path] on [backend] with a context of [maxTokens] (0.4.1: the catalogue entry's), a file of
-     * [format] (0.4.4: a GGUF file runs with llama.cpp). :brain unloads any other model first, by either engine: one engine
-     * in the process.
+     * Load [model]'s file at [path] on [backend] with a context of [maxTokens] (0.4.1: the catalogue entry's; 0.4.3: your
+     * own file's when it is shorter, chat only), a file of [format] (a GGUF file runs with llama.cpp). :brain unloads any
+     * other model first, by either engine: one engine in the process; and loads only with the context LoadCheck expects
+     * for that file.
      */
     data class Load(
         val path: String,
@@ -103,7 +104,7 @@ sealed class BrainMsg {
         val hasImage: Boolean,
         /** The tools this conversation describes (ToolRouter: its groups, minus what's turned off), by id. */
         val tools: List<String> = Prompt.CORE_TOOLS.map { it.id },
-        /** Settings › Model › "Let the model think first" (0.4.4): :brain tells a model that can think whether it may (core Thinking). */
+        /** Settings › Model › "Let the model think first" (0.4.5): :brain tells a model that can think whether it may (core Thinking). */
         val think: Boolean = false,
     ) : BrainMsg() {
         override fun toJson() = JSONObject().apply {
@@ -136,14 +137,16 @@ sealed class BrainMsg {
     }
 
     // ---------------------------------------------------------------- events
-    /** [model], [backend] and [format]: what is loaded (null when nothing is). */
+    /** [model], [backend], [maxTokens] (its context, 0.4.3) and [format]: what is loaded (null and 0 when nothing is). */
     data class Status(
         val loaded: Boolean, val vision: Boolean, val constrained: Boolean, val busy: Boolean,
-        val model: BrainModel? = null, val backend: ModelBackend? = null, val format: ModelFormat? = null,
+        val model: BrainModel? = null, val backend: ModelBackend? = null, val maxTokens: Int = 0,
+        val format: ModelFormat? = null,
     ) : BrainMsg() {
         override fun toJson() = JSONObject().put("loaded", loaded).put("vision", vision).put("constrained", constrained).put("busy", busy).apply {
             model?.let { put("model", it.id) }
             backend?.let { put("backend", it.id) }
+            if (maxTokens > 0) put("maxTokens", maxTokens)
             format?.let { put("format", it.id) }
         }
     }
@@ -225,7 +228,8 @@ sealed class BrainMsg {
                 BrainProtocol.REQ_CLOSE_CONV -> CloseConv(o.getString("convId"))
                 BrainProtocol.REQ_STATUS, BrainProtocol.REQ_UNLOAD, BrainProtocol.EV_UNLOADED -> Empty
                 BrainProtocol.EV_STATUS -> Status(o.optBoolean("loaded"), o.optBoolean("vision"), o.optBoolean("constrained"), o.optBoolean("busy"),
-                    BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")), ModelFormat.of(o.optString("format")))
+                    BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")), o.optInt("maxTokens", 0).coerceAtLeast(0),
+                    ModelFormat.of(o.optString("format")))
                 BrainProtocol.EV_LOADED -> Loaded(o.optBoolean("ok"), o.optBoolean("vision"), o.optLong("loadMs"), o.optString("error").takeIf { o.has("error") },
                     BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")),
                     LoadFailure.entries.firstOrNull { it.name == o.optString("failure") }, ModelFormat.of(o.optString("format")))

@@ -9,7 +9,7 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Build check (source, Gradle and merged-manifest scan), as the probe's: LiteRT-LM lives only in :brain's
- * GemmaEngine.kt and runs only in the :brain process (0.4.4: llama.cpp too, loaded only by :brain's LlamaNative.kt and
+ * GemmaEngine.kt and runs only in the :brain process (0.4.5: llama.cpp too, loaded only by :brain's LlamaNative.kt and
  * built only by tools/build_llama.sh); sherpa-onnx lives only in the :voice module and runs
  * only in the :voice process; nothing the main (UI) process runs refers to either. Also: the components
  * sit in their processes, the recognizer stays discoverable (the restart finding), exported components
@@ -51,7 +51,7 @@ class ProcessIsolationTest {
         // Speech to text and text to speech (the voice plan's Kotlin API files) are sherpa-onnx too.
         assertTrue(users.toString(), users.containsAll(listOf("voice/voice/SherpaSpeechToText.kt", "voice/voice/SherpaTextToSpeech.kt")))
         for (f in listOf("OfflineRecognizer.kt", "OfflineStream.kt", "Tts.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
-        // Only the copied sherpa-onnx API loads its native library (and, 0.4.4, :brain's llama.cpp bridge loads Robot's own).
+        // Only the copied sherpa-onnx API loads its native library (and, 0.4.5, :brain's llama.cpp bridge loads Robot's own).
         assertEquals(listOf("brain/brain/LlamaNative.kt"), usersOf(Regex("""System\.load(Library)?\s*\(""")))
         val sherpa = sources(File(java("voice"), "com/k2fsa"))
         assertTrue(sherpa.any { Regex("""System\.loadLibrary\("sherpa-onnx-jni"\)""").containsMatchIn(it.readText()) })
@@ -172,8 +172,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("42", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.4.2", m.getAttributeNS(ns, "versionName"))
+        assertEquals("44", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.4.4", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
@@ -248,7 +248,7 @@ class ProcessIsolationTest {
     }
 
     /**
-     * 0.4.4, your own GGUF file: llama.cpp lives only in the :brain module and runs only in the :brain process. One library,
+     * 0.4.5, your own GGUF file: llama.cpp lives only in the :brain module and runs only in the :brain process. One library,
      * librobot_llama.so, built from the pinned llama.cpp source and Robot's committed JNI bridge by tools/build_llama.sh
      * (never by Gradle), loaded by LlamaNative.kt alone, reached only through LlamaEngine and :brain's Engines; nothing of the
      * voice or main process refers to either. Its JNI functions are exactly LlamaNative's external functions.

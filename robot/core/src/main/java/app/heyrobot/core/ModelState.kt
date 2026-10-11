@@ -7,7 +7,7 @@ import java.util.Locale
 // (app) gathers the facts from the phone; this decides.
 
 /**
- * What kind of model file it is, by its first bytes (never its name), and so which engine runs it (0.4.4): LiteRT-LM
+ * What kind of model file it is, by its first bytes (never its name), and so which engine runs it (0.4.5): LiteRT-LM
  * (Robot's built-in models, and your own .litertlm) or llama.cpp (your own .gguf, on the CPU). [id] is what
  * BrainMsg.Load carries to :brain.
  */
@@ -44,7 +44,7 @@ enum class ModelBackend(val id: String, val title: String) {
 
 /**
  * The models Robot can run (Settings › Model). The three built-in ones download from Hugging Face only when you ask,
- * pinned by commit, size and SHA-256, and the hash is checked before a file is ever loaded. [OWN] is a .litertlm or (0.4.4)
+ * pinned by commit, size and SHA-256, and the hash is checked before a file is ever loaded. [OWN] is a .litertlm or (0.4.5)
  * .gguf file you import; Robot checks what is inside it (LiteRtLmCheck, GgufCheck), never its name. [FAST] is the model
  * of 0.4.0, byte for byte, and the default.
  *
@@ -54,7 +54,8 @@ enum class ModelBackend(val id: String, val title: String) {
  *
  * [contextTokens] is the context :brain asks for (maxNumTokens); every entry uses 4,096, the prompt budget
  * ([ContextWindow.MAX_TOKENS]). The CPU files could take more, but prompt reading at about 70 tokens a second makes a
- * longer context slow, so it stays 4,096 until the phone tests say otherwise.
+ * longer context slow, so it stays 4,096 until the phone tests say otherwise. [OWN]'s is the most it gets: since 0.4.3 a
+ * file built for 2,048 to 4,095 tokens loads with its own context instead, as chat only (LiteRtLmReport.contextTokens).
  */
 enum class BrainModel(
     val id: String,
@@ -179,7 +180,7 @@ object ModelFiles {
     /** Your own file's record (core OwnModel), written by the main app after the check. */
     const val OWN_RECORD = "own_model.json"
 
-    /** Your own file when it is a GGUF file (0.4.4); a LiteRT-LM file keeps BrainModel.OWN.file. */
+    /** Your own file when it is a GGUF file (0.4.5); a LiteRT-LM file keeps BrainModel.OWN.file. */
     const val OWN_GGUF = "own_model.gguf"
 
     /** Your own file's name in Robot's storage for its [format]. */
@@ -336,7 +337,7 @@ object ModelLogic {
     /**
      * Null when an import of [docBytes] (-1 = the picker didn't say) into [m] may start, else why not. A built-in model
      * takes only its own file (the exact size, then the SHA-256); your own file any size from [OWN_MIN_BYTES]. [gguf]: the
-     * picked file starts like a GGUF file (0.4.4), which needs no room for a cache.
+     * picked file starts like a GGUF file (0.4.5), which needs no room for a cache.
      */
     fun refuseImport(m: BrainModel, status: ModelStatus, docBytes: Long, freeBytes: Long, reclaimableBytes: Long, pendingBytes: Long = 0, busyWith: BrainModel? = null,
         gguf: Boolean = false): String? = when {
@@ -395,32 +396,43 @@ enum class ModelAvailability {
 
 /**
  * What :brain is asked to load: the file, where it runs, its context, the file's fingerprint (size and time), and its
- * kind (0.4.4: which engine runs it).
+ * kind (which engine runs it: a GGUF file llama.cpp). [contextTokens] under 4,096 means chat only
+ * ([ContextWindow.chatOnly]), whichever engine runs it. [vision]: the file has a vision encoder (every built-in model
+ * does; your own file as its check found; never a GGUF file).
  */
 data class LoadPlan(
     val model: BrainModel, val path: String, val backend: ModelBackend, val contextTokens: Int, val fingerprint: String,
-    val format: ModelFormat = ModelFormat.LITERT_LM,
-)
+    val vision: Boolean = true, val format: ModelFormat = ModelFormat.LITERT_LM,
+) {
+    val chatOnly: Boolean get() = ContextWindow.chatOnly(contextTokens)
+}
 
 /**
  * :brain's own say before it loads a model, whatever the assistant asked for (0.4.1): it reads the app's own records
  * again rather than trust the request. A built-in model loads only where it runs, and only from the file whose SHA-256
  * the app checked (its verified mark matches the file now); your own file only as the app recorded it after its check,
- * unchanged since, and on the TPU only once you allowed it there; 0.4.4: and only by the engine for its kind of file (a
- * GGUF file by llama.cpp, on the CPU). (The content check then reads the file's header.)
+ * unchanged since, and on the TPU only once you allowed it there. (The content check then reads the file's header.)
+ * 0.4.3: and only with the context Robot's prompts are made for: 4,096 for a built-in model, your own file's
+ * ([OwnModel.contextTokens], from its record; :brain compares the header it reads too). And only by the engine for its
+ * kind of file (a GGUF file by llama.cpp, on the CPU).
  */
 object LoadCheck {
     const val CHANGED = "The model file changed since Robot checked it. Open the Robot app › Model to check it again."
 
+    /** The context asked for isn't the one Robot's prompts are made for with this file. */
+    fun wrongContext(expected: Int): String = "Robot's prompts are made for $expected tokens of context with this model."
+
     /**
-     * Null when [m] may load on [backend] as a file of [format]; else why not, in plain words. [fingerprintNow]: the file's
-     * now ([ModelFiles.fingerprint]); [mark]: the built-in model's verified mark; [ownRecord]: your own file's record.
+     * Null when [m] may load on [backend] with a context of [maxTokens] as a file of [format]; else why not, in plain
+     * words. [fingerprintNow]: the file's now ([ModelFiles.fingerprint]); [mark]: the built-in model's verified mark;
+     * [ownRecord]: your own file's record.
      */
     fun refuse(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?,
-        format: ModelFormat = ModelFormat.LITERT_LM): String? {
+        maxTokens: Int = ContextWindow.MAX_TOKENS, format: ModelFormat = ModelFormat.LITERT_LM): String? {
         if (m.builtIn) {
             if (format != ModelFormat.LITERT_LM) return "“${m.title}” is a LiteRT-LM file."
             if (backend != m.backend) return "“${m.title}” runs on the ${m.backend.title} only."
+            if (maxTokens != m.contextTokens) return wrongContext(m.contextTokens)
             return if (mark?.trim() == "${m.sha256}|$fingerprintNow") null else CHANGED
         }
         val own = OwnModel.fromJson(ownRecord) ?: return CHANGED
@@ -429,12 +441,26 @@ object LoadCheck {
         if (own.format != format) return CHANGED
         val where = own.backend
         return when {
-            where == backend -> null
+            where == backend -> if (maxTokens == own.contextTokens) null else wrongContext(own.contextTokens)
             where == null && own.tensorG5Build -> "Your model file waits for you to allow the TPU in the Robot app › Model."
             where == null -> own.unusable ?: "Robot can't run your model file on this phone."
             else -> "Your model file runs on the ${where.title}, not the ${backend.title}."
         }
     }
+}
+
+/**
+ * One factual line for a model whose name says MedGemma (0.4.3; your own file's name, or a catalogue entry's): shown on
+ * Settings › Model, never added to answers (Settings › "Direct answers" stays as you set it). The name is for the
+ * screen only: it never decides what Robot trusts or allows.
+ */
+object ModelNotes {
+    const val MEDICAL = "Not a medical device: check health information with a professional."
+
+    /** "MedGemma", "medgemma-1.5-4b-it…", "Med-Gemma", "med_gemma": any case, any separators. */
+    fun medical(name: String?): Boolean = name != null && name.lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }.contains("medgemma")
+
+    fun of(name: String?): String? = if (medical(name)) MEDICAL else null
 }
 
 /** Why Robot used Fast instead of the model you chose (the voice log stores [id]). */

@@ -16,6 +16,7 @@ import app.heyrobot.core.BrainModel
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.BrainWire
+import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.FallbackWhy
 import app.heyrobot.core.LoadFailure
 import app.heyrobot.core.LoadPlan
@@ -219,12 +220,19 @@ object BrainKeeper {
         /** The model loaded (READY) or loading, and where it runs. */
         val model: BrainModel? = null,
         val backend: ModelBackend? = null,
-        /** 0.4.4: the model reads text only (a GGUF file, run by llama.cpp): it can't see a photo or the screen. */
+        /** The model reads text only (a GGUF file, run by llama.cpp): it can't see a photo or the screen. */
         val textOnly: Boolean = false,
+        /** Its context (0.4.3): under 4,096 it is chat only ([chatOnly]), whichever engine runs it. */
+        val contextTokens: Int = ContextWindow.MAX_TOKENS,
+        /** Its file has a vision encoder (your own file as its check found; every built-in model does; a GGUF file never). */
+        val fileVision: Boolean = true,
         /** Robot is using Fast instead of the model you chose, and why (the panel shows it once per [fallbackSeq]). */
         val fallback: String? = null,
         val fallbackSeq: Int = 0,
-    )
+    ) {
+        /** A short-context model: a compact prompt, no tools, Robot's own answer to a request for an action (core ChatOnly). */
+        val chatOnly: Boolean get() = ContextWindow.chatOnly(contextTokens)
+    }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
@@ -293,10 +301,14 @@ object BrainKeeper {
         val m = plan.model
         val st = c.call(BrainProtocol.REQ_STATUS, BrainMsg.Empty, 10_000) as? BrainMsg.Status
         val textOnly = plan.format == ModelFormat.GGUF
-        if (st?.loaded == true && st.model == m && st.backend == plan.backend && (st.format ?: ModelFormat.LITERT_LM) == plan.format) {
+        // The same model with the same context (0.4.3: a file checked again may now say another) and the same kind of file
+        // (the engine that runs it): kept, else loaded again.
+        if (st?.loaded == true && st.model == m && st.backend == plan.backend && st.maxTokens == plan.contextTokens &&
+            (st.format ?: ModelFormat.LITERT_LM) == plan.format) {
             holding = plan
             noteFallback(load.instead, load.why, detail)
-            _state.value = State(Readiness.READY, vision = st.vision, model = m, backend = plan.backend, textOnly = textOnly).withFallback()
+            _state.value = State(Readiness.READY, vision = st.vision, model = m, backend = plan.backend, textOnly = textOnly,
+                contextTokens = plan.contextTokens, fileVision = plan.vision).withFallback()
             return c
         }
         if (st?.loaded == true) {
@@ -306,13 +318,16 @@ object BrainKeeper {
         }
         noteFallback(load.instead, load.why, detail)
         holding = plan
-        _state.value = State(Readiness.LOADING, model = m, backend = plan.backend, textOnly = textOnly).withFallback()
+        _state.value = State(Readiness.LOADING, model = m, backend = plan.backend, textOnly = textOnly, contextTokens = plan.contextTokens,
+            fileVision = plan.vision).withFallback()
         val r = c.call(BrainProtocol.REQ_LOAD, BrainMsg.Load(plan.path, m, plan.backend, plan.contextTokens, plan.format), 300_000) as? BrainMsg.Loaded
         if (r?.ok == true) {
             if (m != BrainModel.FAST) failed.remove(m.id)
-            _state.value = State(Readiness.READY, vision = r.vision, model = m, backend = plan.backend, textOnly = textOnly).withFallback()
+            _state.value = State(Readiness.READY, vision = r.vision, model = m, backend = plan.backend, textOnly = textOnly,
+                contextTokens = plan.contextTokens, fileVision = plan.vision).withFallback()
             VoiceLog.add(VoiceEvent.MODEL_LOADED, ModelCode.of(m).id, BackendCode.of(plan.backend).id, r.loadMs.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
-            RLog.i("brain_ready", "loadMs" to r.loadMs, "vision" to r.vision, "model" to RLog.Code(m.id), "backend" to RLog.Code(plan.backend.id), "format" to plan.format)
+            RLog.i("brain_ready", "loadMs" to r.loadMs, "vision" to r.vision, "model" to RLog.Code(m.id), "backend" to RLog.Code(plan.backend.id),
+                "format" to plan.format, "chatOnly" to plan.chatOnly)
             return c
         }
         val failure = r?.failure ?: if (r == null) (if (c.isConnected) LoadFailure.TIMEOUT else LoadFailure.PROCESS) else LoadFailure.ENGINE

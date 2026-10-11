@@ -115,7 +115,7 @@ class MainActivity : ComponentActivity() {
     private fun routeOf(i: Intent?): String? = when {
         i == null -> null
         i.component?.className == AppPages.NOTES_ALIAS -> AppPages.NOTES
-        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS }
+        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.MODEL }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -195,7 +195,7 @@ data class Snapshot(
     val models: List<ModelStore.Snap> = emptyList(),
     val own: OwnModel? = null,
     val loaded: BrainModel? = null,
-    /** 0.4.4: this build has its llama.cpp library (tools/build_llama.sh), so your own GGUF file can run. */
+    /** 0.4.5: this build has its llama.cpp library (tools/build_llama.sh), so your own GGUF file can run. */
     val ggufEngine: Boolean = false,
     /** The voice models (speech recognition, voice, fast voice), in VoiceBundle order. */
     val voice: List<VoiceModelStore.Snap> = emptyList(),
@@ -322,6 +322,7 @@ fun RobotAppUi(activity: MainActivity) {
         when (route) {
             AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
             AppPages.PERMISSIONS -> page = Page.Setup(people = true)
+            AppPages.MODEL -> { tab = Tab.MODEL; page = null }
         }
         activity.route.value = null
     }

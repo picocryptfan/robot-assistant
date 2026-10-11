@@ -14,7 +14,7 @@ import java.nio.file.Files
 import java.util.Random
 
 /**
- * The GGUF content check (0.4.4, your own model file run by llama.cpp) on fake files shaped like unsloth's MedGemma 1.5 4B
+ * The GGUF content check (0.4.5, your own model file run by llama.cpp) on fake files shaped like unsloth's MedGemma 1.5 4B
  * and Qwen's Qwen3 1.7B, refusals, damaged and hostile headers, your own file's record, and :brain's load check.
  */
 class GgufTest {
@@ -45,7 +45,7 @@ class GgufTest {
         assertTrue(lines.contains("Quantisation: Q4_K_M."))
         assertTrue(lines.contains("Context: 131,072 tokens (Robot uses 4,096)."))
         assertTrue(lines.any { it.startsWith("Runs on the CPU with llama.cpp") })
-        assertTrue(lines.any { it.startsWith("Sees photos: no.") })
+        assertTrue(lines.any { it.startsWith("Can see photos: no.") })
         assertTrue(lines.any { it.contains("Robot's text format") && it.contains("may not work") })
         assertTrue(lines.any { it.contains("Licence the file names: “other”") })
         assertFalse(lines.any { it.contains("think") })
@@ -73,7 +73,9 @@ class GgufTest {
         assertTrue(why(FakeGguf.gguf(emptyList(), emptyList(), version = 4))!!.contains("version 4"))
         // A big-endian file reads its version 3 as 0x03000000.
         assertTrue(why(FakeGguf.gguf(emptyList(), emptyList(), version = 0x03000000))!!.contains("big-endian"))
-        assertEquals("It was trained for only 2048 tokens of context; Robot needs 4096.", why(FakeGguf.medgemma(context = 2048)))
+        assertEquals("It was trained for only 2047 tokens of context; Robot needs at least 2048 to chat (4096 for actions).",
+            why(FakeGguf.medgemma(context = 2047)))
+        assertNull(why(FakeGguf.medgemma(context = 2048)))
         assertNull(why(FakeGguf.medgemma(context = 4096)))
         assertTrue(why(FakeGguf.medgemma(template = null))!!.contains("no chat template"))
         assertTrue(why(FakeGguf.medgemma(template = "  "))!!.contains("no chat template"))
@@ -172,7 +174,8 @@ class GgufTest {
                 repeat(1 + rnd.nextInt(6)) { if (b.isNotEmpty()) b[rnd.nextInt(b.size)] = rnd.nextInt(256).toByte() }
                 val r = check(b, gb16)
                 // Whatever it found, a report that says it can run says why it is safe to try: read to the end, a known chat model.
-                if (r.unusable == null) assertTrue(r.readable && r.architecture in GgufCheck.ARCHITECTURES && r.chatTemplate && r.contextLength >= 4096)
+                if (r.unusable == null) assertTrue(r.readable && r.architecture in GgufCheck.ARCHITECTURES && r.chatTemplate && r.contextLength >= 2048 &&
+                    r.contextTokens in 2048..4096)
             }
         }
     }
@@ -246,10 +249,13 @@ class GgufTest {
         assertEquals(ModelAvailability.NOT_CHECKED, m.availability("2489894976|2"))
         assertEquals(ModelAvailability.NOT_DOWNLOADED, m.availability(null))
         assertEquals(m.gguf!!.lines(), m.lines())
-        val bad = own(FakeGguf.medgemma(context = 2048))
+        assertEquals(4096, m.contextTokens)
+        assertFalse(m.shortContext || m.vision)
+        val bad = own(FakeGguf.medgemma(context = 1024))
         assertNull(bad.backend)
         assertEquals(ModelAvailability.UNUSABLE, bad.availability("2489894976|1"))
-        assertTrue(bad.unusable!!.contains("2048"))
+        assertTrue(bad.unusable!!.contains("1024"))
+        assertEquals(0, bad.contextTokens)
     }
 
     @Test fun aGgufRecordRoundTripsAndNeverGetsTheTpu() {
@@ -268,29 +274,66 @@ class GgufTest {
     }
 
     /**
-     * :brain's own check before a load (LoadCheck), 0.4.4: a GGUF file only as recorded after its check, unchanged since, on
+     * :brain's own check before a load (LoadCheck), 0.4.5: a GGUF file only as recorded after its check, unchanged since, on
      * the CPU, and only by llama.cpp (the request's kind of file must be the record's); a built-in model never as GGUF.
      */
     @Test fun brainLoadsAGgufFileOnlyAsTheAppCheckedIt() {
         val fp = "2489894976|1"
         val rec = own(FakeGguf.medgemma(), fp).toJson().toString()
         val o = BrainModel.OWN
-        assertNull(LoadCheck.refuse(o, ModelBackend.CPU, fp, null, rec, ModelFormat.GGUF))
-        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(o, ModelBackend.CPU, fp, null, rec, ModelFormat.LITERT_LM))
-        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(o, ModelBackend.CPU, "2489894976|2", null, rec, ModelFormat.GGUF))
-        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(o, ModelBackend.CPU, fp, null, null, ModelFormat.GGUF))
-        assertEquals("Your model file runs on the CPU, not the TPU.", LoadCheck.refuse(o, ModelBackend.TPU, fp, null, rec, ModelFormat.GGUF))
+        val gguf = ModelFormat.GGUF
+        assertNull(LoadCheck.refuse(o, ModelBackend.CPU, fp, null, rec, format = gguf))
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(o, ModelBackend.CPU, fp, null, rec, format = ModelFormat.LITERT_LM))
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(o, ModelBackend.CPU, "2489894976|2", null, rec, format = gguf))
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(o, ModelBackend.CPU, fp, null, null, format = gguf))
+        assertEquals("Your model file runs on the CPU, not the TPU.", LoadCheck.refuse(o, ModelBackend.TPU, fp, null, rec, format = gguf))
+        // Only with the context Robot's prompts are made for with it: 4,096 for a file trained for more.
+        assertEquals(LoadCheck.wrongContext(4096), LoadCheck.refuse(o, ModelBackend.CPU, fp, null, rec, 2048, gguf))
+        assertEquals(LoadCheck.wrongContext(4096), LoadCheck.refuse(o, ModelBackend.CPU, fp, null, rec, 8192, gguf))
         // A LiteRT-LM record asked for as GGUF: checked again first.
         val litert = OwnModel("x", 10, sha, fp, LiteRtLmReport(readable = true, decoder = true, modelType = "gemma4")).toJson().toString()
-        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(o, ModelBackend.CPU, fp, null, litert, ModelFormat.GGUF))
-        assertNull(LoadCheck.refuse(o, ModelBackend.CPU, fp, null, litert, ModelFormat.LITERT_LM))
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(o, ModelBackend.CPU, fp, null, litert, format = gguf))
+        assertNull(LoadCheck.refuse(o, ModelBackend.CPU, fp, null, litert, format = ModelFormat.LITERT_LM))
+        // A GGUF file trained for 2,048 to 4,095 tokens: only with exactly its own context (chat only, as a short .litertlm).
+        val short = own(FakeGguf.medgemma(context = 3000), fp).toJson().toString()
+        assertNull(LoadCheck.refuse(o, ModelBackend.CPU, fp, null, short, 3000, gguf))
+        for (n in listOf(2048, 2999, 3001, 4096)) assertEquals(LoadCheck.wrongContext(3000), LoadCheck.refuse(o, ModelBackend.CPU, fp, null, short, n, gguf))
         // A GGUF file Robot can't run: refused with the check's own reason.
-        val short = own(FakeGguf.medgemma(context = 2048), fp).toJson().toString()
-        assertTrue(LoadCheck.refuse(o, ModelBackend.CPU, fp, null, short, ModelFormat.GGUF)!!.contains("2048"))
+        val tiny = own(FakeGguf.medgemma(context = 1024), fp).toJson().toString()
+        for (n in listOf(1024, 2048, 4096)) assertTrue(LoadCheck.refuse(o, ModelBackend.CPU, fp, null, tiny, n, gguf)!!.contains("1024"))
         // Built-in models are LiteRT-LM files only.
         val mark = "${BrainModel.FAST.sha256}|$fp"
-        assertNotNull(LoadCheck.refuse(BrainModel.FAST, ModelBackend.TPU, fp, mark, null, ModelFormat.GGUF))
-        assertNull(LoadCheck.refuse(BrainModel.FAST, ModelBackend.TPU, fp, mark, null, ModelFormat.LITERT_LM))
+        assertNotNull(LoadCheck.refuse(BrainModel.FAST, ModelBackend.TPU, fp, mark, null, format = gguf))
+        assertNull(LoadCheck.refuse(BrainModel.FAST, ModelBackend.TPU, fp, mark, null, format = ModelFormat.LITERT_LM))
+    }
+
+    /**
+     * 0.4.5, as a short .litertlm (0.4.3): a GGUF file trained for 2,048 to 4,095 tokens runs with exactly its own context
+     * as chat only; the screen says so, its memory is for that context, and its plan asks :brain for it.
+     */
+    @Test fun aShortContextGgufFileRunsAsChatOnlyWithItsOwnContext() {
+        val r = check(FakeGguf.medgemma(context = 2048), gb16)
+        assertNull(r.unusable)
+        assertTrue(r.shortContext)
+        assertEquals(2048, r.contextTokens)
+        assertEquals(r.fileBytes + 34L * 4 * 512 * 2 * 2048 + GgufCheck.WORK_BYTES, r.memoryBytes)
+        val lines = r.lines()
+        assertTrue(lines.toString(), lines.contains("Short context (2,048 tokens): chat only — no actions, shorter memory."))
+        assertFalse(lines.any { it.startsWith("Context:") || it.contains("Robot's text format") })
+        assertTrue(lines.any { it.contains("cache for Robot's 2,048 tokens") })
+        val m = own(FakeGguf.medgemma(context = 3500))
+        assertEquals(3500, m.contextTokens)
+        assertTrue(m.shortContext)
+        assertFalse(m.vision)
+        assertEquals(ModelAvailability.READY, m.availability("2489894976|1"))
+        assertTrue(LoadPlan(BrainModel.OWN, "/x/own_model.gguf", ModelBackend.CPU, m.contextTokens, "1|1", m.vision, m.format).chatOnly)
+        // At 4,096 or more: Robot's full context, actions in text format.
+        for (c in listOf(4096L, 40_960L, 131_072L, Long.MAX_VALUE / 2)) {
+            val big = check(FakeGguf.medgemma(context = c), gb16)
+            assertEquals(4096, big.contextTokens)
+            assertFalse(big.shortContext)
+        }
+        assertTrue(check(FakeGguf.medgemma(context = 131_072), gb16).lines().contains("Context: 131,072 tokens (Robot uses 4,096)."))
     }
 
     @Test fun theArchitectureListIsLlamaCppsAtThePinnedTag() {

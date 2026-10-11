@@ -17,6 +17,7 @@ import app.heyrobot.core.EngineTeardown
 import app.heyrobot.core.Json
 import app.heyrobot.core.Limits
 import app.heyrobot.core.LiteRtLmCheck
+import app.heyrobot.core.LiteRtLmReport
 import app.heyrobot.core.LiveConv
 import app.heyrobot.core.LoadCheck
 import app.heyrobot.core.LoadFailure
@@ -66,9 +67,12 @@ import java.util.concurrent.CancellationException
 // folder for XNNPACK's weight cache (about 2.5 GB, written on the first load). MTP and the sampler on the CPU are the
 // constants below, for an A/B test on the phone. Every method runs on BrainService's work thread; LiteRT's
 // callbacks are posted back to it, so the state below has a single thread. The decisions (reuse, step down,
-// shorten, give up) are core's BrainPolicy; this file only acts on them. 0.4.4: one of :brain's two engines (Engine.kt);
-// the process's one slot is EngineSlot, shared with LlamaEngine. Your own Qwen3 or MiniCPM 5 file is told what Settings ›
-// Model › "Let the model think first" says (core Thinking), and its thinking is kept out of the reply.
+// shorten, give up) are core's BrainPolicy; this file only acts on them. 0.4.3: your own file built for 2,048 to 4,095
+// tokens loads with exactly its own context (LoadCheck and the header read here must both say so) and runs as chat
+// only (ToolMode.CHAT_ONLY): no tools described, no text-call hint, no step down, its calls dropped, its history
+// alternating, every budget from its context. 0.4.5: one of :brain's two engines (Engine.kt); the process's one slot is
+// EngineSlot, shared with LlamaEngine. Your own Qwen3 or MiniCPM 5 file is told what Settings › Model › "Let the model
+// think first" says (core Thinking), and its thinking is kept out of the reply.
 
 class GemmaEngine(private val ctx: Context, private val handler: Handler) : BrainEngine, SlotHolder {
     private var engine: Engine? = null
@@ -151,9 +155,15 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         cacheDir = cacheDir?.path,
     )
 
-    override fun status() = BrainMsg.Status(loaded = engine != null, vision = vision, constrained = toolMode == ToolMode.TOOLS_CONSTRAINED, busy = running != null,
+    override fun status() = BrainMsg.Status(loaded = engine != null, vision = vision, constrained = mode() == ToolMode.TOOLS_CONSTRAINED, busy = running != null,
         model = loaded?.model?.takeIf { engine != null }, backend = loaded?.backend?.takeIf { engine != null },
-        format = ModelFormat.LITERT_LM.takeIf { engine != null })
+        maxTokens = loaded?.maxTokens?.takeIf { engine != null } ?: 0, format = ModelFormat.LITERT_LM.takeIf { engine != null })
+
+    /** The loaded engine's context (4,096 when none is loaded: nothing is sent then anyway). */
+    private fun maxTokens(): Int = loaded?.maxTokens ?: ContextWindow.MAX_TOKENS
+
+    /** The level conversations are built at now: chat only for a short-context model, else the tool level. */
+    private fun mode(): ToolMode = BrainPolicy.modeFor(maxTokens(), toolMode)
 
     private fun failed(req: BrainMsg.Load, failure: LoadFailure, error: String, ms: Long = 0): BrainMsg.Loaded {
         RLog.i("brain_load", "ok" to false, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "failure" to failure)
@@ -165,7 +175,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         if (req.format != ModelFormat.LITERT_LM) return failed(req, LoadFailure.NOT_ALLOWED, "LiteRT-LM runs .litertlm files only.")
         val current = loaded
         if (engine != null && current != null) {
-            if (current.model == req.model && current.backend == req.backend && current.path == req.path) {
+            if (current.model == req.model && current.backend == req.backend && current.path == req.path && current.maxTokens == req.maxTokens) {
                 return BrainMsg.Loaded(true, vision, 0, null, req.model, req.backend, format = ModelFormat.LITERT_LM)
             }
             // Another model: the engine in memory goes first, so two never share the process (Fast about 2 GB on the
@@ -180,19 +190,20 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // Only a model file in Robot's own storage, and Fast only from its own pinned file.
         val allowed = listOfNotNull(ctx.getExternalFilesDir(null), ctx.filesDir).any { f.canonicalPath.startsWith(it.canonicalPath + File.separator) }
         if (!allowed || !f.isFile || f.name != req.model.file) return failed(req, LoadFailure.NO_FILE, "The model file is missing.")
-        if (req.maxTokens != ContextWindow.MAX_TOKENS) return failed(req, LoadFailure.NOT_ALLOWED, "Robot's prompts are made for ${ContextWindow.MAX_TOKENS} tokens.")
         // The app's own records, read here again rather than trusted from the request: a built-in model's SHA-256 mark
-        // for this very file, or your own file's record (unchanged since its check; the TPU only once you allowed it).
+        // for this very file, or your own file's record (unchanged since its check; the TPU only once you allowed it); and
+        // the context Robot's prompts are made for with it (4,096, or a short file's own: 0.4.3).
         val records = File(ctx.filesDir, "robot")
         LoadCheck.refuse(
             req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()),
             mark = if (req.model.builtIn) readOrNull(File(records, ModelFiles.verifiedMark(req.model))) else null,
             ownRecord = if (req.model == BrainModel.OWN) readOrNull(File(records, ModelFiles.OWN_RECORD)) else null,
-            format = ModelFormat.LITERT_LM,
+            maxTokens = req.maxTokens, format = ModelFormat.LITERT_LM,
         )?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
         // The TPU only for Fast's pinned file (its SHA-256 mark, just above) or a file whose contents prove a Tensor G5
-        // build and that you allowed there; and never TPU code on the CPU. Read here again, from the file about to load.
-        var modelType: String? = null
+        // build and that you allowed there; and never TPU code on the CPU. Read here again, from the file about to load,
+        // with its context: never a KV cache larger than the file was built with, nor a short one for a file that isn't.
+        var header: LiteRtLmReport? = null
         if (req.model != BrainModel.FAST || req.backend != ModelBackend.TPU) {
             val r = LiteRtLmCheck.check(f)
             val ok = when (req.backend) {
@@ -200,7 +211,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
                 ModelBackend.CPU -> r.backend == ModelBackend.CPU
             }
             if (!ok) return failed(req, LoadFailure.NOT_ALLOWED, r.unusable ?: "Robot's check of the file says it can't run on the ${req.backend.title}.")
-            modelType = r.modelType
+            if (r.contextTokens != req.maxTokens) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.wrongContext(r.contextTokens))
+            header = r
         }
         val cacheDir = ModelFiles.cacheDir(req.model, req.backend)?.let { File(ctx.filesDir, it) }
         if (cacheDir != null) {
@@ -236,9 +248,20 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         var ok = false
         try {
             // Vision with a fixed 280-token image budget (read when the engine initialises), so the 300 tokens per image
-            // Robot plans for hold; if this build refuses the budget, vision without it; then text only.
+            // Robot plans for hold; if this build refuses the budget, vision without it; then text only. 0.4.3: the budget
+            // is Gemma 4's (other models' encoders give a fixed count: MedGemma's adapter 257), so only a Gemma 4 file gets
+            // it; and a file whose header has no vision encoder goes straight to text only (one load, not two). Your own
+            // file only: a built-in model (its SHA-256 checked just above) loads exactly as in 0.4.2, whatever this
+            // header reader makes of its sections, so Fast and the E4B models never lose their vision to it.
             var budgetSet = false
-            for (budget in listOf(TokenEstimate.VISUAL_TOKEN_BUDGET, null)) {
+            val budgets = when {
+                req.model.builtIn || header == null -> listOf(TokenEstimate.VISUAL_TOKEN_BUDGET, null)
+                !header.vision -> emptyList()
+                header.gemma4 -> listOf(TokenEstimate.VISUAL_TOKEN_BUDGET, null)
+                else -> listOf(null)
+            }
+            if (budgets.isEmpty()) visionError = "NoVisionEncoder"
+            for (budget in budgets) {
                 try {
                     ExperimentalFlags.visualTokenBudget = budget
                     e = Engine(config(req, withVision = true, cacheDir))
@@ -269,14 +292,15 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             }
             engine = e
             loaded = req
-            ownModelType = if (req.model == BrainModel.OWN) modelType else null
+            ownModelType = if (req.model == BrainModel.OWN) header?.modelType else null
             ok = true
             counted.clear()
             estimated.clear()
             val ms = SystemClock.elapsedRealtime() - t0
             RLog.i("brain_load", "ok" to true, "ms" to ms, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "vision" to vision,
                 "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) }, "mtp" to (req.backend == ModelBackend.CPU && CPU_MTP == true),
-                "sampler" to (req.backend == ModelBackend.CPU && CPU_SAMPLER))
+                "sampler" to (req.backend == ModelBackend.CPU && CPU_SAMPLER), "maxTokens" to req.maxTokens,
+                "chatOnly" to ContextWindow.chatOnly(req.maxTokens))
             return BrainMsg.Loaded(true, vision, ms, null, req.model, req.backend, format = ModelFormat.LITERT_LM)
         } finally {
             ExperimentalFlags.enableSpeculativeDecoding = null
@@ -393,7 +417,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val cfg = ConversationConfig(
             systemInstruction = Contents.of(plan.system(if (mode == ToolMode.TEXT_CALLS) system + Prompt.textCallHint(tools) else system)),
             initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(it.text) else Message.model(it.text) },
-            tools = if (mode == ToolMode.TEXT_CALLS) emptyList() else providers(tools),
+            // Only the tool API's levels describe tools: never chat only (its list is empty anyway, BrainPolicy.toolsFor).
+            tools = if (mode == ToolMode.TOOLS || mode == ToolMode.TOOLS_CONSTRAINED) providers(tools) else emptyList(),
             samplerConfig = sampler(),
             automaticToolCalling = false,
             // Your own MiniCPM 5 file's template (LiteRT-LM 0.18 passes both on); nothing for any other model.
@@ -435,7 +460,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
     }
 
     private fun startGenerate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink, attempt: Attempt) {
-        val tools = req.toolNames
+        val max = maxTokens()
+        // Chat only (a short-context model): no tools, whatever the request lists.
+        val tools = BrainPolicy.toolsFor(mode(), req.toolNames)
         val toolIds = tools.map { it.id }
         val plan = thinking(req.think)
         // The conversation is reused only with the same thinking switch (its system prompt or its template input differ).
@@ -443,17 +470,17 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val fixed = Prompt.fixedTokens(req.system, tools)
         val newTurn = TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text, image != null))
         // The app cuts the new turn to fit (Prompt.fitTurn); a turn that still can't fit is never sent anyway.
-        if (newTurn > ContextWindow.newTurnLimit(fixed)) {
-            RLog.i("brain_too_long", "newTurn" to newTurn, "fixed" to fixed)
+        if (newTurn > ContextWindow.newTurnLimit(fixed, max)) {
+            RLog.i("brain_too_long", "newTurn" to newTurn, "fixed" to fixed, "maxTokens" to max)
             return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.TOO_LONG, null))
         }
         var live = convs[req.convId]
         val reuse = attempt.historyBudget == null && BrainPolicy.canReuse(
             live?.let { LiveConv(it.historyCount, it.system, it.mode, it.dirty, it.awaitingTool, tokenCount(it.conv), it.tools) },
-            req.historyCount, system, toolMode, newTurn, toolIds,
+            req.historyCount, system, mode(), newTurn, toolIds, max,
         )
         var rebuilt = false
-        var budget = attempt.historyBudget ?: ContextWindow.historyBudget(fixed, newTurn)
+        var budget = attempt.historyBudget ?: ContextWindow.historyBudget(fixed, newTurn, max)
         // Turns of history in the conversation this message goes to (a reused one holds the client's whole history).
         var turns = if (reuse) req.history.size else 0
         if (!reuse) {
@@ -464,8 +491,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             var tries = 0
             var rebuilds = 0
             while (true) {
-                val history = ContextWindow.fit(req.history, budget)
-                val mode = toolMode
+                val mode = mode()
+                // Chat only: strictly alternating turns (the chat templates of models other than Gemma 4 demand it).
+                val history = ContextWindow.fit(BrainPolicy.historyFor(mode, req.history), budget)
                 val conv = try {
                     newConversation(req.system, history, mode, tools, plan)
                 } catch (ex: Exception) {
@@ -485,7 +513,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
                 }
                 // The estimate chose the history; the engine's own count says whether the turn and a reply still fit.
                 val real = tokenCount(conv, unknown = -1)
-                val smaller = ContextWindow.shrink(budget, real, newTurn)
+                val smaller = ContextWindow.shrink(budget, real, newTurn, max)
                 if (smaller != null && history.isNotEmpty() && rebuilds < BrainPolicy.MAX_REBUILDS) {
                     closeQuietly(conv)
                     rebuilds++
@@ -528,7 +556,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // conversation is rebuilt (shorter) from the history next time.
         val responses = req.results.sumOf { (n, r) -> TokenEstimate.text(n) + TokenEstimate.text(Json.obj(r).toString()) } + TokenEstimate.TURN_OVERHEAD
         val live = tokenCount(l.conv)
-        if (!ContextWindow.roomForToolRound(live, responses)) {
+        if (!ContextWindow.roomForToolRound(live, responses, maxTokens())) {
             convs.remove(req.convId)
             closeQuietly(l.conv)
             RLog.i("brain_tool_round_full", "tokens" to live, "responses" to responses)
@@ -582,7 +610,15 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
 
     private fun onChunk(run: Run, m: Message) {
         if (run.ended) return
-        if (m.toolCalls.isNotEmpty()) run.calls += m.toolCalls.map { RawToolCall(it.name, it.arguments) }
+        // Chat only: no tool was described, so a call is never passed on (it would reach the approval gate). The
+        // conversation now holds a call no answer will follow: it is rebuilt from the history (text only) next time.
+        if (m.toolCalls.isNotEmpty()) {
+            if (BrainPolicy.acceptsCalls(run.live.mode)) run.calls += m.toolCalls.map { RawToolCall(it.name, it.arguments) }
+            else {
+                run.live.dirty = true
+                RLog.i("brain_calls_dropped", "calls" to m.toolCalls.size, "mode" to run.live.mode)
+            }
+        }
         val raw = m.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
         // Your own file's <think> block, when LiteRT-LM leaves it in the text: never shown, never spoken.
         val text = run.filter?.feed(raw) ?: raw
@@ -652,7 +688,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             is BrainPolicy.Next.Fail -> {
                 // Output already reached the app, so nothing is resent; a genuine parse error still lowers the level for next time.
                 val after = BrainPolicy.modeAfter(msg, run.live.mode)
-                if (after < toolMode) {
+                // Only a step down lowers the level (chat only never steps: it is no level).
+                if (after != run.live.mode && after < toolMode) {
                     toolMode = after
                     RLog.i("brain_tool_mode_down", "to" to toolMode, "at" to RLog.Code("reply"))
                 }

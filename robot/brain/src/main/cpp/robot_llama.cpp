@@ -1,4 +1,4 @@
-// :BRAIN PROCESS ONLY. Robot's JNI bridge to llama.cpp (0.4.4, GGUF model files), built by tools/build_llama.sh into
+// :BRAIN PROCESS ONLY. Robot's JNI bridge to llama.cpp (0.4.5, GGUF model files), built by tools/build_llama.sh into
 // librobot_llama.so together with llama.cpp, ggml and KleidiAI from their pinned sources (THIRD_PARTY.md). Loaded only by
 // brain/LlamaNative.kt, for a file you imported that Robot's own check (core Gguf.kt) read first.
 //

@@ -3,7 +3,7 @@
 # components and their processes, the recognizer that keeps the assistant across restarts, permissions,
 # the arm64-only native libraries, and (phase 2) the Robot Notes launcher entry, the hand-off apps' <queries>
 # and the three runtime permissions; that the main-process entries stay in the main process, that nothing beyond an
-# allowlist is exported, and that no main-process class in the dex refers to an engine. 0.4.4: the native libraries are
+# allowlist is exported, and that no main-process class in the dex refers to an engine. 0.4.5: the native libraries are
 # exactly an allowlist of names, and Robot's llama.cpp library (when this build has it) exports only its JNI bridge, is
 # reached only from :brain's classes and can't go online or start a process. Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
@@ -26,7 +26,7 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 # minSdk 34: AGP signs with v3 (API 28+) and may skip v2; either covers every phone Robot installs on.
 "$BT/apksigner" verify -v "$APK" 2>/dev/null | grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='app.heyrobot' versionCode='42' versionName='0.4.2'" "$badging" "package app.heyrobot 0.4.2 (42)"
+has "package: name='app.heyrobot' versionCode='44' versionName='0.4.4'" "$badging" "package app.heyrobot 0.4.4 (44)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"
@@ -134,7 +134,7 @@ has 'supportsLaunchVoiceAssistFromKeyguard(0x010104f1)=true' "$vi" "supportsLaun
 libs=$(unzip -Z1 "$APK" 'lib/*')
 for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
 echo "$libs" | grep -v '^lib/arm64-v8a/' | grep -q . && fail "non-arm64 libraries" || pass "no other ABIs"
-# Exactly these native libraries, by name. librobot_llama.so (0.4.4): Robot's llama.cpp for your own GGUF file, built by
+# Exactly these native libraries, by name. librobot_llama.so (0.4.5): Robot's llama.cpp for your own GGUF file, built by
 # tools/build_llama.sh and loaded by :brain only; a build without it is fine (Settings › Model then says GGUF files can't run).
 for l in $(echo "$libs" | sed -n 's#^lib/arm64-v8a/##p'); do
   case "$l" in
@@ -179,7 +179,7 @@ engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/n
   awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|people|core)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
   grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude)/')
 [ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine or the Anthropic SDK (dex)" || fail "main-process classes refer to engines or the SDK: $engine_refs"
-# 0.4.4: llama.cpp's bridge is :brain's alone: no class outside app/heyrobot/brain refers to it or to its engine.
+# 0.4.5: llama.cpp's bridge is :brain's alone: no class outside app/heyrobot/brain refers to it or to its engine.
 llama_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } /Class descriptor  : .L/{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/brain\//) } on' |
   grep -cE 'Lapp/heyrobot/brain/(LlamaNative|LlamaEngine)')

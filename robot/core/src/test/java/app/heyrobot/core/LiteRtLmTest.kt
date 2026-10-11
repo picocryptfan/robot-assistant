@@ -144,6 +144,87 @@ class LiteRtLmTest {
         assertEquals(ModelBackend.CPU, check(e4bCpu(max = 32_000)).backend)
     }
 
+    /**
+     * 0.4.3: 2,048 to 4,095 tokens is chat only (loaded with its own context, no actions), 4,096 and more (or none stated)
+     * runs as before with 4,096, and under 2,048 is still refused.
+     */
+    @Test fun shortContextsAreChatOnlyAndUnder2048IsStillRefused() {
+        val short = "Short context (2048 tokens): chat only — no actions, shorter memory."
+        for (max in listOf(2048, 3000, 4095)) {
+            val r = check(e4bCpu(max = max))
+            assertTrue(r.shortContext)
+            assertNull(r.unusable)
+            assertEquals(ModelBackend.CPU, r.backend)
+            assertEquals(max, r.contextTokens)
+            assertTrue(r.lines().toString(), r.lines().contains("Short context ($max tokens): chat only — no actions, shorter memory."))
+            // No promise about actions, whatever the metadata says.
+            assertFalse(r.lines().any { it.contains("actions should work") || it.contains("may not work") })
+            assertTrue(r.lines().contains("Gemma 4."))
+        }
+        assertTrue(check(e4bCpu(max = 2048)).lines().contains(short))
+        for (max in listOf(4096, 32_000)) {
+            val r = check(e4bCpu(max = max))
+            assertFalse(r.shortContext)
+            assertEquals(4096, r.contextTokens)
+            assertTrue(r.lines().contains("Context: $max tokens (Robot uses 4096)."))
+            assertTrue(r.lines().contains("Gemma 4, with its tool-calling metadata: actions should work."))
+        }
+        // None stated (Google's own files): 4,096, as before.
+        assertEquals(4096, check(e4bCpu(max = 0)).contextTokens)
+        assertFalse(check(e4bCpu(max = 0)).lines().any { it.startsWith("Context:") || it.startsWith("Short context") })
+        for (max in listOf(1, 1024, 2047)) {
+            val r = check(e4bCpu(max = max))
+            assertNull(r.backend)
+            assertEquals(0, r.contextTokens)
+            assertEquals("It was built for only $max tokens of context; Robot needs at least 2048 to chat (4096 for actions).", r.unusable)
+            assertFalse(r.lines().any { it.startsWith("Short context") })
+        }
+    }
+
+    /** Shaped like MedGemma 1.5 4B's LiteRT-LM files (their headers, 0.4.3): gemma3n metadata, 2,048 tokens, no tool tokens. */
+    private fun medgemma(vision: Boolean) = FakeLiteRtLm.litertlm(listOfNotNull(
+        meta(FakeLiteRtLm.gemma3n(), max = 2048),
+        Section(null, 6, ByteArray(32)),
+        tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps, mapOf("min_runtime_version" to "2.17.0".toByteArray()))),
+        small("tf_lite_embedder"),
+        if (vision) tfl("tf_lite_vision_encoder", FakeLiteRtLm.tflite(cpuOps)) else null,
+        if (vision) small("tf_lite_vision_adapter") else null,
+    ))
+
+    @Test fun medGemmaShapedFilesAreChatOnlyOnTheCpu() {
+        for (vision in listOf(true, false)) {
+            val r = check(medgemma(vision))
+            assertTrue(r.readable && r.decoder && r.shortContext)
+            assertEquals("gemma3n", r.modelType)
+            assertFalse(r.gemma4 || r.toolTokens || r.tensorG5Build)
+            assertEquals(ModelBackend.CPU, r.backend)
+            assertEquals(2048, r.contextTokens)
+            assertEquals(vision, r.vision)
+            assertEquals(listOf(
+                "LiteRT-LM file, format 1.5.0, ${r.sections.size} sections.",
+                "Compiled for this phone's TPU: no. It runs on the CPU.",
+                "Model type “gemma3n”, not Gemma 4: Robot is written for Gemma 4, so answers may be odd.",
+                if (vision) "Can see photos: yes." else "Can see photos: no (questions about a photo won't work).",
+                "Short context (2048 tokens): chat only — no actions, shorter memory.",
+            ), r.lines())
+            // Imported and checked like any other own file: ready to choose, and its record keeps all of it.
+            val own = OwnModel("medgemma-1.5-4b-it_q4_block32_vision_ekv2048.litertlm", 3_023_069_488, sha, "3023069488|1", r)
+            assertEquals(ModelAvailability.READY, own.availability("3023069488|1"))
+            assertEquals(ModelBackend.CPU, own.backend)
+            val back = OwnModel.fromJson(own.toJson().toString())!!
+            assertEquals(own, back)
+            assertEquals(2048, back.report.contextTokens)
+        }
+    }
+
+    /** A record can't make a short file long, nor a refused one usable: the context comes from the checked numbers. */
+    @Test fun aRecordsContextComesFromTheCheckedHeader() {
+        val r = check(e4bCpu(max = 1024))
+        val forged = OwnModel("x", 10, sha, "10|1", r).toJson().apply { getJSONObject("report").put("maxTokens", 1024) }.toString()
+        assertNull(OwnModel.fromJson(forged)!!.backend)
+        assertEquals(ModelAvailability.UNUSABLE, OwnModel.fromJson(forged)!!.availability("10|1"))
+    }
+
     @Test fun aFileWithoutALanguageModelIsRefused() {
         val r = check(FakeLiteRtLm.litertlm(listOf(small("tf_lite_embedder"), meta())))
         assertTrue(r.readable)
@@ -285,6 +366,58 @@ class LiteRtLmTest {
         // A file Robot can't run: refused with the check's own reason.
         val bad = OwnModel("x", 10, sha, "10|1", check(ByteArray(10))).toJson().toString()
         for (b in ModelBackend.entries) assertNotNull(LoadCheck.refuse(own, b, "10|1", null, bad))
+    }
+
+    /**
+     * 0.4.3: and only with the context Robot's prompts are made for with that file: 4,096 for a built-in model and for
+     * your own file that states none or more; a short file's own (2,048 for MedGemma), never 4,096 KV on it, nor its
+     * short context on another file. Under 2,048 nothing loads, whatever context is asked for.
+     */
+    @Test fun brainLoadsOnlyWithTheContextOfTheFileItChecked() {
+        val fp = ModelFiles.fingerprint(3_113_545_589, 1_760_000_000_000)
+        val mark = "${BrainModel.FAST.sha256}|$fp"
+        assertNull(LoadCheck.refuse(BrainModel.FAST, ModelBackend.TPU, fp, mark, null, 4096))
+        for (n in listOf(2048, 4095, 8192, 0, -1)) {
+            assertEquals(LoadCheck.wrongContext(4096), LoadCheck.refuse(BrainModel.FAST, ModelBackend.TPU, fp, mark, null, n))
+        }
+        val smarter = "${BrainModel.SMARTER.sha256}|$fp"
+        assertEquals(LoadCheck.wrongContext(4096), LoadCheck.refuse(BrainModel.SMARTER, ModelBackend.CPU, fp, smarter, null, 2048))
+
+        val own = BrainModel.OWN
+        val short = OwnModel("medgemma.litertlm", 10, sha, "10|1", check(e4bCpu(max = 2048))).toJson().toString()
+        assertNull(LoadCheck.refuse(own, ModelBackend.CPU, "10|1", null, short, 2048))
+        assertEquals(LoadCheck.wrongContext(2048), LoadCheck.refuse(own, ModelBackend.CPU, "10|1", null, short, 4096))
+        assertEquals(LoadCheck.wrongContext(2048), LoadCheck.refuse(own, ModelBackend.CPU, "10|1", null, short, 2047))
+        assertEquals(LoadCheck.wrongContext(2048), LoadCheck.refuse(own, ModelBackend.CPU, "10|1", null, short, 4095))
+        // Changed since, or on the TPU: the same refusals as for any file.
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(own, ModelBackend.CPU, "10|2", null, short, 2048))
+        assertNotNull(LoadCheck.refuse(own, ModelBackend.TPU, "10|1", null, short, 2048))
+        val odd = OwnModel("x", 10, sha, "10|1", check(e4bCpu(max = 3000))).toJson().toString()
+        assertNull(LoadCheck.refuse(own, ModelBackend.CPU, "10|1", null, odd, 3000))
+        assertNotNull(LoadCheck.refuse(own, ModelBackend.CPU, "10|1", null, odd, 2048))
+        // A long file never loads with a short context, nor a refused one with any.
+        val long = OwnModel("x", 10, sha, "10|1", check(e4bCpu(max = 32_000))).toJson().toString()
+        assertNull(LoadCheck.refuse(own, ModelBackend.CPU, "10|1", null, long, 4096))
+        assertEquals(LoadCheck.wrongContext(4096), LoadCheck.refuse(own, ModelBackend.CPU, "10|1", null, long, 2048))
+        val tiny = OwnModel("x", 10, sha, "10|1", check(e4bCpu(max = 1024))).toJson().toString()
+        for (n in listOf(1024, 2048, 4096)) for (b in ModelBackend.entries) assertNotNull(LoadCheck.refuse(own, b, "10|1", null, tiny, n))
+        // A short Tensor G5 build you allowed: the TPU, with its own context.
+        val g5 = OwnModel("x", 10, sha, "10|1", check(FakeLiteRtLm.litertlm(listOf(
+            tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(dispatchOps, g5Stamp)), small("tf_lite_aux"), meta(max = 2048),
+        ))), tpuAllowed = true).toJson().toString()
+        assertNull(LoadCheck.refuse(own, ModelBackend.TPU, "10|1", null, g5, 2048))
+        assertNotNull(LoadCheck.refuse(own, ModelBackend.TPU, "10|1", null, g5, 4096))
+    }
+
+    /** The one line under a model whose name says MedGemma (the screen only: never a reason to trust or allow anything). */
+    @Test fun aMedGemmaNameGetsTheNoteAndNothingElseDoes() {
+        for (n in listOf("medgemma-1.5-4b-it_q4_block32_vision_ekv2048.litertlm", "MedGemma 1.5 4B", "Med-Gemma.litertlm", "my_med_gemma.litertlm")) {
+            assertEquals(n, ModelNotes.MEDICAL, ModelNotes.of(n))
+        }
+        for (n in listOf("gemma-4-E4B-it.litertlm", "medical.litertlm", "gemma-med.litertlm", "", null)) assertNull(n, ModelNotes.of(n))
+        assertEquals("Not a medical device: check health information with a professional.", ModelNotes.MEDICAL)
+        // No built-in model is one.
+        assertTrue(BrainModel.entries.none { ModelNotes.medical(it.modelName) || ModelNotes.medical(it.file) })
     }
 
     @Test fun ownModelRecordRoundTripsAndNeverAllowsTheTpuForACpuFile() {

@@ -7,6 +7,7 @@ import android.os.SystemClock
 import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.BrainMsg
+import app.heyrobot.core.BrainPolicy
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.DoneReason
@@ -35,16 +36,18 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
-// :BRAIN PROCESS ONLY. Your own GGUF model file, run by llama.cpp on the CPU (0.4.4): the other of :brain's two engines
-// (Engine.kt), under the same one-slot rule as LiteRT-LM. Text only (no vision), and always Robot's own text protocol for
-// actions (ToolMode.TEXT_CALLS): the system prompt shows the call syntax (Prompt.textCallHint) and the app runs a reply
-// that is nothing but calls (ToolCalls.wholeReplyCalls). The conversation is formatted by the model's own chat template,
-// counted by its own tokenizer to fit Robot's 4,096 tokens (core PromptFit), and llama.cpp reuses whatever beginning of it
-// is already in memory, so a follow-up reads only the new turn.
+// :BRAIN PROCESS ONLY. Your own GGUF model file, run by llama.cpp on the CPU (0.4.5): the other of :brain's two engines
+// (Engine.kt), under the same one-slot rule as LiteRT-LM. Text only (no vision), and Robot's own text protocol for actions
+// (ToolMode.TEXT_CALLS): the system prompt shows the call syntax (Prompt.textCallHint) and the app runs a reply that is
+// nothing but calls (ToolCalls.wholeReplyCalls). A file trained for 2,048 to 4,095 tokens runs with its own context as
+// chat only (0.4.3's ToolMode.CHAT_ONLY, as a short .litertlm): no tools, no hint, and its replies are never read as calls.
+// The conversation is formatted by the model's own chat template, counted by its own tokenizer to fit the model's context
+// (core PromptFit), and llama.cpp reuses whatever beginning of it is already in memory, so a follow-up reads only the new
+// turn.
 //
-// Before a load, as for LiteRT-LM: the app's record of your file (unchanged since its check, a GGUF file, on the CPU), and
-// the header read again here (core GgufCheck) and compared with the one recorded; llama.cpp's own parser runs only after
-// that, and only in this process. Every native call runs on one worker thread; replies come back to BrainService's work
+// Before a load, as for LiteRT-LM: the app's record of your file (unchanged since its check, a GGUF file, on the CPU, with
+// the context the request asks for), and the header read again here (core GgufCheck) and compared with the one recorded;
+// llama.cpp's own parser runs only after that, and only in this process. Every native call runs on one worker thread; replies come back to BrainService's work
 // thread, where all the state below lives. The model is never freed under a reply llama.cpp hasn't returned from.
 
 class LlamaEngine(private val ctx: Context, private val handler: Handler) : BrainEngine, SlotHolder {
@@ -62,7 +65,8 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
     private var teardown: (() -> Unit)? = null
     private var runs = 0L
 
-    private inner class Run(val reqId: Int, val convId: String, val sink: BrainEngine.Sink, val handle: Long, val id: Long) {
+    /** [mode]: TEXT_CALLS, or CHAT_ONLY for a short-context file (its reply is never read as calls). */
+    private inner class Run(val reqId: Int, val convId: String, val sink: BrainEngine.Sink, val handle: Long, val id: Long, val mode: ToolMode) {
         val tSend = SystemClock.elapsedRealtime()
         var tFirst = -1L
         var chunks = 0
@@ -89,7 +93,10 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
 
     override fun status() = BrainMsg.Status(loaded = handle != 0L, vision = false, constrained = false, busy = running != null,
         model = loaded?.model?.takeIf { handle != 0L }, backend = loaded?.backend?.takeIf { handle != 0L },
-        format = ModelFormat.GGUF.takeIf { handle != 0L })
+        maxTokens = loaded?.maxTokens?.takeIf { handle != 0L } ?: 0, format = ModelFormat.GGUF.takeIf { handle != 0L })
+
+    /** The loaded model's context (4,096 when none is loaded: nothing is sent then anyway). */
+    private fun maxTokens(): Int = loaded?.maxTokens ?: ContextWindow.MAX_TOKENS
 
     private fun failed(req: BrainMsg.Load, failure: LoadFailure, error: String, ms: Long = 0): BrainMsg.Loaded {
         RLog.i("brain_load", "ok" to false, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "format" to ModelFormat.GGUF,
@@ -104,7 +111,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
     override fun load(req: BrainMsg.Load): BrainMsg.Loaded {
         val current = loaded
         if (handle != 0L && current != null) {
-            if (current.model == req.model && current.backend == req.backend && current.path == req.path) {
+            if (current.model == req.model && current.backend == req.backend && current.path == req.path && current.maxTokens == req.maxTokens) {
                 return BrainMsg.Loaded(true, false, 0, null, req.model, req.backend, format = ModelFormat.GGUF)
             }
             RLog.i("brain_switch", "from" to RLog.Code(current.model.id), "to" to RLog.Code(req.model.id))
@@ -120,14 +127,16 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             return failed(req, LoadFailure.NO_FILE, "The model file is missing.")
         }
         if (req.backend != ModelBackend.CPU) return failed(req, LoadFailure.NOT_ALLOWED, "A GGUF file runs on the CPU only.")
-        if (req.maxTokens != ContextWindow.MAX_TOKENS) return failed(req, LoadFailure.NOT_ALLOWED, "Robot's prompts are made for ${ContextWindow.MAX_TOKENS} tokens.")
-        // The app's record, read here again: your file as checked (size and time unchanged), a GGUF file, on the CPU.
+        // The app's record, read here again: your file as checked (size and time unchanged), a GGUF file, on the CPU, and the
+        // context Robot's prompts are made for with it (4,096, or a short file's own: chat only).
         val record = readOrNull(File(File(ctx.filesDir, "robot"), ModelFiles.OWN_RECORD))
-        LoadCheck.refuse(req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()), null, record, ModelFormat.GGUF)
-            ?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
-        // The header read again from the file about to load, and the same as the one the app checked and showed you.
+        LoadCheck.refuse(req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()), null, record,
+            maxTokens = req.maxTokens, format = ModelFormat.GGUF)?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
+        // The header read again from the file about to load, and the same as the one the app checked and showed you; its
+        // context too (never a cache larger than the model was trained for, nor a short one for a file that isn't).
         val r = GgufCheck.check(f, totalRam())
         r.unusable?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
+        if (r.contextTokens != req.maxTokens) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.wrongContext(r.contextTokens))
         val recorded = OwnModel.fromJson(record)?.gguf
         if (recorded == null || recorded.copy(totalRam = 0) != r.copy(totalRam = 0)) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
         LlamaNative.ready()?.let { return failed(req, LoadFailure.ENGINE, it) }
@@ -145,7 +154,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val why = IntArray(1)
         val h = try {
             worker.submit<Long> {
-                LlamaNative.load(f.path.toByteArray(Charsets.UTF_8), ContextWindow.MAX_TOKENS, DECODE_THREADS, PROMPT_THREADS, SAMPLING, why)
+                LlamaNative.load(f.path.toByteArray(Charsets.UTF_8), req.maxTokens, DECODE_THREADS, PROMPT_THREADS, SAMPLING, why)
             }.get()
         } catch (t: Exception) {
             RLog.w("brain_load", t, "format" to ModelFormat.GGUF)
@@ -164,7 +173,8 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         loaded = req
         report = r
         RLog.i("brain_load", "ok" to true, "ms" to ms, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "format" to ModelFormat.GGUF,
-            "vision" to false, "fileType" to r.fileType, "threads" to DECODE_THREADS, "promptThreads" to PROMPT_THREADS, "thinks" to r.thinks)
+            "vision" to false, "fileType" to r.fileType, "threads" to DECODE_THREADS, "promptThreads" to PROMPT_THREADS, "thinks" to r.thinks,
+            "maxTokens" to req.maxTokens, "chatOnly" to ContextWindow.chatOnly(req.maxTokens))
         return BrainMsg.Loaded(true, false, ms, null, req.model, req.backend, format = ModelFormat.GGUF)
     }
 
@@ -238,13 +248,15 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // Text only: this model can't see (the panel says so before it asks).
         if (req.hasImage || image != null) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NO_VISION, "text only"))
         if (afterRunning { generate(reqId, req, image, sink) }) return
-        val tools = req.toolNames
+        val max = maxTokens()
+        // Robot's own text protocol for actions: the call syntax in the system prompt. Chat only (a short context): none.
+        val mode = BrainPolicy.modeFor(max, ToolMode.TEXT_CALLS)
+        val tools = BrainPolicy.toolsFor(mode, req.toolNames)
         val plan = Thinking.gguf(report, req.think)
-        // Robot's own text protocol for actions, whatever the model: the call syntax in the system prompt.
         val system = plan.system(req.system + Prompt.textCallHint(tools))
         val think = plan.enableThinking ?: req.think
-        val firstBudget = ContextWindow.historyBudget(Prompt.fixedTokens(req.system, tools), TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text)))
-        val run = Run(reqId, req.convId, sink, h, ++runs).also { it.strip = plan.stripThinking }
+        val firstBudget = ContextWindow.historyBudget(Prompt.fixedTokens(req.system, tools), TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text)), max)
+        val run = Run(reqId, req.convId, sink, h, ++runs, mode).also { it.strip = plan.stripThinking }
         running = run
         worker.execute {
             // Format with the model's template and count with its tokenizer; older turns go until it fits (PromptFit).
@@ -272,7 +284,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
                     return@execute
                 }
                 val real = if (tokens == LlamaNative.PREP_TOO_LONG) Int.MAX_VALUE / 2 else tokens
-                when (val step = PromptFit.after(real, history.size, budget, rebuilds)) {
+                when (val step = PromptFit.after(real, history.size, budget, rebuilds, max)) {
                     is PromptFit.Step.Send -> break
                     is PromptFit.Step.Shorten -> { budget = step.historyBudget; rebuilds++ }
                     is PromptFit.Step.TooLong -> {
@@ -284,7 +296,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             run.startsInside = flags[0] and 1 != 0
             val stats = LongArray(LlamaNative.STATS_COUNT)
             val code = try {
-                LlamaNative.generate(h, run.id, ContextWindow.MAX_TOKENS, { bytes ->
+                LlamaNative.generate(h, run.id, max, { bytes ->
                     val text = String(bytes, Charsets.UTF_8)
                     handler.post { onPiece(run, text) }
                     !run.stop
@@ -378,11 +390,12 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val genMs = stats?.get(LlamaNative.STATS_GENERATE_MS) ?: 0
         val tps = if (genMs > 0) generated * 1000.0 / genMs else -1.0
         val tokens = stats?.get(LlamaNative.STATS_POSITION)?.toInt() ?: -1
-        // Robot's text protocol: the app may read a reply that is nothing but calls as calls.
-        run.sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(reason, tokens, ttft, tps, rebuilt = (stats?.get(LlamaNative.STATS_REUSED) ?: 0L) == 0L, textCalls = true))
+        // Robot's text protocol: the app may read a reply that is nothing but calls as calls; never in chat only.
+        run.sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(reason, tokens, ttft, tps, rebuilt = (stats?.get(LlamaNative.STATS_REUSED) ?: 0L) == 0L,
+            textCalls = BrainPolicy.acceptsCalls(run.mode)))
         RLog.i("brain_reply", "reason" to reason, "chunks" to run.chunks, "ttftMs" to ttft, "tokens" to tokens, "tps" to tps,
             "prompt" to (stats?.get(LlamaNative.STATS_PROMPT) ?: -1L), "promptMs" to (stats?.get(LlamaNative.STATS_PROMPT_MS) ?: -1L),
-            "generated" to generated, "mode" to ToolMode.TEXT_CALLS, "format" to ModelFormat.GGUF)
+            "generated" to generated, "mode" to run.mode, "format" to ModelFormat.GGUF)
         runQueued()
     }
 
@@ -405,7 +418,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
     companion object {
         /**
          * Threads for writing (memory-bound: more than the big cores don't help) and for reading a prompt (compute-bound:
-         * the X4 and the five A725s). A/B on the phone (README "On the phone (0.4.4)").
+         * the X4 and the five A725s). A/B on the phone (README "On the phone (0.4.5)").
          */
         private const val DECODE_THREADS = 4
         private const val PROMPT_THREADS = 6

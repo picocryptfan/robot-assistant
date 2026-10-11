@@ -189,7 +189,7 @@ data class RobotSettings(
      */
     val brainModel: String = BrainModel.DEFAULT.id,
     /**
-     * Settings › Model › "Let the model think first" (0.4.4, schema 10; off): a model that can reason before it answers
+     * Settings › Model › "Let the model think first" (0.4.5, schema 10; off): a model that can reason before it answers
      * (Qwen3, MiniCPM 5, a GGUF file whose template takes enable_thinking) may; off, Robot tells it to answer directly.
      * Robot's built-in Gemma 4 models are the same either way. The thinking is never shown or spoken (core Thinking).
      */
@@ -278,7 +278,7 @@ data class RobotSettings(
          * you didn't ask for it", as the person asked.
          * 7 (0.4.1): Settings › Model. Older files had one model, the TPU's Gemma 4 E2B: they read as Fast, the same model.
          * 8 and 9 are other branches' (conversation mode, helpers); a file of either reads here as what this branch knows of it.
-         * 10 (0.4.4): "Let the model think first", off unless a file of this schema or later says on (older files never had it).
+         * 10 (0.4.5): "Let the model think first", off unless a file of this schema or later says on (older files never had it).
          */
         const val SCHEMA = 10
         const val KEEP_ALWAYS = -1

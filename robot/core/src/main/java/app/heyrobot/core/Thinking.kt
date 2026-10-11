@@ -1,6 +1,6 @@
 package app.heyrobot.core
 
-// Pure. Settings › Model › "Let the model think first" (0.4.4, off by default): some models can reason in a hidden block
+// Pure. Settings › Model › "Let the model think first" (0.4.5, off by default): some models can reason in a hidden block
 // before they answer (Qwen3, MiniCPM 5, the GGUF files whose chat template takes enable_thinking). Off, Robot tells them to
 // answer directly; on, they may think, which takes longer (the thinking is read out by nobody). Either way the thinking
 // never reaches the chat bubble or the voice: an engine that doesn't route it to a channel of its own has it removed here

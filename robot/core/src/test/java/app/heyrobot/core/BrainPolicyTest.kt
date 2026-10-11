@@ -124,6 +124,56 @@ class BrainPolicyTest {
         assertTrue(BrainPolicy.canReuse(live().copy(tools = people), 4, "S", m, 100, people))
     }
 
+    /**
+     * 0.4.3: a short-context model is chat only. No tools are described to it and none of its calls get through, and
+     * :brain never tries a tool level for it: nothing steps it down (not even the tool-parse signature), and the ladder
+     * of the other models is unchanged.
+     */
+    @Test fun chatOnlyIsOffTheToolLadder() {
+        val c = ToolMode.CHAT_ONLY
+        assertEquals(ToolMode.CHAT_ONLY, BrainPolicy.modeFor(2048, ToolMode.TOOLS_CONSTRAINED))
+        assertEquals(ToolMode.CHAT_ONLY, BrainPolicy.modeFor(4095, ToolMode.TEXT_CALLS))
+        assertEquals(ToolMode.TOOLS_CONSTRAINED, BrainPolicy.modeFor(4096, ToolMode.TOOLS_CONSTRAINED))
+        assertEquals(ToolMode.TEXT_CALLS, BrainPolicy.modeFor(4096, ToolMode.TEXT_CALLS))
+        assertNull(c.lower)
+        assertFalse(c.tools)
+        assertEquals(3, ToolMode.LEVELS)
+        assertNull(ToolMode.TEXT_CALLS.lower)
+        // No step down from it, whatever the error.
+        for (msg in listOf(parseError, "constrained decoding unavailable", "tool registry broken", native, null)) {
+            assertEquals(BrainPolicy.Next.Fail(BrainError.ENGINE), BrainPolicy.afterCreateError(msg, c, 2, 900, 0))
+            assertEquals(BrainPolicy.Next.Fail(BrainError.ENGINE), BrainPolicy.afterSendError(msg, c, false, 2, 900, 1))
+            assertEquals(c, BrainPolicy.modeAfter(msg, c))
+        }
+        // A full context still shortens the history, as for any model.
+        assertEquals(BrainPolicy.Next.Shorten(450), BrainPolicy.afterCreateError(overflow, c, 2, 900, 0))
+        assertEquals(BrainPolicy.Next.Shorten(450), BrainPolicy.afterSendError(overflow, c, false, 2, 900, 1))
+        assertEquals(BrainPolicy.Next.Fail(BrainError.TOO_LONG), BrainPolicy.afterSendError(overflow, c, false, 0, 0, 1))
+        // No tools described, whatever the request lists; no call accepted.
+        val all = ToolName.entries.toList()
+        assertEquals(emptyList<ToolName>(), BrainPolicy.toolsFor(c, all))
+        assertFalse(BrainPolicy.acceptsCalls(c))
+        for (m in listOf(ToolMode.TEXT_CALLS, ToolMode.TOOLS, ToolMode.TOOLS_CONSTRAINED)) {
+            assertEquals(all, BrainPolicy.toolsFor(m, all))
+            assertTrue(BrainPolicy.acceptsCalls(m))
+        }
+        // Its history alternates (Gemma 3's template); the other models get it as sent.
+        val h = listOf(PromptTurn(PromptRole.USER, "q1"), PromptTurn(PromptRole.USER, "q2"), PromptTurn(PromptRole.MODEL, "a"))
+        assertEquals(listOf(PromptTurn(PromptRole.USER, "q1\n\nq2"), PromptTurn(PromptRole.MODEL, "a")), BrainPolicy.historyFor(c, h))
+        assertEquals(h, BrainPolicy.historyFor(ToolMode.TOOLS_CONSTRAINED, h))
+    }
+
+    @Test fun aChatOnlyConversationIsReusedWhileTheShortContextHoldsTheNextTurn() {
+        val c = ToolMode.CHAT_ONLY
+        val none = emptyList<String>()
+        assertTrue(BrainPolicy.canReuse(live(mode = c, tokens = 1_000).copy(tools = none), 4, "S", c, 100, none, 2048))
+        // 1,500 + 100 + the reply's 512 is more than 2,048 (at 4,096 it would fit).
+        assertFalse(BrainPolicy.canReuse(live(mode = c, tokens = 1_500).copy(tools = none), 4, "S", c, 100, none, 2048))
+        assertTrue(BrainPolicy.canReuse(live(mode = c, tokens = 1_500).copy(tools = none), 4, "S", c, 100, none))
+        // Built at a tool level (another model), never reused for chat only.
+        assertFalse(BrainPolicy.canReuse(live(tokens = 1_000).copy(tools = none), 4, "S", c, 100, none, 2048))
+    }
+
     /** 0.1.2 review, minor 5: a parked engine must be closed even after its service is gone, and never doubled. */
     @Test fun aParkedEngineOutlivesTheServiceButNotForEver() {
         assertEquals(EngineTeardown.Step.QUIT_THREAD, EngineTeardown.afterDestroy(parked = false, sinceDestroyMs = 0))
@@ -151,7 +201,7 @@ class BrainPolicyTest {
     }
 
     /**
-     * 0.4.4: two engines, one at a time. A GGUF file goes to llama.cpp, anything else to LiteRT-LM; asking for the other
+     * 0.4.5: two engines, one at a time. A GGUF file goes to llama.cpp, anything else to LiteRT-LM; asking for the other
      * engine's kind of file unloads the one in use first, and the process's one slot (above) still keeps the new one
      * waiting while the old one lets go (an engine of another kind holds it like any other).
      */
@@ -191,6 +241,29 @@ class BrainPolicyTest {
             }
             assertTrue(rebuilds <= BrainPolicy.MAX_REBUILDS + 1)
         }
+    }
+
+    /**
+     * 0.4.5: a GGUF file trained for 2,048 to 4,095 tokens is loaded with its own context (chat only, as a short .litertlm):
+     * its prompt fits that context, with a quarter of it for the reply, and is never cut to 4,096's numbers.
+     */
+    @Test fun aShortContextGgufPromptFitsItsOwnContext() {
+        val max = 2048
+        val fits = max - ContextWindow.replyReserve(max)
+        assertEquals(512, ContextWindow.replyReserve(max))
+        assertEquals(PromptFit.Step.Send, PromptFit.after(fits, historyTurns = 4, budget = 800, rebuilds = 0, maxTokens = max))
+        // What fits at 4,096 doesn't at 2,048: older turns go.
+        assertEquals(PromptFit.Step.Send, PromptFit.after(fits + 100, historyTurns = 4, budget = 800, rebuilds = 0))
+        assertEquals(PromptFit.Step.Shorten(700), PromptFit.after(fits + 100, historyTurns = 4, budget = 800, rebuilds = 0, maxTokens = max))
+        assertEquals(PromptFit.Step.Send, PromptFit.after(max - PromptFit.MIN_REPLY, historyTurns = 0, budget = 0, rebuilds = 0, maxTokens = max))
+        assertEquals(PromptFit.Step.TooLong, PromptFit.after(max - PromptFit.MIN_REPLY + 1, historyTurns = 0, budget = 0, rebuilds = 0, maxTokens = max))
+        // Chat only: no tools, no calls accepted; at 4,096 the text-call level as before.
+        assertEquals(ToolMode.CHAT_ONLY, BrainPolicy.modeFor(max, ToolMode.TEXT_CALLS))
+        assertEquals(ToolMode.TEXT_CALLS, BrainPolicy.modeFor(ContextWindow.MAX_TOKENS, ToolMode.TEXT_CALLS))
+        assertEquals(emptyList<ToolName>(), BrainPolicy.toolsFor(ToolMode.CHAT_ONLY, Prompt.CORE_TOOLS))
+        assertEquals("", Prompt.textCallHint(BrainPolicy.toolsFor(ToolMode.CHAT_ONLY, Prompt.CORE_TOOLS)))
+        assertFalse(BrainPolicy.acceptsCalls(ToolMode.CHAT_ONLY))
+        assertTrue(BrainPolicy.acceptsCalls(ToolMode.TEXT_CALLS))
     }
 
     /** Robot's llama.cpp library needs dotprod, i8mm and fp16; :brain reads /proc/cpuinfo before it loads it. */

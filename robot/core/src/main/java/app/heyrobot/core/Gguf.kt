@@ -4,7 +4,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.Locale
 
-// Pure (java.io). What a GGUF model file holds (0.4.4, "your own model file" run by llama.cpp), read from its header
+// Pure (java.io). What a GGUF model file holds (0.4.5, "your own model file" run by llama.cpp), read from its header
 // without loading it: the version, the metadata Robot needs (architecture, name, context, layers, quantisation,
 // tokenizer, chat template) and every tensor's shape, type and place, so a file that is cut short or laid out wrongly is
 // refused here, before llama.cpp's own parser ever sees it. llama.cpp's GGUF parser has had memory-safety bugs; Robot
@@ -58,8 +58,19 @@ data class GgufReport(
     /** Thinks before it answers when its template lets it, or (Qwen3) when its system prompt doesn't say /no_think. */
     val thinks: Boolean get() = templateThinking || templateThinkTags || GgufCheck.qwen3(architecture)
 
-    /** Memory while loaded, about: the file (memory-mapped, all of it read for every token), the KV cache for Robot's context, and work space. */
-    val memoryBytes: Long get() = fileBytes.coerceAtLeast(0) + kvBytesPerToken.coerceAtLeast(0) * ContextWindow.MAX_TOKENS + GgufCheck.WORK_BYTES
+    /**
+     * The context llama.cpp is given (n_ctx), as for a LiteRT-LM file (ContextWindow.forFile): 4,096 when it was trained
+     * for at least that, its own when it was trained for 2,048 to 4,095 tokens (chat only: never a cache larger than the
+     * model was trained for); 0 when it states none or less (it can't run).
+     */
+    val contextTokens: Int get() = if (contextLength <= 0) 0 else ContextWindow.forFile(contextLength.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()) ?: 0
+
+    /** Trained for 2,048 to 4,095 tokens: Robot runs it as chat only (no actions, a shorter memory), as a short .litertlm. */
+    val shortContext: Boolean get() = contextLength in ContextWindow.MIN_TOKENS until ContextWindow.MAX_TOKENS
+
+    /** Memory while loaded, about: the file (memory-mapped, all of it read for every token), the KV cache for its context, and work space. */
+    val memoryBytes: Long get() = fileBytes.coerceAtLeast(0) +
+        kvBytesPerToken.coerceAtLeast(0) * (contextTokens.takeIf { it > 0 } ?: ContextWindow.MAX_TOKENS) + GgufCheck.WORK_BYTES
 
     /** Too big for this phone's memory next to Robot's voice and Android; null when it fits or the memory is unknown. */
     val memoryProblem: String? get() {
@@ -80,7 +91,8 @@ data class GgufReport(
             "a speech, a draft or a diffusion model)."
         tokenizer == null -> "It has no tokenizer (tokenizer.ggml.model)."
         contextLength <= 0 -> "It doesn't say its context length ($architecture.context_length)."
-        contextLength < ContextWindow.MAX_TOKENS -> "It was trained for only $contextLength tokens of context; Robot needs ${ContextWindow.MAX_TOKENS}."
+        contextLength < ContextWindow.MIN_TOKENS -> "It was trained for only $contextLength tokens of context; Robot needs at least " +
+            "${ContextWindow.MIN_TOKENS} to chat (${ContextWindow.MAX_TOKENS} for actions)."
         !chatTemplate -> "It has no chat template (tokenizer.chat_template), so Robot can't write a conversation for it."
         else -> memoryProblem
     }
@@ -94,18 +106,22 @@ data class GgufReport(
         val what = listOfNotNull(architecture?.let { "architecture $it" }, if (parameters > 0) "about ${billions(parameters)} parameters" else null)
         add("GGUF file, version $version" + (name?.let { ": “$it”" } ?: "") + (if (what.isNotEmpty()) " (${what.joinToString(", ")})" else "") + ".")
         add("Quantisation: " + (quantisation ?: if (fileType >= 0) "type $fileType" else "not stated") + ".")
-        if (contextLength > 0) add(String.format(Locale.US, "Context: %,d tokens (Robot uses %,d).", contextLength, ContextWindow.MAX_TOKENS))
         val why = unusable
+        when {
+            shortContext && why == null -> add(String.format(Locale.US, "Short context (%,d tokens): chat only — no actions, shorter memory.", contextLength))
+            contextLength > 0 -> add(String.format(Locale.US, "Context: %,d tokens (Robot uses %,d).", contextLength,
+                contextTokens.takeIf { it > 0 } ?: ContextWindow.MAX_TOKENS))
+        }
         if (why != null) {
             licence?.let { add("Licence the file names: “$it”.") }
             add(why)
             return@buildList
         }
         add(String.format(Locale.US, "Memory: about %s while it runs (the file and the cache for Robot's %,d tokens), beside about %s for Robot's voice.",
-            ModelLogic.gb(memoryBytes), ContextWindow.MAX_TOKENS, ModelLogic.gb(GgufCheck.VOICE_BYTES)))
+            ModelLogic.gb(memoryBytes), contextTokens, ModelLogic.gb(GgufCheck.VOICE_BYTES)))
         add("Runs on the CPU with llama.cpp: slower than Fast on the TPU, and more battery.")
-        add("Sees photos: no. It reads text only: a photo question won't work, and a screen question uses only the screen's text.")
-        add("Actions (timers, texts, notes…) use Robot's text format: they may not work with every model.")
+        add("Can see photos: no. It reads text only: a photo question won't work, and a screen question uses only the screen's text.")
+        if (!shortContext) add("Actions (timers, texts, notes…) use Robot's text format: they may not work with every model.")
         if (thinks) add("It can think before it answers: Settings › Model › “Let the model think first” (off: it answers directly).")
         licence?.let { add("Licence the file names: “$it”. Check its terms where you got it.") }
     }
@@ -165,7 +181,7 @@ object GgufCheck {
     /** What the screen shows of a string from the file. */
     const val MAX_SHOWN = 80
 
-    /** Memory guidance (0.4.4): Robot's voice process (Parakeet, Kokoro and the wake words) beside the model … */
+    /** Memory guidance (0.4.5): Robot's voice process (Parakeet, Kokoro and the wake words) beside the model … */
     const val VOICE_BYTES = 1_300_000_000L
     /** … Android, the launcher and the apps it keeps; and llama.cpp's own work space beside the file and the cache. */
     const val SYSTEM_BYTES = 4_000_000_000L

@@ -197,7 +197,7 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 - The Tensor TPU vendor libraries (`libedgetpu_*`) are the phone's own, declared with `<uses-native-library required="false">`, not bundled.
 - Transitive: `com.google.code.gson:gson:2.14.0`, `org.jetbrains.kotlin:kotlin-reflect:2.4.0` (Apache-2.0).
 
-### llama.cpp b11200 (MIT): your own GGUF model file (0.4.4)
+### llama.cpp b11200 (MIT): your own GGUF model file (0.4.5)
 
 `librobot_llama.so` (arm64-v8a), loaded only by `brain/LlamaNative.kt` in the `:brain` process. Never committed and never
 downloaded as a binary: `tools/build_llama.sh` fetches the pinned sources below, checks them, and builds them with the
@@ -253,12 +253,12 @@ Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-
   Licence: Apache-2.0 (its model card). The card also asks that it be used for research and personal experimentation,
   says you are responsible for its outputs, and says the base Gemma 4 Prohibited Use Policy
   (https://ai.google.dev/gemma/prohibited_use_policy) applies.
-- **Your own model file.** Whatever `.litertlm` or (0.4.4) `.gguf` you import keeps its own licence. Robot doesn't ship it;
-  it shows the file's SHA-256 and size and reads what its header says it is (`core/LiteRtLm.kt`, written for Robot from
-  LiteRT-LM's published header schema and LlmMetadata protos, Apache-2.0; `core/Gguf.kt` from the GGUF specification; no
-  code copied), and shows the licence a GGUF file names (`general.license`). The two GGUF files the README suggests: Google's
-  MedGemma 1.5 4B (unsloth's GGUF build) is under Google's Health AI Developer Foundations terms, not Apache-2.0; Qwen3 1.7B
-  (Qwen's own GGUF build) is Apache-2.0.
+- **Your own model file.** Whatever `.litertlm` or `.gguf` you import keeps its own licence. Robot doesn't ship it, nor
+  download it; it shows the file's SHA-256 and size and reads what its header says it is (`core/LiteRtLm.kt`, written for
+  Robot from LiteRT-LM's published header schema and LlmMetadata protos, Apache-2.0; `core/Gguf.kt` from the GGUF
+  specification; no code copied), and shows the licence a GGUF file names (`general.license`). For example MedGemma 1.5 4B
+  (its LiteRT-LM files, README "Short-context models", or unsloth's GGUF build): Google's Health AI Developer Foundations
+  terms of use, not Apache-2.0; Qwen3 1.7B (Qwen's own GGUF build) is Apache-2.0.
 - Not offered: no Gemma 4 E4B build for the Tensor TPU exists. `safecircleai/horizon-edge-4b` (a renamed CPU export of a
   child-safety classifier fine-tune, under the non-commercial "SafeCircle Research License") is never offered.
 

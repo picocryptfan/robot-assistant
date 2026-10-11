@@ -3,7 +3,7 @@ package app.heyrobot.core
 import java.io.ByteArrayOutputStream
 
 /**
- * Builds small GGUF files for the content check's tests (0.4.4): the header, metadata of every GGUF type, and tensors
+ * Builds small GGUF files for the content check's tests (0.4.5): the header, metadata of every GGUF type, and tensors
  * whose data really follows (zeros), laid out as llama.cpp writes them (in order, each padded to the alignment).
  */
 object FakeGguf {

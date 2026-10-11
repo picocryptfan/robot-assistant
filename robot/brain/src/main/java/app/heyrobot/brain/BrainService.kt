@@ -20,7 +20,7 @@ import app.heyrobot.core.RLog
 // this process alone; the assistant in :voice sees the binder die and reloads on the next question (or, when the model
 // you chose is the one that keeps failing, falls back to Fast: BrainKeeper).
 // No LiteRT import here: GemmaEngine.kt is the only file that touches it, and LlamaNative.kt the only one that loads
-// llama.cpp (0.4.4, your own GGUF file). Engines picks one of the two for each load; one engine holds a model at a time.
+// llama.cpp (0.4.5, your own GGUF file). Engines picks one of the two for each load; one engine holds a model at a time.
 
 class BrainService : Service() {
     private lateinit var work: HandlerThread

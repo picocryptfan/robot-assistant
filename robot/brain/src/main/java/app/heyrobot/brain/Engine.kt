@@ -14,7 +14,7 @@ import app.heyrobot.core.writeAtomic
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
-// :BRAIN PROCESS ONLY. 0.4.4: two engines behind one interface, LiteRT-LM (GemmaEngine: Robot's models and your own
+// :BRAIN PROCESS ONLY. 0.4.5: two engines behind one interface, LiteRT-LM (GemmaEngine: Robot's models and your own
 // .litertlm) and llama.cpp (LlamaEngine: your own .gguf), and still one engine in the process: the 0.4.1 slot rule, now
 // shared by both, and the other engine unloads before one loads (core EngineSwitch).
 
@@ -42,7 +42,7 @@ interface SlotHolder {
 
 /**
  * The process's one engine slot (0.4.1): the engine whose model is loading, loaded, being let go of or parked, whichever
- * BrainService made it and (0.4.4) whichever kind it is. Its holder also writes filesDir/robot/brain_loaded.txt, so the
+ * BrainService made it and (0.4.5) whichever kind it is. Its holder also writes filesDir/robot/brain_loaded.txt, so the
  * main app never deletes a model in use.
  */
 object EngineSlot {

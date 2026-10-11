@@ -393,6 +393,7 @@ private fun NoticeBar(n: Notice) {
             Text(n.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
             if (n.action == NoticeAction.OPEN_APP) TextButton(onClick = PanelController::openRobotApp) { Text("Open Robot") }
             if (n.action == NoticeAction.OPEN_ASSIST_SETTINGS) TextButton(onClick = PanelController::openAssistSettings) { Text("Open settings") }
+            if (n.action == NoticeAction.OPEN_MODEL) TextButton(onClick = PanelController::openModelSettings) { Text("Open Model") }
             IconButton(onClick = PanelController::dismissNotice, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Dismiss", Modifier.size(18.dp)) }
         }
     }

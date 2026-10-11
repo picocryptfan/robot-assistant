@@ -71,6 +71,7 @@ import app.heyrobot.core.EngineState
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.ModelLogic
+import app.heyrobot.core.ModelNotes
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.PhoneStatus
@@ -92,7 +93,7 @@ import app.heyrobot.ui.common.toolIcon
 /**
  * Settings › Model (the Model tab, 0.4.1): which model Robot uses, one card per built-in model (download, check,
  * delete, where it comes from), your own model file (import, what the check found, the TPU's warning card), and the
- * voice models. 0.4.4: your own file may be a GGUF file (llama.cpp, on the CPU), and "Let the model think first".
+ * voice models. 0.4.5: your own file may be a GGUF file (llama.cpp, on the CPU), and "Let the model think first".
  */
 @Composable
 fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier) {
@@ -152,7 +153,10 @@ private fun ModelChoiceCard(s: RobotSettings, update: (RobotSettings) -> Unit, s
                 m.builtIn -> "Download it below first."
                 else -> "Import a file below first."
             }
-            ChoiceRow(m.title, m.speed + (note?.let { " $it" } ?: ""), chosen == m, enabled = ready || chosen == m) {
+            // Your own file, checked and short (0.4.3): said where you choose it, not only on its card below.
+            val short = if (m == BrainModel.OWN && ready) snap.own?.takeIf { it.shortContext }
+                ?.let { o -> " Chat only (short context): no actions." + if (o.vision) " Can see photos." else "" } else null
+            ChoiceRow(m.title, m.speed + (short ?: "") + (note?.let { " $it" } ?: ""), chosen == m, enabled = ready || chosen == m) {
                 // Tapping the chosen one again saves too: Robot then retries a model that didn't load.
                 update(s.copy(brainModel = m.id))
             }
@@ -168,7 +172,7 @@ private fun ModelChoiceCard(s: RobotSettings, update: (RobotSettings) -> Unit, s
 }
 
 /**
- * Settings › Model › "Let the model think first" (0.4.4, off): a model that can reason before it answers may; off, Robot
+ * Settings › Model › "Let the model think first" (0.4.5, off): a model that can reason before it answers may; off, Robot
  * asks it to answer directly. The thinking is never shown or spoken either way (core Thinking).
  */
 @Composable
@@ -190,6 +194,7 @@ private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppAction
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     SectionCard(m.title) {
         StatusRow(when (st) { ModelStatus.VERIFIED -> Mark.OK; ModelStatus.BAD -> Mark.WARN; else -> Mark.TODO }, m.modelName, ModelLogic.headline(st, m))
+        ModelNotes.of(m.modelName)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Text(m.about, style = MaterialTheme.typography.bodyMedium, color = muted)
         Progress(ms)
         if (st == ModelStatus.MISSING && ms.failure != null) Text(ms.failure, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -234,7 +239,7 @@ private fun Progress(ms: app.heyrobot.sys.ModelStore.Snap) {
 /**
  * Your own model file: imported through Android's file picker (no storage permission), copied into Robot's storage,
  * its size and SHA-256 shown, and what Robot's check found in it. A .litertlm runs with LiteRT-LM: on the TPU only for a
- * proven Tensor G5 build, and only once you have read its warning card, else on the CPU; a .gguf (0.4.4) with llama.cpp,
+ * proven Tensor G5 build, and only once you have read its warning card, else on the CPU; a .gguf (0.4.5) with llama.cpp,
  * on the CPU. Which one it is, by its contents: never by the file's name.
  */
 @Composable
@@ -246,6 +251,8 @@ private fun OwnModelCard(snap: Snapshot, busy: String?, a: AppActions, onDelete:
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     SectionCard(m.title) {
         StatusRow(when (st) { ModelStatus.VERIFIED -> Mark.OK; ModelStatus.BAD -> Mark.WARN; else -> Mark.TODO }, own?.name ?: "A .litertlm or .gguf file", ModelLogic.headline(st, m))
+        // A file whose name (or a GGUF file's general.name) says MedGemma: one factual line here, never added to its answers (0.4.3).
+        (ModelNotes.of(own?.name) ?: ModelNotes.of(own?.gguf?.name))?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Text(m.about, style = MaterialTheme.typography.bodyMedium, color = muted)
         Progress(ms)
         if (own != null) {
@@ -264,6 +271,13 @@ private fun OwnModelCard(snap: Snapshot, busy: String?, a: AppActions, onDelete:
                 own.tensorG5Build -> "Waits for you to allow the TPU (below)."
                 else -> "Robot can't run it on this phone. Delete it to free the space."
             }, style = MaterialTheme.typography.bodyMedium)
+            // Built for 2,048 to 4,095 tokens (0.4.3), a .litertlm or a .gguf alike: chat only.
+            if (own.shortContext && own.runsOn != null) {
+                Text("Chat only: it was built for ${own.contextTokens} tokens of context, so Robot gives it a short prompt and no actions " +
+                    "(timers, texts, notes, the calendar…) and keeps less of the conversation. Ask for an action and Robot says so " +
+                    "and offers this page, where you can choose Fast. " + (if (own.vision) "It can see photos." else "It can't see photos."),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
             if (own.tensorG5Build && !own.tpuAllowed && st == ModelStatus.VERIFIED) TpuWarning(own, a)
             if (own.tpuAllowed) TextButton(onClick = { a.allowOwnTpu(false, null) }) { Text("Stop running it on the TPU") }
         }

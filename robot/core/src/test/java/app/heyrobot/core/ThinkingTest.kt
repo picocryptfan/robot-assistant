@@ -7,7 +7,7 @@ import org.junit.Test
 import java.util.Random
 
 /**
- * Settings › Model › "Let the model think first" (0.4.4): what each kind of model is told, and that its thinking never
+ * Settings › Model › "Let the model think first" (0.4.5): what each kind of model is told, and that its thinking never
  * reaches the bubble or the voice, however the reply is cut into chunks.
  */
 class ThinkingTest {

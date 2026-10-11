@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds Robot's GGUF engine (0.4.4): librobot_llama.so for the :brain process, from the pinned llama.cpp source and
+# Builds Robot's GGUF engine (0.4.5): librobot_llama.so for the :brain process, from the pinned llama.cpp source and
 # Robot's own JNI bridge (brain/src/main/cpp), with the Android NDK. Nothing built here is ever committed: the sources
 # go to build-native/ and the library to brain/src/main/jniLibs/arm64-v8a/, both gitignored. Without the library the
 # app still builds and runs; Settings › Model then says GGUF files can't run in that build.

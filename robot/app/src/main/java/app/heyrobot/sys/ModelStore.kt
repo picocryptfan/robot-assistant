@@ -34,7 +34,7 @@ import java.security.MessageDigest
 // and the SHA-256 check that must pass before a model is ever loaded. 0.4.1: one set of files per model of the catalogue
 // (core BrainModel): its file, download, verified mark and CPU cache folder, Fast keeping 0.4.0's names; one download or
 // copy at a time; and your own model file, checked by its contents (core LiteRtLmCheck) and recorded with its SHA-256.
-// 0.4.4: your own file may be a GGUF file (core GgufCheck), kept as own_model.gguf: its first bytes decide, never its name.
+// 0.4.5: your own file may be a GGUF file (core GgufCheck), kept as own_model.gguf: its first bytes decide, never its name.
 
 object ModelStore {
     private const val PREFS = "robot_model"
@@ -103,7 +103,11 @@ object ModelStore {
                 else -> r?.availability(fp, ggufEngine(ctx)) ?: if (fp == null) ModelAvailability.NOT_DOWNLOADED else ModelAvailability.NOT_CHECKED
             }
             val b = r?.backend
-            return if (a == ModelAvailability.READY && r != null && b != null && fp != null) a to LoadPlan(m, f.absolutePath, b, m.contextTokens, fp, r.format) else a to null
+            // Its context is the file's own when shorter than 4,096 (0.4.3, chat only), a GGUF file's too; :brain checks the
+            // header again. A GGUF file never sees photos.
+            return if (a == ModelAvailability.READY && r != null && b != null && fp != null) {
+                a to LoadPlan(m, f.absolutePath, b, r.contextTokens, fp, r.vision, r.format)
+            } else a to null
         }
         val path = verifiedPath(ctx, m) ?: return (if (f.isFile && f.length() == m.bytes) ModelAvailability.NOT_CHECKED else ModelAvailability.NOT_DOWNLOADED) to null
         return ModelAvailability.READY to LoadPlan(m, path, m.backend, m.contextTokens, fingerprint(f))

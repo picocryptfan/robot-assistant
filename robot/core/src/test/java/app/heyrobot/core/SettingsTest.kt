@@ -232,7 +232,7 @@ class SettingsTest {
     }
 
     /**
-     * Settings › Model › "Let the model think first" (schema 10, 0.4.4): off by default and for every older file (0.4.1's
+     * Settings › Model › "Let the model think first" (schema 10, 0.4.5): off by default and for every older file (0.4.1's
      * schema 7, and 8 and 9 of the other branches, which never had it, even if one said so); a file of schema 10 keeps
      * what it says, and the rest of an older file is kept.
      */

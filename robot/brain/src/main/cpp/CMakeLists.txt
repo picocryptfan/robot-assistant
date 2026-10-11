@@ -1,4 +1,4 @@
-# Robot's llama.cpp library for the :brain process (0.4.4): llama.cpp, ggml and KleidiAI from their pinned sources,
+# Robot's llama.cpp library for the :brain process (0.4.5): llama.cpp, ggml and KleidiAI from their pinned sources,
 # built as static libraries and linked with Robot's JNI bridge (robot_llama.cpp) into one shared library,
 # librobot_llama.so, that exports only its JNI functions. Configured by tools/build_llama.sh, which fetches and checks
 # the sources first (THIRD_PARTY.md); never by Gradle, so the app still builds without it.
