@@ -53,10 +53,12 @@ import java.util.concurrent.TimeoutException
 // turn.
 //
 // Before a load, as for LiteRT-LM: the app's record of your file (unchanged since its check, a GGUF file, on the CPU, with
-// the context the request asks for), and the header read again here (core GgufCheck) and compared with the one recorded;
-// llama.cpp's own parser runs only after that, only in this process, and on the very file whose header was read (it opens
-// the file through /proc/self/fd, never by its name again); and what it read of the context must be what Robot read. Every native call runs on one worker thread; replies come back to BrainService's work
-// thread, where all the state below lives. The model is never freed under a reply llama.cpp hasn't returned from.
+// the context the request asks for), and the header read again here (core GgufCheck) and compared with the one recorded,
+// byte for byte; llama.cpp's own parser runs only after that, only in this process, and on the very file whose header was
+// read (it opens the file through /proc/self/fd, never by its name again); and what it read of the context must be what
+// Robot read. Every native call runs on one worker thread; replies come back to BrainService's work thread, where all the
+// state below lives. The model is never freed under a reply llama.cpp hasn't returned from, and llama.cpp that never comes
+// back from a load or a prompt ends the process (stuck).
 
 class LlamaEngine(private val ctx: Context, private val handler: Handler) : BrainEngine, SlotHolder {
     @Volatile override var destroyedAt = 0L
