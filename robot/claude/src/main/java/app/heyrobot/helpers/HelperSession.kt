@@ -5,6 +5,7 @@ import app.heyrobot.claude.ClaudeOutcome
 import app.heyrobot.claude.ClaudeTurnReport
 import app.heyrobot.core.ClaudeBlock
 import app.heyrobot.core.ClaudePlan
+import app.heyrobot.core.ToolName
 
 // VOICE PROCESS ONLY, :claude module. One conversation with a helper (0.6.0): Claude through the Anthropic SDK
 // (ClaudeSession), or another company's model or your own server through Chat Completions or the Responses API
@@ -20,6 +21,9 @@ interface HelperSession {
 
     /** The numbers of the last turn ([ask] starts a new one). */
     val lastReport: ClaudeTurnReport
+
+    /** The tools this helper was given: the panel runs no call to any other (its reply is untrusted). */
+    val offered: Set<ToolName>
 
     /** A new question: [blocks] from ClaudeContext. */
     suspend fun ask(blocks: List<ClaudeBlock>, plan: ClaudePlan, listener: ClaudeListener): ClaudeOutcome

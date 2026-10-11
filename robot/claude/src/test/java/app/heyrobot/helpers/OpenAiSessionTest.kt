@@ -353,6 +353,13 @@ class OpenAiSessionTest {
         server.enqueue(answer("Fine."))
         val t = ClaudeTurn(session(), q, voice, Heard())
         assertEquals(ModelOutcome.Done(DoneReason.END), t.ask())
+        // The panel runs only the tools a helper was given: none with its actions off, and the call it sends anyway is
+        // passed on as it came, for the turn runner to refuse.
+        val none = session()
+        assertTrue(none.offered.isEmpty())
+        assertEquals(ClaudeTools.tools(RobotSettings()).map { it.tool }.toSet(), session(tools = true).offered)
+        server.enqueue(sse(chunk("""{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"add_note","arguments":"{\"text\":\"x\"}"}}]}""", "tool_calls"), "[DONE]"))
+        assertEquals(ClaudeOutcome.Calls(listOf(RawToolCall("add_note", mapOf("text" to "x")))), none.ask(q, voice, Heard()))
         // Failures come back in the helper's words.
         server.enqueue(error(401, "{}"))
         server.enqueue(error(401, "{}"))

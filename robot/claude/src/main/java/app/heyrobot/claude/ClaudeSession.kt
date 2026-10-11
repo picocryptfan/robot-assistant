@@ -18,6 +18,7 @@ import app.heyrobot.core.ModelOutcome
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolSpec
 import app.heyrobot.core.TurnModel
 import app.heyrobot.core.VoiceEvent
@@ -146,6 +147,8 @@ class ClaudeSession(
 
     /** The numbers of the last turn ([ask] starts a new one). */
     override val lastReport: ClaudeTurnReport get() = report
+
+    override val offered: Set<ToolName> = tools.map { it.tool }.toSet()
 
     /** A new question: [blocks] from ClaudeContext. */
     override suspend fun ask(blocks: List<ClaudeBlock>, plan: ClaudePlan, listener: ClaudeListener): ClaudeOutcome {

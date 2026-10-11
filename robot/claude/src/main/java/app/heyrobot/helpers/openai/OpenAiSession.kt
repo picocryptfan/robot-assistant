@@ -14,6 +14,7 @@ import app.heyrobot.core.ClaudePrompt
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolSpec
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
@@ -106,6 +107,7 @@ class OpenAiSession(
 
     override val fresh: Boolean get() = messages.isEmpty()
     override val lastReport: ClaudeTurnReport get() = report
+    override val offered: Set<ToolName> = tools.map { it.tool }.toSet()
 
     override suspend fun ask(blocks: List<ClaudeBlock>, plan: ClaudePlan, listener: ClaudeListener): ClaudeOutcome {
         if (pending.isNotEmpty()) abandon(emptyList(), stopped = true)

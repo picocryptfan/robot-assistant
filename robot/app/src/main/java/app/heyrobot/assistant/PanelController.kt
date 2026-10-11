@@ -1797,7 +1797,7 @@ object PanelController {
         }
         val result = try {
             TurnRunner(rounds, PanelActions, PanelView(replyId, h.name), slot.confirmations, untrusted = true, remote = true, asked = asked,
-                trusted = HelperTrust.reads(s, h), newId = ::newId).run()
+                trusted = HelperTrust.reads(s, h), offered = session.offered, newId = ::newId).run()
         } finally {
             val r = session.lastReport
             RLog.i("claude_turn", "kind" to h.kind, "model" to ((session as? ClaudeSession)?.model ?: RLog.Code("other")), "effort" to plan.effort,

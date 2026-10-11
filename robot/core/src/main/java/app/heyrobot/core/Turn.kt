@@ -285,6 +285,11 @@ class TurnRunner(
     private val asked: Set<ToolName> = emptySet(),
     /** 0.6.0: the helper asking is trusted with personal content: what a read finds goes to it without "Share with …". */
     private val trusted: Boolean = false,
+    /**
+     * 0.6.0, [remote]: the tools this helper was given (none when its actions are off or its model can't use them). A
+     * helper's reply is untrusted (a server can answer with any call at all), so a call to anything else is refused.
+     */
+    private val offered: Set<ToolName> = ClaudeTools.OFFERED.toSet(),
     private val newId: () -> String,
 ) {
     private var budget = TurnRules.MAX_CALLS
@@ -364,6 +369,7 @@ class TurnRunner(
     private fun parse(raw: RawToolCall): ParsedCall {
         if (!remote) return ToolCalls.parse(raw)
         val tool = ToolName.of(raw.name)?.takeIf { it in ClaudeTools.OFFERED } ?: return ParsedCall.Invalid(raw.name.take(40), "unknown tool")
+        if (tool !in offered) return ParsedCall.Invalid(tool.id, "this tool wasn't offered")
         ClaudeTools.check(ToolSpecs.of(tool), raw.args)?.let { return ParsedCall.Invalid(tool.id, it) }
         return ToolCalls.parse(raw)
     }
