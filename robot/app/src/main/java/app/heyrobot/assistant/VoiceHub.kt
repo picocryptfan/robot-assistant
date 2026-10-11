@@ -482,6 +482,7 @@ object VoiceHub {
             Cmd.CONVERSATIONS_DELETED -> PanelController.forgetDeleted(i.getStringExtra(Cmd.EXTRA_ID))
             // 0.5.0: a session recording a deleted transcript stops without writing it back; a Resume offer for one goes.
             Cmd.TRANSCRIPTS_DELETED -> ConversationSession.transcriptsDeleted(app, i.getStringExtra(Cmd.EXTRA_ID))
+            Cmd.VOICEPRINT_DELETED -> ConversationSession.voiceprintDeleted()
             Cmd.SPEAK_TEST -> {
                 stopVoice(TtsStop.TEST)
                 tts.speak("Hi, I'm Robot. This is how I sound.")

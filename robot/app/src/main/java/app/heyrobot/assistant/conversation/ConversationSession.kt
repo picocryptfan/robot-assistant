@@ -21,6 +21,7 @@ import app.heyrobot.core.ConversationLock
 import app.heyrobot.core.SessionStatus
 import app.heyrobot.core.ConversationRules
 import app.heyrobot.core.ConversationSettings
+import app.heyrobot.core.ConversationSpeakers
 import app.heyrobot.core.IoCode
 import app.heyrobot.core.LangLabel
 import app.heyrobot.core.MicEvent
@@ -28,11 +29,16 @@ import app.heyrobot.core.Pcm
 import app.heyrobot.core.RLog
 import app.heyrobot.core.Segment
 import app.heyrobot.core.SessionRecovery
+import app.heyrobot.core.SpeakerClusterer
+import app.heyrobot.core.SpeakerLabels
 import app.heyrobot.core.ThermalStep
+import app.heyrobot.core.Transcript
+import app.heyrobot.core.TranscriptEdits
 import app.heyrobot.core.TranscriptEvent
 import app.heyrobot.core.TranscriptIds
 import app.heyrobot.core.TranscriptLine
 import app.heyrobot.core.TranscriptWriter
+import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.sys.Assistant
@@ -55,7 +61,10 @@ import java.time.LocalDateTime
 // panel opening, heat), the heartbeat for crash recovery, the minute's numbers for the voice log, low storage. Every
 // change of state happens on one thread ("robot-conv-ctl"); lines arrive on the engine's worker; audio on the
 // listener's thread. The wake phrases sleep while it runs (unless "Hey robot works during a conversation"); "stop"
-// while Robot talks still works; they wake again when it ends.
+// while Robot talks still works; they wake again when it ends. Speaker labels (phase 5.3): with the speaker model and
+// "Tell speakers apart" on, each line gets S1, S2… (or "Me" from your enrolled voiceprint, decrypted here and used only
+// to seed the session's clusterer); what you change on the transcript screen (names, merges, "this is me", a line
+// moved or split) is appended through the session's writer, and the voices are dropped when the session ends.
 
 object ConversationSession {
     enum class Status { IDLE, STARTING, RUNNING, PAUSED, STOPPING }
@@ -77,8 +86,24 @@ object ConversationSession {
         val lockedStart: Boolean = false,
         /** The last session that ended here (for "Saved: open it in Robot"). */
         val savedId: String? = null,
+        /** Speakers are told apart in this session (the speaker model is there and "Tell speakers apart" is on). */
+        val speakersOn: Boolean = false,
+        /** The transcript's speakers so far, in the order they first spoke; the names you gave; who is you. */
+        val speakers: List<String> = emptyList(),
+        val names: Map<String, String> = emptyMap(),
+        val me: String? = null,
+        /** Two speakers who sound alike ("S3" to "S1"), offered as a merge; null: none. */
+        val proposal: Pair<String, String>? = null,
+        /** The last session ended with this many such proposals left, offered on the transcript in Robot. */
+        val similarLeft: Int = 0,
     ) {
         val active: Boolean get() = status == Status.RUNNING || status == Status.PAUSED || status == Status.STARTING
+
+        /** One voice and no names: the screen shows "Speaker". */
+        val oneVoice: Boolean get() = speakers.size <= 1 && names.isEmpty() && me == null && SpeakerClusterer.ME !in speakers
+
+        /** A speaker as shown: the name you gave, "You", or the label. */
+        fun nameOf(speaker: String): String = Transcript(names = names, me = me).nameOf(speaker)
     }
 
     private val _state = MutableStateFlow(Ui())
@@ -94,6 +119,10 @@ object ConversationSession {
     // Owned by the control thread.
     private var writer: TranscriptWriter? = null
     private var engine: ConversationEngine? = null
+    /** The session's speakers (memory only; the engine's worker labels lines with them, this thread applies your changes). */
+    @Volatile private var speakers: ConversationSpeakers? = null
+    /** Speakers you merged during the session (from, to): a line labelled just before lands with the merged label. */
+    @Volatile private var merged: Map<String, String> = emptyMap()
     private var source: AudioFrames? = null
     /** Read by the panel's question (another thread) when it needs audio and the shared listener isn't running. */
     @Volatile private var own: Listener? = null
@@ -218,7 +247,16 @@ object ConversationSession {
             ?: return "That transcript was deleted or can't be opened."
         else TranscriptWriter.start(store, TranscriptIds.new(LocalDateTime.now()), now, mode, s.convPairChoice)
             ?: return "Robot couldn't create the transcript on this phone."
-        val e = ConversationEngine(app, decoder, LangLabel.owner(), output)
+        // Speaker labels (phase 5.3): the speaker model when it is there and "Tell speakers apart" is on, seeded with your
+        // voiceprint if you made one. A resumed transcript's people get new labels (S1′): their voices are gone.
+        val embedder = VoiceEngines.speakerEmbedder()
+        val on = ConversationSettings.speakers(s, embedder?.available == true)
+        val so = w.current()
+        val mine = if (on) Voiceprints.read(app, VoiceBundle.SPEAKERS.id) else null
+        val sp = ConversationSpeakers(on, ConversationSettings.maxSpeakers(s, mode),
+            if (resumeId != null) SpeakerLabels.resumeMark(so.speakers + so.merges.keys) else "", mine?.vector)
+        mine?.vector?.fill(0f)
+        val e = ConversationEngine(app, decoder, LangLabel.owner(), output, speakers = sp, embedder = embedder)
         if (!e.start()) {
             // A new transcript with nothing in it goes again (not left as "Stopped unexpectedly"); a resumed one is closed.
             if (resumeId == null) store.delete(w.id) else w.close(System.currentTimeMillis(), SessionStatus.INTERRUPTED)
@@ -227,6 +265,8 @@ object ConversationSession {
         discarded = false
         writer = w
         engine = e
+        speakers = sp
+        merged = emptyMap()
         this.entry = entry
         pauses.clear()
         firstPause = null
@@ -237,7 +277,8 @@ object ConversationSession {
         lastDisk = lastBeat
         // Lines from before a crash show only when the phone is unlocked (a screen over the lock screen shows nothing older).
         val earlier = if (resumeId != null && ConversationLock.showsEarlier(locked)) w.current().lines.takeLast(ConversationRules.LIVE_LINES) else emptyList()
-        _state.value = Ui(Status.RUNNING, w.id, mode, w.meta.createdAt, lines = earlier, total = w.lines, lockedStart = locked)
+        _state.value = Ui(Status.RUNNING, w.id, mode, w.meta.createdAt, lines = earlier, total = w.lines, lockedStart = locked,
+            speakersOn = on, speakers = so.speakers, names = so.names, me = so.me)
         // The wake phrases sleep for the session unless "Hey robot works during a conversation".
         VoiceHub.conversationWake(!s.convWakeDuring)
         wake = (app.getSystemService(PowerManager::class.java)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "robot:conversation").apply {
@@ -253,7 +294,8 @@ object ConversationSession {
         if (PanelController.shown) pauseNow(ConvPause.PANEL)
         VoiceLog.add(VoiceEvent.CONV_START, mode, entry, if (locked) 1 else 0)
         if (resumeId != null) VoiceLog.add(VoiceEvent.CONV_RECOVERED, w.lines, ((now - w.meta.createdAt) / 60_000).toInt(), 1)
-        RLog.i("conv_start", "mode" to mode, "entry" to entry, "locked" to locked, "resumed" to (resumeId != null))
+        RLog.i("conv_start", "mode" to mode, "entry" to entry, "locked" to locked, "resumed" to (resumeId != null), "speakers" to on,
+            "me" to sp.seeded)
         ConversationNotices.cancelResume(app, w.id)
         ctl.removeCallbacks(tick)
         ctl.postDelayed(tick, 1_000)
@@ -275,12 +317,23 @@ object ConversationSession {
         // The open segment and everything queued are decoded and saved before the file is closed.
         try { e?.close() } catch (t: Throwable) { RLog.w("conv_close", t) }
         val now = System.currentTimeMillis()
+        // Speakers who sound alike are offered on the transcript afterwards; then every voice is forgotten.
+        val sp = speakers
+        val similar = sp?.proposals().orEmpty()
         synchronized(writerLock) {
             if (!discarded) {
                 if (pauses.isNotEmpty()) gap(w, now)
-                w.close(now)
+                w.close(now, similar = similar)
             }
         }
+        if (sp != null && sp.enabled) {
+            // Numbers only: never a label, a name or a voice.
+            VoiceLog.add(VoiceEvent.CONV_SPEAKERS, sp.count, similar.size, if (sp.seeded) 1 else 0)
+            e?.embedStats?.let { (n, ms) -> RLog.i("conv_speakers", "speakers" to sp.count, "proposed" to similar.size, "embedded" to n, "embedMs" to ms) }
+        }
+        sp?.clear()
+        speakers = null
+        merged = emptyMap()
         val minutes = ((now - w.meta.createdAt) / 60_000).toInt()
         VoiceLog.add(VoiceEvent.CONV_STOP, why, minutes, w.lines / 10)
         RLog.i("conv_stop", "why" to why, "minutes" to minutes)
@@ -302,7 +355,8 @@ object ConversationSession {
         synchronized(startLock) {
             _state.update {
                 val ended = Ui(savedId = if (discarded) null else w.id, lines = if (discarded) emptyList() else it.lines, total = if (discarded) 0 else it.total,
-                    notice = if (discarded) "This transcript was deleted." else note)
+                    notice = if (discarded) "This transcript was deleted." else note, speakers = if (discarded) emptyList() else it.speakers,
+                    names = if (discarded) emptyMap() else it.names, me = if (discarded) null else it.me, similarLeft = if (discarded) 0 else similar.size)
                 // A start asked for while this one was saving runs next on this thread: it stays STARTING.
                 if (pendingStarts > 0) ended.copy(status = Status.STARTING) else ended
             }
@@ -511,13 +565,19 @@ object ConversationSession {
             val saved = synchronized(writerLock) {
                 val w = writer ?: return
                 if (discarded) return
-                val l = w.line(now) { i -> ConversationLine.make(i, r.offsetS, r.seg, r.heard, r.guess, r.lang, r.reheard) }
+                // Labelled just before you merged that speaker: it lands as the merged one (the file would read it so too).
+                val label = resolve(r.speaker?.label ?: ConversationRules.SPEAKER)
+                val l = w.line(now) { i -> ConversationLine.make(i, r.offsetS, r.seg, r.heard, r.guess, r.lang, r.reheard, speaker = label) }
                 if (l == null) w.failed?.let { saveFailed(it) }
                 l
             } ?: return
             engine?.stats?.line(r.lang)
+            speakers?.heard(saved.i, saved.speaker, r.lang, r.voice)
             val line = TranscriptLine(saved.i, saved.t0, saved.t1, saved.speaker, saved.lang, saved.text, saved.lid, saved.prior, saved.words, saved.reheard)
-            _state.update { it.copy(lines = (it.lines + line).takeLast(ConversationRules.LIVE_LINES), total = it.total + 1, partial = "") }
+            _state.update {
+                it.copy(lines = (it.lines + line).takeLast(ConversationRules.LIVE_LINES), total = it.total + 1, partial = "",
+                    speakers = if (line.speaker in it.speakers) it.speakers else it.speakers + line.speaker)
+            }
         }
 
         override fun partial(text: String) {
@@ -556,7 +616,80 @@ object ConversationSession {
         val ok = synchronized(writerLock) { !discarded && w.event(TranscriptEvent.Lang(i, lang)) == null }
         if (!ok) return@post
         engine?.corrected(lang)
+        _state.value.lines.firstOrNull { it.i == i }?.let { l -> speakers?.corrected(l.speaker, lang) }
         _state.update { st -> st.copy(lines = st.lines.map { if (it.i == i) it.copy(lang = lang, prior = false, translations = emptyMap()) else it }) }
+    }
+
+    // ------------------------------------------------------------------ speakers (phase 5.3)
+
+    private fun resolve(label: String): String {
+        var s = label
+        repeat(16) { s = merged[s] ?: return s }
+        return s
+    }
+
+    /** You named [speaker] (empty: back to the label). Kept in this transcript only. */
+    fun rename(speaker: String, name: String) = edit { t, _ -> TranscriptEdits.rename(t, speaker, name) }
+
+    /** "[from] is [to]": their lines are one person's, and so are later lines that sound like either. */
+    fun merge(from: String, to: String) = edit { t, _ -> TranscriptEdits.merge(t, from, to) }
+
+    /** "This is me". */
+    fun thisIsMe(speaker: String) = edit { t, _ -> TranscriptEdits.me(t, speaker) }
+
+    /** Line [i] was [speaker]'s (one of the transcript's, or a new label for someone else). */
+    fun move(i: Int, speaker: String) = edit { t, _ -> TranscriptEdits.move(t, i, speaker) }
+
+    /** Line [i] splits at character [at]; the rest is [speaker]'s (null: the same). */
+    fun split(i: Int, at: Int, speaker: String?) = edit { t, n -> TranscriptEdits.split(t, i, at, n, speaker) }
+
+    /** "Not the same person": the proposal goes, and isn't made again in this session. */
+    fun decline(from: String, to: String) = ctl.post {
+        speakers?.decline(from, to)
+        _state.update { it.copy(proposal = nextProposal()) }
+    }
+
+    private fun nextProposal(): Pair<String, String>? = speakers?.proposals()?.firstOrNull()
+
+    /**
+     * Control thread: appends your change through the session's writer (checked against the transcript as it stands),
+     * then the session's speakers and the screen follow. Nothing when the session ended or the change isn't allowed.
+     */
+    private fun edit(make: (Transcript, Int) -> TranscriptEvent?) = ctl.post {
+        val w = writer ?: return@post
+        val sp = speakers
+        val (e, t) = synchronized(writerLock) {
+            if (discarded) return@post
+            val e = w.edit(make) ?: run {
+                w.failed?.let { saveFailed(it) }
+                return@post
+            }
+            // In step with the file before the next line is written: a line labelled with the old speaker lands merged.
+            if (e is TranscriptEvent.Merge) {
+                merged = merged + (e.from to e.to)
+                sp?.merge(e.from, e.to)
+            }
+            e to w.current()
+        }
+        when (e) {
+            is TranscriptEvent.Speaker -> sp?.moved(e.i, e.speaker)
+            else -> {}
+        }
+        _state.update { st ->
+            val shown = st.lines.map { it.i }.toSet() + ((e as? TranscriptEvent.Split)?.n?.let { setOf(it) } ?: emptySet())
+            st.copy(
+                // The lines on screen as the file now reads them (a newer line not folded here stays as it was).
+                lines = (st.lines.map { t.line(it.i) ?: it } + listOfNotNull((e as? TranscriptEvent.Split)?.let { s -> t.line(s.n) }))
+                    .filter { it.i in shown }.distinctBy { it.i }.sortedWith(compareBy<TranscriptLine> { it.t0 }.thenBy { it.i }),
+                speakers = t.speakers, names = t.names, me = t.me, proposal = nextProposal(),
+            )
+        }
+    }
+
+    /** Your voiceprint was deleted (Settings): a running session stops comparing with it at once. */
+    fun voiceprintDeleted() {
+        if (!::app.isInitialized) return
+        ctl.post { speakers?.forgetMe() }
     }
 
     // ------------------------------------------------------------------ the tick (control thread, every second)
@@ -581,6 +714,11 @@ object ConversationSession {
             }
             // The notification's line count (it never shows words).
             ConversationNotices.changed(app)
+            // Two speakers who have come to sound alike are offered as a merge (never merged by themselves).
+            if (speakers?.enabled == true) {
+                val p = nextProposal()
+                _state.update { if (it.proposal == p) it else it.copy(proposal = p) }
+            }
         }
         if (nowE - lastDisk >= 60_000) {
             lastDisk = nowE

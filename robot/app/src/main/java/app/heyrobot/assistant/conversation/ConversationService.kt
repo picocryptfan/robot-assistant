@@ -50,8 +50,11 @@ class ConversationService : Service() {
                 when (i.action) {
                     Intent.ACTION_SCREEN_ON -> ConversationSession.screen(true)
                     Intent.ACTION_SCREEN_OFF -> ConversationSession.screen(false)
-                    // The Robot app deleted transcripts: VoiceHub hears it too while Robot is the assistant; this covers the rest.
-                    Cmd.ACTION -> if (i.getStringExtra("op") == Cmd.TRANSCRIPTS_DELETED) ConversationSession.transcriptsDeleted(c, i.getStringExtra(Cmd.EXTRA_ID))
+                    // The Robot app deleted transcripts or your voiceprint: VoiceHub hears it too while Robot is the assistant; this covers the rest.
+                    Cmd.ACTION -> when (i.getStringExtra("op")) {
+                        Cmd.TRANSCRIPTS_DELETED -> ConversationSession.transcriptsDeleted(c, i.getStringExtra(Cmd.EXTRA_ID))
+                        Cmd.VOICEPRINT_DELETED -> ConversationSession.voiceprintDeleted()
+                    }
                 }
             }
         }

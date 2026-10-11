@@ -149,6 +149,8 @@ object Cmd {
      * writes a deleted transcript back.
      */
     const val TRANSCRIPTS_DELETED = "transcripts_deleted"
+    /** Your "me" voiceprint was deleted (0.5.0, phase 5.3): a running session stops comparing lines with it. */
+    const val VOICEPRINT_DELETED = "voiceprint_deleted"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"
