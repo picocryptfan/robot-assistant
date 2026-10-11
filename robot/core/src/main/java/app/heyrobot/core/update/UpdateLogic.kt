@@ -137,8 +137,11 @@ object ArchiveCheck {
     /**
      * The downloaded APK ([apk], null when Android couldn't read it) against the installed Robot: the same package, the
      * version the release says ([expected]), a higher versionCode (never a downgrade or the same one again), and signed by
-     * the key the installed Robot is signed with now, or by a newer key whose v3 lineage includes it (a rotated key).
-     * Several signers must match exactly. Android refuses another signer anyway; this says why first.
+     * the key the installed Robot is signed with now, or by a newer key whose v3 lineage includes it (a rotated key): a
+     * lineage that ends at the APK's own signer, each step signed by the key before it (Android verifies those signatures
+     * when it reads the APK, so only the holder of Robot's key can put a new key after it). Several signers must match
+     * exactly. Android refuses another signer anyway, and also a lineage that took the old key's right to update installed
+     * data away, which Android doesn't show apps: this says why first in every other case.
      */
     fun check(installed: ApkFacts, apk: ApkFacts?, expected: RobotVersion): ArchiveVerdict {
         if (apk == null || apk.packageName == null) return ArchiveVerdict.NOT_AN_APK
@@ -150,7 +153,9 @@ object ArchiveCheck {
             return if (apk.signers.toSet() == installed.signers.toSet()) ArchiveVerdict.OK else ArchiveVerdict.OTHER_SIGNER
         }
         val now = installed.signers.single()
-        return if (apk.signers.single() == now || now in apk.lineage) ArchiveVerdict.OK else ArchiveVerdict.OTHER_SIGNER
+        val signer = apk.signers.single()
+        val rotated = apk.lineage.lastOrNull() == signer && now in apk.lineage
+        return if (signer == now || rotated) ArchiveVerdict.OK else ArchiveVerdict.OTHER_SIGNER
     }
 }
 

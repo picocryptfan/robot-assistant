@@ -182,6 +182,11 @@ class UpdateDecisionTest {
         assertEquals(ArchiveVerdict.OTHER_SIGNER, ArchiveCheck.check(installed, apk(signers = listOf(otherKey), lineage = listOf(otherKey)), v6))
         assertEquals(ArchiveVerdict.OK, ArchiveCheck.check(installed, apk(signers = listOf(otherKey), lineage = listOf(robotKey, otherKey)), v6))
         assertEquals(ArchiveVerdict.OTHER_SIGNER, ArchiveCheck.check(installed, apk(signers = listOf(otherKey), lineage = listOf(oldKey, otherKey)), v6))
+        // A lineage is a chain ending at the key that signed the APK (each step signed by the key before it, which Android
+        // verifies): Robot's key in a list that doesn't end at the APK's own signer proves nothing about that signer.
+        assertEquals(ArchiveVerdict.OTHER_SIGNER, ArchiveCheck.check(installed, apk(signers = listOf(otherKey), lineage = listOf(robotKey)), v6))
+        assertEquals(ArchiveVerdict.OTHER_SIGNER, ArchiveCheck.check(installed, apk(signers = listOf(otherKey), lineage = listOf(otherKey, robotKey)), v6))
+        assertEquals(ArchiveVerdict.OK, ArchiveCheck.check(installed, apk(signers = listOf(otherKey), lineage = listOf(robotKey, oldKey, otherKey)), v6))
         // An installed Robot that rotated already: its current key is what counts, not one it left.
         val rotated = installed.copy(signers = listOf(otherKey), lineage = listOf(robotKey, otherKey))
         assertEquals(ArchiveVerdict.OK, ArchiveCheck.check(rotated, apk(signers = listOf(otherKey), lineage = listOf(robotKey, otherKey)), v6))

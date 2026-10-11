@@ -232,9 +232,13 @@ apksigner rotate --out robot.lineage --old-signer --ks old-release.p12 --new-sig
 apksigner sign --ks old-release.p12 --next-signer --ks new-release.p12 --lineage robot.lineage Robot-<version>.apk
 ```
 
-Robot's updater accepts an APK whose lineage contains the installed signer, as Android does. An APK simply signed with a
-new key is refused by both, and everyone would have to uninstall Robot (losing its data) to move to it. Update
-`EXPECT_CERT` in `tools/verify_apk.sh` and keep the old key safe as well.
+Robot's updater accepts an APK whose lineage, ending at the key that signed it, contains the installed signer; Android
+checks the same when it installs (each step of a lineage is signed by the key before it, so only the old key's holder can
+add a new key after it), and also that the lineage leaves the old key its "installed data" capability. That is
+apksigner's default: don't take it away, since Android doesn't show apps a lineage's capabilities, so Robot can't check
+it first and would only report Android's refusal. An APK simply signed with a new key is refused by both, and everyone
+would have to uninstall Robot (losing its data) to move to it. Update `EXPECT_CERT` in `tools/verify_apk.sh` and keep the
+old key safe as well.
 
 ### Code and tests
 
