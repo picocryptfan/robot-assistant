@@ -197,6 +197,40 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 - The Tensor TPU vendor libraries (`libedgetpu_*`) are the phone's own, declared with `<uses-native-library required="false">`, not bundled.
 - Transitive: `com.google.code.gson:gson:2.14.0`, `org.jetbrains.kotlin:kotlin-reflect:2.4.0` (Apache-2.0).
 
+### llama.cpp b11200 (MIT): your own GGUF model file (0.4.4)
+
+`librobot_llama.so` (arm64-v8a), loaded only by `brain/LlamaNative.kt` in the `:brain` process. Never committed and never
+downloaded as a binary: `tools/build_llama.sh` fetches the pinned sources below, checks them, and builds them with the
+Android NDK (27.1.12297006) into `brain/src/main/jniLibs/arm64-v8a/` (gitignored). Without it the app builds and runs, and
+Settings › Model says GGUF files can't run in that build. One shared library holds, as static code:
+
+- **llama.cpp** (MIT, "Copyright (c) 2023-2026 The ggml authors"), tag `b11200`, commit
+  `81bc6b83f827df746eb129235488d325c49cae52` (2026-09-26), https://github.com/ggml-org/llama.cpp. The script checks the
+  commit and the SHA-256 of its source tar, `26aa9265184fb08bf847f3fe843a2d7351985e67757abf270ea366bbe451e07b`: the
+  uncompressed tar `git archive --format=tar --prefix=llama.cpp-b11200/ 81bc6b83…` writes (176,046,080 bytes). GitHub
+  makes `archive/refs/tags/b11200.tar.gz` with `git archive` too, so it should decompress to the same bytes; the script
+  checks that and stops if not (then `--git`). GitHub's tarball wasn't reachable when this was pinned (the git fetch and
+  its check were), so its compressed bytes aren't pinned and that path is untested. Linked: `libllama`, `ggml` with its
+  CPU backend only (no Vulkan, no OpenCL, no OpenMP, no llamafile; Armv8.6-A with dotprod, i8mm and fp16, weight
+  repacking on), and the `common` library's chat-template code (llama.cpp's own Jinja engine). Licence text:
+  `third_party/LICENSE-llama.cpp.txt`.
+- **nlohmann/json** (MIT, "Copyright (c) 2013-2025 Niels Lohmann"), vendored in llama.cpp at that tag and used by its
+  chat templates. Licence text: `third_party/LICENSE-nlohmann-json.txt`.
+- **KleidiAI** v1.24.0 (Apache-2.0, "Copyright 2024-2026 Arm Limited and/or its affiliates"), Arm's CPU matrix kernels,
+  chosen by ggml at run time; the release llama.cpp b11200 names: commit `0b2ee513397578a272a4e8a6c12589ef6534371c`,
+  https://github.com/ARM-software/kleidiai/releases/download/v1.24.0/kleidiai-v1.24.0-src.tar.gz, sha256
+  `9348b969e042d8890a54b01a463dbe71f5a4c074b5329e9c26a85ef3b68aa19b` (and the MD5 llama.cpp pins,
+  `2f02ebe29573d45813e671eb304f2a00`); without that download, the tag's commit and its source tar's SHA-256
+  `7665267ade0042fe158d2a9778c09563f3f93b759c7b0daa82ba28d709afd537`. Licence text: `third_party/LICENSE-kleidiai.txt`.
+- **Robot's JNI bridge** (`brain/src/main/cpp/robot_llama.cpp`, GPL-3.0-only, Robot's own). The library exports only its
+  JNI functions, imports nothing but the C library and the dynamic loader, and can't start a process (`fork` and `execlp`,
+  which ggml's debugger backtrace uses, are linked to stand-ins that always fail); the script checks all three before it
+  installs the library. The NDK's libc++ is linked statically (Apache-2.0 with LLVM exceptions).
+
+llama.cpp's own GGUF parser has had memory-safety bugs. Robot reads a GGUF file's header itself first (`core/Gguf.kt`,
+written for Robot from the GGUF specification and llama.cpp's limits; no code copied), runs llama.cpp only in its
+separate `:brain` process, and only on a file you imported, checked and chose.
+
 ## Models (not in the APK; downloaded or imported by the app on request, Settings › Model)
 
 Robot downloads a model only when you tap Download, from Hugging Face, pinned to one commit, and checks the file's size and
@@ -219,9 +253,12 @@ Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-
   Licence: Apache-2.0 (its model card). The card also asks that it be used for research and personal experimentation,
   says you are responsible for its outputs, and says the base Gemma 4 Prohibited Use Policy
   (https://ai.google.dev/gemma/prohibited_use_policy) applies.
-- **Your own model file.** Whatever `.litertlm` you import keeps its own licence. Robot doesn't ship it; it shows the
-  file's SHA-256 and size and reads what its header says it is (`core/LiteRtLm.kt`, written for Robot from LiteRT-LM's
-  published header schema and LlmMetadata protos, Apache-2.0; no code copied).
+- **Your own model file.** Whatever `.litertlm` or (0.4.4) `.gguf` you import keeps its own licence. Robot doesn't ship it;
+  it shows the file's SHA-256 and size and reads what its header says it is (`core/LiteRtLm.kt`, written for Robot from
+  LiteRT-LM's published header schema and LlmMetadata protos, Apache-2.0; `core/Gguf.kt` from the GGUF specification; no
+  code copied), and shows the licence a GGUF file names (`general.license`). The two GGUF files the README suggests: Google's
+  MedGemma 1.5 4B (unsloth's GGUF build) is under Google's Health AI Developer Foundations terms, not Apache-2.0; Qwen3 1.7B
+  (Qwen's own GGUF build) is Apache-2.0.
 - Not offered: no Gemma 4 E4B build for the Tensor TPU exists. `safecircleai/horizon-edge-4b` (a renamed CPU export of a
   child-safety classifier fine-tune, under the non-commercial "SafeCircle Research License") is never offered.
 
