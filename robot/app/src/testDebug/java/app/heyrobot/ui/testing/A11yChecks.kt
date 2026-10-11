@@ -26,7 +26,10 @@ fun ComposeContentTestRule.touchTargetProblems(): List<String> {
             // Only what is on screen counts: a lazy list composes the next rows before they scroll in, and a row scrolled
             // out of a list is clipped to nothing.
             if (!n.layoutInfo.isPlaced || n.boundsInRoot.width <= 0f || n.boundsInRoot.height <= 0f) return
-            if (c.getOrNull(SemanticsActions.OnClick) != null) {
+            // A row the list has scrolled partly out of view (under a top bar) is cut at the list's edge: only targets
+            // wholly on screen are measured. What is inside it is still looked at.
+            val whole = n.boundsInRoot.width >= n.size.width - 1f && n.boundsInRoot.height >= n.size.height - 1f
+            if (whole && c.getOrNull(SemanticsActions.OnClick) != null) {
                 val label = (c.getOrNull(SemanticsProperties.ContentDescription).orEmpty() +
                     c.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }).joinToString(" ").trim()
                 val r = n.touchBoundsInRoot

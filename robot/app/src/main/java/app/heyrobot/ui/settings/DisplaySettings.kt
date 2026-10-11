@@ -1,14 +1,7 @@
 package app.heyrobot.ui.settings
 
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
 import app.heyrobot.core.LookSettings
-import app.heyrobot.sys.LookStore
-import app.heyrobot.ui.AppActions
-import app.heyrobot.ui.NavRow
-import app.heyrobot.ui.Page
-import app.heyrobot.ui.SectionCard
-import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.pref.PreferenceScreen
 import app.heyrobot.ui.pref.SwitchPreference
 import app.heyrobot.ui.pref.preferenceFooter
@@ -45,15 +38,3 @@ fun DisplaySettingsScreen(look: LookSettings, onChange: (LookSettings) -> Unit, 
 /** The Display row's state: "Wallpaper colours", or "Robot's colours · Classic look". */
 fun displaySummary(l: LookSettings): String =
     listOfNotNull(if (l.wallpaperColors) "Wallpaper colours" else "Robot's colours", if (l.classic) "Classic look" else null).joinToString(" · ")
-
-/**
- * The way into Display from today's Settings screen, a group after Weather, until Settings becomes a list of pages
- * (the redesign's next step builds Settings › Display into it and drops this).
- */
-@Composable
-internal fun DisplaySettingsEntry(a: AppActions) {
-    val look = LookStore.current(LocalContext.current)
-    SectionCard("Display") {
-        NavRow(RIcons.Palette, "Display", displaySummary(look)) { a.openPage(Page.Settings(SettingsRoutes.DISPLAY)) }
-    }
-}

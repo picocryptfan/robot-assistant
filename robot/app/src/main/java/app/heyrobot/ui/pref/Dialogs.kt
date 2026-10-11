@@ -76,8 +76,9 @@ fun <T> RadioDialog(
 }
 
 /**
- * One text field ([initial] to start with), its [supporting] line under it, or the error [validate] gives, which also
- * keeps [confirm] off. [onSave] gets the text trimmed.
+ * One text field ([initial] to start with), its [supporting] line under it (or [hint]'s, which follows the text), or the
+ * error [validate] gives, which also keeps [confirm] off, as does [canSave] (an empty field, say, needs no error). At
+ * most [maxLength] characters. [onSave] gets the text trimmed.
  */
 @Composable
 fun EditDialog(
@@ -87,28 +88,33 @@ fun EditDialog(
     supporting: String,
     validate: (String) -> String? = { null },
     confirm: String = "Save",
+    keyboard: KeyboardOptions = KeyboardOptions.Default,
+    hint: ((String) -> String?)? = null,
+    canSave: (String) -> Boolean = { true },
+    maxLength: Int = Int.MAX_VALUE,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
 ) {
     var text by rememberSaveable { mutableStateOf(initial) }
     val error = validate(text)
+    val ok = error == null && canSave(text)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             OutlinedTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = { text = it.take(maxLength) },
                 label = { Text(fieldLabel) },
-                supportingText = { Text(error ?: supporting) },
+                supportingText = { Text(error ?: hint?.invoke(text) ?: supporting) },
                 isError = error != null,
                 singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { if (error == null) onSave(text.trim()) }),
+                keyboardOptions = keyboard.copy(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { if (ok) onSave(text.trim()) }),
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        confirmButton = { TextButton(onClick = { onSave(text.trim()) }, enabled = error == null) { Text(confirm) } },
+        confirmButton = { TextButton(onClick = { onSave(text.trim()) }, enabled = ok) { Text(confirm) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

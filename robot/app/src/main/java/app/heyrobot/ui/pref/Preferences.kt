@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,6 +24,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -118,12 +122,13 @@ fun PreferenceScreen(
         snackbarHost = { if (snackbar != null) SnackbarHost(snackbar) },
     ) { pad ->
         val dir = LocalLayoutDirection.current
+        // Below the top bar, not under it: a row scrolled up is cut at the bar's edge, so its touch area never lies under
+        // Back or the bar's actions.
         LazyColumn(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().padding(top = pad.calculateTopPadding()),
             contentPadding = PaddingValues(
                 start = pad.calculateStartPadding(dir) + RobotTokens.pagePadding,
                 end = pad.calculateEndPadding(dir) + RobotTokens.pagePadding,
-                top = pad.calculateTopPadding(),
                 bottom = pad.calculateBottomPadding() + 24.dp,
             ),
             content = content,
@@ -139,6 +144,31 @@ fun LazyListScope.preferenceGroup(title: String?, key: String, content: @Composa
 /** The page's footer: the explanations, after the last group. */
 fun LazyListScope.preferenceFooter(text: String, key: String = "footer") {
     item(key = key, contentType = "footer") { FooterPreference(text) }
+}
+
+/**
+ * A long group (People, a server's models) as lazy rows under [title]: each of [items] is its own list item, drawn as
+ * one group (20 dp corners at its ends, 4 dp between, 2 dp apart), so thousands of rows scroll without composing them all.
+ */
+fun <T> LazyListScope.preferenceItems(
+    title: String?,
+    key: String,
+    items: List<T>,
+    itemKey: (T) -> Any,
+    content: @Composable (T) -> Unit,
+) {
+    item(key = key, contentType = "category") { if (title != null) PreferenceCategory(title) else Spacer(Modifier.height(16.dp)) }
+    itemsIndexed(items, key = { _, it -> itemKey(it) }, contentType = { _, _ -> "row" }) { i, it ->
+        if (RobotTokens.groupedSettings) {
+            val top = if (i == 0) RobotTokens.groupCorner else RobotTokens.itemCorner
+            val bottom = if (i == items.lastIndex) RobotTokens.groupCorner else RobotTokens.itemCorner
+            Box(Modifier.padding(top = if (i == 0) 0.dp else RobotTokens.groupGap).clip(RoundedCornerShape(top, top, bottom, bottom))) {
+                CompositionLocalProvider(LocalInGroup provides true) { content(it) }
+            }
+        } else {
+            content(it)
+        }
+    }
 }
 
 /**
@@ -196,6 +226,23 @@ private fun PrefFrame(
     )
 }
 
+/**
+ * A row of its own making inside a group (a slider with labels, numbered steps, a test's result lines): the row's
+ * background, corners and padding, its [content] in a column.
+ */
+@Composable
+fun PreferenceBlock(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val grouped = RobotTokens.groupedSettings && LocalInGroup.current
+    Column(
+        modifier.fillMaxWidth()
+            .clip(if (grouped) RoundedCornerShape(RobotTokens.itemCorner) else RectangleShape)
+            .background(if (grouped) MaterialTheme.colorScheme.surfaceBright else Color.Transparent)
+            .padding(horizontal = RobotTokens.prefPaddingH, vertical = RobotTokens.prefPaddingV),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
 /** The icon, title and summary of a row; [summaryInSemantics] false when the row states its value another way. */
 @Composable
 private fun RowScope.PrefTexts(
@@ -209,7 +256,7 @@ private fun RowScope.PrefTexts(
     val alpha = if (enabled) 1f else DISABLED
     val c = MaterialTheme.colorScheme
     if (leading != null || icon != null) {
-        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.defaultMinSize(24.dp, 24.dp), contentAlignment = Alignment.Center) {
             if (leading != null) leading() else Icon(icon!!, null, tint = c.onSurface.copy(alpha = alpha))
         }
         Spacer(Modifier.width(16.dp))
@@ -241,11 +288,12 @@ fun PreferenceItem(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    leading: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     PrefFrame(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier, modifier) {
-        PrefTexts(title, summary, icon, enabled)
+        PrefTexts(title, summary, icon, enabled, leading = leading)
         if (trailing != null) {
             Spacer(Modifier.width(16.dp))
             trailing()
@@ -326,6 +374,47 @@ fun TwoTargetSwitchPreference(
 }
 
 /**
+ * Two targets in one row, the general case: the text (and [leading]) opens something or picks it ([onClick], as [role]:
+ * a radio row passes [selected]), and [trailing] holds targets of its own (Keep and Remove, a details button), each with
+ * its own label.
+ */
+@Composable
+fun TwoTargetPreference(
+    title: String,
+    summary: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+    leading: (@Composable () -> Unit)? = null,
+    role: Role = Role.Button,
+    selected: Boolean? = null,
+    onClickLabel: String? = null,
+    trailing: @Composable RowScope.() -> Unit,
+) {
+    val grouped = RobotTokens.groupedSettings && LocalInGroup.current
+    Row(
+        modifier.fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .heightIn(min = RobotTokens.prefMinHeight)
+            .clip(if (grouped) RoundedCornerShape(RobotTokens.itemCorner) else RectangleShape)
+            .background(if (grouped) MaterialTheme.colorScheme.surfaceBright else Color.Transparent),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val target = if (selected != null) Modifier.selectable(selected, enabled = enabled, role = role, onClick = onClick)
+            else Modifier.clickable(enabled = enabled, role = role, onClickLabel = onClickLabel, onClick = onClick)
+        Row(
+            Modifier.weight(1f).fillMaxHeight()
+                .then(target)
+                .semantics(mergeDescendants = true) {}
+                .padding(start = RobotTokens.prefPaddingH, end = 8.dp, top = RobotTokens.prefPaddingV, bottom = RobotTokens.prefPaddingV),
+            verticalAlignment = Alignment.CenterVertically,
+        ) { PrefTexts(title, summary, icon, enabled, leading = leading) }
+        Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically, content = trailing)
+    }
+}
+
+/**
  * The switch for a whole page ("Use Ask Claude"), as Settings' main switch bar: a rounded bar in primaryContainer when
  * on, secondaryContainer when off. Turning it off should disable the rest of the page.
  */
@@ -353,7 +442,8 @@ fun MainSwitchBar(title: String, checked: Boolean, enabled: Boolean = true, modi
 
 /**
  * A single choice (Settings' ListPreference): the row shows the current value under the title and opens a radio dialog
- * that closes on a pick. For TalkBack the row is a button whose state is the value. Replaces segmented buttons.
+ * that closes on a pick. For TalkBack the row is a button whose state is the value. Replaces segmented buttons. A
+ * [summary] shows (and is read) in place of the value when the row says more.
  */
 @Composable
 fun <T> ListPreference(
@@ -365,14 +455,16 @@ fun <T> ListPreference(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    summary: String? = null,
     onPick: (T) -> Unit,
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
     val now = label(value)
+    // [summary] says more than the value ("Ask first · works locked"); TalkBack still states the value, then the rest.
     PrefFrame(
-        Modifier.clickable(enabled = enabled, role = Role.Button) { open = true }.semantics { stateDescription = now },
+        Modifier.clickable(enabled = enabled, role = Role.Button) { open = true }.semantics { stateDescription = summary ?: now },
         modifier,
-    ) { PrefTexts(title, now, icon, enabled, summaryInSemantics = false) }
+    ) { PrefTexts(title, summary ?: now, icon, enabled, summaryInSemantics = false) }
     if (open) {
         RadioDialog(title, value, entries, label, detail, onDismiss = { open = false }, onPick = { open = false; onPick(it) })
     }
@@ -391,13 +483,14 @@ fun TextPreference(
     supporting: String,
     icon: ImageVector? = null,
     enabled: Boolean = true,
+    keyboard: KeyboardOptions = KeyboardOptions.Default,
     validate: (String) -> String? = { null },
     onSave: (String) -> Unit,
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
     PreferenceItem(title, value.ifEmpty { emptySummary }, icon, enabled, onClick = { open = true })
     if (open) {
-        EditDialog(title, value, fieldLabel, supporting, validate, onDismiss = { open = false }, onSave = { open = false; onSave(it) })
+        EditDialog(title, value, fieldLabel, supporting, validate, keyboard = keyboard, onDismiss = { open = false }, onSave = { open = false; onSave(it) })
     }
 }
 

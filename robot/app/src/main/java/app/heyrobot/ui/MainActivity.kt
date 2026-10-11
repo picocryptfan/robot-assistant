@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -81,7 +82,12 @@ import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.sys.MtModelStore
 import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.model.ModelScreen
+import app.heyrobot.ui.settings.AppRoutes
 import app.heyrobot.ui.settings.SettingsNav
+import app.heyrobot.ui.settings.SettingsRoot
+import app.heyrobot.ui.settings.SetupScreen
+import app.heyrobot.ui.settings.rememberPageStack
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -120,23 +126,8 @@ class MainActivity : ComponentActivity() {
         route.value = routeOf(intent)
     }
 
-    private fun routeOf(i: Intent?): String? = when {
-        i == null -> null
-        i.component?.className == AppPages.NOTES_ALIAS -> AppPages.NOTES
-        // 0.5.0: a long press on the "Transcribe" tile.
-        i.action == "android.service.quicksettings.action.QS_TILE_PREFERENCES" -> AppPages.CONVERSATION_SETTINGS
-        // 0.5.0: the Transcripts library, or one transcript (the transcript screen's "Open", the "Transcripts" shortcut).
-        i.getStringExtra(AppPages.EXTRA) == AppPages.TRANSCRIPTS ->
-            i.getStringExtra(AppPages.EXTRA_TRANSCRIPT)?.takeIf { app.heyrobot.core.TranscriptIds.valid(it) }?.let { id ->
-                // A summary's [14:03] link: that line in view (phase 5.6).
-                val line = i.getIntExtra(AppPages.EXTRA_LINE, -1)
-                "${AppPages.TRANSCRIPTS}:$id" + if (line >= 0) ":$line" else ""
-            } ?: AppPages.TRANSCRIPTS
-        // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
-        // Model from a chat-only model's answer to an action (0.4.3).
-        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL || it == AppPages.HELPERS }
-    }
+    /** The pages other screens and apps may open (ui/settings AppRoutes). */
+    private fun routeOf(i: Intent?): String? = AppRoutes.of(i)
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
     fun talk(conversation: String? = null): Boolean = showAssist(Bundle().apply {
@@ -280,7 +271,9 @@ fun RobotAppUi(activity: MainActivity) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var tab by rememberSaveable { mutableStateOf(Tab.HOME) }
-    var page by rememberSaveable(stateSaver = Page.Saver) { mutableStateOf(null) }
+    // The open pages, the last one shown: Back goes up one page (ui/settings PageStack).
+    val nav = rememberPageStack()
+    var page by nav
     /** Opened from the "Robot Notes" icon and still on Notes: Back leaves the app, as from any app's first screen. */
     var fromNotesIcon by rememberSaveable { mutableStateOf(false) }
     var settings by remember { mutableStateOf(SettingsStore.load(ctx)) }
@@ -394,15 +387,10 @@ fun RobotAppUi(activity: MainActivity) {
     val route by activity.route
     // An open note editor saves when it closes (its onDispose), so switching pages here never loses text.
     LaunchedEffect(route) {
-        val r = route
-        when {
-            r == AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
-            r == AppPages.PERMISSIONS -> page = Page.Setup(people = true)
-            r == AppPages.TRANSCRIPTS -> page = Page.Transcripts
-            r != null && r.startsWith(AppPages.TRANSCRIPTS + ":") -> r.split(':').let { p -> page = Page.Transcript(p[1], p.getOrNull(2)?.toIntOrNull()) }
-            r == AppPages.CONVERSATION_SETTINGS -> page = Page.ConversationSettings
-            r == AppPages.HELPERS -> page = Page.Helpers
-            r == AppPages.MODEL -> { tab = Tab.MODEL; page = null }
+        route?.let(AppRoutes::target)?.let { t ->
+            if (t.tab != null) { tab = t.tab; page = null }
+            if (t.page != null) page = t.page
+            if (t.notesIcon) fromNotesIcon = true
         }
         activity.route.value = null
     }
@@ -633,33 +621,33 @@ fun RobotAppUi(activity: MainActivity) {
     }
 
     BackHandler(enabled = page != null || (tab != Tab.HOME && !(tab == Tab.NOTES && fromNotesIcon))) {
-        if (page != null) page = if (page is Page.Helper || page == Page.AddHelper) Page.Helpers else null else tab = Tab.HOME
+        if (page != null) nav.back() else tab = Tab.HOME
     }
 
     when (val p = page) {
-        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people, helpers = settings.helpers)
-        is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.helperShowCost, onBack = { page = null })
+        // Back goes up one page: to the one under it, or its parent in Settings (ui/settings PageStack).
+        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = nav::back, peopleFirst = p.people, helpers = settings.helpers)
+        is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.helperShowCost, onBack = nav::back)
         // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
         is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
-            onCreated = { id -> if (page == Page.NoteEdit(null)) page = Page.NoteEdit(id) }, onBack = { page = null; notesTick++ })
-        Page.WakePhrases -> WakePhrasesScreen(settings, ::updateSettings, snackbar, onBack = { page = null })
-        Page.WakeTest -> WakeTestScreen(settings, snap, onBack = { page = null })
-        Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = { page = null })
-        Page.AdbFixes -> AdbFixesScreen(snackbar, onBack = { page = null })
-        Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
-        is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
-        Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
-        Page.Licences -> LicencesScreen(onOpen = { page = it }, onBack = { page = null })
+            onCreated = { id -> if (page == Page.NoteEdit(null)) nav.replace(Page.NoteEdit(id)) }, onBack = { nav.back(); notesTick++ })
+        Page.WakePhrases -> WakePhrasesScreen(settings, ::updateSettings, actions, snackbar, onBack = nav::back)
+        Page.WakeTest -> WakeTestScreen(settings, snap, onBack = nav::back)
+        Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = nav::back)
+        Page.AdbFixes -> AdbFixesScreen(actions, snackbar, onBack = nav::back)
+        Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = nav::back)
+        is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = nav::back)
+        Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = nav::back)
+        Page.Licences -> LicencesScreen(onOpen = { page = it }, onBack = nav::back)
         // Back from a notice goes to its part's licence, from a licence to the list.
-        is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it },
-            onBack = { page = if (p.file != null && p.id != ROBOT_LICENCE) Page.Licence(p.id) else Page.Licences })
-        is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = { page = null })
-        Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = { page = null })
-        is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = { page = Page.Transcripts })
-        Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
-        Page.Helpers -> HelpersScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
-        is Page.Helper -> HelperScreen(p.id, settings, snap, ::updateSettings, actions, snackbar, onBack = { page = Page.Helpers })
-        Page.AddHelper -> AddHelperScreen(settings, ::updateSettings, actions, snackbar, onAdded = { page = Page.Helper(it) }, onBack = { page = Page.Helpers })
+        is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it }, onBack = nav::back)
+        is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = nav::back, busy = busy)
+        Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = nav::back)
+        is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = nav::back)
+        Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
+        Page.Helpers -> HelpersScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
+        is Page.Helper -> HelperScreen(p.id, settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
+        Page.AddHelper -> AddHelperScreen(settings, ::updateSettings, actions, snackbar, onAdded = { nav.replace(Page.Helper(it)) }, onBack = nav::back)
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -674,7 +662,7 @@ fun RobotAppUi(activity: MainActivity) {
                 }
             },
         ) { pad ->
-            Column(Modifier.padding(pad)) {
+            Column(Modifier.padding(pad).consumeWindowInsets(pad)) {
                 // Once, after updating to 0.4.0: what changed about cards, and where to choose (core SafetyNotice).
                 if (settings.safetyNotice && (tab == Tab.HOME || tab == Tab.SETTINGS)) {
                     SafetyNoticeLine(
@@ -688,7 +676,7 @@ fun RobotAppUi(activity: MainActivity) {
                     Tab.NOTES -> NotesScreen(notes, actions, m)
                     Tab.HISTORY -> HistoryScreen(history, actions, m)
                     Tab.MODEL -> ModelScreen(settings, ::updateSettings, snap, busy, actions, m)
-                    Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
+                    Tab.SETTINGS -> SettingsRoot(settings, snap, actions, m)
                 }
             }
         }
