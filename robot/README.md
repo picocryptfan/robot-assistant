@@ -21,7 +21,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
 | `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM |
-| `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) |
+| `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
 
@@ -72,9 +72,9 @@ goes into the repository or the build output.
 ## Conversation mode (0.5.0)
 
 Robot writes down a conversation, word for word as it hears it, in French and English, on the phone (the design is
-`../docs/conversation-mode.md`). Built so far: the Transcription check (phase 5.0(a)), capture and transcription (5.2)
-and the Transcripts library (5.5). Not yet: speaker labels (5.3: every line is "Speaker" for now), translation and the
-interpreter (5.4), summaries (5.6), keeping the audio.
+`../docs/conversation-mode.md`). Built so far: the Transcription check (phase 5.0(a)), capture and transcription (5.2),
+speaker labels (5.3) and the Transcripts library (5.5). Not yet: translation and the interpreter (5.4), summaries (5.6),
+keeping the audio.
 
 ### Transcribing
 
@@ -101,10 +101,11 @@ interpreter (5.4), summaries (5.6), keeping the audio.
   to tell ("OK", "5 h 30", a name) takes the previous line's language and shows "FR?" or "EN?": tap it to fix (an event
   in the file; the next short lines lean on your answer). Other languages are transcribed too, and tagged FR or EN by
   their closest guess.
-- **The screen** (Transcribe, in `:voice`) shows the lines with their time, "Speaker", the language tag, and while you
-  look at it with the screen on, the words of the line being spoken in grey (Settings › Conversation › Live words, on;
-  off when the phone is warm). It keeps the newest 500 lines; the file has them all. Overflow: keep the screen on, help.
-  It keeps working with the screen off.
+- **The screen** (Transcribe, in `:voice`) shows the lines with their time, the speaker's chip (colour and name, or
+  "Speaker" while only one voice is heard; see "Speaker labels" below), the language tag, and while you look at it with
+  the screen on, the words of the line being spoken in grey (Settings › Conversation › Live words, on; off when the phone
+  is warm). It keeps the newest 500 lines; the file has them all. Overflow: keep the screen on, help. It keeps working
+  with the screen off.
 - **The wake word sleeps** during a session, so nobody's "hey robot" opens the panel; "stop" still works while Robot
   talks, and the wake word is back when the session ends. Settings › Conversation › "Hey robot works during a
   conversation" (off) keeps it: then "hey robot" opens the panel, which pauses the transcript (nothing said to Robot is
@@ -125,9 +126,49 @@ interpreter (5.4), summaries (5.6), keeping the audio.
   unlocked (they are in the main app). Opening the transcript screen again from Recents never starts or resumes a
   recording; only Start, Resume, the tile, the shortcut or your voice do.
 - **Voice log** (numbers only): 100 start (how, locked), 101 stop (why, minutes, lines), 102/103 pause and resume, 104
-  each minute's segments and median decode time, 105 French/English/not-sure lines, 109 a line that couldn't be saved,
-  110 recovered (and resumed), 111 the microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the
-  Transcription check, 119 re-heard.
+  each minute's segments and median decode time, 105 French/English/not-sure lines, 106 speakers told apart, merges
+  proposed and whether your voice was seeded, 109 a line that couldn't be saved, 110 recovered (and resumed), 111 the
+  microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the Transcription check, 119 re-heard.
+
+### Speaker labels
+
+- **The speaker model** is NVIDIA TitaNet-S (Apache-2.0, through the NeMo toolkit's licence; `THIRD_PARTY.md`), one
+  40 MB file from Hugging Face at a pinned commit, checked against its size and SHA-256 like the voice models, and never
+  in the APK. Settings › Conversation › Speakers offers the download (it also lists under Model › Voice models, where it
+  can be deleted too); the transcript screen offers it once, with its size ("Not now" hides the offer). The main app
+  downloads and installs it (DownloadManager, then a checked copy into `files/models/spk-titanet-small/`, installed the
+  next time Robot's app is in front); the voice process only loads it, behind the crash guard, and frees it after 5
+  minutes unused.
+- **Tell speakers apart** (Settings › Conversation, on once the model is there): each line with a second or more of speech
+  gets a voice embedding (192 numbers, made in memory from that line's audio without its padding) and joins the nearest
+  speaker if it is close enough (cosine 0.45), starts a new one if it is far from everyone (under 0.30), and in between
+  is labelled with the nearest without changing them. A shorter line ("Oui", "OK") goes to whoever spoke less than a second
+  before, else "?". Labels are S1, S2… in the order people first speak, up to "Most speakers" (2–6, default 6; past that a
+  new voice goes to the nearest); a session resumed after a crash starts new labels (S1′…), since the voices were only in
+  memory. A short line's language leans on its speaker's usual language. Off, every line is "Speaker" (S1 in the file).
+- **On the transcript screen** (while it records, phone unlocked; or later in Robot › Transcripts): tap a line's chip to
+  **name** the speaker (kept in that transcript only, never linked to a voice or a contact), say they are the **same
+  person** as another (all their lines become the other's, and later lines that sound like either too), or "**this is
+  me**". Long-press a line to give it to **someone else** (another speaker, or a new label), or to **split** it where the
+  other person started (tap the first word they said, then who said it). Every change is one more event in the file;
+  Robot never relabels a line by itself. While a session runs, Robot offers "S3 sounds like S1. The same person?" when two
+  speakers' voices come close (their mean voices at cosine 0.40 or more): **Merge** or **Not the same**. The pairs left
+  when it stops are kept in `meta.json` and offered on the transcript in the library. Exports use the names ("Marie
+  (FR): …", and "You" for you; Speakers: "Marie (S1), You").
+- **Your voice** (Settings › Conversation, optional): read three short sentences (in French on a French phone, else in
+  English). Each recording's speech becomes an embedding; if the three sound like one voice they are averaged into your
+  voiceprint, which is encrypted with an Android Keystore key of its own (AES-256-GCM, not exportable) into
+  `files/robot/me.voiceprint` (written and read by the voice process only). Each session decrypts it once to seed a fixed
+  speaker "Me", so your lines say "You". The recordings stay in memory and are dropped once embedded. **A voiceprint is
+  biometric data**: it is never in settings (`meVoiceprint` only says one exists), a log, an intent or a backup, never
+  sent anywhere, and **Delete** (Settings › Conversation, or the Your voice screen) removes the file and its key at once;
+  a session running then stops using it. A voiceprint that can't be decrypted any more is deleted, never guessed.
+- **What is kept:** the labels and your changes, in the transcript. The voices of a session (its embeddings) live in
+  memory and are forgotten when it stops; only your voiceprint, if you made one, is stored.
+- **Limits** (also in the screen's help): two people talking at once go to one of them; very short replies go to whoever
+  spoke just before; the same person near and far from the phone can become two speakers (merge them); TitaNet was
+  trained on English, and same-person-across-languages and far-field table audio were not measured before the phone
+  test below. No diarization model runs live.
 
 ### Transcripts
 
@@ -141,9 +182,9 @@ interpreter (5.4), summaries (5.6), keeping the audio.
   **Copy** (marked sensitive) and **Delete**. "Delete all" removes them all. Deleting the transcript being recorded stops
   the recording: the app tells the voice process, which then writes nothing more of it (the folder is moved aside in one
   step before it is removed, so a late write can't bring it back). Deleting on flash storage is not a secure erase.
-- **Export format** (`TranscriptExport`): a header (date, time and length, speakers, languages, "Transcribed on this phone
-  by Robot (Parakeet v3).") and one line per line heard, "**[14:02:11] S1 (FR):** …", with "[paused …]" markers. Until
-  speaker labels come, every line is S1.
+- **Export format** (`TranscriptExport`): a header (date, time and length, speakers with the names you gave, languages,
+  "Transcribed on this phone by Robot (Parakeet v3).") and one line per line heard, "**[14:02:11] Marie (FR):** …" (S1
+  without a name, "You" for you), with "[paused …]" markers.
 
 ### Transcription check (Settings › Voice)
 
@@ -211,6 +252,44 @@ installed, the wake word is on.
     transcribing"); a session recording with no notification is a failure. The first transcript is saved whole.
 14. **Recents.** Start from the tile, press Back, stop from the notification; then open the transcript screen from
     Recents: it opens on "Saved" and records nothing (no notification). The same after a Resume.
+
+### On the phone (0.5.0 speakers)
+
+Phase 5.3 is done when step 4 passes: that is gate 5.0(d) in the app (design §9.1). Robot is the assistant, the voice
+models are installed, nothing is recording.
+1. **Download.** Settings › Conversation › Speakers: "Download (40 MB)", the progress line, then (with Robot's app in
+   front) "Ready"; Model › Voice models lists "Speaker labels · 40 MB" too. `adb shell run-as app.heyrobot ls -l
+   files/models/spk-titanet-small` shows `nemo_en_titanet_small.onnx` at 40,257,283 bytes and `.verified`. Nothing of it
+   is in the APK (`unzip -l` the APK: no `.onnx` but the wake word's and the VAD's).
+2. **The offer.** Delete the speaker model (Settings › Conversation), open Transcribe: the card "Tell speakers apart?"
+   says 40 MB; Download opens Settings › Conversation; "Not now" hides it and it doesn't come back. Download it again.
+3. **Your voice.** Settings › Conversation › Set up your voice: read the three sentences (Record, Stop): "Saved". `adb
+   shell run-as app.heyrobot ls -l files/robot/me.voiceprint`: under a kilobyte; `adb shell run-as app.heyrobot xxd
+   files/robot/me.voiceprint | head -2` starts with `RVE` and nothing readable follows; `settings.json` has
+   `"meVoiceprint": true` and no numbers of yours. Set it up again with another person reading one sentence: "don't
+   sound like one voice", and the saved one stays.
+4. **Two people, 10 minutes (5.0(d)).** You and another person at a table, the phone flat between you, Transcribe,
+   talking normally (mixed French and English is fine) for 10 minutes, short replies included; then Stop. Your lines
+   should say "You", the other's S1 (or S2). In Robot › Transcripts › that transcript, make at most one merge (the
+   "sounds like" card or a chip's "Same person as…"). Then count, line by line, the time of the lines with the right
+   label (`adb shell run-as app.heyrobot cat files/transcripts/<id>/snapshot.json` has each line's `t0`, `t1`, `spk`; the
+   screen shows who each line is): **pass at 90 % or more of the speaking time**. Note the result, how many speakers and
+   proposals the voice log's 106 line shows ("Speakers: 2 · … · started from your voice"), and the mean embedding time
+   (`adb logcat -s Robot | grep conv_speakers`: `embedMs`). Repeat once with your
+   voiceprint deleted (both people as S1/S2), and once with the phone 2 m away from one of you.
+5. **Names and fixes, live.** During a session: tap a chip, "Name this speaker" (Marie): her lines say Marie at once.
+   Long-press a line, "Someone else said it", pick the other: it moves. Long-press a line where both of you spoke, "Two
+   people said it: split", tap the first word of the second person, pick them: two lines. "This is me" on a chip: those
+   lines say "You". Lock the phone (with a session started unlocked: the lock screen shows; started locked: the lines show
+   but chips can't be tapped, and no "sounds like" card).
+6. **Afterwards.** Stop; Share the Markdown: the header lists "Marie (S1), You", lines say "**[…] Marie (FR):**"; the
+   library's chips and long-presses do the same as live (not while it records: "It's being recorded…").
+7. **Delete your voice.** During a session, Settings › Conversation › Your voice › Delete: the file is gone (`ls`), lines
+   from then on that sound like you get an S label, earlier "You" lines stay; reopening Robot's app shows "meVoiceprint"
+   false in `settings.json`.
+8. **Crash.** Kill `:voice` during a two-person session (step 6 of the capture checks), Resume: new lines are S1′/S2′;
+   "Same person as…" on S1′ offers S1, and merging joins them.
+9. **Off.** "Tell speakers apart" off: the next session's lines are all "Speaker" and the 106 line isn't logged.
 
 ## Weather, phone status and freeing space (0.4.0)
 
