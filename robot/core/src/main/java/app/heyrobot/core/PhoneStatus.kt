@@ -69,12 +69,15 @@ object SettingsPage {
     const val USAGE_ACCESS = "settings:usage_access"
     /** Android's own "Free up space" screen (free_storage). */
     const val FREE_UP = "settings:free_up"
+    /** 0.7: Robot's own Settings › Memory (a memory card's "Open Memory"). */
+    const val MEMORY = "settings:memory"
 
     /** The button for [key]; null for an app's package (the card names that app). */
     fun label(key: String?): String? = when (key) {
         STORAGE -> "Open storage settings"
         USAGE_ACCESS -> "Turn on Usage access"
         FREE_UP -> "Open Free up space"
+        MEMORY -> "Open Memory"
         else -> null
     }
 

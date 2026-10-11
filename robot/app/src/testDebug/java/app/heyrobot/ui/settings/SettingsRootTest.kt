@@ -14,6 +14,7 @@ import app.heyrobot.core.ToolName
 import app.heyrobot.core.WakePhrase
 import app.heyrobot.core.WakeSensitivity
 import app.heyrobot.core.WeatherPlace
+import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.Snapshot
 import app.heyrobot.ui.Tab
@@ -33,7 +34,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The Settings tab: fourteen rows, each with its state under the title, each opening its page. */
+/** The Settings tab: fifteen rows (0.7 added Memory), each with its state under the title, each opening its page. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
@@ -43,7 +44,7 @@ class SettingsRootTest {
     private val snap = Snapshot(facts = facts())
 
     private fun open(s: RobotSettings = RobotSettings(), snap: Snapshot = this.snap) {
-        rule.show { SettingsRoot(s, snap, log.actions, look = LookSettings()) }
+        rule.show { SettingsRoot(s, snap, log.actions, look = LookSettings(), memory = MemorySettings()) }
     }
 
     @Test fun eachRowOpensItsPage() {
@@ -58,6 +59,7 @@ class SettingsRootTest {
             "Helpers" to "openPage ${Page.Helpers}",
             "Conversation" to "openPage ${Page.ConversationSettings}",
             "Model" to "openTab ${Tab.MODEL}",
+            "Memory" to "openPage ${Page.Settings(SettingsRoutes.MEMORY)}",
             "History" to "openPage ${Page.Settings(SettingsRoutes.HISTORY)}",
             "Display" to "openPage ${Page.Settings(SettingsRoutes.DISPLAY)}",
             "Assistant setup" to "openSetup",
@@ -86,6 +88,9 @@ class SettingsRootTest {
         assertEquals("5 ask first · 1 off", actionsSummary(s))
         assertEquals("Fast · stays loaded 5 min", modelSummary(s))
         assertEquals("Live words on", conversationSummary(s))
+        assertEquals("On", memorySummary(MemorySettings()))
+        assertEquals("On · also on the lock screen", memorySummary(MemorySettings(onLockScreen = true)))
+        assertEquals("Off", memorySummary(MemorySettings(on = false, onLockScreen = true)))
         assertEquals("Claude · Ask first", helpersSummary(s, facts()))
         open(s)
         rule.onNodeWithText("Wake word").assert(hasText("On · “hey robot” and 2 others"))

@@ -41,6 +41,8 @@ object SettingsRoutes {
     const val WEATHER = "weather"
     const val HISTORY = "history"
     const val DISPLAY = "display"
+    /** 0.7: Settings › Memory. */
+    const val MEMORY = "memory"
     const val ADVANCED = "advanced"
     const val ABOUT = "about"
     /** Settings › Advanced › ADB fixes › one fix, by its id (core AdbFixes). */
@@ -75,6 +77,7 @@ fun SettingsNav(
         SettingsRoutes.PEOPLE_NOTES_CALENDAR -> PeopleNotesCalendarScreen(s, snap, calendars, update, a, snackbar, onBack)
         SettingsRoutes.WEATHER -> WeatherSettingsScreen(s, snap, update, a, snackbar, onBack)
         SettingsRoutes.HISTORY -> HistorySettingsScreen(s, update, a, snackbar, onBack)
+        SettingsRoutes.MEMORY -> MemorySettingsRoute(a, snackbar, onBack)
         SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)
         SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
@@ -177,7 +180,7 @@ object AppRoutes {
         // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
         // Model from a chat-only model's answer to an action (0.4.3).
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL || it == AppPages.HELPERS }
+            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.MEMORY }
     }
 
     /** What a route opens: a [tab] (every page closed), or a [page] over the one showing; [notesIcon]: from Robot Notes' icon. */
@@ -191,6 +194,7 @@ object AppRoutes {
         r == AppPages.CONVERSATION_SETTINGS -> Target(page = Page.ConversationSettings)
         r == AppPages.HELPERS -> Target(page = Page.Helpers)
         r == AppPages.MODEL -> Target(tab = Tab.MODEL)
+        r == AppPages.MEMORY -> Target(page = Page.Settings(SettingsRoutes.MEMORY))
         else -> null
     }
 }

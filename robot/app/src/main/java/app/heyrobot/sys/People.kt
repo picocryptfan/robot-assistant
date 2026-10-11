@@ -379,6 +379,8 @@ object AppPages {
     const val EXTRA_LINE = "robot_transcript_line"
     /** Settings › Model, the Model tab (0.4.3: from a chat-only model's answer to an action). */
     const val MODEL = "model"
+    /** 0.7: Settings › Memory (a memory card's "Open Memory" in the panel). */
+    const val MEMORY = "memory"
     /** The Robot Notes launcher entry (an activity-alias of MainActivity). */
     const val NOTES_ALIAS = "app.heyrobot.ui.NotesLauncher"
 }

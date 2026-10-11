@@ -15,7 +15,9 @@ import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.sys.AssistantFacts
+import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.sys.LookStore
+import app.heyrobot.sys.MemorySettingsStore
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.Snapshot
@@ -29,9 +31,10 @@ import app.heyrobot.ui.pref.preferenceGroup
 // Settings is, each row's title over its state now. The pages are ui/settings' (by route), the Wake word, Safety,
 // Helpers and Conversation pages, Assistant setup and the Model tab.
 
-/** The Settings tab. [look] is Settings › Display's (LookStore; a test passes its own). */
+/** The Settings tab. [look] is Settings › Display's (LookStore), [memory] Settings › Memory's (0.7); a test passes its own. */
 @Composable
-fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current)) {
+fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current),
+    memory: MemorySettings = MemorySettingsStore.current(LocalContext.current)) {
     fun go(route: String) = a.openPage(Page.Settings(route))
     PreferenceScreen("Settings", onBack = null, modifier = modifier) {
         preferenceGroup(null, "voice") {
@@ -48,6 +51,7 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
         }
         preferenceGroup(null, "app") {
             PreferenceItem("Model", modelSummary(s), RIcons.Chip, onClick = { a.openTab(Tab.MODEL) })
+            PreferenceItem("Memory", memorySummary(memory), RIcons.BookmarkAdded, onClick = { go(SettingsRoutes.MEMORY) })
             PreferenceItem("History", if (s.saveHistory) "Saving conversations" else "Not saving conversations", RIcons.History,
                 onClick = { go(SettingsRoutes.HISTORY) })
             PreferenceItem("Display", displaySummary(look), RIcons.Palette, onClick = { go(SettingsRoutes.DISPLAY) })
