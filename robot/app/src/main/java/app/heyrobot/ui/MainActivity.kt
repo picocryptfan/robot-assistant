@@ -364,8 +364,15 @@ fun RobotAppUi(activity: MainActivity) {
             }
         },
         deleteModel = { ModelStore.delete(ctx); say("The model was deleted.") },
-        deleteConversation = { id -> ConversationStore.delete(ctx, id); historyTick++; page = null },
-        deleteAllConversations = { ConversationStore.deleteAll(ctx); historyTick++; say("History deleted.") },
+        // The panel's live conversation too, or its next save would write a deleted one back.
+        deleteConversation = { id ->
+            ConversationStore.delete(ctx, id); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+            historyTick++; page = null
+        },
+        deleteAllConversations = {
+            ConversationStore.deleteAll(ctx); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED)
+            historyTick++; say("History deleted.")
+        },
         removeSavedMedia = {
             scope.launch {
                 val n = withContext(Dispatchers.IO) { ConversationStore.removeMedia(ctx) }

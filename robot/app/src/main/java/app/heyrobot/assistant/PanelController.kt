@@ -672,6 +672,14 @@ object PanelController {
         if (changed) persist()
     }
 
+    /**
+     * History deleted the conversation still held here ([id]), or every conversation (null): start a new one, so the next
+     * save after a reply can't write the deleted one back.
+     */
+    fun forgetDeleted(id: String?) {
+        if (id == null || id == _state.value.convId) newConversation()
+    }
+
     /** The only way a conversation with screen content gets saved. */
     fun keepConversation() {
         keptByUser = true

@@ -137,6 +137,12 @@ object Cmd {
      * would otherwise write them back with its next save.
      */
     const val MEDIA_REMOVED = "media_removed"
+    /**
+     * Conversations were deleted from History (extra [EXTRA_ID]: the one deleted; none: all of them): if the panel still
+     * holds one of them, it starts a new conversation, or its next save would write the deleted one back.
+     */
+    const val CONVERSATIONS_DELETED = "conversations_deleted"
+    const val EXTRA_ID = "id"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"
