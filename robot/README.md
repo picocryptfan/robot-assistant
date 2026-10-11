@@ -132,9 +132,11 @@ the engine only when `tools/build_llama.sh` made its library.
   models, image readers), no tokenizer, no stated context or less than 2,048 tokens, no chat template, or too big for the
   phone's memory.
 - **Memory guidance:** the file (memory-mapped, and all of it read for every token), plus the KV cache for its context
-  (4,096 tokens, or a short file's own) at f16 (from the file's layer count, KV heads and head sizes; an upper bound for sliding-window models), plus
-  0.4 GB of work space, must fit in the phone's memory less 1.3 GB for Robot's voice and 4 GB for Android and the apps it
-  keeps. On a 16 GB phone (Android reports about 15 GB) that leaves about 10 GB: an 8B Q4_K_M fits, a 27B doesn't.
+  (4,096 tokens, or a short file's own) at f16 (from the file's layer count, KV heads and head sizes; an upper bound for
+  sliding-window models), plus 0.4 GB of work space (llama.cpp keeps room for one token's logits per batch, all Robot
+  reads, not a whole batch's: that alone would be about 0.5 GB more for Gemma 3's vocabulary), must fit in the phone's
+  memory less 1.3 GB for Robot's voice and 4 GB for Android and the apps it keeps. On a 16 GB phone (Android reports about
+  15 GB) that leaves about 10 GB: an 8B Q4_K_M fits, a 27B doesn't.
 - **No card to tap:** like a `.litertlm` that runs on the CPU, a checked GGUF file can be chosen at once; nothing of it
   reaches the TPU or a vendor driver.
 - **:brain checks again** before llama.cpp ever sees the file (`LlamaEngine.load`): your file's record (unchanged size

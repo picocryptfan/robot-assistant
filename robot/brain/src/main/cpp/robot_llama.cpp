@@ -187,6 +187,9 @@ JNIEXPORT jlong JNICALL Java_app_heyrobot_brain_LlamaNative_load(JNIEnv * env, j
         cp.n_batch = static_cast<uint32_t>(r->n_batch);
         cp.n_ubatch = static_cast<uint32_t>(r->n_batch);
         cp.n_seq_max = 1;
+        // One output per batch, the last token's logits, which is all Robot reads: llama.cpp otherwise keeps room for a
+        // whole batch's (512 × the vocabulary × 4 bytes, about 0.5 GB for Gemma 3's 262,144 tokens) beside the voice.
+        cp.n_outputs_max = 1;
         cp.n_threads = threads;
         cp.n_threads_batch = batchThreads;
         cp.no_perf = false;
