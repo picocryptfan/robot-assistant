@@ -45,14 +45,15 @@ enum class TextApp(val title: String) {
 }
 
 /**
- * Settings › Actions › "Find the nearest place online" (0.4.0): whether "directions to the nearest pharmacy" may ask
- * OpenStreetMap's Nominatim. [ASK] (the default): the first time, a card says what would leave the phone and you choose
- * there ("Allow always", "Just this time", "No, search the map"; [NearestAnswer] keeps a lasting answer).
+ * Settings › Actions › "Find the nearest place online" (0.4.0): whether "directions to the nearest pharmacy" may ask a
+ * Nominatim search server (OpenStreetMap's unless [RobotSettings.nearestServer] names another). [ASK] (the default): the
+ * first time, a card says what would leave the phone, and to which server, and you choose there ("Allow always", "Just
+ * this time", "No, search the map"; [NearestAnswer] keeps a lasting answer).
  */
 enum class NearestOnline(val title: String, val detail: String) {
     ASK("Ask the first time", "The first “nearest …” shows a card that says what would go online; you choose there."),
-    ALWAYS("Always", "Robot asks OpenStreetMap's Nominatim for that kind of place around where you are (about 1 km) and opens " +
-        "Organic Maps' route to the closest. It uses the internet."),
+    ALWAYS("Always", "Robot asks the search server below (OpenStreetMap's Nominatim unless you choose another) for that kind of " +
+        "place around where you are (about 1 km) and opens Organic Maps' route to the closest. It uses the internet."),
     NEVER("Never", "Organic Maps' search, which ranks places around you. Nothing goes online."),
 }
 
@@ -178,6 +179,12 @@ data class RobotSettings(
     /** When [nearestOnline] was last chosen in Settings (wall clock ms); 0: never. */
     val nearestOnlineAt: Long = 0,
     /**
+     * Settings › Actions › "Find the nearest place online" › Search server (schema 12): the Nominatim server asked, as its
+     * HTTPS base ([NearbyServer.base]); "" is OpenStreetMap's ([NearbyServer.DEFAULT]). Nominatim's usage policy asks that
+     * apps can switch the service without an update.
+     */
+    val nearestServer: String = "",
+    /**
      * Show [SafetyNotice.TEXT] once in the app (0.4.0): set for a settings file from before Safety & privacy (an update,
      * never a new install), cleared when it is tapped or dismissed.
      */
@@ -190,6 +197,9 @@ data class RobotSettings(
     val brainModel: String = BrainModel.DEFAULT.id,
 ) {
     val brainModelChoice: BrainModel get() = BrainModel.of(brainModel)
+
+    /** The search server "the nearest …" asks: OpenStreetMap's unless you chose another. */
+    val nearbyServer: NearbyServer get() = NearbyServer.of(nearestServer)
 
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
@@ -254,6 +264,7 @@ data class RobotSettings(
         put("voiceCards", voiceCards)
         put("nearestPlace", nearestOnline.name)
         if (nearestOnlineAt > 0) put("nearestPlaceAt", nearestOnlineAt)
+        nearbyServer.saved.takeIf { it.isNotEmpty() }?.let { put("nearestServer", it) }
         if (safetyNotice) put("safetyNotice", true)
         put("brainModel", brainModelChoice.id)
     }
@@ -270,8 +281,10 @@ data class RobotSettings(
          * behaviour, the lock screen still timers and alarms) except "Safety cards", which takes the new default, "When
          * you didn't ask for it", as the person asked.
          * 7 (0.4.1): Settings › Model. Older files had one model, the TPU's Gemma 4 E2B: they read as Fast, the same model.
+         * 12 (1.0 compliance; 8 to 11 are the layouts of other branches): the nearest place's search server. Absent from older
+         * files, which read as OpenStreetMap's server, the only one before.
          */
-        const val SCHEMA = 7
+        const val SCHEMA = 12
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -380,6 +393,8 @@ data class RobotSettings(
                 nearestOnline = if (o.has("nearestPlace")) enumOr(o.optString("nearestPlace"), d.nearestOnline)
                     else if (!o.optBoolean("nearestOnline", true)) NearestOnline.NEVER else NearestOnline.ASK,
                 nearestOnlineAt = o.optLong("nearestPlaceAt", 0).coerceAtLeast(0),
+                // Schema 12: absent (older files) or unusable means OpenStreetMap's; kept in its checked form.
+                nearestServer = NearbyServer.of(o.optString("nearestServer")).saved,
                 // A file from before schema 6 (0.3.x, early 0.4.0): an update, so the one-time line about Safety & privacy shows.
                 safetyNotice = if (o.optInt("schema", 1) < 6) true else o.optBoolean("safetyNotice", false),
                 // Schema 7: before it there was only the model Fast is (and no key); an unknown id is Fast too.

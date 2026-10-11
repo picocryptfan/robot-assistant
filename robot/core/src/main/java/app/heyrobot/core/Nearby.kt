@@ -13,9 +13,10 @@ import kotlin.math.sqrt
 
 // Pure. "Directions to the nearest pharmacy" (0.4.0): Organic Maps can't route to a name, and its search, while it ranks
 // around you, is a list to tap through. With Settings › Actions › "Find the nearest place online" allowing it (Ask the
-// first time, the default, shows a card the first time; Always; Never), Robot asks OpenStreetMap's Nominatim for that
-// kind of place around where the phone is (two decimals, about 1 km, as for the weather), takes the closest, and opens
-// Organic Maps' route to it. Never, a "No" on the card, or anything going wrong: today's search.
+// first time, the default, shows a card the first time; Always; Never), Robot asks a Nominatim search server
+// (OpenStreetMap's, or the one you chose in Settings: NearbyServer) for that kind of place around where the phone is
+// (two decimals, about 1 km, as for the weather), takes the closest, and opens Organic Maps' route to it. Never, a "No"
+// on the card, or anything going wrong: today's search.
 
 /** The first-use card's answer a maps action carries (Nearby.prepare): what it keeps when it runs. */
 enum class NearestConsent {
@@ -62,6 +63,117 @@ enum class NearbyFail(override val id: Int, override val title: String, val text
     NOT_ALLOWED(7, "location not allowed", "Robot may not see where you are (allow location in the Robot app)"),
     TIMEOUT(8, "took too long", "Finding it online took too long"),
     STOPPED(9, "stopped", "Stopped"),
+    ;
+
+    /** [text], naming the search server you chose when it isn't OpenStreetMap's (Settings › Actions › Search server). */
+    fun text(server: NearbyServer): String = if (server.isDefault) text else when (this) {
+        NO_INTERNET -> "No internet: Robot couldn't reach ${server.name}"
+        BUSY -> "${server.name} is busy just now"
+        SERVICE -> "${server.name} didn't answer properly"
+        else -> text
+    }
+}
+
+/**
+ * The Nominatim server the nearest place is asked for (Settings › Actions › "Find the nearest place online" › Search
+ * server, schema 12). Nominatim's usage policy asks that an app can switch the service at the operator's request without
+ * a software update, so it is a setting: OpenStreetMap's public server ([DEFAULT]) unless you type another, such as your
+ * own Nominatim. HTTPS only, a host name or an IPv4 address, an optional port and path; never a query, a fragment or a
+ * user name. [base] is "https://host[:port][/path]", without a trailing slash; Robot adds "/search".
+ */
+class NearbyServer private constructor(
+    /** Lowercase host name or IPv4 address. */
+    val host: String,
+    /** -1: the HTTPS default (443). */
+    val port: Int,
+    /** "" or "/a/b": no trailing slash. */
+    val path: String,
+) {
+    val base: String get() = "https://" + name + path
+
+    /** "host" or "host:port": what Settings and the cards call a server that isn't OpenStreetMap's. */
+    val name: String get() = if (port > 0) "$host:$port" else host
+
+    val isDefault: Boolean get() = this == DEFAULT
+
+    /** Who gets the words and the area, for the first-use card and Settings. */
+    val label: String get() = if (isDefault) "OpenStreetMap's Nominatim" else "the Nominatim server at $name"
+
+    /** The card's "Sent to …" line. */
+    val sentTo: String get() = if (isDefault) "OpenStreetMap" else name
+
+    /** What Settings saves ([RobotSettings.nearestServer]): "" for OpenStreetMap's, so a later default follows. */
+    val saved: String get() = if (isDefault) "" else base
+
+    override fun equals(other: Any?) = other is NearbyServer && other.host == host && other.port == port && other.path == path
+    override fun hashCode() = (host.hashCode() * 31 + port) * 31 + path.hashCode()
+    override fun toString() = base
+
+    /** What checking a typed address found: the server, or why it can't be used ([problem], a line for Settings). */
+    data class Checked(val server: NearbyServer?, val problem: String?)
+
+    companion object {
+        val DEFAULT = NearbyServer(Nearby.HOST, -1, "")
+        const val MAX_LENGTH = 200
+
+        private val LABEL = Regex("[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
+        private val SEGMENT = Regex("[A-Za-z0-9._~-]+")
+
+        /** A saved value: "" or anything unusable means OpenStreetMap's server. */
+        fun of(saved: String?): NearbyServer = parse(saved) ?: DEFAULT
+
+        /** [text] as a server, or null when it isn't one Robot may use ([check] says why). */
+        fun parse(text: String?): NearbyServer? = check(text).server
+
+        /**
+         * Checks an address typed in Settings: "nominatim.example.org", "https://example.org:8443/nominatim", even a
+         * pasted search link ("…/search?q=x" without its query is the same server). Empty: OpenStreetMap's.
+         */
+        fun check(text: String?): Checked {
+            fun no(why: String) = Checked(null, why)
+            var t = text?.trim().orEmpty()
+            if (t.isEmpty()) return Checked(DEFAULT, null)
+            if (t.length > MAX_LENGTH) return no("That address is too long.")
+            val scheme = Regex("^([A-Za-z][A-Za-z0-9+.-]*)://").find(t)
+            if (scheme != null) {
+                if (!scheme.groupValues[1].equals("https", ignoreCase = true)) return no("Use an https:// address: the words and your area only go encrypted.")
+                t = t.substring(scheme.value.length)
+            }
+            if (t.any { it.isWhitespace() }) return no("An address has no spaces.")
+            if ('?' in t || '#' in t) return no("Type the server's address without a search (nothing after ? or #).")
+            if ('@' in t) return no("Type the server's address without a user name.")
+            val slash = t.indexOf('/')
+            val authority = if (slash < 0) t else t.substring(0, slash)
+            var path = if (slash < 0) "" else t.substring(slash)
+            val colon = authority.lastIndexOf(':')
+            val host = (if (colon < 0) authority else authority.substring(0, colon)).lowercase(java.util.Locale.ROOT).removeSuffix(".")
+            var port = -1
+            if (colon >= 0) {
+                port = authority.substring(colon + 1).toIntOrNull()?.takeIf { it in 1..65535 } ?: return no("The port must be a number from 1 to 65535.")
+                if (port == 443) port = -1
+            }
+            if (!hostOk(host)) return no("That isn't a server address Robot can use (a name like nominatim.example.org, or an IPv4 address).")
+            path = path.trimEnd('/')
+            for (end in listOf("/search.php", "/search")) if (path.endsWith(end, ignoreCase = true)) path = path.dropLast(end.length).trimEnd('/')
+            if (path.isNotEmpty()) {
+                val segments = path.removePrefix("/").split('/')
+                if (segments.any { it.isEmpty() || it == "." || it == ".." || !SEGMENT.matches(it) }) {
+                    return no("The path after the server's name may hold only letters, digits, dots, dashes and underscores.")
+                }
+            }
+            return Checked(NearbyServer(host, port, path), null)
+        }
+
+        /** A DNS name with at least two labels and a non-numeric last one, or a dotted IPv4 address. */
+        private fun hostOk(h: String): Boolean {
+            if (h.isEmpty() || h.length > 253) return false
+            val labels = h.split('.')
+            if (labels.size == 4 && labels.all { l -> l.isNotEmpty() && l.length <= 3 && l.all(Char::isDigit) }) {
+                return labels.all { it.toInt() <= 255 && (it.length == 1 || !it.startsWith("0")) }
+            }
+            return labels.size >= 2 && labels.all { LABEL.matches(it) } && !labels.last().all(Char::isDigit)
+        }
+    }
 }
 
 /** A search that failed ([NearbySearch]'s fetch, the app's NominatimClient): why, and the HTTP status when there was one. */
@@ -86,12 +198,16 @@ class NearbySearch(private val clock: () -> Long, private val sleep: (Long) -> U
     private var lastAt: Long? = null
     private val cache = LinkedHashMap<String, Pair<Long, List<NearbyPlace>>>()
 
-    /** The places matching [query] around [lat], [lon]. Blocking. [requests] is told how many went online. */
-    fun search(query: String, lat: Double, lon: Double, abort: Abort, fetch: (String, Abort) -> String, requests: (Int) -> Unit = {}): List<NearbyPlace> {
+    /**
+     * The places matching [query] around [lat], [lon], asked of [server]. Blocking. [requests] is told how many went
+     * online. The pace counts every server together; the cache is by URL, so a different server is asked afresh.
+     */
+    fun search(query: String, lat: Double, lon: Double, abort: Abort, fetch: (String, Abort) -> String,
+        server: NearbyServer = NearbyServer.DEFAULT, requests: (Int) -> Unit = {}): List<NearbyPlace> {
         var sent = 0
         try {
             for (half in Nearby.BOXES) {
-                val url = Nearby.searchUrl(query, lat, lon, half)
+                val url = Nearby.searchUrl(query, lat, lon, half, server)
                 val found = synchronized(cache) { cache[url]?.takeIf { clock() - it.first < Nearby.CACHE_MS }?.second } ?: run {
                     if (abort.cancelled || abort.remainingMs() < MIN_MS) throw ended(abort)
                     pace(abort)
@@ -137,12 +253,12 @@ class NearbySearch(private val clock: () -> Long, private val sleep: (Long) -> U
 
 object Nearby {
     /**
-     * The one place the nearest place is asked for (OpenStreetMap's public Nominatim). Its usage policy
-     * (operations.osmfoundation.org/policies/nominatim) asks that apps can switch it without an update; for now it is this
-     * one constant, and "Never" in Settings (or anything going wrong) falls back to Organic Maps' own search.
+     * OpenStreetMap's public Nominatim, the default search server ([NearbyServer.DEFAULT]). Its usage policy
+     * (operations.osmfoundation.org/policies/nominatim) asks that apps can switch it without an update: Settings › Actions ›
+     * Search server takes any HTTPS Nominatim instead, and "Never" in Settings (or anything going wrong) falls back to
+     * Organic Maps' own search.
      */
     const val HOST = "nominatim.openstreetmap.org"
-    private const val SEARCH = "https://$HOST/search"
     /** The card's credit for what OpenStreetMap found (its data is ODbL; Nominatim's usage policy asks for attribution). */
     const val ATTRIBUTION = "Data © OpenStreetMap contributors, ODbL"
 
@@ -199,9 +315,9 @@ object Nearby {
     const val NO_SEARCH = "No, search the map"
     const val DONT_ASK = "Don't ask again"
 
-    /** The first-use card's line: exactly what would leave the phone, and to whom. */
-    fun consentNote(what: String): String =
-        "To find the closest one, Robot would send “$what” and your area (about 1 km) to OpenStreetMap's Nominatim. Nothing " +
+    /** The first-use card's line: exactly what would leave the phone, and to whom (the search server in Settings). */
+    fun consentNote(what: String, server: NearbyServer = NearbyServer.DEFAULT): String =
+        "To find the closest one, Robot would send “$what” and your area (about 1 km) to ${server.label}. Nothing " +
             "else leaves the phone. “$NO_SEARCH” uses Organic Maps' search instead, on the phone."
 
     /**
@@ -210,7 +326,7 @@ object Nearby {
      * that always shows ([AskWhy.ONLINE]) with [ALLOW_ALWAYS], [JUST_THIS_TIME] and [NO_SEARCH]; "Don't ask again" ticked
      * keeps the answer chosen (Always, or Never with No).
      */
-    fun prepare(a: Action, what: String, wanted: Boolean, mode: NearestOnline): Prepared.Ready {
+    fun prepare(a: Action, what: String, wanted: Boolean, mode: NearestOnline, server: NearbyServer = NearbyServer.DEFAULT): Prepared.Ready {
         if (!wanted || mode == NearestOnline.NEVER) return Prepared.Ready(plain(a))
         if (mode == NearestOnline.ALWAYS) return Prepared.Ready(withNearest(a, nearest = true, consent = null))
         val always = withNearest(a, nearest = true, consent = NearestConsent.ALWAYS)
@@ -222,14 +338,14 @@ object Nearby {
                 Choice(JUST_THIS_TIME, withNearest(a, nearest = true, consent = NearestConsent.ONCE), always),
                 Choice(NO_SEARCH, withNearest(a, nearest = false, consent = NearestConsent.NO), withNearest(a, nearest = false, consent = NearestConsent.NEVER)),
             ),
-            note = consentNote(what),
+            note = consentNote(what, server),
             remember = DONT_ASK,
         )
     }
 
     /** The card's line when the nearest place couldn't be found and Organic Maps' search opened instead ([navigate]: directions). */
-    fun instead(why: NearbyFail, navigate: Boolean): String =
-        "${why.text}, so Robot opened Organic Maps' search instead" + if (navigate) ": pick the place, then tap Route." else "."
+    fun instead(why: NearbyFail, navigate: Boolean, server: NearbyServer = NearbyServer.DEFAULT): String =
+        "${why.text(server)}, so Robot opened Organic Maps' search instead" + if (navigate) ": pick the place, then tap Route." else "."
 
     /** The card while it waits or runs: no place yet, and the words it was asked for. */
     fun describe(what: String) = "Find the nearest “$what” online (OpenStreetMap) and open the route in Organic Maps"
@@ -238,14 +354,14 @@ object Nearby {
     fun coord(v: Double): String = String.format(Locale.US, "%.2f", v)
 
     /**
-     * One bounded search for [query] in a box of [half] degrees around the rounded position. Only the words and the box go;
-     * no language, no address details, no e-mail.
+     * One bounded search for [query] in a box of [half] degrees around the rounded position, asked of [server]. Only the
+     * words and the box go; no language, no address details, no e-mail.
      */
-    fun searchUrl(query: String, lat: Double, lon: Double, half: Double): String {
+    fun searchUrl(query: String, lat: Double, lon: Double, half: Double, server: NearbyServer = NearbyServer.DEFAULT): String {
         val la = coord(lat).toDouble()
         val lo = coord(lon).toDouble()
         val box = listOf(lo - half, la + half, lo + half, la - half).joinToString(",") { coord(it) }
-        return "$SEARCH?q=${UriText.strict(query.trim())}&format=jsonv2&limit=$LIMIT&bounded=1&viewbox=$box"
+        return "${server.base}/search?q=${UriText.strict(query.trim())}&format=jsonv2&limit=$LIMIT&bounded=1&viewbox=$box"
     }
 
     /** Nominatim's answer (jsonv2), or null when it isn't one. Places without a usable position are left out. */

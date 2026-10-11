@@ -257,8 +257,9 @@ on the build machine only.
 
 ## Online services the app asks (0.4.0; nothing bundled)
 
-- **OpenStreetMap's Nominatim** (`nominatim.openstreetmap.org`, operated by the OpenStreetMap Foundation): "directions to
-  the nearest …" when Settings › Actions › Find the nearest place online allows it. Map data © OpenStreetMap
+- **OpenStreetMap's Nominatim** (`nominatim.openstreetmap.org`, operated by the OpenStreetMap Foundation, or the Nominatim
+  server you choose in Settings › Actions › Search server): "directions to the nearest …" when Settings › Actions › Find
+  the nearest place online allows it. Map data © OpenStreetMap
   contributors, available under the Open Database License (ODbL 1.0, https://opendatacommons.org/licenses/odbl/); the
   card credits it ("Data © OpenStreetMap contributors, ODbL"). Used under the Nominatim usage policy
   (https://operations.osmfoundation.org/policies/nominatim/); see the README's "The nearest place". Robot keeps none

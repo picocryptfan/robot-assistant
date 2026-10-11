@@ -303,11 +303,14 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt"),
             usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
             ours.filterKeys { !it.startsWith("claude/") }))
-        // 0.4.0: the nearest place for the maps goes only to OpenStreetMap's Nominatim, over HTTPS, a second apart at most,
-        // its raw request private, and only the maps tools use it (core Nearby.kt builds the URL).
+        // 0.4.0: the nearest place for the maps goes only to the Nominatim server in Settings (OpenStreetMap's unless you chose
+        // another, checked by core NearbyServer: HTTPS only), a second apart at most, its raw request private, and only the
+        // maps tools use it (core Nearby.kt builds the URL).
         val osm = File(java("app"), "app/heyrobot/sys/NominatimClient.kt").readText()
-        assertTrue(osm.contains("private val HOSTS = setOf(Nearby.HOST)") && osm.contains("require(u.protocol == \"https\" && u.host in HOSTS)") &&
+        assertTrue(osm.contains("require(u.protocol == \"https\" && u.host == server.host && u.port == server.port") &&
             osm.contains("c.instanceFollowRedirects = false") && osm.contains("searches.search("))
+        assertTrue(File(java("app"), "app/heyrobot/assistant/ToolExecutor.kt").readText().contains("val server = settings.nearbyServer"))
+        assertTrue(File(java("core"), "app/heyrobot/core/Nearby.kt").readText().contains("val base: String get() = \"https://\" + name + path"))
         assertTrue(osm.contains("private fun get(") && !osm.contains("    fun get("))
         // The pace (a second apart at most) and the cache are core's NearbySearch, every request through it.
         val nearby = File(java("core"), "app/heyrobot/core/Nearby.kt").readText()

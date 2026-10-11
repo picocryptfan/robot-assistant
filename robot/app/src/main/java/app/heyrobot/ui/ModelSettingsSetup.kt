@@ -45,6 +45,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -65,6 +66,7 @@ import app.heyrobot.core.EmailApp
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.Nearby
 import app.heyrobot.core.NearestOnline
+import app.heyrobot.core.NearbyServer
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
@@ -720,12 +722,55 @@ private fun NearestOnlineChoice(s: RobotSettings, snap: Snapshot, update: (Robot
     val maps = s.approval(ToolName.MAPS_NAVIGATE) != Approval.OFF || s.approval(ToolName.MAPS_SEARCH) != Approval.OFF
     Column(Modifier.fillMaxWidth().padding(start = 36.dp, top = 4.dp, bottom = 4.dp)) {
         Text("Find the nearest place online", style = MaterialTheme.typography.titleSmall)
-        Text("“Directions to the nearest pharmacy”: what would go is the words and your area (about 1 km), to OpenStreetMap's " +
-            "Nominatim." + if (maps) "" else " Maps search and directions are Off.",
+        Text("“Directions to the nearest pharmacy”: what would go is the words and your area (about 1 km), to " +
+            "${s.nearbyServer.label}." + if (maps) "" else " Maps search and directions are Off.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         for (m in NearestOnline.entries) {
             ChoiceRow(m.title + if (m == NearestOnline.ASK) " (default)" else "", m.detail, now == m) {
                 update(s.copy(nearestOnline = m, nearestOnlineAt = System.currentTimeMillis()))
+            }
+        }
+        SearchServerField(s, update)
+    }
+}
+
+/**
+ * Settings › Actions › "Find the nearest place online" › Search server (schema 12): OpenStreetMap's Nominatim by default, or
+ * any HTTPS Nominatim you type (your own, or another public one). Nominatim's usage policy asks that apps can switch the
+ * service without an update. Checked by core NearbyServer before it is saved; Reset goes back to OpenStreetMap's.
+ */
+@Composable
+private fun SearchServerField(s: RobotSettings, update: (RobotSettings) -> Unit) {
+    val server = s.nearbyServer
+    val shown = if (server.isDefault) "" else server.base
+    var text by remember(shown) { mutableStateOf(shown) }
+    var problem by remember(shown) { mutableStateOf<String?>(null) }
+    fun save() {
+        val c = NearbyServer.check(text)
+        val chosen = c.server ?: run { problem = c.problem; return }
+        problem = null
+        text = if (chosen.isDefault) "" else chosen.base
+        update(s.copy(nearestServer = chosen.saved))
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Search server", style = MaterialTheme.typography.titleSmall)
+        Text(if (server.isDefault) "OpenStreetMap's Nominatim (${Nearby.HOST}), the default. To use another Nominatim, such as your own, type its address."
+            else "${server.name}: the words and your area go to this server instead of OpenStreetMap's.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(
+            value = text, onValueChange = { text = it; problem = null }, singleLine = true,
+            label = { Text("Nominatim server") }, placeholder = { Text(Nearby.HOST) }, isError = problem != null,
+            supportingText = { Text(problem ?: "Its address, such as nominatim.example.org. Encrypted (HTTPS) only.") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { save() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (text.trim() != shown) TextButton(onClick = { save() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Save") }
+            if (!server.isDefault) {
+                TextButton(onClick = { text = ""; problem = null; update(s.copy(nearestServer = "")) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("Reset to OpenStreetMap's")
+                }
             }
         }
     }

@@ -164,7 +164,7 @@ class SettingsTest {
         assertEquals(false, d.voiceYesPersonal)
         assertEquals(true, d.voiceCards)
         assertEquals(false, RobotSettings.fromJson(d.copy(voiceCards = false).toJson().toString()).voiceCards)
-        assertEquals(7, RobotSettings.SCHEMA)
+        assertEquals(12, RobotSettings.SCHEMA)
         // A 0.3 or early 0.4 file: every rule as it was, and the new Safety cards default.
         for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", "{}")) {
             val o = RobotSettings.fromJson(old)
@@ -213,11 +213,11 @@ class SettingsTest {
         for (old in listOf("""{"schema":6,"speechRate":1.5}""", """{"schema":5}""", """{"schema":3}""", "{}", """{"schema":6,"brainModel":"e4b_cpu"}""")) {
             assertEquals(old, BrainModel.FAST, RobotSettings.fromJson(old).brainModelChoice)
         }
-        // An old file keeps everything else, and the next save writes schema 7 with Fast.
+        // An old file keeps everything else, and the next save writes today's schema with Fast.
         val migrated = RobotSettings.fromJson("""{"schema":6,"speechRate":1.5,"keepModelMinutes":15}""")
         assertEquals(1.5f, migrated.speechRate)
         assertEquals(15, migrated.keepModelMinutes)
-        assertEquals(7, migrated.toJson().getInt("schema"))
+        assertEquals(RobotSettings.SCHEMA, migrated.toJson().getInt("schema"))
         assertEquals("e2b_tpu", migrated.toJson().getString("brainModel"))
         for (m in BrainModel.entries) {
             val s = RobotSettings(brainModel = m.id)
@@ -229,5 +229,39 @@ class SettingsTest {
         assertEquals(BrainModel.UNCENSORED, RobotSettings.fromJson("""{"schema":7,"brainModel":"e4b_cpu_uncensored"}""").brainModelChoice)
         // An unknown id is saved back as Fast's.
         assertEquals("e2b_tpu", RobotSettings(brainModel = "nope").toJson().getString("brainModel"))
+    }
+
+    /**
+     * Schema 12 (1.0 compliance; 8 to 11 belong to other branches): the nearest place's search server. Older files read as
+     * OpenStreetMap's server, the only one they knew; a server you chose round-trips in its checked form; anything
+     * unusable in a file reads as OpenStreetMap's rather than failing.
+     */
+    @Test fun searchServerSchema12MigrationAndRoundTrip() {
+        assertEquals(12, RobotSettings.SCHEMA)
+        assertEquals("", RobotSettings().nearestServer)
+        assertEquals(NearbyServer.DEFAULT, RobotSettings().nearbyServer)
+        // The default isn't written, so a later default (should OpenStreetMap ask) follows for everyone who didn't choose.
+        assertEquals(false, RobotSettings().toJson().has("nearestServer"))
+        for (old in listOf("""{"schema":7,"brainModel":"e4b_cpu","nearestPlace":"ALWAYS"}""", """{"schema":6}""", """{"schema":3}""", "{}")) {
+            val o = RobotSettings.fromJson(old)
+            assertEquals(old, NearbyServer.DEFAULT, o.nearbyServer)
+            assertEquals(old, 12, o.toJson().getInt("schema"))
+        }
+        // A schema 7 file keeps its other choices through the migration.
+        val seven = RobotSettings.fromJson("""{"schema":7,"brainModel":"e4b_cpu","nearestPlace":"ALWAYS","nearestPlaceAt":5}""")
+        assertEquals(BrainModel.SMARTER, seven.brainModelChoice)
+        assertEquals(NearestOnline.ALWAYS, seven.nearestOnline)
+        val own = RobotSettings(nearestServer = "https://nominatim.example.org/osm")
+        assertEquals("https://nominatim.example.org/osm", own.toJson().getString("nearestServer"))
+        assertEquals(own, RobotSettings.fromJson(own.toJson().toString()))
+        assertEquals("nominatim.example.org", own.nearbyServer.name)
+        // Saved in its checked form; OpenStreetMap's typed out is the default again; anything unusable reads as the default.
+        assertEquals("https://nominatim.example.org:8443", RobotSettings.fromJson("""{"schema":12,"nearestServer":"Nominatim.Example.org:8443/"}""").nearestServer)
+        assertEquals("", RobotSettings.fromJson("""{"schema":12,"nearestServer":"https://nominatim.openstreetmap.org/"}""").nearestServer)
+        for (bad in listOf("http://nominatim.example.org", "ftp://x.org", "https://user@x.org", "https://x.org/search?q=a", "not a host", "localhost", "12345")) {
+            val o = RobotSettings.fromJson("""{"schema":12,"nearestServer":"$bad"}""")
+            assertEquals(bad, "", o.nearestServer)
+            assertEquals(bad, NearbyServer.DEFAULT, o.nearbyServer)
+        }
     }
 }
