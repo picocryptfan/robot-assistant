@@ -261,7 +261,7 @@ class CarGateTest {
         for (t in listOf(ToolName.ADD_NOTE, ToolName.FIND_NOTES, ToolName.DRAFT_EMAIL, ToolName.FREE_STORAGE, ToolName.OPEN_APP, ToolName.SEND_TEXT)) {
             assertEquals(t.id, GateDecision.NEEDS_UNLOCK, CarGate.decide(t, null, locked = true, trusted = true, settings = settings))
         }
-        assertEquals(GateDecision.CONFIRM, CarGate.decide(ToolName.ASK_CLAUDE, null, locked = false, trusted = true, settings = settings.copy(claudeLocked = true)))
+        assertEquals(GateDecision.CONFIRM, CarGate.decide(ToolName.ASK_CLAUDE, null, locked = false, trusted = true, settings = settings.withClaude { it.copy(locked = true) }))
         // Every other rule still applies: an action at "Ask first" asks, "Off" is off, a remote call isn't loosened.
         val ask = settings.copy(approvals = settings.approvals + (ToolName.READ_CALENDAR to Approval.ASK))
         assertEquals(GateDecision.CONFIRM, CarGate.decide(ToolName.READ_CALENDAR, CarFunction.WHATS_NEXT, locked = true, trusted = true, settings = ask))
