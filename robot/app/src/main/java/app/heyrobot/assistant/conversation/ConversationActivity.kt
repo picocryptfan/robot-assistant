@@ -213,13 +213,15 @@ class ConversationActivity : ComponentActivity() {
                     item {
                         if (ask != null) ConsentCard(onStart = { tick -> if (tick) { Transcripts.saveConsent(this@ConversationActivity); ask?.let { begin(it.first, it.second) } } },
                             onCancel = { pending.value = null; finish() })
-                        else if (!ui.active && ui.lines.isEmpty()) StartCard(onStart = {
+                        else if (!ui.active && (ui.lines.isEmpty() || locked())) StartCard(onStart = {
                             val s = SettingsStore.load(this@ConversationActivity)
                             if (ConsentRecord.needed(Transcripts.consent(this@ConversationActivity), s)) pending.value = ConvEntry.APP to null else begin(ConvEntry.APP, null)
                         })
                         else if (ui.active) Text(ConsentRecord.LINE, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    items(ui.lines, key = { it.i }) { l -> LineRow(ui, l) { fixing = l } }
+                    // On the lock screen only the lines of a session started there, while it runs: nothing older.
+                    val visible = if (!locked() || (ui.active && ui.lockedStart)) ui.lines else emptyList()
+                    items(visible, key = { it.i }) { l -> LineRow(ui, l) { fixing = l } }
                     if (ui.partial.isNotEmpty()) item {
                         Text(ui.partial, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
                     }
