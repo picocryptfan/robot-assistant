@@ -5,6 +5,8 @@ import org.json.JSONObject
 import java.io.Closeable
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
 
 // Pure (java.io). What a .litertlm file holds, read from its header without loading it (0.4.1, "your own model file"):
 // the LiteRT-LM header's sections, the decoder's TFLite operator codes and metadata, and the LlmMetadata proto. A Kotlin
@@ -40,6 +42,27 @@ class FileByteSource(file: File) : ByteSource, Closeable {
     }
 
     override fun close() = raf.close()
+}
+
+/**
+ * The bytes of a file already open (0.4.5): :brain reads a GGUF file's header through the very file it then hands to
+ * llama.cpp, never through its name again. The caller owns [channel] and closes it.
+ */
+class ChannelByteSource(private val channel: FileChannel) : ByteSource {
+    override val size: Long = channel.size()
+
+    override fun read(pos: Long, n: Int): ByteArray {
+        if (pos < 0 || n < 0 || pos > size - n) throw LiteRtLmFormat("outside the file")
+        val b = ByteBuffer.allocate(n)
+        var at = pos
+        while (b.hasRemaining()) {
+            val k = channel.read(b, at)
+            // The file shrank under the read (or a read that makes no progress): never a loop, never a short read.
+            if (k <= 0) throw LiteRtLmFormat("outside the file")
+            at += k
+        }
+        return b.array()
+    }
 }
 
 class ArrayByteSource(private val bytes: ByteArray) : ByteSource {

@@ -3,12 +3,15 @@ package app.heyrobot.brain
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Handler
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import android.system.Os
 import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainPolicy
 import app.heyrobot.core.BrainProtocol
+import app.heyrobot.core.ChannelByteSource
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.ControlText
 import app.heyrobot.core.DoneReason
@@ -33,6 +36,7 @@ import app.heyrobot.core.TokenEstimate
 import app.heyrobot.core.ToolMode
 import app.heyrobot.core.readOrNull
 import java.io.File
+import java.nio.channels.FileChannel
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -48,7 +52,8 @@ import java.util.concurrent.Future
 //
 // Before a load, as for LiteRT-LM: the app's record of your file (unchanged since its check, a GGUF file, on the CPU, with
 // the context the request asks for), and the header read again here (core GgufCheck) and compared with the one recorded;
-// llama.cpp's own parser runs only after that, and only in this process. Every native call runs on one worker thread; replies come back to BrainService's work
+// llama.cpp's own parser runs only after that, only in this process, and on the very file whose header was read (it opens
+// the file through /proc/self/fd, never by its name again); and what it read of the context must be what Robot read. Every native call runs on one worker thread; replies come back to BrainService's work
 // thread, where all the state below lives. The model is never freed under a reply llama.cpp hasn't returned from.
 
 class LlamaEngine(private val ctx: Context, private val handler: Handler) : BrainEngine, SlotHolder {
@@ -130,19 +135,46 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             return failed(req, LoadFailure.NO_FILE, "The model file is missing.")
         }
         if (req.backend != ModelBackend.CPU) return failed(req, LoadFailure.NOT_ALLOWED, "A GGUF file runs on the CPU only.")
+        // One open file from here to llama.cpp: its header is read through it, and llama.cpp opens that very file
+        // (/proc/self/fd), so nothing put at the path after the check is ever what llama.cpp parses.
+        val pfd = try { ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY) } catch (_: Exception) {
+            return failed(req, LoadFailure.NO_FILE, "The model file is missing.")
+        }
+        return ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input -> loadOpen(req, f, pfd, input.channel) }
+    }
+
+    /** True when [pfd] is the file at [f]'s path now (same device and inode) and of the size the path says. */
+    private fun sameFile(pfd: ParcelFileDescriptor, f: File): Boolean = try {
+        val open = Os.fstat(pfd.fileDescriptor)
+        val named = Os.stat(f.path)
+        open.st_dev == named.st_dev && open.st_ino == named.st_ino && open.st_size == named.st_size
+    } catch (_: Exception) { false }
+
+    private class Native(val handle: Long, val specials: Array<ByteArray>?, val trainContext: Long)
+
+    private fun loadOpen(req: BrainMsg.Load, f: File, pfd: ParcelFileDescriptor, channel: FileChannel): BrainMsg.Loaded {
         // The app's record, read here again: your file as checked (size and time unchanged), a GGUF file, on the CPU, and the
         // context Robot's prompts are made for with it (4,096, or a short file's own: chat only).
         val record = readOrNull(File(File(ctx.filesDir, "robot"), ModelFiles.OWN_RECORD))
         LoadCheck.refuse(req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()), null, record,
             maxTokens = req.maxTokens, format = ModelFormat.GGUF)?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
-        // The header read again from the file about to load, and the same as the one the app checked and showed you; its
+        // The file open is the one whose size and time were just compared: the one at the path now.
+        if (!sameFile(pfd, f)) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
+        // The header read again through the open file, and the same as the one the app checked and showed you; its
         // context too (never a cache larger than the model was trained for, nor a short one for a file that isn't).
-        val r = GgufCheck.check(f, totalRam())
+        val r = GgufCheck.check(ChannelByteSource(channel), totalRam())
         r.unusable?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
         if (r.contextTokens != req.maxTokens) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.wrongContext(r.contextTokens))
         val recorded = OwnModel.fromJson(record)?.gguf
         if (recorded == null || recorded.copy(totalRam = 0) != r.copy(totalRam = 0)) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
         LlamaNative.ready()?.let { return failed(req, LoadFailure.ENGINE, it) }
+        // llama.cpp opens the open file itself; only if this system can't open it that way, the path, once it is still that file.
+        val proc = File("/proc/self/fd/${pfd.fd}")
+        val path = when {
+            proc.canRead() -> proc.path
+            sameFile(pfd, f) -> f.path.also { RLog.i("brain_load_by_path", "format" to ModelFormat.GGUF) }
+            else -> return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.CHANGED)
+        }
         // One engine in the whole process, whichever engine or service loads it (EngineSlot).
         when (EngineTeardown.forLoad(!EngineSlot.claim(this, ctx, req), EngineSlot.holderDestroyedMs(this))) {
             EngineTeardown.LoadStep.LOAD -> {}
@@ -155,21 +187,30 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         }
         val t0 = SystemClock.elapsedRealtime()
         val why = IntArray(1)
-        val (h, specials) = try {
-            worker.submit<Pair<Long, Array<ByteArray>?>> {
-                val h = LlamaNative.load(f.path.toByteArray(Charsets.UTF_8), req.maxTokens, DECODE_THREADS, PROMPT_THREADS, SAMPLING, why)
-                // Its control tokens, which no text from outside Robot's prompt may write (ControlText); none read: not run.
-                val specials = if (h != 0L) LlamaNative.specials(h) else null
-                if (h != 0L && specials == null) LlamaNative.free(h)
-                (if (specials == null) 0L else h) to specials
+        val n = try {
+            worker.submit<Native> {
+                val h = LlamaNative.load(path.toByteArray(Charsets.UTF_8), req.maxTokens, DECODE_THREADS, PROMPT_THREADS, SAMPLING, why)
+                if (h == 0L) return@submit Native(0L, null, 0)
+                // Its control tokens, which no text from outside Robot's prompt may write (ControlText), and its context as
+                // llama.cpp's own parser read it, which must be what Robot's check read.
+                val specials = LlamaNative.specials(h)
+                val train = Integer.toUnsignedLong(LlamaNative.trainContext(h))
+                if (specials == null || train != r.contextLength) {
+                    LlamaNative.free(h)
+                    return@submit Native(0L, specials, train)
+                }
+                Native(h, specials, train)
             }.get()
         } catch (t: Exception) {
             RLog.w("brain_load", t, "format" to ModelFormat.GGUF)
-            0L to null
+            Native(0L, null, 0)
         }
         val ms = SystemClock.elapsedRealtime() - t0
-        if (h == 0L || specials == null) {
+        val h = n.handle
+        if (h == 0L || n.specials == null) {
             EngineSlot.release(this, ctx)
+            // Both parsers succeeded but read the header differently: llama.cpp would run a file Robot didn't check.
+            if (n.specials != null) return failed(req, LoadFailure.NOT_ALLOWED, DIFFERENT, ms)
             return failed(req, LoadFailure.ENGINE, when (why[0]) {
                 LlamaNative.LOAD_CONTEXT -> "llama.cpp couldn't make room for its context (memory)."
                 LlamaNative.LOAD_TEMPLATE -> "llama.cpp couldn't read the file's chat template."
@@ -179,7 +220,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         handle = h
         loaded = req
         report = r
-        controls = ControlText(specials.map { String(it, Charsets.UTF_8) })
+        controls = ControlText(n.specials.map { String(it, Charsets.UTF_8) })
         RLog.i("brain_load", "ok" to true, "ms" to ms, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "format" to ModelFormat.GGUF,
             "vision" to false, "fileType" to r.fileType, "threads" to DECODE_THREADS, "promptThreads" to PROMPT_THREADS, "thinks" to r.thinks,
             "maxTokens" to req.maxTokens, "chatOnly" to ContextWindow.chatOnly(req.maxTokens), "controls" to controls.size)
@@ -438,5 +479,6 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         /** How long unload waits for a stopped reply to return before leaving the free to run after it. */
         private const val UNLOAD_WAIT_MS = 10_000
         private const val STOPPING = "The model is still stopping. Try again in a moment."
+        private const val DIFFERENT = "llama.cpp read this file's header differently from Robot's check, so Robot won't run it."
     }
 }

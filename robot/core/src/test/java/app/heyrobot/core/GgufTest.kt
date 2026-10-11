@@ -198,6 +198,19 @@ class GgufTest {
             assertNull(r.unusable)
             assertEquals(f.length(), r.fileBytes)
             assertFalse(GgufCheck.check(File(dir, "missing.gguf")).readable)
+            // :brain reads it through the file it has open (0.4.5): the same report, and no read past its end.
+            java.io.RandomAccessFile(f, "r").use { raf ->
+                val src = ChannelByteSource(raf.channel)
+                assertEquals(r, GgufCheck.check(src, gb16))
+                assertEquals(f.length(), src.size)
+                assertEquals("GGUF", String(src.read(0, 4), Charsets.ISO_8859_1))
+                for ((pos, n) in listOf(-1L to 1, 0L to -1, f.length() to 1, f.length() - 1 to 2, Long.MAX_VALUE to 1)) {
+                    assertTrue("$pos $n", runCatching { src.read(pos, n) }.exceptionOrNull() is LiteRtLmFormat)
+                }
+                // Cut short after it was opened: a report that it can't be read, never a short header.
+                java.io.RandomAccessFile(f, "rw").use { it.setLength(100) }
+                assertFalse(GgufCheck.check(src, gb16).readable)
+            }
         } finally { dir.deleteRecursively() }
     }
 

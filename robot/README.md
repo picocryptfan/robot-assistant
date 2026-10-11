@@ -138,10 +138,15 @@ the engine only when `tools/build_llama.sh` made its library.
 - **No card to tap:** like a `.litertlm` that runs on the CPU, a checked GGUF file can be chosen at once; nothing of it
   reaches the TPU or a vendor driver.
 - **:brain checks again** before llama.cpp ever sees the file (`LlamaEngine.load`): your file's record (unchanged size
-  and time since its check, a GGUF file, on the CPU: `LoadCheck`), then the header read again from the file and compared
-  with the one recorded and shown to you, so the file is the one whose SHA-256 you saw. llama.cpp's own GGUF parser has had
-  memory-safety bugs: Robot reads the file first, runs llama.cpp only in the separate `:brain` process, and only on a file
-  you imported, checked and chose.
+  and time since its check, a GGUF file, on the CPU, with the context the request asks for: `LoadCheck`), then the header
+  read again and compared with the one recorded and shown to you, so the file is the one whose SHA-256 you saw. It opens
+  the file once: the header is read through that open file (the one at the path, same inode and size), and llama.cpp
+  opens that very file through `/proc/self/fd/…`, never by its name again, so a file put in its place after the check is
+  never the one llama.cpp parses (`brain_load_by_path` in the log says a system refused that and the checked path was
+  used). After the load, the context llama.cpp's own parser read must be the one Robot's check read, else the model is let
+  go ("llama.cpp read this file's header differently…"). llama.cpp's own GGUF parser has had memory-safety bugs: Robot
+  reads the file first, runs llama.cpp only in the separate `:brain` process, and only on a file you imported, checked and
+  chose.
 
 ### The engine
 
