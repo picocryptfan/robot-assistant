@@ -59,6 +59,8 @@ import app.heyrobot.core.Executed
 import app.heyrobot.core.FastPath
 import app.heyrobot.core.FreeUp
 import app.heyrobot.core.NoQuestion
+import app.heyrobot.core.Nearby
+import app.heyrobot.core.NearbyFail
 import app.heyrobot.core.NoReply
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Prompt
@@ -1017,6 +1019,7 @@ object PanelController {
         }
         VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
         spokenTurn = fromVoice
+        turnSaid = q
         val textingFor = askingTextFor
         askingTextFor = null
         expireClaudeMode()
@@ -1925,18 +1928,29 @@ object PanelController {
         override val settings: RobotSettings get() = VoiceHub.settings
         override suspend fun prepare(action: Action): Prepared = withContext(Dispatchers.IO) { executor().prepare(action) }
         override suspend fun run(action: Action): Executed {
-            if (!action.tool.online) return withContext(Dispatchers.IO) { executor().run(action) }
+            if (!action.online) return withContext(Dispatchers.IO) { executor().run(action) }
+            val weather = action.tool == ToolName.WEATHER
             return try {
-                OnlineRun.run(WeatherAsk.DEADLINE_MS) { abort -> executor(abort).run(action) }
-                    ?: Executed(ActionStatus.FAILED, WeatherFail.TIMEOUT.text).also { VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.TIMEOUT) }
+                OnlineRun.run(if (weather) WeatherAsk.DEADLINE_MS else Nearby.DEADLINE_MS) { abort -> executor(abort).run(action) } ?: if (weather) {
+                    Executed(ActionStatus.FAILED, WeatherFail.TIMEOUT.text).also { VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.TIMEOUT) }
+                } else {
+                    // The nearest place took too long to find: Organic Maps' search instead, as with it turned off.
+                    RLog.i("maps_nearest", "found" to false, "why" to NearbyFail.TIMEOUT)
+                    withContext(Dispatchers.IO) { executor().run(Nearby.plain(action)) }.let { r ->
+                        if (r.status.succeeded) r.copy(detail = "${NearbyFail.TIMEOUT.text}, so Robot opened a search instead. ${r.detail}") else r
+                    }
+                }
             } catch (e: CancellationException) {
-                VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.STOPPED)
+                if (weather) VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.STOPPED)
                 throw e
             }
         }
     }
 
-    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom) { i -> host?.launch(i) ?: false }
+    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom, turnSaid) { i -> host?.launch(i) ?: false }
+
+    /** What you typed or said this turn (never screen text): "the nearest" in your own words counts for the maps tools. */
+    @Volatile private var turnSaid: String? = null
 
     /** The room for a tool's answer in the turn under way (runTurn's estimate); no limit outside one. */
     @Volatile private var toolRoom = Int.MAX_VALUE

@@ -165,6 +165,11 @@ sealed class Action {
     open fun body(): String? = null
     /** The card's button when it asks first ("Open in Cheogram"); null = "Do it". */
     open val confirmLabel: String? get() = null
+    /**
+     * It goes to the internet when it runs: the weather, or a maps request for the nearest place (0.4.0). Stop ends it at
+     * once and it has a deadline (the panel's OnlineRun).
+     */
+    open val online: Boolean get() = tool.online
 
     data class SetTimer(val seconds: Long) : Action() {
         override val tool get() = ToolName.SET_TIMER
@@ -185,15 +190,24 @@ sealed class Action {
         override fun describe() = "Open $name"
     }
 
-    data class MapsSearch(val query: String) : Action() {
+    /**
+     * [nearest]: "the nearest/closest …" (0.4.0): with Settings › Actions › "Find the nearest place online" on, Robot finds
+     * the closest one with OpenStreetMap and opens Organic Maps' route to it (Nearby); otherwise the search, as before.
+     */
+    data class MapsSearch(val query: String, val nearest: Boolean = false) : Action() {
         override val tool get() = ToolName.MAPS_SEARCH
-        override fun describe() = "Search Organic Maps for “$query”"
+        override fun describe() = if (nearest) Nearby.describe(query) else "Search Organic Maps for “$query”"
+        override val online get() = nearest
     }
 
-    /** Organic Maps can't route to a name: this opens a search for [destination], and you pick it and tap Route. */
-    data class MapsNavigate(val destination: String) : Action() {
+    /**
+     * Organic Maps can't route to a name: this opens a search for [destination], and you pick it and tap Route; or, for the
+     * [nearest] one, the route to the closest place OpenStreetMap knows ([MapsSearch.nearest]).
+     */
+    data class MapsNavigate(val destination: String, val nearest: Boolean = false) : Action() {
         override val tool get() = ToolName.MAPS_NAVIGATE
-        override fun describe() = "Search Organic Maps for “$destination”, then tap Route"
+        override fun describe() = if (nearest) Nearby.describe(destination) else "Search Organic Maps for “$destination”, then tap Route"
+        override val online get() = nearest
     }
 
     data class Flashlight(val on: Boolean) : Action() {
@@ -482,9 +496,10 @@ object ToolCalls {
             ToolName.OPEN_APP -> textArg(a, 60, "name", "app", "app_name")?.let { ParsedCall.Ok(Action.OpenApp(it)) }
                 ?: bad("name is required")
             // Without "near me" (MapsQuery): the card, the record and what Organic Maps searches are the same words.
-            ToolName.MAPS_SEARCH -> textArg(a, MAX_TEXT, "query", "q", "place")?.let { ParsedCall.Ok(Action.MapsSearch(MapsQuery.clean(it))) }
+            // "The nearest …" is kept as a flag: the app may find the closest one online (Nearby).
+            ToolName.MAPS_SEARCH -> textArg(a, MAX_TEXT, "query", "q", "place")?.let { ParsedCall.Ok(Action.MapsSearch(MapsQuery.clean(it), NearestAsk.said(it))) }
                 ?: bad("query is required")
-            ToolName.MAPS_NAVIGATE -> textArg(a, MAX_TEXT, "destination", "to", "place")?.let { ParsedCall.Ok(Action.MapsNavigate(MapsQuery.clean(it))) }
+            ToolName.MAPS_NAVIGATE -> textArg(a, MAX_TEXT, "destination", "to", "place")?.let { ParsedCall.Ok(Action.MapsNavigate(MapsQuery.clean(it), NearestAsk.said(it))) }
                 ?: bad("destination is required")
             ToolName.FLASHLIGHT -> {
                 val present = listOf("on", "state", "enabled").filter { a.containsKey(it) }

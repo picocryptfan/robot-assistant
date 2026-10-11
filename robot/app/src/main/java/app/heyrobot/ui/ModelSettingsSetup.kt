@@ -480,7 +480,16 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
                 "Safety & privacy.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             // Ask Claude's own settings decide about ask_claude (it has no level of its own).
-            for (t in ToolName.entries.filter { !it.internal }) ApprovalRow(t, s.approval(t), t in s.lockedTools) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
+            for (t in ToolName.entries.filter { !it.internal }) {
+                ApprovalRow(t, s.approval(t), t in s.lockedTools) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
+                // Part of the maps actions (0.4.0): "the nearest …" found online.
+                if (t == ToolName.MAPS_NAVIGATE) SwitchRow("Find the nearest place online", "Uses the internet. “Directions to the nearest pharmacy”: " +
+                    "Robot asks OpenStreetMap for that kind of place around where you are (rounded to about 1 km) and opens Organic Maps' route to the " +
+                    "closest. Off: Organic Maps' search, which ranks places around you.", s.nearestOnline,
+                    enabled = s.approval(ToolName.MAPS_NAVIGATE) != Approval.OFF || s.approval(ToolName.MAPS_SEARCH) != Approval.OFF) {
+                    update(s.copy(nearestOnline = it))
+                }
+            }
             Text(if (s.claudeActionCards) "Anything Claude asks Robot to do shows a card first." else "Claude's requests follow the levels above and Safety cards.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

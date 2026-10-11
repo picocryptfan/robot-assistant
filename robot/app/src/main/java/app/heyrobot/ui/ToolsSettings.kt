@@ -108,8 +108,9 @@ private fun HomeForWeather(s: RobotSettings, update: (RobotSettings) -> Unit, a:
 private fun LocationRow(f: AssistantFacts?, a: AppActions) {
     val on = f?.locationGranted == true
     StatusRow(if (on) Mark.OK else Mark.TODO, "Location (optional)",
-        if (on) "Allowed, approximate only: “the weather here” uses where the phone is, rounded to about 1 km."
-        else "For “the weather here” when you travel. Without it, Robot uses your Home for weather.") {
+        if (on) "Allowed, approximate only: “the weather here” and “the nearest pharmacy” use where the phone is, rounded to about 1 km."
+        else "For “the weather here” when you travel, and “directions to the nearest …”. Without it, Robot uses your Home for weather " +
+            "and Organic Maps' search.") {
         if (!on) FilledTonalButton(onClick = a.askLocation) { Text("Allow") }
     }
 }

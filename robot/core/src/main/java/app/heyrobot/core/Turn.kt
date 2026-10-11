@@ -431,9 +431,9 @@ class TurnRunner(
             if (!launched) spokenThisRound += r.spoken ?: r.detail
             return done(chosen, r.status, r.detail, launched, r)
         }
-        // An online read (the weather, 0.4.0) changes nothing and may wait seconds on the network: Stop ends it at once,
-        // and its card says it was stopped.
-        if (chosen.tool.online && chosen.tool.reads) {
+        // An online lookup (the weather, the nearest place for the maps, 0.4.0) changes nothing until it is found and may
+        // wait seconds on the network: Stop ends it at once, and its card says it was stopped.
+        if (chosen.online) {
             val r = try {
                 actions.run(chosen)
             } catch (e: CancellationException) {

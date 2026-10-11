@@ -288,8 +288,16 @@ class ProcessIsolationTest {
      * accessibility service (Ask Claude must not drive the Claude app).
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
-        assertEquals(listOf("app/sys/OpenMeteoClient.kt"), usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
+        assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt"),
+            usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
             ours.filterKeys { !it.startsWith("claude/") }))
+        // 0.4.0: the nearest place for the maps goes only to OpenStreetMap's Nominatim, over HTTPS, a second apart at most,
+        // its raw request private, and only the maps tools use it (core Nearby.kt builds the URL).
+        val osm = File(java("app"), "app/heyrobot/sys/NominatimClient.kt").readText()
+        assertTrue(osm.contains("private val HOSTS = setOf(Nearby.HOST)") && osm.contains("require(u.protocol == \"https\" && u.host in HOSTS)") &&
+            osm.contains("c.instanceFollowRedirects = false") && osm.contains("pace(abort)"))
+        assertTrue(osm.contains("private fun get(") && !osm.contains("    fun get("))
+        assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/NominatimClient.kt"), usersOf(Regex("""\bNominatimClient\b""")))
         // It goes only to Open-Meteo's two hosts, over HTTPS (core Weather.kt builds the URLs), its raw request is private, and
         // only the weather tool and Settings › Weather use it.
         val meteo = File(java("app"), "app/heyrobot/sys/OpenMeteoClient.kt").readText()
@@ -299,8 +307,8 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/OpenMeteoClient.kt", "app/ui/ToolsSettings.kt"), usersOf(Regex("""\bOpenMeteoClient\b""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""AccessibilityService|accessibilityservice""")))
         // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, the
-        // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), and Open-Meteo's two (0.4.0).
-        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
+        // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0).
+        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
             ours.filter { it.value.readText().contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))

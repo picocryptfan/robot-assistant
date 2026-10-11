@@ -37,6 +37,10 @@ import app.heyrobot.core.Choice
 import app.heyrobot.core.Executed
 import app.heyrobot.core.MailTarget
 import app.heyrobot.core.MailTo
+import app.heyrobot.core.Nearby
+import app.heyrobot.core.NearbyFail
+import app.heyrobot.core.NearestAsk
+import app.heyrobot.core.OrganicMapsRoute
 import app.heyrobot.core.NoteSearch
 import app.heyrobot.core.OpenMeteo
 import app.heyrobot.core.PeopleEdit
@@ -70,6 +74,7 @@ import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.CheogramIntents
 import app.heyrobot.sys.CoarseLocation
+import app.heyrobot.sys.NominatimClient
 import app.heyrobot.sys.OpenMeteoClient
 import app.heyrobot.sys.PhoneInfo
 import app.heyrobot.sys.SettingsIntents
@@ -97,7 +102,7 @@ import java.util.Locale
  * what is left of the model's context for a tool's answer (PanelController's estimate): the weather gives fewer days.
  */
 class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val abort: Abort = Abort(),
-    private val roomTokens: Int = Int.MAX_VALUE, private val launch: (Intent) -> Boolean) {
+    private val roomTokens: Int = Int.MAX_VALUE, private val said: String? = null, private val launch: (Intent) -> Boolean) {
     /**
      * Before the gate and the card: what the action will really do. open_app becomes the installed app it will open
      * (its real label and launcher activity); send_text and draft_email the person, number or address it goes to
@@ -119,6 +124,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.Weather -> prepareWeather(action)
             is Action.FreeMemory -> prepareFreeMemory(action)
             is Action.FreeStorage -> prepareFreeStorage(action)
+            // "The nearest …" in the model's words or your own ([said], never screen text), with the setting on (0.4.0).
+            is Action.MapsSearch -> Prepared.Ready(action.copy(nearest = nearestWanted(action.query, action.nearest)))
+            is Action.MapsNavigate -> Prepared.Ready(action.copy(nearest = nearestWanted(action.destination, action.nearest)))
             // The Claude app: installed or "Install Claude" before any card.
             is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
             else -> Prepared.Ready(action)
@@ -134,9 +142,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.SetTimer -> timer(action.seconds)
                 is Action.SetAlarm -> alarm(action.hour, action.minute)
                 is Action.OpenApp -> openApp(action)
-                is Action.MapsSearch -> maps(action.query, "Opened Organic Maps search")
-                // A search, not a route (om://route needs coordinates): say what to tap next.
-                is Action.MapsNavigate -> maps(action.destination, "Opened an Organic Maps search for it: pick the place, then tap Route for directions")
+                is Action.MapsSearch -> if (action.nearest) nearest(action.query, SEARCH_DONE) else maps(action.query, SEARCH_DONE)
+                // A search, not a route (om://route needs coordinates): say what to tap next. The nearest one: its route.
+                is Action.MapsNavigate -> if (action.nearest) nearest(action.destination, NAVIGATE_DONE) else maps(action.destination, NAVIGATE_DONE)
                 is Action.Flashlight -> torch(action.on)
                 is Action.SendText -> text(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = false) }
                 is Action.DraftEmail -> email(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = true) }
@@ -217,6 +225,47 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             if (start(Intent(Intent.ACTION_VIEW, Uri.parse(uri)))) return Executed(ActionStatus.DONE, "$doneText.", launchedApp = true)
         }
         return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
+    }
+
+    private fun nearestWanted(what: String, modelSaid: Boolean): Boolean =
+        settings.nearestOnline && (modelSaid || NearestAsk.inWords(said, what))
+
+    /**
+     * "Directions to the nearest pharmacy" (0.4.0): where the phone is (coarse location), OpenStreetMap's Nominatim for that
+     * kind of place around it (two decimals, two searches at most, a second apart), the closest one, and Organic Maps'
+     * route to it. The card's line (saved) names no place; its body (shown, never saved) has the place, how far, and what
+     * OpenStreetMap was sent. Anything in the way (no location, no internet, nothing found): Organic Maps' search, as
+     * before, and the card says why. The log gets codes and times, never the place.
+     */
+    private fun nearest(what: String, searchDone: String): Executed {
+        val started = SystemClock.elapsedRealtime()
+        var requests = 0
+        fun instead(why: NearbyFail): Executed {
+            RLog.i("maps_nearest", "found" to false, "why" to why, "requests" to requests, "ms" to (SystemClock.elapsedRealtime() - started))
+            if (abort.cancelled) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
+            val r = maps(what, searchDone)
+            return if (r.status.succeeded) r.copy(detail = "${why.text}, so Robot opened a search instead. ${r.detail}") else r
+        }
+        if (!CoarseLocation.granted(ctx)) return instead(NearbyFail.NOT_ALLOWED)
+        val found = CoarseLocation.find(ctx, Nearby.FIX_MS, abort)
+        if (abort.cancelled) return instead(NearbyFail.STOPPED)
+        val fix = found.fix ?: return instead(NearbyFail.NO_LOCATION)
+        val places = try {
+            NominatimClient.search(ctx, what, fix.lat, fix.lon, abort) { requests = it }
+        } catch (e: NominatimClient.Failure) {
+            return instead(e.why)
+        }
+        val (place, metres) = Nearby.closest(places, fix.lat, fix.lon) ?: return instead(NearbyFail.NOTHING)
+        if (abort.cancelled) return instead(NearbyFail.STOPPED)
+        val opened = start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.uri(fix.lat, fix.lon, START_NAME, place.lat, place.lon, place.name))))
+            || start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.geo(place.lat, place.lon, place.name))))
+        if (!opened) return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
+        val far = Nearby.distance(metres, WeatherUnits.of(region))
+        RLog.i("maps_nearest", "found" to true, "places" to places.size, "requests" to requests, "ms" to (SystemClock.elapsedRealtime() - started))
+        val sent = "Sent to OpenStreetMap: “$what” near ${Nearby.coord(fix.lat)}, ${Nearby.coord(fix.lon)}"
+        return Executed(ActionStatus.DONE, "Opened Organic Maps' route to the nearest one OpenStreetMap knows, $far away in a straight line.",
+            launchedApp = true, results = listOf(mapOf("place" to place.name, "distance" to far)),
+            body = listOfNotNull("${place.name} · $far", place.address).joinToString("\n") + "\n\n" + sent)
     }
 
     private fun torch(on: Boolean): Executed {
@@ -691,5 +740,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         const val HERE = "where you are"
         /** The weather's status, detail and place beside its days, about. */
         const val PLACE_TOKENS = 60
+        const val SEARCH_DONE = "Opened Organic Maps search"
+        const val NAVIGATE_DONE = "Opened an Organic Maps search for it: pick the place, then tap Route for directions"
+        /** The route's start in Organic Maps: where Robot found the phone (approximate; Organic Maps' link has no "my position"). */
+        const val START_NAME = "Your position (approximate)"
     }
 }

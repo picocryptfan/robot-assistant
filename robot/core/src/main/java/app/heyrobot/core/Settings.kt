@@ -156,6 +156,11 @@ data class RobotSettings(
      * question came by voice. A yes never sends personal content to Claude unless [voiceYesPersonal].
      */
     val voiceCards: Boolean = true,
+    /**
+     * Settings › Actions › "Find the nearest place online" (0.4.0, on; it uses the internet): "directions to the nearest
+     * pharmacy" finds the closest one with OpenStreetMap and opens Organic Maps' route to it. Off: Organic Maps' search.
+     */
+    val nearestOnline: Boolean = true,
 ) {
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
@@ -218,6 +223,7 @@ data class RobotSettings(
         put("voiceYesPersonal", voiceYesPersonal)
         put("keepMedia", keepMedia)
         put("voiceCards", voiceCards)
+        put("nearestOnline", nearestOnline)
     }
 
     companion object {
@@ -337,6 +343,7 @@ data class RobotSettings(
                 voiceYesPersonal = o.optBoolean("voiceYesPersonal", d.voiceYesPersonal),
                 keepMedia = o.optBoolean("keepMedia", d.keepMedia),
                 voiceCards = o.optBoolean("voiceCards", d.voiceCards),
+                nearestOnline = o.optBoolean("nearestOnline", d.nearestOnline),
             )
         }
 

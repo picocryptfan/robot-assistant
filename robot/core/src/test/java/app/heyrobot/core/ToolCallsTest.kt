@@ -85,7 +85,10 @@ class ToolCallsTest {
         assertEquals(Action.MapsSearch("pharmacy"), ok("maps_search", "query" to "pharmacy"))
         assertEquals(Action.MapsNavigate("Central Station"), ok("maps_navigate", "destination" to "Central  Station"))
         assertEquals(Action.MapsSearch("pharmacy"), ok("maps_search", "query" to "a pharmacy near me"))
-        assertEquals(Action.MapsNavigate("pharmacy"), ok("maps_navigate", "destination" to "the nearest pharmacy"))
+        // "The nearest": the words go, the wish stays (the app may find the closest one online).
+        assertEquals(Action.MapsNavigate("pharmacy", nearest = true), ok("maps_navigate", "destination" to "the nearest pharmacy"))
+        assertEquals(Action.MapsSearch("gas station", nearest = true), ok("maps_search", "query" to "closest gas station"))
+        assertEquals(Action.MapsSearch("pharmacie", nearest = false), ok("maps_search", "query" to "pharmacie près de moi"))
         bad("open_app")
         bad("open_app", "name" to "   ")
         bad("maps_search", "query" to null)
