@@ -52,6 +52,7 @@ import app.heyrobot.core.ToolName
 import app.heyrobot.core.TurnModel
 import app.heyrobot.core.Executed
 import app.heyrobot.core.FastPath
+import app.heyrobot.core.FreeUp
 import app.heyrobot.core.NoQuestion
 import app.heyrobot.core.NoReply
 import app.heyrobot.core.Prepared
@@ -1837,6 +1838,28 @@ object PanelController {
         lastActivity = System.currentTimeMillis()
         persist()
         if (closeConvAfterTurn) closeLiveConversation()
+        unloadIfAsked(replyId)
+    }
+
+    /**
+     * free_memory asked for Robot's model to be unloaded during this answer (0.4.0): now that it has ended, unload it
+     * and put what Android reports came back on the card (and in the saved conversation).
+     */
+    private fun unloadIfAsked(replyId: String) {
+        val before = ModelUnload.take() ?: return
+        scope.launch {
+            val (b, after) = ModelUnload.unload(VoiceHub.app, before)
+            val line = FreeUp.freedLine(b, after)
+            _state.update { st ->
+                st.copy(turns = st.turns.map { t ->
+                    if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && it.detail == FreeUp.UNLOADING) it.copy(detail = line) else it })
+                })
+            }
+            chat.replaceAll { t ->
+                if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && it.detail == FreeUp.UNLOADING) it.copy(detail = line) else it })
+            }
+            persist()
+        }
     }
 
     private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
@@ -1857,6 +1880,7 @@ object PanelController {
         }
         persist()
         if (closeConvAfterTurn) closeLiveConversation()
+        unloadIfAsked(replyId)
     }
 
     /** A finished reply has no card left waiting: one still pending was not done (and is never saved as waiting). */

@@ -271,16 +271,15 @@ object BrainKeeper {
         _state.value = State(Readiness.UNKNOWN)
     }
 
-    fun release(why: String) {
-        scope.launch {
-            mutex.withLock {
-                val c = client ?: return@withLock
-                client = null
-                // Unbinding is enough: BrainService unloads when its last client leaves.
-                c.close()
-                _state.value = State(Readiness.UNKNOWN)
-                RLog.i("brain_release", "why" to RLog.Code(why))
-            }
+    /** Unbinds now (in the background); join the job to wait for it (free_memory does). */
+    fun release(why: String): Job = scope.launch {
+        mutex.withLock {
+            val c = client ?: return@withLock
+            client = null
+            // Unbinding is enough: BrainService unloads when its last client leaves.
+            c.close()
+            _state.value = State(Readiness.UNKNOWN)
+            RLog.i("brain_release", "why" to RLog.Code(why))
         }
     }
 }

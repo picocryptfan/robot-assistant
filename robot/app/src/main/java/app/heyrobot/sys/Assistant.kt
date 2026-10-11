@@ -70,6 +70,9 @@ data class AssistantFacts(
     /** 0.4.0, both optional: approximate location (the weather here) and Usage access (phone_status's largest apps). */
     val locationGranted: Boolean = false,
     val usageAccess: Boolean = false,
+    /** 0.4.0, optional: photos and videos (free_storage's largest files); [mediaPartial]: only the ones you picked. */
+    val mediaGranted: Boolean = false,
+    val mediaPartial: Boolean = false,
 )
 
 object Assistant {
@@ -113,6 +116,8 @@ object Assistant {
             screenshotOn = screenshot,
             locationGranted = CoarseLocation.granted(ctx),
             usageAccess = PhoneInfo.usageAccess(ctx),
+            mediaGranted = PhoneInfo.mediaGranted(ctx),
+            mediaPartial = PhoneInfo.mediaPartial(ctx),
         )
     }
 

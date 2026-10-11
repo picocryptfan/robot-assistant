@@ -112,11 +112,11 @@ private fun LocationRow(f: AssistantFacts?, a: AppActions) {
     }
 }
 
-/** Assistant setup › Weather and phone status: both optional, both yours to turn off again in Android's settings. */
+/** Assistant setup › Weather and phone status: all optional, all yours to turn off again in Android's settings. */
 @Composable
 internal fun ToolsSetupCard(f: AssistantFacts, a: AppActions) {
     SectionCard("Weather and phone status") {
-        Text("Both optional. The weather comes from Open-Meteo over the internet; your phone's status is read on the phone and never leaves it.",
+        Text("All optional. The weather comes from Open-Meteo over the internet; your phone's status is read on the phone and never leaves it.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         LocationRow(f, a)
         StatusRow(if (f.usageAccess) Mark.OK else Mark.TODO, "Usage access (optional)",
@@ -124,5 +124,15 @@ internal fun ToolsSetupCard(f: AssistantFacts, a: AppActions) {
             else "So Robot can tell which apps use the most space. You turn it on for Robot in Android's settings.") {
             if (!f.usageAccess) FilledTonalButton(onClick = a.openUsageAccess) { Text("Open") }
         }
+        StatusRow(if (f.mediaGranted) Mark.OK else Mark.TODO, "Photos and videos (optional)",
+            when {
+                f.mediaPartial -> "Only the ones you picked: Robot can offer those of them that are large. Allow again to pick more, or all."
+                f.mediaGranted -> "Allowed: to free storage, Robot can show your largest photos and videos. Android asks before any is deleted."
+                else -> "So Robot can show your largest photos and videos when you want to free storage. Android asks before any is deleted."
+            }) {
+            if (!f.mediaGranted || f.mediaPartial) FilledTonalButton(onClick = a.askMedia) { Text("Allow") }
+        }
+        Text("Robot doesn't ask for All files access: Android clears apps' caches by itself when space runs low, and each app's info page clears its own.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

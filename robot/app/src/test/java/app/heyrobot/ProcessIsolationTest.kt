@@ -125,7 +125,7 @@ class ProcessIsolationTest {
         fun perm(n: String) = c(n).getAttributeNS(ns, "permission")
         val voice = listOf("app.heyrobot.assistant.RobotVoiceService", "app.heyrobot.assistant.RobotSessionService",
             "app.heyrobot.assistant.RobotRecognitionService", "app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider",
-            "app.heyrobot.assistant.ClaudeKeyActivity")
+            "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         for (n in listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver")) assertEquals(n, "", proc(n))
@@ -139,7 +139,7 @@ class ProcessIsolationTest {
         assertEquals("false", exported("app.heyrobot.brain.BrainService"))
         assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.brain.BrainService"))
         for (n in listOf("app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
-            "app.heyrobot.assistant.ClaudeKeyActivity"))
+            "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity"))
             assertEquals(n, "false", exported(n))
         // The recognizer MUST stay discoverable: with no current speech recognizer Android clears a third-party
         // assistant at every boot (VoiceInteractionManagerService.initForUser), which is how probe 1.1 failed.
@@ -187,7 +187,11 @@ class ProcessIsolationTest {
             "android.permission.ACCESS_COARSE_LOCATION",
             // 0.4.0: Usage access, turned on (or not) in Android's settings: phone_status's largest apps.
             "android.permission.PACKAGE_USAGE_STATS",
+            // 0.4.0: photos and videos (or the ones you pick), for free_storage's largest files; asked for by the main app only.
+            "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
         ), used)
+        // Never all files, never stopping other apps (Android 14 and later wouldn't let it anyway).
+        assertTrue(listOf("MANAGE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE", "KILL_BACKGROUND_PROCESSES").none { "android.permission.$it" in used })
         assertTrue("android.permission.ACCESS_FINE_LOCATION" !in used && "android.permission.ACCESS_BACKGROUND_LOCATION" !in used)
         // Package visibility through <queries> only.
         assertTrue("android.permission.QUERY_ALL_PACKAGES" !in used && "android.permission.SEND_SMS" !in used && "android.permission.WRITE_CONTACTS" !in used)

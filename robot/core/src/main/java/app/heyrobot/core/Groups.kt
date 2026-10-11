@@ -51,6 +51,8 @@ object ToolRouter {
 
     /** "tell me a joke" is not about telling someone: "tell" counts only when it isn't followed by me or us. */
     private val NOT_PEOPLE = setOf("tell me", "tell us")
+    /** "free up space" is about the phone, not about being free (0.4.0): "free" is a calendar word only otherwise. */
+    private val NOT_CALENDAR = setOf("free up", "free space", "free memory", "free storage", "free ram")
 
     /** "let Sarah know", "let my sister know". */
     private val LET_KNOW = Regex("""\blet (?:\w+ ){1,3}know\b""")
@@ -64,7 +66,10 @@ object ToolRouter {
         val plain = Normalizer.normalize(question, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
         fun has(keys: Set<String>) = keys.any { k ->
             if (' ' in k) padded.contains(" $k ")
-            else words.withIndex().any { (i, w) -> inflects(w, k) && !(k == "tell" && i + 1 < words.size && "tell ${words[i + 1]}" in NOT_PEOPLE) }
+            else words.withIndex().any { (i, w) ->
+                inflects(w, k) && !(k == "tell" && i + 1 < words.size && "tell ${words[i + 1]}" in NOT_PEOPLE) &&
+                    !(k == "free" && i + 1 < words.size && "free ${words[i + 1]}" in NOT_CALENDAR)
+            }
         }
         return buildSet {
             add(ToolGroup.CORE)

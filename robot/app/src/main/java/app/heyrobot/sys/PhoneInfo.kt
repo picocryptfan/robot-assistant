@@ -4,6 +4,10 @@ import android.Manifest
 import android.app.ActivityManager
 import android.app.AppOpsManager
 import android.app.usage.StorageStatsManager
+import android.app.usage.UsageEvents
+import android.app.usage.UsageStatsManager
+import android.content.ComponentName
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -14,20 +18,28 @@ import android.os.Environment
 import android.os.Process
 import android.os.StatFs
 import android.os.storage.StorageManager
+import android.provider.AlarmClock
+import android.provider.MediaStore
 import android.provider.Settings
+import android.provider.Telephony
 import app.heyrobot.core.AppSize
 import app.heyrobot.core.BatteryFacts
+import app.heyrobot.core.FreeUp
+import app.heyrobot.core.MediaFile
 import app.heyrobot.core.MediaFacts
 import app.heyrobot.core.MemoryFacts
 import app.heyrobot.core.PhoneFacts
 import app.heyrobot.core.PhonePart
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.StorageFacts
+import java.io.File
 
 // Main and voice processes. What the phone says about itself for phone_status (0.4.0): StatFs on the data partition,
 // BatteryManager and its sticky broadcast, ActivityManager.MemoryInfo, and, only with Usage access (PACKAGE_USAGE_STATS,
 // which you turn on in Android's settings), StorageStatsManager for the apps with a launcher icon (the ones Robot may see
-// without QUERY_ALL_PACKAGES) and for photos, videos and audio. Nothing is logged; the caller runs it off the main thread.
+// without QUERY_ALL_PACKAGES) and for photos, videos and audio. For free_memory and free_storage: the apps used lately
+// (Usage access), the largest photos and videos (the media permission, MediaStore) and Robot's own cache. Nothing is
+// logged, no file name included; the caller runs it off the main thread.
 
 object PhoneInfo {
     /** Usage access (Settings › Apps › Special app access › Usage access › Robot). */
@@ -86,8 +98,7 @@ object PhoneInfo {
         return packages.mapNotNull { pkg ->
             try {
                 val st = ssm.queryStatsForPackage(StorageManager.UUID_DEFAULT, pkg, user)
-                val label = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-                AppSize(label, st.appBytes + st.dataBytes, st.cacheBytes)
+                AppSize(label(ctx, pkg), st.appBytes + st.dataBytes, st.cacheBytes, pkg)
             } catch (_: Exception) {
                 null
             }
@@ -101,6 +112,93 @@ object PhoneInfo {
     }
 
     private inline fun <T> safe(f: () -> T): T? = try { f() } catch (_: Exception) { null }
+
+    fun label(ctx: Context, pkg: String): String = ctx.packageManager.let { pm -> pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() }
+
+    private fun launcherPackages(ctx: Context): Set<String> =
+        ctx.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), PackageManager.MATCH_ALL)
+            .map { it.activityInfo.packageName }.toSet()
+
+    /**
+     * The apps (with a launcher icon) used in the last [withinMs], most recent first, that free_memory may name as ones
+     * you could stop: never the app you are in, Robot, the keyboard, the home screen, messaging apps or clock apps (stopping
+     * one can cancel its alarms). Labels only. Needs Usage access; empty without it.
+     */
+    fun recentApps(ctx: Context, withinMs: Long = 2 * 3_600_000L): List<String> {
+        if (!usageAccess(ctx)) return emptyList()
+        val usm = ctx.getSystemService(UsageStatsManager::class.java) ?: return emptyList()
+        val now = System.currentTimeMillis()
+        val skip = buildSet {
+            add(ctx.packageName)
+            addAll(FreeUp.MESSAGING)
+            foreground(usm, now)?.let(::add)
+            safe { Settings.Secure.getString(ctx.contentResolver, Settings.Secure.DEFAULT_INPUT_METHOD) }?.let { ComponentName.unflattenFromString(it)?.packageName }?.let(::add)
+            safe { ctx.packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY) }
+                ?.activityInfo?.packageName?.let(::add)
+            safe { Telephony.Sms.getDefaultSmsPackage(ctx) }?.let(::add)
+            safe { ctx.packageManager.queryIntentActivities(Intent(AlarmClock.ACTION_SET_ALARM), PackageManager.MATCH_ALL) }.orEmpty().forEach { add(it.activityInfo.packageName) }
+        }
+        val launcher = launcherPackages(ctx)
+        val used = safe { usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - withinMs, now) }.orEmpty()
+            .filter { it.lastTimeUsed >= now - withinMs && it.packageName in launcher && it.packageName !in skip }
+            .groupBy { it.packageName }.mapValues { (_, v) -> v.maxOf { it.lastTimeUsed } }
+        return used.entries.sortedByDescending { it.value }.take(FreeUp.RECENT_APPS).mapNotNull { safe { label(ctx, it.key) } }
+    }
+
+    /** The app on screen under the panel: the last one that came to the front, other than Robot. */
+    private fun foreground(usm: UsageStatsManager, now: Long): String? = safe {
+        val events = usm.queryEvents(now - 30 * 60_000L, now)
+        val e = UsageEvents.Event()
+        var last: String? = null
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            if (e.eventType == UsageEvents.Event.ACTIVITY_RESUMED && e.packageName != null) last = e.packageName
+        }
+        last
+    }
+
+    /** Photos and videos Robot may read: all of them, or only those you picked ("Select photos"). */
+    fun mediaGranted(ctx: Context): Boolean = Assistant.granted(ctx, Manifest.permission.READ_MEDIA_IMAGES) ||
+        Assistant.granted(ctx, Manifest.permission.READ_MEDIA_VIDEO) || mediaPartial(ctx)
+
+    /** Only the photos and videos you picked (Android 14's partial access). */
+    fun mediaPartial(ctx: Context): Boolean = Assistant.granted(ctx, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) &&
+        !Assistant.granted(ctx, Manifest.permission.READ_MEDIA_IMAGES) && !Assistant.granted(ctx, Manifest.permission.READ_MEDIA_VIDEO)
+
+    /** The largest photos and videos Robot may see, biggest first. Trashed and pending ones aren't listed (MediaStore's default). */
+    fun largeMedia(ctx: Context, n: Int = FreeUp.LARGE_FILES): List<MediaFile> {
+        val out = mutableListOf<MediaFile>()
+        for ((uri, video) in listOf(MediaStore.Images.Media.EXTERNAL_CONTENT_URI to false, MediaStore.Video.Media.EXTERNAL_CONTENT_URI to true)) {
+            val cols = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
+                MediaStore.MediaColumns.DATE_TAKEN, MediaStore.MediaColumns.DATE_MODIFIED)
+            safe {
+                ctx.contentResolver.query(uri, cols, null, null, "${MediaStore.MediaColumns.SIZE} DESC")?.use { c ->
+                    var taken = 0
+                    while (taken < n && c.moveToNext()) {
+                        val date = (if (c.isNull(3)) null else c.getLong(3)) ?: (if (c.isNull(4)) null else c.getLong(4) * 1000)
+                        out += MediaFile(ContentUris.withAppendedId(uri, c.getLong(0)).toString(), c.getString(1).orEmpty(), c.getLong(2), date, video)
+                        taken++
+                    }
+                }
+            }
+        }
+        return out.filter { it.bytes > 0 }.sortedByDescending { it.bytes }.take(n)
+    }
+
+    /** Robot's own cache (the cache folders; never its models, notes, history or settings), in bytes. */
+    fun robotCache(ctx: Context): Long = cacheDirs(ctx).sumOf { d -> d.walkBottomUp().filter { it.isFile }.sumOf { it.length() } }
+
+    /** Empties Robot's cache folders; the bytes it removed. */
+    fun clearRobotCache(ctx: Context): Long {
+        var freed = 0L
+        for (d in cacheDirs(ctx)) d.listFiles()?.forEach { f ->
+            val size = f.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+            if (f.deleteRecursively()) freed += size
+        }
+        return freed
+    }
+
+    private fun cacheDirs(ctx: Context): List<File> = listOfNotNull(ctx.cacheDir, ctx.externalCacheDir).filter { it.isDirectory }
 }
 
 /**
@@ -114,6 +212,12 @@ object SettingsIntents {
         // Robot's own switch where Android supports it, else the list.
         SettingsPage.USAGE_ACCESS -> listOf(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.fromParts("package", ctx.packageName, null)),
             Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+        // Android's own "Free up space" (whichever app handles it on this phone), else the storage settings.
+        SettingsPage.FREE_UP -> listOf(Intent(StorageManager.ACTION_MANAGE_STORAGE), Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
         else -> emptyList()
     }.map { it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+
+    /** An app's info page (Force stop, Storage and cache). */
+    fun appInfo(pkg: String): Intent =
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", pkg, null)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 }

@@ -55,9 +55,15 @@ has '"android.permission.WRITE_SECURE_SETTINGS"' "$mf" "declares WRITE_SECURE_SE
 boot=$(subtree app.heyrobot.boot.BootReceiver)
 has '"android.intent.action.LOCKED_BOOT_COMPLETED"' "$boot" "BootReceiver gets LOCKED_BOOT_COMPLETED"
 has 'directBootAware(0x01010505)=true' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver direct-boot aware"
-for p in CAMERA READ_EXTERNAL_STORAGE READ_MEDIA_IMAGES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION; do
+for p in CAMERA READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE MANAGE_EXTERNAL_STORAGE KILL_BACKGROUND_PROCESSES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
+# 0.4.0: photos and videos (all, or the ones you pick), asked for by the main app only, for free_storage's largest files.
+for p in READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_VISUAL_USER_SELECTED; do
+  has "\"android.permission.$p\"" "$mf" "declares $p"
+done
+has ':voice' "$(elem app.heyrobot.assistant.MediaDeleteActivity)" "MediaDeleteActivity in :voice"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.MediaDeleteActivity)" "MediaDeleteActivity not exported"
 # Phase 2: contacts and the calendar, asked for at runtime by the main app only; 0.4.0: approximate location for the
 # weather "here" (never fine or background location).
 for p in READ_CONTACTS READ_CALENDAR WRITE_CALENDAR ACCESS_COARSE_LOCATION; do

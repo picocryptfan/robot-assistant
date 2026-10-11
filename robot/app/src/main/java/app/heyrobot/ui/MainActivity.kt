@@ -378,6 +378,10 @@ fun RobotAppUi(activity: MainActivity) {
             else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putString(Cmd.EXTRA_RUN, run.name) })
         },
         askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
+        askMedia = {
+            peoplePermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
+        },
         openUsageAccess = {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
             if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
@@ -469,4 +473,6 @@ class AppActions(
     /** 0.4.0: approximate location for the weather (asked here only), and Android's Usage access page for Robot. */
     val askLocation: () -> Unit = {},
     val openUsageAccess: () -> Unit = {},
+    /** 0.4.0: photos and videos (Android offers all of them or the ones you pick). */
+    val askMedia: () -> Unit = {},
 )

@@ -36,6 +36,10 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
     WEATHER("weather", "Weather lookups", ToolGroup.WEATHER, reads = true, online = true),
     /** 0.4.0: storage, battery and memory, read on the phone (the apps using the most space with Usage access). */
     PHONE_STATUS("phone_status", "Phone status checks", ToolGroup.PHONE, reads = true),
+    /** 0.4.0: unload Robot's own model, or open an app's info page to force stop it (FreeUp.kt). */
+    FREE_MEMORY("free_memory", "Memory clean-ups", ToolGroup.PHONE),
+    /** 0.4.0: Android's Free up space screen, an app's cache, a large photo or video, Robot's cache. */
+    FREE_STORAGE("free_storage", "Storage clean-ups", ToolGroup.PHONE),
     /**
      * Ask Claude (docs/ask-claude.md "When Robot needs help"): described to Gemma only with Ask Claude on and escalation
      * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
@@ -129,6 +133,12 @@ object ToolSpecs {
         )),
         ToolSpec(ToolName.PHONE_STATUS, "Read this phone's storage, battery and memory.", listOf(
             ToolParam("about", "string", "storage, battery, memory or all", false),
+        )),
+        ToolSpec(ToolName.FREE_MEMORY, "Free memory: unload Robot's model, or open an app's info to force stop it.", listOf(
+            ToolParam("app", "string", "App to stop; omit to unload Robot's model", false),
+        )),
+        ToolSpec(ToolName.FREE_STORAGE, "Help free storage.", listOf(
+            ToolParam("what", "string", "android (its Free up space), apps (an app's cache), files (big photos, videos) or robot (Robot's cache)", false),
         )),
         ToolSpec(ToolName.ASK_CLAUDE, "Ask Claude, a stronger AI online, instead of guessing.", listOf(
             ToolParam("question", "string", "The person's question", true),
@@ -276,6 +286,38 @@ sealed class Action {
     data class PhoneCheck(val part: PhonePart) : Action() {
         override val tool get() = ToolName.PHONE_STATUS
         override fun describe() = PhoneStatus.summary(part)
+    }
+
+    /**
+     * free_memory: [app] as the model named it (null: unload Robot's own model) until the app process finds it among the
+     * installed apps ([pkg]); then [app] is its real label.
+     */
+    data class FreeMemory(val app: String?, val pkg: String? = null) : Action() {
+        override val tool get() = ToolName.FREE_MEMORY
+        override fun describe() = if (app == null) "Unload Robot's model to free about 2 GB of memory" else "Open **$app**'s App info to force stop it"
+        override val confirmLabel get() = if (app == null) "Unload" else "Open App info"
+    }
+
+    /**
+     * free_storage. [target]: the app's package ([StorageWay.APPS]) or the file's content URI ([StorageWay.FILES]) once
+     * picked on the card; [label] the app's name; [bytes] Robot's cache ([StorageWay.ROBOT]); [summary] what the card
+     * says of a picked file, without its name (FreeUp.fileSummary).
+     */
+    data class FreeStorage(val way: StorageWay, val target: String? = null, val label: String? = null, val bytes: Long? = null,
+        val summary: String? = null) : Action() {
+        override val tool get() = ToolName.FREE_STORAGE
+        override fun describe() = when (way) {
+            StorageWay.ANDROID -> "Open Android's Free up space screen"
+            StorageWay.APPS -> if (target == null) "Choose an app to clear its cache" else "Open **$label**'s App info to clear its cache"
+            StorageWay.FILES -> summary ?: "Choose a large photo or video to delete"
+            StorageWay.ROBOT -> "Clear Robot's cache" + (bytes?.let { " (${PhoneStatus.size(it)})" } ?: "")
+        }
+        override val confirmLabel get() = when (way) {
+            StorageWay.ANDROID -> "Open"
+            StorageWay.APPS -> "Open App info"
+            StorageWay.FILES -> "Delete"
+            StorageWay.ROBOT -> "Clear"
+        }
     }
 
     /** [day] in the person's words until the app reads it into a [range]. */
@@ -454,6 +496,10 @@ object ToolCalls {
                 textArg(a, MAX_NAME, "day", "date", "when", "time", "days")))
             // Anything it doesn't name (or nothing) is all of it.
             ToolName.PHONE_STATUS -> ParsedCall.Ok(Action.PhoneCheck(PhonePart.of(textArg(a, MAX_NAME, "about", "part", "what", "topic", "kind"))))
+            // Robot's own model when no app (or Robot itself) is named.
+            ToolName.FREE_MEMORY -> ParsedCall.Ok(Action.FreeMemory(FreeUp.appOrNull(textArg(a, MAX_NAME, "app", "name", "application", "package"))))
+            // Android's own screen unless it says apps, files or Robot.
+            ToolName.FREE_STORAGE -> ParsedCall.Ok(Action.FreeStorage(StorageWay.of(textArg(a, MAX_NAME, "what", "way", "kind", "target", "how"))))
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
                 val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }

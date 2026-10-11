@@ -37,6 +37,12 @@
     <!-- 0.4.0, optional: Usage access, which you turn on yourself in Android's settings (Robot only opens the page).
          phone_status then lists the apps using the most space (StorageStatsManager). Declared so Robot is in that list. -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <!-- 0.4.0, optional, asked for by the main app only when you tap Allow: photos and videos, so free_storage can offer
+         the largest ones to delete (Android's own confirmation deletes them). "Select photos" (partial access) works too.
+         Never All files access (MANAGE_EXTERNAL_STORAGE) or READ_EXTERNAL_STORAGE. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
 
     <queries>
         <!-- open_app: every app with a launcher icon (no QUERY_ALL_PACKAGES). -->
@@ -193,6 +199,15 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Robot.Translucent" />
+        <!-- 0.4.0: Android's own confirmation before a photo or video you picked on a free_storage card is deleted (an
+             activity must start it for a result; the panel can't). -->
+        <activity
+            android:name=".assistant.MediaDeleteActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="app.heyrobot.delete"
             android:theme="@style/Theme.Robot.Translucent" />
         <!-- The camera app writes the photo here (app cache, deleted right after it is read). -->
         <provider

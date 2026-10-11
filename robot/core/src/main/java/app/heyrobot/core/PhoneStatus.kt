@@ -40,8 +40,8 @@ data class BatteryFacts(val percent: Int, val charging: Boolean, val full: Boole
 /** ActivityManager.MemoryInfo: [available] and [total] bytes; [low]: Android considers memory low right now. */
 data class MemoryFacts(val total: Long, val available: Long, val low: Boolean)
 
-/** One app's storage: the app and its data ([bytes], cache included) and the part that is cache. */
-data class AppSize(val label: String, val bytes: Long, val cacheBytes: Long)
+/** One app's storage: the app and its data ([bytes], cache included) and the part that is cache; [pkg] for its info page. */
+data class AppSize(val label: String, val bytes: Long, val cacheBytes: Long, val pkg: String = "")
 
 /** Photos, videos and audio in shared storage (StorageStatsManager, with Usage access). */
 data class MediaFacts(val images: Long, val videos: Long, val audio: Long)
@@ -65,11 +65,14 @@ data class PhoneFacts(
 object SettingsPage {
     const val STORAGE = "settings:storage"
     const val USAGE_ACCESS = "settings:usage_access"
+    /** Android's own "Free up space" screen (free_storage). */
+    const val FREE_UP = "settings:free_up"
 
     /** The button for [key]; null for an app's package (the card names that app). */
     fun label(key: String?): String? = when (key) {
         STORAGE -> "Open storage settings"
         USAGE_ACCESS -> "Turn on Usage access"
+        FREE_UP -> "Open Free up space"
         else -> null
     }
 

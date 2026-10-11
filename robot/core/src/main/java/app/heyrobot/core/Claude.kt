@@ -379,7 +379,7 @@ enum class Personal(val label: String) {
             ToolName.FIND_NOTES -> NOTES
             ToolName.LOOKUP_CONTACT -> CONTACTS
             ToolName.WEATHER -> LOCATION
-            ToolName.PHONE_STATUS -> PHONE
+            ToolName.PHONE_STATUS, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE -> PHONE
             else -> READ
         }
 
