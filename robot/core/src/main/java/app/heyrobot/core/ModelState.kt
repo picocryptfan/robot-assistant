@@ -425,7 +425,8 @@ object ModelChoice {
     fun fallbackText(wanted: BrainModel, why: FallbackWhy, detail: String? = null): String {
         val name = "“${wanted.title}”"
         return when (why) {
-            FallbackWhy.NOT_DOWNLOADED -> "$name isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Model."
+            FallbackWhy.NOT_DOWNLOADED -> "$name isn't on this phone yet, so Robot is using Fast. " +
+                (if (wanted.builtIn) "Download it" else "Import it") + " in the Robot app › Model."
             FallbackWhy.NOT_CHECKED -> "$name hasn't been checked yet, so Robot is using Fast. Open the Robot app › Model to check it."
             FallbackWhy.NEEDS_TPU_OK -> "$name waits for you to allow the TPU in the Robot app › Model, so Robot is using Fast."
             FallbackWhy.UNUSABLE -> "Robot can't use $name (the Robot app › Model says why), so Robot is using Fast."

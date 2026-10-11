@@ -143,6 +143,8 @@ class BrainModelTest {
     @Test fun fallbackMessagesArePlain() {
         assertEquals("“Smarter, slower” isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Model.",
             ModelChoice.fallbackText(BrainModel.SMARTER, FallbackWhy.NOT_DOWNLOADED))
+        assertEquals("“Your own model file” isn't on this phone yet, so Robot is using Fast. Import it in the Robot app › Model.",
+            ModelChoice.fallbackText(BrainModel.OWN, FallbackWhy.NOT_DOWNLOADED))
         assertEquals("“Your own model file” didn't load (the file is missing), so Robot is using Fast.",
             ModelChoice.fallbackText(BrainModel.OWN, FallbackWhy.LOAD_FAILED, "the file is missing"))
         for (m in BrainModel.entries) for (w in FallbackWhy.entries) {
