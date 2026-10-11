@@ -46,6 +46,13 @@ class MtProtocolTest {
         assertEquals(MtError.BAD_REQUEST, t(lines = List(MtPolicy.MAX_LINES + 1) { "Oui" }))
         assertEquals(MtError.BAD_REQUEST, t(lines = listOf("a".repeat(MtPolicy.MAX_CHARS + 1))))
         assertEquals(MtError.BAD_REQUEST, t(deadline = 0))
+        // All the lines together stay well inside one Binder call, both ways.
+        assertNull(t(lines = List(MtPolicy.MAX_REQUEST_CHARS / MtPolicy.MAX_CHARS) { "a".repeat(MtPolicy.MAX_CHARS) }))
+        assertEquals(MtError.BAD_REQUEST, t(lines = List(MtPolicy.MAX_REQUEST_CHARS / MtPolicy.MAX_CHARS + 1) { "a".repeat(MtPolicy.MAX_CHARS) }))
+        // A deadline that would overflow the service's clock is refused, not timed out at once.
+        assertNull(t(deadline = MtPolicy.MAX_DEADLINE_MS))
+        assertEquals(MtError.BAD_REQUEST, t(deadline = MtPolicy.MAX_DEADLINE_MS + 1))
+        assertEquals(MtError.BAD_REQUEST, t(deadline = Long.MAX_VALUE))
     }
 
     @Test fun memoryComesFromProcStatus() {

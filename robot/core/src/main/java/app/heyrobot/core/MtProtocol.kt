@@ -42,6 +42,14 @@ object MtPolicy {
     const val MAX_LINES = 64
     /** Characters in one line (a transcript line is at most 15 s of speech, a few hundred characters). */
     const val MAX_CHARS = 2_000
+    /**
+     * Characters in one TRANSLATE, its lines together. The request and its answer each cross as one Binder call, and a
+     * one-way call (a Messenger's) gets at most about half of the receiving process's 1 MB Binder buffer: 64 lines of
+     * 2,000 characters (and their translations, longer) could fail to arrive, and an answer that can't be sent is lost.
+     */
+    const val MAX_REQUEST_CHARS = 32_000
+    /** The longest deadline a TRANSLATE may ask for (beyond it, "now + deadline" could overflow and time it out at once). */
+    const val MAX_DEADLINE_MS = 10 * 60_000L
     /** Lines waiting in all, across requests: more is BUSY. */
     const val MAX_WAITING = 256
     /** The engine unloads after this long without a request. */
@@ -128,7 +136,8 @@ sealed class MtMsg {
             MtBundle.forDirection(direction) == null -> MtError.BAD_REQUEST
             lines.isEmpty() || lines.size > MtPolicy.MAX_LINES -> MtError.BAD_REQUEST
             lines.any { it.length > MtPolicy.MAX_CHARS } -> MtError.BAD_REQUEST
-            deadlineMs <= 0 -> MtError.BAD_REQUEST
+            lines.sumOf { it.length } > MtPolicy.MAX_REQUEST_CHARS -> MtError.BAD_REQUEST
+            deadlineMs <= 0 || deadlineMs > MtPolicy.MAX_DEADLINE_MS -> MtError.BAD_REQUEST
             else -> null
         }
     }

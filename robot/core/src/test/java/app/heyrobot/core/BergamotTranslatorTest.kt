@@ -62,5 +62,9 @@ class BergamotTranslatorTest {
         assertEquals(listOf("BONJOUR TOUT LE MONDE", "", null, "ÇA VA BIEN."), out)
         assertEquals(MtMsg.Translate("fr-en", listOf("Bonjour tout le monde", "Non", "Ça va bien."), 60_000, MtPriority.BATCH), t.asked.single())
         fails(MtError.BAD_REQUEST) { BergamotTranslator(t).translateAll(List(MtPolicy.MAX_LINES + 1) { "Oui" }, "fr", "en", 1_000) }
+        // Too many characters in all is refused before anything is sent.
+        val asked = t.asked.size
+        fails(MtError.BAD_REQUEST) { BergamotTranslator(t).translateAll(List(MtPolicy.MAX_REQUEST_CHARS / 1_000 + 1) { "a".repeat(1_000) }, "fr", "en", 1_000) }
+        assertEquals(asked, t.asked.size)
     }
 }

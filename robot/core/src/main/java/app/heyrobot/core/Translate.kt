@@ -79,13 +79,15 @@ class BergamotTranslator(private val transport: MtTransport, private val lineDea
 
     /**
      * Each line's translation, in order; null for a line the engine didn't reach before [deadlineMs] (from when :mt gets
-     * the request) or failed on. A blank line stays blank without asking the engine. At most [MtPolicy.MAX_LINES] lines.
+     * the request) or failed on. A blank line stays blank without asking the engine. At most [MtPolicy.MAX_LINES] lines
+     * and [MtPolicy.MAX_REQUEST_CHARS] characters in all.
      */
     suspend fun translateAll(lines: List<String>, from: String, to: String, deadlineMs: Long, priority: MtPriority = MtPriority.BATCH): List<String?> {
         val d = direction(from, to)
         if (lines.size > MtPolicy.MAX_LINES) throw MtException(MtError.BAD_REQUEST)
         val prepared = lines.map { MtGuard.prepare(it, engine) }
         val asked = prepared.withIndex().filter { it.value.text.isNotBlank() }
+        if (asked.sumOf { it.value.text.length } > MtPolicy.MAX_REQUEST_CHARS) throw MtException(MtError.BAD_REQUEST)
         val out = arrayOfNulls<String>(lines.size)
         prepared.forEachIndexed { i, p -> if (p.text.isBlank()) out[i] = "" }
         if (asked.isNotEmpty()) {
