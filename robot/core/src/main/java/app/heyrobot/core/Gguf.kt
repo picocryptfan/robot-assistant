@@ -2,6 +2,7 @@ package app.heyrobot.core
 
 import org.json.JSONObject
 import java.io.File
+import java.security.MessageDigest
 import java.util.Locale
 
 // Pure (java.io). What a GGUF model file holds (0.4.5, "your own model file" run by llama.cpp), read from its header
@@ -51,6 +52,11 @@ data class GgufReport(
     val totalRam: Long = 0,
     /** Why the file couldn't be read ([readable] false). */
     val problem: String? = null,
+    /**
+     * 0.4.5: SHA-256 of the whole header, byte for byte (the metadata, the vocabulary, the chat template and the tensor
+     * list, as far as the tensor data): :brain's check before a load must find exactly this, not only the same fields.
+     */
+    val headerSha256: String? = null,
 ) {
     /** "Q4_K_M", or null when the file doesn't say. */
     val quantisation: String? get() = GgufCheck.FILE_TYPES[fileType]
@@ -140,10 +146,12 @@ data class GgufReport(
         licence?.let { put("licence", it) }; put("fileType", fileType); put("contextLength", contextLength); put("blocks", blocks)
         put("kvBytesPerToken", kvBytesPerToken); put("parameters", parameters); tokenizer?.let { put("tokenizer", it) }
         put("chatTemplate", chatTemplate); put("templateThinking", templateThinking); put("templateThinkTags", templateThinkTags)
-        put("fileBytes", fileBytes); put("totalRam", totalRam); problem?.let { put("problem", it) }
+        put("fileBytes", fileBytes); put("totalRam", totalRam); problem?.let { put("problem", it) }; headerSha256?.let { put("headerSha256", it) }
     }
 
     companion object {
+        private val SHA = Regex("^[0-9a-f]{64}$")
+
         private fun billions(n: Long): String = if (n >= 1_000_000_000L) String.format(Locale.US, "%.1f billion", n / 1e9)
             else String.format(Locale.US, "%,d million", n / 1_000_000)
 
@@ -161,6 +169,7 @@ data class GgufReport(
                     templateThinking = o.optBoolean("templateThinking"), templateThinkTags = o.optBoolean("templateThinkTags"),
                     fileBytes = o.optLong("fileBytes").coerceAtLeast(0), totalRam = o.optLong("totalRam").coerceAtLeast(0),
                     problem = if (o.has("problem")) o.optString("problem").take(300) else null,
+                    headerSha256 = o.optString("headerSha256").takeIf { SHA.matches(it) },
                 )
             } catch (_: Exception) { null }
         }
@@ -408,7 +417,20 @@ object GgufCheck {
             parameters = parameters, tokenizer = strings["tokenizer.ggml.model"]?.let { printable(it, MAX_SHOWN) },
             chatTemplate = !template.isNullOrBlank(), templateThinking = template?.contains("enable_thinking") == true,
             templateThinkTags = template?.contains("<think>") == true, fileBytes = src.size, totalRam = totalRam,
+            headerSha256 = sha256(src, r.pos),
         )
+    }
+
+    /** SHA-256 of [src]'s first [end] bytes (the header just read: at most [MAX_HEADER]), read again a MiB at a time. */
+    private fun sha256(src: ByteSource, end: Long): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        var at = 0L
+        while (at < end) {
+            val n = minOf(1L shl 20, end - at).toInt()
+            md.update(src.read(at, n))
+            at += n
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
     }
 
     private fun Int.isInteger() = this in setOf(T_UINT8, T_INT8, T_UINT16, T_INT16, T_UINT32, T_INT32, T_UINT64, T_INT64)

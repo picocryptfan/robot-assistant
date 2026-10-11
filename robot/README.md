@@ -142,7 +142,9 @@ the engine only when `tools/build_llama.sh` made its library.
   reaches the TPU or a vendor driver.
 - **:brain checks again** before llama.cpp ever sees the file (`LlamaEngine.load`): your file's record (unchanged size
   and time since its check, a GGUF file, on the CPU, with the context the request asks for: `LoadCheck`), then the header
-  read again and compared with the one recorded and shown to you, so the file is the one whose SHA-256 you saw. It opens
+  read again and compared with the one recorded and shown to you: every field, and the whole header byte for byte (its
+  SHA-256 from the import's check: the metadata, vocabulary, chat template and tensor list), so llama.cpp parses exactly
+  the header of the file whose SHA-256 you saw, even one edited in place to the same size and time. It opens
   the file once: the header is read through that open file (the one at the path, same inode and size), and llama.cpp
   opens that very file through `/proc/self/fd/…`, never by its name again, so a file put in its place after the check is
   never the one llama.cpp parses (`brain_load_by_path` in the log says a system refused that and the checked path was

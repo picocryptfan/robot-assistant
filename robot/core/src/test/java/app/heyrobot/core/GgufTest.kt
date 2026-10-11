@@ -274,6 +274,26 @@ class GgufTest {
         assertEquals("evil", odd.name)
     }
 
+    /**
+     * 0.4.5: the whole header is compared, byte for byte, not only what Robot shows of it: a chat template edited in place
+     * (the same length, every shown field the same) is another header; the weights after it aren't part of it.
+     */
+    @Test fun theWholeHeaderIsComparedNotOnlyWhatItShows() {
+        val a = check(FakeGguf.medgemma(), gb16)
+        assertTrue(a.headerSha256!!.matches(Regex("[0-9a-f]{64}")))
+        assertEquals(a, check(FakeGguf.medgemma(), gb16))
+        val edited = check(FakeGguf.medgemma(template = FakeGguf.GEMMA3_TEMPLATE.replace("<start_of_turn>model", "<start_of_turn>MODEL")), gb16)
+        assertEquals(a.copy(headerSha256 = null), edited.copy(headerSha256 = null))
+        assertTrue(a.headerSha256 != edited.headerSha256)
+        assertTrue(a != edited)
+        // The tensor data (the last bytes of the file) changed: the same header.
+        val data = FakeGguf.medgemma().also { it[it.size - 1] = 7 }
+        assertEquals(a, check(data, gb16))
+        // Nothing for a file Robot couldn't read; a damaged hash in a record is dropped, so the record no longer matches.
+        assertNull(check(ByteArray(3)).headerSha256)
+        assertNull(GgufReport.fromJson(a.toJson().put("headerSha256", "zz"))!!.headerSha256)
+    }
+
     @Test fun theFileKindIsReadFromItsFirstBytes() {
         assertEquals(ModelFormat.GGUF, ModelFormat.sniff(FakeGguf.qwen3()))
         assertEquals(ModelFormat.LITERT_LM, ModelFormat.sniff("LITERTLM\u0001\u0000".toByteArray()))
