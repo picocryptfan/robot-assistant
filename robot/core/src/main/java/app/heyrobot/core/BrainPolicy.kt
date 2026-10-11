@@ -257,10 +257,14 @@ object LlamaCpu {
     /** /proc/cpuinfo's names: dotprod, i8mm, and half-precision arithmetic (scalar and vector). */
     val REQUIRED = listOf("asimddp", "i8mm", "fphp", "asimdhp")
 
-    /** The required features no core lists ("Features : …" lines of /proc/cpuinfo; every core must have them). Empty: all there. */
+    /**
+     * The required features some core doesn't list ("Features : …" lines of /proc/cpuinfo; every core must have them).
+     * Empty: all there, or unknown (no readable list: a hardened /proc may hide it, and the phone Robot is for has them; a
+     * CPU without them would stop only the :brain process, and Robot falls back to Fast).
+     */
     fun missing(cpuinfo: String?): List<String> {
         val lines = cpuinfo?.lines()?.filter { it.trimStart().startsWith("Features") }.orEmpty()
-        if (lines.isEmpty()) return REQUIRED
+        if (lines.isEmpty()) return emptyList()
         return REQUIRED.filter { f -> lines.any { l -> f !in l.substringAfter(':').trim().split(Regex("\\s+")) } }
     }
 }

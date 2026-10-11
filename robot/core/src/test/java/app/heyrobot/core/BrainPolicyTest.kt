@@ -208,8 +208,9 @@ class BrainPolicyTest {
         assertEquals(listOf("i8mm"), LlamaCpu.missing(cpuinfo + "\n\n" + a55))
         // "svei8mm" isn't "i8mm".
         assertEquals(listOf("i8mm"), LlamaCpu.missing("Features : fp asimd asimddp fphp asimdhp svei8mm"))
-        assertEquals(LlamaCpu.REQUIRED, LlamaCpu.missing(null))
-        assertEquals(LlamaCpu.REQUIRED, LlamaCpu.missing("processor : 0"))
+        // No list to read (a hardened /proc): not refused here.
+        assertEquals(emptyList<String>(), LlamaCpu.missing(null))
+        assertEquals(emptyList<String>(), LlamaCpu.missing("processor : 0"))
     }
 
     /** A chat template gets user and model turns alternating, whatever Robot's history holds. */

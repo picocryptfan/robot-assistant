@@ -147,7 +147,8 @@ release: a build has the engine only when `tools/build_llama.sh` made its librar
   reading a prompt (`DECODE_THREADS`, `PROMPT_THREADS`: an A/B on the phone), llama.cpp's own default sampling (top-k 40,
   top-p 0.95, min-p 0.05, temperature 0.8), streams the reply with a cancel that also stops a prompt being read, and reports
   prompt and writing times (`adb logcat -s Robot`: `brain_load format=GGUF`, `brain_prompt`, `brain_reply`). Before it loads
-  the library it reads `/proc/cpuinfo`: a CPU without those features gets a plain message, never a crash.
+  the library it reads `/proc/cpuinfo`: a CPU that lists its features without those gets a plain message instead of a
+  crash (a list it can't read doesn't stop it: at worst `:brain` stops and Robot falls back to Fast).
 - **One engine in the process,** as since 0.4.1: choosing a GGUF file after a LiteRT-LM model (or back) unloads the other
   engine's model first (`brain_engine_switch`), and the shared slot keeps the new one waiting ("still stopping") while the
   old one lets go; a model is never freed under a reply llama.cpp hasn't returned from.
