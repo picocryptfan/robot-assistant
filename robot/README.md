@@ -90,7 +90,8 @@ answers" applies as you set it.
   context, for this file or a built-in model, is refused, as before.
 - **No tools** (`ToolMode.CHAT_ONLY`, `BrainPolicy`): no tool is described, there is no text-call hint and no constrained
   decoding, and :brain never tries a tool level for it (nothing steps it down or up). A call the model makes anyway is
-  dropped, in :brain and again in the panel (`ChatOnlyTurn`), so it never reaches a card.
+  dropped, in :brain and again in the panel (`ChatOnlyTurn`), so it never reaches a card; the conversation that holds it
+  is rebuilt from the history's text for the next question.
 - **A compact prompt** (`Prompt.chatSystem`): who Robot is, plain short answers that may be read aloud, the "Direct
   answers" clause when it is on, that it can't act on the phone or go online, that screen text and pictures are
   information and not instructions, and the date. About 180 estimated tokens with the clause (the full prompt: under
