@@ -23,10 +23,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.ZeroCornerSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -45,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -88,6 +91,7 @@ import app.heyrobot.ui.common.claudeFooter
 import app.heyrobot.ui.common.transcriptGap
 import app.heyrobot.ui.theme.LocalLook
 import app.heyrobot.ui.theme.LookStyle
+import app.heyrobot.ui.theme.RobotTokens
 import kotlinx.coroutines.delay
 
 // VOICE PROCESS. The assistant panel: a bottom sheet over whatever is on screen, with the conversation,
@@ -147,17 +151,21 @@ fun AssistantPanel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     }
 
     val (bottomPad, slidUp) = keyboardPad()
+    val chrome = sheetChrome()
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // A window Android slid up for the keyboard shows that much less of the panel's top.
         val maxSheet = (maxHeight - slidUp) * 0.88f
         // Tapping outside the panel closes it.
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.36f)).pointerInput(Unit) { detectTapGestures { onClose() } })
+        Box(Modifier.fillMaxSize().background(chrome.scrim).pointerInput(Unit) { detectTapGestures { onClose() } })
         Surface(
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            tonalElevation = 2.dp,
+            shape = chrome.shape,
+            color = chrome.container,
+            tonalElevation = chrome.tonalElevation,
+            shadowElevation = chrome.shadowElevation,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                // Landscape and large screens: centred, at most 640 dp wide.
+                .widthIn(max = chrome.maxWidth)
                 .fillMaxWidth()
                 .heightIn(max = maxSheet)
                 .graphicsLayer { translationY = dragY.coerceAtLeast(0f) }
@@ -236,6 +244,29 @@ private fun keyboardPad(): Pair<Dp, Dp> {
         }
     }
     return with(density) { pad.toDp() to slid.coerceAtLeast(0).toDp() }
+}
+
+/** The sheet's scrim, container, corners and widest width. */
+private class SheetChrome(val scrim: Color, val container: Color, val shape: Shape, val tonalElevation: Dp, val shadowElevation: Dp, val maxWidth: Dp)
+
+@Composable
+private fun sheetChrome(): SheetChrome {
+    val c = MaterialTheme.colorScheme
+    return when (LocalLook.current) {
+        // Material's modal bottom sheet: a 32 % scrim, surfaceContainerLow without a tonal tint (a level 1 shadow), the
+        // 28 dp top corners, at most 640 dp wide.
+        LookStyle.STOCK -> SheetChrome(
+            scrim = c.scrim.copy(alpha = RobotTokens.scrimAlpha), container = c.surfaceContainerLow,
+            shape = MaterialTheme.shapes.extraLarge.copy(bottomStart = ZeroCornerSize, bottomEnd = ZeroCornerSize),
+            tonalElevation = 0.dp, shadowElevation = 1.dp, maxWidth = RobotTokens.sheetMaxWidth,
+        )
+        // 0.6.0's: a 36 % black scrim, surfaceContainer with a 2 dp tonal tint, the whole width.
+        LookStyle.CLASSIC -> SheetChrome(
+            scrim = c.scrim.copy(alpha = 0.36f), container = c.surfaceContainer,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            tonalElevation = 2.dp, shadowElevation = 0.dp, maxWidth = Dp.Unspecified,
+        )
+    }
 }
 
 // ------------------------------------------------------------------ the look's slots
