@@ -94,6 +94,8 @@ data class RobotSettings(
     val wakePhrases: List<WakePhrase> = WakePhrases.DEFAULT,
     /** Settings › Voice › "Hear me while Robot talks". */
     val bargeIn: BargeIn = BargeIn.ECHO_CANCEL,
+    /** Settings › Voice › "Interrupt sensitivity" (0.4.0): "stop" and the wake phrases while Robot talks; Medium as before. */
+    val interrupt: InterruptSensitivity = InterruptSensitivity.MEDIUM,
     /** How Robot's voice is played (the echo canceller's reference may depend on it; the barge-in test compares). */
     val playback: Playback = Playback.ASSISTANT,
     /** The volume key that stops Robot talking while the panel shows. */
@@ -192,6 +194,7 @@ data class RobotSettings(
             for (p in wakePhrases) put(JSONObject().put("id", p.id).put("text", p.text).put("sensitivity", p.sensitivity.name).put("enabled", p.enabled))
         })
         put("bargeIn", bargeIn.name)
+        put("interrupt", interrupt.name)
         put("playback", playback.name)
         put("stopKey", stopKey.name)
         claudeEnabled?.let { put("claudeEnabled", it) }
@@ -307,6 +310,7 @@ data class RobotSettings(
                 learnFromCheogram = o.optBoolean("learnFromCheogram", d.learnFromCheogram),
                 wakePhrases = o.optJSONArray("wakePhrases")?.let(::phrases) ?: d.wakePhrases,
                 bargeIn = enumOr(o.optString("bargeIn"), d.bargeIn),
+                interrupt = enumOr(o.optString("interrupt"), d.interrupt),
                 playback = enumOr(o.optString("playback"), d.playback),
                 stopKey = enumOr(o.optString("stopKey"), d.stopKey),
                 claudeEnabled = if (o.has("claudeEnabled")) o.optBoolean("claudeEnabled") else null,

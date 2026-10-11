@@ -1,6 +1,7 @@
 package app.heyrobot.voice
 
 import app.heyrobot.core.BargeIn
+import app.heyrobot.core.InterruptSensitivity
 
 // Pure. Which microphone mode the always-on capture should use (0.2.3, "hear me while Robot talks"). The speech
 // recognition mode is best for the wake word and questions but hears Robot's own voice at full strength while she
@@ -46,6 +47,16 @@ object CapturePolicy {
 class KeywordInputs {
     /** The wake phrases' keyword lines (core KeywordBuffer.wake); empty: none. */
     @Volatile var wakeLines: String = ""
+    /**
+     * The same phrases while Robot talks, with Settings › Voice › "Interrupt sensitivity" applied (KwsThresholds.talkWake);
+     * null: [wakeLines] (Medium, or not built yet).
+     */
+    @Volatile var talkWakeLines: String? = null
+    /** "Interrupt sensitivity": how readily "stop" is heard while Robot talks (KwsThresholds.stop). */
+    @Volatile var interrupt: InterruptSensitivity = InterruptSensitivity.MEDIUM
     /** Robot is speaking: "stop" is listened for too. */
     @Volatile var speaking: Boolean = false
+
+    /** The wake lines for now: [talkWakeLines] while Robot speaks, else [wakeLines]. */
+    fun wake(speaking: Boolean): String = if (speaking) talkWakeLines ?: wakeLines else wakeLines
 }

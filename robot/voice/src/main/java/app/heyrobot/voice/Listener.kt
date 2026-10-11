@@ -476,8 +476,9 @@ class Listener(
                 talkLoadStarted = true
                 try { loadTalkSpotter(w) } catch (t: Throwable) { RLog.w("wake_word_talk_start", t) }
             }
-            val stop = if (speaking) KwsThresholds.stop(echoCancelled = communication && aec == AecState.ON) else null
-            val hits = if (w == null) emptyList() else try { w.accept(x, inputs.wakeLines, stop) } catch (t: Throwable) {
+            // While Robot speaks, "stop" and the wake phrases at Settings › Voice › "Interrupt sensitivity" (Medium: as before).
+            val stop = if (speaking) KwsThresholds.stop(echoCancelled = communication && aec == AecState.ON, inputs.interrupt) else null
+            val hits = if (w == null) emptyList() else try { w.accept(x, inputs.wake(speaking), stop) } catch (t: Throwable) {
                 // Java-side errors only; a native crash takes the whole voice process.
                 RLog.w("wake_word", t)
                 emptyList()

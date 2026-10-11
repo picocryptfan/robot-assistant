@@ -15,6 +15,17 @@ enum class WakeSensitivity(val title: String, val detail: String) {
     HIGH("High", "Hears you more easily, wakes by accident more often"),
 }
 
+/**
+ * Settings › Voice › "Interrupt sensitivity" (0.4.0): how readily "stop" and the wake phrases are heard while Robot
+ * talks (the spotter for her talking, [KwsThresholds.stop] and [KwsThresholds.talkWake]). Medium is what 0.2.3 to 0.4.0
+ * shipped; Low hears her own voice as you less often, High hears a quiet or far voice over her more easily.
+ */
+enum class InterruptSensitivity(val title: String, val detail: String) {
+    LOW("Low", "Fewer false stops from Robot's own voice or the TV; say it clearly"),
+    MEDIUM("Medium", "As tested: “stop” over Robot's voice at arm's length"),
+    HIGH("High", "Hears you over Robot more easily, from further away; stops by accident more often"),
+}
+
 /** One wake phrase. [id] is stable (the keyword label "W<id>" and the voice log use it); [text] as the user typed it. */
 data class WakePhrase(val id: Int, val text: String, val sensitivity: WakeSensitivity = WakeSensitivity.MEDIUM, val enabled: Boolean = true) {
     val words: Int get() = WakePhrases.words(text).size
@@ -49,6 +60,31 @@ object KwsThresholds {
     }
 
     fun stop(echoCancelled: Boolean): Preset = if (echoCancelled) STOP_AEC else STOP
+
+    /** "Stop" while Robot speaks, moved by Settings › Voice › "Interrupt sensitivity" (Medium: [stop] as it was). */
+    fun stop(echoCancelled: Boolean, interrupt: InterruptSensitivity): Preset = shift(stop(echoCancelled), interrupt)
+
+    /** A wake phrase heard over Robot's voice: its own preset ([wake]) moved by the interrupt sensitivity (Medium: the same). */
+    fun talkWake(s: WakeSensitivity, interrupt: InterruptSensitivity): Preset = shift(wake(s), interrupt)
+
+    /** How far Low and High move a preset: the threshold by this much, the boost by [BOOST_STEP]. */
+    const val THRESHOLD_STEP = 0.05f
+    const val BOOST_STEP = 0.25f
+    /** Never past these, whatever the settings: a threshold near 0 fires on anything, near 1 never. */
+    const val MIN_THRESHOLD = 0.08f
+    const val MAX_THRESHOLD = 0.5f
+    const val MIN_BOOST = 0.5f
+    const val MAX_BOOST = 3.0f
+
+    /** Low: harder (a higher threshold, a smaller boost); High: easier; Medium: unchanged. Two decimals, as the lines are written. */
+    fun shift(p: Preset, interrupt: InterruptSensitivity): Preset {
+        fun r(x: Float) = Math.round(x * 100f) / 100f
+        return when (interrupt) {
+            InterruptSensitivity.MEDIUM -> p
+            InterruptSensitivity.LOW -> Preset(r((p.threshold + THRESHOLD_STEP).coerceAtMost(MAX_THRESHOLD)), r((p.boost - BOOST_STEP).coerceAtLeast(MIN_BOOST)))
+            InterruptSensitivity.HIGH -> Preset(r((p.threshold - THRESHOLD_STEP).coerceAtLeast(MIN_THRESHOLD)), r((p.boost + BOOST_STEP).coerceAtMost(MAX_BOOST)))
+        }
+    }
 }
 
 object WakePhrases {
@@ -209,8 +245,11 @@ object KeywordBuffer {
 
     data class Built(val text: String, val ids: List<Int>, val refused: List<Int>)
 
-    /** One line per enabled phrase that spells; the ones that don't are listed in [Built.refused]. */
-    fun wake(phrases: List<WakePhrase>, speller: KwsSpeller): Built {
+    /**
+     * One line per enabled phrase that spells; the ones that don't are listed in [Built.refused]. [preset]: each phrase's
+     * boost and threshold (its sensitivity's, or while Robot talks [KwsThresholds.talkWake]'s).
+     */
+    fun wake(phrases: List<WakePhrase>, speller: KwsSpeller, preset: (WakePhrase) -> KwsThresholds.Preset = { KwsThresholds.wake(it.sensitivity) }): Built {
         val lines = mutableListOf<String>()
         val ids = mutableListOf<Int>()
         val refused = mutableListOf<Int>()
@@ -218,7 +257,7 @@ object KeywordBuffer {
             if (!p.enabled) continue
             when (val r = speller.spell(p.text)) {
                 is KwsSpeller.Result.Ok -> {
-                    lines += line(r.tokens, KwsThresholds.wake(p.sensitivity), label(p.id))
+                    lines += line(r.tokens, preset(p), label(p.id))
                     ids += p.id
                 }
                 is KwsSpeller.Result.Refused -> refused += p.id

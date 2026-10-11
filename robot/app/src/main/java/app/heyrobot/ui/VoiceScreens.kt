@@ -40,6 +40,13 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import kotlin.math.roundToInt
+import app.heyrobot.core.InterruptSensitivity
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.material3.Slider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -108,6 +115,21 @@ fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettin
     for (v in BargeIn.entries) {
         ChoiceRow(v.title + if (v == BargeIn.ECHO_CANCEL) " (default)" else "", v.detail, s.bargeIn == v) { update(s.copy(bargeIn = v)) }
     }
+    Text("Interrupt sensitivity", style = MaterialTheme.typography.titleSmall)
+    // Three steps: Low, Medium (as before 0.4.0), High. Only while Robot talks; the wake phrases' own sensitivity stays.
+    var level by remember(s.interrupt) { mutableFloatStateOf(s.interrupt.ordinal.toFloat()) }
+    val shown = InterruptSensitivity.entries[level.roundToInt().coerceIn(0, InterruptSensitivity.entries.size - 1)]
+    Slider(value = level, onValueChange = { level = it }, valueRange = 0f..(InterruptSensitivity.entries.size - 1).toFloat(),
+        steps = InterruptSensitivity.entries.size - 2,
+        onValueChangeFinished = { update(s.copy(interrupt = shown)) },
+        modifier = Modifier.semantics { stateDescription = shown.title })
+    Row(Modifier.fillMaxWidth()) {
+        for (v in InterruptSensitivity.entries) Text(v.title, style = MaterialTheme.typography.labelMedium,
+            color = if (v == shown) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f), textAlign = when (v.ordinal) { 0 -> TextAlign.Start; InterruptSensitivity.entries.size - 1 -> TextAlign.End; else -> TextAlign.Center })
+    }
+    Text("How readily Robot hears “stop” and your wake phrases while she talks. ${shown.detail}." +
+        if (shown == InterruptSensitivity.MEDIUM) " (default)" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Text("Robot's voice plays as", style = MaterialTheme.typography.titleSmall)
     for (p in Playback.entries) {
         ChoiceRow(p.title + if (p == Playback.ASSISTANT) " (default)" else "", p.detail, s.playback == p) { update(s.copy(playback = p)) }
