@@ -322,6 +322,7 @@ private fun PeopleSettingsCard(s: RobotSettings, snap: Snapshot, calendars: List
                     modifier = Modifier.heightIn(min = 48.dp))
             }
         }
+        NavRow(RIcons.Person, "People", "Who Robot knows besides your contacts, and what you call them") { a.openPage(Page.People) }
         NavRow(RIcons.Note, "Robot Notes", "Your notes, to read, edit, search and share") { a.openTab(Tab.NOTES) }
         NavRow(RIcons.Person, "Contacts and calendar access", "Allow or check what Robot may read") { a.openSetup() }
     }
@@ -522,7 +523,7 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
 }
 
 @Composable
-private fun SwitchRow(title: String, detail: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+internal fun SwitchRow(title: String, detail: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -570,6 +571,12 @@ private fun PeopleSetupCard(f: AssistantFacts, a: AppActions) {
             if (f.cheogramInstalled) "Installed: texts open there as drafts." else "Not installed: texts use the SMS app (Settings › People, notes and calendar).")
         StatusRow(if (f.protonInstalled) Mark.OK else Mark.TODO, "Proton Mail",
             if (f.protonInstalled) "Installed: emails open there as drafts." else "Not installed: Android asks which email app to use.")
+        // 0.4.0: optional, for "Learn names from Cheogram notifications" (Settings › People).
+        StatusRow(if (f.notificationAccess) Mark.OK else Mark.TODO, "Cheogram notifications (optional)",
+            if (f.notificationAccess) "Notification access allowed. With “Learn names from Cheogram notifications” on (Settings › People), Robot keeps " +
+                "who messages you in Cheogram, never the text."
+            else "For “Learn names from Cheogram notifications” in Settings › People. Robot installed from a file needs one more step first:")
+        if (!f.notificationAccess) NotificationAccessSteps()
         if (!f.contactsGranted || !f.calendarGranted) {
             TextButton(onClick = a.openAppSettings) { Text("Android doesn't ask? Open Robot's app settings") }
         }

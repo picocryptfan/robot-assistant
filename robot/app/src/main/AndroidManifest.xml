@@ -77,8 +77,9 @@
         </intent>
         <package android:name="app.organicmaps" />
         <!-- Phase 2 hand-offs: Cheogram (texts, xmpp:; and SEND text/plain to its share screen when no contact fits,
-             covered by its <package> entries), Proton Mail (mailto:), the SMS app (smsto:), the calendar app's editor
-             (INSERT). Drafts only: the owner presses Send there. -->
+             and since 0.4.0 its contact list and StartConversationActivity by class, all covered by its <package>
+             entries), Proton Mail (mailto:), the SMS app (smsto:), the calendar app's editor (INSERT). Drafts only: you
+             press Send there. -->
         <package android:name="com.cheogram.android" />
         <package android:name="com.cheogram.android.playstore" />
         <package android:name="ch.protonmail.android" />
@@ -209,6 +210,16 @@
             android:excludeFromRecents="true"
             android:taskAffinity="app.heyrobot.delete"
             android:theme="@style/Theme.Robot.Translucent" />
+        <!-- "Pick in Cheogram" (0.4.0): opens Cheogram's contact list for a result (ACTION_CREATE_SHORTCUT, nothing goes on the
+             home screen), offers to remember who was picked in People, then opens their chat with the text. Started by the
+             panel's card only. -->
+        <activity
+            android:name=".assistant.CheogramPickActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="app.heyrobot.pick"
+            android:theme="@style/Theme.Robot.Translucent" />
         <!-- The camera app writes the photo here (app cache, deleted right after it is read). -->
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -218,6 +229,22 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/capture_paths" />
         </provider>
+
+        <!-- "Learn names from Cheogram notifications" (0.4.0): off until you turn it on in Settings › People and allow
+             notification access. Reads only Cheogram's 1:1 chats: the sender's name, address and your account, never
+             message text. Main process: no model, no voice process; it unbinds itself while the switch is off. Only the
+             system can bind it (BIND_NOTIFICATION_LISTENER_SERVICE). It asks for conversations only, never ongoing or
+             silent notifications. -->
+        <service
+            android:name=".people.CheogramListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+            <meta-data android:name="android.service.notification.default_filter_types" android:value="conversations" />
+            <meta-data android:name="android.service.notification.disabled_filter_types" android:value="ongoing|silent" />
+        </service>
 
         <!-- Not exported: the system's boot broadcast still arrives, other apps cannot fake it. Direct-boot aware (0.2.3)
              so it also gets LOCKED_BOOT_COMPLETED, before the first unlock: there it only checks the speech recognizer

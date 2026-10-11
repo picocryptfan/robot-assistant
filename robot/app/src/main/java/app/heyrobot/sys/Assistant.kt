@@ -73,6 +73,8 @@ data class AssistantFacts(
     /** 0.4.0, optional: photos and videos (free_storage's largest files); [mediaPartial]: only the ones you picked. */
     val mediaGranted: Boolean = false,
     val mediaPartial: Boolean = false,
+    /** 0.4.0: notification access, for "Learn names from Cheogram notifications". */
+    val notificationAccess: Boolean = false,
 )
 
 object Assistant {
@@ -118,6 +120,7 @@ object Assistant {
             usageAccess = PhoneInfo.usageAccess(ctx),
             mediaGranted = PhoneInfo.mediaGranted(ctx),
             mediaPartial = PhoneInfo.mediaPartial(ctx),
+            notificationAccess = NotificationAccess.granted(ctx),
         )
     }
 

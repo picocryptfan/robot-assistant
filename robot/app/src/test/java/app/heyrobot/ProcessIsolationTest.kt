@@ -92,7 +92,8 @@ class ProcessIsolationTest {
     /** Everything the main (UI) process can run must not touch the engines or the assistant's classes. */
     @Test fun mainProcessCodeNeverReachesEngines() {
         val mainFiles = ours.filterKeys { k ->
-            k.startsWith("core/") || k.startsWith("app/ui/") || k.startsWith("app/sys/") || k.startsWith("app/boot/") || k == "app/RobotApp.kt"
+            k.startsWith("core/") || k.startsWith("app/ui/") || k.startsWith("app/sys/") || k.startsWith("app/boot/") || k.startsWith("app/people/") ||
+                k == "app/RobotApp.kt"
         }
         assertTrue(mainFiles.size >= 25)
         val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|ClaudeLink|ClaudeKeys|ClaudeSession|ClaudeClient|ClaudeKeyActivity)\b""")
@@ -125,21 +126,28 @@ class ProcessIsolationTest {
         fun perm(n: String) = c(n).getAttributeNS(ns, "permission")
         val voice = listOf("app.heyrobot.assistant.RobotVoiceService", "app.heyrobot.assistant.RobotSessionService",
             "app.heyrobot.assistant.RobotRecognitionService", "app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider",
-            "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity")
+            "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
+            "app.heyrobot.assistant.CheogramPickActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
-        for (n in listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver")) assertEquals(n, "", proc(n))
+        val main = listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
+            "app.heyrobot.people.CheogramListener")
+        for (n in main) assertEquals(n, "", proc(n))
         // Every Robot component is accounted for (a new one must be placed deliberately).
         val ourComps = comps.keys.filter { it.startsWith("app.heyrobot.") }.toSet()
-        assertEquals(setOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
-            "app.heyrobot.brain.BrainService") + voice.filter { it.startsWith("app.heyrobot.") }, ourComps)
+        assertEquals(main.toSet() + "app.heyrobot.brain.BrainService" + voice.filter { it.startsWith("app.heyrobot.") }, ourComps)
         // Exported components are guarded: the system-only BIND_VOICE_INTERACTION, or nothing to guard.
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotVoiceService"))
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotSessionService"))
+        // 0.4.0: the notification listener only the system may bind, named as the main app names it.
+        assertEquals("true", exported("app.heyrobot.people.CheogramListener"))
+        assertEquals("android.permission.BIND_NOTIFICATION_LISTENER_SERVICE", perm("app.heyrobot.people.CheogramListener"))
+        assertTrue(File(java("app"), "app/heyrobot/sys/People.kt").readText().contains("\"app.heyrobot.people.CheogramListener\""))
         assertEquals("false", exported("app.heyrobot.brain.BrainService"))
         assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.brain.BrainService"))
         for (n in listOf("app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
-            "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity"))
+            "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
+            "app.heyrobot.assistant.CheogramPickActivity"))
             assertEquals(n, "false", exported(n))
         // The recognizer MUST stay discoverable: with no current speech recognizer Android clears a third-party
         // assistant at every boot (VoiceInteractionManagerService.initForUser), which is how probe 1.1 failed.

@@ -155,6 +155,10 @@ enum class VoiceEvent(val id: Int) {
     WEATHER(80),
     /** A weather lookup failed: a = [WeatherFail], b = Open-Meteo's HTTP status (0: none). */
     WEATHER_FAILED(81),
+    /** Pick in Cheogram (0.4.0): a = [PickOutcome], b = 1 if Cheogram named the account, c = 1 if you chose to remember them. */
+    CHEOGRAM_PICK(61),
+    /** A text handed to Cheogram (0.4.0): a = [CheogramRoute], b = 1 if an earlier route didn't open and this one did. */
+    CHEOGRAM_HANDOFF(62),
     ;
 
     companion object {
@@ -214,6 +218,17 @@ object CaptureFx {
             .joinToString(" and ").ifEmpty { "no effects" }
         return out.joinToString(" · ")
     }
+}
+
+/** What came of "Pick in Cheogram" (never who). */
+enum class PickOutcome(override val id: Int, override val title: String) : LogCode {
+    PICKED(1, "someone picked"), CANCELLED(2, "nobody picked"), NO_ADDRESS(3, "Cheogram's answer had no address Robot can use"),
+    NO_LIST(4, "Cheogram's list didn't open"),
+}
+
+/** How a text was handed to Cheogram. */
+enum class CheogramRoute(override val id: Int, override val title: String) : LogCode {
+    ACCOUNT(1, "the chat in its account"), LINK(2, "the xmpp: link"), SHARE(3, "the share screen"), LIST(4, "the contact list, to pick"),
 }
 
 enum class ListenWhy(override val id: Int, override val title: String) : LogCode {
@@ -540,6 +555,9 @@ object VoiceLogText {
             VoiceEvent.WEATHER -> "Weather from Open-Meteo for " + code(WeatherSource.entries, a) + (if (b > 0) " · place found in $b ms" else "") +
                 " · forecast in $c ms"
             VoiceEvent.WEATHER_FAILED -> "Weather lookup failed: " + code(WeatherFail.entries, a) + (if (b > 0) " (HTTP $b)" else "")
+            VoiceEvent.CHEOGRAM_PICK -> "Pick in Cheogram: " + code(PickOutcome.entries, a) + (if (b == 1) " · with its account" else "") +
+                (if (c == 1) " · remembered" else "")
+            VoiceEvent.CHEOGRAM_HANDOFF -> "Text handed to Cheogram: " + code(CheogramRoute.entries, a) + (if (b == 1) " (the first way didn't open)" else "")
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
         }

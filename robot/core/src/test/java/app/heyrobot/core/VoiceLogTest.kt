@@ -52,7 +52,8 @@ class VoiceLogTest {
         assertEquals(27, VoiceEvent.TTS_STOP.id)
         val codes: List<List<LogCode>> = listOf(WakeAction.entries, WakeDrop.entries, ListenWhy.entries, MicKind.entries, AecState.entries, SttEnd.entries,
             ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries,
-            EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries, ClaudeLeftOut.entries)
+            EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries, ClaudeLeftOut.entries,
+            PickOutcome.entries, CheogramRoute.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -63,6 +64,8 @@ class VoiceLogTest {
         }
         // The "not Claude" and own-answer events (0.3.1, Ask Claude) use 120 to 129.
         for (e in listOf(VoiceEvent.CLAUDE_LEFT_OUT, VoiceEvent.OWN_ANSWER)) assertTrue(e.name, e.id in 120..129)
+        // 0.4.0's People events use 61 to 79 (80 and up are taken by other 0.4.0 work).
+        for (e in listOf(VoiceEvent.CHEOGRAM_PICK, VoiceEvent.CHEOGRAM_HANDOFF)) assertTrue(e.name, e.id in 61..79)
         assertEquals(4, VoiceEvent.STOP_SUPPRESSED.id)
         assertEquals(31, VoiceEvent.BARGE_TEST.id)
         // MicKind and AecState share KWS_HIT's third number as mic × 10 + aec: both must stay below 10.

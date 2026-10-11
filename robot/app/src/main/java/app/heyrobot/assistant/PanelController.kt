@@ -93,10 +93,10 @@ import app.heyrobot.core.toPromptTurns
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Assistant
-import app.heyrobot.sys.Contacts
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotesFiles
+import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.Phones
 import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.voice.Cues
@@ -163,6 +163,8 @@ data class UiAction(
     val handOff: String? = null,
     /** The picture a share card would send. */
     val picture: Bitmap? = null,
+    /** The tick box next to the choices that remembers the one tapped ("Always use this for “mom”"). */
+    val remember: String? = null,
 )
 
 /**
@@ -1594,8 +1596,10 @@ object PanelController {
             // The message itself; the approval gate still checks the lock. Only the wake phrase: Robot asks again.
             TextCommand.Route.ANSWER -> TextRequest(textingFor!!, answer.trim().ifEmpty { null })
             TextCommand.Route.PARSE -> {
+                // People's names and what you call them, with the phone's contacts when Robot may read them. Not names learned
+                // from notifications: whoever sent the message chose those, so they never decide where the message starts.
                 val names = withContext(Dispatchers.IO) {
-                    if (Contacts.granted(VoiceHub.app)) Contacts.names(VoiceHub.app).flatMap { listOf(it.name) + it.nicknames } else emptyList()
+                    PeopleFiles.book(VoiceHub.app).names.filter { !it.learned }.flatMap { listOf(it.name) + it.nicknames + it.aliases }
                 }
                 TextCommand.parse(answer, names, typed) ?: return false
             }
@@ -1698,7 +1702,7 @@ object PanelController {
             // What a read tool finds goes to Claude only after this tap: the button says so.
             val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) "Share with Claude" else c.action?.confirmLabel
             upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo, c.content, c.more,
-                c.cancel, c.handOff))
+                c.cancel, c.handOff, remember = c.remember))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
@@ -1814,9 +1818,9 @@ object PanelController {
         slot.confirmations.answer(actionId, yes)
     }
 
-    /** The person tapped one of the people or numbers a card listed. */
-    fun choose(actionId: String, index: Int) {
-        slot.confirmations.choose(actionId, index)
+    /** The person tapped one of the people or numbers a card listed; [remember]: with "Always use this for …" ticked. */
+    fun choose(actionId: String, index: Int, remember: Boolean = false) {
+        slot.confirmations.choose(actionId, index, remember)
     }
 
     /** Undo on a note Robot just saved: it leaves Robot Notes, the card says so, the history keeps it as undone. */

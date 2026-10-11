@@ -20,6 +20,24 @@ object UriText {
     /** Only RFC 3986's unreserved characters (A-Z a-z 0-9 - . _ ~) stay; a space is %20, never "+". */
     fun strict(s: String): String = escape(s) { c -> c in RFC_UNRESERVED }
 
+    /** %XX sequences as their UTF-8 characters ("%C3%A9" → "é", "%2B" → "+"); a '%' that starts none stays as written. */
+    fun decode(s: String): String {
+        if (!s.contains('%')) return s
+        val out = java.io.ByteArrayOutputStream()
+        var i = 0
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '%' && i + 2 < s.length && s.substring(i + 1, i + 3).all { it in '0'..'9' || it.lowercaseChar() in 'a'..'f' }) {
+                out.write(s.substring(i + 1, i + 3).toInt(16))
+                i += 3
+            } else {
+                out.write(c.toString().toByteArray(Charsets.UTF_8))
+                i++
+            }
+        }
+        return out.toString(Charsets.UTF_8.name())
+    }
+
     private inline fun escape(s: String, keep: (Char) -> Boolean): String {
         val out = StringBuilder(s.length * 3)
         var i = 0
@@ -52,6 +70,19 @@ object XmppLink {
      */
     fun message(jid: String, body: String): String =
         "xmpp:" + UriText.encode(jid, "@+") + "?message;body=" + UriText.strict(body).replace("%", "%25")
+
+    /**
+     * The bare address in an xmpp: link ("xmpp:mom@example.org", "xmpp://mom@example.org/res?message"), or null for
+     * anything else: another scheme, nothing usable, a group chat ("?join"). A resource and a query are left aside.
+     */
+    fun jid(uri: String?): String? {
+        val u = uri?.trim() ?: return null
+        if (!u.lowercase(java.util.Locale.ROOT).startsWith("xmpp:")) return null
+        val rest = u.substring(5)
+        if (Regex("""[?;]join\b""").containsMatchIn(rest)) return null
+        val bare = UriText.decode(rest.removePrefix("//").substringBefore('?').substringBefore('#')).substringBefore('/').trim()
+        return bare.takeIf { Addresses.isAddress(it) }
+    }
 }
 
 object MailTo {

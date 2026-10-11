@@ -69,8 +69,11 @@ interface TurnModel {
     fun stopped(results: List<Pair<String, Map<String, Any?>>>) {}
 }
 
-/** One of the people or numbers a card offers: tapping it confirms [action], which goes to that one. */
-data class Choice(val label: String, val action: Action)
+/**
+ * One of the people or numbers a card offers: tapping it confirms [action], which goes to that one. [remember]: the
+ * same action that also remembers the choice, taken instead when "Always use this for …" is ticked on the card.
+ */
+data class Choice(val label: String, val action: Action, val remember: Action? = null)
 
 /**
  * An action made ready for the gate (open_app resolved to the installed app it will open, send_text to the number
@@ -80,9 +83,12 @@ sealed class Prepared {
     /**
      * [mustAsk]: show the card even where the action could just run (an app name that matched loosely, a person not
      * surely the one named). [choices]: several people or numbers fit; the card lists them and the person taps one
-     * (so it always asks). [more]: how many more fitted than the card lists.
+     * (so it always asks). [more]: how many more fitted than the card lists. [note]: the card's line while it waits
+     * (what its buttons do). [remember]: the words of the tick box that makes a choice remembered ("Always use this for
+     * “mom”"), when the choices can be.
      */
-    data class Ready(val action: Action, val mustAsk: Boolean = false, val choices: List<Choice> = emptyList(), val more: Int = 0) : Prepared()
+    data class Ready(val action: Action, val mustAsk: Boolean = false, val choices: List<Choice> = emptyList(), val more: Int = 0,
+        val note: String? = null, val remember: String? = null) : Prepared()
     data class Refused(val status: ActionStatus, val detail: String) : Prepared()
 }
 
@@ -146,6 +152,8 @@ data class Card(
     val cancel: String? = null,
     /** An app the card offers to open ([Executed.handOff]). */
     val handOff: String? = null,
+    /** The tick box next to [choices] that remembers the one tapped ("Always use this for “mom”"); null: none. */
+    val remember: String? = null,
 )
 
 interface TurnView {
@@ -193,8 +201,9 @@ class Confirmations {
 
     fun answer(id: String, yes: Boolean): Boolean = choose(id, if (yes) YES else NO)
 
-    /** The person tapped the [index]th choice of the card [id]. */
-    fun choose(id: String, index: Int): Boolean = synchronized(pending) { pending[id] }?.complete(index) ?: false
+    /** The person tapped the [index]th choice of the card [id]; [remember]: with "Always use this for …" ticked. */
+    fun choose(id: String, index: Int, remember: Boolean = false): Boolean =
+        synchronized(pending) { pending[id] }?.complete(if (remember && index >= 0) index + REMEMBER else index) ?: false
 
     fun declineAll() {
         synchronized(pending) { pending.values.toList() }.forEach { it.complete(NO) }
@@ -203,6 +212,8 @@ class Confirmations {
     companion object {
         const val YES = 0
         const val NO = -1
+        /** Added to a choice's index when it is to be remembered. */
+        const val REMEMBER = 1 shl 16
     }
 
     val waiting: Boolean get() = synchronized(pending) { pending.isNotEmpty() }
@@ -378,7 +389,7 @@ class TurnRunner(
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, untrusted || a.mustAsk || a.choices.isNotEmpty(), remote)
         val chosen = when (decision) {
             GateDecision.RUN -> a.action
-            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more)
+            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember)
             GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
@@ -399,11 +410,13 @@ class TurnRunner(
     }
 
     /**
-     * Shows the card and waits: the action ("Do it"), the person or number tapped among [choices], or null (Cancel). A
-     * turn stopped meanwhile leaves the card declined, never waiting.
+     * Shows the card and waits: the action ("Do it"), the person or number tapped among [choices] (its remembering
+     * action when "Always use this" was ticked), or null (Cancel). [note]: the card's line while it waits. A turn stopped
+     * meanwhile leaves the card declined, never waiting.
      */
-    private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int): Action? {
-        view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, null, a, body = a.body(), choices = choices, more = more, remote = remote))
+    private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int, note: String? = null, remember: String? = null): Action? {
+        view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, note, a, body = a.body(), choices = choices, more = more, remote = remote,
+            remember = remember))
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
             confirmations.ask(id)
@@ -415,6 +428,7 @@ class TurnRunner(
         return when {
             pick < 0 -> null
             choices.isEmpty() -> a
+            pick >= Confirmations.REMEMBER -> choices.getOrNull(pick - Confirmations.REMEMBER)?.let { it.remember ?: it.action }
             else -> choices.getOrNull(pick)?.action
         }
     }

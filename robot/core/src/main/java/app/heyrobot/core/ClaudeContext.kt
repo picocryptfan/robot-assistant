@@ -14,8 +14,8 @@ import java.util.Locale
 // app, or an "ask Claude about my screen" question.
 // Robot checking with Claude on its own sends only the question from then on. Claude joining a personal conversation
 // sees what came before only after a tap on Include ("Start fresh" sends none of it). Never sent: audio, the wake-word
-// stream, the contacts list, the calendar, settings or logs. The :claude module turns these plain blocks into the
-// SDK's request.
+// stream, the contacts list, Robot's People (names learned from Cheogram notifications included), the calendar,
+// settings or logs. The :claude module turns these plain blocks into the SDK's request.
 
 /** A piece of a user message to Claude. */
 sealed class ClaudeBlock {
@@ -201,7 +201,7 @@ object ClaudeContext {
 
 /**
  * Robot's tools as Claude sees them: the same schemas as Gemma's, for timers, alarms, maps, notes, the calendar and
- * drafts of texts and emails. Not open_app, the flashlight or lookup_contact (the contacts list is never sent), and never
+ * drafts of texts and emails. Not open_app, the flashlight or lookup_contact (the contacts list and People are never sent), and never
  * ask_claude. Every call Claude makes shows a card ([ApprovalGate.decide] with remote = true).
  */
 object ClaudeTools {

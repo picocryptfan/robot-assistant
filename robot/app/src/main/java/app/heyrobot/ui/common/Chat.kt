@@ -20,10 +20,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -33,7 +35,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -42,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -81,11 +86,14 @@ data class ActionView(
     val openApp: String? = null,
     /** The picture the card would send (a photo, or a screenshot), shown so you can see what goes. */
     val picture: Bitmap? = null,
+    /** A tick box over [choices] that remembers the one tapped ("Always use this for “mom”"). */
+    val remember: String? = null,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
 class CardActions(
-    val choose: (String, Int) -> Unit = { _, _ -> },
+    /** The card's id, the choice's index, and whether "Always use this for …" was ticked. */
+    val choose: (String, Int, Boolean) -> Unit = { _, _, _ -> },
     val undo: (String) -> Unit = {},
     /** Opens the main app's permission screen. */
     val allow: () -> Unit = {},
@@ -261,9 +269,18 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
             }
             if (a.status == ActionStatus.PENDING && onConfirm != null) {
                 if (a.choices.isNotEmpty() && more != null) {
+                    var keep by remember(a.id) { mutableStateOf(false) }
                     Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        a.remember?.let { words ->
+                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = keep, role = Role.Checkbox) { keep = it },
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = keep, onCheckedChange = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(words, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
                         a.choices.forEachIndexed { i, label ->
-                            FilledTonalButton(onClick = { more.choose(a.id, i) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(label) }
+                            FilledTonalButton(onClick = { more.choose(a.id, i, keep) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(label) }
                         }
                         if (a.more > 0) {
                             Text("…and ${a.more} more. Say the full name to pick one of those.", style = MaterialTheme.typography.bodySmall,

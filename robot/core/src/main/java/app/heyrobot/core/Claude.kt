@@ -405,6 +405,7 @@ enum class Personal(val label: String) {
     PHOTO("a photo"),
     CALENDAR("your calendar"),
     NOTES("your notes"),
+    /** What a lookup found: the phone's contacts and Robot's People (names learned from notifications included). */
     CONTACTS("your contacts"),
     /** 0.4.0: a weather lookup, which says where you are or where your Home for weather is. */
     LOCATION("your location"),

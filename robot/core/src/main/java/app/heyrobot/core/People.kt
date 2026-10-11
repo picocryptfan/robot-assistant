@@ -3,31 +3,68 @@ package app.heyrobot.core
 import java.text.Normalizer
 import java.util.Locale
 
-// Pure. Who "Mom" is: the contacts' names ranked against the name the model gave, the numbers and addresses a text or
-// an email can go to (mobile first for texts), phone numbers in E.164 and the address of a number at the SMS gateway.
-// The app process reads ContactsContract and calls PhoneNumberUtils; every choice is made here, so it is tested.
+// Pure. Who "Mom" is: the contacts' names (the phone's and Robot's People, PeopleStore.kt) ranked against the name the
+// model gave, the numbers and addresses a text or an email can go to (mobile first for texts), phone numbers in E.164
+// and the address of a number at the SMS gateway. The app process reads ContactsContract and calls PhoneNumberUtils;
+// every choice is made here, so it is tested.
 
 enum class PhoneKind { MOBILE, HOME, WORK, OTHER }
 
 /** [label]: the type as the phone names it ("Mobile", or a custom label). */
 data class ContactPhone(val number: String, val kind: PhoneKind, val label: String)
 
-/** A contact's name and nicknames, enough to rank it. */
-data class ContactName(val id: Long, val name: String, val nicknames: List<String> = emptyList())
+/**
+ * Where a contact comes from, in its id: "s:<ContactsContract id>" for the phone's contacts, "r:<id>" for Robot's People,
+ * so the two can never be taken for each other.
+ */
+object ContactIds {
+    fun system(id: Long): String = "s:$id"
+    fun people(id: String): String = "r:$id"
+    /** The phone's contact id, or null for anything else. */
+    fun systemId(ref: String?): Long? = ref?.takeIf { it.startsWith("s:") }?.substring(2)?.toLongOrNull()
+    /** The People id, or null for anything else. */
+    fun peopleId(ref: String?): String? = ref?.takeIf { it.startsWith("r:") }?.substring(2)?.takeIf { it.isNotEmpty() }
+}
 
-/** One contact's ways to reach it. [xmpp]: ContactsContract Im rows with the Jabber protocol. */
+/**
+ * A contact's name and nicknames, enough to rank it. [aliases]: names you told Robot to remember for this person
+ * (People): one said exactly beats every other match. [learned]: the name came from a Cheogram notification and you
+ * haven't used or edited it yet. [lookupKey]: the phone's lookup key, which a People entry that only adds names or a
+ * choice to a phone contact refers to.
+ */
+data class ContactName(
+    val id: String,
+    val name: String,
+    val nicknames: List<String> = emptyList(),
+    val aliases: List<String> = emptyList(),
+    val learned: Boolean = false,
+    val lookupKey: String? = null,
+)
+
+/** An XMPP address, and the Cheogram account it was seen in ([account] null: Cheogram picks the account). */
+data class XmppAddress(val jid: String, val account: String? = null)
+
+/**
+ * One contact's ways to reach it. [xmpp]: ContactsContract Im rows with the Jabber protocol, or People's XMPP addresses
+ * with their account. [preferredText], [preferredEmail]: the address you chose for this person on a card ("Always use
+ * this"), offered alone when it is still among the others.
+ */
 data class ContactCard(
-    val id: Long,
+    val id: String,
     val name: String,
     val phones: List<ContactPhone> = emptyList(),
     val emails: List<String> = emptyList(),
-    val xmpp: List<String> = emptyList(),
+    val xmpp: List<XmppAddress> = emptyList(),
+    val preferredText: String? = null,
+    val preferredEmail: String? = null,
+    val learned: Boolean = false,
 )
 
-/** How a contact's name matched, best first. */
-enum class NameMatch { EXACT, PREFIX, WORD, FUZZY }
+/** How a contact's name matched, best first. ALIAS: a name you told Robot to remember for that person, said exactly. */
+enum class NameMatch { ALIAS, EXACT, PREFIX, WORD, FUZZY }
 
-data class ContactMatch(val id: Long, val name: String, val kind: NameMatch)
+/** [learned]: the person's name was seen in a Cheogram notification (ContactName.learned). */
+data class ContactMatch(val id: String, val name: String, val kind: NameMatch, val learned: Boolean = false)
 
 object ContactMatcher {
     /** Words that say whose, not who ("text my mom"). */
@@ -69,33 +106,56 @@ object ContactMatcher {
         return allowed > 0 && kotlin.math.abs(q.length - n.length) <= allowed && AppMatcher.editDistance(q, n) <= allowed
     }
 
-    /** Every contact that matches by name or nickname, best kind first, then shorter names, then by name. */
+    /**
+     * Every contact that matches by name, nickname or alias, best kind first, then shorter names, then by name. An alias
+     * said exactly is [NameMatch.ALIAS]; otherwise an alias counts like a nickname.
+     */
     fun rank(query: String, contacts: List<ContactName>): List<ContactMatch> = contacts
-        .mapNotNull { c -> (listOf(c.name) + c.nicknames).mapNotNull { kind(query, it) }.minOrNull()?.let { ContactMatch(c.id, c.name, it) } }
+        .mapNotNull { c ->
+            val k = if (c.aliases.any { kind(query, it) == NameMatch.EXACT }) NameMatch.ALIAS
+            else (listOf(c.name) + c.nicknames + c.aliases).mapNotNull { kind(query, it) }.minOrNull()
+            k?.let { ContactMatch(c.id, c.name, it, c.learned) }
+        }
         .sortedWith(compareBy<ContactMatch> { it.kind.ordinal }.thenBy { it.name.length }.thenBy { it.name.lowercase(Locale.ROOT) })
 
     /**
-     * The contacts a request means: only the best kind of match there is (one exact name wins over every prefix, and
-     * a fuzzy match counts only when nothing better exists), at most [max]. Several left: the card asks which.
+     * The contacts a request means: only the best kind of match there is (a remembered alias wins over every name, one
+     * exact name over every prefix, and a fuzzy match counts only when nothing better exists), at most [max]. Several
+     * left: the card asks which. A name learned from a Cheogram notification was chosen by whoever sent the message, so
+     * it never stands beside a confirmed person who matches as well: it is left out then.
      */
     fun best(query: String, contacts: List<ContactName>, max: Int = 5): List<ContactMatch> {
         val all = rank(query, contacts)
         val top = all.firstOrNull()?.kind ?: return emptyList()
-        return all.filter { it.kind == top }.take(max)
+        val same = all.filter { it.kind == top }
+        return same.filter { !it.learned }.ifEmpty { same }.take(max)
     }
 
     /**
      * Robot may go ahead without showing who (when texts or emails are set to "Just do it") only when exactly one
-     * contact's name or nickname is exactly what was asked and it has exactly one place to send to. A prefix, word or
-     * fuzzy match, several people, several numbers, or a number or address the model wrote itself (never checked
-     * against the contacts) always show the card.
+     * contact's name, nickname or remembered alias is exactly what was asked and it has exactly one place to send to (a
+     * remembered choice counts as one). A prefix, word or fuzzy match, several people, several numbers, a name learned
+     * from a notification, or a number or address the model wrote itself (never checked against the contacts) always
+     * show the card.
      */
     fun sure(matches: List<ContactMatch>, destinations: Int): Boolean =
-        matches.size == 1 && matches[0].kind == NameMatch.EXACT && destinations == 1
+        matches.size == 1 && matches[0].kind <= NameMatch.EXACT && !matches[0].learned && destinations == 1
 }
 
-/** One place a text or an email can go, as the card lists it ([label]: "Mobile", "Work", "XMPP"). */
-data class Reach(val contactId: Long, val name: String, val address: String, val label: String?, val xmpp: Boolean = false)
+/**
+ * One place a text or an email can go, as the card lists it ([label]: "Mobile", "Work", "XMPP"). [address]: as stored
+ * with the contact. [account]: the Cheogram account an XMPP address was seen in. [learned]: the contact's name was seen
+ * in a Cheogram notification (the card always shows, and says so).
+ */
+data class Reach(
+    val contactId: String,
+    val name: String,
+    val address: String,
+    val label: String?,
+    val xmpp: Boolean = false,
+    val account: String? = null,
+    val learned: Boolean = false,
+)
 
 object Recipients {
     /** At most this many choices on one card. */
@@ -104,45 +164,73 @@ object Recipients {
     /**
      * Where a text can go for these contacts, in order: a contact's XMPP addresses first (Cheogram texts them directly;
      * [xmppOk]: the texting app is Cheogram), then its numbers, mobile first, each number once. All of them: the caller
-     * shows [MAX_CHOICES] and says how many more there are.
+     * shows [MAX_CHOICES] and says how many more there are. A contact with a remembered choice still among them
+     * (ContactCard.preferredText) offers that one only.
      */
     fun forText(cards: List<ContactCard>, xmppOk: Boolean): List<Reach> = cards.flatMap { c ->
-        val jids = if (xmppOk) c.xmpp.filter(Addresses::isJid).distinctBy { it.lowercase(Locale.ROOT) } else emptyList()
-        jids.map { Reach(c.id, c.name, it, "XMPP", xmpp = true) } + mobileFirst(c.phones).map { Reach(c.id, c.name, it.number, it.label) }
+        val jids = if (xmppOk) c.xmpp.filter { Addresses.isJid(it.jid) }.distinctBy { it.jid.lowercase(Locale.ROOT) } else emptyList()
+        val all = jids.map { Reach(c.id, c.name, it.jid, "XMPP", xmpp = true, account = it.account, learned = c.learned) } +
+            mobileFirst(c.phones).map { Reach(c.id, c.name, it.number, it.label, learned = c.learned) }
+        Preferred.only(all, c.preferredText)
     }
 
     fun forEmail(cards: List<ContactCard>): List<Reach> = cards.flatMap { c ->
-        c.emails.filter(Addresses::isAddress).distinctBy { it.lowercase(Locale.ROOT) }.map { Reach(c.id, c.name, it, null) }
+        val all = c.emails.filter(Addresses::isAddress).distinctBy { it.lowercase(Locale.ROOT) }.map { Reach(c.id, c.name, it, null, learned = c.learned) }
+        Preferred.only(all, c.preferredEmail)
     }
 
     /** At most this many people are looked at for one name; more are counted ("and 3 more"). */
     const val MAX_PEOPLE = 20
 
-    /** One place a text or an email can go, ready: the person, the kind ("Mobile"), what the card shows, the action. */
-    data class Option(val name: String, val kind: String?, val shown: String, val action: Action)
+    /**
+     * One place a text or an email can go, ready: the person, the kind ("Mobile"), what the card shows, the action.
+     * [learned]: the person's name was seen in a Cheogram notification (always a card). [remember]: the same action
+     * that also remembers this choice for the name asked ("Always use this for mom"), offered on a card with several.
+     */
+    data class Option(val name: String, val kind: String?, val shown: String, val action: Action, val learned: Boolean = false, val remember: Action? = null)
 
     /**
      * The card for a text or an email to the people [matches] named, given every place they can be reached
      * ([options], in order; never empty). One place: that one, and the card shows it unless the name was surely
-     * meant (ContactMatcher.sure). Several: the card lists them (at most [MAX_CHOICES], [hiddenPeople] and the rest
-     * counted as "more"); [named] renames the waiting action after the one person they all belong to.
+     * meant (ContactMatcher.sure) by a person you confirmed. Several: the card lists them (at most [MAX_CHOICES],
+     * [hiddenPeople] and the rest counted as "more"), with [remember] ("Always use this for “mom”") when the options
+     * can be remembered; [named] renames the waiting action after the one person they all belong to.
      */
-    fun prepare(asked: Action, matches: List<ContactMatch>, options: List<Option>, hiddenPeople: Int, named: (String) -> Action): Prepared {
-        if (options.size == 1) return Prepared.Ready(options[0].action, mustAsk = hiddenPeople > 0 || !ContactMatcher.sure(matches, 1))
+    fun prepare(asked: Action, matches: List<ContactMatch>, options: List<Option>, hiddenPeople: Int, remember: String? = null,
+        named: (String) -> Action): Prepared {
+        if (options.size == 1) {
+            return Prepared.Ready(options[0].action, mustAsk = hiddenPeople > 0 || options[0].learned || !ContactMatcher.sure(matches, 1))
+        }
         val oneName = options.map { it.name }.distinct().singleOrNull()
-        val choices = options.take(MAX_CHOICES).map { o -> Choice(listOfNotNull(if (oneName == null) o.name else null, o.kind, o.shown).joinToString(" · "), o.action) }
-        return Prepared.Ready(oneName?.let(named) ?: asked, choices = choices, more = options.size - choices.size + hiddenPeople)
+        val choices = options.take(MAX_CHOICES).map { o ->
+            Choice(listOfNotNull(if (oneName == null) o.name else null, o.kind, o.shown).joinToString(" · "), o.action, o.remember)
+        }
+        return Prepared.Ready(oneName?.let(named) ?: asked, choices = choices, more = options.size - choices.size + hiddenPeople,
+            remember = remember?.takeIf { choices.any { it.remember != null } })
     }
 
+    /** "Always use this for “mom”": the line next to a card's choices (the name as asked). */
+    fun rememberLabel(asked: String): String = "Always use this for “${asked.trim()}”"
+
+    /** The card's line under "Pick in Cheogram" and "Choose in Cheogram". */
+    const val PICK_NOTE = "“Pick in Cheogram” opens Cheogram's contact list, titled “Create shortcut”: nothing goes on your home screen, " +
+        "and Robot remembers who you pick. “Choose in Cheogram” opens its share screen instead."
+
     /**
-     * send_text found no one in the phone's contacts to text ([reason] says why, as the card and the model are told).
-     * With Cheogram as the texting app (installed) the card offers "Choose in Cheogram" instead: Cheogram keeps its own
-     * roster and only reads the phone's contacts, so the person may be there. It always asks. The SMS app has no such
+     * send_text found no one in the contacts to text ([reason] says why, as the card and the model are told). With
+     * Cheogram as the texting app (installed) the card offers Cheogram's own list instead: Cheogram keeps its own roster
+     * and only reads the phone's contacts, so the person may be there. [pick]: Cheogram's contact list can be opened for
+     * a result ("Pick in Cheogram": Robot learns who was picked and opens their chat), offered first with the share screen
+     * ("Choose in Cheogram") as the fallback; otherwise only the share screen. It always asks. The SMS app has no such
      * list: not found.
      */
-    fun notFound(asked: Action.SendText, reason: String, via: TextVia): Prepared =
-        if (via == TextVia.CHEOGRAM) Prepared.Ready(asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK)), mustAsk = true)
-        else Prepared.Refused(ActionStatus.NOT_FOUND, reason)
+    fun notFound(asked: Action.SendText, reason: String, via: TextVia, pick: Boolean = false): Prepared {
+        if (via != TextVia.CHEOGRAM) return Prepared.Refused(ActionStatus.NOT_FOUND, reason)
+        val share = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK))
+        if (!pick) return Prepared.Ready(share, mustAsk = true)
+        val list = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_LIST))
+        return Prepared.Ready(list, mustAsk = true, choices = listOf(Choice("Pick in Cheogram", list), Choice("Choose in Cheogram", share)), note = PICK_NOTE)
+    }
 
     /** Mobile numbers first (texts), then the rest in the contact's order; the same digits only once. */
     fun mobileFirst(phones: List<ContactPhone>): List<ContactPhone> =
@@ -159,8 +247,34 @@ object Recipients {
             if (phones.isNotEmpty()) put("numbers", phones.map { "${it.label.lowercase(Locale.ROOT)}: ${display(it.number)}" })
             val emails = c.emails.distinct().take(2)
             if (emails.isNotEmpty()) put("emails", emails)
-            c.xmpp.firstOrNull()?.let { put("xmpp", it) }
+            c.xmpp.firstOrNull()?.let { put("xmpp", it.jid) }
+            if (c.learned) put("note", "name seen in a Cheogram notification, not confirmed")
         }
+    }
+}
+
+/**
+ * A remembered choice ("Always use this for mom"): which of a contact's places it names. An XMPP address names itself
+ * (case aside); a number names the same number (its last 10 digits), and a number's address at the SMS gateway
+ * ("+15145550101@cheogram.com") names that number too.
+ */
+object Preferred {
+    private fun key(s: String): String? {
+        val t = s.trim()
+        if (t.isEmpty()) return null
+        if (t.contains('@')) {
+            val local = t.substringBeforeLast('@')
+            return if (Regex("""^\+\d{7,15}$""").matches(local)) "n:" + PhoneNumbers.digits(local).takeLast(10) else "x:" + t.lowercase(Locale.ROOT)
+        }
+        return PhoneNumbers.digits(PhoneNumbers.normalize(t)).takeIf { it.length >= 3 }?.let { "n:" + it.takeLast(10) }
+    }
+
+    fun same(address: String, pref: String): Boolean = key(address)?.let { it == key(pref) } == true
+
+    /** Only the place [pref] names, if it is among [all]; otherwise all of them (the remembered one is gone). */
+    fun only(all: List<Reach>, pref: String?): List<Reach> {
+        if (pref.isNullOrBlank()) return all
+        return all.firstOrNull { same(it.address, pref) }?.let { listOf(it) } ?: all
     }
 }
 

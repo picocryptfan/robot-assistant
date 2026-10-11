@@ -133,6 +133,9 @@ sealed class Page {
     data object VoiceLog : Page()
     /** Settings › Advanced › ADB fixes. */
     data object AdbFixes : Page()
+    /** Settings › People (0.4.0), and one person ([id] null: a new one). */
+    data object People : Page()
+    data class PersonEdit(val id: String?) : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -147,6 +150,8 @@ sealed class Page {
                     WakeTest -> "waketest"
                     VoiceLog -> "voicelog"
                     AdbFixes -> "adbfixes"
+                    People -> "people"
+                    is PersonEdit -> "person:${p.id.orEmpty()}"
                 }
             },
             restore = { v ->
@@ -158,6 +163,8 @@ sealed class Page {
                     v == "waketest" -> WakeTest
                     v == "voicelog" -> VoiceLog
                     v == "adbfixes" -> AdbFixes
+                    v == "people" -> People
+                    v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
                     else -> null
                 }
             },
@@ -413,6 +420,8 @@ fun RobotAppUi(activity: MainActivity) {
         Page.WakeTest -> WakeTestScreen(settings, snap, onBack = { page = null })
         Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = { page = null })
         Page.AdbFixes -> AdbFixesScreen(snackbar, onBack = { page = null })
+        Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
+        is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
