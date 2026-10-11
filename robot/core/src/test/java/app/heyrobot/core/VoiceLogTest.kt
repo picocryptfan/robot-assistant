@@ -173,7 +173,7 @@ class VoiceLogTest {
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_CHOSEN, ModelCode.SMARTER.id, ModelCode.FAST.id)))
         assertEquals("Model loaded: Smarter (Gemma 4 E4B, CPU) on the CPU in 8.9 s",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_LOADED, ModelCode.SMARTER.id, BackendCode.CPU.id, 8900)))
-        assertEquals("Model didn't load: your own model file (refused by the content check)",
+        assertEquals("Model didn't load: your own model file (refused by Robot's check of the file)",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_LOAD_FAILED, ModelCode.OWN.id, LoadFailure.NOT_ALLOWED.id)))
         assertEquals("Used Fast (Gemma 4 E2B, TPU) instead of Uncensored (Gemma 4 E4B abliterated, CPU): not downloaded",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_FALLBACK, ModelCode.UNCENSORED.id, FallbackWhy.NOT_DOWNLOADED.id, ModelCode.FAST.id)))

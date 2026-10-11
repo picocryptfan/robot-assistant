@@ -43,7 +43,7 @@ object ModelStore {
     private fun part(ctx: Context, m: BrainModel) = File(dir(ctx), "${m.file}.part")
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private fun key(m: BrainModel, k: String) = ModelFiles.prefKey(m, k)
-    private fun fingerprint(f: File) = "${f.length()}|${f.lastModified()}"
+    private fun fingerprint(f: File) = ModelFiles.fingerprint(f.length(), f.lastModified())
     /** A file, not a preference, so the voice process can trust it too. */
     private fun verifiedMark(ctx: Context, m: BrainModel) = File(Paths.dir(ctx), ModelFiles.verifiedMark(m))
     /** The CPU's weight cache for [m] (filesDir/litert_cache/<id>), deleted with the model. */

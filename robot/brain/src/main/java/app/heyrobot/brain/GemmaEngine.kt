@@ -19,6 +19,7 @@ import app.heyrobot.core.Json
 import app.heyrobot.core.Limits
 import app.heyrobot.core.LiteRtLmCheck
 import app.heyrobot.core.LiveConv
+import app.heyrobot.core.LoadCheck
 import app.heyrobot.core.LoadFailure
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelFiles
@@ -32,6 +33,7 @@ import app.heyrobot.core.ToolMode
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolRouter
 import app.heyrobot.core.ToolSpecs
+import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
@@ -166,8 +168,16 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val allowed = listOfNotNull(ctx.getExternalFilesDir(null), ctx.filesDir).any { f.canonicalPath.startsWith(it.canonicalPath + File.separator) }
         if (!allowed || !f.isFile || f.name != req.model.file) return failed(req, LoadFailure.NO_FILE, "The model file is missing.")
         if (req.maxTokens != ContextWindow.MAX_TOKENS) return failed(req, LoadFailure.NOT_ALLOWED, "Robot's prompts are made for ${ContextWindow.MAX_TOKENS} tokens.")
-        // The TPU only for Fast's pinned file (checked by its SHA-256 in the app) or a file whose contents prove a Tensor G5
-        // build; and never TPU code on the CPU. Read here again, from the file about to load, whatever the app recorded.
+        // The app's own records, read here again rather than trusted from the request: a built-in model's SHA-256 mark
+        // for this very file, or your own file's record (unchanged since its check; the TPU only once you allowed it).
+        val records = File(ctx.filesDir, "robot")
+        LoadCheck.refuse(
+            req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()),
+            mark = if (req.model.builtIn) readOrNull(File(records, ModelFiles.verifiedMark(req.model))) else null,
+            ownRecord = if (req.model == BrainModel.OWN) readOrNull(File(records, ModelFiles.OWN_RECORD)) else null,
+        )?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
+        // The TPU only for Fast's pinned file (its SHA-256 mark, just above) or a file whose contents prove a Tensor G5
+        // build and that you allowed there; and never TPU code on the CPU. Read here again, from the file about to load.
         if (req.model != BrainModel.FAST || req.backend != ModelBackend.TPU) {
             val r = LiteRtLmCheck.check(f)
             val ok = when (req.backend) {

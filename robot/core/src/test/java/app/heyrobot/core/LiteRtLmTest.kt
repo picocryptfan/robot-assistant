@@ -245,6 +245,48 @@ class LiteRtLmTest {
         assertEquals(ModelAvailability.UNUSABLE, bad.availability("10|1"))
     }
 
+    /**
+     * :brain's own check before a load (LoadCheck): whatever the assistant asks, a built-in model only from the file the app
+     * checked by SHA-256 and only where it runs; your own file only as recorded after its check, unchanged since, and on
+     * the TPU only once you allowed it.
+     */
+    @Test fun brainLoadsOnlyWhatTheAppChecked() {
+        val fp = ModelFiles.fingerprint(3_113_545_589, 1_760_000_000_000)
+        assertEquals("3113545589|1760000000000", fp)
+        val fast = BrainModel.FAST
+        val mark = "${fast.sha256}|$fp"
+        assertNull(LoadCheck.refuse(fast, ModelBackend.TPU, fp, mark, null))
+        assertNull(LoadCheck.refuse(fast, ModelBackend.TPU, fp, "$mark\n", null))
+        // No mark, a mark for another file (changed since: size or time), another model's hash, or the wrong backend.
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(fast, ModelBackend.TPU, fp, null, null))
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(fast, ModelBackend.TPU, ModelFiles.fingerprint(3_113_545_589, 1_760_000_000_001), mark, null))
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(fast, ModelBackend.TPU, fp, "${BrainModel.SMARTER.sha256}|$fp", null))
+        assertNotNull(LoadCheck.refuse(fast, ModelBackend.CPU, fp, mark, null))
+        assertNotNull(LoadCheck.refuse(BrainModel.SMARTER, ModelBackend.TPU, fp, "${BrainModel.SMARTER.sha256}|$fp", null))
+        assertNull(LoadCheck.refuse(BrainModel.UNCENSORED, ModelBackend.CPU, fp, "${BrainModel.UNCENSORED.sha256}|$fp", null))
+
+        val own = BrainModel.OWN
+        val ownFp = "3000000000|1"
+        val tpu = OwnModel("mine", 3_000_000_000, sha, ownFp, check(e2bG5()))
+        // A Tensor G5 build: never on the TPU until you allowed it, nor on the CPU at all.
+        assertEquals("Your model file waits for you to allow the TPU in the Robot app › Model.",
+            LoadCheck.refuse(own, ModelBackend.TPU, ownFp, null, tpu.toJson().toString()))
+        assertNotNull(LoadCheck.refuse(own, ModelBackend.CPU, ownFp, null, tpu.toJson().toString()))
+        val allowed = tpu.copy(tpuAllowed = true).toJson().toString()
+        assertNull(LoadCheck.refuse(own, ModelBackend.TPU, ownFp, null, allowed))
+        // Swapped or touched after the check (another size or time), or no record: checked again first.
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(own, ModelBackend.TPU, "3000000000|2", null, allowed))
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(own, ModelBackend.TPU, ownFp, null, null))
+        assertEquals(LoadCheck.CHANGED, LoadCheck.refuse(own, ModelBackend.TPU, ownFp, null, "garbage"))
+        // A record claiming the TPU for a CPU file reads as the CPU.
+        val forged = OwnModel("x", 10, sha, "10|1", check(e4bCpu())).toJson().put("tpuAllowed", true).toString()
+        assertNotNull(LoadCheck.refuse(own, ModelBackend.TPU, "10|1", null, forged))
+        assertNull(LoadCheck.refuse(own, ModelBackend.CPU, "10|1", null, forged))
+        // A file Robot can't run: refused with the check's own reason.
+        val bad = OwnModel("x", 10, sha, "10|1", check(ByteArray(10))).toJson().toString()
+        for (b in ModelBackend.entries) assertNotNull(LoadCheck.refuse(own, b, "10|1", null, bad))
+    }
+
     @Test fun ownModelRecordRoundTripsAndNeverAllowsTheTpuForACpuFile() {
         val r = OwnModel("my model “v2”.litertlm", 3_659_530_240, sha, "3659530240|1760000000000", check(e2bG5()), tpuAllowed = true, checkedAt = 5)
         assertEquals(r, OwnModel.fromJson(r.toJson().toString()))

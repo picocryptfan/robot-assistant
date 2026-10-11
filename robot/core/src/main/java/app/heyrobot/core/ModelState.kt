@@ -151,6 +151,9 @@ object ModelFiles {
     /** Your own file's record (core OwnModel), written by the main app after the check. */
     const val OWN_RECORD = "own_model.json"
 
+    /** A file's size and modification time: what the verified marks and your own file's record keep of the file checked. */
+    fun fingerprint(bytes: Long, modified: Long): String = "$bytes|$modified"
+
     /** Written by :brain while an engine is loaded (BrainLoaded), so the main app never deletes a model in use. */
     const val LOADED = "brain_loaded.txt"
 
@@ -354,6 +357,36 @@ enum class ModelAvailability {
 /** What :brain is asked to load: the file, where it runs, its context, and the file's fingerprint (size and time). */
 data class LoadPlan(val model: BrainModel, val path: String, val backend: ModelBackend, val contextTokens: Int, val fingerprint: String)
 
+/**
+ * :brain's own say before it loads a model, whatever the assistant asked for (0.4.1): it reads the app's own records
+ * again rather than trust the request. A built-in model loads only where it runs, and only from the file whose SHA-256
+ * the app checked (its verified mark matches the file now); your own file only as the app recorded it after its check,
+ * unchanged since, and on the TPU only once you allowed it there. (The content check then reads the file's header.)
+ */
+object LoadCheck {
+    const val CHANGED = "The model file changed since Robot checked it. Open the Robot app › Model to check it again."
+
+    /**
+     * Null when [m] may load on [backend]; else why not, in plain words. [fingerprintNow]: the file's now
+     * ([ModelFiles.fingerprint]); [mark]: the built-in model's verified mark; [ownRecord]: your own file's record.
+     */
+    fun refuse(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?): String? {
+        if (m.builtIn) {
+            if (backend != m.backend) return "“${m.title}” runs on the ${m.backend.title} only."
+            return if (mark?.trim() == "${m.sha256}|$fingerprintNow") null else CHANGED
+        }
+        val own = OwnModel.fromJson(ownRecord) ?: return CHANGED
+        if (own.fingerprint != fingerprintNow) return CHANGED
+        val where = own.backend
+        return when {
+            where == backend -> null
+            where == null && own.report.tensorG5Build -> "Your model file waits for you to allow the TPU in the Robot app › Model."
+            where == null -> own.report.unusable ?: "Robot can't run your model file on this phone."
+            else -> "Your model file runs on the ${where.title}, not the ${backend.title}."
+        }
+    }
+}
+
 /** Why Robot used Fast instead of the model you chose (the voice log stores [id]). */
 enum class FallbackWhy(override val id: Int, override val title: String) : LogCode {
     NOT_DOWNLOADED(1, "not downloaded"), NOT_CHECKED(2, "not checked yet"), NEEDS_TPU_OK(3, "waits for you to allow the TPU"),
@@ -362,7 +395,7 @@ enum class FallbackWhy(override val id: Int, override val title: String) : LogCo
 
 /** Why a model didn't load (BrainMsg.Loaded, and the voice log stores [id]). */
 enum class LoadFailure(override val id: Int, override val title: String) : LogCode {
-    NO_FILE(1, "file missing"), NOT_ALLOWED(2, "refused by the content check"), NO_SPACE(3, "no room for its cache"),
+    NO_FILE(1, "file missing"), NOT_ALLOWED(2, "refused by Robot's check of the file"), NO_SPACE(3, "no room for its cache"),
     ENGINE(4, "engine error"), STOPPING(5, "the last model was still stopping"), TIMEOUT(6, "no answer in time"),
     PROCESS(7, "the model process stopped"),
 }
