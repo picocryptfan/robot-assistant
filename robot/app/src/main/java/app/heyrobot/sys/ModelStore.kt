@@ -199,9 +199,9 @@ object ModelStore {
     fun startDownload(ctx: Context, m: BrainModel): String? {
         val url = m.url ?: return "This one has no download: import your file."
         val existing = listOf(file(ctx, m), part(ctx, m)).filter { it.isFile }.sumOf { it.length() } + cacheBytes(ctx, m)
-        // Voice-model downloads under way still need their space (DownloadManager reserves none).
-        ModelLogic.refuseDownload(m, status(ctx, m), freeBytes(ctx), existing, VoiceModelStore.pendingBytes(ctx) + pendingBytes(ctx, except = m), busyWith(ctx))
-            ?.let { return it }
+        // Voice-model and fast-engine downloads under way still need their space (DownloadManager reserves none).
+        val pending = VoiceModelStore.pendingBytes(ctx) + pendingBytes(ctx, except = m) + MtModelStore.pendingBytes(ctx)
+        ModelLogic.refuseDownload(m, status(ctx, m), freeBytes(ctx), existing, pending, busyWith(ctx))?.let { return it }
         file(ctx, m).delete()
         part(ctx, m).delete()
         verifiedMark(ctx, m).delete()
@@ -305,7 +305,8 @@ object ModelStore {
         val reclaim = (listOf(part(ctx, m)) + if (m == BrainModel.OWN) ownFiles(ctx) else listOf(file(ctx, m))).filter { it.isFile }.sumOf { it.length() } +
             cacheBytes(ctx, m)
         return ModelLogic.refuseImport(m, status(ctx, m), docSize(ctx, uri), freeBytes(ctx), reclaim,
-            VoiceModelStore.pendingBytes(ctx) + pendingBytes(ctx, except = m), busyWith(ctx), gguf = m == BrainModel.OWN && docIsGguf(ctx, uri))
+            VoiceModelStore.pendingBytes(ctx) + pendingBytes(ctx, except = m) + MtModelStore.pendingBytes(ctx), busyWith(ctx),
+            gguf = m == BrainModel.OWN && docIsGguf(ctx, uri))
     }
 
     /**

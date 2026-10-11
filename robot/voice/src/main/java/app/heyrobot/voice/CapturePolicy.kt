@@ -56,7 +56,12 @@ class KeywordInputs {
     @Volatile var interrupt: InterruptSensitivity = InterruptSensitivity.MEDIUM
     /** Robot is speaking: "stop" is listened for too. */
     @Volatile var speaking: Boolean = false
+    /**
+     * A conversation is being transcribed (0.5.0) without "Hey robot works during a conversation": the wake phrases
+     * sleep, so nobody's "hey robot" opens the panel mid-conversation; "stop" still works while Robot talks.
+     */
+    @Volatile var wakeOff: Boolean = false
 
-    /** The wake lines for now: [talkWakeLines] while Robot speaks, else [wakeLines]. */
-    fun wake(speaking: Boolean): String = if (speaking) talkWakeLines ?: wakeLines else wakeLines
+    /** The wake lines for now: none while [wakeOff], [talkWakeLines] while Robot speaks, else [wakeLines]. */
+    fun wake(speaking: Boolean): String = if (wakeOff) "" else if (speaking) talkWakeLines ?: wakeLines else wakeLines
 }

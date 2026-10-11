@@ -18,3 +18,48 @@ dependencies {
     implementation('com.google.ai.edge.litert:litert-npu-runtime-google-tensor:2.3.0') { transitive = false }
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0'
 }
+
+// The licence and notice files LiteRT-LM and the NPU runtime ship inside their AARs (their LICENSE and the 2.2 MB
+// THIRD_PARTY_NOTICE.txt; Apache-2.0 section 4) never reach the APK by themselves. This copies them, from the very AARs
+// this module links, into its assets under licenses/notices/ ("<artifact>-LICENSE.txt", "<artifact>-THIRD_PARTY_NOTICE.txt"),
+// for Settings › About › Licences (app/src/main/assets/licenses/components.json names them). The APK's zip compresses
+// them (about 0.3 MB). A missing file fails the build.
+configurations {
+    aarNotices { transitive = false; canBeConsumed = false }
+}
+dependencies {
+    aarNotices 'com.google.ai.edge.litertlm:litertlm-android:0.18.0@aar'
+    aarNotices 'com.google.ai.edge.litert:litert-npu-runtime-google-tensor:2.3.0@aar'
+}
+
+abstract class AarNotices extends DefaultTask {
+    @InputFiles abstract ConfigurableFileCollection getAars()
+    @OutputDirectory abstract DirectoryProperty getOutputDir()
+
+    @TaskAction void copy() {
+        def root = outputDir.get().asFile
+        root.listFiles()?.each { it.deleteDir() }
+        def out = new File(root, 'licenses/notices')
+        out.mkdirs()
+        aars.files.each { aar ->
+            def name = aar.name.replaceAll(/-[0-9][^-]*\.aar$/, '')
+            new java.util.zip.ZipFile(aar).withCloseable { zip ->
+                ['LICENSE': 'LICENSE.txt', 'THIRD_PARTY_NOTICE.txt': 'THIRD_PARTY_NOTICE.txt'].each { entry, as ->
+                    def e = zip.getEntry(entry)
+                    if (e == null) throw new GradleException("${aar.name} has no $entry")
+                    new File(out, "$name-$as").bytes = zip.getInputStream(e).bytes
+                }
+            }
+        }
+    }
+}
+
+def aarNotices = tasks.register('aarNotices', AarNotices) {
+    aars.from(configurations.aarNotices)
+    outputDir = layout.buildDirectory.dir('generated/aar-notices')
+}
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(aarNotices, { it.outputDir })
+    }
+}

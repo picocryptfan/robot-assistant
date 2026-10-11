@@ -30,10 +30,12 @@ import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.sys.ModelStore
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -213,7 +215,8 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit, pri
  * question is asked), and unloads it a few minutes after the panel closes (setting). 0.4.1: the model is the one chosen
  * in Settings › Model when it is ready, else Fast with a message that says why (core ModelChoice); another model in
  * memory is unloaded first, so two never coexist; a chosen model that fails to load is skipped (Fast instead) until you
- * choose it again or its file changes.
+ * choose it again or its file changes. 0.5.0: a conversation session that translates, or a summary being made, holds the
+ * model ([hold]): the unload after the panel closes waits until the last hold goes.
  */
 object BrainKeeper {
     enum class Readiness { UNKNOWN, NO_MODEL, LOADING, READY, FAILED }
@@ -243,6 +246,8 @@ object BrainKeeper {
     private val mutex = Mutex()
     private var client: BrainClient? = null
     private var unloadJob: Job? = null
+    /** Who keeps the model loaded besides the panel (conversation mode, a summary): tokens, so each lets go of its own. */
+    private val holds = HashSet<String>()
     private val deaths = ArrayDeque<Long>()
     /** Models that failed to load in this process, or stopped it, by id: their file's fingerprint then, and which it was. */
     private val failed = HashMap<String, Pair<String, FallbackWhy>>()
@@ -381,6 +386,12 @@ object BrainKeeper {
     }
 
     /**
+     * [ensureLoaded] on the keeper's own scope: a one-shot that stops waiting for it at its start deadline (the fast
+     * engine stands in) leaves the check (or a load) to finish rather than cutting it short.
+     */
+    fun loading(ctx: Context): Deferred<BrainClient?> = scope.async { ensureLoaded(ctx) }
+
+    /**
      * Settings changed (any save, so tapping the chosen model again retries it): forget load failures, and when the
      * model in memory is no longer the one to use, let it go now (its memory, and so the app may delete it).
      */
@@ -399,15 +410,35 @@ object BrainKeeper {
         unloadJob = null
     }
 
-    /** After the panel closed: unload after [minutes] (KEEP_ALWAYS = never, 0 = now). */
+    /** After the panel closed: unload after [minutes] (KEEP_ALWAYS = never, 0 = now), unless something [hold]s it. */
     fun scheduleUnload(minutes: Int) {
         touch()
-        if (minutes < 0) return
+        if (minutes < 0 || held()) return
         unloadJob = scope.launch {
             delay(minutes * 60_000L)
-            release("idle")
+            if (!held()) release("idle")
         }
     }
+
+    private fun held(): Boolean = synchronized(holds) { holds.isNotEmpty() }
+
+    /**
+     * [token] keeps the model loaded (docs/conversation-mode.md 1.1): a session that translates, or a summary being
+     * made, so the unload after the panel closes doesn't drop it midway. Free memory (the tool) still unloads it.
+     */
+    fun hold(token: String) {
+        synchronized(holds) { holds += token }
+        touch()
+    }
+
+    /** [token] lets go; with no hold left and the panel closed, the usual unload after Settings › Model's minutes. */
+    fun releaseHold(token: String) {
+        val last = synchronized(holds) { holds.remove(token) && holds.isEmpty() }
+        if (last && !PanelController.shown && _state.value.readiness == Readiness.READY) scheduleUnload(VoiceHub.settings.keepModelMinutes)
+    }
+
+    /** Ready now, and on what (for translation's choice of engine and deadlines). */
+    val ready: Boolean get() = _state.value.readiness == Readiness.READY
 
     private fun onDeath() {
         synchronized(deaths) { deaths.addLast(System.currentTimeMillis()) }

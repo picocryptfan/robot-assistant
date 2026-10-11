@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import app.heyrobot.core.EngineState
+import app.heyrobot.core.Heard
 import app.heyrobot.core.RLog
 import app.heyrobot.core.SttBench
 import app.heyrobot.core.SttEnd
@@ -45,6 +46,19 @@ internal class Recognizer private constructor(private val r: OfflineRecognizer) 
             // Parakeet v3 picks the language itself, but sherpa-onnx 1.13.8 does not report it for this model
             // (result.lang is empty; checked with the same build on the build machine): text only.
             return r.getResult(s).text.trim()
+        } finally {
+            s.release()
+        }
+    }
+
+    /** Conversation mode (0.5.0): the text with its tokens and their times, for word times and the re-hear check. */
+    fun heard(samples: FloatArray): Heard {
+        val s = r.createStream()
+        try {
+            s.acceptWaveform(samples, Listener.SAMPLE_RATE)
+            r.decode(s)
+            val res = r.getResult(s)
+            return Heard(res.text.trim(), res.tokens.toList(), res.timestamps.toList())
         } finally {
             s.release()
         }
@@ -107,6 +121,8 @@ class SherpaSpeechToText internal constructor(
     private var vad: Vad? = null
     @Volatile private var session: Session? = null
     @Volatile private var livePartials = true
+    /** Conversation sessions and the Transcription check holding the model loaded (the idle unload waits for them). */
+    private val holds = AtomicInteger()
 
     private inner class Session(val id: Int, val listener: SpeechToText.Listener, val source: AudioFrames, val own: Listener?) {
         val buffer = SampleBuffer(MAX_SAMPLES)
@@ -403,15 +419,31 @@ class SherpaSpeechToText internal constructor(
     }
 
     override fun trim(): Boolean {
-        if (session != null || slot.value == null) return false
+        if (session != null || holds.get() > 0 || slot.value == null) return false
         unload()
         return true
     }
 
-    /** VoiceEngines' idle check: free the model if a question has not used it for 5 minutes (never mid-question). */
+    /** VoiceEngines' idle check: free the model if a question has not used it for 5 minutes (never mid-question or mid-session). */
     internal fun unloadIfIdle() {
-        worker.execute { slot.releaseIfIdle(inUse = session != null) }
+        worker.execute { slot.releaseIfIdle(inUse = session != null || holds.get() > 0) }
     }
+
+    /** A conversation (or the Transcription check) keeps the model loaded while it runs ([on]), and lets it go after. */
+    internal fun hold(on: Boolean) {
+        if (on) holds.incrementAndGet() else holds.updateAndGet { maxOf(0, it - 1) }
+    }
+
+    /**
+     * Conversation mode: decodes one stretch of audio on this engine's worker, in turn with questions (one decode at a
+     * time, one model in memory), and waits for it. Null when the model can't be loaded. In memory only.
+     */
+    internal fun decodeHeard(samples: FloatArray): Pair<Heard, Long>? = worker.submit(Callable {
+        val r = load() ?: return@Callable null
+        val t0 = SystemClock.elapsedRealtime()
+        val h = if (samples.size < MIN_SAMPLES) Heard("") else r.heard(samples)
+        h to (SystemClock.elapsedRealtime() - t0)
+    }).get()
 
     /** "Test voice speed" (benchmark thread): load afresh, decode the clip 3 times and a partial-sized piece once. */
     internal fun bench(clip: FloatArray, expected: String): SttBench? = worker.submit(Callable {

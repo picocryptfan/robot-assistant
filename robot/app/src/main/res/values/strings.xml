@@ -1,4 +1,8 @@
 <resources>
     <string name="app_name">Robot</string>
     <string name="notes_name">Robot Notes</string>
+    <string name="shortcut_transcribe">Transcribe</string>
+    <string name="shortcut_transcribe_long">Transcribe a conversation</string>
+    <string name="shortcut_transcripts">Transcripts</string>
+    <string name="tile_transcribe">Transcribe</string>
 </resources>

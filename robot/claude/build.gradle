@@ -14,12 +14,16 @@ android {
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = '17' }
 }
-// The :voice process's link to the Claude API (docs/ask-claude.md): the only module that uses the official Anthropic Java
-// SDK (MIT; its OkHttp client, Jackson and Kotlin reflection come with it, see THIRD_PARTY.md). Only the app's assistant
-// package (the :voice process) depends on it; the main process never loads it (ProcessIsolationTest, verify_apk.sh).
+// The :voice process's link to the helpers (docs/ask-claude.md; every helper since 0.6.0): the only module that uses the
+// official Anthropic Java SDK (MIT; its OkHttp client, Jackson and Kotlin reflection come with it, see THIRD_PARTY.md),
+// and the only one with network code for the other helpers (app.heyrobot.helpers: Chat Completions and the Responses API
+// on plain OkHttp). Only the app's assistant package (the :voice process) depends on it; the main process never loads it
+// (ProcessIsolationTest, verify_apk.sh).
 dependencies {
     implementation project(':core')
     implementation 'com.anthropic:anthropic-java:2.71.0'
+    // The version the SDK already brings, named so the helpers' own transport doesn't rest on a transitive dependency.
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
     // Network tests against a local mock server through the SDK's base-URL override: no real key, no network.
     testImplementation 'junit:junit:4.13.2'

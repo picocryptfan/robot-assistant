@@ -159,7 +159,7 @@ object VoiceModelStore {
         // Files already downloaded (an install that failed to write) are not fetched again; other downloads under way
         // (Gemma, the other voice models) will still need their space.
         val staged = rem.filter { stagedComplete(ctx, b, it) }.map { it.name }.toSet()
-        val pending = pendingBytes(ctx, except = b) + ModelStore.pendingBytes(ctx)
+        val pending = pendingBytes(ctx, except = b) + ModelStore.pendingBytes(ctx) + MtModelStore.pendingBytes(ctx)
         VoiceModelLogic.refuseDownload(b, snapshot(ctx, b).status, rem, freeBytes(ctx), staged, pending)?.let { return it }
         val dir = staging(ctx, b) ?: return "The phone's storage isn't available right now."
         dir.mkdirs()

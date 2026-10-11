@@ -129,6 +129,20 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
                 ) { if (f?.active != true) FilledTonalButton(onClick = a.openAssistantSettings) { Text("Set") } }
             }
         }
+        // 0.5.0: conversation mode.
+        SectionCard("Conversation") {
+            Text("Robot writes down a conversation, in French and English, translates it face to face, and summarizes it, on this phone.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilledTonalButton(onClick = a.transcribe, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Icon(RIcons.Mic, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Transcribe")
+                }
+                FilledTonalButton(onClick = a.interpret, modifier = Modifier.heightIn(min = 48.dp)) { Text("Translate") }
+            }
+            TextButton(onClick = { a.openPage(Page.Transcripts) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Transcripts") }
+        }
         SectionCard("Ways to ask") {
             Tip(RIcons.Phone, "Swipe up from a bottom corner", "Works on the lock screen too. Robot can see the screen you're on.")
             Tip(RIcons.Mic, "Say “hey robot”", "Even with the screen off. Turn it off in Settings.")
@@ -165,9 +179,10 @@ private fun ConversationRow(c: StoredConversation, onClick: () -> Unit) {
     ) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Claude took part: a small cloud.
+                // A helper took part: a small cloud, or a house when only your own server did.
                 if (c.claude) {
-                    Icon(RIcons.Cloud, "With Claude", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
+                    val names = c.turns.filter { it.claude }.map { it.author }.distinct().joinToString(", ")
+                    Icon(if (c.homeOnly) RIcons.Home else RIcons.Cloud, "With $names", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
                     Spacer(Modifier.width(6.dp))
                 }
                 Text(c.title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -258,8 +273,8 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                 }
                 else AssistantBubble(t.text, streaming = false, stopped = t.stopped, error = t.error,
                     actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
-                    claude = t.claude, readBack = t.readBack,
-                    footer = claudeFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { ClaudeCost.line(it / 1e6) }))
+                    claude = t.claude, readBack = t.readBack, by = t.by, home = t.home,
+                    footer = claudeFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { ClaudeCost.line(it / 1e6) }, t.by))
             }
         }
     }

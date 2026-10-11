@@ -1,0 +1,371 @@
+# Tatoeba CC0 1.0 sentences (public domain) held out of core/src/main/assets/langid/fr-en.tsv by tools/make_langid.py.
+# export sha256 74a1577f35d9f11134b281be3125cf17e5531b8a29054f68b3e858418387e17f. Columns: Tatoeba sentence id, language, this script's answer (? = not sure), its margin x 10, sentence.
+8359461	fr	fr	1345	J’aime l’argent.
+9127559	fr	fr	532	Bien sûr !
+9280715	fr	fr	682	Quel bonheur !
+9917336	fr	fr	278	Quel barnum !
+10535948	fr	fr	1198	C'est instructif.
+10535949	fr	fr	1004	C'est parlant.
+10597774	fr	fr	952	Bonne année 2022/2972 !
+10609676	fr	fr	581	Cause toujours !
+10609718	fr	en	15	Ben voyons !
+10628460	fr	fr	340	Douce nuit !
+10669584	fr	fr	587	Alors là !
+11226801	fr	fr	162	Reste fort.
+11246336	fr	fr	257	Sois brillant !
+11260641	fr	fr	1641	C'était spectaculaire.
+11260766	fr	fr	1678	C'est l'inflation.
+11260872	fr	fr	1656	C'est poétique.
+11260881	fr	fr	361	Non, mais !
+11260979	fr	fr	1500	C'était intense.
+11508621	fr	fr	139	Ah oui ?
+7116049	fr	fr	1177	Personne n'aime personne !
+8260584	fr	fr	1628	Rien d'autre n'importe.
+8288241	fr	fr	698	Je suis fou !
+8724270	fr	fr	1279	Quoi qu'il arrive !
+8871421	fr	fr	920	Vous êtes tordue.
+9808438	fr	fr	1140	Malheur à moi !
+9830064	fr	fr	486	Quel triste sort !
+10517049	fr	fr	591	Il voyage demain.
+10517552	fr	fr	789	Cela vous concerne.
+10535960	fr	fr	1226	À quel niveau ?
+10535961	fr	fr	963	À quel moment ?
+10535983	fr	fr	1844	J'ai passé l'âge.
+10536063	fr	fr	1618	À quelle fréquence ?
+10564367	fr	fr	957	Nul n'est indispensable.
+10576807	fr	fr	812	Pas de quartier !
+10587349	fr	fr	1402	C'est encore moi.
+10587394	fr	fr	1061	J'en fais partie.
+10587398	fr	fr	822	À la charge !
+10609650	fr	fr	736	Allez, pousse-toi !
+10609678	fr	fr	1224	Fais-voir ça !
+10609804	fr	fr	1360	C'est plus propre.
+10611926	fr	fr	770	T'as assez mangé ?
+10615476	fr	fr	407	Tu es persuasif.
+10637913	fr	fr	291	Calme ta joie.
+10655914	fr	fr	984	J'en tiens compte.
+10659325	fr	fr	683	Elle est fragile.
+10661446	fr	fr	541	On est coincé.
+10676944	fr	fr	1083	T'en veux encore ?
+10676956	fr	fr	1189	J'ai trop faim.
+11069940	fr	fr	1603	C’est l’univers connu.
+11070038	fr	fr	1441	C'est mon idéal.
+11137560	fr	fr	684	Rien ne presse !
+11205161	fr	fr	807	T'as la pêche !
+11251390	fr	fr	1427	J'étais en rogne.
+11253331	fr	fr	745	Il est compatible.
+11260704	fr	fr	1197	J'en ai plusieurs.
+11260996	fr	fr	1807	C'est la solidarité.
+11263560	fr	fr	2548	C'était très instructif.
+11263581	fr	fr	1428	Elle est colérique.
+11502510	fr	fr	443	On est quitte ?
+11506047	fr	fr	932	Est-il majeur ?
+11510577	fr	fr	651	T'as pas honte ?
+12001175	fr	fr	1238	Ça le fait ?
+12504630	fr	fr	1294	J'ai connu pire.
+12699918	fr	fr	1152	L'art exprime l'âme.
+12699951	fr	fr	2211	L'empirisme valorise l'expérience.
+12699969	fr	fr	1440	L'empirisme valorise l'observation.
+12699978	fr	fr	1973	L'ontologie questionne l'être.
+12699996	fr	fr	2660	L'idéalisme privilégie l'idée.
+12721241	fr	fr	1825	Savoir, c'est pouvoir.
+8646840	fr	fr	2216	J’aime vraiment le soleil.
+9811753	fr	fr	912	Comment fonctionne ce service ?
+10587397	fr	fr	1294	À table, les enfants !
+10646705	fr	fr	1815	J'ai fort à faire.
+11069951	fr	fr	1185	Sois aimable avec lui.
+11263614	fr	fr	1313	Tu n'es pas clair.
+11524571	fr	fr	1343	Vous êtes bien aimable.
+12699935	fr	fr	1962	Le savoir libère l'esprit.
+8081329	fr	fr	1588	Passer du coq à l'âne.
+8437768	fr	fr	1390	Que veux-tu me dire ?
+8969683	fr	fr	1275	Il ne reste plus rien !
+9811639	fr	fr	1614	Quelle solution devrais-je choisir ?
+10543198	fr	fr	2157	Il s'est donné à fond.
+10663468	fr	fr	1078	On ira à sa rencontre.
+10663494	fr	fr	1184	Trop de bruit pour rien.
+11260765	fr	fr	1365	Il a une conscience professionnelle.
+11529482	fr	fr	1706	Je vais donner au mieux.
+12699958	fr	fr	1185	Le scepticisme doute de tout.
+9811658	fr	fr	2105	Quels sont vos critères de réussite ?
+10517045	fr	fr	1717	Cela fait 5 heures que je t’attends !
+10519286	fr	fr	1551	Où vas-tu dormir ce soir ?
+10519293	fr	fr	1123	Sur quel meuble poser ce vase ?
+10546526	fr	fr	1828	Ce sont des jeux de mots.
+10566638	fr	fr	980	Il y met tout son cœur.
+10587402	fr	fr	1617	Le jour de gloire est arrivé.
+10592554	fr	fr	1092	On avait un plan en béton.
+10609715	fr	fr	1324	Tu vas encore pas le plaindre ?
+10657001	fr	fr	1156	Je n'y arrive pas du tout.
+10663467	fr	fr	2393	Je n'arrive plus à te suivre.
+10757666	fr	fr	3048	Il m'a dit qu'il était malade.
+11260752	fr	fr	2068	Quel sens veux-tu lui donner ?
+11537943	fr	fr	1945	J'ai pris les choses en main.
+11542157	fr	fr	2802	Celui-là, c'est moi, en colère.
+12699963	fr	fr	2055	Le déterminisme nie le libre arbitre.
+12754295	fr	fr	1323	Le chef cuisinier dirige la cuisine.
+7163247	fr	fr	1920	Qui veut voyager loin, ménage sa monture.
+10559104	fr	fr	1321	Nous avons le plan entier en visuel.
+10669588	fr	fr	2033	Tu es un vrai moulin à paroles.
+11170179	fr	fr	2839	Je te souhaite le meilleur pour l’avenir.
+11260655	fr	fr	1677	Il faut limiter la propagation du feu.
+12704914	fr	fr	2381	La flexibilité adaptative répond efficacement au changement.
+12749580	fr	fr	2272	Les vrais amis sont un soutien inconditionnel.
+12749628	fr	fr	2875	La paix se construit dans l'écoute mutuelle.
+12704841	fr	fr	2789	La curiosité alimente une vie riche en expériences.
+12704867	fr	fr	2430	L'auto-compassion nous soutient dans les moments difficiles.
+12733418	fr	fr	2419	Tu crois qu'il a fait le bon choix ?
+12745021	fr	fr	3946	Le droit des contrats régule les échanges économiques.
+12749529	fr	fr	2022	La paix se construit dans le respect mutuel.
+12749610	fr	fr	3064	La paix intérieure est une source de sagesse.
+12749648	fr	fr	3695	Pardonner ouvre le cœur à de nouvelles expériences.
+12749994	fr	fr	2107	Le pardon libère le cœur de la haine.
+12752534	fr	fr	1512	Je lave la voiture avant le long trajet.
+12754044	fr	fr	6851	L'ingénieur sécurité est spécialisé en sécurité des systèmes.
+12754511	fr	fr	5603	L'ingénieur réseau conçoit et gère les réseaux informatiques.
+9811754	fr	fr	3767	Quelles sont les étapes pour bien utiliser ce produit ?
+9997036	fr	fr	2870	Une mauvaise parole continue à faire mal très longtemps.
+12737348	fr	fr	4895	L'approche cognitivo-sémantique étudie les représentations mentales du sens.
+12737738	fr	fr	4252	L'analyse cognitivo-sémantique examine les représentations mentales du sens.
+12737775	fr	fr	4209	L'approche cognitivo-argumentative étudie les processus mentaux dans l'argumentation.
+12750145	fr	fr	3504	La persévérance dans l'adversité est la marque des grands.
+12752764	fr	fr	2861	Le soleil baisse à l'horizon en fin de journée.
+12701413	fr	fr	5389	Comment l'éthique peut-elle guider le développement de l'intelligence artificielle ?
+12701476	fr	fr	3453	Comment la philosophie féministe renouvelle-t-elle la tradition philosophique ?
+12736484	fr	fr	3948	La fixation d'objectifs écologiques aligne réussite personnelle et bien collectif.
+12737287	fr	fr	3819	L'analyse sémantico-discursive examine le sens dans son contexte d'énonciation.
+12745020	fr	fr	5918	La géoéconomie des données redéfinit les enjeux de souveraineté numérique.
+12745186	fr	fr	5694	Comment la géoéconomie des données redéfinit-elle la souveraineté numérique ?
+12750236	fr	fr	4508	On pourrait se faire une soirée cinéma à la maison.
+12756992	fr	fr	4325	On pourrait se retrouver pour parler des enjeux géopolitiques actuels.
+12758928	fr	fr	5799	J’ai suivi un atelier sur la pâtisserie, c’était vraiment enrichissant.
+11216970	fr	fr	2827	Peut-on apprendre la philo avec vous en partant de zéro ?
+12701777	fr	fr	7842	J’ai découvert un documentaire sur l’évolution de l’art numérique, c’était fascinant.
+12704094	fr	fr	4238	L'illusion de l'introspection influence-t-elle notre théorie de la conscience ?
+12736707	fr	fr	4494	L'effet de primauté facilite le rappel des premiers éléments d'une liste.
+12737368	fr	fr	3032	L'analyse morpho-lexicale examine la formation et le sens des mots.
+12741609	fr	fr	6507	La technologie des cellules solaires à points quantiques améliore l'efficacité énergétique.
+12744994	fr	fr	3865	La géoéconomie redéfinit les rapports de force sur la scène internationale.
+12745466	fr	fr	4038	Le management de l'innovation publique stimule-t-il la créativité administrative ?
+12749382	fr	fr	3937	Le concept de liminalité s'applique-t-il aux espaces urbains contemporains ?
+12749857	fr	fr	3071	La chaleur du soleil se fait douce à travers les nuages.
+12751962	fr	fr	4628	J’ai découvert un nouveau restaurant en ville, tu voudrais y aller ?
+12754578	fr	fr	3294	L'assistant administration des ventes aide à la gestion administrative des ventes.
+12756396	fr	fr	2872	On pourrait faire une balade en forêt, profiter de la nature.
+12757023	fr	fr	4349	On pourrait organiser une discussion sur l’importance du contexte en traduction.
+12758671	fr	fr	4527	On pourrait organiser une discussion sur l’importance du service après-vente.
+10125304	fr	fr	3300	Je crois me rappeler vous avoir donné mon avis à ce sujet.
+11021545	fr	fr	3052	Ben dis donc, écoute-moi : toi, tu veux tout, tout de suite !
+12704203	fr	fr	4599	La théorie de l'élaboration organise les contenus d'apprentissage du simple au complexe.
+12739937	fr	fr	6291	J’ai suivi une formation sur l’art de la correspondance, c’était vraiment instructif.
+12740328	fr	fr	6675	L'automatisation des processus de production est essentielle pour améliorer l'efficacité dans l'industrie.
+12740366	fr	fr	6464	J’ai suivi un atelier sur l’optimisation des processus industriels, c’était vraiment enrichissant.
+12749428	fr	fr	5241	La notion de liminalité numérique s'applique-t-elle aux identités en ligne ?
+12756351	fr	fr	5671	J’ai passé un moment à lire dans le jardin, c’était vraiment relaxant.
+12756413	fr	fr	3592	Le chat aime tellement le soleil qu’il cherche toujours le moindre rayon.
+12756762	fr	fr	4332	Le vent est parfait pour une journée de voile, qu’en penses-tu ?
+12758355	fr	fr	7124	J’ai lu un article sur les pratiques d’hygiène dans l’histoire, c’était passionnant.
+12758509	fr	fr	5824	J’ai lu un article sur les techniques de cadrage, c’était très instructif.
+12758575	fr	fr	7164	J’ai lu un livre sur l’histoire des effets spéciaux, c’était vraiment captivant.
+12758804	fr	fr	5183	On pourrait discuter des meilleures pratiques pour optimiser un plan d’épargne retraite.
+12759121	fr	fr	4122	La gestion des biais est cruciale pour garantir l’objectivité de la recherche.
+8310532	en	en	643	Get involved.
+8724280	en	en	793	Whatever happens!
+8737547	en	en	656	He sings.
+8787143	en	en	706	I'm spent.
+8808718	en	en	544	Eat, eat!
+8809687	en	en	853	All good?
+8937223	en	en	694	Sounds great.
+8969692	en	en	1117	Life's good!
+9008143	en	en	586	Absolutely not!
+9164573	en	en	776	They're organic.
+9164574	en	en	876	They're vegan.
+9202824	en	en	812	What happens?
+9280725	en	en	933	What happiness!
+9283119	en	en	395	Drink me.
+9725066	en	en	1008	That's valid.
+9756542	en	en	1013	It's full.
+9767141	en	en	637	Let them!
+9769194	en	en	181	Oh, nice.
+9805638	en	en	612	Describe yourself.
+10028694	en	en	406	Continue reading.
+10119027	en	en	1015	She's asleep.
+10161526	en	en	895	It's hidden.
+10209162	en	en	624	Stay weird.
+10317655	en	en	531	People lie.
+10327469	en	en	1646	That's wild.
+10629518	en	en	808	Arm yourself.
+10756509	en	en	853	Look elsewhere.
+11144389	en	en	294	Poor us!
+11266171	en	en	240	Pick me.
+11267026	en	en	687	Everybody run!
+11462218	en	en	691	Many disagree.
+11469286	en	en	1002	You asked.
+11478892	en	en	690	English, please.
+11857722	en	en	441	You paint?
+11987699	en	en	898	I'm human.
+12003444	en	en	565	Cool story.
+12006195	en	en	467	Let's collaborate.
+12154955	en	en	402	Oh, please.
+12245442	en	en	718	We're live.
+12249209	en	en	770	You're valid.
+12249217	en	en	1165	She's back.
+12262067	en	en	444	Just write.
+12343856	en	en	614	Tom passed.
+12361527	en	en	598	Fall back!
+12389881	en	en	209	Oh, perfect!
+12389979	en	en	408	Be safe.
+12436836	en	en	153	Ten-four.
+12472084	en	en	642	Cookie is 15.
+12820406	en	en	584	Imagine that.
+13700136	en	en	309	Six, seven!
+7969674	en	en	1422	Isn't that blue?
+8613713	en	en	892	Winter never left.
+8737568	en	en	1154	He was in.
+8737604	en	en	1230	He walked past.
+8895476	en	en	1318	We like diversity.
+8988034	en	en	1624	Right; thank you.
+9433378	en	en	774	Tom says hi.
+9737299	en	en	425	Kittens are cute.
+9738395	en	en	1315	That's a no.
+9750006	en	en	1329	Tom's left-handed.
+9754506	en	en	472	Sleep surprised me.
+9769310	en	en	372	Spiders are cute.
+9818416	en	en	1434	Is he, though?
+9954797	en	en	814	Yiddish is fun.
+9957843	en	en	1700	I'm always confused.
+10031067	en	en	1815	That isn't helpful.
+10100699	en	en	1098	She hates flying.
+10114096	en	en	788	Leave it running.
+10117053	en	en	851	Bring your phone.
+10158662	en	en	1619	What's the combination?
+10159591	en	en	1262	You dropped this.
+10176419	en	en	909	Feel the rhythm.
+10359359	en	en	1669	We helped people.
+10372891	en	en	533	Space is big.
+10543119	en	en	722	You deserve happiness.
+11078367	en	en	1271	You have agency.
+11166737	en	en	1148	That translation works.
+11188965	en	en	1015	It's beyond repair.
+11237507	en	en	994	You hear me?
+11362268	en	en	1459	Children are people.
+11469322	en	en	1312	Here, hold this.
+11538897	en	en	714	Raise the roof!
+11566362	en	en	908	Mushrooms are wise.
+11585970	en	en	1512	It's that time.
+11633314	en	en	694	Mutual aid helps.
+11959325	en	en	572	Bring a friend.
+11986061	en	en	1019	It isn't essential.
+11998109	en	en	718	Do chickens fly?
+12048233	en	en	1310	No it won't.
+12189165	en	en	1277	Tom, don't go.
+12192773	en	en	798	You catch me?
+12361254	en	en	742	I recognize it.
+12381621	en	en	293	Run in place.
+12389909	en	en	1446	There's light rain.
+12401013	en	en	584	Victory is possible.
+12475161	en	en	1327	You're not coming?
+12766712	en	en	726	Information shapes reality.
+12766789	en	en	142	Recognition opens doors.
+12775154	en	en	508	He enjoys challenges.
+12777637	en	en	733	Is love eternal?
+8276352	en	en	1000	I am beside myself!
+8813341	en	en	1165	She wants some rest.
+9231858	en	en	1276	Don't have a fit!
+9988287	en	en	1059	I bought a potato.
+10100942	en	en	700	Mary got a raise.
+10126466	en	en	1827	When is she leaving?
+10355562	en	en	1489	He thinks he's important.
+11068884	en	en	1047	Tom has super speed.
+11233288	en	en	1039	How's dinner coming along?
+11267024	en	en	1876	I'd been there before.
+12214591	en	en	1538	Tom is taking forever.
+12401110	en	en	1913	Do you hear yourself?
+12424633	en	en	1693	That wasn't an issue.
+12777737	en	en	1053	Does chaos create order?
+8089833	en	en	1465	Wild animals are not pets.
+8608128	en	en	1885	I'm most definitely not straight.
+8671876	en	en	2344	I'm hungry for your words.
+8829323	en	en	1501	We gave him the apple.
+8902876	en	en	1254	Tom sent his sandwich back.
+9972830	en	en	1932	Tom turned his life around.
+10108802	en	en	2131	My mom doesn't like animals.
+10147472	en	en	1428	I'll make it next time.
+11036925	en	en	1731	Only the rich get credit.
+11262840	en	en	2117	I'm not built for that.
+11550965	en	en	1949	He's always been a conservative.
+11908773	en	en	2029	It's not a real thing.
+11988228	en	en	2672	Didn't you make that up?
+12336018	en	en	2204	I don't like this band.
+12391107	en	en	1936	Why do we have rivers?
+12435360	en	en	1769	It sounds weird to hear.
+12768136	en	en	1693	Nothing is impossible with determination.
+12775000	en	en	2385	Do they need more research?
+12776988	en	en	1510	They campaign for economic reform.
+12777214	en	en	1217	They recorded a live performance.
+7983654	en	en	2543	Tom doesn't like his coffee hot.
+8994355	en	en	1705	These kittens are just too precious.
+10157124	en	en	2483	I didn't mean to break it.
+10540044	en	en	1578	None of the pieces fit together.
+10742756	en	en	2308	I think it's in the basement.
+10808836	en	en	1635	Tom seemed out of his element.
+11700297	en	en	2073	This is very stream-of-consciousness.
+11903421	en	en	2976	The child isn't learning to talk.
+12140198	en	en	2818	What special knowledge do you have?
+12386675	en	en	1555	Tom passed out under the table.
+12475571	en	en	1078	My son is an honor student.
+12765955	en	en	1276	Has the revolution gained international support?
+12766784	en	en	1923	Representation gives power to the marginalized.
+12769285	en	en	1290	His strength lies in his stillness.
+12771049	en	en	2071	How much longer can this last?
+12773266	en	en	1971	The sooner we act, the better.
+12773376	en	en	1537	Could you imagine a better outcome?
+12773419	en	en	1618	Let her choose her own path.
+12773483	en	en	2878	May they learn from their mistakes.
+12773514	en	en	2747	What’s the next step from here?
+12773704	en	en	2336	Never had they seen such determination.
+12775108	en	en	2140	Are you ready to learn more?
+12775357	en	en	1960	They decided to wait until dark.
+12777393	en	en	1416	She felt safe in his presence.
+12777401	en	en	1565	She gave him her complete trust.
+12777850	en	en	1791	Is there purpose in every moment?
+8310487	en	en	2232	These languages are currently under community development.
+9510621	en	en	2279	I don't want to become a lawyer.
+10066308	en	en	2699	I've been doing better at that lately.
+10719766	en	en	2401	I'm not giving them my email address.
+10735851	en	en	2779	The look in her eyes said everything.
+10830090	en	en	1989	Call me if you're able to come.
+11669690	en	en	3765	That's not the way we do things.
+12197746	en	en	2038	You can always call or text me.
+12219165	en	en	2400	If I said that, I'd be lying.
+12770639	en	en	2375	They walk the path of quiet courage.
+12770668	en	en	2550	Do the waves carry your dreams away?
+12773206	en	en	2036	Few have the courage to stand alone.
+12773603	en	en	3232	May they find the peace they seek.
+12773651	en	en	3200	Had we known, we’d have planned better.
+12776673	en	en	2143	He whispered a joke in her ear.
+12777591	en	en	2358	Is there a reason behind every choice?
+10082552	en	en	3597	Do you know where he goes to school?
+10333074	en	en	2798	I love the first few days of fall.
+12131461	en	en	3631	Tom is always open to trying new things.
+12766676	en	en	3256	The future is what we make of it.
+12767845	en	en	2214	Resilience allows us to rise after we fall.
+12768702	en	en	2292	We stand together, united in purpose and spirit.
+12769385	en	en	2905	He listens to the songs of the earth.
+12775974	en	en	2669	The king’s speech brought the court to silence.
+12776724	en	en	2309	He made her laugh like no one else.
+12776857	en	en	2975	She seeks new ways to express her creativity.
+12777483	en	en	2969	She felt their bond grow stronger with time.
+9963620	en	en	3312	I guess I'm not going anywhere any time soon.
+10318356	en	en	2677	Just keep focusing on your job and working hard.
+11077652	en	en	3028	Cookie likes him, so he's probably a good guy.
+11178278	en	en	4046	This is too good to be something you drew.
+11257812	en	en	2476	Better to be alone than in a bad company.
+12475171	en	en	1990	Is there an open bar or a cash bar?
+11787562	en	en	2488	My boss still needs to sign off on the plan.
+12140208	en	en	4270	What do you feel is the meaning of your life?
+12249232	en	en	3579	I have to wait a whole year to get that.
+12767969	en	en	3728	Tom believes that protecting the earth is a shared responsibility.
+9805886	en	en	5637	What three things do you think of the most each day?
+11900672	en	en	4815	You can judge someone by what they do and don't care about.
+12768627	en	en	3916	I reflect upon the beauty of the world in all its forms.

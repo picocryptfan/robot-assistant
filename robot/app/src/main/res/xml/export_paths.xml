@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 0.5.0: a transcript exported for the share sheet (Markdown or text), written only when you share it and removed at the
+     next export or when transcripts are deleted. Nothing else is ever served. -->
+<paths>
+    <cache-path name="exports" path="exports/" />
+</paths>

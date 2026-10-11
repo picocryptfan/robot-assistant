@@ -49,6 +49,7 @@ import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.ModelTerms
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.ToolGroup
@@ -62,7 +63,8 @@ import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.Calendars
-import app.heyrobot.sys.ClaudeKeyFiles
+import app.heyrobot.sys.HelperKeyFiles
+import app.heyrobot.sys.HelperWindow
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
@@ -72,8 +74,14 @@ import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
+import app.heyrobot.sys.Transcripts
+import app.heyrobot.sys.VoiceprintFiles
+import app.heyrobot.core.ConvEntry
 import app.heyrobot.sys.VoiceModelStore
+import app.heyrobot.sys.MtModelStore
+import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.settings.SettingsNav
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -115,7 +123,19 @@ class MainActivity : ComponentActivity() {
     private fun routeOf(i: Intent?): String? = when {
         i == null -> null
         i.component?.className == AppPages.NOTES_ALIAS -> AppPages.NOTES
-        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.MODEL }
+        // 0.5.0: a long press on the "Transcribe" tile.
+        i.action == "android.service.quicksettings.action.QS_TILE_PREFERENCES" -> AppPages.CONVERSATION_SETTINGS
+        // 0.5.0: the Transcripts library, or one transcript (the transcript screen's "Open", the "Transcripts" shortcut).
+        i.getStringExtra(AppPages.EXTRA) == AppPages.TRANSCRIPTS ->
+            i.getStringExtra(AppPages.EXTRA_TRANSCRIPT)?.takeIf { app.heyrobot.core.TranscriptIds.valid(it) }?.let { id ->
+                // A summary's [14:03] link: that line in view (phase 5.6).
+                val line = i.getIntExtra(AppPages.EXTRA_LINE, -1)
+                "${AppPages.TRANSCRIPTS}:$id" + if (line >= 0) ":$line" else ""
+            } ?: AppPages.TRANSCRIPTS
+        // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
+        // Model from a chat-only model's answer to an action (0.4.3).
+        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
+            it == AppPages.MODEL || it == AppPages.HELPERS }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -144,6 +164,19 @@ sealed class Page {
     data class PersonEdit(val id: String?) : Page()
     /** Settings › Safety & privacy (0.4.0). */
     data object Safety : Page()
+    /** Settings › About › Licences (0.4.5), and one part's licence ([file]: one of its notices instead). */
+    data object Licences : Page()
+    data class Licence(val id: String, val file: String? = null) : Page()
+    /** A Settings page by route (ui/settings/SettingsNav.kt; 0.4.x: "display"). */
+    data class Settings(val route: String) : Page()
+    /** 0.5.0: the Transcripts library, one transcript (and the line a search found), Settings › Conversation. */
+    data object Transcripts : Page()
+    data class Transcript(val id: String, val line: Int? = null) : Page()
+    data object ConversationSettings : Page()
+    /** Settings › Helpers (0.6.0), one helper's page, and "Add a helper". */
+    data object Helpers : Page()
+    data class Helper(val id: String) : Page()
+    data object AddHelper : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -161,6 +194,15 @@ sealed class Page {
                     People -> "people"
                     is PersonEdit -> "person:${p.id.orEmpty()}"
                     Safety -> "safety"
+                    Licences -> "licences"
+                    is Licence -> "licence:${p.id}|${p.file.orEmpty()}"
+                    is Settings -> "settings:${p.route}"
+                    Transcripts -> "transcripts"
+                    is Transcript -> "transcript:${p.id}:${p.line ?: -1}"
+                    ConversationSettings -> "convsettings"
+                    Helpers -> "helpers"
+                    is Helper -> "helper:${p.id}"
+                    AddHelper -> "addhelper"
                 }
             },
             restore = { v ->
@@ -175,6 +217,15 @@ sealed class Page {
                     v == "people" -> People
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
                     v == "safety" -> Safety
+                    v == "licences" -> Licences
+                    v.startsWith("licence:") -> v.removePrefix("licence:").split('|', limit = 2).let { Licence(it[0], it.getOrNull(1)?.ifEmpty { null }) }
+                    v.startsWith("settings:") -> Settings(v.removePrefix("settings:"))
+                    v == "transcripts" -> Transcripts
+                    v.startsWith("transcript:") -> v.split(':').let { Transcript(it[1], it.getOrNull(2)?.toIntOrNull()?.takeIf { n -> n >= 0 }) }
+                    v == "convsettings" -> ConversationSettings
+                    v == "helpers" -> Helpers
+                    v.startsWith("helper:") -> Helper(v.removePrefix("helper:"))
+                    v == "addhelper" -> AddHelper
                     else -> null
                 }
             },
@@ -206,6 +257,10 @@ data class Snapshot(
     val bargeTest: BargeTestResult? = null,
     /** The panel's answer to the nearest place's first-use card (Settings › Actions shows it when newer than its own). */
     val nearestAnswer: NearestAnswer? = null,
+    /** 0.5.0: the fast translation engine's files (Settings › Conversation). */
+    val mt: MtModelStore.Snap? = null,
+    /** 0.5.0: a "me" voiceprint is saved (only that: it is encrypted, and read by the voice process only). */
+    val voiceprint: Boolean = false,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
 
@@ -234,6 +289,7 @@ fun RobotAppUi(activity: MainActivity) {
     var historyTick by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf<String?>(null) }
     var voiceInstalling by remember { mutableStateOf<VoiceBundle?>(null) }
+    var mtInstalling by remember { mutableStateOf(false) }
     /** The model the file picker is choosing a file for. */
     var importTarget by rememberSaveable { mutableStateOf(BrainModel.FAST.id) }
     var notes by remember { mutableStateOf<List<Note>>(emptyList()) }
@@ -269,7 +325,14 @@ fun RobotAppUi(activity: MainActivity) {
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
                     bargeTest = readBargeTest(ctx),
                     nearestAnswer = NearestAnswers.load(ctx),
+                    mt = MtModelStore.snapshot(ctx, MtBundle.FR_EN),
+                    voiceprint = VoiceprintFiles.saved(ctx),
                 )
+            }
+            // The meVoiceprint setting is only a flag, kept in step with the file (made or deleted in the voice process).
+            if (snap.voiceprint != settings.meVoiceprint) {
+                settings = settings.copy(meVoiceprint = snap.voiceprint)
+                SettingsStore.save(ctx, settings)
             }
             // A finished voice download is checked and installed right away, one bundle at a time.
             snap.voice.firstOrNull { it.status == ModelStatus.UNVERIFIED }?.let { v ->
@@ -284,6 +347,18 @@ fun RobotAppUi(activity: MainActivity) {
                         }
                     }, "robot-voice-install").start()
                 }
+            }
+            // The fast translation engine's files too, the same way.
+            if (snap.mt?.status == ModelStatus.UNVERIFIED && !mtInstalling) {
+                mtInstalling = true
+                val app = ctx.applicationContext
+                Thread({
+                    val ok = MtModelStore.install(app, MtBundle.FR_EN)
+                    scope.launch {
+                        mtInstalling = false
+                        say(if (ok) "The fast translation engine is ready." else "The fast translation engine couldn't be installed. See Settings › Conversation.")
+                    }
+                }, "robot-mt-install").start()
             }
             // A finished download (or import) is checked right away: a model is never loaded unchecked.
             snap.models.firstOrNull { it.status == ModelStatus.UNVERIFIED }?.let { u ->
@@ -319,10 +394,15 @@ fun RobotAppUi(activity: MainActivity) {
     val route by activity.route
     // An open note editor saves when it closes (its onDispose), so switching pages here never loses text.
     LaunchedEffect(route) {
-        when (route) {
-            AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
-            AppPages.PERMISSIONS -> page = Page.Setup(people = true)
-            AppPages.MODEL -> { tab = Tab.MODEL; page = null }
+        val r = route
+        when {
+            r == AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
+            r == AppPages.PERMISSIONS -> page = Page.Setup(people = true)
+            r == AppPages.TRANSCRIPTS -> page = Page.Transcripts
+            r != null && r.startsWith(AppPages.TRANSCRIPTS + ":") -> r.split(':').let { p -> page = Page.Transcript(p[1], p.getOrNull(2)?.toIntOrNull()) }
+            r == AppPages.CONVERSATION_SETTINGS -> page = Page.ConversationSettings
+            r == AppPages.HELPERS -> page = Page.Helpers
+            r == AppPages.MODEL -> { tab = Tab.MODEL; page = null }
         }
         activity.route.value = null
     }
@@ -369,6 +449,19 @@ fun RobotAppUi(activity: MainActivity) {
         SettingsStore.save(ctx, s)
     }
 
+    /** A helper's connection window, once the settings that added or changed the helper are on disk (it reads them in the assistant's process). */
+    fun openHelperWindow(id: String, mode: String) {
+        SettingsStore.afterSaves {
+            scope.launch(Dispatchers.Main) {
+                // By name: the main process never refers to the assistant's classes.
+                try {
+                    ctx.startActivity(Intent().setClassName(ctx.packageName, HelperWindow.CLASS).putExtra(HelperWindow.EXTRA_HELPER, id)
+                        .putExtra(HelperWindow.EXTRA_MODE, mode))
+                } catch (_: Exception) { say("Couldn't open the connection window.") }
+            }
+        }
+    }
+
     val actions = AppActions(
         talk = { id ->
             val f = snap.facts
@@ -380,10 +473,11 @@ fun RobotAppUi(activity: MainActivity) {
         openConversation = { page = Page.Conversation(it) },
         askPermissions = { permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) },
         openAssistantSettings = { if (!Assistant.openSettings(ctx)) say("Open Settings > Apps > Default apps > Digital assistant app.") },
-        download = { m -> ModelStore.startDownload(ctx, m)?.let(::say) },
+        // A model whose publisher asks for conditions (core ModelTerms) downloads or imports only once you ticked them.
+        download = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else ModelStore.startDownload(ctx, m)?.let(::say) },
         cancelDownload = { m -> ModelStore.cancelDownload(ctx, m) },
         // Storage Access Framework: no storage permission; a .litertlm or .gguf has no type of its own, so any file.
-        import = { m -> importTarget = m.id; importer.launch(arrayOf("*/*")) },
+        import = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else { importTarget = m.id; importer.launch(arrayOf("*/*")) } },
         verify = { m ->
             if (busy == null) {
                 busy = "verify"
@@ -449,18 +543,37 @@ fun RobotAppUi(activity: MainActivity) {
             } catch (_: Exception) { say("Open Settings › Apps › Robot › Permissions.") }
         },
         openNote = { id -> page = Page.NoteEdit(id) },
-        addClaudeKey = {
-            // By name: the main process never refers to the assistant's classes.
-            try {
-                ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.ClaudeKeyActivity"))
-            } catch (_: Exception) { say("Couldn't open the key window.") }
+        helperWindow = ::openHelperWindow,
+        helperMoved = { id, dropKey ->
+            // The address now names another host: the key saved for the old one goes first (files and the Keystore; the
+            // assistant drops its client), so Test connection, which opens after, can't send it to the new address.
+            scope.launch(Dispatchers.IO) {
+                if (dropKey) {
+                    HelperKeyFiles.delete(ctx, id)
+                    Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+                }
+                withContext(Dispatchers.Main) { openHelperWindow(id, HelperWindow.MODE_TEST) }
+            }
         },
-        deleteClaudeKey = {
+        deleteHelperKey = { id ->
+            val name = settings.helper(id)?.name ?: "helper's"
             // Off the main thread (files and the Keystore); then the assistant drops its client at once.
             scope.launch(Dispatchers.IO) {
-                ClaudeKeyFiles.delete(ctx)
-                Cmd.send(ctx, Cmd.CLAUDE_KEY)
-                withContext(Dispatchers.Main) { say("The Claude key was deleted.") }
+                HelperKeyFiles.delete(ctx, id)
+                Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+                withContext(Dispatchers.Main) { say("The $name key was deleted.") }
+            }
+        },
+        removeHelper = { id ->
+            settings.helper(id)?.let { h ->
+                update(settings.copy(helpers = settings.helpers.filter { it.id != id }, helpDefault = settings.helpDefault.takeIf { it != id }))
+                page = Page.Helpers
+                // Its key (crypto-shredded), what Test connection found and its folder; the assistant ends its conversation.
+                scope.launch(Dispatchers.IO) {
+                    HelperKeyFiles.removeAll(ctx, id)
+                    Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+                    withContext(Dispatchers.Main) { say("${h.name} was removed.") }
+                }
             }
         },
         openPage = { page = it },
@@ -472,6 +585,35 @@ fun RobotAppUi(activity: MainActivity) {
         askMedia = {
             mediaPermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
+        },
+        transcribe = {
+            // By name: the screen runs in the voice process, which starts the session.
+            try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name)) } catch (_: Exception) { say("Couldn't open the transcript screen.") }
+        },
+        interpret = {
+            try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name, app.heyrobot.core.ConvMode.INTERPRET.name)) } catch (_: Exception) {
+                say("Couldn't open the interpreter.")
+            }
+        },
+        openTranscriptionCheck = {
+            try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { say("Couldn't open the Transcription check.") }
+        },
+        mtDownload = { MtModelStore.startDownload(ctx, MtBundle.FR_EN)?.let(::say) },
+        mtCancel = { MtModelStore.cancelDownload(ctx, MtBundle.FR_EN) },
+        mtDelete = { MtModelStore.delete(ctx, MtBundle.FR_EN); say("The fast translation engine's files were deleted.") },
+        openVoiceprint = {
+            // By name: the screen runs in the voice process, which alone holds the speaker model and the voiceprint's key.
+            try {
+                ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.conversation.VoiceprintActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) { say("Couldn't open Your voice.") }
+        },
+        deleteVoiceprint = {
+            // Off the main thread (the file and the Keystore); a running session stops comparing with it at once.
+            scope.launch(Dispatchers.IO) {
+                VoiceprintFiles.delete(ctx)
+                Cmd.send(ctx, Cmd.VOICEPRINT_DELETED)
+                withContext(Dispatchers.Main) { update(settings.copy(meVoiceprint = false)); say("Your voiceprint was deleted.") }
+            }
         },
         openUsageAccess = {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
@@ -491,12 +633,12 @@ fun RobotAppUi(activity: MainActivity) {
     }
 
     BackHandler(enabled = page != null || (tab != Tab.HOME && !(tab == Tab.NOTES && fromNotesIcon))) {
-        if (page != null) page = null else tab = Tab.HOME
+        if (page != null) page = if (page is Page.Helper || page == Page.AddHelper) Page.Helpers else null else tab = Tab.HOME
     }
 
     when (val p = page) {
-        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people)
-        is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.claudeShowCost, onBack = { page = null })
+        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people, helpers = settings.helpers)
+        is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.helperShowCost, onBack = { page = null })
         // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
         is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
             onCreated = { id -> if (page == Page.NoteEdit(null)) page = Page.NoteEdit(id) }, onBack = { page = null; notesTick++ })
@@ -507,6 +649,17 @@ fun RobotAppUi(activity: MainActivity) {
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
         Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.Licences -> LicencesScreen(onOpen = { page = it }, onBack = { page = null })
+        // Back from a notice goes to its part's licence, from a licence to the list.
+        is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it },
+            onBack = { page = if (p.file != null && p.id != ROBOT_LICENCE) Page.Licence(p.id) else Page.Licences })
+        is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = { page = null })
+        is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = { page = Page.Transcripts })
+        Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.Helpers -> HelpersScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
+        is Page.Helper -> HelperScreen(p.id, settings, snap, ::updateSettings, actions, snackbar, onBack = { page = Page.Helpers })
+        Page.AddHelper -> AddHelperScreen(settings, ::updateSettings, actions, snackbar, onAdded = { page = Page.Helper(it) }, onBack = { page = Page.Helpers })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -580,9 +733,15 @@ class AppActions(
     val askCalendar: () -> Unit,
     val openAppSettings: () -> Unit,
     val openNote: (String?) -> Unit,
-    /** Ask Claude's key: pasted in a window of the assistant's process (never through this one); deleted here. */
-    val addClaudeKey: () -> Unit,
-    val deleteClaudeKey: () -> Unit,
+    /**
+     * Helpers (0.6.0): a helper's connection window, in the assistant's process (its key is pasted and Test connection
+     * runs there, never through this one; [HelperWindow] modes); its key deleted here; the helper removed with its files.
+     */
+    val helperWindow: (id: String, mode: String) -> Unit = { _, _ -> },
+    /** A helper's address changed (already saved): its key goes first when [dropKey] (another host), then Test connection opens. */
+    val helperMoved: (id: String, dropKey: Boolean) -> Unit = { _, _ -> },
+    val deleteHelperKey: (String) -> Unit = {},
+    val removeHelper: (String) -> Unit = {},
     val openPage: (Page) -> Unit,
     val bargeTest: (BargeRun) -> Unit,
     /** 0.4.0: approximate location for the weather (asked here only), and Android's Usage access page for Robot. */
@@ -590,4 +749,16 @@ class AppActions(
     val openUsageAccess: () -> Unit = {},
     /** 0.4.0: photos and videos (Android offers all of them or the ones you pick). */
     val askMedia: () -> Unit = {},
+    /** 0.5.0: the transcript screen (voice process), to start transcribing; Settings › Voice › Transcription check. */
+    val transcribe: () -> Unit = {},
+    /** 0.5.0: the interpreter (face to face, spoken translations). */
+    val interpret: () -> Unit = {},
+    val openTranscriptionCheck: () -> Unit = {},
+    /** 0.5.0: the fast translation engine's files (Settings › Conversation › Fast translation). */
+    val mtDownload: () -> Unit = {},
+    val mtCancel: () -> Unit = {},
+    val mtDelete: () -> Unit = {},
+    /** 0.5.0, phase 5.3: "Your voice" (voice process), and deleting the voiceprint (file and key). */
+    val openVoiceprint: () -> Unit = {},
+    val deleteVoiceprint: () -> Unit = {},
 )

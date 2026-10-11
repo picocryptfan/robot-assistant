@@ -130,7 +130,8 @@ class ClaudeWebSearchTest {
     private fun content(b: JSONObject, message: Int): JSONArray = b.getJSONArray("messages").getJSONObject(message).getJSONArray("content")
 
     /** The voice log's entries since [before] entries, oldest first. */
-    private fun voice(before: Int): List<VoiceLogEntry> = VoiceLog.entries().take(VoiceLog.entries().size - before).asReversed()
+    /** What was logged since [before] (VoiceLog.total then): the ring may already be full from other tests. */
+    private fun voice(before: Long): List<VoiceLogEntry> = VoiceLog.entries().take((VoiceLog.total - before).toInt()).asReversed()
 
     // ------------------------------------------------------------------ dynamic filtering
 
@@ -154,7 +155,7 @@ class ClaudeWebSearchTest {
             blockStart(5, """{"type":"text","text":"","citations":[]}"""), citation(5, "https://apnews.com/x"), textDelta(5, "He is the president of the United States."), blockStop(5),
             end("end_turn"), stop))
         server.enqueue(sse(start(), *text(0, "Since January 2025."), end("end_turn", searches = 0), stop))
-        val before = VoiceLog.entries().size
+        val before = VoiceLog.total
         val s = session()
         val heard = Heard()
         assertEquals(ClaudeOutcome.Done(), s.ask(ask("tell me about Donald Trump"), plan, heard))
@@ -295,7 +296,7 @@ class ClaudeWebSearchTest {
             blockStart(1, """{"type":"text","text":""}"""), textDelta(1, "Still "), delta(1, """{"type":"some_future_delta","x":2}"""), textDelta(1, "here."), blockStop(1),
             end("end_turn", searches = 0), stop))
         server.enqueue(sse(start(), *text(0, "Yes."), end("end_turn", searches = 0), stop))
-        val before = VoiceLog.entries().size
+        val before = VoiceLog.total
         val s = session()
         val heard = Heard()
         assertEquals(ClaudeOutcome.Done(), s.ask(ask("hi"), plan, heard))
@@ -350,7 +351,7 @@ class ClaudeWebSearchTest {
     @Test fun aKnownFailureLogsNoSubCode() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(429).setHeader("content-type", "application/json")
             .setBody("""{"type":"error","error":{"type":"rate_limit_error","message":"mock"}}"""))
-        val before = VoiceLog.entries().size
+        val before = VoiceLog.total
         assertEquals(ClaudeOutcome.Failed(ClaudeFailure.RATE_LIMITED), session().ask(ask("q"), plan, Heard()))
         assertTrue(voice(before).none { it.event == VoiceEvent.CLAUDE_UNKNOWN })
     }

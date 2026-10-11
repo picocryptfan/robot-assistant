@@ -1,5 +1,6 @@
 package app.heyrobot.ui.common
 
+import androidx.compose.foundation.clickable
 import android.graphics.Bitmap
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -141,7 +142,8 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 320.dp).toggleable(open, onValueChange = { open = it }),
+                modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 320.dp)
+                    .clickable(onClickLabel = if (open) "Show less" else "Show all") { open = !open },
             ) {
                 Text(screenText, style = MaterialTheme.typography.bodySmall, maxLines = if (open) Int.MAX_VALUE else 4,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
@@ -180,9 +182,10 @@ private fun AttachmentTag(a: Attachment) {
 }
 
 /**
- * A reply. [claude]: Claude wrote it (Ask Claude): a small "Claude" label ("Claude, from the app" when [readBack]) and the
- * dynamic colour's tertiary tone, so a Claude turn is never mistaken for Robot's. [footer]: "Claude searched the web ·
- * nasa.gov" and the cost line, under the bubble.
+ * A reply. [claude]: a helper wrote it: a small label with its name ([by], "Claude" when it isn't known; "Claude, from
+ * the app" when [readBack]; a house for a server on your network, [home]) and the dynamic colour's tertiary tone, so a
+ * helper's turn is never mistaken for Robot's. [footer]: "Claude searched the web · nasa.gov" and the cost line, under
+ * the bubble.
  */
 @Composable
 fun AssistantBubble(
@@ -197,13 +200,15 @@ fun AssistantBubble(
     claude: Boolean = false,
     readBack: Boolean = false,
     footer: List<String> = emptyList(),
+    by: String? = null,
+    home: Boolean = false,
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         if (claude && !error) {
             Row(Modifier.padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(RIcons.Cloud, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
+                Icon(if (home) RIcons.Home else RIcons.Cloud, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
                 Spacer(Modifier.width(5.dp))
-                Text(if (readBack) "Claude, from the Claude app" else "Claude", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+                Text(if (readBack) "Claude, from the Claude app" else by ?: "Claude", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
             }
         }
         for (a in actions) {
@@ -241,9 +246,9 @@ fun AssistantBubble(
     }
 }
 
-/** The lines under a Claude reply: the search and its domains, then the cost. */
-fun claudeFooter(sources: List<String>, cost: String?): List<String> = listOfNotNull(
-    if (sources.isNotEmpty()) "Claude searched the web · " + sources.joinToString(", ") else null,
+/** The lines under a helper's reply ([by]: its name): the search and its domains, then the cost. */
+fun claudeFooter(sources: List<String>, cost: String?, by: String? = null): List<String> = listOfNotNull(
+    if (sources.isNotEmpty()) "${by ?: "Claude"} searched the web · " + sources.joinToString(", ") else null,
     cost,
 )
 

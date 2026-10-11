@@ -103,6 +103,23 @@ class CapturePolicyTest {
         assertEquals("▁HE Y ▁RO B O T :1.5 #0.25 @W1", inputs.wake(speaking = false))
     }
 
+    /**
+     * 0.5.0: while a conversation is transcribed (without "Hey robot works during a conversation") the wake phrases
+     * sleep, whatever Robot is doing; "stop" while she talks is added by the spotter itself, so it still works. When the
+     * session ends the phrases are back.
+     */
+    @Test fun aConversationPutsTheWakePhrasesToSleep() {
+        val inputs = KeywordInputs()
+        inputs.wakeLines = "▁HE Y ▁RO B O T :1.5 #0.25 @W1"
+        inputs.talkWakeLines = "▁HE Y ▁RO B O T :1.75 #0.2 @W1"
+        inputs.wakeOff = true
+        assertEquals("", inputs.wake(speaking = false))
+        assertEquals("", inputs.wake(speaking = true))
+        inputs.wakeOff = false
+        assertEquals("▁HE Y ▁RO B O T :1.5 #0.25 @W1", inputs.wake(speaking = false))
+        assertEquals("▁HE Y ▁RO B O T :1.75 #0.2 @W1", inputs.wake(speaking = true))
+    }
+
     @Test fun theSystemVoiceCountsAsStuckWhenQuiet() {
         var q = 0
         for (busy in listOf(false, false)) q = SpeechWatchdog.next(q, busy)

@@ -195,6 +195,29 @@ class ClaudeSessionTest {
         assertEquals(2, content.length())
     }
 
+    /**
+     * 0.5.0 (docs/conversation-mode.md 7.2): "Summarize with a stronger AI" is one question with the transcript prompt,
+     * no tools, no web search, medium effort and room for 16,000 tokens.
+     */
+    @Test fun aTranscriptSummaryGoesWithItsOwnPromptAndNoTools() = runBlocking {
+        server.enqueue(textReply("Overview: they planned dinner."))
+        val s = ClaudeSession(client, ClaudeModel.OPUS, emptyList(), search = false, conversation = false, idleMs = 10_000, retryDelayMs = 10,
+            system = app.heyrobot.core.ClaudePrompt.TRANSCRIPT_SYSTEM)
+        val heard = Heard()
+        val blocks = listOf(ClaudeBlock.Text("[Today is Saturday, 10 October 2026. The user is in Canada.]"),
+            ClaudeBlock.Text("[Conversation of 10 October 2026, 2 minutes. Speakers: S1 = the user, S2 = Marie.]"),
+            ClaudeBlock.Text("[14:02] S2 (fr): On se voit vendredi?"), ClaudeBlock.Text("Summarize this conversation in English."))
+        assertEquals(ClaudeOutcome.Done(), s.ask(blocks, ClaudePlan(ClaudeEffort.MEDIUM, 16_000), heard))
+        assertEquals("Overview: they planned dinner.", heard.text.toString())
+        val b = take()
+        assertEquals(app.heyrobot.core.ClaudePrompt.TRANSCRIPT_SYSTEM, b.getJSONArray("system").getJSONObject(0).getString("text"))
+        assertFalse(b.has("tools"))
+        assertFalse(b.has("tool_choice"))
+        assertEquals(16_000, b.getInt("max_tokens"))
+        assertEquals("medium", b.getJSONObject("output_config").getString("effort"))
+        assertEquals(4, b.getJSONArray("messages").getJSONObject(0).getJSONArray("content").length())
+    }
+
     @Test fun haikuGoesWithoutTheFallbackAndSearchCanBeOff() = runBlocking {
         server.enqueue(textReply("Hi."))
         session(ClaudeModel.HAIKU, search = false).ask(ask("hi"), ClaudePlan(ClaudeEffort.HIGH, 16_000), Heard())
@@ -212,10 +235,10 @@ class ClaudeSessionTest {
     @Test fun theVoiceLogGetsCodesForClaudeRequests() = runBlocking {
         server.enqueue(textReply("Fine."))
         server.enqueue(error(429, "rate_limit_error"))
-        val before = app.heyrobot.core.VoiceLog.entries().size
+        val before = app.heyrobot.core.VoiceLog.total
         session().ask(ask("why is the sky blue"), voicePlan, Heard())
         session().ask(ask("q"), voicePlan, Heard())
-        val events = app.heyrobot.core.VoiceLog.entries().take(app.heyrobot.core.VoiceLog.entries().size - before).asReversed()
+        val events = app.heyrobot.core.VoiceLog.entries().take((app.heyrobot.core.VoiceLog.total - before).toInt()).asReversed()
         assertEquals(listOf(app.heyrobot.core.VoiceEvent.CLAUDE_SENT, app.heyrobot.core.VoiceEvent.CLAUDE_FIRST, app.heyrobot.core.VoiceEvent.CLAUDE_DONE,
             app.heyrobot.core.VoiceEvent.CLAUDE_SENT, app.heyrobot.core.VoiceEvent.CLAUDE_FAILED), events.map { it.event })
         assertEquals(app.heyrobot.core.ClaudeEnd.END.id, events[2].b)

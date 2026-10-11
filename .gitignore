@@ -26,7 +26,7 @@ robot/**/*.so
 robot/**/*.onnx
 robot/**/*.litertlm
 robot/**/*.gguf
-# Robot's GGUF engine (0.4.4): the checked llama.cpp sources, the build and the library come from robot/tools/build_llama.sh
+# Robot's GGUF engine (0.4.5): the checked llama.cpp sources, the build and the library come from robot/tools/build_llama.sh
 robot/build-native/
 robot/brain/src/main/jniLibs/
 
@@ -36,3 +36,8 @@ robot/brain/src/main/jniLibs/
 .DS_Store
 *.p12
 *.pass
+
+# Robot 0.5.0 fast translation engine: tools/build_robotmt.sh's fetched sources and build trees, and the library it
+# builds (packaged by Gradle when present, never stored in git).
+robot/mt/native/
+robot/mt/src/main/jniLibs/

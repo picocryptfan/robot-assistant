@@ -11,6 +11,7 @@ import app.heyrobot.core.BrainModel
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainPolicy
 import app.heyrobot.core.BrainProtocol
+import app.heyrobot.core.BrainScheduler
 import app.heyrobot.core.ChannelByteSource
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.ControlText
@@ -26,7 +27,9 @@ import app.heyrobot.core.LoadFailure
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelFiles
 import app.heyrobot.core.ModelFormat
+import app.heyrobot.core.OneShotRules
 import app.heyrobot.core.OwnModel
+import app.heyrobot.core.Priority
 import app.heyrobot.core.Prompt
 import app.heyrobot.core.PromptFit
 import app.heyrobot.core.PromptMarkers
@@ -66,6 +69,14 @@ import java.util.concurrent.TimeoutException
 // where all the state below lives. llama.cpp that never comes back from a load or a prompt ends its process, not :brain,
 // and a process that stops (a crash, Android, `kill`) ends the reply with BrainError.STOPPED: the assistant skips the file
 // and answers with Fast, as when :brain stopped.
+//
+// 0.6.0: requests wait their turn in conversation mode's priority queue (core BrainScheduler), as in GemmaEngine: the
+// panel, then the interpreter, then transcript translations, then summaries, the panel's newest question still winning
+// over its older ones. REQ_ONE_SHOT formats its own system prompt and its one turn with the model's template (no history,
+// no tools, chat only, thinking off), writes up to its own cap and is never read as calls. There are no tool rounds here
+// (text calls run in the app), so nothing holds the queue for tool results. All of that is decided here: the isolated
+// process only runs the one prompt it is given (a one-shot after a panel question simply reuses less of llama.cpp's
+// memory), and a give-way or a cancel reaches it as the same one-way stop, inside a prompt being read too.
 
 class LlamaEngine(private val ctx: Context, private val handler: Handler) : BrainEngine, SlotHolder {
     @Volatile override var destroyedAt = 0L
@@ -79,15 +90,23 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
     /** The loaded model's special tokens, broken in every text from outside Robot's own prompt (core ControlText). */
     private var controls = ControlText(PromptMarkers.KNOWN)
     private var running: Run? = null
-    /** A request that arrived while another was being cancelled: it starts when that one ends. */
-    private var queued: (() -> Unit)? = null
+    /** Every request waits its turn here (0.6.0): one runs at a time, in priority order. */
+    private val scheduler = BrainScheduler({ SystemClock.elapsedRealtime() })
+    /** An unload is under way: nothing starts meanwhile (a request that would is refused as not loaded). */
+    private var unloading = false
     /** Isolated processes asked to end that haven't yet: their memory isn't free, so the slot stays held (parked). */
     private val ending = HashSet<LlamaLink>()
     private var teardown: (() -> Unit)? = null
     private var runs = 0L
 
-    /** [mode]: TEXT_CALLS, or CHAT_ONLY for a short-context file (its reply is never read as calls). */
-    private inner class Run(val reqId: Int, val convId: String, val sink: BrainEngine.Sink, val handle: Long, val id: Long, val mode: ToolMode) {
+    /**
+     * [job]: the scheduler's id for the request this run serves; [mode]: TEXT_CALLS, or CHAT_ONLY for a short-context file
+     * or a one-shot (its reply is never read as calls); [maxChunks]: the reply's cap.
+     */
+    private inner class Run(
+        val job: Int, val convId: String, val sink: BrainEngine.Sink, val handle: Long, val id: Long, val mode: ToolMode,
+        val oneShot: Boolean = false, val maxChunks: Int = Limits.MAX_REPLY_CHUNKS,
+    ) {
         val tSend = SystemClock.elapsedRealtime()
         var tFirst = -1L
         var chunks = 0
@@ -95,6 +114,10 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         var stopReason: DoneReason? = null
         var ended = false
         var thoughtSent = false
+        /** Stopped to give way to a request with a higher priority: no terminal event, it starts over later. */
+        var giveWay = false
+        /** Set on the worker once llama.cpp has returned from this reply (its end is on its way to the work thread). */
+        @Volatile var nativeEnded = false
         /** Read by the native sink on the worker thread: false stops the reply. */
         @Volatile var stop = false
         /** Set on the worker before the first piece is posted: the prompt opened a <think> block. */
@@ -112,7 +135,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
 
     // ------------------------------------------------------------------ load
 
-    override fun status() = BrainMsg.Status(loaded = handle != 0L, vision = false, constrained = false, busy = running != null,
+    override fun status() = BrainMsg.Status(loaded = handle != 0L, vision = false, constrained = false, busy = running != null || scheduler.running != null,
         model = loaded?.model?.takeIf { handle != 0L }, backend = loaded?.backend?.takeIf { handle != 0L },
         maxTokens = loaded?.maxTokens?.takeIf { handle != 0L } ?: 0, format = ModelFormat.GGUF.takeIf { handle != 0L })
 
@@ -301,8 +324,12 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             loaded = null
             report = null
             controls = ControlText(PromptMarkers.KNOWN)
-            // A request queued behind the reply then runs, and is told the model isn't loaded.
-            running?.let { fail(it, BrainError.STOPPED, "model process stopped") }
+            // The requests waiting for it end (not loaded); the one it was answering ends with STOPPED.
+            scheduler.dropWaiting()
+            running?.let { r ->
+                r.giveWay = false
+                fail(r, BrainError.STOPPED, "model process stopped")
+            }
         }
         if (ending.remove(l)) {
             EngineSlot.parked.decrementAndGet()
@@ -314,17 +341,25 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
 
     override fun unload(why: String) {
         val l = link ?: return
-        queued = null
+        unloading = true
         val r = running
-        r?.stopNow(DoneReason.CANCELLED)
-        link = null
-        handle = 0L
-        loaded = null
-        report = null
-        controls = ControlText(PromptMarkers.KNOWN)
-        // The model's memory goes with its process, whatever llama.cpp is doing: never freed under a reply in :brain.
-        l.end(why)
-        if (r != null && !r.ended) finish(r, DoneReason.CANCELLED, null)
+        try {
+            // Requests waiting for the model end now (not loaded); the running one ends as cancelled, never queued again.
+            scheduler.dropWaiting()
+            r?.giveWay = false
+            r?.stopNow(DoneReason.CANCELLED)
+            link = null
+            handle = 0L
+            loaded = null
+            report = null
+            controls = ControlText(PromptMarkers.KNOWN)
+            // The model's memory goes with its process, whatever llama.cpp is doing: never freed under a reply in :brain.
+            l.end(why)
+            if (r != null && !r.ended) finish(r, DoneReason.CANCELLED, null)
+            scheduler.dropWaiting()
+        } finally {
+            unloading = false
+        }
         settle(l)
         RLog.i("brain_unload", "why" to RLog.Code(why), "parked" to l.isAlive, "format" to ModelFormat.GGUF)
     }
@@ -356,13 +391,17 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
 
     // ------------------------------------------------------------------ generate
 
-    override fun generate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink) {
-        val h = handle
-        val l = link
-        if (h == 0L || l == null) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NOT_LOADED, null))
+    /** The panel's question: it waits its turn (the panel's newest question cancels its older ones). */
+    override fun generate(key: BrainScheduler.Key, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink) {
+        if (handle == 0L) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NOT_LOADED, null))
         // Text only: this model can't see (the panel says so before it asks).
         if (req.hasImage || image != null) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NO_VISION, "text only"))
-        if (afterRunning { generate(reqId, req, image, sink) }) return
+        submit(key, Priority.PANEL, sink) { job -> startGenerate(job, req, sink) }
+    }
+
+    private fun startGenerate(job: Int, req: BrainMsg.Generate, sink: BrainEngine.Sink) {
+        val h = handle
+        if (h == 0L || unloading) return failJob(job, sink, BrainError.NOT_LOADED)
         val max = maxTokens()
         // Robot's own text protocol for actions: the call syntax in the system prompt. Chat only (a short context): none.
         val mode = BrainPolicy.modeFor(max, ToolMode.TEXT_CALLS)
@@ -370,10 +409,25 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val plan = Thinking.gguf(report, req.think)
         val system = plan.system(req.system + Prompt.textCallHint(tools))
         val think = plan.enableThinking ?: req.think
-        val controls = controls
         val firstBudget = ContextWindow.historyBudget(Prompt.fixedTokens(req.system, tools), TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text)), max)
-        val run = Run(reqId, req.convId, sink, h, ++runs, mode).also { it.strip = plan.stripThinking }
+        val run = Run(job, req.convId, sink, h, ++runs, mode).also { it.strip = plan.stripThinking }
         running = run
+        write(run, system, req.history, req.text, think, firstBudget)
+    }
+
+    /**
+     * Formats [system], [history] (fitted within [firstBudget], shorter as needed) and [question] with the model's
+     * template, then writes [run]'s reply, on the worker; its end comes back to the work thread.
+     */
+    private fun write(run: Run, system: String, history: List<PromptTurn>, question: String, think: Boolean, firstBudget: Int) {
+        val h = run.handle
+        val l = link
+        if (l == null) {
+            run.nativeEnded = true
+            return fail(run, BrainError.NOT_LOADED, null)
+        }
+        val max = maxTokens()
+        val controls = controls
         worker.execute {
             // Format with the model's template and count with its tokenizer; older turns go until it fits (PromptFit).
             var budget = firstBudget
@@ -386,35 +440,39 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             handler.postDelayed(watchdog, PREPARE_LIMIT_MS)
             try {
                 while (true) {
-                    val history = PromptFit.alternating(ContextWindow.fit(req.history, budget))
+                    val turns = PromptFit.alternating(ContextWindow.fit(history, budget))
                     val roles = ArrayList<ByteArray>()
                     val texts = ArrayList<ByteArray>()
                     fun add(role: String, text: String) { roles += role.toByteArray(); texts += text.toByteArray(Charsets.UTF_8) }
                     // Robot's own system prompt as it is; everything else without the model's control tokens (ControlText).
                     add("system", system)
-                    for (t in history) add(if (t.role == PromptRole.USER) "user" else "assistant", controls.defuse(t.text))
-                    add("user", controls.defuse(req.text))
+                    for (t in turns) add(if (t.role == PromptRole.USER) "user" else "assistant", controls.defuse(t.text))
+                    add("user", controls.defuse(question))
                     tokens = try {
                         if (run.stop) LlamaIpc.PREP_TEMPLATE_FAILED else l.prepare(h, roles, texts, think, flags)
                     } catch (t: Exception) {
                         // Its process is gone (it stopped, or the watchdog ended it), or the call failed.
+                        run.nativeEnded = true
                         handler.post { onEnd(run, if (t is LlamaLink.Gone) LOST else LlamaIpc.GEN_DECODE_FAILED, null) }
                         return@execute
                     }
-                    kept = history.size
+                    kept = turns.size
                     if (run.stop) {
+                        run.nativeEnded = true
                         handler.post { onEnd(run, LlamaIpc.GEN_CANCELLED, null) }
                         return@execute
                     }
                     if (tokens < 0 && tokens != LlamaIpc.PREP_TOO_LONG) {
+                        run.nativeEnded = true
                         handler.post { fail(run, BrainError.ENGINE, "template") }
                         return@execute
                     }
                     val real = if (tokens == LlamaIpc.PREP_TOO_LONG) Int.MAX_VALUE / 2 else tokens
-                    when (val step = PromptFit.after(real, history.size, budget, rebuilds, max)) {
+                    when (val step = PromptFit.after(real, turns.size, budget, rebuilds, max)) {
                         is PromptFit.Step.Send -> break
                         is PromptFit.Step.Shorten -> { budget = step.historyBudget; rebuilds++ }
                         is PromptFit.Step.TooLong -> {
+                            run.nativeEnded = true
                             handler.post { fail(run, BrainError.TOO_LONG, null) }
                             return@execute
                         }
@@ -426,7 +484,8 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             run.startsInside = flags[0] and 1 != 0
             val stats = LongArray(LlamaIpc.STATS_COUNT)
             val code = try {
-                // The pieces come back on this thread while the isolated process writes (LlamaLink's callback).
+                // The pieces come back on this thread while the isolated process writes (LlamaLink's callback). It reuses
+                // whatever beginning of this prompt is still in llama.cpp's memory: after a one-shot, little or none.
                 l.generate(h, run.id, max, { bytes ->
                     val text = String(bytes, Charsets.UTF_8)
                     handler.post { onPiece(run, text) }
@@ -438,43 +497,119 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
                 RLog.w("brain_send", t, "format" to ModelFormat.GGUF)
                 LlamaIpc.GEN_DECODE_FAILED
             }
-            val history = kept
+            run.nativeEnded = true
+            val keptTurns = kept
             handler.post {
-                RLog.i("brain_prompt", "tokens" to tokens, "kept" to history, "of" to req.history.size, "rebuilds" to rebuilds,
+                RLog.i("brain_prompt", "tokens" to tokens, "kept" to keptTurns, "of" to history.size, "rebuilds" to rebuilds, "oneShot" to run.oneShot,
                     "reused" to stats[LlamaIpc.STATS_REUSED], "promptMs" to stats[LlamaIpc.STATS_PROMPT_MS], "format" to ModelFormat.GGUF)
                 onEnd(run, code, stats)
             }
         }
     }
 
-    override fun toolResult(reqId: Int, req: BrainMsg.ToolResult, sink: BrainEngine.Sink) {
+    override fun toolResult(key: BrainScheduler.Key, req: BrainMsg.ToolResult, sink: BrainEngine.Sink) {
         // Text calls only: the app runs them and the conversation goes on from the history; no results come back here.
         sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.BAD_REQUEST, "no tool call pending"))
     }
 
-    /** If a reply is running, stops it and queues [next] for when it ends (the newest request wins). */
-    private fun afterRunning(next: () -> Unit): Boolean {
-        val r = running ?: return false
-        r.stopNow(DoneReason.CANCELLED)
-        queued = next
-        return true
+    // ------------------------------------------------------------------ one-shot
+
+    /**
+     * REQ_ONE_SHOT (0.6.0 for GGUF files): a translation or a summary step at its [BrainMsg.OneShot.priority], its own
+     * system prompt and its one turn (core OneShotRules), thinking off; its budget is the loaded model's context.
+     */
+    override fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, sink: BrainEngine.Sink) {
+        if (handle == 0L) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NOT_LOADED, null))
+        submit(key, req.priority, sink) { job -> startOneShot(job, req, sink) }
     }
 
-    override fun cancel(target: Int) {
-        val r = running ?: return
-        if (r.reqId == target) r.stopNow(DoneReason.CANCELLED)
+    private fun startOneShot(job: Int, req: BrainMsg.OneShot, sink: BrainEngine.Sink) {
+        val h = handle
+        if (h == 0L || unloading) return failJob(job, sink, BrainError.NOT_LOADED)
+        val max = maxTokens()
+        if (!OneShotRules.fits(req, max)) {
+            RLog.i("brain_one_shot_too_long", "kind" to req.kind, "tokens" to OneShotRules.tokens(req), "maxTokens" to max, "format" to ModelFormat.GGUF)
+            return failJob(job, sink, BrainError.TOO_LONG)
+        }
+        val spec = OneShotRules.conversation(req)
+        // Thinking off (the template's switch, or Qwen3's "/no_think"), and a <think> block it writes anyway is never the answer.
+        val plan = Thinking.gguf(report, false)
+        val run = Run(job, ONE_SHOT_CONV, sink, h, ++runs, spec.mode, oneShot = true, maxChunks = OneShotRules.maxChunks(req, max))
+            .also { it.strip = plan.stripThinking }
+        running = run
+        RLog.i("brain_one_shot", "kind" to req.kind, "priority" to req.priority, "tokens" to OneShotRules.tokens(req), "maxChunks" to run.maxChunks,
+            "format" to ModelFormat.GGUF)
+        // Robot's own system prompt as it is; its one turn (a transcript line, a summary's notes) defused in write().
+        write(run, plan.system(spec.system), spec.history, req.text, plan.enableThinking ?: false, firstBudget = 0)
     }
+
+    // ------------------------------------------------------------------ the queue
+
+    /** One request in the scheduler: [begin] starts it (with its id), the rest tells its client. */
+    private inner class Work(override val priority: Priority, private val sink: BrainEngine.Sink, private val begin: (Int) -> Unit) : BrainScheduler.Work {
+        /** The scheduler's id for it, once it starts. */
+        private var id = -1
+
+        override fun start(id: Int) {
+            this.id = id
+            try {
+                begin(id)
+            } catch (t: Throwable) {
+                // A failure before llama.cpp got it: the request ends here, the next one starts.
+                RLog.w("brain_request_start", t, "format" to ModelFormat.GGUF)
+                if (running?.job == id) running = null
+                failJob(id, sink, BrainError.ENGINE, t.javaClass.simpleName)
+            }
+        }
+
+        override fun stop(giveWay: Boolean) {
+            val r = running?.takeIf { it.job == id } ?: return
+            // llama.cpp already returned from this reply (its end is on its way to this thread): it ends as it is, with its
+            // terminal event, and is never run again. Stopping it here would throw a whole reply away and start it over.
+            if (giveWay && r.nativeEnded && r.stopReason == null) return
+            if (r.stopReason == null) {
+                r.giveWay = giveWay
+                r.stopNow(DoneReason.CANCELLED)
+            } else if (!giveWay) {
+                // Giving way already, and now cancelled by its client: it ends as cancelled.
+                r.giveWay = false
+            }
+        }
+
+        override fun queued(position: Int) = sink.emit(BrainProtocol.EV_QUEUED, BrainMsg.Queued(position))
+
+        override fun dropped(unloaded: Boolean) {
+            if (unloaded) sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NOT_LOADED, null))
+            else sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(DoneReason.CANCELLED, -1, -1, -1.0, false, false))
+        }
+    }
+
+    private fun submit(key: BrainScheduler.Key, priority: Priority, sink: BrainEngine.Sink, begin: (Int) -> Unit) {
+        scheduler.submit(key, Work(priority, sink, begin))
+    }
+
+    /** Request [job] ends with an error before a reply started; the next one starts. */
+    private fun failJob(job: Int, sink: BrainEngine.Sink, code: BrainError, detail: String? = null) {
+        sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(code, detail))
+        scheduler.ended(job)
+    }
+
+    override fun cancel(key: BrainScheduler.Key) = scheduler.cancel(key)
 
     /** The conversation itself is the history the app sends; llama.cpp keeps only what it can reuse. A reply into it stops. */
     override fun closeConv(convId: String) {
         val r = running ?: return
-        if (r.convId == convId) r.stopNow(DoneReason.CANCELLED)
+        if (!r.oneShot && r.convId == convId) {
+            r.giveWay = false
+            r.stopNow(DoneReason.CANCELLED)
+        }
     }
 
     private fun onPiece(run: Run, text: String) {
         if (run.ended || run.stopReason != null) return
         val visible = run.filter?.feed(text) ?: text
-        if (!run.thoughtSent && run.filter?.thought == true) {
+        // A one-shot's thinking (it is asked not to) is never a sign to its client: only its text counts.
+        if (!run.oneShot && !run.thoughtSent && run.filter?.thought == true) {
             run.thoughtSent = true
             run.sink.emit(BrainProtocol.EV_CHUNK, BrainMsg.Chunk("", thought = true))
         }
@@ -489,7 +624,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         run.sink.emit(BrainProtocol.EV_CHUNK, BrainMsg.Chunk(text))
         when {
             garbage(text, run.reply) -> run.stopNow(DoneReason.GARBAGE)
-            run.chunks >= Limits.MAX_REPLY_CHUNKS -> run.stopNow(DoneReason.LENGTH)
+            run.chunks >= run.maxChunks -> run.stopNow(DoneReason.LENGTH)
         }
     }
 
@@ -502,7 +637,10 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             LlamaIpc.GEN_LENGTH, LlamaIpc.GEN_CONTEXT_FULL -> DoneReason.LENGTH
             LlamaIpc.GEN_CANCELLED -> DoneReason.CANCELLED
             // Its process stopped under the reply: the model is lost (gone() lets the slot go when it is).
-            LOST -> return fail(run, BrainError.STOPPED, "model process stopped")
+            LOST -> {
+                run.giveWay = false
+                return fail(run, BrainError.STOPPED, "model process stopped")
+            }
             else -> return fail(run, BrainError.ENGINE, "decode")
         }
         finish(run, reason, stats)
@@ -512,9 +650,9 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         if (run.ended) return
         run.ended = true
         if (running === run) running = null
-        RLog.i("brain_reply", "error" to code, "format" to ModelFormat.GGUF)
+        RLog.i("brain_reply", "error" to code, "oneShot" to run.oneShot, "format" to ModelFormat.GGUF)
         run.sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(code, detail))
-        runQueued()
+        scheduler.ended(run.job)
     }
 
     private fun finish(run: Run, reason: DoneReason, stats: LongArray?) {
@@ -525,13 +663,16 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val genMs = stats?.get(LlamaIpc.STATS_GENERATE_MS) ?: 0
         val tps = if (genMs > 0) generated * 1000.0 / genMs else -1.0
         val tokens = stats?.get(LlamaIpc.STATS_POSITION)?.toInt() ?: -1
+        val gaveWay = run.giveWay && reason == DoneReason.CANCELLED
+        RLog.i("brain_reply", "reason" to reason, "chunks" to run.chunks, "ttftMs" to ttft, "tokens" to tokens, "tps" to tps,
+            "prompt" to (stats?.get(LlamaIpc.STATS_PROMPT) ?: -1L), "promptMs" to (stats?.get(LlamaIpc.STATS_PROMPT_MS) ?: -1L),
+            "generated" to generated, "mode" to run.mode, "oneShot" to run.oneShot, "gaveWay" to gaveWay, "format" to ModelFormat.GGUF)
+        // It gave way: no terminal event; the scheduler queues it again (EV_QUEUED) and it starts over later.
+        if (gaveWay) return scheduler.ended(run.job, terminalSent = false)
         // Robot's text protocol: the app may read a reply that is nothing but calls as calls; never in chat only.
         run.sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(reason, tokens, ttft, tps, rebuilt = (stats?.get(LlamaIpc.STATS_REUSED) ?: 0L) == 0L,
             textCalls = BrainPolicy.acceptsCalls(run.mode)))
-        RLog.i("brain_reply", "reason" to reason, "chunks" to run.chunks, "ttftMs" to ttft, "tokens" to tokens, "tps" to tps,
-            "prompt" to (stats?.get(LlamaIpc.STATS_PROMPT) ?: -1L), "promptMs" to (stats?.get(LlamaIpc.STATS_PROMPT_MS) ?: -1L),
-            "generated" to generated, "mode" to run.mode, "format" to ModelFormat.GGUF)
-        runQueued()
+        scheduler.ended(run.job)
     }
 
     /**
@@ -543,12 +684,6 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         RLog.i("brain_stuck", "in" to RLog.Code(where), "format" to ModelFormat.GGUF)
         l.end("stuck_$where")
         backstop(l)
-    }
-
-    private fun runQueued() {
-        val q = queued ?: return
-        queued = null
-        q()
     }
 
     /** Broken output (as GemmaEngine detects it): one character 32+ times in a row. */
@@ -586,6 +721,8 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         /** … and to format and count a prompt (milliseconds) before :brain gives it up for stuck and ends its process. */
         private const val PREPARE_LIMIT_MS = 30_000L
         private const val STOPPING = "The model is still stopping. Try again in a moment."
+        /** A one-shot's run has no conversation id of the app's. */
+        private const val ONE_SHOT_CONV = ""
         private const val DIFFERENT = "llama.cpp read this file's header differently from Robot's check, so Robot won't run it."
     }
 }

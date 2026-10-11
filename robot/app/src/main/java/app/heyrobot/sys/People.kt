@@ -369,6 +369,14 @@ object AppPages {
     /** Assistant setup, at "People, notes and calendar": the permissions and their grant buttons. */
     const val PERMISSIONS = "permissions"
     const val NOTES = "notes"
+    /** 0.5.0: the Transcripts library, or one transcript ([EXTRA_TRANSCRIPT]); Settings › Conversation (the tile's long press). */
+    const val TRANSCRIPTS = "transcripts"
+    const val CONVERSATION_SETTINGS = "conversation_settings"
+    /** 0.6.0: Settings › Helpers (the summary screen's link when no stronger AI is set up). */
+    const val HELPERS = "helpers"
+    const val EXTRA_TRANSCRIPT = "robot_transcript"
+    /** 0.5.0, phase 5.6: the line a summary's [14:03] link points at, in [EXTRA_TRANSCRIPT]. */
+    const val EXTRA_LINE = "robot_transcript_line"
     /** Settings › Model, the Model tab (0.4.3: from a chat-only model's answer to an action). */
     const val MODEL = "model"
     /** The Robot Notes launcher entry (an activity-alias of MainActivity). */

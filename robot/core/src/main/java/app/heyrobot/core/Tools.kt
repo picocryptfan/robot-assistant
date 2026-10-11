@@ -276,8 +276,8 @@ sealed class Action {
     }
 
     /**
-     * The Claude app route: open the Claude app with [text] (the owner's question, or a short summary of the
-     * conversation; empty: the app opens without text). The owner presses Send there; Robot steps aside.
+     * The Claude app route: open the Claude app with [text] (your question, or a short summary of the
+     * conversation; empty: the app opens without text). You press Send there; Robot steps aside.
      */
     data class AskClaude(val text: String) : Action() {
         override val tool get() = ToolName.ASK_CLAUDE

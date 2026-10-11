@@ -1,7 +1,8 @@
 <resources>
-    <!-- Compose draws the UI; the window theme only sets the background before the first frame. -->
+    <!-- Compose draws the UI; the window theme only sets the background before the first frame: the system's surface
+         colour (wallpaper-tinted, API 34), so a cold start doesn't flash white. -->
     <style name="Theme.Robot" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:windowBackground">@android:color/system_surface_light</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>

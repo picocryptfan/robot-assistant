@@ -1,5 +1,9 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.helpers.HelperConfig
+import app.heyrobot.core.helpers.HelperSettings
+import app.heyrobot.core.helpers.HelperWho
+import app.heyrobot.core.helpers.HelperWords
 import java.time.LocalDate
 import java.util.Locale
 import kotlin.math.roundToLong
@@ -13,13 +17,17 @@ import kotlin.math.roundToLong
 data class ClaudePrices(val input: Double, val output: Double, val cacheRead: Double, val cacheWrite: Double)
 
 /**
- * The three models you can pick. Exact model ID strings, never with a date suffix. [fallback]: the request carries
- * the server-side refusal fallback (`fallbacks: "default"`); Claude Haiku 5.5 has none, and a fallback list there is a 400.
+ * The models you can pick. Exact model ID strings, never with a date suffix. [fallback]: the request carries the
+ * server-side refusal fallback (`fallbacks: "default"`); Claude Haiku 5.5 has none, and a fallback list there is a 400.
+ * Prices as published (https://platform.claude.com/docs/en/about-claude/pricing.md, read 2026-10-11): cache reads are
+ * 0.05x input on Opus 5.5 and Sonnet 5.5, 0.025x on Fable 5.1, 0.1x on Haiku 5.5; 5-minute cache writes 1.25x.
  */
 enum class ClaudeModel(val id: String, val title: String, val detail: String, private val prices: ClaudePrices, private val longPrices: ClaudePrices?, val fallback: Boolean) {
-    OPUS("claude-opus-5-5", "Claude Opus 5.5", "The most capable: \$4 per million tokens in, \$20 out.", ClaudePrices(4.0, 20.0, 0.20, 5.0), null, true),
+    OPUS("claude-opus-5-5", "Claude Opus 5.5", "Recommended for most questions: \$4 per million tokens in, \$20 out.", ClaudePrices(4.0, 20.0, 0.20, 5.0), null, true),
     SONNET("claude-sonnet-5-5", "Claude Sonnet 5.5", "Fast and capable: \$2 in, \$10 out.", ClaudePrices(2.0, 10.0, 0.10, 2.5), null, true),
-    HAIKU("claude-haiku-5-5", "Claude Haiku 5.5", "The fastest and cheapest: \$0.10 in, \$0.50 out.", ClaudePrices(0.10, 0.50, 0.01, 0.125), ClaudePrices(0.50, 2.50, 0.05, 0.625), false);
+    HAIKU("claude-haiku-5-5", "Claude Haiku 5.5", "The fastest and cheapest: \$0.10 in, \$0.50 out.", ClaudePrices(0.10, 0.50, 0.01, 0.125), ClaudePrices(0.50, 2.50, 0.05, 0.625), false),
+    /** 0.6.0: for the hardest questions; slower, and its thinking is always on (as on Opus 5.5). */
+    FABLE("claude-fable-5-1", "Claude Fable 5.1", "For the hardest questions, slower: \$10 in, \$50 out.", ClaudePrices(10.0, 50.0, 0.25, 12.50), null, true);
 
     /** The rate card for a request whose prompt (all input, cached or not) had [promptTokens]. */
     fun prices(promptTokens: Long): ClaudePrices = if (longPrices != null && promptTokens > LONG_PROMPT) longPrices else prices
@@ -158,73 +166,123 @@ data class ClaudeSpend(val day: String, val micros: Long) {
 }
 
 /**
- * Why a Claude request failed, as Robot says it. Mapped from the SDK's typed exceptions (most specific first) in the
- * :claude module; the words are fixed here so they are tested once. [retry]: worth one more try (overloaded or 5xx).
+ * Why a helper's request failed, as Robot says it (0.6.0: every helper; [HelperFailure] is the same type). Mapped from the
+ * SDK's typed exceptions (most specific first) in the :claude module, or from an HTTP status and the error body's type and
+ * code for the other wire formats; the words are fixed here so they are tested once. [text] is Claude's, word for word as
+ * before; [say] puts in another helper's name. [retry]: worth one more try (overloaded or 5xx).
  */
-enum class ClaudeFailure(val text: String, val retry: Boolean = false) {
-    KEY_REFUSED("Your Claude key was refused. Check it in Robot's settings."),
-    NO_CREDITS("Your Anthropic account is out of API credits. Add credits at console.anthropic.com."),
-    NOT_ALLOWED("Your Claude key isn't allowed to do that. Check your Anthropic account."),
-    MODEL_UNAVAILABLE("That Claude model isn't available to your key. Pick another one in Robot's settings."),
-    RATE_LIMITED("Claude is busy, try again in a minute."),
-    OVERLOADED("Claude is overloaded right now. Try again in a minute.", retry = true),
-    SERVER("Claude isn't answering right now. Try again in a minute.", retry = true),
-    BAD_REQUEST("Claude couldn't take that request."),
-    TOO_LONG("That was too long for Claude."),
-    NO_INTERNET("No internet. If you're online, check that Robot's Network permission is on (Settings › Apps › Robot › Permissions)."),
-    NO_NETWORK_PERMISSION("Robot isn't allowed to use the network. Turn on Network for Robot in Android's app settings."),
+enum class ClaudeFailure(val retry: Boolean = false) {
+    KEY_REFUSED,
+    NO_CREDITS,
+    NOT_ALLOWED,
+    MODEL_UNAVAILABLE,
+    RATE_LIMITED,
+    OVERLOADED(retry = true),
+    SERVER(retry = true),
+    BAD_REQUEST,
+    TOO_LONG,
+    NO_INTERNET,
+    NO_NETWORK_PERMISSION,
     /** 60 seconds without anything from Claude (a thinking block in progress counts as something). */
-    TIMEOUT("Claude took too long to answer."),
+    TIMEOUT,
     /** Robot's copy of the conversation with Claude no longer made a request the API takes: Claude mode starts over. */
-    RESET("Robot lost track of the conversation with Claude, so Claude mode has ended. Ask again to start fresh."),
-    NO_KEY("Add your Claude API key in Robot's settings first, or choose the Claude app there."),
-    UNKNOWN("Something went wrong with Claude.");
+    RESET,
+    NO_KEY,
+    UNKNOWN,
+    /** 0.6.0, a server on your network: the connection was refused or timed out. */
+    UNREACHABLE,
+    /** 0.6.0: an http:// address that isn't on your home network (core LanRule): nothing was sent. */
+    NOT_LOCAL,
+    /** 0.6.0: the server's certificate isn't one Robot trusts (self-signed, or not for that name). */
+    CERTIFICATE,
+    /** 0.6.0: your server's address names no single place yet (a bare IP: Test connection finds the port). */
+    NO_ADDRESS;
+
+    /** Claude's words. */
+    val text: String get() = say(HelperWho.CLAUDE)
+
+    /** The words for helper [w]. */
+    fun say(w: HelperWho): String {
+        val n = w.name
+        return when (this) {
+            KEY_REFUSED -> "Your $n key was refused. Check it in Robot's settings."
+            NO_CREDITS -> "Your ${w.company} account is out of API credits." + (w.console?.let { " Add credits at $it." } ?: "")
+            NOT_ALLOWED -> if (w.home) "$n refused that request. Check the server's settings." else "Your $n key isn't allowed to do that. Check your ${w.company} account."
+            MODEL_UNAVAILABLE -> if (w.home) "$n doesn't have that model any more. Pick another one in Robot's settings, under Helpers."
+                else "That $n model isn't available to your key. Pick another one in Robot's settings."
+            RATE_LIMITED -> "$n is busy, try again in a minute."
+            OVERLOADED -> "$n is overloaded right now. Try again in a minute."
+            SERVER -> "$n isn't answering right now. Try again in a minute."
+            BAD_REQUEST -> "$n couldn't take that request."
+            TOO_LONG -> "That was too long for $n."
+            NO_INTERNET -> "No internet. If you're online, check that Robot's Network permission is on (Settings › Apps › Robot › Permissions)."
+            NO_NETWORK_PERMISSION -> "Robot isn't allowed to use the network. Turn on Network for Robot in Android's app settings."
+            TIMEOUT -> "$n took too long to answer."
+            RESET -> "Robot lost track of the conversation with $n, so $n mode has ended. Ask again to start fresh."
+            NO_KEY -> "Add your $n API key in Robot's settings first" + (w.app?.let { ", or choose the $it app there" } ?: "") + "."
+            UNKNOWN -> "Something went wrong with $n."
+            UNREACHABLE -> if (w.home) "$n isn't answering. Is the computer on, and is the phone on the same network?" else "$n can't be reached right now."
+            NOT_LOCAL -> "That address isn't on your home network, so Robot won't send to it without https."
+            CERTIFICATE -> "$n's certificate isn't one Robot can trust. Use https with a real certificate (Tailscale's HTTPS gives one), or http on your home network."
+            NO_ADDRESS -> "Robot doesn't know where $n is yet. Open its page in Robot's settings, under Helpers, and tap Test connection."
+        }
+    }
 
     companion object {
         /**
          * From an HTTP status and the API's error type (`authentication_error`, `overloaded_error`, ...). A stream that
          * failed after it opened carries status 200 and the type only. Null [status] and [type]: no answer arrived.
+         * [code]: the error's code where the API gives one (OpenAI says "out of credit" with a 429 and a code), read
+         * before the status so it is never taken for "busy".
          */
-        fun of(status: Int?, type: String?): ClaudeFailure = when {
-            type == "authentication_error" || status == 401 -> KEY_REFUSED
+        fun of(status: Int?, type: String?, code: String? = null): ClaudeFailure = when {
+            code in CREDIT_CODES || type == "insufficient_quota" || (code != null && code.endsWith("_spend_limit_exceeded")) -> NO_CREDITS
+            type == "authentication_error" || status == 401 || code == "invalid_api_key" -> KEY_REFUSED
             type == "billing_error" || status == 402 -> NO_CREDITS
             type == "permission_error" || status == 403 -> NOT_ALLOWED
             type == "not_found_error" || status == 404 -> MODEL_UNAVAILABLE
-            type == "request_too_large" || status == 413 -> TOO_LONG
-            type == "rate_limit_error" || status == 429 -> RATE_LIMITED
-            type == "overloaded_error" || status == 529 -> OVERLOADED
-            type == "api_error" || type == "timeout_error" || (status != null && status >= 500) -> SERVER
+            type == "request_too_large" || status == 413 || code == "context_length_exceeded" -> TOO_LONG
+            type == "rate_limit_error" || status == 429 || code == "rate_limit_exceeded" -> RATE_LIMITED
+            type == "overloaded_error" || status == 529 || code == "server_is_overloaded" || status == 498 -> OVERLOADED
+            type == "api_error" || type == "timeout_error" || code == "server_error" || (status != null && status >= 500) -> SERVER
             type == "invalid_request_error" || status == 400 || status == 422 -> BAD_REQUEST
             else -> UNKNOWN
         }
+
+        /** OpenAI's codes for an account out of credit (they come with a 429). */
+        private val CREDIT_CODES = setOf("credit_balance_exhausted", "insufficient_quota", "organization_usage_limit_exceeded", "billing_hard_limit_reached")
     }
 }
 
-/** Robot's own words when Claude stopped with `stop_reason == "refusal"`. */
+/** Every helper's failures (0.6.0): the same type as Claude's. */
+typealias HelperFailure = ClaudeFailure
+
+/** Robot's own words about Claude (each helper's are [HelperWords]). */
 object ClaudeWords {
-    const val DECLINED = "Claude declined that one."
-    const val THINKING = "Claude is thinking…"
-    const val CHECKING = "Checking with Claude…"
-    const val SEARCHED = "Claude searched the web"
-    const val OFF = "Ask Claude is off. Turn it on in Robot's settings, under Ask Claude."
-    const val LOCKED = "Unlock your phone to ask Claude, or allow Claude on the lock screen in Robot's settings."
-    const val JOINED = "Claude is here. Go ahead."
+    private val W = HelperWords(HelperWho.CLAUDE)
+    val DECLINED = W.declined
+    val THINKING = W.thinking
+    val CHECKING = W.checking
+    val SEARCHED = W.searched
+    val OFF = W.off
+    val LOCKED = W.locked
+    val JOINED = W.joined
     const val LEFT = "Back to Robot."
-    const val NOT_HERE = "Claude isn't in this conversation."
-    const val BUDGET = "Today's Claude budget is used up, so Robot will ask before checking with Claude again today."
+    val NOT_HERE = W.notHere
+    val BUDGET = W.budget
     /** A reply cut at its length limit before it said anything (its thinking used the room). */
-    const val CUT_EMPTY = "Claude ran out of room before it could answer. Ask again, or ask for a shorter answer."
-    const val KEY_UNREADABLE = "Robot couldn't read your saved Claude key, so it was removed. Add it again in Robot's settings, under Ask Claude."
+    val CUT_EMPTY = W.cutEmpty
+    val KEY_UNREADABLE = W.keyUnreadable
     const val SWIPE_TO_READ = "Open the Claude app, then swipe up from the corner and tap “Read Claude's answer”."
     /** The offer under a reply: Robot didn't answer (a hedge, or the pre-router) ... */
-    const val OFFER = "Want me to check with Claude?"
+    val OFFER = W.offer
     /** ... or under Robot's own answer, after the local model first handed the question over. */
-    const val OFFER_AS_WELL = "Want Claude's take as well?"
+    val OFFER_AS_WELL = W.offerAsWell
     /** The local model handed over and, asked again, still gave no answer of its own: the offer stands alone. */
-    const val RATHER = "I'd rather check that with Claude."
+    val RATHER = W.rather
 
     /** A spoken yes to an offer that would send personal content [p]: only a tap sends it. */
-    fun tapToInclude(p: Set<Personal>): String = "Tap Send to include ${Personal.list(p)}."
+    fun tapToInclude(p: Set<Personal>): String = W.tapToInclude(p)
 }
 
 /**
@@ -322,33 +380,39 @@ enum class ClaudeRoute(val title: String, val detail: String) {
     API("Claude API", "Robot asks Claude itself and speaks the answer. Needs an API key with credits."),
 }
 
-/** When Robot may bring Claude in without being asked (docs/ask-claude.md "When Robot needs help"). */
+/** When Robot may bring a helper in without being asked (docs/ask-claude.md "When Robot needs help"; every helper since 0.6.0). */
 enum class Escalation(val title: String, val detail: String) {
-    OFF("Off", "Robot never suggests Claude."),
-    ASK("Ask me first", "Robot offers “Want me to check with Claude?” and waits for a yes or a tap."),
-    AUTO("Automatic", "Robot checks with Claude by itself for hard questions (API key only)."),
+    OFF("Off", "Robot never suggests a helper."),
+    ASK("Ask me first", "Robot offers to check with the helper and waits for a yes or a tap."),
+    AUTO("Automatic", "Robot checks with the helper by itself for hard questions (only through its API, at a price it knows)."),
 }
 
-/** The Ask Claude settings, with the defaults that depend on whether an API key is saved. Pure. */
+/**
+ * The Ask Claude settings, with the defaults that depend on whether an API key is saved: since 0.6.0 the Claude helper's
+ * ([RobotSettings.claude]) under [HelperSettings], the same rules for every helper. Pure.
+ */
 object ClaudeSettings {
+    private fun claude(s: RobotSettings) = s.claude ?: HelperConfig.claude().copy(enabled = false)
+
     /**
-     * Ask Claude on or off: on unless you turned it off, with or without a key (without one, questions go to the
-     * Claude app). [keySaved] is kept for callers that pass it; it no longer changes the answer.
+     * Ask Claude on or off: on unless you turned it off (or removed Claude), with or without a key (without one,
+     * questions go to the Claude app). [keySaved] is kept for callers that pass it; it doesn't change the answer.
      */
     @Suppress("UNUSED_PARAMETER")
-    fun enabled(s: RobotSettings, keySaved: Boolean = false): Boolean = s.claudeEnabled ?: true
+    fun enabled(s: RobotSettings, keySaved: Boolean = false): Boolean = s.claude?.on ?: false
 
     /** "Claude app" without a key, "Claude API" once a key is saved, unless you chose. */
-    fun route(s: RobotSettings, keySaved: Boolean): ClaudeRoute = s.claudeRoute ?: if (keySaved) ClaudeRoute.API else ClaudeRoute.APP
+    fun route(s: RobotSettings, keySaved: Boolean): ClaudeRoute = HelperSettings.route(claude(s), keySaved)
 
     /** Automatic once a key is saved, Ask me first before; never Automatic without a key (the app can't escalate by itself). */
-    fun escalation(s: RobotSettings, keySaved: Boolean): Escalation {
-        val chosen = s.claudeHelp ?: if (keySaved) Escalation.AUTO else Escalation.ASK
-        return if (chosen == Escalation.AUTO && !(keySaved && route(s, keySaved) == ClaudeRoute.API)) Escalation.ASK else chosen
-    }
+    fun escalation(s: RobotSettings, keySaved: Boolean): Escalation = HelperSettings.escalation(s, claude(s), keySaved)
 
     /** Robot may describe ask_claude to the local model: Ask Claude is on and escalation isn't Off. */
     fun localTool(s: RobotSettings, keySaved: Boolean): Boolean = enabled(s, keySaved) && escalation(s, keySaved) != Escalation.OFF
+
+    /** The same for the helper Robot checks with ([target]; null: none, so no tool). */
+    fun localTool(s: RobotSettings, target: HelperConfig?, keySaved: Boolean): Boolean =
+        target != null && target.on && HelperSettings.escalation(s, target, keySaved) != Escalation.OFF
 }
 
 /** Why ask_claude is left out of a question for the local model (logged as this code only, never the words). */
@@ -384,6 +448,16 @@ object AskClaudeTool {
     fun offered(s: RobotSettings, keySaved: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): Boolean =
         leftOut(s, keySaved, reachable, declined, attachment) == null
 
+    /** The same for any helper (0.6.0): [localTool] is ClaudeSettings.localTool for the helper Robot checks with. */
+    fun leftOut(localTool: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): ClaudeLeftOut? = when {
+        !localTool -> ClaudeLeftOut.OFF
+        !reachable -> ClaudeLeftOut.NOWHERE
+        declined -> ClaudeLeftOut.DECLINED
+        attachment == Attachment.SCREEN -> ClaudeLeftOut.SCREEN
+        attachment == Attachment.PHOTO -> ClaudeLeftOut.PHOTO
+        else -> null
+    }
+
     /**
      * The screen or photo a question to the local model is about: its own, else the newest one earlier in the
      * conversation ([history]). A follow-up ("and the second one?") is about it too, and the live conversation still
@@ -415,6 +489,11 @@ enum class Personal(val label: String) {
     CLAUDE_APP("text from the Claude app"),
     /** Another read tool's findings (none today besides the three above). */
     READ("what Robot read on your phone"),
+    /**
+     * 0.5.0: a transcript from conversation mode, other people's words included. It reaches Claude only through the
+     * "Summarize with a stronger AI" card, never through an escalation, Claude mode or "include the conversation".
+     */
+    CONVERSATION("a recorded conversation"),
     ;
 
     companion object {
@@ -479,14 +558,36 @@ object EscalationPolicy {
         alreadyEscalated: Boolean = false,
         fromClaude: Boolean = false,
         declined: Boolean = false,
+    ): EscalationDecision = decide(s, s.claude, keySaved, personal, locked, budgetReached, alreadyEscalated, fromClaude, declined)
+
+    /**
+     * The same for any helper (0.6.0): [target] is the helper Robot would check with ([HelperSettings.target]; null: none),
+     * [keySaved] its key. Automatic also needs [priceKnown] (a reply whose cost Robot can't tell is never asked for by
+     * itself) and, for current information, a helper that can search the web ([needsSearch] and [HelperConfig.searching]):
+     * otherwise Robot offers. A helper with neither an API Robot can use nor an app to open: nothing.
+     */
+    fun decide(
+        s: RobotSettings,
+        target: HelperConfig?,
+        keySaved: Boolean,
+        personal: Boolean,
+        locked: Boolean,
+        budgetReached: Boolean,
+        alreadyEscalated: Boolean = false,
+        fromClaude: Boolean = false,
+        declined: Boolean = false,
+        priceKnown: Boolean = target?.price?.known ?: false,
+        needsSearch: Boolean = false,
     ): EscalationDecision {
-        if (fromClaude || alreadyEscalated || declined || !ClaudeSettings.enabled(s, keySaved)) return EscalationDecision.NONE
-        val mode = ClaudeSettings.escalation(s, keySaved)
+        if (fromClaude || alreadyEscalated || declined || target == null || !target.on) return EscalationDecision.NONE
+        val mode = HelperSettings.escalation(s, target, keySaved)
         if (mode == Escalation.OFF) return EscalationDecision.NONE
-        val api = keySaved && ClaudeSettings.route(s, keySaved) == ClaudeRoute.API
-        // The app needs the phone unlocked, always; the API only when Claude isn't allowed on the lock screen.
-        if (locked && (!api || !s.claudeLocked)) return EscalationDecision.NEEDS_UNLOCK
-        return if (api && mode == Escalation.AUTO && !personal && !budgetReached) EscalationDecision.AUTO else EscalationDecision.OFFER
+        val api = HelperSettings.apiReady(target, keySaved)
+        if (!api && target.presetOf.app == null) return EscalationDecision.NONE
+        // The app needs the phone unlocked, always; the API only when the helper isn't allowed on the lock screen.
+        if (locked && (!api || !target.locked)) return EscalationDecision.NEEDS_UNLOCK
+        val auto = api && mode == Escalation.AUTO && !personal && !budgetReached && priceKnown && (!needsSearch || target.searching)
+        return if (auto) EscalationDecision.AUTO else EscalationDecision.OFFER
     }
 
     /**

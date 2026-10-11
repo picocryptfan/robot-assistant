@@ -8,9 +8,12 @@
         android:protectionLevel="signature" />
     <uses-permission android:name="app.heyrobot.permission.INTERNAL" />
 
-    <!-- Three uses only: the model downloads (DownloadManager, huggingface.co); when you ask, Ask Claude (the :voice
-         process, api.anthropic.com); and when you ask for the weather (0.4.0), Open-Meteo (the :voice process, and the
-         main app once to look up your Home for weather). Everything else runs on the phone. The only network permission. -->
+    <!-- Four uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
+         engine's files from Mozilla's storage.googleapis.com bucket); when you ask, a helper (the :voice process: Claude at
+         api.anthropic.com, or the company you added, 0.6.0); your own AI server, if you add one (0.6.0, the :voice process,
+         only addresses on your own network or https); and when you ask for the weather or the nearest place (0.4.0),
+         Open-Meteo and a Nominatim server (the :voice process, and the main app once to look up your Home for weather).
+         Everything else runs on the phone; the :mt process never goes online. The only network permission. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 0.2.3, "Call audio" playback only (Settings › Voice): the phone in communication mode with the loudspeaker as the
@@ -43,6 +46,12 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <!-- 0.5.0, conversation mode: the transcribing session is a microphone foreground service in the :voice process (its
+         notification is the recording indicator), holding a partial wake lock only while it runs. RECORD_AUDIO is
+         above. No new network use: transcripts never leave the phone unless you share them. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <queries>
         <!-- open_app: every app with a launcher icon (no QUERY_ALL_PACKAGES). -->
@@ -125,6 +134,7 @@
         android:extractNativeLibs="true"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="true">
 
         <!-- Main process: the app (history, settings, model manager, assistant setup). Never loads an engine. -->
@@ -137,7 +147,21 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 0.5.0: a long press on the "Transcribe" Quick Settings tile opens Settings › Conversation. -->
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
+            <!-- 0.5.0: launcher shortcuts "Transcribe" and "Transcripts". -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+        <!-- 0.5.0: exported transcripts for the share sheet (cacheDir/exports only), from the main app. -->
+        <provider
+            android:name=".sys.ExportProvider"
+            android:authorities="app.heyrobot.exports"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/export_paths" />
+        </provider>
         <!-- "Robot Notes" on the home screen: the main app, opened on the Notes screen (MainActivity reads the alias). -->
         <activity-alias
             android:name=".ui.NotesLauncher"
@@ -192,10 +216,11 @@
             android:noHistory="false"
             android:taskAffinity="app.heyrobot.capture"
             android:theme="@style/Theme.Robot.Translucent" />
-        <!-- Ask Claude's API key is pasted here, in the :voice process: it is encrypted there and never passes through the
-             main app (which opens this window by class name). -->
+        <!-- A helper's connection window (0.6.0; Ask Claude's key window before): its API key is pasted here, in the :voice
+             process, encrypted there and never passes through the main app (which opens this window by class name), and Test
+             connection runs here. -->
         <activity
-            android:name=".assistant.ClaudeKeyActivity"
+            android:name=".assistant.HelperConnectionActivity"
             android:process=":voice"
             android:exported="false"
             android:excludeFromRecents="true"
@@ -220,6 +245,53 @@
             android:excludeFromRecents="true"
             android:taskAffinity="app.heyrobot.pick"
             android:theme="@style/Theme.Robot.Translucent" />
+        <!-- 0.5.0, conversation mode (docs/conversation-mode.md 1, 5): the session's microphone foreground service, its
+             transcript screen, the Transcription check (Settings › Voice) and the Quick Settings tile, all in :voice where
+             the listener and the speech model live. Never started by Robot on its own (START_NOT_STICKY, never at boot). -->
+        <service
+            android:name=".assistant.conversation.ConversationService"
+            android:process=":voice"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+        <activity
+            android:name=".assistant.conversation.ConversationActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:label="@string/shortcut_transcribe"
+            android:launchMode="singleTask"
+            android:taskAffinity="app.heyrobot.transcribe"
+            android:excludeFromRecents="false" />
+        <activity
+            android:name=".assistant.conversation.TranscriptionCheckActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:taskAffinity="app.heyrobot.check"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- 0.5.0, phase 5.6: a transcript's summary, Robot's own or a stronger AI's after the consent card (in :voice: Robot's
+             model and the Claude key are reached from there only; the main app opens it by name). -->
+        <activity
+            android:name=".assistant.conversation.SummaryActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:taskAffinity="app.heyrobot.summary" />
+        <!-- 0.5.0, phase 5.3: "Your voice", the optional "me" voiceprint (encrypted in :voice; the main app opens it by name). -->
+        <activity
+            android:name=".assistant.conversation.VoiceprintActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:taskAffinity="app.heyrobot.voiceprint" />
+        <service
+            android:name=".assistant.conversation.ConversationTileService"
+            android:process=":voice"
+            android:exported="true"
+            android:icon="@drawable/ic_robot"
+            android:label="@string/tile_transcribe"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true" />
+        </service>
         <!-- The camera app writes the photo here (app cache, deleted right after it is read). -->
         <provider
             android:name="androidx.core.content.FileProvider"

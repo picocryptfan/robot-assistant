@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug build only. The Compose UI tests (Robolectric) host their content in ComponentActivity, which ui-test-manifest
+     adds exported; here it is not exported. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <activity android:name="androidx.activity.ComponentActivity" android:exported="false" tools:replace="android:exported" />
+    </application>
+</manifest>

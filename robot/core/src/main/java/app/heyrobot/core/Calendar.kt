@@ -10,7 +10,7 @@ import java.util.Locale
 
 // Pure. The calendar side of add_event and read_calendar (docs/phase-2.md "Calendar"): which calendar a new event goes
 // into, the times an add_event means, the text of the cards, and what read_calendar tells the model. The app process
-// reads and writes CalendarContract; GrapheneOS ships no calendar app, so the owner's own (Etar, Fossify Calendar,
+// reads and writes CalendarContract; GrapheneOS ships no calendar app, so your own (Etar, Fossify Calendar,
 // DAVx5's calendars) is whatever the provider holds.
 
 /** A calendar Robot may add events to (CalendarContract.Calendars with at least contributor access). */
@@ -22,7 +22,8 @@ object CalendarPick {
 
     /**
      * The calendar new events go into: the one chosen in settings while it is still there, else the first visible
-     * writable one, the primary calendar or one of the owner's own account first. Null: none, so the calendar app's
+     * writable one, the primary calendar or one its own account owns
+     * (OWNER_ACCOUNT) first. Null: none, so the calendar app's
      * editor opens instead (Intent.ACTION_INSERT).
      */
     fun choose(calendars: List<CalendarInfo>, chosen: Long): CalendarInfo? {

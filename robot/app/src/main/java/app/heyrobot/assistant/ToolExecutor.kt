@@ -132,8 +132,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.FreeStorage -> prepareFreeStorage(action)
             // "The nearest …" in the model's words or your own ([said], never screen text), with the setting on (0.4.0).
             // Settings' "Find the nearest place online" (or the panel's newer answer): Ask the first time shows its card.
-            is Action.MapsSearch -> Nearby.prepare(action, action.query, nearestWanted(action.query, action.nearest), nearestMode())
-            is Action.MapsNavigate -> Nearby.prepare(action, action.destination, nearestWanted(action.destination, action.nearest), nearestMode())
+            is Action.MapsSearch -> Nearby.prepare(action, action.query, nearestWanted(action.query, action.nearest), nearestMode(), settings.nearbyServer)
+            is Action.MapsNavigate -> Nearby.prepare(action, action.destination, nearestWanted(action.destination, action.nearest), nearestMode(), settings.nearbyServer)
             // The Claude app: installed or "Install Claude" before any card.
             is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
             else -> Prepared.Ready(action)
@@ -256,25 +256,27 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     }
 
     /**
-     * "Directions to the nearest pharmacy" (0.4.0): where the phone is (coarse location), OpenStreetMap's Nominatim for that
-     * kind of place around it (two decimals, two searches at most, a second apart), the closest one, and Organic Maps'
-     * route to it. The card's line (saved) names no place; its body (shown, never saved) has the place, how far, and what
-     * OpenStreetMap was sent. Anything in the way (no location, no internet, nothing found): Organic Maps' search, as
-     * before, and the card says why. The log gets codes and times, never the place.
+     * "Directions to the nearest pharmacy" (0.4.0): where the phone is (coarse location), the Nominatim search server in
+     * Settings (OpenStreetMap's unless you chose another) for that kind of place around it (two decimals, two searches at
+     * most, a second apart), the closest one, and Organic Maps' route to it. The card's line (saved) names no place; its
+     * body (shown, never saved) has the place, how far, and what was sent to which server. Anything in the way (no
+     * location, no internet, nothing found): Organic Maps' search, as before, and the card says why. The log gets codes
+     * and times, never the place.
      */
     private fun nearest(what: String, searchDone: String): Executed {
         val started = SystemClock.elapsedRealtime()
         var requests = 0
+        val server = settings.nearbyServer
         val r = Nearby.lookup(CoarseLocation.granted(ctx), abort,
             locate = { CoarseLocation.find(ctx, Nearby.FIX_MS, abort).fix?.let { it.lat to it.lon } },
-            search = { lat, lon -> NominatimClient.search(ctx, what, lat, lon, abort) { requests = it } })
+            search = { lat, lon -> NominatimClient.search(ctx, what, lat, lon, server, abort) { requests = it } })
         val ms = SystemClock.elapsedRealtime() - started
         if (r is NearbyLookup.Instead) {
             RLog.i("maps_nearest", "found" to false, "why" to r.why, "requests" to requests, "ms" to ms)
             // Stopped, or its time ran out and the panel opens the search itself: only one app ever opens ([Abort.claim]).
             if (abort.cancelled || !abort.claim()) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
             val m = maps(what, searchDone)
-            return if (m.status.succeeded) m.copy(detail = Nearby.instead(r.why, navigate = searchDone == NAVIGATE_DONE)) else m
+            return if (m.status.succeeded) m.copy(detail = Nearby.instead(r.why, navigate = searchDone == NAVIGATE_DONE, server = server)) else m
         }
         val f = r as NearbyLookup.Found
         val place = f.place
@@ -284,7 +286,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         if (!opened) return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
         val far = Nearby.distance(f.metres, WeatherUnits.of(region))
         RLog.i("maps_nearest", "found" to true, "places" to f.places, "requests" to requests, "ms" to ms)
-        val sent = "Sent to OpenStreetMap: “$what” near ${Nearby.coord(f.lat)}, ${Nearby.coord(f.lon)}"
+        val sent = "Sent to ${server.sentTo}: “$what” near ${Nearby.coord(f.lat)}, ${Nearby.coord(f.lon)}"
         return Executed(ActionStatus.DONE, "Opened Organic Maps' route to the nearest one OpenStreetMap knows, $far away in a straight line.",
             launchedApp = true, results = listOf(mapOf("place" to place.name, "distance" to far)),
             body = listOfNotNull("${place.name} · $far", place.address).joinToString("\n") + "\n\n" + sent + "\n" + Nearby.ATTRIBUTION)

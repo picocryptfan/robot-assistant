@@ -20,8 +20,8 @@ android {
         applicationId 'app.heyrobot'
         minSdk rootProject.ext.robotMinSdk
         targetSdk rootProject.ext.robotTargetSdk
-        versionCode 44
-        versionName '0.4.4'
+        versionCode 60
+        versionName '0.6.0'
         ndk { abiFilters 'arm64-v8a' }
     }
     signingConfigs {
@@ -59,9 +59,19 @@ android {
             excludes.add('**/libLiteRtCompilerPlugin_google_tensor.so')
             pickFirsts.add('**/libLiteRtDispatch_GoogleTensor.so')
         }
-        resources { excludes += ['META-INF/AL2.0', 'META-INF/LGPL2.1', 'META-INF/*.kotlin_module'] }
+        // META-INF/AL2.0 and LGPL2.1 used to be excluded here, copied from the probe's template: older kotlinx-coroutines
+        // jars each carried a copy, and duplicates fail the packaging. No jar Robot uses today has them (coroutines 1.11.0
+        // doesn't). A licence text a library ships is kept, one copy (pickFirst), never dropped; Settings › About ›
+        // Licences has the full texts and notices anyway (assets/licenses/, and :brain's AAR notices).
+        resources {
+            excludes += ['META-INF/*.kotlin_module']
+            pickFirsts += ['META-INF/AL2.0', 'META-INF/LGPL2.1']
+        }
     }
     testOptions {
+        // Compose UI tests and screenshots run on the JVM with Robolectric, in the debug unit tests only (src/testDebug):
+        // their host activity comes from ui-test-manifest, which only the debug build has.
+        unitTests.includeAndroidResources = true
         unitTests.all {
             it.systemProperty 'robot.rootDir', rootProject.projectDir.absolutePath
             it.systemProperty 'robot.variant', it.name.contains('Release') ? 'release' : 'debug'
@@ -69,14 +79,45 @@ android {
     }
 }
 
-// The isolation test also reads the merged manifest of the variant under test.
-tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { dependsOn 'processDebugMainManifest' }
-tasks.matching { it.name == 'testReleaseUnitTest' }.configureEach { dependsOn 'processReleaseMainManifest' }
+// Robolectric's Android runtime (SDK 35) is an ordinary Gradle dependency, cached like any other, and Robolectric runs
+// offline from it: nothing is fetched while the tests run. Screenshots are checked against the goldens in
+// src/testDebug/screenshots; -Droborazzi.record=true writes them instead.
+configurations { robolectricRuntime }
+tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { t ->
+    t.inputs.files(configurations.robolectricRuntime)
+    t.systemProperty 'robolectric.offline', 'true'
+    t.doFirst { t.systemProperty 'robolectric.dependency.dir', configurations.robolectricRuntime.singleFile.parentFile.absolutePath }
+    def record = System.getProperty('roborazzi.record', 'false') == 'true'
+    t.systemProperty 'roborazzi.test.record', record.toString()
+    t.systemProperty 'roborazzi.test.verify', (!record).toString()
+}
+
+// Settings › About › Licences: every library the release build packs, one "group:artifact:version" a line, for LicencesTest
+// (each must belong to an entry of assets/licenses/components.json).
+def releaseRuntimeArtifacts = tasks.register('releaseRuntimeArtifacts') {
+    def runtime = configurations.named('releaseRuntimeClasspath')
+    def out = layout.buildDirectory.file('robot/release-runtime-artifacts.txt')
+    outputs.file(out)
+    outputs.upToDateWhen { false }
+    doLast {
+        def ids = runtime.get().incoming.resolutionResult.allComponents.collect { it.id }
+            .findAll { it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier }
+            .collect { "${it.group}:${it.module}:${it.version}" }.unique().sort()
+        out.get().asFile.text = ids.join('\n') + '\n'
+    }
+}
+
+// The isolation test also reads the merged manifest of the variant under test; LicencesTest the libraries above and the
+// licence files :brain copies out of its AARs.
+tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { dependsOn 'processDebugMainManifest', releaseRuntimeArtifacts, ':brain:aarNotices' }
+tasks.matching { it.name == 'testReleaseUnitTest' }.configureEach { dependsOn 'processReleaseMainManifest', releaseRuntimeArtifacts, ':brain:aarNotices' }
 
 dependencies {
     implementation project(':core')
     implementation project(':voice')
     implementation project(':brain')
+    // 0.5.0: the fast translation engine's :mt process (MtService, librobotmt.so when tools/build_robotmt.sh built it).
+    implementation project(':mt')
     // Ask Claude: the Anthropic SDK, used only by the assistant package (the :voice process).
     implementation project(':claude')
 
@@ -92,4 +133,15 @@ dependencies {
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20180813'
+
+    // UI tests (debug unit tests only; none of this is in the release APK). ui-test-manifest adds the test host activity
+    // to the debug build, not exported (src/debug/AndroidManifest.xml).
+    robolectricRuntime('org.robolectric:android-all-instrumented:15-robolectric-13954326-i7') { transitive = false }
+    debugImplementation 'androidx.compose.ui:ui-test-manifest'
+    testDebugImplementation platform('androidx.compose:compose-bom:2025.06.01')
+    testDebugImplementation 'androidx.compose.ui:ui-test-junit4'
+    testDebugImplementation 'org.robolectric:robolectric:4.16.1'
+    testDebugImplementation 'io.github.takahirom.roborazzi:roborazzi:1.49.0'
+    testDebugImplementation 'io.github.takahirom.roborazzi:roborazzi-compose:1.49.0'
+    testDebugImplementation 'io.github.takahirom.roborazzi:roborazzi-junit-rule:1.49.0'
 }

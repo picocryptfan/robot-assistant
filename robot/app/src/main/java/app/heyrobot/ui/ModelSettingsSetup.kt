@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
@@ -45,6 +47,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -65,6 +68,7 @@ import app.heyrobot.core.EmailApp
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.Nearby
 import app.heyrobot.core.NearestOnline
+import app.heyrobot.core.NearbyServer
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
@@ -73,6 +77,7 @@ import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelNotes
 import app.heyrobot.core.ModelStatus
+import app.heyrobot.core.ModelTerms
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.PhoneStatus
 import app.heyrobot.core.RobotSettings
@@ -98,6 +103,8 @@ import app.heyrobot.ui.common.toolIcon
 @Composable
 fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier) {
     var confirmDelete by remember { mutableStateOf<BrainModel?>(null) }
+    /** A publisher's terms to tick before its file downloads (false) or is imported (true). */
+    var askTerms by remember { mutableStateOf<Pair<ModelTerms, Boolean>?>(null) }
     val chosen = s.brainModelChoice
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -106,7 +113,12 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
         ScreenTitle("Model", "Robot's AI runs on this phone. It goes online only to download a model you pick.")
         ModelChoiceCard(s, update, snap)
         ThinkingCard(s, update)
-        for (m in BrainModel.entries.filter { it.builtIn }) ModelCard(m, snap, busy, a, onDelete = { confirmDelete = m })
+        for (m in BrainModel.entries.filter { it.builtIn }) {
+            val terms = ModelTerms.of(m)
+            ModelCard(m, snap, busy, a, onDelete = { confirmDelete = m }, termsConfirmed = terms?.let { s.confirmedTerms[it.id] },
+                onDownload = { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to false else a.download(m) },
+                onImport = { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to true else a.import(m) })
+        }
         OwnModelCard(snap, busy, a, onDelete = { confirmDelete = BrainModel.OWN })
         SectionCard("About the downloads") {
             Text("Each model downloads from Hugging Face only when you tap Download, pinned to one commit of its repository; " +
@@ -116,6 +128,14 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
         }
         VoiceModelsCard(snap, a)
         Spacer(Modifier.height(12.dp))
+    }
+    askTerms?.let { (t, importing) ->
+        TermsDialog(t, importing, onDismiss = { askTerms = null }) {
+            askTerms = null
+            // Kept first (settings, schema 12), so the download's own check finds them confirmed.
+            update(ModelTerms.confirm(s, t, System.currentTimeMillis()))
+            if (importing) a.import(t.model) else a.download(t.model)
+        }
     }
     confirmDelete?.let { m ->
         val ms = snap.model(m)
@@ -186,9 +206,48 @@ private fun ThinkingCard(s: RobotSettings, update: (RobotSettings) -> Unit) {
     }
 }
 
-/** One built-in model: status, what it is, size and cache, Download / Check / Delete, and where it comes from. */
+/**
+ * A model publisher's conditions as tick boxes, in its own words (core ModelTerms), before its file downloads or is
+ * imported: the button works only with every box ticked.
+ */
 @Composable
-private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppActions, onDelete: () -> Unit) {
+private fun TermsDialog(t: ModelTerms, importing: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    var ticked by remember(t) { mutableStateOf(emptySet<Int>()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Before you ${if (importing) "import" else "download"} “${t.model.title}”") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(ModelTerms.INTRO, style = MaterialTheme.typography.bodyMedium)
+                Text("“${t.prompt}” (${t.publisher}, on the model's page)", style = MaterialTheme.typography.bodySmall)
+                t.ticks.forEachIndexed { i, words ->
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .toggleable(value = i in ticked, role = Role.Checkbox) { on -> ticked = if (on) ticked + i else ticked - i },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = i in ticked, onCheckedChange = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(words, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Text(ModelTerms.ALSO, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = t.complete(ticked)) { Text(if (importing) "Confirm and import" else "Confirm and download") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * One built-in model: status, what it is, size and cache, Download / Check / Delete, and where it comes from. A model with
+ * its publisher's terms ([termsConfirmed]: when you ticked them, or null) asks them before [onDownload] or [onImport].
+ */
+@Composable
+private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppActions, onDelete: () -> Unit,
+    termsConfirmed: Long? = null, onDownload: () -> Unit = { a.download(m) }, onImport: () -> Unit = { a.import(m) }) {
     val ms = snap.model(m) ?: return
     val st = ms.status
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -207,10 +266,10 @@ private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppAction
         )
         when (st) {
             ModelStatus.MISSING, ModelStatus.BAD -> {
-                Button(onClick = { a.download(m) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
+                Button(onClick = onDownload, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
                     Icon(RIcons.Download, null); Spacer(Modifier.width(8.dp)); Text("Download (${ModelLogic.gb(m.bytes)})")
                 }
-                OutlinedButton(onClick = { a.import(m) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
+                OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
                     Icon(RIcons.Folder, null); Spacer(Modifier.width(8.dp)); Text("Import a downloaded file")
                 }
             }
@@ -225,6 +284,14 @@ private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppAction
         if (st == ModelStatus.BAD || st == ModelStatus.UNVERIFIED) TextButton(onClick = onDelete) { Text("Delete the file") }
         Text("${m.publisher} · licence ${m.licence}\n${m.repo} at commit ${m.commit?.take(12)}\n${m.file}\nSHA-256 ${m.sha256}",
             style = MaterialTheme.typography.bodySmall, color = muted)
+        if (termsConfirmed != null) {
+            Text("You ticked its publisher's two conditions on ${java.text.DateFormat.getDateInstance().format(java.util.Date(termsConfirmed))}: " +
+                "research and personal experimentation only, and you're responsible for its outputs.",
+                style = MaterialTheme.typography.bodySmall, color = muted)
+        } else if (ModelTerms.of(m) != null) {
+            Text("Its publisher asks you to confirm two conditions before you download it: research and personal experimentation " +
+                "only, and you're responsible for its outputs.", style = MaterialTheme.typography.bodySmall, color = muted)
+        }
     }
 }
 
@@ -377,7 +444,11 @@ private fun VoiceModelsCard(snap: Snapshot, a: AppActions) {
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
             title = { Text("Delete “${b.title}”?") },
-            text = { Text("Robot falls back to the stand-in (${if (b == VoiceBundle.STT) "typing only" else "the phone's voice"}) until you download it again (${VoiceModelLogic.size(b.bytes)}).") },
+            text = {
+                Text(if (b == VoiceBundle.SPEAKERS) "Transcripts stop telling speakers apart (every line is “Speaker”) until you download it again " +
+                    "(${VoiceModelLogic.size(b.bytes)}). A voiceprint of yours, if you made one, stays until you delete it in Settings › Conversation."
+                else "Robot falls back to the stand-in (${if (b == VoiceBundle.STT) "typing only" else "the phone's voice"}) until you download it again (${VoiceModelLogic.size(b.bytes)}).")
+            },
             confirmButton = { TextButton(onClick = { confirmDelete = null; a.voiceDelete(b) }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
         )
@@ -428,6 +499,8 @@ private fun VoiceSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotSe
             }
             if (stuck.isNotEmpty()) OutlinedButton(onClick = a.voiceReset, modifier = Modifier.heightIn(min = 48.dp)) { Text("Try again") }
         }
+        NavRow(RIcons.Search, "Transcription check", "How well Robot writes down Québec French and English: read sentences, or say anything " +
+            "and fix it; scored as conversations are decoded") { a.openTranscriptionCheck() }
         Text("Test voice speed", style = MaterialTheme.typography.titleSmall)
         Text("Loads the downloaded models and times them on a built-in recording and two fixed sentences (nothing is played or saved).",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -514,88 +587,6 @@ private fun PeopleSettingsCard(s: RobotSettings, snap: Snapshot, calendars: List
     }
 }
 
-/**
- * Settings › Ask Claude (docs/ask-claude.md "Key and settings"): on or off, the route (the Claude app or the API), the API
- * key (added in a small window of the assistant's process, shown masked here, deleted here), the model, how hard Claude
- * thinks, web search, the lock screen, Claude's voice, the cost line, when Robot may bring Claude in, and the daily budget.
- */
-@Composable
-private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions) {
-    val f = snap.facts
-    val keySaved = f?.claudeKey != null
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    SectionCard("Ask Claude") {
-        Text("Nothing goes to Claude unless you ask for Claude: say “ask Claude …” or “go get Claude”, or let Robot check hard questions " +
-            "with Claude (below). Only text leaves the phone: your voice is turned into text here, and Claude's answer is read by Robot's voices.",
-            style = MaterialTheme.typography.bodyMedium, color = muted)
-        SwitchRow("Ask Claude", if (keySaved) "Questions for Claude go through your API key." else "Without a key, questions for Claude open the Claude app.",
-            ClaudeSettings.enabled(s, keySaved)) { update(s.copy(claudeEnabled = it)) }
-        Text("Use", style = MaterialTheme.typography.titleSmall)
-        val route = ClaudeSettings.route(s, keySaved)
-        for (r in ClaudeRoute.entries) {
-            val note = when {
-                r == ClaudeRoute.APP && f?.claudeApp?.installed == false -> " The Claude app isn't installed."
-                r == ClaudeRoute.API && !keySaved -> " Add a key first."
-                else -> ""
-            }
-            ChoiceRow(r.title, r.detail + note, route == r) { update(s.copy(claudeRoute = r)) }
-        }
-        Text("API key", style = MaterialTheme.typography.titleSmall)
-        var confirmDelete by remember { mutableStateOf(false) }
-        StatusRow(if (keySaved) Mark.OK else if (f?.claudeKeyUnreadable == true) Mark.WARN else Mark.TODO, f?.claudeKey ?: "No key",
-            if (f?.claudeKeyUnreadable == true) "Robot couldn't read the saved key (Android's keystore lost it), so it was removed. Add it again."
-            else "From console.anthropic.com › API keys. API use is paid with API credits; a claude.ai Pro or Max plan doesn't cover it.") {
-            if (keySaved) OutlinedButton(onClick = { confirmDelete = true }) { Text("Delete key") } else FilledTonalButton(onClick = a.addClaudeKey) { Text("Add key") }
-        }
-        if (confirmDelete) {
-            AlertDialog(
-                onDismissRequest = { confirmDelete = false },
-                title = { Text("Delete the Claude key?") },
-                text = { Text("Robot removes the key from this phone. Ask Claude stays on and uses the Claude app until you add a key again.") },
-                confirmButton = { TextButton(onClick = { confirmDelete = false; a.deleteClaudeKey() }) { Text("Delete") } },
-                dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-            )
-        }
-        Text("Model", style = MaterialTheme.typography.titleSmall)
-        for (m in ClaudeModel.entries) ChoiceRow(m.title, m.detail, s.claudeModelChoice == m) { update(s.copy(claudeModel = m.id)) }
-        Text("How hard Claude thinks", style = MaterialTheme.typography.titleSmall)
-        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-            ClaudeEffortSetting.entries.forEachIndexed { i, v ->
-                SegmentedButton(selected = s.claudeEffort == v, onClick = { update(s.copy(claudeEffort = v)) },
-                    shape = SegmentedButtonDefaults.itemShape(i, ClaudeEffortSetting.entries.size)) { Text(v.title) }
-            }
-        }
-        Text("Automatic: low for spoken questions (fast), medium for typed ones, high when you ask Claude to “think hard” or “take your time”.",
-            style = MaterialTheme.typography.bodyMedium, color = muted)
-        SwitchRow("Let Claude search the web", "Up to 3 searches per question, about 1¢ each. The answer lists the sites.", s.claudeSearch) { update(s.copy(claudeSearch = it)) }
-        SwitchRow("Allow on lock screen", "Off: a locked phone can't show who is asking.", s.claudeLocked) { update(s.copy(claudeLocked = it)) }
-        Text("Claude's voice", style = MaterialTheme.typography.titleSmall)
-        for ((name, _) in ClaudeVoices.KOKORO) ChoiceRow(ClaudeVoices.title(name), null, ClaudeVoices.of(s.claudeVoice) == name) { update(s.copy(claudeVoice = name)) }
-        Text("A Kokoro voice, so you hear who is talking. With the Kitten voice Claude uses Kitten's other voice; with the phone's voice, a lower pitch.",
-            style = MaterialTheme.typography.bodyMedium, color = muted)
-        SwitchRow("Show cost", "“≈ 1¢” under each Claude reply, estimated from the published prices.", s.claudeShowCost) { update(s.copy(claudeShowCost = it)) }
-        Text("When Robot needs help", style = MaterialTheme.typography.titleSmall)
-        val help = ClaudeSettings.escalation(s, keySaved)
-        for (e in Escalation.entries) {
-            ChoiceRow(e.title, e.detail + if (e == Escalation.AUTO && !keySaved) " Needs an API key: until then Robot asks first." else "", help == e) { update(s.copy(claudeHelp = e)) }
-        }
-        Text(if (s.personalToHelpers) "By itself, Robot sends your question and the last two turns of the conversation, with any screen text, " +
-            "photo or what it read (Safety & privacy › Send personal content to helpers automatically is on)."
-            else "By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
-            "a photo, or what Robot read from your contacts, calendar or notes, the weather (where you are) or your phone's status, it sends " +
-            "only your question; anything more goes only after you tap a card that lists it.", style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("Daily budget", style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (c in RobotSettings.CLAUDE_BUDGETS) {
-                FilterChip(selected = s.claudeBudgetCents == c, onClick = { update(s.copy(claudeBudgetCents = c)) },
-                    label = { Text(ClaudeCost.dollarsText(c * 10_000L).removeSuffix(".00")) }, modifier = Modifier.heightIn(min = 48.dp))
-            }
-        }
-        Text("Today: ${ClaudeCost.dollarsText(f?.claudeSpendMicros ?: 0)} of ${ClaudeCost.dollarsText(s.claudeBudgetCents * 10_000L)} (an estimate). " +
-            "Once it's reached, Robot asks before checking with Claude by itself until tomorrow.", style = MaterialTheme.typography.bodyMedium, color = muted)
-    }
-}
-
 @Composable
 internal fun ChoiceRow(title: String, detail: String?, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     Row(
@@ -613,7 +604,7 @@ internal fun ChoiceRow(title: String, detail: String?, selected: Boolean, enable
 
 /** A text setting saved with the keyboard's Done or the Save button (what's saved is the cleaned value). */
 @Composable
-private fun SettingField(label: String, value: String, detail: String, caps: Boolean = false, save: (String) -> Unit) {
+internal fun SettingField(label: String, value: String, detail: String, caps: Boolean = false, save: (String) -> Unit) {
     var v by remember(value) { mutableStateOf(value) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         OutlinedTextField(
@@ -657,26 +648,31 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         }
         SectionCard("Safety & privacy") {
             NavRow(RIcons.Lock, "Safety & privacy", "When Robot asks first (${s.safetyCards.title.replaceFirstChar { it.lowercase() }}), the lock screen, " +
-                "what Claude may get, direct answers (${if (s.directAnswers) "on" else "off"}), screenshots in history") { a.openPage(Page.Safety) }
+                "what helpers may get, direct answers (${if (s.directAnswers) "on" else "off"}), screenshots in history") { a.openPage(Page.Safety) }
         }
         VoiceSettingsCard(s, snap, update, a)
         SectionCard("Actions") {
             Text("What Robot may do when you ask. On the lock screen: ${LockScreen.allowed(s.lockedTools)}; everything else asks you to unlock. " +
-                "When “Just do it” still shows a card (after Robot read something, a name it isn't sure of, Claude's requests) is in " +
+                "When “Just do it” still shows a card (after Robot read something, a name it isn't sure of, a helper's requests) is in " +
                 "Safety & privacy.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            // Ask Claude's own settings decide about ask_claude (it has no level of its own).
+            // The helpers' own settings decide about ask_claude (it has no level of its own).
             for (t in ToolName.entries.filter { !it.internal }) {
                 ApprovalRow(t, s.approval(t), t in s.lockedTools) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
                 // Part of the maps actions (0.4.0): "the nearest …" found online, asked the first time by default.
                 if (t == ToolName.MAPS_NAVIGATE) NearestOnlineChoice(s, snap, update)
             }
-            Text(if (s.claudeActionCards) "Anything Claude asks Robot to do shows a card first." else "Claude's requests follow the levels above and Safety cards.",
+            Text(if (s.claudeActionCards) "Anything a helper asks Robot to do always shows a card first." else "A helper's requests follow the levels above and Safety cards.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        SectionCard("Conversation") {
+            NavRow(RIcons.Message, "Conversation", "Transcribing: live words (${if (s.convPartials) "on" else "off"}), the wake word during it, " +
+                "the lock screen, telling people") { a.openPage(Page.ConversationSettings) }
+            NavRow(RIcons.History, "Transcripts", "Read, search, export, share and delete") { a.openPage(Page.Transcripts) }
         }
         PeopleSettingsCard(s, snap, calendars, update, a)
         WeatherSettingsCard(s, snap, update, a)
-        ClaudeSettingsCard(s, snap, update, a)
+        HelpersCard(s, snap, a)
         SectionCard("Model") {
             val model = s.brainModelChoice
             NavRow(RIcons.Chip, "Robot's model", "${model.title}: ${model.modelName}. Download, choose or import a model") { a.openTab(Tab.MODEL) }
@@ -704,13 +700,11 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         }
         SectionCard("About") {
             Text("Robot ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
-            Text("Free software under the GNU GPL version 3. Third-party parts: LiteRT-LM and the Tensor NPU runtime (Apache-2.0), " +
-                "sherpa-onnx (Apache-2.0) with espeak-ng (GPL-3.0-or-later), ONNX Runtime (MIT), Silero VAD (MIT), Jetpack Compose and AndroidX (Apache-2.0), " +
-                "Gemma 4 E2B and E4B by Google (Apache-2.0), the Uncensored model by olekk (Gemma 4 E4B abliterated, Apache-2.0), " +
-                "your own model file under its own licence, Kokoro and Kitten TTS (Apache-2.0), the Anthropic Java SDK (MIT) with OkHttp, Okio and Jackson (Apache-2.0). " +
-                "Speech recognition: NVIDIA Parakeet TDT 0.6B v3 by NVIDIA, " +
-                "CC-BY-4.0, converted to ONNX by sherpa-onnx (huggingface.co/nvidia/parakeet-tdt-0.6b-v3).",
+            Text("Free software under the GNU GPL version 3, with NO WARRANTY. It uses LiteRT-LM, sherpa-onnx with espeak-ng, ONNX " +
+                "Runtime, Jetpack Compose and more, and downloads models such as Gemma 4 and Parakeet when you ask: each with its " +
+                "licence, credits and notices under Licences.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            NavRow(RIcons.Info, "Licences", "Robot's licence and source code, and every part it uses with its licence and notices") { a.openPage(Page.Licences) }
         }
         Spacer(Modifier.height(12.dp))
     }
@@ -727,13 +721,15 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
 
 @Composable
 internal fun SwitchRow(title: String, detail: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+    // The whole row is the switch: one TalkBack stop that reads the title, the detail and the state.
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
             if (detail != null) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 
@@ -747,12 +743,55 @@ private fun NearestOnlineChoice(s: RobotSettings, snap: Snapshot, update: (Robot
     val maps = s.approval(ToolName.MAPS_NAVIGATE) != Approval.OFF || s.approval(ToolName.MAPS_SEARCH) != Approval.OFF
     Column(Modifier.fillMaxWidth().padding(start = 36.dp, top = 4.dp, bottom = 4.dp)) {
         Text("Find the nearest place online", style = MaterialTheme.typography.titleSmall)
-        Text("“Directions to the nearest pharmacy”: what would go is the words and your area (about 1 km), to OpenStreetMap's " +
-            "Nominatim." + if (maps) "" else " Maps search and directions are Off.",
+        Text("“Directions to the nearest pharmacy”: what would go is the words and your area (about 1 km), to " +
+            "${s.nearbyServer.label}." + if (maps) "" else " Maps search and directions are Off.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         for (m in NearestOnline.entries) {
             ChoiceRow(m.title + if (m == NearestOnline.ASK) " (default)" else "", m.detail, now == m) {
                 update(s.copy(nearestOnline = m, nearestOnlineAt = System.currentTimeMillis()))
+            }
+        }
+        SearchServerField(s, update)
+    }
+}
+
+/**
+ * Settings › Actions › "Find the nearest place online" › Search server (schema 12): OpenStreetMap's Nominatim by default, or
+ * any HTTPS Nominatim you type (your own, or another public one). Nominatim's usage policy asks that apps can switch the
+ * service without an update. Checked by core NearbyServer before it is saved; Reset goes back to OpenStreetMap's.
+ */
+@Composable
+private fun SearchServerField(s: RobotSettings, update: (RobotSettings) -> Unit) {
+    val server = s.nearbyServer
+    val shown = if (server.isDefault) "" else server.base
+    var text by remember(shown) { mutableStateOf(shown) }
+    var problem by remember(shown) { mutableStateOf<String?>(null) }
+    fun save() {
+        val c = NearbyServer.check(text)
+        val chosen = c.server ?: run { problem = c.problem; return }
+        problem = null
+        text = if (chosen.isDefault) "" else chosen.base
+        update(s.copy(nearestServer = chosen.saved))
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Search server", style = MaterialTheme.typography.titleSmall)
+        Text(if (server.isDefault) "OpenStreetMap's Nominatim (${Nearby.HOST}), the default. To use another Nominatim, such as your own, type its address."
+            else "${server.name}: the words and your area go to this server instead of OpenStreetMap's.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(
+            value = text, onValueChange = { text = it; problem = null }, singleLine = true,
+            label = { Text("Nominatim server") }, placeholder = { Text(Nearby.HOST) }, isError = problem != null,
+            supportingText = { Text(problem ?: "Its address, such as nominatim.example.org. Encrypted (HTTPS) only.") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { save() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (text.trim() != shown) TextButton(onClick = { save() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Save") }
+            if (!server.isDefault) {
+                TextButton(onClick = { text = ""; problem = null; update(s.copy(nearestServer = "")) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("Reset to OpenStreetMap's")
+                }
             }
         }
     }
@@ -814,21 +853,25 @@ private fun PeopleSetupCard(f: AssistantFacts, a: AppActions) {
 }
 
 /**
- * Assistant setup › Ask Claude: what the network is used for, GrapheneOS's Network toggle, and the Claude app with which
- * hand-off its installed version accepts (a claude:// link, a claude.ai link, a share), so you can tell without adb.
+ * Assistant setup › Helpers: what the network is used for, GrapheneOS's Network toggle, each helper's key, and the Claude
+ * app with which hand-off its installed version accepts (a claude:// link, a claude.ai link, a share), so you can tell
+ * without adb.
  */
 @Composable
-private fun ClaudeSetupCard(f: AssistantFacts, a: AppActions) {
-    SectionCard("Ask Claude") {
-        Text("Robot uses the internet for three things only: downloading its models, Ask Claude when you ask for Claude, and the " +
-            "weather (Open-Meteo) when you ask for it.",
+private fun HelpersSetupCard(f: AssistantFacts, helpers: List<app.heyrobot.core.helpers.HelperConfig>, a: AppActions) {
+    SectionCard("Helpers") {
+        Text("Robot uses the network for four things only: downloading its models, a helper when you ask for one, the weather " +
+            "(Open-Meteo) when you ask for it, and your own AI server, if you add one.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         StatusRow(if (f.networkGranted) Mark.OK else Mark.WARN, "Network",
-            if (f.networkGranted) "Allowed, as Android reports it. If Ask Claude says “No internet” while you're online, check Robot's Network permission."
-            else "Turned off for Robot: Ask Claude can't reach Claude.") {
+            if (f.networkGranted) "Allowed, as Android reports it. If a helper says “No internet” while you're online, check Robot's Network permission."
+            else "Turned off for Robot: no helper can be reached.") {
             if (!f.networkGranted) TextButton(onClick = a.openAppSettings) { Text("Open") }
         }
-        StatusRow(if (f.claudeKey != null) Mark.OK else Mark.TODO, "Claude API key", f.claudeKey ?: "None: questions open the Claude app instead (Settings › Ask Claude).")
+        for (h in helpers.filter { it.presetOf.keyRequired }) {
+            StatusRow(if (f.keys[h.id] != null) Mark.OK else Mark.TODO, "${h.name} API key", f.keys[h.id]
+                ?: if (h.presetOf.app != null) "None: questions open the ${h.presetOf.defaultName} app instead (Settings › Helpers › ${h.name})." else "None (Settings › Helpers › ${h.name}).")
+        }
         val c = f.claudeApp
         fun tick(b: Boolean) = if (b) "✓" else "✗"
         StatusRow(if (c.installed) Mark.OK else Mark.TODO, "Claude app",
@@ -839,7 +882,8 @@ private fun ClaudeSetupCard(f: AssistantFacts, a: AppActions) {
 }
 
 @Composable
-fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit, peopleFirst: Boolean = false) {
+fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit, peopleFirst: Boolean = false,
+    helpers: List<app.heyrobot.core.helpers.HelperConfig> = emptyList()) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
     // Opening Assistant setup checks the speech recognizer setting (Robot repairs it itself with the adb grant).
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -906,7 +950,7 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
             }
             if (!peopleFirst) PeopleSetupCard(f, a)
             if (!peopleFirst) ToolsSetupCard(f, a)
-            ClaudeSetupCard(f, a)
+            HelpersSetupCard(f, helpers, a)
             SectionCard("After a restart") {
                 Text(
                     "Android 17 keeps a non-system assistant across a restart only when a default speech recognizer is set, and it never " +

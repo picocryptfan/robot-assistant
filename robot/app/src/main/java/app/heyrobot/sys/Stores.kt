@@ -34,6 +34,8 @@ object Paths {
     /** The main process's own few voice-log events (the recognizer repair): one writer per file. */
     fun voiceLogMain(ctx: Context) = File(dir(ctx), VoiceFiles.LOG_MAIN)
     fun bargeTest(ctx: Context) = File(dir(ctx), VoiceFiles.BARGE)
+    /** The last Test translation speed (core MtSpeedReport): the main app writes it. */
+    fun mtSpeed(ctx: Context) = File(dir(ctx), "mt_speed.json")
     /** The panel's lasting answer to the nearest place's first-use card (core NearestAnswer): the voice process writes it. */
     fun nearestAnswer(ctx: Context) = File(dir(ctx), "nearest_answer.json")
 
@@ -59,6 +61,9 @@ object SettingsStore {
         val app = ctx.applicationContext
         writer.execute { write(app, s) }
     }
+
+    /** Runs [block] on the settings thread once every save asked for so far is on disk (the voice process may read them). */
+    fun afterSaves(block: () -> Unit) = writer.execute(block)
 
     private fun write(ctx: Context, s: RobotSettings) {
         try { writeAtomic(file(ctx), s.toJson().toString(1)) } catch (t: Throwable) { RLog.w("settings_save", t) }
@@ -130,8 +135,11 @@ object Cmd {
     const val VOICE_RESET = "voice_reset"
     /** "Test voice speed": results come back in Paths.voiceBench. */
     const val VOICE_BENCH = "voice_bench"
-    /** The Claude API key was deleted: the voice process drops its client and ends Claude mode. */
-    const val CLAUDE_KEY = "claude_key"
+    /**
+     * A helper's key was deleted, or the helper was removed or changed (extra [EXTRA_ID]: the helper's id, which is not
+     * secret): the voice process drops its client and ends that helper's conversation. ("claude_key" before 0.6.0.)
+     */
+    const val HELPER_KEY = "helper_key"
     /**
      * "Remove saved screenshots and photos" ran: the voice process drops them from the conversation it still holds, which
      * would otherwise write them back with its next save.
@@ -143,6 +151,14 @@ object Cmd {
      */
     const val CONVERSATIONS_DELETED = "conversations_deleted"
     const val EXTRA_ID = "id"
+    /**
+     * Transcripts were deleted in the app (0.5.0; extra [EXTRA_ID]: the one deleted; none: all of them): a session
+     * recording one of them stops without writing another line, and a Resume offer for one is taken down, so nothing
+     * writes a deleted transcript back.
+     */
+    const val TRANSCRIPTS_DELETED = "transcripts_deleted"
+    /** Your "me" voiceprint was deleted (0.5.0, phase 5.3): a running session stops comparing lines with it. */
+    const val VOICEPRINT_DELETED = "voiceprint_deleted"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"
@@ -160,4 +176,18 @@ object Cmd {
             RLog.w("cmd_send", t)
         }
     }
+}
+
+/**
+ * A helper's connection window (assistant HelperConnectionActivity, in the :voice process, where keys are decrypted):
+ * opened by class name from the main app, which never refers to the assistant's classes. [EXTRA_HELPER]: the helper's
+ * id; [EXTRA_MODE]: [MODE_KEY] (add or replace its key, then Test connection) or [MODE_TEST] (Test connection only).
+ */
+object HelperWindow {
+    const val CLASS = "app.heyrobot.assistant.HelperConnectionActivity"
+    const val EXTRA_HELPER = "helper"
+    const val EXTRA_MODE = "mode"
+    const val MODE_KEY = "key"
+    const val MODE_TEST = "test"
+    const val MODE_ACTIONS = "actions"
 }

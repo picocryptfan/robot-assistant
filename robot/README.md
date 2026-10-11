@@ -1,4 +1,4 @@
-# Robot (phases 1 and 2, Ask Claude)
+# Robot (phases 1 and 2, Ask Claude, Helpers)
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
@@ -11,22 +11,61 @@ Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) a
 memory, helps free memory and storage, finds the nearest place of a kind online (OpenStreetMap, when you ask) for
 Organic Maps' route, and has every rule about when it asks first as a switch in Settings › Safety & privacy.
 Since 0.3.0, and only when you ask (or let it), Robot can hand a question to Claude: through the Claude API with your
-key, or by opening the Claude app (see "Ask Claude" below). The build specs are `../docs/phase-1.md`,
-`../docs/phase-2.md` and `../docs/ask-claude.md`; the voice models and how they are used, `../docs/voice-plan.md`.
+key, or by opening the Claude app (see "Ask Claude" below). Since 0.4.5 Settings › About › Licences lists every part
+Robot is made of, with its licence, and the look has begun to move to stock Android ("What's new in 0.4.5" below). Since
+0.6.0 it also transcribes a conversation in French and English, on the phone, translates it (also face to face, aloud)
+and summarizes it (see "Conversation mode (0.5.0)" below), and it can hand a question to any company's model or to a
+model on your own computer the way it hands one to Claude (see "Helpers (0.6.0)" below). The build specs are
+`../docs/phase-1.md`, `../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models
+and how they are used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
+
+## What's new in 0.6.0
+
+Robot 0.6.0 is 0.4.5 with two pieces of work that were built beside it; each has its section below, with its phone tests.
+
+- **Conversation mode** ([Conversation mode](#conversation-mode-050)): Robot writes down a conversation in French and
+  English, word for word, on the phone ([Transcribing](#transcribing)); tells the speakers apart by their voices, yours
+  too if you enrol it ([Speaker labels](#speaker-labels), NVIDIA's TitaNet-S, downloaded when you turn it on); tags each
+  line FR or EN (a word table made from Tatoeba's CC0 sentences); keeps, searches, exports and shares the transcripts
+  ([Transcripts](#transcripts)). Start it from Home › Conversation, the Quick Settings tile "Transcribe", or "hey robot,
+  transcribe this conversation"; Settings › Conversation has its choices.
+- **The fast translation engine** ([Fast translation engine](#fast-translation-engine-050)): Mozilla's Bergamot fr-en and
+  en-fr models run by slimt in a process of its own (`:mt`, which never goes online); the models are a 52 MB download in
+  Settings › Conversation › Fast translation, with a speed test. A release build carries `librobotmt.so`
+  (`tools/build_robotmt.sh`; `tools/verify_apk.sh` fails without it).
+- **The interpreter and summaries** ([Translation and the interpreter](#translation-and-the-interpreter),
+  [Summaries](#summaries)): translations face to face, aloud, or under each transcript line, by the fast engine at once,
+  with Robot's model improving a transcript's lines and standing in when the fast engine can't (one queue in `:brain`
+  keeps your questions first; a GGUF file serves it too); a
+  summary made on the phone by Robot's model, or by Claude through your API key or the Claude app, only after a card
+  shows what would go and you tap Send.
+- **Any-AI helpers** ([Helpers](#helpers-060)): Ask Claude became Settings › Helpers: Claude as before, plus any
+  company's chat API (OpenAI, Gemini, Mistral, DeepSeek, Groq, OpenRouter, xAI, or another) or a model on your own
+  computer, each with its own key, name, voice, price and trust (off by default for every helper); a server on your
+  network may use `http://` only at a private address.
+- **Settings file schema 13.** A 0.4.5 file (schema 12), a 0.4.4 file (7) or older keeps every choice: Ask Claude's
+  settings become the Claude helper (and are still written for one release, so going back to 0.4.5 keeps Claude), and
+  conversation mode starts from its defaults, live words in a conversation following "Show the words while you speak".
+- **Settings › About › Licences** names slimt and the parts built into it (ruy, cpuinfo, SentencePiece with
+  protobuf-lite, Abseil and Darts-clone), the Bergamot and TitaNet models and Tatoeba's CC0 data, with their texts.
+- **Not in 0.6.0:** other helpers summarizing a transcript (only Claude does), keeping a conversation's audio, the look's
+  next steps for the new screens. Nothing of 0.6.0 has run on the phone yet: every section's "On the phone" list is
+  still to do.
 
 ## Modules and processes
 
 | Module | Runs in | Holds |
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
-| `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU or the CPU), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library |
-| `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test |
-| `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
-| `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
+| `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU or the CPU), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
+| `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
+| `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
+| `:mt` | `:mt` | since 0.5.0, the fast translation engine: `MtService` (Messenger), `BergamotEngine` and `Slimt`, the only code that loads `librobotmt.so` (slimt, built by `tools/build_robotmt.sh`, not in git) |
+| `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction; the helpers' presets, rules, prices, address rule and wire formats (`core/helpers/`, 0.6.0) |
 
-- The main app never loads an engine or the Anthropic SDK; `ProcessIsolationTest` checks sources, Gradle files and
+- The main app never loads an engine, the Anthropic SDK or a helper's HTTP client; `ProcessIsolationTest` checks sources, Gradle files and
   the merged manifest, and `tools/verify_apk.sh` checks the dex.
 - `app/sys/` (both app processes) reads ContactsContract and CalendarContract and holds the Robot Notes folder; only
   the main app asks for permissions (`ProcessIsolationTest` checks that too). Since 0.4.0 it also holds the Open-Meteo
@@ -37,6 +76,9 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 - `:llama` (0.4.5) is an `android:isolatedProcess` service that only `:brain` binds (`BIND_AUTO_CREATE | BIND_IMPORTANT`),
   for one GGUF model at a time: not exported, no permissions, no network, none of Robot's files ("llama.cpp in its own
   isolated process" below).
+- `:mt` (0.5.0) is bound by class name (`app/sys/MtLink.kt`, `BIND_AUTO_CREATE`), from the main app for Test translation
+  speed and from the voice process while a conversation translates (`assistant/conversation/FastTranslation.kt`); not
+  exported, the same signature permission. Its module has no network code and writes no file (`ProcessIsolationTest`).
 - Tools run in the app process (`:voice`), never in `:brain`: the model only proposes calls
   (`automaticToolCalling = false`, constrained decoding when the TPU build allows it), the approval gate decides.
   In a conversation with screen text, a picture or something Robot read, an action that writes or leaves the phone and
@@ -63,7 +105,9 @@ cd robot
 echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models (and its bpe.model), espeak-ng subset, SHA-256 checked
 tools/build_llama.sh                          # optional (0.4.5): llama.cpp b11200 from its checked source, for GGUF files
+tools/build_robotmt.sh                        # 0.5.0: librobotmt.so, the fast translation engine (NDK 27.1.12297006, CMake 3.22.1; a 0.6.0 release needs it)
 gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :claude:testReleaseUnitTest :app:testReleaseUnitTest
+gradle :app:testDebugUnitTest                  # also the Compose UI tests and screenshots (Robolectric, offline)
 gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                             -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk
@@ -77,6 +121,69 @@ The release key is `../keys/robot-release.p12.enc` (decrypt it outside the repos
 The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYSTORE_PASS_FILE`); the password
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
+
+## Releasing
+
+Every APK that is published goes out with the source of the GPL code in it. Robot's own source is this repository at the
+release's tag (`v<version>`); the prebuilt native code it ships is not built here, so each release also attaches its
+source:
+
+1. Tag the release and build the APK (above), `tools/build_robotmt.sh` first (since 0.6.0 `tools/verify_apk.sh` fails an
+   APK without `librobotmt.so`); check it with `tools/verify_apk.sh`.
+2. Make the third-party source bundle, on a machine with the network:
+
+   ```
+   tools/make_source_bundle.sh              # version from app/build.gradle; or --version 1.0.0
+   # -> build/source-bundle/robot-<version>-third-party-sources.tar.gz and its .sha256 (about 310 MB)
+   ```
+
+   It takes sherpa-onnx at the commit of v1.13.8 (`11afbd00`, checked by its commit id), reads from that source the
+   archives sherpa-onnx's Android build compiles into `libsherpa-onnx-jni.so` (espeak-ng at `ed530aa1`, piper-phonemize,
+   kaldi-native-fbank, kaldi-decoder, kaldifst, OpenFst, simple-sentencepiece, JSON for Modern C++, hclust-cpp, Eigen)
+   and downloads each from its pinned link (or sherpa-onnx's Hugging Face mirror), checking the SHA-256 sherpa-onnx pins;
+   one it can't download it takes from git at the pinned commit instead, checks the commit id, and says so in the
+   bundle's `MANIFEST.tsv` and `README.md`. It adds ONNX Runtime 1.28.2's source (tag v1.28.2, commit `33ca9628`; 280 MB
+   of the total, about 50 MB without it; `--without-onnxruntime` leaves it out, as its MIT licence allows, but sherpa-onnx's library is built to
+   require it, so keep it unless size forces otherwise). The archive is reproducible from the same inputs (sorted, no
+   owners or times). Never commit it.
+3. Attach to the GitHub release: the APK, `SHA256SUMS`, `robot-<version>-third-party-sources.tar.gz` and its
+   `.sha256`, and the release notes. Keep the bundle as long as that APK is offered (GPL-3.0 section 6).
+   Since 0.6.0 the APK also holds slimt (GPL-2.0-or-later, in `librobotmt.so`), which Robot builds from Robot's
+   `mt/src/main/cpp/` and four pinned trees; the bundle doesn't take those yet, so also attach the four trees as
+   `tools/build_robotmt.sh` writes them out (`git archive --format=tar <commit>` from `mt/native/git/<name>`; their
+   SHA-256 are in `THIRD_PARTY.md`, "In the `:mt` process only").
+
+Settings › About › Licences names both places, from `app/src/main/assets/licenses/components.json` (`robot.sourceTag`,
+`robot.sourceBundle`, "{version}" filled in): `<repository>/tree/v<version>` and
+`<repository>/releases/download/v<version>/robot-<version>-third-party-sources.tar.gz`. The repository link there is
+today's (`picocryptfan/robot-gos-assistant`); change it in that one file if the public repository has another name.
+
+## What's new in 0.4.5
+
+Robot 0.4.5 brings three pieces of work together; each has its section below.
+
+- **GGUF models and the thinking switch** ("GGUF models (0.4.5)"): Settings › Model › Your own model file also takes a
+  `.gguf` file, which llama.cpp b11200 runs on the CPU in `:brain` (in a build with `librobot_llama.so`, from
+  `tools/build_llama.sh`), and Settings › Model › Thinking › "Let the model think first", off by default.
+- **The look's first step** ("Look (0.4.5…)"): the wallpaper's colours, Material Symbols, Android-style settings building
+  blocks, Settings › Display with the Classic look, and the UI tests.
+- **Licences and compliance** ("Licences, the search server and the model terms (0.4.5)"): Settings › About › Licences, a
+  source bundle with every release ("Releasing" above), a choice of Nominatim server, the Uncensored model's two tick
+  boxes, `PRIVACY.md` and `SECURITY.md`, and wording and accessibility fixes.
+- **Settings:** `settings.json` is schema 12 (10: the thinking switch; 12: the search server and the terms you confirmed).
+  A 0.4.4 file (schema 7) reads with every choice kept; the first save writes 12. The look's two switches have their own
+  `look.json`.
+
+### On the phone (0.4.5 release pass)
+
+Install the release over 0.4.4, keeping its data, from a build that has `librobot_llama.so` (`tools/verify_apk.sh` passes,
+"packages librobot_llama.so" and the licence checks included). Then:
+
+1. Every Settings page as 0.4.4 left it (the model chosen, voice, wake phrases, actions' levels, Safety & privacy, Ask
+   Claude), "Let the model think first" off and the search server OpenStreetMap's.
+2. The GGUF list, 1 to 19 ("GGUF models (0.4.5)" › "On the phone (0.4.5)").
+3. The look, P-1 to P-4 ("On the phone (0.4.5, the look)").
+4. Licences, the terms and the search server, C-1 to C-3 ("On the phone (0.4.5, licences and terms)").
 
 ## GGUF models (0.4.5)
 
@@ -267,7 +374,8 @@ your own `.litertlm`, has the same problem, and Robot now defends it the same wa
   (`PromptMarkers`: in brackets, with a bar or an underscore; never `<think>`, an HTML tag or the `<escape>` of Robot's own
   text calls) plus the known markers of the model families LiteRT-LM and llama.cpp run, and breaks every one of them in
   your question with the screen's text, every turn of the history (Robot's and Claude's replies) and, with LiteRT-LM's tool
-  API, every string of a tool's result (an event's title, a contact's name: `ControlText`), before the template sees them.
+  API, every string of a tool's result (an event's title, a contact's name: `ControlText`), before the template sees them;
+  so does a one-shot's one turn (0.6.0: a transcript line to translate, a summary's notes), on either engine.
   Robot's own system prompt, its text-call hint and the model's own replies are left as they are, so tool calls work as
   before. The break is a character after the marker's first one that this tokenizer keeps as itself: the invisible word
   joiner (U+2060) for Gemma 4 (it has a piece for it, byte fallback, and no normaliser), a zero-width space for a tokenizer
@@ -403,6 +511,808 @@ installed, the two files above on the phone (Downloads), about 6 GB free. Note e
 26. **Freeing memory.** With the GGUF file loaded, close the panel and wait for the unload (Settings › "Keep the model in
     memory"), or choose Fast: `app.heyrobot:llama` disappears from `ps` within a second, `brain_unload format=GGUF
     parked=false`, and `adb shell dumpsys meminfo | grep -i heyrobot` no longer counts its memory.
+
+## Look (0.4.5: the UI redesign's first step)
+
+"The UI needs to look more like stock and less like AI": Robot is being redrawn as an ordinary Android (GrapheneOS)
+app, in four steps so the branches in flight merge easily. (a) is in 0.4.5: the theme, the icons, the shared building
+blocks, the Classic look switch and the tests. (b) Settings as Android-style pages, (c) the assistant panel, (d) the other
+screens follow; conversation mode's and the helpers' screens, merged in 0.6.0, use the shared building blocks until then.
+
+- **Theme** (`ui/theme/`): the wallpaper's colours (Material You) by default; Settings › Display › "Use wallpaper
+  colours" off gives Robot's own full scheme (`RobotColors.kt`, generated from Robot's blue). Light or dark follows the
+  phone. The system font in Material's standard type scale and shapes. The few measures Robot sets itself are in
+  `Tokens.kt`. The window starts in the system's surface colour, so a cold start doesn't flash white.
+- **Icons**: Material Symbols Outlined instead of the old Material Icons, as path data in `ui/common/Icons.kt`
+  (`tools/symbols.py` writes it from a pinned commit; no icon library, nothing fetched by the app).
+- **Building blocks**: `ui/pref/` builds settings pages like Android's Settings app (AOSP SettingsLib Spa): a large top
+  bar, rows in groups under a small header, a one-line state under each title, switches on the right, a main switch
+  bar, single choices in a radio dialog (instead of segmented buttons), text in an edit dialog, status rows and a footer
+  for the explanations. `ui/common/Cards.kt` has a standard card with list-style rows for the panel's cards. The older
+  `SectionCard`, `StatusRow` and `NavRow` are restyled in place, so the screens not yet rebuilt already look closer.
+- **Classic look** (Settings › Display, off by default): brings back Robot 0.4's assistant panel (the round robot orb,
+  chat bubbles, the pill text box and round mic) and its type, for whoever prefers it. Until step (c) the panel is
+  still 0.4's in both looks, and the switch changes the type only. Settings and the other screens are standard in
+  both, and the icons are Material Symbols in both. Colours are a separate switch (Classic with wallpaper colours is 0.4.3 exactly). It may be removed after a
+  release or two.
+- **Storage**: the two switches are in `files/robot/look.json` (`core/Look.kt`, `sys/LookStore.kt`), not in
+  `settings.json`: the main app writes it, and the panel's process reads it again each time the panel opens.
+- **The old UI is kept**: the branch `backup/ui-classic-0.4.2` on GitHub (commit `8e5a5ac`, Robot 0.4.2, before any of this) and the
+  `Robot-0.4.2.apk` and `Robot-0.4.3.apk` builds on the `builds` branch. Installing one over a newer Robot needs the
+  newer one uninstalled first (Android refuses a lower version), which deletes Robot's data.
+- **Tests** (debug unit tests, offline): Compose UI tests on Robolectric, a check that every tappable thing has a label,
+  at least 48 dp and no overlap, and Roborazzi screenshots compared with the goldens in `app/src/testDebug/screenshots/`
+  (the building blocks in light, dark and at 200 % text, the cards in both looks, the icon set). Screenshots use
+  Robot's own colours, since Robolectric has no wallpaper. To accept a deliberate change, record them again:
+  `gradle :app:testDebugUnitTest -Droborazzi.record=true`.
+
+### On the phone (0.4.5, the look)
+
+Not yet checked: the redesign plan's phone checks P-1 to P-4 (its design document is on the `docs/plans` branch,
+`docs/plans/ui-stock-design.md`, section 6).
+
+- **P-1 Colours.** Change the wallpaper and its colour style, then open the app and the panel; turn "Use wallpaper
+  colours" off and on; a cold start in dark mode (no white flash).
+- **P-2 Light and dark.** Dark theme from Quick Settings with the app and with the panel open.
+- **P-3 Beside Settings.** Settings › Display beside GrapheneOS Settings (group corners and gaps, title size, switch
+  thumbs; if GrapheneOS Settings is flat, set `RobotTokens.groupedSettings = false`).
+- **P-4 Largest sizes.** Font and display size at their largest.
+- With them: Settings › About › Licences (its card and the About row are the restyled `SectionCard` and `NavRow`) and the
+  Uncensored model's two-tick-box window, with and without wallpaper colours (C-1 and C-2 in the next section).
+
+## Licences, the search server and the model terms (0.4.5)
+
+- **Settings › About › Licences.** Robot's own notice (GPL-3.0-only: free software, no warranty, the licence a tap away),
+  the links to this version's source (`<repository>/tree/v<version>`) and to its third-party source bundle ("Releasing"
+  above), then every part Robot is made of, grouped: in the app, downloaded when you ask, online services, and used only to
+  build and test Robot. Each part shows its version, licence, copyright line and what it does, and opens its full licence
+  text and notices (LiteRT-LM's 2.2 MB of notices in pieces). One file holds the list,
+  `app/src/main/assets/licenses/components.json`, beside the texts it names; `LicencesTest` keeps it in step with
+  `THIRD_PARTY.md` (its table both ways, its headings and Maven artifacts), with every library the release build packs and
+  with the files in `assets/licenses/` (THIRD_PARTY.md, "In the app"). The GGUF engine adds llama.cpp (with ggml),
+  KleidiAI and LLVM libc++, each with its text (llama.cpp's own MIT text, word for word its `LICENSE` at b11200), and
+  JSON for Modern C++ again, the same 3.12.0 sherpa-onnx links; `LicencesTest` checks their versions against
+  `tools/build_llama.sh`'s pins, and `tools/verify_apk.sh` checks their texts ship when the APK has `librobot_llama.so`.
+- **The search server** for "the nearest …": Settings › Actions › Find the nearest place online › Search server, any
+  HTTPS Nominatim, OpenStreetMap's by default ("The nearest place" below).
+- **The Uncensored model's terms:** its publisher's two tick boxes before Robot downloads or imports that file ("Model
+  choice" below, "Its publisher's two conditions"). Only that model asks: Fast, Smarter and your own file, a `.litertlm`
+  or a `.gguf`, never do.
+- **Settings file schema 12** (the search server and the terms you confirmed; 10 is the thinking switch's). A 0.4.4 file
+  (schema 7) keeps every choice and reads as OpenStreetMap's server, no terms confirmed and the switch off; its first save
+  writes 12 (`SettingsTest`).
+- **Wording and accessibility:** the app, comments, tests and docs speak to "you"; a switch row is one TalkBack stop; the
+  screen-text bubble's tap and each wake phrase's switch are named; learned names have a 48 dp target; while Robot talks,
+  TalkBack has a "Stop speaking" action on the conversation.
+- `../PRIVACY.md` and `../SECURITY.md`, drafted from what the code does.
+
+### On the phone (0.4.5, licences and terms)
+
+- **C-1 Licences.** Settings › About › Licences: Robot's notice, the two source links with `v0.4.5` in them, the four
+  groups. Open llama.cpp (its MIT text names "The ggml authors"), KleidiAI (the Apache-2.0 text), LLVM libc++ and
+  LiteRT-LM's notices (they scroll to the end without a stall). With TalkBack, each part is one stop.
+- **C-2 The Uncensored model's terms.** As "Model choice" › "On the phone (0.4.1)" 10: Download shows the window, its button
+  works only with both boxes ticked, Cancel downloads nothing; Import on that card asks the same. Your own model file's
+  Import (a `.gguf` or a `.litertlm`) never asks, before or after.
+- **C-3 Search server.** Updating from 0.4.4, Settings › Actions › Find the nearest place online › Search server reads
+  OpenStreetMap's. `http://nominatim.example.org` says why and isn't saved; `nominatim.example.org` saves and the line above
+  the field names it; on "Ask the first time", "directions to the nearest pharmacy" shows the first-use card naming that
+  server (answer "No, search the map"). **Reset to OpenStreetMap's** goes back.
+## Conversation mode (0.5.0)
+
+Robot writes down a conversation, word for word as it hears it, in French and English, on the phone, translates it
+(also face to face, aloud) and summarizes it (the design is `../docs/conversation-mode.md`). Developed as 0.5.0 and
+released in 0.6.0: the Transcription check (phase 5.0(a)), capture and transcription (5.2), speaker labels (5.3), the
+Transcripts library (5.5), translation by Robot's own model and the interpreter (5.4's Gemma half), the fast translation
+engine with its speed test (5.0(b) and 5.4's Bergamot half, in its own `:mt` process) and summaries (5.6). Not built yet:
+keeping the audio. Since 0.6.0 Robot's model serves translations and summaries whichever kind of file it is: a GGUF file
+(llama.cpp) takes one-shot requests through the same queue as LiteRT-LM's models. The queue, give-way and one-shot rules
+are `:brain`'s (`LlamaEngine`); llama.cpp's isolated `:llama` process only runs the one prompt it is given, so a one-shot
+between two panel questions just leaves less of the panel's conversation in llama.cpp's memory to reuse, and a give-way
+or a cancel reaches it as the same one-way stop, inside a prompt being read too.
+
+### Transcribing
+
+- **Start** from Home › Conversation › Transcribe, the Quick Settings tile "Transcribe", a long press on Robot's icon
+  (shortcut "Transcribe"), or by voice: "hey robot, transcribe this conversation", "start transcribing", "transcris cette
+  conversation", "commence à transcrire" (ConversationRouter decides, before Gemma; "how do I transcribe a song?" stays a
+  question). The first time, Robot says to tell the people you're with ("The laws on recording conversations differ by
+  place…") and starts once you tick "I'll tell people"; after that a line at each start says "Recording — let others
+  know." Settings › Conversation › Show the reminder again brings it back.
+- **The session** is a microphone foreground service in the `:voice` process (`assistant/conversation/`). Its
+  notification is the recording indicator, there the whole time with Pause, Stop and Open, the elapsed time and the line
+  count, never any words; on the lock screen only "Robot is transcribing" and the time. Swiped away, it comes back.
+  Android's own microphone dot shows too. A partial wake lock is held only while a session runs.
+- **Audio.** The session takes its frames from the same `Listener` the wake word uses (a sink, never a second
+  microphone), or opens a capture of its own when the wake word isn't listening. Silero's per-frame speech probability
+  feeds the conversation rules (`Segmenter`): a line ends after 0.25 s of silence (0.5 s, as questions use, loses the
+  English half of an English-then-French turn), is cut at 15 s at its quietest frame, and gets 0.2 s of padding from
+  the session's own 20 s ring. Each segment is decoded by the same Parakeet as questions, in turn with them (one model
+  in memory). A segment with too few words for its speech (under 0.9 a second over 3 s) is heard again in two halves,
+  kept if that gives more words, and the line marked "heard again" (voice log 119). Audio stays in memory and is dropped
+  once decoded; nothing is ever written. At most 64 segments wait to be decoded (about 60 MB at worst): should decoding
+  ever fall that far behind, a segment is let go and the transcript says "[not transcribed …]" there.
+- **Language.** Each line is FR or EN from its own words (`LangId`, trained on Tatoeba's CC0 sentences). A line too short
+  to tell ("OK", "5 h 30", a name) takes the previous line's language and shows "FR?" or "EN?": tap it to fix (an event
+  in the file; the next short lines lean on your answer). Other languages are transcribed too, and tagged FR or EN by
+  their closest guess.
+- **The screen** (Transcribe, in `:voice`) shows the lines with their time, the speaker's chip (colour and name, or
+  "Speaker" while only one voice is heard; see "Speaker labels" below), the language tag, and while you look at it with
+  the screen on, the words of the line being spoken in grey (Settings › Conversation › Live words, on; off when the phone
+  is warm). It keeps the newest 500 lines; the file has them all. Overflow: keep the screen on, help. It keeps working
+  with the screen off.
+- **The wake word sleeps** during a session, so nobody's "hey robot" opens the panel; "stop" still works while Robot
+  talks, and the wake word is back when the session ends. Settings › Conversation › "Hey robot works during a
+  conversation" (off) keeps it: then "hey robot" opens the panel, which pauses the transcript (nothing said to Robot is
+  transcribed), and "stop transcribing", "pause", "resume transcribing" (and "arrête de transcrire", "mets en pause",
+  "reprends") work by voice. Opening the panel any other way pauses it too; closing it goes on.
+- **Pauses** leave a marker in the transcript ("[paused 14:03–14:07]"): yours, the panel, a phone call or another app
+  taking the microphone (it goes on by itself when the microphone is back), and heat (live words off at MODERATE, a pause
+  at CRITICAL, back when it cools; voice log 112). Below 200 MB free the session stops and says so; after 4 hours it
+  notes "Still transcribing — 4 h"; there is no length limit.
+- **If `:voice` dies** (a crash, Android, `adb shell am kill`), every line already heard is saved (each one is fsynced
+  as it is written; at most the line being spoken is lost). When `:voice` starts again it closes the transcript as
+  interrupted and posts "Transcription stopped unexpectedly. Saved up to 14:32. **Resume**": Resume opens the transcript
+  screen, which goes on in the same transcript with a gap marker. Robot never starts recording again by itself. After
+  your own Stop in Settings › Active apps, it closes the transcript without asking.
+- **Lock screen** (Settings › Conversation › Start from the lock screen, on): the tile and "hey robot" can start a
+  transcript while locked. Its screen shows over the lock screen with only what it heard since; a session started
+  unlocked never shows there, not even its grey live words. The library, exporting, renaming and deleting need the phone
+  unlocked (they are in the main app). Opening the transcript screen again from Recents never starts or resumes a
+  recording; only Start, Resume, the tile, the shortcut or your voice do.
+- **Voice log** (numbers only): 100 start (how, locked), 101 stop (why, minutes, lines), 102/103 pause and resume, 104
+  each minute's segments and median decode time, 105 French/English/not-sure lines, 106 speakers told apart, merges
+  proposed and whether your voice was seeded, 109 a line that couldn't be saved, 110 recovered (and resumed), 111 the
+  microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the Transcription check, 119 re-heard; since 5.4 and
+  5.6: 107 a line translated (engine, ms, the guard's verdict), 108 a translation read aloud (language, ms after the
+  speech ended; or stopped by a tap), 113 Robot's summary (parts, seconds, how it ended), 114 a stronger AI's (which,
+  words ÷ 100, how it ended), 118 the fast engine loaded as a translating session starts (ms, directions; or why not).
+
+### Speaker labels
+
+- **The speaker model** is NVIDIA TitaNet-S (Apache-2.0, through the NeMo toolkit's licence; `THIRD_PARTY.md`), one
+  40 MB file from Hugging Face at a pinned commit, checked against its size and SHA-256 like the voice models, and never
+  in the APK. Settings › Conversation › Speakers offers the download (it also lists under Model › Voice models, where it
+  can be deleted too); the transcript screen offers it once, with its size ("Not now" hides the offer). The main app
+  downloads and installs it (DownloadManager, then a checked copy into `files/models/spk-titanet-small/`, installed the
+  next time Robot's app is in front); the voice process only loads it, behind the crash guard, and frees it after 5
+  minutes unused.
+- **Tell speakers apart** (Settings › Conversation, on once the model is there): each line with a second or more of speech
+  gets a voice embedding (192 numbers, made in memory from that line's audio without its padding) and joins the nearest
+  speaker if it is close enough (cosine 0.45), starts a new one if it is far from everyone (under 0.30), and in between
+  is labelled with the nearest without changing them. A shorter line ("Oui", "OK") goes to whoever spoke less than a second
+  before, else "?". Labels are S1, S2… in the order people first speak, up to "Most speakers" (2–6, default 6; past that a
+  new voice goes to the nearest); a session resumed after a crash starts new labels (S1′…), since the voices were only in
+  memory. A short line's language leans on its speaker's usual language. Off, every line is "Speaker" (S1 in the file).
+- **On the transcript screen** (while it records, phone unlocked; or later in Robot › Transcripts): tap a line's chip to
+  **name** the speaker (kept in that transcript only, never linked to a voice or a contact), say they are the **same
+  person** as another (all their lines become the other's, and later lines that sound like either too), or "**this is
+  me**". Long-press a line to give it to **someone else** (another speaker, or a new label), or to **split** it where the
+  other person started (tap the first word they said, then who said it). Every change is one more event in the file;
+  Robot never relabels a line by itself. While a session runs, Robot offers "S3 sounds like S1. The same person?" when two
+  speakers' voices come close (their mean voices at cosine 0.40 or more): **Merge** or **Not the same**. The pairs left
+  when it stops are kept in `meta.json` and offered on the transcript in the library. Exports use the names ("Marie
+  (FR): …", and "You" for you; Speakers: "Marie (S1), You").
+- **Your voice** (Settings › Conversation, optional): read three short sentences (in French on a French phone, else in
+  English). Each recording's speech becomes an embedding; if the three sound like one voice they are averaged into your
+  voiceprint, which is encrypted with an Android Keystore key of its own (AES-256-GCM, not exportable) into
+  `files/robot/me.voiceprint` (written and read by the voice process only). Each session decrypts it once to seed a fixed
+  speaker "Me", so your lines say "You". The recordings stay in memory and are dropped once embedded. **A voiceprint is
+  biometric data**: it is never in settings (`meVoiceprint` only says one exists), a log, an intent or a backup, never
+  sent anywhere, and **Delete** (Settings › Conversation, or the Your voice screen) removes the file and its key at once;
+  a session running then stops using it. A voiceprint that can't be decrypted any more is deleted, never guessed.
+- **What is kept:** the labels and your changes, in the transcript. The voices of a session (its embeddings) live in
+  memory and are forgotten when it stops; only your voiceprint, if you made one, is stored.
+- **Limits** (also in the screen's help): two people talking at once go to one of them; very short replies go to whoever
+  spoke just before; the same person near and far from the phone can become two speakers (merge them); TitaNet was
+  trained on English, and same-person-across-languages and far-field table audio were not measured before the phone
+  test below. No diarization model runs live.
+
+### Transcripts
+
+- **Where:** `filesDir/transcripts/<id>/` (`meta.json`, `lines.jsonl` append-only, `snapshot.json`), the app's private,
+  credential-encrypted storage, never backed up or transferred (`allowBackup=false` and the extraction rules). The format
+  is §6 of the design: each line, each language fix and each pause is one more record; nothing is rewritten.
+- **The library** (Home › Conversation › Transcripts, Settings › Conversation, the shortcut "Transcripts"): newest first,
+  with the date, length and "Recording now" or "Stopped unexpectedly"; a search over the words (accents and case
+  ignored); one transcript to read, rename (not while it records), **Share** (a Markdown file through the share sheet:
+  the app you pick keeps its own copy), **Save as Markdown / text** (where you choose, through Android's file picker),
+  **Copy** (marked sensitive) and **Delete**. "Delete all" removes them all. Deleting the transcript being recorded stops
+  the recording: the app tells the voice process, which then writes nothing more of it (the folder is moved aside in one
+  step before it is removed, so a late write can't bring it back). Deleting on flash storage is not a secure erase.
+- **Export format** (`TranscriptExport`): a header (date, time and length, speakers with the names you gave, languages,
+  "Transcribed on this phone by Robot (Parakeet v3).") and one line per line heard, "**[14:02:11] Marie (FR):** …" (S1
+  without a name, "You" for you), with "[paused …]" markers.
+
+### Transcription check (Settings › Voice)
+
+The gate for Québec French (phase 5.0(a)), in the `:voice` process because it uses the speech model:
+- **Read:** 20 Québec-French sentences and 10 English ones, written for Robot without numbers (Parakeet writes numbers as
+  digits); Record, read, Stop.
+- **Say anything:** Robot shows what it heard; correct it to what was said; Score it. The realistic test.
+- **Clips:** pick audio files and a .txt with one line per clip in the order of their names, "name<TAB>sentence" lines,
+  or a Common Voice list as it comes (its `path` and `sentence` columns), through Android's picker (no storage
+  permission). Each is decoded in memory (up to 60 s).
+- Each recording is decoded exactly as a conversation is (the same detector, segments, re-hear rule and Parakeet), then
+  scored with `Wer`: lower case, ’ as ', "œ" as "oe", hyphens and punctuation as spaces; a wrong accent counts, and is
+  also reported apart. Per line: words wrong, accents, the language Robot heard and the decode time; per language: the
+  total against the pass mark, **15 % for Québec French over at least 20 lines from at least 2 readers** (pick Reader
+  1–4), **8 % for English**.
+- Recordings stay in memory and are dropped once scored; the voice log gets the numbers (117: % wrong, lines, language);
+  **Copy report** copies numbers only unless "Include sentences" is ticked.
+- **If Québec French fails the gate**, before building more on it (`../docs/translation-plan.md`, `../docs/languages.md`
+  4.4): try Gemma's own audio input for short recordings, the Whisper-turbo QC model for recordings only, hotwords
+  (needs a `bpe.vocab` Parakeet's export lacks), or a fine-tuned Parakeet; and record the number either way.
+
+### Translation and the interpreter
+
+- **Robot's model translates**, the one chosen in Settings › Model (Fast on the TPU by default), through a **one-shot
+  request** to `:brain` (`REQ_ONE_SHOT`): one message to a conversation of its own, with the plan's fixed prompt for the
+  direction ("Translate the user's message from Québec French to natural English. Keep the tone and register…", and
+  English to Québec French "as a Quebecer would say it (tu unless the message is formal)"), no earlier line, **no tools**
+  (none described, constrained decoding off, any call it writes dropped), streamed, then closed. It never sees or
+  changes the assistant's conversation: `:brain` still keeps one LiteRT conversation at a time, so a one-shot closes the
+  assistant's, which is rebuilt from the app's own history at your next question (a few seconds on the TPU; on a CPU
+  model, its long first-word wait again).
+- **`:brain`'s queue** (`BrainScheduler`, `BrainQueue`): the panel first (your newest question still cancels your older
+  one), then the interpreter's turns, then transcript translations, then summary steps. The panel never cancels an
+  interpreter turn (about a second) but goes next; a transcript translation gives way to the panel and the interpreter,
+  and a summary step to anything, and starts over afterwards. While the panel waits for its actions' results (a card
+  open), only the panel's own requests start, for at most 90 s. A request learns its place (`EV_QUEUED`) and when it
+  starts, and is cancelled if it hasn't started when its deadline passes.
+- **Every translation is checked** (`MtGuard`) before it is shown or spoken: in the language asked for, about as long as
+  what was said, at most three lines, without "Translation:", quotes or notes around it. A meaning error gets through:
+  the translation is marked as a machine's.
+- **The fast engine** (Bergamot in `:mt`, "Fast translation engine" below) is used when this build has it and its files
+  are downloaded and verified (Settings › Conversation › Fast translation; a session sees a download within about
+  10 s). Then it gives each transcript line a translation at once (marked "fast") that Robot's model then replaces with
+  its own, and it stands in for the interpreter when the model hasn't started within 1.5 s of the turn's request (the
+  panel's question ahead, or `:brain` busy), fails, or fails a guard; with a model on the CPU (about 8 tokens a second), it leads the interpreter and the model
+  stands in. Without it, Robot's model translates alone, with longer deadlines (8 s to start on the TPU, 10 s on the
+  CPU; a transcript's first translation waits up to 2 minutes), and the interpreter says "Translated by Robot's model on
+  this phone". A fast engine that fails in a way that may last (its files didn't load, `:mt` stopped) rests for a minute,
+  so the model gets its longer deadlines meanwhile; a new session tries it again. The voice process binds `:mt` only
+  while a session translates (both directions load as it starts: voice log 118) and lets it go when it stops, so `:mt`
+  frees the engine. An interpreter turn goes to `:mt` ahead of a transcript's waiting lines. A line goes to `:mt`, on the
+  phone, and nowhere else.
+- **A transcript's Translate** (top bar; its default in Settings › Conversation): each new line, in the other language
+  of the pair, in small italics under it (turned on mid-session, the latest 20 lines too): the fast engine's at once
+  when it is there, then Robot's model's in its place. Robot's model works on the newest lines on screen first, one at
+  a time, skips a better translation for a line more than 60 s old, and works only with the screen on and the phone not
+  too hot (SEVERE heat: the fast engine only; voice log 112). Tap a translation (or "Translate" under a line) for Robot's
+  model's own. Changing a line's language translates it again. Translations are events in the transcript's file and in
+  exports.
+- **The interpreter** (Home › Conversation › Translate, the transcript screen's Interpreter, or "hey robot, translate
+  this conversation" / "be my interpreter" / "traduis cette conversation"): the phone flat between two people; the top
+  half turned to the other person, in their language (French by default on an English phone; ⋮ › Their language), the
+  bottom half yours. Each half shows, large, what the other side last said, translated; small, what Robot heard its own
+  side say. The direction follows each line's language; a half's microphone button forces its language (hold it while
+  you speak, or tap it on and off). Translations are read aloud (Speak, on by default here): English in Robot's voice,
+  French in Kokoro's French voice (Siwis) when Robot speaks with Kokoro. **Robot never translates itself**: it doesn't
+  listen while it speaks, nor for 300 ms after. A tap anywhere stops the reading. The screen stays on. At most two
+  speakers. The same session can switch between Transcribe and Interpreter; its file keeps every line.
+- **Speak in a transcript** (top bar, off by default): each line's first translation is read aloud, once, while it is
+  fresh; Robot doesn't listen meanwhile, and the screen says so once.
+- **The model stays loaded** while a session translates (and while a summary is made): the unload after the panel closes
+  waits until they end. Settings › Model's choice applies; a short-context model (0.4.3) translates too (a one-shot is
+  chat only anyway), within its own context.
+
+### Fast translation engine (0.5.0)
+
+Mozilla's Bergamot French ↔ English models (the ones Firefox translates with), run by slimt in a process of its own,
+`:mt`. It translates a line in tens of milliseconds, so every transcript line can have a translation at once, which
+Robot's model then replaces; it stands in for the model in the interpreter, and leads it when the model runs on the CPU
+("Translation and the interpreter" above). The voice process reaches it through core's `BergamotTranslator` (behind the
+same `Translator` interface as Robot's model, with `MtGuard`), offered by `FastEngineGate` only while the library is in
+the build and both directions' files are verified.
+- **The library.** `tools/build_robotmt.sh` fetches slimt (DavidVentura's fork @ `2beb403a`, the one Offline Translator
+  uses) and the commits of ruy, cpuinfo and SentencePiece it pins, checks the SHA-256 of each tree, and builds
+  `librobotmt.so` for arm64-v8a with NDK 27.1.12297006 and CMake 3.22.1 from Robot's own wrapper (`mt/src/main/cpp/`:
+  slimt's C++ API, a sentence splitter, Bergamot's doubled short sentence ("Oui." → "Yes. Yes.") kept once in every
+  sentence, three JNI functions; nothing logged). It goes into `mt/src/main/jniLibs/` (not in
+  git), where Gradle packages it; the same sources give the same bytes (THIRD_PARTY.md has the hash). Without it the app
+  still builds, Settings › Conversation says the fast engine isn't in this build, and Robot's model translates alone.
+  `--check` also builds the wrapper
+  for the computer, downloads and checks the model files, and translates the test set (`tools/lang/fr-CA/mt-test.tsv`),
+  comparing each line with its "fast engine output" column. `ROBOTMT_NEON=ON` turns on slimt's own NEON float code
+  (maybe faster on the phone, but then the phone no longer gives the build machine's exact outputs).
+- **The files.** Settings › Conversation › Fast translation › **Fast translation engine (52 MB)** › Download: five files at
+  pinned Mozilla URLs (the training run's id is in each path). Each `.gz` is checked (size, SHA-256), unpacked as a stream
+  and checked again before the `:mt` process may load it; 73 MB in Robot's private storage. Delete removes them.
+- **The process.** One engine, both directions at most (about 300 MB with both loaded on the build machine), loaded on
+  first use (or as a translating session starts) and let go after five idle minutes, when Android is short of memory
+  with the process in the background, or when nothing is bound (a session binds it only while it translates; the speed
+  test while its screen shows). A request is up to 64 lines (32,000 characters) of one direction, each translated on its
+  own (sentence by sentence) before its deadline (1.5 s to start an interpreter's turn, 10 s a transcript's line); an
+  interactive line goes before a waiting backlog, so it waits at most one line. slimt can `abort()` on a bad model file:
+  that ends `:mt` only (the transcript, the panel and Gemma go on, Robot's model translating alone for a minute), and the
+  next request starts it again. It never goes online and logs codes and numbers only; the voice log gets "Fast translation loaded in
+  … ms (2 directions)".
+- **Test translation speed** (Settings › Conversation › Fast translation, the phone gate of phase 5.0(b)): Robot's 23 test
+  lines (15 Québec French, 8 English) through the engine, timed line by line inside `:mt`, then its memory, each output
+  compared with what the same engine gave on the build machine. The mark: a **median of 60 ms a line or less**, **450 MB
+  or less** at most with both directions loaded, and **23 of 23 the same**. Copy the result copies the numbers and every
+  line that differed. While the screen shows, the engine stays loaded for `dumpsys meminfo`.
+- **Build machine** (x86, 4 vCPU Xeon, 2026-10-11): 23 of 23 the same; median 36–40 ms, slowest 69–79 ms a line; peak
+  RSS 293 MB with both directions; 0.17–0.21 s to load a direction. The arm64 build, run as a static program under
+  qemu-aarch64, gave the same 23 outputs (no phone timing). The bergamot 0.4.5 wheel of phase 4 agrees with this engine on
+  13 of the 23 lines only: the two engines quantize and decode differently, so the gate compares with this engine's own
+  outputs.
+
+### Summaries
+
+- **Summarize** (a transcript in Robot › Transcripts › ⋮, "Summarize" on the saved transcript screen, or "hey robot,
+  summarize this conversation", which stops the session) opens the summary screen in the `:voice` process. The phone
+  must be unlocked.
+- **Robot's summary** is made on the phone by Robot's model: the transcript in parts of about 2,400 estimated tokens (8–10
+  minutes of talk; smaller for a short-context model), each part's notes ("at most 12 short bullet points… Add the time
+  of the line each bullet comes from, like [14:03]"), then the notes merged (in levels past 12 parts) into "a 2–3
+  sentence overview, then Decisions, To do, Numbers and dates, Open questions", in the language set in Settings ›
+  Conversation (yours by default). Every call fits the loaded model's window with room for its reply. It runs at the
+  lowest priority (your questions and translations go first; a step that gave way starts over), with a progress bar and
+  Cancel; each part's notes are kept as they come (`summary-draft.json`), so a summary stopped or failed halfway goes on
+  from the next part.
+- **Its label:** "Robot's summary — made on this phone by Gemma 4 E2B. It can miss or mix up details; check the
+  transcript." (the model it was made with). Each [14:03] links to that line in the transcript. **The number check**
+  (`SummaryCheck`): every number, name and [time] in the summary must be in the transcript (its lines and translations),
+  among the speakers' names or in your People; what isn't is listed under it ("Robot couldn't find “17 h” in the
+  transcript").
+- **A stronger AI:** for a conversation longer than about 25–30 minutes (more than 3 parts), one marked important (⋮ ›
+  Mark important on the transcript in the library), or
+  a summary the check flagged, Robot offers it first ("This conversation is long; a stronger AI will summarize it more
+  accurately": Summarize with Claude, Robot's summary anyway, Not now; Settings › Conversation › Translation and
+  summaries turns the offer off, and sets the summary's language).
+  **Nothing leaves the phone before Send on the card**, which says what goes ("41 min · 2 speakers · 6,120 words · French
+  and English. It includes what other people said and the names you gave them."), where ("Goes to: Anthropic (Claude
+  Opus 5.5), over the internet, with your API key. ≈ 9¢."), and offers "Replace names with “Speaker 1, 2”" (also where
+  the names were said). **The Claude API** (your key; Ask Claude on): one question with its own fixed prompt
+  (`ClaudePrompt.TRANSCRIPT_SYSTEM`), no tools, no web search, medium effort, room for 16,000 tokens; the answer streams,
+  is saved as "Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52.", and its cost is shown and counted in
+  the daily budget (which warns, never blocks what you asked for). **The Claude app:** the same text in a share to the
+  app (or, if it doesn't take one, on the clipboard marked sensitive, and the app opens): you press Send there; Robot
+  doesn't hear the answer. Too long for the app (over 100,000 characters): export the transcript and attach it.
+- **Where:** each summary is `summary-<n>.json` in the transcript's folder (who made it, with which model, how, when,
+  and your consent for a helper), listed on the transcript in the library (newest first, with its label and [time]
+  links, and Delete), not part of the transcript's exports, and deleted with the transcript.
+
+### On the phone (0.5.0 capture)
+
+Phases 5.0(a), 5.2 and 5.5 are done when these pass (design §9.1). Robot is the assistant, the voice models are
+installed, the wake word is on.
+1. **Transcription check, French.** Settings › Voice › Transcription check › Read, Reader 1: read the 20 French
+   sentences; Reader 2 (another person): the same. Note the French total (pass: ≤ 15 % over 20+ lines from 2 readers) and
+   the decode times. Say anything: two minutes of free Québec French, corrected. Copy report without sentences: only
+   numbers; with: the sentences too. Voice log: "Transcription check (French): …% of words wrong over … lines".
+2. **English.** The 10 English sentences: ≤ 8 %. If you have them, Clips: Common Voice "Français du Canada" clips with
+   their list.
+3. **First start.** Home › Transcribe: the reminder, "I'll tell people", Start. The notification (Pause, Stop, Open; on
+   the lock screen only the title and the time), the microphone dot, the red dot and timer on the screen.
+4. **30 minutes, two languages, screen off.** Two people talk, switching between French and English (also within a
+   minute, "Can you pass the salt? — Oui, tiens."). Lock the phone for the rest. Then: every line is in Transcripts, in
+   order, none missing at the language switches (look for "heard again" lines), FR/EN right on most lines and "FR?" only
+   on short ones. Voice log: 104/105 once a minute; note the median decode time and the longest queue. Note the battery
+   used.
+5. **Wake word.** During a session, "hey robot, what time is it?": nothing opens (the voice log has no wake line). Stop
+   the session: "hey robot" works again. Turn on "Hey robot works during a conversation": "hey robot" opens the panel and
+   the transcript shows "[paused …]" for that moment; "stop transcribing" ends it.
+6. **Crash.** During a session, `adb shell am kill app.heyrobot` (if the foreground service keeps `:voice` alive, as it
+   may, use `adb shell am crash $(adb shell pidof app.heyrobot:voice)`). The notification goes; within a few seconds
+   (when Android restarts the assistant) "Transcription stopped unexpectedly. Saved up to …" appears. Every line shown before the kill is in the transcript (at most the line being spoken is lost).
+   Resume: the same transcript goes on with "[stopped unexpectedly …]". Then Stop Robot from Settings › Active apps
+   during a session (or `adb shell am force-stop app.heyrobot`): no Resume offer, the transcript is closed as ended.
+7. **A call** during a session: "[phone call …]" or "[microphone unavailable …]", and it goes on after the call. Another
+   app recording: the same.
+8. **Lock screen.** Locked, tap the tile: the reminder or the screen over the lock screen, with nothing older; Open in
+   Transcripts needs the unlock. "Start from the lock screen" off: the tile asks to unlock. Then, on that same screen:
+   unlock, Stop, "New transcript", and with Live words on and the screen in front, lock the phone and wake it: the
+   lock screen shows, not the transcript (no lines, no grey words).
+9. **Voice start.** "Hey robot, transcribe this conversation": Robot says "Transcribing.", the screen opens and the panel
+   goes; nothing of the panel is transcribed. ("Translate this conversation" starts the interpreter since 5.4: see
+   "On the phone (0.5.0 translation and summaries)".)
+10. **Library.** Search a word from the session (with and without its accent); rename; Share: pick another app (Files,
+    a Markdown reader, a mail draft): the Markdown file opens there correctly (title, header, times, FR/EN). Save as
+    Markdown into Downloads and open it with another app. Copy and paste in a note.
+11. **Delete.** Delete one transcript: `adb shell run-as app.heyrobot ls files/transcripts` no longer lists its folder.
+    Delete the one being recorded: the session stops and the folder doesn't come back. Delete all.
+12. **Tile and shortcut.** Add "Transcribe" in Quick Settings: tap to start (the screen opens), tap to stop; long press:
+    Settings › Conversation. Long-press Robot's icon: "Transcribe" and "Transcripts" work (if "Transcribe" doesn't open,
+    note it: the shortcut targets a screen that isn't exported).
+13. **Stop, then start at once.** Tap the tile to stop and again straight away (or Stop, then "New transcript" within a
+    second): the new session records with its notification there the whole time (pull the shade: "Robot is
+    transcribing"); a session recording with no notification is a failure. The first transcript is saved whole.
+14. **Recents.** Start from the tile, press Back, stop from the notification; then open the transcript screen from
+    Recents: it opens on "Saved" and records nothing (no notification). The same after a Resume.
+
+### On the phone (0.5.0 speakers)
+
+Phase 5.3 is done when step 4 passes: that is gate 5.0(d) in the app (design §9.1). Robot is the assistant, the voice
+models are installed, nothing is recording.
+1. **Download.** Settings › Conversation › Speakers: "Download (40 MB)", the progress line, then (with Robot's app in
+   front) "Ready"; Model › Voice models lists "Speaker labels · 40 MB" too. `adb shell run-as app.heyrobot ls -l
+   files/models/spk-titanet-small` shows `nemo_en_titanet_small.onnx` at 40,257,283 bytes and `.verified`. Nothing of it
+   is in the APK (`unzip -l` the APK: no `.onnx` but the wake word's and the VAD's).
+2. **The offer.** Delete the speaker model (Settings › Conversation), open Transcribe: the card "Tell speakers apart?"
+   says 40 MB; Download opens Settings › Conversation; "Not now" hides it and it doesn't come back. Download it again.
+3. **Your voice.** Settings › Conversation › Set up your voice: read the three sentences (Record, Stop): "Saved". `adb
+   shell run-as app.heyrobot ls -l files/robot/me.voiceprint`: under a kilobyte; `adb shell run-as app.heyrobot xxd
+   files/robot/me.voiceprint | head -2` starts with `RVE` and nothing readable follows; `settings.json` has
+   `"meVoiceprint": true` and no numbers of yours. Set it up again with another person reading one sentence: "don't
+   sound like one voice", and the saved one stays.
+4. **Two people, 10 minutes (5.0(d)).** You and another person at a table, the phone flat between you, Transcribe,
+   talking normally (mixed French and English is fine) for 10 minutes, short replies included; then Stop. Your lines
+   should say "You", the other's S1 (or S2). In Robot › Transcripts › that transcript, make at most one merge (the
+   "sounds like" card or a chip's "Same person as…"). Then count, line by line, the time of the lines with the right
+   label (`adb shell run-as app.heyrobot cat files/transcripts/<id>/snapshot.json` has each line's `t0`, `t1`, `spk`; the
+   screen shows who each line is): **pass at 90 % or more of the speaking time**. Note the result, how many speakers and
+   proposals the voice log's 106 line shows ("Speakers: 2 · … · started from your voice"), and the mean embedding time
+   (`adb logcat -s Robot | grep conv_speakers`: `embedMs`). Repeat once with your
+   voiceprint deleted (both people as S1/S2), and once with the phone 2 m away from one of you.
+5. **Names and fixes, live.** During a session: tap a chip, "Name this speaker" (Marie): her lines say Marie at once.
+   Long-press a line, "Someone else said it", pick the other: it moves. Long-press a line where both of you spoke, "Two
+   people said it: split", tap the first word of the second person, pick them: two lines. "This is me" on a chip: those
+   lines say "You". Lock the phone (with a session started unlocked: the lock screen shows; started locked: the lines show
+   but chips can't be tapped, and no "sounds like" card).
+6. **Afterwards.** Stop; Share the Markdown: the header lists "Marie (S1), You", lines say "**[…] Marie (FR):**"; the
+   library's chips and long-presses do the same as live (not while it records: "It's being recorded…").
+7. **Delete your voice.** During a session, Settings › Conversation › Your voice › Delete: the file is gone (`ls`), lines
+   from then on that sound like you get an S label, earlier "You" lines stay; reopening Robot's app shows "meVoiceprint"
+   false in `settings.json`.
+8. **Crash.** Kill `:voice` during a two-person session (step 6 of the capture checks), Resume: new lines are S1′/S2′;
+   "Same person as…" on S1′ offers S1, and merging joins them.
+9. **Off.** "Tell speakers apart" off: the next session's lines are all "Speaker" and the 106 line isn't logged.
+
+### On the phone (0.5.0 translation engine)
+
+Phase 5.0(b) is done when steps 2 to 4 pass (design §9.1).
+1. **Build with the engine.** Run `tools/build_robotmt.sh` before `gradle :app:assembleRelease`; `tools/verify_apk.sh`
+   then shows "packages librobotmt.so (the fast translation engine)", "librobotmt.so exports only its three JNI
+   functions" and "only app.heyrobot.mt.Slimt loads librobotmt (dex)". (Without the script it prints a NOTE instead.)
+2. **Download.** Settings › Conversation › Fast translation › Download (52 MB): progress, then "Checking and installing", then
+   "Ready" and "The fast translation engine is ready." `adb shell run-as app.heyrobot ls -l files/models/mt-fr-en` lists the
+   five files and `.verified` (73,135,034 bytes of files).
+3. **Test translation speed.** Tap it and note the four lines: the median (the mark is ≤ 60 ms) and the slowest line;
+   the memory, at most and now (≤ 450 MB); "23 of 23 the same"; the load times. Tap Copy the result and keep the text.
+   Tap again: "The engine was loaded already", and the times without the first-load cost.
+4. **Memory.** With the result on screen: `adb shell dumpsys meminfo app.heyrobot:mt`. Note TOTAL PSS and TOTAL RSS (the
+   mark is 450 MB with both directions loaded) and the native heap.
+5. **Lines that differ.** If fewer than 23 are the same, the copied result lists each line with what was expected and
+   what came: note them. The engine is meant to give the build machine's exact words; a difference is a finding for
+   docs/conversation-mode.md 9.6, not a reason to change the reference.
+6. **A crash stays in `:mt`.** Start a transcript (Home › Transcribe), then open Settings › Conversation, start the test
+   and at once `adb shell am crash $(adb shell pidof app.heyrobot:mt)`: the test says the fast engine stopped; the
+   transcript goes on (its notification stays, new lines arrive). Test again: it works (Android started `:mt` again).
+7. **Letting go.** Leave Settings › Conversation (no session translating); after a few seconds `adb shell dumpsys
+   meminfo app.heyrobot:mt` shows no process, or one without the engine's memory.
+8. **Delete.** Fast translation › Delete: `files/models/mt-fr-en` is gone and Test translation speed is greyed out.
+   Download again works.
+9. **No network.** With the files there, turn on airplane mode and run the test: it works the same.
+10. **Voice log.** Settings › Voice › Voice log: "Fast translation loaded in … ms (2 directions)" for each first load.
+
+### On the phone (0.5.0 translation and summaries)
+
+Phases 5.4 (Robot's model's half) and 5.6 are done when these pass (design §9.1). Robot is the assistant, the voice
+models are installed, Fast is the model, the phone is unlocked unless a step says otherwise. Steps 1 to 5 are for
+Robot's model alone: delete the fast engine's files first (Settings › Conversation › Fast translation › Delete), or use
+a build without it; the next list checks what changes with it.
+1. **One-shots beside the panel.** Start a transcript with Translate on and talk French and English: each line gets an
+   italic English or French line within a few seconds. Meanwhile open the panel and ask "what time is it?": it answers
+   (the transcript pauses while the panel is open, as before); ask a second question that needs a card (a text to
+   someone, don't send): while the card is open, translations wait; tap Cancel: they go on. `adb logcat -s Robot | grep
+   -E "brain_one_shot|one_shot|brain_reply"`: one-shots with `oneShot=true`, never `calls>0`; the panel's replies rebuild
+   their conversation after a one-shot (`brain_rebuild`). Ask the panel about something said earlier in the panel
+   (not in the transcript): it remembers the panel's own conversation and knows nothing of the transcript.
+2. **The interpreter, 10 turns (the phase-4 4.2 criteria).** Home › Conversation › Translate (first time: the reminder).
+   Phone flat between you and a French speaker; take 10 turns. Pass: **the direction is right at least 9 times** (the
+   large text in the listener's half is in their language); **Robot never translates itself** (no line of Robot's own
+   voice in the transcript afterwards: open it in Robot › Transcripts); **the median from the end of speech to the first
+   translated audio is ≤ 3.0 s** (time it on a recording, or read voice log 108's ms, which is up to the hand-off to the
+   voice, and add the voice's first-chunk time from "Test voice speed"); with the fast engine, the next list's step 3.
+   Then hold the bottom half's button and say a French sentence: it is taken as yours (English) only while held, and
+   translated into French; tap it on, speak English, tap it off. A tap on the screen while it reads stops it.
+3. **The panel during a session.** In the interpreter, "hey robot" (with "Hey robot works during a conversation" on) or
+   the corner swipe, ask a question: **the panel still answers** (the session pauses meanwhile); close it: the
+   interpreter goes on. Do it once while a translation is being made: the panel's answer comes after that turn.
+4. **Heat and screen.** In a transcript with Translate on, turn the screen off for a minute and on again: lines said
+   meanwhile get their translations once the screen is on (newest on screen first). (SEVERE heat can't be forced: note
+   it if it happens; voice log 112 "fast translation only".)
+5. **CPU model.** Settings › Model › Smarter (E4B, CPU): the interpreter still translates (slower; note the time per
+   turn; with the fast engine, the next list's step 5). Back to Fast.
+6. **Robot's summary of an hour (≤ 4 min).** Record (or resume) a transcript of about an hour; Robot › Transcripts › that
+   transcript › ⋮ › Summarize: the stronger-AI offer appears first (it is long); "Robot's summary anyway": the progress
+   goes part by part, then "Putting the notes together…". Pass: **done in 4 minutes or less, no error** (`adb logcat -s
+   Robot | grep -E "brain_one_shot_too_long|TOO_LONG"` empty); the label names the model; each [14:03] opens the
+   transcript at that line; the number check lists any number or name not in the transcript (say "Paul owes forty
+   dollars" nowhere, then compare). Cancel one halfway, Summarize again: it goes on from the next part (fewer parts
+   read; `summary_local` in the log). Voice log 113: parts, seconds.
+7. **Summarize with Claude, network off then on.** Turn Wi-Fi and mobile data off (or Robot's Network permission off).
+   Summarize › A stronger AI: the card shows what goes, where, and the price, with nothing sent (`adb logcat -s Robot`
+   has no `claude_` request line before Send; a proxy or the router shows no connection to api.anthropic.com). Tick
+   "Replace names": the speakers become "Speaker 1, 2". Send with the network off: "No internet…", nothing kept. Network
+   on, Send: Claude's summary streams in, labelled "Claude's summary — sent to Anthropic with your OK on …", with its cost;
+   today's spend in Settings › Helpers went up by about that. Voice log 114.
+8. **The Claude app.** With the app installed: Summarize › "Share it with the Claude app instead" › Send: the app opens
+   with the text (or "It's copied: paste it…"); note which way worked on the installed version (design T11).
+9. **Library.** The transcript's page lists the summaries, newest first, with their labels; a [14:03] scrolls to the
+   line; Delete removes one (`adb shell run-as app.heyrobot ls files/transcripts/<id>` no longer lists that
+   `summary-<n>.json`); exports and Share still carry the translations ("> EN: …"), not the summaries.
+10. **Voice.** "Hey robot, summarize this conversation" during a session: the session stops and the summary screen opens
+    (locked: "Unlock your phone, then …").
+
+### On the phone (0.5.0 translation with the fast engine)
+
+Phase 5.4 is done when steps 3 and 5 pass, with the list above (design §9.1). A build with the engine (step 1 of the
+translation engine's checks), its files downloaded, Robot as the assistant, Fast as the model, the phone unlocked.
+1. **The download in Settings.** Settings › Conversation › Fast translation › Delete. "Translate transcripts" (Translation
+   and summaries) says the fast engine translates first when it is downloaded. Start a transcript with Translate on and
+   talk: the lines get Robot's model's translations only, none marked "fast". Leave it recording, open Settings ›
+   Conversation › Fast translation › Download and stay there until "Ready" and "The fast translation engine is ready."
+   (the files are installed while Robot's app is in front); back on the transcript, new lines get a "fast" translation
+   within about 10 s. Stop.
+2. **Transcript translations.** Start a transcript with Translate on; talk French and English: each line gets its
+   translation in italics marked "fast" at once (well under a second after the line shows), then Robot's model's in its
+   place within a few seconds (the mark goes). The voice log has "Line translated by the fast engine in … ms: kept", then
+   "Line translated by Gemma in … ms: kept", for the same lines; `adb shell run-as app.heyrobot cat
+   files/transcripts/<id>/lines.jsonl | grep '"e":"tr"'` shows each line's `"by":"bergamot"` event, then its
+   `"by":"gemma"` one. Turn the screen off for a minute and on again: the lines said meanwhile have their "fast"
+   translation at once, and Robot's model's come once the screen is on (newest on screen first). Turn Translate off:
+   nothing more is translated, and `adb shell dumpsys meminfo app.heyrobot:mt` soon shows no process, or one without the
+   engine's memory.
+3. **The interpreter with the fast engine, 10 turns.** As step 2 of the list above, with its pass marks: no "Translated
+   by Robot's model on this phone" line, and most turns are Robot's model's (no "fast" badge). A turn Robot's model can't
+   start within 1.5 s comes "fast" instead of waiting: say a turn as soon as the interpreter opens while Robot's model is
+   still loading (it was unloaded: the panel closed longer ago than Settings › Model's minutes), or open the panel and
+   ask a question just as a turn ends. Note how many turns came "fast". The voice log has "Fast translation loaded in …
+   ms (2 directions)" as the session starts, and `adb shell dumpsys meminfo app.heyrobot:mt` shows the engine's memory
+   during it.
+4. **The interpreter without it.** Settings › Conversation › Fast translation › Delete, then start the interpreter: it
+   says "Translated by Robot's model on this phone (the fast engine isn't installed)", no turn is "fast", and `adb shell
+   dumpsys meminfo app.heyrobot:mt` shows no process, or one without the engine's memory; every turn is still
+   translated, and a question in the panel during a turn now delays that turn instead. Download the files again.
+5. **A slow model: the CPU, 10 turns.** Settings › Model › Smarter (E4B, CPU; downloaded). In the interpreter, every turn
+   is "fast": the fast engine leads, and Robot's model stands in only when it fails. Pass: **the direction is right at
+   least 9 times, and the median from the end of speech to the first translated audio is ≤ 2.0 s** (the fast path; voice
+   log 108 plus the voice's first-chunk time). In a transcript with Translate on, the "fast" translations come at once
+   and Robot's model's replace them much later, or never for a line more than 60 s behind. Delete the fast engine's
+   files and start the interpreter again: Robot's model translates alone, slowly (note the time per turn: up to 30 s).
+   Download them again; back to Fast.
+6. **The fast engine stops.** During a transcript with Translate on, `adb shell am crash $(adb shell pidof
+   app.heyrobot:mt)`: the transcript goes on and its lines are still translated, by Robot's model alone for up to a
+   minute, then "fast" again (Android started `:mt` again). Nothing else stops (the panel still answers).
+7. **No network.** Airplane mode on: steps 2 and 3 work the same; a line goes to `:mt` and `:brain` on the phone only.
+
+## Helpers (0.6.0)
+
+Ask Claude became **Helpers**: any company's model, or a model on your own computer, with everything Ask Claude has
+(the model picker, effort, web search, Robot's actions behind cards, its own voice, the lock screen switch, the cost
+line, the daily budget, "When Robot needs help", "go get …" conversations). Claude is the first helper and works
+exactly as before. Robot still stays offline unless you ask a helper ("ask Gemini …", "go get Jarvis") or let Robot
+check hard questions with one, and only text leaves the phone. Design: `../docs/ask-claude.md` for the rules every
+helper follows; this section for what 0.6.0 adds.
+
+### What you can add (Settings › Helpers › Add a helper)
+
+| Helper | How Robot talks to it | Models it lists first | Web search |
+| --- | --- | --- | --- |
+| Anthropic (Claude) | the Anthropic Java SDK, as since 0.3.0 (or the Claude app without a key) | Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1 | yes, $10 per 1,000 |
+| OpenAI (GPT) | the Responses API (`store: false`, reasoning sent back encrypted) | gpt-6.1-sol, gpt-6-astra, gpt-6-luna | yes, $10 per 1,000 |
+| Google (Gemini) | its OpenAI-compatible Chat Completions | gemini-3.8-flash, gemini-3.1-pro-preview, gemini-3.5-flash-lite | no (not through this connection) |
+| Mistral | Chat Completions | mistral-medium-3-5, mistral-large-4-0, mistral-small-latest | no (Agents API only) |
+| DeepSeek | Chat Completions | deepseek-flash, deepseek-v4-pro | no |
+| Groq | Chat Completions | openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.8-27b | off (its price isn't published where Robot can check) |
+| OpenRouter | Chat Completions, only zero-data-retention providers by default | any of its models (Test connection lists them) | yes, `openrouter:web_search`, in its reported cost |
+| xAI (Grok) | the Responses API | grok-4.7 | yes, $5 per 1,000 |
+| Your own server | Chat Completions (Ollama, LM Studio, llama.cpp, vLLM, LocalAI, Open WebUI) | whatever it serves | no |
+| Another company | Chat Completions at the https address you enter | any id you type | no |
+
+- **Wire formats.** Anthropic Messages (the SDK, unchanged), OpenAI Chat Completions and OpenAI Responses, the last two
+  on plain OkHttp 4.12.0 (already in the APK for the Anthropic SDK; no OpenAI SDK). The request and stream mappers are
+  pure `:core` code (`core/helpers/wire/ChatWire.kt`, `RespWire.kt`, tested on recorded shapes). Each provider's small
+  differences are data (`Quirks`: the length parameter, streamed usage, strict tools, `tool_choice`, how effort and
+  search are sent, reported cost, zero data retention), not code paths. A server that refuses an optional part
+  (`stream_options`, effort, strict tools, tools, images) before sending anything gets the same question again without
+  it, once per part, and Robot remembers it for that model (`helpers/<id>/facts.json`). When the error names the part
+  (OpenAI-style `param`), only that part goes; an error that names another part, a question that was too long or a key
+  problem drops nothing. OpenRouter's zero data retention is never dropped by Robot: only its switch turns it off.
+- **The same promises as Claude's session** (`HelperSession`): a failed, declined or stopped question leaves no trace;
+  tool rounds that ran stay with their results; the helper's own turns go back byte for byte (reasoning, thinking
+  chunks and encrypted reasoning included); a history the server would refuse ends the conversation with a plain
+  message; usage is counted however a request ends; one retry for an overloaded or failing server before anything was
+  shown. `<think>…</think>` text is never shown or spoken.
+- **Effort.** Automatic / Low / Medium / High as for Claude, sent the provider's way (`reasoning_effort`, Responses'
+  `reasoning.effort`, OpenRouter's `reasoning`, Mistral's all-or-nothing, DeepSeek's high and max) and hidden where a
+  model has none.
+
+### Your own server
+
+- Add it by its address: `192.168.1.20`, `desktop.lan`, `desktop.lan:11434` or `https://box.tail1234.ts.net`. A bare
+  name or IP is tried on the usual ports (11434 Ollama, 1234 LM Studio, 9931 and 8080 llama.cpp, 8080 LocalAI, 8000
+  vLLM, 3000/api Open WebUI) by **Test connection**, which runs in the connection window, finds the port, lists the
+  models (`/v1/models`, then Ollama's and Open WebUI's own lists) and asks a tiny streamed question through the same
+  code a real question takes. **Check actions** also offers one tool and sees whether the model calls it. Nothing scans the network.
+- **Cleartext only on your own network** (core `LanRule`): `http://` goes only to loopback, private (10/8, 172.16/12,
+  192.168/16), link-local, Tailscale's 100.64/10 and IPv6 unique-local addresses (IPv4-mapped ones too; NAT64 counts
+  as public). It is checked on the typed address, on every DNS answer (a name that resolves to a public address is
+  refused) and again on every connection (a network interceptor); redirects are never followed and no proxy is used.
+  On mobile data an `http://192.168…` helper says it isn't answering (or that the address "isn't on your home
+  network"), and nothing goes anywhere else.
+- `res/xml/network_security_config.xml` (new): cleartext is allowed app-wide only so OkHttp can try a home server; it is
+  never allowed to the companies' domains, the model downloads, Open-Meteo or OpenStreetMap, and only the system's CAs
+  are trusted (never one a user added). A company's client refuses `http://` in code too.
+- **https** works with a real certificate (Tailscale HTTPS gives one). A self-signed certificate fails with a
+  plain message suggesting Tailscale HTTPS or `http://` on your network: trusting a certificate on first use (pinning)
+  isn't in 0.6.0.
+- Waits are longer for a home server (a cold model loads): "My server is loading its model…" after 8 s without an
+  answer, and up to 300 s for the first word.
+- A server costs nothing unless you enter a price.
+
+### Keys
+
+One key per helper, pasted in the helper's connection window in the assistant's process (`HelperConnectionActivity`,
+FLAG_SECURE, out of autofill, the clipboard cleared if it still holds the key), encrypted there with its own Android
+Keystore key (AES-GCM) and decrypted only there: by `HelperLink` just before a client is made, and by Test
+connection. Claude keeps its key files and Keystore alias from 0.3.0; another helper's are in `helpers/<id>/`. Settings
+shows the key masked ("gsk_…AB12"); a key that doesn't start the company's usual way is only a warning. **Remove
+helper** deletes its key file and its Keystore key (crypto-shred) and what Test connection found. Changing a helper's
+address to another host removes its key first (the same computer on another port or path keeps it), so a key never
+goes to a host it wasn't saved for. Backups and device
+transfer include nothing (`allowBackup="false"`, the data extraction rules exclude everything).
+
+### Names and voice
+
+- Each helper has a name you call it by ("ask Jarvis …", "go get Jarvis", "thanks Jarvis"), the preset's spellings
+  ("chat gpt", "open router") and your own "Also answers to" names. The router takes the longest name it hears.
+- Names are checked as you type: one to three words of letters and digits; not "robot", a word of your wake phrases,
+  a command word, or the same name (or one that sounds the same, "Groq" and "Grok") as another helper's. A common word
+  or first name ("Max", "Sam") is allowed with a warning that "ask Max …" will go to the helper.
+- Mishearings count only right after a command verb ("ask", "go get"), and only Claude has a curated list ("cloud",
+  "clod", …); a conversation started from a word that only sounded like the name asks before including what came
+  before. Other names are matched by sound (a phonetic key and a small edit distance) in the same place only.
+- Each helper speaks in its own Kokoro voice (a new one gets the first voice nobody else uses), so you hear who talks.
+  Its replies are labelled with its name; a server on your network shows a house instead of a cloud, in the panel and
+  in History.
+
+### What goes to a helper, and trust
+
+Every helper follows Claude's rules (`HelperTrust`, `ClaudeContext`): Robot checking by itself in a personal
+conversation sends only your question; "go get …" in a personal conversation asks "Include the conversation so far?";
+a spoken yes never sends personal content; your screen and photos go only after a tap on their card.
+
+- **Trusted with personal content** (each helper's page, **off by default for every helper, your own server
+  included**): Robot checking by itself may carry the last turns of a personal conversation, "go get …" (by its name)
+  includes the conversation without the card, a spoken yes can send an offer, and what Robot reads for the helper goes
+  without "Share with …". Your screen and photos still need a tap every time, and so does a conversation that had one
+  (Robot's own words in it may repeat what was on the screen). Adding a server asks once: "Is this
+  computer yours, and does it run the model itself?". Changing the address turns trust off (and, for another host,
+  removes the key).
+- Settings › Safety & privacy keeps its switches, now for every helper: "Send personal content to helpers
+  automatically", "Voice yes can send personal content" and "Card when a helper asks Robot to do something".
+
+### When Robot needs help
+
+Off / Ask me first / Automatic as before, plus **Ask:** (which helper). Automatic needs the API route (a key, or a
+server), a price Robot knows (or Free), and today's spend under the budget for all helpers and the helper's own cap;
+otherwise Robot offers. A question about current events goes by itself only to a helper that can search the web.
+When Robot asked a helper by itself before its own model ran and the helper can't be reached (your server is off, no
+connection, a timeout), Robot answers itself instead, with a short notice why. Gemma's `ask_claude` tool keeps its name
+(`:brain` reads it); Robot's prompt names the helper when it isn't Claude.
+
+### Cost
+
+- **Published prices**, read on 11 Oct 2026 from each provider's own page and shipped in `core/helpers/Pricing.kt`
+  (`PriceTable`, with the source and date on each card):
+  - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing.md (Claude's prices stay in `ClaudeModel`)
+  - OpenAI: https://developers.openai.com/api/docs/pricing.md (Standard, long-context rates over 272K input tokens)
+  - Google: https://ai.google.dev/gemini-api/docs/pricing (paid tier; Gemini 3.8 Flash doubles on 1 Jan 2027)
+  - DeepSeek: https://api-docs.deepseek.com/quick_start/pricing (off-peak; double 01:00–04:00 and 06:00–10:00 UTC on weekdays)
+  - Groq: https://console.groq.com/docs/models.md and each model's page
+  - xAI: https://docs.x.ai/developers/pricing.md
+  - OpenRouter reports each request's cost (`usage.cost`), and Robot uses its figure.
+  - Mistral's page isn't readable outside a browser, so no Mistral price ships: enter it on the helper's page.
+- A model without a known price shows "cost unknown", isn't counted in today's spend and is never asked
+  automatically. Your own prices (per million tokens, for the model they were entered for) win over the table.
+- One daily budget for all helpers (the old Claude budget, $1 by default), an optional cap per helper, and one spend
+  file, `helpers_spend.json` (`claude_spend.json` is still read and written for Claude, so a downgrade keeps today's
+  spend).
+
+### Settings and upgrades
+
+- Settings has a **Helpers** card (each helper on one line with its status, who Robot asks, today's spend) and
+  **Settings › Helpers** (your helpers, Add a helper, When Robot needs help, the budget, Show cost). Each helper has
+  its own page: on/off, connection (address, key, Test connection, OpenRouter's zero data retention), the Claude app or
+  the API (Claude), name and other names, model (the catalog, the server's list with a search box, or any id), effort,
+  web search, actions, lock screen, voice, trust, cost and cap, and Remove.
+- **Settings schema 13** (9 on the helpers' branch, never released). A settings file without `helpers` (0.4.5's schema 12
+  and every older one) becomes one helper, `claude`, made from the old claude
+  fields, so Ask Claude behaves exactly as before. The old fields are still written for Claude, so an older Robot reads
+  its settings back. A helper's reply in History is still marked `claude` (content Robot didn't write) and also carries
+  the helper's id and name.
+
+### How it's built
+
+| Where | What |
+| --- | --- |
+| `core/helpers/` | `Helpers.kt` (presets, quirks, catalog, `HelperConfig`, names), `HelperRules.kt` (routes, the default helper, trust, words), `Pricing.kt`, `LanRule.kt`, `HelperFacts.kt`, `wire/` (Chat Completions and Responses mappers, errors, `<think>` filter) |
+| `:claude` module, `app.heyrobot.helpers` | `HelperSession` (Claude's session implements it too), `openai/OpenAiSession`, `http/HelperHttp` (OkHttp with the LAN rules), `HelperProbe` (Test connection). The module keeps its name so the build's test tasks stay as they are |
+| `app/assistant/` | `HelperLink` (one client per helper and key), `HelperKeys`, `HelperConnectionActivity`; `PanelController` routes each turn to its helper |
+| `app/ui/HelpersScreens.kt` | the Helpers card, Settings › Helpers, Add a helper, a helper's page |
+
+`ProcessIsolationTest` checks that only the assistant uses `app.heyrobot.helpers` and OkHttp, that keys are read only
+in `HelperLink` and the connection window, and the network security config; `tools/verify_apk.sh` checks the
+connection window's process, the compiled network security config, the client classes and every company's key shape.
+
+### Not in 0.6.0, and not verified yet
+
+- Not built: trusting a self-signed certificate on first use; handing a question to ChatGPT's, Gemini's or other
+  companies' apps (only Claude's app); "Read the answer" for other apps; Together AI; a warning when a helper has a
+  contact's name; teaching Robot how you say a name.
+- Not verified against the real services (no keys here): every provider's live behaviour, including whether OpenAI
+  Chat's `prompt_tokens` include `cache_write_tokens`, Gemini's error and thought-signature fields, whether Mistral
+  takes its thinking chunks back, Groq's usage field while streaming, which status xAI uses for "no credits", vLLM's
+  and LocalAI's ports and keys, Open WebUI's `/api/models` shape, and the companies' key prefixes (warnings only).
+  Whether Android treats a Tailscale 100.x address as "local network" once Robot targets SDK 37.
+
+### On the phone (0.6.0)
+
+1. **Upgrade** from 0.4.5 (and once from 0.4.0) with a Claude key, a custom budget and some spend today: Claude answers without re-entering
+   the key; Settings › Helpers shows Claude with its model, effort, search, voice and lock screen as they were; the
+   budget and today's spend are unchanged; History still shows earlier Claude conversations with a cloud.
+2. **Downgrade** back to 0.4.5 (adb): Claude still works with the same key and settings, and earlier helper turns still
+   make actions ask first.
+3. **Add Gemini, Mistral, DeepSeek, Groq and OpenRouter** with keys: Test connection runs by itself after Save and says
+   "Connected"; "hey robot, ask Gemini why the sky is blue" is answered in Gemini's voice, labelled "Gemini", with a
+   cost line (Mistral: "cost unknown" until you enter its prices). Note the time to the first word. The next day,
+   compare the cost lines with each dashboard (within about 10%).
+4. **Effort High** on DeepSeek and Mistral: no thinking text is shown or spoken.
+5. **Actions:** "ask Gemini to set a timer for 10 minutes" shows a card, and Cancel leaves nothing. "Ask Groq what's on
+   my calendar tomorrow": the read card says "Share with Groq". OpenRouter with web search lists the sites.
+6. **Ollama on a computer on your Wi-Fi over `http://`:** add it by typing only its IP; the port is found and the
+   models are listed. A cold model shows "My server is loading its model…", then the answer is spoken. A qwen or
+   gpt-oss model gets a tool card (Check actions says so). A model that writes `<think>` never speaks its thinking.
+7. **Server off, or a wrong IP:** within about 5 s, "My server isn't answering". With My server as the helper Robot
+   asks and Automatic on, a hard question Robot sends by itself is answered by Gemma instead, with a notice.
+8. **The same helper on mobile data** (Wi-Fi off): it says "My server isn't answering" (or "That address isn't on your
+   home network"); the server's log and the voice log show nothing went anywhere else.
+9. **https:** Tailscale `https://….ts.net` works with no dialog; `http://100.x` works only while Tailscale is on; a
+   self-signed server fails with the certificate message.
+10. **LM Studio** with "Require Authentication" (add the key), **llama.cpp** with `--api-key`, **Open WebUI** at
+    `…:3000/api`: each passes Test connection and answers.
+11. **Names:** add a server called Jarvis; "go get Jarvis", two follow-ups, "thanks Jarvis". Try naming a helper
+    "Grok" while Groq exists (refused), "Max" (warning), "stop" (refused). With Jarvis on, "go get Claude" switches the
+    chip to Claude.
+12. **OpenAI (Responses):** gpt-6.1-sol with a timer card, web search with sites, effort High not cut off at 60 s, the
+    cost line against the dashboard. An account without credits says "out of API credits", not "busy".
+13. **xAI:** grok-4.7 with web search; a follow-up after a tool round works.
+14. **Trust:** with My server as the helper Robot asks and trusted, in a conversation that read the calendar, Robot
+    checking by itself carries the last turns, and "go get My server" skips the Include card. Turn trust off: only the
+    question goes, and a spoken "yes" to an offer that lists screen text says "Tap Send".
+15. **Budget across helpers:** reaching the budget for all helpers drops Automatic to Ask me first for every helper;
+    a helper's own cap does the same for that helper; a model with an unknown price never escalates by itself.
+16. **Lock screen** per helper; the GrapheneOS Network toggle off shows the network card for a server on your network
+    too.
+17. **Remove a helper:** its key and facts go (Assistant setup no longer lists it); "ask Jarvis …" afterwards is
+    ordinary talk or says the helper isn't set up.
+18. **Privacy:** export the voice log and `adb logcat -s Robot`: grep for the IP, the host name, the helper's name and
+    the key. No matches (kinds and codes only).
+19. **APK:** `tools/verify_apk.sh` passes (the connection window in `:voice`, the network security config, no key
+    strings); the helpers add about 1 MB at most (compare with a 0.6.0 build without them, or with 0.4.5's plus
+    conversation mode's code and `librobotmt.so`).
+20. **OpenAI and xAI conversations:** "go get ChatGPT", then two follow-ups, then "set a timer for 2 minutes" and a
+    follow-up after the card: every request is answered (the reasoning goes back encrypted; OpenAI documents that with
+    `store: false` a reasoning item can go back only that way, so without it the second request would be refused). The
+    same with Grok. If xAI refuses `include`, Test connection
+    lists "encrypted reasoning" among what Robot leaves out.
+21. **OpenRouter's zero data retention:** pick a model no zero-retention provider serves: the answer is a failure, and
+    OpenRouter's activity page shows no request sent without ZDR; the switch on the helper's page still says on.
+22. **An address moved to another host:** with a key saved for your server, change its address to another computer:
+    "The key was removed…", and that computer's log shows no `Authorization` header from Test connection. Changing only
+    the port keeps the key.
+23. **Actions off:** turn off "Let Jarvis ask Robot to do things" and point Jarvis at a server that answers with a tool
+    call anyway (any small script that replies with a `tool_calls` chunk): the card says "this tool wasn't offered" and
+    nothing runs, even with "Card when a helper asks Robot to do something" off.
+24. **Trust and the screen:** with a trusted helper as the one Robot asks (Automatic), ask about your screen, then a hard
+    question: Robot checks with the helper by itself with only your question (the server's log shows no earlier turns).
+25. **Numeric addresses:** typing `3232235777` or `10.1` as a server's address is refused in the dialog.
+26. **Network toggle off:** Test connection says Robot isn't allowed to use the network.
 
 ## Short-context models (0.4.3)
 
@@ -586,6 +1496,15 @@ may still refuse now and then, and its card asks that it be used for research an
 own its outputs, and says Google's Gemma Prohibited Use Policy still applies. Robot's own cards and switches are unchanged: the model only ever proposes an action, and Settings ›
 Safety & privacy decides what asks first, whichever model is loaded (`ApprovalGate` doesn't know which one is).
 
+**Its publisher's two conditions (0.4.5).** The card's Hugging Face page has an access form with two checkboxes, which
+Hugging Face doesn't enforce for this repository, and a one-tap download would skip it. So before Robot downloads or
+imports the Uncensored file, a window shows the publisher's own words and the same two tick boxes, "I use this for
+research / personal experimentation only" and "I accept responsibility for the outputs and any downstream use";
+**Confirm and download** works only with both ticked. Robot keeps that you confirmed them, and when (settings.json,
+schema 12, `confirmedTerms`), and the model's card says so; the main app's download and import refuse the file until
+then (`core/ModelState.kt`, `ModelTerms`). The confirmation is tied to the pinned commit (`…@a4eecccd`): a new pin asks
+again. A file downloaded before 0.4.5 keeps working; only a new download or import asks.
+
 ### Downloads, files and privacy
 
 - A built-in model downloads only when you tap Download, from Hugging Face, by DownloadManager in the main app process
@@ -691,7 +1610,8 @@ on battery, Wi-Fi on. Note every time.
    `adb shell dumpsys battery | grep temperature` before and after. Pass: no collapse in speed, no thermal warning.
 9. **MTP and the sampler (A/B).** Build once with `CPU_MTP = true`, once with `CPU_SAMPLER = true` (`GemmaEngine.kt`):
    repeat 3 and 6. Keep whichever writes faster and answers as well; MTP's output should match without it.
-10. **Uncensored.** Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
+10. **Uncensored.** Tap Download: the window with the two tick boxes shows, and its button works only with both ticked
+    (Cancel downloads nothing; the card then says you ticked them, and a second download doesn't ask again). Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
     ones (refusals gone? answers sane?). Cards still show for texts, emails, events and deleting.
 11. **Switching.** Fast → Smarter → Uncensored → Fast without restarting, a question after each: Voice log "Unloaded … to
     load …" each time, never two models (`dumpsys meminfo app.heyrobot:brain` falls back to about 2 GB on Fast), and the
@@ -1027,7 +1947,8 @@ it may go online, Robot
 
 1. takes where the phone is: approximate location only, as for the weather (no Home for weather: that isn't where you
    are), up to 8 seconds;
-2. asks OpenStreetMap's **Nominatim** (`nominatim.openstreetmap.org/search`, HTTPS, jsonv2) for the words ("pharmacy")
+2. asks the **Nominatim** search server in Settings (OpenStreetMap's `nominatim.openstreetmap.org/search` unless you chose
+   another under **Search server**, below; HTTPS, jsonv2) for the words ("pharmacy")
    in a box of ±0.02° around the position rounded to two decimals (about 1 km), and in one of ±0.1° if nothing is
    that close; at most 40 places each, at most one request a second, answers kept 10 minutes, User-Agent
    "Robot/<version> (app.heyrobot; Android voice assistant, GPL-3.0)", nothing else (no language, no address details).
@@ -1050,14 +1971,23 @@ says why ("OpenStreetMap knows no such place near you, so Robot opened Organic M
 tap Route."). Stop ends the lookup at
 once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Never: today's search.
 
+**Search server** (Settings › Actions › Find the nearest place online, under the three choices; schema 12): OpenStreetMap's
+Nominatim by default. Type another Nominatim's address (your own, or another public one: `nominatim.example.org`,
+`https://example.org:8443/nominatim`; a pasted search link counts as its server) and **Save**; **Reset to
+OpenStreetMap's** goes back. Core `NearbyServer` checks it first: HTTPS only, a host name or an IPv4 address, an optional
+port and path, never a query, a fragment or a user name; anything else says why and isn't saved. The first-use card, the
+Settings line and the card's "Sent to …" line name the server that gets the words and the area ("…to the Nominatim server
+at nominatim.example.org"), and so do the failures ("nominatim.example.org is busy just now"). `NominatimClient` sends only
+to the server chosen (host, port and path checked again), with the same pace, cache and User-Agent. The default isn't
+written to settings.json, so if OpenStreetMap ever asks Robot to stop, a later default reaches everyone who didn't choose.
+
 **Nominatim's usage policy** (operations.osmfoundation.org/policies/nominatim, read 11 October 2026): every search is
 one you asked for (no autocomplete, no lists, no periodic or background requests); at most one request a second from
 the phone and at most two per question; answers cached 10 minutes; a User-Agent that identifies the app; the card
-credits OpenStreetMap (ODbL); no personal data beyond the rounded area (see the query rule above). Not met yet: the
-policy asks apps to be able to switch the service without an update. The host is one constant (`Nearby.HOST`), and
-"Never" (or any failure) falls back to Organic Maps' search on the phone. The policy's limits apply to all of Robot's
-users together, so a larger audience needs a proxy with caching or another provider; and it asks that the developer
-decide deliberately to use it, which this section records.
+credits OpenStreetMap (ODbL); no personal data beyond the rounded area (see the query rule above); and the service can
+be switched without an update (Search server, above), while "Never" (or any failure) falls back to Organic Maps' search on
+the phone. The policy's limits apply to all of Robot's users together, so a larger audience needs a proxy with caching
+or another provider; and it asks that the developer decide deliberately to use it, which this section records.
 "Nearest" is as near as the approximate location allows (Android's coarse location can be a kilometre or two off).
 
 ### Cheogram's share screen
@@ -1820,7 +2750,7 @@ card says "Opened a draft in Cheogram: nothing is sent until Send is pressed the
 
 Settings › People, notes and calendar: texting app (Cheogram when installed, the SMS app, or Off), SMS gateway domain,
 phone region, email app (Proton Mail when installed, or "Ask each time"), the calendar for new events (only visible,
-synced calendars Robot can write to; Automatic picks the first, the primary or owner account first) and the default
+synced calendars Robot can write to; Automatic picks the first, the primary calendar or one its own account owns first) and the default
 event length (60 min). A calendar error while adding opens the calendar app's editor instead; its all-day times are UTC
 midnights, as AOSP-derived editors read them.
 Settings › Actions has an approval level per tool (Off is allowed). Assistant setup › People, notes and calendar shows

@@ -608,6 +608,26 @@ class TurnTest {
         assertEquals(listOf<Action>(Action.SetTimer(300)), ga.ran)
     }
 
+    @Test fun aHelperRunsOnlyTheToolsItWasGiven() = runBlocking {
+        // A helper whose actions are off (or whose model can't use them) was given none: a call in its reply (a server
+        // can answer with anything) is refused, even with every card turned off and the action asked for in your words.
+        val noCards = RobotSettings(claudeActionCards = false, safetyCards = SafetyCards.UNSURE_ONLY)
+        val model = FakeModel(ModelOutcome.Calls(listOf(timer, call("add_note", "text" to "x"))))
+        val actions = FakeActions(noCards)
+        val view = FakeView()
+        TurnRunner(model, actions, view, Confirmations(), untrusted = true, remote = true, asked = setOf(ToolName.SET_TIMER), offered = emptySet()) { "o${++ids}" }.run()
+        assertTrue(actions.ran.isEmpty())
+        assertEquals(listOf(ActionStatus.INVALID, ActionStatus.INVALID), view.statuses())
+        assertEquals("this tool wasn't offered", model.answers.single()[0].second["detail"])
+        // Given the timer only: the timer runs (no card, as these settings say), the note doesn't.
+        val m2 = FakeModel(ModelOutcome.Calls(listOf(timer, call("add_note", "text" to "x"))))
+        val a2 = FakeActions(noCards)
+        val v2 = FakeView()
+        TurnRunner(m2, a2, v2, Confirmations(), untrusted = true, remote = true, asked = setOf(ToolName.SET_TIMER), offered = setOf(ToolName.SET_TIMER)) { "o${++ids}" }.run()
+        assertEquals(listOf<Action>(Action.SetTimer(300)), a2.ran)
+        assertEquals(listOf(ActionStatus.DONE, ActionStatus.INVALID), v2.statuses())
+    }
+
     @Test fun claudeGetsThreeToolRoundsAndStillTwoCalls() = runBlocking {
         assertEquals(3, TurnRules.CLAUDE_MAX_ROUNDS)
         assertEquals(2, TurnRules.MAX_CALLS)
