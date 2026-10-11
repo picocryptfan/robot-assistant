@@ -79,8 +79,7 @@ class ConversationEngine(
     @Volatile private var closed = false
     private var thread: Thread? = null
     private val vadLock = Any()
-    private var vad: Vad? = null
-    private val flag = VadFlag()
+    private var vad: SpeechFlag? = null
     private val frames = FrameAssembler(rules.frameSamples)
     // The current run (from a start or a resume until a pause or stop), all guarded by vadLock.
     private var segmenter = Segmenter(rules)
@@ -97,7 +96,7 @@ class ConversationEngine(
     /** Makes the voice detector and starts the worker. False when the detector can't be made. */
     fun start(): Boolean {
         val v = makeVad(ctx) ?: return false
-        synchronized(vadLock) { vad = v }
+        synchronized(vadLock) { vad = SpeechFlag(v) }
         decoder.hold(true)
         thread = Thread({ work() }, "robot-conv").also { it.start() }
         return true
@@ -108,8 +107,7 @@ class ConversationEngine(
         segmenter = Segmenter(rules)
         ring = SampleRing(rules.sampleRate * ConversationRules.RING_MS / 1000)
         frames.reset()
-        flag.reset()
-        try { vad?.reset() } catch (t: Throwable) { RLog.w("conv_vad_reset", t) }
+        vad?.reset()
         this.offsetS = offsetS
         run++
         running = true
@@ -129,11 +127,10 @@ class ConversationEngine(
         val v = vad ?: return@synchronized
         frames.push(x) { f ->
             ring.push(f)
-            val p = try { v.compute(f) } catch (t: Throwable) { RLog.w("conv_vad", t); 0f }
             var ss = 0.0
             for (s in f) ss += s * s
             val level = Listener.db(ss / f.size).toFloat()
-            segmenter.feed(flag.update(p), level, robotSpeaking)?.let { enqueue(it) }
+            segmenter.feed(v.frame(f), level, robotSpeaking)?.let { enqueue(it) }
         }
         maybePartial()
     }
@@ -186,8 +183,9 @@ class ConversationEngine(
     }
 
     private fun segmentOf(job: Job, seg: Segment) {
+        // The model couldn't be used: -1 says so (the session stops after a few in a row).
         val (whole, ms) = decoder.decode(job.audio) ?: return out.segment(SegmentHeard(seg, job.offsetS, Heard(""), LangGuess(null, 0.0, 0, null),
-            LineLang(owner, true), false, 0))
+            LineLang(owner, true), false, -1))
         var heard = whole
         var spent = ms
         var reheard = false
@@ -232,10 +230,43 @@ class ConversationEngine(
         thread?.join(2_000)
         thread = null
         synchronized(vadLock) {
-            try { vad?.release() } catch (_: Throwable) {}
+            vad?.release()
             vad = null
         }
         decoder.hold(false)
+    }
+
+    /**
+     * Silero's speech flag for one frame: its per-frame probability ([Vad.compute]) through [VadFlag]'s hysteresis, so
+     * the Segmenter alone applies the 0.25 s rule. Should compute fail (it isn't in every sherpa-onnx build), the
+     * detector's own flag instead, with a short minimum silence.
+     */
+    class SpeechFlag(private val v: Vad) {
+        private val flag = VadFlag()
+        private var direct = true
+
+        fun frame(f: FloatArray): Boolean {
+            if (direct) try {
+                return flag.update(v.compute(f))
+            } catch (t: Throwable) {
+                RLog.w("conv_vad_compute", t)
+                direct = false
+                try { v.reset() } catch (_: Throwable) {}
+            }
+            return try {
+                v.acceptWaveform(f)
+                val sp = v.isSpeechDetected()
+                while (!v.empty()) v.pop()
+                sp
+            } catch (t: Throwable) { false }
+        }
+
+        fun reset() {
+            flag.reset()
+            try { v.reset() } catch (t: Throwable) { RLog.w("conv_vad_reset", t) }
+        }
+
+        fun release() = try { v.release() } catch (_: Throwable) {}
     }
 
     companion object {
@@ -252,8 +283,9 @@ class ConversationEngine(
          */
         fun makeVad(ctx: Context): Vad? = try {
             Vad(ctx.assets, VadModelConfig(
-                sileroVadModelConfig = SileroVadModelConfig(model = "vad/silero_vad.onnx", threshold = 0.5f, minSilenceDuration = 0.25f,
-                    minSpeechDuration = 0.25f, windowSize = Listener.FRAME, maxSpeechDuration = 30f),
+                // The minimums matter only if compute isn't there (SpeechFlag): short, so the Segmenter's own rules still decide.
+                sileroVadModelConfig = SileroVadModelConfig(model = "vad/silero_vad.onnx", threshold = 0.5f, minSilenceDuration = 0.1f,
+                    minSpeechDuration = 0.1f, windowSize = Listener.FRAME, maxSpeechDuration = 60f),
                 sampleRate = Listener.SAMPLE_RATE, numThreads = 1, debug = false,
             ))
         } catch (t: Throwable) {
@@ -267,19 +299,18 @@ class ConversationEngine(
          * language of what was heard. Null when the model or the detector can't be used.
          */
         fun transcribe(ctx: Context, decoder: SegmentDecoder, samples: FloatArray, owner: String): Triple<String, Long, LangGuess>? {
-            val v = makeVad(ctx) ?: return null
+            val v = SpeechFlag(makeVad(ctx) ?: return null)
             decoder.hold(true)
             try {
                 val rules = SegmentRules()
                 val seg = Segmenter(rules)
-                val flag = VadFlag()
                 val segs = ArrayList<Segment>()
                 var off = 0
                 while (off + rules.frameSamples <= samples.size) {
                     val f = samples.copyOfRange(off, off + rules.frameSamples)
                     var ss = 0.0
                     for (s in f) ss += s * s
-                    seg.feed(flag.update(v.compute(f)), Listener.db(ss / f.size).toFloat(), false)?.let { segs += it }
+                    seg.feed(v.frame(f), Listener.db(ss / f.size).toFloat(), false)?.let { segs += it }
                     off += rules.frameSamples
                 }
                 seg.flush()?.let { segs += it }
@@ -306,7 +337,7 @@ class ConversationEngine(
                 return Triple(all, ms, langId(ctx).detect(all))
             } finally {
                 decoder.hold(false)
-                try { v.release() } catch (_: Throwable) {}
+                v.release()
             }
         }
     }

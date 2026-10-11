@@ -162,6 +162,8 @@ class TranscriptionCheckActivity : ComponentActivity() {
         }
         problem.value = null
         recording.value = true
+        // Nobody's "hey robot" opens the panel mid-sentence ("stop" still works while Robot talks).
+        VoiceHub.conversationWake(true)
         return true
     }
 
@@ -171,6 +173,7 @@ class TranscriptionCheckActivity : ComponentActivity() {
         own?.let { l -> Thread({ l.stop() }, "robot-check-mic").start() }
         own = null
         recording.value = false
+        if (!ConversationSession.running) VoiceHub.conversationWake(false)
         return synchronized(recLock) {
             val all = FloatArray(recSamples)
             var k = 0

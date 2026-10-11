@@ -1784,11 +1784,17 @@ object PanelController {
                 !ConversationLock.mayStart(Assistant.locked(ctx), VoiceHub.settings) ->
                     localReply(replyId, "Unlock your phone to start transcribing (Settings › Conversation › Start from the lock screen is off).")
                 else -> {
-                    // The first time, the transcript screen asks you to tell people first; after that it starts right away.
+                    // The first time, the transcript screen asks you to tell people first; after that it starts from here
+                    // (the panel is on screen), or from the transcript screen if Android won't let it start here.
                     val consented = !ConsentRecord.needed(Transcripts.consent(ctx), VoiceHub.settings)
                     val started = consented && ConversationService.start(ctx, ConvEntry.VOICE)
-                    localReply(replyId, if (started) "Transcribing. ${ConsentRecord.LINE}" else "Tell the people you're with first: the transcript screen explains.")
-                    openConversation(if (started) ConversationEntry.OPEN else ConversationEntry.START)
+                    localReply(replyId, when {
+                        started -> "Transcribing. ${ConsentRecord.LINE}"
+                        consented -> "Opening the transcript screen to start."
+                        else -> "First, a word about telling the people you're with: it's on the screen."
+                    })
+                    // On the lock screen the screen opens as a start, so it may show there (it doesn't start a second one).
+                    openConversation(if (started && !Assistant.locked(ctx)) ConversationEntry.OPEN else ConversationEntry.START)
                 }
             }
             ConversationCommand.Stop -> {

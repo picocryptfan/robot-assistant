@@ -93,7 +93,8 @@ object ConversationSession {
     private var writer: TranscriptWriter? = null
     private var engine: ConversationEngine? = null
     private var source: AudioFrames? = null
-    private var own: Listener? = null
+    /** Read by the panel's question (another thread) when it needs audio and the shared listener isn't running. */
+    @Volatile private var own: Listener? = null
     private val pauses = LinkedHashSet<ConvPause>()
     private var pausedAt = 0L
     private var pausedE = 0L
@@ -460,7 +461,18 @@ object ConversationSession {
     // ------------------------------------------------------------------ lines
 
     private val output = object : ConversationEngine.Output {
+        /** Segments in a row the speech model couldn't decode (it failed to load, or went away). */
+        private var unusable = 0
+
         override fun segment(r: SegmentHeard) {
+            if (r.decodeMs < 0) {
+                if (++unusable >= 3 && running) {
+                    _state.update { it.copy(notice = "Speech recognition stopped working. What was heard before is saved.") }
+                    stop(ConvStop.ERROR)
+                }
+                return
+            }
+            unusable = 0
             if (r.heard.text.isBlank() || discarded) {
                 _state.update { it.copy(partial = "") }
                 return

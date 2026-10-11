@@ -14,6 +14,12 @@ import app.heyrobot.sys.Transcripts
 // first) or stops the one running; the tile shows which. Only the system binds it (BIND_QUICK_SETTINGS_TILE).
 
 class ConversationTileService : TileService() {
+    override fun onTileAdded() {
+        super.onTileAdded()
+        ConversationSession.init(this)
+        update()
+    }
+
     override fun onStartListening() {
         super.onStartListening()
         ConversationSession.init(this)

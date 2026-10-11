@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -108,15 +109,17 @@ fun TranscriptsScreen(snackbar: SnackbarHostState, onOpen: (String, Int?) -> Uni
     var query by remember { mutableStateOf("") }
     var hits by remember { mutableStateOf<List<TranscriptHit>>(emptyList()) }
     var confirmAll by remember { mutableStateOf(false) }
-    LaunchedEffect(tick) {
-        while (true) {
+    val resumed = resumed()
+    // Read again every few seconds while in front: one may be being recorded, or have just stopped.
+    LaunchedEffect(tick, resumed) {
+        do {
             rows = withContext(Dispatchers.IO) {
                 val s = Transcripts.store(ctx)
                 val live = Transcripts.live(ctx)
                 s.list().map { Row(it, it.id == live, s.bytes(it.id)) }
             }
             delay(3_000)
-        }
+        } while (resumed)
     }
     LaunchedEffect(query, rows?.size) {
         val q = query.trim()
@@ -208,6 +211,12 @@ fun TranscriptsScreen(snackbar: SnackbarHostState, onOpen: (String, Int?) -> Uni
     )
 }
 
+@Composable
+private fun resumed(): Boolean {
+    val st by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
+    return st.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)
+}
+
 /** Lines and gap markers in time order. */
 private fun timeline(t: Transcript): List<Any> = (t.lines.map { it.t0 to it } + t.gaps.map { it.t0 to it }).sortedBy { it.first }.map { it.second }
 
@@ -224,7 +233,8 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
     var renaming by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
     val zone = ZoneId.systemDefault()
-    LaunchedEffect(id, tick) {
+    val resumed = resumed()
+    LaunchedEffect(id, tick, resumed) {
         while (true) {
             val (m, tr, l) = withContext(Dispatchers.IO) {
                 val s = Transcripts.store(ctx)
@@ -234,8 +244,8 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
             t = tr
             live = l
             gone = m == null
-            // A transcript being recorded grows: read it again every few seconds.
-            if (!l) break
+            // A transcript being recorded grows: read it again every few seconds while in front.
+            if (!l || !resumed) break
             delay(3_000)
         }
     }
