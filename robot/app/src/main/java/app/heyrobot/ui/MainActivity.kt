@@ -73,6 +73,7 @@ import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.settings.SettingsNav
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -143,6 +144,8 @@ sealed class Page {
     data class PersonEdit(val id: String?) : Page()
     /** Settings › Safety & privacy (0.4.0). */
     data object Safety : Page()
+    /** A Settings page by route (ui/settings/SettingsNav.kt; 0.4.x: "display"). */
+    data class Settings(val route: String) : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -160,6 +163,7 @@ sealed class Page {
                     People -> "people"
                     is PersonEdit -> "person:${p.id.orEmpty()}"
                     Safety -> "safety"
+                    is Settings -> "settings:${p.route}"
                 }
             },
             restore = { v ->
@@ -174,6 +178,7 @@ sealed class Page {
                     v == "people" -> People
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
                     v == "safety" -> Safety
+                    v.startsWith("settings:") -> Settings(v.removePrefix("settings:"))
                     else -> null
                 }
             },
@@ -502,6 +507,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
         Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
+        is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {

@@ -30,6 +30,7 @@ import app.heyrobot.core.WeatherAsk
 import app.heyrobot.core.WeatherPlace
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.OpenMeteoClient
+import app.heyrobot.ui.settings.DisplaySettingsEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -52,6 +53,8 @@ internal fun WeatherSettingsCard(s: RobotSettings, snap: Snapshot, update: (Robo
         HomeForWeather(s, update, a)
         LocationRow(f, a)
     }
+    // Settings › Display (0.4.x redesign), shown after Weather until Settings is rebuilt as a list of pages.
+    DisplaySettingsEntry(a)
 }
 
 /** The Home for weather: shown with Clear when set; a field and Look up to set or change it. */
