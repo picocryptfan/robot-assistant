@@ -69,6 +69,8 @@ data class AssistantFacts(
     val screenshotOn: Boolean? = null,
     /** 0.4.0: notification access, for "Learn names from Cheogram notifications". */
     val notificationAccess: Boolean = false,
+    /** 0.4.0: "Learn names from Cheogram notifications" is on (Settings › People): only then is notification access asked for. */
+    val learnFromCheogram: Boolean = false,
 )
 
 object Assistant {
@@ -111,6 +113,7 @@ object Assistant {
             screenTextOn = screenText,
             screenshotOn = screenshot,
             notificationAccess = NotificationAccess.granted(ctx),
+            learnFromCheogram = try { SettingsStore.load(ctx).learnFromCheogram } catch (_: Exception) { false },
         )
     }
 
