@@ -1,6 +1,8 @@
 package app.heyrobot.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -45,5 +47,31 @@ class CheogramTest {
         assertNull(CheogramNotices.sender(id, false, listOf("zoe" to "zoe@example.org")))
         assertNull(CheogramNotices.sender("me@jmp.chat#+15145550101@cheogram.com", false, listOf("+1 514-555-0101" to "+15145550101@cheogram.com")))
         assertNull(CheogramNotices.sender(id, false, listOf(" " to "zoe@example.org")))
+    }
+
+    @Test fun onlyTheInstalledCheogramSignedAsFirstSeenTeachesNames() {
+        // Review 0.4.0 #12: the Cheogram build Robot hands texts to, posting for itself.
+        assertTrue(CheogramSigners.fromCheogram("com.cheogram.android", "com.cheogram.android", "com.cheogram.android"))
+        assertTrue(CheogramSigners.fromCheogram("com.cheogram.android", null, "com.cheogram.android"))
+        assertFalse(CheogramSigners.fromCheogram("com.cheogram.android.playstore", "com.cheogram.android.playstore", "com.cheogram.android"))
+        assertFalse(CheogramSigners.fromCheogram("com.cheogram.android", "android", "com.cheogram.android"))
+        assertFalse(CheogramSigners.fromCheogram("com.cheogram.android.playstore", null, null))
+        // Its signer is kept at first sight; then only that signer (or one the system says follows from it) counts.
+        val a = "ab".repeat(32)
+        val b = "cd".repeat(32)
+        assertEquals(CheogramSigners.Verdict.PIN, CheogramSigners.check(null, a, false))
+        assertEquals(CheogramSigners.Verdict.REFUSE, CheogramSigners.check(null, null, false))
+        assertEquals(CheogramSigners.Verdict.TRUST, CheogramSigners.check(a, a, false))
+        assertEquals(CheogramSigners.Verdict.TRUST, CheogramSigners.check(a, b, true))
+        assertEquals(CheogramSigners.Verdict.REFUSE, CheogramSigners.check(a, b, false))
+        assertEquals(CheogramSigners.Verdict.REFUSE, CheogramSigners.check(a, null, false))
+        // The pins file round-trips, and a damaged line is left out.
+        val pins = mapOf("com.cheogram.android" to a, "com.cheogram.android.playstore" to b)
+        assertEquals(pins, CheogramSigners.parse(CheogramSigners.write(pins)))
+        assertEquals(mapOf("x" to a), CheogramSigners.parse("x ${a.uppercase()}\ny short\nnonsense\n"))
+        assertEquals(emptyMap<String, String>(), CheogramSigners.parse(null))
+        val bytes = ByteArray(32) { it.toByte() }
+        assertTrue(bytes.contentEquals(CheogramSigners.unhex(CheogramSigners.hex(bytes))))
+        assertNull(CheogramSigners.unhex("zz"))
     }
 }

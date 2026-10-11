@@ -438,4 +438,110 @@ class PeopleStoreTest {
         assertNotNull(PeopleStore.newId())
         assertTrue(PeopleStore.validId(PeopleStore.newId()))
     }
+
+    // ------------------------------------------------------------------ review 0.4.0, the lows
+
+    @Test fun aDamagedFileIsNeverWrittenOver() {
+        // Review 0.4.0 #9: a file cut short read as nobody, and the next write kept only the new entry.
+        val dir = tmp()
+        val store = PeopleStore(dir)
+        assertTrue(store.save(mom) && store.save(bob))
+        val f = File(dir, "people.json")
+        val cut = f.readText().dropLast(20)
+        f.writeText(cut)
+        assertTrue(store.damaged())
+        assertEquals(emptyList<Person>(), store.list())
+        // Nothing changes it: a notification, a save, Delete all.
+        assertFalse(store.learn(CheogramSender("Zoé", "zoe@example.org", "me@example.org"), 5))
+        assertFalse(store.save(Person("p9", "New")))
+        assertNull(store.update { it + Person("p9", "New") })
+        assertFalse(store.deleteAll())
+        assertEquals(cut, f.readText())
+        // Start over: the file is kept aside, and People works again.
+        assertTrue(store.reset())
+        assertEquals(cut, File(dir, "people.json.bad").readText())
+        assertFalse(store.damaged())
+        assertTrue(store.save(bob))
+        assertEquals(listOf(bob), store.list())
+        // A good file is never set aside.
+        assertTrue(store.reset())
+        assertEquals(listOf(bob), store.list())
+        assertEquals(cut, File(dir, "people.json.bad").readText())
+    }
+
+    @Test fun someoneRemovedIsNotLearnedAgain() {
+        // Review 0.4.0 #7: Remove on a learned person lasted only until their next message.
+        val store = PeopleStore(tmp())
+        val zoe = CheogramSender("Zoé", "Zoe@Example.org", "me@example.org")
+        assertTrue(store.learn(zoe, 1))
+        val learned = store.list().single()
+        assertFalse(learned.confirmed)
+        assertTrue(store.remove(learned.id, ignore = true))
+        assertEquals(setOf("zoe@example.org"), store.ignored())
+        assertTrue(store.learn(zoe.copy(name = "Zoé B."), 2))
+        assertEquals(emptyList<Person>(), store.list())
+        // The list survives other changes, and a confirmed person removed without it isn't ignored.
+        assertTrue(store.save(mom))
+        assertTrue(store.remove(mom.id, ignore = false))
+        assertEquals(setOf("zoe@example.org"), store.ignored())
+        // Delete all forgets it too.
+        assertTrue(store.deleteAll())
+        assertEquals(emptySet<String>(), store.ignored())
+        assertTrue(store.learn(zoe, 3))
+        assertEquals("Zoé", store.list().single().name)
+        // It is kept in the file.
+        val text = PeopleCodec.toJson(listOf(mom), setOf("a@example.org"))
+        assertEquals(PeopleFile(listOf(mom), setOf("a@example.org")), PeopleCodec.read(text))
+        assertNull(PeopleCodec.read("{\"v\":1}"))
+        assertEquals(PeopleFile(), PeopleCodec.read(""))
+    }
+
+    @Test fun theEditorAppliesOnlyWhatWasChanged() {
+        // Review 0.4.0 #8: Save replaced the whole entry with the one loaded when the screen opened.
+        val loaded = Person("p1", "Mom Martin", phones = listOf(ContactPhone("+1 514 555 0101", PhoneKind.MOBILE, "Mobile")),
+            xmpp = listOf(XmppAddress("mom@example.org", "me@example.org")), updatedAt = 1)
+        // Meanwhile: "Always use this for mom" on a card, and a notification moved the chat to another account.
+        val now = loaded.copy(aliases = listOf("mom"), preferredText = "mom@example.org",
+            xmpp = listOf(XmppAddress("mom@example.org", "other@example.org")), updatedAt = 2)
+        // The editor changed the name and added an email.
+        val edited = loaded.copy(name = "Marie Martin", emails = listOf("marie@example.org"))
+        val (list, p) = PeopleEdit.applyEdit(listOf(now, bob), loaded, edited, 9)!!
+        assertEquals("Marie Martin", p.name)
+        assertEquals(listOf("mom"), p.aliases)
+        assertEquals("mom@example.org", p.preferredText)
+        assertEquals(listOf(XmppAddress("mom@example.org", "other@example.org")), p.xmpp)
+        assertEquals(listOf("marie@example.org"), p.emails)
+        assertEquals(listOf(p, bob), list)
+        assertTrue(p.confirmed)
+        assertEquals(9L, p.updatedAt)
+        // Removing the remembered place forgets the choice; a number added meanwhile stays.
+        val more = now.copy(phones = now.phones + ContactPhone("+1 514 555 0202", PhoneKind.WORK, "Work"))
+        val (_, q) = PeopleEdit.applyEdit(listOf(more), loaded, loaded.copy(xmpp = emptyList()), 9)!!
+        assertEquals(emptyList<XmppAddress>(), q.xmpp)
+        assertNull(q.preferredText)
+        assertEquals(listOf("+1 514 555 0101", "+1 514 555 0202"), q.phones.map { it.number })
+        // An edited row wins over the stored one with the same address.
+        val (_, r) = PeopleEdit.applyEdit(listOf(now), loaded, loaded.copy(xmpp = listOf(XmppAddress("mom@example.org", "mine@example.org"))), 9)!!
+        assertEquals(listOf(XmppAddress("mom@example.org", "mine@example.org")), r.xmpp)
+        // Saving someone learned confirms them.
+        val learned = loaded.copy(source = PersonSource.NOTIFICATION, confirmed = false)
+        assertTrue(PeopleEdit.applyEdit(listOf(learned), learned, learned, 9)!!.second.confirmed)
+    }
+
+    @Test fun theEditorNeverBringsBackSomeoneDeletedAndSavesANewPersonOnce() {
+        val loaded = bob
+        assertNull(PeopleEdit.applyEdit(listOf(mom), loaded, loaded.copy(name = "Robert"), 9))
+        val store = PeopleStore(tmp())
+        assertTrue(store.save(mom))
+        // A new person: the editor keeps one id, so a second Save (a double tap) changes the same person.
+        val fresh = Person("new1", "Zoé", emails = listOf("zoe@example.org"))
+        repeat(2) { assertNotNull(store.update { l -> PeopleEdit.applyEdit(l, null, fresh, 9)!!.first }) }
+        assertEquals(listOf("p1", "new1"), store.list().map { it.id })
+        // Forget on a remembered choice is a change of its own.
+        val withChoice = PeopleEdit.upsert(store.list(), bob.copy(preferredText = "+1 514 555 0199", preferredEmail = "bob@example.org"))
+        val forgot = PeopleEdit.forgetChoice(withChoice, bob.id, email = false, now = 9).first { it.id == bob.id }
+        assertNull(forgot.preferredText)
+        assertEquals("bob@example.org", forgot.preferredEmail)
+        assertSame(withChoice, PeopleEdit.forgetChoice(withChoice, mom.id, email = true, now = 9))
+    }
 }

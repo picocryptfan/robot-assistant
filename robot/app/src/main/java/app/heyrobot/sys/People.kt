@@ -352,6 +352,11 @@ object PeopleFiles {
     fun dir(ctx: Context): File = File(ctx.filesDir, "people").apply { mkdirs() }
     fun store(ctx: Context): PeopleStore = PeopleStore(dir(ctx))
 
+    /** Turning learning on trusts the Cheogram installed then: its signer is kept again at its next notification. */
+    fun forgetCheogramSigner(ctx: Context) {
+        File(dir(ctx), app.heyrobot.core.CheogramSigners.FILE).delete()
+    }
+
     /**
      * People and, when Robot may read them, the phone's contacts, as one address book for a name. Contacts that can't be
      * read (not allowed) leave People alone.

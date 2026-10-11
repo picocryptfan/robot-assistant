@@ -60,3 +60,43 @@ object CheogramNotices {
         return CheogramSender(ToolCalls.safeTake(name, People.MAX_NAME), contact, account.lowercase(Locale.ROOT))
     }
 }
+
+/**
+ * Whose notifications may teach People: only the Cheogram build Robot hands texts to, posting for itself, signed as it
+ * was the first time Robot saw it after you turned learning on (its signing certificate's SHA-256 is kept in
+ * files/people/cheogram.signer, one "<package> <hex>" a line). Another app that takes the package name, signed by
+ * someone else, teaches nothing until you turn learning off and on again.
+ */
+object CheogramSigners {
+    const val FILE = "cheogram.signer"
+
+    enum class Verdict { TRUST, PIN, REFUSE }
+
+    /** The notification's [pkg] is the Cheogram build [installed] here, and posted it for itself ([opPkg], when known). */
+    fun fromCheogram(pkg: String?, opPkg: String?, installed: String?): Boolean =
+        !pkg.isNullOrEmpty() && pkg == installed && (opPkg.isNullOrEmpty() || opPkg == pkg)
+
+    /**
+     * [pinned]: the digest kept for the package, if any; [current]: its signer's digest now (null: unknown, or several
+     * signers); [pinnedStillSigns]: the system says [pinned] is in the package's signing lineage.
+     */
+    fun check(pinned: String?, current: String?, pinnedStillSigns: Boolean): Verdict = when {
+        pinned == null -> if (current != null) Verdict.PIN else Verdict.REFUSE
+        pinned == current || pinnedStillSigns -> Verdict.TRUST
+        else -> Verdict.REFUSE
+    }
+
+    fun parse(text: String?): Map<String, String> = text.orEmpty().lines().mapNotNull { line ->
+        val parts = line.trim().split(Regex("\\s+"))
+        if (parts.size == 2 && parts[0].isNotEmpty() && unhex(parts[1])?.size == 32) parts[0] to parts[1].lowercase(Locale.ROOT) else null
+    }.toMap()
+
+    fun write(pins: Map<String, String>): String = pins.entries.sortedBy { it.key }.joinToString("") { "${it.key} ${it.value}\n" }
+
+    fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    fun unhex(s: String): ByteArray? {
+        if (s.length % 2 != 0 || !s.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) return null
+        return ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    }
+}

@@ -490,7 +490,9 @@ Robot keeps its own list of people, so "text mom I'm running late" opens Cheogra
 text, and "email Bob" fills in Bob's address, even when neither is in the phone's address book (someone only in
 Cheogram's roster, or only in Proton Mail). There is no companion app and no WRITE_CONTACTS: People live in Robot's
 private storage (`files/people/people.json`, written atomically under a lock both app processes take), excluded from
-Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
+Android's backups like the rest of Robot's files. A file Robot can't read (damaged, cut short) is never written over:
+Robot knows no one in People and changes nothing until Settings › People › Start over, which keeps the old file aside as
+`people.json.bad`. Spec: `../docs/people.md`.
 
 ### Who "mom" is
 
@@ -518,7 +520,8 @@ Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
 ### Ways in
 
 1. **Pick in Cheogram.** When no contact fits a text and Cheogram is the texting app, the card offers **Pick in
-   Cheogram** and, as before, **Choose in Cheogram** (the share screen). Pick opens Cheogram's own searchable contact
+   Cheogram** and, as before, **Choose in Cheogram** (the share screen), also when Robot may not read the contacts
+   (neither needs a permission; the card then has an Allow contacts button too). Pick opens Cheogram's own searchable contact
    list for a result: its `ShortcutActivity`, exported for `ACTION_CREATE_SHORTCUT`, titled "Create shortcut". Robot only
    reads the answer (`EXTRA_SHORTCUT_NAME`, and `EXTRA_SHORTCUT_INTENT`'s `xmpp:<jid>` and `"account"` extra); the icon
    is ignored and nothing is pinned, so nothing goes on the home screen, and the card says so. Then "Remember as
@@ -549,21 +552,30 @@ Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
    changed meanwhile. From Proton Mail: on the web, Contacts › select all › Export selection as .VCF.
 4. **Learn names from Cheogram notifications** (Settings › People, off by default). With notification access, a
    `NotificationListenerService` in the main process (no model, no voice process) keeps who messages you in Cheogram
-   (`com.cheogram.android`, or the Play build), for 1:1 chats only: the MessagingStyle sender's `Person.name`, its
-   `Person.key` (the bare address) and the chat's shortcut id (`"<account>#<jid>"`). Group chats and anything without
-   that shortcut are ignored; message text is never kept or logged. A confirmed person's name is never overwritten
-   (only a missing account is added); at most 200 learned people are kept. Settings lists them under "Learned from
-   Cheogram" with Keep and Remove. The service asks Android for conversation notifications only (never ongoing or
-   silent ones) and unbinds itself while the switch is off.
+   (only the build Robot hands texts to, `com.cheogram.android` or else the Play build), for 1:1 chats only: the
+   MessagingStyle sender's `Person.name`, its `Person.key` (the bare address) and the chat's shortcut id
+   (`"<account>#<jid>"`). Group chats and anything without that shortcut are ignored; message text is never kept or
+   logged. A notification counts only if Cheogram posted it for itself (`opPkg`) and Cheogram is signed as it was the
+   first time Robot saw it after you turned learning on: that certificate's SHA-256 is kept in
+   `files/people/cheogram.signer`, and an app under Cheogram's name signed by anyone else teaches nothing (turn the
+   switch off and on to trust a Cheogram you reinstalled from another source). A confirmed person's name is never
+   overwritten (the account is refreshed); at most 200 learned people are kept. Settings lists them under "Learned from
+   Cheogram" with Keep and Remove; Remove (or Delete on a learned person) also means their address is never learned
+   again, until Delete all. The service asks Android for conversation notifications only (never ongoing or silent
+   ones) and unbinds itself while the switch is off.
    **Restricted settings:** Android blocks notification access for apps installed from a file until you allow
-   restricted settings, and the menu item for that appears only after Android has refused once. Settings › People and
-   Assistant setup › People, notes and calendar give the steps with a button for each screen: Notification access (tap
+   restricted settings, and the menu item for that appears only after Android has refused once. Settings › People and,
+   once the switch is on, Assistant setup › People, notes and calendar give the steps with a button for each screen
+   (with the switch off, Assistant setup only says it is optional): Notification access (tap
    Robot; if Android says it's a restricted setting, tap OK), App info › ⋮ › Allow restricted settings, then
    Notification access again.
 5. **Add from phone contacts.** Android 17's contact picker (`ACTION_PICK_CONTACTS`, one contact's numbers and emails)
    when the phone has it, else the older picker for one number or one email. No permission either way.
 6. **By hand**, in Settings › People: name, "Also called", numbers (Mobile, Home, Work, Other), emails, XMPP addresses
-   with "Your Cheogram account".
+   with "Your Cheogram account". Save applies only what you changed, field by field and row by row, to the person as
+   stored now, so a choice the assistant remembered or an account a notification refreshed meanwhile is kept; someone
+   deleted meanwhile isn't brought back. With no unsaved changes the screen shows what is stored whenever it comes
+   back. Search runs off the main thread, a moment after the last key.
 7. **Always use this for “mom”.** A card with several numbers, addresses or people has this tick box over the choices
    ("Remember who I pick" on). Ticked, the place tapped becomes the person's choice for texts or emails and the name
    their alias (taken from anyone else who had it). For one of the phone's contacts Robot keeps a small People entry
@@ -608,8 +620,9 @@ listener, behind `BIND_NOTIFICATION_LISTENER_SERVICE` and in the main process, a
 5. **Learning from notifications.** Turn on "Learn names from Cheogram notifications"; follow the steps (the restricted
    setting dialog, App info › ⋮ › Allow restricted settings, then the access). Someone only in Cheogram messages you:
    they appear under "Learned from Cheogram". "Text <their name> hi" under "Just do it" still shows the card with "·
-   name seen in Cheogram". A group chat message teaches nothing. Turn the switch off: nothing more is learned, and
-   Settings offers to open Android's page to take the access back.
+   name seen in Cheogram". A group chat message teaches nothing. Remove them, and have them message again: they don't
+   come back. Turn the switch off: nothing more is learned, and Settings offers to open Android's page to take the
+   access back.
 6. **Add from phone contacts**: does Android 17's picker open on GrapheneOS, or the older one (number or email)?
    With Robot under Contact Scopes (contacts allowed, a few granted): People still work, and a name only in People is
    found.

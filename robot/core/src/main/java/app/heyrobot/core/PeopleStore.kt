@@ -59,10 +59,18 @@ data class Person(
     val reachable: Boolean get() = phones.isNotEmpty() || emails.isNotEmpty() || xmpp.isNotEmpty()
 }
 
+/**
+ * What files/people/people.json holds: everyone, and [ignored], the XMPP addresses (lower case) never to learn from a
+ * notification again because you removed the person learned from them.
+ */
+data class PeopleFile(val people: List<Person> = emptyList(), val ignored: Set<String> = emptySet())
+
 object PeopleCodec {
     const val VERSION = 1
 
-    fun toJson(people: List<Person>): String = JSONObject().put("v", VERSION).put("people", JSONArray().apply {
+    fun toJson(people: List<Person>, ignored: Set<String> = emptySet()): String = JSONObject().put("v", VERSION).apply {
+        if (ignored.isNotEmpty()) put("ignored", JSONArray(ignored.sorted()))
+    }.put("people", JSONArray().apply {
         for (p in people) put(JSONObject().apply {
             put("id", p.id)
             put("name", p.name)
@@ -85,10 +93,18 @@ object PeopleCodec {
     }).toString()
 
     /** Everyone in [text]; a damaged entry is dropped, a damaged file reads as nobody (never a crash). */
-    fun fromJson(text: String?): List<Person> {
-        if (text.isNullOrBlank()) return emptyList()
-        val arr = try { JSONObject(text).optJSONArray("people") } catch (_: Exception) { null } ?: return emptyList()
-        return (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(::person) }.distinctBy { it.id }
+    fun fromJson(text: String?): List<Person> = read(text)?.people.orEmpty()
+
+    /**
+     * The whole file, or null when [text] isn't a People file at all (damaged: cut short, or something else). No text is
+     * an empty file. A damaged entry inside a good file is dropped.
+     */
+    fun read(text: String?): PeopleFile? {
+        if (text.isNullOrBlank()) return PeopleFile()
+        val o = try { JSONObject(text) } catch (_: Exception) { return null }
+        val arr = o.optJSONArray("people") ?: return null
+        val people = (0 until arr.length()).mapNotNull { i -> arr.optJSONObject(i)?.let(::person) }.distinctBy { it.id }
+        return PeopleFile(people, strings(o.optJSONArray("ignored")).map { it.trim().lowercase(Locale.ROOT) }.toSet())
     }
 
     private fun strings(a: JSONArray?): List<String> = if (a == null) emptyList() else (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotBlank() } }
@@ -129,26 +145,43 @@ object PeopleCodec {
 }
 
 /**
- * files/people/people.json. Reads need no lock (the file is replaced atomically); every change goes through [update],
+ * files/people/people.json. Reads need no lock (the file is replaced atomically); every change goes through [edit],
  * which holds a lock on files/people/.lock (between the app's processes) and a lock in this process (between threads).
+ * A file that is there but can't be read as a People file (damaged, or unreadable right now) is never written over:
+ * changes are refused, and readers see nobody, until [reset] (Settings › People's "Start over") keeps it aside as
+ * people.json.bad.
  */
 class PeopleStore(private val dir: File) {
     private val file get() = File(dir, "people.json")
 
     /**
-     * Everyone, as the file holds them now. Kept in this process until the file changes (a write replaces it: a new file,
-     * time and size), so a text doesn't parse thousands of people again.
+     * Everyone, as the file holds them now (nobody when it is [damaged]). Kept in this process until the file changes (a
+     * write replaces it: a new file, time and size), so a text doesn't parse thousands of people again.
      */
-    fun list(): List<Person> {
+    fun list(): List<Person> = cached()?.people.orEmpty()
+
+    /** The addresses never to learn again. */
+    fun ignored(): Set<String> = cached()?.ignored.orEmpty()
+
+    /** The file is there but isn't a People file Robot can read: nothing is written to it until [reset]. */
+    fun damaged(): Boolean = file.exists() && read() == null
+
+    private fun cached(): PeopleFile? {
         val f = file
         val stamp = stamp(f) ?: return read()
         synchronized(CACHE) { CACHE[f.path]?.let { (s, l) -> if (s == stamp) return l } }
-        val l = read()
+        val l = read() ?: return null
         if (stamp(f) == stamp) synchronized(CACHE) { CACHE[f.path] = stamp to l }
         return l
     }
 
-    private fun read(): List<Person> = PeopleCodec.fromJson(readOrNull(file))
+    /** The file as it is now; an empty one when there is none; null when it can't be read or isn't a People file. */
+    private fun read(): PeopleFile? {
+        val f = file
+        if (!f.exists()) return PeopleFile()
+        val text = try { f.readText(Charsets.UTF_8) } catch (_: Exception) { return null }
+        return PeopleCodec.read(text)
+    }
 
     /** The file's identity (its inode where the system has one), time and size; null when it can't be told. */
     private fun stamp(f: File): String? = try {
@@ -159,19 +192,51 @@ class PeopleStore(private val dir: File) {
     fun get(id: String): Person? = list().firstOrNull { it.id == id }
 
     /**
-     * Reads, changes and writes everyone under the lock. [change] gets the list as it is now; returning the same list
-     * (the same object) writes nothing. Null if it couldn't be written.
+     * Reads, changes and writes the file under the lock. [change] gets it as it is now; returning the same object writes
+     * nothing. Null if it couldn't be read (damaged: nothing is written) or written.
      */
-    fun update(change: (List<Person>) -> List<Person>): List<Person>? = try {
+    fun edit(change: (PeopleFile) -> PeopleFile): PeopleFile? = try {
         locked {
             // Under the lock always from the file itself.
-            val now = read()
+            val now = read() ?: return@locked null
             val next = change(now)
-            if (next !== now) writeAtomic(file, PeopleCodec.toJson(next.map(People::clean).take(People.MAX_PEOPLE)))
+            if (next !== now) writeAtomic(file, PeopleCodec.toJson(next.people.map(People::clean).take(People.MAX_PEOPLE), next.ignored))
             next
         }
     } catch (_: Exception) {
         null
+    }
+
+    /** [edit] of everyone: returning the same list (the same object) writes nothing. Null if it couldn't be written. */
+    fun update(change: (List<Person>) -> List<Person>): List<Person>? =
+        edit { f -> change(f.people).let { if (it === f.people) f else f.copy(people = it) } }?.people
+
+    /** A sender seen in a Cheogram notification ([PeopleEdit.learn]), unless you removed someone with that address. */
+    fun learn(s: CheogramSender, now: Long): Boolean = edit { f ->
+        if (s.jid.trim().lowercase(Locale.ROOT) in f.ignored) f
+        else PeopleEdit.learn(f.people, s.name, s.jid, s.account, now).let { if (it === f.people) f else f.copy(people = it) }
+    } != null
+
+    /**
+     * Removes [id]; with [ignore] (Remove on someone learned from a notification) their XMPP addresses are never learned
+     * again, so the next message doesn't bring them back.
+     */
+    fun remove(id: String, ignore: Boolean): Boolean = edit { f ->
+        val p = f.people.firstOrNull { it.id == id } ?: return@edit f
+        f.copy(people = f.people.filter { it.id != id }, ignored = if (ignore) f.ignored + p.xmpp.map { it.jid.trim().lowercase(Locale.ROOT) } else f.ignored)
+    } != null
+
+    /** Starts over after a damaged file: it is kept aside as people.json.bad, and People is empty. */
+    fun reset(): Boolean = try {
+        locked {
+            if (file.exists() && read() == null) {
+                val bad = File(dir, "people.json.bad")
+                bad.delete()
+                file.renameTo(bad)
+            } else true
+        }
+    } catch (_: Exception) {
+        false
     }
 
     /**
@@ -186,7 +251,8 @@ class PeopleStore(private val dir: File) {
 
     fun delete(id: String): Boolean = update { list -> list.filter { it.id != id } } != null
 
-    fun deleteAll(): Boolean = update { emptyList() } != null
+    /** Everyone, and the addresses not to learn again. */
+    fun deleteAll(): Boolean = edit { PeopleFile() } != null
 
     private fun <T> locked(block: () -> T): T = synchronized(LOCK) {
         dir.mkdirs()
@@ -198,7 +264,7 @@ class PeopleStore(private val dir: File) {
 
     companion object {
         private val LOCK = Any()
-        private val CACHE = HashMap<String, Pair<String, List<Person>>>()
+        private val CACHE = HashMap<String, Pair<String, PeopleFile>>()
         private val ID = Regex("^[A-Za-z0-9-]{1,64}$")
         fun validId(id: String?): Boolean = id != null && ID.matches(id)
         fun newId(): String = UUID.randomUUID().toString()
@@ -283,6 +349,61 @@ object PeopleEdit {
         val p = list.firstOrNull { it.id == id } ?: return list
         if (p.confirmed) return list
         return upsert(list, p.copy(confirmed = true, updatedAt = now))
+    }
+
+    /**
+     * Save in Settings › People: [edited] is the editor's person, typed over [base] (the person as the editor loaded
+     * them, in the editor's own terms; null for someone new). Only what was changed there is applied to the person as the
+     * file holds them now, field by field and row by row, so what changed meanwhile elsewhere (a choice the assistant
+     * remembered, an account a notification refreshed, a number an import added) is kept. Someone deleted meanwhile
+     * stays deleted (null). Saving confirms them. Returns the list and the person as saved.
+     */
+    fun applyEdit(list: List<Person>, base: Person?, edited: Person, now: Long): Pair<List<Person>, Person>? {
+        val cur = list.firstOrNull { it.id == edited.id }
+        if (cur == null) {
+            if (base != null) return null
+            val p = People.clean(edited.copy(confirmed = true, updatedAt = now))
+            return list + p to p
+        }
+        val b = base ?: Person(cur.id, "")
+        fun text(s: String) = s.trim().lowercase(Locale.ROOT)
+        val phones = rows(b.phones, edited.phones, cur.phones) { PhoneNumbers.digits(it.number).ifEmpty { it.number } }
+        val xmpp = rows(b.xmpp, edited.xmpp, cur.xmpp) { text(it.jid) }
+        val emails = rows(b.emails, edited.emails, cur.emails, ::text)
+        val merged = cur.copy(
+            name = if (edited.name != b.name) edited.name else cur.name,
+            aliases = rows(b.aliases, edited.aliases, cur.aliases) { ContactMatcher.aliasWords(it).joinToString(" ") },
+            nicknames = rows(b.nicknames, edited.nicknames, cur.nicknames) { ContactMatcher.words(it).joinToString(" ") },
+            phones = phones, emails = emails, xmpp = xmpp,
+            // A remembered choice whose place is gone is forgotten.
+            preferredText = cur.preferredText?.takeIf { pref -> phones.any { Preferred.same(it.number, pref) } || xmpp.any { Preferred.same(it.jid, pref) } },
+            preferredEmail = cur.preferredEmail?.takeIf { pref -> emails.any { it.equals(pref, ignoreCase = true) } },
+            confirmed = true, updatedAt = now,
+        )
+        val p = People.clean(merged)
+        return upsert(list, p) to p
+    }
+
+    /**
+     * One list field of [applyEdit]: the editor's rows ([edited]) in their order, where a row left as it was in [base] is
+     * the stored one now ([current]; gone if it was removed meanwhile), then rows added meanwhile. Rows match by [key].
+     */
+    private fun <T> rows(base: List<T>, edited: List<T>, current: List<T>, key: (T) -> String): List<T> {
+        if (edited == base) return current
+        val baseKeys = base.map(key).toSet()
+        val out = ArrayList<T>()
+        for (e in edited) {
+            if (e in base) current.firstOrNull { key(it) == key(e) }?.let { out += it } else out += e
+        }
+        for (c in current) if (key(c) !in baseKeys) out += c
+        return out.distinctBy(key)
+    }
+
+    /** "Forget" on a remembered choice ([email]: the one for emails, else for texts). Unchanged if there is none. */
+    fun forgetChoice(list: List<Person>, id: String, email: Boolean, now: Long): List<Person> {
+        val p = list.firstOrNull { it.id == id } ?: return list
+        if ((if (email) p.preferredEmail else p.preferredText) == null) return list
+        return upsert(list, if (email) p.copy(preferredEmail = null, updatedAt = now) else p.copy(preferredText = null, updatedAt = now))
     }
 
     /** [p] with [alias] (as said: "my mom" is kept as "mom") unless it is already their name or an alias. */

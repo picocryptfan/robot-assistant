@@ -63,12 +63,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.core.Addresses
 import app.heyrobot.core.ContactPhone
 import app.heyrobot.core.People
+import app.heyrobot.core.PeopleCodec
 import app.heyrobot.core.PeopleEdit
 import app.heyrobot.core.PeopleStore
 import app.heyrobot.core.Person
 import app.heyrobot.core.PersonSource
 import app.heyrobot.core.PhoneKind
-import app.heyrobot.core.Preferred
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.VCard
@@ -82,6 +82,7 @@ import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.PhoneContacts
 import app.heyrobot.ui.common.RIcons
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -117,8 +118,11 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     val scope = rememberCoroutineScope()
     val store = remember { PeopleFiles.store(ctx) }
     var people by remember { mutableStateOf<List<Person>>(emptyList()) }
+    /** The file is there but can't be read: nothing is written until "Start over". */
+    var damaged by remember { mutableStateOf(false) }
     var tick by remember { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
+    var confirmReset by remember { mutableStateOf(false) }
     /** A contacts file read and waiting for "Import": what it holds, and what importing it into the list as it was would do. */
     var preview by remember { mutableStateOf<Preview?>(null) }
     var askLegacy by remember { mutableStateOf(false) }
@@ -128,7 +132,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     val lstate by lifecycle.currentStateFlow.collectAsState()
     val resumed = lstate.isAtLeast(Lifecycle.State.RESUMED)
     LaunchedEffect(resumed, tick) {
-        if (resumed) people = withContext(Dispatchers.IO) { People.sorted(store.list()) }
+        if (resumed) withContext(Dispatchers.IO) { People.sorted(store.list()) to store.damaged() }.let { (l, d) -> people = l; damaged = d }
     }
     // The panel opens over this window without pausing it: read again when the window gets the focus back.
     val windowInfo = LocalWindowInfo.current
@@ -189,7 +193,13 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     fun launch(block: () -> Unit, missing: String) = try { block() } catch (_: ActivityNotFoundException) { a.say(missing) }
 
     Scaffold(topBar = { BackBar("People", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
-        val shown = remember(people, query) { if (query.isBlank()) people else people.filter { People.matches(it, query) } }
+        // Searched off the main thread, a moment after the last key (thousands of people).
+        var shown by remember { mutableStateOf<List<Person>>(emptyList()) }
+        LaunchedEffect(people, query) {
+            if (query.isBlank()) { shown = people; return@LaunchedEffect }
+            delay(SEARCH_DELAY_MS)
+            shown = withContext(Dispatchers.Default) { people.filter { People.matches(it, query) } }
+        }
         LazyColumn(
             Modifier.fillMaxSize().padding(pad).padding(horizontal = 20.dp),
             contentPadding = PaddingValues(bottom = 24.dp),
@@ -199,6 +209,18 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                 Text("People Robot knows besides your contacts: who to text or email, and what you call them. Kept on this phone only, " +
                     "never sent to Claude, and not in Android's backups.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (damaged) item {
+                Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Robot can't read its People file", style = MaterialTheme.typography.titleSmall)
+                        Text("It may be damaged. Robot changes nothing in it, and knows no one here, until you start over. Starting over keeps " +
+                            "the old file aside (people.json.bad, in Robot's files) and begins an empty list; import your last export to get everyone back.",
+                            style = MaterialTheme.typography.bodyMedium)
+                        FilledTonalButton(onClick = { confirmReset = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Start over") }
+                    }
+                }
             }
             item {
                 SectionCard("Add people") {
@@ -236,7 +258,8 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                             "A name learned this way always shows the card before a text, since whoever sends a message chooses it.",
                         s.learnFromCheogram) { on ->
                         update(s.copy(learnFromCheogram = on))
-                        if (on) NotificationAccess.rebind(ctx)
+                        // Turned on: the Cheogram installed now is the one trusted (its signer is kept at its first notification).
+                        if (on) { scope.launch(Dispatchers.IO) { PeopleFiles.forgetCheogramSigner(ctx) }; NotificationAccess.rebind(ctx) }
                     }
                     val granted = facts?.notificationAccess == true
                     when {
@@ -261,8 +284,9 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                                     withContext(Dispatchers.IO) { store.update { PeopleEdit.confirm(it, p.id, now()) } }
                                     tick++
                                 } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Keep") }
+                                // Their address isn't learned again, so the next message doesn't bring them back.
                                 TextButton(onClick = { scope.launch {
-                                    withContext(Dispatchers.IO) { store.delete(p.id) }
+                                    withContext(Dispatchers.IO) { store.remove(p.id, ignore = true) }
                                     tick++
                                 } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Remove") }
                             }
@@ -341,11 +365,30 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
             },
         )
     }
+    if (confirmReset) {
+        AlertDialog(
+            onDismissRequest = { confirmReset = false },
+            title = { Text("Start over?") },
+            text = { Text("Robot keeps the file it can't read aside, as people.json.bad, and starts an empty People list.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmReset = false
+                    scope.launch {
+                        val ok = withContext(Dispatchers.IO) { store.reset() }
+                        tick++
+                        a.say(if (ok) "People is empty now." else "Robot couldn't set the file aside.")
+                    }
+                }) { Text("Start over") }
+            },
+            dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+        )
+    }
     if (confirmDeleteAll) {
         AlertDialog(
             onDismissRequest = { confirmDeleteAll = false },
             title = { Text("Delete all People?") },
-            text = { Text("Robot forgets everyone here and what you call them. The phone's contacts aren't touched. This can't be undone.") },
+            text = { Text("Robot forgets everyone here and what you call them, and may learn anyone you removed again. The phone's contacts " +
+                "aren't touched. This can't be undone.") },
             confirmButton = {
                 TextButton(onClick = {
                     confirmDeleteAll = false
@@ -368,6 +411,15 @@ internal fun plural(n: Int, one: String, many: String): String = if (n == 1) "1 
 
 /** Learned people listed with Keep and Remove at most; the rest are in the list. */
 private const val MAX_LEARNED_SHOWN = 20
+
+/** How long the search waits after a key before it runs. */
+private const val SEARCH_DELAY_MS = 200L
+
+/** The person the editor loaded, across a rotation or the process being killed (as one entry of the People file). */
+private val PersonSaver: Saver<Person?, String> = Saver(
+    save = { p -> p?.let { PeopleCodec.toJson(listOf(it)) } },
+    restore = { PeopleCodec.fromJson(it).firstOrNull() },
+)
 
 /** The first of [intents] that opens (Android's page for Robot, else the general one). */
 internal fun openFirst(ctx: android.content.Context, intents: List<android.content.Intent>, a: AppActions) {
@@ -473,7 +525,12 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
     val store = remember { PeopleFiles.store(ctx) }
     /** The person's id: [id], or the one a new person got at its first save (kept across a rotation). */
     var pid by rememberSaveable { mutableStateOf(id) }
+    /** A new person's id, the same for every Save (a double tap never makes two people). */
+    val newId = rememberSaveable { PeopleStore.newId() }
+    /** The person as the file holds them now (the banner, remembered choices). */
     var original by remember { mutableStateOf<Person?>(null) }
+    /** The person the draft was loaded from: Save applies only what was changed since. */
+    var base by rememberSaveable(stateSaver = PersonSaver) { mutableStateOf<Person?>(null) }
     var loaded by rememberSaveable { mutableStateOf(id == null) }
     var draft by rememberSaveable(stateSaver = Draft.Saver) { mutableStateOf(Draft(phones = listOf(PhoneKind.MOBILE to ""))) }
     var saved by rememberSaveable(stateSaver = Draft.Saver) { mutableStateOf(draft) }
@@ -481,16 +538,26 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
     var confirmDelete by remember { mutableStateOf(false) }
     var confirmLeave by remember { mutableStateOf(false) }
     var gone by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var tick by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(pid) {
+    // Read again whenever the screen comes back (the assistant or a notification may have changed them): with no
+    // unsaved changes the fields show what is stored now.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lstate by lifecycle.currentStateFlow.collectAsState()
+    val resumed = lstate.isAtLeast(Lifecycle.State.RESUMED)
+    val windowInfo = LocalWindowInfo.current
+    LaunchedEffect(windowInfo) { snapshotFlow { windowInfo.isWindowFocused }.collect { if (it) tick++ } }
+    LaunchedEffect(pid, resumed, tick) {
         val cur = pid ?: return@LaunchedEffect
-        if (original?.id == cur) return@LaunchedEffect
+        if (!resumed || saving) return@LaunchedEffect
         val p = withContext(Dispatchers.IO) { store.get(cur) }
         if (p == null) { gone = true; return@LaunchedEffect }
+        gone = false
         original = p
-        if (!loaded) {
-            draft = Draft.of(p)
-            saved = draft
+        if (!loaded || draft == saved) {
+            if (!loaded || Draft.of(p) != saved) { draft = Draft.of(p); saved = draft }
+            base = p
             loaded = true
         }
     }
@@ -503,35 +570,55 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
     val valid = nameOk && (phoneOk + emailOk + jidOk + accountOk).all { it }
     val dirty = draft != saved
 
-    fun person(now: Long): Person {
-        val o = original
-        val phones = draft.phones.filter { it.second.isNotBlank() }.map { (k, n) -> ContactPhone(n.trim(), k, People.label(k)) }
-        val emails = draft.emails.map { it.trim() }.filter { it.isNotEmpty() }
+    /** [d] as a person, over [o] (the person it was loaded from): what Save compares, row by row, with [o] as a draft. */
+    fun person(d: Draft, o: Person?, now: Long): Person {
+        val phones = d.phones.filter { it.second.isNotBlank() }.map { (k, n) -> ContactPhone(n.trim(), k, People.label(k)) }
+        val emails = d.emails.map { it.trim() }.filter { it.isNotEmpty() }
         // An address picked in Cheogram's list stays picked while its account is unchanged.
-        val xmpp = draft.xmpp.filter { it.first.isNotBlank() }.map { (j, acct) ->
+        val xmpp = d.xmpp.filter { it.first.isNotBlank() }.map { (j, acct) ->
             val a = acct.trim().lowercase(Locale.ROOT).ifEmpty { null }
             val was = o?.xmpp?.firstOrNull { it.jid.equals(j.trim(), ignoreCase = true) }
             XmppAddress(j.trim(), a, picked = was?.picked == true && was.account == a)
         }
-        // A remembered choice that was removed here is forgotten.
-        val text = o?.preferredText?.takeIf { pref -> phones.any { Preferred.same(it.number, pref) } || xmpp.any { Preferred.same(it.jid, pref) } }
-        val mail = o?.preferredEmail?.takeIf { pref -> emails.any { it.equals(pref, ignoreCase = true) } }
-        return People.clean(Person(o?.id ?: pid ?: PeopleStore.newId(), draft.name, aliases = draft.aliasList(), nicknames = draft.nicknameList(),
-            phones = phones, emails = emails, xmpp = xmpp, preferredText = text, preferredEmail = mail, source = o?.source ?: PersonSource.MANUAL,
+        return People.clean(Person(o?.id ?: pid ?: newId, d.name, aliases = d.aliasList(), nicknames = d.nicknameList(),
+            phones = phones, emails = emails, xmpp = xmpp, source = o?.source ?: PersonSource.MANUAL,
             confirmed = true, systemLookupKey = o?.systemLookupKey, updatedAt = now))
     }
 
     fun save(then: () -> Unit = {}) {
+        if (saving) return
         if (!valid) { showErrors = true; a.say("Check what's marked in red."); return }
-        val p = person(System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        val b = base
+        // Only what was typed here is applied, to the person as stored now: a choice remembered meanwhile is kept.
+        val from = b?.let { person(Draft.of(it), it, now) }
+        val edited = person(draft, b, now)
+        saving = true
         scope.launch {
-            val ok = withContext(Dispatchers.IO) { store.save(p) }
-            if (!ok) return@launch a.say("Robot couldn't save them.")
+            var result: Person? = null
+            var deleted = false
+            val ok = withContext(Dispatchers.IO) {
+                store.update { l -> PeopleEdit.applyEdit(l, from, edited, now)?.let { (list, p) -> result = p; list } ?: l.also { deleted = true } }
+            } != null
+            saving = false
+            val p = result
+            if (deleted) { gone = true; return@launch a.say("They were deleted meanwhile: Robot didn't bring them back.") }
+            if (!ok || p == null) return@launch a.say("Robot couldn't save them.")
             original = p
+            base = p
             pid = p.id
             draft = Draft.of(p)
             saved = draft
             then()
+        }
+    }
+
+    /** "Forget" on a remembered choice. */
+    fun forget(email: Boolean) {
+        val cur = pid ?: return
+        scope.launch {
+            withContext(Dispatchers.IO) { store.update { PeopleEdit.forgetChoice(it, cur, email, System.currentTimeMillis()) }; store.get(cur) }
+                ?.let { original = it }
         }
     }
 
@@ -540,7 +627,7 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
     Scaffold(
         topBar = {
             BackBar(if (pid == null) "New person" else "Person", ::leave) {
-                TextButton(onClick = { save() }, enabled = loaded && !gone && (dirty || original?.confirmed == false)) { Text("Save") }
+                TextButton(onClick = { save() }, enabled = loaded && !gone && !saving && (dirty || original?.confirmed == false)) { Text("Save") }
                 if (original != null) IconButton(onClick = { confirmDelete = true }) { Icon(RIcons.Delete, "Delete") }
             }
         },
@@ -635,19 +722,13 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                 o.preferredText?.let { pref ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Texts always go to $pref", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { scope.launch {
-                            val p = o.copy(preferredText = null, updatedAt = System.currentTimeMillis())
-                            if (withContext(Dispatchers.IO) { store.save(p) }) original = p
-                        } }) { Text("Forget") }
+                        TextButton(onClick = { forget(email = false) }) { Text("Forget") }
                     }
                 }
                 o.preferredEmail?.let { pref ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Emails always go to $pref", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { scope.launch {
-                            val p = o.copy(preferredEmail = null, updatedAt = System.currentTimeMillis())
-                            if (withContext(Dispatchers.IO) { store.save(p) }) original = p
-                        } }) { Text("Forget") }
+                        TextButton(onClick = { forget(email = true) }) { Text("Forget") }
                     }
                 }
                 Text("${o.source.title} · changed ${DateUtils.getRelativeTimeSpanString(o.updatedAt)}", style = MaterialTheme.typography.labelMedium,
@@ -670,9 +751,10 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
             confirmButton = {
                 TextButton(onClick = {
                     confirmDelete = false
-                    val pid = original?.id ?: return@TextButton onBack()
+                    val o = original ?: return@TextButton onBack()
                     scope.launch {
-                        val ok = withContext(Dispatchers.IO) { store.delete(pid) }
+                        // Someone learned from a notification isn't learned again.
+                        val ok = withContext(Dispatchers.IO) { store.remove(o.id, ignore = !o.confirmed) }
                         a.say(if (ok) "Deleted." else "Robot couldn't delete them.")
                         if (ok) onBack()
                     }
