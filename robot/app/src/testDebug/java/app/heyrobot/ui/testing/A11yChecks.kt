@@ -23,6 +23,9 @@ fun ComposeContentTestRule.touchTargetProblems(): List<String> {
         val targets = ArrayList<Pair<String, Rect>>()
         fun walk(n: SemanticsNode) {
             val c = n.config
+            // Only what is on screen counts: a lazy list composes the next rows before they scroll in, and a row scrolled
+            // out of a list is clipped to nothing.
+            if (!n.layoutInfo.isPlaced || n.boundsInRoot.width <= 0f || n.boundsInRoot.height <= 0f) return
             if (c.getOrNull(SemanticsActions.OnClick) != null) {
                 val label = (c.getOrNull(SemanticsProperties.ContentDescription).orEmpty() +
                     c.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text }).joinToString(" ").trim()
