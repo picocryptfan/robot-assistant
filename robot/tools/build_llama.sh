@@ -158,7 +158,7 @@ for n in $needed; do
   case "$n" in libc.so|libm.so|libdl.so|liblog.so) ;; *) fail "needs $n" ;; esac
 done
 imports=$("$BIN/llvm-nm" -D --undefined-only "$stripped" | awk '{ print $2 }' | sed 's/@.*//')
-net=$(grep -xE 'socket|connect|getaddrinfo|gethostbyname|bind|listen|accept4?|sendto|recvfrom|fork|vfork|clone|daemon|execv[pe]?|execl[pe]?|execve|posix_spawnp?|popen|system' <<<"$imports" || true)
+net=$(grep -xE 'socket|connect|getaddrinfo|gethostbyname|bind|listen|accept4?|sendto|recvfrom|fork|vfork|clone|daemon|execv[pe]?|execvpe|execl[pe]?|execve|execveat|fexecve|posix_spawnp?|popen|system' <<<"$imports" || true)
 [ -z "$net" ] || fail "imports network or process functions: $(echo $net)"
 [ "$fails" = 0 ] || { echo "$fails check(s) failed: $LIB not installed"; exit 1; }
 

@@ -152,7 +152,7 @@ if echo "$libs" | grep -qx 'lib/arm64-v8a/librobot_llama.so'; then
     others=$("$NDK_BIN/llvm-nm" -D --defined-only "$so" | awk '{ print $3 }' | grep -vE '^(JNI_OnLoad|Java_app_heyrobot_brain_LlamaNative_[A-Za-z]+)$' || true)
     [ -z "$others" ] && pass "librobot_llama.so exports only its JNI bridge" || fail "librobot_llama.so exports more: $(echo $others | head -c 200)"
     net=$("$NDK_BIN/llvm-nm" -D --undefined-only "$so" | awk '{ print $2 }' | sed 's/@.*//' |
-      grep -xE 'socket|connect|getaddrinfo|gethostbyname|bind|listen|accept4?|sendto|recvfrom|fork|vfork|clone|daemon|execv[pe]?|execl[pe]?|execve|posix_spawnp?|popen|system' || true)
+      grep -xE 'socket|connect|getaddrinfo|gethostbyname|bind|listen|accept4?|sendto|recvfrom|fork|vfork|clone|daemon|execv[pe]?|execvpe|execl[pe]?|execve|execveat|fexecve|posix_spawnp?|popen|system' || true)
     [ -z "$net" ] && pass "librobot_llama.so imports no network or process functions" || fail "librobot_llama.so imports $(echo $net)"
     needed=$("$NDK_BIN/llvm-readelf" -d "$so" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | grep -vxE 'libc\.so|libm\.so|libdl\.so|liblog\.so' || true)
     [ -z "$needed" ] && pass "librobot_llama.so needs only the C library and the loader" || fail "librobot_llama.so needs $(echo $needed)"
