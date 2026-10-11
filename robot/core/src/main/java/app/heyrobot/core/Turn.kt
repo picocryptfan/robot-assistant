@@ -386,16 +386,27 @@ class TurnRunner(
         if (actions.locked && chosen.tool !in ApprovalGate.ALLOWED_WHEN_LOCKED) {
             return done(chosen, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
         }
-        // Once it runs it runs to the end, and its card says what really happened, even if Stop comes meanwhile: a saved
-        // note keeps its Undo, an added event isn't recorded as cancelled.
-        return withContext(NonCancellable) {
-            val r = actions.run(chosen)
+        fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {
             // What a read tool found is content: from now on every action in this conversation asks first.
             if (r.content) untrusted = true
             val launched = r.launchedApp && r.status.succeeded
             if (speak && !launched) view.say(r.spoken ?: r.detail)
-            done(chosen, r.status, r.detail, launched, r)
+            return done(chosen, r.status, r.detail, launched, r)
         }
+        // An online read (the weather, 0.4.0) changes nothing and may wait seconds on the network: Stop ends it at once,
+        // and its card says it was stopped.
+        if (chosen.tool.online && chosen.tool.reads) {
+            val r = try {
+                actions.run(chosen)
+            } catch (e: CancellationException) {
+                view.card(Card(id, chosen.tool, chosen.describe(), ActionStatus.DECLINED, "Stopped.", chosen, remote = remote))
+                throw e
+            }
+            return finish(r)
+        }
+        // Once it runs it runs to the end, and its card says what really happened, even if Stop comes meanwhile: a saved
+        // note keeps its Undo, an added event isn't recorded as cancelled.
+        return withContext(NonCancellable) { finish(actions.run(chosen)) }
     }
 
     /**

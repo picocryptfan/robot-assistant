@@ -22,9 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import app.heyrobot.core.Abort
 import app.heyrobot.core.OpenMeteo
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ToolCalls
+import app.heyrobot.core.WeatherAsk
 import app.heyrobot.core.WeatherPlace
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.OpenMeteoClient
@@ -68,7 +70,7 @@ private fun HomeForWeather(s: RobotSettings, update: (RobotSettings) -> Unit, a:
         busy = true
         scope.launch {
             val r: Any? = withContext(Dispatchers.IO) {
-                try { OpenMeteoClient.geocode(ctx, asked) } catch (e: OpenMeteoClient.Failure) { e } catch (_: Exception) { null }
+                try { OpenMeteoClient.geocode(ctx, asked, Abort(WeatherAsk.DEADLINE_MS)) } catch (e: OpenMeteoClient.Failure) { e } catch (_: Exception) { null }
             }
             busy = false
             when (r) {

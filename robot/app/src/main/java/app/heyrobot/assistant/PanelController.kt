@@ -8,6 +8,7 @@ import app.heyrobot.claude.ClaudeSession
 import app.heyrobot.claude.ClaudeTurn
 import android.os.PowerManager
 import android.os.SystemClock
+import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionRecord
 import app.heyrobot.core.ActionStatus
@@ -86,6 +87,8 @@ import app.heyrobot.core.TtsStop
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.VolumeKeyStop
+import app.heyrobot.core.WeatherAsk
+import app.heyrobot.core.WeatherFail
 import app.heyrobot.core.toPromptTurns
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.ClaudeAppIntents
@@ -1597,15 +1600,27 @@ object PanelController {
         override fun close() = c.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(convId))
     }
 
-    /** The phone side of a turn: the approval inputs and ToolExecutor (contacts, calendar and files off the main thread). */
+    /**
+     * The phone side of a turn: the approval inputs and ToolExecutor (contacts, calendar and files off the main thread).
+     * An online tool (the weather) runs through [OnlineRun]: Stop ends it at once, and so does its deadline.
+     */
     private object PanelActions : TurnActions {
         override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
         override val settings: RobotSettings get() = VoiceHub.settings
         override suspend fun prepare(action: Action): Prepared = withContext(Dispatchers.IO) { executor().prepare(action) }
-        override suspend fun run(action: Action): Executed = withContext(Dispatchers.IO) { executor().run(action) }
+        override suspend fun run(action: Action): Executed {
+            if (!action.tool.online) return withContext(Dispatchers.IO) { executor().run(action) }
+            return try {
+                OnlineRun.run(WeatherAsk.DEADLINE_MS) { abort -> executor(abort).run(action) }
+                    ?: Executed(ActionStatus.FAILED, WeatherFail.TIMEOUT.text).also { VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.TIMEOUT) }
+            } catch (e: CancellationException) {
+                VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.STOPPED)
+                throw e
+            }
+        }
     }
 
-    private fun executor() = ToolExecutor(VoiceHub.app, VoiceHub.settings) { i -> host?.launch(i) ?: false }
+    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort) { i -> host?.launch(i) ?: false }
 
     /** What the turn shows: the reply bubble [replyId], its cards and the panel's phase. */
     private class PanelView(private val replyId: String) : TurnView {

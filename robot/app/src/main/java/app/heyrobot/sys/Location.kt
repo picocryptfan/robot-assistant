@@ -6,6 +6,7 @@ import android.location.Location
 import android.location.LocationManager
 import android.os.CancellationSignal
 import android.os.SystemClock
+import app.heyrobot.core.Abort
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -34,8 +35,11 @@ object CoarseLocation {
     /** Location is on in Android's settings (true when Android won't say). */
     fun enabled(ctx: Context): Boolean = try { ctx.getSystemService(LocationManager::class.java)?.isLocationEnabled != false } catch (_: Exception) { true }
 
-    /** Where the phone is, or null. Blocking, for at most about [timeoutMs]: never on the main thread. */
-    fun find(ctx: Context, timeoutMs: Long = TIMEOUT_MS): Fix? {
+    /**
+     * Where the phone is, or null. Blocking, for at most about [timeoutMs] (and never past [abort]'s deadline; Stop ends
+     * the wait at once): never on the main thread.
+     */
+    fun find(ctx: Context, timeoutMs: Long = TIMEOUT_MS, abort: Abort = Abort()): Fix? {
         if (!granted(ctx)) return null
         val lm = ctx.getSystemService(LocationManager::class.java) ?: return null
         val providers = try { lm.getProviders(true) } catch (_: Exception) { emptyList() }
@@ -58,9 +62,11 @@ object CoarseLocation {
                 if (pending.decrementAndGet() <= 0) done.countDown()
             }
         }
+        val forget = abort.onCancel { done.countDown() }
         if (asking.isNotEmpty()) {
-            try { done.await(timeoutMs, TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
+            try { done.await(minOf(timeoutMs, abort.remainingMs()), TimeUnit.MILLISECONDS) } catch (_: InterruptedException) { Thread.currentThread().interrupt() }
         }
+        forget()
         signals.forEach { try { it.cancel() } catch (_: Exception) {} }
         got.get()?.let { return Fix(it.latitude, it.longitude, fresh = true) }
         return last?.takeIf { age(it) <= OLD_MS }?.let { Fix(it.latitude, it.longitude, fresh = false) }

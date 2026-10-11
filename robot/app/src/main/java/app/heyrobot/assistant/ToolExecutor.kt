@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.SystemClock
 import android.provider.AlarmClock
 import androidx.core.graphics.drawable.toBitmap
+import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Addresses
@@ -82,7 +83,8 @@ import java.util.Locale
 // the main app asked for, notes go to Robot Notes. 0.4.0: the weather comes from Open-Meteo over the internet (this is
 // the process that goes online for it). The log records the tool and the outcome, never arguments.
 
-class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val launch: (Intent) -> Boolean) {
+/** [abort]: an online tool's (the weather's) Stop and deadline (OnlineRun); the others run to the end. */
+class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val abort: Abort = Abort(), private val launch: (Intent) -> Boolean) {
     /**
      * Before the gate and the card: what the action will really do. open_app becomes the installed app it will open
      * (its real label and launcher activity); send_text and draft_email the person, number or address it goes to
@@ -445,10 +447,13 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val started = SystemClock.elapsedRealtime()
         return try {
             val (place, source) = when (a.where ?: WeatherAsk.where(a.place).first) {
-                WeatherWhere.NAMED -> OpenMeteoClient.geocode(ctx, WeatherAsk.where(a.place).second ?: a.place.orEmpty()) to WeatherSource.NAMED
+                WeatherWhere.NAMED -> OpenMeteoClient.geocode(ctx, WeatherAsk.where(a.place).second ?: a.place.orEmpty(), abort) to WeatherSource.NAMED
                 WeatherWhere.HOME -> (home ?: throw OpenMeteoClient.Failure(WeatherFail.NO_HOME)) to WeatherSource.HOME
                 WeatherWhere.HERE -> {
-                    val fix = if (CoarseLocation.granted(ctx) && CoarseLocation.enabled(ctx)) CoarseLocation.find(ctx) else null
+                    // With a Home to fall back on, a fix gets only a few seconds.
+                    val wait = if (home != null) WeatherAsk.FIX_WITH_HOME_MS else WeatherAsk.FIX_MS
+                    val fix = if (CoarseLocation.granted(ctx) && CoarseLocation.enabled(ctx)) CoarseLocation.find(ctx, wait, abort) else null
+                    if (abort.cancelled) throw OpenMeteoClient.Failure(if (abort.expired) WeatherFail.TIMEOUT else WeatherFail.STOPPED)
                     when {
                         fix != null -> WeatherPlace(HERE, fix.lat, fix.lon) to if (fix.fresh) WeatherSource.FIX else WeatherSource.LAST_KNOWN
                         home != null -> home to if (CoarseLocation.granted(ctx)) WeatherSource.HOME_NO_FIX else WeatherSource.HOME
@@ -458,7 +463,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 }
             }
             val found = SystemClock.elapsedRealtime()
-            val f = OpenMeteoClient.forecast(ctx, place, WeatherAsk.fetchDays(range, now), units)
+            val f = OpenMeteoClient.forecast(ctx, place, WeatherAsk.fetchDays(range, now), units, abort)
             val report = WeatherText.report(f, a.day, now, units) ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
             VoiceLog.add(VoiceEvent.WEATHER, source, if (source == WeatherSource.HOME) 0 else (found - started).toInt(), (SystemClock.elapsedRealtime() - found).toInt())
             // The card's line is saved with the conversation, so it names no place; the place goes in the results (for
@@ -474,7 +479,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent,
                 spoken = "${named.replaceFirstChar { it.uppercase() }}. ${report.spoken}")
         } catch (e: OpenMeteoClient.Failure) {
-            VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
+            // Once the caller has given up (Stop, the deadline) it logs why; this result is dropped.
+            if (!abort.cancelled) VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
             Executed(if (e.why == WeatherFail.NO_PLACE) ActionStatus.NOT_FOUND else ActionStatus.FAILED, e.why.text)
         }
     }

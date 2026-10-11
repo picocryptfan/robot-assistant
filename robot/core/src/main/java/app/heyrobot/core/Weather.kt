@@ -60,6 +60,10 @@ enum class WeatherFail(override val id: Int, override val title: String, val tex
     LOCATION_OFF(7, "location off", "Location is off on this phone. Turn it on, name a town, or set a Home for weather in Robot's settings."),
     NO_DAYS(8, "no forecast for those days", "Open-Meteo has forecasts for today and the next 15 days only."),
     NO_HOME(9, "no Home for weather", "No Home for weather is set. Set one in Robot's Settings › Weather, or name a town."),
+    /** The whole lookup (place and forecast) took longer than [WeatherAsk.DEADLINE_MS]. */
+    TIMEOUT(10, "took too long", "The weather took too long to come. Try again in a moment."),
+    /** Stop ended it. */
+    STOPPED(11, "stopped", "Stopped."),
 }
 
 /** WMO weather interpretation codes (as Open-Meteo gives them) in plain words. */
@@ -215,6 +219,11 @@ object OpenMeteo {
 object WeatherAsk {
     /** At most this many days in one answer (about 40 tokens each). */
     const val MAX_SHOWN = 7
+    /** The whole lookup, place and forecast, at most: then it gives up ([WeatherFail.TIMEOUT]). */
+    const val DEADLINE_MS = 15_000L
+    /** How long to wait for a new location fix: without a Home for weather to fall back on, and with one. */
+    const val FIX_MS = 10_000L
+    const val FIX_WITH_HOME_MS = 3_000L
 
     private val HERE = setOf("here", "my location", "current location", "my current location", "where i am", "where im", "around here",
         "nearby", "near me", "local", "ici", "autour de moi", "ma position")
