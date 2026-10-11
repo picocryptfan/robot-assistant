@@ -151,18 +151,30 @@ object QueryCheck {
 
     /**
      * The longest run of digits in [s], counting digit groups joined by one or two of "-./+()" ("514-555-0199",
-     * "(514) 555", "192.168.1.1") and groups of two or more digits joined by spaces ("4111 1111 1111 1111", "51 45 55 01
-     * 99"), except where a group is a year ("top 10 2026") or a year range ("1939-1945").
+     * "(514) 555", "192.168.1.1") and groups of two or more digits joined by spaces ("4111 1111 1111 1111", "514 555
+     * 0199"), except where a group is a year ("top 10 2026") or a year range ("1939-1945"). Pairs of digits joined by
+     * spaces count as a run from four pairs on ("51 45 55 01 99"), so "iphone 15 16 17" doesn't.
      */
     fun longestDigitRun(s: String): Int {
         val text = YEAR_RANGE.replace(s, " ")
         val groups = Regex("\\d+").findAll(text).toList()
         var best = 0
         var run = 0
+        var count = 0
+        var pairs = false
         for ((k, g) in groups.withIndex()) {
             val linked = k > 0 && link(text, groups[k - 1], g)
-            run = if (linked) run + g.value.length else g.value.length
-            best = maxOf(best, run)
+            val spaced = linked && text.substring(groups[k - 1].range.last + 1, g.range.first).isBlank()
+            if (linked) {
+                run += g.value.length
+                count++
+                pairs = pairs && spaced && g.value.length == 2
+            } else {
+                run = g.value.length
+                count = 1
+                pairs = g.value.length == 2
+            }
+            best = maxOf(best, if (pairs && count < 4) g.value.length else run)
         }
         return best
     }
@@ -199,11 +211,13 @@ object QueryCheck {
     /** A token that looks like a key, an ID or encoded data rather than a word. */
     private fun codeLike(token: String): Boolean {
         val t = token.trim('"', '\'', ',', '.', '(', ')', '?', '!', ':', ';')
-        if (t.length > 40) return true
         if (t.length < 16) return false
         val digits = t.count { it.isDigit() }
         val letters = t.count { it.isLetter() }
-        val mixedCase = t.any { it.isUpperCase() } && t.any { it.isLowerCase() }
+        // Mixed case past the first letter ("aGVsbG8"), not a capitalized word.
+        val mixedCase = t.drop(1).any { it.isUpperCase() } && t.any { it.isLowerCase() }
+        // A long word is a word (German compounds, "pneumonoultramicroscopic…"); a long token with digits or mixed case isn't.
+        if (t.length > 64 || (t.length > 40 && (digits > 0 || mixedCase || letters < t.length))) return true
         return (digits >= 4 && letters >= 4) || (mixedCase && digits >= 2) || t.any { it in "+/=_" } && digits > 0
     }
 }
