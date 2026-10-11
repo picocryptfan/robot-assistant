@@ -331,7 +331,8 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                                 menu = false
                                 try { ctx.startActivity(Transcripts.summaryIntent(ctx, id)) } catch (_: Exception) {}
                             })
-                            DropdownMenuItem(text = { Text(if (m.important) "Not important" else "Mark important") }, onClick = {
+                            // Not while it records, as Rename: the session's own copy of meta.json is written back when it ends.
+                            DropdownMenuItem(text = { Text(if (m.important) "Not important" else "Mark important") }, enabled = !live, onClick = {
                                 menu = false
                                 scope.launch {
                                     withContext(Dispatchers.IO) { Transcripts.store(ctx).setImportant(id, !m.important) }

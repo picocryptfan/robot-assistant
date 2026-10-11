@@ -85,6 +85,11 @@ class ClaudeTranscriptPayloadTest {
             for (i in 0 until 2_000) apply(TranscriptEvent.Line(i, i * 5.0, i * 5.0 + 4, "S1", "en", "This is a fairly long line of talk to fill the transcript up."))
         }.result()
         assertNull(ConsentCard.appShare(ConsentCard.build("claude-app", "the Claude app", Disclosure.claudeApp(), meta, long, now, "CA", "en", zone)))
+        // The API takes it in one request up to the helper's limit (by the card's own estimate); past it, export instead.
+        val longCard = ConsentCard.build("claude-api", "Claude", api, meta, long, now, "CA", "en", zone)
+        assertTrue(ConsentCard.apiFits(longCard.blocks, 150_000))
+        assertFalse(ConsentCard.apiFits(longCard.blocks, 20_000))
+        assertTrue(ConsentCard.apiFits(card().blocks, 1_000))
     }
 
     @Test fun theCostEstimate() {

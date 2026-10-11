@@ -52,6 +52,8 @@ class ClaudeApiHelper(private val ctx: Context, private val model: ClaudeModel, 
 
     override suspend fun summarize(job: SummaryJob, listener: HelperListener): HelperResult {
         if (!HelperGate.allowed(job) || job.helper != ID) return HelperResult.Failed("Nothing was sent: Robot needs your OK on the card.")
+        // More than one request takes: it would leave the phone only to be refused there.
+        if (!ConsentCard.apiFits(job.blocks, maxInputTokens())) return HelperResult.Failed("Nothing was sent. " + ConsentCard.TOO_LONG_FOR_API)
         if (!ClaudeLink.networkAllowed(ctx)) return HelperResult.Failed(ClaudeFailure.NO_INTERNET.text)
         val session = withContext(Dispatchers.IO) { ClaudeLink.transcriptSession(ctx, model) } ?: return HelperResult.Failed(ClaudeFailure.NO_KEY.text)
         val text = StringBuilder()

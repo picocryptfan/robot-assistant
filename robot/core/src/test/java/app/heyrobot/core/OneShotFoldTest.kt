@@ -1,5 +1,6 @@
 package app.heyrobot.core
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -49,5 +50,23 @@ class OneShotFoldTest {
         assertEquals(OneShotResult.Failed(BrainError.NOT_LOADED, unavailable = true), n.result)
         // :brain died: the stream closed without an end.
         assertEquals(OneShotResult.Failed(BrainError.ENGINE, unavailable = true), OneShotFold(0).closed())
+    }
+
+    /** :brain stopped a broken reply (pad tokens, one character over and over): never a translation or a summary's note. */
+    @Test fun aBrokenReplyIsAFailureNotAnAnswer() = runBlocking {
+        val g = OneShotFold(0)
+        g.event(BrainMsg.Queued(0), 0)
+        g.event(BrainMsg.Chunk("Bonjour <pad><pad>"), 10)
+        g.event(BrainMsg.Done(DoneReason.GARBAGE, 0, 0, 0.0, true), 20)
+        assertEquals(OneShotResult.Failed(BrainError.ENGINE), g.result)
+        // As the translator and the summary see it.
+        val broken = object : OneShotTransport {
+            override suspend fun run(req: BrainMsg.OneShot, budget: OneShotBudget, onText: (String) -> Unit): OneShotResult = g.result!!
+        }
+        val e = try { GemmaTranslator(broken, Priority.TRANSCRIPT, OneShotBudget(null, 1_000)).translate("Hello there.", "en", "fr"); null }
+            catch (f: TranslateFailure) { f.why }
+        assertEquals(TranslateFailure.Why.FAILED, e)
+        val s = LocalSummary(broken, OneShotBudget(null, 1_000)).run(listOf("[14:00] User (en): Hello there."), "en", 4096)
+        assertTrue(s is LocalSummary.Outcome.Failed)
     }
 }

@@ -450,6 +450,8 @@ object ConversationSession {
         val store = Transcripts.store(app)
         id?.let(store::forget)
         ConversationNotices.cancelResume(app, id)
+        // A summary of it being made stops: nothing more of a deleted transcript is read or kept.
+        SummaryJobs.deleted(id)
         ctl.post {
             val w = writer ?: run {
                 // Not running: "Saved: open it" must not point at a deleted transcript.
@@ -705,7 +707,7 @@ object ConversationSession {
     private class TrOut(private val w: TranscriptWriter) : ConversationTranslations.Out {
         override fun translated(i: Int, to: String, by: String, text: String) {
             ctl.post {
-                if (writer !== w || discarded) return@post
+                if (writer !== w || discarded || stale(i, to)) return@post
                 val ok = synchronized(writerLock) { !discarded && w.event(TranscriptEvent.Translation(i, to, by, text)) == null }
                 if (!ok) {
                     w.failed?.let { saveFailed(it) }
@@ -722,7 +724,7 @@ object ConversationSession {
 
         override fun interpreted(l: TranscriptLine, from: String, to: String, r: Translated) {
             ctl.post {
-                if (writer !== w) return@post
+                if (writer !== w || stale(l.i, to)) return@post
                 _state.update { it.copy(untranslated = if (r.text == null) l.i else if (it.untranslated == l.i) null else it.untranslated) }
                 val text = r.text ?: return@post
                 val ui = _state.value
@@ -732,6 +734,16 @@ object ConversationSession {
 
         override fun working(i: Int, on: Boolean) {
             _state.update { st -> st.copy(translating = if (on) st.translating + i else st.translating - i) }
+        }
+
+        /**
+         * Control thread: line [i]'s language changed since its translation into [to] was asked for (you fixed it while
+         * it was being made): that one is of the old reading, and the new one is on its way.
+         */
+        private fun stale(i: Int, to: String): Boolean {
+            val ui = _state.value
+            val lang = ui.lines.firstOrNull { it.i == i }?.lang ?: return false
+            return ui.pair.other(lang) != to
         }
 
         override fun nowS(): Double = w.clock(System.currentTimeMillis())

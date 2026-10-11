@@ -81,8 +81,12 @@ class OneShotFold(private val t0: Long) {
                 text.append(m.text)
                 return true
             }
-            is BrainMsg.Done -> result = if (m.reason == DoneReason.CANCELLED) OneShotResult.Cancelled
-                else OneShotResult.Done(text.toString(), m.reason, waitedMs = if (startedAt >= 0) startedAt - t0 else 0, ms = now - t0)
+            is BrainMsg.Done -> result = when (m.reason) {
+                DoneReason.CANCELLED -> OneShotResult.Cancelled
+                // :brain stopped a broken reply (pad tokens, one character over and over): no translation or note comes of it.
+                DoneReason.GARBAGE -> OneShotResult.Failed(BrainError.ENGINE)
+                else -> OneShotResult.Done(text.toString(), m.reason, waitedMs = if (startedAt >= 0) startedAt - t0 else 0, ms = now - t0)
+            }
             is BrainMsg.Error -> result = OneShotResult.Failed(m.code, unavailable = m.code == BrainError.NOT_LOADED)
             else -> {}
         }
