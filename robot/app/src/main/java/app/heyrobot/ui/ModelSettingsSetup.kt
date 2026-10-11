@@ -70,6 +70,7 @@ import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelLogic
+import app.heyrobot.core.ModelNotes
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.PhoneStatus
@@ -148,7 +149,10 @@ private fun ModelChoiceCard(s: RobotSettings, update: (RobotSettings) -> Unit, s
                 m.builtIn -> "Download it below first."
                 else -> "Import a file below first."
             }
-            ChoiceRow(m.title, m.speed + (note?.let { " $it" } ?: ""), chosen == m, enabled = ready || chosen == m) {
+            // Your own file, checked and short (0.4.3): said where you choose it, not only on its card below.
+            val short = if (m == BrainModel.OWN && ready) snap.own?.report?.takeIf { it.shortContext }
+                ?.let { r -> " Chat only (short context): no actions." + if (r.vision) " Can see photos." else "" } else null
+            ChoiceRow(m.title, m.speed + (short ?: "") + (note?.let { " $it" } ?: ""), chosen == m, enabled = ready || chosen == m) {
                 // Tapping the chosen one again saves too: Robot then retries a model that didn't load.
                 update(s.copy(brainModel = m.id))
             }
@@ -171,6 +175,7 @@ private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppAction
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     SectionCard(m.title) {
         StatusRow(when (st) { ModelStatus.VERIFIED -> Mark.OK; ModelStatus.BAD -> Mark.WARN; else -> Mark.TODO }, m.modelName, ModelLogic.headline(st, m))
+        ModelNotes.of(m.modelName)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Text(m.about, style = MaterialTheme.typography.bodyMedium, color = muted)
         Progress(ms)
         if (st == ModelStatus.MISSING && ms.failure != null) Text(ms.failure, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -226,6 +231,8 @@ private fun OwnModelCard(snap: Snapshot, busy: String?, a: AppActions, onDelete:
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     SectionCard(m.title) {
         StatusRow(when (st) { ModelStatus.VERIFIED -> Mark.OK; ModelStatus.BAD -> Mark.WARN; else -> Mark.TODO }, own?.name ?: "A .litertlm file", ModelLogic.headline(st, m))
+        // A file whose name says MedGemma: one factual line here, never added to its answers (0.4.3).
+        ModelNotes.of(own?.name)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         Text(m.about, style = MaterialTheme.typography.bodyMedium, color = muted)
         Progress(ms)
         if (own != null) {
@@ -240,6 +247,12 @@ private fun OwnModelCard(snap: Snapshot, busy: String?, a: AppActions, onDelete:
                 own.report.tensorG5Build -> "Waits for you to allow the TPU (below)."
                 else -> "Robot can't run it on this phone. Delete it to free the space."
             }, style = MaterialTheme.typography.bodyMedium)
+            if (own.report.shortContext && own.report.backend != null) {
+                Text("Chat only: it was built for ${own.report.maxTokens} tokens of context, so Robot gives it a short prompt and no actions " +
+                    "(timers, texts, notes, the calendar…) and keeps less of the conversation. Ask it for an action and Robot says so " +
+                    "and offers Settings › Model, where Fast can. " + (if (own.report.vision) "It can see photos." else "It can't see photos."),
+                    style = MaterialTheme.typography.bodyMedium)
+            }
             if (own.report.tensorG5Build && !own.tpuAllowed && st == ModelStatus.VERIFIED) TpuWarning(own, a)
             if (own.tpuAllowed) TextButton(onClick = { a.allowOwnTpu(false, null) }) { Text("Stop running it on the TPU") }
         }
