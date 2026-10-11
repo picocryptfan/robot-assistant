@@ -21,6 +21,39 @@ and how they are used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
+## What's new in 0.6.0
+
+Robot 0.6.0 is 0.4.5 with two pieces of work that were built beside it; each has its section below, with its phone tests.
+
+- **Conversation mode** ([Conversation mode](#conversation-mode-050)): Robot writes down a conversation in French and
+  English, word for word, on the phone ([Transcribing](#transcribing)); tells the speakers apart by their voices, yours
+  too if you enrol it ([Speaker labels](#speaker-labels), NVIDIA's TitaNet-S, downloaded when you turn it on); tags each
+  line FR or EN (a word table made from Tatoeba's CC0 sentences); keeps, searches, exports and shares the transcripts
+  ([Transcripts](#transcripts)). Start it from Home › Conversation, the Quick Settings tile "Transcribe", or "hey robot,
+  transcribe this conversation"; Settings › Conversation has its choices.
+- **The fast translation engine** ([Fast translation engine](#fast-translation-engine-050)): Mozilla's Bergamot fr-en and
+  en-fr models run by slimt in a process of its own (`:mt`, which never goes online); the models are a 52 MB download in
+  Settings › Conversation › Fast translation, with a speed test. A release build carries `librobotmt.so`
+  (`tools/build_robotmt.sh`; `tools/verify_apk.sh` fails without it).
+- **The interpreter and summaries** ([Translation and the interpreter](#translation-and-the-interpreter),
+  [Summaries](#summaries)): translations face to face, aloud, or under each transcript line, by the fast engine at once,
+  with Robot's model improving a transcript's lines and standing in when the fast engine can't (one queue in `:brain`
+  keeps your questions first; a GGUF file serves it too); a
+  summary made on the phone by Robot's model, or by Claude through your API key or the Claude app, only after a card
+  shows what would go and you tap Send.
+- **Any-AI helpers** ([Helpers](#helpers-060)): Ask Claude became Settings › Helpers: Claude as before, plus any
+  company's chat API (OpenAI, Gemini, Mistral, DeepSeek, Groq, OpenRouter, xAI, or another) or a model on your own
+  computer, each with its own key, name, voice, price and trust (off by default for every helper); a server on your
+  network may use `http://` only at a private address.
+- **Settings file schema 13.** A 0.4.5 file (schema 12), a 0.4.4 file (7) or older keeps every choice: Ask Claude's
+  settings become the Claude helper (and are still written for one release, so going back to 0.4.5 keeps Claude), and
+  conversation mode starts from its defaults, live words in a conversation following "Show the words while you speak".
+- **Settings › About › Licences** names slimt and the parts built into it (ruy, cpuinfo, SentencePiece with
+  protobuf-lite, Abseil and Darts-clone), the Bergamot and TitaNet models and Tatoeba's CC0 data, with their texts.
+- **Not in 0.6.0:** other helpers summarizing a transcript (only Claude does), keeping a conversation's audio, the look's
+  next steps for the new screens. Nothing of 0.6.0 has run on the phone yet: every section's "On the phone" list is
+  still to do.
+
 ## Modules and processes
 
 | Module | Runs in | Holds |
