@@ -1498,7 +1498,7 @@ card says "Opened a draft in Cheogram: nothing is sent until Send is pressed the
 
 Settings › People, notes and calendar: texting app (Cheogram when installed, the SMS app, or Off), SMS gateway domain,
 phone region, email app (Proton Mail when installed, or "Ask each time"), the calendar for new events (only visible,
-synced calendars Robot can write to; Automatic picks the first, the primary or owner account first) and the default
+synced calendars Robot can write to; Automatic picks the first, the primary calendar or one its own account owns first) and the default
 event length (60 min). A calendar error while adding opens the calendar app's editor instead; its all-day times are UTC
 midnights, as AOSP-derived editors read them.
 Settings › Actions has an approval level per tool (Off is allowed). Assistant setup › People, notes and calendar shows
