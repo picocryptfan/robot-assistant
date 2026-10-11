@@ -175,6 +175,22 @@ class HandOffTest {
 
     // ------------------------------------------------------------------ the encoders
 
+    @Test fun anXmppLinkGivesItsBareAddress() {
+        // People: Cheogram's pick and a contacts file's IMPP lines are xmpp: links.
+        assertEquals("+15145550101@cheogram.com", XmppLink.jid("xmpp:+15145550101@cheogram.com"))
+        assertEquals("zoé@example.org", XmppLink.jid("xmpp:zo%C3%A9@example.org/phone?message"))
+        assertEquals("a+b@example.org", XmppLink.jid("xmpp://a%2Bb@example.org"))
+        assertEquals("mom@example.org", XmppLink.jid(" XMPP:mom@example.org?message;body=hi "))
+        assertEquals(null, XmppLink.jid("xmpp:friends@conference.example.org?join"))
+        assertEquals(null, XmppLink.jid("sip:x@example.org"))
+        assertEquals(null, XmppLink.jid("xmpp:"))
+        assertEquals(null, XmppLink.jid(null))
+        // Robot's own link reads back.
+        assertEquals("+15145550101@cheogram.com", XmppLink.jid(XmppLink.message("+15145550101@cheogram.com", "a; b")))
+        assertEquals("100%", UriText.decode("100%"))
+        assertEquals("%zz é", UriText.decode("%zz %C3%A9"))
+    }
+
     @Test fun uriEncodeMatchesAndroidsRules() {
         // android.net.Uri.encode keeps letters, digits and "_-!.~'()*" (plus what is allowed) and encodes UTF-8 bytes.
         assertEquals("a%20b+c@d", UriText.encode("a b+c@d", "@+"))
