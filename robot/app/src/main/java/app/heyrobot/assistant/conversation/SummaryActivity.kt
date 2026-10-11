@@ -163,6 +163,11 @@ class SummaryActivity : ComponentActivity() {
                         style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val busy = job.running && job.id == t
+                // One summary at a time (Robot's model gives it the time left over).
+                if (job.running && job.id != t) item {
+                    Text("Robot is summarizing another conversation. This one can start when it's done.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 when {
                     busy && !job.helper -> item { Progress(job, onCancel = { SummaryJobs.cancel() }) }
                     busy -> item {
