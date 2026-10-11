@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.core.Addresses
+import app.heyrobot.core.CheogramLinks
 import app.heyrobot.core.ContactPhone
 import app.heyrobot.core.People
 import app.heyrobot.core.PeopleCodec
@@ -69,6 +70,7 @@ import app.heyrobot.core.PeopleStore
 import app.heyrobot.core.Person
 import app.heyrobot.core.PersonSource
 import app.heyrobot.core.PhoneKind
+import app.heyrobot.core.PickOutcome
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.VCard
@@ -170,7 +172,14 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
         }
     }
     val cheogram = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        val pick = CheogramIntents.picked(r.data) ?: return@rememberLauncherForActivityResult a.say("Nobody was picked in Cheogram.")
+        val ok = r.resultCode == android.app.Activity.RESULT_OK
+        val (picked, readable) = if (ok) CheogramIntents.read(r.data) else null to true
+        val pick = when (CheogramLinks.outcome(ok, readable, picked)) {
+            PickOutcome.PICKED -> picked
+            PickOutcome.UNREADABLE -> null.also { a.say("Cheogram's answer couldn't be read.") }
+            PickOutcome.NO_ADDRESS, PickOutcome.NO_LIST -> null.also { a.say("Cheogram didn't say who was picked, or Robot can't use that address.") }
+            PickOutcome.CANCELLED -> null.also { a.say("Nobody was picked in Cheogram.") }
+        } ?: return@rememberLauncherForActivityResult
         scope.launch {
             var id: String? = null
             withContext(Dispatchers.IO) { store.update { l -> PeopleEdit.rememberPick(l, null, pick, now()).let { (list, p) -> id = p.id; list } } }
@@ -179,7 +188,10 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
         }
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
-        val uri = r.data?.data ?: return@rememberLauncherForActivityResult
+        if (r.resultCode != android.app.Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        // Android 17's picker may hand back its session URI as ClipData only.
+        val uri = r.data?.data ?: r.data?.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+            ?: return@rememberLauncherForActivityResult a.say("The contact picker didn't return a contact.")
         scope.launch {
             val p = withContext(Dispatchers.IO) { try { PhoneContacts.read(ctx, uri, now()) } catch (t: Exception) { RLog.w("people_pick", t); null } }
                 ?: return@launch a.say("Robot couldn't read that contact.")

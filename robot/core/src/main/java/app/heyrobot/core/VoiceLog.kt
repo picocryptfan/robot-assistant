@@ -205,8 +205,10 @@ object CaptureFx {
 
 /** What came of "Pick in Cheogram" (never who). */
 enum class PickOutcome(override val id: Int, override val title: String) : LogCode {
-    PICKED(1, "someone picked"), CANCELLED(2, "nobody picked"), NO_ADDRESS(3, "Cheogram's answer had no address Robot can use"),
-    NO_LIST(4, "Cheogram's list didn't open"),
+    // A cancel and an answer lost on the way (too large to deliver) both arrive as a cancel with nothing: CANCELLED says either.
+    PICKED(1, "someone picked"), CANCELLED(2, "nobody picked, or Cheogram's answer didn't arrive"),
+    NO_ADDRESS(3, "Cheogram's answer had no address Robot can use"), NO_LIST(4, "Cheogram's list didn't open"),
+    UNREADABLE(5, "Cheogram's answer couldn't be read"),
 }
 
 /** How a text was handed to Cheogram. */

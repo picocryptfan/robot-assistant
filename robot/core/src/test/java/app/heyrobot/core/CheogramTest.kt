@@ -74,4 +74,19 @@ class CheogramTest {
         assertTrue(bytes.contentEquals(CheogramSigners.unhex(CheogramSigners.hex(bytes))))
         assertNull(CheogramSigners.unhex("zz"))
     }
+
+    @Test fun whatCameOfThePickIsToldApart() {
+        // Review 0.4.0 #14: an answer that couldn't be read is its own outcome; a cancel and an answer lost on the way
+        // both arrive as a cancel with nothing, so the log says either.
+        val zoe = CheogramPick("Zoé", "zoe@example.org", "me@example.org")
+        assertEquals(PickOutcome.PICKED, CheogramLinks.outcome(true, true, zoe))
+        assertEquals(PickOutcome.CANCELLED, CheogramLinks.outcome(false, true, null))
+        assertEquals(PickOutcome.UNREADABLE, CheogramLinks.outcome(true, false, null))
+        assertEquals(PickOutcome.NO_ADDRESS, CheogramLinks.outcome(true, true, null))
+        assertEquals(PickOutcome.NO_ADDRESS, CheogramLinks.outcome(true, true, zoe.copy(jid = "a?b@example.org")))
+        assertEquals("Pick in Cheogram: nobody picked, or Cheogram's answer didn't arrive",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CHEOGRAM_PICK, PickOutcome.CANCELLED.id)))
+        assertEquals("Pick in Cheogram: Cheogram's answer couldn't be read",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CHEOGRAM_PICK, PickOutcome.UNREADABLE.id)))
+    }
 }

@@ -569,8 +569,9 @@ Robot knows no one in People and changes nothing until Settings › People › S
    (with the switch off, Assistant setup only says it is optional): Notification access (tap
    Robot; if Android says it's a restricted setting, tap OK), App info › ⋮ › Allow restricted settings, then
    Notification access again.
-5. **Add from phone contacts.** Android 17's contact picker (`ACTION_PICK_CONTACTS`, one contact's numbers and emails)
-   when the phone has it, else the older picker for one number or one email. No permission either way.
+5. **Add from phone contacts.** Android 17's contact picker (`ACTION_PICK_CONTACTS`, one contact's numbers and emails,
+   all of them) when the phone has it, else the older picker for one number or one email. No permission either way. A
+   picker that answers with no contact (no URI, also none in its ClipData) is said so.
 6. **By hand**, in Settings › People: name, "Also called", numbers (Mobile, Home, Work, Other), emails, XMPP addresses
    with "Your Cheogram account". Save applies only what you changed, field by field and row by row, to the person as
    stored now, so a choice the assistant remembered or an account a notification refreshed meanwhile is kept; someone
@@ -595,8 +596,9 @@ Robot knows no one in People and changes nothing until Settings › People › S
 People, names learned from notifications included, are personal content, like the contacts, notes and the calendar:
 never logged, never sent to Claude unless you include them. A lookup that finds someone makes the conversation personal
 (Ask Claude's rules above), and Claude never gets `lookup_contact`. The voice log records only what came of a pick
-(someone picked, nobody, no usable address, the list didn't open; whether Cheogram named the account; whether you chose
-to remember) and how a text reached Cheogram (the chat in its account, the `xmpp:` link, the share screen, the contact
+(someone picked; nobody, which also covers an answer Cheogram couldn't deliver, since Android reports both as a cancel
+with nothing; an answer that couldn't be read; no usable address; the list didn't open; whether Cheogram named the
+account; whether you chose to remember) and how a text reached Cheogram (the chat in its account, the `xmpp:` link, the share screen, the contact
 list), never who. `verify_apk.sh` and `ProcessIsolationTest` allow one more exported component, the notification
 listener, behind `BIND_NOTIFICATION_LISTENER_SERVICE` and in the main process, and check that the pick activity runs in
 `:voice` and isn't exported.

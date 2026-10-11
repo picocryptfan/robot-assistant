@@ -31,6 +31,18 @@ object CheogramLinks {
         return CheogramPick(ToolCalls.safeTake(n, People.MAX_NAME), jid, acct)
     }
 
+    /**
+     * What came of the pick, for the voice log and what Robot says: [resultOk] (RESULT_OK), whether Cheogram's answer
+     * could be read at all ([readable]), and the [pick] in it. Backing out of the list can't be told from an answer lost
+     * on the way (too large to deliver): both arrive as a cancel with nothing, so [PickOutcome.CANCELLED] says either.
+     */
+    fun outcome(resultOk: Boolean, readable: Boolean, pick: CheogramPick?): PickOutcome = when {
+        !resultOk -> PickOutcome.CANCELLED
+        !readable -> PickOutcome.UNREADABLE
+        pick == null || !Addresses.isJid(pick.jid) -> PickOutcome.NO_ADDRESS
+        else -> PickOutcome.PICKED
+    }
+
     /** A chat shortcut's id, "<account>#<contact>" (ShortcutService.getShortcutId), as (account, contact); null otherwise. */
     fun shortcut(id: String?): Pair<String, String>? {
         val parts = id?.split('#', limit = 2) ?: return null
