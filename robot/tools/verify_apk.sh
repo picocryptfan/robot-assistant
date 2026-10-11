@@ -95,14 +95,15 @@ for c in app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher; do
   hasnt 'process(0x01010011)' "$(elem $c)" "$c in the main process"
 done
 # Exported components: exactly this allowlist (the app, its Notes entry, the three assistant services the system
-# binds, the Cheogram notification listener (0.4.0, also only the system binds it) and AndroidX's profile installer receiver).
+# binds, the Cheogram notification listener (0.4.0, also only the system binds it), the "Transcribe" Quick Settings tile
+# (0.5.0, only the system binds it) and AndroidX's profile installer receiver).
 exported=$(echo "$mf" | awk '
   /^ *E: (activity|activity-alias|service|receiver|provider) / { if (n != "" && ex) print n; n = ""; ex = 0; own = 1; next }
   /^ *E: / { own = 0 }
   own && /:name\(0x01010003\)="/ { v = $0; sub(/^.*:name\(0x01010003\)="/, "", v); sub(/".*$/, "", v); n = v }
   own && /exported\(0x01010010\)=true/ { ex = 1 }
   END { if (n != "" && ex) print n }' | sort | tr '\n' ' ')
-allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.people.CheogramListener app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
+allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.assistant.conversation.ConversationTileService app.heyrobot.people.CheogramListener app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
 [ "$exported" = "$allow" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
 # People (0.4.0): the notification listener stays in the main process, behind the system-only bind permission.
 hasnt 'process(0x01010011)' "$(elem app.heyrobot.people.CheogramListener)" "CheogramListener in the main process"
@@ -111,6 +112,24 @@ has '"android.service.notification.NotificationListenerService"' "$(subtree app.
 # "Pick in Cheogram" runs in :voice and isn't exported (only the panel's card starts it).
 has ':voice' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity not exported"
+# 0.5.0, conversation mode: the session is a microphone foreground service in :voice, not exported; its screens and the
+# Transcription check run there too; the tile is guarded by the system-only bind permission; the export provider (main
+# process) isn't exported. Nothing new goes online.
+for p in FOREGROUND_SERVICE FOREGROUND_SERVICE_MICROPHONE WAKE_LOCK; do
+  has "\"android.permission.$p\"" "$mf" "declares $p (conversation mode)"
+done
+conv=$(elem app.heyrobot.assistant.conversation.ConversationService)
+has ':voice' "$conv" "ConversationService in :voice"
+has 'exported(0x01010010)=false' "$conv" "ConversationService not exported"
+has 'foregroundServiceType' "$conv" "ConversationService declares its foreground service type (microphone)"
+for c in ConversationActivity TranscriptionCheckActivity; do
+  has ':voice' "$(elem app.heyrobot.assistant.conversation.$c)" "$c in :voice"
+  has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.conversation.$c)" "$c not exported"
+done
+has ':voice' "$(elem app.heyrobot.assistant.conversation.ConversationTileService)" "ConversationTileService in :voice"
+has '"android.permission.BIND_QUICK_SETTINGS_TILE"' "$(elem app.heyrobot.assistant.conversation.ConversationTileService)" "tile guarded by BIND_QUICK_SETTINGS_TILE"
+hasnt 'process(0x01010011)' "$(elem app.heyrobot.sys.ExportProvider)" "ExportProvider in the main process"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.sys.ExportProvider)" "ExportProvider not exported"
 # Ask Claude: the key window runs in :voice and isn't exported (the main app never sees the key).
 has ':voice' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity not exported"

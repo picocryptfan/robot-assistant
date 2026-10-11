@@ -127,11 +127,14 @@ class ProcessIsolationTest {
         val voice = listOf("app.heyrobot.assistant.RobotVoiceService", "app.heyrobot.assistant.RobotSessionService",
             "app.heyrobot.assistant.RobotRecognitionService", "app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider",
             "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
-            "app.heyrobot.assistant.CheogramPickActivity")
+            "app.heyrobot.assistant.CheogramPickActivity",
+            // 0.5.0, conversation mode: where the listener and the speech model are.
+            "app.heyrobot.assistant.conversation.ConversationService", "app.heyrobot.assistant.conversation.ConversationActivity",
+            "app.heyrobot.assistant.conversation.TranscriptionCheckActivity", "app.heyrobot.assistant.conversation.ConversationTileService")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         val main = listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
-            "app.heyrobot.people.CheogramListener")
+            "app.heyrobot.people.CheogramListener", "app.heyrobot.sys.ExportProvider")
         for (n in main) assertEquals(n, "", proc(n))
         // Every Robot component is accounted for (a new one must be placed deliberately).
         val ourComps = comps.keys.filter { it.startsWith("app.heyrobot.") }.toSet()
@@ -147,8 +150,18 @@ class ProcessIsolationTest {
         assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.brain.BrainService"))
         for (n in listOf("app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
             "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
-            "app.heyrobot.assistant.CheogramPickActivity"))
+            "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
+            "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
+            "app.heyrobot.sys.ExportProvider"))
             assertEquals(n, "false", exported(n))
+        // 0.5.0: the session is a microphone foreground service; the tile only the system binds.
+        assertEquals("microphone", c("app.heyrobot.assistant.conversation.ConversationService").getAttributeNS(ns, "foregroundServiceType"))
+        assertEquals("true", exported("app.heyrobot.assistant.conversation.ConversationTileService"))
+        assertEquals("android.permission.BIND_QUICK_SETTINGS_TILE", perm("app.heyrobot.assistant.conversation.ConversationTileService"))
+        // The export provider shares the export folder only.
+        assertEquals("app.heyrobot.exports", c("app.heyrobot.sys.ExportProvider").getAttributeNS(ns, "authorities"))
+        assertEquals("<paths>\n    <cache-path name=\"exports\" path=\"exports/\" />\n</paths>",
+            File(main("app"), "res/xml/export_paths.xml").readText().substringAfter("-->").trim().replace("\r", ""))
         // The recognizer MUST stay discoverable: with no current speech recognizer Android clears a third-party
         // assistant at every boot (VoiceInteractionManagerService.initForUser), which is how probe 1.1 failed.
         val rec = c("app.heyrobot.assistant.RobotRecognitionService")
@@ -197,6 +210,8 @@ class ProcessIsolationTest {
             "android.permission.PACKAGE_USAGE_STATS",
             // 0.4.0: photos and videos (or the ones you pick), for free_storage's largest files; asked for by the main app only.
             "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+            // 0.5.0: conversation mode's microphone foreground service, and its wake lock while a session runs.
+            "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MICROPHONE", "android.permission.WAKE_LOCK",
         ), used)
         // Never all files, never stopping other apps (Android 14 and later wouldn't let it anyway).
         assertTrue(listOf("MANAGE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE", "KILL_BACKGROUND_PROCESSES").none { "android.permission.$it" in used })
@@ -321,5 +336,38 @@ class ProcessIsolationTest {
         // All logging goes through RLog, which keeps numbers, booleans and codes only.
         assertEquals(listOf("core/core/Log.kt"), usersOf(Regex("""\bandroid\.util\.Log\b|\bLog\.[diwev]\(""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""\bprintln\(|printStackTrace\(""")))
+    }
+
+    /**
+     * 0.5.0, conversation mode (docs/conversation-mode.md 8): transcripts never reach a model, a helper or the network in
+     * this phase; the audio stays in memory (clips you pick are read, never written); the session is never started by
+     * Robot on its own (not sticky, not from boot); deleting transcripts tells the voice process.
+     */
+    @Test fun conversationModeStaysOnThePhone() {
+        val conv = ours.filterKeys { it.startsWith("app/assistant/conversation/") || it == "voice/voice/ConversationEngine.kt" ||
+            it == "core/core/TranscriptStore.kt" || it == "core/core/TranscriptionCheck.kt" || it == "core/core/ConversationCapture.kt" ||
+            it == "app/sys/Transcripts.kt" || it == "app/ui/TranscriptsScreen.kt" }
+        assertTrue(conv.keys.toString(), conv.size >= 10)
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bClaude(Link|Session|Client)\b|\bBrain(Client|Keeper|Link)\b|\bINTERNET\b|\bjava\.net\b"""), conv))
+        // The clip reader reads what you picked; nothing in conversation mode writes audio.
+        assertEquals(emptyList<String>(), usersOf(Regex("""openOutputStream|FileOutputStream|MediaMuxer|MediaRecorder|AudioRecord\b"""),
+            conv.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))
+        val service = code(File(java("app"), "app/heyrobot/assistant/conversation/ConversationService.kt"))
+        assertTrue(service.contains("START_NOT_STICKY") && !service.contains("START_STICKY\n") && !Regex("""return START_STICKY\b""").containsMatchIn(service))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bConversation(Service|Session)\b"""), ours.filterKeys { it.startsWith("app/boot/") }))
+        // Deleting in the app always tells the voice process (so a live or recovering session can't write it back).
+        val tx = code(File(java("app"), "app/heyrobot/sys/Transcripts.kt"))
+        assertTrue(tx.contains("Cmd.send(ctx, Cmd.TRANSCRIPTS_DELETED"))
+        assertTrue(tx.contains("s.deleteAll()") && tx.contains("s.delete(id)"))
+        assertEquals(emptyList<String>(), usersOf(Regex("""Transcripts\.store\([^)]*\)\.(delete|deleteAll)\("""), ours.filterKeys { it.startsWith("app/") }))
+        val hub = code(File(java("app"), "app/heyrobot/assistant/VoiceHub.kt"))
+        assertTrue(hub.contains("Cmd.TRANSCRIPTS_DELETED -> ConversationSession.transcriptsDeleted("))
+        // The wake phrases sleep during a session unless the setting says otherwise, and come back after.
+        val session = code(File(java("app"), "app/heyrobot/assistant/conversation/ConversationSession.kt"))
+        assertTrue(session.contains("VoiceHub.conversationWake(!s.convWakeDuring)") && session.contains("VoiceHub.conversationWake(false)"))
+        // The main app opens the conversation screens by name only.
+        val ui = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.assistant\b"""), ui))
+        assertTrue(File(java("app"), "app/heyrobot/sys/Transcripts.kt").readText().contains("\"app.heyrobot.assistant.conversation.ConversationActivity\""))
     }
 }

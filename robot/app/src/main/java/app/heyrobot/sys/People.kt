@@ -369,6 +369,10 @@ object AppPages {
     /** Assistant setup, at "People, notes and calendar": the permissions and their grant buttons. */
     const val PERMISSIONS = "permissions"
     const val NOTES = "notes"
+    /** 0.5.0: the Transcripts library, or one transcript ([EXTRA_TRANSCRIPT]); Settings › Conversation (the tile's long press). */
+    const val TRANSCRIPTS = "transcripts"
+    const val CONVERSATION_SETTINGS = "conversation_settings"
+    const val EXTRA_TRANSCRIPT = "robot_transcript"
     /** The Robot Notes launcher entry (an activity-alias of MainActivity). */
     const val NOTES_ALIAS = "app.heyrobot.ui.NotesLauncher"
 }

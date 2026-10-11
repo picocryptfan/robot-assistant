@@ -143,6 +143,12 @@ object Cmd {
      */
     const val CONVERSATIONS_DELETED = "conversations_deleted"
     const val EXTRA_ID = "id"
+    /**
+     * Transcripts were deleted in the app (0.5.0; extra [EXTRA_ID]: the one deleted; none: all of them): a session
+     * recording one of them stops without writing another line, and a Resume offer for one is taken down, so nothing
+     * writes a deleted transcript back.
+     */
+    const val TRANSCRIPTS_DELETED = "transcripts_deleted"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"

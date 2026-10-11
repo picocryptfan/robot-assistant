@@ -35,6 +35,16 @@ import app.heyrobot.core.ClaudePayload
 import app.heyrobot.core.ClaudePlan
 import app.heyrobot.core.ClaudeRoute
 import app.heyrobot.core.ClaudeRouter
+import app.heyrobot.core.ConsentRecord
+import app.heyrobot.core.ConvEntry
+import app.heyrobot.core.ConvMode
+import app.heyrobot.core.ConvStop
+import app.heyrobot.core.ConversationCommand
+import app.heyrobot.core.ConversationLock
+import app.heyrobot.core.ConversationRouter
+import app.heyrobot.assistant.conversation.ConversationService
+import app.heyrobot.assistant.conversation.ConversationSession
+import app.heyrobot.sys.Transcripts
 import app.heyrobot.core.ClaudeSettings
 import app.heyrobot.core.ClaudeVoices
 import app.heyrobot.core.ClaudeWords
@@ -416,6 +426,8 @@ object PanelController {
     fun onShow(args: Bundle?, locked: Boolean, showFlags: Int = 0) {
         init()
         shown = true
+        // 0.5.0: a conversation being transcribed pauses while you talk to Robot (nothing said to her is transcribed).
+        ConversationSession.panel(true)
         val source = args?.getString(RobotVoiceService.ARG_SOURCE)
         val convArg = args?.getString(RobotVoiceService.ARG_CONVERSATION)
         // Only an explicit return from CaptureActivity keeps the picture (an abandoned capture does not).
@@ -475,6 +487,7 @@ object PanelController {
 
     fun onHide() {
         shown = false
+        ConversationSession.panel(false)
         val st0 = _state.value
         if (st0.phase == Phase.LISTENING) VoiceLog.add(VoiceEvent.NO_QUESTION, NoQuestion.CLOSED)
         if (st0.busy && spokenTurn && hidingFor == null) VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.STOPPED)
@@ -1056,8 +1069,11 @@ object PanelController {
         val textingFor = askingTextFor
         askingTextFor = null
         expireClaudeMode()
+        // Conversation mode's commands first (0.5.0, docs/conversation-mode.md 5.4): "transcribe this conversation",
+        // and while one runs "stop transcribing", "pause", "resume". Never the model's to decide.
+        val convCmd = if (q.isNotEmpty() && st.draft == null) ConversationRouter.route(q, ConversationSession.running) else null
         // Ask Claude's phrases first, then texting without the model, then the model (FastPath).
-        var cmd = if (q.isNotEmpty()) ClaudeRouter.route(q) else null
+        var cmd = if (q.isNotEmpty() && convCmd == null) ClaudeRouter.route(q) else null
         // "Thanks Claude" outside Claude mode is ordinary talk.
         if (cmd == ClaudeCommand.Leave && !_state.value.claudeMode) cmd = null
         // "Not Claude", "you tell me": Robot answers, now and for the rest of the conversation (Claude mode ends too).
@@ -1100,7 +1116,7 @@ object PanelController {
         val way = FastPath.of(cmd, _state.value.claudeMode, attachment)
         val toClaude = way == FastPath.Way.CLAUDE
         // Groups are only ever added: a question that needs a new one rebuilds the conversation once (:brain).
-        if (cmd == null && !toClaude) groups = groups + ToolRouter.route(q)
+        if (cmd == null && !toClaude && convCmd == null) groups = groups + ToolRouter.route(q)
         val replyId = newId()
         // Decided per turn: a screen turn stops saving until the person taps Keep.
         val keep = if (marked == Attachment.SCREEN && !keptByUser) false else st.keep
@@ -1124,6 +1140,7 @@ object PanelController {
         val guard = EscalationGuard()
         startTurn(replyId) {
             when {
+                convCmd != null -> conversationCommand(replyId, convCmd)
                 cmd == ClaudeCommand.Leave -> {
                     endClaudeMode()
                     localReply(replyId, ClaudeWords.LEFT)
@@ -1747,6 +1764,56 @@ object PanelController {
         val r = TurnRunner(scripted, PanelActions, PanelView(replyId), slot.confirmations, untrusted = false, newId = ::newId).runHandOff()
         finishReply(replyId, DoneReason.END)
         if (r.launchedApp) leaveForApp()
+    }
+
+    /**
+     * Conversation mode by voice (0.5.0): start transcribing (the session starts from here, while the panel is on screen,
+     * then the transcript screen opens and the panel goes), or stop, pause or resume the one running. The interpreter and
+     * summaries come in later phases; Robot says so instead of pretending.
+     */
+    private suspend fun conversationCommand(replyId: String, c: ConversationCommand) {
+        val ctx = VoiceHub.app
+        when (c) {
+            is ConversationCommand.Start -> when {
+                c.mode == ConvMode.INTERPRET -> localReply(replyId, "The interpreter isn't in this version yet. Say “transcribe this conversation” " +
+                    "and Robot writes it down instead.")
+                ConversationSession.running -> {
+                    localReply(replyId, "Robot is already transcribing.")
+                    openConversation(ConversationEntry.OPEN)
+                }
+                !ConversationLock.mayStart(Assistant.locked(ctx), VoiceHub.settings) ->
+                    localReply(replyId, "Unlock your phone to start transcribing (Settings › Conversation › Start from the lock screen is off).")
+                else -> {
+                    // The first time, the transcript screen asks you to tell people first; after that it starts right away.
+                    val consented = !ConsentRecord.needed(Transcripts.consent(ctx), VoiceHub.settings)
+                    val started = consented && ConversationService.start(ctx, ConvEntry.VOICE)
+                    localReply(replyId, if (started) "Transcribing. ${ConsentRecord.LINE}" else "Tell the people you're with first: the transcript screen explains.")
+                    openConversation(if (started) ConversationEntry.OPEN else ConversationEntry.START)
+                }
+            }
+            ConversationCommand.Stop -> {
+                ConversationSession.stop(ConvStop.VOICE)
+                localReply(replyId, "Stopped transcribing. The transcript is saved in Robot › Transcripts.")
+            }
+            ConversationCommand.Pause -> {
+                ConversationSession.userPause()
+                localReply(replyId, "Transcribing is paused. Say “resume transcribing”, or tap Resume in the notification.")
+            }
+            ConversationCommand.Resume -> {
+                ConversationSession.userResume()
+                localReply(replyId, "Transcribing again.")
+            }
+            ConversationCommand.Summarize -> localReply(replyId, "Summaries come in a later version. The transcript is saved in Robot › Transcripts.")
+        }
+    }
+
+    private enum class ConversationEntry { START, OPEN }
+
+    /** The transcript screen (voice process), then the panel goes so nothing more is said to it. */
+    private suspend fun openConversation(how: ConversationEntry) {
+        val ctx = VoiceHub.app
+        val i = if (how == ConversationEntry.START) Transcripts.startIntent(ctx, ConvEntry.VOICE.name) else Transcripts.openIntent(ctx)
+        if (host?.launch(i) == true) leaveForApp()
     }
 
     /** Robot's own words as the reply (no model): spoken in Robot's voice ([claude] false) when replies are spoken. */

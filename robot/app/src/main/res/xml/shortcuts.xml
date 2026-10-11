@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 0.5.0: long-press Robot's icon. "Transcribe" opens the transcript screen (voice process), which asks the one-time
+     consent question first and then starts; "Transcripts" opens the library in the app. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="transcribe"
+        android:enabled="true"
+        android:icon="@drawable/ic_robot"
+        android:shortcutShortLabel="@string/shortcut_transcribe"
+        android:shortcutLongLabel="@string/shortcut_transcribe_long">
+        <intent
+            android:action="app.heyrobot.action.TRANSCRIBE"
+            android:targetPackage="app.heyrobot"
+            android:targetClass="app.heyrobot.assistant.conversation.ConversationActivity">
+            <extra android:name="entry" android:value="SHORTCUT" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="transcripts"
+        android:enabled="true"
+        android:icon="@drawable/ic_robot"
+        android:shortcutShortLabel="@string/shortcut_transcripts">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.heyrobot"
+            android:targetClass="app.heyrobot.ui.MainActivity">
+            <extra android:name="robot_page" android:value="transcripts" />
+        </intent>
+    </shortcut>
+</shortcuts>
