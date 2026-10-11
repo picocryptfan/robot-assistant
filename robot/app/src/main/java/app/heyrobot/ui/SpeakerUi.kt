@@ -188,11 +188,11 @@ fun SpeakerEditDialog(edit: SpeakerEdit?, view: SpeakerView, actions: SpeakerAct
             var name by remember(edit) { mutableStateOf(view.names[edit.speaker].orEmpty()) }
             AlertDialog(
                 onDismissRequest = { done(null) },
-                title = { Text("Name ${edit.speaker}") },
+                title = { Text(if (view.isMe(edit.speaker)) "Your name here" else "Name ${edit.speaker}") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(name, { name = it.take(SpeakerLabels.MAX_NAME) }, singleLine = true, label = { Text("Name") }, modifier = Modifier.fillMaxWidth())
-                        Text("Kept in this transcript only, never linked to a voice. Empty: back to ${edit.speaker}.",
+                        Text("Kept in this transcript only, never linked to a voice. Empty: back to ${if (view.isMe(edit.speaker)) SpeakerLabels.YOU else edit.speaker}.",
                             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 },
