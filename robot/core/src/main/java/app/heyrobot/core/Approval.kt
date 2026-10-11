@@ -42,6 +42,8 @@ object ApprovalGate {
             level == Approval.OFF -> GateDecision.DISABLED
             locked && tool !in settings.lockedTools -> GateDecision.NEEDS_UNLOCK
             tool == ToolName.ASK_CLAUDE -> GateDecision.CONFIRM
+            // 0.7: a memory the model proposes without your asking, or in a conversation with content, is a card, never silent.
+            tool == ToolName.REMEMBER && (!asked || content) -> GateDecision.CONFIRM
             remote && settings.claudeActionCards -> GateDecision.CONFIRM
             // What a read tool finds for a helper goes to it: "Share with …" unless personal content may go by itself (for
             // every helper, or this one: [trusted], "Trusted with personal content"). So does what an online lookup finds (the

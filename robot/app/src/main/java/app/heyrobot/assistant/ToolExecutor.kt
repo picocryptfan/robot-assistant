@@ -171,6 +171,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.PhoneCheck -> phoneCheck(action)
                 is Action.FreeMemory -> freeMemory(action)
                 is Action.FreeStorage -> freeStorage(action)
+                // 0.7: memory's own (MemoryPanel), never here.
+                is Action.Remember, is Action.Forget -> Executed(ActionStatus.FAILED, "Something went wrong.")
             }
         } catch (t: Throwable) {
             RLog.w("tool_run", t, "tool" to action.tool)

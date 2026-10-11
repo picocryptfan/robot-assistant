@@ -1,21 +1,16 @@
 package app.heyrobot.core.memory
 
+import app.heyrobot.core.enumOr
+import org.json.JSONObject
+
 // Pure. Settings › Memory (design §A4) and the rules that read them: the lock screen, helpers, content, the search
 // model offer. The defaults are the design's answers to its open questions: suggestions as a quiet list (5), the search
 // model offered once in Assistant setup, never downloaded by itself (6), helpers get memory only through the Include
 // card, even trusted ones (7), and nothing on the lock screen.
 //
-// Wiring later (not on this branch, to keep it apart from the branches that change Settings.kt and VoiceLog.kt):
-// - RobotSettings gains these fields under the next settings schema (memoryOn, memoryUse, memorySuggest,
-//   memorySuggestChip, memoryTranscripts, memoryLocked, memorySpeakSecrets, memoryHelpers, memoryFromContentNoCard,
-//   memorySearchModelOffered); an older file reads each at the default below. Until then the app builds a
-//   [MemorySettings] from those fields.
-// - The voice log reserves ids 180–189 for memory: 180 MEM_SAVE (a = MemorySource ordinal, b = MemoryKind ordinal,
-//   c = 1 if it expires), 181 MEM_FORGET (a = count, b = how: last, search, settings, expiry, all), 182 MEM_RECALL
-//   (a = items given, b = RecallBy.code, c = ms), 183 MEM_EMBED_LOAD (a = ms, b = 1 ok, c = backend), 184 MEM_SUGGEST
-//   (a = made, b = kept, c = dismissed), 185 MEM_LOCKED (a = MemoryLoad kind), 186 MEM_SEARCH_TRANSCRIPTS, 187 MEM_INDEX,
-//   188–189 spare. Codes and counts only: never an item's words.
-// - Claude.kt's Personal gains MEMORY("what Robot remembers about you") for PackedMemory.personal.
+// Kept in its own small file, files/robot/memory.json ([MemorySettings.toJson], like look.json), not in settings.json:
+// the main app writes it (Settings › Memory), the voice process reads it again when it changes. An older or damaged file
+// reads each field at the default below. The voice log's ids 180 to 189 are memory's (VoiceEvent.MEM_*, MemoryLog.kt).
 
 /** Who may see retrieved items besides the local model (0.6.0 helpers). */
 enum class HelperMemory(val title: String) {
@@ -50,7 +45,43 @@ data class MemorySettings(
     /** "Remember who / what from content without a card": off. Never for a message, whatever this says. */
     val fromContentNoCard: Boolean = false,
     val searchModel: SearchModelOffer = SearchModelOffer.NOT_OFFERED,
-)
+) {
+    fun toJson(): String = JSONObject()
+        .put("v", VERSION)
+        .put("on", on)
+        .put("useInAnswers", useInAnswers)
+        .put("suggestions", suggestions.name)
+        .put("transcripts", transcripts)
+        .put("onLockScreen", onLockScreen)
+        .put("speakSecrets", speakSecrets)
+        .put("helpers", helpers.name)
+        .put("fromContentNoCard", fromContentNoCard)
+        .put("searchModel", searchModel.name)
+        .toString()
+
+    companion object {
+        const val FILE = "memory.json"
+        const val VERSION = 1
+
+        /** Missing, empty or damaged text gives the defaults; an unknown key or value, or a wrong type, reads as its default. */
+        fun fromJson(text: String?): MemorySettings {
+            val o = try { JSONObject(text ?: return MemorySettings()) } catch (_: Exception) { return MemorySettings() }
+            val d = MemorySettings()
+            fun flag(key: String, default: Boolean): Boolean = (o.opt(key) as? Boolean) ?: default
+            return MemorySettings(
+                on = flag("on", d.on),
+                useInAnswers = flag("useInAnswers", d.useInAnswers),
+                suggestions = enumOr(o.optString("suggestions"), d.suggestions),
+                transcripts = flag("transcripts", d.transcripts),
+                onLockScreen = flag("onLockScreen", d.onLockScreen),
+                speakSecrets = flag("speakSecrets", d.speakSecrets),
+                helpers = enumOr(o.optString("helpers"), d.helpers),
+                fromContentNoCard = flag("fromContentNoCard", d.fromContentNoCard),
+                searchModel = enumOr(o.optString("searchModel"), d.searchModel),
+            )
+        }
+    }
+}
 
 /** What memory does on a locked phone. */
 enum class LockedMemory {

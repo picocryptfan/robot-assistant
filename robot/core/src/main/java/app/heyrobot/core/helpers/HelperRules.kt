@@ -78,12 +78,20 @@ object HelperTrust {
     private fun captured(personal: Set<Personal>): Boolean = Personal.SCREEN in personal || Personal.PHOTO in personal
 
     /**
+     * 0.7: what Robot remembers about you is in [personal] and may go to [h] only through a card: neither "Send personal
+     * content to helpers automatically" nor trust alone sends it, unless Settings › Memory › "Share memory with helpers" is
+     * "With helpers I trust" ([memoryToTrusted]) and [h] is one.
+     */
+    private fun memoryHeld(h: HelperConfig?, personal: Set<Personal>, memoryToTrusted: Boolean): Boolean =
+        Personal.MEMORY in personal && !(memoryToTrusted && h?.trust == true)
+
+    /**
      * Robot checking with [h] by itself (or an offer's payload) may carry the last turns of a conversation that holds
      * [personal]: with "Send personal content to helpers automatically", or to a trusted helper when no screen or photo
      * is in it (the last turns may be Robot's words about the screen; joining and a spoken yes follow the same rule).
      */
-    fun conversation(s: RobotSettings, h: HelperConfig?, personal: Set<Personal>): Boolean =
-        s.personalToHelpers || (h?.trust == true && !captured(personal))
+    fun conversation(s: RobotSettings, h: HelperConfig?, personal: Set<Personal>, memoryToTrusted: Boolean = false): Boolean =
+        !memoryHeld(h, personal, memoryToTrusted) && (s.personalToHelpers || (h?.trust == true && !captured(personal)))
 
     /** This question's screen text and picture may go with an escalation without a tap (never by trust alone). */
     fun attachments(s: RobotSettings): Boolean = s.personalToHelpers
@@ -95,8 +103,8 @@ object HelperTrust {
      * [h] joining a conversation that holds [personal] skips the Include card: only a trusted helper, only when it was
      * called by its name (not a word that only sounded like it), and never when the conversation had a screen or a photo.
      */
-    fun joinWithoutCard(h: HelperConfig?, personal: Set<Personal>, misheard: Boolean): Boolean =
-        h?.trust == true && !misheard && !captured(personal)
+    fun joinWithoutCard(h: HelperConfig?, personal: Set<Personal>, misheard: Boolean, memoryToTrusted: Boolean = false): Boolean =
+        h?.trust == true && !misheard && !captured(personal) && !memoryHeld(h, personal, memoryToTrusted)
 
     /** A spoken or typed yes may send [personal] to [h] ("Voice yes can send personal content", or a trusted helper without a picture). */
     fun voiceYes(s: RobotSettings, h: HelperConfig?, personal: Set<Personal>): Boolean =

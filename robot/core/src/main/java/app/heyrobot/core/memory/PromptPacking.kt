@@ -125,6 +125,17 @@ object PromptPacking {
         return (if (kept.isEmpty()) null else sb.toString()) to kept
     }
 
+    /**
+     * The notes block a past turn had, for a conversation rebuilt from History (which keeps only the ids): the items of
+     * [ids] still in memory, as they are now, secret and expired ones left out. Null when none is left.
+     */
+    fun notesFor(ids: List<String>, items: List<MemoryItem>, now: Long, zone: ZoneId = ZoneId.systemDefault(), dates: Boolean = true): String? {
+        val byId = items.associateBy { it.id }
+        val lines = ids.distinct().mapNotNull { byId[it] }.filter { !it.secret && !it.expired(now) && sentence(it.text).isNotEmpty() }
+            .map { noteLine(it, zone, dates) }
+        return if (lines.isEmpty()) null else NOTES_HEAD + "\n" + lines.joinToString("\n") + "\n\n"
+    }
+
     /** "• My sister Julie's birthday is May 3. (saved Mar 12)"; an item from content says where from. */
     fun noteLine(item: MemoryItem, zone: ZoneId, dates: Boolean = true): String {
         val text = sentence(item.text)

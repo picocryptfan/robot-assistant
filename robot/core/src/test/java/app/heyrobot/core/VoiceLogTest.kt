@@ -57,7 +57,9 @@ class VoiceLogTest {
             MtVerdict.entries, LangCode.entries, IoCode.entries, MicEvent.entries, ThermalStep.entries, HelperCode.entries, AppShareCode.entries,
             ExportKind.entries, ClaudeStage.entries, ClaudeErrorKind.entries, MtError.entries, ModelCode.entries, BackendCode.entries,
             FallbackWhy.entries, LoadFailure.entries, ClaudeEnd.entries, ClaudeFail.entries, ClaudeModelCode.entries, LocationCode.entries,
-            NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries)
+            NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries,
+            app.heyrobot.core.memory.MemOrigin.entries, app.heyrobot.core.memory.MemKindCode.entries, app.heyrobot.core.memory.MemForget.entries,
+            app.heyrobot.core.memory.MemLock.entries, app.heyrobot.core.memory.MemCommandCode.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -84,6 +86,15 @@ class VoiceLogTest {
         val model = listOf(VoiceEvent.MODEL_CHOSEN, VoiceEvent.MODEL_LOADED, VoiceEvent.MODEL_LOAD_FAILED, VoiceEvent.MODEL_FALLBACK, VoiceEvent.MODEL_SWITCH)
         for (e in model) assertTrue(e.name, e.id in 130..139)
         assertEquals(model, VoiceEvent.entries.filter { it.id in 130..139 })
+        // 0.7's memory events use 180 to 189; 183 (the search model) and 186 to 187 (transcripts) stay reserved for 7.4 and 7.5.
+        val memory = listOf(VoiceEvent.MEM_SAVE, VoiceEvent.MEM_FORGET, VoiceEvent.MEM_RECALL, VoiceEvent.MEM_SUGGEST, VoiceEvent.MEM_LOCKED,
+            VoiceEvent.MEM_COMMAND, VoiceEvent.MEM_KEY)
+        assertEquals(listOf(180, 181, 182, 184, 185, 188, 189), memory.map { it.id })
+        assertEquals(memory.toSet(), VoiceEvent.entries.filter { it.id in 180..189 }.toSet())
+        assertTrue(VoiceEvent.entries.none { it.name.startsWith("MEM_") && it.id !in 180..189 })
+        // Every source, load and command has a code of its own.
+        assertEquals(app.heyrobot.core.memory.MemorySource.entries.size,
+            app.heyrobot.core.memory.MemorySource.entries.map { app.heyrobot.core.memory.MemOrigin.of(it) }.toSet().size)
         // Every model and backend has a code of its own.
         assertEquals(BrainModel.entries.size, BrainModel.entries.map { ModelCode.of(it) }.toSet().size)
         assertEquals(ModelBackend.entries.size, ModelBackend.entries.map { BackendCode.of(it) }.toSet().size)
@@ -192,6 +203,15 @@ class VoiceLogTest {
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_FALLBACK, ModelCode.UNCENSORED.id, FallbackWhy.NOT_DOWNLOADED.id, ModelCode.FAST.id)))
         assertEquals("Unloaded Fast (Gemma 4 E2B, TPU) to load Smarter (Gemma 4 E4B, CPU)",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_SWITCH, ModelCode.FAST.id, ModelCode.SMARTER.id)))
+        // 0.7, memory: kinds, origins and counts, never an item's words.
+        assertEquals("Memory: saved something private (you said it), until a set time", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MEM_SAVE,
+            app.heyrobot.core.memory.MemOrigin.SAID.id, app.heyrobot.core.memory.MemKindCode.SECRET.id, 1)))
+        assertEquals("Memory: forgot 2 items (“forget that”)", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MEM_FORGET, 2, app.heyrobot.core.memory.MemForget.LAST.id)))
+        assertEquals("Memory: 3 items went with a question (words, 4 ms)", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MEM_RECALL, 3, 1, 4)))
+        assertEquals("Memory couldn't be opened: the phone is locked", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MEM_LOCKED, app.heyrobot.core.memory.MemLock.UNLOCK.id)))
+        assertEquals("Memory command: forget something (French) · 1 item", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MEM_COMMAND,
+            app.heyrobot.core.memory.MemCommandCode.FORGET.id, LangCode.FR.id, 1)))
+        assertEquals("Memory now uses the lock screen's key", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MEM_KEY, 1, 1)))
         // 0.3.1: what the spotter heard before any check, and what came of it.
         val names = { id: Int -> if (id == 2) "hey robot" else null }
         assertEquals("Spotter: “stop” while Robot talked · mic: call (echo cancellation) · echo cancellation on",

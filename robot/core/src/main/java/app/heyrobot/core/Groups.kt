@@ -18,6 +18,8 @@ enum class ToolGroup {
     WEATHER,
     /** The phone's storage, battery and memory (0.4.0). */
     PHONE,
+    /** 0.7: remember and forget, described only with Memory on (Settings › Memory) and words that call for them. */
+    MEMORY,
 }
 
 object ToolRouter {
@@ -51,6 +53,9 @@ object ToolRouter {
         "megabytes", "cache", "phone status", "running out", "taking up", "stockage", "espace", "memoire", "batterie", "liberer", "libere",
         "de la place", "nettoyer", "nettoie", "delete", "biggest", "largest", "force stop", "kill", "plein", "pleine", "supprime",
         "supprimer", "efface", "effacer", "plus grosses", "plus gros")
+    /** 0.7, what you ask Robot to keep about you or drop ("remember that …", "souviens-toi", "oublie ça"). */
+    private val MEMORY = setOf("remember", "forget", "know about me", "keep in mind", "memorize", "memorise", "souviens", "rappelle toi",
+        "retiens", "oublie", "garde en memoire", "sais sur moi")
     private val ELISION = Regex("""\b([dljnsmtc]|qu)['’](?=\p{L})""")
 
     /** "Stop YouTube", "close Chrome", "arrête YouTube": a verb that may stop an app, then (not) one of these (0.4.0). */
@@ -88,6 +93,8 @@ object ToolRouter {
             if (has(CALENDAR) || WHEN.containsMatchIn(plain)) add(ToolGroup.CALENDAR)
             if (has(WEATHER)) add(ToolGroup.WEATHER)
             if (has(PHONE) || stopsAnApp(words)) add(ToolGroup.PHONE)
+            // "Remember to buy milk" stays a note (MemoryCommands.staysNote): memory's tools aren't described for it.
+            if (has(MEMORY) && !app.heyrobot.core.memory.MemoryCommands.staysNote(question)) add(ToolGroup.MEMORY)
         }
     }
 
@@ -122,6 +129,10 @@ object ToolRouter {
     private val FREE_ASK = setOf("free up", "clean up", "clear", "delete", "remove", "kill", "force stop", "stop", "close", "quit", "unload",
         "liberer", "libere", "nettoie", "nettoyer", "supprime", "supprimer", "efface", "effacer", "vide", "vider", "ferme", "fermer", "arrete",
         "arreter", "quitte")
+    /** 0.7: keeping something about you ([route]'s MEMORY): a memory the model proposes without these words is a card. */
+    private val REMEMBER_ASK = setOf("remember", "keep in mind", "memorize", "memorise", "souviens", "rappelle toi", "retiens", "garde en memoire",
+        "n oublie pas", "call me", "appelle moi", "i prefer", "je prefere")
+    private val FORGET_ASK = setOf("forget", "oublie", "oublier")
     /** "Tell me a joke", "can you tell what this is": not about telling someone. */
     private val NOT_TOLD = setOf("me", "us", "what", "whether", "if", "how", "why", "who", "when", "where", "which", "the", "a", "apart")
     /**
@@ -164,6 +175,8 @@ object ToolRouter {
             if (asks(NOTE_ASK) || (asks(ADD) && ToolGroup.NOTES in groups)) add(ToolName.ADD_NOTE)
             if ((asks(EVENT_ASK) || asks(ADD)) && ToolGroup.CALENDAR in groups) add(ToolName.ADD_EVENT)
             if (asks(FREE_ASK) && ToolGroup.PHONE in groups) { add(ToolName.FREE_MEMORY); add(ToolName.FREE_STORAGE) }
+            if (ToolGroup.MEMORY in groups && has(REMEMBER_ASK)) add(ToolName.REMEMBER)
+            if (ToolGroup.MEMORY in groups && has(FORGET_ASK)) add(ToolName.FORGET)
             for (t in ToolName.entries) if (t.reads && t.group != ToolGroup.CORE && t.group in groups) add(t)
             remove(ToolName.ASK_CLAUDE)
         }
@@ -186,11 +199,11 @@ object ToolRouter {
     /**
      * The tools described for [groups], in a fixed order. Tools turned Off in settings are never described, nor
      * send_text when the texting app is Off. ask_claude only with [askClaude] (Ask Claude on, escalation not Off:
-     * ClaudeSettings.localTool).
+     * ClaudeSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch).
      */
-    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
+    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, memory: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
         t.group in groups && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
-            (t != ToolName.ASK_CLAUDE || askClaude)
+            (t != ToolName.ASK_CLAUDE || askClaude) && (t.group != ToolGroup.MEMORY || memory)
     }
 
     /** "core.people" for the logs (a fixed identifier, never the question). */

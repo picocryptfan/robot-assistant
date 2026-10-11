@@ -206,10 +206,16 @@ class PromptTest {
         assertTrue("all $all", all < 2_600)
         // The worst case: every group, Ask Claude on (its tool and line) and every optional system line. About 500 tokens
         // are left for the new turn: screen text is cut to fit (fitTurn) and older turns are dropped first.
-        val worst = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true),
-            ToolName.entries.toList())
-        assertTrue("worst $worst", worst < 2_850)
-        assertTrue(ContextWindow.newTurnLimit(worst) > 450)
+        val beforeMemory = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true),
+            ToolName.entries.filter { it.group != ToolGroup.MEMORY })
+        assertTrue("worst before memory $beforeMemory", beforeMemory < 2_850)
+        assertTrue(ContextWindow.newTurnLimit(beforeMemory) > 450)
+        // 0.7: memory's two tools (only in a conversation whose words called for them, with Memory on) are kept to one
+        // argument each and its line short: about 200 more estimated tokens (a third fewer real ones), still over 300 left.
+        val worst = Prompt.fixedTokens(app.heyrobot.core.memory.MemoryPrompt.system(Prompt.system(now, locked = false, askClaude = true, texting = true,
+            weather = true, phone = true), tools = true, pinned = null), ToolName.entries.toList())
+        assertTrue("worst ${worst - beforeMemory}", worst - beforeMemory < 260)
+        assertTrue("worst $worst", ContextWindow.newTurnLimit(worst) > 280)
         for (g in listOf(ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR)) {
             val tools = ToolRouter.tools(setOf(ToolGroup.CORE, g), RobotSettings())
             assertTrue(g.name, Prompt.fixedTokens(system, tools) in (core + 1) until all)

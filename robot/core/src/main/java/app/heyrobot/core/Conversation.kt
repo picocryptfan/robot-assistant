@@ -48,6 +48,11 @@ data class ChatTurn(
     val helper: String? = null,
     val by: String? = null,
     val home: Boolean = false,
+    /**
+     * 0.7: the memory items this turn gave the local model or saved ("m_…" ids, core MemoryIds), never their words: History
+     * keeps the question without the notes block, and a rebuilt conversation gets it again from memory ([toPromptTurns]).
+     */
+    val memoryIds: List<String> = emptyList(),
 ) {
     /** Who wrote this reply, for labels and transcripts: the helper's name, "Claude" for a reply saved before 0.6.0. */
     val author: String get() = by ?: if (claude) "Claude" else "Robot"
@@ -77,11 +82,13 @@ data class StoredConversation(val id: String, val created: Long, val updated: Lo
 /**
  * History as the model sees it when a conversation is rebuilt: text only, actions summarised, never the clock. A user
  * turn is stored as asked (the time is added only to the turn sent, [Prompt.fitTurn]); a reply saved by 0.2.1 may
- * still start with a copy of it, which is left out so the model doesn't learn to begin with the time.
+ * still start with a copy of it, which is left out so the model doesn't learn to begin with the time. [notes]: 0.7, the
+ * memory notes block for a turn's item ids (PromptPacking), or null.
  */
-fun List<ChatTurn>.toPromptTurns(): List<PromptTurn> = mapNotNull { t ->
+fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): List<PromptTurn> = mapNotNull { t ->
     when (t.role) {
-        TurnRole.USER -> PromptTurn(PromptRole.USER, Prompt.replayText(t.text, t.attachment))
+        // 0.7: a question that went with remembered items gets them again, as they are now ([notes]; none if they're gone).
+        TurnRole.USER -> PromptTurn(PromptRole.USER, (t.memoryIds.takeIf { it.isNotEmpty() }?.let(notes) ?: "") + Prompt.replayText(t.text, t.attachment))
         TurnRole.ASSISTANT -> {
             if (t.error) return@mapNotNull null
             val acts = t.actions.joinToString(" ") { "(${Markdown.plain(it.summary)}: ${it.status.label.lowercase()}.)" }
@@ -144,6 +151,7 @@ object ConversationCodec {
         t.helper?.let { put("helper", it) }
         t.by?.let { put("by", it) }
         if (t.home) put("home", true)
+        if (t.memoryIds.isNotEmpty()) put("memory", JSONArray(t.memoryIds))
         if (t.readBack) put("readBack", true)
         if (t.sources.isNotEmpty()) put("sources", JSONArray(t.sources))
         if (t.costMicros > 0) put("costMicros", t.costMicros)
@@ -175,6 +183,7 @@ object ConversationCodec {
             helper = o.optString("helper").takeIf { it.isNotEmpty() },
             by = app.heyrobot.core.helpers.HelperNames.clean(o.optString("by")).takeIf { it.isNotEmpty() },
             home = o.optBoolean("home", false),
+            memoryIds = o.optJSONArray("memory")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf(app.heyrobot.core.memory.MemoryIds::valid) } }.orEmpty(),
             readBack = o.optBoolean("readBack", false),
             sources = o.optJSONArray("sources")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotEmpty() } } }.orEmpty(),
             costMicros = o.optLong("costMicros", 0).coerceAtLeast(0),
