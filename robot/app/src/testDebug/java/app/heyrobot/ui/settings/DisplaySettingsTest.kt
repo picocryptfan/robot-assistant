@@ -127,7 +127,7 @@ class DisplaySettingsTest {
             download = {}, cancelDownload = {}, import = {}, verify = {}, deleteModel = {}, deleteConversation = {},
             deleteAllConversations = {}, speakTest = {}, say = {}, voiceDownload = {}, voiceCancel = {}, voiceDelete = {},
             voiceBench = {}, voiceReset = {}, askContacts = {}, askCalendar = {}, openAppSettings = {}, openNote = {},
-            addClaudeKey = {}, deleteClaudeKey = {}, openPage = {}, bargeTest = {},
+            openPage = {}, bargeTest = {},
         )
     }
 }
