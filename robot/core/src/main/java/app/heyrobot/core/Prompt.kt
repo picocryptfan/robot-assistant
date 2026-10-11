@@ -7,7 +7,8 @@ import java.time.format.TextStyle
 import java.util.Locale
 
 // Pure. What Gemma sees: a short system prompt, the newest turns that fit, and the new question.
-// E2B on the TPU has about 4,200 tokens of context (maxNumTokens 4096): the window keeps the system
+// E2B on the TPU has about 4,200 tokens of context (maxNumTokens 4096), and every model of 0.4.1's catalogue is loaded
+// with 4,096 (BrainModel.contextTokens; the CPU files could take more, but read prompts slowly): the window keeps the system
 // prompt plus as many recent exchanges as fit, leaving room for the reply.
 
 enum class PromptRole { USER, MODEL }
@@ -58,7 +59,7 @@ object Prompt {
     }
 
     /**
-     * Only when this TPU build refuses LiteRT-LM's tool API: the call syntax of the conversation's [tools] in the system
+     * Only when the model's build refuses LiteRT-LM's tool API: the call syntax of the conversation's [tools] in the system
      * prompt instead (the app's ToolCalls.wholeReplyCalls reads it back). Kept to one short paragraph; free text goes
      * between <escape> markers, as in Gemma's own call format, so a comma doesn't end it.
      */
@@ -294,7 +295,7 @@ object TokenEstimate {
 }
 
 object ContextWindow {
-    /** EngineConfig.maxNumTokens on the TPU (as the probe and the lab load it). */
+    /** EngineConfig.maxNumTokens (as the probe and the lab load E2B on the TPU), for every model (BrainModel.contextTokens). */
     const val MAX_TOKENS = 4096
     /** Room kept for the reply (Robot also stops a reply after [Limits.MAX_REPLY_CHUNKS] chunks). */
     const val REPLY_RESERVE = 768

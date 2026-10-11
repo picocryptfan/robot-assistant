@@ -163,8 +163,8 @@ what it found.
 - **Fallback** (`core/ModelState.kt`, `ModelChoice`, tested): the chosen model not downloaded, not checked, waiting for the
   TPU card, unusable, or failing to load means Fast instead, and the panel says so once, with Open Robot ("“Smarter,
   slower” isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Model."). A model that failed
-  to load is skipped until you tap it again in Settings › Model or its file changes, so the next question doesn't wait for
-  the same failure. With Fast missing too, the panel says what to download.
+  to load is skipped until you tap it again in Settings › Model (any change to the settings retries it) or its file
+  changes, so the next question doesn't wait for the same failure. With Fast missing too, the panel says what to download.
 - Settings file schema 7: `brainModel`, a catalogue id; older files read as Fast, the model they had.
 - Voice log (Settings › Voice › Voice log), ids only, events 130 to 139: model chosen (130), loaded with where and how
   long (131), didn't load and why (132), Fast used instead and why (133), another model unloaded first (134). `adb logcat

@@ -43,7 +43,7 @@ object TurnRules {
 
 /** How a request to the model ended, as the turn sees it. */
 sealed class ModelOutcome {
-    /** [textCalls]: the conversation runs in text-call mode (no tool API on this TPU build); see [ToolCalls.wholeReplyCalls]. */
+    /** [textCalls]: the conversation runs in text-call mode (the model's build refused the tool API); see [ToolCalls.wholeReplyCalls]. */
     data class Done(val reason: DoneReason, val textCalls: Boolean = false) : ModelOutcome()
     data class Calls(val calls: List<RawToolCall>) : ModelOutcome()
     data class Failed(val message: String) : ModelOutcome()

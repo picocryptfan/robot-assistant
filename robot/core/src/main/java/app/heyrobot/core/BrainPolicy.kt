@@ -7,8 +7,8 @@ import java.util.Locale
 // message fails. GemmaEngine only acts on them.
 
 /**
- * How tools reach the model on this TPU build, best last. :brain starts at [TOOLS_CONSTRAINED] and steps down for
- * the rest of the process only when the build's tool-call parser rejects a level ([EngineErrors.isToolParseError]),
+ * How tools reach the model, best last. :brain starts at [TOOLS_CONSTRAINED] and steps down for
+ * the rest of the process (or until another model loads, 0.4.1) only when the build's tool-call parser rejects a level ([EngineErrors.isToolParseError]),
  * never because of other errors (a full context, a native failure).
  */
 enum class ToolMode {
@@ -40,7 +40,7 @@ object EngineErrors {
         return CONTEXT_FULL.any { m.contains(it) }
     }
 
-    /** The TPU build could not parse the model's tool call (the GPU lab's isToolParseError, verbatim). */
+    /** The model's build could not parse its tool call (the GPU lab's isToolParseError, verbatim). */
     fun isToolParseError(msg: String?): Boolean = msg != null && TOOL_PARSE.containsMatchIn(msg) && !isContextFull(msg)
 
     /** Creating a conversation failed over the tool setup itself (the parse signature, or the tool / constrained-decoding feature). */
@@ -138,11 +138,11 @@ object EngineTeardown {
         QUIT_THREAD,
         /** Keep the work thread: LiteRT's callback is posted to it, and closes the parked engine. */
         WAIT,
-        /** LiteRT never let go: ending the process is the only way to free the engine's memory and the TPU. */
+        /** LiteRT never let go: ending the process is the only way to free the engine's memory (and the TPU). */
         END_PROCESS,
     }
 
-    /** A new engine may load only when no engine is parked anywhere in the :brain process (~2 GB and the TPU each). */
+    /** A new engine may load only when no engine is parked anywhere in the :brain process (2 GB on the TPU, 4 GB on the CPU each). */
     fun mayLoad(parkedInProcess: Int): Boolean = parkedInProcess <= 0
 
     /** At, and after, the service's destroy ([sinceDestroyMs] ago), with an engine still [parked] or not. */

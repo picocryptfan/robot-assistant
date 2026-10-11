@@ -663,7 +663,7 @@ object ToolCalls {
     }
 
     /**
-     * Text-call mode only (no tool API on this TPU build, :brain says so per reply): the calls in a reply that is
+     * Text-call mode only (the model's build refused the tool API, :brain says so per reply): the calls in a reply that is
      * nothing but calls, as the text-call hint asks. A reply with any other text (prose that explains, quotes or
      * mentions a call, screen text repeated back) yields no calls: nothing written in passing ever runs.
      */

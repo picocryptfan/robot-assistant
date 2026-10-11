@@ -71,7 +71,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     /** What [engine] is: the model, where it runs, its file. */
     private var loaded: BrainMsg.Load? = null
     private var vision = false
-    /** How tools reach the model; stepped down for good (until the process restarts) only on the tool-parse error. */
+    /** How tools reach the model; stepped down for good (until the process restarts or another model loads) only on the tool-parse error. */
     private var toolMode = ToolMode.TOOLS_CONSTRAINED
     private val convs = HashMap<String, Live>()
     private var running: Run? = null
