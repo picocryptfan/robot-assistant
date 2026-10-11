@@ -124,6 +124,9 @@ object UpdateToken {
         }
     }
 
+    /** The token was just pasted and saved: the clipboard is cleared if it still holds it. */
+    fun clearClipboard(ctx: Context, token: String) = store.clearClipboard(ctx, token)
+
     fun saved(ctx: Context): Boolean = store.saved(ctx)
     fun masked(ctx: Context): String? = store.masked(ctx)
     fun unreadable(ctx: Context): Boolean = store.unreadable(ctx)

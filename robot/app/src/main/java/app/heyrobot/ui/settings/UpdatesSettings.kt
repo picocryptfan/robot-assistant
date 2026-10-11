@@ -53,7 +53,6 @@ import app.heyrobot.core.update.GitHubToken
 import app.heyrobot.core.update.UpdateDecision
 import app.heyrobot.core.update.UpdateSettings
 import app.heyrobot.core.update.UpdateText
-import app.heyrobot.sys.KeystoreSecret
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Mark
 import app.heyrobot.ui.NavRow
@@ -376,7 +375,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit) {
         saveToken = { t ->
             scope.launch {
                 val saved = withContext(Dispatchers.IO) { UpdateToken.save(app, t) }
-                if (saved) KeystoreSecret.clearClipboard(ctx, t)
+                if (saved) UpdateToken.clearClipboard(ctx, t)
                 facts = facts.copy(token = withContext(Dispatchers.IO) { UpdateToken.masked(app) }, tokenUnreadable = false)
                 say(if (saved) "The token is saved." else "The token couldn't be saved on this phone.")
             }

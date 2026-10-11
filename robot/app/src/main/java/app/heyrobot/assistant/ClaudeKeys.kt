@@ -38,7 +38,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.ClaudeKeyFormat
 import app.heyrobot.sys.ClaudeKeyFiles
-import app.heyrobot.sys.KeystoreSecret
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -122,7 +121,7 @@ class ClaudeKeyActivity : ComponentActivity() {
                                         problem = "The key couldn't be saved on this phone."
                                         return@launch
                                     }
-                                    KeystoreSecret.clearClipboard(this@ClaudeKeyActivity, k)
+                                    ClaudeKeyFiles.store.clearClipboard(this@ClaudeKeyActivity, k)
                                     key = ""
                                     setResult(Activity.RESULT_OK)
                                     finish()

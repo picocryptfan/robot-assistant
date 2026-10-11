@@ -23,8 +23,6 @@ import javax.crypto.spec.GCMParameterSpec
 
 /** One secret: its Keystore [alias], its file [name] (".bin" and ".json"), and the name its log lines use ([log]). */
 class KeystoreSecret(val alias: String, private val name: String, private val log: String) {
-    private val gcmTagBits = 128
-
     /** IV and ciphertext. */
     fun secret(ctx: Context) = File(Paths.dir(ctx), "$name.bin")
     /** Not secret: the masked form and when it was saved, for Settings. */
@@ -54,11 +52,7 @@ class KeystoreSecret(val alias: String, private val name: String, private val lo
 
     /** Encrypts and saves [value], with [masked] for Settings; false (nothing saved) if it can't. Background thread. */
     fun save(ctx: Context, value: String, masked: String): Boolean = try {
-        val c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(Cipher.ENCRYPT_MODE, secretKey())
-        val ct = c.doFinal(value.toByteArray(Charsets.UTF_8))
-        val iv = c.iv
-        val out = ByteBuffer.allocate(1 + iv.size + ct.size).put(iv.size.toByte()).put(iv).put(ct).array()
+        val out = seal(secretKey(), value)
         val f = secret(ctx)
         val tmp = File(f.parentFile, f.name + ".tmp")
         tmp.writeBytes(out)
@@ -76,12 +70,7 @@ class KeystoreSecret(val alias: String, private val name: String, private val lo
         val f = secret(ctx)
         if (!f.isFile) return null
         return try {
-            val b = ByteBuffer.wrap(f.readBytes())
-            val iv = ByteArray(b.get().toInt()).also { b.get(it) }
-            val ct = ByteArray(b.remaining()).also { b.get(it) }
-            val c = Cipher.getInstance("AES/GCM/NoPadding")
-            c.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(gcmTagBits, iv))
-            String(c.doFinal(ct), Charsets.UTF_8)
+            open(secretKey(), f.readBytes())
         } catch (t: Throwable) {
             RLog.w("${log}_read", t)
             null
@@ -108,19 +97,43 @@ class KeystoreSecret(val alias: String, private val name: String, private val lo
     /** Changes when the secret's file does. */
     fun stamp(ctx: Context): Long = secret(ctx).let { if (it.isFile) it.lastModified() xor it.length() else 0L }
 
+    /**
+     * [secret] was just pasted into a window that has the focus (so it may read the clipboard): if the clipboard still holds
+     * exactly it, it is cleared.
+     */
+    fun clearClipboard(ctx: Context, secret: String) {
+        try {
+            val cm = ctx.getSystemService(ClipboardManager::class.java) ?: return
+            val clip = cm.primaryClip ?: return
+            if (clip.itemCount > 0 && clip.getItemAt(0).coerceToText(ctx)?.toString()?.trim() == secret) cm.clearPrimaryClip()
+        } catch (t: Throwable) {
+            RLog.w("${log}_clip", t)
+        }
+    }
+
     companion object {
+        private const val GCM_TAG_BITS = 128
+
         /**
-         * A secret was just pasted into a window that has the focus (so it may read the clipboard): if the clipboard still
-         * holds exactly it, it is cleared.
+         * The stored form, as Ask Claude's key has had it since 0.3.0 (KeystoreSecretTest reads that format): the IV's
+         * length (one byte), the IV, then the AES-GCM ciphertext with its 128-bit tag.
          */
-        fun clearClipboard(ctx: Context, secret: String) {
-            try {
-                val cm = ctx.getSystemService(ClipboardManager::class.java) ?: return
-                val clip = cm.primaryClip ?: return
-                if (clip.itemCount > 0 && clip.getItemAt(0).coerceToText(ctx)?.toString()?.trim() == secret) cm.clearPrimaryClip()
-            } catch (t: Throwable) {
-                RLog.w("secret_clip", t)
-            }
+        internal fun seal(key: SecretKey, value: String): ByteArray {
+            val c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.ENCRYPT_MODE, key)
+            val ct = c.doFinal(value.toByteArray(Charsets.UTF_8))
+            val iv = c.iv
+            return ByteBuffer.allocate(1 + iv.size + ct.size).put(iv.size.toByte()).put(iv).put(ct).array()
+        }
+
+        /** [seal]'s output back to the secret; throws if it was changed or [key] isn't the one that sealed it. */
+        internal fun open(key: SecretKey, stored: ByteArray): String {
+            val b = ByteBuffer.wrap(stored)
+            val iv = ByteArray(b.get().toInt()).also { b.get(it) }
+            val ct = ByteArray(b.remaining()).also { b.get(it) }
+            val c = Cipher.getInstance("AES/GCM/NoPadding")
+            c.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
+            return String(c.doFinal(ct), Charsets.UTF_8)
         }
     }
 }
