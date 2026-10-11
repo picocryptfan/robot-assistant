@@ -69,6 +69,39 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
+## Termux agent (core only)
+
+Not a feature yet: nothing in the app uses it, and nothing about it shows. This is the pure, tested `:core` part of the
+Termux agent (design: `../docs/plans/websearch-termux-design.md`, Part B), in `core/.../core/termux/`:
+
+- `ShellLexer`: a small bash lexer (quotes, escapes, pipes, `&&`/`||`/`;`/`&`, redirections, here-docs, subshells and
+  groups, `$( )`, backticks, `${ }`, `$(( ))`, process substitution, globs, assignments, keywords, functions), linear in
+  its input and depth-capped; and `argv`, which splits your script's arguments without a shell.
+- `CommandAnalyzer`: the card's warnings in English and French (deletes, overwrites, outside Termux's home, internet,
+  code from the internet, packages, root, keeps running, may never end, fork bomb, Termux:API sends/personal/captures,
+  private files, secrets, needs a terminal, hidden or look-alike characters). Anything it can't follow is "complex":
+  always a card answered by a tap. `ReadOnlyCommands` is the strict read-only allowlist.
+- `TermuxPolicy`: run, card, tap only or refuse. Every command shows a Run / Edit / Cancel card; the only exceptions are
+  your own scripts in `~/robot` set to Just do it (argv, no shell) and, with "Read-only commands without a card" on,
+  allowlisted reads (both off by default). There is no setting that runs every command. Fixed rules: content Robot
+  didn't write in the conversation means a card and a tap for every command; a warning means a tap, never a spoken
+  yes; no free-form command on the lock screen; Robot's own keys (by value, or by shape when you didn't type it) and
+  fork bombs are refused.
+- `TermuxRun`: the RUN_COMMAND plan as plain data (bash, argv, working folder, stdin, the extras, a placeholder for
+  the result PendingIntent). The command is an argument of a fixed wrapper that runs it under GNU `timeout -k 5` in its
+  own process group with a pid file, so Stop (another fixed wrapper) ends the whole tree. Tests run the wrappers in a
+  real bash where one is installed.
+- `TermuxOutput` (ANSI and control characters out, secrets masked by `SecretMask`, 100 KB kept, 16 KB for the card,
+  40 lines / 1,500 characters for Gemma, the exit code in words), `TermuxIdentity` (the signer against Termux's own
+  list in `TermuxConstants.java`; the Play build is "not supported"), `TermuxIntents`, `TermuxSettings` (to become the
+  settings' `termux` object), `TermuxLog` (voice log ids 170–179 reserved, not yet in `VoiceEvent`).
+
+Still to wire: `<queries><package android:name="com.termux"/></queries>` and the RUN_COMMAND `<uses-permission>` in
+the manifest (and on `verify_apk.sh`'s allowlists); the permission request from the main app (Settings › Termux and
+its set-up checklist, reading the signer); the result receiver in `:voice` (not exported) and the runner that sends the
+intent and waits; the command card (Run / Edit / Cancel, warnings, output) and its gate and `CardAnswer` wiring
+(`AskWhy.COMMAND` / `FROM_CONTENT`); the settings schema, the voice log events and the TERMUX tool group.
+
 ## Short-context models (0.4.3)
 
 Your own model file (Settings › Model › "Your own model file") may now be built for a context of 2,048 to 4,095 tokens
