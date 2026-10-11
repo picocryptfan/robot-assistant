@@ -78,8 +78,9 @@ sealed class BrainMsg {
 
     // ---------------------------------------------------------------- requests
     /**
-     * Load [model]'s file at [path] on [backend] with a context of [maxTokens] (0.4.1: the catalogue entry's). :brain
-     * unloads any other model first: two engines never share the process.
+     * Load [model]'s file at [path] on [backend] with a context of [maxTokens] (0.4.1: the catalogue entry's; 0.4.3: your
+     * own file's when it is shorter, chat only). :brain unloads any other model first: two engines never share the
+     * process, and loads only with the context LoadCheck expects for that file.
      */
     data class Load(
         val path: String,
@@ -131,14 +132,15 @@ sealed class BrainMsg {
     }
 
     // ---------------------------------------------------------------- events
-    /** [model] and [backend]: what is loaded (null when nothing is). */
+    /** [model], [backend] and [maxTokens] (its context, 0.4.3): what is loaded (null and 0 when nothing is). */
     data class Status(
         val loaded: Boolean, val vision: Boolean, val constrained: Boolean, val busy: Boolean,
-        val model: BrainModel? = null, val backend: ModelBackend? = null,
+        val model: BrainModel? = null, val backend: ModelBackend? = null, val maxTokens: Int = 0,
     ) : BrainMsg() {
         override fun toJson() = JSONObject().put("loaded", loaded).put("vision", vision).put("constrained", constrained).put("busy", busy).apply {
             model?.let { put("model", it.id) }
             backend?.let { put("backend", it.id) }
+            if (maxTokens > 0) put("maxTokens", maxTokens)
         }
     }
 
@@ -215,7 +217,7 @@ sealed class BrainMsg {
                 BrainProtocol.REQ_CLOSE_CONV -> CloseConv(o.getString("convId"))
                 BrainProtocol.REQ_STATUS, BrainProtocol.REQ_UNLOAD, BrainProtocol.EV_UNLOADED -> Empty
                 BrainProtocol.EV_STATUS -> Status(o.optBoolean("loaded"), o.optBoolean("vision"), o.optBoolean("constrained"), o.optBoolean("busy"),
-                    BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")))
+                    BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")), o.optInt("maxTokens", 0).coerceAtLeast(0))
                 BrainProtocol.EV_LOADED -> Loaded(o.optBoolean("ok"), o.optBoolean("vision"), o.optLong("loadMs"), o.optString("error").takeIf { o.has("error") },
                     BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")),
                     LoadFailure.entries.firstOrNull { it.name == o.optString("failure") })

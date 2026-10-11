@@ -73,7 +73,7 @@ data class LiteRtLmReport(
     val modelType: String? = null,
     /** Gemma 4's tool-call tokens: "<|tool_call>" opens a call and "<|tool_response>" an answer. */
     val toolTokens: Boolean = false,
-    /** LlmMetadata's max_num_tokens (0: not stated, as in Google's own files). */
+    /** LlmMetadata's max_num_tokens (0: not stated, as in Google's own files). Robot's context for it: [contextTokens]. */
     val maxTokens: Int = 0,
     /** A vision encoder section: it can look at photos. */
     val vision: Boolean = false,
@@ -85,6 +85,18 @@ data class LiteRtLmReport(
     /** Compiled for this phone's TPU, by every sign Robot checks (never by the file's name). */
     val tensorG5Build: Boolean get() = readable && decoder && aux && dispatchOp && tensorG5Stamp && gemma4
 
+    /**
+     * 0.4.3: built for 2,048 to 4,095 tokens of context. Robot runs it as chat only (no tools, no actions, a shorter
+     * memory of the conversation), loaded with its own context ([contextTokens]).
+     */
+    val shortContext: Boolean get() = maxTokens in ContextWindow.MIN_TOKENS until ContextWindow.MAX_TOKENS
+
+    /**
+     * The context Robot loads it with (ContextWindow.forFile): 4,096 when the file states none or at least that, its own
+     * when shorter ([shortContext]); 0 when it is too short to run at all.
+     */
+    val contextTokens: Int get() = ContextWindow.forFile(maxTokens) ?: 0
+
     /** Why Robot can't run it here at all; null when it can. */
     val unusable: String? get() = when {
         !readable -> problem ?: "It isn't a LiteRT-LM model file (.litertlm)."
@@ -95,7 +107,8 @@ data class LiteRtLmReport(
                 "), so Robot won't run it on the TPU, and the CPU can't run TPU code."
         dispatchOp && !tensorG5Build -> "It was compiled for another chip's NPU" + (stamp?.let { " ($it)" } ?: "") +
             ", so this phone can run it on neither its TPU nor its CPU."
-        maxTokens in 1 until ContextWindow.MAX_TOKENS -> "It was built for only $maxTokens tokens of context; Robot needs ${ContextWindow.MAX_TOKENS}."
+        maxTokens in 1 until ContextWindow.MIN_TOKENS -> "It was built for only $maxTokens tokens of context; Robot needs at least " +
+            "${ContextWindow.MIN_TOKENS} to chat (${ContextWindow.MAX_TOKENS} for actions)."
         else -> null
     }
 
@@ -118,14 +131,21 @@ data class LiteRtLmReport(
             dispatchOp -> "Compiled for an NPU" + (stamp?.let { " (stamp “$it”)" } ?: "") + ", but not as a complete Tensor G5 build."
             else -> "Compiled for this phone's TPU: no. It runs on the CPU."
         })
+        // Chat only: no actions whatever the metadata, so the line about them would only confuse.
         add(when {
+            shortContext && gemma4 -> "Gemma 4."
+            shortContext && modelType != null -> "Model type “$modelType”, not Gemma 4: Robot is written for Gemma 4, so answers may be odd."
+            shortContext -> "No model metadata Robot recognises: answers may be odd."
             gemma4 && toolTokens -> "Gemma 4, with its tool-calling metadata: actions should work."
             gemma4 -> "Gemma 4, but without its tool-calling metadata: actions (timers, texts, notes…) may not work."
             modelType != null -> "Model type “$modelType”, not Gemma 4: Robot is written for Gemma 4, so answers may be odd and actions may not work."
             else -> "No model metadata Robot recognises: answers may be odd and actions may not work."
         })
-        add(if (vision) "Sees photos: yes." else "Sees photos: no (questions about a photo won't work).")
-        if (maxTokens > 0) add("Context: $maxTokens tokens (Robot uses ${ContextWindow.MAX_TOKENS}).")
+        add(if (vision) "Can see photos: yes." else "Can see photos: no (questions about a photo won't work).")
+        when {
+            shortContext && unusable == null -> add("Short context ($maxTokens tokens): chat only — no actions, shorter memory.")
+            maxTokens >= ContextWindow.MAX_TOKENS -> add("Context: $maxTokens tokens (Robot uses ${ContextWindow.MAX_TOKENS}).")
+        }
         unusable?.let { add(it) }
     }
 

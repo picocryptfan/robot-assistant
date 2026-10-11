@@ -29,6 +29,9 @@ class BrainProtocolTest {
         assertEquals(e4b, BrainMsg.Load("/data/e4b.litertlm", BrainModel.SMARTER))
         val own = BrainMsg.Load("/data/own_model.litertlm", BrainModel.OWN, ModelBackend.TPU, 4096)
         assertEquals(own, roundTrip(BrainProtocol.REQ_LOAD, own))
+        // 0.4.3: your own short-context file, with its own context (:brain's LoadCheck decides whether it may).
+        val short = BrainMsg.Load("/data/own_model.litertlm", BrainModel.OWN, ModelBackend.CPU, 2048)
+        assertEquals(short, roundTrip(BrainProtocol.REQ_LOAD, short))
         assertEquals(BrainMsg.Cancel(42), roundTrip(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(42)))
         assertEquals(BrainMsg.CloseConv("c-1"), roundTrip(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv("c-1")))
         assertEquals(BrainMsg.Empty, roundTrip(BrainProtocol.REQ_STATUS, BrainMsg.Empty))
@@ -55,6 +58,8 @@ class BrainProtocolTest {
             BrainProtocol.EV_LOADED to BrainMsg.Loaded(false, false, 12, "The model file is missing."),
             BrainProtocol.EV_STATUS to BrainMsg.Status(true, true, true, false, BrainModel.UNCENSORED, ModelBackend.CPU),
             BrainProtocol.EV_STATUS to BrainMsg.Status(false, false, true, false, null, null),
+            BrainProtocol.EV_STATUS to BrainMsg.Status(true, true, false, false, BrainModel.OWN, ModelBackend.CPU, 2048),
+            BrainProtocol.EV_STATUS to BrainMsg.Status(true, false, true, false, BrainModel.FAST, ModelBackend.TPU, 4096),
             BrainProtocol.EV_LOADED to BrainMsg.Loaded(true, true, 8900, null, BrainModel.SMARTER, ModelBackend.CPU),
             BrainProtocol.EV_LOADED to BrainMsg.Loaded(false, false, 3, "Not enough free space for its cache.", BrainModel.OWN, ModelBackend.CPU, LoadFailure.NO_SPACE),
             BrainProtocol.EV_CHUNK to BrainMsg.Chunk("Hello, "),

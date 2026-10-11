@@ -124,6 +124,56 @@ class BrainPolicyTest {
         assertTrue(BrainPolicy.canReuse(live().copy(tools = people), 4, "S", m, 100, people))
     }
 
+    /**
+     * 0.4.3: a short-context model is chat only. No tools are described to it and none of its calls get through, and
+     * :brain never tries a tool level for it: nothing steps it down (not even the tool-parse signature), and the ladder
+     * of the other models is unchanged.
+     */
+    @Test fun chatOnlyIsOffTheToolLadder() {
+        val c = ToolMode.CHAT_ONLY
+        assertEquals(ToolMode.CHAT_ONLY, BrainPolicy.modeFor(2048, ToolMode.TOOLS_CONSTRAINED))
+        assertEquals(ToolMode.CHAT_ONLY, BrainPolicy.modeFor(4095, ToolMode.TEXT_CALLS))
+        assertEquals(ToolMode.TOOLS_CONSTRAINED, BrainPolicy.modeFor(4096, ToolMode.TOOLS_CONSTRAINED))
+        assertEquals(ToolMode.TEXT_CALLS, BrainPolicy.modeFor(4096, ToolMode.TEXT_CALLS))
+        assertNull(c.lower)
+        assertFalse(c.tools)
+        assertEquals(3, ToolMode.LEVELS)
+        assertNull(ToolMode.TEXT_CALLS.lower)
+        // No step down from it, whatever the error.
+        for (msg in listOf(parseError, "constrained decoding unavailable", "tool registry broken", native, null)) {
+            assertEquals(BrainPolicy.Next.Fail(BrainError.ENGINE), BrainPolicy.afterCreateError(msg, c, 2, 900, 0))
+            assertEquals(BrainPolicy.Next.Fail(BrainError.ENGINE), BrainPolicy.afterSendError(msg, c, false, 2, 900, 1))
+            assertEquals(c, BrainPolicy.modeAfter(msg, c))
+        }
+        // A full context still shortens the history, as for any model.
+        assertEquals(BrainPolicy.Next.Shorten(450), BrainPolicy.afterCreateError(overflow, c, 2, 900, 0))
+        assertEquals(BrainPolicy.Next.Shorten(450), BrainPolicy.afterSendError(overflow, c, false, 2, 900, 1))
+        assertEquals(BrainPolicy.Next.Fail(BrainError.TOO_LONG), BrainPolicy.afterSendError(overflow, c, false, 0, 0, 1))
+        // No tools described, whatever the request lists; no call accepted.
+        val all = ToolName.entries.toList()
+        assertEquals(emptyList<ToolName>(), BrainPolicy.toolsFor(c, all))
+        assertFalse(BrainPolicy.acceptsCalls(c))
+        for (m in listOf(ToolMode.TEXT_CALLS, ToolMode.TOOLS, ToolMode.TOOLS_CONSTRAINED)) {
+            assertEquals(all, BrainPolicy.toolsFor(m, all))
+            assertTrue(BrainPolicy.acceptsCalls(m))
+        }
+        // Its history alternates (Gemma 3's template); the other models get it as sent.
+        val h = listOf(PromptTurn(PromptRole.USER, "q1"), PromptTurn(PromptRole.USER, "q2"), PromptTurn(PromptRole.MODEL, "a"))
+        assertEquals(listOf(PromptTurn(PromptRole.USER, "q1\n\nq2"), PromptTurn(PromptRole.MODEL, "a")), BrainPolicy.historyFor(c, h))
+        assertEquals(h, BrainPolicy.historyFor(ToolMode.TOOLS_CONSTRAINED, h))
+    }
+
+    @Test fun aChatOnlyConversationIsReusedWhileTheShortContextHoldsTheNextTurn() {
+        val c = ToolMode.CHAT_ONLY
+        val none = emptyList<String>()
+        assertTrue(BrainPolicy.canReuse(live(mode = c, tokens = 1_000).copy(tools = none), 4, "S", c, 100, none, 2048))
+        // 1,500 + 100 + the reply's 512 is more than 2,048 (at 4,096 it would fit).
+        assertFalse(BrainPolicy.canReuse(live(mode = c, tokens = 1_500).copy(tools = none), 4, "S", c, 100, none, 2048))
+        assertTrue(BrainPolicy.canReuse(live(mode = c, tokens = 1_500).copy(tools = none), 4, "S", c, 100, none))
+        // Built at a tool level (another model), never reused for chat only.
+        assertFalse(BrainPolicy.canReuse(live(tokens = 1_000).copy(tools = none), 4, "S", c, 100, none, 2048))
+    }
+
     /** 0.1.2 review, minor 5: a parked engine must be closed even after its service is gone, and never doubled. */
     @Test fun aParkedEngineOutlivesTheServiceButNotForEver() {
         assertEquals(EngineTeardown.Step.QUIT_THREAD, EngineTeardown.afterDestroy(parked = false, sinceDestroyMs = 0))

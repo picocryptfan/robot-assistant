@@ -30,7 +30,8 @@ enum class ModelBackend(val id: String, val title: String) {
  *
  * [contextTokens] is the context :brain asks for (maxNumTokens); every entry uses 4,096, the prompt budget
  * ([ContextWindow.MAX_TOKENS]). The CPU files could take more, but prompt reading at about 70 tokens a second makes a
- * longer context slow, so it stays 4,096 until the phone tests say otherwise.
+ * longer context slow, so it stays 4,096 until the phone tests say otherwise. [OWN]'s is the most it gets: since 0.4.3 a
+ * file built for 2,048 to 4,095 tokens loads with its own context instead, as chat only (LiteRtLmReport.contextTokens).
  */
 enum class BrainModel(
     val id: String,
@@ -355,37 +356,68 @@ enum class ModelAvailability {
     UNUSABLE,
 }
 
-/** What :brain is asked to load: the file, where it runs, its context, and the file's fingerprint (size and time). */
-data class LoadPlan(val model: BrainModel, val path: String, val backend: ModelBackend, val contextTokens: Int, val fingerprint: String)
+/**
+ * What :brain is asked to load: the file, where it runs, its context, and the file's fingerprint (size and time).
+ * [contextTokens] under 4,096 means chat only ([ContextWindow.chatOnly]). [vision]: the file has a vision encoder (every
+ * built-in model does; your own file as its check found).
+ */
+data class LoadPlan(
+    val model: BrainModel, val path: String, val backend: ModelBackend, val contextTokens: Int, val fingerprint: String,
+    val vision: Boolean = true,
+) {
+    val chatOnly: Boolean get() = ContextWindow.chatOnly(contextTokens)
+}
 
 /**
  * :brain's own say before it loads a model, whatever the assistant asked for (0.4.1): it reads the app's own records
  * again rather than trust the request. A built-in model loads only where it runs, and only from the file whose SHA-256
  * the app checked (its verified mark matches the file now); your own file only as the app recorded it after its check,
  * unchanged since, and on the TPU only once you allowed it there. (The content check then reads the file's header.)
+ * 0.4.3: and only with the context Robot's prompts are made for: 4,096 for a built-in model, your own file's
+ * ([LiteRtLmReport.contextTokens], from its record; :brain compares the header it reads too).
  */
 object LoadCheck {
     const val CHANGED = "The model file changed since Robot checked it. Open the Robot app › Model to check it again."
 
+    /** The context asked for isn't the one Robot's prompts are made for with this file. */
+    fun wrongContext(expected: Int): String = "Robot's prompts are made for $expected tokens of context with this model."
+
     /**
-     * Null when [m] may load on [backend]; else why not, in plain words. [fingerprintNow]: the file's now
-     * ([ModelFiles.fingerprint]); [mark]: the built-in model's verified mark; [ownRecord]: your own file's record.
+     * Null when [m] may load on [backend] with a context of [maxTokens]; else why not, in plain words. [fingerprintNow]:
+     * the file's now ([ModelFiles.fingerprint]); [mark]: the built-in model's verified mark; [ownRecord]: your own file's
+     * record.
      */
-    fun refuse(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?): String? {
+    fun refuse(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?,
+        maxTokens: Int = ContextWindow.MAX_TOKENS): String? {
         if (m.builtIn) {
             if (backend != m.backend) return "“${m.title}” runs on the ${m.backend.title} only."
+            if (maxTokens != m.contextTokens) return wrongContext(m.contextTokens)
             return if (mark?.trim() == "${m.sha256}|$fingerprintNow") null else CHANGED
         }
         val own = OwnModel.fromJson(ownRecord) ?: return CHANGED
         if (own.fingerprint != fingerprintNow) return CHANGED
         val where = own.backend
         return when {
-            where == backend -> null
+            where == backend -> if (maxTokens == own.report.contextTokens) null else wrongContext(own.report.contextTokens)
             where == null && own.report.tensorG5Build -> "Your model file waits for you to allow the TPU in the Robot app › Model."
             where == null -> own.report.unusable ?: "Robot can't run your model file on this phone."
             else -> "Your model file runs on the ${where.title}, not the ${backend.title}."
         }
     }
+}
+
+/**
+ * One factual line for a model whose name says MedGemma (0.4.3; your own file's name, or a catalogue entry's): shown on
+ * Settings › Model, never added to answers (Settings › "Direct answers" stays as you set it). The name is for the
+ * screen only: it never decides what Robot trusts or allows.
+ */
+object ModelNotes {
+    const val MEDICAL = "Not a medical device: check health information with a professional."
+
+    /** "MedGemma", "medgemma-1.5-4b-it…", "Med-Gemma", "med_gemma": any case, any separators. */
+    fun medical(name: String?): Boolean = name != null && name.lowercase(Locale.ROOT).filter { it.isLetterOrDigit() }.contains("medgemma")
+
+    fun of(name: String?): String? = if (medical(name)) MEDICAL else null
 }
 
 /** Why Robot used Fast instead of the model you chose (the voice log stores [id]). */
