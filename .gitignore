@@ -32,3 +32,8 @@ robot/**/*.litertlm
 .DS_Store
 *.p12
 *.pass
+
+# Robot 0.5.0 fast translation engine: tools/build_robotmt.sh's fetched sources and build trees, and the library it
+# builds (packaged by Gradle when present, never stored in git).
+robot/mt/native/
+robot/mt/src/main/jniLibs/
