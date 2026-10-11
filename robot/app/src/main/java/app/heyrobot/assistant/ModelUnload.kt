@@ -47,7 +47,7 @@ object ModelUnload {
         after
     }
 
-    /** Most of Gemma's 2 GB is back. */
+    /** Most of Fast's 2 GB is back (an E4B's 4 GB passes it sooner). */
     private const val RELEASED = 1_500_000_000L
 
     fun available(ctx: Context): Long = ActivityManager.MemoryInfo().also { ctx.getSystemService(ActivityManager::class.java).getMemoryInfo(it) }.availMem

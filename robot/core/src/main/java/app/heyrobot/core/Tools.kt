@@ -320,7 +320,7 @@ sealed class Action {
      */
     data class FreeMemory(val app: String?, val pkg: String? = null) : Action() {
         override val tool get() = ToolName.FREE_MEMORY
-        override fun describe() = if (app == null) "Unload Robot's model to free about 2 GB of memory" else "Open **$app**'s App info to force stop it"
+        override fun describe() = if (app == null) "Unload Robot's model to free about 2 GB of memory (4 GB for an E4B model)" else "Open **$app**'s App info to force stop it"
         override val confirmLabel get() = if (app == null) "Unload" else "Open App info"
     }
 
