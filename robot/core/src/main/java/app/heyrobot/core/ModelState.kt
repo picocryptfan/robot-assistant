@@ -120,7 +120,8 @@ enum class BrainModel(
         UNCENSORED -> "A community build of Gemma 4 E4B with the model's own refusals removed (olekk; not from Google). " +
             "Robot's own cards and switches still apply: actions still ask you first as Settings › Actions and Safety & privacy " +
             "say. Its maker spot-checked it but ran no benchmark, and it may still refuse " +
-            "now and then; the publisher asks that it be used for research and personal experimentation, and says you own its outputs."
+            "now and then; the publisher asks that it be used for research and personal experimentation, says you own its outputs, " +
+            "and says Google's Gemma Prohibited Use Policy still applies."
         OWN -> "Robot copies the file into its own storage, shows its size and SHA-256, and checks what is inside before " +
             "it can be chosen. Robot is written for Gemma 4: another model may answer oddly and tools may not work."
     }

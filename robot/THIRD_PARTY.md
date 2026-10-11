@@ -216,8 +216,9 @@ Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-
   https://huggingface.co/olekk/gemma-4-E4B-it-abliterated-litert-lm, revision `a4eecccd3b0ba1777660180cda60a396eedcb8aa`,
   3,659,530,240 bytes, sha256 `f5a6625e0368e853743c91b39fa6ac6a8add1fc4825b18f98f518966610f2a88`. A derivative of Google's
   E4B file above by olekk (community build, not from Google; method and code at codeberg.org/oknyshuk/gemma4-e4b-abliterated).
-  Licence: Apache-2.0 (its model card). The card also asks that it be used for research and personal experimentation and
-  says you are responsible for its outputs.
+  Licence: Apache-2.0 (its model card). The card also asks that it be used for research and personal experimentation,
+  says you are responsible for its outputs, and says the base Gemma 4 Prohibited Use Policy
+  (https://ai.google.dev/gemma/prohibited_use_policy) applies.
 - **Your own model file.** Whatever `.litertlm` you import keeps its own licence. Robot doesn't ship it; it shows the
   file's SHA-256 and size and reads what its header says it is (`core/LiteRtLm.kt`, written for Robot from LiteRT-LM's
   published header schema and LlmMetadata protos, Apache-2.0; no code copied).

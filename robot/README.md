@@ -100,8 +100,8 @@ added to the catalogue (`core/ModelState.kt`, `BrainModel`) once it is published
 
 **Uncensored.** The same Google E4B file with the model's own refusals removed (olekk patched two kinds of weights in place,
 keeping Google's quantization, vision, MTP drafter and tool metadata). Its maker spot-checked it and ran no benchmark; it
-may still refuse now and then, and its card asks that it be used for research and personal experimentation, and says you
-own its outputs. Robot's own cards and switches are unchanged: the model only ever proposes an action, and Settings ›
+may still refuse now and then, and its card asks that it be used for research and personal experimentation, says you
+own its outputs, and says Google's Gemma Prohibited Use Policy still applies. Robot's own cards and switches are unchanged: the model only ever proposes an action, and Settings ›
 Safety & privacy decides what asks first, whichever model is loaded (`ApprovalGate` doesn't know which one is).
 
 ### Downloads, files and privacy
@@ -142,7 +142,11 @@ what it found.
   outside what Robot's separate model process can contain; a bad or mismatched build can crash Robot's model, hang the TPU
   until a restart or, rarely, restart the phone; a SHA-256 proves the file is the one you picked, not that it is safe; a
   TPU build not published by Google may have been shared against the Tensor compiler's terms. It shows the file's name,
-  size and SHA-256. `:brain` reads the header again itself before it loads anything but Fast.
+  size and SHA-256, and the tap allows that very file only (by its SHA-256): a file changed since is checked again and
+  asks again. `:brain` reads the header again itself before it loads anything but Fast, and before any load it reads the
+  app's own records again rather than trust the request (`LoadCheck`): a built-in model's SHA-256 mark must match the
+  file now, and your own file must be the one recorded after its check (size and time unchanged), on the TPU only once
+  you allowed it.
 - **The CPU** for every other file it can run. Without Gemma 4's tool-call tokens (`<|tool_call>`, `<|tool_response>`)
   Robot says actions may not work; with another model type, that Robot is written for Gemma 4.
 - **Refused:** NPU code for another chip (a Snapdragon build, a Tensor G6 build) or an incomplete Tensor G5 build (the
@@ -152,7 +156,9 @@ what it found.
 
 - `:brain` is told the model, where it runs and its context in `BrainMsg.Load` (`Loaded` and `Status` say which model is
   in memory). It unloads any other model first, so two engines never share the process (Fast about 2 GB, an E4B about
-  4 GB); the assistant asks it to unload first too, and the keep-loaded timer and `free_memory` work as before.
+  4 GB); the assistant asks it to unload first too, and the keep-loaded timer and `free_memory` work as before. The
+  process has one engine slot whichever `BrainService` holds it: a new service started before the old one's work thread
+  has let its model go answers "still stopping" until it has (and ends the process if that thread is stuck for 20 s).
 - On the CPU, `GemmaEngine` loads with `Backend.CPU()` (LiteRT-LM's default threads: 6 were no faster), the vision
   encoder on the CPU, and the model's cache folder; a first load that the free space can't hold is refused with a plain
   message. MTP speculative decoding (`CPU_MTP`) and a sampler (`CPU_SAMPLER`, Gemma's top-k 64, top-p 0.95, temperature 1.0)
@@ -163,8 +169,10 @@ what it found.
 - **Fallback** (`core/ModelState.kt`, `ModelChoice`, tested): the chosen model not downloaded, not checked, waiting for the
   TPU card, unusable, or failing to load means Fast instead, and the panel says so once, with Open Robot ("“Smarter,
   slower” isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Model."). A model that failed
-  to load is skipped until you tap it again in Settings › Model (any change to the settings retries it) or its file
-  changes, so the next question doesn't wait for the same failure. With Fast missing too, the panel says what to download.
+  to load, or that stopped the model process while in memory (a native crash as it answered, or Android reclaiming its
+  memory), is skipped until you tap it again in Settings › Model (any change to the settings retries it) or its file
+  changes, so the next question doesn't wait for the same failure, and a model that keeps crashing can't reach the
+  three-stops-an-hour lockout that would stop Fast too. With Fast missing too, the panel says what to download.
 - Settings file schema 7: `brainModel`, a catalogue id; older files read as Fast, the model they had.
 - Voice log (Settings › Voice › Voice log), ids only, events 130 to 139: model chosen (130), loaded with where and how
   long (131), didn't load and why (132), Fast used instead and why (133), another model unloaded first (134). `adb logcat
@@ -220,6 +228,17 @@ on battery, Wi-Fi on. Note every time.
     why), so Robot is using Fast." with Open Robot; a second question says nothing more. Voice log: "Used Fast … instead of
     your own model file: can't be used".
 16. **Delete everything but Fast** and check the free space matches what was there before step 2.
+17. **A model that stops the process.** With Smarter chosen and loaded, `adb shell kill -9 $(adb shell pidof
+    app.heyrobot:brain)`, then ask a question: it answers with Fast and the panel says once "“Smarter, slower” stopped
+    unexpectedly, so Robot is using Fast…"; a second question says nothing more. Tap Smarter again in Settings › Model: the
+    next question loads it again.
+18. **One engine, also across a restart of the model service.** With Smarter answering a long question, choose Fast in
+    Settings › Model, then ask again at once: either "The model is still stopping. Try again in a moment." or the answer
+    with Fast, never both models at once (`adb shell dumpsys meminfo app.heyrobot:brain` stays near one model's size;
+    `adb logcat -s Robot | grep brain_teardown` shows no `END_PROCESS`).
+19. **A file changed after its check.** With Smarter chosen and checked, `adb shell touch` its file in
+    `/sdcard/Android/data/app.heyrobot/files/`, then ask: Fast answers ("hasn't been checked yet"); open the Robot app and
+    it checks the file again. With your own TPU build allowed (14), import another Tensor G5 file: its card asks again.
 
 ## Weather, phone status and freeing space (0.4.0)
 
