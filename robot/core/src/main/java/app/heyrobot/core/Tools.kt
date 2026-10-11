@@ -126,6 +126,11 @@ object ToolSpecs {
 
 /** A validated request to do something on the phone. */
 sealed class Action {
+    private companion object {
+        /** After a person whose name was learned from a Cheogram notification: whoever sent it chose that name. */
+        const val LEARNED = " · name seen in Cheogram"
+    }
+
     abstract val tool: ToolName
     /**
      * Plain language for the confirmation card and the log-free history ("Set a timer for 5 minutes"). The person or
@@ -179,7 +184,7 @@ sealed class Action {
             target == null -> "Text **$to**"
             target.via == TextVia.CHEOGRAM_PICK -> "${target.display} Choose who to text in Cheogram"
             target.name == null -> "Text **${target.display}** in ${target.appName}"
-            else -> "Text **${target.name}** (${target.display}) in ${target.appName}"
+            else -> "Text **${target.name}** (${target.display}) in ${target.appName}" + if (target.from?.learned == true) LEARNED else ""
         }
         override fun body() = message
         /** The button names the person too: the card's top line may be out of sight on a long message. */
@@ -191,7 +196,7 @@ sealed class Action {
         override fun describe(): String {
             val t = target ?: return "Email **$to**"
             val who = if (t.name == null) "**${t.address}**" else "**${t.name}** (${t.address})"
-            return if (t.appName == null) "Email $who" else "Email $who in ${t.appName}"
+            return (if (t.appName == null) "Email $who" else "Email $who in ${t.appName}") + if (t.from?.learned == true) LEARNED else ""
         }
         override fun body() = listOfNotNull(subject.takeIf { it.isNotBlank() }?.let { "Subject: $it" }, text.takeIf { it.isNotBlank() }).joinToString("\n\n")
         override val confirmLabel get() = target?.let { t -> "${t.appName?.let { "Open in $it" } ?: "Choose the email app"} for ${t.name ?: t.address}" }
@@ -257,20 +262,28 @@ data class TextTarget(
     val display: String,
     val appName: String,
     val via: TextVia,
-)
+    /**
+     * The contact's place it came from (its id, the address as stored, the Cheogram account of an XMPP address, whether
+     * the name was learned from a notification); null for a number or address given directly.
+     */
+    val from: Reach? = null,
+) {
+    /** The Cheogram account to open the chat in: Cheogram then needs no search (several accounts with that contact). */
+    val account: String? get() = from?.account
+}
 
 enum class TextVia {
     CHEOGRAM,
     SMS,
     /**
-     * No contact in the phone fitted: Cheogram's share screen opens with the message, and the owner picks the person in
-     * Cheogram's own list (its roster holds people the phone's contacts don't). No [TextTarget.address].
+     * No contact fitted: Cheogram's share screen opens with the message, and you pick the person in Cheogram's own list
+     * (its roster holds people the phone's contacts don't). No [TextTarget.address].
      */
     CHEOGRAM_PICK,
 }
 
-/** Where an email draft goes. [appName] null: the system chooser asks which app. */
-data class MailTarget(val name: String?, val address: String, val appName: String?)
+/** Where an email draft goes. [appName] null: the system chooser asks which app. [from]: the contact's place it came from. */
+data class MailTarget(val name: String?, val address: String, val appName: String?, val from: Reach? = null)
 
 /** A resolved add_event: when, and the calendar it goes into ([calendarId] null: the calendar app's editor). */
 data class EventPlan(

@@ -15,32 +15,40 @@ import android.provider.ContactsContract.Data
 import android.provider.Telephony
 import android.telephony.PhoneNumberUtils
 import android.telephony.TelephonyManager
+import app.heyrobot.core.AddressBook
 import app.heyrobot.core.ContactCard
+import app.heyrobot.core.ContactIds
 import app.heyrobot.core.ContactMatch
 import app.heyrobot.core.ContactName
 import app.heyrobot.core.ContactPhone
 import app.heyrobot.core.NoteStore
+import app.heyrobot.core.PeopleStore
 import app.heyrobot.core.PhoneKind
 import app.heyrobot.core.PhoneNumbers
+import app.heyrobot.core.XmppAddress
 import java.io.File
 import java.util.Locale
 
-// Main and voice processes. The phone's side of people, notes and hand-offs (docs/phase-2.md): ContactsContract
-// (READ_CONTACTS, asked for by the main app only), PhoneNumberUtils, the apps Robot hands drafts to, and the Robot
-// Notes folder. The choices are core's (People.kt, Notes.kt); nothing here logs names, numbers or text.
+// Main and voice processes. The phone's side of people, notes and hand-offs (docs/phase-2.md, docs/people.md):
+// ContactsContract (READ_CONTACTS, asked for by the main app only), PhoneNumberUtils, the apps Robot hands drafts to,
+// the Robot Notes folder and Robot's People. The choices are core's (People.kt, PeopleStore.kt, Notes.kt); nothing here
+// logs names, numbers or text.
 
 object Contacts {
     fun granted(ctx: Context): Boolean = Assistant.granted(ctx, Manifest.permission.READ_CONTACTS)
 
-    /** Every contact's display name and nicknames, to rank against a name. */
+    /** Every contact's display name, nicknames and lookup key, to rank against a name. */
     fun names(ctx: Context): List<ContactName> {
         val cr = ctx.contentResolver
         val names = LinkedHashMap<Long, String>()
-        cr.query(ContactsContract.Contacts.CONTENT_URI, arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY),
+        val keys = HashMap<Long, String>()
+        cr.query(ContactsContract.Contacts.CONTENT_URI,
+            arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY, ContactsContract.Contacts.LOOKUP_KEY),
             null, null, null)?.use { c ->
             while (c.moveToNext()) {
                 val name = c.getString(1)
                 if (!name.isNullOrBlank()) names[c.getLong(0)] = name
+                c.getString(2)?.takeIf { it.isNotBlank() }?.let { keys[c.getLong(0)] = it }
             }
         }
         val nicknames = HashMap<Long, MutableList<String>>()
@@ -50,17 +58,17 @@ object Contacts {
                 if (!n.isNullOrBlank()) nicknames.getOrPut(c.getLong(0)) { mutableListOf() } += n
             }
         }
-        return names.map { (id, n) -> ContactName(id, n, nicknames[id].orEmpty()) }
+        return names.map { (id, n) -> ContactName(ContactIds.system(id), n, nicknames[id].orEmpty(), lookupKey = keys[id]) }
     }
 
     /** The numbers, email addresses and XMPP (Jabber) addresses of the [matches], in their order. */
     @Suppress("DEPRECATION") // Im's protocol columns: deprecated, still how a contact's Jabber address is stored.
     fun cards(ctx: Context, matches: List<ContactMatch>): List<ContactCard> {
-        if (matches.isEmpty()) return emptyList()
-        val ids = matches.map { it.id }
+        val ids = matches.mapNotNull { ContactIds.systemId(it.id) }
+        if (ids.isEmpty()) return emptyList()
         val phones = HashMap<Long, MutableList<ContactPhone>>()
         val emails = HashMap<Long, MutableList<String>>()
-        val xmpp = HashMap<Long, MutableList<String>>()
+        val xmpp = HashMap<Long, MutableList<XmppAddress>>()
         val sel = "${Data.CONTACT_ID} IN (${ids.joinToString(",") { "?" }}) AND ${Data.MIMETYPE} IN (?, ?, ?)"
         val args = ids.map { it.toString() } + listOf(Phone.CONTENT_ITEM_TYPE, Email.CONTENT_ITEM_TYPE, Im.CONTENT_ITEM_TYPE)
         val projection = arrayOf(Data.CONTACT_ID, Data.MIMETYPE, Data.DATA1, Data.DATA2, Data.DATA3, Im.PROTOCOL, Im.CUSTOM_PROTOCOL)
@@ -80,13 +88,16 @@ object Contacts {
                         val protocol = if (c.isNull(5)) null else c.getInt(5)
                         val custom = c.getString(6)?.lowercase(Locale.ROOT)
                         if (protocol == Im.PROTOCOL_JABBER || (protocol == Im.PROTOCOL_CUSTOM && (custom == "xmpp" || custom == "jabber"))) {
-                            xmpp.getOrPut(id) { mutableListOf() } += value.removePrefix("xmpp:")
+                            xmpp.getOrPut(id) { mutableListOf() } += XmppAddress(value.removePrefix("xmpp:"))
                         }
                     }
                 }
             }
         }
-        return matches.map { m -> ContactCard(m.id, m.name, phones[m.id].orEmpty(), emails[m.id].orEmpty(), xmpp[m.id].orEmpty()) }
+        return matches.mapNotNull { m ->
+            val id = ContactIds.systemId(m.id) ?: return@mapNotNull null
+            ContactCard(m.id, m.name, phones[id].orEmpty(), emails[id].orEmpty(), xmpp[id].orEmpty())
+        }
     }
 
     private fun kind(type: Int): PhoneKind = when (type) {
@@ -166,4 +177,16 @@ object AppPages {
 object NotesFiles {
     fun dir(ctx: Context): File = File(ctx.filesDir, "notes").apply { mkdirs() }
     fun store(ctx: Context): NoteStore = NoteStore(dir(ctx))
+}
+
+/** Robot's People (docs/people.md): files/people/people.json, changed under a lock both app processes take. */
+object PeopleFiles {
+    fun dir(ctx: Context): File = File(ctx.filesDir, "people").apply { mkdirs() }
+    fun store(ctx: Context): PeopleStore = PeopleStore(dir(ctx))
+
+    /**
+     * People and, when Robot may read them, the phone's contacts, as one address book for a name. Contacts that can't be
+     * read (not allowed) leave People alone.
+     */
+    fun book(ctx: Context): AddressBook = AddressBook(if (Contacts.granted(ctx)) Contacts.names(ctx) else emptyList(), store(ctx).list())
 }

@@ -355,6 +355,7 @@ enum class Personal(val label: String) {
     PHOTO("a photo"),
     CALENDAR("your calendar"),
     NOTES("your notes"),
+    /** What a lookup found: the phone's contacts and Robot's People (names learned from notifications included). */
     CONTACTS("your contacts"),
     /** Claude's answer read off the Claude app's screen. */
     CLAUDE_APP("text from the Claude app"),

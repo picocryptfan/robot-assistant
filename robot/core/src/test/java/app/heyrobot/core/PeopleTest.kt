@@ -81,13 +81,13 @@ class PeopleTest {
     // ------------------------------------------------------------------ contact ranking
 
     private val contacts = listOf(
-        ContactName(1, "Mom", listOf("Maman")),
-        ContactName(2, "Momo Takeda"),
-        ContactName(3, "Alex Martin"),
-        ContactName(4, "Alexandra Roy", listOf("Sasha")),
-        ContactName(5, "Hélène Côté"),
-        ContactName(6, "John Smith"),
-        ContactName(7, "Dr. Alex Chen"),
+        ContactName("1", "Mom", listOf("Maman")),
+        ContactName("2", "Momo Takeda"),
+        ContactName("3", "Alex Martin"),
+        ContactName("4", "Alexandra Roy", listOf("Sasha")),
+        ContactName("5", "Hélène Côté"),
+        ContactName("6", "John Smith"),
+        ContactName("7", "Dr. Alex Chen"),
     )
 
     private fun best(q: String) = ContactMatcher.best(q, contacts).map { it.id }
@@ -104,52 +104,52 @@ class PeopleTest {
         assertNull(ContactMatcher.kind("Dan", "Don Lee"))
         assertNull(ContactMatcher.kind("Bob", "Alex Martin"))
         // The best kind only: "Mom" is Mom, not Momo.
-        assertEquals(listOf(1L), best("Mom"))
-        assertEquals(listOf(1L), best("my mom"))
+        assertEquals(listOf("1"), best("Mom"))
+        assertEquals(listOf("1"), best("my mom"))
         val ranked = ContactMatcher.rank("Mom", contacts)
-        assertEquals(listOf(1L, 2L), ranked.map { it.id })
+        assertEquals(listOf("1", "2"), ranked.map { it.id })
         assertEquals(listOf(NameMatch.EXACT, NameMatch.PREFIX), ranked.map { it.kind })
     }
 
     @Test fun caseAccentsAndNicknamesDontMatter() {
-        assertEquals(listOf(5L), best("helene cote"))
-        assertEquals(listOf(5L), best("HÉLÈNE"))
-        assertEquals(listOf(1L), best("maman"))
-        assertEquals(listOf(4L), best("Sasha"))
+        assertEquals(listOf("5"), best("helene cote"))
+        assertEquals(listOf("5"), best("HÉLÈNE"))
+        assertEquals(listOf("1"), best("maman"))
+        assertEquals(listOf("4"), best("Sasha"))
     }
 
     @Test fun severalPeopleWithTheNameAreAllOffered() {
         // Two prefix matches for "Alex": the card asks which (shorter names first); Dr. Alex Chen is only a word match.
-        assertEquals(listOf(3L, 4L), best("Alex"))
-        assertEquals(listOf(7L), best("Alex Chen"))
-        assertEquals(listOf(3L), best("alex martin"))
+        assertEquals(listOf("3", "4"), best("Alex"))
+        assertEquals(listOf("7"), best("Alex Chen"))
+        assertEquals(listOf("3"), best("alex martin"))
     }
 
     @Test fun fuzzyOnlyWhenNothingBetterAndNeverForTinyNames() {
-        assertEquals(listOf(6L), best("Jon Smith"))
-        assertEquals(listOf(6L), best("Smyth"))
+        assertEquals(listOf("6"), best("Jon Smith"))
+        assertEquals(listOf("6"), best("Smyth"))
         assertEquals(NameMatch.FUZZY, ContactMatcher.kind("Smyth", "John Smith"))
         // Two letters: a prefix still counts (the card offers both), but never a fuzzy guess.
-        assertEquals(listOf(3L, 4L), best("Al"))
+        assertEquals(listOf("3", "4"), best("Al"))
         assertNull(ContactMatcher.kind("Jo", "Bo"))
-        assertEquals(emptyList<Long>(), best("Zed"))
-        assertEquals(emptyList<Long>(), best(""))
+        assertEquals(emptyList<String>(), best("Zed"))
+        assertEquals(emptyList<String>(), best(""))
     }
 
     // ------------------------------------------------------------------ where a text or an email goes
 
-    private val mom = ContactCard(1, "Mom",
+    private val mom = ContactCard("1", "Mom",
         phones = listOf(
             ContactPhone("514 555 0199", PhoneKind.HOME, "Home"),
             ContactPhone("+1 514-555-0101", PhoneKind.MOBILE, "Mobile"),
             ContactPhone("(514) 555-0101", PhoneKind.MOBILE, "Mobile"),
         ),
         emails = listOf("mom@example.org", "MOM@example.org", "not an address"))
-    private val alex = ContactCard(3, "Alex Martin", phones = listOf(ContactPhone("613 555 0123", PhoneKind.WORK, "Work")), xmpp = listOf("alex@jabber.example.org"))
+    private val alex = ContactCard("3", "Alex Martin", phones = listOf(ContactPhone("613 555 0123", PhoneKind.WORK, "Work")), xmpp = listOf(XmppAddress("alex@jabber.example.org")))
 
     @Test fun onlyOneExactPersonWithOneDestinationGoesWithoutACard() {
         // Review A M5: a single fuzzy or prefix match, or several people, ran without a card under "Just do it".
-        fun m(id: Long, kind: NameMatch) = ContactMatch(id, "x$id", kind)
+        fun m(id: Long, kind: NameMatch) = ContactMatch("$id", "x$id", kind)
         assertTrue(ContactMatcher.sure(listOf(m(1, NameMatch.EXACT)), 1))
         assertFalse(ContactMatcher.sure(listOf(m(1, NameMatch.EXACT)), 2))
         assertFalse(ContactMatcher.sure(listOf(m(1, NameMatch.PREFIX)), 1))
@@ -158,17 +158,17 @@ class PeopleTest {
         assertFalse(ContactMatcher.sure(listOf(m(1, NameMatch.EXACT), m(2, NameMatch.EXACT)), 1))
         assertFalse(ContactMatcher.sure(emptyList(), 1))
         // The review's cases.
-        val tomMaman = listOf(ContactName(1, "Tom Smith"), ContactName(2, "Maman"))
+        val tomMaman = listOf(ContactName("1", "Tom Smith"), ContactName("2", "Maman"))
         assertEquals(emptyList<ContactMatch>(), ContactMatcher.best("Mom", tomMaman))
-        val momo = ContactMatcher.best("Mom", listOf(ContactName(1, "Tom Smith"), ContactName(3, "Momo Diallo")))
-        assertEquals(listOf(3L), momo.map { it.id })
+        val momo = ContactMatcher.best("Mom", listOf(ContactName("1", "Tom Smith"), ContactName("3", "Momo Diallo")))
+        assertEquals(listOf("3"), momo.map { it.id })
         assertFalse(ContactMatcher.sure(momo, 1))
         // Five letters may still be one off, but such a match always shows the card.
-        val salah = ContactMatcher.best("Sarah", listOf(ContactName(19, "Mo Salah")))
+        val salah = ContactMatcher.best("Sarah", listOf(ContactName("19", "Mo Salah")))
         assertEquals(listOf(NameMatch.FUZZY), salah.map { it.kind })
         assertFalse(ContactMatcher.sure(salah, 1))
-        assertFalse(ContactMatcher.sure(ContactMatcher.best("Alexandre", listOf(ContactName(3, "Alexandra Chen"))), 1))
-        assertTrue(ContactMatcher.sure(ContactMatcher.best("maman", listOf(ContactName(6, "Jane Doe", listOf("Maman")))), 1))
+        assertFalse(ContactMatcher.sure(ContactMatcher.best("Alexandre", listOf(ContactName("3", "Alexandra Chen"))), 1))
+        assertTrue(ContactMatcher.sure(ContactMatcher.best("maman", listOf(ContactName("6", "Jane Doe", listOf("Maman")))), 1))
     }
 
     @Test fun theCardRuleForTextsAndEmails() {
@@ -176,13 +176,13 @@ class PeopleTest {
         val asked = Action.SendText("Alex", "hi")
         fun opt(name: String, kind: String?, n: String) = Recipients.Option(name, kind, n,
             asked.copy(target = TextTarget(name, "$n@cheogram.com", n, "Cheogram", TextVia.CHEOGRAM)))
-        val exact = listOf(ContactMatch(1, "Alex", NameMatch.EXACT))
-        val prefix = listOf(ContactMatch(2, "Alexandra Chen", NameMatch.PREFIX))
+        val exact = listOf(ContactMatch("1", "Alex", NameMatch.EXACT))
+        val prefix = listOf(ContactMatch("2", "Alexandra Chen", NameMatch.PREFIX))
         // One exact name, one place: ready, and the gate decides (no forced card).
         assertEquals(false, (Recipients.prepare(asked, exact, listOf(opt("Alex", "Mobile", "+1")), 0) { asked.copy(to = it) } as Prepared.Ready).mustAsk)
         // A prefix match, or several people of whom only one has a number, or people left out: the card shows.
         assertEquals(true, (Recipients.prepare(asked, prefix, listOf(opt("Alexandra Chen", "Mobile", "+1")), 0) { asked } as Prepared.Ready).mustAsk)
-        val two = exact + ContactMatch(3, "Alex", NameMatch.EXACT)
+        val two = exact + ContactMatch("3", "Alex", NameMatch.EXACT)
         assertEquals(true, (Recipients.prepare(asked, two, listOf(opt("Alex", "Mobile", "+1")), 0) { asked } as Prepared.Ready).mustAsk)
         assertEquals(true, (Recipients.prepare(asked, exact, listOf(opt("Alex", "Mobile", "+1")), 4) { asked } as Prepared.Ready).mustAsk)
         // Several places for one person: their kinds and numbers, the waiting card named after them.
@@ -230,13 +230,13 @@ class PeopleTest {
 
     @Test fun anXmppAddressComesFirstButNumbersAreStillOffered() {
         // Review A minor 16: a stale Jabber address hid the mobile number.
-        assertEquals(listOf(Reach(3, "Alex Martin", "alex@jabber.example.org", "XMPP", xmpp = true), Reach(3, "Alex Martin", "613 555 0123", "Work")),
+        assertEquals(listOf(Reach("3", "Alex Martin", "alex@jabber.example.org", "XMPP", xmpp = true), Reach("3", "Alex Martin", "613 555 0123", "Work")),
             Recipients.forText(listOf(alex), xmppOk = true))
         // The SMS app can't text an address: the number only.
         assertEquals(listOf("613 555 0123"), Recipients.forText(listOf(alex), xmppOk = false).map { it.address })
         assertEquals(4, Recipients.forText(listOf(mom, alex), xmppOk = true).size)
         // An address Cheogram would cut short is never offered.
-        val odd = ContactCard(9, "Odd", xmpp = listOf("a?b@x.org", "c/d@x.org", "ok@x.org"))
+        val odd = ContactCard("9", "Odd", xmpp = listOf("a?b@x.org", "c/d@x.org", "ok@x.org").map { XmppAddress(it) })
         assertEquals(listOf("ok@x.org"), Recipients.forText(listOf(odd), xmppOk = true).map { it.address })
     }
 
@@ -268,7 +268,7 @@ class PeopleTest {
     }
 
     @Test fun lookupTellsTheModelAtMostThreePeople() {
-        val many = (1..5).map { ContactCard(it.toLong(), "Person $it", phones = (1..5).map { n -> ContactPhone("514 555 010$n", PhoneKind.OTHER, "Other") },
+        val many = (1..5).map { ContactCard("$it", "Person $it", phones = (1..5).map { n -> ContactPhone("514 555 010$n", PhoneKind.OTHER, "Other") },
             emails = listOf("a$it@example.org", "b$it@example.org", "c$it@example.org")) }
         val r = Recipients.lookup(many)
         assertEquals(3, r.size)

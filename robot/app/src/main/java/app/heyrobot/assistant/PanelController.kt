@@ -87,10 +87,10 @@ import app.heyrobot.core.toPromptTurns
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Assistant
-import app.heyrobot.sys.Contacts
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotesFiles
+import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.Phones
 import app.heyrobot.voice.Cues
 import app.heyrobot.voice.SpeechToText
@@ -1509,8 +1509,9 @@ object PanelController {
             // The message itself; the approval gate still checks the lock. Only the wake phrase: Robot asks again.
             TextCommand.Route.ANSWER -> TextRequest(textingFor!!, answer.trim().ifEmpty { null })
             TextCommand.Route.PARSE -> {
+                // People's names and what you call them, with the phone's contacts when Robot may read them.
                 val names = withContext(Dispatchers.IO) {
-                    if (Contacts.granted(VoiceHub.app)) Contacts.names(VoiceHub.app).flatMap { listOf(it.name) + it.nicknames } else emptyList()
+                    PeopleFiles.book(VoiceHub.app).names.flatMap { listOf(it.name) + it.nicknames + it.aliases }
                 }
                 TextCommand.parse(answer, names, typed) ?: return false
             }
