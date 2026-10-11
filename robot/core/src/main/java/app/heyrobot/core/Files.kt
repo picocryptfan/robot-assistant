@@ -7,12 +7,20 @@ import java.io.FileOutputStream
 // see either the old or the new content, never a half-written file.
 
 /** Writes through a temporary file, fsyncs it and renames it over [f]. */
-fun writeAtomic(f: File, text: String) {
+fun writeAtomic(f: File, text: String) = writeAtomicBytes(f, text.toByteArray(Charsets.UTF_8))
+
+/** [writeAtomic] for bytes (the encrypted voiceprint): a crash leaves the old file or the new one, never half of one. */
+fun writeAtomicBytes(f: File, bytes: ByteArray) {
     f.parentFile?.mkdirs()
     val tmp = File(f.parentFile, ".${f.name}.tmp")
-    FileOutputStream(tmp).use { out ->
-        out.write(text.toByteArray(Charsets.UTF_8))
-        out.fd.sync()
+    try {
+        FileOutputStream(tmp).use { out ->
+            out.write(bytes)
+            out.fd.sync()
+        }
+    } catch (x: java.io.IOException) {
+        tmp.delete()
+        throw x
     }
     if (!tmp.renameTo(f)) {
         tmp.delete()

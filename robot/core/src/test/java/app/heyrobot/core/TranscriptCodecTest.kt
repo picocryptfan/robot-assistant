@@ -70,7 +70,7 @@ class TranscriptCodecTest {
         assertEquals("S1" to "fr", l2.speaker to l2.lang)
         assertEquals("Marie", t.nameOf("S1"))
         assertEquals("S2", t.me)
-        assertEquals("Me", t.nameOf("S2"))
+        assertEquals("You", t.nameOf("S2"))
         assertEquals(listOf(TranscriptGap(10.0, 250.0, "mic")), t.gaps)
         assertEquals(listOf("S1", "S2"), t.speakers)
     }

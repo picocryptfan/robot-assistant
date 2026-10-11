@@ -212,6 +212,41 @@ class SettingsTest {
         assertEquals(RobotSettings().copy(convWakeDuring = true), RobotSettings.fromJson("""{"schema":8,"convWakeDuring":true}"""))
     }
 
+    /**
+     * 5.3 adds "Tell speakers apart" without a new schema: absent reads as "on once the speaker model is downloaded";
+     * the voiceprint setting stays a flag.
+     */
+    @Test fun speakerLabelsStayInSchemaEight() {
+        assertEquals(null, RobotSettings().convSpeakers)
+        for (v in listOf(true, false)) {
+            val s = RobotSettings(convSpeakers = v)
+            assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+            assertEquals(8, s.toJson().getInt("schema"))
+        }
+        // Not written while unset, so a file from 5.2 and one from today read the same.
+        assertTrue(!RobotSettings().toJson().has("convSpeakers"))
+        assertEquals(null, RobotSettings.fromJson("""{"schema":8,"convMaxSpeakers":4}""").convSpeakers)
+        assertEquals(null, RobotSettings.fromJson("""{"schema":5}""").convSpeakers)
+        assertEquals(RobotSettings().copy(convMaxSpeakers = 4), RobotSettings.fromJson("""{"schema":8,"convMaxSpeakers":4}"""))
+        assertEquals(false, RobotSettings.fromJson("""{"schema":8,"convSpeakers":false}""").convSpeakers)
+        // On once downloaded unless you turned it off; the download is offered unless you did.
+        val d = RobotSettings()
+        assertEquals(true, ConversationSettings.speakers(d, modelReady = true))
+        assertEquals(false, ConversationSettings.speakers(d, modelReady = false))
+        assertEquals(false, ConversationSettings.speakers(d.copy(convSpeakers = false), modelReady = true))
+        assertEquals(true, ConversationSettings.offerSpeakerModel(d, modelReady = false))
+        assertEquals(true, ConversationSettings.offerSpeakerModel(d.copy(convSpeakers = true), modelReady = false))
+        assertEquals(false, ConversationSettings.offerSpeakerModel(d.copy(convSpeakers = false), modelReady = false))
+        assertEquals(false, ConversationSettings.offerSpeakerModel(d, modelReady = true))
+        // The voiceprint is never in settings: only whether there is one.
+        val withMe = RobotSettings(meVoiceprint = true).toJson()
+        assertEquals(true, withMe.getBoolean("meVoiceprint"))
+        assertTrue(withMe.keys().asSequence().none { it.contains("voiceprint", ignoreCase = true) && it != "meVoiceprint" })
+        // The Interpreter tells two people apart; the transcript up to the setting.
+        assertEquals(2, ConversationSettings.maxSpeakers(d.copy(convMaxSpeakers = 6), ConvMode.INTERPRET))
+        assertEquals(4, ConversationSettings.maxSpeakers(d.copy(convMaxSpeakers = 4), ConvMode.TRANSCRIBE))
+    }
+
     @Test fun theConsentReminderShowsUntilTickedAfterItWasAskedFor() {
         val d = RobotSettings()
         assertTrue(ConsentRecord.needed(null, d))

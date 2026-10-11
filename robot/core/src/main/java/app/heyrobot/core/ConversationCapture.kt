@@ -22,7 +22,7 @@ object ConversationRules {
     const val PARTIAL_MS = 1_500L
     /** The session's audio ring: a whole capped segment with its padding, and room to spare. */
     const val RING_MS = 20_000
-    /** The single speaker label until speaker labels come (phase 5.3). */
+    /** Every line's label when speakers aren't told apart (no speaker model, or "Tell speakers apart" off). */
     const val SPEAKER = "S1"
     /** A stopped session waits this long for the segments still being decoded, so every line heard is saved. */
     const val DRAIN_MS = 30_000L
@@ -187,15 +187,16 @@ data class Heard(val text: String, val tokens: List<String> = emptyList(), val t
 }
 
 /**
- * Each line's language (docs/conversation-mode.md 2.3) without speaker labels (phase 5.3): the line's own words, and
- * for a short or not-sure line, the previous line's language, then the table's best guess, then yours ([owner]).
+ * Each line's language (docs/conversation-mode.md 2.3): the line's own words, and for a short or not-sure line its
+ * speaker's usual language ([label]'s speakerLang, phase 5.3), else the previous line's, then the table's best guess,
+ * then yours ([owner]).
  */
 class LineLabeller(private val id: LangId, private val owner: String) {
     private var previous: String? = null
 
-    fun label(text: String): Pair<LangGuess, LineLang> {
+    fun label(text: String, speakerLang: String? = null): Pair<LangGuess, LineLang> {
         val g = id.detect(text)
-        val l = LangLabel.choose(g, previous = previous, owner = owner)
+        val l = LangLabel.choose(g, speaker = speakerLang, previous = previous, owner = owner)
         // A label from the prior doesn't become the prior of the next line by itself... unless nothing better is known.
         if (!l.fromPrior || previous == null) previous = l.lang
         return g to l
@@ -208,16 +209,17 @@ class LineLabeller(private val id: LangId, private val owner: String) {
 /** A decoded segment as the line the event log stores (docs/conversation-mode.md 6.2). Times in seconds. */
 object ConversationLine {
     /**
-     * Line [i] of a segment decoded from [seg]'s padded start, in a run that began [offsetS] seconds into the session:
-     * its time is the speech's (not the padding's), its words' starts are counted from there (a word in the padding
-     * counts as 0).
+     * Line [i] of a segment decoded from [seg]'s padded start, in a run that began [offsetS] seconds into the session,
+     * by [speaker]: its time is the speech's (not the padding's), its words' starts are counted from there (a word in
+     * the padding counts as 0).
      */
-    fun make(i: Int, offsetS: Double, seg: Segment, heard: Heard, guess: LangGuess, lang: LineLang, reheard: Boolean, rate: Int = Pcm.RATE): TranscriptEvent.Line {
+    fun make(i: Int, offsetS: Double, seg: Segment, heard: Heard, guess: LangGuess, lang: LineLang, reheard: Boolean, rate: Int = Pcm.RATE,
+        speaker: String = ConversationRules.SPEAKER): TranscriptEvent.Line {
         val t0 = offsetS + seg.speechStart.toDouble() / rate
         val t1 = offsetS + seg.speechEnd.toDouble() / rate
         val shift = Math.round((seg.speechStart - seg.start) * 100.0 / rate).toInt()
         val ws = heard.wordStarts().map { (it - shift).coerceAtLeast(0) }
-        return TranscriptEvent.Line(i, t0, t1, ConversationRules.SPEAKER, lang.lang, heard.text.trim(), Math.round(guess.margin * 100) / 100.0,
+        return TranscriptEvent.Line(i, t0, t1, speaker, lang.lang, heard.text.trim(), Math.round(guess.margin * 100) / 100.0,
             lang.fromPrior, ws, reheard)
     }
 }

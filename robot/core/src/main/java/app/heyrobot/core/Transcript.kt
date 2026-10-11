@@ -166,8 +166,11 @@ data class Transcript(
 
     fun line(i: Int): TranscriptLine? = lines.firstOrNull { it.i == i }
 
-    /** A speaker as shown: the name you gave, else "Me" for you, else the label. */
-    fun nameOf(speaker: String): String = names[speaker] ?: if (speaker == me || speaker == SpeakerClusterer.ME) SpeakerClusterer.ME else speaker
+    /** A speaker as shown and exported: the name you gave, else "You" for you, else the label (S1, S2…, "?"). */
+    fun nameOf(speaker: String): String = names[speaker] ?: if (speaker == me || speaker == SpeakerClusterer.ME) SpeakerLabels.YOU else speaker
+
+    /** One voice only (speaker labels off, or one person heard) and no names: the screens show "Speaker". */
+    val oneVoice: Boolean get() = speakers.size <= 1 && names.isEmpty() && me == null && SpeakerClusterer.ME !in speakers
 }
 
 /** Folds events one by one (the reader, and the live session's own copy). */
@@ -393,8 +396,25 @@ data class TranscriptMeta(
     val keepAudio: Boolean = false,
     val memory: Boolean = false,
     val important: Boolean = false,
+    /**
+     * Speakers who sounded alike when the session ended ("S3" to "S1"), offered as merges on the transcript until you
+     * merge or turn one down (phase 5.3). The voices themselves were dropped with the session.
+     */
+    val similar: List<Pair<String, String>> = emptyList(),
     val version: Int = VERSION,
 ) {
+    /**
+     * [t]'s speakers as meta.json lists them (in the order they first spoke, with the names you gave and who is you), and
+     * the proposals that still make sense: both speakers still there, and not the same one since.
+     */
+    fun withSpeakers(t: Transcript): TranscriptMeta = copy(
+        speakers = t.speakers.map { SpeakerInfo(it, t.names[it], SpeakerLabels.colour(it), it == t.me || it == SpeakerClusterer.ME) },
+        similar = similar.filter { (a, b) -> a != b && a in t.speakers && b in t.speakers },
+    )
+
+    /** Without the proposal of [from] and [to] (merged, or "not the same person"), in either order. */
+    fun without(from: String, to: String): TranscriptMeta = copy(similar = similar.filter { it != from to to && it != to to from })
+
     fun toJson(): String = JSONObject().apply {
         put("v", version)
         put("id", id)
@@ -410,6 +430,7 @@ data class TranscriptMeta(
         put("keepAudio", keepAudio)
         put("memory", memory)
         put("important", important)
+        if (similar.isNotEmpty()) put("similar", JSONArray().apply { similar.forEach { (a, b) -> put(JSONArray().put(a).put(b)) } })
     }.toString()
 
     companion object {
@@ -435,6 +456,14 @@ data class TranscriptMeta(
                 // Absent or unreadable: off. Memory never reads a transcript you didn't let it.
                 memory = o.optBoolean("memory", false),
                 important = o.optBoolean("important"),
+                similar = (o.optJSONArray("similar") ?: JSONArray()).let { a ->
+                    (0 until a.length()).mapNotNull { k ->
+                        val p = a.optJSONArray(k) ?: return@mapNotNull null
+                        val from = p.optString(0)
+                        val to = p.optString(1)
+                        if (SpeakerLabels.valid(from) && SpeakerLabels.valid(to) && from != to) from to to else null
+                    }
+                },
                 version = o.optInt("v", VERSION),
             )
         } catch (_: Exception) { null }

@@ -32,21 +32,21 @@ class TranscriptExportTest {
             # Lunch with Marie
 
             - Date: 11 October 2026, 14:02–14:43 (41 min)
-            - Speakers: Marie (S1), Me (S2)
+            - Speakers: Marie (S1), You (S2)
             - Languages: French, English
             - Transcribed on this phone by Robot (Parakeet v3). Translations: Gemma 4 E2B / Bergamot (marked "fast").
 
             **[14:02:11] Marie (FR):** On se reprend-tu demain? J'ai pogné un \*char\* de trafic.
             > EN: Shall we meet again tomorrow? I got stuck in traffic. _(fast)_
 
-            **[14:02:15] Me (EN):** Sure, at 5?
+            **[14:02:15] You (EN):** Sure, at 5?
             > FR: Bien sûr, à 17 h?
 
             **[14:02:17] Marie (FR?):** Oui.
 
             *\[microphone unavailable 14:03–14:07\]*
 
-            **[14:07:01] Me (EN):** Sorry, a call came in. Where were we? _(edited)_
+            **[14:07:01] You (EN):** Sorry, a call came in. Where were we? _(edited)_
 
         """.trimIndent(), TranscriptExport.markdown(meta, transcript, zone = zone))
     }
@@ -55,21 +55,21 @@ class TranscriptExportTest {
         assertEquals("""
             Lunch with Marie
             Date: 11 October 2026, 14:02–14:43 (41 min)
-            Speakers: Marie (S1), Me (S2)
+            Speakers: Marie (S1), You (S2)
             Languages: French, English
             Transcribed on this phone by Robot (Parakeet v3). Translations: Gemma 4 E2B / Bergamot (marked "fast").
 
             [14:02:11] Marie (FR): On se reprend-tu demain? J'ai pogné un *char* de trafic.
                 EN: Shall we meet again tomorrow? I got stuck in traffic. (fast)
 
-            [14:02:15] Me (EN): Sure, at 5?
+            [14:02:15] You (EN): Sure, at 5?
                 FR: Bien sûr, à 17 h?
 
             [14:02:17] Marie (FR?): Oui.
 
             [microphone unavailable 14:03–14:07]
 
-            [14:07:01] Me (EN): Sorry, a call came in. Where were we? (edited)
+            [14:07:01] You (EN): Sorry, a call came in. Where were we? (edited)
 
         """.trimIndent(), TranscriptExport.text(meta, transcript, zone = zone))
     }
@@ -83,6 +83,27 @@ class TranscriptExportTest {
         assertEquals("Transcript 2026-10-11 1402.md", TranscriptExport.fileName(meta, "md", zone))
         // Nothing a person said can become a heading, a link or HTML in the Markdown.
         assertEquals("\\# Title \\[x\\](y) \\<b\\> a \\| b", TranscriptExport.md("# Title [x](y) <b>\na | b"))
+    }
+
+    /** Phase 5.3: the names you gave go into the export, after merges and splits, and an enrolled voice is "You". */
+    @Test fun exportsUseTheNamesAfterMergesAndSplits() {
+        val t = TranscriptFold().apply {
+            apply(TranscriptEvent.Line(0, 1.0, 3.0, "Me", "en", "Shall we start?"))
+            apply(TranscriptEvent.Line(1, 4.0, 6.0, "S1", "fr", "Oui, on commence. Moi je prends le café."))
+            apply(TranscriptEvent.Line(2, 7.0, 9.0, "S2", "fr", "Et moi un thé."))
+            apply(TranscriptEvent.Merge("S2", "S1"))
+            apply(TranscriptEvent.Rename("S1", "Marie"))
+            apply(TranscriptEvent.Split(1, 18, 3, "S3"))
+            apply(TranscriptEvent.Rename("S3", "Luc"))
+        }.result()
+        val text = TranscriptExport.text(meta, t, ExportOptions(times = false), zone)
+        assertTrue(text, text.contains("Speakers: You, Marie (S1), Luc (S3)\n"))
+        assertTrue(text, text.contains("\nYou (EN): Shall we start?\n"))
+        assertTrue(text, text.contains("\nMarie (FR): Oui, on commence.\n"))
+        assertTrue(text, text.contains("\nLuc (FR): Moi je prends le café.\n"))
+        assertTrue(text, text.contains("\nMarie (FR): Et moi un thé.\n"))
+        // Without names: the labels.
+        assertTrue(TranscriptExport.text(meta, t, ExportOptions(names = false), zone).contains("Speakers: Me, S1, S3\n"))
     }
 
     @Test fun searchIgnoresAccentsAndCaseAndFindsTranslations() {

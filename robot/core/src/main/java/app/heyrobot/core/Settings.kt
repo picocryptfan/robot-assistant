@@ -148,6 +148,11 @@ data class RobotSettings(
     val convPartials: Boolean = true,
     /** The most speakers a transcript tells apart, 2 to 6 (the Interpreter: always 2). */
     val convMaxSpeakers: Int = 6,
+    /**
+     * Settings › Conversation › "Tell speakers apart" (0.5.0, phase 5.3): label each line S1, S2… by its voice. Null: on
+     * once the speaker model is downloaded ([ConversationSettings.speakers]); false: off, and the download isn't offered.
+     */
+    val convSpeakers: Boolean? = null,
     /** "Hey robot works during a conversation" (off: the wake word sleeps for the whole session; "stop" still works while Robot talks). */
     val convWakeDuring: Boolean = false,
     /** "Start from the lock screen": a new recording shows nothing older. */
@@ -159,8 +164,9 @@ data class RobotSettings(
     /** Offer "Summarize with a stronger AI" first for a long or important conversation, or one the number check flagged. */
     val convAutoOfferHelper: Boolean = true,
     /**
-     * A "me" voiceprint is enrolled (Settings › Voice). Only that it exists: the voiceprint itself is in its own
-     * encrypted file in the :voice process, never in settings.
+     * A "me" voiceprint is enrolled (Settings › Conversation › Your voice). Only that it exists, kept in step with the
+     * file by the main app: the voiceprint itself is in its own encrypted file, written and read by the :voice process
+     * only (VoiceprintCodec), never in settings.
      */
     val meVoiceprint: Boolean = false,
     /**
@@ -272,6 +278,7 @@ data class RobotSettings(
         convSpeak?.let { put("convSpeak", it) }
         put("convPartials", convPartials)
         put("convMaxSpeakers", convMaxSpeakers)
+        convSpeakers?.let { put("convSpeakers", it) }
         put("convWakeDuring", convWakeDuring)
         put("convStartLocked", convStartLocked)
         put("convKeepAudio", convKeepAudio)
@@ -409,6 +416,8 @@ data class RobotSettings(
                 // Before schema 8 there was no such setting: it follows "Show the words while you speak".
                 convPartials = o.optBoolean("convPartials", if (o.optInt("schema", 1) < 8) o.optBoolean("livePartials", d.livePartials) else d.convPartials),
                 convMaxSpeakers = clampSpeakers(o.optInt("convMaxSpeakers", d.convMaxSpeakers)),
+                // Still schema 8 (0.5.0, phase 5.3): absent means "on once the speaker model is downloaded".
+                convSpeakers = if (o.has("convSpeakers")) o.optBoolean("convSpeakers") else null,
                 convWakeDuring = o.optBoolean("convWakeDuring", d.convWakeDuring),
                 convStartLocked = o.optBoolean("convStartLocked", d.convStartLocked),
                 convKeepAudio = o.optBoolean("convKeepAudio", d.convKeepAudio),

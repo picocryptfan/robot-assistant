@@ -57,7 +57,8 @@ object TranscriptExport {
         val end = Instant.ofEpochMilli(endMs).atZone(zone)
         val speakers = t.speakers.joinToString(", ") { s ->
             val shown = speaker(t, s, o)
-            if (o.names && shown != s) "$shown ($s)" else shown
+            // "Marie (S1)", so a label in a summary or an older copy still points at someone; "You" for your enrolled voice.
+            if (o.names && shown != s && s != SpeakerClusterer.ME) "$shown ($s)" else shown
         }
         val translated = o.translations && t.lines.any { it.translations.isNotEmpty() }
         return listOfNotNull(
