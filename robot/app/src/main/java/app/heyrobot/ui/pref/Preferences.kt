@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -25,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -254,7 +256,7 @@ private fun RowScope.PrefTexts(
     val alpha = if (enabled) 1f else DISABLED
     val c = MaterialTheme.colorScheme
     if (leading != null || icon != null) {
-        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.defaultMinSize(24.dp, 24.dp), contentAlignment = Alignment.Center) {
             if (leading != null) leading() else Icon(icon!!, null, tint = c.onSurface.copy(alpha = alpha))
         }
         Spacer(Modifier.width(16.dp))
@@ -286,11 +288,12 @@ fun PreferenceItem(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    leading: (@Composable () -> Unit)? = null,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     PrefFrame(if (onClick != null) Modifier.clickable(enabled = enabled, onClick = onClick) else Modifier, modifier) {
-        PrefTexts(title, summary, icon, enabled)
+        PrefTexts(title, summary, icon, enabled, leading = leading)
         if (trailing != null) {
             Spacer(Modifier.width(16.dp))
             trailing()
@@ -367,6 +370,47 @@ fun TwoTargetSwitchPreference(
                 .padding(horizontal = RobotTokens.prefPaddingH),
             contentAlignment = Alignment.Center,
         ) { PrefSwitch(checked, enabled) }
+    }
+}
+
+/**
+ * Two targets in one row, the general case: the text (and [leading]) opens something or picks it ([onClick], as [role]:
+ * a radio row passes [selected]), and [trailing] holds targets of its own (Keep and Remove, a details button), each with
+ * its own label.
+ */
+@Composable
+fun TwoTargetPreference(
+    title: String,
+    summary: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+    leading: (@Composable () -> Unit)? = null,
+    role: Role = Role.Button,
+    selected: Boolean? = null,
+    onClickLabel: String? = null,
+    trailing: @Composable RowScope.() -> Unit,
+) {
+    val grouped = RobotTokens.groupedSettings && LocalInGroup.current
+    Row(
+        modifier.fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .heightIn(min = RobotTokens.prefMinHeight)
+            .clip(if (grouped) RoundedCornerShape(RobotTokens.itemCorner) else RectangleShape)
+            .background(if (grouped) MaterialTheme.colorScheme.surfaceBright else Color.Transparent),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val target = if (selected != null) Modifier.selectable(selected, enabled = enabled, role = role, onClick = onClick)
+            else Modifier.clickable(enabled = enabled, role = role, onClickLabel = onClickLabel, onClick = onClick)
+        Row(
+            Modifier.weight(1f).fillMaxHeight()
+                .then(target)
+                .semantics(mergeDescendants = true) {}
+                .padding(start = RobotTokens.prefPaddingH, end = 8.dp, top = RobotTokens.prefPaddingV, bottom = RobotTokens.prefPaddingV),
+            verticalAlignment = Alignment.CenterVertically,
+        ) { PrefTexts(title, summary, icon, enabled, leading = leading) }
+        Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically, content = trailing)
     }
 }
 

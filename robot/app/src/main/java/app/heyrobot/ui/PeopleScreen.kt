@@ -83,6 +83,28 @@ import app.heyrobot.sys.NotificationAccess
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.PhoneContacts
 import app.heyrobot.ui.common.RIcons
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import app.heyrobot.ui.pref.IntroPreference
+import app.heyrobot.ui.pref.PreferenceBlock
+import app.heyrobot.ui.pref.PreferenceCategory
+import app.heyrobot.ui.pref.PreferenceItem
+import app.heyrobot.ui.pref.PreferenceScreen
+import app.heyrobot.ui.pref.StatusPreference
+import app.heyrobot.ui.pref.SwitchPreference
+import app.heyrobot.ui.pref.TwoTargetPreference
+import app.heyrobot.ui.pref.preferenceFooter
+import app.heyrobot.ui.pref.preferenceGroup
+import app.heyrobot.ui.pref.preferenceItems
+import app.heyrobot.ui.settings.SettingsRoutes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -204,132 +226,132 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
 
     fun launch(block: () -> Unit, missing: String) = try { block() } catch (_: ActivityNotFoundException) { a.say(missing) }
 
-    Scaffold(topBar = { BackBar("People", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
-        // Searched off the main thread, a moment after the last key (thousands of people).
-        var shown by remember { mutableStateOf<List<Person>>(emptyList()) }
-        LaunchedEffect(people, query) {
-            if (query.isBlank()) { shown = people; return@LaunchedEffect }
-            delay(SEARCH_DELAY_MS)
-            shown = withContext(Dispatchers.Default) { people.filter { People.matches(it, query) } }
-        }
-        LazyColumn(
-            Modifier.fillMaxSize().padding(pad).padding(horizontal = 20.dp),
-            contentPadding = PaddingValues(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
-                Text("People Robot knows besides your contacts: who to text or email, and what you call them. Kept on this phone only, " +
-                    "never sent to Claude, and not in Android's backups.",
-                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    // Searched off the main thread, a moment after the last key (thousands of people).
+    var shown by remember { mutableStateOf<List<Person>>(emptyList()) }
+    LaunchedEffect(people, query) {
+        if (query.isBlank()) { shown = people; return@LaunchedEffect }
+        delay(SEARCH_DELAY_MS)
+        shown = withContext(Dispatchers.Default) { people.filter { People.matches(it, query) } }
+    }
+    var menu by remember { mutableStateOf(false) }
+    val learned = people.filter { !it.confirmed }
+    val granted = facts?.notificationAccess == true
+    PreferenceScreen("People", onBack, snackbar = snackbar, actions = {
+        // Import, export and Delete all: the overflow, as in Android's Contacts.
+        Box {
+            IconButton(onClick = { menu = true }) { Icon(RIcons.MoreVert, "More options") }
+            DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                DropdownMenuItem(text = { Text("Import contacts file (.vcf)") }, leadingIcon = { Icon(RIcons.Folder, null) }, onClick = {
+                    menu = false
+                    launch({ importer.launch(arrayOf("text/vcard", "text/x-vcard", "text/directory", "*/*")) }, "No app on this phone opens files.")
+                })
+                DropdownMenuItem(text = { Text("Export (.vcf)") }, leadingIcon = { Icon(RIcons.Download, null) }, onClick = {
+                    menu = false
+                    launch({ exporter.launch("Robot People.vcf") }, "No app on this phone saves files.")
+                })
+                if (people.isNotEmpty()) {
+                    DropdownMenuItem(text = { Text("Delete all People") }, leadingIcon = { Icon(RIcons.Delete, null) }, onClick = {
+                        menu = false
+                        confirmDeleteAll = true
+                    })
+                }
             }
-            if (damaged) item {
-                Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        }
+    }) {
+        item(key = "intro") {
+            IntroPreference("People Robot knows besides your contacts: who to text or email, and what you call them. Kept on this phone " +
+                "only, never sent to Claude, and not in Android's backups.")
+        }
+        if (damaged) item(key = "damaged") {
+            Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(RIcons.Error, null)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("Robot can't read its People file", style = MaterialTheme.typography.titleSmall)
                         Text("It may be damaged. Robot changes nothing in it, and knows no one here, until you start over. Starting over keeps " +
                             "the old file aside (people.json.bad, in Robot's files) and begins an empty list; import your last export to get everyone back.",
                             style = MaterialTheme.typography.bodyMedium)
-                        FilledTonalButton(onClick = { confirmReset = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Start over") }
                     }
+                    TextButton(onClick = { confirmReset = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Start over") }
                 }
-            }
-            item {
-                SectionCard("Add people") {
-                    NavRow(RIcons.Add, "Add person", "Type a name, numbers, emails and XMPP addresses") { onOpen(null) }
-                    NavRow(RIcons.Folder, "Import contacts file (.vcf)",
-                        "Proton Mail: on the web, Contacts › select all › Export selection as .VCF. Robot keeps names, nicknames, numbers, " +
-                            "emails and XMPP addresses only.") {
-                        launch({ importer.launch(arrayOf("text/vcard", "text/x-vcard", "text/directory", "*/*")) }, "No app on this phone opens files.")
-                    }
-                    val pkg = HandOffApps.cheogram(ctx)
-                    if (pkg != null && remember(pkg) { CheogramIntents.canPick(ctx, pkg) }) {
-                        NavRow(RIcons.Message, "Add from Cheogram", "Pick someone in Cheogram's list (it says “Create shortcut”: nothing goes on your home screen)") {
-                            launch({ cheogram.launch(CheogramIntents.pick(pkg)) }, "Cheogram's list didn't open.")
-                        }
-                    }
-                    NavRow(RIcons.Person, "Add from phone contacts", "Pick one contact; Robot needs no permission for this") {
-                        try { picker.launch(PhoneContacts.picker()) } catch (_: ActivityNotFoundException) { askLegacy = true }
-                    }
-                    NavRow(RIcons.Download, "Export (.vcf)", "A backup, and a file any contacts app can import") {
-                        launch({ exporter.launch("Robot People.vcf") }, "No app on this phone saves files.")
-                    }
-                }
-            }
-            item {
-                SectionCard("Remembering") {
-                    SwitchRow("Remember who I pick", "Robot offers to remember who you pick in Cheogram, and the number or address you tap on a card " +
-                        "(“Always use this for mom”).", s.rememberPicks) { update(s.copy(rememberPicks = it)) }
-                }
-            }
-            item {
-                val learned = people.filter { !it.confirmed }
-                SectionCard("Learn from Cheogram") {
-                    SwitchRow("Learn names from Cheogram notifications",
-                        "When someone messages you in Cheogram, Robot keeps their name, their address and your account, never the message. " +
-                            "A name learned this way always shows the card before a text, since whoever sends a message chooses it.",
-                        s.learnFromCheogram) { on ->
-                        update(s.copy(learnFromCheogram = on))
-                        // Turned on: the Cheogram installed now is the one trusted (its signer is kept at its first notification).
-                        if (on) { scope.launch(Dispatchers.IO) { PeopleFiles.forgetCheogramSigner(ctx) }; NotificationAccess.rebind(ctx) }
-                    }
-                    val granted = facts?.notificationAccess == true
-                    when {
-                        s.learnFromCheogram && !granted -> NotificationAccessSteps()
-                        s.learnFromCheogram -> StatusRow(Mark.OK, "Notification access allowed",
-                            "Robot looks at Cheogram's notifications only, and of those only the sender of a 1:1 chat.")
-                        granted -> StatusRow(Mark.TODO, "Notification access is still allowed",
-                            "Robot ignores notifications while this is off. You can take the access back in Android's settings.") {
-                            TextButton(onClick = { openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text("Open") }
-                        }
-                    }
-                    // 0.4.6: what Robot reads, where it is kept, and how to take it back, before and after turning it on.
-                    CheogramPrivacy(canTakeBack = granted && s.learnFromCheogram) { openFirst(ctx, NotificationAccess.settings(ctx), a) }
-                    if (learned.isNotEmpty()) {
-                        Text("Learned from Cheogram (${learned.size})", style = MaterialTheme.typography.titleSmall)
-                        for (p in learned.take(MAX_LEARNED_SHOWN)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f).heightIn(min = 48.dp).clickable(onClickLabel = "Open") { onOpen(p.id) }, verticalArrangement = Arrangement.Center) {
-                                    Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(People.summary(p), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                }
-                                TextButton(onClick = { scope.launch {
-                                    withContext(Dispatchers.IO) { store.update { PeopleEdit.confirm(it, p.id, now()) } }
-                                    tick++
-                                } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Keep") }
-                                // Their address isn't learned again, so the next message doesn't bring them back.
-                                TextButton(onClick = { scope.launch {
-                                    withContext(Dispatchers.IO) { store.remove(p.id, ignore = true) }
-                                    tick++
-                                } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Remove") }
-                            }
-                        }
-                        if (learned.size > MAX_LEARNED_SHOWN) Text("…and ${learned.size - MAX_LEARNED_SHOWN} more in the list below.",
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-            item {
-                Text(if (people.isEmpty()) "No one yet" else "Your people (${people.size})", style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
-            }
-            if (people.isNotEmpty()) {
-                item {
-                    OutlinedTextField(
-                        value = query, onValueChange = { query = it }, singleLine = true,
-                        placeholder = { Text("Search people") }, leadingIcon = { Icon(RIcons.Search, null) },
-                        trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(RIcons.Close, "Clear") } },
-                        shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-            if (people.isNotEmpty() && shown.isEmpty()) item { Text("No one matches.", style = MaterialTheme.typography.bodyMedium) }
-            items(shown, key = { it.id }) { p -> PersonRow(p) { onOpen(p.id) } }
-            if (people.isNotEmpty()) {
-                item { TextButton(onClick = { confirmDeleteAll = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Delete all People") } }
             }
         }
+        preferenceGroup(null, "add") {
+            PreferenceItem("Add person", "Type a name, numbers, emails and XMPP addresses", RIcons.Add, onClick = { onOpen(null) })
+            PreferenceItem("Add from phone contacts", "One contact, no permission needed", RIcons.Person, onClick = {
+                try { picker.launch(PhoneContacts.picker()) } catch (_: ActivityNotFoundException) { askLegacy = true }
+            })
+            val pkg = HandOffApps.cheogram(ctx)
+            if (pkg != null && remember(pkg) { CheogramIntents.canPick(ctx, pkg) }) {
+                PreferenceItem("Add from Cheogram", "Pick someone in Cheogram's list", RIcons.Message, onClick = {
+                    launch({ cheogram.launch(CheogramIntents.pick(pkg)) }, "Cheogram's list didn't open.")
+                })
+            }
+        }
+        preferenceGroup("Remembering", "remember") {
+            SwitchPreference("Remember who you pick", "In Cheogram, or on a card (“Always use this for mom”)", s.rememberPicks) {
+                update(s.copy(rememberPicks = it))
+            }
+        }
+        preferenceGroup("Learn from Cheogram", "learn") {
+            SwitchPreference("Learn names from Cheogram notifications", "Who messages you, never the message", s.learnFromCheogram) { on ->
+                update(s.copy(learnFromCheogram = on))
+                // Turned on: the Cheogram installed now is the one trusted (its signer is kept at its first notification).
+                if (on) { scope.launch(Dispatchers.IO) { PeopleFiles.forgetCheogramSigner(ctx) }; NotificationAccess.rebind(ctx) }
+            }
+            when {
+                s.learnFromCheogram && !granted -> StatusPreference("Notification access", "Needed: three steps", Mark.TODO,
+                    onClick = { a.openPage(Page.Settings(SettingsRoutes.NOTIFICATION_ACCESS)) })
+                s.learnFromCheogram -> StatusPreference("Notification access allowed", "Cheogram's one-to-one senders only", Mark.OK)
+                granted -> StatusPreference("Notification access is still allowed", "Robot ignores notifications while this is off", Mark.TODO,
+                    action = { TextButton(onClick = { openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text("Open") } })
+            }
+            // 0.4.6: what Robot reads, where it is kept, and how to take it back, before and after turning it on.
+            PreferenceBlock { CheogramPrivacy(canTakeBack = granted && s.learnFromCheogram) { openFirst(ctx, NotificationAccess.settings(ctx), a) } }
+        }
+        if (learned.isNotEmpty()) {
+            preferenceGroup("Learned from Cheogram (${learned.size})", "learned") {
+                for (p in learned.take(MAX_LEARNED_SHOWN)) {
+                    TwoTargetPreference(p.name, People.summary(p).ifEmpty { null }, onClick = { onOpen(p.id) }, onClickLabel = "Open") {
+                        TextButton(onClick = { scope.launch {
+                            withContext(Dispatchers.IO) { store.update { PeopleEdit.confirm(it, p.id, now()) } }
+                            tick++
+                        } }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Keep ${p.name}" }) { Text("Keep") }
+                        // Their address isn't learned again, so the next message doesn't bring them back.
+                        TextButton(onClick = { scope.launch {
+                            withContext(Dispatchers.IO) { store.remove(p.id, ignore = true) }
+                            tick++
+                        } }, modifier = Modifier.heightIn(min = 48.dp).semantics { contentDescription = "Remove ${p.name}" }) { Text("Remove") }
+                    }
+                }
+                if (learned.size > MAX_LEARNED_SHOWN) {
+                    PreferenceBlock { Text("…and ${learned.size - MAX_LEARNED_SHOWN} more in the list below.", style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                }
+            }
+        }
+        if (people.isEmpty()) {
+            item(key = "none") { PreferenceCategory("No one yet") }
+        } else {
+            item(key = "search") {
+                OutlinedTextField(
+                    value = query, onValueChange = { query = it }, singleLine = true,
+                    placeholder = { Text("Search people") }, leadingIcon = { Icon(RIcons.Search, null) },
+                    trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(RIcons.Close, "Clear search") } },
+                    shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                )
+            }
+            if (shown.isEmpty()) item(key = "nomatch") { IntroPreference("No one matches.") }
+            preferenceItems("Your people (${people.size})", "people", shown, { it.id }) { p -> PersonRow(p) { onOpen(p.id) } }
+        }
+        preferenceFooter(
+            "Import contacts file (.vcf), in the menu: from Proton Mail on the web, Contacts › select all › Export selection as " +
+                ".VCF. Robot keeps names, nicknames, numbers, emails and XMPP addresses only. Export (.vcf) makes a backup, and a " +
+                "file any contacts app can import.\n\nAdd from Cheogram: Cheogram's list says “Create shortcut”; nothing goes on " +
+                "your home screen.",
+        )
     }
     preview?.let { pv ->
         val file = pv.file
@@ -444,6 +466,22 @@ internal fun openFirst(ctx: android.content.Context, intents: List<android.conte
 }
 
 /**
+ * Settings › People › Notification access (0.4.x redesign: a page of its own, from the row under "Learn names from
+ * Cheogram notifications"): the three steps, each with the button that opens its page.
+ */
+@Composable
+fun NotificationAccessScreen(facts: AssistantFacts?, onBack: () -> Unit) {
+    PreferenceScreen("Notification access", onBack) {
+        if (facts?.notificationAccess == true) {
+            preferenceGroup(null, "done") { StatusPreference("Notification access allowed", "Cheogram's one-to-one senders only", Mark.OK) }
+        }
+        preferenceGroup(null, "steps") { PreferenceBlock { NotificationAccessSteps() } }
+        preferenceFooter("Robot looks at Cheogram's notifications only, and of those only the sender of a one-to-one chat. Settings › People " +
+            "says what Robot reads, where it is kept, and how to take it back.")
+    }
+}
+
+/**
  * Notification access, step by step. Android blocks it for apps installed from a file (Robot, from its release page)
  * until "Allow restricted settings" is on in the app's App info, and that menu item only appears once Android has
  * refused the access, hence the order. 0.4.6: says why Android calls it a restricted setting, and each step has the
@@ -502,18 +540,18 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
     }
 }
 
+/** One person in the list: a letter avatar (decoration, hidden from TalkBack), the name, what you call them and how to reach them. */
 @Composable
 private fun PersonRow(p: Person, onClick: () -> Unit) {
-    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.clickable(onClick = onClick).heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
-            Text(p.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (p.aliases.isNotEmpty() || p.nicknames.isNotEmpty()) Text("Also called " + (p.aliases + p.nicknames).joinToString(", "), style = MaterialTheme.typography.bodyMedium, maxLines = 1,
-                overflow = TextOverflow.Ellipsis)
-            val line = listOfNotNull(People.summary(p).takeIf { it.isNotEmpty() }, if (!p.confirmed) "seen in Cheogram" else null).joinToString(" · ")
-            if (line.isNotEmpty()) Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
-                overflow = TextOverflow.Ellipsis)
+    val also = (p.aliases + p.nicknames).takeIf { it.isNotEmpty() }?.let { "Also called " + it.joinToString(", ") }
+    val line = listOfNotNull(also, People.summary(p).takeIf { it.isNotEmpty() }, if (!p.confirmed) "seen in Cheogram" else null).joinToString(" · ")
+    PreferenceItem(p.name, line.ifEmpty { null }, onClick = onClick, leading = {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).clearAndSetSemantics {},
+            contentAlignment = Alignment.Center) {
+            Text(p.name.trim().take(1).uppercase(Locale.ROOT), style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer)
         }
-    }
+    })
 }
 
 // ------------------------------------------------------------------ one person
@@ -689,8 +727,7 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
             }
             val o = original
             if (o != null && !o.confirmed) {
-                Surface(color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-                    shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Seen in a Cheogram notification", style = MaterialTheme.typography.titleSmall)
                         Text("Whoever sent the message chose this name. Until you keep or edit them, Robot always shows a card first, and never offers them in place of someone you know.",
