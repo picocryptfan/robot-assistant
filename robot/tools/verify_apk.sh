@@ -13,8 +13,10 @@ EXPECT_CERT=402557a46a491750688a3dff714100fe1d20b2f61193a912358c2edd341a6b6a
 fails=0
 pass() { echo "PASS  $*"; }
 fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
-has() { echo "$2" | grep -qF -- "$1" && pass "$3" || fail "$3"; }
-hasnt() { echo "$2" | grep -qF -- "$1" && fail "$3" || pass "$3"; }
+# A here-string, not a pipe: with pipefail, grep -q leaving early made a long echo fail with SIGPIPE, so a string near the
+# start of the manifest dump could read as missing.
+has() { grep -qF -- "$1" <<<"$2" && pass "$3" || fail "$3"; }
+hasnt() { grep -qF -- "$1" <<<"$2" && fail "$3" || pass "$3"; }
 # A component's xmltree lines from its android:name on, children included, up to the next component.
 subtree() { echo "$mf" | awk -v n="\"$1\"" '/^ *E: (service|receiver|activity|provider) /{ on=0 } index($0, n){ on=1 } on'; }
 # The element's own attribute lines (before its first child element).
@@ -159,8 +161,9 @@ libs=$(unzip -Z1 "$APK" 'lib/*')
 for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
 echo "$libs" | grep -v '^lib/arm64-v8a/' | grep -q . && fail "non-arm64 libraries" || pass "no other ABIs"
 # Every packaged library by its exact name: sherpa-onnx's two (:voice), LiteRT-LM's and the TPU dispatch library (:brain),
-# and since 0.5.0 librobotmt.so (:mt), which is there only when tools/build_robotmt.sh built it.
-extra=$(echo "$libs" | sed 's|^lib/arm64-v8a/||' | grep -vxE 'libsherpa-onnx-jni\.so|libonnxruntime\.so|liblitertlm_jni\.so|libLiteRtDispatch_GoogleTensor\.so|librobotmt\.so' | tr '\n' ' ')
+# Compose's graphics-path helper (androidx.graphics:graphics-path, every process), and since 0.5.0 librobotmt.so (:mt),
+# which is there only when tools/build_robotmt.sh built it.
+extra=$(echo "$libs" | sed 's|^lib/arm64-v8a/||' | grep -vxE 'libsherpa-onnx-jni\.so|libonnxruntime\.so|liblitertlm_jni\.so|libLiteRtDispatch_GoogleTensor\.so|libandroidx\.graphics\.path\.so|librobotmt\.so' | tr '\n' ' ')
 [ -z "$extra" ] && pass "native libraries are the allowlist" || fail "native libraries not on the allowlist: $extra"
 if echo "$libs" | grep -qx 'lib/arm64-v8a/librobotmt.so'; then
   pass "packages librobotmt.so (the fast translation engine)"
