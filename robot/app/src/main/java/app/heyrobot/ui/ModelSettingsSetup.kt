@@ -249,8 +249,8 @@ private fun OwnModelCard(snap: Snapshot, busy: String?, a: AppActions, onDelete:
             }, style = MaterialTheme.typography.bodyMedium)
             if (own.report.shortContext && own.report.backend != null) {
                 Text("Chat only: it was built for ${own.report.maxTokens} tokens of context, so Robot gives it a short prompt and no actions " +
-                    "(timers, texts, notes, the calendar…) and keeps less of the conversation. Ask it for an action and Robot says so " +
-                    "and offers Settings › Model, where Fast can. " + (if (own.report.vision) "It can see photos." else "It can't see photos."),
+                    "(timers, texts, notes, the calendar…) and keeps less of the conversation. Ask for an action and Robot says so " +
+                    "and offers this page, where you can choose Fast. " + (if (own.report.vision) "It can see photos." else "It can't see photos."),
                     style = MaterialTheme.typography.bodyMedium)
             }
             if (own.report.tensorG5Build && !own.tpuAllowed && st == ModelStatus.VERIFIED) TpuWarning(own, a)
