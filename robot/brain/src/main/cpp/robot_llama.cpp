@@ -363,7 +363,11 @@ JNIEXPORT jint JNICALL Java_app_heyrobot_brain_LlamaNative_generate(JNIEnv * env
             if (static_cast<int>(r->cached.size()) + 1 >= r->n_ctx) { result = GEN_CONTEXT_FULL; break; }
             llama_token tok = llama_sampler_sample(r->sampler, r->ctx, -1);
             if (llama_vocab_is_eog(r->vocab, tok)) { result = GEN_END; break; }
-            int32_t len = llama_token_to_piece(r->vocab, tok, buf, sizeof(buf), 0, false);
+            // Control tokens aren't text, except a thinking block's tags: some files mark <think> as one, and the
+            // reply's filter (core ThinkFilter) must see where thinking starts and ends, or its text would show.
+            const char * raw = llama_vocab_get_text(r->vocab, tok);
+            const bool think_tag = raw != nullptr && (std::strcmp(raw, "<think>") == 0 || std::strcmp(raw, "</think>") == 0);
+            int32_t len = llama_token_to_piece(r->vocab, tok, buf, sizeof(buf), 0, think_tag);
             if (len < 0) len = 0; // a piece longer than the buffer: none of Robot's models has one
             pending.append(buf, static_cast<size_t>(len));
             ++generated;

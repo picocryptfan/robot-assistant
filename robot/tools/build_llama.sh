@@ -166,9 +166,11 @@ mkdir -p "$OUT"
 cp "$stripped" "$OUT/$LIB"
 echo "ok  $LIB: exports $(wc -l <<<"$exports") JNI symbols, needs $needed"
 echo "    $(stat -c %s "$OUT/$LIB") bytes, SHA-256 $(sha < "$OUT/$LIB")"
-echo "    installed at ${OUT#"$HERE/"}/$LIB (gitignored); the unstripped copy for crash symbols stays at ${built#"$HERE/"}"
+echo "    installed at ${OUT#"$HERE/"}/$LIB (gitignored)"
 if [ $clean = 1 ]; then
   cp "$built" "$WORK/$LIB.unstripped"
   rm -rf "$BUILD"
-  echo "    build folder removed; the unstripped copy is at ${WORK#"$HERE/"}/$LIB.unstripped"
+  echo "    build folder removed; the unstripped copy (for a crash's symbols) is at ${WORK#"$HERE/"}/$LIB.unstripped"
+else
+  echo "    the unstripped copy (for a crash's symbols) is at ${built#"$HERE/"}"
 fi
