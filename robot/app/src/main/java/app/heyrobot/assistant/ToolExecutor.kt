@@ -80,7 +80,7 @@ import java.util.Locale
 // with intents that need no new permissions: AlarmClock (GrapheneOS Clock handles SET_TIMER with
 // EXTRA_SKIP_UI silently, verified in phase 0), the launcher's app list, Organic Maps' om:// URIs (geo:
 // as a fallback) and CameraManager's torch. Phase 2: texts and emails are handed to Cheogram, the SMS app or
-// Proton Mail as drafts (the owner presses Send there), contacts and the calendar are read with the permissions
+// Proton Mail as drafts (you press Send there), contacts and the calendar are read with the permissions
 // the main app asked for, notes go to Robot Notes. 0.4.0: the weather comes from Open-Meteo over the internet (this is
 // the process that goes online for it). The log records the tool and the outcome, never arguments.
 
@@ -291,9 +291,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     }
 
     /**
-     * Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until the owner presses Send.
+     * Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until you press Send.
      * With no contact to text, Cheogram's share screen (ShareWithActivity, exported for SEND text/plain) opens with the
-     * message instead: the owner picks the person in Cheogram's list, and the text is in that chat's box.
+     * message instead: you pick the person in Cheogram's list, and the text is in that chat's box.
      */
     private fun text(a: Action.SendText): Executed {
         val t = a.target ?: return Executed(ActionStatus.FAILED, "Robot didn't find who to text.")
@@ -607,7 +607,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     /**
      * Opens the Claude app with the question by the first way that resolves on this phone (docs/ask-claude.md "The
      * Claude app route"): its claude:// link, its claude.ai link, a share, or just the app with the question on the
-     * clipboard. Robot only prefills; the owner presses Send there. The log has the way, never the words.
+     * clipboard. Robot only prefills; you press Send there. The log has the way, never the words.
      */
     private fun openClaude(a: Action.AskClaude): Executed {
         val way = ClaudeAppIntents.choose(ctx) ?: return Executed(ActionStatus.NO_APP, "Install Claude.")

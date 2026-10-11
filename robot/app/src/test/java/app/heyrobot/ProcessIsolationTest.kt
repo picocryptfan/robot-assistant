@@ -282,9 +282,13 @@ class ProcessIsolationTest {
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
         assertEquals(listOf("app/sys/OpenMeteoClient.kt"), usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
             ours.filterKeys { !it.startsWith("claude/") }))
-        // It goes only to Open-Meteo's two hosts, over HTTPS (core Weather.kt builds the URLs).
+        // It goes only to Open-Meteo's two hosts, over HTTPS (core Weather.kt builds the URLs), its raw request is private, and
+        // only the weather tool and Settings › Weather use it.
         val meteo = File(java("app"), "app/heyrobot/sys/OpenMeteoClient.kt").readText()
-        assertTrue(meteo.contains("setOf(\"api.open-meteo.com\", \"geocoding-api.open-meteo.com\")") && meteo.contains("u.protocol == \"https\""))
+        assertTrue(Regex("""private val HOSTS = setOf\("api\.open-meteo\.com", "geocoding-api\.open-meteo\.com"\)\n""").containsMatchIn(meteo))
+        assertTrue(meteo.contains("require(u.protocol == \"https\" && u.host in HOSTS)") && meteo.contains("c.instanceFollowRedirects = false"))
+        assertTrue(meteo.contains("private fun get(") && !meteo.contains("    fun get("))
+        assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/OpenMeteoClient.kt", "app/ui/ToolsSettings.kt"), usersOf(Regex("""\bOpenMeteoClient\b""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""AccessibilityService|accessibilityservice""")))
         // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, the
         // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), and Open-Meteo's two (0.4.0).

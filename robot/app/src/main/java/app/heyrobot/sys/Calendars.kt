@@ -17,7 +17,7 @@ import java.time.ZoneOffset
 
 // Main and voice processes. CalendarContract (READ_CALENDAR / WRITE_CALENDAR, asked for by the main app only): the
 // calendars Robot may add to, the events of a day or a week, adding one, and the calendar app's own editor when Robot
-// can't (no permission, no writable calendar). Whatever calendar app the owner uses keeps its events in this provider.
+// can't (no permission, no writable calendar). Whatever calendar app you use keeps its events in this provider.
 
 object Calendars {
     fun readGranted(ctx: Context): Boolean = Assistant.granted(ctx, Manifest.permission.READ_CALENDAR)
@@ -91,7 +91,7 @@ object Calendars {
     }
 
     /**
-     * The calendar app's own editor, prefilled; the owner saves it there. An all-day event's times are UTC midnights:
+     * The calendar app's own editor, prefilled; you save it there. An all-day event's times are UTC midnights:
      * AOSP-derived editors (Etar) read them in UTC, so local midnight would be the day before east of UTC.
      */
     fun insertIntent(title: String, plan: EventPlan): Intent {
