@@ -40,6 +40,8 @@ import java.nio.channels.FileChannel
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 // :BRAIN PROCESS ONLY. Your own GGUF model file, run by llama.cpp on the CPU (0.4.5): the other of :brain's two engines
 // (Engine.kt), under the same one-slot rule as LiteRT-LM. Text only (no vision), and Robot's own text protocol for actions
@@ -187,20 +189,24 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         }
         val t0 = SystemClock.elapsedRealtime()
         val why = IntArray(1)
+        val loading = worker.submit<Native> {
+            val h = LlamaNative.load(path.toByteArray(Charsets.UTF_8), req.maxTokens, DECODE_THREADS, PROMPT_THREADS, SAMPLING, why)
+            if (h == 0L) return@submit Native(0L, null, 0)
+            // Its control tokens, which no text from outside Robot's prompt may write (ControlText), and its context as
+            // llama.cpp's own parser read it, which must be what Robot's check read.
+            val specials = LlamaNative.specials(h)
+            val train = Integer.toUnsignedLong(LlamaNative.trainContext(h))
+            if (specials == null || train != r.contextLength) {
+                LlamaNative.free(h)
+                return@submit Native(0L, specials, train)
+            }
+            Native(h, specials, train)
+        }
         val n = try {
-            worker.submit<Native> {
-                val h = LlamaNative.load(path.toByteArray(Charsets.UTF_8), req.maxTokens, DECODE_THREADS, PROMPT_THREADS, SAMPLING, why)
-                if (h == 0L) return@submit Native(0L, null, 0)
-                // Its control tokens, which no text from outside Robot's prompt may write (ControlText), and its context as
-                // llama.cpp's own parser read it, which must be what Robot's check read.
-                val specials = LlamaNative.specials(h)
-                val train = Integer.toUnsignedLong(LlamaNative.trainContext(h))
-                if (specials == null || train != r.contextLength) {
-                    LlamaNative.free(h)
-                    return@submit Native(0L, specials, train)
-                }
-                Native(h, specials, train)
-            }.get()
+            loading.get(LOAD_LIMIT_MS, TimeUnit.MILLISECONDS)
+        } catch (_: TimeoutException) {
+            stuck("load")
+            return failed(req, LoadFailure.TIMEOUT, "llama.cpp didn't finish loading the file.")
         } catch (t: Exception) {
             RLog.w("brain_load", t, "format" to ModelFormat.GGUF)
             Native(0L, null, 0)
@@ -316,34 +322,41 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
             val flags = IntArray(1)
             var tokens: Int
             var kept: Int
-            while (true) {
-                val history = PromptFit.alternating(ContextWindow.fit(req.history, budget))
-                val roles = ArrayList<ByteArray>()
-                val texts = ArrayList<ByteArray>()
-                fun add(role: String, text: String) { roles += role.toByteArray(); texts += text.toByteArray(Charsets.UTF_8) }
-                // Robot's own system prompt as it is; everything else without the model's control tokens (ControlText).
-                add("system", system)
-                for (t in history) add(if (t.role == PromptRole.USER) "user" else "assistant", controls.defuse(t.text))
-                add("user", controls.defuse(req.text))
-                tokens = if (run.stop) LlamaNative.PREP_TEMPLATE_FAILED else LlamaNative.prepare(h, roles.toTypedArray(), texts.toTypedArray(), think, flags)
-                kept = history.size
-                if (run.stop) {
-                    handler.post { onEnd(run, LlamaNative.GEN_CANCELLED, null) }
-                    return@execute
-                }
-                if (tokens < 0 && tokens != LlamaNative.PREP_TOO_LONG) {
-                    handler.post { fail(run, BrainError.ENGINE, "template") }
-                    return@execute
-                }
-                val real = if (tokens == LlamaNative.PREP_TOO_LONG) Int.MAX_VALUE / 2 else tokens
-                when (val step = PromptFit.after(real, history.size, budget, rebuilds, max)) {
-                    is PromptFit.Step.Send -> break
-                    is PromptFit.Step.Shorten -> { budget = step.historyBudget; rebuilds++ }
-                    is PromptFit.Step.TooLong -> {
-                        handler.post { fail(run, BrainError.TOO_LONG, null) }
+            // The template is the file's own program, and nothing stops it: one that never finishes ends :brain.
+            val watchdog = Runnable { stuck("prepare") }
+            handler.postDelayed(watchdog, PREPARE_LIMIT_MS)
+            try {
+                while (true) {
+                    val history = PromptFit.alternating(ContextWindow.fit(req.history, budget))
+                    val roles = ArrayList<ByteArray>()
+                    val texts = ArrayList<ByteArray>()
+                    fun add(role: String, text: String) { roles += role.toByteArray(); texts += text.toByteArray(Charsets.UTF_8) }
+                    // Robot's own system prompt as it is; everything else without the model's control tokens (ControlText).
+                    add("system", system)
+                    for (t in history) add(if (t.role == PromptRole.USER) "user" else "assistant", controls.defuse(t.text))
+                    add("user", controls.defuse(req.text))
+                    tokens = if (run.stop) LlamaNative.PREP_TEMPLATE_FAILED else LlamaNative.prepare(h, roles.toTypedArray(), texts.toTypedArray(), think, flags)
+                    kept = history.size
+                    if (run.stop) {
+                        handler.post { onEnd(run, LlamaNative.GEN_CANCELLED, null) }
                         return@execute
                     }
+                    if (tokens < 0 && tokens != LlamaNative.PREP_TOO_LONG) {
+                        handler.post { fail(run, BrainError.ENGINE, "template") }
+                        return@execute
+                    }
+                    val real = if (tokens == LlamaNative.PREP_TOO_LONG) Int.MAX_VALUE / 2 else tokens
+                    when (val step = PromptFit.after(real, history.size, budget, rebuilds, max)) {
+                        is PromptFit.Step.Send -> break
+                        is PromptFit.Step.Shorten -> { budget = step.historyBudget; rebuilds++ }
+                        is PromptFit.Step.TooLong -> {
+                            handler.post { fail(run, BrainError.TOO_LONG, null) }
+                            return@execute
+                        }
+                    }
                 }
+            } finally {
+                handler.removeCallbacks(watchdog)
             }
             run.startsInside = flags[0] and 1 != 0
             val stats = LongArray(LlamaNative.STATS_COUNT)
@@ -451,6 +464,16 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         runQueued()
     }
 
+    /**
+     * llama.cpp hasn't come back from [where] (a chat template that never finishes, a file it can't get through): nothing
+     * stops it or frees its model, and it holds the process's one engine slot, so :brain ends. The assistant sees the process
+     * go, skips this file and answers with Fast (BrainKeeper), as after a crash.
+     */
+    private fun stuck(where: String) {
+        RLog.i("brain_stuck", "in" to RLog.Code(where), "format" to ModelFormat.GGUF)
+        android.os.Process.killProcess(android.os.Process.myPid())
+    }
+
     private fun runQueued() {
         val q = queued ?: return
         queued = null
@@ -478,6 +501,10 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         private val SAMPLING = floatArrayOf(40f, 0.95f, 0.05f, 0.8f)
         /** How long unload waits for a stopped reply to return before leaving the free to run after it. */
         private const val UNLOAD_WAIT_MS = 10_000
+        /** How long llama.cpp may take to load a file (a few seconds; minutes for a large one read from flash the first time)… */
+        private const val LOAD_LIMIT_MS = 180_000L
+        /** … and to format and count a prompt (milliseconds) before :brain gives it up for stuck. */
+        private const val PREPARE_LIMIT_MS = 30_000L
         private const val STOPPING = "The model is still stopping. Try again in a moment."
         private const val DIFFERENT = "llama.cpp read this file's header differently from Robot's check, so Robot won't run it."
     }

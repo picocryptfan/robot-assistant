@@ -170,6 +170,11 @@ the engine only when `tools/build_llama.sh` made its library.
   question with the screen's text and every turn of the history get an invisible word joiner (U+2060) after the first
   character of any of the model's control tokens (`ControlText`, from the vocabulary llama.cpp loaded; `brain_load`
   logs how many, `controls`): the model reads them as the plain text they are. Robot's own system prompt is left as it is.
+- **Never stuck for good.** A chat template is the file's own little program, run by llama.cpp's Jinja engine, and
+  nothing can stop it or a load in the middle. If llama.cpp hasn't finished loading a file after 3 minutes, or formatting
+  a prompt after 30 seconds (both take seconds or less), `:brain` ends (`brain_stuck in=load|prepare`): the assistant
+  sees the process go, skips that file and answers with Fast with the usual notice, as after a crash, instead of every
+  later load waiting behind it ("still stopping").
 - **One engine in the process,** as since 0.4.1: choosing a GGUF file after a LiteRT-LM model (or back) unloads the other
   engine's model first (`brain_engine_switch`), and the shared slot keeps the new one waiting ("still stopping") while the
   old one lets go; a model is never freed under a reply llama.cpp hasn't returned from.
