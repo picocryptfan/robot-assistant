@@ -96,8 +96,17 @@ class UpdateFilesTest {
         o.getJSONObject("downloaded").put("version", "../x")
         assertNull(UpdateState.fromJson(o.toString()).downloaded)
         assertEquals("Robot-0.4.6.apk", UpdateFilesNames.apk("0.4.6"))
-        assertEquals("Robot-0.6.0-rc1.apk.part", UpdateFilesNames.part("v0.6.0-rc1"))
+        assertEquals("Robot-0.6.0-rc1.apk.101.part", UpdateFilesNames.part("v0.6.0-rc1", 101))
         try { UpdateFilesNames.apk("../0.4.6"); throw AssertionError("a path") } catch (_: IllegalArgumentException) {}
+        try { UpdateFilesNames.part("0.4.6", 0); throw AssertionError("no file id") } catch (_: IllegalArgumentException) {}
+    }
+
+    @Test fun aPartialDownloadBelongsToOneReleaseFile() {
+        // A release's APK replaced on GitHub (same version, a new file id): what arrived of the old file is never continued
+        // with the new one's bytes (it would fail SHA256SUMS and be refused), it is another file, and the old one is tidied away.
+        assertTrue(UpdateFilesNames.part("0.4.6", 101) != UpdateFilesNames.part("0.4.6", 202))
+        assertTrue(UpdateFilesNames.part("0.4.6", 101).startsWith(UpdateFilesNames.apk("0.4.6")))
+        assertTrue(UpdateFilesNames.part("0.4.6", 101) != UpdateFilesNames.apk("0.4.6"))
     }
 
     @Test fun theNotesAreKeptPlain() {

@@ -202,7 +202,14 @@ object UpdateFilesNames {
         return ReleaseAssets.apkName(v)
     }
 
-    fun part(version: String): String = apk(version) + PART
+    /**
+     * "Robot-0.4.6.apk.101.part": what has arrived so far of release file [apkId]. The file's id is in the name, so a download
+     * continued with a Range request only ever continues the same file: an APK replaced on GitHub (a new id) starts over.
+     */
+    fun part(version: String, apkId: Long): String {
+        require(apkId > 0) { "not a release file" }
+        return apk(version) + "." + apkId + PART
+    }
 }
 
 private fun obj(text: String?): JSONObject? = try { JSONObject(text ?: return null) } catch (_: Exception) { null }

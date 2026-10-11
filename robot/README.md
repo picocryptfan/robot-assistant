@@ -151,8 +151,8 @@ a new release, downloads it, checks it, and hands it to Android, whose own windo
 - **Download updates on Wi-Fi** (on with automatic checks): a second job downloads the release when Android sees an
   unmetered network (Robot can't tell itself: it has no network-state permission, and the job's constraint decides),
   checks it, and only then says "Robot 0.4.6 is ready to install". Without Wi-Fi for two days, the notification says it is
-  available anyway. A download that is stopped continues where it stopped (an HTTP Range request) or starts over; a
-  partial file is never installed. A file that failed a check isn't downloaded again by itself, only when you tap
+  available anyway. A download that is stopped continues where it stopped (an HTTP Range request, only ever of the same
+  release file: an APK replaced on GitHub starts over) or starts over; a partial file is never installed. A file that failed a check isn't downloaded again by itself, only when you tap
   Download.
 - **Download** on the page downloads at once, on any network (the page shows the size first).
 - **Install**: Robot checks the file again and opens a PackageInstaller session (`REQUEST_INSTALL_PACKAGES`). Until you

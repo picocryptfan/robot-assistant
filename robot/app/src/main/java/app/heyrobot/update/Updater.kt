@@ -216,7 +216,7 @@ object Updater {
         if (ready(ctx, st) != null) return null
         tidy(ctx, st)
         val dir = UpdateStore.downloads(ctx)
-        val part = File(dir, UpdateFilesNames.part(found.version))
+        val part = File(dir, UpdateFilesNames.part(found.version, found.apk.id))
         val apk = File(dir, UpdateFilesNames.apk(found.version))
         val have = if (part.isFile) part.length() else 0L
         if (dir.usableSpace < UpdateDecision.spaceNeeded(found.apk.size, have)) return UpdateFail.NO_SPACE
@@ -357,7 +357,7 @@ object Updater {
         val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed())
         val keep = buildSet {
             st.downloaded?.takeIf { UpdateDecision.keepDownload(it, found, installed()) }?.let { add(it.file) }
-            if (found != null && !UpdateDecision.skipped(UpdateStore.settings(ctx), found.parsedVersion!!)) add(UpdateFilesNames.part(found.version))
+            if (found != null && !UpdateDecision.skipped(UpdateStore.settings(ctx), found.parsedVersion!!)) add(UpdateFilesNames.part(found.version, found.apk.id))
         }
         UpdateStore.downloads(ctx).listFiles()?.forEach { if (it.name !in keep) it.delete() }
     }
