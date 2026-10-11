@@ -363,7 +363,7 @@ object CommandAnalyzer {
             }
             "unalias", "bind", "complete", "enable", "shopt", "export", "declare", "typeset", "readonly", "local", "hash" -> acc.complex = true
             "set" -> if (args.isNotEmpty()) acc.complex = true
-            "termux-open" -> if (v.any { it.startsWith("http://") || it.startsWith("https://") }) acc += CommandWarning.INTERNET
+            "termux-open" -> if (v.any { webAddress(it) }) acc += CommandWarning.INTERNET
             "eval" -> { acc.argCode += c.id; if (args.all { it.literal }) script(v.joinToString(" "), acc, depth) else acc.complex = true }
             "source", "." -> { acc.argCode += c.id; acc.complex = true }
             in SHELLS -> shell(args, c, parse, acc, depth)
@@ -555,6 +555,9 @@ object CommandAnalyzer {
         }
     }
 
+    /** An argument that is a web address (http: or https:), not a file. */
+    private fun webAddress(a: String): Boolean = a.startsWith("http:") || a.startsWith("https:")
+
     private val SHELLS = setOf("sh", "bash", "zsh", "dash", "ksh", "mksh", "ash", "fish", "tcsh", "csh", "yash")
     private val INTERPRETERS = setOf("python", "python2", "python3", "perl", "ruby", "node", "nodejs", "php", "lua", "luajit", "lua5.4", "tclsh", "Rscript",
         "julia", "deno", "ts-node", "irb", "ipython", "ipython3", "pypy", "pypy3", "guile", "racket", "scheme", "clisp", "sbcl", "ghci", "R")
@@ -620,7 +623,7 @@ object CommandAnalyzer {
 
     private fun interpreter(prog: String, args: List<ShellWord>, c: ShellCommand, parse: ShellParse, acc: Acc) {
         val v = args.map { it.value }
-        if (v.any { it.startsWith("http://") || it.startsWith("https://") }) {
+        if (v.any { webAddress(it) }) {
             acc += CommandWarning.INTERNET
             acc += CommandWarning.INTERNET_CODE
         }

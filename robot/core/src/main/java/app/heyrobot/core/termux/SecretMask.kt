@@ -57,7 +57,7 @@ object SecretMask {
         // A JSON Web Token: three base64url parts, the first two JSON objects ("eyJ").
         Rule("(?<![$KEY_CHARS])eyJ[$KEY_CHARS]{8,}\\.eyJ[$KEY_CHARS]{8,}\\.[$KEY_CHARS]{8,}", Kind.TOKEN),
         Rule("(?i)\\bbearer[ \\t]{1,5}([A-Za-z0-9._~+/-]{16,}=*)", Kind.TOKEN, group = 1),
-        // https://user:password@host
+        // A web address with user:password@ before its host
         Rule("\\b[A-Za-z][A-Za-z0-9+.-]{1,15}://[^\\s/:@]{1,128}:([^\\s/@]{1,256})@", Kind.PASSWORD, group = 1),
         // password=…, "api_key": "…", token: …, client_secret=…
         Rule("(?i)(?:password|passwd|passphrase|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]{0,32}[\"']?[ \\t]{0,3}[:=][ \\t]{0,3}" +
