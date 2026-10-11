@@ -7,7 +7,10 @@
 # exactly an allowlist of names, and Robot's llama.cpp library (when this build has it) exports only its JNI bridge, is
 # reached only from the isolated :llama service's classes and can't go online or start a process; that service is
 # declared isolated and not exported. Since 0.5.0, the fast translation engine's :mt process and its library, allowed by
-# exact name and loaded only by the :mt module's class (0.6.0: required). Usage: tools/verify_apk.sh <apk>
+# exact name and loaded only by the :mt module's class (0.6.0: required). The updater (Settings › About › Updates): its two
+# permissions, its job service and receivers in the main process and not exported, GitHub's addresses only in its core
+# code, no class of the voice or engine processes referring to it, and no GitHub token in the APK.
+# Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
 BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/36.0.0"
@@ -39,7 +42,8 @@ has "application-label:'Robot'" "$badging" "label Robot"
 has "native-code: 'arm64-v8a'" "$badging" "arm64-v8a only"
 hasnt "application-debuggable" "$badging" "not debuggable"
 mf=$("$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" 2>/dev/null)
-for c in assistant.RobotVoiceService assistant.RobotSessionService assistant.RobotRecognitionService assistant.CaptureActivity brain.BrainService mt.MtService boot.BootReceiver boot.BootCheckReceiver ui.MainActivity; do
+for c in assistant.RobotVoiceService assistant.RobotSessionService assistant.RobotRecognitionService assistant.CaptureActivity brain.BrainService mt.MtService boot.BootReceiver boot.BootCheckReceiver ui.MainActivity \
+    boot.UpdatedReceiver update.UpdateJobService update.InstallStatusReceiver; do
   has "\"app.heyrobot.$c\"" "$mf" "manifest has $c"
 done
 has '"android.service.voice.VoiceInteractionService"' "$mf" "VIS intent filter"
@@ -133,6 +137,21 @@ exported=$(echo "$mf" | awk '
   END { if (n != "" && ex) print n }' | sort | tr '\n' ' ')
 allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.assistant.conversation.ConversationTileService app.heyrobot.people.CheogramListener app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
 [ "$exported" = "$allow" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
+# The updater: Robot installs only its own updates (Install unknown apps, a special access you turn on), and asks Android to
+# skip its confirmation only with "Install updates without asking". It never installs or deletes other apps.
+has '"android.permission.REQUEST_INSTALL_PACKAGES"' "$mf" "declares REQUEST_INSTALL_PACKAGES (the updater installs Robot's own update)"
+has '"android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION"' "$mf" "declares UPDATE_PACKAGES_WITHOUT_USER_ACTION (Install updates without asking)"
+for p in INSTALL_PACKAGES DELETE_PACKAGES REQUEST_DELETE_PACKAGES INSTALL_SELF_UPDATES INSTALL_PACKAGE_UPDATES ENFORCE_UPDATE_OWNERSHIP RUN_USER_INITIATED_JOBS; do
+  hasnt "android.permission.$p\"" "$mf" "no $p permission"
+done
+# Its job service only the system binds, its receivers nothing else reaches; all three in the main process.
+for c in app.heyrobot.update.UpdateJobService app.heyrobot.update.InstallStatusReceiver app.heyrobot.boot.UpdatedReceiver; do
+  has 'exported(0x01010010)=false' "$(elem $c)" "$c not exported"
+  hasnt 'process(0x01010011)' "$(elem $c)" "$c in the main process"
+done
+has '"android.permission.BIND_JOB_SERVICE"' "$(elem app.heyrobot.update.UpdateJobService)" "UpdateJobService guarded by BIND_JOB_SERVICE"
+has '"android.intent.action.MY_PACKAGE_REPLACED"' "$(subtree app.heyrobot.boot.UpdatedReceiver)" "UpdatedReceiver gets MY_PACKAGE_REPLACED"
+hasnt 'intent-filter' "$(subtree app.heyrobot.update.InstallStatusReceiver)" "InstallStatusReceiver has no intent filter (only its PendingIntent reaches it)"
 # People (0.4.0): the notification listener stays in the main process, behind the system-only bind permission.
 hasnt 'process(0x01010011)' "$(elem app.heyrobot.people.CheogramListener)" "CheogramListener in the main process"
 has '"android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"' "$(elem app.heyrobot.people.CheogramListener)" "CheogramListener guarded by BIND_NOTIFICATION_LISTENER_SERVICE"
@@ -249,7 +268,7 @@ cbclass=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null; do
 # refers to sherpa-onnx, LiteRT or the assistant, voice and brain packages in its code (ProcessIsolationTest checks the
 # sources; this checks the dex).
 engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
-  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|people|core)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|people|core|update)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
   grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude|helpers|mt)/')
 [ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine or the Anthropic SDK (dex)" || fail "main-process classes refer to engines or the SDK: $engine_refs"
 # 0.4.5: llama.cpp's bridge is :brain's alone: no class outside app/heyrobot/brain refers to it or to its engine.
@@ -266,6 +285,16 @@ native_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/n
 mt_loaders=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/Class descriptor  :/{ c = $4 } /const-string/ && /"robotmt"/ { print c }' | sort -u | tr '\n' ' ')
 [ "$mt_loaders" = "'Lapp/heyrobot/mt/Slimt;' " ] && pass "only app.heyrobot.mt.Slimt loads librobotmt (dex)" || fail "classes that name librobotmt: $mt_loaders"
+# The updater: of Robot's own classes, only core's update package writes GitHub's addresses (the hosts, the API's and a
+# release page's URLs), and no class of the voice, model, helper or translation processes refers to the updater.
+gh_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\//{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/core\/update\//) } on' |
+  grep -cE 'const-string.*(https://(api\.)?github\.com|githubusercontent\.com)')
+[ "$gh_refs" = "0" ] && pass "GitHub's addresses only in core's update package (dex)" || fail "other Robot classes write GitHub's addresses: $gh_refs"
+upd_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(assistant|voice|brain|claude|helpers|mt)\//{ on=1 } on' |
+  grep -cE 'Lapp/heyrobot/(update|core/update)/')
+[ "$upd_refs" = "0" ] && pass "no voice, model, helper or translation class refers to the updater (dex)" || fail "voice-side or engine classes refer to the updater: $upd_refs"
 # The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load, and
 # (0.6.0) the other helpers' client, on plain OkHttp.
 sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession|app/heyrobot/helpers/openai/OpenAiSession);'"; done | wc -l)
@@ -285,6 +314,13 @@ for e in $(unzip -Z1 "$APK" | grep -vE '^lib/|\.onnx$'); do
   [ "${n:-0}" -gt 0 ] && { echo "      key-shaped string in $e"; keys=$((keys + 1)); }
 done
 [ "$keys" = "0" ] && pass "no API key string in the APK" || fail "API key-shaped strings in $keys entries"
+# Nor a GitHub access token (the updater's is entered on the phone and kept encrypted there). grep -c, as above.
+tokens=0
+for e in $(unzip -Z1 "$APK" | grep -vE '^lib/|\.onnx$'); do
+  n=$(unzip -p "$APK" "$e" 2>/dev/null | LC_ALL=C grep -acE 'github_pat_[A-Za-z0-9_]{60,}|gh[pousr]_[A-Za-z0-9]{36}' || true)
+  [ "${n:-0}" -gt 0 ] && { echo "      token-shaped string in $e"; tokens=$((tokens + 1)); }
+done
+[ "$tokens" = "0" ] && pass "no GitHub token string in the APK" || fail "GitHub token-shaped strings in $tokens entries"
 rm -rf "$dexdir"
 # One "name type access" line per field and method of the class.
 cbmembers=$(echo "$cbclass" | awk '/^ *#[0-9]+ *: \(in /{ if (n != "") print n, t, a; n = t = a = "" }

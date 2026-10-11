@@ -15,7 +15,8 @@ key, or by opening the Claude app (see "Ask Claude" below). Since 0.4.5 Settings
 Robot is made of, with its licence, and the look has begun to move to stock Android ("What's new in 0.4.5" below). Since
 0.6.0 it also transcribes a conversation in French and English, on the phone, translates it (also face to face, aloud)
 and summarizes it (see "Conversation mode (0.5.0)" below), and it can hand a question to any company's model or to a
-model on your own computer the way it hands one to Claude (see "Helpers (0.6.0)" below). The build specs are
+model on your own computer the way it hands one to Claude (see "Helpers (0.6.0)" below). Settings › About › Updates
+finds Robot's new releases on GitHub and installs them after checking each one ("Updates" below). The build specs are
 `../docs/phase-1.md`, `../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models
 and how they are used, `../docs/voice-plan.md`.
 
@@ -64,7 +65,7 @@ that were built beside it; each has its section below, with its phone tests.
 
 | Module | Runs in | Holds |
 |---|---|---|
-| `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
+| `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/`, `update/` (main: the updater, Settings › About › Updates) |
 | `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU or the CPU), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
@@ -75,8 +76,8 @@ that were built beside it; each has its section below, with its phone tests.
   the merged manifest, and `tools/verify_apk.sh` checks the dex.
 - `app/sys/` (both app processes) reads ContactsContract and CalendarContract and holds the Robot Notes folder; only
   the main app asks for permissions (`ProcessIsolationTest` checks that too). Since 0.4.0 it also holds the Open-Meteo
-  client and the Nominatim client for the nearest place (the only HTTP code outside the Claude SDK), the coarse
-  location reader and what phone_status reads.
+  client and the Nominatim client for the nearest place, the coarse location reader and what phone_status reads. With
+  the updater's `update/GitHubClient` (main process only) they are the only HTTP code outside the Claude SDK.
 - `:brain` is bound from the assistant with `BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_INCLUDE_CAPABILITIES`;
   it is not exported and requires Robot's signature permission `app.heyrobot.permission.INTERNAL`.
 - `:llama` (0.4.5) is an `android:isolatedProcess` service that only `:brain` binds (`BIND_AUTO_CREATE | BIND_IMPORTANT`),
@@ -159,10 +160,208 @@ source:
    `tools/build_robotmt.sh` writes them out (`git archive --format=tar <commit>` from `mt/native/git/<name>`; their
    SHA-256 are in `THIRD_PARTY.md`, "In the `:mt` process only").
 
+**The release format the updater reads** (Settings › About › Updates, "Updates" below). Anything else is not offered:
+
+- the tag is `v<version>` (`v0.4.6`, `v0.6.0-rc1`), and the APK inside has exactly that `versionName` and a higher
+  `versionCode` than the release before;
+- the APK is attached as `Robot-<version>.apk` (`Robot-0.4.6.apk`: capital R, the version as in the tag, no `v`);
+- `SHA256SUMS` is attached, one line per file as `sha256sum` writes it, `<sha256>  <file>` (two spaces; ` *<file>` works
+  too), with a line for that APK;
+- a test build is marked **Set as a pre-release** on GitHub (a version with a suffix, such as `0.6.0-rc1`, counts as a
+  test build either way); a draft is never offered;
+- the APK is signed with Robot's release key (or a key rotated from it, "Updates" › "If the signing key ever changes").
+
+```
+cp app/build/outputs/apk/release/app-release.apk Robot-0.4.6.apk
+sha256sum Robot-0.4.6.apk robot-0.4.6-third-party-sources.tar.gz > SHA256SUMS
+gh release create v0.4.6 Robot-0.4.6.apk SHA256SUMS robot-0.4.6-third-party-sources.tar.gz \
+    robot-0.4.6-third-party-sources.tar.gz.sha256 --title "Robot 0.4.6" --notes-file notes.md   # --prerelease for a test build
+```
+
+The release notes are shown on the phone as plain text (the first 40 lines, 3,000 characters): Markdown marks and HTML
+tags are dropped and links show only their words, so write them to read well that way.
+
 Settings › About › Licences names both places, from `app/src/main/assets/licenses/components.json` (`robot.sourceTag`,
 `robot.sourceBundle`, "{version}" filled in): `<repository>/tree/v<version>` and
 `<repository>/releases/download/v<version>/robot-<version>-third-party-sources.tar.gz`. The repository link there is
 today's (`picocryptfan/robot-gos-assistant`); change it in that one file if the public repository has another name.
+
+## Updates
+
+Robot updates itself from its GitHub releases, without an app store or Obtainium: Settings › About › **Updates**. It finds
+a new release, downloads it, checks it, and hands it to Android, whose own window asks you to confirm.
+
+### How it works
+
+- **Where:** the GitHub Releases of one repository. By default it is the one Settings › About › Licences names as Robot's
+  source (`robot.source` in `app/src/main/assets/licenses/components.json`, today `picocryptfan/robot-gos-assistant`):
+  the only place it is written, so a renamed repository is one change there. Robot asks
+  `GET https://api.github.com/repos/{owner}/{repo}/releases?per_page=20` and takes the highest version above the one
+  installed, whatever order GitHub lists them in. (Not `/releases/latest`: for a repository without releases it answers
+  404, which can't be told from a private repository without a token.) Drafts are never offered; test builds only with
+  **Include test builds**; a version you skipped is not announced again, a newer one is.
+- **When:** once a day (a JobScheduler job in the main process, on any network: one small request) while **Check for
+  updates automatically** is on, and whenever you tap **Check now**. A new release posts a notification on the
+  **Updates** channel, "Robot 0.4.6 is available", which opens Settings › Updates.
+- **Download updates on Wi-Fi** (on with automatic checks): a second job downloads the release when Android sees an
+  unmetered network (Robot can't tell itself: it has no network-state permission, and the job's constraint decides),
+  checks it, and only then says "Robot 0.4.6 is ready to install". Without Wi-Fi for two days, the notification says it is
+  available anyway. A download that is stopped continues where it stopped (an HTTP Range request, only ever of the same
+  release file: an APK replaced on GitHub starts over) or starts over; a partial file is never installed. A file that
+  failed a check isn't downloaded again by itself, only when you tap Download. A release whose APK Android's checks
+  refused (another signer, package or version; "What is checked" below) is passed over from the next check on, without a
+  notification, so it can't hide an older release that installs.
+- **Download** on the page downloads at once, on any network (the page shows the size first).
+- **Install**: Robot checks the file again and opens a PackageInstaller session (`REQUEST_INSTALL_PACKAGES`). Until you
+  allow it, the page shows **Allow Robot to install updates** with an **Open** button for Settings › Apps › Special app
+  access › Install unknown apps › Robot: Android asks this once, and Robot installs only its own updates. Then Android's
+  window asks you to confirm. Its result comes back in plain words: installed, cancelled, a conflict (another key or copy),
+  not enough storage, incompatible, blocked.
+- **Install updates without asking** (off by default): Robot asks Android to skip its confirmation window for Robot's own
+  update (Android 12 and later, `setRequireUserAction(USER_ACTION_NOT_REQUIRED)`; Android honours it only for an app
+  that declares the normal permission `UPDATE_PACKAGES_WITHOUT_USER_ACTION`, which Robot does for this switch alone).
+  Android still asks when another app store keeps Robot's updates (Android 14's update ownership; the switch is then
+  greyed out and says so), and whenever it decides an update needs you.
+- **After an update** Android ends every Robot process, as a restart does, and tells the new Robot
+  (`MY_PACKAGE_REPLACED`, `boot/UpdatedReceiver`). It does what it does after a restart ("Survive restarts": the speech
+  recognizer setting, and 3 minutes later the check that Robot is still the assistant, which says "during the update" if
+  not; the system binds the assistant and its wake word again by itself), deletes the downloads, schedules the daily check
+  again and says once "Robot updated to 0.4.6" (a notification, or in the app the next time it opens).
+
+### What is checked before an install (never skipped)
+
+1. The release has its `SHA256SUMS` and a line in it for `Robot-<version>.apk`; otherwise nothing is downloaded. The file
+   is refused whole if any line is malformed, a name has a path or an invisible character, or one name has two sums.
+2. The downloaded file's SHA-256 is the one in that line (a wrong one is deleted).
+3. Android reads the APK (`getPackageArchiveInfo` with its signing certificates, which verifies its signature): package
+   `app.heyrobot`, `versionName` the release's version, `versionCode` higher than the installed one (never the same again,
+   never a downgrade), and signed by the key the installed Robot is signed with now, or by a newer key whose APK
+   Signature Scheme v3 lineage contains it. Android refuses another signer anyway; Robot says why first.
+4. Just before installing, all of it again on the file as it is then, and its SHA-256 a third time while Robot writes it
+   into the install session: the session is committed only if it matches.
+
+What each check is worth: `SHA256SUMS` comes from the same release as the APK, so it catches a damaged, cut or mixed-up
+download, but anyone who can publish to the repository (a stolen GitHub account or token) can replace both. What they
+can't make is Robot's signature: check 3, which Android repeats when it installs, is what keeps an APK that isn't Robot's
+off the phone, and a release whose APK fails it is passed over (above). They could still publish a release that is never
+installed, or hold updates back by deleting releases; nothing on the phone can tell that from a quiet repository.
+
+The download stays in Robot's private storage (`files/updates/`), with a free-space check first (the rest of the file,
+room for Android's copy of it and 64 MB). Caps: 1 MB of JSON from the API, 64 KB of `SHA256SUMS`, the APK's size as
+GitHub gives it (at most 300 MB).
+
+### What is sent
+
+To GitHub only: HTTPS `GET` requests to `api.github.com` and the download servers a release file redirects to
+(`objects.githubusercontent.com`, `release-assets.githubusercontent.com`, and `github.com` if GitHub redirects there).
+Robot follows redirects itself: HTTPS only, those hosts only, at most five. Each request carries
+`User-Agent: Robot/<version>` (GitHub requires one; nothing about the phone), the `Accept` header and, to the API,
+`X-GitHub-Api-Version`. GitHub sees your IP address and Robot's version; nothing else is sent. The access token, if you
+add one, goes in the `Authorization` header of requests to `api.github.com` and nowhere else (a download server never
+sees it), and is never logged. Without a token GitHub allows 60 requests an hour from one IP address; Robot says when
+that limit is reached and when it lifts. The logs hold codes and numbers only (never a URL, a name or the token).
+
+### Settings › Updates
+
+This version; **Check now** with when Robot last checked and what it found; for a release on offer, its version, date,
+size and release notes (plain text, shortened; no links), **Download** or **Install**, **Skip this version** (or **Don't
+skip**), and **See it on GitHub** (the release's page, built from the repository and tag). The switches, with their
+defaults: Check for updates automatically (on), Download updates on Wi-Fi (on), Include test builds (off), Install updates
+without asking (off). **Advanced**:
+
+- **Repository** (for a fork): `owner/name`, or its link. Empty, or **Use Robot's own repository**, goes back to the
+  default. A fork's releases must follow the same format ("Releasing" above) and be signed with the key of the Robot
+  installed on the phone: Android never updates an app with another signer, so a fork's users install the fork's own
+  build first, and the fork's repository then updates it.
+- **Access token**, only while the repository is private: a fine-grained personal access token for that repository with
+  **Contents: Read-only** (or a classic token with the `repo` scope). It is pasted into a window that can't be captured
+  and is kept out of autofill, encrypted exactly as Ask Claude's key is (AES-GCM with its own non-exportable Android
+  Keystore key, `robot_github_token`; one class, `sys/KeystoreSecret`, does both), decrypted only by
+  `update/GitHubClient` just before a request, shown masked ("github_pat_…AB12"), and **Remove** deletes it. A private
+  repository without a token gets "GitHub didn't find the repository. If it's private, add an access token…". A token
+  the keystore can't read just now (busy, or the phone locked) is kept, never removed: the check goes without it, says
+  "Robot couldn't read your access token just now" for a private repository, and the next check reads it again.
+
+The settings are in their own small file, `files/robot/updates.json`, and what the updater found and did in
+`update_state.json`, beside `settings.json` but not in it (`core/update/UpdateFiles.kt`; read forward-compatibly).
+
+### If the signing key ever changes
+
+Every installed Robot only accepts updates signed with its key. If Robot's release key is ever replaced, the new key must
+be **rotated** from the old one with APK Signature Scheme v3, so that existing installs accept it:
+
+```
+apksigner rotate --out robot.lineage --old-signer --ks old-release.p12 --new-signer --ks new-release.p12
+apksigner sign --ks old-release.p12 --next-signer --ks new-release.p12 --lineage robot.lineage Robot-<version>.apk
+```
+
+Robot's updater accepts an APK whose lineage, ending at the key that signed it, contains the installed signer; Android
+checks the same when it installs (each step of a lineage is signed by the key before it, so only the old key's holder can
+add a new key after it), and also that the lineage leaves the old key its "installed data" capability. That is
+apksigner's default: don't take it away, since Android doesn't show apps a lineage's capabilities, so Robot can't check
+it first and would only report Android's refusal. An APK simply signed with a new key is refused by both, and everyone
+would have to uninstall Robot (losing its data) to move to it. Update `EXPECT_CERT` in `tools/verify_apk.sh` and keep the
+old key safe as well.
+
+### Code and tests
+
+The decisions are pure code in `core/update/` (`app.heyrobot.core.update`), tested in `core` with GitHub's real answer
+shape and hostile ones (wrong types, missing fields, huge or deeply nested answers, `../Robot-1.0.apk`, look-alike
+characters, malformed `SHA256SUMS`): versions and their order (`RobotVersion`), releases and their files
+(`GitHubReleases`, `ReleaseAssets`, `Sha256Sums`, `ReleaseNotes`), hosts, redirects and the token's one destination
+(`GitHubHosts`), GitHub's errors, the decision table (`UpdatePick`, `UpdateDecision`), the APK's checks
+(`ArchiveCheck`), every message (`UpdateText`) and the two files. The app's side is `app/update/`: `GitHubClient`
+(the only code that reaches GitHub), `Updater`, `UpdateInstaller` and `ApkInspector`, `UpdateJobs` (and its
+`UpdateJobService`), `UpdateNotices`, `UpdateStore` and `UpdateToken`, and the page, `ui/settings/UpdatesSettings.kt`.
+`ProcessIsolationTest` keeps the updater in the main process, GitHub's addresses in core's `GitHub.kt`, the token's
+decryption in `GitHubClient` and its header behind `GitHubHosts.mayAuthorize`, and the checks before the install in
+order; `tools/verify_apk.sh` checks the two permissions, the job service and receivers (main process, not exported), the
+dex, and that no GitHub token is in the APK. `UpdatesSettingsTest` (debug unit tests) drives the page and keeps its
+screenshots (`updates_light`, `updates_dark`, `updates_font200`).
+
+### On the phone (updater)
+
+Not yet checked. You need a build of this branch installed as the release-signed app (the updater refuses a
+debug-signed APK against a release-signed install, as Android does), a test repository or the real one, and a GitHub
+token for it while it is private. Watch Settings › Voice › Voice log and `adb logcat -s Robot` (codes only).
+
+1. **Up to date.** With no newer release (or none at all), Settings › About › Updates › **Check now**: "Last checked today
+   at …. You're up to date." The About row says "Checked today at …".
+2. **Private repository, no token.** With the repository still private and no token: Check now says "GitHub didn't find
+   the repository. If it's private, add an access token in Advanced below; otherwise check its name."
+3. **Token.** Advanced › Access token: the window can't be screenshotted, a wrong paste keeps Save off, a fine-grained
+   token (Contents: Read-only) saves and shows masked; the clipboard is cleared if it still held it. Remove asks first and
+   deletes it.
+4. **Test build.** Publish `v<next>-rc1` as a pre-release with `Robot-<next>-rc1.apk` (versionCode higher, release key)
+   and its `SHA256SUMS`. Check now with **Include test builds** off: up to date. Turn it on, Check now: "Test build
+   <next>-rc1" with its date, size and notes (plain text; a link shows only its words); See it on GitHub opens the
+   release page.
+5. **Download on Wi-Fi.** On mobile data with automatic checks and Download updates on Wi-Fi on, wait for the daily
+   check (or `adb shell cmd jobscheduler run -f app.heyrobot 4801`): no notification yet. Join Wi-Fi: the download job
+   (`… run -f app.heyrobot 4802`) downloads and checks it, and the notification says "Robot <next>-rc1 is ready to
+   install"; tapping it opens Settings › Updates with **Install**. Airplane mode during a download, then back: it continues.
+6. **Checksum refused.** Publish a release whose `SHA256SUMS` line for the APK is wrong (edit one hex digit): Download says
+   "The downloaded file doesn't match its SHA-256 in SHA256SUMS, so Robot deleted it and won't install it", and
+   `files/updates/` is empty. A release without `SHA256SUMS`, or without the APK's line: refused before anything is
+   downloaded. An APK signed with another key: "isn't signed with Robot's key".
+7. **Install.** Without Install unknown apps: the page shows Allow Robot to install updates; Open goes to Robot's switch
+   there; back in Robot, the row is gone. Install: Android's window asks "Do you want to update this app?". Cancel: "The
+   update was cancelled. Robot stays as it is." Install again and confirm.
+8. **After the update.** Robot closes; within a few seconds "Robot updated to <next>-rc1" (a notification, or a line the
+   next time the app opens, if notifications are off). Say "hey robot": the wake word works without opening the app.
+   `adb logcat -s Robot` shows `updated` and `recognizer_check why=UPDATE` (with the adb grant, a write it had to make is in
+   the voice log as "after an update"); 3 minutes later no "Turn Robot back on" notification.
+   Settings › About shows the new version and Updates "You're up to date"; `files/updates/` is empty.
+9. **Install without asking.** Turn it on, publish the next test build, Install: no Android window, Robot restarts
+   updated. If Robot was installed by another app store that keeps its updates, the switch is greyed out and says why.
+10. **Skip.** With a release on offer, **Skip this version**: the page says you skipped it, no notification for it, the
+    About row doesn't announce it; a newer release is offered again. **Don't skip** brings it back.
+11. **Switches off.** Turn Check for updates automatically off: `adb shell dumpsys jobscheduler | grep app.heyrobot`
+    shows no job 4801 (or 4802), and nothing is asked of GitHub for days. Turn it on: the job is back.
+12. **Rate limit.** Without a token, Check now about 60 times in an hour (or from a network that used the limit): "GitHub's
+    limit on checks from your network was reached (60 an hour without a token). Try again after …".
+13. **Fork.** Advanced › Repository: `nobody/x x` keeps Save off; a fork's `owner/name` (or its link) saves, Check now asks
+    that repository; Use Robot's own repository goes back.
 
 ## What's new in 0.4.6
 
@@ -2204,6 +2403,8 @@ an API key, questions for Claude open the Claude app. Spec: `../docs/ask-claude.
    drops the key at once). The window can't be captured in screenshots or the recent-apps thumbnail, is kept out of
    autofill, and clears the clipboard if it still holds the key. A key is "sk-ant-" and ASCII letters, digits, "-" and
    "_" only. If Android's keystore ever loses the key that encrypts it, Robot removes the saved key and Settings says so.
+   An error that may pass (the keystore busy or the phone locked) removes nothing: Robot says it couldn't read your key
+   just now and reads it again at the next question.
 
 GrapheneOS's per-app **Network** toggle must stay on for Robot. When Android reports Robot's network permission off, the
 panel shows a card saying so (and says it aloud); when the toggle shows as no network at all, "No internet" says to
@@ -2646,7 +2847,8 @@ adb shell pm grant app.heyrobot android.permission.WRITE_SECURE_SETTINGS
 Turn USB debugging off afterwards. With the second one, Robot keeps that key set itself (only that key: the assistant
 itself belongs to RoleManager): at boot (also before the first unlock; the boot receiver is direct-boot aware), when
 the app or Assistant setup opens, and when the assistant starts, if it holds the assistant role and no other installed
-recognizer is set. Each write goes to the voice log. Assistant setup shows "Survives restarts".
+recognizer is set. Each write goes to the voice log. Assistant setup shows "Survives restarts". The same runs after
+Robot is updated, which ends its processes as a restart does (`MY_PACKAGE_REPLACED`; "Updates" above).
 
 The phone region for numbers without a country code now comes from the SIM, then the network, then the language
 setting, unless one is set in Settings. Earlier versions saved "CA" whether it was chosen or not, so a settings file

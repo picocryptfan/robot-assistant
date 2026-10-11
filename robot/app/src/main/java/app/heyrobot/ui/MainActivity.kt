@@ -70,6 +70,7 @@ import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.RecognizerKeeper
+import app.heyrobot.update.Updater
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsIntents
@@ -82,6 +83,7 @@ import app.heyrobot.sys.MtModelStore
 import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.settings.SettingsNav
+import app.heyrobot.ui.settings.SettingsRoutes
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -111,6 +113,8 @@ class MainActivity : ComponentActivity() {
                 RecognizerKeeper.flushPending(app)
                 RecognizerKeeper.check(app, RepairWhen.APP)
             } catch (_: Throwable) {}
+            // The updater's daily check, scheduled if Settings › Updates has it on.
+            try { Updater.onAppOpen(app) } catch (_: Throwable) {}
         }, "robot-recognizer").start()
     }
 
@@ -133,9 +137,9 @@ class MainActivity : ComponentActivity() {
                 "${AppPages.TRANSCRIPTS}:$id" + if (line >= 0) ":$line" else ""
             } ?: AppPages.TRANSCRIPTS
         // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
-        // Model from a chat-only model's answer to an action (0.4.3).
+        // Model from a chat-only model's answer to an action (0.4.3); Settings › About › Updates from the updater's notifications.
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL || it == AppPages.HELPERS }
+            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.UPDATES }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -403,8 +407,13 @@ fun RobotAppUi(activity: MainActivity) {
             r == AppPages.CONVERSATION_SETTINGS -> page = Page.ConversationSettings
             r == AppPages.HELPERS -> page = Page.Helpers
             r == AppPages.MODEL -> { tab = Tab.MODEL; page = null }
+            r == AppPages.UPDATES -> page = Page.Settings(SettingsRoutes.UPDATES)
         }
         activity.route.value = null
+    }
+    // Once after an update, when no notification could say it: "Robot updated to …".
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) { Updater.takeUpdatedNotice(ctx) }?.let(::say)
     }
 
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {

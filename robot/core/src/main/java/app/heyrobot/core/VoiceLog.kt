@@ -391,6 +391,7 @@ enum class NoReply(override val id: Int, override val title: String) : LogCode {
 
 enum class RepairWhen(override val id: Int, override val title: String) : LogCode {
     LOCKED_BOOT(1, "at boot, before unlock"), BOOT(2, "at boot"), APP(3, "app opened"), SETUP(4, "Assistant setup"), ASSISTANT_READY(5, "assistant started"),
+    UPDATE(6, "after an update"),
 }
 
 enum class Cue(override val id: Int, override val title: String) : LogCode {
