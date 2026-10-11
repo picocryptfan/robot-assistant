@@ -8,8 +8,10 @@ Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) a
 memory, helps free memory and storage, finds the nearest place of a kind online (OpenStreetMap, when you ask) for
 Organic Maps' route, and has every rule about when it asks first as a switch in Settings › Safety & privacy.
 Since 0.3.0, and only when you ask (or let it), Robot can hand a question to Claude: through the Claude API with your
-key, or by opening the Claude app (see "Ask Claude" below). The build specs are `../docs/phase-1.md`,
-`../docs/phase-2.md` and `../docs/ask-claude.md`; the voice models and how they are used, `../docs/voice-plan.md`.
+key, or by opening the Claude app (see "Ask Claude" below). On the way to 0.5.0 it also transcribes a conversation in
+French and English, on the phone (see "Conversation mode (0.5.0)" below). The build specs are `../docs/phase-1.md`,
+`../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models and how they are
+used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
@@ -19,7 +21,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
 | `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM |
-| `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test |
+| `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
 
@@ -66,6 +68,138 @@ The release key is `../keys/robot-release.p12.enc` (decrypt it outside the repos
 The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYSTORE_PASS_FILE`); the password
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
+
+## Conversation mode (0.5.0)
+
+Robot writes down a conversation, word for word as it hears it, in French and English, on the phone (the design is
+`../docs/conversation-mode.md`). Built so far: the Transcription check (phase 5.0(a)), capture and transcription (5.2)
+and the Transcripts library (5.5). Not yet: speaker labels (5.3: every line is "Speaker" for now), translation and the
+interpreter (5.4), summaries (5.6), keeping the audio.
+
+### Transcribing
+
+- **Start** from Home › Conversation › Transcribe, the Quick Settings tile "Transcribe", a long press on Robot's icon
+  (shortcut "Transcribe"), or by voice: "hey robot, transcribe this conversation", "start transcribing", "transcris cette
+  conversation", "commence à transcrire" (ConversationRouter decides, before Gemma; "how do I transcribe a song?" stays a
+  question). The first time, Robot says to tell the people you're with ("The laws on recording conversations differ by
+  place…") and starts once you tick "I'll tell people"; after that a line at each start says "Recording — let others
+  know." Settings › Conversation › Show the reminder again brings it back.
+- **The session** is a microphone foreground service in the `:voice` process (`assistant/conversation/`). Its
+  notification is the recording indicator, there the whole time with Pause, Stop and Open, the elapsed time and the line
+  count, never any words; on the lock screen only "Robot is transcribing" and the time. Swiped away, it comes back.
+  Android's own microphone dot shows too. A partial wake lock is held only while a session runs.
+- **Audio.** The session takes its frames from the same `Listener` the wake word uses (a sink, never a second
+  microphone), or opens a capture of its own when the wake word isn't listening. Silero's per-frame speech probability
+  feeds the conversation rules (`Segmenter`): a line ends after 0.25 s of silence (0.5 s, as questions use, loses the
+  English half of an English-then-French turn), is cut at 15 s at its quietest frame, and gets 0.2 s of padding from
+  the session's own 20 s ring. Each segment is decoded by the same Parakeet as questions, in turn with them (one model
+  in memory). A segment with too few words for its speech (under 0.9 a second over 3 s) is heard again in two halves,
+  kept if that gives more words, and the line marked "heard again" (voice log 119). Audio stays in memory and is dropped
+  once decoded; nothing is ever written.
+- **Language.** Each line is FR or EN from its own words (`LangId`, trained on Tatoeba's CC0 sentences). A line too short
+  to tell ("OK", "5 h 30", a name) takes the previous line's language and shows "FR?" or "EN?": tap it to fix (an event
+  in the file; the next short lines lean on your answer). Other languages are transcribed too, and tagged FR or EN by
+  their closest guess.
+- **The screen** (Transcribe, in `:voice`) shows the lines with their time, "Speaker", the language tag, and while you
+  look at it with the screen on, the words of the line being spoken in grey (Settings › Conversation › Live words, on;
+  off when the phone is warm). It keeps the newest 500 lines; the file has them all. Overflow: keep the screen on, help.
+  It keeps working with the screen off.
+- **The wake word sleeps** during a session, so nobody's "hey robot" opens the panel; "stop" still works while Robot
+  talks, and the wake word is back when the session ends. Settings › Conversation › "Hey robot works during a
+  conversation" (off) keeps it: then "hey robot" opens the panel, which pauses the transcript (nothing said to Robot is
+  transcribed), and "stop transcribing", "pause", "resume transcribing" (and "arrête de transcrire", "mets en pause",
+  "reprends") work by voice. Opening the panel any other way pauses it too; closing it goes on.
+- **Pauses** leave a marker in the transcript ("[paused 14:03–14:07]"): yours, the panel, a phone call or another app
+  taking the microphone (it goes on by itself when the microphone is back), and heat (live words off at MODERATE, a pause
+  at CRITICAL, back when it cools; voice log 112). Below 200 MB free the session stops and says so; after 4 hours it
+  notes "Still transcribing — 4 h"; there is no length limit.
+- **If `:voice` dies** (a crash, Android, `adb shell am kill`), every line already heard is saved (each one is fsynced
+  as it is written; at most the line being spoken is lost). When `:voice` starts again it closes the transcript as
+  interrupted and posts "Transcription stopped unexpectedly. Saved up to 14:32. **Resume**": Resume opens the transcript
+  screen, which goes on in the same transcript with a gap marker. Robot never starts recording again by itself. After
+  your own Stop in Settings › Active apps, it closes the transcript without asking.
+- **Lock screen** (Settings › Conversation › Start from the lock screen, on): the tile and "hey robot" can start a
+  transcript while locked. Its screen shows over the lock screen with only what it heard since; the library, exporting,
+  renaming and deleting need the phone unlocked (they are in the main app).
+- **Voice log** (numbers only): 100 start (how, locked), 101 stop (why, minutes, lines), 102/103 pause and resume, 104
+  each minute's segments and median decode time, 105 French/English/not-sure lines, 109 a line that couldn't be saved,
+  110 recovered (and resumed), 111 the microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the
+  Transcription check, 119 re-heard.
+
+### Transcripts
+
+- **Where:** `filesDir/transcripts/<id>/` (`meta.json`, `lines.jsonl` append-only, `snapshot.json`), the app's private,
+  credential-encrypted storage, never backed up or transferred (`allowBackup=false` and the extraction rules). The format
+  is §6 of the design: each line, each language fix and each pause is one more record; nothing is rewritten.
+- **The library** (Home › Conversation › Transcripts, Settings › Conversation, the shortcut "Transcripts"): newest first,
+  with the date, length and "Recording now" or "Stopped unexpectedly"; a search over the words (accents and case
+  ignored); one transcript to read, rename (not while it records), **Share** (a Markdown file through the share sheet:
+  the app you pick keeps its own copy), **Save as Markdown / text** (where you choose, through Android's file picker),
+  **Copy** (marked sensitive) and **Delete**. "Delete all" removes them all. Deleting the transcript being recorded stops
+  the recording: the app tells the voice process, which then writes nothing more of it (the folder is moved aside in one
+  step before it is removed, so a late write can't bring it back). Deleting on flash storage is not a secure erase.
+- **Export format** (`TranscriptExport`): a header (date, time and length, speakers, languages, "Transcribed on this phone
+  by Robot (Parakeet v3).") and one line per line heard, "**[14:02:11] S1 (FR):** …", with "[paused …]" markers. Until
+  speaker labels come, every line is S1.
+
+### Transcription check (Settings › Voice)
+
+The gate for Québec French (phase 5.0(a)), in the `:voice` process because it uses the speech model:
+- **Read:** 20 Québec-French sentences and 10 English ones, written for Robot without numbers (Parakeet writes numbers as
+  digits); Record, read, Stop.
+- **Say anything:** Robot shows what it heard; correct it to what was said; Score it. The realistic test.
+- **Clips:** pick audio files and a .txt with one line per clip in the order of their names, or "name<TAB>sentence" lines
+  (Common Voice's lists), through Android's picker (no storage permission). Each is decoded in memory (up to 60 s).
+- Each recording is decoded exactly as a conversation is (the same detector, segments, re-hear rule and Parakeet), then
+  scored with `Wer`: lower case, ’ as ', "œ" as "oe", hyphens and punctuation as spaces; a wrong accent counts, and is
+  also reported apart. Per line: words wrong, accents, the language Robot heard and the decode time; per language: the
+  total against the pass mark, **15 % for Québec French over at least 20 lines from at least 2 readers** (pick Reader
+  1–4), **8 % for English**.
+- Recordings stay in memory and are dropped once scored; the voice log gets the numbers (117: % wrong, lines, language);
+  **Copy report** copies numbers only unless "Include sentences" is ticked.
+- **If Québec French fails the gate**, before building more on it (`../docs/translation-plan.md`, `../docs/languages.md`
+  4.4): try Gemma's own audio input for short recordings, the Whisper-turbo QC model for recordings only, hotwords
+  (needs a `bpe.vocab` Parakeet's export lacks), or a fine-tuned Parakeet; and record the number either way.
+
+### On the phone (0.5.0 capture)
+
+Phases 5.0(a), 5.2 and 5.5 are done when these pass (design §9.1). Robot is the assistant, the voice models are
+installed, the wake word is on.
+1. **Transcription check, French.** Settings › Voice › Transcription check › Read, Reader 1: read the 20 French
+   sentences; Reader 2 (another person): the same. Note the French total (pass: ≤ 15 % over 20+ lines from 2 readers) and
+   the decode times. Say anything: two minutes of free Québec French, corrected. Copy report without sentences: only
+   numbers; with: the sentences too. Voice log: "Transcription check (French): …% of words wrong over … lines".
+2. **English.** The 10 English sentences: ≤ 8 %. If you have them, Clips: Common Voice "Français du Canada" clips with
+   their list.
+3. **First start.** Home › Transcribe: the reminder, "I'll tell people", Start. The notification (Pause, Stop, Open; on
+   the lock screen only the title and the time), the microphone dot, the red dot and timer on the screen.
+4. **30 minutes, two languages, screen off.** Two people talk, switching between French and English (also within a
+   minute, "Can you pass the salt? — Oui, tiens."). Lock the phone for the rest. Then: every line is in Transcripts, in
+   order, none missing at the language switches (look for "heard again" lines), FR/EN right on most lines and "FR?" only
+   on short ones. Voice log: 104/105 once a minute; note the median decode time and the longest queue. Note the battery
+   used.
+5. **Wake word.** During a session, "hey robot, what time is it?": nothing opens (the voice log has no wake line). Stop
+   the session: "hey robot" works again. Turn on "Hey robot works during a conversation": "hey robot" opens the panel and
+   the transcript shows "[paused …]" for that moment; "stop transcribing" ends it.
+6. **Crash.** During a session, `adb shell am kill app.heyrobot` (if the foreground service keeps `:voice` alive, as it
+   may, use `adb shell am crash $(adb shell pidof app.heyrobot:voice)`). The notification goes; within a few seconds
+   (when Android restarts the assistant) "Transcription stopped unexpectedly. Saved up to …" appears. Every line shown before the kill is in the transcript (at most the line being spoken is lost).
+   Resume: the same transcript goes on with "[stopped unexpectedly …]". Then Stop Robot from Settings › Active apps
+   during a session (or `adb shell am force-stop app.heyrobot`): no Resume offer, the transcript is closed as ended.
+7. **A call** during a session: "[phone call …]" or "[microphone unavailable …]", and it goes on after the call. Another
+   app recording: the same.
+8. **Lock screen.** Locked, tap the tile: the reminder or the screen over the lock screen, with nothing older; Open in
+   Transcripts needs the unlock. "Start from the lock screen" off: the tile asks to unlock.
+9. **Voice start.** "Hey robot, transcribe this conversation": Robot says "Transcribing.", the screen opens and the panel
+   goes; nothing of the panel is transcribed. "Translate this conversation": not in this version, said so.
+10. **Library.** Search a word from the session (with and without its accent); rename; Share: pick another app (Files,
+    a Markdown reader, a mail draft): the Markdown file opens there correctly (title, header, times, FR/EN). Save as
+    Markdown into Downloads and open it with another app. Copy and paste in a note.
+11. **Delete.** Delete one transcript: `adb shell run-as app.heyrobot ls files/transcripts` no longer lists its folder.
+    Delete the one being recorded: the session stops and the folder doesn't come back. Delete all.
+12. **Tile and shortcut.** Add "Transcribe" in Quick Settings: tap to start (the screen opens), tap to stop; long press:
+    Settings › Conversation. Long-press Robot's icon: "Transcribe" and "Transcripts" work (if "Transcribe" doesn't open,
+    note it: the shortcut targets a screen that isn't exported).
 
 ## Weather, phone status and freeing space (0.4.0)
 
