@@ -60,6 +60,9 @@ object SettingsStore {
         writer.execute { write(app, s) }
     }
 
+    /** Runs [block] on the settings thread once every save asked for so far is on disk (the voice process may read them). */
+    fun afterSaves(block: () -> Unit) = writer.execute(block)
+
     private fun write(ctx: Context, s: RobotSettings) {
         try { writeAtomic(file(ctx), s.toJson().toString(1)) } catch (t: Throwable) { RLog.w("settings_save", t) }
         Cmd.send(ctx, Cmd.SETTINGS)

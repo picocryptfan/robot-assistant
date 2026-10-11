@@ -205,7 +205,7 @@ class HelperSettingsTest {
         assertEquals("Your OpenAI account is out of API credits. Add credits at platform.openai.com.", ClaudeFailure.NO_CREDITS.say(gpt))
         assertEquals("Add your ChatGPT API key in Robot's settings first.", ClaudeFailure.NO_KEY.say(gpt))
         val jarvis = HelperWho.of(home())
-        assertEquals("Your server Jarvis isn't answering. Is it on, and is Robot on the same network?", ClaudeFailure.UNREACHABLE.say(jarvis))
+        assertEquals("Jarvis isn't answering. Is the computer on, and is the phone on the same network?", ClaudeFailure.UNREACHABLE.say(jarvis))
         assertEquals("Jarvis doesn't have that model any more. Pick another one in Robot's settings, under Helpers.", ClaudeFailure.MODEL_UNAVAILABLE.say(jarvis))
         assertEquals("Jarvis is loading its model…", HelperWords(jarvis).loading)
         assertEquals("Want me to check with Jarvis?", HelperWords(jarvis).offer)

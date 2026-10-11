@@ -221,7 +221,7 @@ enum class ClaudeFailure(val retry: Boolean = false) {
             RESET -> "Robot lost track of the conversation with $n, so $n mode has ended. Ask again to start fresh."
             NO_KEY -> "Add your $n API key in Robot's settings first" + (w.app?.let { ", or choose the $it app there" } ?: "") + "."
             UNKNOWN -> "Something went wrong with $n."
-            UNREACHABLE -> "Your server $n isn't answering. Is it on, and is Robot on the same network?"
+            UNREACHABLE -> if (w.home) "$n isn't answering. Is the computer on, and is the phone on the same network?" else "$n can't be reached right now."
             NOT_LOCAL -> "That address isn't on your home network, so Robot won't send to it without https."
             CERTIFICATE -> "$n's certificate isn't one Robot can trust. Use https with a real certificate (Tailscale's HTTPS gives one), or http on your home network."
             NO_ADDRESS -> "Robot doesn't know where $n is yet. Open its page in Robot's settings, under Helpers, and tap Test connection."

@@ -412,11 +412,16 @@ fun RobotAppUi(activity: MainActivity) {
         },
         openNote = { id -> page = Page.NoteEdit(id) },
         helperWindow = { id, mode ->
-            // By name: the main process never refers to the assistant's classes.
-            try {
-                ctx.startActivity(Intent().setClassName(ctx.packageName, HelperWindow.CLASS).putExtra(HelperWindow.EXTRA_HELPER, id)
-                    .putExtra(HelperWindow.EXTRA_MODE, mode))
-            } catch (_: Exception) { say("Couldn't open the connection window.") }
+            // Once the settings that added or changed the helper are on disk: the window reads them in the assistant's process.
+            SettingsStore.afterSaves {
+                scope.launch(Dispatchers.Main) {
+                    // By name: the main process never refers to the assistant's classes.
+                    try {
+                        ctx.startActivity(Intent().setClassName(ctx.packageName, HelperWindow.CLASS).putExtra(HelperWindow.EXTRA_HELPER, id)
+                            .putExtra(HelperWindow.EXTRA_MODE, mode))
+                    } catch (_: Exception) { say("Couldn't open the connection window.") }
+                }
+            }
         },
         deleteHelperKey = { id ->
             val name = settings.helper(id)?.name ?: "helper's"
