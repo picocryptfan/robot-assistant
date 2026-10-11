@@ -172,7 +172,8 @@ class PromptTest {
     @Test fun eachToolGroupCostsTokensOnlyWhenUsed() {
         val system = Prompt.system(now, locked = false)
         val core = Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
-        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal })
+        // The phase 1 and 2 groups (the 0.4.0 ones are measured in their own tests).
+        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal && it.group in setOf(ToolGroup.CORE, ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR) })
         assertEquals(core, Prompt.fixedTokens(system))
         // ask_claude (Ask Claude on): one short tool and one line of the system prompt.
         val withClaude = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true), Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE)

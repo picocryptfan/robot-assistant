@@ -48,20 +48,30 @@ has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootR
 for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE BIND_ACCESSIBILITY_SERVICE; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
-has '"android.permission.INTERNET"' "$mf" "declares INTERNET (model downloads and Ask Claude)"
+has '"android.permission.INTERNET"' "$mf" "declares INTERNET (model downloads, Ask Claude, the weather)"
 hasnt '"android.accessibilityservice.AccessibilityService"' "$mf" "no accessibility service (Robot never drives the Claude app)"
 has '"android.permission.MODIFY_AUDIO_SETTINGS"' "$mf" "declares MODIFY_AUDIO_SETTINGS (call audio playback)"
 has '"android.permission.WRITE_SECURE_SETTINGS"' "$mf" "declares WRITE_SECURE_SETTINGS (adb grant only: keeps the recognizer set)"
 boot=$(subtree app.heyrobot.boot.BootReceiver)
 has '"android.intent.action.LOCKED_BOOT_COMPLETED"' "$boot" "BootReceiver gets LOCKED_BOOT_COMPLETED"
 has 'directBootAware(0x01010505)=true' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver direct-boot aware"
-for p in CAMERA READ_EXTERNAL_STORAGE READ_MEDIA_IMAGES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION; do
+for p in CAMERA READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE MANAGE_EXTERNAL_STORAGE KILL_BACKGROUND_PROCESSES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
-# Phase 2: contacts and the calendar, asked for at runtime by the main app only.
-for p in READ_CONTACTS READ_CALENDAR WRITE_CALENDAR; do
+# 0.4.0: photos and videos (all, or the ones you pick), asked for by the main app only, for free_storage's largest files.
+for p in READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_VISUAL_USER_SELECTED; do
   has "\"android.permission.$p\"" "$mf" "declares $p"
 done
+has ':voice' "$(elem app.heyrobot.assistant.MediaDeleteActivity)" "MediaDeleteActivity in :voice"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.MediaDeleteActivity)" "MediaDeleteActivity not exported"
+# Phase 2: contacts and the calendar, asked for at runtime by the main app only; 0.4.0: approximate location for the
+# weather "here" (never fine or background location).
+for p in READ_CONTACTS READ_CALENDAR WRITE_CALENDAR ACCESS_COARSE_LOCATION; do
+  has "\"android.permission.$p\"" "$mf" "declares $p"
+done
+hasnt 'android.permission.ACCESS_BACKGROUND_LOCATION"' "$mf" "no ACCESS_BACKGROUND_LOCATION permission"
+# 0.4.0: Usage access (a special app access you turn on in Android's settings) for the apps using the most space.
+has '"android.permission.PACKAGE_USAGE_STATS"' "$mf" "declares PACKAGE_USAGE_STATS (Usage access, phone status)"
 # "Robot Notes" on the launcher: an activity-alias of MainActivity with its own MAIN/LAUNCHER filter, label and icon.
 alias=$(echo "$mf" | awk '/^ *E: activity-alias /{ on=0 } index($0, "\"app.heyrobot.ui.NotesLauncher\""){ on=1 } /^ *E: (service|receiver|activity|provider) /{ on=0 } on')
 has 'targetActivity(0x01010202)="app.heyrobot.ui.MainActivity"' "$alias" "Robot Notes alias targets MainActivity"

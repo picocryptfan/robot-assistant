@@ -12,6 +12,7 @@ import app.heyrobot.core.Action
 import app.heyrobot.core.AskClaudeTool
 import app.heyrobot.core.ActionRecord
 import app.heyrobot.core.ActionStatus
+import app.heyrobot.core.Approval
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainMsg
@@ -53,6 +54,7 @@ import app.heyrobot.core.ToolName
 import app.heyrobot.core.TurnModel
 import app.heyrobot.core.Executed
 import app.heyrobot.core.FastPath
+import app.heyrobot.core.FreeUp
 import app.heyrobot.core.NoQuestion
 import app.heyrobot.core.NoReply
 import app.heyrobot.core.Prepared
@@ -64,6 +66,7 @@ import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.ScreenData
 import app.heyrobot.core.ScreenText
+import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.ShowSource
 import app.heyrobot.core.StallTimer
 import app.heyrobot.core.SpeakReplies
@@ -95,6 +98,7 @@ import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Phones
+import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.voice.Cues
 import app.heyrobot.voice.SpeechToText
 import kotlinx.coroutines.CancellationException
@@ -938,8 +942,9 @@ object PanelController {
         // Escalation trigger a: strong signals go to Claude before Gemma spends a prefill (Automatic only); with Ask
         // first, Gemma answers and the offer follows its reply.
         var offerAfter: EscalationTrigger? = null
-        // Not after "not Claude": that conversation stays with Robot.
-        if (attachment == Attachment.NONE && !claudeDeclined) PreRouter.signal(question)?.let { signal ->
+        // Not after "not Claude": that conversation stays with Robot. With the weather tool on, a weather question is
+        // Robot's to answer (0.4.0).
+        if (attachment == Attachment.NONE && !claudeDeclined) PreRouter.signal(question, localWeather = s.approval(ToolName.WEATHER) != Approval.OFF)?.let { signal ->
             RLog.i("claude_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
             when (decide(attachment, guardFree = !guard.used)) {
                 EscalationDecision.AUTO -> {
@@ -981,7 +986,8 @@ object PanelController {
         suspend fun gemma(askClaude: Boolean): TurnResult {
             // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
             val tools = ToolRouter.tools(groups, s, askClaude)
-            val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools)
+            val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools,
+                weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools)
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
             val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
             // The new turn always fits the model's context: cut (and say so) rather than overflow.
@@ -1626,17 +1632,25 @@ object PanelController {
         override fun close() {}
     }
 
-    /** "Open Cheogram" on a card: the app's launcher activity (nothing passed to it). */
+    /**
+     * "Open Cheogram" on a card: the app's launcher activity (nothing passed to it). 0.4.0: or a page of Android's
+     * settings ("Open storage settings", "Turn on Usage access"), the first of its intents that opens.
+     */
     fun openHandOff(actionId: String) {
         val a = _state.value.turns.flatMap { it.actions }.firstOrNull { it.id == actionId } ?: return
         val pkg = a.handOff ?: return
-        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open Cheogram.")
+        val page = SettingsPage.isPage(pkg)
+        if (Assistant.locked(VoiceHub.app)) return notify(if (page) "Unlock your phone, then open Settings." else "Unlock your phone, then open Cheogram.")
         val h = host ?: return
-        val i = VoiceHub.app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return notify("Cheogram isn't installed.")
+        val tries = if (page) SettingsIntents.of(VoiceHub.app, pkg)
+        else listOfNotNull(VoiceHub.app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        if (tries.isEmpty()) return notify(if (page) "Settings didn't open." else "Cheogram isn't installed.")
         stopGenerating(TtsStop.OTHER)
-        if (h.launch(i)) {
+        if (tries.any { h.launch(it) }) {
             hidingFor = "action"
             h.hidePanel()
+        } else if (page) {
+            notify("Settings didn't open.")
         }
     }
 
@@ -1875,6 +1889,8 @@ object PanelController {
 
     /** [costMicros]: a Claude reply's estimated price, kept with it in the history. */
     private fun finishReply(replyId: String, reason: DoneReason, costMicros: Long = 0) {
+        // Before anything else: a reply the panel has moved on from still ends the unload it asked for.
+        unloadIfAsked(replyId)
         if (!current(replyId)) return
         val ui = _state.value.turns.firstOrNull { it.id == replyId }
         val claude = ui?.claude == true
@@ -1905,7 +1921,30 @@ object PanelController {
         if (closeConvAfterTurn) closeLiveConversation()
     }
 
+    /**
+     * free_memory asked for Robot's model to be unloaded during this answer (0.4.0): now that it has ended, unload it
+     * and put what Android reports came back on the card (and in the saved conversation). The card is updated after the
+     * reply is recorded: this runs on the main thread after the caller.
+     */
+    private fun unloadIfAsked(replyId: String) {
+        val before = ModelUnload.take() ?: return
+        scope.launch {
+            val (b, after) = ModelUnload.unload(VoiceHub.app, before)
+            val line = FreeUp.freedLine(b, after)
+            _state.update { st ->
+                st.copy(turns = st.turns.map { t ->
+                    if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && it.detail == FreeUp.UNLOADING) it.copy(detail = line) else it })
+                })
+            }
+            chat.replaceAll { t ->
+                if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && it.detail == FreeUp.UNLOADING) it.copy(detail = line) else it })
+            }
+            persist()
+        }
+    }
+
     private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
+        unloadIfAsked(replyId)
         if (!current(replyId)) return
         voice.finish(replyId, cancelled = true, speak = false)
         VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.FAILED)

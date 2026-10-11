@@ -100,7 +100,10 @@ data class Executed(
     val undo: String? = null,
     /** What the model is told instead of [detail] (a fixed code, LookupFallback); null: [detail]. */
     val forModel: String? = null,
-    /** An app the card offers to open (its package; launch intent only), e.g. Cheogram when no contact matched. */
+    /**
+     * An app the card offers to open (its package; launch intent only), e.g. Cheogram when no contact matched; or a page
+     * of Android's settings ([SettingsPage], 0.4.0), e.g. storage after phone_status.
+     */
     val handOff: String? = null,
 ) {
     /** Content entered the conversation: every later action in it asks first. */

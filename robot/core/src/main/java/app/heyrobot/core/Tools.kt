@@ -15,8 +15,10 @@ import kotlin.math.roundToLong
  * [group]: which tool group describes it (ToolRouter). [reads]: it brings content Robot didn't write into the
  * conversation (a note, a calendar invite, a contact): every later action in that conversation asks first.
  * [internal]: Robot's own, not an action on the phone with an approval level (not under Settings › Actions).
+ * [online]: it goes to the internet itself (Settings › Actions says so).
  */
-enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false, val internal: Boolean = false) {
+enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false, val internal: Boolean = false,
+    val online: Boolean = false) {
     SET_TIMER("set_timer", "Timers", ToolGroup.CORE),
     SET_ALARM("set_alarm", "Alarms", ToolGroup.CORE),
     OPEN_APP("open_app", "Open apps", ToolGroup.CORE),
@@ -30,6 +32,14 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
     FIND_NOTES("find_notes", "Note searches", ToolGroup.NOTES, reads = true),
     ADD_EVENT("add_event", "New events", ToolGroup.CALENDAR),
     READ_CALENDAR("read_calendar", "Calendar lookups", ToolGroup.CALENDAR, reads = true),
+    /** 0.4.0: Open-Meteo's forecast for a place you name, your Home for weather, or where the phone is. */
+    WEATHER("weather", "Weather lookups", ToolGroup.WEATHER, reads = true, online = true),
+    /** 0.4.0: storage, battery and memory, read on the phone (the apps using the most space with Usage access). */
+    PHONE_STATUS("phone_status", "Phone status checks", ToolGroup.PHONE, reads = true),
+    /** 0.4.0: unload Robot's own model, or open an app's info page to force stop it (FreeUp.kt). */
+    FREE_MEMORY("free_memory", "Memory clean-ups", ToolGroup.PHONE),
+    /** 0.4.0: Android's Free up space screen, an app's cache, a large photo or video, Robot's cache. */
+    FREE_STORAGE("free_storage", "Storage clean-ups", ToolGroup.PHONE),
     /**
      * Ask Claude (docs/ask-claude.md "When Robot needs help"): described to Gemma only with Ask Claude on and escalation
      * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
@@ -115,6 +125,20 @@ object ToolSpecs {
         )),
         ToolSpec(ToolName.READ_CALENDAR, "List calendar events for a day or a week.", listOf(
             ToolParam("day", "string", "e.g. today, Friday, next week", true),
+        )),
+        // 0.4.0, as short as the others: no place is where you are (or your Home for weather), no day is today.
+        ToolSpec(ToolName.WEATHER, "Weather forecast (online).", listOf(
+            ToolParam("place", "string", "Town, or omit for here", false),
+            ToolParam("day", "string", "e.g. tomorrow, Friday, this week", false),
+        )),
+        ToolSpec(ToolName.PHONE_STATUS, "Read this phone's storage, battery and memory.", listOf(
+            ToolParam("about", "string", "storage, battery, memory or all", false),
+        )),
+        ToolSpec(ToolName.FREE_MEMORY, "Free memory: unload Robot's model, or open an app's info to force stop it.", listOf(
+            ToolParam("app", "string", "App to stop; omit to unload Robot's model", false),
+        )),
+        ToolSpec(ToolName.FREE_STORAGE, "Help free storage.", listOf(
+            ToolParam("what", "string", "android (its Free up space), apps (an app's cache), files (big photos, videos) or robot (Robot's cache)", false),
         )),
         ToolSpec(ToolName.ASK_CLAUDE, "Ask Claude, a stronger AI online, instead of guessing.", listOf(
             ToolParam("question", "string", "The person's question", true),
@@ -240,6 +264,62 @@ sealed class Action {
         }
     }
 
+    /**
+     * [place] as the model gave it (null: where you are). The app reads it into [where] (here, your Home for weather or
+     * a named place) and [day] into the [range] of days, before anything goes online.
+     */
+    data class Weather(val place: String?, val day: String?, val where: WeatherWhere? = null, val range: DayRange? = null) : Action() {
+        override val tool get() = ToolName.WEATHER
+        override fun describe(): String {
+            val w = where ?: WeatherAsk.where(place).first
+            val at = when (w) {
+                WeatherWhere.HERE -> " here"
+                WeatherWhere.HOME -> " at home"
+                WeatherWhere.NAMED -> " in **${WeatherAsk.where(place).second ?: place}**"
+            }
+            val on = range?.let { " for ${EventText.range(it)}" } ?: day?.let { " for $it" } ?: ""
+            return "Check the weather$at$on"
+        }
+    }
+
+    /** phone_status: what was asked about; the app process reads it. */
+    data class PhoneCheck(val part: PhonePart) : Action() {
+        override val tool get() = ToolName.PHONE_STATUS
+        override fun describe() = PhoneStatus.summary(part)
+    }
+
+    /**
+     * free_memory: [app] as the model named it (null: unload Robot's own model) until the app process finds it among the
+     * installed apps ([pkg]); then [app] is its real label.
+     */
+    data class FreeMemory(val app: String?, val pkg: String? = null) : Action() {
+        override val tool get() = ToolName.FREE_MEMORY
+        override fun describe() = if (app == null) "Unload Robot's model to free about 2 GB of memory" else "Open **$app**'s App info to force stop it"
+        override val confirmLabel get() = if (app == null) "Unload" else "Open App info"
+    }
+
+    /**
+     * free_storage. [target]: the app's package ([StorageWay.APPS]) or the file's content URI ([StorageWay.FILES]) once
+     * picked on the card; [label] the app's name; [bytes] Robot's cache ([StorageWay.ROBOT]); [summary] what the card
+     * says of a picked file, without its name (FreeUp.fileSummary).
+     */
+    data class FreeStorage(val way: StorageWay, val target: String? = null, val label: String? = null, val bytes: Long? = null,
+        val summary: String? = null) : Action() {
+        override val tool get() = ToolName.FREE_STORAGE
+        override fun describe() = when (way) {
+            StorageWay.ANDROID -> "Open Android's Free up space screen"
+            StorageWay.APPS -> if (target == null) "Choose an app to clear its cache" else "Open **$label**'s App info to clear its cache"
+            StorageWay.FILES -> summary ?: "Choose a large photo or video to delete"
+            StorageWay.ROBOT -> "Clear Robot's cache" + (bytes?.let { " (${PhoneStatus.size(it)})" } ?: "")
+        }
+        override val confirmLabel get() = when (way) {
+            StorageWay.ANDROID -> "Open"
+            StorageWay.APPS -> "Open App info"
+            StorageWay.FILES -> "Delete"
+            StorageWay.ROBOT -> "Clear"
+        }
+    }
+
     /** [day] in the person's words until the app reads it into a [range]. */
     data class ReadCalendar(val day: String, val range: DayRange? = null) : Action() {
         override val tool get() = ToolName.READ_CALENDAR
@@ -323,6 +403,8 @@ object ToolCalls {
     /** An email body or a note. */
     const val MAX_LONG = 4_000
     const val MAX_EVENT_MINUTES = 24 * 60
+    /** A place's name as shown (a Home for weather: "Saint-Jean-sur-Richelieu, Quebec, Canada"). */
+    const val MAX_PLACE = 120
 
     /**
      * Validates one call. Unknown argument names are ignored; missing or out-of-range ones are refused, and so is
@@ -409,6 +491,15 @@ object ToolCalls {
             }
             // Empty: "go get Claude" with nothing to summarise opens the app without text.
             ToolName.ASK_CLAUDE -> ParsedCall.Ok(Action.AskClaude(longArg(a, ClaudeAppLink.MAX_CHARS, "question", "query", "q", "text", "prompt").orEmpty()))
+            // Both optional: no place is where you are, no day is today.
+            ToolName.WEATHER -> ParsedCall.Ok(Action.Weather(textArg(a, MAX_NAME, "place", "location", "city", "where", "town"),
+                textArg(a, MAX_NAME, "day", "date", "when", "time", "days")))
+            // Anything it doesn't name (or nothing) is all of it.
+            ToolName.PHONE_STATUS -> ParsedCall.Ok(Action.PhoneCheck(PhonePart.of(textArg(a, MAX_NAME, "about", "part", "what", "topic", "kind"))))
+            // Robot's own model when no app (or Robot itself) is named.
+            ToolName.FREE_MEMORY -> ParsedCall.Ok(Action.FreeMemory(FreeUp.appOrNull(textArg(a, MAX_NAME, "app", "name", "application", "package"))))
+            // Android's own screen unless it says apps, files or Robot.
+            ToolName.FREE_STORAGE -> ParsedCall.Ok(Action.FreeStorage(StorageWay.of(textArg(a, MAX_NAME, "what", "way", "kind", "target", "how"))))
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
                 val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }

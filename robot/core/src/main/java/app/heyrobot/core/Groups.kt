@@ -14,6 +14,10 @@ enum class ToolGroup {
     PEOPLE,
     NOTES,
     CALENDAR,
+    /** The weather (0.4.0): described only when a question speaks of it. */
+    WEATHER,
+    /** The phone's storage, battery and memory (0.4.0). */
+    PHONE,
 }
 
 object ToolRouter {
@@ -33,8 +37,22 @@ object ToolRouter {
     /** Not "march" or "may": they are everyday verbs as well. */
     private val MONTHS get() = setOf("january", "february", "april", "june", "july", "august", "september", "october", "november", "december")
 
+    /** The weather, English and French ("will it rain", "cloud cover tomorrow", "quel temps", "météo"). */
+    private val WEATHER = setOf("weather", "forecast", "rain", "rainy", "snow", "snowy", "temperature", "cloud", "cloudy", "cloud cover",
+        "wind", "windy", "umbrella", "sunny", "storm", "stormy", "thunder", "thunderstorm", "hail", "fog", "foggy", "drizzle", "sleet",
+        "frost", "freezing", "humid", "humidity", "degrees", "hot outside", "cold outside", "jacket", "coat", "sunscreen",
+        "meteo", "pluie", "pleuvoir", "pleut", "neige", "neiger", "nuage", "nuageux", "vent", "venteux",
+        "parapluie", "soleil", "ensoleille", "orage", "brouillard", "grele", "gel", "degres", "quel temps", "previsions", "manteau")
+
+    /** The phone itself: storage, battery, memory, and freeing them ("free up space", "libérer de la place"). */
+    private val PHONE = setOf("storage", "space", "free up", "clean up", "memory", "ram", "battery", "charge", "disk", "gigabytes", "gb",
+        "megabytes", "cache", "phone status", "running out", "taking up", "stockage", "espace", "memoire", "batterie", "liberer", "libere",
+        "de la place", "nettoyer", "nettoie")
+
     /** "tell me a joke" is not about telling someone: "tell" counts only when it isn't followed by me or us. */
     private val NOT_PEOPLE = setOf("tell me", "tell us")
+    /** "free up space" is about the phone, not about being free (0.4.0): "free" is a calendar word only otherwise. */
+    private val NOT_CALENDAR = setOf("free up", "free space", "free memory", "free storage", "free ram")
 
     /** "let Sarah know", "let my sister know". */
     private val LET_KNOW = Regex("""\blet (?:\w+ ){1,3}know\b""")
@@ -48,13 +66,18 @@ object ToolRouter {
         val plain = Normalizer.normalize(question, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
         fun has(keys: Set<String>) = keys.any { k ->
             if (' ' in k) padded.contains(" $k ")
-            else words.withIndex().any { (i, w) -> inflects(w, k) && !(k == "tell" && i + 1 < words.size && "tell ${words[i + 1]}" in NOT_PEOPLE) }
+            else words.withIndex().any { (i, w) ->
+                inflects(w, k) && !(k == "tell" && i + 1 < words.size && "tell ${words[i + 1]}" in NOT_PEOPLE) &&
+                    !(k == "free" && i + 1 < words.size && "free ${words[i + 1]}" in NOT_CALENDAR)
+            }
         }
         return buildSet {
             add(ToolGroup.CORE)
             if (has(PEOPLE) || LET_KNOW.containsMatchIn(padded)) add(ToolGroup.PEOPLE)
             if (has(NOTES)) add(ToolGroup.NOTES)
             if (has(CALENDAR) || WHEN.containsMatchIn(plain)) add(ToolGroup.CALENDAR)
+            if (has(WEATHER)) add(ToolGroup.WEATHER)
+            if (has(PHONE)) add(ToolGroup.PHONE)
         }
     }
 
