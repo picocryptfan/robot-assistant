@@ -642,7 +642,7 @@ fun RobotAppUi(activity: MainActivity) {
         // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
         is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
             onCreated = { id -> if (page == Page.NoteEdit(null)) page = Page.NoteEdit(id) }, onBack = { page = null; notesTick++ })
-        Page.WakePhrases -> WakePhrasesScreen(settings, ::updateSettings, snackbar, onBack = { page = null })
+        Page.WakePhrases -> WakePhrasesScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
         Page.WakeTest -> WakeTestScreen(settings, snap, onBack = { page = null })
         Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = { page = null })
         Page.AdbFixes -> AdbFixesScreen(snackbar, onBack = { page = null })

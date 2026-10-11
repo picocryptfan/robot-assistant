@@ -89,7 +89,7 @@ fun EditDialog(
     validate: (String) -> String? = { null },
     confirm: String = "Save",
     keyboard: KeyboardOptions = KeyboardOptions.Default,
-    hint: ((String) -> String)? = null,
+    hint: ((String) -> String?)? = null,
     canSave: (String) -> Boolean = { true },
     maxLength: Int = Int.MAX_VALUE,
     onDismiss: () -> Unit,
