@@ -1,5 +1,7 @@
 package app.heyrobot.assistant
 
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -454,6 +456,11 @@ private fun Messages(st: PanelState, modifier: Modifier) {
         modifier = modifier.fillMaxWidth().pointerInput(st.phase, st.speak) {
             // Tapping the conversation stops speech (spec item 4), also while the spoken reply still streams.
             detectTapGestures { if (st.phase == Phase.SPEAKING || (st.phase == Phase.ANSWERING && st.speak)) PanelController.stopSpeaking() }
+        }.semantics {
+            // The same for TalkBack, which can't tap the list itself: an action on it while Robot talks.
+            if (st.phase == Phase.SPEAKING || (st.phase == Phase.ANSWERING && st.speak)) {
+                customActions = listOf(CustomAccessibilityAction("Stop speaking") { PanelController.stopSpeaking(); true })
+            }
         },
         reverseLayout = true,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),

@@ -1,5 +1,6 @@
 package app.heyrobot.ui.common
 
+import androidx.compose.foundation.clickable
 import android.graphics.Bitmap
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -141,7 +142,8 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
             Surface(
                 color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 320.dp).toggleable(open, onValueChange = { open = it }),
+                modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 320.dp)
+                    .clickable(onClickLabel = if (open) "Show less" else "Show all") { open = !open },
             ) {
                 Text(screenText, style = MaterialTheme.typography.bodySmall, maxLines = if (open) Int.MAX_VALUE else 4,
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
