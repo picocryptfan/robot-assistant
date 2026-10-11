@@ -1770,7 +1770,19 @@ Robot knows no one in People and changes nothing until Settings › People › S
    once the switch is on, Assistant setup › People, notes and calendar give the steps with a button for each screen
    (with the switch off, Assistant setup only says it is optional): Notification access (tap
    Robot; if Android says it's a restricted setting, tap OK), App info › ⋮ › Allow restricted settings, then
-   Notification access again.
+   Notification access again. Since 0.4.6 the steps first say why Android calls it a restricted setting (apps installed
+   from a file instead of an app store; harmful ones have used it to read messages and login codes), and each step has
+   its own button (Notification access, App info, Notification access again).
+   **In the app (0.4.6):** under the switch, Settings › People always shows "What Robot reads, and where it goes", each
+   line checked against the code: notification access lets an app see every app's notifications, but Robot asks for
+   conversations only, drops all but Cheogram's at once and ignores them all while the switch is off; from a 1:1 chat it
+   keeps only the sender's name and address and which of your accounts got the message, never looks at, keeps or logs the
+   message, learns nothing from group chats, and checks Cheogram's signature; names stay on the phone in Robot's private
+   storage, out of Android's backups, and Robot never sends them anywhere by itself (not to Claude, any other helper or
+   online model; Robot's own model on the phone sees a name only when it looks someone up), the one way being your choice
+   to share with Claude a conversation in which Robot looked someone up (Include, or "Send personal content to helpers
+   automatically"); and how to take it back (the switch off stops learning at once, then Robot off in Notification
+   access, with a button, and Remove or Delete all People for names already learned).
 5. **Add from phone contacts.** Android 17's contact picker (`ACTION_PICK_CONTACTS`, one contact's numbers and emails,
    all of them) when the phone has it, else the older picker for one number or one email. No permission either way. A
    picker that answers with no contact (no URI, also none in its ClipData) is said so.
