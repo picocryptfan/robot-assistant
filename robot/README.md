@@ -228,7 +228,8 @@ translates conversations yet. The core's `BergamotTranslator` (behind the same `
 - **The library.** `tools/build_robotmt.sh` fetches slimt (DavidVentura's fork @ `2beb403a`, the one Offline Translator
   uses) and the commits of ruy, cpuinfo and SentencePiece it pins, checks the SHA-256 of each tree, and builds
   `librobotmt.so` for arm64-v8a with NDK 27.1.12297006 and CMake 3.22.1 from Robot's own wrapper (`mt/src/main/cpp/`:
-  slimt's C++ API, a sentence splitter, three JNI functions; nothing logged). It goes into `mt/src/main/jniLibs/` (not in
+  slimt's C++ API, a sentence splitter, Bergamot's doubled short sentence ("Oui." → "Yes. Yes.") kept once in every
+  sentence, three JNI functions; nothing logged). It goes into `mt/src/main/jniLibs/` (not in
   git), where Gradle packages it; the same sources give the same bytes (THIRD_PARTY.md has the hash). Without it the app
   still builds, and Settings › Conversation says the fast engine isn't in this build. `--check` also builds the wrapper
   for the computer, downloads and checks the model files, and translates the test set (`tools/lang/fr-CA/mt-test.tsv`),
@@ -239,8 +240,8 @@ translates conversations yet. The core's `BergamotTranslator` (behind the same `
   and checked again before the `:mt` process may load it; 73 MB in Robot's private storage. Delete removes them.
 - **The process.** One engine, both directions at most (about 300 MB with both loaded on the build machine), loaded on
   first use and let go after five idle minutes, when Android is short of memory with the process in the background, or
-  when nothing is bound. A request is up to 64 lines of one direction, each translated on its own (sentence by sentence)
-  before its deadline; an interactive line goes before a waiting backlog, so it waits at most one line. slimt can
+  when nothing is bound. A request is up to 64 lines (32,000 characters) of one direction, each translated on its own
+  (sentence by sentence) before its deadline; an interactive line goes before a waiting backlog, so it waits at most one line. slimt can
   `abort()` on a bad model file: that ends `:mt` only (the transcript, the panel and Gemma go on), and the next request
   starts it again. It never goes online and logs codes and numbers only; the voice log gets "Fast translation loaded in
   … ms (2 directions)".
