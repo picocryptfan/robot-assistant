@@ -15,8 +15,9 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 
 // :BRAIN PROCESS ONLY. 0.4.5: two engines behind one interface, LiteRT-LM (GemmaEngine: Robot's models and your own
-// .litertlm) and llama.cpp (LlamaEngine: your own .gguf), and still one engine in the process: the 0.4.1 slot rule, now
-// shared by both, and the other engine unloads before one loads (core EngineSwitch).
+// .litertlm) and llama.cpp (LlamaEngine: your own .gguf, run in its own isolated process), and still one model at a
+// time: the 0.4.1 slot rule, now shared by both (LlamaEngine holds it until its isolated process is gone), and the other
+// engine unloads before one loads (core EngineSwitch).
 
 /** What BrainService asks of an engine; every call on its work thread. */
 interface BrainEngine {
@@ -78,8 +79,8 @@ object EngineSlot {
 }
 
 /**
- * BrainService's engine: LiteRT-LM or llama.cpp by the kind of file asked for. The llama.cpp engine (and its library) is
- * made only for a GGUF load. Before one engine loads, the other one lets its model go; if it can't yet (a reply it is still
+ * BrainService's engine: LiteRT-LM or llama.cpp by the kind of file asked for. The llama.cpp engine is made only for a
+ * GGUF load, and its library is loaded only in the isolated process it starts. Before one engine loads, the other one lets its model go; if it can't yet (a reply it is still
  * leaving), the slot keeps the new load waiting ("still stopping"), exactly as between two services in 0.4.1.
  */
 class Engines(private val ctx: Context, private val handler: Handler) : BrainEngine {
