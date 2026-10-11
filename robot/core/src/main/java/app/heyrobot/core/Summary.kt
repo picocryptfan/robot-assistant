@@ -22,9 +22,25 @@ import kotlin.math.roundToLong
 /** One call to Gemma: its system prompt, the user turn, and the reply's cap in streamed chunks (about tokens). */
 data class SummaryCall(val system: String, val user: String, val maxChunks: Int)
 
-/** Robot's plan for one summary: the map calls, and how many reduce levels follow (for the progress bar). */
-data class SummaryPlan(val map: List<SummaryCall>, val levels: Int) {
+/**
+ * Robot's plan for one summary: the map calls, and how many reduce levels follow (for the progress bar); [ranges] each
+ * part's first and last line's time ("14:20" to "14:31").
+ */
+data class SummaryPlan(val map: List<SummaryCall>, val levels: Int, val ranges: List<Pair<String, String>> = emptyList()) {
     val parts: Int get() = map.size
+
+    /** Merge calls to expect, about (FAN_IN notes per call, level by level): for the progress bar. */
+    val reduceCalls: Int get() {
+        var n = parts
+        var calls = 0
+        while (n > 0) {
+            val c = (n + SummaryPlanner.FAN_IN - 1) / SummaryPlanner.FAN_IN
+            calls += c
+            if (c <= 1) break
+            n = c
+        }
+        return calls
+    }
 }
 
 object SummaryPlanner {
@@ -124,7 +140,7 @@ object SummaryPlanner {
         val system = Prompt.summaryMap(lang)
         val parts = chunks(lines, system, maxTokens)
         val calls = parts.mapIndexed { k, p -> SummaryCall(system, partText(k + 1, parts.size, timeOf(p.first()), timeOf(p.last()), p), NOTE_TOKENS) }
-        return SummaryPlan(calls, levels(calls.size))
+        return SummaryPlan(calls, levels(calls.size), parts.map { timeOf(it.first()) to timeOf(it.last()) })
     }
 
     private val TIME = Regex("""^\[(\d{1,2}:\d{2})]""")

@@ -130,6 +130,48 @@ class TranscriptStore(val root: File) {
         return writeMeta(m.without(from, to)) == null
     }
 
+    // ------------------------------------------------------------------ summaries (phase 5.6)
+
+    /** [id]'s summaries (summary-<n>.json: Robot's own, or a helper's), oldest first, with their numbers. */
+    fun summaries(id: String): List<Pair<Int, SummaryRecord>> {
+        if (id in forgotten) return emptyList()
+        val d = dir(id)?.takeIf { it.isDirectory } ?: return emptyList()
+        return d.listFiles().orEmpty().mapNotNull { f -> SUMMARY.matchEntire(f.name)?.groupValues?.get(1)?.toIntOrNull()?.let { it to f } }
+            .sortedBy { it.first }.mapNotNull { (n, f) -> SummaryRecord.fromJson(readOrNull(f))?.let { n to it } }
+    }
+
+    /** Saves [r] as [id]'s next summary (atomically); its number, or null. Never creates the folder. */
+    @Synchronized
+    fun addSummary(id: String, r: SummaryRecord): Int? {
+        if (id in forgotten) return null
+        val d = dir(id)?.takeIf { it.isDirectory } ?: return null
+        val n = (d.listFiles().orEmpty().mapNotNull { SUMMARY.matchEntire(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+        if (writeIn(d, TranscriptFiles.summary(n), r.toJson()) != null) return null
+        TranscriptEvents.publish(TranscriptChange.Updated(id))
+        return n
+    }
+
+    @Synchronized
+    fun deleteSummary(id: String, n: Int): Boolean {
+        val d = dir(id)?.takeIf { it.isDirectory } ?: return false
+        return File(d, TranscriptFiles.summary(n)).delete().also { if (it) TranscriptEvents.publish(TranscriptChange.Updated(id)) }
+    }
+
+    /** The notes of Robot's summary under way for [id] (kept so a stopped one goes on), or null. */
+    fun draft(id: String): SummaryDraft? = dir(id)?.takeIf { it.isDirectory && id !in forgotten }?.let { SummaryDraft.fromJson(readOrNull(File(it, SummaryDraft.FILE))) }
+
+    @Synchronized
+    fun saveDraft(id: String, d: SummaryDraft): IoCode? {
+        if (id in forgotten) return IoCode.MISSING
+        val f = dir(id) ?: return IoCode.OTHER
+        return writeIn(f, SummaryDraft.FILE, d.toJson())
+    }
+
+    @Synchronized
+    fun clearDraft(id: String) {
+        dir(id)?.let { File(it, SummaryDraft.FILE).delete() }
+    }
+
     /** Bytes on storage (the folder's files). */
     fun bytes(id: String): Long = dir(id)?.walkTopDown()?.filter { it.isFile }?.sumOf { it.length() } ?: 0
 
@@ -258,6 +300,8 @@ class TranscriptStore(val root: File) {
     }
 
     companion object {
+        private val SUMMARY = Regex("""summary-(\d{1,6})\.json""")
+
         /** A deleted transcript's folder on its way out. */
         const val TRASH = ".trash-"
     }

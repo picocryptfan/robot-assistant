@@ -140,9 +140,9 @@ class GemmaTranslateTest {
         val alone = TranslatePolicy.budget(TranslateUse.INTERPRETER, ModelBackend.TPU, fast = false)
         assertTrue(alone.startWithinMs!! > TranslatePolicy.START_WITHIN_MS && alone.waitForLoad)
         assertTrue(TranslatePolicy.budget(TranslateUse.INTERPRETER, ModelBackend.CPU, fast = false).totalMs > alone.totalMs)
-        // A better translation never has a start deadline (it waits its turn) and never loads the model for itself.
+        // A better translation waits its turn, at most as long as a line may be behind, and never loads the model for itself.
         val up = TranslatePolicy.budget(TranslateUse.TRANSCRIPT_UPGRADE, ModelBackend.TPU, fast = true)
-        assertNull(up.startWithinMs)
+        assertEquals(60_000L, up.startWithinMs)
         assertFalse(up.waitForLoad)
         assertTrue(TranslatePolicy.modelWork(screenOn = true, hot = false))
         assertFalse(TranslatePolicy.modelWork(screenOn = false, hot = false))

@@ -12,7 +12,7 @@ import app.heyrobot.core.RLog
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.atomic.AtomicBoolean
 
 // VOICE PROCESS. Conversation mode's way to Robot's model (docs/conversation-mode.md 4.2, phase 5.4): REQ_ONE_SHOT over
 // BrainKeeper's binding, the same client as the panel's (one numbering, one model). The request's two deadlines are
@@ -21,6 +21,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 // cancels it in :brain too. Nothing here logs content.
 
 object BrainOneShots : OneShotTransport {
+    /** How often the deadlines are looked at. */
+    private const val WATCH_MS = 100L
+
     override suspend fun run(req: BrainMsg.OneShot, budget: OneShotBudget, onText: (String) -> Unit): OneShotResult {
         val ctx = VoiceHub.app
         // A translation someone waits for doesn't wait for a model to load: the fast engine answers meanwhile, and the
@@ -32,33 +35,32 @@ object BrainOneShots : OneShotTransport {
         val t0 = SystemClock.elapsedRealtime()
         val (id, flow) = c.request(BrainProtocol.REQ_ONE_SHOT, req)
         val fold = OneShotFold(t0)
-        var late = false
+        val late = AtomicBoolean(false)
+        val slow = AtomicBoolean(false)
         var finished = false
         try {
             val r = coroutineScope {
-                // The start deadline: still waiting in :brain's queue after it, the request is cancelled there.
-                val watch = budget.startWithinMs?.let { ms ->
-                    launch {
-                        delay(ms)
-                        if (!fold.started) {
-                            late = true
+                // The deadlines: still waiting in :brain's queue after the start one, or running longer than the total
+                // one since it started (it starts over after giving way), and it is cancelled there.
+                val watch = launch {
+                    val startBy = budget.startWithinMs?.let { t0 + it }
+                    while (true) {
+                        delay(WATCH_MS)
+                        val now = SystemClock.elapsedRealtime()
+                        val over = if (!fold.started) startBy != null && now >= startBy else now - fold.startedAt >= budget.totalMs
+                        if (over) {
+                            if (fold.started) slow.set(true) else late.set(true)
                             c.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(id))
                             c.abandon(id)
+                            break
                         }
                     }
                 }
-                val all = withTimeoutOrNull(budget.totalMs) {
-                    flow.collect { m -> if (fold.event(m, SystemClock.elapsedRealtime())) onText(fold.soFar) }
-                    true
-                }
-                watch?.cancel()
+                flow.collect { m -> if (fold.event(m, SystemClock.elapsedRealtime())) onText(fold.soFar) }
+                watch.cancel()
                 when {
-                    late -> OneShotResult.NotStarted
-                    all == null -> {
-                        c.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(id))
-                        c.abandon(id)
-                        OneShotResult.TimedOut(fold.soFar)
-                    }
+                    late.get() -> OneShotResult.NotStarted
+                    slow.get() -> OneShotResult.TimedOut(fold.soFar)
                     else -> fold.closed()
                 }
             }

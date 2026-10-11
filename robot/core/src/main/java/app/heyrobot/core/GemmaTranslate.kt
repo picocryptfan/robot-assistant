@@ -86,6 +86,8 @@ object TranslatePolicy {
     const val IN_FLIGHT = 1
     /** First translations waiting (no fast engine) beyond this: the oldest go untranslated (tap a line to ask). */
     const val MAX_WAITING = 30
+    /** A first translation (no fast engine) waits this long for Robot's model at most (the panel's question, the interpreter). */
+    const val FIRST_WAIT_MS = 120_000L
 
     /** Robot's model leads the interpreter: on the TPU, or when there is no fast engine. */
     fun modelLeads(backend: ModelBackend?, fast: Boolean): Boolean = !fast || backend != ModelBackend.CPU
@@ -106,8 +108,9 @@ object TranslatePolicy {
                 else -> OneShotBudget(8_000, 15_000)
             }
             TranslateUse.TRANSCRIPT_FIRST -> if (fast) OneShotBudget(START_WITHIN_MS, if (cpu) 30_000 else 15_000, waitForLoad = false)
-                else OneShotBudget(null, if (cpu) 45_000 else 20_000)
-            TranslateUse.TRANSCRIPT_UPGRADE -> OneShotBudget(null, if (cpu) 60_000 else 20_000, waitForLoad = false)
+                else OneShotBudget(FIRST_WAIT_MS, if (cpu) 45_000 else 20_000)
+            // Waiting longer than a line may be behind makes it stale anyway.
+            TranslateUse.TRANSCRIPT_UPGRADE -> OneShotBudget((BEHIND_S * 1000).toLong(), if (cpu) 60_000 else 20_000, waitForLoad = false)
         }
     }
 }

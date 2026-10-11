@@ -5,7 +5,11 @@ package app.heyrobot.core
 // translation someone waits for goes to the fast engine instead) and one for the whole reply. The app's transport over
 // the Messenger binding implements OneShotTransport; translations and summaries only see this interface.
 
-/** How long a one-shot may take: to start on the model ([startWithinMs], null: as long as it takes), and in all ([totalMs]). */
+/**
+ * How long a one-shot may take: to start on the model, from the request ([startWithinMs], null: as long as it takes),
+ * and to run once started ([totalMs]). [waitForLoad]: false when a model that isn't loaded yet should not be waited for
+ * (the fast engine answers meanwhile).
+ */
 data class OneShotBudget(val startWithinMs: Long?, val totalMs: Long, val waitForLoad: Boolean = true)
 
 /** How a one-shot ended for its client. */
@@ -44,7 +48,9 @@ class OneShotFold(private val t0: Long) {
     var restarts = 0
         private set
     private val text = StringBuilder()
-    private var startedAt = -1L
+    /** When it last started (the clock of [event]'s calls), -1 before. */
+    @Volatile var startedAt = -1L
+        private set
     @Volatile var result: OneShotResult? = null
         private set
 
