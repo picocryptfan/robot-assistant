@@ -185,7 +185,14 @@ object WebPrompt {
 
         fun cost(text: String) = TokenEstimate.turn(PromptTurn(PromptRole.USER, system)) + TokenEstimate.turn(PromptTurn(PromptRole.USER, text))
 
-        // Each part's own cap first: results within their share (never below 3 or one a passage cites).
+        // Each part's own cap first: passages within theirs (2,000, 900 a page; Passages.select keeps these already),
+        // results within theirs (never below 3 or one a passage cites).
+        fun over(l: List<Passage>) = l.sumOf { it.tokens + Passages.OVERHEAD } > Passages.TOTAL_TOKENS ||
+            l.groupBy { it.source }.values.any { page -> page.sumOf { it.tokens + Passages.OVERHEAD } > Passages.PAGE_TOKENS }
+        while (ps.isNotEmpty() && over(ps)) {
+            ps = ps - ps.minByOrNull { it.score }!!
+            dropped = dropped.copy(passages = dropped.passages + 1)
+        }
         while (listed.size > MIN_RESULTS && resultsCost(listed.map { it.value }) > RESULTS_TOKENS) {
             val drop = listed.lastOrNull { (i, _) -> (i + 1) !in withPassages } ?: break
             listed = listed - drop

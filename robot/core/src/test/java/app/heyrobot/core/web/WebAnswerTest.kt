@@ -171,6 +171,16 @@ class WebAnswerTest {
         assertEquals(0, roomy.dropped.turns)
     }
 
+    @Test fun passagesKeepTheirShareEvenWhenTheBudgetIsLarger() {
+        val text = "Passage text about the Stanley Cup final and the six games it took to finish. ".repeat(6)
+        val passages = (1..3).flatMap { page -> (0 until 6).map { Passage(page, it, text, score = (10 - it).toDouble()) } }
+        val o = WebPrompt.build("q", "en", now, emptyList(), stanley, passages, spoken = true, budget = 10_000)
+        val kept = passages.size - o.dropped.passages
+        assertTrue(o.dropped.passages > 0)
+        assertTrue(kept * (passages[0].tokens + Passages.OVERHEAD) <= Passages.TOTAL_TOKENS)
+        assertEquals(kept, o.text.lines().count { it.matches(Regex("\\[\\d] [a-z.]+: Passage text.*")) })
+    }
+
     @Test fun earlierTurnsAreCutToTheirShare() {
         val long = "This is a long earlier turn that goes on and on about the playoffs. ".repeat(40)
         val turns = WebPrompt.recentTurns(listOf(PromptTurn(PromptRole.USER, "first"), PromptTurn(PromptRole.USER, long), PromptTurn(PromptRole.MODEL, long)))
