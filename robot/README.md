@@ -87,7 +87,8 @@ screens follow after their branches are merged.
   "Use wallpaper colours" off and on; dark theme from Quick Settings with the app and with the panel open; a cold start
   in dark mode (no white flash); Settings › Display beside GrapheneOS Settings (group corners and gaps, title size,
   switch thumbs; if GrapheneOS Settings is flat, set `RobotTokens.groupedSettings = false`); font and display size at
-  their largest.
+  their largest; Settings › About › Licences (its card and the About row are the restyled `SectionCard` and `NavRow`) and
+  the Uncensored model's two-tick-box window, with and without wallpaper colours.
 
 ## Building
 

@@ -97,6 +97,15 @@ class LicencesTest {
         assertEquals("anthropic-sdk-java", book.forArtifact("com.anthropic", "anthropic-java-core")?.id)
     }
 
+    /** The icons in Icons.kt are Material Symbols at the commit tools/symbols.py pins, and the list names that commit. */
+    @Test fun theIconsAreOnTheListAtTheirCommit() {
+        val commit = Regex("""COMMIT = "([0-9a-f]{40})"""").find(File(root, "tools/symbols.py").readText())!!.groupValues[1]
+        val symbols = book.byId("material-symbols")!!
+        assertEquals(LicenceWhere.APP, symbols.where)
+        assertTrue(symbols.version, symbols.version.endsWith(" at " + commit.take(8)))
+        assertTrue(thirdParty.contains(commit))
+    }
+
     /** The GPL's notices: free software, no warranty, the licence a tap away, the source, and the GPL parts' source. */
     @Test fun robotsNoticeAndSourceLinks() {
         assertEquals("licenses/GPL-3.0.txt", book.robot.text)
