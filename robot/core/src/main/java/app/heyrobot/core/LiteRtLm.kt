@@ -150,9 +150,9 @@ data class LiteRtLmReport(
         }
         add("LiteRT-LM file, format $format, ${sections.size} sections.")
         add(when {
-            tensorG5Build -> "Compiled for this phone's TPU (Tensor G5): yes — aux section, DISPATCH_OP and the stamp “${stamp.orEmpty()}”."
+            tensorG5Build -> "Compiled for the Tensor G5's TPU (Pixel 10): yes — aux section, DISPATCH_OP and the stamp “${stamp.orEmpty()}”."
             dispatchOp -> "Compiled for an NPU" + (stamp?.let { " (stamp “$it”)" } ?: "") + ", but not as a complete Tensor G5 build."
-            else -> "Compiled for this phone's TPU: no. It runs on the CPU."
+            else -> "Compiled for a TPU: no. It runs on the CPU."
         })
         // Chat only: no actions whatever the metadata, so the line about them would only confuse.
         add(when {

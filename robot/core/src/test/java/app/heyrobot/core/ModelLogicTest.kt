@@ -152,6 +152,6 @@ class ModelLogicTest {
         val l = BrainLoaded(BrainModel.SMARTER, ModelBackend.CPU, 4242)
         assertEquals("e4b_cpu cpu 4242", l.encode())
         assertEquals(l, BrainLoaded.decode(l.encode() + "\n"))
-        for (bad in listOf(null, "", "e4b_cpu cpu", "nope cpu 1", "e4b_cpu gpu 1", "e4b_cpu cpu -3", "e4b_cpu cpu x")) assertNull(bad, BrainLoaded.decode(bad))
+        for (bad in listOf(null, "", "e4b_cpu cpu", "nope cpu 1", "e4b_cpu vulkan 1", "e4b_cpu cpu -3", "e4b_cpu cpu x")) assertNull(bad, BrainLoaded.decode(bad))
     }
 }

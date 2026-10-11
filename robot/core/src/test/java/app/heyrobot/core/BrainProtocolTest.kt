@@ -46,7 +46,11 @@ class BrainProtocolTest {
         assertEquals(ModelBackend.TPU, old.backend)
         assertEquals(4096, old.maxTokens)
         assertNull(BrainMsg.decode(BrainProtocol.REQ_LOAD, """{"path":"/x","model":"e4b_tpu"}"""))
-        assertNull(BrainMsg.decode(BrainProtocol.REQ_LOAD, """{"path":"/x","model":"e4b_cpu","backend":"gpu"}"""))
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_LOAD, """{"path":"/x","model":"e4b_cpu","backend":"vulkan"}"""))
+        // 0.4.7: the general E2B on the GPU goes across as it is.
+        val gpu = BrainMsg.Load("/data/gemma-4-E2B-it.litertlm", BrainModel.GENERAL, ModelBackend.GPU, 4096)
+        assertEquals(gpu, BrainMsg.decode(BrainProtocol.REQ_LOAD, gpu.toJson().toString()))
+        assertEquals(listOf("e2b", "gpu"), listOf(gpu.toJson().getString("model"), gpu.toJson().getString("backend")))
         val j = BrainMsg.Load("/x", BrainModel.SMARTER).toJson()
         assertEquals(listOf("e4b_cpu", "cpu", "4096"), listOf(j.getString("model"), j.getString("backend"), j.getInt("maxTokens").toString()))
     }

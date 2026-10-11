@@ -68,7 +68,8 @@ class VoiceLogTest {
         // 0.4.0's People events use 61 to 79 (80 and up are taken by other 0.4.0 work).
         for (e in listOf(VoiceEvent.CHEOGRAM_PICK, VoiceEvent.CHEOGRAM_HANDOFF)) assertTrue(e.name, e.id in 61..79)
         // 0.4.1's model choice events use 130 to 139 (100 to 123 are taken by other work).
-        val model = listOf(VoiceEvent.MODEL_CHOSEN, VoiceEvent.MODEL_LOADED, VoiceEvent.MODEL_LOAD_FAILED, VoiceEvent.MODEL_FALLBACK, VoiceEvent.MODEL_SWITCH)
+        val model = listOf(VoiceEvent.MODEL_CHOSEN, VoiceEvent.MODEL_LOADED, VoiceEvent.MODEL_LOAD_FAILED, VoiceEvent.MODEL_FALLBACK, VoiceEvent.MODEL_SWITCH,
+            VoiceEvent.GPU_FALLBACK)
         for (e in model) assertTrue(e.name, e.id in 130..139)
         assertEquals(model, VoiceEvent.entries.filter { it.id in 130..139 })
         // Every model and backend has a code of its own.

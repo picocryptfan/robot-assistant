@@ -35,7 +35,13 @@ enum class ModelBackend(val id: String, val title: String) {
     /** The Tensor G5 TPU, through LiteRT-LM's NPU backend. */
     TPU("npu", "TPU"),
     /** The CPU (XNNPACK), which writes a weight cache on the first load. */
-    CPU("cpu", "CPU");
+    CPU("cpu", "CPU"),
+    /**
+     * 0.4.7: the GPU, through LiteRT-LM's GPU backend (its OpenCL accelerator, linked into liblitertlm_jni.so, with the
+     * phone's own libOpenCL.so): only [BrainModel.GENERAL], only where [ModelCatalogue.gpuOffered], and never on a
+     * Tensor G5 or G6 (their PowerVR GPU). It writes a program and weight cache on the first load.
+     */
+    GPU("gpu", "GPU");
 
     companion object {
         fun of(id: String?): ModelBackend? = entries.firstOrNull { it.id == id }
@@ -43,10 +49,12 @@ enum class ModelBackend(val id: String, val title: String) {
 }
 
 /**
- * The models Robot can run (Settings › Model). The three built-in ones download from Hugging Face only when you ask,
+ * The models Robot can run (Settings › Model). The built-in ones download from Hugging Face only when you ask,
  * pinned by commit, size and SHA-256, and the hash is checked before a file is ever loaded. [OWN] is a .litertlm or (0.4.5)
  * .gguf file you import; Robot checks what is inside it (LiteRtLmCheck, GgufCheck), never its name. [FAST] is the model
- * of 0.4.0, byte for byte, and the default.
+ * of 0.4.0, byte for byte, and the default on a Tensor G5 phone (a Pixel 10). 0.4.7: [GENERAL] is the same model's general
+ * build, which runs on the GPU or the CPU: "Fast" on every other phone (ModelCatalogue decides which a phone gets, and
+ * shows only that one).
  *
  * No Gemma 4 E4B build for the Tensor TPU exists (the 0.4.1 research: Google publishes TPU builds of E2B only, and the one
  * "E4B Tensor G5" file on Hugging Face is a generic CPU export renamed), so both E4B entries run on the CPU. A future
@@ -92,6 +100,24 @@ enum class BrainModel(
         publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm",
         commit = "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1", licence = "Apache-2.0", fromGoogle = true,
     ),
+    /**
+     * 0.4.7: Gemma 4 E2B's general build, from the same repository and commit as [FAST]: Google's file that LiteRT-LM runs
+     * on the CPU (XNNPACK) or the GPU (its OpenCL accelerator). Fast on every phone without a Tensor G5 TPU build (a Pixel
+     * 9a: Tensor G4). The figures are estimates: Robot's GPU lab ran this very file on a Pixel 10 Pro (CPU: RSS 2,617 MB;
+     * GPU: a weight cache of 745 MB and a program cache of 11 MB on the first load), and Google's model card gives 1.7 GB
+     * on the CPU and 0.7 GB on the GPU of a Galaxy S26 Ultra. [cacheBytes] is the CPU's (three quarters of the file, the
+     * E4B ratio rounded up), the larger of the two.
+     */
+    GENERAL(
+        id = "e2b", title = "Fast", modelName = "Gemma 4 E2B",
+        file = "gemma-4-E2B-it.litertlm",
+        url = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/" +
+            "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it.litertlm",
+        bytes = 2_588_147_712L, sha256 = "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
+        backend = ModelBackend.CPU, contextTokens = 4096, cacheBytes = 2_000_000_000L, memoryBytes = 2_600_000_000L,
+        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm",
+        commit = "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1", licence = "Apache-2.0", fromGoogle = true,
+    ),
     SMARTER(
         id = "e4b_cpu", title = "Smarter, slower", modelName = "Gemma 4 E4B (CPU)",
         file = "gemma-4-E4B-it.litertlm",
@@ -126,22 +152,33 @@ enum class BrainModel(
     /** Downloaded from a pinned URL (not [OWN]). */
     val builtIn: Boolean get() = url != null
 
+    /** 0.4.7: it may run on the GPU (only [GENERAL]: Google's general E2B file, which LiteRT-LM runs there). */
+    val gpu: Boolean get() = this == GENERAL
+
+    /** Where it may run: its own backend, and the GPU for [gpu] (your own file: as its check found, LoadCheck). */
+    fun runsOn(b: ModelBackend): Boolean = b == backend || (gpu && b == ModelBackend.GPU)
+
     /** One line for the choice in Settings › Model: speed, memory, battery, from the 0.4.1 phone measurements. */
     val speed: String get() = when (this) {
         FAST -> "Writes about 17 tokens (word pieces) a second; a new conversation starts answering in about 3 s. " +
             "About 2 GB of memory, light on the battery. Sees photos."
+        GENERAL -> "The same model as the Pixel 10's Fast, built to run on the GPU or the CPU: Settings › Model shows " +
+            "this phone's estimate. About 2.6 GB of memory. Sees photos."
         SMARTER -> "Better answers, slower: about 8 tokens a second, and about 21 s before the first word of a new " +
             "conversation (later answers about 1 to 3 s). About 4 GB of memory and more battery (about 9 W while it writes, " +
             "against 3.5 W). Sees photos, more slowly."
         UNCENSORED -> "Like Smarter: about 8 tokens a second, about 21 s before the first word of a new conversation, " +
             "about 4 GB of memory and more battery."
-        OWN -> "Runs on the CPU (a .gguf with llama.cpp), unless Robot's check proves a .litertlm was compiled for this " +
-            "phone's TPU and you allow that."
+        OWN -> "Runs on the CPU (a .gguf with llama.cpp), unless Robot's check proves a .litertlm was compiled for the " +
+            "Tensor G5's TPU, the phone has one, and you allow that."
     }
 
     /** What it is, in plain words. */
     val about: String get() = when (this) {
-        FAST -> "Gemma 4 E2B, compiled by Google for the Tensor G5's TPU. Robot's model since 0.1."
+        FAST -> "Gemma 4 E2B, compiled by Google for the Tensor G5's TPU (the Pixel 10 series). Robot's model since 0.1."
+        GENERAL -> "Gemma 4 E2B from Google, the general build of the model the Pixel 10 runs on its TPU: Google " +
+            "publishes no TPU build for this phone's chip, so it runs on the GPU or the CPU. The first load writes a cache " +
+            "next to it (about 0.8 GB on the GPU, up to 2 GB on the CPU)."
         SMARTER -> "Gemma 4 E4B from Google, the larger of the two small Gemma 4 models, run on the CPU: no Tensor TPU " +
             "build of it exists. The first load writes about 2.5 GB of cache next to it."
         UNCENSORED -> "A community build of Gemma 4 E4B with the model's own refusals removed (olekk; not from Google). " +
@@ -216,8 +253,22 @@ object ModelFiles {
     /** The model store's preference keys ("download_id", "bad", "last_failure"). */
     fun prefKey(m: BrainModel, key: String): String = if (m == BrainModel.FAST) key else "${key}_${m.id}"
 
-    /** The CPU's weight cache, under filesDir; deleted with the model. Null on the TPU (LiteRT-LM keeps no cache there). */
-    fun cacheDir(m: BrainModel, backend: ModelBackend = m.backend): String? = if (backend == ModelBackend.CPU) "litert_cache/${m.id}" else null
+    /**
+     * The CPU's weight cache (0.4.7: and the GPU's program and weight caches, beside it), under filesDir; deleted with the
+     * model. Null on the TPU (LiteRT-LM keeps no cache there).
+     */
+    fun cacheDir(m: BrainModel, backend: ModelBackend = m.backend): String? = if (backend != ModelBackend.TPU) "litert_cache/${m.id}" else null
+
+    /** What the GPU's first load of [GENERAL][BrainModel.GENERAL] writes, about (the lab: 745 MB of weights, 11 MB of programs). */
+    const val GPU_CACHE_BYTES = 900_000_000L
+
+    /** The cache [m]'s first load on [backend] writes, about (the free-space check before it). */
+    fun cacheBytes(m: BrainModel, backend: ModelBackend, fileBytes: Long = m.bytes): Long = when {
+        backend == ModelBackend.TPU -> 0
+        backend == ModelBackend.GPU -> GPU_CACHE_BYTES
+        m == BrainModel.OWN -> cacheEstimate(fileBytes)
+        else -> m.cacheBytes
+    }
 
     /** Your own file's record (core OwnModel), written by the main app after the check. */
     const val OWN_RECORD = "own_model.json"
@@ -357,7 +408,7 @@ object ModelLogic {
         return "Not enough free space: ${name(m)} needs ${gb(needBytes)} ($what) and $left."
     }
 
-    /** "Gemma 4 E2B (Tensor G5)", or "Your model file". */
+    /** "Gemma 4 E2B (Tensor G5)", "Gemma 4 E2B", or "Your model file". */
     fun name(m: BrainModel): String = if (m == BrainModel.OWN) "Your model file" else m.modelName
 
     /**
@@ -456,10 +507,13 @@ data class LoadPlan(
  * unchanged since, and on the TPU only once you allowed it there. (The content check then reads the file's header.)
  * 0.4.3: and only with the context Robot's prompts are made for: 4,096 for a built-in model, your own file's
  * ([OwnModel.contextTokens], from its record; :brain compares the header it reads too). And only by the engine for its
- * kind of file (a GGUF file by llama.cpp, on the CPU).
+ * kind of file (a GGUF file by llama.cpp, on the CPU). 0.4.7: and only where this phone can run it ([phone]): the TPU on
+ * a Tensor G5 alone, the GPU only for the general E2B and only where ModelCatalogue offers it.
  */
 object LoadCheck {
     const val CHANGED = "The model file changed since Robot checked it. Open the Robot app › Model to check it again."
+    const val NO_TPU = "This phone has no TPU Robot can use: the TPU build runs on a Tensor G5 (Pixel 10) only."
+    const val NO_GPU = "Robot doesn't use this phone's GPU."
 
     /** The context asked for isn't the one Robot's prompts are made for with this file. */
     fun wrongContext(expected: Int): String = "Robot's prompts are made for $expected tokens of context with this model."
@@ -470,10 +524,14 @@ object LoadCheck {
      * [ownRecord]: your own file's record.
      */
     fun refuse(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?,
-        maxTokens: Int = ContextWindow.MAX_TOKENS, format: ModelFormat = ModelFormat.LITERT_LM): String? {
+        maxTokens: Int = ContextWindow.MAX_TOKENS, format: ModelFormat = ModelFormat.LITERT_LM, phone: Phone? = null): String? {
+        if (phone != null) {
+            if (backend == ModelBackend.TPU && phone.tpu != TpuSupport.SUPPORTED) return NO_TPU
+            if (backend == ModelBackend.GPU && !ModelCatalogue.gpuOffered(phone)) return NO_GPU
+        }
         if (m.builtIn) {
             if (format != ModelFormat.LITERT_LM) return "“${m.title}” is a LiteRT-LM file."
-            if (backend != m.backend) return "“${m.title}” runs on the ${m.backend.title} only."
+            if (!m.runsOn(backend)) return "“${m.title}” runs on the ${m.backend.title} only."
             if (maxTokens != m.contextTokens) return wrongContext(m.contextTokens)
             return if (mark?.trim() == "${m.sha256}|$fingerprintNow") null else CHANGED
         }
@@ -543,25 +601,28 @@ object ModelChoice {
     fun decide(
         chosen: BrainModel, chosenState: ModelAvailability, fastState: ModelAvailability, chosenFailedBefore: Boolean,
         earlier: FallbackWhy = FallbackWhy.FAILED_EARLIER,
+        /** This phone's Fast (0.4.7, ModelCatalogue.fast): the TPU build on a Tensor G5, the general build elsewhere. */
+        fast: BrainModel = BrainModel.FAST,
     ): Decision {
-        if (chosen == BrainModel.FAST) {
-            return if (fastState == ModelAvailability.READY) Decision.Load(BrainModel.FAST) else Decision.NoLoad(NO_MODEL, openApp = true)
+        if (chosen == fast) {
+            return if (fastState == ModelAvailability.READY) Decision.Load(fast) else Decision.NoLoad(NO_MODEL, openApp = true)
         }
         val why = when {
             chosenState != ModelAvailability.READY -> whyFor(chosenState)
             chosenFailedBefore -> earlier
             else -> return Decision.Load(chosen)
         }
-        return if (fastState == ModelAvailability.READY) Decision.Load(BrainModel.FAST, chosen, why)
+        return if (fastState == ModelAvailability.READY) Decision.Load(fast, chosen, why)
         else Decision.NoLoad(alone(chosen, why), openApp = true)
     }
 
     /** After [tried] failed to load: Fast instead (when it is ready and wasn't the one), else nothing. */
-    fun afterFailure(tried: BrainModel, failure: LoadFailure, fastState: ModelAvailability, detail: String? = null): Decision = when {
+    fun afterFailure(tried: BrainModel, failure: LoadFailure, fastState: ModelAvailability, detail: String? = null,
+        fast: BrainModel = BrainModel.FAST): Decision = when {
         // The last engine is still being let go of: nothing is wrong with the model, ask again in a moment.
         failure == LoadFailure.STOPPING -> Decision.NoLoad(STOPPING, openApp = false)
-        tried != BrainModel.FAST && fastState == ModelAvailability.READY -> Decision.Load(BrainModel.FAST, tried, FallbackWhy.LOAD_FAILED)
-        tried == BrainModel.FAST -> Decision.NoLoad(detail ?: FAST_FAILED, openApp = false)
+        tried != fast && fastState == ModelAvailability.READY -> Decision.Load(fast, tried, FallbackWhy.LOAD_FAILED)
+        tried == fast -> Decision.NoLoad(detail ?: FAST_FAILED, openApp = false)
         else -> Decision.NoLoad(alone(tried, FallbackWhy.LOAD_FAILED), openApp = true)
     }
 

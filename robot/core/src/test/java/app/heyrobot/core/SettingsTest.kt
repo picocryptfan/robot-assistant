@@ -310,6 +310,27 @@ class SettingsTest {
     }
 
     /**
+     * Settings › Model › "Use the GPU" (0.4.7): on by default and for every older file, which never had it (absent means
+     * on: no schema bump, the file stays schema 12); off is kept; Fast's id from a Pixel 10 is left as saved.
+     */
+    @Test fun gpuSwitchDefaultsOnWithoutANewSchema() {
+        assertEquals(true, RobotSettings().modelGpu)
+        assertEquals(true, RobotSettings().toJson().getBoolean("modelGpu"))
+        for (old in listOf("""{"schema":12}""", """{"schema":7,"brainModel":"e2b_tpu"}""", "{}", """{"schema":12,"modelGpu":"maybe"}""")) {
+            assertEquals(old, true, RobotSettings.fromJson(old).modelGpu)
+        }
+        val off = RobotSettings(modelGpu = false)
+        assertEquals(false, RobotSettings.fromJson(off.toJson().toString()).modelGpu)
+        assertEquals(12, off.toJson().getInt("schema"))
+        assertEquals(12, RobotSettings.SCHEMA)
+        // Fast chosen on a Pixel 10 (the TPU build's id) stays in the file; ModelCatalogue reads it as this phone's Fast.
+        val fromPixel10 = RobotSettings.fromJson("""{"schema":12,"brainModel":"e2b_tpu"}""")
+        assertEquals(BrainModel.FAST, fromPixel10.brainModelChoice)
+        assertEquals("e2b_tpu", fromPixel10.toJson().getString("brainModel"))
+        assertEquals(BrainModel.GENERAL, RobotSettings.fromJson("""{"schema":12,"brainModel":"e2b"}""").brainModelChoice)
+    }
+
+    /**
      * Updating to 0.4.5: a settings file as 0.4.4 wrote it (schema 7), every choice away from its default, reads with every
      * choice kept, the thinking switch off (schema 10) and no search server or terms of its own (schema 12), and the next
      * save writes schema 12. A file of the unreleased GGUF branch (schema 10) keeps its thinking switch as well.
@@ -359,11 +380,12 @@ class SettingsTest {
         assertEquals(false, saved.getBoolean("modelThinks"))
         assertEquals(false, saved.has("nearestServer") || saved.has("confirmedTerms"))
         assertEquals(read, RobotSettings.fromJson(saved.toString()))
-        // The 0.4.4 file has every key today's file can have but the three added since, and none it doesn't.
+        // The 0.4.4 file has every key today's file can have but the four added since (0.4.7's "Use the GPU" with no new
+        // schema), and none it doesn't.
         val keys044 = org.json.JSONObject(v044).keys().asSequence().toSet()
         val everything = chosen.copy(modelThinks = true, nearestServer = "https://nominatim.example.org",
             confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1L)).toJson().keys().asSequence().toSet()
-        assertEquals(setOf("modelThinks", "nearestServer", "confirmedTerms"), everything - keys044)
+        assertEquals(setOf("modelThinks", "nearestServer", "confirmedTerms", "modelGpu"), everything - keys044)
         assertEquals(emptySet<String>(), keys044 - everything)
 
         // The GGUF branch's file (schema 10, never released): the same choices and the switch on, kept on through 12.

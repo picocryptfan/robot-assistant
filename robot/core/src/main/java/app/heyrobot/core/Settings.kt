@@ -195,9 +195,10 @@ data class RobotSettings(
      */
     val safetyNotice: Boolean = false,
     /**
-     * Settings › Model (0.4.1, schema 7): a [BrainModel] id, the model Robot loads; Fast (Gemma 4 E2B on the TPU) by
-     * default. Unknown or absent (older files) means Fast. A choice that isn't on the phone or doesn't load falls back to
-     * Fast, and the panel says so (ModelChoice).
+     * Settings › Model (0.4.1, schema 7): a [BrainModel] id, the model Robot loads; Fast by default. Unknown or absent
+     * (older files) means Fast. A choice that isn't on the phone or doesn't load falls back to Fast, and the panel says so
+     * (ModelChoice). 0.4.7: either Fast's id means this phone's Fast (ModelCatalogue.resolve: the TPU build on a Tensor G5,
+     * the general build elsewhere); the file keeps what was saved.
      */
     val brainModel: String = BrainModel.DEFAULT.id,
     /**
@@ -206,6 +207,12 @@ data class RobotSettings(
      * Robot's built-in Gemma 4 models are the same either way. The thinking is never shown or spoken (core Thinking).
      */
     val modelThinks: Boolean = false,
+    /**
+     * Settings › Model › "Use the GPU" (0.4.7, on): where the phone's Fast is the general E2B and Robot offers the GPU
+     * (ModelCatalogue.gpuOffered), it runs there; off, on the CPU. A GPU that failed is left until you try it again,
+     * whatever this says. Absent from older files: on, the default (no new schema needed, as "directAnswers").
+     */
+    val modelGpu: Boolean = true,
 ) {
     val brainModelChoice: BrainModel get() = BrainModel.of(brainModel)
 
@@ -280,6 +287,7 @@ data class RobotSettings(
         if (safetyNotice) put("safetyNotice", true)
         put("brainModel", brainModelChoice.id)
         put("modelThinks", modelThinks)
+        put("modelGpu", modelGpu)
     }
 
     companion object {
@@ -419,6 +427,8 @@ data class RobotSettings(
                 brainModel = if (o.optInt("schema", 1) < 7) BrainModel.FAST.id else BrainModel.of(o.optString("brainModel")).id,
                 // Schema 10: before it, models answered directly (no switch): off.
                 modelThinks = o.optInt("schema", 1) >= 10 && o.optBoolean("modelThinks", d.modelThinks),
+                // 0.4.7: absent (any older file) means on, the default.
+                modelGpu = o.optBoolean("modelGpu", d.modelGpu),
             )
         }
 
