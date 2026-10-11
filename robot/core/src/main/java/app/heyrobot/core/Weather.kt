@@ -25,8 +25,12 @@ enum class WeatherUnits(val temp: String, val wind: String, val rain: String, va
     IMPERIAL("°F", "mph", "in", "in");
 
     companion object {
-        /** The United States, Liberia and Myanmar. */
-        private val FAHRENHEIT = setOf("US", "LR", "MM")
+        /**
+         * The United States and its territories (Puerto Rico, Guam, the Virgin Islands, American Samoa, the Northern
+         * Marianas, the outlying islands), Liberia, Myanmar, and the Bahamas, Belize, the Cayman Islands, Palau, Micronesia
+         * and the Marshall Islands.
+         */
+        private val FAHRENHEIT = setOf("US", "PR", "GU", "VI", "AS", "MP", "UM", "LR", "MM", "BS", "BZ", "KY", "PW", "FM", "MH")
 
         /** [region]: the phone region (Settings, else the phone's own), two letters; unknown means metric. */
         fun of(region: String?): WeatherUnits = if (region?.trim()?.uppercase(Locale.ROOT) in FAHRENHEIT) IMPERIAL else METRIC
@@ -321,17 +325,23 @@ object WeatherAsk {
     const val FIX_WITH_HOME_MS = 3_000L
 
     private val HERE = setOf("here", "my location", "current location", "my current location", "where i am", "where im", "around here",
-        "nearby", "near me", "local", "ici", "autour de moi", "ma position")
-    private val HOME = setOf("home", "at home", "my home", "my house", "my place", "chez moi", "a la maison", "maison")
+        "nearby", "near me", "local", "outside", "out", "out there", "my city", "my town", "this city", "this town", "ici", "dehors",
+        "autour de moi", "ma position", "ma ville", "ici meme")
+    private val HOME = setOf("home", "at home", "my home", "at my home", "my house", "at my house", "my place", "at my place", "our house",
+        "at our house", "chez moi", "chez nous", "a la maison", "maison", "a ma maison")
 
-    /** What [place] says: where the phone is, your Home for weather, or a named place (returned without "in" or "à"). */
+    /**
+     * What [place] says: where the phone is, your Home for weather, or a named place (returned without "in" or "à", and
+     * without "here in": "here in Montreal" is Montreal).
+     */
     fun where(place: String?): Pair<WeatherWhere, String?> {
         val p = place?.replace(Regex("\\s+"), " ")?.trim()?.trimEnd('.', '?', '!')?.trim()
         if (p.isNullOrEmpty()) return WeatherWhere.HERE to null
         val k = key(p)
         if (k in HERE) return WeatherWhere.HERE to null
         if (k in HOME) return WeatherWhere.HOME to null
-        val named = p.replace(Regex("""^(?i)(?:in|at|for|à|au|en)\s+"""), "").trim()
+        val named = p.replace(Regex("""^(?i)(?:(?:out )?here|ici|right here)\s*,?\s+(?=(?:in|at|à|au|en)\s)"""), "")
+            .replace(Regex("""^(?i)(?:in|at|for|à|au|en)\s+"""), "").trim()
         return WeatherWhere.NAMED to named.ifEmpty { p }
     }
 

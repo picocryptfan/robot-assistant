@@ -45,7 +45,7 @@ class WeatherTest {
     }
 
     @Test fun unitsFollowThePhoneRegion() {
-        for (r in listOf("US", "us", "LR", "MM")) assertEquals(r, WeatherUnits.IMPERIAL, WeatherUnits.of(r))
+        for (r in listOf("US", "us", "LR", "MM", "PR", "GU", "VI", "AS", "MP", "BS", "BZ", "KY", "PW", "FM", "MH")) assertEquals(r, WeatherUnits.IMPERIAL, WeatherUnits.of(r))
         for (r in listOf("CA", "FR", "GB", "", null)) assertEquals(r.toString(), WeatherUnits.METRIC, WeatherUnits.of(r))
     }
 
@@ -259,6 +259,11 @@ class WeatherTest {
         assertEquals(WeatherWhere.NAMED to "Québec", WeatherAsk.where("à Québec"))
         assertEquals(WeatherWhere.NAMED to "Le Mans", WeatherAsk.where("Le Mans"))
         assertEquals(WeatherWhere.NAMED to "Paris, Texas", WeatherAsk.where("Paris, Texas"))
+        // Home and here, the ways people say them; "here in Montreal" is Montreal.
+        for (p in listOf("at my house", "my house", "at home", "chez nous", "at our house")) assertEquals(p, WeatherWhere.HOME to null, WeatherAsk.where(p))
+        for (p in listOf("outside", "my city", "dehors", "out there")) assertEquals(p, WeatherWhere.HERE to null, WeatherAsk.where(p))
+        assertEquals(WeatherWhere.NAMED to "Montreal", WeatherAsk.where("here in Montreal"))
+        assertEquals(WeatherWhere.NAMED to "Québec", WeatherAsk.where("ici à Québec"))
     }
 
     private fun pick(name: String, vararg quals: String, file: String) = OpenMeteo.pick(GeoSearch(name, quals.toList()), OpenMeteo.places(sample(file))!!)?.display

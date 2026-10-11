@@ -40,6 +40,15 @@ class FreeUpTest {
         assertEquals(StorageWay.FILES, StorageWay.of("photos"))
         assertEquals(StorageWay.ROBOT, StorageWay.of("robot"))
         assertEquals(StorageWay.ROBOT, StorageWay.of("Robot's cache"))
+        // "Big apps" are apps; big or large alone are files; a cache is an app's.
+        assertEquals(StorageWay.APPS, StorageWay.of("big apps"))
+        assertEquals(StorageWay.APPS, StorageWay.of("the largest apps"))
+        assertEquals(StorageWay.FILES, StorageWay.of("largest"))
+        assertEquals(StorageWay.APPS, StorageWay.of("cache"))
+        // The text-call hint shows no app to copy.
+        assertFalse(Prompt.textCallHint(listOf(ToolName.FREE_MEMORY)).contains("app:"))
+        // A picked file's card waits for Android's answer, then says what happened.
+        assertTrue(FreeUp.DELETE_WAITING.startsWith("Waiting for your answer"))
         assertEquals(Action.FreeStorage(StorageWay.FILES), parse("free_storage", mapOf("what" to "files")))
         assertEquals(Action.FreeStorage(StorageWay.ANDROID), parse("free_storage", emptyMap()))
         assertEquals("Open Android's Free up space screen", Action.FreeStorage(StorageWay.ANDROID).describe())

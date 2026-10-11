@@ -31,8 +31,10 @@ enum class StorageWay {
             val t = FreeUp.plain(text.orEmpty())
             return when {
                 Regex("""\brobots?\b""").containsMatchIn(t) -> ROBOT
-                Regex("""\b(files?|photos?|pictures?|videos?|media|large|big|downloads?|fichiers?|images?|videos?)\b""").containsMatchIn(t) -> FILES
-                Regex("""\b(apps?|applications?|cache|caches)\b""").containsMatchIn(t) -> APPS
+                // "big apps" are apps; "big" or "large" alone are files.
+                Regex("""\b(apps?|applications?|applis?)\b""").containsMatchIn(t) -> APPS
+                Regex("""\b(files?|photos?|pictures?|videos?|media|large|big|biggest|largest|downloads?|fichiers?|images?)\b""").containsMatchIn(t) -> FILES
+                Regex("""\b(cache|caches)\b""").containsMatchIn(t) -> APPS
                 else -> ANDROID
             }
         }
@@ -96,6 +98,14 @@ object FreeUp {
         return if (freed >= 100_000_000) "Freed about ${PhoneStatus.size(freed)}: ${PhoneStatus.size(after)} of memory available now."
         else "Robot's model is unloaded. Android hasn't counted the memory as free yet (${PhoneStatus.size(after)} available)."
     }
+
+    /** Robot among the largest apps: most of it is its models, which clearing its storage would delete. */
+    const val ROBOT_LABEL = "Robot (models, don't clear)"
+
+    /** A picked file's card until Android's confirmation answers; then [DELETED] or [KEPT]. */
+    const val DELETE_WAITING = "Waiting for your answer in Android's confirmation: it's deleted only if you allow it there."
+    const val DELETED = "Deleted."
+    const val KEPT = "Not deleted: you didn't allow it."
 
     /** The unload card's line until the answer ends; then it says what came back ([freedLine]). */
     const val UNLOADING = "Robot's model unloads when this answer ends (about 2 GB)."

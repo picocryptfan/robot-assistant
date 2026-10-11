@@ -694,6 +694,21 @@ object PanelController {
         }
     }
 
+    /**
+     * From MediaDeleteActivity (same process, 0.4.0): Android's confirmation for a picked file answered. The card that
+     * waited for it (and the saved conversation) says whether it was deleted.
+     */
+    fun mediaDeleteAnswered(deleted: Boolean) {
+        fun settle(tool: ToolName?, detail: String?) = tool == ToolName.FREE_STORAGE && detail == FreeUp.DELETE_WAITING
+        val status = if (deleted) ActionStatus.DONE else ActionStatus.DECLINED
+        val detail = if (deleted) FreeUp.DELETED else FreeUp.KEPT
+        _state.update { st ->
+            st.copy(turns = st.turns.map { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail) else it }) })
+        }
+        chat.replaceAll { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail) else it }) }
+        persist()
+    }
+
     /** From CaptureActivity (same process): the picture to send with the next question. */
     fun onImagePicked(jpeg: ByteArray, thumb: Bitmap) {
         draftJpeg = jpeg

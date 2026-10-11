@@ -46,6 +46,11 @@ class PhoneToolsTest {
             "Photos, videos and audio: photos 10 GB, videos 21 GB, audio 1.2 GB", PhoneStatus.lines(listOf(r)))
     }
 
+    @Test fun robotIsNamedAsNeededAmongTheLargestApps() {
+        val line = PhoneStatus.appsLine(listOf(AppSize(FreeUp.ROBOT_LABEL, 4_600_000_000, 1_000_000, "app.heyrobot"), AppSize("Signal", 12_300_000_000, 0)))
+        assertEquals("Signal 12 GB, Robot (models, don't clear) 4.6 GB", line)
+    }
+
     @Test fun onlyWhatWasAskedAndUsageAccessIsNamedWhenOff() {
         val f = PhoneFacts(storage, battery, memory, usageAccess = false)
         assertEquals(listOf("storage", "largest_apps"), PhoneStatus.results(f, PhonePart.STORAGE).single().keys.toList())

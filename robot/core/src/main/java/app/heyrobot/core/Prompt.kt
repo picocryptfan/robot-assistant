@@ -74,7 +74,7 @@ object Prompt {
         ToolName.READ_CALENDAR -> "call:read_calendar{day:tomorrow}"
         ToolName.WEATHER -> "call:weather{place:Paris,day:tomorrow}"
         ToolName.PHONE_STATUS -> "call:phone_status{about:storage}"
-        ToolName.FREE_MEMORY -> "call:free_memory{} (or app:Chrome)"
+        ToolName.FREE_MEMORY -> "call:free_memory{}"
         ToolName.FREE_STORAGE -> "call:free_storage{what:files}"
         ToolName.ASK_CLAUDE -> "call:ask_claude{question:<escape>Why is the sky blue?<escape>}"
     }

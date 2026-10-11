@@ -483,7 +483,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 WeatherSource.HOME_NO_FIX -> "Robot couldn't tell where you are: forecast for your Home for weather, from Open-Meteo." to place.name
                 WeatherSource.NAMED -> "Forecast from Open-Meteo." to place.name
             }
-            val sent = "Sent to Open-Meteo: ${OpenMeteo.coord(place.lat)}, ${OpenMeteo.coord(place.lon)}"
+            val coords = "${OpenMeteo.coord(place.lat)}, ${OpenMeteo.coord(place.lon)}"
+            val sent = if (source == WeatherSource.NAMED) "Sent to Open-Meteo: “${WeatherAsk.where(a.place).second ?: a.place}” (to find it), then $coords"
+            else "Sent to Open-Meteo: $coords"
             Executed(ActionStatus.DONE, detail, results = listOf(mapOf("place" to named)) + report.results,
                 body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent,
                 spoken = "${named.replaceFirstChar { it.uppercase() }}. ${report.spoken}")
@@ -591,9 +593,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         // Android's own confirmation decides; Robot never deletes a file itself.
         StorageWay.FILES -> {
             val uri = a.target
-            if (uri != null && start(MediaDeleteActivity.intent(ctx, Uri.parse(uri)))) {
-                Executed(ActionStatus.DONE, "Android asks you to confirm: the ${a.label ?: "file"} is deleted only if you allow it there.", launchedApp = true)
-            } else Executed(ActionStatus.FAILED, "Android's delete confirmation didn't open.")
+            // Like a draft: nothing is deleted until you allow it in Android's dialog; the card says so until it answers.
+            if (uri != null && start(MediaDeleteActivity.intent(ctx, Uri.parse(uri)))) Executed(ActionStatus.DRAFT_OPENED, FreeUp.DELETE_WAITING, launchedApp = true)
+            else Executed(ActionStatus.FAILED, "Android's delete confirmation didn't open.")
         }
     }
 
