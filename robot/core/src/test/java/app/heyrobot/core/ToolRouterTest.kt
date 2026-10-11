@@ -39,7 +39,7 @@ class ToolRouterTest {
         assertEquals(setOf(ToolGroup.CORE, ToolGroup.CALENDAR), route("Mon rendez-vous de vendredi"))
         // Several at once.
         assertEquals(setOf(ToolGroup.CORE, ToolGroup.PEOPLE, ToolGroup.CALENDAR), route("email Alex about Friday's plan"))
-        assertEquals(ToolGroup.entries.toSet(), route("Text Sam the list of meetings"))
+        assertEquals(setOf(ToolGroup.CORE, ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR), route("Text Sam the list of meetings"))
     }
 
     @Test fun reviewPhrasingsReachTheirGroups() {

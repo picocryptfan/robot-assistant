@@ -14,6 +14,8 @@ enum class ToolGroup {
     PEOPLE,
     NOTES,
     CALENDAR,
+    /** The weather (0.4.0): described only when a question speaks of it. */
+    WEATHER,
 }
 
 object ToolRouter {
@@ -32,6 +34,13 @@ object ToolRouter {
     private val JOURS get() = setOf("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
     /** Not "march" or "may": they are everyday verbs as well. */
     private val MONTHS get() = setOf("january", "february", "april", "june", "july", "august", "september", "october", "november", "december")
+
+    /** The weather, English and French ("will it rain", "cloud cover tomorrow", "quel temps", "météo"). */
+    private val WEATHER = setOf("weather", "forecast", "rain", "rainy", "snow", "snowy", "temperature", "cloud", "cloudy", "cloud cover",
+        "wind", "windy", "umbrella", "sunny", "storm", "stormy", "thunder", "thunderstorm", "hail", "fog", "foggy", "drizzle", "sleet",
+        "frost", "freezing", "humid", "humidity", "degrees", "hot outside", "cold outside", "jacket", "coat", "sunscreen",
+        "meteo", "pluie", "pleuvoir", "pleut", "neige", "neiger", "nuage", "nuageux", "vent", "venteux",
+        "parapluie", "soleil", "ensoleille", "orage", "brouillard", "grele", "gel", "degres", "quel temps", "previsions", "manteau")
 
     /** "tell me a joke" is not about telling someone: "tell" counts only when it isn't followed by me or us. */
     private val NOT_PEOPLE = setOf("tell me", "tell us")
@@ -55,6 +64,7 @@ object ToolRouter {
             if (has(PEOPLE) || LET_KNOW.containsMatchIn(padded)) add(ToolGroup.PEOPLE)
             if (has(NOTES)) add(ToolGroup.NOTES)
             if (has(CALENDAR) || WHEN.containsMatchIn(plain)) add(ToolGroup.CALENDAR)
+            if (has(WEATHER)) add(ToolGroup.WEATHER)
         }
     }
 

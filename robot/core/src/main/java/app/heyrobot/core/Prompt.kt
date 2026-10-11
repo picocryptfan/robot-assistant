@@ -21,9 +21,10 @@ object Prompt {
     /**
      * Kept short: every token here is paid on every rebuilt conversation. The date only: the clock time goes after
      * a question that needs it ([needsClock], [userText]), so a conversation reused for an hour never works from a
-     * stale time.
+     * stale time. [weather]: the weather tool is described (0.4.0), so the weather is no longer something Robot can't
+     * check.
      */
-    fun system(now: ZonedDateTime, locked: Boolean, askClaude: Boolean = false, texting: Boolean = false): String {
+    fun system(now: ZonedDateTime, locked: Boolean, askClaude: Boolean = false, texting: Boolean = false, weather: Boolean = false): String {
         val day = now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.US)
         val date = now.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US))
         return buildString {
@@ -31,7 +32,9 @@ object Prompt {
             append("Answer in plain, friendly language. Keep answers short (one to three sentences) unless asked for more, ")
             append("because they may be read aloud. Avoid tables. ")
             // With Ask Claude on, the one line that tells Gemma when to hand over instead of guessing.
-            if (askClaude) append("You have no internet access yourself: for up-to-date facts, careful reasoning, maths, code, long writing or planning, call ask_claude instead of guessing. ")
+            if (askClaude) append("You have no internet access yourself: " + (if (weather) "for the weather, call weather; " else "") +
+                "for up-to-date facts, careful reasoning, maths, code, long writing or planning, call ask_claude instead of guessing. ")
+            else if (weather) append("For the weather, call weather. Otherwise you have no internet access: for news or prices, say you can't check that. ")
             else append("You have no internet access: for news, weather or prices, say you can't check that. ")
             append("Use a tool only when the person clearly asks for that action; otherwise just answer. ")
             // 0.2.3, only when send_text is described: the model looked people up (or answered in words) instead.
@@ -65,6 +68,7 @@ object Prompt {
         ToolName.FIND_NOTES -> "call:find_notes{query:coffee}"
         ToolName.ADD_EVENT -> "call:add_event{title:Dentist,when:<escape>Tuesday 3pm<escape>}"
         ToolName.READ_CALENDAR -> "call:read_calendar{day:tomorrow}"
+        ToolName.WEATHER -> "call:weather{place:Paris,day:tomorrow}"
         ToolName.ASK_CLAUDE -> "call:ask_claude{question:<escape>Why is the sky blue?<escape>}"
     }
 

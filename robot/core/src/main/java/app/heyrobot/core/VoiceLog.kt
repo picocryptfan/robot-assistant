@@ -138,6 +138,13 @@ enum class VoiceEvent(val id: Int) {
      * b = [ScreenData] for the screen's text, c = [ScreenData] for the screenshot.
      */
     SCREEN_SHARED(60),
+    /**
+     * A weather lookup answered (0.4.0): a = [WeatherSource] (how the place was found), b = ms to find it (geocoding or
+     * a location fix; 0 when nothing had to be found), c = ms for the forecast. Never the place.
+     */
+    WEATHER(80),
+    /** A weather lookup failed: a = [WeatherFail], b = Open-Meteo's HTTP status (0: none). */
+    WEATHER_FAILED(81),
     ;
 
     companion object {
@@ -518,6 +525,9 @@ object VoiceLogText {
             VoiceEvent.CAPTURE_INFO -> "Capture opened: " + (when (a) { 1 -> "silenced by Android"; 0 -> "not silenced"; else -> "silencing unknown" }) +
                 (if (b > 0) " · microphone at " + String.format(Locale.US, "%.1f kHz", b / 10.0) else "") + " · " + CaptureFx.words(c)
             VoiceEvent.BARGE_HIT -> "Barge-in test heard " + keyword(a) + (if (b >= 0) " " + secs(b) + " in" else "") + ": " + code(BargeHitKind.entries, c)
+            VoiceEvent.WEATHER -> "Weather from Open-Meteo for " + code(WeatherSource.entries, a) + (if (b > 0) " · place found in $b ms" else "") +
+                " · forecast in $c ms"
+            VoiceEvent.WEATHER_FAILED -> "Weather lookup failed: " + code(WeatherFail.entries, a) + (if (b > 0) " (HTTP $b)" else "")
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
         }

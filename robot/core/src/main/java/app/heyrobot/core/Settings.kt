@@ -106,6 +106,11 @@ data class RobotSettings(
     val claudeHelp: Escalation? = null,
     /** Daily budget for Claude in cents (default $1.00); once reached, Automatic asks first for the rest of the day. */
     val claudeBudgetCents: Int = 100,
+    /**
+     * Settings › Weather › Home for weather (0.4.0): looked up once when you save it, then used when the phone can't say
+     * where it is (or isn't allowed to). Null: none.
+     */
+    val weatherHome: WeatherPlace? = null,
 ) {
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
@@ -153,6 +158,7 @@ data class RobotSettings(
         put("claudeShowCost", claudeShowCost)
         claudeHelp?.let { put("claudeHelp", it.name) }
         put("claudeBudgetCents", claudeBudgetCents)
+        weatherHome?.let { put("weatherHome", JSONObject().put("name", it.name).put("lat", it.lat).put("lon", it.lon)) }
     }
 
     companion object {
@@ -162,8 +168,9 @@ data class RobotSettings(
          * 3 (0.3.0): Ask Claude's settings (absent from older files, so they read as the defaults).
          * 4 (0.3.1): opening apps and Organic Maps just happen by default. Older files saved "Ask first" for them
          * whether chosen or not, so there it reads as the new default; "Off" stays off.
+         * 5 (0.4.0): the Home for weather (absent from older files: none) and the new actions' levels (their defaults).
          */
-        const val SCHEMA = 4
+        const val SCHEMA = 5
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -187,6 +194,8 @@ data class RobotSettings(
             ToolName.FIND_NOTES to Approval.AUTO,
             ToolName.ADD_EVENT to Approval.ASK,
             ToolName.READ_CALENDAR to Approval.AUTO,
+            // 0.4.0: reading only (the weather goes online to Open-Meteo, Settings › Actions says so).
+            ToolName.WEATHER to Approval.AUTO,
             // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
             ToolName.ASK_CLAUDE to Approval.ASK,
         )
@@ -243,7 +252,16 @@ data class RobotSettings(
                 claudeShowCost = o.optBoolean("claudeShowCost", d.claudeShowCost),
                 claudeHelp = enumValues<Escalation>().firstOrNull { it.name == o.optString("claudeHelp") },
                 claudeBudgetCents = o.optInt("claudeBudgetCents", d.claudeBudgetCents).coerceIn(0, 100_000),
+                weatherHome = o.optJSONObject("weatherHome")?.let(::place),
             )
+        }
+
+        /** A saved Home for weather; one without a name or with coordinates off the globe is dropped. */
+        private fun place(x: JSONObject): WeatherPlace? {
+            val name = x.optString("name").trim().takeIf { it.isNotEmpty() } ?: return null
+            val lat = x.optDouble("lat").takeIf { it.isFinite() && it in -90.0..90.0 } ?: return null
+            val lon = x.optDouble("lon").takeIf { it.isFinite() && it in -180.0..180.0 } ?: return null
+            return WeatherPlace(name.take(ToolCalls.MAX_PLACE), lat, lon)
         }
 
         /** Saved wake phrases; a damaged entry is dropped, never fatal (an empty list stays empty: the user removed them). */

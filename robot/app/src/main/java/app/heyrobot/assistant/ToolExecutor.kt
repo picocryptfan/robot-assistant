@@ -1,5 +1,6 @@
 package app.heyrobot.assistant
 
+import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
@@ -9,6 +10,7 @@ import android.graphics.Bitmap
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.AlarmClock
 import androidx.core.graphics.drawable.toBitmap
 import app.heyrobot.core.Action
@@ -29,6 +31,7 @@ import app.heyrobot.core.Executed
 import app.heyrobot.core.MailTarget
 import app.heyrobot.core.MailTo
 import app.heyrobot.core.NoteSearch
+import app.heyrobot.core.OpenMeteo
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RLog
@@ -39,9 +42,21 @@ import app.heyrobot.core.SmsTo
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.TextTarget
 import app.heyrobot.core.TextVia
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.WeatherAsk
+import app.heyrobot.core.WeatherFail
+import app.heyrobot.core.WeatherPlace
+import app.heyrobot.core.WeatherSource
+import app.heyrobot.core.WeatherText
+import app.heyrobot.core.WeatherUnits
+import app.heyrobot.core.WeatherWhere
 import app.heyrobot.core.WhenParser
 import app.heyrobot.core.XmppLink
+import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Calendars
+import app.heyrobot.sys.CoarseLocation
+import app.heyrobot.sys.OpenMeteoClient
 import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Contacts
 import app.heyrobot.sys.HandOffApps
@@ -55,7 +70,8 @@ import java.util.Locale
 // EXTRA_SKIP_UI silently, verified in phase 0), the launcher's app list, Organic Maps' om:// URIs (geo:
 // as a fallback) and CameraManager's torch. Phase 2: texts and emails are handed to Cheogram, the SMS app or
 // Proton Mail as drafts (the owner presses Send there), contacts and the calendar are read with the permissions
-// the main app asked for, notes go to Robot Notes. The log records the tool and the outcome, never arguments.
+// the main app asked for, notes go to Robot Notes. 0.4.0: the weather comes from Open-Meteo over the internet (this is
+// the process that goes online for it). The log records the tool and the outcome, never arguments.
 
 class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val launch: (Intent) -> Boolean) {
     /**
@@ -76,6 +92,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.LookupContact -> if (Contacts.granted(ctx)) Prepared.Ready(action) else needContacts()
             is Action.AddEvent -> prepareEvent(action)
             is Action.ReadCalendar -> prepareRead(action)
+            is Action.Weather -> prepareWeather(action)
             // The Claude app: installed or "Install Claude" before any card.
             is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
             else -> Prepared.Ready(action)
@@ -103,6 +120,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.AddEvent -> addEvent(action)
                 is Action.ReadCalendar -> readCalendar(action)
                 is Action.AskClaude -> openClaude(action)
+                is Action.Weather -> weather(action)
             }
         } catch (t: Throwable) {
             RLog.w("tool_run", t, "tool" to action.tool)
@@ -378,6 +396,75 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             spoken = (detail + " " + lines.replace("\n", ". ").replace(" · ", " ")).trim())
     }
 
+    // ------------------------------------------------------------------ weather
+
+    /**
+     * Before the card: the days (refused here if they can't be read or aren't in the forecast) and where. Nothing goes
+     * online yet. "Here" without location access falls back on your Home for weather; with neither, the card asks you
+     * to allow location (Allow opens the Robot app, which asks) or to set a Home.
+     */
+    private fun prepareWeather(a: Action.Weather): Prepared {
+        val range = when (val r = WeatherAsk.days(a.day, ZonedDateTime.now())) {
+            is Read.Unreadable -> return Prepared.Refused(ActionStatus.INVALID, r.detail)
+            is Read.Ok -> r.value
+        }
+        if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) return Prepared.Refused(ActionStatus.FAILED, WeatherFail.NO_NETWORK_PERMISSION.text)
+        val where = WeatherAsk.where(a.place).first
+        if (where == WeatherWhere.HOME && settings.weatherHome == null) return Prepared.Refused(ActionStatus.FAILED, WeatherFail.NO_HOME.text)
+        if (where == WeatherWhere.HERE && !CoarseLocation.granted(ctx) && settings.weatherHome == null) {
+            return Prepared.Refused(ActionStatus.NEEDS_PERMISSION, "To check the weather where you are, allow location for Robot in the Robot app, " +
+                "or set a Home for weather in Robot's settings. You can also name a town.")
+        }
+        return Prepared.Ready(a.copy(where = where, range = range))
+    }
+
+    /**
+     * Finds the place (Open-Meteo's geocoding for a named one, your Home, or the phone's coarse location), then asks
+     * Open-Meteo for the days. The card shows what was sent ("45.51, -73.59") in its body, which isn't saved; the voice
+     * log gets how the place was found and the times, never the place.
+     */
+    private fun weather(a: Action.Weather): Executed {
+        val now = ZonedDateTime.now()
+        val range = a.range ?: (WeatherAsk.days(a.day, now) as? Read.Ok)?.value ?: return Executed(ActionStatus.INVALID, WeatherAsk.SAY_DAY)
+        val units = WeatherUnits.of(region)
+        val home = settings.weatherHome
+        val started = SystemClock.elapsedRealtime()
+        return try {
+            val (place, source) = when (a.where ?: WeatherAsk.where(a.place).first) {
+                WeatherWhere.NAMED -> OpenMeteoClient.geocode(ctx, WeatherAsk.where(a.place).second ?: a.place.orEmpty()) to WeatherSource.NAMED
+                WeatherWhere.HOME -> (home ?: throw OpenMeteoClient.Failure(WeatherFail.NO_HOME)) to WeatherSource.HOME
+                WeatherWhere.HERE -> {
+                    val fix = if (CoarseLocation.granted(ctx) && CoarseLocation.enabled(ctx)) CoarseLocation.find(ctx) else null
+                    when {
+                        fix != null -> WeatherPlace(HERE, fix.lat, fix.lon) to if (fix.fresh) WeatherSource.FIX else WeatherSource.LAST_KNOWN
+                        home != null -> home to if (CoarseLocation.granted(ctx)) WeatherSource.HOME_NO_FIX else WeatherSource.HOME
+                        !CoarseLocation.enabled(ctx) -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_OFF)
+                        else -> throw OpenMeteoClient.Failure(WeatherFail.NO_LOCATION)
+                    }
+                }
+            }
+            val found = SystemClock.elapsedRealtime()
+            val f = OpenMeteoClient.forecast(ctx, place, WeatherAsk.fetchDays(range, now), units)
+            val report = WeatherText.report(f, a.day, now, units) ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
+            VoiceLog.add(VoiceEvent.WEATHER, source, if (source == WeatherSource.HOME) 0 else (found - started).toInt(), (SystemClock.elapsedRealtime() - found).toInt())
+            // The card's line is saved with the conversation, so it names no place; the place goes in the results (for
+            // the model) and the body (shown, never saved), with what Open-Meteo was sent.
+            val (detail, named) = when (source) {
+                WeatherSource.FIX, WeatherSource.LAST_KNOWN -> "Forecast for where you are, from Open-Meteo." to HERE
+                WeatherSource.HOME -> "Forecast for your Home for weather, from Open-Meteo." to place.name
+                WeatherSource.HOME_NO_FIX -> "Robot couldn't tell where you are: forecast for your Home for weather, from Open-Meteo." to place.name
+                WeatherSource.NAMED -> "Forecast from Open-Meteo." to place.name
+            }
+            val sent = "Sent to Open-Meteo: ${OpenMeteo.coord(place.lat)}, ${OpenMeteo.coord(place.lon)}"
+            Executed(ActionStatus.DONE, detail, results = listOf(mapOf("place" to named)) + report.results,
+                body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent,
+                spoken = "${named.replaceFirstChar { it.uppercase() }}. ${report.spoken}")
+        } catch (e: OpenMeteoClient.Failure) {
+            VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
+            Executed(if (e.why == WeatherFail.NO_PLACE) ActionStatus.NOT_FOUND else ActionStatus.FAILED, e.why.text)
+        }
+    }
+
     // ------------------------------------------------------------------ the Claude app
 
     /**
@@ -402,5 +489,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
 
     private companion object {
         const val ICON_PX = 96
+        /** The place name of a forecast for where the phone is (Open-Meteo has no reverse lookup, and none is wanted). */
+        const val HERE = "where you are"
     }
 }

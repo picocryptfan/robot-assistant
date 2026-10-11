@@ -11,6 +11,7 @@ import android.os.SystemClock
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionRecord
 import app.heyrobot.core.ActionStatus
+import app.heyrobot.core.Approval
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainMsg
@@ -916,7 +917,8 @@ object PanelController {
         // Escalation trigger a: strong signals go to Claude before Gemma spends a prefill (Automatic only); with Ask
         // first, Gemma answers and the offer follows its reply.
         var offerAfter: EscalationTrigger? = null
-        if (attachment == Attachment.NONE) PreRouter.signal(question)?.let { signal ->
+        // With the weather tool on, a weather question is Robot's to answer (0.4.0).
+        if (attachment == Attachment.NONE) PreRouter.signal(question, localWeather = s.approval(ToolName.WEATHER) != Approval.OFF)?.let { signal ->
             RLog.i("claude_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
             when (decide(attachment, guardFree = !guard.used)) {
                 EscalationDecision.AUTO -> {
@@ -947,7 +949,7 @@ object PanelController {
         val askClaude = ClaudeSettings.localTool(s, keySaved) && (api || withContext(Dispatchers.IO) { ClaudeAppIntents.installed(VoiceHub.app) })
         // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
         val tools = ToolRouter.tools(groups, s, askClaude)
-        val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools)
+        val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools, weather = ToolName.WEATHER in tools)
         // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
         val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
         // The new turn always fits the model's context: cut (and say so) rather than overflow.

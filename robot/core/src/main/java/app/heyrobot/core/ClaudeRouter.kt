@@ -317,12 +317,19 @@ object PreRouter {
         Signal.CURRENT_INFO to Regex("""\blatest\b|\bnews\b|\btodays price\b|\bprice of\b|\bstock price\b|\bexchange rate\b|\bscore\b|\bweather\b|\bforecast\b|\bwho won\b"""),
     )
 
-    /** The strongest signal in [question], or null (Gemma answers). */
-    fun signal(question: String): Signal? {
+    /**
+     * The strongest signal in [question], or null (Gemma answers). [localWeather]: the weather tool is on (0.4.0), so a
+     * weather question ("what's the forecast", "cloud cover tomorrow") is Robot's, not current news for Claude; the
+     * other signals in it still count ("explain why it rains").
+     */
+    fun signal(question: String, localWeather: Boolean = false): Signal? {
         val t = ClaudeRouter.plain(question).replace(Regex("[^a-z0-9]+"), " ").trim()
         if (t.isEmpty() || LOCAL.containsMatchIn(t)) return null
         val rest = EVERYDAY.fold(t) { acc, r -> r.replace(acc, " ") }
-        SIGNALS.firstOrNull { it.second.containsMatchIn(rest) }?.let { return it.first }
+        SIGNALS.firstOrNull { it.second.containsMatchIn(rest) }?.let { (signal, _) ->
+            if (signal == Signal.CURRENT_INFO && localWeather && ToolGroup.WEATHER in ToolRouter.route(question)) return null
+            return signal
+        }
         return if (t.split(' ').size > LONG_WORDS) Signal.LONG else null
     }
 }

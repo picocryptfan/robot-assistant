@@ -12,8 +12,9 @@ import javax.xml.parsers.DocumentBuilderFactory
  * GemmaEngine.kt and runs only in the :brain process; sherpa-onnx lives only in the :voice module and runs
  * only in the :voice process; nothing the main (UI) process runs refers to either. Also: the components
  * sit in their processes, the recognizer stays discoverable (the restart finding), exported components
- * are guarded, the permissions are the expected few, nothing but DownloadManager goes online, audio is
- * never written to disk and nothing logs except through RLog (which drops content).
+ * are guarded, the permissions are the expected few, nothing but DownloadManager, the Claude SDK and the one
+ * Open-Meteo client goes online, audio is never written to disk and nothing logs except through RLog (which drops
+ * content).
  */
 class ProcessIsolationTest {
     private val root: File = System.getProperty("robot.rootDir")?.let(::File) ?: File(System.getProperty("user.dir") ?: ".").absoluteFile.parentFile
@@ -182,7 +183,10 @@ class ProcessIsolationTest {
             "android.permission.WRITE_SECURE_SETTINGS",
             // Phase 2: asked for at runtime by the main app only.
             "android.permission.READ_CONTACTS", "android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR",
+            // 0.4.0: the weather "here", approximate only, asked for at runtime by the main app only.
+            "android.permission.ACCESS_COARSE_LOCATION",
         ), used)
+        assertTrue("android.permission.ACCESS_FINE_LOCATION" !in used && "android.permission.ACCESS_BACKGROUND_LOCATION" !in used)
         // Package visibility through <queries> only.
         assertTrue("android.permission.QUERY_ALL_PACKAGES" !in used && "android.permission.SEND_SMS" !in used && "android.permission.WRITE_CONTACTS" !in used)
         // Ask Claude needs nothing new: INTERNET stays the only network permission.
@@ -265,16 +269,21 @@ class ProcessIsolationTest {
     }
 
     /**
-     * Privacy (spec item 10): no network code but the :claude module's SDK client (DownloadManager does the model
-     * downloads), no audio files, no raw logging, never an accessibility service (Ask Claude must not drive the Claude app).
+     * Privacy (spec item 10): no network code but the :claude module's SDK client and, since 0.4.0, the one Open-Meteo
+     * client for the weather (DownloadManager does the model downloads), no audio files, no raw logging, never an
+     * accessibility service (Ask Claude must not drive the Claude app).
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
+        assertEquals(listOf("app/sys/OpenMeteoClient.kt"), usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
             ours.filterKeys { !it.startsWith("claude/") }))
+        // It goes only to Open-Meteo's two hosts, over HTTPS (core Weather.kt builds the URLs).
+        val meteo = File(java("app"), "app/heyrobot/sys/OpenMeteoClient.kt").readText()
+        assertTrue(meteo.contains("setOf(\"api.open-meteo.com\", \"geocoding-api.open-meteo.com\")") && meteo.contains("u.protocol == \"https\""))
         assertEquals(emptyList<String>(), usersOf(Regex("""AccessibilityService|accessibilityservice""")))
-        // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, and the
-        // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own).
-        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/VoiceModels.kt"), ours.filter { it.value.readText().contains("https://") }.keys.sorted())
+        // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, the
+        // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), and Open-Meteo's two (0.4.0).
+        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
+            ours.filter { it.value.readText().contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
         assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)"""), ours.filterKeys { it.startsWith("voice/") }))

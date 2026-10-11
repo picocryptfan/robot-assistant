@@ -15,8 +15,10 @@ import kotlin.math.roundToLong
  * [group]: which tool group describes it (ToolRouter). [reads]: it brings content Robot didn't write into the
  * conversation (a note, a calendar invite, a contact): every later action in that conversation asks first.
  * [internal]: Robot's own, not an action on the phone with an approval level (not under Settings › Actions).
+ * [online]: it goes to the internet itself (Settings › Actions says so).
  */
-enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false, val internal: Boolean = false) {
+enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false, val internal: Boolean = false,
+    val online: Boolean = false) {
     SET_TIMER("set_timer", "Timers", ToolGroup.CORE),
     SET_ALARM("set_alarm", "Alarms", ToolGroup.CORE),
     OPEN_APP("open_app", "Open apps", ToolGroup.CORE),
@@ -30,6 +32,8 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
     FIND_NOTES("find_notes", "Note searches", ToolGroup.NOTES, reads = true),
     ADD_EVENT("add_event", "New events", ToolGroup.CALENDAR),
     READ_CALENDAR("read_calendar", "Calendar lookups", ToolGroup.CALENDAR, reads = true),
+    /** 0.4.0: Open-Meteo's forecast for a place you name, your Home for weather, or where the phone is. */
+    WEATHER("weather", "Weather lookups", ToolGroup.WEATHER, reads = true, online = true),
     /**
      * Ask Claude (docs/ask-claude.md "When Robot needs help"): described to Gemma only with Ask Claude on and escalation
      * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
@@ -115,6 +119,11 @@ object ToolSpecs {
         )),
         ToolSpec(ToolName.READ_CALENDAR, "List calendar events for a day or a week.", listOf(
             ToolParam("day", "string", "e.g. today, Friday, next week", true),
+        )),
+        // 0.4.0, as short as the others: no place is where you are (or your Home for weather), no day is today.
+        ToolSpec(ToolName.WEATHER, "Weather forecast (online).", listOf(
+            ToolParam("place", "string", "Town, or omit for here", false),
+            ToolParam("day", "string", "e.g. tomorrow, Friday, this week", false),
         )),
         ToolSpec(ToolName.ASK_CLAUDE, "Ask Claude, a stronger AI online, instead of guessing.", listOf(
             ToolParam("question", "string", "The person's question", true),
@@ -240,6 +249,24 @@ sealed class Action {
         }
     }
 
+    /**
+     * [place] as the model gave it (null: where you are). The app reads it into [where] (here, your Home for weather or
+     * a named place) and [day] into the [range] of days, before anything goes online.
+     */
+    data class Weather(val place: String?, val day: String?, val where: WeatherWhere? = null, val range: DayRange? = null) : Action() {
+        override val tool get() = ToolName.WEATHER
+        override fun describe(): String {
+            val w = where ?: WeatherAsk.where(place).first
+            val at = when (w) {
+                WeatherWhere.HERE -> " here"
+                WeatherWhere.HOME -> " at home"
+                WeatherWhere.NAMED -> " in **${WeatherAsk.where(place).second ?: place}**"
+            }
+            val on = range?.let { " for ${EventText.range(it)}" } ?: day?.let { " for $it" } ?: ""
+            return "Check the weather$at$on"
+        }
+    }
+
     /** [day] in the person's words until the app reads it into a [range]. */
     data class ReadCalendar(val day: String, val range: DayRange? = null) : Action() {
         override val tool get() = ToolName.READ_CALENDAR
@@ -323,6 +350,8 @@ object ToolCalls {
     /** An email body or a note. */
     const val MAX_LONG = 4_000
     const val MAX_EVENT_MINUTES = 24 * 60
+    /** A place's name as shown (a Home for weather: "Saint-Jean-sur-Richelieu, Quebec, Canada"). */
+    const val MAX_PLACE = 120
 
     /**
      * Validates one call. Unknown argument names are ignored; missing or out-of-range ones are refused, and so is
@@ -409,6 +438,9 @@ object ToolCalls {
             }
             // Empty: "go get Claude" with nothing to summarise opens the app without text.
             ToolName.ASK_CLAUDE -> ParsedCall.Ok(Action.AskClaude(longArg(a, ClaudeAppLink.MAX_CHARS, "question", "query", "q", "text", "prompt").orEmpty()))
+            // Both optional: no place is where you are, no day is today.
+            ToolName.WEATHER -> ParsedCall.Ok(Action.Weather(textArg(a, MAX_NAME, "place", "location", "city", "where", "town"),
+                textArg(a, MAX_NAME, "day", "date", "when", "time", "days")))
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
                 val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }
