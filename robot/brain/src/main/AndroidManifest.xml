@@ -6,8 +6,15 @@
         <uses-native-library android:name="libedgetpu_util.so" android:required="false" />
         <uses-native-library android:name="libedgetpu_client.google.so" android:required="false" />
         <uses-native-library android:name="libedgetpu_tachyon.google.so" android:required="false" />
+        <!-- 0.4.7: the phone's own OpenCL, for LiteRT-LM's GPU backend (the general E2B on the GPU, a Pixel 9a's Mali).
+             Used when present, never bundled. Without it the GPU accelerator falls back to WebGPU, which failed every
+             answer in Robot's GPU lab. The Pixel 9a's vendor image lists libOpenCL.so and libOpenCL-pixel.so in
+             /vendor/etc/public.libraries.txt; libvndksupport.so is what LiteRT's OpenCL loader tries next. -->
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL-pixel.so" android:required="false" />
+        <uses-native-library android:name="libvndksupport.so" android:required="false" />
 
-        <!-- ":brain": the model you chose (Gemma 4 E2B on the TPU by default). LiteRT-LM loads only here. Not exported, and bound only with
+        <!-- ":brain": the model you chose (Gemma 4 E2B: on the TPU on a Pixel 10, on the GPU or the CPU elsewhere). LiteRT-LM loads only here. Not exported, and bound only with
              Robot's signature permission (declared by the app). -->
         <service
             android:name="app.heyrobot.brain.BrainService"
