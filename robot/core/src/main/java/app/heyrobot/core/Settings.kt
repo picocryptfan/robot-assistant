@@ -196,6 +196,7 @@ data class RobotSettings(
             ToolName.READ_CALENDAR to Approval.AUTO,
             // 0.4.0: reading only (the weather goes online to Open-Meteo, Settings › Actions says so).
             ToolName.WEATHER to Approval.AUTO,
+            ToolName.PHONE_STATUS to Approval.AUTO,
             // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
             ToolName.ASK_CLAUDE to Approval.ASK,
         )

@@ -34,6 +34,9 @@
     <!-- 0.4.0, also asked for by the main app only, when you tap Allow: the weather "here". Approximate only (never
          ACCESS_FINE_LOCATION); Robot rounds it to two decimals before Open-Meteo sees it. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- 0.4.0, optional: Usage access, which you turn on yourself in Android's settings (Robot only opens the page).
+         phone_status then lists the apps using the most space (StorageStatsManager). Declared so Robot is in that list. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
 
     <queries>
         <!-- open_app: every app with a launcher icon (no QUERY_ALL_PACKAGES). -->

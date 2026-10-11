@@ -64,6 +64,8 @@ for p in READ_CONTACTS READ_CALENDAR WRITE_CALENDAR ACCESS_COARSE_LOCATION; do
   has "\"android.permission.$p\"" "$mf" "declares $p"
 done
 hasnt 'android.permission.ACCESS_BACKGROUND_LOCATION"' "$mf" "no ACCESS_BACKGROUND_LOCATION permission"
+# 0.4.0: Usage access (a special app access you turn on in Android's settings) for the apps using the most space.
+has '"android.permission.PACKAGE_USAGE_STATS"' "$mf" "declares PACKAGE_USAGE_STATS (Usage access, phone status)"
 # "Robot Notes" on the launcher: an activity-alias of MainActivity with its own MAIN/LAUNCHER filter, label and icon.
 alias=$(echo "$mf" | awk '/^ *E: activity-alias /{ on=0 } index($0, "\"app.heyrobot.ui.NotesLauncher\""){ on=1 } /^ *E: (service|receiver|activity|provider) /{ on=0 } on')
 has 'targetActivity(0x01010202)="app.heyrobot.ui.MainActivity"' "$alias" "Robot Notes alias targets MainActivity"

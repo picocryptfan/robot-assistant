@@ -185,6 +185,8 @@ class ProcessIsolationTest {
             "android.permission.READ_CONTACTS", "android.permission.READ_CALENDAR", "android.permission.WRITE_CALENDAR",
             // 0.4.0: the weather "here", approximate only, asked for at runtime by the main app only.
             "android.permission.ACCESS_COARSE_LOCATION",
+            // 0.4.0: Usage access, turned on (or not) in Android's settings: phone_status's largest apps.
+            "android.permission.PACKAGE_USAGE_STATS",
         ), used)
         assertTrue("android.permission.ACCESS_FINE_LOCATION" !in used && "android.permission.ACCESS_BACKGROUND_LOCATION" !in used)
         // Package visibility through <queries> only.

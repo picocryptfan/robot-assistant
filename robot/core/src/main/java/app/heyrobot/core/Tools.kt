@@ -34,6 +34,8 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
     READ_CALENDAR("read_calendar", "Calendar lookups", ToolGroup.CALENDAR, reads = true),
     /** 0.4.0: Open-Meteo's forecast for a place you name, your Home for weather, or where the phone is. */
     WEATHER("weather", "Weather lookups", ToolGroup.WEATHER, reads = true, online = true),
+    /** 0.4.0: storage, battery and memory, read on the phone (the apps using the most space with Usage access). */
+    PHONE_STATUS("phone_status", "Phone status checks", ToolGroup.PHONE, reads = true),
     /**
      * Ask Claude (docs/ask-claude.md "When Robot needs help"): described to Gemma only with Ask Claude on and escalation
      * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
@@ -124,6 +126,9 @@ object ToolSpecs {
         ToolSpec(ToolName.WEATHER, "Weather forecast (online).", listOf(
             ToolParam("place", "string", "Town, or omit for here", false),
             ToolParam("day", "string", "e.g. tomorrow, Friday, this week", false),
+        )),
+        ToolSpec(ToolName.PHONE_STATUS, "Read this phone's storage, battery and memory.", listOf(
+            ToolParam("about", "string", "storage, battery, memory or all", false),
         )),
         ToolSpec(ToolName.ASK_CLAUDE, "Ask Claude, a stronger AI online, instead of guessing.", listOf(
             ToolParam("question", "string", "The person's question", true),
@@ -265,6 +270,12 @@ sealed class Action {
             val on = range?.let { " for ${EventText.range(it)}" } ?: day?.let { " for $it" } ?: ""
             return "Check the weather$at$on"
         }
+    }
+
+    /** phone_status: what was asked about; the app process reads it. */
+    data class PhoneCheck(val part: PhonePart) : Action() {
+        override val tool get() = ToolName.PHONE_STATUS
+        override fun describe() = PhoneStatus.summary(part)
     }
 
     /** [day] in the person's words until the app reads it into a [range]. */
@@ -441,6 +452,8 @@ object ToolCalls {
             // Both optional: no place is where you are, no day is today.
             ToolName.WEATHER -> ParsedCall.Ok(Action.Weather(textArg(a, MAX_NAME, "place", "location", "city", "where", "town"),
                 textArg(a, MAX_NAME, "day", "date", "when", "time", "days")))
+            // Anything it doesn't name (or nothing) is all of it.
+            ToolName.PHONE_STATUS -> ParsedCall.Ok(Action.PhoneCheck(PhonePart.of(textArg(a, MAX_NAME, "about", "part", "what", "topic", "kind"))))
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
                 val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }

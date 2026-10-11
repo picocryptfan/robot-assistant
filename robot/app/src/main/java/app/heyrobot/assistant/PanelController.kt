@@ -63,6 +63,7 @@ import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.ScreenData
 import app.heyrobot.core.ScreenText
+import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.ShowSource
 import app.heyrobot.core.StallTimer
 import app.heyrobot.core.SpeakReplies
@@ -93,6 +94,7 @@ import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Phones
+import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.voice.Cues
 import app.heyrobot.voice.SpeechToText
 import kotlinx.coroutines.CancellationException
@@ -949,7 +951,8 @@ object PanelController {
         val askClaude = ClaudeSettings.localTool(s, keySaved) && (api || withContext(Dispatchers.IO) { ClaudeAppIntents.installed(VoiceHub.app) })
         // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
         val tools = ToolRouter.tools(groups, s, askClaude)
-        val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools, weather = ToolName.WEATHER in tools)
+        val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools, weather = ToolName.WEATHER in tools,
+            phone = ToolName.PHONE_STATUS in tools)
         // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
         val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
         // The new turn always fits the model's context: cut (and say so) rather than overflow.
@@ -1549,17 +1552,25 @@ object PanelController {
         override fun close() {}
     }
 
-    /** "Open Cheogram" on a card: the app's launcher activity (nothing passed to it). */
+    /**
+     * "Open Cheogram" on a card: the app's launcher activity (nothing passed to it). 0.4.0: or a page of Android's
+     * settings ("Open storage settings", "Turn on Usage access"), the first of its intents that opens.
+     */
     fun openHandOff(actionId: String) {
         val a = _state.value.turns.flatMap { it.actions }.firstOrNull { it.id == actionId } ?: return
         val pkg = a.handOff ?: return
-        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open Cheogram.")
+        val page = SettingsPage.isPage(pkg)
+        if (Assistant.locked(VoiceHub.app)) return notify(if (page) "Unlock your phone, then open Settings." else "Unlock your phone, then open Cheogram.")
         val h = host ?: return
-        val i = VoiceHub.app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return notify("Cheogram isn't installed.")
+        val tries = if (page) SettingsIntents.of(VoiceHub.app, pkg)
+        else listOfNotNull(VoiceHub.app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        if (tries.isEmpty()) return notify(if (page) "Settings didn't open." else "Cheogram isn't installed.")
         stopGenerating(TtsStop.OTHER)
-        if (h.launch(i)) {
+        if (tries.any { h.launch(it) }) {
             hidingFor = "action"
             h.hidePanel()
+        } else if (page) {
+            notify("Settings didn't open.")
         }
     }
 

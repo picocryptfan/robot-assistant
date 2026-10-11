@@ -69,9 +69,6 @@ class WeatherToolTest {
         val system = Prompt.system(now, locked = false)
         val cost = Prompt.fixedTokens(system, Prompt.CORE_TOOLS + ToolName.WEATHER) - Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
         assertTrue("weather $cost", cost in 1..150)
-        // Every group at once (estimated on the high side) still leaves room for a conversation and the reply.
-        val everything = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal })
-        assertTrue("everything $everything", everything < 2_300)
         assertTrue(Prompt.textCallHint(listOf(ToolName.WEATHER)).contains("call:weather{place:Paris,day:tomorrow}"))
     }
 

@@ -32,6 +32,9 @@ import app.heyrobot.core.MailTarget
 import app.heyrobot.core.MailTo
 import app.heyrobot.core.NoteSearch
 import app.heyrobot.core.OpenMeteo
+import app.heyrobot.core.PhonePart
+import app.heyrobot.core.PhoneStatus
+import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RLog
@@ -57,6 +60,7 @@ import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.CoarseLocation
 import app.heyrobot.sys.OpenMeteoClient
+import app.heyrobot.sys.PhoneInfo
 import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Contacts
 import app.heyrobot.sys.HandOffApps
@@ -121,6 +125,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.ReadCalendar -> readCalendar(action)
                 is Action.AskClaude -> openClaude(action)
                 is Action.Weather -> weather(action)
+                is Action.PhoneCheck -> phoneCheck(action)
             }
         } catch (t: Throwable) {
             RLog.w("tool_run", t, "tool" to action.tool)
@@ -463,6 +468,22 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
             Executed(if (e.why == WeatherFail.NO_PLACE) ActionStatus.NOT_FOUND else ActionStatus.FAILED, e.why.text)
         }
+    }
+
+    // ------------------------------------------------------------------ the phone itself
+
+    /**
+     * phone_status: read on the phone; nothing leaves it. Storage comes with the apps using the most space and the media
+     * sizes when Usage access is on, and the card offers Android's storage settings; without it, to turn Usage access on.
+     */
+    private fun phoneCheck(a: Action.PhoneCheck): Executed {
+        val f = PhoneInfo.read(ctx, a.part, robotModelLoaded = BrainKeeper.state.value.readiness == BrainKeeper.Readiness.READY)
+        val results = PhoneStatus.results(f, a.part, WeatherUnits.of(region))
+        if (results.isEmpty()) return Executed(ActionStatus.FAILED, "Robot couldn't read that on this phone.")
+        val lines = PhoneStatus.lines(results)
+        val storage = a.part == PhonePart.STORAGE || a.part == PhonePart.ALL
+        val page = if (!storage) null else if (f.usageAccess) SettingsPage.STORAGE else SettingsPage.USAGE_ACCESS
+        return Executed(ActionStatus.DONE, "Read on this phone; nothing left it.", results = results, body = lines, spoken = lines.replace("\n", ". "), handOff = page)
     }
 
     // ------------------------------------------------------------------ the Claude app

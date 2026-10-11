@@ -48,7 +48,8 @@ class ApprovalGateTest {
             assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, locked = false, settings = defaults, mustAsk = true))
             assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, locked = false, settings = allAuto, mustAsk = true))
         }
-        assertEquals(setOf(ToolName.LOOKUP_CONTACT, ToolName.FIND_NOTES, ToolName.READ_CALENDAR, ToolName.WEATHER), ToolName.entries.filter { it.reads }.toSet())
+        assertEquals(setOf(ToolName.LOOKUP_CONTACT, ToolName.FIND_NOTES, ToolName.READ_CALENDAR, ToolName.WEATHER, ToolName.PHONE_STATUS),
+            ToolName.entries.filter { it.reads }.toSet())
         for (t in ToolName.entries.filter { it.reads }) assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, defaults, mustAsk = true))
         // Never looser than without it: off stays off, the lock screen still says unlock.
         val off = defaults.copy(approvals = defaults.approvals + (ToolName.SET_TIMER to Approval.OFF))

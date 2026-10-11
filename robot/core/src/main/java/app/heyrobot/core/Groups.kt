@@ -16,6 +16,8 @@ enum class ToolGroup {
     CALENDAR,
     /** The weather (0.4.0): described only when a question speaks of it. */
     WEATHER,
+    /** The phone's storage, battery and memory (0.4.0). */
+    PHONE,
 }
 
 object ToolRouter {
@@ -42,6 +44,11 @@ object ToolRouter {
         "meteo", "pluie", "pleuvoir", "pleut", "neige", "neiger", "nuage", "nuageux", "vent", "venteux",
         "parapluie", "soleil", "ensoleille", "orage", "brouillard", "grele", "gel", "degres", "quel temps", "previsions", "manteau")
 
+    /** The phone itself: storage, battery, memory, and freeing them ("free up space", "libérer de la place"). */
+    private val PHONE = setOf("storage", "space", "free up", "clean up", "memory", "ram", "battery", "charge", "disk", "gigabytes", "gb",
+        "megabytes", "cache", "phone status", "running out", "taking up", "stockage", "espace", "memoire", "batterie", "liberer", "libere",
+        "de la place", "nettoyer", "nettoie")
+
     /** "tell me a joke" is not about telling someone: "tell" counts only when it isn't followed by me or us. */
     private val NOT_PEOPLE = setOf("tell me", "tell us")
 
@@ -65,6 +72,7 @@ object ToolRouter {
             if (has(NOTES)) add(ToolGroup.NOTES)
             if (has(CALENDAR) || WHEN.containsMatchIn(plain)) add(ToolGroup.CALENDAR)
             if (has(WEATHER)) add(ToolGroup.WEATHER)
+            if (has(PHONE)) add(ToolGroup.PHONE)
         }
     }
 

@@ -94,6 +94,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
@@ -392,7 +393,7 @@ private fun Messages(st: PanelState, modifier: Modifier) {
                 AssistantBubble(
                     text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error,
                     actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
-                        cancel = it.cancel, openApp = if (it.handOff != null) "Open Cheogram" else null, picture = it.picture) },
+                        cancel = it.cancel, openApp = it.handOff?.let { h -> SettingsPage.label(h) ?: "Open Cheogram" }, picture = it.picture) },
                     onConfirm = PanelController::confirm,
                     cardActions = cardActions,
                     claude = t.claude, readBack = t.readBack, footer = claudeFooter(t.sources, t.cost),

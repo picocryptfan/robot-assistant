@@ -106,6 +106,7 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.ADD_EVENT, ToolName.READ_CALENDAR -> RIcons.Event
     ToolName.ASK_CLAUDE -> RIcons.Cloud
     ToolName.WEATHER -> RIcons.Sunny
+    ToolName.PHONE_STATUS -> RIcons.Phone
     null -> RIcons.Warning
 }
 
