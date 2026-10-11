@@ -10,7 +10,9 @@ import android.os.PersistableBundle
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +64,8 @@ import app.heyrobot.core.ExportKind
 import app.heyrobot.core.ExportOptions
 import app.heyrobot.core.SessionStatus
 import app.heyrobot.core.Transcript
+import app.heyrobot.core.TranscriptEdits
+import app.heyrobot.core.TranscriptEvent
 import app.heyrobot.core.TranscriptExport
 import app.heyrobot.core.TranscriptGap
 import app.heyrobot.core.TranscriptHit
@@ -83,7 +87,10 @@ import java.time.ZoneId
 // newest first, a search over their words (accents and case ignored), one transcript to read, rename, export as
 // Markdown or text (saved where you choose, or shared), copy, and delete; and "Delete all". It reads the files the
 // voice process writes; the one being recorded can't be renamed until it stops, and deleting it stops the recording
-// (the voice process is told, so it can't write it back).
+// (the voice process is told, so it can't write it back). Speakers (phase 5.3): tap a line's chip to name the speaker
+// (in this transcript only), merge them with another or say "this is me"; long-press a line to give it to someone else
+// or split it; and the speakers who sounded alike when the session ended are offered as merges. Not while it records:
+// then the voice process is the transcript's only writer, and its own screen makes these changes.
 
 private data class Row(val meta: TranscriptMeta, val live: Boolean, val bytes: Long)
 
@@ -220,6 +227,7 @@ private fun resumed(): Boolean {
 /** Lines and gap markers in time order. */
 private fun timeline(t: Transcript): List<Any> = (t.lines.map { it.t0 to it } + t.gaps.map { it.t0 to it }).sortedBy { it.first }.map { it.second }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, onBack: () -> Unit) {
     val ctx = LocalContext.current
@@ -232,7 +240,34 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
+    var edit by remember { mutableStateOf<SpeakerEdit?>(null) }
     val zone = ZoneId.systemDefault()
+    /** Your changes to speakers, appended to the transcript's file here (main app) when nothing records it. */
+    val edits = remember(id) {
+        object : SpeakerActions {
+            fun change(make: (Transcript, Int) -> TranscriptEvent?) {
+                scope.launch {
+                    val done = withContext(Dispatchers.IO) {
+                        if (Transcripts.live(ctx) == id) null else Transcripts.store(ctx).edit(id, make) != null
+                    }
+                    tick++
+                    if (done == null) snackbar.showSnackbar("It's being recorded: change it on the transcript screen, or after it stops.")
+                }
+            }
+
+            override fun rename(speaker: String, name: String) = change { t, _ -> TranscriptEdits.rename(t, speaker, name) }
+            override fun merge(from: String, to: String) = change { t, _ -> TranscriptEdits.merge(t, from, to) }
+            override fun thisIsMe(speaker: String) = change { t, _ -> TranscriptEdits.me(t, speaker) }
+            override fun move(i: Int, speaker: String) = change { t, _ -> TranscriptEdits.move(t, i, speaker) }
+            override fun split(i: Int, at: Int, speaker: String?) = change { t, n -> TranscriptEdits.split(t, i, at, n, speaker) }
+            override fun decline(from: String, to: String) {
+                scope.launch {
+                    withContext(Dispatchers.IO) { if (Transcripts.live(ctx) != id) Transcripts.store(ctx).decline(id, from, to) }
+                    tick++
+                }
+            }
+        }
+    }
     val resumed = resumed()
     LaunchedEffect(id, tick, resumed) {
         while (true) {
@@ -324,16 +359,22 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                 Text("${TranscriptExport.CREDIT} Nothing leaves the phone unless you share or export it.", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            // Speakers who sounded alike when the session ended: offered, one at a time, never merged by themselves.
+            val similar = m.similar.firstOrNull { (a, b) -> a in tr.speakers && b in tr.speakers }
+            if (similar != null && !live) item(key = "similar") {
+                SimilarCard(SpeakerView.of(tr), similar.first, similar.second, onMerge = { edits.merge(similar.first, similar.second) },
+                    onDecline = { edits.decline(similar.first, similar.second) })
+            }
             items(all.size) { k ->
                 when (val x = all[k]) {
                     is TranscriptGap -> Text(TranscriptExport.gapText(m, x, zone), style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    is TranscriptLine -> Column {
-                        val one = tr.speakers.size <= 1 && tr.names.isEmpty()
+                    is TranscriptLine -> Column(if (!live) Modifier.combinedClickable(onClick = {}, onLongClick = { edit = SpeakerEdit.LineMenu(x) },
+                        onLongClickLabel = "Change who said it") else Modifier) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(TranscriptExport.clock(m, x.t0, zone), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.width(8.dp))
-                            Text(if (one) "Speaker" else tr.nameOf(x.speaker), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            SpeakerChip(x.speaker, if (tr.oneVoice) "Speaker" else tr.nameOf(x.speaker), if (!live) ({ edit = SpeakerEdit.Menu(x.speaker) }) else null)
                             Spacer(Modifier.width(8.dp))
                             Text(TranscriptExport.langTag(x), style = MaterialTheme.typography.labelMedium)
                             if (x.edited) {
@@ -348,6 +389,7 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
             }
         }
     }
+    t?.let { tr -> SpeakerEditDialog(edit.takeIf { !live }, SpeakerView.of(tr), edits) { edit = it } }
     if (renaming) {
         var name by remember { mutableStateOf(meta?.title.orEmpty()) }
         AlertDialog(

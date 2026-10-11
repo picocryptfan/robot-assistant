@@ -122,7 +122,7 @@ conv=$(elem app.heyrobot.assistant.conversation.ConversationService)
 has ':voice' "$conv" "ConversationService in :voice"
 has 'exported(0x01010010)=false' "$conv" "ConversationService not exported"
 has 'foregroundServiceType' "$conv" "ConversationService declares its foreground service type (microphone)"
-for c in ConversationActivity TranscriptionCheckActivity; do
+for c in ConversationActivity TranscriptionCheckActivity VoiceprintActivity; do
   has ':voice' "$(elem app.heyrobot.assistant.conversation.$c)" "$c in :voice"
   has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.conversation.$c)" "$c not exported"
 done

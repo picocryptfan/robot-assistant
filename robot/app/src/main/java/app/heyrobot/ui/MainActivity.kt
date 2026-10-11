@@ -70,6 +70,7 @@ import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.Transcripts
+import app.heyrobot.sys.VoiceprintFiles
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.ui.common.RIcons
@@ -119,7 +120,8 @@ class MainActivity : ComponentActivity() {
         // 0.5.0: the Transcripts library, or one transcript (the transcript screen's "Open", the "Transcripts" shortcut).
         i.getStringExtra(AppPages.EXTRA) == AppPages.TRANSCRIPTS ->
             i.getStringExtra(AppPages.EXTRA_TRANSCRIPT)?.takeIf { app.heyrobot.core.TranscriptIds.valid(it) }?.let { "${AppPages.TRANSCRIPTS}:$it" } ?: AppPages.TRANSCRIPTS
-        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS }
+        // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page).
+        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -213,6 +215,8 @@ data class Snapshot(
     val bargeTest: BargeTestResult? = null,
     /** The panel's answer to the nearest place's first-use card (Settings › Actions shows it when newer than its own). */
     val nearestAnswer: NearestAnswer? = null,
+    /** 0.5.0: a "me" voiceprint is saved (only that: it is encrypted, and read by the voice process only). */
+    val voiceprint: Boolean = false,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
 
@@ -262,7 +266,13 @@ fun RobotAppUi(activity: MainActivity) {
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
                     bargeTest = readBargeTest(ctx),
                     nearestAnswer = NearestAnswers.load(ctx),
+                    voiceprint = VoiceprintFiles.saved(ctx),
                 )
+            }
+            // The meVoiceprint setting is only a flag, kept in step with the file (made or deleted in the voice process).
+            if (snap.voiceprint != settings.meVoiceprint) {
+                settings = settings.copy(meVoiceprint = snap.voiceprint)
+                SettingsStore.save(ctx, settings)
             }
             // A finished voice download is checked and installed right away, one bundle at a time.
             snap.voice.firstOrNull { it.status == ModelStatus.UNVERIFIED }?.let { v ->
@@ -452,6 +462,20 @@ fun RobotAppUi(activity: MainActivity) {
         openTranscriptionCheck = {
             try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { say("Couldn't open the Transcription check.") }
         },
+        openVoiceprint = {
+            // By name: the screen runs in the voice process, which alone holds the speaker model and the voiceprint's key.
+            try {
+                ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.conversation.VoiceprintActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) { say("Couldn't open Your voice.") }
+        },
+        deleteVoiceprint = {
+            // Off the main thread (the file and the Keystore); a running session stops comparing with it at once.
+            scope.launch(Dispatchers.IO) {
+                VoiceprintFiles.delete(ctx)
+                Cmd.send(ctx, Cmd.VOICEPRINT_DELETED)
+                withContext(Dispatchers.Main) { update(settings.copy(meVoiceprint = false)); say("Your voiceprint was deleted.") }
+            }
+        },
         openUsageAccess = {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
             if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
@@ -488,7 +512,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
         Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = { page = null })
         is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = { page = Page.Transcripts })
-        Page.ConversationSettings -> ConversationSettingsScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -565,4 +589,7 @@ class AppActions(
     /** 0.5.0: the transcript screen (voice process), to start transcribing; Settings › Voice › Transcription check. */
     val transcribe: () -> Unit = {},
     val openTranscriptionCheck: () -> Unit = {},
+    /** 0.5.0, phase 5.3: "Your voice" (voice process), and deleting the voiceprint (file and key). */
+    val openVoiceprint: () -> Unit = {},
+    val deleteVoiceprint: () -> Unit = {},
 )

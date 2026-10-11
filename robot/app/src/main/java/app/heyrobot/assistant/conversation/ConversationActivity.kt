@@ -10,8 +10,10 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -65,13 +67,24 @@ import app.heyrobot.core.ConsentRecord
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.core.ConvPause
 import app.heyrobot.core.ConversationLock
+import app.heyrobot.core.ConversationSettings
 import app.heyrobot.core.TranscriptExport
 import app.heyrobot.core.TranscriptLine
+import app.heyrobot.core.VoiceBundle
+import app.heyrobot.core.VoiceMark
+import app.heyrobot.core.VoiceModelLogic
 import app.heyrobot.core.enumOr
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.SettingsStore
+import app.heyrobot.sys.SpeakerOffer
 import app.heyrobot.sys.Transcripts
+import app.heyrobot.ui.SimilarCard
+import app.heyrobot.ui.SpeakerActions
+import app.heyrobot.ui.SpeakerChip
+import app.heyrobot.ui.SpeakerEdit
+import app.heyrobot.ui.SpeakerEditDialog
+import app.heyrobot.ui.SpeakerView
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.theme.RobotTheme
 import java.time.Instant
@@ -83,7 +96,10 @@ import java.util.Locale
 // language (FR, EN, or "FR?" when the line was too short to tell: tap it to fix), the open segment's words in grey
 // while you look (screen on, "Live words" on), Pause, Stop and the elapsed time. It observes ConversationSession with no
 // IPC. It starts a session when opened to start one (the one-time consent reminder first), and shows over the lock
-// screen only for a session started there, with nothing older (docs/conversation-mode.md 1.7).
+// screen only for a session started there, with nothing older (docs/conversation-mode.md 1.7). Speaker labels (phase
+// 5.3): each line's chip has its speaker's colour and name; while the session runs and the phone is unlocked, tap a chip
+// to name the speaker, merge them with another or say "this is me", long-press a line to give it to someone else or
+// split it, and answer "S3 sounds like S1". The speaker model's download is offered once, with its size.
 
 class ConversationActivity : ComponentActivity() {
     /** A start asked for and waiting for the consent tick: how it was asked, and the transcript to resume. */
@@ -134,6 +150,7 @@ class ConversationActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         lockedNow.value = locked()
+        checkSpeakerOffer()
     }
 
     override fun onStop() {
@@ -174,6 +191,33 @@ class ConversationActivity : ComponentActivity() {
         else begin(entry, resume)
     }
 
+    /** Your changes to speakers go through the running session (its writer is the transcript's only one meanwhile). */
+    private val liveEdits = object : SpeakerActions {
+        override fun rename(speaker: String, name: String) = ConversationSession.rename(speaker, name).let {}
+        override fun merge(from: String, to: String) = ConversationSession.merge(from, to).let {}
+        override fun thisIsMe(speaker: String) = ConversationSession.thisIsMe(speaker).let {}
+        override fun move(i: Int, speaker: String) = ConversationSession.move(i, speaker).let {}
+        override fun split(i: Int, at: Int, speaker: String?) = ConversationSession.split(i, at, speaker).let {}
+        override fun decline(from: String, to: String) = ConversationSession.decline(from, to).let {}
+    }
+
+    /** The speaker model's download is offered: not there, speaker labels not turned off, and not answered "Not now". */
+    private val offerSpeakers = mutableStateOf(false)
+
+    private fun checkSpeakerOffer() {
+        val ready = try { VoiceMark.complete(VoiceBundle.SPEAKERS, VoiceBundle.dir(filesDir, VoiceBundle.SPEAKERS)) } catch (_: Exception) { false }
+        offerSpeakers.value = ConversationSettings.offerSpeakerModel(SettingsStore.load(this), ready) && !SpeakerOffer.answered(this)
+    }
+
+    /** Settings › Conversation in Robot's app, where the download starts (downloads happen in the main app only). */
+    private fun openSpeakerSettings() {
+        if (locked()) return
+        try {
+            startActivity(Intent().setClassName(packageName, "app.heyrobot.ui.MainActivity").putExtra(AppPages.EXTRA, AppPages.CONVERSATION_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Throwable) {}
+    }
+
     private fun begin(entry: ConvEntry, resume: String?) {
         pending.value = null
         if (!ConversationService.start(this, entry, resume)) ConversationNotices.couldNotStart(this)
@@ -205,6 +249,10 @@ class ConversationActivity : ComponentActivity() {
         var menu by remember { mutableStateOf(false) }
         var help by remember { mutableStateOf(false) }
         var fixing by remember { mutableStateOf<TranscriptLine?>(null) }
+        var edit by remember { mutableStateOf<SpeakerEdit?>(null) }
+        // Speakers are changed while the session runs, with the phone unlocked; afterwards in Robot › Transcripts.
+        val editable = ui.active && ui.status != ConversationSession.Status.STOPPING && !locked
+        if (!editable && edit != null) edit = null
         var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
         LaunchedEffect(ui.active) {
             while (ui.active) {
@@ -267,16 +315,29 @@ class ConversationActivity : ComponentActivity() {
                         })
                         else if (ui.active) Text(ConsentRecord.LINE, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    // The speaker model, offered once (with its size), unlocked only.
+                    if (offerSpeakers.value && !locked && ask == null) item {
+                        SpeakerOfferCard(onDownload = { openSpeakerSettings() }, onLater = { SpeakerOffer.answer(this@ConversationActivity); offerSpeakers.value = false })
+                    }
+                    // Two speakers who sound alike: a merge offered, never made by itself.
+                    val p = ui.proposal
+                    if (p != null && editable) item(key = "similar") {
+                        SimilarCard(SpeakerView(ui.speakers, ui.names, ui.me), p.first, p.second,
+                            onMerge = { ConversationSession.merge(p.first, p.second) }, onDecline = { ConversationSession.decline(p.first, p.second) })
+                    }
                     // On the lock screen only the lines of a session started there, while it runs: nothing older, and
                     // no live words of a session started unlocked either.
                     val shows = !locked || (ui.active && ui.lockedStart)
                     val visible = if (shows) ui.lines else emptyList()
-                    items(visible, key = { it.i }) { l -> LineRow(ui, l) { fixing = l } }
+                    items(visible, key = { it.i }) { l ->
+                        LineRow(ui, l, onFix = { fixing = l }, onSpeaker = if (editable) ({ edit = SpeakerEdit.Menu(l.speaker) }) else null,
+                            onLong = if (editable) ({ edit = SpeakerEdit.LineMenu(l) }) else null)
+                    }
                     if (shows && ui.partial.isNotEmpty()) item {
                         Text(ui.partial, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
                     }
                     item {
-                        if (!ui.active && ui.savedId != null) SavedCard(locked = locked, onOpen = { openInApp(ui.savedId) },
+                        if (!ui.active && ui.savedId != null) SavedCard(locked = locked, similarLeft = ui.similarLeft, onOpen = { openInApp(ui.savedId) },
                             onAgain = { pending.value = null; begin(ConvEntry.APP, null) })
                         Text("Transcribed on this phone. Nothing leaves it unless you send it.", style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
@@ -284,6 +345,7 @@ class ConversationActivity : ComponentActivity() {
                 }
             }
         }
+        SpeakerEditDialog(edit, SpeakerView(ui.speakers, ui.names, ui.me), liveEdits) { edit = it }
         fixing?.let { l ->
             AlertDialog(
                 onDismissRequest = { fixing = null },
@@ -304,7 +366,10 @@ class ConversationActivity : ComponentActivity() {
             text = {
                 Text("Robot writes down what it hears, on this phone, line by line, and saves each line as it goes. It keeps working with the " +
                     "screen off; the notification is on the whole time, with Pause and Stop. “FR?” means the line was too short to tell its " +
-                    "language: tap it to fix. Speaker labels come in a later version. Nothing said to Robot while its panel is open is " +
+                    "language: tap it to fix. With speaker labels on (Settings › Conversation), each line says who spoke: S1, S2… or the " +
+                    "name you give (tap the chip; long-press a line if someone else said it). Very short replies go to whoever spoke just " +
+                    "before, two people talking at once go to one of them, and the same person near and far from the phone can become two " +
+                    "speakers: merge them. Nothing said to Robot while its panel is open is " +
                     "transcribed, and “hey robot” sleeps during the session unless you turn on Settings › Conversation › “Hey robot works " +
                     "during a conversation”. The audio is never kept.")
             },
@@ -312,14 +377,15 @@ class ConversationActivity : ComponentActivity() {
         )
     }
 
+    @OptIn(ExperimentalFoundationApi::class)
     @Composable
-    private fun LineRow(ui: ConversationSession.Ui, l: TranscriptLine, onFix: () -> Unit) {
-        Column {
+    private fun LineRow(ui: ConversationSession.Ui, l: TranscriptLine, onFix: () -> Unit, onSpeaker: (() -> Unit)?, onLong: (() -> Unit)?) {
+        Column(if (onLong != null) Modifier.combinedClickable(onClick = {}, onLongClick = onLong, onLongClickLabel = "Change who said it") else Modifier) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(clock(ui.createdAt, l.t0), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(8.dp))
-                // One speaker label until speaker labels come (phase 5.3).
-                Text("Speaker", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                // "Speaker" while only one voice is heard and nobody is named; else the speaker's colour and name.
+                SpeakerChip(l.speaker, if (ui.oneVoice) "Speaker" else ui.nameOf(l.speaker), onSpeaker)
                 Spacer(Modifier.width(8.dp))
                 val tag = TranscriptExport.langTag(l)
                 val unsure = l.prior || l.lang == null
@@ -334,6 +400,22 @@ class ConversationActivity : ComponentActivity() {
                 }
             }
             Text(l.text, style = MaterialTheme.typography.bodyLarge)
+        }
+    }
+
+    @Composable
+    private fun SpeakerOfferCard(onDownload: () -> Unit, onLater: () -> Unit) {
+        Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Tell speakers apart?", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text("Robot can label who says what (S1, S2…, or the names you give) by their voices, on this phone. It needs the speaker " +
+                    "model: ${VoiceModelLogic.size(VoiceBundle.SPEAKERS.bytes)}, downloaded once in Robot › Settings › Conversation.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    FilledTonalButton(onClick = onDownload, modifier = Modifier.heightIn(min = 48.dp)) { Text("Download (${VoiceModelLogic.size(VoiceBundle.SPEAKERS.bytes)})") }
+                    OutlinedButton(onClick = onLater, modifier = Modifier.heightIn(min = 48.dp)) { Text("Not now") }
+                }
+            }
         }
     }
 
@@ -373,12 +455,15 @@ class ConversationActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun SavedCard(locked: Boolean, onOpen: () -> Unit, onAgain: () -> Unit) {
+    private fun SavedCard(locked: Boolean, similarLeft: Int, onOpen: () -> Unit, onAgain: () -> Unit) {
         Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Saved", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 Text(if (locked) "Unlock your phone to read, export or delete it in Robot › Transcripts." else "It's in Robot › Transcripts, to read, export or delete.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (similarLeft > 0 && !locked) Text(if (similarLeft == 1) "Two speakers sounded alike: open it to merge them if they are one person."
+                    else "$similarLeft pairs of speakers sounded alike: open it to merge the ones who are one person.",
+                    style = MaterialTheme.typography.bodyMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (!locked) OutlinedButton(onClick = onOpen, modifier = Modifier.heightIn(min = 48.dp)) { Text("Open") }
                     OutlinedButton(onClick = onAgain, modifier = Modifier.heightIn(min = 48.dp)) { Text("New transcript") }

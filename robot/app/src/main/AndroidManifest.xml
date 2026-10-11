@@ -262,6 +262,12 @@
             android:exported="false"
             android:taskAffinity="app.heyrobot.check"
             android:windowSoftInputMode="adjustResize" />
+        <!-- 0.5.0, phase 5.3: "Your voice", the optional "me" voiceprint (encrypted in :voice; the main app opens it by name). -->
+        <activity
+            android:name=".assistant.conversation.VoiceprintActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:taskAffinity="app.heyrobot.voiceprint" />
         <service
             android:name=".assistant.conversation.ConversationTileService"
             android:process=":voice"

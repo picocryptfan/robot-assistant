@@ -133,7 +133,9 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.CheogramPickActivity",
             // 0.5.0, conversation mode: where the listener and the speech model are.
             "app.heyrobot.assistant.conversation.ConversationService", "app.heyrobot.assistant.conversation.ConversationActivity",
-            "app.heyrobot.assistant.conversation.TranscriptionCheckActivity", "app.heyrobot.assistant.conversation.ConversationTileService")
+            "app.heyrobot.assistant.conversation.TranscriptionCheckActivity", "app.heyrobot.assistant.conversation.ConversationTileService",
+            // 0.5.0, phase 5.3: "Your voice" uses the speaker model and the voiceprint's key, both only in :voice.
+            "app.heyrobot.assistant.conversation.VoiceprintActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         val main = listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
@@ -155,7 +157,7 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
             "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
             "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
-            "app.heyrobot.sys.ExportProvider"))
+            "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.sys.ExportProvider"))
             assertEquals(n, "false", exported(n))
         // 0.5.0: the session is a microphone foreground service; the tile only the system binds.
         assertEquals("microphone", c("app.heyrobot.assistant.conversation.ConversationService").getAttributeNS(ns, "foregroundServiceType"))
@@ -372,5 +374,40 @@ class ProcessIsolationTest {
         val ui = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.assistant\b"""), ui))
         assertTrue(File(java("app"), "app/heyrobot/sys/Transcripts.kt").readText().contains("\"app.heyrobot.assistant.conversation.ConversationActivity\""))
+    }
+
+    /**
+     * 0.5.0, phase 5.3 (docs/conversation-mode.md 3, 8): the speaker model is downloaded by the main app only, like every
+     * model; the voiceprint is decrypted in the :voice process only, seeds the session and nothing else; nothing about
+     * speakers goes online or into a log but numbers.
+     */
+    @Test fun speakerLabelsAndTheVoiceprintStayOnThePhone() {
+        // Downloads: DownloadManager in the main app's two model stores, and those only from the main app's screens.
+        assertEquals(listOf("app/sys/ModelStore.kt", "app/sys/VoiceModelStore.kt"), usersOf(Regex("""\bDownloadManager\b""")))
+        val dl = usersOf(Regex("""\bVoiceModelStore\b"""))
+        assertTrue(dl.toString(), dl.isNotEmpty() && dl.all { it.startsWith("app/ui/") || it.startsWith("app/sys/") })
+        // The voiceprint: decrypted in one place (the session's start), encrypted and read only by the :voice code.
+        assertEquals(listOf("app/assistant/conversation/ConversationSession.kt"), usersOf(Regex("""\bVoiceprints\.read\(""")))
+        assertEquals(listOf("app/assistant/conversation/VoiceprintActivity.kt"), usersOf(Regex("""\bVoiceprints\.save\(""")))
+        assertEquals(listOf("app/assistant/conversation/Voiceprints.kt"), usersOf(Regex("""\bVoiceprintCodec\.(open|seal)\(""")))
+        val main = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bVoiceprints\b|\bVoiceprintCodec\.(open|seal|decode)\b|\bCipher\b"""), main.filterKeys { it != "app/sys/ClaudeFiles.kt" }))
+        // Its Keystore key is its own, never the Claude key's.
+        val keys = code(File(java("app"), "app/heyrobot/assistant/conversation/Voiceprints.kt"))
+        assertTrue(keys.contains("VoiceprintCodec.KEY_ALIAS") && !keys.contains("ClaudeKeyFiles"))
+        // Never in settings: the setting is a flag.
+        val settings = code(File(java("core"), "app/heyrobot/core/Settings.kt"))
+        assertTrue(settings.contains("val meVoiceprint: Boolean"))
+        assertTrue(!Regex("""\bVoiceprint\b|FloatArray""").containsMatchIn(settings))
+        // Nothing about speakers goes online, and the logs get numbers only: no name, label, text or voice in an RLog call.
+        val spk = ours.filterKeys { it in setOf("core/core/Speakers.kt", "core/core/Voiceprint.kt", "core/core/SpeakerClusterer.kt", "voice/voice/SpeakerEmbedder.kt",
+            "voice/voice/ConversationEngine.kt", "app/assistant/conversation/Voiceprints.kt", "app/assistant/conversation/VoiceprintActivity.kt",
+            "app/assistant/conversation/ConversationSession.kt", "app/sys/Speakers.kt", "app/ui/SpeakerUi.kt") }
+        assertEquals(10, spk.size)
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bINTERNET\b"""), spk))
+        val leaky = Regex("""RLog\.[iw]\([^\n]*\b(name|names|label|speaker|vector|embedding|voice|voices|mine|text|heard)\b""")
+        assertEquals(emptyList<String>(), usersOf(leaky, spk))
+        // The speaker model loads with sherpa's debug output off, like every model.
+        assertTrue(code(File(java("voice"), "app/heyrobot/voice/SpeakerEmbedder.kt")).contains("debug = false"))
     }
 }
