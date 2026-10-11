@@ -19,19 +19,29 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-// Main and voice processes. A secret Robot keeps for you (Ask Claude's API key, since 0.3.0; the updater's GitHub access
-// token): encrypted with its own Android Keystore key (AES-GCM, 256 bits, not exportable) into files/robot/<name>.bin,
-// with a masked form beside it (<name>.json) that Settings may show. Each secret is decrypted in one place only, just before
-// its one use (ProcessIsolationTest names it), and never logged, put in an intent, the history or an IPC message.
+// Main and voice processes. A secret Robot keeps for you: each helper's API key (Claude's since 0.3.0, every helper's since
+// 0.6.0; sys/HelperFiles.kt HelperKeyFiles, decrypted in the :voice process only) and the updater's GitHub access token
+// (the main process only). Each is encrypted with its own Android Keystore key (AES-GCM, 256 bits, not exportable) into
+// <dir>/<name>.bin (files/robot/ unless it has a folder of its own, as a helper other than Claude does), with a masked form
+// beside it (<name>.json) that Settings may show. Each secret is decrypted in one place only, just before its one use
+// (ProcessIsolationTest names it), and never logged, put in an intent, the history or an IPC message.
 // A read that fails is removed only when it can never work again (core SecretReads.classify); a failure that may pass (the
 // Keystore busy or locked, an I/O error) keeps the file and the Keystore key, and the caller tries again later.
 
-/** One secret: its Keystore [alias], its file [name] (".bin" and ".json"), and the name its log lines use ([log]). */
-class KeystoreSecret(val alias: String, private val name: String, private val log: String) {
+/**
+ * One secret: its Keystore [alias], its file [name] (".bin" and ".json") in [dir] (files/robot/ by default), and the name
+ * its log lines use ([log]).
+ */
+class KeystoreSecret(
+    val alias: String,
+    private val name: String,
+    private val log: String,
+    private val dir: (Context) -> File = { Paths.dir(it) },
+) {
     /** IV and ciphertext. */
-    fun secret(ctx: Context) = File(Paths.dir(ctx), "$name.bin")
+    fun secret(ctx: Context) = File(dir(ctx), "$name.bin")
     /** Not secret: the masked form and when it was saved, for Settings. */
-    fun meta(ctx: Context) = File(Paths.dir(ctx), "$name.json")
+    fun meta(ctx: Context) = File(dir(ctx), "$name.json")
 
     fun saved(ctx: Context): Boolean = secret(ctx).isFile
 
@@ -50,6 +60,7 @@ class KeystoreSecret(val alias: String, private val name: String, private val lo
     fun save(ctx: Context, value: String, masked: String): Boolean = try {
         val out = seal(secretKey(), value)
         val f = secret(ctx)
+        f.parentFile?.mkdirs()
         val tmp = File(f.parentFile, f.name + ".tmp")
         tmp.writeBytes(out)
         if (!tmp.renameTo(f)) throw java.io.IOException("rename")
@@ -134,8 +145,8 @@ class KeystoreSecret(val alias: String, private val name: String, private val lo
         @Volatile internal var keys: SecretKeys = AndroidKeystoreKeys
 
         /**
-         * The stored form, as Ask Claude's key has had it since 0.3.0 (KeystoreSecretTest reads that format): the IV's
-         * length (one byte), the IV, then the AES-GCM ciphertext with its 128-bit tag.
+         * The stored form, as Ask Claude's key has had it since 0.3.0 and every helper's key since 0.6.0 (KeystoreSecretTest
+         * reads both): the IV's length (one byte), the IV, then the AES-GCM ciphertext with its 128-bit tag.
          */
         internal fun seal(key: SecretKey, value: String): ByteArray {
             val c = Cipher.getInstance("AES/GCM/NoPadding")

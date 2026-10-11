@@ -15,6 +15,7 @@ import app.heyrobot.core.ClaudeEffort
 import app.heyrobot.core.ClaudeFailure
 import app.heyrobot.core.ClaudeModel
 import app.heyrobot.core.ClaudePlan
+import app.heyrobot.core.ClaudeWords
 import app.heyrobot.core.ConsentCard
 import app.heyrobot.core.Disclosure
 import app.heyrobot.core.Helper
@@ -56,7 +57,7 @@ class ClaudeApiHelper(private val ctx: Context, private val model: ClaudeModel, 
         // More than one request takes: it would leave the phone only to be refused there.
         if (!ConsentCard.apiFits(job.blocks, maxInputTokens())) return HelperResult.Failed("Nothing was sent. " + ConsentCard.TOO_LONG_FOR_API)
         if (!HelperLink.networkAllowed(ctx)) return HelperResult.Failed(ClaudeFailure.NO_INTERNET.text)
-        val session = withContext(Dispatchers.IO) { HelperLink.transcriptSession(ctx, model) } ?: return HelperResult.Failed(ClaudeFailure.NO_KEY.text)
+        val session = withContext(Dispatchers.IO) { HelperLink.transcriptSession(ctx, model) } ?: return HelperResult.Failed(noKey())
         val text = StringBuilder()
         try {
             val out = session.ask(job.blocks, ClaudePlan(ClaudeEffort.MEDIUM, MAX_TOKENS), object : ClaudeListener {
@@ -84,6 +85,13 @@ class ClaudeApiHelper(private val ctx: Context, private val model: ClaudeModel, 
         } finally {
             HelperLink.done(session)
         }
+    }
+
+    /** Why there was no session: no key, one that couldn't be read just now (kept), or one that was removed. */
+    private fun noKey(): String = when {
+        HelperLink.unavailable(HelperConfig.CLAUDE_ID) -> ClaudeWords.KEY_UNAVAILABLE
+        HelperLink.unreadable(HelperConfig.CLAUDE_ID) -> ClaudeWords.KEY_UNREADABLE
+        else -> ClaudeFailure.NO_KEY.text
     }
 
     companion object {

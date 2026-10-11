@@ -140,6 +140,11 @@ class ProcessIsolationTest {
         // (HelperLink) and for Test connection (the connection window).
         assertEquals(listOf("app/assistant/HelperConnectionActivity.kt", "app/assistant/HelperLink.kt"), usersOf(Regex("""\bHelperKeys\.read\(""")))
         assertTrue(usersOf(Regex("""\bHelperKeys\b""")).all { it.startsWith("app/assistant/") })
+        // Every helper's key is a KeystoreSecret (sys/HelperFiles.kt, shared with the main app for Settings), but only
+        // HelperKeys reaches one to read or save it; HelperFiles.kt itself never reads one.
+        assertEquals(listOf("app/assistant/HelperKeys.kt"), usersOf(Regex("""\bHelperKeyFiles\.store\b""")))
+        val helperFiles = code(File(java("app"), "app/heyrobot/sys/HelperFiles.kt"))
+        assertTrue(!Regex("""\.(read|save)\(ctx""").containsMatchIn(helperFiles) && !helperFiles.contains("clearClipboard"))
         // The SDK never logs (its requests carry the key), and never retries on its own.
         val client = File(java("claude"), "app/heyrobot/claude/ClaudeClient.kt").readText()
         assertTrue(client.contains(".logLevel(LogLevel.OFF)") && client.contains(".maxRetries(0)"))
@@ -538,7 +543,11 @@ class ProcessIsolationTest {
         // list names.
         val store = File(java("app"), "app/heyrobot/update/UpdateStore.kt").readText()
         assertTrue(store.contains("KeystoreSecret(ALIAS, \"github_token\", \"update_token\")") && store.contains("const val ALIAS = \"robot_github_token\""))
-        assertEquals(listOf("app/sys/KeystoreSecret.kt", "app/update/UpdateStore.kt"), usersOf(Regex("""\bKeystoreSecret\(""")))
+        // The same class keeps every helper's key (sys/HelperFiles.kt, read only by the :voice process's HelperKeys, above);
+        // the token's alias and files are named in UpdateStore.kt alone, and no helper's can be them.
+        assertEquals(listOf("app/sys/HelperFiles.kt", "app/sys/KeystoreSecret.kt", "app/update/UpdateStore.kt"), usersOf(Regex("""\bKeystoreSecret\(""")))
+        assertEquals(listOf("app/update/UpdateStore.kt"), ours.filter { codeWithStrings(it.value).contains("robot_github_token") || codeWithStrings(it.value).contains("\"github_token\"") }.keys.sorted())
+        assertTrue(listOf("claude", "github_token", "x").none { app.heyrobot.sys.HelperKeyFiles.alias(it) == "robot_github_token" })
         assertTrue(store.contains("GitHubRepo.fromSourceLink(LicenceBook.parse(json).robot.source)"))
         // The checks before an install, in order: the hash, then what Android says about the APK, then the session.
         val up = File(java("app"), "app/heyrobot/update/Updater.kt").readText()
@@ -632,6 +641,9 @@ class ProcessIsolationTest {
         assertEquals(emptyList<String>(), usersOf(Regex("""\bHelperLink\.session\(|\bHelper(Session|Http|Probe|Keys|KeyFiles)\b|\bOpenAiSession\b|""" +
             """\bapp\.heyrobot\.helpers\b|\bClaudeTools\b"""), conv))
         assertEquals(listOf("app/assistant/conversation/Helpers.kt", "app/assistant/conversation/SummaryActivity.kt"), usersOf(Regex("""\bHelperLink\b"""), conv))
+        // (and whether Claude's key couldn't be read just now or was removed, for the summary's words), nothing else of it.
+        val linkUses = conv.values.flatMap { f -> Regex("""\bHelperLink\.(\w+)""").findAll(code(f)).map { it.groupValues[1] }.toList() }.toSet()
+        assertTrue(linkUses.toString(), setOf("transcriptSession", "done", "networkAllowed", "keySaved", "unavailable", "unreadable").containsAll(linkUses))
         // ...which is Claude's, with its fixed prompt, no tools and no web search.
         val link = code(File(java("app"), "app/heyrobot/assistant/HelperLink.kt"))
         assertTrue(Regex("""fun transcriptSession\([^{]*\{[^}]*HelperConfig\.claude\(\)[^}]*ClaudeSession\([^)]*\bemptyList\(\), search = false, """ +

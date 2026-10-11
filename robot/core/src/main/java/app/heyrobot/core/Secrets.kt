@@ -3,10 +3,10 @@ package app.heyrobot.core
 import java.security.UnrecoverableKeyException
 import javax.crypto.AEADBadTagException
 
-// Pure: reading a secret Robot keeps (the app's sys/KeystoreSecret: Ask Claude's key, the updater's GitHub token), and which
-// failures mean it is gone for good. Only those remove it. A failure that may pass (the Keystore busy or locked, the file
-// unreadable for a moment, anything unexpected) keeps the file and the Keystore key, and the next read tries again: when
-// in doubt, the secret is kept.
+// Pure: reading a secret Robot keeps (the app's sys/KeystoreSecret: each helper's API key, the updater's GitHub token),
+// and which failures mean it is gone for good. Only those remove it. A failure that may pass (the Keystore busy or locked,
+// the file unreadable for a moment, anything unexpected) keeps the file and the Keystore key, and the next read tries
+// again: when in doubt, the secret is kept.
 
 /** What reading a saved secret gave. */
 sealed interface SecretRead {
