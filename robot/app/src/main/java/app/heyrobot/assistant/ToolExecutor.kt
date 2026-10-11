@@ -13,6 +13,7 @@ import android.net.Uri
 import android.os.SystemClock
 import android.provider.AlarmClock
 import androidx.core.graphics.drawable.toBitmap
+import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Addresses
@@ -26,6 +27,7 @@ import app.heyrobot.core.ContactIds
 import app.heyrobot.core.Durations
 import app.heyrobot.core.EmailApp
 import app.heyrobot.core.EventPlan
+import app.heyrobot.core.LocationCode
 import app.heyrobot.core.LookupFallback
 import app.heyrobot.core.Events
 import app.heyrobot.core.FreeUp
@@ -88,7 +90,12 @@ import java.util.Locale
 // the contacts permission, and the weather comes from Open-Meteo over the internet (this is the process that goes
 // online for it). The log records the tool and the outcome, never arguments.
 
-class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val launch: (Intent) -> Boolean) {
+/**
+ * [abort]: an online tool's (the weather's) Stop and deadline (OnlineRun); the others run to the end. [roomTokens]: about
+ * what is left of the model's context for a tool's answer (PanelController's estimate): the weather gives fewer days.
+ */
+class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val abort: Abort = Abort(),
+    private val roomTokens: Int = Int.MAX_VALUE, private val launch: (Intent) -> Boolean) {
     /**
      * Before the gate and the card: what the action will really do. open_app becomes the installed app it will open
      * (its real label and launcher activity); send_text and draft_email the person, number or address it goes to
@@ -496,21 +503,28 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val started = SystemClock.elapsedRealtime()
         return try {
             val (place, source) = when (a.where ?: WeatherAsk.where(a.place).first) {
-                WeatherWhere.NAMED -> OpenMeteoClient.geocode(ctx, WeatherAsk.where(a.place).second ?: a.place.orEmpty()) to WeatherSource.NAMED
+                WeatherWhere.NAMED -> OpenMeteoClient.geocode(ctx, WeatherAsk.where(a.place).second ?: a.place.orEmpty(), abort) to WeatherSource.NAMED
                 WeatherWhere.HOME -> (home ?: throw OpenMeteoClient.Failure(WeatherFail.NO_HOME)) to WeatherSource.HOME
                 WeatherWhere.HERE -> {
-                    val fix = if (CoarseLocation.granted(ctx) && CoarseLocation.enabled(ctx)) CoarseLocation.find(ctx) else null
+                    // With a Home to fall back on, a fix gets only a few seconds.
+                    val wait = if (home != null) WeatherAsk.FIX_WITH_HOME_MS else WeatherAsk.FIX_MS
+                    val found = if (CoarseLocation.granted(ctx)) CoarseLocation.find(ctx, wait, abort) else null
+                    found?.let { VoiceLog.add(VoiceEvent.WEATHER_LOCATION, it.code, it.importance, it.ms) }
+                    if (abort.cancelled) throw OpenMeteoClient.Failure(if (abort.expired) WeatherFail.TIMEOUT else WeatherFail.STOPPED)
+                    val fix = found?.fix
                     when {
                         fix != null -> WeatherPlace(HERE, fix.lat, fix.lon) to if (fix.fresh) WeatherSource.FIX else WeatherSource.LAST_KNOWN
-                        home != null -> home to if (CoarseLocation.granted(ctx)) WeatherSource.HOME_NO_FIX else WeatherSource.HOME
-                        !CoarseLocation.enabled(ctx) -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_OFF)
+                        home != null -> home to if (found != null) WeatherSource.HOME_NO_FIX else WeatherSource.HOME
+                        found?.code == LocationCode.OFF -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_OFF)
+                        found?.code == LocationCode.BACKGROUND -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_BACKGROUND)
                         else -> throw OpenMeteoClient.Failure(WeatherFail.NO_LOCATION)
                     }
                 }
             }
             val found = SystemClock.elapsedRealtime()
-            val f = OpenMeteoClient.forecast(ctx, place, WeatherAsk.fetchDays(range, now), units)
-            val report = WeatherText.report(f, a.day, now, units) ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
+            val f = OpenMeteoClient.forecast(ctx, place, WeatherAsk.fetchDays(range, now), units, abort)
+            val report = WeatherText.reportFitting(f, range, WeatherAsk.relative(a.day), now, units, roomTokens - PLACE_TOKENS)
+                ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
             VoiceLog.add(VoiceEvent.WEATHER, source, if (source == WeatherSource.HOME) 0 else (found - started).toInt(), (SystemClock.elapsedRealtime() - found).toInt())
             // The card's line is saved with the conversation, so it names no place; the place goes in the results (for
             // the model) and the body (shown, never saved), with what Open-Meteo was sent.
@@ -520,13 +534,16 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 WeatherSource.HOME_NO_FIX -> "Robot couldn't tell where you are: forecast for your Home for weather, from Open-Meteo." to place.name
                 WeatherSource.NAMED -> "Forecast from Open-Meteo." to place.name
             }
-            val sent = "Sent to Open-Meteo: ${OpenMeteo.coord(place.lat)}, ${OpenMeteo.coord(place.lon)}"
+            val coords = "${OpenMeteo.coord(place.lat)}, ${OpenMeteo.coord(place.lon)}"
+            val sent = if (source == WeatherSource.NAMED) "Sent to Open-Meteo: “${WeatherAsk.where(a.place).second ?: a.place}” (to find it), then $coords"
+            else "Sent to Open-Meteo: $coords"
             Executed(ActionStatus.DONE, detail, results = listOf(mapOf("place" to named)) + report.results,
                 body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent,
                 spoken = "${named.replaceFirstChar { it.uppercase() }}. ${report.spoken}")
         } catch (e: OpenMeteoClient.Failure) {
-            VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
-            Executed(if (e.why == WeatherFail.NO_PLACE) ActionStatus.NOT_FOUND else ActionStatus.FAILED, e.why.text)
+            // Once the caller has given up (Stop, the deadline) it logs why; this result is dropped.
+            if (!abort.cancelled) VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
+            Executed(if (e.why == WeatherFail.NO_PLACE) ActionStatus.NOT_FOUND else ActionStatus.FAILED, e.text)
         }
     }
 
@@ -566,7 +583,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun freeMemory(a: Action.FreeMemory): Executed {
         val pkg = a.pkg
         if (a.app == null || pkg == null) {
-            ModelUnload.request(ctx)
+            ModelUnload.request(ModelUnload.available(ctx))
             val recent = PhoneInfo.recentApps(ctx)
             val results = listOf(mapOf(
                 "memory" to PhoneStatus.memoryLine(PhoneInfo.memory(ctx), robotModel = true),
@@ -627,9 +644,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         // Android's own confirmation decides; Robot never deletes a file itself.
         StorageWay.FILES -> {
             val uri = a.target
-            if (uri != null && start(MediaDeleteActivity.intent(ctx, Uri.parse(uri)))) {
-                Executed(ActionStatus.DONE, "Android asks you to confirm: the ${a.label ?: "file"} is deleted only if you allow it there.", launchedApp = true)
-            } else Executed(ActionStatus.FAILED, "Android's delete confirmation didn't open.")
+            // Like a draft: nothing is deleted until you allow it in Android's dialog; the card says so until it answers.
+            if (uri != null && start(MediaDeleteActivity.intent(ctx, Uri.parse(uri)))) Executed(ActionStatus.DRAFT_OPENED, FreeUp.DELETE_WAITING, launchedApp = true)
+            else Executed(ActionStatus.FAILED, "Android's delete confirmation didn't open.")
         }
     }
 
@@ -641,7 +658,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     /**
      * Opens the Claude app with the question by the first way that resolves on this phone (docs/ask-claude.md "The
      * Claude app route"): its claude:// link, its claude.ai link, a share, or just the app with the question on the
-     * clipboard. Robot only prefills; the owner presses Send there. The log has the way, never the words.
+     * clipboard. Robot only prefills; you press Send there. The log has the way, never the words.
      */
     private fun openClaude(a: Action.AskClaude): Executed {
         val way = ClaudeAppIntents.choose(ctx) ?: return Executed(ActionStatus.NO_APP, "Install Claude.")
@@ -662,5 +679,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         const val ICON_PX = 96
         /** The place name of a forecast for where the phone is (Open-Meteo has no reverse lookup, and none is wanted). */
         const val HERE = "where you are"
+        /** The weather's status, detail and place beside its days, about. */
+        const val PLACE_TOKENS = 60
     }
 }

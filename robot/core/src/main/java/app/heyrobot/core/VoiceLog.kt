@@ -170,6 +170,11 @@ enum class VoiceEvent(val id: Int) {
     CHEOGRAM_PICK(61),
     /** A text handed to Cheogram (0.4.0): a = [CheogramRoute], b = 1 if an earlier route didn't open and this one did. */
     CHEOGRAM_HANDOFF(62),
+    /**
+     * The phone's position for the weather "here": a = [LocationCode], b = the assistant process's importance as Android
+     * gave it (100 foreground, 125 foreground service, 200 visible, 300+ background), c = ms spent. Never the position.
+     */
+    WEATHER_LOCATION(82),
     ;
 
     companion object {
@@ -590,6 +595,7 @@ object VoiceLogText {
             VoiceEvent.CHEOGRAM_PICK -> "Pick in Cheogram: " + code(PickOutcome.entries, a) + (if (b == 1) " · with its account" else "") +
                 (if (c == 1) " · remembered" else "")
             VoiceEvent.CHEOGRAM_HANDOFF -> "Text handed to Cheogram: " + code(CheogramRoute.entries, a) + (if (b == 1) " (the first way didn't open)" else "")
+            VoiceEvent.WEATHER_LOCATION -> "Position for the weather: " + code(LocationCode.entries, a) + " · process importance $b · $c ms"
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
         }

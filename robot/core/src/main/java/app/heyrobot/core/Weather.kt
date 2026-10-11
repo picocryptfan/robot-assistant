@@ -25,8 +25,12 @@ enum class WeatherUnits(val temp: String, val wind: String, val rain: String, va
     IMPERIAL("°F", "mph", "in", "in");
 
     companion object {
-        /** The United States, Liberia and Myanmar. */
-        private val FAHRENHEIT = setOf("US", "LR", "MM")
+        /**
+         * The United States and its territories (Puerto Rico, Guam, the Virgin Islands, American Samoa, the Northern
+         * Marianas, the outlying islands), Liberia, Myanmar, and the Bahamas, Belize, the Cayman Islands, Palau, Micronesia
+         * and the Marshall Islands.
+         */
+        private val FAHRENHEIT = setOf("US", "PR", "GU", "VI", "AS", "MP", "UM", "LR", "MM", "BS", "BZ", "KY", "PW", "FM", "MH")
 
         /** [region]: the phone region (Settings, else the phone's own), two letters; unknown means metric. */
         fun of(region: String?): WeatherUnits = if (region?.trim()?.uppercase(Locale.ROOT) in FAHRENHEIT) IMPERIAL else METRIC
@@ -60,6 +64,20 @@ enum class WeatherFail(override val id: Int, override val title: String, val tex
     LOCATION_OFF(7, "location off", "Location is off on this phone. Turn it on, name a town, or set a Home for weather in Robot's settings."),
     NO_DAYS(8, "no forecast for those days", "Open-Meteo has forecasts for today and the next 15 days only."),
     NO_HOME(9, "no Home for weather", "No Home for weather is set. Set one in Robot's Settings › Weather, or name a town."),
+    /** The whole lookup (place and forecast) took longer than [WeatherAsk.DEADLINE_MS]. */
+    TIMEOUT(10, "took too long", "The weather took too long to come. Try again in a moment."),
+    /** Stop ended it. */
+    STOPPED(11, "stopped", "Stopped."),
+    /** Android refused the location to the assistant's process (it counted as in the background). */
+    LOCATION_BACKGROUND(12, "location refused in the background",
+        "Android didn't let Robot see where you are from the assistant. Name a town, or set a Home for weather in Robot's settings."),
+}
+
+/** How the phone's position was looked for, for the voice log (VoiceEvent.WEATHER_LOCATION): codes only, never where. */
+enum class LocationCode(override val id: Int, override val title: String) : LogCode {
+    FIX(1, "a new fix"), RECENT(2, "the last known position, under 30 minutes old"), LAST_HOUR(3, "the last known position, under an hour old"),
+    NONE(4, "no position in time"), BACKGROUND(5, "refused: Android counted Robot as in the background"), OFF(6, "location is off"),
+    NOT_ALLOWED(7, "location not allowed"), TOO_OLD(8, "only a position over an hour old, not used"), STOPPED(9, "stopped"),
 }
 
 /** WMO weather interpretation codes (as Open-Meteo gives them) in plain words. */
@@ -105,6 +123,19 @@ data class WeatherDay(
 /** A forecast as read: the place's time zone (the days are its days), now, and the days. */
 data class Forecast(val zone: ZoneId?, val now: WeatherNow?, val days: List<WeatherDay>)
 
+/**
+ * One name search for a place: [name] goes to Open-Meteo, and the place found must be in each of [quals] (a region,
+ * county or country, as said: "Texas", "TX", "Ontario", "USA").
+ */
+data class GeoSearch(val name: String, val quals: List<String> = emptyList())
+
+/** What the searches for a place found: it, a town by that name but none where it was said to be, or nothing. */
+sealed class GeoAnswer {
+    data class Found(val place: GeoResult) : GeoAnswer()
+    data class NotThere(val detail: String) : GeoAnswer()
+    data object None : GeoAnswer()
+}
+
 /** One geocoding result. */
 data class GeoResult(val name: String, val admin1: String?, val admin2: String?, val country: String?, val countryCode: String?, val lat: Double, val lon: Double) {
     /** "Montreal, Quebec, Canada"; a region named like the town is left out ("New York, United States"). */
@@ -118,8 +149,11 @@ object OpenMeteo {
     const val GEOCODING = "https://geocoding-api.open-meteo.com/v1/search"
     /** Open-Meteo forecasts today and the next 15 days. */
     const val MAX_DAYS = 16
-    /** Geocoding candidates asked for, so "Paris, Texas" can find the one in Texas. */
+    /** Geocoding candidates asked for; with a region or country to match, more ("Springfield, Oregon" is the 11th). */
     const val CANDIDATES = 10
+    const val QUALIFIED_CANDIDATES = 30
+    /** Name searches for one place at most (each a request). */
+    const val MAX_SEARCHES = 3
 
     private const val DAILY = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum," +
         "rain_sum,showers_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,cloud_cover_mean"
@@ -134,9 +168,51 @@ object OpenMeteo {
             "&forecast_days=${days.coerceIn(1, MAX_DAYS)}" +
             if (units == WeatherUnits.IMPERIAL) "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" else ""
 
-    /** The name search for a place: only the town's name goes (what follows a comma is matched here, [pick]). */
-    fun geocodeUrl(name: String): String =
-        "$GEOCODING?name=${UriText.strict(name.substringBefore(',').trim())}&count=$CANDIDATES&language=en&format=json"
+    /** One name search: only the town's name goes (the region or country is matched here, [pick]). */
+    fun geocodeUrl(s: GeoSearch): String =
+        "$GEOCODING?name=${UriText.strict(s.name)}&count=${if (s.quals.isEmpty()) CANDIDATES else QUALIFIED_CANDIDATES}&language=en&format=json"
+
+    /**
+     * The searches that may find [asked], in order. With a comma, the town and what follows it ("Paris, TX"). Without one
+     * (speech has none), the whole name first ("New York", "Le Mans", "Kansas City"), then without "city" ("Quebec City"),
+     * then its last word or two as the region or country ("Paris Texas", "Washington DC", "Springfield New Jersey").
+     */
+    fun searches(asked: String): List<GeoSearch> {
+        val text = asked.replace(Regex("\\s+"), " ").trim().trimEnd('.', '?', '!').trim()
+        val parts = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return emptyList()
+        val name = parts[0]
+        val quals = parts.drop(1)
+        val out = LinkedHashSet<GeoSearch>()
+        out += GeoSearch(name, quals)
+        val noCity = name.replace(Regex("""(?i)^(?:the )?(?:city of|ville de|la ville de)\s+|\s+city$"""), "").trim().takeIf { it.isNotEmpty() && it != name }
+        noCity?.let { out += GeoSearch(it, quals) }
+        if (quals.isEmpty()) {
+            val w = (noCity ?: name).split(' ')
+            if (w.size >= 2) out += GeoSearch(w.dropLast(1).joinToString(" "), listOf(w.last()))
+            if (w.size >= 3) out += GeoSearch(w.dropLast(2).joinToString(" "), listOf(w.takeLast(2).joinToString(" ")))
+        }
+        return out.toList()
+    }
+
+    /**
+     * Runs [searches] (at most [MAX_SEARCHES], each through [search], which may throw) until one finds the place. A town
+     * found but not in the region or country said is refused, never swapped for the biggest town of that name.
+     */
+    fun resolve(asked: String, search: (GeoSearch) -> List<GeoResult>): GeoAnswer {
+        var missed: GeoSearch? = null
+        for (s in searches(asked).take(MAX_SEARCHES)) {
+            val found = search(s)
+            if (found.isEmpty()) continue
+            pick(s, found)?.let { return GeoAnswer.Found(it) }
+            if (missed == null) missed = s
+        }
+        return missed?.let { GeoAnswer.NotThere(notThere(it)) } ?: GeoAnswer.None
+    }
+
+    /** "Open-Meteo knows places called Paris, but none in Ontario among the biggest. …" (your words only). */
+    fun notThere(s: GeoSearch): String =
+        "Open-Meteo knows places called ${s.name}, but none in ${s.quals.joinToString(", ")} among the biggest. Try the nearest larger town."
 
     /** Open-Meteo's error object ({"error": true, "reason": …}): true when [json] is one. */
     fun isError(json: String?): Boolean = try { JSONObject(json ?: return false).optBoolean("error", false) } catch (_: Exception) { false }
@@ -187,22 +263,16 @@ object OpenMeteo {
     }
 
     /**
-     * The place [asked] means among [results]: with a qualifier after a comma ("Paris, Texas", "London, Canada", "Paris,
-     * FR"), the first result whose region, county, country or country code matches it; else (or with none matching) the
-     * first, which Open-Meteo ranks by population.
+     * The place [s] means among [results]: without a region or country, the first (Open-Meteo ranks by population). With
+     * them, the first whose region, county, country or country code matches each ("TX", "Texas", "ON", "USA", "UK"),
+     * towns of that very name before others Open-Meteo matched by another name; none: null, never the first anyway.
      */
-    fun pick(asked: String, results: List<GeoResult>): GeoResult? {
-        val quals = asked.split(',').drop(1).map(::plain).filter { it.isNotEmpty() }
-        if (quals.isNotEmpty()) {
-            results.firstOrNull { r ->
-                val fields = listOfNotNull(r.admin1, r.admin2, r.country, r.countryCode).map(::plain)
-                quals.all { q -> fields.any { it == q || it.startsWith("$q ") } }
-            }?.let { return it }
-        }
-        return results.firstOrNull()
+    fun pick(s: GeoSearch, results: List<GeoResult>): GeoResult? {
+        if (s.quals.isEmpty()) return results.firstOrNull()
+        val name = PlaceNames.plain(s.name)
+        return results.sortedByDescending { r -> PlaceNames.plain(r.name).let { it == name || it.startsWith("$name ") } }
+            .firstOrNull { r -> s.quals.all { q -> PlaceNames.fits(r, q) } }
     }
-
-    private fun plain(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT).trim()
 
     private fun str(o: JSONObject, k: String): String? = if (o.isNull(k)) null else o.optString(k).takeIf { it.isNotBlank() }
 
@@ -211,52 +281,128 @@ object OpenMeteo {
     private fun at(a: JSONArray?, i: Int): Double? = if (a == null || i >= a.length() || a.isNull(i)) null else a.optDouble(i).takeIf { it.isFinite() }
 }
 
+/** Regions and countries as people say them: US states, Canadian provinces and the usual names of a few countries. */
+object PlaceNames {
+    private val US = mapOf("al" to "alabama", "ak" to "alaska", "az" to "arizona", "ar" to "arkansas", "ca" to "california", "co" to "colorado",
+        "ct" to "connecticut", "de" to "delaware", "fl" to "florida", "ga" to "georgia", "hi" to "hawaii", "id" to "idaho", "il" to "illinois",
+        "in" to "indiana", "ia" to "iowa", "ks" to "kansas", "ky" to "kentucky", "la" to "louisiana", "me" to "maine", "md" to "maryland",
+        "ma" to "massachusetts", "mi" to "michigan", "mn" to "minnesota", "ms" to "mississippi", "mo" to "missouri", "mt" to "montana",
+        "ne" to "nebraska", "nv" to "nevada", "nh" to "new hampshire", "nj" to "new jersey", "nm" to "new mexico", "ny" to "new york",
+        "nc" to "north carolina", "nd" to "north dakota", "oh" to "ohio", "ok" to "oklahoma", "or" to "oregon", "pa" to "pennsylvania",
+        "ri" to "rhode island", "sc" to "south carolina", "sd" to "south dakota", "tn" to "tennessee", "tx" to "texas", "ut" to "utah",
+        "vt" to "vermont", "va" to "virginia", "wa" to "washington", "wv" to "west virginia", "wi" to "wisconsin", "wy" to "wyoming",
+        "dc" to "district of columbia", "d c" to "district of columbia")
+    private val CANADA = mapOf("ab" to "alberta", "bc" to "british columbia", "mb" to "manitoba", "nb" to "new brunswick",
+        "nl" to "newfoundland and labrador", "ns" to "nova scotia", "nt" to "northwest territories", "nu" to "nunavut", "on" to "ontario",
+        "pe" to "prince edward island", "qc" to "quebec", "pq" to "quebec", "sk" to "saskatchewan", "yt" to "yukon")
+    private val COUNTRIES = mapOf(
+        "usa" to "united states", "us" to "united states", "u s" to "united states", "u s a" to "united states", "america" to "united states",
+        "united states of america" to "united states", "etats unis" to "united states", "uk" to "united kingdom", "u k" to "united kingdom",
+        "britain" to "united kingdom", "great britain" to "united kingdom", "royaume uni" to "united kingdom", "grande bretagne" to "united kingdom")
+
+    /** Letters and digits only, no accents, lower case: "Île-de-France Region" → "ile de france region". */
+    fun plain(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
+        .replace(Regex("[^a-z0-9]+"), " ").trim()
+
+    /** What [qual] may be written as in Open-Meteo's answer: itself, and the state, province or country it stands for. */
+    fun expand(qual: String): Set<String> = plain(qual).let { q -> setOfNotNull(q, US[q], CANADA[q], COUNTRIES[q]) }
+
+    /** [r] is in [qual]: its region, county, country or country code says so ("TX" fits Texas, "CA" California or Canada). */
+    fun fits(r: GeoResult, qual: String): Boolean {
+        val fields = listOfNotNull(r.admin1, r.admin2, r.country, r.countryCode).map(::plain)
+        return expand(qual).any { e -> fields.any { it == e || it.startsWith("$e ") } }
+    }
+}
+
 /** The tool's place and day arguments, read before anything goes online. */
 object WeatherAsk {
-    /** At most this many days in one answer (about 40 tokens each). */
+    /** At most this many days in one answer (about 30 tokens each, WeatherText.short). */
     const val MAX_SHOWN = 7
+    /** The whole lookup, place and forecast, at most: then it gives up ([WeatherFail.TIMEOUT]). */
+    const val DEADLINE_MS = 15_000L
+    /** How long to wait for a new location fix: without a Home for weather to fall back on, and with one. */
+    const val FIX_MS = 10_000L
+    const val FIX_WITH_HOME_MS = 3_000L
 
     private val HERE = setOf("here", "my location", "current location", "my current location", "where i am", "where im", "around here",
-        "nearby", "near me", "local", "ici", "autour de moi", "ma position")
-    private val HOME = setOf("home", "at home", "my home", "my house", "my place", "chez moi", "a la maison", "maison")
+        "nearby", "near me", "local", "outside", "out", "out there", "my city", "my town", "this city", "this town", "ici", "dehors",
+        "autour de moi", "ma position", "ma ville", "ici meme")
+    private val HOME = setOf("home", "at home", "my home", "at my home", "my house", "at my house", "my place", "at my place", "our house",
+        "at our house", "chez moi", "chez nous", "a la maison", "maison", "a ma maison")
 
-    /** What [place] says: where the phone is, your Home for weather, or a named place (returned without "in" or "à"). */
+    /**
+     * What [place] says: where the phone is, your Home for weather, or a named place (returned without "in" or "à", and
+     * without "here in": "here in Montreal" is Montreal).
+     */
     fun where(place: String?): Pair<WeatherWhere, String?> {
         val p = place?.replace(Regex("\\s+"), " ")?.trim()?.trimEnd('.', '?', '!')?.trim()
         if (p.isNullOrEmpty()) return WeatherWhere.HERE to null
         val k = key(p)
         if (k in HERE) return WeatherWhere.HERE to null
         if (k in HOME) return WeatherWhere.HOME to null
-        val named = p.replace(Regex("""^(?i)(?:in|at|for|à|au|en)\s+"""), "").trim()
+        val named = p.replace(Regex("""^(?i)(?:(?:out )?here|ici|right here)\s*,?\s+(?=(?:in|at|à|au|en)\s)"""), "")
+            .replace(Regex("""^(?i)(?:in|at|for|à|au|en)\s+"""), "").trim()
         return WeatherWhere.NAMED to named.ifEmpty { p }
     }
 
     /** "today", "tomorrow", "Friday", "this week", "this weekend", "next 3 days", and the French words for them. */
     const val SAY_DAY = "say the day like today, tomorrow, Friday or this week"
 
+    /** Whole French phrases first, then words; a weekday followed by "prochain" is next week's. */
     private val FRENCH = listOf(
+        "aujourdhui et demain" to "next 2 days", "samedi et dimanche" to "this weekend", "les prochains jours" to "next 3 days",
         "apres demain" to "day after tomorrow", "aujourdhui" to "today", "demain" to "tomorrow", "ce soir" to "tonight", "cette nuit" to "tonight",
         "ce matin" to "this morning", "cet apres midi" to "this afternoon", "cette semaine" to "this week", "la semaine prochaine" to "next week",
         "semaine prochaine" to "next week", "ce week end" to "this weekend", "ce weekend" to "this weekend", "le week end" to "this weekend",
         "le weekend" to "this weekend", "week end" to "weekend", "lundi" to "monday", "mardi" to "tuesday", "mercredi" to "wednesday",
         "jeudi" to "thursday", "vendredi" to "friday", "samedi" to "saturday", "dimanche" to "sunday", "maintenant" to "today",
-        "prochains jours" to "next 3 days",
+        "prochains jours" to "next 3 days", "matin" to "morning", "apres midi" to "afternoon", "soir" to "evening", "nuit" to "night",
     )
-    private val TODAY = setOf("", "now", "right now", "currently", "today", "at the moment", "this moment", "later", "later today", "rest of the day")
-    private val NEXT_DAYS = Regex("""^(?:the )?(?:next|coming|following) (\d{1,2}|few|couple of|couple|two|three|four|five|six|seven) days$|^(?:the )?(?:next|coming) days$|^(?:a )?few days$""")
+    private val FRENCH_NEXT = Regex("""\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday) prochaine?\b""")
+    private val FRENCH_DAYS = Regex("""\bles (\d{1,2}) prochains jours\b""")
+    private val TODAY = setOf("", "now", "right now", "currently", "today", "at the moment", "this moment", "later", "later today", "rest of the day",
+        // The weather "tonight" is today's night, also after midnight (the calendar reads 01:00 "tonight" as the night under way).
+        "tonight", "this evening", "this afternoon", "this morning")
+    private val TWO_DAYS = setOf("today and tomorrow", "today tomorrow")
+    private val NEXT_DAYS = Regex("""^(?:the )?(?:next|coming|following) (\d{1,2}|few|couple of|couple|two|three|four|five|six|seven) days$|^(?:the )?(?:next|coming) days$|^(?:a )?few days$|^(\d{1,2}) days?$""")
+    /** A weekday, a month or a written date: a calendar day of its own, the same wherever the place is. */
+    private val CALENDAR_DAY = Regex("""\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|weekend|week)\b|\d{4}-\d{1,2}-\d{1,2}|\b\d{1,2}(st|nd|rd|th)\b""")
 
     /**
-     * The days [day] names at [now] (the place's own now, once its time zone is known): today when it is blank. Days
-     * before today, or all of them beyond Open-Meteo's 16, are refused; a range is cut to those it covers.
+     * The day words as the parser reads them: no accents, French translated, ISO dates and times kept ("2026-10-12"); a
+     * hyphen between letters is a space ("après-demain").
+     */
+    private fun words(day: String?): String {
+        var t = Normalizer.normalize(day.orEmpty(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
+            .replace("'", "").replace("’", "").replace(Regex("""(?<=[a-z])-(?=[a-z])"""), " ").replace(Regex("""[^a-z0-9:/\- ]+"""), " ")
+            .replace(Regex("\\s+"), " ").trim()
+        t = FRENCH_DAYS.replace(" $t ") { "next ${it.groupValues[1]} days" }.trim()
+        t = FRENCH.fold(" $t ") { acc, (fr, en) -> acc.replace(" $fr ", " $en ") }.replace(Regex("\\s+"), " ").trim()
+        return FRENCH_NEXT.replace(t) { "next ${it.groupValues[1]}" }
+    }
+
+    /**
+     * Whether [day] counts from today ("today", "tomorrow", "next 3 days": the place's own today, once known) rather than
+     * naming a calendar day ("Friday", "October 14", "2026-10-12": the same date anywhere).
+     */
+    fun relative(day: String?): Boolean = !CALENDAR_DAY.containsMatchIn(words(day))
+
+    /**
+     * The days [day] names, read once in your own time zone at [now]: today when it is blank, a bare number is that many
+     * days ("3"), never a clock time. Days before today, or all of them beyond Open-Meteo's 16, are refused; a range is cut
+     * to those it covers.
      */
     fun days(day: String?, now: ZonedDateTime): Read<DayRange> {
         val today = now.toLocalDate()
         fun range(from: LocalDate, to: LocalDate) = DayRange(from.atStartOfDay(now.zone), to.atStartOfDay(now.zone))
-        val k = key(day.orEmpty()).let { s -> FRENCH.fold(" $s ") { acc, (fr, en) -> acc.replace(" $fr ", " $en ") }.trim() }
+        val k = words(day)
         val r = when {
             k in TODAY -> range(today, today.plusDays(1))
+            k in TWO_DAYS -> range(today, today.plusDays(2))
+            Regex("""^\d{1,2}$""").matches(k) -> range(today, today.plusDays(k.toLong().coerceIn(1, OpenMeteo.MAX_DAYS.toLong())))
             NEXT_DAYS.matches(k) -> {
-                val n = NEXT_DAYS.find(k)?.groupValues?.get(1).orEmpty()
+                val g = NEXT_DAYS.find(k)!!.groupValues
+                val n = g[1].ifEmpty { g[2] }
                 val count = n.toIntOrNull() ?: when (n) { "couple of", "couple", "two" -> 2; "four" -> 4; "five" -> 5; "six" -> 6; "seven" -> 7; else -> 3 }
                 range(today, today.plusDays(count.coerceIn(1, OpenMeteo.MAX_DAYS).toLong()))
             }
@@ -286,20 +432,62 @@ data class WeatherReport(val results: List<Map<String, Any?>>, val lines: String
 
 object WeatherText {
     /**
-     * The asked days of [f] (read again at the place's own now, so "today" in Tokyo is Tokyo's today), at most
-     * [WeatherAsk.MAX_SHOWN]; null when none of them is in the forecast.
+     * The days of [f] that [range] names: [range] was read in your own zone (WeatherAsk.days); a [relative] one ("today",
+     * "tomorrow", "next 3 days") moves to the place's own today (today in Tokyo is Tokyo's today), a calendar day
+     * ("Friday", "October 14") keeps its date. At most [maxDays]; when more were asked, the model is told so. Null when
+     * none of them is in the forecast.
      */
-    fun report(f: Forecast, day: String?, phoneNow: ZonedDateTime, units: WeatherUnits): WeatherReport? {
-        val now = f.zone?.let { phoneNow.withZoneSameInstant(it) } ?: phoneNow
-        val range = (WeatherAsk.days(day, now) as? Read.Ok)?.value ?: return null
-        val today = now.toLocalDate()
-        val days = f.days.filter { !it.date.isBefore(range.from.toLocalDate()) && it.date.isBefore(range.to.toLocalDate()) }.take(WeatherAsk.MAX_SHOWN)
+    fun report(f: Forecast, range: DayRange, relative: Boolean, phoneNow: ZonedDateTime, units: WeatherUnits,
+        maxDays: Int = WeatherAsk.MAX_SHOWN): WeatherReport? {
+        val today = (f.zone?.let { phoneNow.withZoneSameInstant(it) } ?: phoneNow).toLocalDate()
+        val shift = if (relative) ChronoUnit.DAYS.between(phoneNow.toLocalDate(), today) else 0L
+        val from = range.from.toLocalDate().plusDays(shift)
+        val to = range.to.toLocalDate().plusDays(shift)
+        val wanted = f.days.filter { !it.date.isBefore(from) && it.date.isBefore(to) }
+        val days = wanted.take(maxDays.coerceAtLeast(1))
         if (days.isEmpty()) return null
-        val results = days.map { d ->
-            linkedMapOf<String, Any?>("day" to label(d.date, today), "weather" to line(d, if (d.date == today) f.now else null, units))
-        }
-        val lines = results.joinToString("\n") { "${it["day"]}: ${it["weather"]}" }
+        // The card and the voice get whole lines; the model one line for one day, or a few tokens a day for several.
+        val lines = days.joinToString("\n") { d -> "${label(d.date, today)}: ${line(d, if (d.date == today) f.now else null, units)}" }
+        val results: List<Map<String, Any?>> = (if (days.size == 1) listOf(linkedMapOf<String, Any?>("day" to label(days[0].date, today),
+            "weather" to line(days[0], if (days[0].date == today) f.now else null, units)))
+        else listOf(linkedMapOf<String, Any?>("units" to unitsLine(units),
+            "days" to days.joinToString("\n") { d -> short(d, label(d.date, today), if (d.date == today) f.now else null) }))) +
+            listOfNotNull(if (wanted.size > days.size) mapOf("note" to "Only the first ${days.size} of the ${wanted.size} days asked are given.") else null)
         return WeatherReport(results, lines, lines.replace("\n", ". "))
+    }
+
+    /**
+     * [report] with as many days as fit in [roomTokens] (what is left of the context for this tool's answer beside the
+     * place), at least one; the model is told when days were left out.
+     */
+    fun reportFitting(f: Forecast, range: DayRange, relative: Boolean, phoneNow: ZonedDateTime, units: WeatherUnits, roomTokens: Int): WeatherReport? {
+        var n = WeatherAsk.MAX_SHOWN
+        while (true) {
+            val r = report(f, range, relative, phoneNow, units, n) ?: return null
+            if (n == 1 || tokens(r.results) <= roomTokens) return r
+            n--
+        }
+    }
+
+    /** The estimated tokens of [results] as the model gets them (JSON). */
+    fun tokens(results: List<Map<String, Any?>>): Int = TokenEstimate.text(Json.toJson(results).toString())
+
+    /** Said once above several short lines: what their numbers are. */
+    fun unitsLine(u: WeatherUnits) = "conditions, high/low ${u.temp}, chance of rain or snow, wind ${u.wind}, cloud cover"
+
+    /**
+     * "Mon Oct 12: drizzle 16/8 67% wind 21 cloud 98%": about 30 tokens (35 estimated on the high side), the units in
+     * [unitsLine]; the conditions say whether it is rain or snow.
+     */
+    fun short(d: WeatherDay, label: String, now: WeatherNow?): String {
+        val parts = mutableListOf<String>()
+        now?.temp?.let { t -> parts += "now ${t.roundToInt()}" + (Wmo.words(now.code)?.let { " $it;" } ?: ";") }
+        Wmo.words(d.code)?.let { parts += it }
+        if (d.high != null || d.low != null) parts += "${d.high?.roundToInt() ?: "?"}/${d.low?.roundToInt() ?: "?"}"
+        d.chance?.let { parts += "$it%" }
+        d.wind?.let { parts += "wind ${it.roundToInt()}" }
+        d.cloud?.let { parts += "cloud $it%" }
+        return "$label: " + parts.joinToString(" ")
     }
 
     /** "today, Sat Oct 10", "tomorrow, Sun Oct 11", "Mon Oct 12". */

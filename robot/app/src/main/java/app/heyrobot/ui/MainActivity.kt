@@ -299,6 +299,15 @@ fun RobotAppUi(activity: MainActivity) {
         permissionTick++
         if (result.values.any { !it }) say("Not allowed. If Android doesn't ask again: Settings › Apps › Robot › Permissions.")
     }
+    // Photos and videos (0.4.0): "Select photos" grants only READ_MEDIA_VISUAL_USER_SELECTED, which is allowed too.
+    val mediaPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        permissionTick++
+        when {
+            result[Manifest.permission.READ_MEDIA_IMAGES] == true || result[Manifest.permission.READ_MEDIA_VIDEO] == true -> {}
+            result[Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true -> say("Robot can see the photos and videos you picked.")
+            else -> say("Not allowed. If Android doesn't ask again: Settings › Apps › Robot › Permissions.")
+        }
+    }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         val why = ModelStore.refuseImport(ctx, uri)
@@ -386,7 +395,7 @@ fun RobotAppUi(activity: MainActivity) {
         },
         askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
         askMedia = {
-            peoplePermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
+            mediaPermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
         },
         openUsageAccess = {

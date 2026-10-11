@@ -8,6 +8,7 @@ import app.heyrobot.claude.ClaudeSession
 import app.heyrobot.claude.ClaudeTurn
 import android.os.PowerManager
 import android.os.SystemClock
+import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.AskClaudeTool
 import app.heyrobot.core.ActionRecord
@@ -59,6 +60,10 @@ import app.heyrobot.core.NoQuestion
 import app.heyrobot.core.NoReply
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Prompt
+import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.PromptTurn
+import app.heyrobot.core.PromptRole
+import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
@@ -89,6 +94,8 @@ import app.heyrobot.core.TtsStop
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.VolumeKeyStop
+import app.heyrobot.core.WeatherAsk
+import app.heyrobot.core.WeatherFail
 import app.heyrobot.core.toPromptTurns
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.ClaudeAppIntents
@@ -701,6 +708,21 @@ object PanelController {
         }
     }
 
+    /**
+     * From MediaDeleteActivity (same process, 0.4.0): Android's confirmation for a picked file answered. The card that
+     * waited for it (and the saved conversation) says whether it was deleted.
+     */
+    fun mediaDeleteAnswered(deleted: Boolean) {
+        fun settle(tool: ToolName?, detail: String?) = tool == ToolName.FREE_STORAGE && detail == FreeUp.DELETE_WAITING
+        val status = if (deleted) ActionStatus.DONE else ActionStatus.DECLINED
+        val detail = if (deleted) FreeUp.DELETED else FreeUp.KEPT
+        _state.update { st ->
+            st.copy(turns = st.turns.map { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail) else it }) })
+        }
+        chat.replaceAll { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail) else it }) }
+        persist()
+    }
+
     /** From CaptureActivity (same process): the picture to send with the next question. */
     fun onImagePicked(jpeg: ByteArray, thumb: Bitmap) {
         draftJpeg = jpeg
@@ -908,7 +930,10 @@ object PanelController {
         return true
     }
 
-    /** Runs a turn in the slot; a stop finishes every reply still streaming as stopped, a crash fails it in words. */
+    /**
+     * Runs a turn in the slot; a stop finishes every reply still streaming as stopped, a crash fails it in words. A model
+     * unload free_memory asked for is done before the turn completes (0.4.0), so the next question can't start meanwhile.
+     */
     private fun startTurn(replyId: String, block: suspend () -> Unit) = slot.start {
         try {
             block()
@@ -920,6 +945,8 @@ object PanelController {
         } catch (t: Throwable) {
             RLog.w("panel_turn", t)
             _state.value.turns.filter { it.streaming }.forEach { failReply(it.id, "Something went wrong. Please try again.") }
+        } finally {
+            withContext(NonCancellable) { unloadIfAsked(replyId) }
         }
     }
 
@@ -945,8 +972,10 @@ object PanelController {
         // first, Gemma answers and the offer follows its reply.
         var offerAfter: EscalationTrigger? = null
         // Not after "not Claude": that conversation stays with Robot. With the weather tool on, a weather question is
-        // Robot's to answer (0.4.0).
-        if (attachment == Attachment.NONE && !claudeDeclined) PreRouter.signal(question, localWeather = s.approval(ToolName.WEATHER) != Approval.OFF)?.let { signal ->
+        // Robot's to answer (0.4.0). Locked, the tool can't run: as before, the question may go to Claude when Claude is
+        // allowed on the lock screen.
+        val localWeather = s.approval(ToolName.WEATHER) != Approval.OFF && !Assistant.locked(VoiceHub.app)
+        if (attachment == Attachment.NONE && !claudeDeclined) PreRouter.signal(question, localWeather)?.let { signal ->
             RLog.i("claude_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
             when (decide(attachment, guardFree = !guard.used)) {
                 EscalationDecision.AUTO -> {
@@ -1007,6 +1036,11 @@ object PanelController {
                 hasImage = img != null,
                 tools = tools.map { it.id },
             )
+            // About what the context has left for a tool's answer beside the reply (as :brain will fit the history): the
+            // weather gives fewer days when it is short.
+            val fixedTokens = Prompt.fixedTokens(system, tools)
+            val budget = ContextWindow.historyBudget(fixedTokens, TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, img != null)))
+            toolRoom = budget - ContextWindow.fit(gen.history, budget).sumOf(TokenEstimate::turn) - TOOL_CALL_TOKENS
             return TurnRunner(BrainTurn(c, convId, replyId, gen, img), PanelActions, PanelView(replyId), slot.confirmations, untrusted, newId = ::newId).run()
         }
         val result = gemma(askClaude = leftOut == null)
@@ -1680,15 +1714,33 @@ object PanelController {
         override fun close() = c.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(convId))
     }
 
-    /** The phone side of a turn: the approval inputs and ToolExecutor (contacts, calendar and files off the main thread). */
+    /**
+     * The phone side of a turn: the approval inputs and ToolExecutor (contacts, calendar and files off the main thread).
+     * An online tool (the weather) runs through [OnlineRun]: Stop ends it at once, and so does its deadline.
+     */
     private object PanelActions : TurnActions {
         override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
         override val settings: RobotSettings get() = VoiceHub.settings
         override suspend fun prepare(action: Action): Prepared = withContext(Dispatchers.IO) { executor().prepare(action) }
-        override suspend fun run(action: Action): Executed = withContext(Dispatchers.IO) { executor().run(action) }
+        override suspend fun run(action: Action): Executed {
+            if (!action.tool.online) return withContext(Dispatchers.IO) { executor().run(action) }
+            return try {
+                OnlineRun.run(WeatherAsk.DEADLINE_MS) { abort -> executor(abort).run(action) }
+                    ?: Executed(ActionStatus.FAILED, WeatherFail.TIMEOUT.text).also { VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.TIMEOUT) }
+            } catch (e: CancellationException) {
+                VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.STOPPED)
+                throw e
+            }
+        }
     }
 
-    private fun executor() = ToolExecutor(VoiceHub.app, VoiceHub.settings) { i -> host?.launch(i) ?: false }
+    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom) { i -> host?.launch(i) ?: false }
+
+    /** The room for a tool's answer in the turn under way (runTurn's estimate); no limit outside one. */
+    @Volatile private var toolRoom = Int.MAX_VALUE
+
+    /** The model's tool call itself, about. */
+    private const val TOOL_CALL_TOKENS = 40
 
     /** What the turn shows: the reply bubble [replyId], its cards and the panel's phase. */
     private class PanelView(private val replyId: String) : TurnView {
@@ -1893,8 +1945,6 @@ object PanelController {
 
     /** [costMicros]: a Claude reply's estimated price, kept with it in the history. */
     private fun finishReply(replyId: String, reason: DoneReason, costMicros: Long = 0) {
-        // Before anything else: a reply the panel has moved on from still ends the unload it asked for.
-        unloadIfAsked(replyId)
         if (!current(replyId)) return
         val ui = _state.value.turns.firstOrNull { it.id == replyId }
         val claude = ui?.claude == true
@@ -1926,15 +1976,15 @@ object PanelController {
     }
 
     /**
-     * free_memory asked for Robot's model to be unloaded during this answer (0.4.0): now that it has ended, unload it
-     * and put what Android reports came back on the card (and in the saved conversation). The card is updated after the
-     * reply is recorded: this runs on the main thread after the caller.
+     * free_memory asked for Robot's model to be unloaded during this answer (0.4.0): now that it has ended, release it
+     * (inside the turn), then put what Android reports came back on the card and in the saved conversation.
      */
-    private fun unloadIfAsked(replyId: String) {
+    private suspend fun unloadIfAsked(replyId: String) {
         val before = ModelUnload.take() ?: return
+        BrainKeeper.release("free_memory").join()
         scope.launch {
-            val (b, after) = ModelUnload.unload(VoiceHub.app, before)
-            val line = FreeUp.freedLine(b, after)
+            val after = ModelUnload.settled(VoiceHub.app, before)
+            val line = FreeUp.freedLine(before, after)
             _state.update { st ->
                 st.copy(turns = st.turns.map { t ->
                     if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && it.detail == FreeUp.UNLOADING) it.copy(detail = line) else it })
@@ -1948,7 +1998,6 @@ object PanelController {
     }
 
     private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
-        unloadIfAsked(replyId)
         if (!current(replyId)) return
         voice.finish(replyId, cancelled = true, speak = false)
         VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.FAILED)

@@ -13,6 +13,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.net.VpnService
 import android.os.BatteryManager
 import android.os.Environment
 import android.os.Process
@@ -22,6 +23,7 @@ import android.provider.AlarmClock
 import android.provider.MediaStore
 import android.provider.Settings
 import android.provider.Telephony
+import android.telecom.TelecomManager
 import app.heyrobot.core.AppSize
 import app.heyrobot.core.BatteryFacts
 import app.heyrobot.core.FreeUp
@@ -98,7 +100,8 @@ object PhoneInfo {
         return packages.mapNotNull { pkg ->
             try {
                 val st = ssm.queryStatsForPackage(StorageManager.UUID_DEFAULT, pkg, user)
-                AppSize(label(ctx, pkg), st.appBytes + st.dataBytes, st.cacheBytes, pkg)
+                // Robot itself: most of it is its models, which clearing its storage would delete.
+                AppSize(if (pkg == ctx.packageName) FreeUp.ROBOT_LABEL else label(ctx, pkg), st.appBytes + st.dataBytes, st.cacheBytes, pkg)
             } catch (_: Exception) {
                 null
             }
@@ -136,7 +139,11 @@ object PhoneInfo {
             safe { ctx.packageManager.resolveActivity(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY) }
                 ?.activityInfo?.packageName?.let(::add)
             safe { Telephony.Sms.getDefaultSmsPackage(ctx) }?.let(::add)
+            safe { ctx.getSystemService(TelecomManager::class.java)?.defaultDialerPackage }?.let(::add)
             safe { ctx.packageManager.queryIntentActivities(Intent(AlarmClock.ACTION_SET_ALARM), PackageManager.MATCH_ALL) }.orEmpty().forEach { add(it.activityInfo.packageName) }
+            // A VPN, and anything with a foreground service running (music, navigation, a call, a download).
+            safe { ctx.packageManager.queryIntentServices(Intent(VpnService.SERVICE_INTERFACE), PackageManager.MATCH_ALL) }.orEmpty().forEach { add(it.serviceInfo.packageName) }
+            addAll(withForegroundService(usm, now))
         }
         val launcher = launcherPackages(ctx)
         val used = safe { usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - withinMs, now) }.orEmpty()
@@ -144,6 +151,22 @@ object PhoneInfo {
             .groupBy { it.packageName }.mapValues { (_, v) -> v.maxOf { it.lastTimeUsed } }
         return used.entries.sortedByDescending { it.value }.take(FreeUp.RECENT_APPS).mapNotNull { safe { label(ctx, it.key) } }
     }
+
+    /** Apps whose foreground service started in the last few hours and hasn't stopped (playing, navigating, recording). */
+    private fun withForegroundService(usm: UsageStatsManager, now: Long): Set<String> = safe {
+        val events = usm.queryEvents(now - 6 * 3_600_000L, now)
+        val e = UsageEvents.Event()
+        val running = HashMap<String, Int>()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(e)
+            val pkg = e.packageName ?: continue
+            when (e.eventType) {
+                UsageEvents.Event.FOREGROUND_SERVICE_START -> running[pkg] = (running[pkg] ?: 0) + 1
+                UsageEvents.Event.FOREGROUND_SERVICE_STOP -> running[pkg] = ((running[pkg] ?: 0) - 1).coerceAtLeast(0)
+            }
+        }
+        running.filterValues { it > 0 }.keys
+    }.orEmpty()
 
     /** The app on screen under the panel: the last one that came to the front, other than Robot. */
     private fun foreground(usm: UsageStatsManager, now: Long): String? = safe {

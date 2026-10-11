@@ -25,8 +25,10 @@ object ApprovalGate {
      * or a picture, or a read tool's findings (content Robot did not write and the person did not type: a page, a
      * photo, a note or a calendar invite must never trigger an action without a tap), for an app name that matched
      * only loosely, and when the card must show who a text or email goes to (several people, a guessed name, a number
-     * the model wrote). The read tools ([ToolName.reads]: lookup_contact, find_notes, read_calendar) are exempt: they
-     * only bring more to read, nothing leaves the phone or changes; anything that writes or leaves still asks.
+     * the model wrote). The read tools ([ToolName.reads]: lookup_contact, find_notes, read_calendar, phone_status) are
+     * exempt: they only bring more to read, nothing leaves the phone or changes; anything that writes or leaves still
+     * asks, and so does a read that goes online ([ToolName.online], the weather: injected text could send a word or where
+     * you are to Open-Meteo).
      */
     fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, mustAsk: Boolean = false, remote: Boolean = false): GateDecision {
         val level = settings.approval(tool)
@@ -36,7 +38,7 @@ object ApprovalGate {
             // [remote]: Claude asked for it (its input may come from web pages): a card, always, read tools included.
             // The Claude app hand-off always shows "Open Claude with: «…»" first.
             remote || tool == ToolName.ASK_CLAUDE -> GateDecision.CONFIRM
-            level == Approval.AUTO && (!mustAsk || tool.reads) -> GateDecision.RUN
+            level == Approval.AUTO && (!mustAsk || (tool.reads && !tool.online)) -> GateDecision.RUN
             else -> GateDecision.CONFIRM
         }
     }

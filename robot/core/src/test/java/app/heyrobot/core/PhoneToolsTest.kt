@@ -46,6 +46,11 @@ class PhoneToolsTest {
             "Photos, videos and audio: photos 10 GB, videos 21 GB, audio 1.2 GB", PhoneStatus.lines(listOf(r)))
     }
 
+    @Test fun robotIsNamedAsNeededAmongTheLargestApps() {
+        val line = PhoneStatus.appsLine(listOf(AppSize(FreeUp.ROBOT_LABEL, 4_600_000_000, 1_000_000, "app.heyrobot"), AppSize("Signal", 12_300_000_000, 0)))
+        assertEquals("Signal 12 GB, Robot (models, don't clear) 4.6 GB", line)
+    }
+
     @Test fun onlyWhatWasAskedAndUsageAccessIsNamedWhenOff() {
         val f = PhoneFacts(storage, battery, memory, usageAccess = false)
         assertEquals(listOf("storage", "largest_apps"), PhoneStatus.results(f, PhonePart.STORAGE).single().keys.toList())
@@ -106,14 +111,10 @@ class PhoneToolsTest {
         val cost = Prompt.fixedTokens(system, Prompt.CORE_TOOLS + ToolName.PHONE_STATUS) - Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
         assertTrue("phone_status $cost", cost in 1..120)
         assertTrue(Prompt.textCallHint(listOf(ToolName.PHONE_STATUS)).contains("call:phone_status{about:storage}"))
-        // The phone group (phone_status, free_memory, free_storage) costs under 400 tokens. Every group at once, the 0.4.0
-        // ones included (only a conversation that used them all; estimated on the high side), still leaves about 750
-        // tokens for the new turn and some history beside the reply: older turns are dropped first.
+        // The phone group (phone_status, free_memory, free_storage) costs about 410 tokens, only where it is used (every
+        // group at once: PromptTest).
         val phone = Prompt.fixedTokens(system, Prompt.CORE_TOOLS + ToolRouter.tools(setOf(ToolGroup.PHONE), RobotSettings())) - Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
-        assertTrue("phone $phone", phone < 400)
-        val everything = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal })
-        assertTrue("everything $everything", everything < 2_600)
-        assertTrue(ContextWindow.newTurnLimit(everything) > 700)
+        assertTrue("phone $phone", phone < 430)
     }
 
     @Test fun thePhonesStatusIsPersonal() {

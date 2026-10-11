@@ -265,7 +265,11 @@ class TurnRunner(
 ) {
     private var budget = TurnRules.MAX_CALLS
 
-    private class Round(val responses: List<Pair<String, Map<String, Any?>>>, val launched: Boolean)
+    /** [spoken]: what the round's actions say (their cards' text), for when no reply can follow them. */
+    private class Round(val responses: List<Pair<String, Map<String, Any?>>>, val launched: Boolean, val spoken: List<String> = emptyList())
+
+    /** The round under way's spoken texts ([Round.spoken]). */
+    private val spokenThisRound = mutableListOf<String>()
 
     /** The round under way's results so far: a stop meanwhile tells the model what ran ([TurnModel.stopped]). */
     private var inRound: MutableList<Pair<String, Map<String, Any?>>>? = null
@@ -290,7 +294,10 @@ class TurnRunner(
             }
             view.phase(TurnPhase.THINKING)
             view.paragraphBreak()
+            val before = view.text.length
             outcome = model.answer(round.responses)
+            // No room left for a reply after the results (CONTEXT_FULL): say what the cards say rather than nothing.
+            if (outcome is ModelOutcome.Done && outcome.reason == DoneReason.CONTEXT_FULL && view.text.length <= before) round.spoken.forEach(view::say)
         }
         return when (outcome) {
             is ModelOutcome.Failed -> TurnResult(null, failure = outcome.message)
@@ -340,6 +347,7 @@ class TurnRunner(
     private suspend fun runCalls(calls: List<RawToolCall>, speak: Boolean): Round {
         val out = mutableListOf<Pair<String, Map<String, Any?>>>()
         inRound = out
+        spokenThisRound.clear()
         for (raw in calls) {
             val parsed = parse(raw)
             if (budget <= 0) {
@@ -362,11 +370,11 @@ class TurnRunner(
                     val (response, launched) = decideAndRun(parsed.action, speak)
                     out += response
                     // The panel is leaving for another app: nothing more is done in this answer.
-                    if (launched) return Round(out, launched = true)
+                    if (launched) return Round(out, launched = true, spokenThisRound.toList())
                 }
             }
         }
-        return Round(out, launched = false)
+        return Round(out, launched = false, spokenThisRound.toList())
     }
 
     private suspend fun decideAndRun(asked: Action, speak: Boolean): Pair<Pair<String, Map<String, Any?>>, Boolean> {
@@ -397,16 +405,28 @@ class TurnRunner(
         if (actions.locked && chosen.tool !in ApprovalGate.ALLOWED_WHEN_LOCKED) {
             return done(chosen, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
         }
-        // Once it runs it runs to the end, and its card says what really happened, even if Stop comes meanwhile: a saved
-        // note keeps its Undo, an added event isn't recorded as cancelled.
-        return withContext(NonCancellable) {
-            val r = actions.run(chosen)
+        fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {
             // What a read tool found is content: from now on every action in this conversation asks first.
             if (r.content) untrusted = true
             val launched = r.launchedApp && r.status.succeeded
             if (speak && !launched) view.say(r.spoken ?: r.detail)
-            done(chosen, r.status, r.detail, launched, r)
+            if (!launched) spokenThisRound += r.spoken ?: r.detail
+            return done(chosen, r.status, r.detail, launched, r)
         }
+        // An online read (the weather, 0.4.0) changes nothing and may wait seconds on the network: Stop ends it at once,
+        // and its card says it was stopped.
+        if (chosen.tool.online && chosen.tool.reads) {
+            val r = try {
+                actions.run(chosen)
+            } catch (e: CancellationException) {
+                view.card(Card(id, chosen.tool, chosen.describe(), ActionStatus.DECLINED, "Stopped.", chosen, remote = remote))
+                throw e
+            }
+            return finish(r)
+        }
+        // Once it runs it runs to the end, and its card says what really happened, even if Stop comes meanwhile: a saved
+        // note keeps its Undo, an added event isn't recorded as cancelled.
+        return withContext(NonCancellable) { finish(actions.run(chosen)) }
     }
 
     /**

@@ -69,7 +69,8 @@ Four tools, so Robot can say whether tomorrow will be cloudy and help you free u
 are "Just do it" by default; the two that unload, stop or delete something ask first. Each has its own row in Settings ›
 Actions, and all four need the phone unlocked: the lock screen still allows only questions, timers and alarms. What the
 reading ones find is content Robot didn't write, so later actions in that conversation ask first, and it makes the
-conversation personal for Claude (below).
+conversation personal for Claude (below). The weather goes online, so in a conversation with screen text, a photo or
+something a read tool found, it shows a card first too (the other read tools don't: nothing leaves the phone).
 
 | Tool | Does | Default |
 |---|---|---|
@@ -87,43 +88,67 @@ default names the phone model). `sys/OpenMeteoClient.kt` is the only HTTP code o
 (`ProcessIsolationTest` checks it); `core/Weather.kt` builds the URLs and reads the answers, tested against answers
 recorded from Open-Meteo.
 
-- **Where.** A town you name ("weather in Paris", "Paris, Texas" picks the one in Texas, "London, Canada" the one in
-  Ontario; otherwise the biggest town of that name), "at home" (your Home for weather), or "here" and no place at all:
-  where the phone is. For that Robot holds **ACCESS_COARSE_LOCATION** only (never fine or background location), asked
+- **Where.** A town you name, or "at home" / "at my house" (your Home for weather), or "here", "outside" and no place
+  at all: where the phone is ("here in Montreal" is Montreal). Without a region the biggest town of that name is taken
+  ("weather in Paris" is Paris, France). Speech has no commas and Open-Meteo knows no "Paris Texas", so Robot searches
+  the whole name, then without "city" ("Quebec City"), then with the last word or two as the region or country ("Paris
+  Texas", "London Ontario", "Washington DC", "Springfield New Jersey"); at most three searches. States, provinces and
+  countries can be abbreviated ("Paris, TX", "London, ON", "USA", "UK"). A town found but not where you said is refused
+  ("Open-Meteo knows places called Paris, but none in Ontario among the biggest…"), never swapped for another. For that Robot holds **ACCESS_COARSE_LOCATION** only (never fine or background location), asked
   for by the main app when you tap Allow (Assistant setup › Weather and phone status, Settings › Weather, or a card's
-  Allow, which opens the app; the panel never asks). It takes the last known position of any provider if it is under
-  30 minutes old, else asks every provider at once for up to 10 seconds (GrapheneOS has no Google network location, and
-  GPS alone can be slow or silent indoors), else a position up to a day old, else your Home for weather. Without any of
-  them the card says to name a town, set a Home for weather or allow location. What Open-Meteo gets is two coordinates
-  rounded to two decimals (about 1 km), or the town's name; the card shows them ("Sent to Open-Meteo: 45.51, -73.59").
+  Allow, which opens the app; the panel never asks). Location is "while in use", and the assistant's process may not
+  count as in use: Robot first asks Android's location app-op whether it would get a position now, and if not falls
+  back at once (to your Home for weather, or says so) and logs it (step 3 below). It takes the last known position of
+  any provider if it is under 30 minutes old, else asks every provider at once for up to 10 seconds, 3 with a Home for
+  weather to fall back on (GrapheneOS has no Google network location, and GPS alone can be slow or silent indoors), else
+  a position up to an hour old (an older one may be another town), else your Home for weather. Without any of them the
+  card says to name a town, set a Home for weather or allow location. What Open-Meteo gets is two coordinates rounded to
+  two decimals (about 1 km), or the town's name; the card shows it ("Sent to Open-Meteo: 45.51, -73.59", or "“Paris”
+  (to find it), then 48.85, 2.35").
+- **Stop and the deadline.** A lookup runs on a thread of its own: Stop ends it at once (its connection is disconnected,
+  a location wait woken; the card says "Stopped"), and the whole lookup gives up after 15 seconds ("The weather took too
+  long to come"). Actions that write still run to the end after Stop.
 - **Home for weather** (Settings › Weather): type a town and Look up; Robot looks it up once with Open-Meteo (the main
   app's only request besides the model downloads), shows what it found ("Montreal, Quebec, Canada") and keeps it in
   settings.json (schema 5; older files read it as none). Clear removes it.
-- **Days.** Today when none is said; tomorrow, a weekday, "this week" (to Sunday), "this weekend", "next week", "the
-  next 3 days", and the French words (demain, après-demain, vendredi, cette semaine, ce week-end…), read with the
-  calendar's date parser before anything goes online and again in the place's own time zone (today in Tokyo is
-  Tokyo's today). Past days are refused; Open-Meteo forecasts today and the next 15 days; at most 7 days per answer.
-- **What the model gets**: one line per day, e.g. "tomorrow, Sun Oct 11: overcast, high 18°C, low 6°C, 5% chance of
+- **Days.** Today when none is said; tomorrow, a weekday, a date (also ISO, "2026-10-12"), "this week" (to Sunday),
+  "this weekend", "next week", "the next 3 days", "today and tomorrow", a bare number of days, and the French (demain,
+  demain matin, après-demain, vendredi prochain, les 3 prochains jours, samedi et dimanche, cette semaine…). The day is
+  read once, in your own time zone, before anything goes online; "today", "tomorrow" and "next N days" then move to the
+  place's own today (today in Tokyo is Tokyo's today), while a weekday or a date keeps its date. "Tonight" after
+  midnight is the coming night. Past days are refused; Open-Meteo forecasts today and the next 15 days; at most 7 days
+  per answer, fewer when the conversation has little room left, and the model is told when days were left out.
+- **What the model gets**: for one day a line like "tomorrow, Sun Oct 11: overcast, high 18°C, low 6°C, 5% chance of
   rain, wind up to 11 km/h (gusts 25), cloud cover 100%", with the conditions (WMO codes in words), the chance and
-  amount of rain or snow, and for today the temperature and conditions now. °F, mph and inches in the United States,
-  Liberia and Myanmar (by the phone region: Settings, else the phone's own), °C, km/h, mm and cm elsewhere.
+  amount of rain or snow, and for today the temperature and conditions now. For several days, short lines with the units
+  said once ("Mon Oct 12: drizzle 16/8 67% wind 21 cloud 98%", about 30 tokens a day); the card keeps the whole lines.
+  If the context is still full after the results, Robot says what the card says rather than nothing. °F, mph and inches
+  in the United States and its territories, Liberia, Myanmar, the Bahamas, Belize, the Cayman Islands, Palau,
+  Micronesia and the Marshall Islands (by the phone region: Settings, else the phone's own), °C, km/h, mm and cm
+  elsewhere.
 - **Asking.** Weather words in English and French (weather, forecast, rain, snow, temperature, cloud, cloud cover, wind,
-  umbrella, météo, pluie, neige, température, nuageux, vent, parapluie, "quel temps"…) describe the tool for that
-  conversation, and the system prompt then says "For the weather, call weather" (otherwise it still says Robot can't
-  check the weather). With the tool on, a weather question no longer goes to Claude by itself (the pre-router's
-  current-information signal leaves weather out; "explain why it rains" still counts as reasoning, and "ask Claude about
-  the weather in Paris" still asks Claude). "Cloud" counts as a mishearing of "Claude" only after a command verb, so
-  "Okay, cloud cover tomorrow?" stays with Robot.
+  umbrella, hot, cold, warm, UV, sunglasses, "the high", "nice out", météo, pluie, neige, température, nuageux, vent,
+  parapluie, chaud, froid, canicule, "quel temps"…) describe the tool for that conversation, and the system prompt then
+  says "For the weather, call weather" (otherwise it still says Robot can't check the weather). With the tool on and the
+  phone unlocked, "weather" and "forecast" no longer count as current information for Claude; everything else in the
+  question still does ("the price of a winter coat", "the latest news about the storm", "explain why it rains", a long
+  question), and "ask Claude about the weather in Paris" still asks Claude. On the lock screen, where the tool can't run,
+  a weather question goes to Claude as before when Claude is allowed there, else gets "Unlock your phone". "Cloud" counts
+  as a mishearing of "Claude" only after a command verb, so "Okay, cloud cover tomorrow?" stays with Robot.
 - **Errors**, in fixed words, read aloud: no internet; Robot's Network permission off; the service busy (its free tier
-  has daily limits) or not answering properly; a town Open-Meteo doesn't know; location off or no position in time; no
-  Home for weather set; a day in the past or more than 15 days ahead.
+  has daily limits) or not answering properly; a town Open-Meteo doesn't know, or none where you said; location off, no
+  position in time, or refused to the assistant; no Home for weather set; too long; a day in the past or more than 15
+  days ahead.
 - **Lock screen: no.** A locked phone can't tell who is asking, and the answer would say where your Home is and go
   online for them. Claude isn't offered the tool (it has web search).
 - **Privacy.** The card's saved line names no place ("Forecast for where you are, from Open-Meteo."); the place, the
-  days and what was sent are in its body, which is shown but never saved. A weather lookup makes the conversation
-  personal: "Include the conversation so far? It contains your location." The voice log gets "Weather from Open-Meteo for
-  a new location fix · place found in 2300 ms · forecast in 410 ms" or the failure, in codes and milliseconds
-  (`VoiceEvent.WEATHER` 80, `WEATHER_FAILED` 81), never a place.
+  days and what was sent are in its body, which is shown but never saved. Robot's own reply is saved with the
+  conversation as usual, though, and it often names the town ("In Montreal tomorrow…"): with history on, that is how a
+  Home or a position can end up in the history on the phone. A weather lookup makes the conversation personal: "Include
+  the conversation so far? It contains your location." The voice log gets "Weather from Open-Meteo for a new location fix
+  · place found in 2300 ms · forecast in 410 ms", "Position for the weather: refused: Android counted Robot as in the
+  background · process importance 125 · 3 ms" or the failure, in codes and milliseconds (`VoiceEvent.WEATHER` 80,
+  `WEATHER_FAILED` 81, `WEATHER_LOCATION` 82), never a place.
 
 ### Phone status
 
@@ -132,7 +157,8 @@ Read on the phone; nothing leaves it. `StatFs` on the data partition gives free 
 `MemoryInfo` the available and total memory and whether Android considers it low (and whether Robot's own model, about
 2 GB, is loaded). With **Usage access** (you turn it on for Robot in Android's settings: Assistant setup › Usage access ›
 Open, or the card's "Turn on Usage access"), `StorageStatsManager` adds the five apps using the most space (app and data,
-their cache from 100 MB) and the size of photos, videos and audio. Only apps with a launcher icon are counted (Robot has no
+their cache from 100 MB) and the size of photos, videos and audio. Robot itself is listed as "Robot (models, don't
+clear)", so the model doesn't suggest clearing it. Only apps with a launcher icon are counted (Robot has no
 QUERY_ALL_PACKAGES). With Usage access the card offers **Open storage settings**. Asked about one part ("how's my
 battery"), only that part is read.
 
@@ -149,21 +175,25 @@ always shows a card, whatever the level.
 
 - **Memory.** `free_memory` with no app unloads Robot's own model, its biggest lever (about 2 GB): the same release as
   Settings › Model memory's timer, but at once, as soon as the answer that asked for it has ended (Gemma is still
-  writing that answer when the action runs). The card then says what Android reports came back ("Freed about 2.1 GB: 6.3
+  writing that answer when the action runs; the release happens before that turn completes, so a next question can't
+  race it). The card then says what Android reports came back ("Freed about 2.1 GB: 6.3
   GB of memory available now."); the model loads again, in about 2 seconds, for the next question. Robot can't stop
   other apps: since Android 14 `killBackgroundProcesses` only reaches the caller's own processes, and
   `getRunningAppProcesses` lists only Robot's, so Robot doesn't declare KILL_BACKGROUND_PROCESSES. For an app you name
   ("stop YouTube") it opens that app's App info, where you tap Force stop (never Robot itself). With Usage access the
   model also hears which apps were used in the last two hours, so it can suggest one; never the app you are in, Robot,
-  the keyboard, the home screen, messaging apps (Cheogram, Signal, Molly, the SMS app…) or clock apps (stopping one can
-  cancel its alarms). The model is told plainly that Android frees memory by itself when it needs it and that a stopped
+  the keyboard, the home screen, the phone app, messaging apps (Cheogram, Signal, Molly, the SMS app…), clock apps
+  (stopping one can cancel its alarms), VPN apps, or an app with a foreground service running (music, navigation, a
+  call). "Stop YouTube", "force stop", "kill" and "close <app>" (and "arrête", "ferme") reach this tool; "stop the
+  timer" or "stop talking" don't. "Stop Robot" is refused. The model is told plainly that Android frees memory by itself when it needs it and that a stopped
   app may start again: it helps most when one app misbehaves.
 - **Storage.** `free_storage` opens Android's own "Free up space" screen (`StorageManager.ACTION_MANAGE_STORAGE`, else
   storage settings) by default. "apps" (with Usage access) lists the five apps using the most space, Robot aside (its App
   info's Clear storage would delete its models), with their cache: tap one and its App info opens, to clear its cache.
   "files" (with the photos and videos permission) lists your five largest photos and videos (MediaStore: name, size,
   date): tap one and Android's own confirmation (`MediaStore.createDeleteRequest`, started by a small activity in
-  `:voice`, `MediaDeleteActivity`) asks "Allow Robot to delete this video?"; only Allow deletes it. Android 14's "Select
+  `:voice`, `MediaDeleteActivity`) asks "Allow Robot to delete this video?"; only Allow deletes it. The card says
+  "Waiting for your answer…" until Android's dialog answers, then "Deleted." or "Not deleted". Android 14's "Select
   photos" works too: Robot then sees only the ones you picked. "robot" clears Robot's own cache (its models, notes,
   history and settings are never touched) and says how much.
 - **Not done: clearing every app's cache.** `StorageManager.ACTION_CLEAR_APP_CACHE` needs All files access
@@ -175,8 +205,10 @@ always shows a card, whatever the level.
   or Claude. The photos and videos permission (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED) is
   asked for by the main app only, from Assistant setup › Weather and phone status or a card's Allow.
 
-The four schemas cost about 140 tokens for the weather and under 400 for the phone group (estimated on the high side),
-only in conversations that use them; "free up space" no longer brings in the calendar's tools ("free" stays a calendar
+The four schemas cost about 140 tokens for the weather and about 410 for the phone group (estimated on the high side),
+only in conversations that use them. Every group at once comes to about 2,560 tokens, and with Ask Claude on and every
+optional line of the system prompt about 2,800, which leaves about 500 for the new turn (screen text is cut to fit,
+older turns go first; `PromptTest` keeps both under 2,600 and 2,850); "free up space" no longer brings in the calendar's tools ("free" stays a calendar
 word in "am I free tomorrow"). The new permissions are ACCESS_COARSE_LOCATION, PACKAGE_USAGE_STATS and the three photo
 and video ones (`ProcessIsolationTest` and `tools/verify_apk.sh` check the list, and that there is no fine location,
 All files access, READ_EXTERNAL_STORAGE or KILL_BACKGROUND_PROCESSES; INTERNET is still the only network permission).
@@ -190,40 +222,52 @@ All files access, READ_EXTERNAL_STORAGE or KILL_BACKGROUND_PROCESSES; INTERNET i
    under People. Allow location: Android's dialog offers approximate location only.
 3. Ask again, spoken: the answer gives tomorrow's cloud cover (and the card body the day's line and "Sent to
    Open-Meteo: 45.51, -73.59", two decimals). Note the time to the answer, indoors and outdoors. Settings › Voice › Voice
-   log: "Weather from Open-Meteo for a new location fix (or the last known location) · place found in … ms · forecast in …
-   ms", no place.
+   log: "Position for the weather: …" then "Weather from Open-Meteo for a new location fix (or the last known location) ·
+   place found in … ms · forecast in … ms", no place. **The assistant's process and location:** with no Home for weather
+   and no location used for over 30 minutes (no other app either), open the panel with the corner swipe, then with "hey
+   robot", and ask "weather here" each time. Note the voice log's "Position for the weather" line (a new fix, or
+   "refused: Android counted Robot as in the background", and the process importance), `adb shell cmd appops get
+   app.heyrobot COARSE_LOCATION` (any reject time) and `adb shell dumpsys activity processes | grep -A3 "app.heyrobot:voice"`.
+   If it is refused, reading the position needs a short location-type foreground service or an assistant activity.
 4. Turn Location off in quick settings: "what's the weather here?" says location is off. Settings › Weather › Home for
    weather: "Montreal", Look up: it shows "Montreal, Quebec, Canada" and its coordinates. Ask again: "Robot couldn't tell
    where you are: forecast for your Home for weather". "What's the weather at home on Friday?" uses it too. Location back on.
-5. "Will it rain in Paris this weekend?" (Paris, France), "weather in Paris, Texas tomorrow" (Texas), "quelle est la
-   météo demain à Québec", "is it going to snow next week" (at most 7 days), "what was the weather yesterday" (refused:
-   forecasts only).
-6. Settings › People, notes and calendar › Phone region "US": "weather tomorrow" in °F, mph and inches. Clear it again.
-7. Lock the phone: "Hey robot, what's the weather tomorrow?": "Unlock your phone, then ask again."
-8. Wi-Fi and mobile data off: "No internet: Robot couldn't reach Open-Meteo". Then Robot's Network toggle off (data
+5. "Will it rain in Paris this weekend?" (Paris, France), spoken "weather in Paris Texas tomorrow" (Texas), "how cold
+   will it be in London Ontario tonight", "quelle est la météo demain à Québec", "is it going to snow next week" (short
+   lines, at most 7 days), "what was the weather yesterday" (refused: forecasts only), "weather in Springfield, Atlantis"
+   (refused: none there). Ask "weather in Tokyo on Friday" late on a Thursday evening.
+6. "What's the weather this week in Paris?" and say "stop" (or tap Stop) while it is looking: the card says
+   "Stopped" at once and a new question works right away. Ask about the screen of a web page, then "and the weather
+   tomorrow?": the weather shows a card first.
+7. Settings › People, notes and calendar › Phone region "US": "weather tomorrow" in °F, mph and inches. Clear it again.
+8. Lock the phone: "Hey robot, what's the weather tomorrow?": "Unlock your phone, then ask again."
+9. Wi-Fi and mobile data off: "No internet: Robot couldn't reach Open-Meteo". Then Robot's Network toggle off (data
    back on): "Robot isn't allowed to use the network…".
-9. With Ask Claude on Automatic and a key: "what's the forecast for tomorrow" stays with Robot (no "Checking with
-   Claude…"); "Okay, cloud cover tomorrow?" never starts Claude mode. Set Weather lookups to Off: the same question goes
-   to Claude (or is offered). Back to Just do it.
-10. After a weather answer, "go get Claude" and a question: "Include the conversation so far? It contains your
+10. With Ask Claude on Automatic and a key: "what's the forecast for tomorrow" stays with Robot (no "Checking with
+    Claude…"); "Okay, cloud cover tomorrow?" never starts Claude mode. Set Weather lookups to Off: the same question goes
+    to Claude (or is offered). Back to Just do it.
+11. After a weather answer, "go get Claude" and a question: "Include the conversation so far? It contains your
     location." Start fresh. `adb logcat -s Robot | grep -iE "weather|tool_run"`: codes and times only.
-11. "How do I free up storage?": the phone status card (storage and "Largest apps: unknown…") with **Turn on Usage
+12. "How do I free up storage?": the phone status card (storage and "Largest apps: unknown…") with **Turn on Usage
     access**: it opens Android's Usage access page (Robot's own switch, or the list); turn it on. Ask again: the largest
     apps and the photo and video sizes, and **Open storage settings**. Note whether the advice is sensible.
-12. "How's my battery?" (only the battery: charging or not, minutes to full while charging, temperature) and "how much
+13. "How's my battery?" (only the battery: charging or not, minutes to full while charging, temperature) and "how much
     memory is free?" (with "Robot's own model holds about 2 GB while loaded").
-13. "Free up memory": the card "Unload Robot's model to free about 2 GB of memory" with **Unload**; tap it. Robot answers,
+14. "Free up memory": the card "Unload Robot's model to free about 2 GB of memory" with **Unload**; tap it. Robot answers,
     then the card's line becomes "Freed about … GB: … GB of memory available now." Note the numbers. The next question
     takes about 2 s longer (the model loads again).
-14. "Stop YouTube" (or any installed app): the card "Open YouTube's App info to force stop it"; Open App info shows that
-    page. "Stop Robot" is refused. With Usage access, "free up memory" from inside an app: the model may name recent
-    apps, never that app, the keyboard, the home screen, Cheogram, Signal or the Clock.
-15. "Free up storage" with what Android offers: note which screen "Open Android's Free up space screen" opens on
+15. "Stop YouTube" (or any installed app): the card "Open YouTube's App info to force stop it"; Open App info shows that
+    page. "Stop Robot" is refused. With Usage access, "free up memory" from inside an app while music plays: the model may
+    name recent apps, never that app, the music app, the keyboard, the home screen, the phone app, Cheogram, Signal, a VPN
+    or the Clock. Say "hey robot" and a question while the free-memory answer is still being read: the question answers
+    normally.
+16. "Free up storage" with what Android offers: note which screen "Open Android's Free up space screen" opens on
     GrapheneOS. "Clear Robot's cache": the card shows its size; Clear says how much was cleared.
-16. "Which apps can I clear the cache of?": a card with five apps and their sizes (not Robot); tap one: its App info.
-17. Assistant setup › Photos and videos › Allow, choose "Select photos" and pick two large videos. "Delete my largest
-    videos": the card lists only those; tap one: Android asks "Allow Robot to delete this video?"; Deny once (nothing is
-    deleted), then Allow (it's gone from Files and the gallery). Allow again with all photos: five largest. History shows
+17. "Which apps can I clear the cache of?": a card with five apps and their sizes (not Robot); tap one: its App info.
+18. Assistant setup › Photos and videos › Allow, choose "Select photos" and pick two large videos (no "Not allowed"
+    message). "Delete my largest videos": the card lists only those; tap one: Android asks "Allow Robot to delete this
+    video?"; Deny once (nothing is deleted; reopen the panel: the card says "Not deleted"), then Allow (it's gone from
+    Files and the gallery; the card says "Deleted."). Allow again with all photos: five largest. History shows
     "Delete a video (… GB, …)" without the file's name; `adb logcat -s Robot | grep media_delete` shows only
     `deleted=true` or `false`.
 
