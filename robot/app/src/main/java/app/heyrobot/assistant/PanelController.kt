@@ -1807,58 +1807,76 @@ object PanelController {
     }
 
     /**
-     * Conversation mode by voice (0.5.0): start transcribing (the session starts from here, while the panel is on screen,
-     * then the transcript screen opens and the panel goes), or stop, pause or resume the one running. The interpreter and
-     * summaries come in later phases; Robot says so instead of pretending.
+     * Conversation mode by voice (0.5.0): start transcribing or the interpreter (the session starts from here, while the
+     * panel is on screen, then its screen opens and the panel goes), switch the running one between them, stop, pause or
+     * resume it, or summarize it (it stops, and the summary screen opens: unlocked only).
      */
     private suspend fun conversationCommand(replyId: String, c: ConversationCommand) {
         val ctx = VoiceHub.app
         when (c) {
             is ConversationCommand.Start -> when {
-                c.mode == ConvMode.INTERPRET -> localReply(replyId, "The interpreter isn't in this version yet. Say “transcribe this conversation” " +
-                    "and Robot writes it down instead.")
                 ConversationSession.running -> {
-                    localReply(replyId, "Robot is already transcribing.")
-                    openConversation(ConversationEntry.OPEN)
+                    val now = ConversationSession.state.value.mode
+                    if (now != c.mode) ConversationSession.setMode(c.mode)
+                    localReply(replyId, when {
+                        now == c.mode && c.mode == ConvMode.INTERPRET -> "Robot is already translating."
+                        now == c.mode -> "Robot is already transcribing."
+                        c.mode == ConvMode.INTERPRET -> "Translating now: the interpreter is on the screen."
+                        else -> "Back to the transcript."
+                    })
+                    openConversation(ConversationEntry.OPEN, c.mode)
                 }
                 !ConversationLock.mayStart(Assistant.locked(ctx), VoiceHub.settings) ->
-                    localReply(replyId, "Unlock your phone to start transcribing (Settings › Conversation › Start from the lock screen is off).")
+                    localReply(replyId, "Unlock your phone to start (Settings › Conversation › Start from the lock screen is off).",
+                        spoken = "Unlock your phone to start: starting from the lock screen is off in Robot's conversation settings.")
                 else -> {
                     // The first time, the transcript screen asks you to tell people first; after that it starts from here
                     // (the panel is on screen), or from the transcript screen if Android won't let it start here.
                     val consented = !ConsentRecord.needed(Transcripts.consent(ctx), VoiceHub.settings)
-                    val started = consented && ConversationService.start(ctx, ConvEntry.VOICE)
+                    val started = consented && ConversationService.start(ctx, ConvEntry.VOICE, mode = c.mode)
+                    val what = if (c.mode == ConvMode.INTERPRET) "Translating" else "Transcribing"
                     localReply(replyId, when {
-                        started -> "Transcribing. ${ConsentRecord.LINE}"
-                        consented -> "Opening the transcript screen to start."
+                        started -> "$what. ${ConsentRecord.LINE}"
+                        consented -> "Opening the screen to start."
                         else -> "First, a word about telling the people you're with: it's on the screen."
                     })
                     // On the lock screen the screen opens as a start, so it may show there (it doesn't start a second one).
-                    openConversation(if (started && !Assistant.locked(ctx)) ConversationEntry.OPEN else ConversationEntry.START)
+                    openConversation(if (started && !Assistant.locked(ctx)) ConversationEntry.OPEN else ConversationEntry.START, c.mode)
                 }
             }
             ConversationCommand.Stop -> {
                 ConversationSession.stop(ConvStop.VOICE)
-                localReply(replyId, "Stopped transcribing. The transcript is saved in Robot › Transcripts.")
+                localReply(replyId, "Stopped. The transcript is saved in Robot › Transcripts.", spoken = "Stopped. The transcript is saved in Robot's transcripts.")
             }
             ConversationCommand.Pause -> {
                 ConversationSession.userPause()
-                localReply(replyId, "Transcribing is paused. Say “resume transcribing”, or tap Resume in the notification.")
+                localReply(replyId, "Paused. Say “resume transcribing”, or tap Resume in the notification.")
             }
             ConversationCommand.Resume -> {
                 ConversationSession.userResume()
-                localReply(replyId, "Transcribing again.")
+                localReply(replyId, "Going on.")
             }
-            ConversationCommand.Summarize -> localReply(replyId, "Summaries come in a later version. The transcript is saved in Robot › Transcripts.")
+            ConversationCommand.Summarize -> {
+                // A summary needs the phone unlocked (docs/conversation-mode.md 1.7): the session stops, the screen opens.
+                val id = ConversationSession.state.value.id
+                ConversationSession.stop(ConvStop.VOICE)
+                if (Assistant.locked(ctx) || id == null) {
+                    localReply(replyId, "Stopped. Unlock your phone, then open the transcript in Robot › Transcripts to summarize it.",
+                        spoken = "Stopped. Unlock your phone, then open the transcript in Robot's transcripts to summarize it.")
+                } else {
+                    localReply(replyId, "Stopped. The summary screen is opening.")
+                    if (host?.launch(Transcripts.summaryIntent(ctx, id)) == true) leaveForApp()
+                }
+            }
         }
     }
 
     private enum class ConversationEntry { START, OPEN }
 
     /** The transcript screen (voice process), then the panel goes so nothing more is said to it. */
-    private suspend fun openConversation(how: ConversationEntry) {
+    private suspend fun openConversation(how: ConversationEntry, mode: ConvMode = ConvMode.TRANSCRIBE) {
         val ctx = VoiceHub.app
-        val i = if (how == ConversationEntry.START) Transcripts.startIntent(ctx, ConvEntry.VOICE.name) else Transcripts.openIntent(ctx)
+        val i = if (how == ConversationEntry.START) Transcripts.startIntent(ctx, ConvEntry.VOICE.name, mode.name) else Transcripts.openIntent(ctx)
         if (host?.launch(i) == true) leaveForApp()
     }
 

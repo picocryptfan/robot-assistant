@@ -194,9 +194,10 @@ data class Heard(val text: String, val tokens: List<String> = emptyList(), val t
 class LineLabeller(private val id: LangId, private val owner: String) {
     private var previous: String? = null
 
-    fun label(text: String, speakerLang: String? = null): Pair<LangGuess, LineLang> {
+    /** [forced]: the interpreter's push-to-talk side was held (its language wins, and becomes the prior). */
+    fun label(text: String, speakerLang: String? = null, forced: String? = null): Pair<LangGuess, LineLang> {
         val g = id.detect(text)
-        val l = LangLabel.choose(g, speaker = speakerLang, previous = previous, owner = owner)
+        val l = LangLabel.choose(g, forced = forced, speaker = speakerLang, previous = previous, owner = owner)
         // A label from the prior doesn't become the prior of the next line by itself... unless nothing better is known.
         if (!l.fromPrior || previous == null) previous = l.lang
         return g to l

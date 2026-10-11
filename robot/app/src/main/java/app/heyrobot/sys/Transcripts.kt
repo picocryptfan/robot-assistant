@@ -63,13 +63,23 @@ object Transcripts {
     const val ACTION_START = "app.heyrobot.action.TRANSCRIBE"
     const val ACTION_RESUME = "app.heyrobot.action.RESUME_TRANSCRIPT"
     const val ACTION_OPEN = "app.heyrobot.action.OPEN_TRANSCRIBE"
-    /** Extras: how it was started (a core ConvEntry's name), and a transcript id. */
+    /** Extras: how it was started (a core ConvEntry's name), a transcript id, and the face it starts with (a ConvMode's name). */
     const val EXTRA_ENTRY = "entry"
     const val EXTRA_ID = "id"
+    const val EXTRA_MODE = "conv_mode"
+    /** The voice process's summary screen (0.5.0, phase 5.6): Robot's own summary, or the stronger AI's card. */
+    const val SUMMARY_ACTIVITY = "app.heyrobot.assistant.conversation.SummaryActivity"
 
-    /** [MAIN] "Transcribe" in the app: the transcript screen, in the voice process, starts the session. */
-    fun startIntent(ctx: Context, entry: String): Intent = Intent(ACTION_START).setClassName(ctx.packageName, ACTIVITY)
-        .putExtra(EXTRA_ENTRY, entry).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    /**
+     * [MAIN] "Transcribe" (or "Translate": [mode] "INTERPRET") in the app: the transcript screen, in the voice process,
+     * starts the session.
+     */
+    fun startIntent(ctx: Context, entry: String, mode: String? = null): Intent = Intent(ACTION_START).setClassName(ctx.packageName, ACTIVITY)
+        .putExtra(EXTRA_ENTRY, entry).apply { mode?.let { putExtra(EXTRA_MODE, it) } }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    /** [MAIN] The summary screen for transcript [id] (unlocked only: it checks). */
+    fun summaryIntent(ctx: Context, id: String): Intent = Intent().setClassName(ctx.packageName, SUMMARY_ACTIVITY).putExtra(EXTRA_ID, id)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     fun openIntent(ctx: Context): Intent = Intent(ACTION_OPEN).setClassName(ctx.packageName, ACTIVITY).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 

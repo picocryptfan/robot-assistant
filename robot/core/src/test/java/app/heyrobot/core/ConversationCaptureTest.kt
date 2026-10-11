@@ -73,6 +73,15 @@ class ConversationCaptureTest {
         assertEquals(LineLang("fr", true), LineLabeller(id, "fr").label("42").second)
     }
 
+    /** The interpreter's push-to-talk (phase 5.4): the side held wins over language ID, and leads the next short lines. */
+    @Test fun aPushToTalkSideForcesTheLanguage() {
+        val l = LineLabeller(id, owner = "en")
+        assertEquals(LineLang("fr", false), l.label("I'm running late because the bus never showed up.", forced = "fr").second)
+        // Released: the next short line leans on it, as on any line's language.
+        assertEquals(LineLang("fr", true), l.label("42").second)
+        assertEquals(LineLang("en", false), l.label("I'm running late because the bus never showed up.").second)
+    }
+
     @Test fun aLineTakesTheSpeechTimesNotThePadding() {
         // Speech from 1.0 s to 3.0 s, decoded from 0.8 s (0.2 s of padding), in a run that began 60 s into the session.
         val seg = Segment(12_800, 51_200, 16_000, 48_000, 2_000, SegmentEnd.SILENCE, 32_000)

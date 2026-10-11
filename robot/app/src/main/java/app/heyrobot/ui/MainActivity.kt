@@ -505,6 +505,11 @@ fun RobotAppUi(activity: MainActivity) {
             // By name: the screen runs in the voice process, which starts the session.
             try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name)) } catch (_: Exception) { say("Couldn't open the transcript screen.") }
         },
+        interpret = {
+            try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name, app.heyrobot.core.ConvMode.INTERPRET.name)) } catch (_: Exception) {
+                say("Couldn't open the interpreter.")
+            }
+        },
         openTranscriptionCheck = {
             try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { say("Couldn't open the Transcription check.") }
         },
@@ -644,6 +649,8 @@ class AppActions(
     val askMedia: () -> Unit = {},
     /** 0.5.0: the transcript screen (voice process), to start transcribing; Settings › Voice › Transcription check. */
     val transcribe: () -> Unit = {},
+    /** 0.5.0: the interpreter (face to face, spoken translations). */
+    val interpret: () -> Unit = {},
     val openTranscriptionCheck: () -> Unit = {},
     /** 0.5.0, phase 5.3: "Your voice" (voice process), and deleting the voiceprint (file and key). */
     val openVoiceprint: () -> Unit = {},

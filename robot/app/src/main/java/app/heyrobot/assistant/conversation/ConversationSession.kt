@@ -10,8 +10,17 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.PowerManager
 import android.os.SystemClock
+import app.heyrobot.assistant.BrainKeeper
 import app.heyrobot.assistant.PanelController
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.core.InterpreterVoice
+import app.heyrobot.core.LangCode
+import app.heyrobot.core.LangPair
+import app.heyrobot.core.LineTranslation
+import app.heyrobot.core.SentenceSplitter
+import app.heyrobot.core.SpeechText
+import app.heyrobot.core.Translated
+import app.heyrobot.core.TtsStop
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.core.ConvMode
 import app.heyrobot.core.ConvPause
@@ -65,6 +74,10 @@ import java.time.LocalDateTime
 // "Tell speakers apart" on, each line gets S1, S2… (or "Me" from your enrolled voiceprint, decrypted here and used only
 // to seed the session's clusterer); what you change on the transcript screen (names, merges, "this is me", a line
 // moved or split) is appended through the session's writer, and the voices are dropped when the session ends.
+// Translation (phase 5.4): the interpreter face translates every turn, and a transcript does with Translate on
+// (ConversationTranslations: Robot's model through :brain's one-shot, the fast engine when it is there); translations are
+// saved as events through the session's writer, read aloud when Speak is on (French in Kokoro's French voice), and the
+// model is held loaded meanwhile. Robot never hears itself: its voice counts as silence, and 300 ms after.
 
 object ConversationSession {
     enum class Status { IDLE, STARTING, RUNNING, PAUSED, STOPPING }
@@ -98,7 +111,28 @@ object ConversationSession {
         val proposal: Pair<String, String>? = null,
         /** The last session ended with this many such proposals left, offered on the transcript in Robot. */
         val similarLeft: Int = 0,
+        /** The transcript's Translate toggle (the interpreter always translates). */
+        val translate: Boolean = false,
+        /** Translations are read aloud (on in the interpreter unless you turned it off). */
+        val speak: Boolean = false,
+        val pair: LangPair = LangPair.DEFAULT,
+        /** The interpreter: the other person's language (the top half's); yours is the pair's other one. */
+        val theirs: String = LangPair.DEFAULT.first,
+        /** Lines being translated now. */
+        val translating: Set<Int> = emptySet(),
+        /** The interpreter's push-to-talk side held (its language), or null: the language is told apart by itself. */
+        val ptt: String? = null,
+        /** The fast engine is on this phone; without it Robot's model translates alone. */
+        val fastEngine: Boolean = false,
+        /** The interpreter's last turn no engine could translate (its line index), or null. */
+        val untranslated: Int? = null,
     ) {
+        /** Your language in the interpreter (the bottom half's). */
+        val mine: String get() = pair.other(theirs) ?: pair.second
+
+        /** Translations are being made (the interpreter, or a transcript with Translate on). */
+        val translates: Boolean get() = mode == ConvMode.INTERPRET || translate
+
         val active: Boolean get() = status == Status.RUNNING || status == Status.PAUSED || status == Status.STARTING
 
         /** One voice and no names: the screen shows "Speaker". */
@@ -147,6 +181,16 @@ object ConversationSession {
     private var lastSaveFail: IoCode? = null
     /** The transcript was deleted under the session: nothing more is written. */
     @Volatile private var discarded = false
+    /** The session's translations (phase 5.4), while it runs. */
+    @Volatile private var translations: ConversationTranslations? = null
+    /** The lines on the transcript screen now (null: none shown, all count). */
+    @Volatile private var visibleLines: Set<Int>? = null
+    /** Lines whose translation was read aloud (once each). */
+    private val spoken = HashSet<Int>()
+    /** SEVERE heat: the fast engine only. */
+    private var severe = false
+    /** The model is held for this session (translations need it). */
+    private var holding = false
     private val writerLock = Any()
     /** Starts asked for and not yet run on the control thread (guarded by [startLock], with the state's STARTING). */
     private val startLock = Any()
@@ -280,8 +324,16 @@ object ConversationSession {
         lastDisk = lastBeat
         // Lines from before a crash show only when the phone is unlocked (a screen over the lock screen shows nothing older).
         val earlier = if (resumeId != null && ConversationLock.showsEarlier(locked)) w.current().lines.takeLast(ConversationRules.LIVE_LINES) else emptyList()
+        val pair = s.convPairChoice
+        val theirs = pair.other(LangLabel.owner()) ?: pair.first
+        val translate = mode == ConvMode.TRANSCRIBE && s.convTranslate
         _state.value = Ui(Status.RUNNING, w.id, mode, w.meta.createdAt, lines = earlier, total = w.lines, lockedStart = locked,
-            speakersOn = on, speakers = so.speakers, names = so.names, me = so.me, retired = so.merges.keys)
+            speakersOn = on, speakers = so.speakers, names = so.names, me = so.me, retired = so.merges.keys,
+            translate = translate, speak = ConversationSettings.speak(s, mode), pair = pair, theirs = theirs,
+            fastEngine = FastTranslation.translator(app) != null)
+        spoken.clear()
+        severe = false
+        translations = ConversationTranslations(app, pair, TrOut(w)).also { it.setTranscript(translate) }
         // The wake phrases sleep for the session unless "Hey robot works during a conversation".
         VoiceHub.conversationWake(!s.convWakeDuring)
         wake = (app.getSystemService(PowerManager::class.java)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "robot:conversation").apply {
@@ -290,6 +342,8 @@ object ConversationSession {
         }
         watchThermal()
         screenOn = app.getSystemService(PowerManager::class.java).isInteractive
+        translations?.screenOn = screenOn
+        holdModel()
         e.beginRun(w.clock(now))
         updatePartials()
         if (!attachAudio()) pauseNow(ConvPause.MIC_TAKEN)
@@ -317,6 +371,12 @@ object ConversationSession {
         val w = writer ?: return finishService()
         val e = engine
         detachAudio()
+        // Translations waiting go; one running in :brain is cancelled there. The model may unload again (after the
+        // panel's minutes).
+        translations?.close()
+        translations = null
+        holding = false
+        BrainKeeper.releaseHold(MODEL_HOLD)
         // The open segment and everything queued are decoded and saved before the file is closed.
         try { e?.close() } catch (t: Throwable) { RLog.w("conv_close", t) }
         val now = System.currentTimeMillis()
@@ -586,6 +646,7 @@ object ConversationSession {
                 it.copy(lines = (it.lines + line).takeLast(ConversationRules.LIVE_LINES), total = it.total + 1, partial = "",
                     speakers = if (line.speaker in it.speakers) it.speakers else it.speakers + line.speaker)
             }
+            translations?.let { tr -> if (_state.value.mode == ConvMode.INTERPRET) tr.interpreterTurn(line) else tr.transcriptLine(line) }
         }
 
         override fun partial(text: String) {
@@ -627,6 +688,154 @@ object ConversationSession {
         engine?.corrected(lang)
         _state.value.lines.firstOrNull { it.i == i }?.let { l -> speakers?.corrected(l.speaker, lang) }
         _state.update { st -> st.copy(lines = st.lines.map { if (it.i == i) it.copy(lang = lang, prior = false, translations = emptyMap()) else it }) }
+        // Its translations went with the old language: made again.
+        _state.value.lines.firstOrNull { it.i == i }?.let { l ->
+            spoken.remove(i)
+            translations?.let { tr -> if (_state.value.mode == ConvMode.INTERPRET) tr.interpreterTurn(l) else tr.transcriptLine(l) }
+        }
+    }
+
+    // ------------------------------------------------------------------ translation and the interpreter (phase 5.4)
+
+    /** Translations save and show here (the session's control thread), tied to the session's writer [w]. */
+    private class TrOut(private val w: TranscriptWriter) : ConversationTranslations.Out {
+        override fun translated(i: Int, to: String, by: String, text: String) {
+            ctl.post {
+                if (writer !== w || discarded) return@post
+                val ok = synchronized(writerLock) { !discarded && w.event(TranscriptEvent.Translation(i, to, by, text)) == null }
+                if (!ok) {
+                    w.failed?.let { saveFailed(it) }
+                    return@post
+                }
+                val first = _state.value.lines.firstOrNull { it.i == i }?.translations?.isEmpty() == true
+                _state.update { st -> st.copy(lines = st.lines.map { if (it.i == i) it.copy(translations = it.translations + (to to LineTranslation(to, by, text))) else it }) }
+                // A transcript's line read aloud once, with its first translation, when it is still fresh.
+                val ui = _state.value
+                val l = ui.lines.firstOrNull { it.i == i }
+                if (ui.mode == ConvMode.TRANSCRIBE && ui.speak && first && l != null && w.clock(System.currentTimeMillis()) - l.t1 < SPEAK_FRESH_S) speak(l, text, to)
+            }
+        }
+
+        override fun interpreted(l: TranscriptLine, from: String, to: String, r: Translated) {
+            ctl.post {
+                if (writer !== w) return@post
+                _state.update { it.copy(untranslated = if (r.text == null) l.i else if (it.untranslated == l.i) null else it.untranslated) }
+                val text = r.text ?: return@post
+                val ui = _state.value
+                if (ui.mode == ConvMode.INTERPRET && ui.speak && ui.status == Status.RUNNING) speak(l, text, to)
+            }
+        }
+
+        override fun working(i: Int, on: Boolean) {
+            _state.update { st -> st.copy(translating = if (on) st.translating + i else st.translating - i) }
+        }
+
+        override fun nowS(): Double = w.clock(System.currentTimeMillis())
+
+        override fun visible(): Set<Int>? = visibleLines
+    }
+
+    /**
+     * Control thread: [text], [l]'s translation into [lang], read aloud: English in Robot's voice, French in Kokoro's
+     * French voice (InterpreterVoice), sentence by sentence. Robot doesn't listen meanwhile (its voice is silence).
+     */
+    private fun speak(l: TranscriptLine, text: String, lang: String) {
+        if (l.i in spoken) return
+        spoken += l.i
+        val clean = SpeechText.clean(text)
+        if (clean.isBlank()) return
+        val split = SentenceSplitter()
+        val pieces = split.feed(clean) + listOfNotNull(split.flush())
+        val voice = InterpreterVoice.forLang(VoiceHub.settings.voiceChoice, lang)
+        val behind = ((writer?.clock(System.currentTimeMillis()) ?: l.t1) - l.t1).times(1000).toInt().coerceAtLeast(0)
+        main.post {
+            for (p in pieces) if (voice == null) VoiceHub.tts.speak(p) else VoiceHub.tts.speakOther(p, voice.first, voice.second)
+        }
+        // Event 108: the language and how long after the end of the speech the translation went to the voice.
+        VoiceLog.add(VoiceEvent.CONV_TTS, LangCode.of(lang), behind, 0)
+        if (!speakNoticed && _state.value.mode == ConvMode.TRANSCRIBE) {
+            speakNoticed = true
+            _state.update { it.copy(notice = "Robot doesn't listen while it speaks: what is said meanwhile isn't transcribed.") }
+        }
+    }
+
+    private val main: Handler by lazy { Handler(android.os.Looper.getMainLooper()) }
+    private var speakNoticed = false
+
+    /** A tap on the interpreter (or Stop): the translation being read stops, and those queued go. */
+    fun stopSpeaking() {
+        if (!::app.isInitialized) return
+        main.post {
+            if (VoiceHub.robotSpeaking) {
+                VoiceHub.stopVoice(TtsStop.TAP)
+                VoiceLog.add(VoiceEvent.CONV_TTS, LangCode.UNSURE, 0, 1)
+            }
+        }
+    }
+
+    /** The model stays loaded while translations need it (the interpreter, or Translate on). */
+    private fun holdModel() {
+        val want = _state.value.translates && writer != null
+        if (want == holding) return
+        holding = want
+        if (want) {
+            BrainKeeper.hold(MODEL_HOLD)
+            BrainKeeper.prewarm(app)
+        } else BrainKeeper.releaseHold(MODEL_HOLD)
+    }
+
+    /** Transcribe or Interpreter: the same session, another face. The speakers' cap stays the one it started with. */
+    fun setMode(mode: ConvMode) = ctl.post {
+        if (writer == null || _state.value.mode == mode) return@post
+        val s = VoiceHub.settings
+        _state.update { it.copy(mode = mode, speak = ConversationSettings.speak(s, mode), ptt = null, untranslated = null) }
+        engine?.forceLang = null
+        translations?.setTranscript(mode == ConvMode.TRANSCRIBE && _state.value.translate)
+        holdModel()
+        ConversationNotices.changed(app)
+    }
+
+    /** The transcript's Translate toggle: on translates the lines on screen that have none, then each new one. */
+    fun setTranslate(on: Boolean) = ctl.post {
+        if (writer == null) return@post
+        _state.update { it.copy(translate = on) }
+        if (_state.value.mode == ConvMode.TRANSCRIBE) translations?.setTranscript(on, _state.value.lines.takeLast(RECENT_ON))
+        holdModel()
+    }
+
+    /** Speak translations on or off (off stops what is being read). */
+    fun setSpeak(on: Boolean) = ctl.post {
+        _state.update { it.copy(speak = on) }
+        if (!on) stopSpeaking()
+    }
+
+    /** The interpreter: the other person's language (the top half). */
+    fun setTheirs(lang: String) = ctl.post {
+        if (_state.value.pair.has(lang)) _state.update { it.copy(theirs = lang) }
+    }
+
+    /**
+     * The interpreter's push-to-talk: while a side's button is held (or toggled on), what is said takes that side's
+     * language and skips language ID; null goes back to telling languages apart.
+     */
+    fun pushToTalk(lang: String?) {
+        if (!::app.isInitialized) return
+        ctl.post {
+            val l = lang?.takeIf { _state.value.pair.has(it) }
+            engine?.forceLang = l
+            _state.update { it.copy(ptt = l) }
+        }
+    }
+
+    /** "Better translation" under line [i]: Robot's model makes it, first in line. */
+    fun better(i: Int) = ctl.post {
+        val l = _state.value.lines.firstOrNull { it.i == i } ?: return@post
+        translations?.better(l)
+    }
+
+    /** The lines the transcript screen shows now (newest first for the model's work). */
+    fun visible(lines: Set<Int>?) {
+        visibleLines = lines
     }
 
     // ------------------------------------------------------------------ speakers (phase 5.3)
@@ -757,6 +966,10 @@ object ConversationSession {
         ctl.post {
             screenOn = on
             updatePartials()
+            translations?.let { tr ->
+                tr.screenOn = on
+                if (on) tr.poke()
+            }
         }
     }
 
@@ -799,6 +1012,16 @@ object ConversationSession {
             else -> null
         }
         warm = nowWarm
+        // SEVERE: translations by the fast engine only (Robot's model rests); back when it cools.
+        val nowSevere = status >= PowerManager.THERMAL_STATUS_SEVERE
+        if (nowSevere != severe) {
+            severe = nowSevere
+            translations?.let { tr ->
+                tr.hot = nowSevere
+                if (!nowSevere) tr.poke()
+            }
+            if (nowSevere) VoiceLog.add(VoiceEvent.CONV_THERMAL, status, ThermalStep.FAST_ONLY.id)
+        }
         if (hot) {
             if (ConvPause.THERMAL !in pauses) _state.update { it.copy(notice = "Paused: the phone is too hot. It goes on when it cools down.") }
             pauseNow(ConvPause.THERMAL)
@@ -810,6 +1033,13 @@ object ConversationSession {
         updatePartials()
         step?.let { VoiceLog.add(VoiceEvent.CONV_THERMAL, status, it.id) }
     }
+
+    /** The model hold's token (BrainKeeper.hold). */
+    private const val MODEL_HOLD = "conversation"
+    /** A transcript line's translation is read aloud only this soon after it was said (seconds). */
+    private const val SPEAK_FRESH_S = 30.0
+    /** Translate turned on during a session also translates this many of the latest lines. */
+    private const val RECENT_ON = 20
 
     /** "Open" in the notification or the tile while one runs: the transcript screen. */
     fun openScreen(ctx: Context) {

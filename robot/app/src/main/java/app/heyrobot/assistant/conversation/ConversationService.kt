@@ -139,9 +139,9 @@ class ConversationService : Service() {
          * Starts a session from something on screen (the transcript screen, the panel): Android allows a microphone
          * service then. False if it refused.
          */
-        fun start(ctx: Context, entry: ConvEntry, resumeId: String? = null): Boolean = try {
+        fun start(ctx: Context, entry: ConvEntry, resumeId: String? = null, mode: ConvMode = ConvMode.TRANSCRIBE): Boolean = try {
             val i = Intent(ctx, ConversationService::class.java).setAction(if (resumeId != null) ACTION_RESUME else ACTION_START)
-                .putExtra(EXTRA_MODE, ConvMode.TRANSCRIBE.name).putExtra(Transcripts.EXTRA_ENTRY, entry.name)
+                .putExtra(EXTRA_MODE, mode.name).putExtra(Transcripts.EXTRA_ENTRY, entry.name)
             resumeId?.let { i.putExtra(Transcripts.EXTRA_ID, it) }
             ctx.startForegroundService(i)
             true

@@ -356,16 +356,21 @@ class ProcessIsolationTest {
     }
 
     /**
-     * 0.5.0, conversation mode (docs/conversation-mode.md 8): transcripts never reach a model, a helper or the network in
-     * this phase; the audio stays in memory (clips you pick are read, never written); the session is never started by
-     * Robot on its own (not sticky, not from boot); deleting transcripts tells the voice process.
+     * 0.5.0, conversation mode (docs/conversation-mode.md 8): a transcript reaches Robot's model only through the one-shot
+     * client, from the session's translations (5.4) and Robot's own summary (5.6); a helper only behind the consent card
+     * (5.6); never the network otherwise. The audio stays in memory (clips you pick are read, never written); the session
+     * is never started by Robot on its own (not sticky, not from boot); deleting transcripts tells the voice process.
      */
     @Test fun conversationModeStaysOnThePhone() {
         val conv = ours.filterKeys { it.startsWith("app/assistant/conversation/") || it == "voice/voice/ConversationEngine.kt" ||
             it == "core/core/TranscriptStore.kt" || it == "core/core/TranscriptionCheck.kt" || it == "core/core/ConversationCapture.kt" ||
             it == "app/sys/Transcripts.kt" || it == "app/ui/TranscriptsScreen.kt" }
         assertTrue(conv.keys.toString(), conv.size >= 10)
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bClaude(Link|Session|Client)\b|\bBrain(Client|Keeper|Link)\b|\bINTERNET\b|\bjava\.net\b"""), conv))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bClaude(Link|Session|Client)\b|\bBrainClient\b|\bINTERNET\b|\bjava\.net\b"""), conv))
+        // Robot's model: the session holds it loaded; translations (and summaries) ask it through the one-shot client only.
+        assertEquals(listOf("app/assistant/conversation/ConversationSession.kt", "app/assistant/conversation/ConversationTranslations.kt"),
+            usersOf(Regex("""\bBrain(Keeper|Link|OneShots)\b"""), conv))
+        assertEquals(listOf("app/assistant/conversation/ConversationTranslations.kt"), usersOf(Regex("""\bBrainOneShots\b"""), conv))
         // The clip reader reads what you picked; nothing in conversation mode writes audio.
         assertEquals(emptyList<String>(), usersOf(Regex("""openOutputStream|FileOutputStream|MediaMuxer|MediaRecorder|AudioRecord\b"""),
             conv.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))
