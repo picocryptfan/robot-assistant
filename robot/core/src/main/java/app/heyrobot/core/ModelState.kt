@@ -6,6 +6,30 @@ import java.util.Locale
 // tell you, and whether a download or import may start; and which model the assistant loads (ModelChoice). ModelStore
 // (app) gathers the facts from the phone; this decides.
 
+/**
+ * What kind of model file it is, by its first bytes (never its name), and so which engine runs it (0.4.4): LiteRT-LM
+ * (Robot's built-in models, and your own .litertlm) or llama.cpp (your own .gguf, on the CPU). [id] is what
+ * BrainMsg.Load carries to :brain.
+ */
+enum class ModelFormat(val id: String, val title: String, val engine: String) {
+    LITERT_LM("litertlm", "LiteRT-LM", "LiteRT-LM"),
+    GGUF("gguf", "GGUF", "llama.cpp");
+
+    companion object {
+        fun of(id: String?): ModelFormat? = entries.firstOrNull { it.id == id }
+
+        /** By the file's magic: "LITERTLM" or "GGUF" at its start; null for anything else. */
+        fun sniff(head: ByteArray): ModelFormat? {
+            val s = String(head, 0, minOf(head.size, 8), Charsets.ISO_8859_1)
+            return when {
+                s.startsWith(LiteRtLmCheck.MAGIC) -> LITERT_LM
+                s.startsWith(GgufCheck.MAGIC) -> GGUF
+                else -> null
+            }
+        }
+    }
+}
+
 /** Where a model runs. [id] is what BrainMsg.Load carries to :brain. */
 enum class ModelBackend(val id: String, val title: String) {
     /** The Tensor G5 TPU, through LiteRT-LM's NPU backend. */
@@ -20,9 +44,9 @@ enum class ModelBackend(val id: String, val title: String) {
 
 /**
  * The models Robot can run (Settings › Model). The three built-in ones download from Hugging Face only when you ask,
- * pinned by commit, size and SHA-256, and the hash is checked before a file is ever loaded. [OWN] is a .litertlm file you
- * import; Robot checks what is inside it (LiteRtLmCheck), never its name. [FAST] is the model of 0.4.0, byte for byte,
- * and the default.
+ * pinned by commit, size and SHA-256, and the hash is checked before a file is ever loaded. [OWN] is a .litertlm or (0.4.4)
+ * .gguf file you import; Robot checks what is inside it (LiteRtLmCheck, GgufCheck), never its name. [FAST] is the model
+ * of 0.4.0, byte for byte, and the default.
  *
  * No Gemma 4 E4B build for the Tensor TPU exists (the 0.4.1 research: Google publishes TPU builds of E2B only, and the one
  * "E4B Tensor G5" file on Hugging Face is a generic CPU export renamed), so both E4B entries run on the CPU. A future
@@ -90,8 +114,9 @@ enum class BrainModel(
         commit = "a4eecccd3b0ba1777660180cda60a396eedcb8aa", licence = "Apache-2.0", fromGoogle = false,
     ),
     OWN(
-        id = "own", title = "Your own model file", modelName = "A .litertlm file you picked",
-        // A fixed name: the picked file's own name is never a path (nor a reason to trust it).
+        id = "own", title = "Your own model file", modelName = "A .litertlm or .gguf file you picked",
+        // A fixed name: the picked file's own name is never a path (nor a reason to trust it). A GGUF file is kept as
+        // ModelFiles.OWN_GGUF instead (its contents decide which, after the copy).
         file = "own_model.litertlm", url = null, bytes = -1, sha256 = null,
         backend = ModelBackend.CPU, contextTokens = 4096, cacheBytes = -1, memoryBytes = -1,
         publisher = "you", repo = null, commit = null, licence = "the file's own", fromGoogle = false,
@@ -109,7 +134,8 @@ enum class BrainModel(
             "against 3.5 W). Sees photos, more slowly."
         UNCENSORED -> "Like Smarter: about 8 tokens a second, about 21 s before the first word of a new conversation, " +
             "about 4 GB of memory and more battery."
-        OWN -> "Runs on the CPU, unless Robot's check proves the file was compiled for this phone's TPU and you allow that."
+        OWN -> "Runs on the CPU (a .gguf with llama.cpp), unless Robot's check proves a .litertlm was compiled for this " +
+            "phone's TPU and you allow that."
     }
 
     /** What it is, in plain words. */
@@ -122,8 +148,9 @@ enum class BrainModel(
             "say. Its maker spot-checked it but ran no benchmark, and it may still refuse " +
             "now and then; the publisher asks that it be used for research and personal experimentation, says you own its outputs, " +
             "and says Google's Gemma Prohibited Use Policy still applies."
-        OWN -> "Robot copies the file into its own storage, shows its size and SHA-256, and checks what is inside before " +
-            "it can be chosen. Robot is written for Gemma 4: another model may answer oddly and tools may not work."
+        OWN -> "A LiteRT-LM (.litertlm) or GGUF (.gguf) file. Robot copies it into its own storage, shows its size and " +
+            "SHA-256, and checks what is inside before it can be chosen. Robot is written for Gemma 4: another model may " +
+            "answer oddly and actions may not work."
     }
 
     companion object {
@@ -152,6 +179,12 @@ object ModelFiles {
     /** Your own file's record (core OwnModel), written by the main app after the check. */
     const val OWN_RECORD = "own_model.json"
 
+    /** Your own file when it is a GGUF file (0.4.4); a LiteRT-LM file keeps BrainModel.OWN.file. */
+    const val OWN_GGUF = "own_model.gguf"
+
+    /** Your own file's name in Robot's storage for its [format]. */
+    fun ownFile(format: ModelFormat): String = if (format == ModelFormat.GGUF) OWN_GGUF else BrainModel.OWN.file
+
     /** A file's size and modification time: what the verified marks and your own file's record keep of the file checked. */
     fun fingerprint(bytes: Long, modified: Long): String = "$bytes|$modified"
 
@@ -161,10 +194,13 @@ object ModelFiles {
     /** The CPU cache of a file of [bytes], about (the measured E4B ratio, 2.54 GB for 3.66 GB, rounded up). */
     fun cacheEstimate(bytes: Long): Long = (bytes.coerceAtLeast(0) / 4) * 3
 
-    /** What a model needs free before its download or import: the file, its first-load cache and the headroom. */
-    fun needBytes(m: BrainModel, fileBytes: Long = m.bytes): Long {
+    /**
+     * What a model needs free before its download or import: the file, its first-load cache and the headroom. [gguf]: your
+     * own file is a GGUF file, which llama.cpp memory-maps without writing a cache.
+     */
+    fun needBytes(m: BrainModel, fileBytes: Long = m.bytes, gguf: Boolean = false): Long {
         val file = fileBytes.coerceAtLeast(0)
-        val cache = if (m == BrainModel.OWN) cacheEstimate(file) else m.cacheBytes.coerceAtLeast(0)
+        val cache = if (m == BrainModel.OWN) (if (gguf) 0 else cacheEstimate(file)) else m.cacheBytes.coerceAtLeast(0)
         return file + cache + BrainModel.HEADROOM
     }
 }
@@ -355,34 +391,45 @@ enum class ModelAvailability {
     UNUSABLE,
 }
 
-/** What :brain is asked to load: the file, where it runs, its context, and the file's fingerprint (size and time). */
-data class LoadPlan(val model: BrainModel, val path: String, val backend: ModelBackend, val contextTokens: Int, val fingerprint: String)
+/**
+ * What :brain is asked to load: the file, where it runs, its context, the file's fingerprint (size and time), and its
+ * kind (0.4.4: which engine runs it).
+ */
+data class LoadPlan(
+    val model: BrainModel, val path: String, val backend: ModelBackend, val contextTokens: Int, val fingerprint: String,
+    val format: ModelFormat = ModelFormat.LITERT_LM,
+)
 
 /**
  * :brain's own say before it loads a model, whatever the assistant asked for (0.4.1): it reads the app's own records
  * again rather than trust the request. A built-in model loads only where it runs, and only from the file whose SHA-256
  * the app checked (its verified mark matches the file now); your own file only as the app recorded it after its check,
- * unchanged since, and on the TPU only once you allowed it there. (The content check then reads the file's header.)
+ * unchanged since, and on the TPU only once you allowed it there; 0.4.4: and only by the engine for its kind of file (a
+ * GGUF file by llama.cpp, on the CPU). (The content check then reads the file's header.)
  */
 object LoadCheck {
     const val CHANGED = "The model file changed since Robot checked it. Open the Robot app › Model to check it again."
 
     /**
-     * Null when [m] may load on [backend]; else why not, in plain words. [fingerprintNow]: the file's now
-     * ([ModelFiles.fingerprint]); [mark]: the built-in model's verified mark; [ownRecord]: your own file's record.
+     * Null when [m] may load on [backend] as a file of [format]; else why not, in plain words. [fingerprintNow]: the file's
+     * now ([ModelFiles.fingerprint]); [mark]: the built-in model's verified mark; [ownRecord]: your own file's record.
      */
-    fun refuse(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?): String? {
+    fun refuse(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?,
+        format: ModelFormat = ModelFormat.LITERT_LM): String? {
         if (m.builtIn) {
+            if (format != ModelFormat.LITERT_LM) return "“${m.title}” is a LiteRT-LM file."
             if (backend != m.backend) return "“${m.title}” runs on the ${m.backend.title} only."
             return if (mark?.trim() == "${m.sha256}|$fingerprintNow") null else CHANGED
         }
         val own = OwnModel.fromJson(ownRecord) ?: return CHANGED
         if (own.fingerprint != fingerprintNow) return CHANGED
+        // A record of the other kind of file: whatever is there now wasn't checked as what it is.
+        if (own.format != format) return CHANGED
         val where = own.backend
         return when {
             where == backend -> null
-            where == null && own.report.tensorG5Build -> "Your model file waits for you to allow the TPU in the Robot app › Model."
-            where == null -> own.report.unusable ?: "Robot can't run your model file on this phone."
+            where == null && own.tensorG5Build -> "Your model file waits for you to allow the TPU in the Robot app › Model."
+            where == null -> own.unusable ?: "Robot can't run your model file on this phone."
             else -> "Your model file runs on the ${where.title}, not the ${backend.title}."
         }
     }
