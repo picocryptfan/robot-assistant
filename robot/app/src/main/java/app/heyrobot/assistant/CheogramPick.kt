@@ -25,6 +25,7 @@ import androidx.lifecycle.lifecycleScope
 import app.heyrobot.core.Addresses
 import app.heyrobot.core.CheogramPick
 import app.heyrobot.core.CheogramRoute
+import app.heyrobot.core.ContactMatcher
 import app.heyrobot.core.People
 import app.heyrobot.core.PeopleEdit
 import app.heyrobot.core.PickOutcome
@@ -121,7 +122,8 @@ class CheogramPickActivity : ComponentActivity() {
                 // Already known by the name you said: nothing to ask (a missing account is added, quietly).
                 val known = withContext(Dispatchers.IO) {
                     PeopleFiles.store(applicationContext).list().any { p ->
-                        p.confirmed && p.xmpp.any { it.jid.equals(pick.jid, ignoreCase = true) } && (listOf(p.name) + p.aliases).any { People.sameName(it, spoken) }
+                        p.confirmed && p.xmpp.any { it.jid.equals(pick.jid, ignoreCase = true) } &&
+                            (People.sameName(p.name, People.aliasName(spoken)) || p.aliases.any { ContactMatcher.sameAlias(it, spoken) })
                     }
                 }
                 if (known) {
@@ -180,8 +182,9 @@ class CheogramPickActivity : ComponentActivity() {
         when (val s = step) {
             Step.Waiting -> {}
             is Step.Remember -> {
-                val asked = TextCommand.display(spoken)
-                val same = spoken.isEmpty() || People.sameName(spoken, s.pick.name)
+                // "my mom" is kept (and shown) as "mom".
+                val asked = TextCommand.display(People.aliasName(spoken))
+                val same = spoken.isEmpty() || People.sameName(People.aliasName(spoken), s.pick.name)
                 AlertDialog(
                     onDismissRequest = { finish() },
                     properties = props,

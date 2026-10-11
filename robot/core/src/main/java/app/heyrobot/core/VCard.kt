@@ -263,9 +263,9 @@ object VCard {
         return VCardFile(entries, skipped)
     }
 
-    /** An imported card as a person of People. */
+    /** An imported card as a person of People: its nicknames stay nicknames (only names you give become aliases). */
     fun person(e: VCardEntry, id: String, now: Long, source: PersonSource = PersonSource.VCARD): Person =
-        Person(id, e.name, e.nicknames, e.phones, e.emails, e.xmpp, source = source, confirmed = true, updatedAt = now)
+        Person(id, e.name, nicknames = e.nicknames, phones = e.phones, emails = e.emails, xmpp = e.xmpp, source = source, confirmed = true, updatedAt = now)
 
     // ------------------------------------------------------------------ writing
 
@@ -299,7 +299,7 @@ object VCard {
     }
 
     /**
-     * People as one vCard 3.0 file (UTF-8, CRLF): FN and N, NICKNAME (what you call them), TEL, EMAIL, and each XMPP
+     * People as one vCard 3.0 file (UTF-8, CRLF): FN and N, NICKNAME (what you call them and their other names), TEL, EMAIL, and each XMPP
      * address as IMPP (with the Cheogram account in Robot's own parameter) and as X-JABBER, which the phone's Contacts
      * app reads.
      */
@@ -309,7 +309,8 @@ object VCard {
             append(fold("VERSION:3.0"))
             append(fold("FN:" + escape(p.name)))
             append(fold("N:;" + escape(p.name) + ";;;"))
-            if (p.aliases.isNotEmpty()) append(fold("NICKNAME:" + p.aliases.joinToString(",") { escape(it) }))
+            val nick = p.aliases + p.nicknames
+            if (nick.isNotEmpty()) append(fold("NICKNAME:" + nick.joinToString(",") { escape(it) }))
             for (t in p.phones) append(fold("TEL;TYPE=" + telType(t.kind) + ":" + escape(t.number)))
             for (e in p.emails) append(fold("EMAIL;TYPE=INTERNET:" + escape(e)))
             for (x in p.xmpp) {

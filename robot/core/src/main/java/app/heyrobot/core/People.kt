@@ -69,6 +69,14 @@ data class ContactMatch(val id: String, val name: String, val kind: NameMatch, v
 object ContactMatcher {
     /** Words that say whose, not who ("text my mom"). */
     private val FILLER = setOf("my", "the", "to")
+    /** Possessives that start what you call someone, in English and French ("my mom", "ma mère"): left out of aliases. */
+    val POSSESSIVE = setOf("my", "mon", "ma", "mes")
+
+    /** An alias's words: no filler, and no possessive first word when more follow ("ma mère" is "mere"). */
+    fun aliasWords(s: String): List<String> = words(s).filter { it !in FILLER }.let { w -> if (w.size > 1 && w[0] in POSSESSIVE) w.drop(1) else w }
+
+    /** Two aliases (or a name asked and an alias) are the same, case, accents and possessives aside. */
+    fun sameAlias(a: String, b: String): Boolean = aliasWords(a).let { it.isNotEmpty() && it == aliasWords(b) }
 
     /** Lower case, accents off, split on anything that isn't a letter or digit. */
     fun words(s: String): List<String> =
@@ -108,12 +116,14 @@ object ContactMatcher {
 
     /**
      * Every contact that matches by name, nickname or alias, best kind first, then shorter names, then by name. An alias
-     * said exactly is [NameMatch.ALIAS]; otherwise an alias counts like a nickname.
+     * said exactly (a possessive aside: "ma mère" for "mère") is [NameMatch.ALIAS] when [aliasOk] allows it for that
+     * contact (someone the asking tool can reach), else EXACT; otherwise an alias counts like a nickname.
      */
-    fun rank(query: String, contacts: List<ContactName>): List<ContactMatch> = contacts
+    fun rank(query: String, contacts: List<ContactName>, aliasOk: (ContactName) -> Boolean = { true }): List<ContactMatch> = contacts
         .mapNotNull { c ->
-            val k = if (c.aliases.any { kind(query, it) == NameMatch.EXACT }) NameMatch.ALIAS
-            else (listOf(c.name) + c.nicknames + c.aliases).mapNotNull { kind(query, it) }.minOrNull()
+            val said = c.aliases.any { sameAlias(query, it) }
+            val k = if (said && aliasOk(c)) NameMatch.ALIAS
+            else (listOf(c.name) + c.nicknames + c.aliases).mapNotNull { kind(query, it) }.plus(if (said) listOf(NameMatch.EXACT) else emptyList()).minOrNull()
             k?.let { ContactMatch(c.id, c.name, it, c.learned) }
         }
         .sortedWith(compareBy<ContactMatch> { it.kind.ordinal }.thenBy { it.name.length }.thenBy { it.name.lowercase(Locale.ROOT) })
@@ -126,8 +136,8 @@ object ContactMatcher {
      * come first, and learned ones that match at least as well follow only as more choices on the card. Learned names
      * stand alone only when no one confirmed matches.
      */
-    fun best(query: String, contacts: List<ContactName>, max: Int = 5): List<ContactMatch> {
-        val all = rank(query, contacts)
+    fun best(query: String, contacts: List<ContactName>, max: Int = 5, aliasOk: (ContactName) -> Boolean = { true }): List<ContactMatch> {
+        val all = rank(query, contacts, aliasOk)
         val confirmed = all.filter { !it.learned }
         if (confirmed.isEmpty()) {
             val top = all.firstOrNull()?.kind ?: return emptyList()
@@ -232,8 +242,8 @@ object Recipients {
             remember = remember?.takeIf { choices.any { it.remember != null } })
     }
 
-    /** "Always use this for “mom”": the line next to a card's choices (the name as asked). */
-    fun rememberLabel(asked: String): String = "Always use this for “${asked.trim()}”"
+    /** "Always use this for “mom”": the line next to a card's choices (the name as asked, as it would be kept). */
+    fun rememberLabel(asked: String): String = "Always use this for “${People.aliasName(asked)}”"
 
     /** The card's line under "Pick in Cheogram" and "Choose in Cheogram". */
     const val PICK_NOTE = "“Pick in Cheogram” opens Cheogram's contact list, titled “Create shortcut”: nothing goes on your home screen, " +

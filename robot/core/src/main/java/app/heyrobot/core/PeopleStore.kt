@@ -29,7 +29,9 @@ enum class PersonSource(val title: String) {
 }
 
 /**
- * One person. [aliases]: what you call them ("mom", "maman"), each said exactly beating any other match.
+ * One person. [aliases]: what you told Robot you call them ("mom", "maman": typed in Also called, "Remember as" after a
+ * pick, "Always use this for"), each said exactly beating any other match of someone who can be reached that way.
+ * [nicknames]: other names they go by (from a contacts file, or a merge), matched like the phone's nicknames.
  * [preferredText], [preferredEmail]: the place chosen on a card ("Always use this"). [confirmed]: false only for
  * someone learned from a notification you haven't kept, edited or remembered yet: whoever sent the message chose that
  * name, so it never displaces anyone confirmed and a text or an email to them always shows the card first. [systemLookupKey]: set when this entry only adds names or a
@@ -40,6 +42,7 @@ data class Person(
     val id: String,
     val name: String,
     val aliases: List<String> = emptyList(),
+    val nicknames: List<String> = emptyList(),
     val phones: List<ContactPhone> = emptyList(),
     val emails: List<String> = emptyList(),
     val xmpp: List<XmppAddress> = emptyList(),
@@ -62,6 +65,7 @@ object PeopleCodec {
             put("id", p.id)
             put("name", p.name)
             if (p.aliases.isNotEmpty()) put("aliases", JSONArray(p.aliases))
+            if (p.nicknames.isNotEmpty()) put("nicknames", JSONArray(p.nicknames))
             if (p.phones.isNotEmpty()) put("phones", JSONArray().apply {
                 p.phones.forEach { put(JSONObject().put("number", it.number).put("kind", it.kind.name).put("label", it.label)) }
             })
@@ -108,6 +112,7 @@ object PeopleCodec {
             id = id,
             name = o.optString("name"),
             aliases = strings(o.optJSONArray("aliases")),
+            nicknames = strings(o.optJSONArray("nicknames")),
             phones = phones,
             emails = strings(o.optJSONArray("emails")),
             xmpp = xmpp,
@@ -188,12 +193,25 @@ object People {
 
     private fun line(s: String, max: Int): String = ToolCalls.safeTake(s.replace(Regex("\\s+"), " ").trim(), max)
 
+    /**
+     * What you call someone, as kept: one line, without a leading "my", "mon", "ma" or "mes" ("my mom" is "mom", "ma
+     * mère" is "mère"), unless that is all there is ("ma").
+     */
+    fun aliasName(s: String): String {
+        val t = s.replace(Regex("\\s+"), " ").trim()
+        val first = t.substringBefore(' ')
+        return if (t.contains(' ') && ContactMatcher.words(first).singleOrNull() in ContactMatcher.POSSESSIVE) t.substringAfter(' ').trim() else t
+    }
+
     /** Names on one line and not too long, each place once, at most [MAX_EACH] of each. */
     fun clean(p: Person): Person {
         val name = line(p.name, MAX_NAME)
+        val aliases = p.aliases.map { aliasName(line(it, MAX_NAME)) }.filter { it.isNotEmpty() && !sameName(it, name) }
+            .distinctBy { ContactMatcher.aliasWords(it) }.take(MAX_EACH)
         return p.copy(
             name = name,
-            aliases = p.aliases.map { line(it, MAX_NAME) }.filter { it.isNotEmpty() && !sameName(it, name) }
+            aliases = aliases,
+            nicknames = p.nicknames.map { line(it, MAX_NAME) }.filter { n -> n.isNotEmpty() && !sameName(n, name) && aliases.none { sameName(it, n) } }
                 .distinctBy { ContactMatcher.words(it) }.take(MAX_EACH),
             phones = p.phones.map { it.copy(number = line(it.number, 40), label = line(it.label, 40)) }.filter { it.number.isNotEmpty() }
                 .distinctBy { PhoneNumbers.digits(it.number).takeLast(10).ifEmpty { it.number } }.take(MAX_EACH),
@@ -210,11 +228,11 @@ object People {
     fun summary(p: Person): String = listOfNotNull(p.phones.firstOrNull()?.number, p.emails.firstOrNull(), p.xmpp.firstOrNull()?.jid)
         .firstOrNull().orEmpty()
 
-    /** Settings › People's search: name, aliases and places, case and accents aside. */
+    /** Settings › People's search: names and places, case and accents aside. */
     fun matches(p: Person, query: String): Boolean {
         val q = ContactMatcher.words(query)
         if (q.isEmpty()) return true
-        val hay = ContactMatcher.words((listOf(p.name) + p.aliases + p.emails + p.xmpp.map { it.jid } + p.phones.map { it.number }).joinToString(" "))
+        val hay = ContactMatcher.words((listOf(p.name) + p.aliases + p.nicknames + p.emails + p.xmpp.map { it.jid } + p.phones.map { it.number }).joinToString(" "))
         val digits = PhoneNumbers.digits(query)
         return q.all { w -> hay.any { it.startsWith(w) } } || (digits.length >= 3 && p.phones.any { PhoneNumbers.digits(it.number).contains(digits) })
     }
@@ -235,17 +253,19 @@ object PeopleEdit {
         return upsert(list, p.copy(confirmed = true, updatedAt = now))
     }
 
-    /** [p] with [alias] (as said: "mom") unless it is already their name or an alias. */
+    /** [p] with [alias] (as said: "my mom" is kept as "mom") unless it is already their name or an alias. */
     private fun withAlias(p: Person, alias: String?): Person {
-        val a = alias?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { ContactMatcher.words(it).isNotEmpty() } ?: return p
-        if (People.sameName(a, p.name) || p.aliases.any { People.sameName(it, a) }) return p
+        val a = alias?.let(People::aliasName)?.takeIf { ContactMatcher.words(it).isNotEmpty() } ?: return p
+        if (People.sameName(a, p.name) || p.aliases.any { ContactMatcher.sameAlias(it, a) }) return p
         return p.copy(aliases = p.aliases + a)
     }
 
     /** [alias] taken from everyone but [keep]: a name you gave one person means only them from now on. */
     private fun takeAlias(list: List<Person>, alias: String?, keep: String): List<Person> {
         if (alias.isNullOrBlank()) return list
-        return list.map { p -> if (p.id != keep && p.aliases.any { People.sameName(it, alias) }) p.copy(aliases = p.aliases.filter { !People.sameName(it, alias) }) else p }
+        return list.map { p ->
+            if (p.id != keep && p.aliases.any { ContactMatcher.sameAlias(it, alias) }) p.copy(aliases = p.aliases.filter { !ContactMatcher.sameAlias(it, alias) }) else p
+        }
     }
 
     private fun sameJid(a: String, b: String) = a.trim().equals(b.trim(), ignoreCase = true)
@@ -363,7 +383,8 @@ object PeopleEdit {
             landed += old.id
             val merged = People.clean(old.copy(
                 name = if (old.confirmed) old.name else inc.name,
-                aliases = old.aliases + inc.aliases + (if (old.confirmed && !People.sameName(old.name, inc.name)) listOf(inc.name) else emptyList()),
+                aliases = old.aliases + inc.aliases,
+                nicknames = old.nicknames + inc.nicknames + (if (old.confirmed && !People.sameName(old.name, inc.name)) listOf(inc.name) else emptyList()),
                 phones = old.phones + inc.phones,
                 emails = old.emails + inc.emails,
                 xmpp = old.xmpp + inc.xmpp.filter { x -> old.xmpp.none { sameJid(it.jid, x.jid) } },
@@ -378,6 +399,12 @@ object PeopleEdit {
     }
 }
 
+/** Who can be reached by a text ([text]; XMPP only with Cheogram, [xmppOk]) or an email ([email]), for AddressBook.best. */
+object Reachable {
+    fun text(xmppOk: Boolean): (Person) -> Boolean = { p -> p.phones.any { Addresses.isPhone(it.number) } || (xmppOk && p.xmpp.any { Addresses.isJid(it.jid) }) }
+    val email: (Person) -> Boolean = { p -> p.emails.any(Addresses::isAddress) }
+}
+
 /**
  * The phone's contacts and Robot's People as one address book, for ranking a name and finding where a text or email
  * goes. A People entry that only adds to a phone contact ([Person.systemLookupKey]) joins that contact (its aliases and
@@ -390,11 +417,17 @@ class AddressBook(system: List<ContactName>, val people: List<Person>) {
     private val joined: Set<String> = linked.values.map { it.id }.toSet()
     private val own: Map<String, Person> = people.filter { it.id !in joined }.associateBy { ContactIds.people(it.id) }
 
-    /** Every name to rank: the phone's contacts (with the aliases a People entry adds) and People of their own. */
-    val names: List<ContactName> = system.map { c -> linked[c.id]?.let { p -> c.copy(aliases = c.aliases + p.aliases) } ?: c } +
-        own.map { (ref, p) -> ContactName(ref, p.name, aliases = p.aliases, learned = !p.confirmed) }
+    /** Every name to rank: the phone's contacts (with the names a People entry adds) and People of their own. */
+    val names: List<ContactName> = system.map { c -> linked[c.id]?.let { p -> c.copy(nicknames = c.nicknames + p.nicknames, aliases = c.aliases + p.aliases) } ?: c } +
+        own.map { (ref, p) -> ContactName(ref, p.name, nicknames = p.nicknames, aliases = p.aliases, learned = !p.confirmed) }
 
-    fun best(query: String, max: Int = 5): List<ContactMatch> = ContactMatcher.best(query, names, max)
+    /**
+     * The contacts [query] means. [reach]: whether a person can be reached by the tool asking (Reachable): an alias
+     * outranks other names only for someone who can, so "bob" for a texting-only person never hides the phone's Bob with
+     * an email from "email bob"; for anyone else it counts like a nickname.
+     */
+    fun best(query: String, max: Int = 5, reach: ((Person) -> Boolean)? = null): List<ContactMatch> =
+        ContactMatcher.best(query, names, max) { c -> reach == null || person(c.id)?.let(reach) ?: true }
 
     /** The People entry behind [ref]: a person of their own ("r:…"), or the one joined to a phone contact ("s:…"). */
     fun person(ref: String): Person? = own[ref] ?: linked[ref]

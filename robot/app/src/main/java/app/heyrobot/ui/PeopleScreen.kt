@@ -400,7 +400,7 @@ private fun PersonRow(p: Person, onClick: () -> Unit) {
     Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.clickable(onClick = onClick).heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 12.dp)) {
             Text(p.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            if (p.aliases.isNotEmpty()) Text("Also called " + p.aliases.joinToString(", "), style = MaterialTheme.typography.bodyMedium, maxLines = 1,
+            if (p.aliases.isNotEmpty() || p.nicknames.isNotEmpty()) Text("Also called " + (p.aliases + p.nicknames).joinToString(", "), style = MaterialTheme.typography.bodyMedium, maxLines = 1,
                 overflow = TextOverflow.Ellipsis)
             val line = listOfNotNull(People.summary(p).takeIf { it.isNotEmpty() }, if (!p.confirmed) "seen in Cheogram" else null).joinToString(" · ")
             if (line.isNotEmpty()) Text(line, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
@@ -415,20 +415,25 @@ private fun PersonRow(p: Person, onClick: () -> Unit) {
 private data class Draft(
     val name: String = "",
     val aliases: String = "",
+    val nicknames: String = "",
     val phones: List<Pair<PhoneKind, String>> = emptyList(),
     val emails: List<String> = emptyList(),
     /** Address and Cheogram account. */
     val xmpp: List<Pair<String, String>> = emptyList(),
 ) {
-    fun aliasList(): List<String> = aliases.split(',', ';', '\n').map { it.trim() }.filter { it.isNotEmpty() }
+    fun aliasList(): List<String> = split(aliases)
+    fun nicknameList(): List<String> = split(nicknames)
 
     companion object {
-        fun of(p: Person) = Draft(p.name, p.aliases.joinToString(", "), p.phones.map { it.kind to it.number }, p.emails, p.xmpp.map { it.jid to it.account.orEmpty() })
+        private fun split(s: String): List<String> = s.split(',', ';', '\n').map { it.trim() }.filter { it.isNotEmpty() }
+
+        fun of(p: Person) = Draft(p.name, p.aliases.joinToString(", "), p.nicknames.joinToString(", "), p.phones.map { it.kind to it.number }, p.emails,
+            p.xmpp.map { it.jid to it.account.orEmpty() })
 
         /** Survives a rotation or the process being killed (rememberSaveable). */
         val Saver: Saver<Draft, String> = Saver(
             save = { d ->
-                JSONObject().put("name", d.name).put("aliases", d.aliases)
+                JSONObject().put("name", d.name).put("aliases", d.aliases).put("nicknames", d.nicknames)
                     .put("phones", JSONArray(d.phones.map { JSONArray(listOf(it.first.name, it.second)) }))
                     .put("emails", JSONArray(d.emails))
                     .put("xmpp", JSONArray(d.xmpp.map { JSONArray(listOf(it.first, it.second)) })).toString()
@@ -436,7 +441,7 @@ private data class Draft(
             restore = { v ->
                 val o = JSONObject(v)
                 fun pairs(k: String) = o.optJSONArray(k)?.let { a -> (0 until a.length()).map { i -> a.getJSONArray(i).let { it.getString(0) to it.getString(1) } } }.orEmpty()
-                Draft(o.optString("name"), o.optString("aliases"),
+                Draft(o.optString("name"), o.optString("aliases"), o.optString("nicknames"),
                     pairs("phones").map { (k, n) -> (PhoneKind.entries.firstOrNull { it.name == k } ?: PhoneKind.OTHER) to n },
                     o.optJSONArray("emails")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
                     pairs("xmpp"))
@@ -497,8 +502,9 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
         // A remembered choice that was removed here is forgotten.
         val text = o?.preferredText?.takeIf { pref -> phones.any { Preferred.same(it.number, pref) } || xmpp.any { Preferred.same(it.jid, pref) } }
         val mail = o?.preferredEmail?.takeIf { pref -> emails.any { it.equals(pref, ignoreCase = true) } }
-        return People.clean(Person(o?.id ?: pid ?: PeopleStore.newId(), draft.name, draft.aliasList(), phones, emails, xmpp, text, mail,
-            o?.source ?: PersonSource.MANUAL, confirmed = true, systemLookupKey = o?.systemLookupKey, updatedAt = now))
+        return People.clean(Person(o?.id ?: pid ?: PeopleStore.newId(), draft.name, aliases = draft.aliasList(), nicknames = draft.nicknameList(),
+            phones = phones, emails = emails, xmpp = xmpp, preferredText = text, preferredEmail = mail, source = o?.source ?: PersonSource.MANUAL,
+            confirmed = true, systemLookupKey = o?.systemLookupKey, updatedAt = now))
     }
 
     fun save(then: () -> Unit = {}) {
@@ -557,6 +563,11 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
             OutlinedTextField(
                 value = draft.aliases, onValueChange = { draft = draft.copy(aliases = it) }, singleLine = true, label = { Text("Also called") }, enabled = loaded,
                 supportingText = { Text("What you call them, separated by commas: mom, maman. Said exactly, it means this person.") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = draft.nicknames, onValueChange = { draft = draft.copy(nicknames = it) }, singleLine = true, label = { Text("Nicknames") }, enabled = loaded,
+                supportingText = { Text("Other names they go by, as in a contacts file. They match like any name, not ahead of others.") },
                 modifier = Modifier.fillMaxWidth(),
             )
             Text("Numbers", style = MaterialTheme.typography.titleSmall)

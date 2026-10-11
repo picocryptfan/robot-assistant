@@ -497,8 +497,13 @@ Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
 - `send_text`, `draft_email` and `lookup_contact` search People together with the phone's contacts, and People alone
   when Robot may not read the contacts (so People also work under GrapheneOS's Contact Scopes). A contact's id says
   where it comes from (`s:12` for the phone's, `r:<id>` for People), so the two lists never mix.
-- **Also called.** What you say ("mom", "maman") is an alias: said exactly, it beats every other match, even a phone
-  contact literally named "Mom". Case and accents don't matter ("Hélène" is "helene").
+- **Also called.** What you told Robot you call someone ("mom", "maman": typed in Also called, "Remember as…" after a
+  pick, or "Always use this for…") is an alias. Said exactly (a leading "my", "mon", "ma" or "mes" aside, which is
+  never kept), it beats every other match, even a phone contact literally named "Mom", but only when that person can
+  be reached by what you asked: a number or an XMPP address (with Cheogram) for a text, an email address for an
+  email. Otherwise it counts like any other name, so "bob" for someone you only text in Cheogram doesn't hide the
+  phone's Bob from "email bob". Nicknames from a contacts file, and names kept from a merge, are nicknames: they match
+  like the phone's nicknames, never ahead of others. Case and accents don't matter ("Hélène" is "helene").
 - **Remembered choices.** A place chosen with "Always use this for “mom”" is the only one offered for that person while
   it is still theirs; then one exact name and one place can go without a card under "Just do it". Settings shows it
   and can forget it.
@@ -527,7 +532,7 @@ Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
 3. **Import a contacts file (.vcf).** Settings › People › Import, through the system file picker (no storage
    permission). The reader (`core/VCard.kt`) takes vCard 2.1, 3.0 and 4.0: folded lines, item groups (`item1.EMAIL`,
    with Apple-style labels), escapes, quoted-printable in any charset, several cards per file, files in UTF-8 or
-   Windows-1252. It keeps names (`FN`, else `N`), nicknames (`NICKNAME`, and the Contacts app's own export of them),
+   Windows-1252. It keeps names (`FN`, else `N`), nicknames (`NICKNAME`, and the Contacts app's own export of them; kept as nicknames),
    numbers (`TEL`, `tel:` URIs too), emails and XMPP addresses (`IMPP:xmpp:`, `X-JABBER`), and skips everything else
    (postal addresses, birthdays, notes, photos, categories). A preview gives the counts, how many are new and how many
    people already there (the same number, email or XMPP address) get something new. From Proton Mail: on the web,

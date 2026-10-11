@@ -35,6 +35,7 @@ import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RLog
 import app.heyrobot.core.Reach
+import app.heyrobot.core.Reachable
 import app.heyrobot.core.Read
 import app.heyrobot.core.Recipients
 import app.heyrobot.core.RobotSettings
@@ -244,7 +245,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         }
         // People, and the phone's contacts when Robot may read them.
         val book = PeopleFiles.book(ctx)
-        val all = book.best(to, max = Int.MAX_VALUE)
+        val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.text(xmppOk = via == TextVia.CHEOGRAM))
         if (all.isEmpty()) {
             if (!Contacts.granted(ctx)) return needContacts()
             // Not in the contacts: with Cheogram, the person may be in its own roster (the card offers its list).
@@ -274,7 +275,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         // An address the model wrote: the card always shows it.
         if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)), mustAsk = true)
         val book = PeopleFiles.book(ctx)
-        val all = book.best(to, max = Int.MAX_VALUE)
+        val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.email)
         if (all.isEmpty()) return if (Contacts.granted(ctx)) Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.") else needContacts()
         val matches = all.take(Recipients.MAX_PEOPLE)
         val options = Recipients.forEmail(book.cards(matches) { Contacts.cards(ctx, it) }).map { r ->

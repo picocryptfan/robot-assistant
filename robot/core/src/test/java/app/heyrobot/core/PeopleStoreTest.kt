@@ -187,11 +187,13 @@ class PeopleStoreTest {
         assertEquals(listOf("p2", "p1", "i3", null), m.landed)
         val b = m.people.first { it.id == "p2" }
         assertEquals("Bob Tremblay", b.name)
-        assertEquals(listOf("Robert Tremblay"), b.aliases)
+        assertEquals(listOf("Robert Tremblay"), b.nicknames)
+        assertEquals(emptyList<String>(), b.aliases)
         assertEquals(2, b.phones.size)
         val mm = m.people.first { it.id == "p1" }
         assertEquals("Mom Martin", mm.name)
-        assertTrue(mm.aliases.containsAll(listOf("Mom", "Maman")))
+        assertEquals(listOf("Mom"), mm.aliases)
+        assertEquals(listOf("Maman"), mm.nicknames)
         assertEquals("Zoé Lefèvre", m.people.last().name)
         // The same file twice changes nothing more.
         val again = PeopleEdit.merge(m.people, incoming, 51)
@@ -240,6 +242,56 @@ class PeopleStoreTest {
         assertEquals(1, calls)
         book.cards(book.best("mom")) { calls++; emptyList() }
         assertEquals(1, calls)
+    }
+
+    @Test fun anAliasWinsOnlyForSomeoneTheToolCanReach() {
+        // Review 0.4.0 #2A: you picked "Bob Jones" in Cheogram for "bob" (XMPP only); the phone's Bob has an email.
+        val jones = Person("j", "Bob Jones", aliases = listOf("bob"), xmpp = listOf(XmppAddress("bob@jabber.example.org")))
+        val phoneBob = listOf(ContactName(ContactIds.system(3), "Bob"))
+        val book = AddressBook(phoneBob, listOf(jones))
+        // For a text (Cheogram), Bob Jones can be reached: the alias wins.
+        assertEquals(listOf(ContactIds.people("j") to NameMatch.ALIAS), book.best("bob", reach = Reachable.text(xmppOk = true)).map { it.id to it.kind })
+        // For an email he can't: the alias counts like any name, so the phone's Bob is found too.
+        val mail = book.best("bob", reach = Reachable.email)
+        assertEquals(setOf(ContactIds.system(3), ContactIds.people("j")), mail.map { it.id }.toSet())
+        assertTrue(mail.all { it.kind == NameMatch.EXACT })
+        // Nor by the SMS app (it can't text an XMPP address).
+        assertTrue(book.best("bob", reach = Reachable.text(xmppOk = false)).none { it.kind == NameMatch.ALIAS })
+        // An email-only person with an alias doesn't hide the phone's numbers from "text bob".
+        val proton = AddressBook(phoneBob, listOf(Person("p", "Robert Smith", aliases = listOf("Bob"), emails = listOf("bob@proton.me"))))
+        assertEquals(2, proton.best("bob", reach = Reachable.text(xmppOk = true)).size)
+        assertEquals(listOf(ContactIds.people("p")), proton.best("bob", reach = Reachable.email).map { it.id })
+    }
+
+    @Test fun importedNicknamesMatchAtTheirUsualRank() {
+        // Review 0.4.0 #2B: a file's NICKNAME is not a name you gave: the phone contact named exactly "Bob" isn't hidden.
+        val e = VCard.parse("BEGIN:VCARD\nVERSION:3.0\nFN:Robert Smith\nNICKNAME:Bob\nTEL;TYPE=CELL:+15145550101\nEND:VCARD\n").entries.single()
+        val robert = VCard.person(e, "r", 1)
+        assertEquals(listOf("Bob"), robert.nicknames)
+        assertEquals(emptyList<String>(), robert.aliases)
+        val book = AddressBook(listOf(ContactName(ContactIds.system(3), "Bob")), listOf(robert))
+        val m = book.best("bob", reach = Reachable.text(xmppOk = true))
+        assertEquals(setOf(ContactIds.system(3), ContactIds.people("r")), m.map { it.id }.toSet())
+        assertFalse(ContactMatcher.sure(m, 1))
+        // A name kept from a merge is a nickname too.
+        val merged = PeopleEdit.merge(listOf(robert), listOf(Person("x", "Bobby Smith", phones = listOf(ContactPhone("514 555 0101", PhoneKind.MOBILE, "Mobile")))), 2)
+        assertTrue(merged.people.single().aliases.isEmpty())
+    }
+
+    @Test fun possessivesAreLeftOutOfAliases() {
+        // Review 0.4.0 #10: the name asked may be "my mom" (the model's, or Claude's).
+        assertEquals("mom", People.aliasName(" my  mom "))
+        assertEquals("mère", People.aliasName("Ma mère"))
+        assertEquals("parents", People.aliasName("mes parents"))
+        assertEquals("ma", People.aliasName("ma"))
+        assertEquals("Always use this for “mom”", Recipients.rememberLabel("my mom"))
+        val pick = CheogramPick("Maman Martin", "+15145550101@cheogram.com", "me@jmp.chat")
+        val (_, p) = PeopleEdit.rememberPick(emptyList(), "my mom", pick, 1, ids)
+        assertEquals(listOf("mom"), p.aliases)
+        val book = AddressBook(emptyList(), listOf(p.copy(aliases = listOf("mom", "mère"))))
+        for (asked in listOf("mom", "my mom", "Mom", "ma mère", "MÈRE")) assertEquals(asked, NameMatch.ALIAS, book.best(asked).single().kind)
+        // Kept without them when edited, too.
+        assertEquals(listOf("mom"), People.clean(Person("x", "Maman Martin", aliases = listOf("my mom", "mom"))).aliases)
     }
 
     @Test fun aLearnedNameNeverDisplacesSomeoneConfirmed() {
