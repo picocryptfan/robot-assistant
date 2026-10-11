@@ -118,8 +118,8 @@ enum class BrainModel(
         SMARTER -> "Gemma 4 E4B from Google, the larger of the two small Gemma 4 models, run on the CPU: no Tensor TPU " +
             "build of it exists. The first load writes about 2.5 GB of cache next to it."
         UNCENSORED -> "A community build of Gemma 4 E4B with the model's own refusals removed (olekk; not from Google). " +
-            "Robot's own cards and switches still apply: actions that send, delete or go online still ask you first as " +
-            "Settings › Safety & privacy says. Its maker spot-checked it but ran no benchmark, and it may still refuse " +
+            "Robot's own cards and switches still apply: actions still ask you first as Settings › Actions and Safety & privacy " +
+            "say. Its maker spot-checked it but ran no benchmark, and it may still refuse " +
             "now and then; the publisher asks that it be used for research and personal experimentation, and says you own its outputs."
         OWN -> "Robot copies the file into its own storage, shows its size and SHA-256, and checks what is inside before " +
             "it can be chosen. Robot is written for Gemma 4: another model may answer oddly and tools may not work."

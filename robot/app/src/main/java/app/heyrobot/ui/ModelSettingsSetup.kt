@@ -154,7 +154,7 @@ private fun ModelChoiceCard(s: RobotSettings, update: (RobotSettings) -> Unit, s
         if (!snap.ready(chosen) && chosen != BrainModel.FAST) {
             Text("Until “${chosen.title}” is ready, Robot uses Fast.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         }
-        Text("Whichever model answers, actions that send, delete or go online ask first as Settings › Safety & privacy says, " +
+        Text("Whichever model answers, Robot's cards and switches (Settings › Actions, Safety & privacy) decide what asks you first, " +
             "and nothing leaves the phone unless you ask. Questions in a new conversation take longer with the slower models.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
         snap.loaded?.let { Text("In memory now: ${it.title} (${it.modelName}).", style = MaterialTheme.typography.bodySmall, color = muted) }
@@ -291,7 +291,7 @@ private val TPU_RISKS = listOf(
     "Its SHA-256 only proves the file is the one you picked, not that it is safe.",
     "Google's Tensor compiler is a closed beta whose terms forbid sharing what it builds without Google's permission: a TPU build " +
         "not published by Google may have been shared against them.",
-    "Robot's cards and switches still apply: actions that send, delete or go online ask you first as before.",
+    "Robot's cards and switches still apply, as with every model: what asks you first doesn't change.",
 )
 
 /** Model › Voice models: speech recognition, the voice and the fast fallback voice, each downloaded on its own. */
