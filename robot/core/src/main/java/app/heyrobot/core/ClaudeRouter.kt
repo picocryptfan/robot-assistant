@@ -519,6 +519,7 @@ object PreRouter {
         Regex("""\bscores? (of|on|for|in|from) (my|our|his|her|their|your)\b( \w+)?"""),
         Regex("""\bscores? (of|on|for|in|from) (the |a )?(exam|test|quiz|midterm|final|essay|assignment|homework|credit check|sat|act)\b"""),
     )
+    private val CREATIVE = Regex("""\b(story|stories|poem|poems|joke|jokes|song|limerick|haiku|rhyme|riddle|fairy tale)\b""")
     private val SIGNALS: List<Pair<Signal, Regex>> = listOf(
         Signal.REASONING to Regex("""\bexplain (why|how)\b|\bcompare\b|\bstep by step\b|\bpros and cons\b|\bplan (a|my|an|the)\b|\bhelp me (plan|decide)\b|\bshould i\b.*\bor\b"""),
         Signal.WRITING to Regex("""^(please )?(write me|draft)\b|\bwrite me\b|\bwrite (a|an) (poem|story|essay|letter|speech|cover letter)\b"""),
@@ -538,6 +539,8 @@ object PreRouter {
         val rest = EVERYDAY.fold(t) { acc, r -> r.replace(acc, " ") }
         SIGNALS.firstOrNull { it.second.containsMatchIn(rest) }?.let { (signal, _) ->
             if (signal == Signal.CURRENT_INFO && localWeather && ToolGroup.WEATHER in ToolRouter.route(question)) return null
+            // Stories, poems and jokes are Robot's own to write (0.4.0); letters, speeches and essays still go to Claude.
+            if (signal == Signal.WRITING && CREATIVE.containsMatchIn(rest)) return null
             return signal
         }
         return if (t.split(' ').size > LONG_WORDS) Signal.LONG else null

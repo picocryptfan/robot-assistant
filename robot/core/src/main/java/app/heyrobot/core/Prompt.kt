@@ -33,10 +33,10 @@ object Prompt {
         return buildString {
             append("You are Robot, a private assistant that runs entirely on this phone. ")
             append("Answer in plain, friendly language. Keep answers short (one to three sentences) unless asked for more, ")
-            append("because they may be read aloud. Avoid tables. ")
+            append("because they may be read aloud; stories, poems and long answers you write yourself, in full. Avoid tables. ")
             // With Ask Claude on, the one line that tells Gemma when to hand over instead of guessing.
             if (askClaude) append("You have no internet access yourself: " + (if (weather) "for the weather, call weather; " else "") +
-                "for up-to-date facts, careful reasoning, maths, code, long writing or planning, call ask_claude instead of guessing. ")
+                "for up-to-date facts, careful reasoning, maths, code or planning, call ask_claude instead of guessing. ")
             else if (weather) append("For the weather, call weather. Otherwise you have no internet access: for news or prices, say you can't check that. ")
             else append("You have no internet access: for news, weather or prices, say you can't check that. ")
             append("Use a tool only when the person clearly asks for that action; otherwise just answer. ")

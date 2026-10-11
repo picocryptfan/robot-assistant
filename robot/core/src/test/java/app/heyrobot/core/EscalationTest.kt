@@ -13,7 +13,10 @@ class EscalationTest {
         assertEquals(PreRouter.Signal.REASONING, PreRouter.signal("compare the iPhone and the Pixel"))
         assertEquals(PreRouter.Signal.REASONING, PreRouter.signal("walk me through it step by step"))
         assertEquals(PreRouter.Signal.REASONING, PreRouter.signal("help me plan a trip to Japan"))
-        assertEquals(PreRouter.Signal.WRITING, PreRouter.signal("write me a poem about autumn"))
+        // Stories, poems and jokes stay with Robot (0.4.0); a letter or a speech still counts as writing.
+        assertEquals(null, PreRouter.signal("write me a poem about autumn"))
+        assertEquals(null, PreRouter.signal("write a long story about a dragon"))
+        assertEquals(PreRouter.Signal.WRITING, PreRouter.signal("write me a cover letter for a barista job"))
         assertEquals(PreRouter.Signal.WRITING, PreRouter.signal("draft a speech for my sister's wedding"))
         assertEquals(PreRouter.Signal.CODE, PreRouter.signal("how do I reverse a list in Python"))
         assertEquals(PreRouter.Signal.MATH, PreRouter.signal("calculate 17% of 2,340"))

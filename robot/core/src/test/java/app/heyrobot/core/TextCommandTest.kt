@@ -275,6 +275,6 @@ class TextCommandTest {
         assertTrue(s.contains("To text someone, always call send_text with their name, even if they aren't in the phone's contacts."))
         assertFalse(Prompt.system(now, locked = false).contains("send_text"))
         // Still short: it is paid on every rebuild of a conversation that can text.
-        assertTrue(TokenEstimate.text(s) < 290)
+        assertTrue(TokenEstimate.text(s) < 315)
     }
 }
