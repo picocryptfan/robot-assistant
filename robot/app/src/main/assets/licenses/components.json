@@ -1,0 +1,703 @@
+{
+ "format": 1,
+ "robot": {
+  "name": "Robot",
+  "licence": "GPL-3.0-only",
+  "copyright": "Copyright (C) 2026 the Robot authors",
+  "text": "licenses/GPL-3.0.txt",
+  "source": "https://github.com/picocryptfan/robot-gos-assistant",
+  "sourceTag": "https://github.com/picocryptfan/robot-gos-assistant/tree/v{version}",
+  "sourceBundle": "https://github.com/picocryptfan/robot-gos-assistant/releases/download/v{version}/robot-{version}-third-party-sources.tar.gz"
+ },
+ "licences": {
+  "GPL-3.0-only": {
+   "name": "GNU General Public License v3.0 only",
+   "text": "licenses/GPL-3.0.txt",
+   "url": "https://www.gnu.org/licenses/gpl-3.0.html"
+  },
+  "GPL-3.0-or-later": {
+   "name": "GNU General Public License v3.0 or later",
+   "text": "licenses/GPL-3.0.txt",
+   "url": "https://www.gnu.org/licenses/gpl-3.0.html"
+  },
+  "Apache-2.0": {
+   "name": "Apache License 2.0",
+   "text": "licenses/Apache-2.0.txt",
+   "url": "https://www.apache.org/licenses/LICENSE-2.0"
+  },
+  "MIT": {
+   "name": "MIT License",
+   "url": "https://opensource.org/license/mit"
+  },
+  "BSD-2-Clause": {
+   "name": "BSD 2-Clause License",
+   "url": "https://opensource.org/license/bsd-2-clause"
+  },
+  "BSD-3-Clause": {
+   "name": "BSD 3-Clause License",
+   "url": "https://opensource.org/license/bsd-3-clause"
+  },
+  "MPL-2.0": {
+   "name": "Mozilla Public License 2.0",
+   "text": "licenses/MPL-2.0.txt",
+   "url": "https://mozilla.org/MPL/2.0/"
+  },
+  "CC-BY-4.0": {
+   "name": "Creative Commons Attribution 4.0 International",
+   "text": "licenses/CC-BY-4.0.txt",
+   "url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "ODbL-1.0": {
+   "name": "Open Data Commons Open Database License 1.0",
+   "url": "https://opendatacommons.org/licenses/odbl/1-0/"
+  },
+  "EPL-1.0": {
+   "name": "Eclipse Public License 1.0",
+   "url": "https://www.eclipse.org/legal/epl-v10.html"
+  },
+  "JSON": {
+   "name": "The JSON License",
+   "url": "https://www.json.org/license.html"
+  },
+  "LicenseRef-own-file": {
+   "name": "The file's own licence"
+  }
+ },
+ "components": [
+  {
+   "id": "sherpa-onnx",
+   "name": "sherpa-onnx",
+   "version": "1.13.8",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright (c) 2022-2026 Xiaomi Corporation",
+   "url": "https://github.com/k2-fsa/sherpa-onnx",
+   "where": "app",
+   "note": "Wake words, voice activity, speech recognition and text to speech (libsherpa-onnx-jni.so), and its Kotlin API files, copied unchanged."
+  },
+  {
+   "id": "espeak-ng",
+   "name": "espeak-ng",
+   "version": "csukuangfj/espeak-ng at ed530aa1",
+   "licence": "GPL-3.0-or-later",
+   "copyright": "Copyright (C) 2005 to 2013 Jonathan Duddington; Copyright (C) 2013-2017 Reece H. Dunn",
+   "url": "https://github.com/espeak-ng/espeak-ng",
+   "where": "app",
+   "note": "Turns text into phonemes for the Kokoro and Kitten voices: linked into sherpa-onnx's library, with 17 of its English and French data files. Its complete source, and that of the rest of sherpa-onnx's library, is in each release's third-party source bundle (above)."
+  },
+  {
+   "id": "piper-phonemize",
+   "name": "piper-phonemize",
+   "version": "csukuangfj/piper-phonemize at f3ff95af",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2023 Michael Hansen",
+   "url": "https://github.com/rhasspy/piper-phonemize",
+   "where": "app",
+   "text": "licenses/MIT-piper-phonemize.txt",
+   "note": "Linked into sherpa-onnx's library: phonemes for the voices."
+  },
+  {
+   "id": "kaldi-native-fbank",
+   "name": "kaldi-native-fbank",
+   "version": "1.22.3",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright (c) 2022 Xiaomi Corporation",
+   "url": "https://github.com/csukuangfj/kaldi-native-fbank",
+   "where": "app",
+   "note": "Linked into sherpa-onnx's library: audio features."
+  },
+  {
+   "id": "kaldi-decoder",
+   "name": "kaldi-decoder",
+   "version": "0.3.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2009-2011 Microsoft Corporation; Copyright (c) 2023 Xiaomi Corporation",
+   "url": "https://github.com/k2-fsa/kaldi-decoder",
+   "where": "app",
+   "note": "Linked into sherpa-onnx's library."
+  },
+  {
+   "id": "kaldifst",
+   "name": "kaldifst",
+   "version": "1.8.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright (c) 2023 Xiaomi Corporation",
+   "url": "https://github.com/k2-fsa/kaldifst",
+   "where": "app",
+   "note": "Linked into sherpa-onnx's library."
+  },
+  {
+   "id": "openfst",
+   "name": "OpenFst",
+   "version": "1.8.5 (csukuangfj/openfst, 2026-07-09)",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2005-2024 Google LLC",
+   "url": "https://www.openfst.org",
+   "where": "app",
+   "note": "Linked into sherpa-onnx's library."
+  },
+  {
+   "id": "simple-sentencepiece",
+   "name": "simple-sentencepiece",
+   "version": "0.7",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2024 Wei Kang",
+   "url": "https://github.com/pkufool/simple-sentencepiece",
+   "where": "app",
+   "note": "Linked into sherpa-onnx's library."
+  },
+  {
+   "id": "nlohmann-json",
+   "name": "JSON for Modern C++",
+   "version": "3.12.0",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2013-2025 Niels Lohmann",
+   "url": "https://github.com/nlohmann/json",
+   "where": "app",
+   "text": "licenses/MIT-nlohmann-json.txt",
+   "note": "Linked into sherpa-onnx's library."
+  },
+  {
+   "id": "hclust-cpp",
+   "name": "hclust-cpp (fastcluster)",
+   "version": "2026-02-25",
+   "licence": "BSD-2-Clause",
+   "copyright": "Copyright (c) 2011 Daniel Müllner; Copyright (c) 2018 Christoph Dalitz",
+   "url": "https://github.com/csukuangfj/hclust-cpp",
+   "where": "app",
+   "text": "licenses/BSD-2-Clause-hclust-cpp.txt",
+   "note": "Linked into sherpa-onnx's library."
+  },
+  {
+   "id": "eigen",
+   "name": "Eigen",
+   "version": "5.0.1",
+   "licence": "MPL-2.0",
+   "copyright": "Copyright the Eigen authors",
+   "url": "https://gitlab.com/libeigen/eigen",
+   "where": "app",
+   "note": "A maths library compiled into sherpa-onnx's library (5.0.1) and into ONNX Runtime. Its source form: the third-party source bundle (above) and gitlab.com/libeigen/eigen."
+  },
+  {
+   "id": "onnxruntime",
+   "name": "ONNX Runtime",
+   "version": "1.28.2",
+   "licence": "MIT",
+   "copyright": "Copyright (c) Microsoft Corporation",
+   "url": "https://github.com/microsoft/onnxruntime",
+   "where": "app",
+   "text": "licenses/MIT-onnxruntime.txt",
+   "notices": [
+    {
+     "title": "ONNX Runtime's third-party notices",
+     "file": "licenses/notices/onnxruntime-ThirdPartyNotices.txt"
+    }
+   ],
+   "note": "Runs sherpa-onnx's models (libonnxruntime.so)."
+  },
+  {
+   "id": "silero-vad",
+   "name": "Silero VAD",
+   "version": "silero_vad.onnx (9e2449e1)",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2020-present Silero Team",
+   "url": "https://github.com/snakers4/silero-vad",
+   "where": "app",
+   "text": "licenses/MIT-silero-vad.txt",
+   "note": "Tells speech from silence."
+  },
+  {
+   "id": "kws-zipformer",
+   "name": "Wake word model (zipformer, GigaSpeech, 3.3M)",
+   "version": "2024-01-01",
+   "licence": "Apache-2.0",
+   "copyright": "The k2-fsa project (Next-gen Kaldi)",
+   "url": "https://github.com/k2-fsa/sherpa-onnx/releases/tag/kws-models",
+   "where": "app",
+   "match": [
+    "sherpa-onnx-kws-zipformer-gigaspeech-3.3M"
+   ],
+   "note": "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01: hears the wake words and “stop”."
+  },
+  {
+   "id": "anthropic-sdk-java",
+   "name": "Anthropic Java SDK",
+   "version": "2.71.0",
+   "licence": "MIT",
+   "copyright": "Copyright 2023 Anthropic, PBC.",
+   "url": "https://github.com/anthropics/anthropic-sdk-java",
+   "where": "app",
+   "text": "licenses/MIT-anthropic-sdk-java.txt",
+   "maven": [
+    "com.anthropic:*"
+   ],
+   "note": "Ask Claude's API client, used only when you ask for Claude with your own key."
+  },
+  {
+   "id": "okhttp",
+   "name": "OkHttp",
+   "version": "4.12.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2019 Square, Inc.",
+   "url": "https://square.github.io/okhttp/",
+   "where": "app",
+   "notices": [
+    {
+     "title": "Notices of the Java libraries (NOTICE files)",
+     "file": "licenses/notices/java-libraries-NOTICE.txt"
+    }
+   ],
+   "maven": [
+    "com.squareup.okhttp3:*"
+   ],
+   "note": "The Anthropic SDK's HTTP client."
+  },
+  {
+   "id": "okio",
+   "name": "Okio",
+   "version": "3.6.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2013 Square, Inc.",
+   "url": "https://square.github.io/okio/",
+   "where": "app",
+   "maven": [
+    "com.squareup.okio:*"
+   ]
+  },
+  {
+   "id": "public-suffix-list",
+   "name": "Public Suffix List (in OkHttp)",
+   "version": "as in OkHttp 4.12.0",
+   "licence": "MPL-2.0",
+   "copyright": "Copyright the Mozilla Foundation and the list's contributors",
+   "url": "https://publicsuffix.org",
+   "where": "app",
+   "note": "OkHttp carries a compiled copy (publicsuffixes.gz); its source form is the list at publicsuffix.org/list/public_suffix_list.dat."
+  },
+  {
+   "id": "jackson",
+   "name": "Jackson",
+   "version": "2.19.4",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2007-, Tatu Saloranta",
+   "url": "https://github.com/FasterXML/jackson",
+   "where": "app",
+   "notices": [
+    {
+     "title": "Notices of the Java libraries (NOTICE files)",
+     "file": "licenses/notices/java-libraries-NOTICE.txt"
+    }
+   ],
+   "maven": [
+    "com.fasterxml.jackson.core:*",
+    "com.fasterxml.jackson.datatype:*",
+    "com.fasterxml.jackson.module:*",
+    "com.fasterxml.jackson:*"
+   ],
+   "note": "JSON for the Anthropic SDK (core, databind, annotations, jdk8, jsr310, kotlin)."
+  },
+  {
+   "id": "fastdoubleparser",
+   "name": "FastDoubleParser (in jackson-core)",
+   "version": "as in jackson-core 2.19.4",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2024 Werner Randelshofer, Switzerland",
+   "url": "https://github.com/wrandelshofer/FastDoubleParser",
+   "where": "app",
+   "text": "licenses/MIT-fastdoubleparser.txt",
+   "notices": [
+    {
+     "title": "Notices of the Java libraries (NOTICE files)",
+     "file": "licenses/notices/java-libraries-NOTICE.txt"
+    }
+   ],
+   "note": "With code from fast_float (MIT), bigint (BSD 2-Clause) and fast_double_parser: their licences are in the notices."
+  },
+  {
+   "id": "classmate",
+   "name": "ClassMate",
+   "version": "1.7.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2007-, Tatu Saloranta",
+   "url": "https://github.com/FasterXML/java-classmate",
+   "where": "app",
+   "notices": [
+    {
+     "title": "Notices of the Java libraries (NOTICE files)",
+     "file": "licenses/notices/java-libraries-NOTICE.txt"
+    }
+   ],
+   "maven": [
+    "com.fasterxml:classmate"
+   ]
+  },
+  {
+   "id": "jsonschema-generator",
+   "name": "jsonschema-generator",
+   "version": "4.38.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2019 VicTools",
+   "url": "https://github.com/victools/jsonschema-generator",
+   "where": "app",
+   "maven": [
+    "com.github.victools:*"
+   ]
+  },
+  {
+   "id": "swagger-annotations",
+   "name": "Swagger Core annotations",
+   "version": "2.2.50",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright (c) 2015 SmartBear Software Inc.",
+   "url": "https://github.com/swagger-api/swagger-core",
+   "where": "app",
+   "notices": [
+    {
+     "title": "Notices of the Java libraries (NOTICE files)",
+     "file": "licenses/notices/java-libraries-NOTICE.txt"
+    }
+   ],
+   "maven": [
+    "io.swagger.core.v3:*"
+   ]
+  },
+  {
+   "id": "slf4j",
+   "name": "SLF4J API",
+   "version": "2.0.16",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2004-2022 QOS.ch Sarl (Switzerland)",
+   "url": "https://www.slf4j.org",
+   "where": "app",
+   "text": "licenses/MIT-slf4j.txt",
+   "maven": [
+    "org.slf4j:*"
+   ],
+   "note": "No logger is bound: it logs nothing."
+  },
+  {
+   "id": "standardwebhooks",
+   "name": "Standard Webhooks",
+   "version": "1.2.0",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2023 Svix",
+   "url": "https://github.com/standard-webhooks/standard-webhooks",
+   "where": "app",
+   "text": "licenses/MIT-standardwebhooks.txt",
+   "maven": [
+    "com.standardwebhooks:*"
+   ]
+  },
+  {
+   "id": "litert-lm",
+   "name": "LiteRT-LM",
+   "version": "0.18.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2025 Google LLC",
+   "url": "https://github.com/google-ai-edge/LiteRT-LM",
+   "where": "app",
+   "notices": [
+    {
+     "title": "LiteRT-LM's licence file",
+     "file": "licenses/notices/litertlm-android-LICENSE.txt"
+    },
+    {
+     "title": "LiteRT-LM's third-party notices (2.2 MB)",
+     "file": "licenses/notices/litertlm-android-THIRD_PARTY_NOTICE.txt"
+    }
+   ],
+   "maven": [
+    "com.google.ai.edge.litertlm:*"
+   ],
+   "note": "Runs the model you choose, on the TPU or the CPU (liblitertlm_jni.so)."
+  },
+  {
+   "id": "litert-npu-google-tensor",
+   "name": "LiteRT NPU runtime for Google Tensor",
+   "version": "2.3.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://ai.google.dev/edge/litert",
+   "where": "app",
+   "notices": [
+    {
+     "title": "The NPU runtime's licence file",
+     "file": "licenses/notices/litert-npu-runtime-google-tensor-LICENSE.txt"
+    },
+    {
+     "title": "The NPU runtime's third-party notices",
+     "file": "licenses/notices/litert-npu-runtime-google-tensor-THIRD_PARTY_NOTICE.txt"
+    }
+   ],
+   "maven": [
+    "com.google.ai.edge.litert:*"
+   ],
+   "note": "Lets LiteRT-LM use the Tensor G5's TPU (libLiteRtDispatch_GoogleTensor.so). The TPU's own driver is the phone's, not Robot's."
+  },
+  {
+   "id": "gson",
+   "name": "Gson",
+   "version": "2.14.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2008 Google LLC",
+   "url": "https://github.com/google/gson",
+   "where": "app",
+   "maven": [
+    "com.google.code.gson:*"
+   ]
+  },
+  {
+   "id": "kotlin",
+   "name": "Kotlin standard library and kotlin-reflect",
+   "version": "2.4.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2010-2026 JetBrains s.r.o. and Kotlin Programming Language contributors",
+   "url": "https://kotlinlang.org",
+   "where": "app",
+   "maven": [
+    "org.jetbrains.kotlin:*"
+   ]
+  },
+  {
+   "id": "kotlinx-coroutines",
+   "name": "kotlinx.coroutines",
+   "version": "1.11.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2016-2026 JetBrains s.r.o. and contributors",
+   "url": "https://github.com/Kotlin/kotlinx.coroutines",
+   "where": "app",
+   "maven": [
+    "org.jetbrains.kotlinx:*"
+   ]
+  },
+  {
+   "id": "androidx",
+   "name": "Jetpack Compose and AndroidX",
+   "version": "Compose BOM 2025.06.01 (1.8.3), Material 3 1.3.2",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright The Android Open Source Project",
+   "url": "https://developer.android.com/jetpack/androidx",
+   "where": "app",
+   "maven": [
+    "androidx.*:*"
+   ],
+   "note": "Compose, Material 3, activity, core, lifecycle, savedstate and the AndroidX libraries they bring."
+  },
+  {
+   "id": "material-icons",
+   "name": "Material Icons",
+   "version": "path data",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://github.com/google/material-design-icons",
+   "where": "app",
+   "note": "The icons' path data in Robot's Icons.kt."
+  },
+  {
+   "id": "annotations",
+   "name": "Annotation libraries",
+   "version": "as resolved",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright The Error Prone Authors; JetBrains s.r.o.; The JSpecify Authors; The Guava Authors",
+   "url": "https://errorprone.info",
+   "where": "app",
+   "maven": [
+    "com.google.errorprone:*",
+    "org.jetbrains:annotations",
+    "org.jspecify:*",
+    "com.google.guava:*"
+   ],
+   "note": "Error Prone annotations, JetBrains annotations, JSpecify and Guava's ListenableFuture: annotations and one interface."
+  },
+  {
+   "id": "gemma-4-e2b",
+   "name": "Gemma 4 E2B (Tensor G5)",
+   "version": "litert-community, b3ca0d2f",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm",
+   "where": "download",
+   "note": "Settings › Model › Fast. Google's Gemma 4 licence is the Apache License 2.0."
+  },
+  {
+   "id": "gemma-4-e4b",
+   "name": "Gemma 4 E4B",
+   "version": "litert-community, 2eee7ac3",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm",
+   "where": "download",
+   "note": "Settings › Model › Smarter, slower."
+  },
+  {
+   "id": "gemma-4-e4b-abliterated",
+   "name": "Gemma 4 E4B abliterated",
+   "version": "olekk, a4eecccd",
+   "licence": "Apache-2.0",
+   "copyright": "olekk, from Google's Gemma 4 E4B (Copyright Google LLC)",
+   "url": "https://huggingface.co/olekk/gemma-4-E4B-it-abliterated-litert-lm",
+   "where": "download",
+   "note": "Settings › Model › Uncensored, slower. Its publisher asks that it be used for research and personal experimentation only, says you are responsible for its outputs (Robot asks you to tick both before the download), and says Google's Gemma Prohibited Use Policy applies (ai.google.dev/gemma/prohibited_use_policy)."
+  },
+  {
+   "id": "own-model",
+   "name": "Your own model file",
+   "version": "the file you import",
+   "licence": "LicenseRef-own-file",
+   "copyright": "Whoever made the file",
+   "url": "https://huggingface.co/models",
+   "where": "download",
+   "note": "Keeps its own licence: Robot neither ships nor downloads it. MedGemma, for example, is under Google's Health AI Developer Foundations terms, which you accept yourself on Hugging Face."
+  },
+  {
+   "id": "parakeet",
+   "name": "Parakeet TDT 0.6B v3",
+   "version": "int8, csukuangfj, 2bda32ec",
+   "licence": "CC-BY-4.0",
+   "copyright": "Copyright NVIDIA Corporation",
+   "url": "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3",
+   "where": "download",
+   "note": "“Parakeet TDT 0.6B v3” by NVIDIA, huggingface.co/nvidia/parakeet-tdt-0.6b-v3, licensed under the Creative Commons Attribution 4.0 International licence (creativecommons.org/licenses/by/4.0/). Changed: converted to ONNX and quantised to int8 by the sherpa-onnx project; Robot uses that conversion unchanged. Offered as is, without warranties (the licence's section 5)."
+  },
+  {
+   "id": "kokoro",
+   "name": "Kokoro-82M",
+   "version": "1.0 (csukuangfj, f7b96bb6)",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright hexgrad",
+   "url": "https://huggingface.co/hexgrad/Kokoro-82M",
+   "where": "download",
+   "match": [
+    "Benchmark clip"
+   ],
+   "note": "Robot's voice: af_heart (English) and ff_siwis (French). Robot's built-in test recording (Settings › Voice › Test voice speed) is synthetic speech made with af_heart."
+  },
+  {
+   "id": "siwis",
+   "name": "SIWIS French Speech Synthesis Database",
+   "version": "training data of Kokoro's ff_siwis voice",
+   "licence": "CC-BY-4.0",
+   "copyright": "Its authors, published on the University of Edinburgh's DataShare",
+   "url": "https://datashare.ed.ac.uk/handle/10283/2353",
+   "where": "download",
+   "note": "Not in Robot: Kokoro's French voice ff_siwis was trained on it (Kokoro's model card). Credited as its licence asks of the voice's makers."
+  },
+  {
+   "id": "kitten",
+   "name": "Kitten TTS nano",
+   "version": "0.8 (csukuangfj2, eb4fe4f7)",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright KittenML",
+   "url": "https://huggingface.co/KittenML/kitten-tts-nano-0.8",
+   "where": "download",
+   "note": "The small, fast voice."
+  },
+  {
+   "id": "openstreetmap",
+   "name": "OpenStreetMap data, through Nominatim",
+   "version": "service",
+   "licence": "ODbL-1.0",
+   "copyright": "© OpenStreetMap contributors",
+   "url": "https://www.openstreetmap.org/copyright",
+   "where": "service",
+   "note": "“Directions to the nearest …”: Data © OpenStreetMap contributors, available under the Open Database License. Asked of OpenStreetMap's Nominatim, or the server you choose in Settings › Actions, under its usage policy."
+  },
+  {
+   "id": "open-meteo",
+   "name": "Open-Meteo",
+   "version": "service",
+   "licence": "CC-BY-4.0",
+   "copyright": "Weather data by Open-Meteo.com",
+   "url": "https://open-meteo.com/",
+   "where": "service",
+   "note": "The weather, when you ask: Open-Meteo's data is under CC BY 4.0; Robot shortens the forecast into its own words."
+  },
+  {
+   "id": "agp",
+   "name": "Android Gradle Plugin",
+   "version": "8.8.2",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://developer.android.com/build",
+   "where": "build"
+  },
+  {
+   "id": "kotlin-compiler",
+   "name": "Kotlin compiler and its Compose plugin",
+   "version": "2.4.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright JetBrains s.r.o.",
+   "url": "https://kotlinlang.org",
+   "where": "build"
+  },
+  {
+   "id": "junit",
+   "name": "JUnit",
+   "version": "4.13.2",
+   "licence": "EPL-1.0",
+   "copyright": "Copyright JUnit contributors",
+   "url": "https://junit.org/junit4/",
+   "where": "build",
+   "note": "Unit tests only."
+  },
+  {
+   "id": "org-json",
+   "name": "org.json (JSON-java)",
+   "version": "20180813",
+   "licence": "JSON",
+   "copyright": "Copyright (c) 2002 JSON.org",
+   "url": "https://github.com/stleary/JSON-java",
+   "where": "build",
+   "note": "Unit tests only."
+  },
+  {
+   "id": "mockwebserver",
+   "name": "OkHttp MockWebServer",
+   "version": "4.12.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2019 Square, Inc.",
+   "url": "https://square.github.io/okhttp/",
+   "where": "build",
+   "note": "The Claude client's tests only."
+  },
+  {
+   "id": "sherpa-onnx-python",
+   "name": "sherpa-onnx Python package",
+   "version": "1.13.8",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright (c) 2022-2026 Xiaomi Corporation",
+   "url": "https://pypi.org/project/sherpa-onnx/",
+   "where": "build",
+   "note": "tools/: the wake-word keyword and test-clip scripts."
+  },
+  {
+   "id": "numpy",
+   "name": "NumPy",
+   "version": "as installed",
+   "licence": "BSD-3-Clause",
+   "copyright": "Copyright (c) 2005-2025, NumPy Developers",
+   "url": "https://numpy.org",
+   "where": "build",
+   "note": "tools/ only."
+  },
+  {
+   "id": "sentencepiece",
+   "name": "SentencePiece (Python)",
+   "version": "as installed",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://github.com/google/sentencepiece",
+   "where": "build",
+   "note": "tools/ only."
+  },
+  {
+   "id": "pypinyin",
+   "name": "pypinyin",
+   "version": "as installed",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2016 mozillazg",
+   "url": "https://github.com/mozillazg/python-pinyin",
+   "where": "build",
+   "note": "tools/ only."
+  }
+ ]
+}

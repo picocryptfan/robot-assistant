@@ -1,5 +1,6 @@
 package app.heyrobot.ui
 
+import androidx.compose.ui.semantics.contentDescription
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -256,7 +257,8 @@ private fun PhraseCard(p: WakePhrase, speller: KwsSpeller?, insideWarning: Strin
                 Text("“${p.text}”", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text("No. ${p.id} in the voice log", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Switch(checked = p.enabled, onCheckedChange = { onChange(p.copy(enabled = it)) })
+            Switch(checked = p.enabled, onCheckedChange = { onChange(p.copy(enabled = it)) },
+                modifier = Modifier.semantics { contentDescription = "Listen for “${p.text}”" })
             IconButton(onClick = onRemove, modifier = Modifier.padding(start = 4.dp)) { Icon(RIcons.Delete, "Remove “${p.text}”") }
         }
         SegmentedChoice(WakeSensitivity.entries, p.sensitivity, { it.title }) { onChange(p.copy(sensitivity = it)) }

@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
@@ -45,6 +47,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -65,6 +68,7 @@ import app.heyrobot.core.EmailApp
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.Nearby
 import app.heyrobot.core.NearestOnline
+import app.heyrobot.core.NearbyServer
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
@@ -72,6 +76,7 @@ import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelNotes
 import app.heyrobot.core.ModelStatus
+import app.heyrobot.core.ModelTerms
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.PhoneStatus
 import app.heyrobot.core.RobotSettings
@@ -97,6 +102,8 @@ import app.heyrobot.ui.common.toolIcon
 @Composable
 fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier) {
     var confirmDelete by remember { mutableStateOf<BrainModel?>(null) }
+    /** A publisher's terms to tick before its file downloads (false) or is imported (true). */
+    var askTerms by remember { mutableStateOf<Pair<ModelTerms, Boolean>?>(null) }
     val chosen = s.brainModelChoice
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
@@ -104,7 +111,12 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
     ) {
         ScreenTitle("Model", "Robot's AI runs on this phone. It goes online only to download a model you pick.")
         ModelChoiceCard(s, update, snap)
-        for (m in BrainModel.entries.filter { it.builtIn }) ModelCard(m, snap, busy, a, onDelete = { confirmDelete = m })
+        for (m in BrainModel.entries.filter { it.builtIn }) {
+            val terms = ModelTerms.of(m)
+            ModelCard(m, snap, busy, a, onDelete = { confirmDelete = m }, termsConfirmed = terms?.let { s.confirmedTerms[it.id] },
+                onDownload = { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to false else a.download(m) },
+                onImport = { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to true else a.import(m) })
+        }
         OwnModelCard(snap, busy, a, onDelete = { confirmDelete = BrainModel.OWN })
         SectionCard("About the downloads") {
             Text("Each model downloads from Hugging Face only when you tap Download, pinned to one commit of its repository; " +
@@ -114,6 +126,14 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
         }
         VoiceModelsCard(snap, a)
         Spacer(Modifier.height(12.dp))
+    }
+    askTerms?.let { (t, importing) ->
+        TermsDialog(t, importing, onDismiss = { askTerms = null }) {
+            askTerms = null
+            // Kept first (settings, schema 12), so the download's own check finds them confirmed.
+            update(ModelTerms.confirm(s, t, System.currentTimeMillis()))
+            if (importing) a.import(t.model) else a.download(t.model)
+        }
     }
     confirmDelete?.let { m ->
         val ms = snap.model(m)
@@ -167,9 +187,48 @@ private fun ModelChoiceCard(s: RobotSettings, update: (RobotSettings) -> Unit, s
     }
 }
 
-/** One built-in model: status, what it is, size and cache, Download / Check / Delete, and where it comes from. */
+/**
+ * A model publisher's conditions as tick boxes, in its own words (core ModelTerms), before its file downloads or is
+ * imported: the button works only with every box ticked.
+ */
 @Composable
-private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppActions, onDelete: () -> Unit) {
+private fun TermsDialog(t: ModelTerms, importing: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    var ticked by remember(t) { mutableStateOf(emptySet<Int>()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Before you ${if (importing) "import" else "download"} “${t.model.title}”") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(ModelTerms.INTRO, style = MaterialTheme.typography.bodyMedium)
+                Text("“${t.prompt}” (${t.publisher}, on the model's page)", style = MaterialTheme.typography.bodySmall)
+                t.ticks.forEachIndexed { i, words ->
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                            .toggleable(value = i in ticked, role = Role.Checkbox) { on -> ticked = if (on) ticked + i else ticked - i },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Checkbox(checked = i in ticked, onCheckedChange = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(words, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                Text(ModelTerms.ALSO, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = t.complete(ticked)) { Text(if (importing) "Confirm and import" else "Confirm and download") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * One built-in model: status, what it is, size and cache, Download / Check / Delete, and where it comes from. A model with
+ * its publisher's terms ([termsConfirmed]: when you ticked them, or null) asks them before [onDownload] or [onImport].
+ */
+@Composable
+private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppActions, onDelete: () -> Unit,
+    termsConfirmed: Long? = null, onDownload: () -> Unit = { a.download(m) }, onImport: () -> Unit = { a.import(m) }) {
     val ms = snap.model(m) ?: return
     val st = ms.status
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
@@ -188,10 +247,10 @@ private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppAction
         )
         when (st) {
             ModelStatus.MISSING, ModelStatus.BAD -> {
-                Button(onClick = { a.download(m) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
+                Button(onClick = onDownload, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
                     Icon(RIcons.Download, null); Spacer(Modifier.width(8.dp)); Text("Download (${ModelLogic.gb(m.bytes)})")
                 }
-                OutlinedButton(onClick = { a.import(m) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
+                OutlinedButton(onClick = onImport, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
                     Icon(RIcons.Folder, null); Spacer(Modifier.width(8.dp)); Text("Import a downloaded file")
                 }
             }
@@ -206,6 +265,14 @@ private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppAction
         if (st == ModelStatus.BAD || st == ModelStatus.UNVERIFIED) TextButton(onClick = onDelete) { Text("Delete the file") }
         Text("${m.publisher} · licence ${m.licence}\n${m.repo} at commit ${m.commit?.take(12)}\n${m.file}\nSHA-256 ${m.sha256}",
             style = MaterialTheme.typography.bodySmall, color = muted)
+        if (termsConfirmed != null) {
+            Text("You ticked its publisher's two conditions on ${java.text.DateFormat.getDateInstance().format(java.util.Date(termsConfirmed))}: " +
+                "research and personal experimentation only, and you're responsible for its outputs.",
+                style = MaterialTheme.typography.bodySmall, color = muted)
+        } else if (ModelTerms.of(m) != null) {
+            Text("Its publisher asks you to confirm two conditions before you download it: research and personal experimentation " +
+                "only, and you're responsible for its outputs.", style = MaterialTheme.typography.bodySmall, color = muted)
+        }
     }
 }
 
@@ -677,13 +744,11 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         }
         SectionCard("About") {
             Text("Robot ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
-            Text("Free software under the GNU GPL version 3. Third-party parts: LiteRT-LM and the Tensor NPU runtime (Apache-2.0), " +
-                "sherpa-onnx (Apache-2.0) with espeak-ng (GPL-3.0-or-later), ONNX Runtime (MIT), Silero VAD (MIT), Jetpack Compose and AndroidX (Apache-2.0), " +
-                "Gemma 4 E2B and E4B by Google (Apache-2.0), the Uncensored model by olekk (Gemma 4 E4B abliterated, Apache-2.0), " +
-                "your own model file under its own licence, Kokoro and Kitten TTS (Apache-2.0), the Anthropic Java SDK (MIT) with OkHttp, Okio and Jackson (Apache-2.0). " +
-                "Speech recognition: NVIDIA Parakeet TDT 0.6B v3 by NVIDIA, " +
-                "CC-BY-4.0, converted to ONNX by sherpa-onnx (huggingface.co/nvidia/parakeet-tdt-0.6b-v3).",
+            Text("Free software under the GNU GPL version 3, with NO WARRANTY. It uses LiteRT-LM, sherpa-onnx with espeak-ng, ONNX " +
+                "Runtime, Jetpack Compose and more, and downloads models such as Gemma 4 and Parakeet when you ask: each with its " +
+                "licence, credits and notices under Licences.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            NavRow(RIcons.Info, "Licences", "Robot's licence and source code, and every part it uses with its licence and notices") { a.openPage(Page.Licences) }
         }
         Spacer(Modifier.height(12.dp))
     }
@@ -700,13 +765,15 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
 
 @Composable
 internal fun SwitchRow(title: String, detail: String?, checked: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
+    // The whole row is the switch: one TalkBack stop that reads the title, the detail and the state.
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
             if (detail != null) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        Switch(checked = checked, onCheckedChange = null, enabled = enabled)
     }
 }
 
@@ -720,12 +787,55 @@ private fun NearestOnlineChoice(s: RobotSettings, snap: Snapshot, update: (Robot
     val maps = s.approval(ToolName.MAPS_NAVIGATE) != Approval.OFF || s.approval(ToolName.MAPS_SEARCH) != Approval.OFF
     Column(Modifier.fillMaxWidth().padding(start = 36.dp, top = 4.dp, bottom = 4.dp)) {
         Text("Find the nearest place online", style = MaterialTheme.typography.titleSmall)
-        Text("“Directions to the nearest pharmacy”: what would go is the words and your area (about 1 km), to OpenStreetMap's " +
-            "Nominatim." + if (maps) "" else " Maps search and directions are Off.",
+        Text("“Directions to the nearest pharmacy”: what would go is the words and your area (about 1 km), to " +
+            "${s.nearbyServer.label}." + if (maps) "" else " Maps search and directions are Off.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         for (m in NearestOnline.entries) {
             ChoiceRow(m.title + if (m == NearestOnline.ASK) " (default)" else "", m.detail, now == m) {
                 update(s.copy(nearestOnline = m, nearestOnlineAt = System.currentTimeMillis()))
+            }
+        }
+        SearchServerField(s, update)
+    }
+}
+
+/**
+ * Settings › Actions › "Find the nearest place online" › Search server (schema 12): OpenStreetMap's Nominatim by default, or
+ * any HTTPS Nominatim you type (your own, or another public one). Nominatim's usage policy asks that apps can switch the
+ * service without an update. Checked by core NearbyServer before it is saved; Reset goes back to OpenStreetMap's.
+ */
+@Composable
+private fun SearchServerField(s: RobotSettings, update: (RobotSettings) -> Unit) {
+    val server = s.nearbyServer
+    val shown = if (server.isDefault) "" else server.base
+    var text by remember(shown) { mutableStateOf(shown) }
+    var problem by remember(shown) { mutableStateOf<String?>(null) }
+    fun save() {
+        val c = NearbyServer.check(text)
+        val chosen = c.server ?: run { problem = c.problem; return }
+        problem = null
+        text = if (chosen.isDefault) "" else chosen.base
+        update(s.copy(nearestServer = chosen.saved))
+    }
+    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Search server", style = MaterialTheme.typography.titleSmall)
+        Text(if (server.isDefault) "OpenStreetMap's Nominatim (${Nearby.HOST}), the default. To use another Nominatim, such as your own, type its address."
+            else "${server.name}: the words and your area go to this server instead of OpenStreetMap's.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedTextField(
+            value = text, onValueChange = { text = it; problem = null }, singleLine = true,
+            label = { Text("Nominatim server") }, placeholder = { Text(Nearby.HOST) }, isError = problem != null,
+            supportingText = { Text(problem ?: "Its address, such as nominatim.example.org. Encrypted (HTTPS) only.") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { save() }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (text.trim() != shown) TextButton(onClick = { save() }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Save") }
+            if (!server.isDefault) {
+                TextButton(onClick = { text = ""; problem = null; update(s.copy(nearestServer = "")) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("Reset to OpenStreetMap's")
+                }
             }
         }
     }

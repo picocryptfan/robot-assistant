@@ -12,7 +12,8 @@ class PageSaverTest {
 
     @Test fun everyPageRoundTrips() {
         for (p in listOf(Page.Setup(), Page.Setup(true), Page.Conversation("abc-123"), Page.NoteEdit("4f1c-uuid"), Page.NoteEdit(null), Page.Safety,
-                Page.People, Page.PersonEdit("p1"), Page.WakePhrases, null)) {
+                Page.People, Page.PersonEdit("p1"), Page.WakePhrases, Page.Licences, Page.Licence("onnxruntime"),
+                Page.Licence("litert-lm", "licenses/notices/litertlm-android-THIRD_PARTY_NOTICE.txt"), Page.Licence(ROBOT_LICENCE), null)) {
             assertEquals(p, Page.Saver.restore(save(p)))
         }
     }

@@ -200,7 +200,7 @@ class PeopleTest {
     }
 
     @Test fun noContactWithCheogramOffersToChooseInCheogram() {
-        // Owner report (0.2.2): people who exist only in Cheogram's roster were "not found".
+        // Reported on the phone (0.2.2): people who exist only in Cheogram's roster were "not found".
         val asked = Action.SendText("Bob", "See you at 8")
         for (reason in listOf("No contact matches “Bob”.", "No matching contact has a phone number or XMPP address.")) {
             val pick = Recipients.notFound(asked, reason, TextVia.CHEOGRAM) as Prepared.Ready

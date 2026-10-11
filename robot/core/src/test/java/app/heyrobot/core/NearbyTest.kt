@@ -154,4 +154,55 @@ class NearbyTest {
         assertEquals(answer, NearestAnswer.fromJson(answer.toJson()))
         for (bad in listOf(null, "", "{", """{"choice":"MAYBE","at":1}""")) assertEquals("$bad", null, NearestAnswer.fromJson(bad))
     }
+
+    /**
+     * Settings › Actions › Search server (Nominatim's usage policy: switchable without an update): any HTTPS Nominatim,
+     * checked; the URL, the card's line and the failures name the server you chose.
+     */
+    @Test fun anotherSearchServerIsCheckedAndNamed() {
+        val d = NearbyServer.DEFAULT
+        assertEquals("https://nominatim.openstreetmap.org", d.base)
+        assertEquals("", d.saved)
+        assertTrue(d.isDefault)
+        assertEquals(d, NearbyServer.of(""))
+        assertEquals(d, NearbyServer.of(null))
+        assertEquals(d, NearbyServer.check("  ").server)
+        // Typed in any usual way: the same server, in one form.
+        for (typed in listOf("nominatim.example.org", "https://nominatim.example.org", "HTTPS://Nominatim.Example.org/", "nominatim.example.org:443",
+                "https://nominatim.example.org/search", "https://nominatim.example.org/search.php", "nominatim.example.org.")) {
+            val c = NearbyServer.check(typed)
+            assertEquals(typed, null, c.problem)
+            assertEquals(typed, "https://nominatim.example.org", c.server!!.base)
+        }
+        val own = NearbyServer.parse("https://geo.example.net:8443/nominatim/search")!!
+        assertEquals("https://geo.example.net:8443/nominatim", own.base)
+        assertEquals("geo.example.net:8443", own.name)
+        assertEquals("the Nominatim server at geo.example.net:8443", own.label)
+        assertEquals("geo.example.net:8443", own.sentTo)
+        assertEquals(own, NearbyServer.parse(own.saved))
+        assertEquals("https://192.168.1.20/nominatim", NearbyServer.parse("192.168.1.20/nominatim")!!.base)
+        assertTrue(Nearby.searchUrl("pharmacy", 45.5, -73.6, 0.02, own).startsWith("https://geo.example.net:8443/nominatim/search?q=pharmacy&format=jsonv2&"))
+        // Never in the clear, never with a query, a user name or a path that climbs; never a bare word or a number.
+        for (bad in listOf("http://nominatim.example.org", "ftp://example.org", "https://example.org/search?q=x", "https://example.org/#top",
+                "https://me@example.org", "https://example.org:0", "https://example.org:70000", "https://example.org:http", "https://example.org/../etc",
+                "https://example.org/a b", "localhost", "nominatim", "1234", "300.1.1.1", "https://[::1]/", "exa_mple.org", "-x.example.org",
+                "https://example.org/%2e%2e", "x".repeat(NearbyServer.MAX_LENGTH + 1))) {
+            val c = NearbyServer.check(bad)
+            assertEquals(bad, null, c.server)
+            assertTrue(bad, !c.problem.isNullOrBlank())
+        }
+        assertEquals("Use an https:// address: the words and your area only go encrypted.", NearbyServer.check("http://x.example.org").problem)
+        // The card says exactly who gets the words and the area.
+        val card = Nearby.prepare(Action.MapsNavigate("pharmacy"), "pharmacy", wanted = true, mode = NearestOnline.ASK, server = own)
+        assertEquals("To find the closest one, Robot would send “pharmacy” and your area (about 1 km) to the Nominatim server at geo.example.net:8443. " +
+            "Nothing else leaves the phone. “No, search the map” uses Organic Maps' search instead, on the phone.", card.note)
+        assertEquals(Nearby.consentNote("pharmacy"), Nearby.prepare(Action.MapsNavigate("pharmacy"), "pharmacy", true, NearestOnline.ASK).note)
+        // A failure names the server that failed; OpenStreetMap's keep their words.
+        assertEquals("No internet: Robot couldn't reach geo.example.net:8443, so Robot opened Organic Maps' search instead.",
+            Nearby.instead(NearbyFail.NO_INTERNET, navigate = false, server = own))
+        assertEquals("geo.example.net:8443 is busy just now", NearbyFail.BUSY.text(own))
+        assertEquals("geo.example.net:8443 didn't answer properly", NearbyFail.SERVICE.text(own))
+        for (f in NearbyFail.entries) assertEquals(f.text, f.text(d))
+        assertEquals(NearbyFail.NO_LOCATION.text, NearbyFail.NO_LOCATION.text(own))
+    }
 }

@@ -116,4 +116,18 @@ class NearbySearchTest {
         assertEquals(1, counted)
         assertEquals(2, urls.size)
     }
+
+    /** Another search server (Settings › Actions): the same searches go to it, a second apart, cached by URL. */
+    @Test fun anotherServerGetsTheSameSearches() {
+        val own = NearbyServer.parse("nominatim.example.org")!!
+        val abort = abort()
+        val found = search.search("pharmacy", 45.5256, -73.5975, abort, fetch(sample("pharmacy-montreal.json")), server = own)
+        assertEquals(20, found.size)
+        assertTrue(urls.single().startsWith("https://nominatim.example.org/search?q=pharmacy&"))
+        // The same question to OpenStreetMap's server is a different URL: asked afresh, after the one-second pace.
+        search.search("pharmacy", 45.5256, -73.5975, abort, fetch(sample("pharmacy-montreal.json")))
+        assertEquals(2, urls.size)
+        assertTrue(urls[1].startsWith("https://${Nearby.HOST}/search?q=pharmacy&"))
+        assertEquals(listOf(Nearby.MIN_GAP_MS), slept)
+    }
 }

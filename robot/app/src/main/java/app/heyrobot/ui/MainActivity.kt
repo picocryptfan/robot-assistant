@@ -48,6 +48,7 @@ import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.ModelTerms
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.ToolGroup
@@ -143,6 +144,9 @@ sealed class Page {
     data class PersonEdit(val id: String?) : Page()
     /** Settings › Safety & privacy (0.4.0). */
     data object Safety : Page()
+    /** Settings › About › Licences (1.0), and one part's licence ([file]: one of its notices instead). */
+    data object Licences : Page()
+    data class Licence(val id: String, val file: String? = null) : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -160,6 +164,8 @@ sealed class Page {
                     People -> "people"
                     is PersonEdit -> "person:${p.id.orEmpty()}"
                     Safety -> "safety"
+                    Licences -> "licences"
+                    is Licence -> "licence:${p.id}|${p.file.orEmpty()}"
                 }
             },
             restore = { v ->
@@ -174,6 +180,8 @@ sealed class Page {
                     v == "people" -> People
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
                     v == "safety" -> Safety
+                    v == "licences" -> Licences
+                    v.startsWith("licence:") -> v.removePrefix("licence:").split('|', limit = 2).let { Licence(it[0], it.getOrNull(1)?.ifEmpty { null }) }
                     else -> null
                 }
             },
@@ -375,10 +383,11 @@ fun RobotAppUi(activity: MainActivity) {
         openConversation = { page = Page.Conversation(it) },
         askPermissions = { permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) },
         openAssistantSettings = { if (!Assistant.openSettings(ctx)) say("Open Settings > Apps > Default apps > Digital assistant app.") },
-        download = { m -> ModelStore.startDownload(ctx, m)?.let(::say) },
+        // A model whose publisher asks for conditions (core ModelTerms) downloads or imports only once you ticked them.
+        download = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else ModelStore.startDownload(ctx, m)?.let(::say) },
         cancelDownload = { m -> ModelStore.cancelDownload(ctx, m) },
         // Storage Access Framework: no storage permission; a .litertlm has no type of its own, so any file.
-        import = { m -> importTarget = m.id; importer.launch(arrayOf("*/*")) },
+        import = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else { importTarget = m.id; importer.launch(arrayOf("*/*")) } },
         verify = { m ->
             if (busy == null) {
                 busy = "verify"
@@ -502,6 +511,10 @@ fun RobotAppUi(activity: MainActivity) {
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
         Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.Licences -> LicencesScreen(onOpen = { page = it }, onBack = { page = null })
+        // Back from a notice goes to its part's licence, from a licence to the list.
+        is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it },
+            onBack = { page = if (p.file != null && p.id != ROBOT_LICENCE) Page.Licence(p.id) else Page.Licences })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {

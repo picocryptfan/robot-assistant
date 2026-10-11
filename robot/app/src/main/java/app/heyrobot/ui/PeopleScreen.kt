@@ -287,7 +287,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                         Text("Learned from Cheogram (${learned.size})", style = MaterialTheme.typography.titleSmall)
                         for (p in learned.take(MAX_LEARNED_SHOWN)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f).clickable { onOpen(p.id) }) {
+                                Column(Modifier.weight(1f).heightIn(min = 48.dp).clickable(onClickLabel = "Open") { onOpen(p.id) }, verticalArrangement = Arrangement.Center) {
                                     Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(People.summary(p), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1, overflow = TextOverflow.Ellipsis)

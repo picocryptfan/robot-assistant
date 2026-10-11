@@ -10,6 +10,7 @@ import app.heyrobot.core.NearbyFail
 import app.heyrobot.core.NearbyFailure
 import app.heyrobot.core.NearbyPlace
 import app.heyrobot.core.NearbySearch
+import app.heyrobot.core.NearbyServer
 import java.io.IOException
 import java.io.InputStream
 import java.net.ConnectException
@@ -19,10 +20,11 @@ import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
 
-// Voice process. The nearest place for "directions to the nearest pharmacy" (0.4.0): GETs to OpenStreetMap's Nominatim
-// search, only when you asked for the nearest one and Settings › Actions › "Find the nearest place online" allows it.
-// HTTPS only, one host ([Nearby.HOST]), no redirects, short timeouts cut to what is left of the lookup's deadline, at most
-// 512 KB read, and a User-Agent that names the app and its version and nothing about the phone (Nearby.userAgent).
+// Voice process. The nearest place for "directions to the nearest pharmacy" (0.4.0): GETs to a Nominatim search (OpenStreetMap's
+// unless Settings › Actions › Search server names another), only when you asked for the nearest one and Settings › Actions ›
+// "Find the nearest place online" allows it. HTTPS only, to the one server chosen (core NearbyServer checks it), no
+// redirects, short timeouts cut to what is left of the lookup's deadline, at most 512 KB read, and a User-Agent that
+// names the app and its version and nothing about the phone (Nearby.userAgent).
 // Nominatim's usage policy: that User-Agent, one request a second at most, answers cached, only what you asked for (no
 // autocomplete, no lists), and the card credits OpenStreetMap (Nearby.ATTRIBUTION). The searches themselves
 // (the boxes, one request a second at most, answers kept 10 minutes: Nominatim's usage policy) are core's NearbySearch.
@@ -32,25 +34,25 @@ import java.net.UnknownHostException
 object NominatimClient {
     private const val TIMEOUT_MS = 8_000
     private const val MAX_BYTES = 512 * 1024
-    private val HOSTS = setOf(Nearby.HOST)
 
     /** Every search in this process: one pace and one cache. */
     private val searches = NearbySearch(SystemClock::elapsedRealtime) { ms -> Thread.sleep(ms) }
 
     /**
-     * The places matching [query] around [lat], [lon] (core NearbySearch: the small box first, the larger one only if it
-     * found nothing). Blocking: never on the main thread. Throws NearbyFailure. [requests] is told how many went online.
+     * The places matching [query] around [lat], [lon], asked of [server] (core NearbySearch: the small box first, the larger
+     * one only if it found nothing). Blocking: never on the main thread. Throws NearbyFailure. [requests] is told how many
+     * went online.
      */
-    fun search(ctx: Context, query: String, lat: Double, lon: Double, abort: Abort = Abort(), requests: (Int) -> Unit = {}): List<NearbyPlace> =
-        searches.search(query, lat, lon, abort, { url, a -> get(ctx, url, a) }, requests)
+    fun search(ctx: Context, query: String, lat: Double, lon: Double, server: NearbyServer, abort: Abort = Abort(), requests: (Int) -> Unit = {}): List<NearbyPlace> =
+        searches.search(query, lat, lon, abort, { url, a -> get(ctx, url, server, a) }, server, requests)
 
-    /** The body of a 200 answer; anything else throws [NearbyFailure]. Blocking. */
-    private fun get(ctx: Context, url: String, abort: Abort): String {
+    /** The body of a 200 answer from [server]; anything else throws [NearbyFailure]. Blocking. */
+    private fun get(ctx: Context, url: String, server: NearbyServer, abort: Abort): String {
         // GrapheneOS's Network toggle is the INTERNET permission at run time.
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) throw NearbyFailure(NearbyFail.NO_NETWORK_PERMISSION)
         if (abort.cancelled || abort.remainingMs() < NearbySearch.MIN_MS) throw NearbySearch.ended(abort)
         val u = URL(url)
-        require(u.protocol == "https" && u.host in HOSTS) { "not a Nominatim URL" }
+        require(u.protocol == "https" && u.host == server.host && u.port == server.port && u.path.startsWith(server.path + "/")) { "not the chosen Nominatim server" }
         val c = u.openConnection() as HttpURLConnection
         val forget = abort.onCancel { c.disconnect() }
         try {

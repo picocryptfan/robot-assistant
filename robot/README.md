@@ -69,6 +69,37 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
+## Releasing
+
+Every APK that is published goes out with the source of the GPL code in it. Robot's own source is this repository at the
+release's tag (`v<version>`); the prebuilt native code it ships is not built here, so each release also attaches its
+source:
+
+1. Tag the release and build the APK (above); check it with `tools/verify_apk.sh`.
+2. Make the third-party source bundle, on a machine with the network:
+
+   ```
+   tools/make_source_bundle.sh              # version from app/build.gradle; or --version 1.0.0
+   # -> build/source-bundle/robot-<version>-third-party-sources.tar.gz and its .sha256 (about 310 MB)
+   ```
+
+   It takes sherpa-onnx at the commit of v1.13.8 (`11afbd00`, checked by its commit id), reads from that source the
+   archives sherpa-onnx's Android build compiles into `libsherpa-onnx-jni.so` (espeak-ng at `ed530aa1`, piper-phonemize,
+   kaldi-native-fbank, kaldi-decoder, kaldifst, OpenFst, simple-sentencepiece, JSON for Modern C++, hclust-cpp, Eigen)
+   and downloads each from its pinned link (or sherpa-onnx's Hugging Face mirror), checking the SHA-256 sherpa-onnx pins;
+   one it can't download it takes from git at the pinned commit instead, checks the commit id, and says so in the
+   bundle's `MANIFEST.tsv` and `README.md`. It adds ONNX Runtime 1.28.2's source (tag v1.28.2, commit `33ca9628`; 280 MB
+   of the total, about 50 MB without it; `--without-onnxruntime` leaves it out, as its MIT licence allows, but sherpa-onnx's library is built to
+   require it, so keep it unless size forces otherwise). The archive is reproducible from the same inputs (sorted, no
+   owners or times). Never commit it.
+3. Attach to the GitHub release: the APK, `SHA256SUMS`, `robot-<version>-third-party-sources.tar.gz` and its
+   `.sha256`, and the release notes. Keep the bundle as long as that APK is offered (GPL-3.0 section 6).
+
+Settings › About › Licences names both places, from `app/src/main/assets/licenses/components.json` (`robot.sourceTag`,
+`robot.sourceBundle`, "{version}" filled in): `<repository>/tree/v<version>` and
+`<repository>/releases/download/v<version>/robot-<version>-third-party-sources.tar.gz`. The repository link there is
+today's (`picocryptfan/robot-gos-assistant`); change it in that one file if the public repository has another name.
+
 ## Short-context models (0.4.3)
 
 Your own model file (Settings › Model › "Your own model file") may now be built for a context of 2,048 to 4,095 tokens
@@ -251,6 +282,15 @@ may still refuse now and then, and its card asks that it be used for research an
 own its outputs, and says Google's Gemma Prohibited Use Policy still applies. Robot's own cards and switches are unchanged: the model only ever proposes an action, and Settings ›
 Safety & privacy decides what asks first, whichever model is loaded (`ApprovalGate` doesn't know which one is).
 
+**Its publisher's two conditions (1.0).** The card's Hugging Face page has an access form with two checkboxes, which
+Hugging Face doesn't enforce for this repository, and a one-tap download would skip it. So before Robot downloads or
+imports the Uncensored file, a window shows the publisher's own words and the same two tick boxes, "I use this for
+research / personal experimentation only" and "I accept responsibility for the outputs and any downstream use";
+**Confirm and download** works only with both ticked. Robot keeps that you confirmed them, and when (settings.json,
+schema 12, `confirmedTerms`), and the model's card says so; the main app's download and import refuse the file until
+then (`core/ModelState.kt`, `ModelTerms`). The confirmation is tied to the pinned commit (`…@a4eecccd`): a new pin asks
+again. A file downloaded before 1.0 keeps working; only a new download or import asks.
+
 ### Downloads, files and privacy
 
 - A built-in model downloads only when you tap Download, from Hugging Face, by DownloadManager in the main app process
@@ -355,7 +395,8 @@ on battery, Wi-Fi on. Note every time.
    `adb shell dumpsys battery | grep temperature` before and after. Pass: no collapse in speed, no thermal warning.
 9. **MTP and the sampler (A/B).** Build once with `CPU_MTP = true`, once with `CPU_SAMPLER = true` (`GemmaEngine.kt`):
    repeat 3 and 6. Keep whichever writes faster and answers as well; MTP's output should match without it.
-10. **Uncensored.** Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
+10. **Uncensored.** Tap Download: the window with the two tick boxes shows, and its button works only with both ticked
+    (Cancel downloads nothing; the card then says you ticked them, and a second download doesn't ask again). Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
     ones (refusals gone? answers sane?). Cards still show for texts, emails, events and deleting.
 11. **Switching.** Fast → Smarter → Uncensored → Fast without restarting, a question after each: Voice log "Unloaded … to
     load …" each time, never two models (`dumpsys meminfo app.heyrobot:brain` falls back to about 2 GB on Fast), and the
@@ -691,7 +732,8 @@ it may go online, Robot
 
 1. takes where the phone is: approximate location only, as for the weather (no Home for weather: that isn't where you
    are), up to 8 seconds;
-2. asks OpenStreetMap's **Nominatim** (`nominatim.openstreetmap.org/search`, HTTPS, jsonv2) for the words ("pharmacy")
+2. asks the **Nominatim** search server in Settings (OpenStreetMap's `nominatim.openstreetmap.org/search` unless you chose
+   another under **Search server**, below; HTTPS, jsonv2) for the words ("pharmacy")
    in a box of ±0.02° around the position rounded to two decimals (about 1 km), and in one of ±0.1° if nothing is
    that close; at most 40 places each, at most one request a second, answers kept 10 minutes, User-Agent
    "Robot/<version> (app.heyrobot; Android voice assistant, GPL-3.0)", nothing else (no language, no address details).
@@ -714,14 +756,23 @@ says why ("OpenStreetMap knows no such place near you, so Robot opened Organic M
 tap Route."). Stop ends the lookup at
 once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Never: today's search.
 
+**Search server** (Settings › Actions › Find the nearest place online, under the three choices; schema 12): OpenStreetMap's
+Nominatim by default. Type another Nominatim's address (your own, or another public one: `nominatim.example.org`,
+`https://example.org:8443/nominatim`; a pasted search link counts as its server) and **Save**; **Reset to
+OpenStreetMap's** goes back. Core `NearbyServer` checks it first: HTTPS only, a host name or an IPv4 address, an optional
+port and path, never a query, a fragment or a user name; anything else says why and isn't saved. The first-use card, the
+Settings line and the card's "Sent to …" line name the server that gets the words and the area ("…to the Nominatim server
+at nominatim.example.org"), and so do the failures ("nominatim.example.org is busy just now"). `NominatimClient` sends only
+to the server chosen (host, port and path checked again), with the same pace, cache and User-Agent. The default isn't
+written to settings.json, so if OpenStreetMap ever asks Robot to stop, a later default reaches everyone who didn't choose.
+
 **Nominatim's usage policy** (operations.osmfoundation.org/policies/nominatim, read 11 October 2026): every search is
 one you asked for (no autocomplete, no lists, no periodic or background requests); at most one request a second from
 the phone and at most two per question; answers cached 10 minutes; a User-Agent that identifies the app; the card
-credits OpenStreetMap (ODbL); no personal data beyond the rounded area (see the query rule above). Not met yet: the
-policy asks apps to be able to switch the service without an update. The host is one constant (`Nearby.HOST`), and
-"Never" (or any failure) falls back to Organic Maps' search on the phone. The policy's limits apply to all of Robot's
-users together, so a larger audience needs a proxy with caching or another provider; and it asks that the developer
-decide deliberately to use it, which this section records.
+credits OpenStreetMap (ODbL); no personal data beyond the rounded area (see the query rule above); and the service can
+be switched without an update (Search server, above), while "Never" (or any failure) falls back to Organic Maps' search on
+the phone. The policy's limits apply to all of Robot's users together, so a larger audience needs a proxy with caching
+or another provider; and it asks that the developer decide deliberately to use it, which this section records.
 "Nearest" is as near as the approximate location allows (Android's coarse location can be a kilometre or two off).
 
 ### Cheogram's share screen
@@ -1484,7 +1535,7 @@ card says "Opened a draft in Cheogram: nothing is sent until Send is pressed the
 
 Settings › People, notes and calendar: texting app (Cheogram when installed, the SMS app, or Off), SMS gateway domain,
 phone region, email app (Proton Mail when installed, or "Ask each time"), the calendar for new events (only visible,
-synced calendars Robot can write to; Automatic picks the first, the primary or owner account first) and the default
+synced calendars Robot can write to; Automatic picks the first, the primary calendar or one its own account owns first) and the default
 event length (60 min). A calendar error while adding opens the calendar app's editor instead; its all-day times are UTC
 midnights, as AOSP-derived editors read them.
 Settings › Actions has an approval level per tool (Off is allowed). Assistant setup › People, notes and calendar shows
