@@ -568,15 +568,22 @@ object VoiceLog {
         }
     }
 
+    private val counter = java.util.concurrent.atomic.AtomicLong()
+
+    /** Events recorded since the process started (the ring keeps only the last [CAPACITY]): tests take what came after a point. */
+    val total: Long get() = counter.get()
+
     /** Records an event: [a], [b], [c] as that [VoiceEvent] documents them. */
     fun add(event: VoiceEvent, a: Int = 0, b: Int = 0, c: Int = 0) {
         ring.add(clock(), event, a, b, c)
+        counter.incrementAndGet()
         scheduleFlush()
     }
 
     /** Records an event that happened at [time] (wall clock, ms), noted elsewhere first (before the first unlock). */
     fun addAt(time: Long, event: VoiceEvent, a: Int = 0, b: Int = 0, c: Int = 0) {
         ring.add(time, event, a, b, c)
+        counter.incrementAndGet()
         scheduleFlush()
     }
 
