@@ -27,8 +27,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -64,10 +65,12 @@ import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -86,8 +89,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -96,10 +101,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.ClaudeWords
+import app.heyrobot.core.KeyboardPad
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
@@ -112,6 +121,7 @@ import app.heyrobot.ui.common.CardActions
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.UserBubble
 import app.heyrobot.ui.common.claudeFooter
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // VOICE PROCESS. The assistant panel: a bottom sheet over whatever is on screen, with the conversation,
@@ -151,8 +161,10 @@ fun AssistantPanel(onClose: () -> Unit) {
         }
     }
 
+    val (bottomPad, slidUp) = keyboardPad()
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val maxSheet = maxHeight * 0.88f
+        // A window Android slid up for the keyboard shows that much less of the panel's top.
+        val maxSheet = (maxHeight - slidUp) * 0.88f
         // Tapping outside the panel closes it.
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.36f)).pointerInput(Unit) { detectTapGestures { onClose() } })
         Surface(
@@ -167,7 +179,7 @@ fun AssistantPanel(onClose: () -> Unit) {
                 // Swallow taps so they don't reach the scrim.
                 .pointerInput(Unit) { detectTapGestures { } },
         ) {
-            Column(Modifier.navigationBarsPadding().imePadding()) {
+            Column(Modifier.padding(bottom = bottomPad)) {
                 // Handle and header: drag down to close.
                 Column(
                     Modifier.fillMaxWidth().draggable(
@@ -218,6 +230,43 @@ fun AssistantPanel(onClose: () -> Unit) {
             }
         }
     }
+}
+
+/**
+ * The panel's bottom padding (above the navigation bar, or above the keyboard, less whatever Android already slid the
+ * window up for it: core KeyboardPad), and that slide. The slide is read from the window's position on screen before
+ * each frame.
+ */
+@Composable
+private fun keyboardPad(): Pair<Dp, Dp> {
+    val density = LocalDensity.current
+    val view = LocalView.current
+    val imeInsets = WindowInsets.ime
+    val ime = imeInsets.getBottom(density)
+    val nav = WindowInsets.navigationBars.getBottom(density)
+    var slid by remember { mutableIntStateOf(0) }
+    DisposableEffect(view) {
+        val at = IntArray(2)
+        val listener = android.view.ViewTreeObserver.OnPreDrawListener {
+            view.rootView.getLocationOnScreen(at)
+            val s = -at[1]
+            if (s != slid) slid = s
+            true
+        }
+        view.viewTreeObserver.addOnPreDrawListener(listener)
+        onDispose { view.viewTreeObserver.removeOnPreDrawListener(listener) }
+    }
+    val pad = KeyboardPad.bottom(nav, ime, slid)
+    // Once the keyboard has settled: its height, the slide and the padding, as numbers (Settings › Voice › Voice log).
+    val open = ime > nav
+    LaunchedEffect(open) {
+        if (open) {
+            delay(700)
+            val now = imeInsets.getBottom(density)
+            VoiceLog.add(VoiceEvent.KEYBOARD, now, slid.coerceAtLeast(0), KeyboardPad.bottom(nav, now, slid))
+        }
+    }
+    return with(density) { pad.toDp() to slid.coerceAtLeast(0).toDp() }
 }
 
 @Composable

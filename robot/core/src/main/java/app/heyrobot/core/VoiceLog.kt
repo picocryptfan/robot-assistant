@@ -134,6 +134,11 @@ enum class VoiceEvent(val id: Int) {
     /** Barge-in test, every keyword heard: a = phrase id (0: "stop"), b = ms after Robot's voice started (-1: before), c = [BargeHitKind]. */
     BARGE_HIT(44),
     /**
+     * The keyboard opened over the panel (0.4.2), once it settled: a = the keyboard's height, b = how far Android slid the
+     * panel's window up (0 expected: the panel moves itself), c = the panel's bottom padding; all in pixels.
+     */
+    KEYBOARD(45),
+    /**
      * What Android sent of the screen for a panel (0.3.1, once per panel): a = its show flags (ScreenAccess.SHOW_*),
      * b = [ScreenData] for the screen's text, c = [ScreenData] for the screenshot.
      */
@@ -617,6 +622,7 @@ object VoiceLogText {
             VoiceEvent.CAPTURE_INFO -> "Capture opened: " + (when (a) { 1 -> "silenced by Android"; 0 -> "not silenced"; else -> "silencing unknown" }) +
                 (if (b > 0) " · microphone at " + String.format(Locale.US, "%.1f kHz", b / 10.0) else "") + " · " + CaptureFx.words(c)
             VoiceEvent.BARGE_HIT -> "Barge-in test heard " + keyword(a) + (if (b >= 0) " " + secs(b) + " in" else "") + ": " + code(BargeHitKind.entries, c)
+            VoiceEvent.KEYBOARD -> "Keyboard over the panel: $a px high, window slid up $b px, panel padded $c px"
             VoiceEvent.CLAUDE_LEFT_OUT -> "Claude not offered to the model: " + code(ClaudeLeftOut.entries, a)
             VoiceEvent.OWN_ANSWER -> "The model handed over to Claude without a word; asked again, " + (if (a == 1) "it answered itself" else "it still gave no answer")
             VoiceEvent.CLAUDE_UNKNOWN -> "Claude's error came from " + code(ClaudeStage.entries, a) + (if (b > 0) " · HTTP $b" else "") +

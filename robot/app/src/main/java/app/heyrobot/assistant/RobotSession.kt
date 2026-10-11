@@ -61,9 +61,10 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
             // Edge to edge: the panel pads itself for the navigation bar and the keyboard (WindowInsets in Compose).
             @Suppress("DEPRECATION")
             w.setDecorFitsSystemWindows(false)
-            // Unset, Android picks "pan" for a window without scrolling Views (Compose lists aren't), shifting the
-            // whole panel up by the keyboard on top of the panel's own keyboard padding: a keyboard-high gap, and the
-            // top cut off. "Resize" with the decor not fitting only reports the keyboard, which the panel pads for.
+            // "Resize" with the decor not fitting reports the keyboard's height, which the panel pads for (KeyboardPad).
+            // On the Pixel the assistant's window still slid up ("pan") as well, which showed the keyboard's height
+            // twice (0.4.0): the panel subtracts whatever slide it finds, so either behaviour ends with the text box
+            // on the keyboard.
             @Suppress("DEPRECATION")
             w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
             // Compose finds its owners from the window's root view, so they go on the decor view as well.
