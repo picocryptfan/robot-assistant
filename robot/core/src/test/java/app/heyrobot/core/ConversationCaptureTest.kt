@@ -45,6 +45,10 @@ class ConversationCaptureTest {
         assertEquals(listOf(0, 40, 72), h.wordStarts())
         assertEquals(3, h.words)
         assertEquals(listOf(0, 12), Heard("Bon matin", listOf("▁Bon", "▁mat", "in"), listOf(0f, 0.12f, 0.2f)).wordStarts())
+        // A token that is only the word break: the word starts with the token after it (one start per word).
+        val digits = Heard("Il est 5 h", listOf(" Il", " est", " ", "5", " h"), listOf(0f, 0.2f, 0.4f, 0.48f, 0.64f))
+        assertEquals(listOf(0, 20, 48, 64), digits.wordStarts())
+        assertEquals(digits.words, digits.wordStarts().size)
         // Lengths that don't match: none.
         assertEquals(emptyList<Int>(), Heard("x", listOf(" x"), emptyList()).wordStarts())
         val joined = Heard.join(Heard("Hello there", listOf(" Hello", " there"), listOf(0f, 0.4f)), Heard("Bonjour", listOf(" Bonjour"), listOf(0.1f)), 2.0)

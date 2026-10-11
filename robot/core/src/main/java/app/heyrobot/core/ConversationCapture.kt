@@ -157,14 +157,18 @@ data class Heard(val text: String, val tokens: List<String> = emptyList(), val t
 
     /**
      * Each word's start in centiseconds from the stretch's start: a token beginning with a space starts a word (and so
-     * does the first token). Tokens and times of different lengths give none.
+     * does the first token, and the one after a token that is only a word break). Tokens and times of different lengths
+     * give none.
      */
     fun wordStarts(): List<Int> {
         if (tokens.isEmpty() || tokens.size != times.size) return emptyList()
         val out = ArrayList<Int>()
+        var startsNext = true
         for ((k, t) in tokens.withIndex()) {
-            if (t.isBlank()) continue
-            if (k == 0 || t.startsWith(" ") || t.startsWith("▁") || out.isEmpty()) out += Math.round(times[k] * 100).coerceAtLeast(0)
+            // A lone word break (" " before a digit, say): the next token starts the word.
+            if (t.isBlank()) { startsNext = true; continue }
+            if (startsNext || t.startsWith(" ") || t.startsWith("▁")) out += Math.round(times[k] * 100).coerceAtLeast(0)
+            startsNext = false
         }
         return out
     }
