@@ -298,6 +298,9 @@ object BrainKeeper {
 
     private fun failedBefore(p: LoadPlan?): FallbackWhy? = p?.let { failed[it.model.id]?.takeIf { f -> f.first == it.fingerprint }?.second }
 
+    /** What counts as the GPU failing a load (0.4.7). */
+    private val GPU_FAILURES = setOf(LoadFailure.ENGINE, LoadFailure.TIMEOUT, LoadFailure.PROCESS, LoadFailure.NOT_ALLOWED)
+
     /** This phone's Fast (0.4.7). */
     private fun fastHere(ctx: Context): BrainModel = ModelCatalogue.fast(ModelStore.phone(ctx))
 
@@ -427,13 +430,22 @@ object BrainKeeper {
         val failure = r?.failure ?: if (r == null) (if (c.isConnected) LoadFailure.TIMEOUT else LoadFailure.PROCESS) else LoadFailure.ENGINE
         holding = null
         VoiceLog.add(VoiceEvent.MODEL_LOAD_FAILED, ModelCode.of(m), failure)
-        // 0.4.7: the GPU didn't load it (an error, no answer, or its process stopped): the CPU from now on, remembered
-        // across restarts until you try the GPU again, said once, with a report to copy or share.
-        if (gpu && failure != LoadFailure.STOPPING) {
+        // 0.4.7: the GPU didn't load it (an error, a refusal, no answer, or its process stopped): the CPU from now on,
+        // remembered across restarts until you try the GPU again, said once, with a report to copy or share. (No room
+        // for a cache, a missing file or the last model still stopping aren't the GPU's doing: they go on as before.)
+        if (gpu && failure in GPU_FAILURES) {
             Problems.gpuFailed(ctx, GpuFailure(m, System.currentTimeMillis(), ProblemStage.LOADING, failure))
             VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(m), ProblemStage.LOADING, failure.id)
             RLog.i("brain_gpu_failed", "stage" to ProblemStage.LOADING, "failure" to RLog.Code(failure.name))
             pendingNotice = gpuNotice(noteProblem(ctx, plan, ProblemStage.LOADING, failure, m, ModelBackend.CPU))
+            if (failure == LoadFailure.TIMEOUT) {
+                // :brain may still be stuck in the GPU load: let it go (its teardown ends the process if it has to) and load
+                // on the CPU from the next question, in a fresh binding.
+                client = null
+                c.close()
+                _state.value = State(Readiness.FAILED, problem = "Fast didn't load on the GPU in time. Robot uses the CPU from the next question.")
+                return null
+            }
             if (!c.isConnected && !c.connect()) {
                 _state.value = State(Readiness.FAILED, problem = "Robot couldn't start its model process.")
                 return null
