@@ -147,6 +147,12 @@ class SummaryPlannerTest {
             for (g in SummaryPlanner.reduceGroups(notes, Prompt.SUMMARY_REDUCE, max)) {
                 assertTrue(SummaryPlanner.fits(SummaryPlanner.reduceCall(g.map { notes[it] }, "en", max), max))
             }
+            // Merged notes as long as a merge's cap (500 tokens): a level always shrinks, every call within the window.
+            val long = (1..5).map { k -> SummaryPlanner.noteLabel(k, k + 1, "14:00", "14:20") + "\n" + "Overview: the budget and the brakes. ".repeat(60) }
+            val groups = SummaryPlanner.reduceGroups(long, Prompt.SUMMARY_REDUCE, max)
+            assertTrue("$max: $groups", groups.size < long.size)
+            assertEquals(long.indices.toList(), groups.flatten())
+            for (g in groups) assertTrue(SummaryPlanner.fits(SummaryPlanner.reduceCall(g.map { long[it] }, "en", max), max))
         }
         // A 4,096 call doesn't fit 2,048.
         assertTrue(full.map.any { !SummaryPlanner.fits(it, 2048) })

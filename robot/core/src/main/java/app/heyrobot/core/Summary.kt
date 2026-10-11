@@ -153,14 +153,18 @@ object SummaryPlanner {
 
     /**
      * One reduce level: [notes] (labelled, in order) packed into calls of at most [FAN_IN] notes that fit the window
-     * with [system]. A note too long for a call on its own is cut to fit. The result lists the notes' indexes per call.
+     * with [system]. A note too long for a call on its own is cut to fit; beside other notes, each is cut to half the
+     * room ([noteRoom]), so every call but the last merges at least two and the levels end (at a short context two merges
+     * written to their cap don't fit one call whole, and would otherwise be merged one by one for ever). The result lists
+     * the notes' indexes per call.
      */
     fun reduceGroups(notes: List<String>, system: String, maxTokens: Int = ContextWindow.MAX_TOKENS): List<List<Int>> {
         val room = budget(system, maxTokens)
+        val each = noteRoom(notes.size, room)
         val out = ArrayList<MutableList<Int>>()
         var used = 0
         for ((k, n) in notes.withIndex()) {
-            val c = TokenEstimate.text(fitNote(n, room) + "\n\n")
+            val c = TokenEstimate.text(fitNote(n, each) + "\n\n")
             if (out.isEmpty() || out.last().size >= FAN_IN || used + c > room) {
                 out += mutableListOf<Int>()
                 used = 0
@@ -174,9 +178,12 @@ object SummaryPlanner {
     /** A reduce call over [notes] (each already labelled, "Notes on part 3 (14:20–14:31):\n…"). */
     fun reduceCall(notes: List<String>, lang: String, maxTokens: Int = ContextWindow.MAX_TOKENS): SummaryCall {
         val system = Prompt.summaryReduce(lang)
-        val room = budget(system, maxTokens)
-        return SummaryCall(system, notes.joinToString("\n\n") { fitNote(it, room) }, REDUCE_TOKENS)
+        val each = noteRoom(notes.size, budget(system, maxTokens))
+        return SummaryCall(system, notes.joinToString("\n\n") { fitNote(it, each) }, REDUCE_TOKENS)
     }
+
+    /** A note's share of a merge call's [room]: all of it alone, at most half beside others (any two then fit together). */
+    private fun noteRoom(notes: Int, room: Int): Int = if (notes > 1) room / 2 else room
 
     /** "Notes on part 3 (14:20–14:31):\n<note>" for a map note; "Summary of parts 1–12 (…):" for a merged one. */
     fun noteLabel(first: Int, last: Int, from: String, to: String): String =

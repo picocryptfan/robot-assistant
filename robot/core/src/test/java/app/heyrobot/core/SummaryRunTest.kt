@@ -21,18 +21,20 @@ class SummaryRunTest {
     private val zone = ZoneOffset.UTC
     private val start = ZonedDateTime.of(2026, 10, 11, 14, 0, 0, 0, zone).toInstant().toEpochMilli()
 
-    /** Robot's model as a fake: a note per part, a summary per merge; [failAt] fails that request. */
-    private class FakeModel(val failAt: Int = -1, val maxTokens: Int = 4096) : OneShotTransport {
+    /** Robot's model as a fake: a note per part ([note]), a summary per merge ([merged]); [failAt] fails that request. */
+    private class FakeModel(val failAt: Int = -1, val maxTokens: Int = 4096,
+        val note: String = "- [14:00] Marie will send the file by Friday.",
+        val merged: String = "Overview: Marie and the user planned the week. To do: Marie sends the file by Friday [14:00].") : OneShotTransport {
         val asked = mutableListOf<BrainMsg.OneShot>()
         override suspend fun run(req: BrainMsg.OneShot, budget: OneShotBudget, onText: (String) -> Unit): OneShotResult {
             asked += req
             if (asked.size - 1 == failAt) return OneShotResult.Failed(BrainError.ENGINE)
+            check(asked.size < 500) { "still asking after ${asked.size} calls" }
             // Every call fits the loaded model's window, with its reply's room, and goes at SUMMARY priority.
             val call = SummaryCall(req.system, req.text, req.maxChunks)
             check(SummaryPlanner.fits(call, maxTokens)) { "too long for $maxTokens" }
             check(req.priority == Priority.SUMMARY)
-            return OneShotResult.Done(if (req.kind == OneShotKind.SUMMARY_MAP) "- [14:00] Marie will send the file by Friday."
-                else "Overview: Marie and the user planned the week. To do: Marie sends the file by Friday [14:00].", DoneReason.END)
+            return OneShotResult.Done(if (req.kind == OneShotKind.SUMMARY_MAP) note else merged, DoneReason.END)
         }
     }
 
@@ -74,6 +76,24 @@ class SummaryRunTest {
         val s = LocalSummary(short, budget).run(lines(30), "en", 2048) as LocalSummary.Outcome.Done
         val full = SummaryPlanner.plan(lines(30), "en", 4096)
         assertTrue(s.parts > full.parts)
+    }
+
+    /**
+     * A small model that writes its notes and merges to their caps (about 250 and 500 tokens, longer than "at most 250
+     * words"): at 2,048 tokens two such merges don't fit one call beside each other. The merges still end, level by level,
+     * each call within the window, at every context.
+     */
+    @Test fun longMergesStillEndAtAShortContext() = runBlocking {
+        val note = "- " + "Marie will send the budget file to the garage by Friday and call about the brakes. ".repeat(12)
+        val merged = "Overview: " + "Marie and the user planned the week, the budget and the garage visit for the brakes. ".repeat(22)
+        for (max in listOf(2048, 3000, 4096)) {
+            val model = FakeModel(maxTokens = max, note = note, merged = merged)
+            val r = LocalSummary(model, budget).run(lines(60), "en", max)
+            assertTrue("$max: $r", r is LocalSummary.Outcome.Done)
+            val parts = (r as LocalSummary.Outcome.Done).parts
+            // Every merge level but the last takes at least two notes per call: fewer merges than parts.
+            assertTrue("$max: ${model.asked.size} calls for $parts parts", model.asked.count { it.kind == OneShotKind.SUMMARY_REDUCE } < parts)
+        }
     }
 
     @Test fun aStoppedSummaryGoesOnFromItsNotes() = runBlocking {
