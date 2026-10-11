@@ -9,11 +9,26 @@ import java.util.Locale
 // crashes is never tried again by itself), the problem note the voice process keeps (codes and numbers only), and the
 // plain-text problem report the main app builds from it for you to copy or share. Nothing is ever sent by itself.
 // 0.6.0: the voice process knows each request's stage from :brain's events, one-shots (translations, summary steps) as
-// much as the panel's questions ([RequestStages]).
+// much as the panel's questions ([RequestStages]), and a note says which process failed, :brain (LiteRT-LM: Fast, the
+// E4B models, your .litertlm file) or llama.cpp's isolated :llama (your GGUF file) ([ModelProcess]).
 
 /** Where the model was when it failed. */
 enum class ProblemStage(override val id: Int, override val title: String) : LogCode {
     LOADING(1, "loading"), READING(2, "reading the prompt"), WRITING(3, "writing the answer"), IDLE(4, "loaded, between answers"),
+}
+
+/**
+ * The process a model problem happened in (0.6.0): :brain, where LiteRT-LM runs Robot's models and your .litertlm file
+ * (on the TPU, the GPU or the CPU), or :llama, llama.cpp's isolated process for your GGUF file (on the CPU). A GGUF file's
+ * crash is never Fast's, nor the GPU's. [suffix]: the end of its process name, as Android's exit records give it.
+ */
+enum class ModelProcess(override val id: Int, override val title: String, val suffix: String) : LogCode {
+    BRAIN(1, ":brain", ":brain"), LLAMA(2, ":llama, an isolated process (your GGUF file, never Fast)", ":llama");
+
+    companion object {
+        /** Where a model of [format] runs. */
+        fun of(format: ModelFormat): ModelProcess = if (format == ModelFormat.GGUF) LLAMA else BRAIN
+    }
 }
 
 /**
@@ -101,7 +116,9 @@ data class GpuTrying(val model: BrainModel, val time: Long, val voicePid: Int) {
  * One model failure, as the voice process notes it (filesDir/robot/[FILE], the last one only; one writer, the voice
  * process): when, which model on which backend, at which stage, how ([failure]; null: its process stopped), what Robot
  * switched to ([then], [thenBackend]; null: nothing), the memory then, and :brain's process id (to find Android's record
- * of how that process ended). Numbers and fixed ids only.
+ * of how that process ended). Numbers and fixed ids only. 0.6.0: the model file's [format] and the [process] that failed or
+ * stopped (:brain, or :llama for a GGUF file, whose process id the voice process doesn't know: 0); 0.4.7's notes ("p1")
+ * read as :brain and LiteRT-LM, which is all 0.4.7 ran there.
  */
 data class ModelProblem(
     val time: Long,
@@ -115,9 +132,11 @@ data class ModelProblem(
     val totalMem: Long = 0,
     val lowMemory: Boolean = false,
     val brainPid: Int = 0,
+    val format: ModelFormat = ModelFormat.LITERT_LM,
+    val process: ModelProcess = ModelProcess.of(format),
 ) {
     fun encode(): String = listOf(VERSION, time, model.id, backend.id, stage.id, failure?.id ?: 0, then?.id ?: "-", thenBackend?.id ?: "-",
-        availMem, totalMem, if (lowMemory) 1 else 0, brainPid).joinToString(" ")
+        availMem, totalMem, if (lowMemory) 1 else 0, brainPid, format.id, process.id).joinToString(" ")
 
     /** "Fast stopped on the GPU, so Robot switched to the CPU." */
     fun headline(): String {
@@ -136,11 +155,13 @@ data class ModelProblem(
 
     companion object {
         const val FILE = "model_problem.txt"
-        private const val VERSION = "p1"
+        private const val VERSION = "p2"
+        /** 0.4.7's notes: the same without the format and the process (LiteRT-LM in :brain). */
+        private const val VERSION_047 = "p1"
 
         fun decode(text: String?): ModelProblem? {
             val p = text?.trim()?.split(' ') ?: return null
-            if (p.size != 12 || p[0] != VERSION) return null
+            if (!(p.size == 12 && p[0] == VERSION_047) && !(p.size == 14 && p[0] == VERSION)) return null
             val time = p[1].toLongOrNull()?.takeIf { it > 0 } ?: return null
             val m = BrainModel.byId(p[2]) ?: return null
             val b = ModelBackend.of(p[3]) ?: return null
@@ -149,14 +170,18 @@ data class ModelProblem(
             val failure = if (f == 0) null else LoadFailure.entries.firstOrNull { it.id == f } ?: return null
             val then = if (p[6] == "-") null else BrainModel.byId(p[6]) ?: return null
             val thenB = if (p[7] == "-") null else ModelBackend.of(p[7]) ?: return null
+            val format = if (p.size == 14) ModelFormat.of(p[12]) ?: return null else ModelFormat.LITERT_LM
+            val process = if (p.size == 14) p[13].toIntOrNull()?.let { id -> ModelProcess.entries.firstOrNull { it.id == id } } ?: return null
+                else ModelProcess.BRAIN
             return ModelProblem(time, m, b, st, failure, then, thenB, p[8].toLongOrNull() ?: 0, p[9].toLongOrNull() ?: 0, p[10] == "1",
-                p[11].toIntOrNull() ?: 0)
+                p[11].toIntOrNull() ?: 0, format, process)
         }
     }
 }
 
 /**
- * Android's record of how :brain's process ended (ActivityManager.getHistoricalProcessExitReasons, ApplicationExitInfo):
+ * Android's record of how the model's process ended (ActivityManager.getHistoricalProcessExitReasons, ApplicationExitInfo;
+ * :brain's, or 0.6.0 :llama's for a GGUF file):
  * [reasonName] is its REASON_ constant's name, [description] Android's own short text (scrubbed by [ProblemReport]).
  */
 data class ExitFacts(
@@ -174,7 +199,7 @@ data class ReportFacts(
     val fingerprint: String,
     /** The model file's size on the phone now (-1: not there). */
     val fileBytes: Long,
-    /** How :brain's process ended, from Android's records, nearest the problem first (may be empty). */
+    /** How the problem's process (:brain, or :llama) ended, from Android's records, nearest the problem first (may be empty). */
     val exits: List<ExitFacts>,
     /** The voice log, newest first (codes and numbers only). */
     val voiceLog: List<VoiceLogEntry>,
@@ -251,12 +276,13 @@ object ProblemReport {
             .append(" · GPU ").append(if (ModelCatalogue.gpuOffered(f.phone)) "offered" else "not used").append('\n')
         append("Android: ").append(f.android).append(" · build ").append(plain(f.fingerprint, 160) ?: "unknown").append('\n')
         append("Model: ").append(modelLine(p.model, f.fileBytes)).append('\n')
-        append("Ran on: ").append(p.backend.title).append(" · stage: ").append(p.stage.title).append(" · failure: ")
-            .append(p.failure?.let { "${it.title} (code ${it.id})" } ?: "the model process stopped").append('\n')
+        append("Ran on: ").append(p.backend.title).append(" · ").append(p.format.engine).append(" in ")
+            .append(ModelProcess.of(p.format).title).append(" · stage: ").append(p.stage.title).append(" · failure: ")
+            .append(p.failure?.let { "${it.title} (code ${it.id})" } ?: "the model process stopped (${p.process.suffix})").append('\n')
         append("Then: ").append(p.then?.let { "${it.title} (${it.id})" + (p.thenBackend?.let { b -> " on the ${b.title}" } ?: "") } ?: "nothing loaded").append('\n')
         append("Memory then: ").append(mb(p.availMem)).append(" free of ").append(mb(p.totalMem)).append(if (p.lowMemory) " · Android said memory was low" else "").append('\n')
         append('\n')
-        append("How the model process ended (Android's records):\n")
+        append("How the model process ended (Android's records of ").append(p.process.suffix).append("):\n")
         if (f.exits.isEmpty()) append("  none found\n")
         for (e in f.exits) {
             append("  ").append(time(e.time, zone)).append(" · pid ").append(e.pid).append(if (e.pid == p.brainPid && p.brainPid > 0) " (the one that failed)" else "")

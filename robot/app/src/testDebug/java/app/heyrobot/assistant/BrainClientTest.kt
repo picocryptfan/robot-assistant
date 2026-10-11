@@ -141,4 +141,16 @@ class BrainClientTest {
         assertNull(c.stage)
         assertTrue(tracked(c).isEmpty() && streams(c).isEmpty())
     }
+
+    /** llama.cpp's process stopping under a GGUF file's reply (:llama, not :brain) is heard with that reply's stage. */
+    @Test fun aStoppedLlamaProcessCarriesItsRequestsStage() {
+        val heard = ArrayList<ProblemStage?>()
+        val c = BrainClient(RuntimeEnvironment.getApplication(), {}, { heard += it })
+        val ch = open(c, 6)
+        reply(BrainProtocol.EV_QUEUED, 6, BrainMsg.Queued(0), c)
+        reply(BrainProtocol.EV_ERROR, 6, BrainMsg.Error(BrainError.STOPPED, "model process stopped"), c)
+        assertEquals(listOf<ProblemStage?>(ProblemStage.READING), heard)
+        assertEquals(BrainError.STOPPED, (drain(ch).last() as BrainMsg.Error).code)
+        assertNull(c.stage)
+    }
 }

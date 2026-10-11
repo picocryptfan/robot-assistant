@@ -124,19 +124,21 @@ object Problems {
             android = "${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
             fingerprint = Build.FINGERPRINT.orEmpty(),
             fileBytes = ModelStore.file(ctx, p.model).let { if (it.isFile) it.length() else -1 },
-            exits = brainExits(ctx, p),
+            exits = exits(ctx, p),
             voiceLog = VoiceLogCodec.decode(readOrNull(Paths.voiceLog(ctx))).asReversed(),
         )
         return ProblemReport.text(p, facts, System.currentTimeMillis())
     }
 
     /**
-     * Android's records of how :brain's process ended (ApplicationExitInfo), the one with the problem's process id first,
-     * then the others within 10 minutes of it: its reason, status, description, importance and memory. Never the trace.
+     * Android's records of how the problem's process ended (ApplicationExitInfo: :brain's, or 0.6.0 :llama's for a GGUF
+     * file, which Android keeps under Robot's package too), the one with the problem's process id first, then the others
+     * within 10 minutes of it: its reason, status, description, importance and memory. Never the trace.
      */
-    private fun brainExits(ctx: Context, p: ModelProblem): List<ExitFacts> = try {
+    private fun exits(ctx: Context, p: ModelProblem): List<ExitFacts> = try {
+        val suffix = p.process.suffix
         val all = ctx.getSystemService(ActivityManager::class.java).getHistoricalProcessExitReasons(ctx.packageName, 0, 16)
-            .filter { it.processName?.endsWith(":brain") == true }
+            .filter { e -> e.processName?.let { it.endsWith(suffix) || it.contains("$suffix:") } == true }
         val near = all.filter { (p.brainPid > 0 && it.pid == p.brainPid) || kotlin.math.abs(it.timestamp - p.time) < 10 * 60_000L }
         near.sortedWith(compareBy<ApplicationExitInfo>({ it.pid != p.brainPid }, { kotlin.math.abs(it.timestamp - p.time) })).take(3).map {
             ExitFacts(it.timestamp, it.pid, it.reason, reasonName(it.reason), it.status, it.description, it.importance, it.pss, it.rss)

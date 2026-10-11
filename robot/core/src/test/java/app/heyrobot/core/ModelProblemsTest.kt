@@ -41,7 +41,8 @@ class ModelProblemsTest {
         val alone = ModelProblem(t, BrainModel.FAST, ModelBackend.TPU, ProblemStage.LOADING, LoadFailure.TIMEOUT, null, null)
         assertEquals(alone, ModelProblem.decode(alone.encode()))
         assertEquals("Fast didn't load on the TPU.", alone.headline())
-        for (bad in listOf(null, "", "p1 1", "p2 " + p.encode().substringAfter(' '), p.encode().replace(" gpu ", " npx "))) assertNull(bad, ModelProblem.decode(bad))
+        for (bad in listOf(null, "", "p1 1", "p3 " + p.encode().substringAfter(' '), p.encode().replace(" gpu ", " npx "),
+            p.encode().removeSuffix(" 1") + " 9", p.encode().replace(" litertlm ", " onnx "))) assertNull(bad, ModelProblem.decode(bad))
         // Numbers and fixed ids only.
         assertTrue(p.encode(), Regex("^[a-z0-9_ -]+$").matches(p.encode()))
     }
@@ -71,6 +72,41 @@ class ModelProblemsTest {
         assertEquals(ProblemStage.WRITING, RequestStages.now(listOf(ProblemStage.READING, ProblemStage.WRITING)))
         assertEquals(ProblemStage.READING, RequestStages.now(listOf(ProblemStage.READING)))
         assertNull(RequestStages.now(emptyList()))
+    }
+
+    /**
+     * 0.6.0: a note names the process that failed: :brain for LiteRT-LM (Fast, on the GPU too), :llama for your GGUF file,
+     * whose crash is never Fast's or the GPU's. 0.4.7's notes ("p1", 12 fields) still read, as :brain's.
+     */
+    @Test fun notesSayWhichProcessFailedAndOldOnesStillRead() {
+        assertEquals(ModelProcess.LLAMA, ModelProcess.of(ModelFormat.GGUF))
+        assertEquals(ModelProcess.BRAIN, ModelProcess.of(ModelFormat.LITERT_LM))
+        val gpu = ModelProblem(t, BrainModel.GENERAL, ModelBackend.GPU, ProblemStage.WRITING, null, BrainModel.GENERAL, ModelBackend.CPU,
+            2_100_000_000L, 7_500_000_000L, false, 12345)
+        assertEquals(ModelProcess.BRAIN, gpu.process)
+        assertTrue(gpu.encode(), gpu.encode().startsWith("p2 ") && gpu.encode().endsWith(" litertlm 1"))
+        val p047 = "p1 $t e2b gpu 3 0 e2b cpu 2100000000 7500000000 0 12345"
+        assertEquals(gpu, ModelProblem.decode(p047))
+        // llama.cpp's process stopped under your GGUF file's reply: its own process, no :brain pid, Fast on the GPU after it.
+        val gguf = ModelProblem(t, BrainModel.OWN, ModelBackend.CPU, ProblemStage.WRITING, null, BrainModel.GENERAL, ModelBackend.GPU,
+            format = ModelFormat.GGUF)
+        assertEquals(ModelProcess.LLAMA, gguf.process)
+        assertEquals(gguf, ModelProblem.decode(gguf.encode()))
+        // :brain itself stopped while a GGUF file ran in :llama: :brain's, and the note keeps both.
+        val brainUnderGguf = gguf.copy(process = ModelProcess.BRAIN, brainPid = 4321)
+        assertEquals(brainUnderGguf, ModelProblem.decode(brainUnderGguf.encode()))
+        assertTrue(Regex("^[a-z0-9_ -]+$").matches(gguf.encode()))
+        val facts = ReportFacts("0.6.0", 60, Phone("Google", "Pixel 9a", "Google", "Tensor G4", 7_500_000_000L), "17 (SDK 37)", "fp", 1_234_567,
+            emptyList(), emptyList())
+        val llama = ProblemReport.text(gguf, facts, t, utc)
+        assertTrue(llama, llama.contains("Ran on: CPU · llama.cpp in :llama, an isolated process (your GGUF file, never Fast) · stage: writing the answer"))
+        assertTrue(llama, llama.contains("failure: the model process stopped (:llama)") && llama.contains("Android's records of :llama"))
+        assertTrue(llama, llama.contains("your own file (name and hash left out)"))
+        val brain = ProblemReport.text(gpu, facts, t, utc)
+        assertTrue(brain, brain.contains("Ran on: GPU · LiteRT-LM in :brain · stage: writing the answer") &&
+            brain.contains("failure: the model process stopped (:brain)") && brain.contains("Android's records of :brain"))
+        assertFalse(brain.contains(":llama"))
+        assertTrue(ProblemReport.text(brainUnderGguf, facts, t, utc).contains("llama.cpp in :llama, an isolated process (your GGUF file, never Fast) · stage: writing the answer · failure: the model process stopped (:brain)"))
     }
 
     /** Paths in Android's free text never name a file of yours: only libraries and Robot's own model files keep a name. */

@@ -31,6 +31,7 @@ import app.heyrobot.core.ModelCode
 import app.heyrobot.core.ModelFiles
 import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.ModelProblem
+import app.heyrobot.core.ModelProcess
 import app.heyrobot.core.ProblemStage
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RequestStages
@@ -78,7 +79,7 @@ class DeathOnce {
 /**
  * [onDeath]: :brain stopped, with where the model was then (reading a prompt or writing; null between answers).
  * [onModelStopped] (0.4.5): the model's own process stopped under a reply while :brain lives (llama.cpp's isolated
- * process, for a GGUF file): the same for the file it ran, nothing for :brain. [onEngineError]
+ * process, for a GGUF file): the same for the file it ran, nothing for :brain; with that reply's stage. [onEngineError]
  * (0.4.7): the engine itself failed a request it was answering (BrainError.ENGINE) at this stage; on the GPU that is the
  * GPU failing. 0.6.0: every request the model answers is followed (core RequestStages), the panel's and the one-shots
  * (translations, summary steps) alike, and each callback comes after the request's own event reached its waiter: a
@@ -87,7 +88,7 @@ class DeathOnce {
 class BrainClient(
     private val ctx: Context,
     private val onDeath: (ProblemStage?) -> Unit,
-    private val onModelStopped: () -> Unit = {},
+    private val onModelStopped: (ProblemStage?) -> Unit = {},
     private val onEngineError: (ProblemStage) -> Unit = {},
 ) {
     private val death = DeathOnce()
@@ -121,7 +122,7 @@ class BrainClient(
         val code = (msg as? BrainMsg.Error)?.code
         // News of the file even for a reply nobody waits for any more: the panel gave up on a reply that went silent, and
         // :brain then ended llama.cpp's process for not coming back from the stop.
-        if (code == BrainError.STOPPED) onModelStopped()
+        if (code == BrainError.STOPPED) onModelStopped(at)
         // 0.4.7: the engine failed a request it was answering (a one-shot too; never one still waiting in :brain's queue).
         if (code == BrainError.ENGINE && at != null) onEngineError(at)
     }
@@ -278,7 +279,8 @@ class BrainClient(
  * never loops) and Robot runs the model on the CPU at once, says so once, and keeps a problem report for you to copy or
  * share. Any model's crash (on the CPU or the TPU too) keeps one as well. 0.6.0: one-shots (translations, summary steps)
  * run on the model as it is loaded, on the GPU too, and a GPU failure under one (an engine error, or :brain stopping)
- * counts as under a question: the CPU from the next request on.
+ * counts as under a question: the CPU from the next request on. A GGUF file's crash is llama.cpp's process's (:llama),
+ * noted as such, never as Fast's or the GPU's.
  */
 object BrainKeeper {
     enum class Readiness { UNKNOWN, NO_MODEL, LOADING, READY, FAILED }
@@ -378,14 +380,20 @@ object BrainKeeper {
 
     private fun gpuNotice(p: ModelProblem) = p.headline() + " The Robot app › Model has a report you can copy or share."
 
-    /** Keeps a problem note (codes and numbers, core ModelProblem) with the memory now and :brain's process id, and tells you once. */
-    private fun noteProblem(ctx: Context, plan: LoadPlan, stage: ProblemStage, failure: LoadFailure?, then: BrainModel?, thenBackend: ModelBackend?): ModelProblem {
+    /**
+     * Keeps a problem note (codes and numbers, core ModelProblem) with the memory now and the process id of :brain when it
+     * is the [process] that failed, and tells you once. 0.6.0: [process] is :llama for a GGUF file unless :brain itself went.
+     */
+    private fun noteProblem(ctx: Context, plan: LoadPlan, stage: ProblemStage, failure: LoadFailure?, then: BrainModel?, thenBackend: ModelBackend?,
+        process: ModelProcess = ModelProcess.of(plan.format)): ModelProblem {
         val (free, total, low) = Problems.memory(ctx)
-        val pid = BrainLoaded.decode(readOrNull(java.io.File(Paths.dir(ctx), ModelFiles.LOADED)))?.takeIf { it.model == plan.model }?.pid ?: 0
-        val p = ModelProblem(System.currentTimeMillis(), plan.model, plan.backend, stage, failure, then, thenBackend, free, total, low, pid)
+        val pid = if (process != ModelProcess.BRAIN) 0
+            else BrainLoaded.decode(readOrNull(java.io.File(Paths.dir(ctx), ModelFiles.LOADED)))?.takeIf { it.model == plan.model }?.pid ?: 0
+        val p = ModelProblem(System.currentTimeMillis(), plan.model, plan.backend, stage, failure, then, thenBackend, free, total, low, pid,
+            plan.format, process)
         Problems.note(ctx, p)
         RLog.i("brain_problem", "model" to RLog.Code(plan.model.id), "backend" to RLog.Code(plan.backend.id), "stage" to stage,
-            "failure" to (failure?.let { RLog.Code(it.name) }), "low" to low)
+            "failure" to (failure?.let { RLog.Code(it.name) }), "process" to RLog.Code(process.name), "low" to low)
         return p
     }
 
@@ -492,10 +500,12 @@ object BrainKeeper {
         val (fastState, fastPlanFound) = planOf(ctx, fast)
         val fastPlan = placed(ctx, fastPlanFound)
         val next = ModelChoice.afterFailure(m, failure, fastState, r?.error ?: "The model didn't load in time.", fast)
-        // A crash or no answer (not a refusal Robot explains itself) keeps a report too, on the CPU or the TPU.
+        // A crash or no answer (not a refusal Robot explains itself) keeps a report too, on the CPU or the TPU; a GGUF file's
+        // in llama.cpp's process (:llama) unless :brain itself went (no answer, and the binding gone).
         if (failure == LoadFailure.ENGINE || failure == LoadFailure.TIMEOUT || failure == LoadFailure.PROCESS) {
             val then = if (next is ModelChoice.Decision.Load && fastPlan != null && m != fast) fastPlan else null
-            noteProblem(ctx, plan, ProblemStage.LOADING, failure, then?.model, then?.backend)
+            noteProblem(ctx, plan, ProblemStage.LOADING, failure, then?.model, then?.backend,
+                if (r == null && !c.isConnected) ModelProcess.BRAIN else ModelProcess.of(plan.format))
         }
         if (next is ModelChoice.Decision.Load && fastPlan != null && m != fast) {
             // :brain may have died with the model: it comes back (or is bound again) for Fast.
@@ -622,20 +632,21 @@ object BrainKeeper {
 
     private fun onDeath(stage: ProblemStage?) {
         synchronized(deaths) { deaths.addLast(System.currentTimeMillis()) }
-        modelStopped(stage)
+        modelStopped(stage, ModelProcess.BRAIN)
     }
 
     /**
      * 0.4.5: llama.cpp's isolated process stopped under a reply (a crash, its watchdog, Android), and :brain lives: the
      * same lesson for that file as when :brain stopped, without counting toward the three an hour (Fast is unharmed).
+     * 0.6.0: noted as :llama's (your GGUF file's), never as Fast's or the GPU's.
      */
-    private fun onModelStopped() {
+    private fun onModelStopped(stage: ProblemStage?) {
         VoiceLog.add(VoiceEvent.BRAIN_DIED)
         RLog.i("brain_model_stopped")
-        modelStopped(null)
+        modelStopped(stage, ModelProcess.LLAMA)
     }
 
-    private fun modelStopped(stage: ProblemStage?) {
+    private fun modelStopped(stage: ProblemStage?, process: ModelProcess) {
         // A model you chose that took its process down while in memory (a native crash as it answered, or Android
         // reclaiming its memory) isn't loaded again at the next question, nor at every one until the lockout above stops
         // Fast too: Fast instead, with a notice, until you choose it again. (A death during its load is the load's failure.)
@@ -648,16 +659,16 @@ object BrainKeeper {
             mutex.withLock { if (failed[p.model.id]?.first != p.fingerprint) failed[p.model.id] = p.fingerprint to FallbackWhy.STOPPED }
         }
         // 0.4.7: a death while it answered (reading the prompt or writing: a question, or 0.6.0 a one-shot) is a crash worth
-        // a report; one between answers is most likely Android reclaiming memory, and is left as before. On the GPU, the CPU
-        // from now on.
-        if (p != null && ctx != null && !duringLoad && stage != null) scope.launch {
-            if (p.backend == ModelBackend.GPU) {
+        // a report; one between answers is most likely Android reclaiming memory, and is left as before. :brain's on the GPU:
+        // the CPU from now on. (llama.cpp's process runs only a GGUF file: a late word of it under another model is no note.)
+        if (p != null && ctx != null && !duringLoad && stage != null && (process == ModelProcess.BRAIN || p.format == ModelFormat.GGUF)) scope.launch {
+            if (p.backend == ModelBackend.GPU && process == ModelProcess.BRAIN) {
                 Problems.gpuFailed(ctx, GpuFailure(p.model, System.currentTimeMillis(), stage, null))
                 VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(p.model), stage)
                 RLog.i("brain_gpu_failed", "stage" to stage)
-                pendingNotice = gpuNotice(noteProblem(ctx, p, stage, null, p.model, ModelBackend.CPU))
+                pendingNotice = gpuNotice(noteProblem(ctx, p, stage, null, p.model, ModelBackend.CPU, process))
             } else {
-                noteProblem(ctx, p, stage, null, if (p.model != fast) fast else null, null)
+                noteProblem(ctx, p, stage, null, if (p.model != fast) fast else null, null, process)
             }
         }
         _state.value = State(Readiness.UNKNOWN)
