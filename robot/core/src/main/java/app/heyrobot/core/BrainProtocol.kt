@@ -60,7 +60,12 @@ enum class DoneReason {
 enum class BrainError {
     NOT_LOADED, NO_VISION, BAD_REQUEST, ENGINE, BUSY,
     /** The new message alone does not fit in the model's context (it is never sent cut off by the engine). */
-    TOO_LONG;
+    TOO_LONG,
+    /**
+     * The model's own process stopped while it answered (0.4.5: llama.cpp's isolated process, for a GGUF file; :brain
+     * itself lives). The assistant treats it as it treats :brain stopping: that file is skipped, Fast answers next.
+     */
+    STOPPED;
 
     /** Plain language for the panel. */
     fun text(): String = when (this) {
@@ -70,6 +75,7 @@ enum class BrainError {
         ENGINE -> "The model ran into a problem."
         BUSY -> "The model is busy with another answer."
         TOO_LONG -> "That's too long for Robot to read at once. Try a shorter question."
+        STOPPED -> "The model stopped unexpectedly."
     }
 }
 

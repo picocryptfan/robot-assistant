@@ -401,7 +401,7 @@ object PromptMarkers {
 
 /**
  * The CPU features Robot's llama.cpp library is built for (tools/build_llama.sh: Armv8.6-A with dotprod, i8mm and fp16;
- * the Tensor G5 has them all). :brain reads /proc/cpuinfo before it loads the library: on a CPU without one of them the
+ * the Tensor G5 has them all). :brain reads /proc/cpuinfo before it starts llama.cpp's process: on a CPU without one of them the
  * library would stop the process at its first such instruction.
  */
 object LlamaCpu {
@@ -411,11 +411,25 @@ object LlamaCpu {
     /**
      * The required features some core doesn't list ("Features : …" lines of /proc/cpuinfo; every core must have them).
      * Empty: all there, or unknown (no readable list: a hardened /proc may hide it, and the phone Robot is for has them; a
-     * CPU without them would stop only the :brain process, and Robot falls back to Fast).
+     * CPU without them would stop only llama.cpp's isolated process, and Robot falls back to Fast).
      */
     fun missing(cpuinfo: String?): List<String> {
         val lines = cpuinfo?.lines()?.filter { it.trimStart().startsWith("Features") }.orEmpty()
         if (lines.isEmpty()) return emptyList()
         return REQUIRED.filter { f -> lines.any { l -> f !in l.substringAfter(':').trim().split(Regex("\\s+")) } }
     }
+}
+
+/**
+ * Android's isolated uids (0.4.5): llama.cpp runs in LlamaService's android:isolatedProcess, under a uid of its own with
+ * no permissions, no network and none of Robot's files. :brain hands it your GGUF file only after the process proved
+ * such a uid (the kernel's, as Binder reports a call from it), never Robot's own.
+ */
+object IsolatedUid {
+    /** android.os.Process: a user's uids are user * 100,000 + app id; isolated services get 99,000 to 99,999, app-zygote ones 90,000 to 98,999. */
+    const val PER_USER = 100_000
+    const val FIRST = 90_000
+    const val LAST = 99_999
+
+    fun of(uid: Int): Boolean = uid >= 0 && uid % PER_USER in FIRST..LAST
 }

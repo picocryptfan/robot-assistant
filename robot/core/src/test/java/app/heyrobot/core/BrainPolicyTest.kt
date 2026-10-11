@@ -367,6 +367,16 @@ class BrainPolicyTest {
         }
     }
 
+    /** :brain gives your GGUF file only to a process whose uid (the kernel's, as Binder reports it) is an isolated one. */
+    @Test fun onlyAnIsolatedUidGetsTheFile() {
+        for (uid in listOf(99_000, 99_999, 90_000, 98_999, 10 * IsolatedUid.PER_USER + 99_123)) assertTrue("$uid", IsolatedUid.of(uid))
+        // Robot's own uid (u0_a123), another user's, the system's, root, nobody, and just outside the ranges.
+        for (uid in listOf(10_123, 10 * IsolatedUid.PER_USER + 10_123, 1_000, 0, -1, 89_999, IsolatedUid.PER_USER)) assertFalse("$uid", IsolatedUid.of(uid))
+        // Its error is one the assistant knows (it skips the file, as when :brain stopped), with words for the panel.
+        assertEquals(BrainFail.STOPPED, BrainFail.of(BrainError.STOPPED))
+        assertEquals("The model stopped unexpectedly.", BrainError.STOPPED.text())
+    }
+
     /** Robot's llama.cpp library needs dotprod, i8mm and fp16; :brain reads /proc/cpuinfo before it loads it. */
     @Test fun theLibraryLoadsOnlyOnACpuWithItsFeatures() {
         // A Tensor G5 core (Cortex-X4 / A725 / A520, Armv9.2-A), as /proc/cpuinfo lists them.

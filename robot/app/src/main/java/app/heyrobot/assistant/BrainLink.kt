@@ -62,7 +62,11 @@ class DeathOnce {
     @Synchronized fun died(): Boolean = (!counted).also { counted = true }
 }
 
-class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
+/**
+ * [onDeath]: :brain stopped. [onModelStopped] (0.4.5): the model's own process stopped under a reply while :brain lives
+ * (llama.cpp's isolated process, for a GGUF file): the same for the file it ran, nothing for :brain.
+ */
+class BrainClient(private val ctx: Context, private val onDeath: () -> Unit, private val onModelStopped: () -> Unit = {}) {
     private val death = DeathOnce()
     @Volatile private var messenger: Messenger? = null
     private var conn: ServiceConnection? = null
@@ -75,6 +79,7 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
     private fun onReply(m: Message) {
         val ch = streams[m.arg1] ?: return
         val msg = BrainWire.decode(m) ?: BrainMsg.Error(BrainError.BAD_REQUEST, "unreadable reply")
+        if (msg is BrainMsg.Error && msg.code == BrainError.STOPPED) onModelStopped()
         ch.trySend(msg)
         if (m.what in BrainProtocol.TERMINAL) {
             streams.remove(m.arg1)
@@ -285,7 +290,7 @@ object BrainKeeper {
                 return@withLock null
             }
         }
-        val c = client ?: BrainClient(ctx.applicationContext) { onDeath() }.also { client = it }
+        val c = client ?: BrainClient(ctx.applicationContext, ::onDeath, ::onModelStopped).also { client = it }
         if (!c.connect()) {
             _state.value = State(Readiness.FAILED, problem = "Robot couldn't start its model process.")
             return@withLock null
@@ -406,9 +411,23 @@ object BrainKeeper {
 
     private fun onDeath() {
         synchronized(deaths) { deaths.addLast(System.currentTimeMillis()) }
-        // A model you chose that took :brain down while in memory (a native crash as it answered, or Android reclaiming
-        // its memory) isn't loaded again at the next question, nor at every one until the lockout above stops Fast too:
-        // Fast instead, with a notice, until you choose it again. (A death during its load is the load's failure.)
+        modelStopped()
+    }
+
+    /**
+     * 0.4.5: llama.cpp's isolated process stopped under a reply (a crash, its watchdog, Android), and :brain lives: the
+     * same lesson for that file as when :brain stopped, without counting toward the three an hour (Fast is unharmed).
+     */
+    private fun onModelStopped() {
+        VoiceLog.add(VoiceEvent.BRAIN_DIED)
+        RLog.i("brain_model_stopped")
+        modelStopped()
+    }
+
+    private fun modelStopped() {
+        // A model you chose that took its process down while in memory (a native crash as it answered, or Android
+        // reclaiming its memory) isn't loaded again at the next question, nor at every one until the lockout above stops
+        // Fast too: Fast instead, with a notice, until you choose it again. (A death during its load is the load's failure.)
         val p = holding
         holding = null
         if (p != null && p.model != BrainModel.FAST) scope.launch {

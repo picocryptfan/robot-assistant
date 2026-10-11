@@ -89,6 +89,8 @@ class BrainProtocolTest {
             BrainProtocol.EV_DONE to BrainMsg.Done(DoneReason.TOOL_CALLS, 812, 260, 17.4, true),
             BrainProtocol.EV_ERROR to BrainMsg.Error(BrainError.NO_VISION, null),
             BrainProtocol.EV_ERROR to BrainMsg.Error(BrainError.ENGINE, "LiteRtLmJniException"),
+            // 0.4.5: llama.cpp's isolated process stopped under a reply.
+            BrainProtocol.EV_ERROR to BrainMsg.Error(BrainError.STOPPED, "model process stopped"),
         )
         for ((what, m) in events) assertEquals(m, roundTrip(what, m))
     }
