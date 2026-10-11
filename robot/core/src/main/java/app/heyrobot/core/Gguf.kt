@@ -9,7 +9,8 @@ import java.util.Locale
 // without loading it: the version, the metadata Robot needs (architecture, name, context, layers, quantisation,
 // tokenizer, chat template) and every tensor's shape, type and place, so a file that is cut short or laid out wrongly is
 // refused here, before llama.cpp's own parser ever sees it. llama.cpp's GGUF parser has had memory-safety bugs; Robot
-// reads the file first, runs llama.cpp only in its separate :brain process, and only on a file you imported.
+// reads the file first, runs llama.cpp only in an isolated process (no permissions, none of Robot's files), and only on
+// a file you imported.
 //
 // The file is untrusted: every count, length and string is capped, every position is checked against the file without
 // adding (so nothing overflows past a check), and anything unexpected ends the check as "unreadable" (never an exception,
@@ -195,6 +196,8 @@ object GgufCheck {
     const val MAX_DIMS = 4
     const val MAX_NAME = 64
     const val MAX_ALIGNMENT = 1 shl 20
+    /** Where llama.cpp needs the tensor data to start to map it from an open file (ggml's CPU tensor alignment). */
+    const val MAP_ALIGNMENT = 32L
     /** What the screen shows of a string from the file. */
     const val MAX_SHOWN = 80
 
@@ -396,6 +399,9 @@ object GgufCheck {
         }
         // The tensor data starts at the next aligned position, and must all be in the file.
         val dataStart = pad(r.pos, alignment) ?: throw LiteRtLmFormat("a bad data position")
+        // llama.cpp maps the open file it is given (llama_model_load_from_file_ptr) only when its tensor data starts on the
+        // CPU's 32-byte tensor alignment, which general.alignment 32 (the default) or more always gives.
+        if (dataStart % MAP_ALIGNMENT != 0L) throw LiteRtLmFormat("tensor data off llama.cpp's 32-byte boundary")
         if (nTensors > 0 && (dataStart > src.size || expected > src.size - dataStart)) throw LiteRtLmFormat("cut short: its tensors run past the end")
         val arch = strings["general.architecture"]?.let { printable(it, MAX_SHOWN) }
         val template = strings["tokenizer.chat_template"]

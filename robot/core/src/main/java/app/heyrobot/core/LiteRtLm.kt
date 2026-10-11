@@ -215,7 +215,12 @@ object LiteRtLmCheck {
         "HF_Tokenizer_Zlib", "TFLiteWeights", "EmbeddingMetadataProto", "ExecutorMetadataProto", "TtsMetadataProto", "AsrMetadataProto",
         "ImageGenMetadataProto")
     private const val TFLITE = 3
+    private const val SP_TOKENIZER = 4
     private const val LLM_METADATA = 5
+    private const val HF_TOKENIZER_ZLIB = 6
+    /** A tokenizer section (Gemma 4's SentencePiece model is 4.7 MB), and a Hugging Face tokenizer.json once inflated. */
+    const val MAX_TOKENIZER = 32 shl 20
+    const val MAX_TOKENIZER_JSON = 32 shl 20
 
     /** LlmModelType's oneof, by field number (runtime/proto/llm_model_type.proto). */
     private val MODEL_TYPES = mapOf(1 to "generic_model", 2 to "gemma3n", 3 to "function_gemma", 4 to "gemma3", 5 to "qwen3", 7 to "qwen2p5",
@@ -237,23 +242,28 @@ object LiteRtLmCheck {
 
     private class Section(val modelType: String?, val dataType: Int, val begin: Long, val end: Long)
 
-    private fun read(src: ByteSource): LiteRtLmReport {
+    /** The header's format version and sections; null when the file doesn't start with [MAGIC]. */
+    private fun sections(src: ByteSource): Pair<String, List<Section>>? {
         if (src.size < 32) throw LiteRtLmFormat("too short")
         val head = src.read(0, 32)
-        if (String(head, 0, 8, Charsets.ISO_8859_1) != MAGIC) return LiteRtLmReport(readable = false, problem = "It isn't a LiteRT-LM model file (.litertlm).")
+        if (String(head, 0, 8, Charsets.ISO_8859_1) != MAGIC) return null
         val le = Le(head)
         val format = "${le.u32(8)}.${le.u32(12)}.${le.u32(16)}"
         val headerEnd = le.u64(24)
         if (headerEnd <= 32 || headerEnd > src.size || headerEnd - 32 > MAX_HEADER) throw LiteRtLmFormat("bad header size")
         val fb = Fb(src, 32, headerEnd)
         val root = fb.root()
-        val sections = root.table(1)?.tables(0, MAX_SECTIONS).orEmpty().map { s ->
+        return format to root.table(1)?.tables(0, MAX_SECTIONS).orEmpty().map { s ->
             val type = s.tables(0, MAX_SECTIONS).firstNotNullOfOrNull { kv -> if (kv.string(0) == "model_type") kvString(kv) else null }
             val begin = s.u64(1)
             val end = s.u64(2)
             if (begin < 0 || end < begin || end > src.size) throw LiteRtLmFormat("a section outside the file")
             Section(type, s.u8(3), begin, end)
         }
+    }
+
+    private fun read(src: ByteSource): LiteRtLmReport {
+        val (format, sections) = sections(src) ?: return LiteRtLmReport(readable = false, problem = "It isn't a LiteRT-LM model file (.litertlm).")
         val names = sections.map { s -> s.modelType ?: DATA_TYPES.getOrElse(s.dataType) { i -> "type $i" } }
         val decoder = sections.firstOrNull { it.modelType == "tf_lite_prefill_decode" && it.dataType == TFLITE }
         var dispatch = false
@@ -276,6 +286,147 @@ object LiteRtLmCheck {
             modelType = meta?.type, toolTokens = meta?.tools == true, maxTokens = meta?.maxTokens ?: 0,
             vision = sections.any { it.modelType == "tf_lite_vision_encoder" },
         )
+    }
+
+    /**
+     * The special tokens of the file's own tokenizer, as LiteRT-LM 0.18.0 reads them from a prompt's text, and the
+     * character that breaks one for it ([ModelTokens], for ControlText). LiteRT-LM renders the conversation with the
+     * model's template and encodes the whole string (SentencePieceTokenizer: SentencePieceProcessor::Encode, which reads a
+     * user-defined piece anywhere in the text and a control piece nowhere; HuggingFaceTokenizer: tokenizers' encode, which
+     * reads every added token). Null when the file has no tokenizer Robot can read: then ControlText has only
+     * PromptMarkers.KNOWN. Capped like the rest of the check; never an exception.
+     */
+    fun tokens(src: ByteSource): ModelTokens? = try {
+        val sections = sections(src)?.second
+        val sp = sections?.firstOrNull { it.dataType == SP_TOKENIZER }
+        val hf = sections?.firstOrNull { it.dataType == HF_TOKENIZER_ZLIB }
+        when {
+            sp != null && sp.end - sp.begin in 1..MAX_TOKENIZER.toLong() -> sentencePieceTokens(src.read(sp.begin, (sp.end - sp.begin).toInt()))
+            hf != null && hf.end - hf.begin in 9..MAX_TOKENIZER.toLong() -> huggingFaceTokens(src.read(hf.begin, (hf.end - hf.begin).toInt()))
+            else -> null
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * A SentencePiece model's control and unknown pieces, and its user-defined ones (read from text wherever they are).
+     * The joiner breaks them when the model encodes it as itself (a piece for it, or byte fallback) and doesn't normalise
+     * the text first; else a zero-width space when it has a piece for that; else a plain space (an unknown character would
+     * become the model's unknown token: Qwen3's file's is "<|endoftext|>").
+     */
+    fun sentencePieceTokens(model: ByteArray): ModelTokens {
+        val m = SentencePieceModel.parse(model)
+        val control = ArrayList<String>()
+        val user = ArrayList<String>()
+        var bytes = false
+        var joiner = false
+        var zeroWidth = false
+        for (p in m.pieces) when (p.type) {
+            SentencePieceModel.PieceType.CONTROL, SentencePieceModel.PieceType.UNKNOWN -> control += p.text
+            SentencePieceModel.PieceType.USER_DEFINED -> {
+                user += p.text
+                if (p.text == ControlText.JOINER) joiner = true
+                if (p.text == ControlText.ZERO_WIDTH_SPACE) zeroWidth = true
+            }
+            SentencePieceModel.PieceType.BYTE -> bytes = true
+            SentencePieceModel.PieceType.NORMAL -> {
+                if (p.text == ControlText.JOINER) joiner = true
+                if (p.text == ControlText.ZERO_WIDTH_SPACE) zeroWidth = true
+            }
+            SentencePieceModel.PieceType.UNUSED -> {}
+        }
+        val breaker = when {
+            m.normalizes -> ControlText.SPACE
+            joiner || bytes -> ControlText.JOINER
+            zeroWidth -> ControlText.ZERO_WIDTH_SPACE
+            else -> ControlText.SPACE
+        }
+        return ModelTokens(control, user, breaker)
+    }
+
+    /**
+     * A HF_Tokenizer_Zlib section (LiteRT-LM's layout: the inflated size, 8 bytes little-endian, then zlib data): its
+     * tokenizer.json's added tokens, special or not. The joiner breaks them for a byte-level or byte-fallback tokenizer
+     * with no normaliser; anything else gets a plain space.
+     */
+    fun huggingFaceTokens(section: ByteArray): ModelTokens {
+        val size = Le(section).u64(0)
+        if (size <= 0 || size > MAX_TOKENIZER_JSON) throw LiteRtLmFormat("a tokenizer too large")
+        val json = ByteArray(size.toInt())
+        val inflater = java.util.zip.Inflater()
+        try {
+            inflater.setInput(section, 8, section.size - 8)
+            var n = 0
+            while (n < json.size && !inflater.finished()) {
+                val k = inflater.inflate(json, n, json.size - n)
+                if (k == 0 && (inflater.needsInput() || inflater.needsDictionary())) break
+                n += k
+            }
+            if (n != json.size) throw LiteRtLmFormat("a tokenizer cut short")
+        } finally {
+            inflater.end()
+        }
+        val key = find(json, "\"added_tokens\"".toByteArray(), 0)
+        val open = if (key < 0) -1 else (key until minOf(json.size, key + 64)).firstOrNull { json[it] == '['.code.toByte() } ?: -1
+        val control = ArrayList<String>()
+        val user = ArrayList<String>()
+        if (open >= 0) {
+            val close = arrayEnd(json, open)
+            val added = JSONArray(String(json, open, close - open + 1, Charsets.UTF_8))
+            for (i in 0 until minOf(added.length(), MAX_ADDED)) {
+                val t = added.optJSONObject(i) ?: continue
+                val text = t.optString("content")
+                if (t.optBoolean("special", false)) control += text else user += text
+            }
+        }
+        // The top level's "normalizer" (an added token has "normalized", and a Sequence "normalizers").
+        val noNormalizer = literalAfter(json, "normalizer", "null")
+        val bytes = find(json, "\"ByteLevel\"".toByteArray(), 0) >= 0 || literalAfter(json, "byte_fallback", "true")
+        return ModelTokens(control, user, if (noNormalizer && bytes) ControlText.JOINER else ControlText.SPACE)
+    }
+
+    /** At most this many added tokens are read (Gemma's tokenizer.json has about 6,400; Qwen's, 26). */
+    const val MAX_ADDED = 100_000
+
+    /** The first value of "[key]" in the JSON [b] is the literal [value] (null, true…). */
+    private fun literalAfter(b: ByteArray, key: String, value: String): Boolean {
+        val at = find(b, "\"$key\"".toByteArray(), 0)
+        if (at < 0) return false
+        var i = at + key.length + 2
+        while (i < b.size && (b[i] == ' '.code.toByte() || b[i] == ':'.code.toByte() || b[i] == '\n'.code.toByte() || b[i] == '\r'.code.toByte() || b[i] == '\t'.code.toByte())) i++
+        val v = value.toByteArray()
+        return i + v.size <= b.size && (v.indices).all { b[i + it] == v[it] }
+    }
+
+    private fun find(b: ByteArray, what: ByteArray, from: Int): Int {
+        var i = maxOf(from, 0)
+        while (i <= b.size - what.size) {
+            var k = 0
+            while (k < what.size && b[i + k] == what[k]) k++
+            if (k == what.size) return i
+            i++
+        }
+        return -1
+    }
+
+    /** The index of the ']' that closes the JSON array opening at [open] (strings and escapes skipped). */
+    private fun arrayEnd(b: ByteArray, open: Int): Int {
+        var depth = 0
+        var inString = false
+        var i = open
+        while (i < b.size) {
+            val c = b[i].toInt().toChar()
+            if (inString) {
+                if (c == '\\') i++ else if (c == '"') inString = false
+            } else when (c) {
+                '"' -> inString = true
+                '[', '{' -> depth++
+                ']', '}' -> { depth--; if (depth == 0) return i }
+            }
+            i++
+        }
+        throw LiteRtLmFormat("an added-token list cut short")
     }
 
     /** A KeyValuePair's value when it is a string (value_type 9, StringValue). */
@@ -443,6 +594,16 @@ object LiteRtLmCheck {
             i += n
         }
     }
+}
+
+/**
+ * A model's special tokens as its tokenizer reads them from plain text ([control]: control and unknown tokens, or special
+ * added ones; [userDefined]: the others, of which ControlText breaks the marker-shaped), and the character that breaks
+ * one for this tokenizer ([breaker]: one it encodes as itself, never as an unknown token, and doesn't normalise away).
+ */
+data class ModelTokens(val control: List<String>, val userDefined: List<String>, val breaker: String) {
+    /** What breaks these tokens (and PromptMarkers.KNOWN) in text from outside Robot's own prompt. */
+    fun controlText(): ControlText = ControlText(PromptMarkers.of(control, userDefined), breaker)
 }
 
 /**

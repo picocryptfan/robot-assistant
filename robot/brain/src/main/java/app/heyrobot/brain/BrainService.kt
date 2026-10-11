@@ -20,8 +20,9 @@ import app.heyrobot.core.RLog
 // :BRAIN PROCESS ONLY (android:process=":brain"). A native crash in LiteRT-LM or the TPU stack kills
 // this process alone; the assistant in :voice sees the binder die and reloads on the next question (or, when the model
 // you chose is the one that keeps failing, falls back to Fast: BrainKeeper).
-// No LiteRT import here: GemmaEngine.kt is the only file that touches it, and LlamaNative.kt the only one that loads
-// llama.cpp (0.4.5, your own GGUF file). Engines picks one of the two for each load; one engine holds a model at a time.
+// No LiteRT import here: GemmaEngine.kt is the only file that touches it. llama.cpp (0.4.5, your own GGUF file) never
+// runs in this process: LlamaEngine runs it in LlamaService's isolated process (":llama"). Engines picks one of the two
+// for each load; one engine holds a model at a time.
 
 class BrainService : Service() {
     private lateinit var work: HandlerThread

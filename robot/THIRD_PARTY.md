@@ -388,7 +388,7 @@ was written for Robot.
 
 ### llama.cpp b11200 (MIT): your own GGUF model file (0.4.5)
 
-`librobot_llama.so` (arm64-v8a), loaded only by `brain/LlamaNative.kt` in the `:brain` process. Never committed and never
+`librobot_llama.so` (arm64-v8a), loaded only by `brain/LlamaNative.kt` in the isolated `:llama` process (`LlamaService`). Never committed and never
 downloaded as a binary: `tools/build_llama.sh` fetches the pinned sources below, checks them, and builds them with the
 Android NDK (27.1.12297006) into `brain/src/main/jniLibs/arm64-v8a/` (gitignored). Without it the app builds and runs, and
 Settings › Model says GGUF files can't run in that build. One shared library holds, as static code:
