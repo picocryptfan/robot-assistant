@@ -745,6 +745,22 @@ class TurnTest {
         assertEquals(listOf<Action>(Action.MapsNavigate("pharmacy", nearest = true)), free.ran)
     }
 
+    /** A name learned from a Cheogram notification: its card is answered by a tap only (no spoken or typed yes). */
+    @Test fun aLearnedNamesCardIsTapOnly() = runBlocking {
+        for ((why, tapOnly) in listOf(setOf(AskWhy.LEARNED) to true, setOf(AskWhy.LEARNED, AskWhy.WHO) to true, setOf(AskWhy.WHO) to false)) {
+            val actions = FakeActions()
+            val text = Action.SendText("Mom", "hi")
+            actions.prepare = { Prepared.Ready(text, why = why, choices = listOf(Choice("Mom · xmpp", text))) }
+            val view = FakeView()
+            val conf = Confirmations()
+            val turn = async { runner(FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "Mom", "message" to "hi")))), actions, view, conf).run() }
+            val id = withTimeout(5_000) { view.pending.receive() }
+            assertEquals("$why", tapOnly, view.cards[id]!!.tapOnly)
+            conf.answer(id, false)
+            turn.await()
+        }
+    }
+
     /** A phone locked while the card waited: only what "Works on the lock screen" allows still runs. */
     @Test fun theLockScreenSettingHoldsAfterTheCard() = runBlocking {
         val actions = FakeActions(RobotSettings(lockedTools = setOf(ToolName.MAPS_SEARCH)).let { it.copy(approvals = it.approvals + (ToolName.MAPS_SEARCH to Approval.ASK)) })

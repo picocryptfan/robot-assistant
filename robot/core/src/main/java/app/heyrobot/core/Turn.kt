@@ -164,6 +164,11 @@ data class Card(
     val remember: String? = null,
     /** While it waits, the card also offers to allow reading the contacts ([Prepared.Ready.allowContacts]). */
     val allowContacts: Boolean = false,
+    /**
+     * Only a tap answers it, never a spoken or typed yes: it goes to a name learned from a Cheogram notification
+     * ([AskWhy.LEARNED]), which whoever sent it chose, so who it really goes to must be seen on the card.
+     */
+    val tapOnly: Boolean = false,
 )
 
 interface TurnView {
@@ -416,7 +421,7 @@ class TurnRunner(
         val chosen = when (decision) {
             // No card for these choices (the settings say so): the first, the best match.
             GateDecision.RUN -> a.choices.firstOrNull()?.action ?: a.action
-            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember, a.allowContacts)
+            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember, a.allowContacts, tapOnly = AskWhy.LEARNED in a.why)
             GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
@@ -454,9 +459,9 @@ class TurnRunner(
      * meanwhile leaves the card declined, never waiting.
      */
     private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int, note: String? = null, remember: String? = null,
-        allowContacts: Boolean = false): Action? {
+        allowContacts: Boolean = false, tapOnly: Boolean = false): Action? {
         view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, note, a, body = a.body(), choices = choices, more = more, remote = remote,
-            remember = remember, allowContacts = allowContacts))
+            remember = remember, allowContacts = allowContacts, tapOnly = tapOnly))
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
             confirmations.ask(id)

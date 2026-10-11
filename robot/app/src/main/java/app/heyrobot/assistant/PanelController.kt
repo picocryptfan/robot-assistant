@@ -184,6 +184,8 @@ data class UiAction(
     val allowContacts: Boolean = false,
     /** Its button sends personal content to Claude: a spoken or typed yes doesn't, unless "Voice yes can send personal content". */
     val personal: Boolean = false,
+    /** Only a tap answers it (core Card.tapOnly: a name learned from a Cheogram notification); "no" still declines. */
+    val tapOnly: Boolean = false,
 )
 
 /**
@@ -778,8 +780,9 @@ object PanelController {
     // ------------------------------------------------------------------ voice input
 
     fun micPressed() {
-        // A card waits: the mic answers it ("yes", "no").
+        // A card waits: the mic answers it ("yes", "no"), with "Answer cards by voice" on (off: a tap or a typed answer).
         if (_state.value.phase == Phase.CONFIRMING) {
+            if (!VoiceHub.settings.voiceCards) return notify(CARD_TYPE_HINT)
             VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
             cardRetry = 0
             return listenForCard()
@@ -885,6 +888,11 @@ object PanelController {
         cardPromptSaid = false
         cardRetry = 0
         if (!s.voiceCards || !shown || !VoiceHub.stt.available || !(st.speak || spokenTurn || shownFrom == ShowSource.WAKE)) return
+        // A name learned from a notification: who it goes to must be seen, so a tap answers it (not "Say yes or no").
+        if (pendingCard()?.tapOnly == true) {
+            if (st.speak && !said) VoiceHub.tts.speak(CARD_LEARNED_HINT)
+            return
+        }
         if (st.speak) {
             if (!said) VoiceHub.tts.speak(CARD_PROMPT)
             cardListenAfterSpeech = true
@@ -964,12 +972,14 @@ object PanelController {
 
     /**
      * [text] answers the waiting card ([CardAnswer]): "no" declines it; "yes" confirms it, except a card with several
-     * choices (tap the one meant) or one that sends personal content to Claude (a tap, unless "Voice yes can send
-     * personal content"). False: not a yes or no, or no card waits.
+     * choices (tap the one meant), one that sends personal content to Claude (a tap, unless "Voice yes can send
+     * personal content") or one for a name learned from a notification (a tap). False: not a yes or no, no card waits,
+     * or it was [spoken] with "Answer cards by voice" off (a typed answer still works then).
      */
     private fun answerCard(text: String, spoken: Boolean): Boolean {
         val card = pendingCard() ?: return false
         val s = VoiceHub.settings
+        if (spoken && !s.voiceCards) return false
         val kind = CardAnswer.of(text, s.wakePhrases.filter { it.enabled }.map { it.text }) ?: return false
         RLog.i("card_answer", "yes" to (kind == CardAnswer.Kind.YES), "spoken" to spoken)
         fun tell(words: String) {
@@ -979,6 +989,7 @@ object PanelController {
         when {
             kind == CardAnswer.Kind.NO -> confirm(card.id, false)
             card.choices.size > 1 -> tell("Tap the one you mean on the card.")
+            card.tapOnly -> tell(CARD_LEARNED_HINT)
             card.personal && !s.voiceYesPersonal -> tell("Tap ${card.confirm ?: "the button"} to share it with Claude.")
             card.choices.size == 1 -> choose(card.id, 0)
             else -> confirm(card.id, true)
@@ -1003,7 +1014,7 @@ object PanelController {
         if (st.phase == Phase.CONFIRMING && st.draft == null && answerCard(q, fromVoice)) return true
         if (st.busy || slot.running) {
             if (st.phase == Phase.CONFIRMING) {
-                notify(CARD_HINT)
+                notify(if (fromVoice && !VoiceHub.settings.voiceCards) CARD_TYPE_HINT else CARD_HINT)
                 if (fromVoice) cue(Cue.CHIME)
             } else if (fromVoice) {
                 notify("Robot is still on the last question. Ask again when it's done.")
@@ -1973,7 +1984,7 @@ object PanelController {
             upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo, c.content, c.more,
                 c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts,
                 // What it finds goes to Claude: a read, or an online lookup around where you are (the nearest place).
-                personal = c.remote && (c.tool?.reads == true || c.action?.online == true)))
+                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapOnly = c.tapOnly))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
@@ -2248,5 +2259,7 @@ object PanelController {
     private const val SORRY = "Sorry, I didn't catch that."
     private const val CARD_HINT = "A card is waiting: say yes or no, or tap a button on it."
     private const val CARD_PROMPT = "Say yes or no."
+    private const val CARD_TYPE_HINT = "A card is waiting: tap a button on it, or type yes or no."
+    private const val CARD_LEARNED_HINT = "Robot learned that name from a Cheogram notification: check who it goes to on the card, then tap."
     private const val SORRY_NO_ANSWER = "Sorry, I couldn't answer that."
 }

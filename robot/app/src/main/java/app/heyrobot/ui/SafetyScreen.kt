@@ -63,7 +63,8 @@ fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
                     "or address itself, or an app name matched loosely. Off: Robot takes the best match.", s.whoCards) { update(s.copy(whoCards = it)) }
                 SwitchRow("Card for names learned from Cheogram", "Whoever sent the message chose that name.", s.learnedCards) { update(s.copy(learnedCards = it)) }
                 SwitchRow("Answer cards by voice", "While a card waits, say “yes”, “do it”, “send it” or “oui”, or “no”, “cancel” or " +
-                    "“annule” (or type it). Robot listens when replies are spoken or you asked by voice; the mic answers the card too.",
+                    "“annule” (or type it). Robot listens when replies are spoken or you asked by voice; the mic answers the card too. " +
+                    "A card for a name learned from Cheogram still needs a tap. Off: a tap, or a typed yes or no.",
                     s.voiceCards) { update(s.copy(voiceCards = it)) }
                 SwitchRow("Card before deleting files", "A large photo or video (Android still asks too), or Robot's cache. Off: Robot goes " +
                     "straight to Android's confirmation for the largest one.", s.deleteCards) { update(s.copy(deleteCards = it)) }

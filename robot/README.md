@@ -320,10 +320,13 @@ ahead", "send it", "sure", "oui", "vas-y", "envoie" confirms it, and **no**, "ca
 or a no ("yes but at 5" isn't), a wake phrase in front aside. When replies are spoken, or the question came by voice or
 the panel opened with a wake word, Robot says "Say yes or no." and listens once it has stopped talking, and asks once
 more if it didn't hear a yes or a no; the mic button answers the card too, and Stop sits next to it. A card with several
-choices needs the tap ("Tap the one you mean on the card."), and a card or offer that sends personal content to Claude
-needs the tap unless "Voice yes can send personal content" is on ("Tap Send to share it with Claude."); a no always
-works. The status line says "Waiting for you: tap the card, or answer yes or no". Off ("Answer cards by voice"), Robot
-doesn't listen by itself; typed answers still work. Logged as `card_answer yes=… spoken=…` only.
+choices needs the tap ("Tap the one you mean on the card."), a card for a name learned from a Cheogram notification
+needs the tap (whoever sent it chose that name, so who it really goes to must be seen on the card; Robot says so instead
+of "Say yes or no."), and a card or offer that sends personal content to Claude (what a read tool or the nearest place
+found for Claude included) needs the tap unless "Voice yes can send personal content" is on ("Tap Send to share it with
+Claude."); a no always works. The status line says "Waiting for you: tap the card, or answer yes or no". Off ("Answer
+cards by voice"), Robot doesn't listen, and neither the mic nor a spoken yes answers a card; typed answers still work.
+Logged as `card_answer yes=… spoken=…` only.
 
 ### The panel
 
