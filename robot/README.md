@@ -306,9 +306,12 @@ Safety cards, which takes the new default "When you didn't ask for it" (as asked
 **What you asked for** (`ToolRouter.asked`, tested) is read from what you typed or said this turn, never from the
 screen's text, a photo or a tool's results: timers ("timer", "minuteur"), alarms ("alarm", "wake me", "réveil"), the
 flashlight, opening an app ("open", "launch", "ouvre"), the maps ("directions", "nearest", "where is", "itinéraire"…)
-each by their own words, and the other groups by the router's words (a text by "text", "tell", "email"…; notes,
-calendar, weather, phone). The texting shortcut ("text mom I'm late", and the answer to "what should it say?") counts
-as asking for a text. Under the default, "summarize this page" with a page that says "set a timer" still shows the
+each by their own words; a text, an email, a note, an event and freeing memory or storage only by a word that asks for
+one ("text", "tell", "send", "email", "note", "remember", "add" or "schedule" with a day or "calendar", "free up",
+"delete"…), as the word itself and not right after one that names a thing ("what does this message say?", "check my
+email", "is this event today?" ask for none of them; a word missed only shows a card); the read tools by the router's
+words (the weather's matter, since it goes online). The texting shortcut ("text mom I'm late", and the answer to "what
+should it say?") counts as asking for a text. Under the default, "summarize this page" with a page that says "set a timer" still shows the
 timer's card; "set a timer for that" in the same conversation doesn't. Claude's calls count your words in the question
 you asked Claude. The Claude app hand-off always shows its card.
 
