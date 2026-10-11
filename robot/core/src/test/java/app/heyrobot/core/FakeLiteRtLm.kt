@@ -189,4 +189,34 @@ object FakeLiteRtLm {
 
     /** generic_model, empty (as the renamed "Tensor G5" CPU export has it). */
     val GENERIC: ByteArray get() = pbBytes(1, ByteArray(0))
+
+    // ------------------------------------------------------------------ tokenizers
+
+    const val HF_TOKENIZER_ZLIB = 6
+
+    /**
+     * A SentencePiece ModelProto (BPE): [pieces] as (text, type: 1 normal, 2 unknown, 3 control, 4 user-defined, 6 byte),
+     * byte fallback on or off, and a normaliser's precompiled character map when [charsmap].
+     */
+    fun spModel(pieces: List<Pair<String, Int>>, byteFallback: Boolean = false, charsmap: Boolean = false): ByteArray {
+        val o = ByteArrayOutputStream()
+        for ((text, type) in pieces) o.write(pbBytes(1, pbStr(1, text) + pbInt(3, type.toLong())))
+        o.write(pbBytes(2, pbInt(3, 2) + (if (byteFallback) pbInt(35, 1) else ByteArray(0))))
+        o.write(pbBytes(3, (if (charsmap) pbBytes(2, ByteArray(16) { 1 }) else ByteArray(0)) + pbInt(4, 0)))
+        return o.toByteArray()
+    }
+
+    /** A HF_Tokenizer_Zlib section as LiteRT-LM writes it: the inflated size (8 bytes, little-endian), then zlib data. */
+    fun hfTokenizer(json: String): ByteArray {
+        val raw = json.toByteArray(Charsets.UTF_8)
+        val d = java.util.zip.Deflater()
+        d.setInput(raw)
+        d.finish()
+        val z = ByteArrayOutputStream()
+        val buf = ByteArray(4096)
+        while (!d.finished()) z.write(buf, 0, d.deflate(buf))
+        d.end()
+        val size = ByteArray(8) { ((raw.size.toLong() ushr (8 * it)) and 0xff).toByte() }
+        return size + z.toByteArray()
+    }
 }
