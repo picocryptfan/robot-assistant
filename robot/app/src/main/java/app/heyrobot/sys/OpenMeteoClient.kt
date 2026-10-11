@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import app.heyrobot.core.Abort
 import app.heyrobot.core.Forecast
+import app.heyrobot.core.GeoAnswer
 import app.heyrobot.core.OpenMeteo
 import app.heyrobot.core.WeatherFail
 import app.heyrobot.core.WeatherPlace
@@ -24,8 +25,13 @@ import java.net.UnknownHostException
 // Nothing is logged here; the tool logs codes and times.
 
 object OpenMeteoClient {
-    /** Why a request gave no usable answer, and Open-Meteo's HTTP status if it answered at all. */
-    class Failure(val why: WeatherFail, val http: Int = 0) : Exception(why.name)
+    /**
+     * Why a request gave no usable answer, and Open-Meteo's HTTP status if it answered at all. [detail]: the words for it
+     * when they say more than [WeatherFail.text] (a town found, but not where it was said to be).
+     */
+    class Failure(val why: WeatherFail, val http: Int = 0, val detail: String? = null) : Exception(why.name) {
+        val text: String get() = detail ?: why.text
+    }
 
     private const val TIMEOUT_MS = 8_000
     /** Less time than this left before the deadline: don't start another request. */
@@ -33,11 +39,16 @@ object OpenMeteoClient {
     private const val MAX_BYTES = 256 * 1024
     private val HOSTS = setOf("api.open-meteo.com", "geocoding-api.open-meteo.com")
 
-    /** The place [name] means ("Paris, Texas" picks the one in Texas). Blocking. */
-    fun geocode(ctx: Context, name: String, abort: Abort = Abort()): WeatherPlace {
-        val found = OpenMeteo.places(get(ctx, OpenMeteo.geocodeUrl(name), abort)) ?: throw Failure(WeatherFail.SERVICE)
-        return OpenMeteo.pick(name, found)?.place() ?: throw Failure(WeatherFail.NO_PLACE)
-    }
+    /**
+     * The place [name] means ("Paris, Texas" and "Paris Texas" pick the one in Texas; a town not where it was said to be is
+     * refused). Up to three requests. Blocking.
+     */
+    fun geocode(ctx: Context, name: String, abort: Abort = Abort()): WeatherPlace =
+        when (val a = OpenMeteo.resolve(name) { s -> OpenMeteo.places(get(ctx, OpenMeteo.geocodeUrl(s), abort)) ?: throw Failure(WeatherFail.SERVICE) }) {
+            is GeoAnswer.Found -> a.place.place()
+            is GeoAnswer.NotThere -> throw Failure(WeatherFail.NO_PLACE, detail = a.detail)
+            GeoAnswer.None -> throw Failure(WeatherFail.NO_PLACE)
+        }
 
     /** [days] days of forecast for [place] in [units]. Blocking. */
     fun forecast(ctx: Context, place: WeatherPlace, days: Int, units: WeatherUnits, abort: Abort = Abort()): Forecast =

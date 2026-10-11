@@ -109,6 +109,19 @@ data class WeatherDay(
 /** A forecast as read: the place's time zone (the days are its days), now, and the days. */
 data class Forecast(val zone: ZoneId?, val now: WeatherNow?, val days: List<WeatherDay>)
 
+/**
+ * One name search for a place: [name] goes to Open-Meteo, and the place found must be in each of [quals] (a region,
+ * county or country, as said: "Texas", "TX", "Ontario", "USA").
+ */
+data class GeoSearch(val name: String, val quals: List<String> = emptyList())
+
+/** What the searches for a place found: it, a town by that name but none where it was said to be, or nothing. */
+sealed class GeoAnswer {
+    data class Found(val place: GeoResult) : GeoAnswer()
+    data class NotThere(val detail: String) : GeoAnswer()
+    data object None : GeoAnswer()
+}
+
 /** One geocoding result. */
 data class GeoResult(val name: String, val admin1: String?, val admin2: String?, val country: String?, val countryCode: String?, val lat: Double, val lon: Double) {
     /** "Montreal, Quebec, Canada"; a region named like the town is left out ("New York, United States"). */
@@ -122,8 +135,11 @@ object OpenMeteo {
     const val GEOCODING = "https://geocoding-api.open-meteo.com/v1/search"
     /** Open-Meteo forecasts today and the next 15 days. */
     const val MAX_DAYS = 16
-    /** Geocoding candidates asked for, so "Paris, Texas" can find the one in Texas. */
+    /** Geocoding candidates asked for; with a region or country to match, more ("Springfield, Oregon" is the 11th). */
     const val CANDIDATES = 10
+    const val QUALIFIED_CANDIDATES = 30
+    /** Name searches for one place at most (each a request). */
+    const val MAX_SEARCHES = 3
 
     private const val DAILY = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum," +
         "rain_sum,showers_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,cloud_cover_mean"
@@ -138,9 +154,51 @@ object OpenMeteo {
             "&forecast_days=${days.coerceIn(1, MAX_DAYS)}" +
             if (units == WeatherUnits.IMPERIAL) "&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=inch" else ""
 
-    /** The name search for a place: only the town's name goes (what follows a comma is matched here, [pick]). */
-    fun geocodeUrl(name: String): String =
-        "$GEOCODING?name=${UriText.strict(name.substringBefore(',').trim())}&count=$CANDIDATES&language=en&format=json"
+    /** One name search: only the town's name goes (the region or country is matched here, [pick]). */
+    fun geocodeUrl(s: GeoSearch): String =
+        "$GEOCODING?name=${UriText.strict(s.name)}&count=${if (s.quals.isEmpty()) CANDIDATES else QUALIFIED_CANDIDATES}&language=en&format=json"
+
+    /**
+     * The searches that may find [asked], in order. With a comma, the town and what follows it ("Paris, TX"). Without one
+     * (speech has none), the whole name first ("New York", "Le Mans", "Kansas City"), then without "city" ("Quebec City"),
+     * then its last word or two as the region or country ("Paris Texas", "Washington DC", "Springfield New Jersey").
+     */
+    fun searches(asked: String): List<GeoSearch> {
+        val text = asked.replace(Regex("\\s+"), " ").trim().trimEnd('.', '?', '!').trim()
+        val parts = text.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return emptyList()
+        val name = parts[0]
+        val quals = parts.drop(1)
+        val out = LinkedHashSet<GeoSearch>()
+        out += GeoSearch(name, quals)
+        val noCity = name.replace(Regex("""(?i)^(?:the )?(?:city of|ville de|la ville de)\s+|\s+city$"""), "").trim().takeIf { it.isNotEmpty() && it != name }
+        noCity?.let { out += GeoSearch(it, quals) }
+        if (quals.isEmpty()) {
+            val w = (noCity ?: name).split(' ')
+            if (w.size >= 2) out += GeoSearch(w.dropLast(1).joinToString(" "), listOf(w.last()))
+            if (w.size >= 3) out += GeoSearch(w.dropLast(2).joinToString(" "), listOf(w.takeLast(2).joinToString(" ")))
+        }
+        return out.toList()
+    }
+
+    /**
+     * Runs [searches] (at most [MAX_SEARCHES], each through [search], which may throw) until one finds the place. A town
+     * found but not in the region or country said is refused, never swapped for the biggest town of that name.
+     */
+    fun resolve(asked: String, search: (GeoSearch) -> List<GeoResult>): GeoAnswer {
+        var missed: GeoSearch? = null
+        for (s in searches(asked).take(MAX_SEARCHES)) {
+            val found = search(s)
+            if (found.isEmpty()) continue
+            pick(s, found)?.let { return GeoAnswer.Found(it) }
+            if (missed == null) missed = s
+        }
+        return missed?.let { GeoAnswer.NotThere(notThere(it)) } ?: GeoAnswer.None
+    }
+
+    /** "Open-Meteo knows places called Paris, but none in Ontario among the biggest. …" (your words only). */
+    fun notThere(s: GeoSearch): String =
+        "Open-Meteo knows places called ${s.name}, but none in ${s.quals.joinToString(", ")} among the biggest. Try the nearest larger town."
 
     /** Open-Meteo's error object ({"error": true, "reason": …}): true when [json] is one. */
     fun isError(json: String?): Boolean = try { JSONObject(json ?: return false).optBoolean("error", false) } catch (_: Exception) { false }
@@ -191,28 +249,55 @@ object OpenMeteo {
     }
 
     /**
-     * The place [asked] means among [results]: with a qualifier after a comma ("Paris, Texas", "London, Canada", "Paris,
-     * FR"), the first result whose region, county, country or country code matches it; else (or with none matching) the
-     * first, which Open-Meteo ranks by population.
+     * The place [s] means among [results]: without a region or country, the first (Open-Meteo ranks by population). With
+     * them, the first whose region, county, country or country code matches each ("TX", "Texas", "ON", "USA", "UK"),
+     * towns of that very name before others Open-Meteo matched by another name; none: null, never the first anyway.
      */
-    fun pick(asked: String, results: List<GeoResult>): GeoResult? {
-        val quals = asked.split(',').drop(1).map(::plain).filter { it.isNotEmpty() }
-        if (quals.isNotEmpty()) {
-            results.firstOrNull { r ->
-                val fields = listOfNotNull(r.admin1, r.admin2, r.country, r.countryCode).map(::plain)
-                quals.all { q -> fields.any { it == q || it.startsWith("$q ") } }
-            }?.let { return it }
-        }
-        return results.firstOrNull()
+    fun pick(s: GeoSearch, results: List<GeoResult>): GeoResult? {
+        if (s.quals.isEmpty()) return results.firstOrNull()
+        val name = PlaceNames.plain(s.name)
+        return results.sortedByDescending { r -> PlaceNames.plain(r.name).let { it == name || it.startsWith("$name ") } }
+            .firstOrNull { r -> s.quals.all { q -> PlaceNames.fits(r, q) } }
     }
-
-    private fun plain(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT).trim()
 
     private fun str(o: JSONObject, k: String): String? = if (o.isNull(k)) null else o.optString(k).takeIf { it.isNotBlank() }
 
     private fun num(o: JSONObject, k: String): Double? = if (!o.has(k) || o.isNull(k)) null else o.optDouble(k).takeIf { it.isFinite() }
 
     private fun at(a: JSONArray?, i: Int): Double? = if (a == null || i >= a.length() || a.isNull(i)) null else a.optDouble(i).takeIf { it.isFinite() }
+}
+
+/** Regions and countries as people say them: US states, Canadian provinces and the usual names of a few countries. */
+object PlaceNames {
+    private val US = mapOf("al" to "alabama", "ak" to "alaska", "az" to "arizona", "ar" to "arkansas", "ca" to "california", "co" to "colorado",
+        "ct" to "connecticut", "de" to "delaware", "fl" to "florida", "ga" to "georgia", "hi" to "hawaii", "id" to "idaho", "il" to "illinois",
+        "in" to "indiana", "ia" to "iowa", "ks" to "kansas", "ky" to "kentucky", "la" to "louisiana", "me" to "maine", "md" to "maryland",
+        "ma" to "massachusetts", "mi" to "michigan", "mn" to "minnesota", "ms" to "mississippi", "mo" to "missouri", "mt" to "montana",
+        "ne" to "nebraska", "nv" to "nevada", "nh" to "new hampshire", "nj" to "new jersey", "nm" to "new mexico", "ny" to "new york",
+        "nc" to "north carolina", "nd" to "north dakota", "oh" to "ohio", "ok" to "oklahoma", "or" to "oregon", "pa" to "pennsylvania",
+        "ri" to "rhode island", "sc" to "south carolina", "sd" to "south dakota", "tn" to "tennessee", "tx" to "texas", "ut" to "utah",
+        "vt" to "vermont", "va" to "virginia", "wa" to "washington", "wv" to "west virginia", "wi" to "wisconsin", "wy" to "wyoming",
+        "dc" to "district of columbia", "d c" to "district of columbia")
+    private val CANADA = mapOf("ab" to "alberta", "bc" to "british columbia", "mb" to "manitoba", "nb" to "new brunswick",
+        "nl" to "newfoundland and labrador", "ns" to "nova scotia", "nt" to "northwest territories", "nu" to "nunavut", "on" to "ontario",
+        "pe" to "prince edward island", "qc" to "quebec", "pq" to "quebec", "sk" to "saskatchewan", "yt" to "yukon")
+    private val COUNTRIES = mapOf(
+        "usa" to "united states", "us" to "united states", "u s" to "united states", "u s a" to "united states", "america" to "united states",
+        "united states of america" to "united states", "etats unis" to "united states", "uk" to "united kingdom", "u k" to "united kingdom",
+        "britain" to "united kingdom", "great britain" to "united kingdom", "royaume uni" to "united kingdom", "grande bretagne" to "united kingdom")
+
+    /** Letters and digits only, no accents, lower case: "Île-de-France Region" → "ile de france region". */
+    fun plain(s: String) = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
+        .replace(Regex("[^a-z0-9]+"), " ").trim()
+
+    /** What [qual] may be written as in Open-Meteo's answer: itself, and the state, province or country it stands for. */
+    fun expand(qual: String): Set<String> = plain(qual).let { q -> setOfNotNull(q, US[q], CANADA[q], COUNTRIES[q]) }
+
+    /** [r] is in [qual]: its region, county, country or country code says so ("TX" fits Texas, "CA" California or Canada). */
+    fun fits(r: GeoResult, qual: String): Boolean {
+        val fields = listOfNotNull(r.admin1, r.admin2, r.country, r.countryCode).map(::plain)
+        return expand(qual).any { e -> fields.any { it == e || it.startsWith("$e ") } }
+    }
 }
 
 /** The tool's place and day arguments, read before anything goes online. */

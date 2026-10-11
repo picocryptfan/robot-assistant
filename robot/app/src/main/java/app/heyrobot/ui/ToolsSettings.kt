@@ -79,7 +79,7 @@ private fun HomeForWeather(s: RobotSettings, update: (RobotSettings) -> Unit, a:
                     text = ""
                     a.say("Home for weather: ${r.name}.")
                 }
-                is OpenMeteoClient.Failure -> a.say(r.why.text)
+                is OpenMeteoClient.Failure -> a.say(r.text)
                 else -> a.say("Robot couldn't look that up.")
             }
         }

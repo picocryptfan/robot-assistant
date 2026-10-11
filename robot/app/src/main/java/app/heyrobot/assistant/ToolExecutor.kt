@@ -481,7 +481,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         } catch (e: OpenMeteoClient.Failure) {
             // Once the caller has given up (Stop, the deadline) it logs why; this result is dropped.
             if (!abort.cancelled) VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
-            Executed(if (e.why == WeatherFail.NO_PLACE) ActionStatus.NOT_FOUND else ActionStatus.FAILED, e.why.text)
+            Executed(if (e.why == WeatherFail.NO_PLACE) ActionStatus.NOT_FOUND else ActionStatus.FAILED, e.text)
         }
     }
 

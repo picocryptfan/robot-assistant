@@ -33,10 +33,11 @@ class WeatherTest {
         // Rounded, not cut, and always with a dot.
         assertEquals("45.51", OpenMeteo.coord(45.5061))
         assertEquals("-0.01", OpenMeteo.coord(-0.0051))
-        // Only the town's name is searched; what follows a comma is matched against the results.
-        assertEquals("https://geocoding-api.open-meteo.com/v1/search?name=Saint-Jean-sur-Richelieu&count=10&language=en&format=json",
-            OpenMeteo.geocodeUrl("Saint-Jean-sur-Richelieu, Quebec"))
-        assertEquals("https://geocoding-api.open-meteo.com/v1/search?name=Montr%C3%A9al%20Nord&count=10&language=en&format=json", OpenMeteo.geocodeUrl(" Montréal Nord "))
+        // Only the town's name is searched (the region is matched against the results, among more of them).
+        assertEquals("https://geocoding-api.open-meteo.com/v1/search?name=Saint-Jean-sur-Richelieu&count=30&language=en&format=json",
+            OpenMeteo.geocodeUrl(OpenMeteo.searches("Saint-Jean-sur-Richelieu, Quebec").first()))
+        assertEquals("https://geocoding-api.open-meteo.com/v1/search?name=Montr%C3%A9al%20Nord&count=10&language=en&format=json",
+            OpenMeteo.geocodeUrl(OpenMeteo.searches(" Montréal Nord ").first()))
     }
 
     @Test fun unitsFollowThePhoneRegion() {
@@ -156,6 +157,38 @@ class WeatherTest {
         assertEquals(WeatherAsk.SAY_DAY, (WeatherAsk.days("whenever", now) as Read.Unreadable).detail)
     }
 
+    @Test fun spokenPlacesWithoutACommaAreSearchedAgain() {
+        assertEquals(listOf(GeoSearch("Paris Texas"), GeoSearch("Paris", listOf("Texas"))), OpenMeteo.searches("Paris Texas"))
+        assertEquals(listOf(GeoSearch("Paris", listOf("TX"))), OpenMeteo.searches("Paris, TX"))
+        assertEquals(listOf(GeoSearch("Quebec City"), GeoSearch("Quebec")), OpenMeteo.searches("Quebec City"))
+        assertEquals(listOf(GeoSearch("ville de Québec"), GeoSearch("Québec")), OpenMeteo.searches("ville de Québec"))
+        assertEquals(listOf(GeoSearch("Springfield New Jersey"), GeoSearch("Springfield New", listOf("Jersey")), GeoSearch("Springfield", listOf("New Jersey"))),
+            OpenMeteo.searches("Springfield New Jersey"))
+        // Open-Meteo's answers by name (recorded: it knows no "Paris Texas", "Quebec City" or "Washington DC").
+        val answers = mapOf("Paris" to "geocode_paris.json", "London" to "geocode_london.json", "Washington" to "geocode_washington.json",
+            "Quebec" to "geocode_quebec.json", "Springfield" to "geocode_springfield.json")
+        val asked = mutableListOf<String>()
+        fun resolve(place: String) = OpenMeteo.resolve(place) { s ->
+            asked += s.name
+            answers[s.name]?.let { OpenMeteo.places(sample(it))!! } ?: OpenMeteo.places(sample("geocode_none.json"))!!
+        }
+        fun found(place: String) = (resolve(place) as GeoAnswer.Found).place.display
+        assertEquals("Paris, Texas, United States", found("Paris Texas"))
+        assertEquals("London, Ontario, Canada", found("London Ontario"))
+        assertEquals("Québec, Quebec, Canada", found("Quebec City"))
+        assertEquals("Washington D.C., District of Columbia, United States", found("Washington DC"))
+        assertEquals("Springfield, Oregon, United States", found("Springfield Oregon"))
+        assertEquals("Paris, Île-de-France Region, France", found("Paris"))
+        // Not where it was said to be: refused with your words; unknown: none.
+        val miss = resolve("Paris, Ontario") as GeoAnswer.NotThere
+        assertEquals("Open-Meteo knows places called Paris, but none in Ontario among the biggest. Try the nearest larger town.", miss.detail)
+        assertEquals(GeoAnswer.None, resolve("Xyzzy"))
+        // At most three requests for one place.
+        asked.clear()
+        resolve("Xyzzy Plugh Quux Zork")
+        assertEquals(3, asked.size)
+    }
+
     @Test fun thePlaceArgumentSaysWhere() {
         assertEquals(WeatherWhere.HERE to null, WeatherAsk.where(null))
         assertEquals(WeatherWhere.HERE to null, WeatherAsk.where(" "))
@@ -171,20 +204,34 @@ class WeatherTest {
         assertEquals(WeatherWhere.NAMED to "Paris, Texas", WeatherAsk.where("Paris, Texas"))
     }
 
+    private fun pick(name: String, vararg quals: String, file: String) = OpenMeteo.pick(GeoSearch(name, quals.toList()), OpenMeteo.places(sample(file))!!)?.display
+
     @Test fun geocodingPicksTheOneAskedFor() {
         val all = OpenMeteo.places(sample("geocode_paris.json"))!!
         assertEquals(3, all.size)
-        assertEquals("Paris, Île-de-France Region, France", OpenMeteo.pick("Paris", all)!!.display)
-        assertEquals("Paris, Texas, United States", OpenMeteo.pick("Paris, Texas", all)!!.display)
-        assertEquals("Paris, Tennessee, United States", OpenMeteo.pick("Paris, tennessee", all)!!.display)
-        assertEquals("Paris, Île-de-France Region, France", OpenMeteo.pick("Paris, FR", all)!!.display)
-        // An unknown qualifier: the biggest town of that name.
-        assertEquals(48.85341, OpenMeteo.pick("Paris, Ontario", all)!!.lat, 0.0)
-        val p = OpenMeteo.pick("Paris, Texas", all)!!.place()
+        assertEquals("Paris, Île-de-France Region, France", pick("Paris", file = "geocode_paris.json"))
+        assertEquals("Paris, Texas, United States", pick("Paris", "Texas", file = "geocode_paris.json"))
+        assertEquals("Paris, Tennessee, United States", pick("Paris", "tennessee", file = "geocode_paris.json"))
+        assertEquals("Paris, Île-de-France Region, France", pick("Paris", "FR", file = "geocode_paris.json"))
+        // State, province and country abbreviations (all recorded from Open-Meteo, 10 and 11 October 2026).
+        assertEquals("Paris, Texas, United States", pick("Paris", "TX", file = "geocode_paris.json"))
+        assertEquals("Paris, Texas, United States", pick("Paris", "USA", file = "geocode_paris.json"))
+        assertEquals("London, Ontario, Canada", pick("London", "ON", file = "geocode_london.json"))
+        assertEquals("London, Ontario, Canada", pick("London", "Ontario", file = "geocode_london.json"))
+        assertEquals("London, Ontario, Canada", pick("London", "CA", file = "geocode_london.json"))
+        assertEquals("London, England, United Kingdom", pick("London", "UK", file = "geocode_london.json"))
+        assertEquals("Washington D.C., District of Columbia, United States", pick("Washington", "DC", file = "geocode_washington.json"))
+        assertEquals("Springfield, Oregon, United States", pick("Springfield", "Oregon", file = "geocode_springfield.json"))
+        // A town of that very name before one Open-Meteo matched by another name (Jackson, Minnesota comes first).
+        assertEquals("Springfield, Minnesota, United States", pick("Springfield", "MN", file = "geocode_springfield.json"))
+        assertEquals("Québec, Quebec, Canada", pick("Quebec", file = "geocode_quebec.json"))
+        // A region that matches nothing: refused, never the biggest town of that name.
+        assertNull(pick("Paris", "Ontario", file = "geocode_paris.json"))
+        val p = OpenMeteo.pick(GeoSearch("Paris", listOf("Texas")), all)!!.place()
         assertEquals(WeatherPlace("Paris, Texas, United States", 33.66094, -95.55551), p)
         // None found, or no answer at all.
         assertEquals(emptyList<GeoResult>(), OpenMeteo.places(sample("geocode_none.json")))
-        assertNull(OpenMeteo.pick("x", emptyList()))
+        assertNull(OpenMeteo.pick(GeoSearch("x"), emptyList()))
         assertNull(OpenMeteo.places(sample("error_limit.json")))
         assertNull(OpenMeteo.places("nope"))
         // A region named like the town is said once.
