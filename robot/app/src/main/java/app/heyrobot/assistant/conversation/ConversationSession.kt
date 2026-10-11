@@ -114,6 +114,9 @@ object ConversationSession {
     /** The transcript was deleted under the session: nothing more is written. */
     @Volatile private var discarded = false
     private val writerLock = Any()
+    /** Starts asked for and not yet run on the control thread (guarded by [startLock], with the state's STARTING). */
+    private val startLock = Any()
+    private var pendingStarts = 0
 
     /** Audio from the listener's thread (paused: dropped). */
     private val sink: (FloatArray) -> Unit = { x ->
@@ -170,18 +173,29 @@ object ConversationSession {
         init(ctx)
         // Recovery first (same thread, so it runs before): a new session's heartbeat must not hide an old one's.
         recoverOnce(ctx)
-        var already = false
-        _state.update { if (it.active) { already = true; it } else it.copy(status = Status.STARTING, notice = null) }
-        if (already) return
+        // Counted before it is posted, so a stop still saving the last session (Stop, then Start at once) leaves the
+        // service in the foreground for this one instead of taking it down under it.
+        synchronized(startLock) {
+            if (_state.value.active) return
+            _state.update { it.copy(status = Status.STARTING, notice = null) }
+            pendingStarts++
+        }
         ctl.post {
+            synchronized(startLock) { pendingStarts-- }
             if (writer != null) return@post
             val why = try { startNow(mode, entry, resumeId) } catch (t: Throwable) {
                 RLog.w("conv_start", t)
+                // Half started (the transcript and the engine made, then something threw): undone like a stop, so
+                // nothing goes on recording, holding the wake lock or keeping the wake word asleep.
+                if (writer != null) return@post stopNow(ConvStop.ERROR)
                 "Transcribing couldn't start."
             }
             if (why != null) {
-                _state.update { Ui(notice = why, savedId = it.savedId) }
-                onFail(why)
+                val last = synchronized(startLock) {
+                    _state.update { Ui(notice = why, savedId = it.savedId, status = if (pendingStarts > 0) Status.STARTING else Status.IDLE) }
+                    pendingStarts == 0
+                }
+                if (last) onFail(why)
             }
         }
     }
@@ -204,7 +218,8 @@ object ConversationSession {
             ?: return "Robot couldn't create the transcript on this phone."
         val e = ConversationEngine(app, decoder, LangLabel.owner(), output)
         if (!e.start()) {
-            w.close(System.currentTimeMillis(), SessionStatus.INTERRUPTED)
+            // A new transcript with nothing in it goes again (not left as "Stopped unexpectedly"); a resumed one is closed.
+            if (resumeId == null) store.delete(w.id) else w.close(System.currentTimeMillis(), SessionStatus.INTERRUPTED)
             return "The voice detector couldn't start."
         }
         discarded = false
@@ -282,13 +297,24 @@ object ConversationSession {
             ConvStop.ERROR -> "Stopped after an error. What was heard is saved."
             else -> null
         }
-        _state.update { Ui(savedId = if (discarded) null else w.id, lines = if (discarded) emptyList() else it.lines, total = if (discarded) 0 else it.total,
-            notice = if (discarded) "This transcript was deleted." else note) }
+        synchronized(startLock) {
+            _state.update {
+                val ended = Ui(savedId = if (discarded) null else w.id, lines = if (discarded) emptyList() else it.lines, total = if (discarded) 0 else it.total,
+                    notice = if (discarded) "This transcript was deleted." else note)
+                // A start asked for while this one was saving runs next on this thread: it stays STARTING.
+                if (pendingStarts > 0) ended.copy(status = Status.STARTING) else ended
+            }
+        }
         finishService()
     }
 
+    /**
+     * The session ended: the notification and the tile follow, and the service leaves the foreground, unless a start
+     * asked for meanwhile is waiting on this thread (its session must not run without the service and its notification).
+     */
     private fun finishService() {
         ConversationNotices.changed(app)
+        if (synchronized(startLock) { pendingStarts > 0 || _state.value.active }) return
         ConversationService.instance?.done()
     }
 
