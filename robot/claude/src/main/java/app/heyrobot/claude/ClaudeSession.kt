@@ -5,11 +5,13 @@ import app.heyrobot.core.ClaudeBlock
 import app.heyrobot.core.ClaudeCost
 import app.heyrobot.core.ClaudeEffortSetting
 import app.heyrobot.core.ClaudeEnd
+import app.heyrobot.core.ClaudeErrorKind
 import app.heyrobot.core.ClaudeFail
 import app.heyrobot.core.ClaudeFailure
 import app.heyrobot.core.ClaudeModel
 import app.heyrobot.core.ClaudeModelCode
 import app.heyrobot.core.ClaudePlan
+import app.heyrobot.core.ClaudeStage
 import app.heyrobot.core.ClaudeUsage
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.ModelOutcome
@@ -22,7 +24,7 @@ import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import com.anthropic.core.JsonValue
 import com.anthropic.core.http.StreamResponse
-import com.anthropic.helpers.BetaMessageAccumulator
+import com.anthropic.errors.AnthropicServiceException
 import com.anthropic.models.beta.messages.BetaContentBlockParam
 import com.anthropic.models.beta.messages.BetaMessage
 import com.anthropic.models.beta.messages.BetaMessageParam
@@ -203,10 +205,12 @@ class ClaudeSession(
     private suspend fun run(listener: ClaudeListener): ClaudeOutcome {
         var continuations = 0
         var retried = false
+        // The history ends with Claude's paused turn, sent back as it is.
+        var paused = false
         try {
             while (true) {
                 // A request the API would refuse is never sent: Claude mode starts over instead.
-                ClaudeHistory.check(messages, seals)?.let { problem ->
+                ClaudeHistory.check(messages, seals, paused)?.let { problem ->
                     RLog.i("claude_history", "problem" to RLog.Code(problem))
                     rollBack()
                     return ClaudeOutcome.Failed(ClaudeFailure.RESET)
@@ -245,6 +249,7 @@ class ClaudeSession(
                                     closeLast()
                                     return ClaudeOutcome.Done(cut = true)
                                 }
+                                paused = true
                                 continue
                             }
                             "tool_use" -> if (r.calls.isNotEmpty()) {
@@ -303,8 +308,12 @@ class ClaudeSession(
         class Ok(val blocks: List<BetaContentBlockParam>, val stop: String?, val calls: List<Pair<String, RawToolCall>>,
             val domains: List<String>, val searchErrors: Int) : Streamed()
 
-        /** [shown]: some text had reached the user already (then it is never retried: it would be said twice). */
-        class Failure(val failure: ClaudeFailure, val shown: Boolean) : Streamed()
+        /**
+         * [shown]: some text had reached the user already (then it is never retried: it would be said twice). [stage],
+         * [status] and [kind]: where it broke, for the voice log when it is [ClaudeFailure.UNKNOWN].
+         */
+        class Failure(val failure: ClaudeFailure, val shown: Boolean, val stage: ClaudeStage? = null, val status: Int = 0,
+            val kind: ClaudeErrorKind? = null) : Streamed()
     }
 
     private sealed class Event {
@@ -313,7 +322,9 @@ class ClaudeSession(
         class Alive(val thinking: Boolean, val started: Boolean) : Event()
         class Used(val usage: Usage) : Event()
         class Finished(val ok: Streamed) : Event()
-        class Error(val t: Throwable) : Event()
+        class Error(val t: Throwable, val stage: ClaudeStage) : Event()
+        /** The request ended without an answer and without an exception: the stream stopped before Claude finished. */
+        class Cut : Event()
     }
 
     /**
@@ -322,11 +333,18 @@ class ClaudeSession(
      * counted however it ends.
      */
     private suspend fun stream(listener: ClaudeListener): Streamed {
-        val params = ClaudeRequests.params(model, plan, tools, search, conversation, messages.toList())
+        val params = try {
+            ClaudeRequests.params(model, plan, tools, search, conversation, messages.toList())
+        } catch (t: Exception) {
+            RLog.w("claude_request", t, "stage" to ClaudeStage.REQUEST)
+            return Streamed.Failure(ClaudeFailure.UNKNOWN, false, ClaudeStage.REQUEST, 0, ClaudeClient.kind(t)).also(::logFailure)
+        }
         val events = Channel<Event>(Channel.UNLIMITED)
         val gone = AtomicBoolean(false)
         val open = AtomicReference<StreamResponse<BetaRawMessageStreamEvent>?>(null)
         val worker = Thread({
+            // Where a throwable would come from: the request, the SDK reading the stream, or Robot's own reading.
+            var stage = ClaudeStage.OPENING
             try {
                 val resp = client.sdk.beta().messages().createStreaming(params)
                 open.set(resp)
@@ -335,29 +353,49 @@ class ClaudeSession(
                     resp.close()
                     return@Thread
                 }
-                val acc = BetaMessageAccumulator.create()
+                val reply = ClaudeReply()
                 val watch = UsageWatch()
                 var thinking = false
+                var skipped = 0
+                stage = ClaudeStage.SDK
                 resp.use { s ->
                     s.stream().forEach { e ->
                         if (gone.get()) throw CancellationException()
-                        acc.accumulate(e)
                         var started = false
-                        e.messageStart().ifPresent { m -> watch.start(m.message())?.let { events.trySend(Event.Used(it)) } }
-                        e.messageDelta().ifPresent { d -> events.trySend(Event.Used(watch.delta(d))) }
-                        e.contentBlockStart().ifPresent { b ->
-                            val c = b.contentBlock()
-                            thinking = c.isThinking() || c.isRedactedThinking()
-                            started = thinking
+                        var text = ""
+                        // A step Robot can't do for an event leaves that part out, never the end of the answer; each step
+                        // is on its own, so the words and the usage still come (logged by class name only).
+                        var problem: Throwable? = null
+                        fun step(f: () -> Unit) {
+                            try { f() } catch (t: Throwable) {
+                                if (t is VirtualMachineError) throw t
+                                if (problem == null) problem = t
+                            }
+                        }
+                        step { reply.add(e) }
+                        step { e.messageStart().ifPresent { m -> watch.start(m.message())?.let { events.trySend(Event.Used(it)) } } }
+                        step { e.messageDelta().ifPresent { d -> events.trySend(Event.Used(watch.delta(d))) } }
+                        step {
+                            e.contentBlockStart().ifPresent { b ->
+                                val c = b.contentBlock()
+                                thinking = c.isThinking() || c.isRedactedThinking()
+                                started = thinking
+                            }
                         }
                         e.contentBlockStop().ifPresent { thinking = false }
-                        val text = e.contentBlockDelta().flatMap { it.delta().text() }.map { it.text() }.orElse("")
+                        step { text = e.contentBlockDelta().flatMap { it.delta().text() }.map { it.text() }.orElse("") }
+                        problem?.let { t ->
+                            reply.skip()
+                            if (++skipped <= MAX_SKIP_LOGS) RLog.w("claude_event_skipped", t, "event" to RLog.Code(kind(e)))
+                        }
                         events.trySend(if (text.isNotEmpty()) Event.Text(text) else Event.Alive(thinking, started))
                     }
                 }
-                events.trySend(Event.Finished(finish(acc)))
+                stage = ClaudeStage.ROBOT
+                val done = reply.done()
+                events.trySend(if (done.complete) Event.Finished(finish(done)) else Event.Cut())
             } catch (t: Throwable) {
-                if (!gone.get()) events.trySend(Event.Error(t))
+                if (!gone.get()) events.trySend(Event.Error(t, if (t is AnthropicServiceException) ClaudeStage.HTTP else stage))
             } finally {
                 events.close()
             }
@@ -399,7 +437,12 @@ class ClaudeSession(
                     VoiceLog.add(VoiceEvent.CLAUDE_FIRST, (System.currentTimeMillis() - t0).toInt())
                 }
                 when (next) {
-                    null -> return end(Streamed.Failure(ClaudeFailure.UNKNOWN, shown))
+                    // The worker always ends with Finished, Cut or Error: a channel closed without any means it died.
+                    null -> return end(Streamed.Failure(ClaudeFailure.UNKNOWN, shown, ClaudeStage.WORKER))
+                    is Event.Cut -> {
+                        RLog.i("claude_request", "failure" to ClaudeFailure.UNKNOWN, "stage" to ClaudeStage.CLOSED)
+                        return end(Streamed.Failure(ClaudeFailure.UNKNOWN, shown, ClaudeStage.CLOSED))
+                    }
                     is Event.Alive -> {
                         thinking = next.thinking
                         if (next.started && !shown) listener.thinking()
@@ -417,8 +460,8 @@ class ClaudeSession(
                     is Event.Finished -> return end(next.ok)
                     is Event.Error -> {
                         val f = ClaudeClient.failure(next.t)
-                        RLog.w("claude_request", next.t, "failure" to f)
-                        return end(Streamed.Failure(f, shown))
+                        RLog.w("claude_request", next.t, "failure" to f, "stage" to next.stage)
+                        return end(Streamed.Failure(f, shown, next.stage, (next.t as? AnthropicServiceException)?.statusCode() ?: 0, ClaudeClient.kind(next.t)))
                     }
                 }
             }
@@ -428,7 +471,7 @@ class ClaudeSession(
             val ms = (System.currentTimeMillis() - t0).toInt()
             when (val e = ended) {
                 is Streamed.Ok -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, ClaudeEnd.of(e.stop).id, said.length)
-                is Streamed.Failure -> VoiceLog.add(VoiceEvent.CLAUDE_FAILED, ClaudeFail.of(e.failure))
+                is Streamed.Failure -> logFailure(e)
                 null -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, ClaudeEnd.STOPPED.id, said.length)
             }
             withContext(NonCancellable + Dispatchers.IO) {
@@ -488,17 +531,22 @@ class ClaudeSession(
         }
     }
 
-    /** The finished message: its stop reason, the turn as it goes back, the calls, the searched domains. */
-    private fun finish(acc: BetaMessageAccumulator): Streamed.Ok {
-        val msg = acc.message()
-        val stop = msg.stopReason().map { it.asString() }.orElse(null)
-        val content = msg.content()
+    /** The finished reply: its stop reason, the turn as it goes back, the calls, the sources' domains. */
+    private fun finish(reply: ClaudeReply.Done): Streamed.Ok {
+        val stop = reply.stop
+        val content = reply.content
+        if (reply.whole + reply.fromCode + reply.leftOut > 0) {
+            RLog.i("claude_read", "whole" to reply.whole, "from_code" to reply.fromCode, "left_out" to reply.leftOut)
+            VoiceLog.add(VoiceEvent.CLAUDE_READ, reply.whole, reply.fromCode, reply.leftOut)
+        }
         // Only what came after the last fallback switch can call a tool (an attempt the fallback replaced never does).
         val boundary = content.indexOfLast { it.isFallback() }
         val calls = content.drop(boundary + 1).mapNotNull { b -> b.toolUse().map { u -> u.id() to RawToolCall(u.name(), input(u._input())) }.orElse(null) }
-        val domains = mutableListOf<String>()
+        // The pages Claude cited come first, then the rest of what its searches found.
+        val domains = content.flatMap { b -> b.text().flatMap { it.citations() }.orElse(emptyList()) }
+            .mapNotNull { c -> try { c.webSearchResultLocation().map { it.url() }.orElse(null)?.let(::host) } catch (_: Exception) { null } }.toMutableList()
         var searchErrors = 0
-        for (b in content) {
+        for (b in content) try {
             b.webSearchToolResult().ifPresent { r ->
                 // An error comes back as an object, not a list of results: count it and go on.
                 val c = r.content()
@@ -509,10 +557,18 @@ class ClaudeSession(
                     c.resultBlocks().ifPresent { list -> list.forEach { res -> host(res.url())?.let(domains::add) } }
                 }
             }
+        } catch (_: Exception) {
+            // The sources line is a nicety: a result Robot can't read only leaves its domains out.
         }
         val blocks = ClaudeHistory.echo(content.map { it.toParam() }).ifEmpty { listOf(ClaudeHistory.text("…")) }
-        if (boundary >= 0) RLog.i("claude_fallback", "served" to RLog.Code(msg.model().asString()))
+        if (boundary >= 0) RLog.i("claude_fallback", "served" to RLog.Code(reply.model ?: "none"))
         return Streamed.Ok(blocks, stop, calls, domains.distinct(), searchErrors)
+    }
+
+    /** A failed request in the voice log: why, and for "Something went wrong" where it broke (numbers and codes only). */
+    private fun logFailure(f: Streamed.Failure) {
+        VoiceLog.add(VoiceEvent.CLAUDE_FAILED, ClaudeFail.of(f.failure))
+        if (f.failure == ClaudeFailure.UNKNOWN) VoiceLog.add(VoiceEvent.CLAUDE_UNKNOWN, f.stage?.id ?: 0, f.status, f.kind?.id ?: 0)
     }
 
     companion object {
@@ -520,6 +576,19 @@ class ClaudeSession(
         /** pause_turn continuations of one request at most. */
         const val MAX_CONTINUATIONS = 3
         const val MAX_DOMAINS = 5
+        /** Unreadable events logged per request at most (the rest are only counted). */
+        private const val MAX_SKIP_LOGS = 3
+
+        /** An event's type for the log ("content_block_delta"), never its content. */
+        private fun kind(e: BetaRawMessageStreamEvent): String = when {
+            e.isMessageStart() -> "message_start"
+            e.isMessageDelta() -> "message_delta"
+            e.isMessageStop() -> "message_stop"
+            e.isContentBlockStart() -> "content_block_start"
+            e.isContentBlockDelta() -> "content_block_delta"
+            e.isContentBlockStop() -> "content_block_stop"
+            else -> "other"
+        }
 
         /** A tool call's input as plain values (Long, Double, String, Boolean, Map, List). */
         @Suppress("UNCHECKED_CAST")

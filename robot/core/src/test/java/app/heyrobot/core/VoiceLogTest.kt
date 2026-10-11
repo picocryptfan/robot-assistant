@@ -53,7 +53,7 @@ class VoiceLogTest {
         val codes: List<List<LogCode>> = listOf(WakeAction.entries, WakeDrop.entries, ListenWhy.entries, MicKind.entries, AecState.entries, SttEnd.entries,
             ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries,
             EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries, ClaudeLeftOut.entries,
-            PickOutcome.entries, CheogramRoute.entries)
+            PickOutcome.entries, CheogramRoute.entries, ClaudeStage.entries, ClaudeErrorKind.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -63,7 +63,7 @@ class VoiceLogTest {
             assertTrue(e.name, e.id in 39..59)
         }
         // The "not Claude" and own-answer events (0.3.1, Ask Claude) use 120 to 129.
-        for (e in listOf(VoiceEvent.CLAUDE_LEFT_OUT, VoiceEvent.OWN_ANSWER)) assertTrue(e.name, e.id in 120..129)
+        for (e in listOf(VoiceEvent.CLAUDE_LEFT_OUT, VoiceEvent.OWN_ANSWER, VoiceEvent.CLAUDE_UNKNOWN, VoiceEvent.CLAUDE_READ)) assertTrue(e.name, e.id in 120..129)
         // 0.4.0's People events use 61 to 79 (80 and up are taken by other 0.4.0 work).
         for (e in listOf(VoiceEvent.CHEOGRAM_PICK, VoiceEvent.CHEOGRAM_HANDOFF)) assertTrue(e.name, e.id in 61..79)
         assertEquals(4, VoiceEvent.STOP_SUPPRESSED.id)
@@ -143,6 +143,15 @@ class VoiceLogTest {
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.OWN_ANSWER, 1)))
         assertEquals("The model handed over to Claude without a word; asked again, it still gave no answer",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.OWN_ANSWER, 0)))
+        // Where "Something went wrong with Claude" came from, and what Robot read with care: codes and counts only.
+        assertEquals("Claude's error came from the SDK reading the stream · data the SDK couldn't read",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_UNKNOWN, ClaudeStage.SDK.id, 0, ClaudeErrorKind.INVALID_DATA.id)))
+        assertEquals("Claude's error came from the API's answer · HTTP 418 · an error from the API",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_UNKNOWN, ClaudeStage.HTTP.id, 418, ClaudeErrorKind.API_ERROR.id)))
+        assertEquals("Claude's error came from a stream that ended before Claude finished", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_UNKNOWN, ClaudeStage.CLOSED.id)))
+        assertEquals("Claude's reply: 2 calls with input in one piece · 1 server call from Claude's code",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_READ, 2, 1, 0)))
+        assertEquals("Claude's reply: 1 part left out", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_READ, 0, 0, 1)))
         // What Android sent of the screen: codes and flags only.
         assertEquals(60, VoiceEvent.SCREEN_SHARED.id)
         assertEquals("Screen from Android: text nothing · screenshot not sent (asked with: text, screenshot, assist gesture)",

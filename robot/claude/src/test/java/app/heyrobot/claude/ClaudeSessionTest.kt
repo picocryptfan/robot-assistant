@@ -123,7 +123,9 @@ class ClaudeSessionTest {
         val mapper = com.anthropic.core.jsonMapper()
         val ms = b.getJSONArray("messages")
         val messages = (0 until ms.length()).map { mapper.readValue(ms.getJSONObject(it).toString(), com.anthropic.models.beta.messages.BetaMessageParam::class.java) }
-        assertNull(b.toString(), ClaudeHistory.check(messages, messages.map { ClaudeHistory.seal(ClaudeHistory.blocks(it)) }))
+        // A request that ends with Claude's turn is a paused turn sent back to be continued.
+        val paused = messages.last().role() == com.anthropic.models.beta.messages.BetaMessageParam.Role.ASSISTANT
+        assertNull(b.toString(), ClaudeHistory.check(messages, messages.map { ClaudeHistory.seal(ClaudeHistory.blocks(it)) }, paused))
         return b
     }
 

@@ -1,11 +1,13 @@
 package app.heyrobot.claude
 
+import app.heyrobot.core.ClaudeErrorKind
 import app.heyrobot.core.ClaudeFailure
 import com.anthropic.client.AnthropicClient
 import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.anthropic.core.LogLevel
 import com.anthropic.core.Timeout
 import com.anthropic.errors.AnthropicException
+import com.anthropic.errors.AnthropicInvalidDataException
 import com.anthropic.errors.AnthropicIoException
 import com.anthropic.errors.AnthropicRetryableException
 import com.anthropic.errors.AnthropicServiceException
@@ -67,9 +69,9 @@ class ClaudeClient private constructor(internal val sdk: AnthropicClient) : Auto
         )
 
         /**
-         * Loads the SDK's classes (the request builders, Jackson's readers for the stream's events) without any network,
-         * so the first question after the panel opens doesn't pay for it (most of a second on a cold JVM). Background
-         * thread only; never fails.
+         * Loads the SDK's classes (the request builders, Jackson's readers for the stream's events) and Robot's reply
+         * builder without any network, so the first question after the panel opens doesn't pay for it (most of a second
+         * on a cold JVM). Background thread only; never fails.
          */
         fun warm() {
             try {
@@ -78,7 +80,9 @@ class ClaudeClient private constructor(internal val sdk: AnthropicClient) : Auto
                     emptyList(), search = true, cacheLast = true, messages = listOf(ClaudeRequests.user(listOf(app.heyrobot.core.ClaudeBlock.Text("hi")))),
                 )
                 val mapper = com.anthropic.core.jsonMapper()
-                for (e in WARM_EVENTS) mapper.readValue(e, com.anthropic.models.beta.messages.BetaRawMessageStreamEvent::class.java).validate()
+                val reply = ClaudeReply()
+                for (e in WARM_EVENTS) reply.add(mapper.readValue(e, com.anthropic.models.beta.messages.BetaRawMessageStreamEvent::class.java).validate())
+                reply.done().content.forEach { it.toParam() }
             } catch (_: Throwable) {}
         }
 
@@ -121,6 +125,21 @@ class ClaudeClient private constructor(internal val sdk: AnthropicClient) : Auto
          * that stayed silent (before or during the answer): "Claude took too long to answer".
          */
         private fun io(t: Throwable?): ClaudeFailure = if (t is InterruptedIOException) ClaudeFailure.TIMEOUT else ClaudeFailure.NO_INTERNET
+
+        /** What kind of error [t] is, from its class only (the voice log's sub-code for "Something went wrong"). */
+        fun kind(t: Throwable): ClaudeErrorKind = when (t) {
+            is AnthropicInvalidDataException -> ClaudeErrorKind.INVALID_DATA
+            is AnthropicServiceException -> ClaudeErrorKind.API_ERROR
+            // Before IOException: Jackson's errors are IOExceptions.
+            is com.fasterxml.jackson.core.JsonProcessingException -> ClaudeErrorKind.JSON
+            is AnthropicIoException, is IOException -> ClaudeErrorKind.IO
+            is AnthropicException -> ClaudeErrorKind.SDK_OTHER
+            is IllegalArgumentException -> ClaudeErrorKind.ILLEGAL_ARGUMENT
+            is IllegalStateException -> ClaudeErrorKind.ILLEGAL_STATE
+            is NullPointerException -> ClaudeErrorKind.NULL
+            is LinkageError -> ClaudeErrorKind.MISSING_CODE
+            else -> ClaudeErrorKind.OTHER
+        }
 
         private fun type(e: AnthropicServiceException): String? = try { e.errorType().orElse(null)?.asString() } catch (_: Throwable) { null }
     }
