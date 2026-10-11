@@ -1,6 +1,8 @@
 package app.heyrobot.core.output
 
+import app.heyrobot.core.ClaudeRouter
 import app.heyrobot.core.LogCode
+import app.heyrobot.core.TextCommand
 
 // Pure. The hooks headset and car mode need from 0.7's messages (design §3.6 "0.7 announcements", §4.5 "Messages",
 // §4.8): announcing a new message, reading it after a yes, and replying through the notification's own Reply action
@@ -67,4 +69,29 @@ enum class ReplyResult(override val id: Int, override val title: String) : LogCo
     GONE(3, "the notification went away"),
     LOCKED(4, "the app's reply needs an unlocked phone"),
     FAILED(5, "didn't work"),
+}
+
+/** The words of a reply without what introduces them ("tell her", "reply that", "dis-lui que", "réponds-lui que"). */
+object ReplyWords {
+    private val LEADS: List<List<String>> = listOf(
+        "reply to her that", "reply to him that", "reply to them that", "reply to her", "reply to him", "reply to them", "reply that", "reply with", "reply",
+        "respond that", "respond", "answer that", "answer", "tell her that", "tell him that", "tell them that", "tell her", "tell him", "tell them",
+        "say that", "say", "text back that", "text back", "write back that", "write back",
+        "reponds lui que", "reponds leur que", "reponds lui", "reponds leur", "reponds que", "reponds", "repond lui que", "repond que",
+        "dis lui que", "dis leur que", "dis lui", "dis leur", "dis que", "ecris lui que", "ecris lui",
+    ).map { it.split(' ') }
+
+    /** [dictated] without its lead-in words and the wake phrase, trimmed, its own words otherwise untouched. */
+    fun body(dictated: String): String {
+        var s = TextCommand.stripWake(dictated).trim()
+        // Words with where they are in [s], to cut the lead off the original text.
+        val words = Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*").findAll(s).map { ClaudeRouter.plain(it.value) to it.range }.toList()
+        val split = words.flatMap { (w, r) -> w.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.map { it to r } }
+        val lead = LEADS.firstOrNull { l -> l.size <= split.size && l.indices.all { split[it].first == l[it] } }
+        if (lead != null) {
+            val end = split[lead.size - 1].second.last + 1
+            s = s.substring(end).trimStart(' ', ',', ':', '-', '—')
+        }
+        return s.trim()
+    }
 }
