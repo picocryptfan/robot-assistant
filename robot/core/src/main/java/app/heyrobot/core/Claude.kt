@@ -18,7 +18,7 @@ data class ClaudePrices(val input: Double, val output: Double, val cacheRead: Do
  */
 enum class ClaudeModel(val id: String, val title: String, val detail: String, private val prices: ClaudePrices, private val longPrices: ClaudePrices?, val fallback: Boolean) {
     OPUS("claude-opus-5-5", "Claude Opus 5.5", "The most capable: \$4 per million tokens in, \$20 out.", ClaudePrices(4.0, 20.0, 0.20, 5.0), null, true),
-    SONNET("claude-sonnet-5-5", "Claude Sonnet 5.5", "Fast and capable: \$2 in, \$10 out.", ClaudePrices(2.0, 10.0, 0.20, 2.5), null, true),
+    SONNET("claude-sonnet-5-5", "Claude Sonnet 5.5", "Fast and capable: \$2 in, \$10 out.", ClaudePrices(2.0, 10.0, 0.10, 2.5), null, true),
     HAIKU("claude-haiku-5-5", "Claude Haiku 5.5", "The fastest and cheapest: \$0.10 in, \$0.50 out.", ClaudePrices(0.10, 0.50, 0.01, 0.125), ClaudePrices(0.50, 2.50, 0.05, 0.625), false);
 
     /** The rate card for a request whose prompt (all input, cached or not) had [promptTokens]. */

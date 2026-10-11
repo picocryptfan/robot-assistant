@@ -164,7 +164,7 @@ thinking…" shows until the first words. In Claude mode a chip reads
 without a turn, or the lock screen (unless "Allow on lock screen" is on). Stop and "stop" work as for Robot. Under a
 reply: "Claude searched the web · nasa.gov, esa.int" and the **cost line**, "≈ 1¢" (Settings › Show cost), estimated
 from `usage` and the published prices per million tokens (one table in `:core`, `ClaudeModel`): Opus 5.5 $4 in, $20
-out, cache reads $0.20; Sonnet 5.5 $2 / $10; Haiku 5.5 $0.10 / $0.50 (up to 100K prompt tokens); a fallback model at
+out, cache reads $0.20; Sonnet 5.5 $2 / $10, cache reads $0.10; Haiku 5.5 $0.10 / $0.50 (up to 100K prompt tokens); a fallback model at
 its own rates; web search $10 per 1,000. A stopped, failed or timed-out request counts too (its input is known as it
 starts), and today's spend is written as each part becomes known. A conversation with Claude in it is saved under the usual history rules and shows a small cloud in History.
 Claude's answers join Robot's own conversation (cut to about 600 tokens for Gemma), so "add that to my calendar" works
