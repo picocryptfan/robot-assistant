@@ -50,6 +50,45 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
   its own token count after a rebuild and before each tool round, and steps tools down only on the tool-parse error.
   The turn, gate and :brain decisions are pure code in `:core` (`Turn.kt`, `BrainPolicy.kt`), tested.
 
+## Look (0.4.x UI redesign)
+
+"The UI needs to look more like stock and less like AI": Robot is being redrawn as an ordinary Android (GrapheneOS)
+app, in four steps so the branches in flight merge easily. (a) is in: the theme, the icons, the shared building blocks,
+the Classic look switch and the tests. (b) Settings as Android-style pages, (c) the assistant panel, (d) the other
+screens follow after their branches are merged.
+
+- **Theme** (`ui/theme/`): the wallpaper's colours (Material You) by default; Settings › Display › "Use wallpaper
+  colours" off gives Robot's own full scheme (`RobotColors.kt`, generated from Robot's blue). Light or dark follows the
+  phone. The system font in Material's standard type scale and shapes. The few measures Robot sets itself are in
+  `Tokens.kt`. The window starts in the system's surface colour, so a cold start doesn't flash white.
+- **Icons**: Material Symbols Outlined instead of the old Material Icons, as path data in `ui/common/Icons.kt`
+  (`tools/symbols.py` writes it from a pinned commit; no icon library, nothing fetched by the app).
+- **Building blocks**: `ui/pref/` builds settings pages like Android's Settings app (AOSP SettingsLib Spa): a large top
+  bar, rows in groups under a small header, a one-line state under each title, switches on the right, a main switch
+  bar, single choices in a radio dialog (instead of segmented buttons), text in an edit dialog, status rows and a footer
+  for the explanations. `ui/common/Cards.kt` has a standard card with list-style rows for the panel's cards. The older
+  `SectionCard`, `StatusRow` and `NavRow` are restyled in place, so the screens not yet rebuilt already look closer.
+- **Classic look** (Settings › Display, off by default): brings back Robot 0.4's assistant panel (the round robot orb,
+  chat bubbles, the pill text box and round mic) and its type, for whoever prefers it. Until step (c) the panel is
+  still 0.4's in both looks, and the switch changes the type only. Settings and the other screens are standard in
+  both, and the icons are Material Symbols in both. Colours are a separate switch (Classic with wallpaper colours is 0.4.3 exactly). It may be removed after a
+  release or two.
+- **Storage**: the two switches are in `files/robot/look.json` (`core/Look.kt`, `sys/LookStore.kt`), not in
+  `settings.json`: the main app writes it, and the panel's process reads it again each time the panel opens.
+- **The old UI is kept**: the tag `ui-classic-0.4.2` (commit `8e5a5ac`, Robot 0.4.2, before any of this) and the
+  `Robot-0.4.2.apk` and `Robot-0.4.3.apk` builds on the `builds` branch. Installing one over a newer Robot needs the
+  newer one uninstalled first (Android refuses a lower version), which deletes Robot's data.
+- **Tests** (debug unit tests, offline): Compose UI tests on Robolectric, a check that every tappable thing has a label,
+  at least 48 dp and no overlap, and Roborazzi screenshots compared with the goldens in `app/src/testDebug/screenshots/`
+  (the building blocks in light, dark and at 200 % text, the cards in both looks, the icon set). Screenshots use
+  Robot's own colours, since Robolectric has no wallpaper. To accept a deliberate change, record them again:
+  `gradle :app:testDebugUnitTest -Droborazzi.record=true`.
+- **On the phone** (not yet checked): change the wallpaper and its colour style, then open the app and the panel; turn
+  "Use wallpaper colours" off and on; dark theme from Quick Settings with the app and with the panel open; a cold start
+  in dark mode (no white flash); Settings › Display beside GrapheneOS Settings (group corners and gaps, title size,
+  switch thumbs; if GrapheneOS Settings is flat, set `RobotTokens.groupedSettings = false`); font and display size at
+  their largest.
+
 ## Building
 
 Needs JDK 17+, the Android SDK (platform 36, build-tools 36) and Gradle 8.x.
@@ -59,6 +98,7 @@ cd robot
 echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models (and its bpe.model), espeak-ng subset, SHA-256 checked
 gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :claude:testReleaseUnitTest :app:testReleaseUnitTest
+gradle :app:testDebugUnitTest                  # also the Compose UI tests and screenshots (Robolectric, offline)
 gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                             -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk

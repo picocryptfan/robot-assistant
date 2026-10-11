@@ -259,7 +259,11 @@ calendar app) through Android intents only; nothing of them is bundled. Their so
 for Android: GPL-3.0) was read to match what they accept (`../docs/phase-2.md`); no code was copied.
 
 Build and test only (not in the APK): Android Gradle Plugin 8.8.2, Kotlin and its Compose compiler plugin
-2.4.0, JUnit 4.13.2 (EPL-1.0), org.json 20180813 (JSON licence, tests only). The tools in `tools/` use the
+2.4.0, JUnit 4.13.2 (EPL-1.0), org.json 20180813 (JSON licence, tests only). The UI tests (debug unit tests, 0.4.x
+redesign): Robolectric 4.16.1 (MIT) with its Android runtime `org.robolectric:android-all-instrumented:15-robolectric-13954326-i7`
+(Android 15, Apache-2.0), Compose `ui-test-junit4` 1.8.3 from the same BOM (Apache-2.0) with AndroidX Test (Apache-2.0),
+Roborazzi 1.49.0 (`roborazzi`, `roborazzi-compose`, `roborazzi-junit-rule`; Apache-2.0); Compose `ui-test-manifest`
+1.8.3 (Apache-2.0) is in the debug build only, its test activity not exported. The tools in `tools/` use the
 `sherpa-onnx==1.13.8` Python wheel (Apache-2.0), numpy (BSD-3-Clause), sentencepiece (Apache-2.0) and pypinyin (MIT)
 on the build machine only.
 
