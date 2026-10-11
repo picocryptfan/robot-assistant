@@ -179,6 +179,8 @@ class HelperConnectionActivity : ComponentActivity() {
         val ctx = applicationContext
         val candidates = h.presetOf.baseUrl?.let { listOf(it) } ?: h.baseUrl?.let { LanRule.normalize(it)?.candidates }.orEmpty()
         if (candidates.isEmpty()) return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NOT_LOCAL)
+        // GrapheneOS's Network toggle is off for Robot: say so rather than "isn't answering" (nothing could be sent).
+        if (!HelperLink.networkAllowed(ctx)) return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NO_NETWORK_PERMISSION)
         val key = HelperKeys.read(ctx, h.id)
         val r = try {
             HelperProbe.run(h, key, candidates, question = true, actions = actions) { dollars -> HelperSpendStore.add(ctx, h.id, dollars) }
