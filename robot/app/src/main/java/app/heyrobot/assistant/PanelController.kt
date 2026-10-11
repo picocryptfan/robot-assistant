@@ -891,7 +891,10 @@ object PanelController {
         return true
     }
 
-    /** Runs a turn in the slot; a stop finishes every reply still streaming as stopped, a crash fails it in words. */
+    /**
+     * Runs a turn in the slot; a stop finishes every reply still streaming as stopped, a crash fails it in words. A model
+     * unload free_memory asked for is done before the turn completes (0.4.0), so the next question can't start meanwhile.
+     */
     private fun startTurn(replyId: String, block: suspend () -> Unit) = slot.start {
         try {
             block()
@@ -903,6 +906,8 @@ object PanelController {
         } catch (t: Throwable) {
             RLog.w("panel_turn", t)
             _state.value.turns.filter { it.streaming }.forEach { failReply(it.id, "Something went wrong. Please try again.") }
+        } finally {
+            withContext(NonCancellable) { unloadIfAsked(replyId) }
         }
     }
 
@@ -1842,8 +1847,6 @@ object PanelController {
 
     /** [costMicros]: a Claude reply's estimated price, kept with it in the history. */
     private fun finishReply(replyId: String, reason: DoneReason, costMicros: Long = 0) {
-        // Before anything else: a reply the panel has moved on from still ends the unload it asked for.
-        unloadIfAsked(replyId)
         if (!current(replyId)) return
         val ui = _state.value.turns.firstOrNull { it.id == replyId }
         val claude = ui?.claude == true
@@ -1875,15 +1878,15 @@ object PanelController {
     }
 
     /**
-     * free_memory asked for Robot's model to be unloaded during this answer (0.4.0): now that it has ended, unload it
-     * and put what Android reports came back on the card (and in the saved conversation). The card is updated after the
-     * reply is recorded: this runs on the main thread after the caller.
+     * free_memory asked for Robot's model to be unloaded during this answer (0.4.0): now that it has ended, release it
+     * (inside the turn), then put what Android reports came back on the card and in the saved conversation.
      */
-    private fun unloadIfAsked(replyId: String) {
+    private suspend fun unloadIfAsked(replyId: String) {
         val before = ModelUnload.take() ?: return
+        BrainKeeper.release("free_memory").join()
         scope.launch {
-            val (b, after) = ModelUnload.unload(VoiceHub.app, before)
-            val line = FreeUp.freedLine(b, after)
+            val after = ModelUnload.settled(VoiceHub.app, before)
+            val line = FreeUp.freedLine(before, after)
             _state.update { st ->
                 st.copy(turns = st.turns.map { t ->
                     if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && it.detail == FreeUp.UNLOADING) it.copy(detail = line) else it })
@@ -1897,7 +1900,6 @@ object PanelController {
     }
 
     private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
-        unloadIfAsked(replyId)
         if (!current(replyId)) return
         voice.finish(replyId, cancelled = true, speak = false)
         VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.FAILED)

@@ -530,7 +530,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun freeMemory(a: Action.FreeMemory): Executed {
         val pkg = a.pkg
         if (a.app == null || pkg == null) {
-            ModelUnload.request(ctx)
+            ModelUnload.request(ModelUnload.available(ctx))
             val recent = PhoneInfo.recentApps(ctx)
             val results = listOf(mapOf(
                 "memory" to PhoneStatus.memoryLine(PhoneInfo.memory(ctx), robotModel = true),
