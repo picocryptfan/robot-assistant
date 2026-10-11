@@ -2084,6 +2084,14 @@ object PanelController {
         }
 
         override fun close() = c.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(convId))
+
+        /**
+         * Stopped while its cards waited (Stop, the panel closed): no results will come, but :brain's conversation would
+         * go on waiting for them, and that wait keeps conversation mode's translations and summaries off the model for
+         * up to 90 s (BrainScheduler.TOOL_HOLD_MS). It goes now; the next question rebuilds it from the history, as it
+         * would have anyway.
+         */
+        override fun stopped(results: List<Pair<String, Map<String, Any?>>>) = close()
     }
 
     /**
