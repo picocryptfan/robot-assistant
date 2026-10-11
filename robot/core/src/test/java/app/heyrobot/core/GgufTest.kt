@@ -83,6 +83,10 @@ class GgufTest {
         assertEquals("Its architecture “gemma9” isn't one that llama.cpp b11200 knows.", why(FakeGguf.medgemma(arch = "gemma9")))
         for (a in listOf("clip", "bert", "t5encoder", "qwen3tts", "eagle3", "llada")) assertTrue(a, why(FakeGguf.medgemma(arch = a))!!.contains("doesn't write answers"))
         assertTrue(why(FakeGguf.gguf(listOf("tokenizer.ggml.model" to "llama"), FakeGguf.tensors()))!!.contains("general.architecture"))
+        // One part of a split model (llama.cpp would look for the other parts by a name Robot never gives the file).
+        val part = why(FakeGguf.medgemma(extra = listOf("split.no" to Typed(2, 0), "split.count" to Typed(2, 3))))!!
+        assertTrue(part, part.startsWith("It is one part of a model split into 3 files") && part.contains("llama-gguf-split --merge"))
+        assertNull(why(FakeGguf.medgemma(extra = listOf("split.no" to Typed(2, 0), "split.count" to Typed(2, 1)))))
         // Without a context length (general.architecture names the key).
         val noContext = FakeGguf.gguf(listOf("general.architecture" to "llama", "tokenizer.ggml.model" to "llama", "tokenizer.chat_template" to "x"), FakeGguf.tensors())
         assertEquals("It doesn't say its context length (llama.context_length).", why(noContext))

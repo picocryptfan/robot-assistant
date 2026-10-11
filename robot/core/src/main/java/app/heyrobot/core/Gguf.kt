@@ -277,10 +277,13 @@ object GgufCheck {
     }
 
     /** Integer metadata Robot reads (any integer type), by key; per-layer arrays count by their largest element. */
-    private fun wanted(key: String): Boolean = key == "general.file_type" || key == "general.alignment" ||
+    private fun wanted(key: String): Boolean = key == "general.file_type" || key == "general.alignment" || key == SPLIT_COUNT ||
         key.endsWith(".context_length") || key.endsWith(".block_count") || key.endsWith(".embedding_length") ||
         key.endsWith(".attention.head_count") || key.endsWith(".attention.head_count_kv") || key.endsWith(".attention.key_length") ||
         key.endsWith(".attention.value_length")
+
+    /** llama.cpp's split files (gguf-split): how many files the model is in. */
+    private const val SPLIT_COUNT = "split.count"
 
     private val STRINGS = setOf("general.architecture", "general.name", "general.size_label", "general.license", "tokenizer.ggml.model",
         "tokenizer.chat_template")
@@ -335,6 +338,11 @@ object GgufCheck {
                 }
             }
         }
+        // One part of a model split over several files: llama.cpp would look for the others by the file's name, which Robot
+        // gives its own (own_model.gguf), so it could never load. Said here, with how to join them.
+        val parts = ints[SPLIT_COUNT] ?: 0
+        if (parts > 1) return GgufReport(readable = false, problem = "It is one part of a model split into $parts files; Robot needs " +
+            "the whole model in one file (llama.cpp's llama-gguf-split --merge joins the parts).", fileBytes = src.size)
         // As llama.cpp: general.alignment, when there, is a u32 power of two.
         val alignment = if (alignmentType < 0) 32L else {
             if (alignmentType != T_UINT32) throw LiteRtLmFormat("an alignment that isn't a u32")

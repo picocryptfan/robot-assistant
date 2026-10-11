@@ -129,7 +129,8 @@ the engine only when `tools/build_llama.sh` made its library.
   gets the 0.4.3 line under its name: "Not a medical device: check health information with a professional."
 - **Refused:** not GGUF, an unsupported version, an architecture llama.cpp b11200 doesn't know (its 152 names are in
   `GgufCheck.ARCHITECTURES`) or one that doesn't answer a chat (encoders and embeddings, speech, draft and diffusion
-  models, image readers), no tokenizer, no stated context or less than 2,048 tokens, no chat template, or too big for the
+  models, image readers), no tokenizer, no stated context or less than 2,048 tokens, no chat template, one part of a model
+  split over several files (`split.count`; llama.cpp's `llama-gguf-split --merge` joins them into one), or too big for the
   phone's memory.
 - **Memory guidance:** the file (memory-mapped, and all of it read for every token), plus the KV cache for its context
   (4,096 tokens, or a short file's own) at f16 (from the file's layer count, KV heads and head sizes; an upper bound for
