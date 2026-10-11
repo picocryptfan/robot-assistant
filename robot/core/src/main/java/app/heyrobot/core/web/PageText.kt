@@ -75,7 +75,7 @@ object PageText {
     fun html(html: String): PageContent {
         val truncatedInput = html.length > MAX_INPUT
         val walk = Walker(if (truncatedInput) html.substring(0, MAX_INPUT) else html).run()
-        return finish(walk.title, walk.blocks, truncatedInput, MIN_TEXT)
+        return finish(walk.title, walk.blocks, truncatedInput || walk.tooDeep, MIN_TEXT)
     }
 
     /** Plain text (a text/plain page, Wikipedia's intro, page text a service supplied): paragraphs at blank lines. */
@@ -138,7 +138,7 @@ object PageText {
     /** [minText]: less text than this is no page ([MIN_TEXT] for HTML: it needs JavaScript). */
     private fun finish(title: String?, raw: List<Raw>, truncatedInput: Boolean, minText: Int): PageContent {
         val cleaned = raw.mapNotNull { r ->
-            val t = Invisible.strip(r.text).let { if (r.kind == PageBlock.Kind.PRE) it.lines().joinToString("\n") { l -> l.replace(SPACE, " ").trimEnd() }.trim('\n', ' ') else it.replace(SPACE, " ").trim() }
+            val t = Invisible.strip(r.text).let { if (r.kind == PageBlock.Kind.PRE) it.lines().joinToString("\n") { l -> l.replace('\t', ' ').trimEnd() }.trim('\n') else it.replace(SPACE, " ").trim() }
             if (t.isEmpty() || consent(t)) return@mapNotNull null
             // A block that is mostly links (a menu that isn't in a <nav>, "related" lists) isn't the page's text.
             if (r.kind != PageBlock.Kind.HEADING && r.linkChars > 0 && r.linkChars >= t.length * 0.6 && t.length < 400) return@mapNotNull null
@@ -179,7 +179,7 @@ object PageText {
     private val BLOCKS = setOf(
         "address", "article", "aside", "blockquote", "body", "caption", "center", "dd", "details", "dialog", "div", "dl", "dt", "fieldset",
         "figcaption", "figure", "footer", "form", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hgroup", "hr", "html", "li", "main", "menu",
-        "nav", "ol", "p", "pre", "section", "summary", "table", "tbody", "td", "tfoot", "th", "thead", "tr", "ul", "listing",
+        "nav", "ol", "p", "pre", "section", "summary", "table", "tbody", "tfoot", "thead", "tr", "ul", "listing",
     )
     /** A start tag of these closes an open <p> (HTML's "close a p element"). */
     private val CLOSES_P = setOf(
@@ -215,8 +215,13 @@ object PageText {
 
     private class Open(val name: String, val hidden: Boolean, val main: Boolean, val link: Boolean)
 
+    /** Open elements at most: a page nested deeper is read only up to there (the rest is dropped, never shown). */
+    const val MAX_DEPTH = 1024
+
     private class Walker(private val h: String) {
         private val stack = ArrayList<Open>()
+        /** How many of each element are open, so "is a <p> open?" costs nothing on deep pages. */
+        private val openCount = HashMap<String, Int>()
         private var hiddenDepth = 0
         private var mainDepth = 0
         private var linkDepth = 0
@@ -225,6 +230,8 @@ object PageText {
         private var bufMain = false
         val blocks = ArrayList<Raw>()
         var title: String? = null
+        /** The page was too deeply nested to read to its end. */
+        var tooDeep = false
         private var i = 0
 
         fun run(): Walker {
@@ -242,7 +249,7 @@ object PageText {
         private fun text(raw: String) {
             if (hiddenDepth > 0 || raw.isEmpty()) return
             val t = Entities.decode(raw)
-            val pre = stack.any { it.name == "pre" || it.name == "listing" }
+            val pre = isOpen("pre") || isOpen("listing")
             val s = if (pre) t else t.replace(SPACE, " ")
             if (s.isBlank() && !pre) {
                 if (buf.isNotEmpty() && buf.last() != ' ' && buf.last() != '\n') buf.append(' ')
@@ -381,13 +388,13 @@ object PageText {
                 }
                 return
             }
-            if (name == "title" && title == null && stack.none { it.name == "svg" || it.name == "math" }) {
+            if (name == "title" && title == null && !isOpen("svg") && !isOpen("math")) {
                 title = Entities.decode(rawText("title"))
                 return
             }
             // Implied ends (HTML's tree construction, the parts that decide what is hidden). Anything that belongs in the
             // body ends an open <head> (whose content is dropped).
-            if (name !in HEAD_CONTENT && stack.any { it.name == "head" }) closeIfInScope("head", emptySet())
+            if (name !in HEAD_CONTENT && isOpen("head")) closeIfInScope("head", emptySet())
             if (name in CLOSES_P) closeIfInScope("p", boundary = SCOPE + "button")
             when (name) {
                 "li" -> closeIfInScope("li", boundary = SCOPE + setOf("ul", "ol", "menu"))
@@ -397,7 +404,7 @@ object PageText {
                 "tbody", "thead", "tfoot" -> closeIfInScope("tr", setOf("table", "html", "template"))
             }
             if (name in HEADINGS && stack.lastOrNull()?.name in HEADINGS) pop(stack.size - 1)
-            if (name == "a" && stack.any { it.name == "a" }) closeIfInScope("a", SPECIAL)
+            if (name == "a" && isOpen("a")) closeIfInScope("a", SPECIAL)
             val hides = name in DROP && !(name == "dialog" && "open" in attrs) || hides(attrs)
             if (name in RAW) {
                 // Its text is never markup: skipped whole (the title was taken above).
@@ -413,8 +420,10 @@ object PageText {
             if ((name == "td" || name == "th") && buf.isNotBlank() && hiddenDepth == 0) buf.append(" · ")
             val main = name == "article" || name == "main" || attrs["role"]?.trim()?.lowercase(Locale.ROOT) == "main"
             // "<div/>" doesn't close a div in HTML (only void elements and foreign content self-close): it stays open.
-            if (selfClosing && stack.any { it.name == "svg" || it.name == "math" }) return
+            if (selfClosing && (isOpen("svg") || isOpen("math"))) return
+            if (stack.size >= MAX_DEPTH) { tooDeep = true; i = h.length; return }
             stack += Open(name, hides, main, name == "a")
+            openCount[name] = (openCount[name] ?: 0) + 1
             if (hides) hiddenDepth++
             if (main) mainDepth++
             if (name == "a") linkDepth++
@@ -443,6 +452,7 @@ object PageText {
                 "br" -> { open("br", emptyMap(), false); return }
                 "html", "body" -> return
             }
+            if (!isOpen(name)) return
             // A block end tag closes it and everything open inside it, unless a scope boundary is in the way.
             // Any other end tag closes the nearest such element only if no special element is open inside it
             // (HTML's "any other end tag"; a formatting end tag across a block is ignored, which keeps a hidden block closed
@@ -455,7 +465,10 @@ object PageText {
             }
         }
 
+        private fun isOpen(name: String) = (openCount[name] ?: 0) > 0
+
         private fun closeIfInScope(name: String, boundary: Set<String>) {
+            if (!isOpen(name)) return
             for (k in stack.indices.reversed()) {
                 val n = stack[k].name
                 if (n == name) { pop(k); return }
@@ -465,10 +478,11 @@ object PageText {
 
         /** Closes the element at [k] and everything opened after it. */
         private fun pop(k: Int) {
-            val blockish = (k until stack.size).any { stack[it].name in BLOCKS || stack[it].name == "tr" }
+            val blockish = (k until stack.size).any { stack[it].name in BLOCKS }
             if (blockish) flush()
             while (stack.size > k) {
                 val o = stack.removeAt(stack.size - 1)
+                openCount[o.name] = (openCount[o.name] ?: 1) - 1
                 if (o.hidden) hiddenDepth--
                 if (o.main) mainDepth--
                 if (o.link) linkDepth--
