@@ -3,7 +3,8 @@
 A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
 TPU answers, streams the reply and reads it aloud (since 0.4.1 you can choose a smarter but slower model instead, or
-your own model file: "Model choice" below). Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
+your own model file: "Model choice" below; since 0.4.4 that file may also be a GGUF file, run by llama.cpp on the CPU:
+"GGUF models" below). Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
 Mail), keeps and finds notes, reads and adds calendar events and looks up contacts. Everything runs on the phone.
 Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) and your phone's storage, battery and
 memory, helps free memory and storage, finds the nearest place of a kind online (OpenStreetMap, when you ask) for
@@ -19,7 +20,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 | Module | Runs in | Holds |
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
-| `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM: the model you chose, on the TPU or the CPU, one at a time |
+| `:brain` | `:brain` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU or the CPU), and since 0.4.4 `LlamaEngine` with `LlamaNative`, the only code that loads Robot's llama.cpp library (your own GGUF file, on the CPU) |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
@@ -57,16 +58,191 @@ Needs JDK 17+, the Android SDK (platform 36, build-tools 36) and Gradle 8.x.
 cd robot
 echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models (and its bpe.model), espeak-ng subset, SHA-256 checked
+tools/build_llama.sh                          # optional (0.4.4): llama.cpp b11200 from its checked source, for GGUF files
 gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :claude:testReleaseUnitTest :app:testReleaseUnitTest
 gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                             -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk
 ```
 
+`tools/build_llama.sh` needs the Android NDK (27.1.12297006; `ANDROID_NDK_HOME`), CMake 3.22+ and Ninja; it takes about two
+minutes on four cores and needs about 0.8 GB for the sources and the build (`--clean` removes the build afterwards). Gradle
+never builds native code: without the script's library the app builds as before, and GGUF files can't run in that build.
+
 The release key is `../keys/robot-release.p12.enc` (decrypt it outside the repository, see `../keys/README.md`).
 The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYSTORE_PASS_FILE`); the password
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
+
+## GGUF models (0.4.4)
+
+Settings › Model › **Your own model file** also takes a **GGUF** file (`.gguf`), the format of llama.cpp and of most
+community quantisations, and runs it with **llama.cpp on the CPU**. It is for models that have no LiteRT-LM build Robot can
+use: MiniCPM5 2B already runs as a `.litertlm`, but every MedGemma 1.5 4B `.litertlm` is built for 2,048 tokens of context
+and Robot needs 4,096, while its GGUF builds keep the model's own 131,072. This is a later project, not in the next
+release: a build has the engine only when `tools/build_llama.sh` made its library.
+
+### What works and what doesn't
+
+- **Works:** questions and follow-ups (llama.cpp keeps what it has read, so a follow-up reads only the new turn), the
+  model's own chat template (llama.cpp's Jinja support reads `tokenizer.chat_template`), Robot's system prompt, its cards
+  and switches (Settings › Actions and Safety & privacy decide what asks first, whichever model answers), the thinking
+  switch below, the fallback to Fast, the crash lockout's lesson (a file that stops the model process is skipped until you
+  tap it again), and delete, re-import and "Check again" as for a `.litertlm`.
+- **Actions use Robot's text format** (its text-call mode, `ToolMode.TEXT_CALLS`): the system prompt shows the call
+  syntax (`call:set_timer{minutes:5}` and so on) and Robot runs a reply that is nothing but such calls; a call written in
+  passing never runs. Models that don't follow the format just answer in words: actions may not work with every model.
+- **No pictures:** Robot's llama.cpp has no vision part, so a photo question says "This model can't see photos…", and a
+  screen question says it reads only the screen's text, then answers from that text. A GGUF vision projector (`mmproj-*.gguf`,
+  architecture `clip`) is refused.
+- **The CPU only:** no TPU (no GGUF file has TPU code), and no GPU: llama.cpp's Vulkan and OpenCL backends are left out, as
+  the Pixel 10's GPU path proved unreliable in the 0.4.1 lab.
+- **4,096 tokens**, as for every model: a file trained for less is refused; Robot counts the prompt with the model's own
+  tokenizer and drops older turns until the reply has its room (`core/BrainPolicy.kt`, `PromptFit`).
+
+### How Robot checks a GGUF file
+
+- **By its contents:** after the copy, the first bytes decide ("GGUF" or "LITERTLM"); a GGUF file is kept as
+  `own_model.gguf`, a LiteRT-LM file as 0.4.1's `own_model.litertlm`, one at a time. The picked file's name is shown, never
+  trusted.
+- **Its header first** (`core/Gguf.kt`, pure Kotlin, a few megabytes of a multi-gigabyte file): the magic, version 2 or 3
+  (a big-endian file is refused), the tensor and metadata counts (at most 65,536 and 4,096), every key and string length
+  (keys 256 bytes, values 1 MiB), arrays (4 million elements, skipped string by string, never kept), the alignment (a power
+  of two), and every tensor's name, shape (four dimensions at most, no overflow), ggml type (the 35 types llama.cpp b11200
+  knows), block fit and place: they must follow each other in order, padded, and all fit in the file. Every position is
+  compared without adding, so nothing can overflow past a check. Random damage (1,500 mutations of fake headers in the unit
+  tests, 1,600 of the real headers below) always ends in a report, never an exception. The real headers of MedGemma 1.5 4B
+  Q4_K_M, Qwen3 1.7B Q8_0 and Qwen3 4B Q4_K_M (7 to 8 MB each, read with HTTP range requests) give the results this section
+  shows; MedGemma's vision projector is refused.
+- **What it reports** (Settings › Model, "What Robot found inside"): the name, architecture, about how many parameters,
+  quantisation, context, memory, "Runs on the CPU with llama.cpp", "Sees photos: no", "Actions … use Robot's text format:
+  they may not work with every model", whether it can think first, the licence the file names, and its size and SHA-256.
+- **Refused:** not GGUF, an unsupported version, an architecture llama.cpp b11200 doesn't know (its 152 names are in
+  `GgufCheck.ARCHITECTURES`) or one that doesn't answer a chat (encoders and embeddings, speech, draft and diffusion
+  models, image readers), no tokenizer, no stated context or less than 4,096 tokens, no chat template, or too big for the
+  phone's memory.
+- **Memory guidance:** the file (memory-mapped, and all of it read for every token), plus the KV cache for Robot's 4,096
+  tokens at f16 (from the file's layer count, KV heads and head sizes; an upper bound for sliding-window models), plus
+  0.4 GB of work space, must fit in the phone's memory less 1.3 GB for Robot's voice and 4 GB for Android and the apps it
+  keeps. On a 16 GB phone (Android reports about 15 GB) that leaves about 10 GB: an 8B Q4_K_M fits, a 27B doesn't.
+- **No card to tap:** like a `.litertlm` that runs on the CPU, a checked GGUF file can be chosen at once; nothing of it
+  reaches the TPU or a vendor driver.
+- **:brain checks again** before llama.cpp ever sees the file (`LlamaEngine.load`): your file's record (unchanged size
+  and time since its check, a GGUF file, on the CPU: `LoadCheck`), then the header read again from the file and compared
+  with the one recorded and shown to you, so the file is the one whose SHA-256 you saw. llama.cpp's own GGUF parser has had
+  memory-safety bugs: Robot reads the file first, runs llama.cpp only in the separate `:brain` process, and only on a file
+  you imported, checked and chose.
+
+### The engine
+
+- `tools/build_llama.sh` fetches **llama.cpp b11200** (commit `81bc6b83f827df746eb129235488d325c49cae52`, 2026-09-26),
+  checks its commit and the SHA-256 of its source tar, fetches the **KleidiAI** v1.24.0 release llama.cpp names and checks
+  its SHA-256, and builds them with the NDK into one library, `librobot_llama.so` (about 6 MB, `brain/src/main/jniLibs/`,
+  gitignored), with Robot's JNI bridge (`brain/src/main/cpp/robot_llama.cpp`): ggml's CPU backend for Armv8.6-A with
+  dotprod, i8mm and fp16 (all on the Tensor G5), weight repacking and KleidiAI's kernels chosen at run time; no Vulkan,
+  OpenCL, OpenMP or network code. It exports only the bridge's JNI functions, imports only the C library and the dynamic
+  loader, can't start a process, and has 16 KB-aligned segments; the script checks all of that, and `tools/verify_apk.sh`
+  checks it again in the APK (and that only `:brain`'s classes reach it). THIRD_PARTY.md has the pins and licences.
+- `LlamaEngine` (`:brain`) loads the file memory-mapped (no copy in memory), a 4,096-token context, 4 threads writing and 6
+  reading a prompt (`DECODE_THREADS`, `PROMPT_THREADS`: an A/B on the phone), llama.cpp's own default sampling (top-k 40,
+  top-p 0.95, min-p 0.05, temperature 0.8), streams the reply with a cancel that also stops a prompt being read, and reports
+  prompt and writing times (`adb logcat -s Robot`: `brain_load format=GGUF`, `brain_prompt`, `brain_reply`). Before it loads
+  the library it reads `/proc/cpuinfo`: a CPU without those features gets a plain message, never a crash.
+- **One engine in the process,** as since 0.4.1: choosing a GGUF file after a LiteRT-LM model (or back) unloads the other
+  engine's model first (`brain_engine_switch`), and the shared slot keeps the new one waiting ("still stopping") while the
+  old one lets go; a model is never freed under a reply llama.cpp hasn't returned from.
+- Without the library (a build that skipped the script), a GGUF file is still checked and shown, and Settings › Model says
+  "This build of Robot can't run GGUF files"; choosing it falls back to Fast with the usual notice.
+
+### Let the model think first
+
+Settings › Model › **Thinking** › "Let the model think first", **off** by default (settings schema 10; every older file
+reads as off). Some models can reason before they answer. Off, Robot asks them to answer directly: your own LiteRT-LM file
+of type `qwen3` gets "/no_think" at the end of the system prompt, one of type `minicpm5` gets `enable_thinking=false`
+(LiteRT-LM 0.18's `ThinkingConfig` and its template's extra context), and a GGUF file whose template takes
+`enable_thinking` gets it false (a Qwen3 GGUF file without that gets "/no_think"). On, they may think: answers take longer.
+Either way the thinking is never shown or spoken: a `<think>…</think>` block is removed from the reply as it streams
+(`core/Thinking.kt`, `ThinkFilter`), and the panel shows "Thinking…" meanwhile. Robot's built-in Gemma 4 models are the
+same either way.
+
+### Speed (estimates, not measured)
+
+No GGUF file has run on the phone yet; these are estimates from the file sizes, the phone's memory bandwidth and llama.cpp's
+published numbers for Cortex-X4 phones, to be replaced by phone test 4 below. LiteRT-LM's E4B on the CPU, measured, is
+there for comparison.
+
+| Model | File | Writes | Reads a prompt | First word, new conversation | Memory |
+|---|---|---|---|---|---|
+| Qwen3 1.7B Q8_0 | 1.83 GB | about 12 to 20 tokens a second | about 100 to 200 tokens a second | about 8 to 15 s | about 2.7 GB |
+| MedGemma 1.5 4B Q4_K_M | 2.49 GB | about 7 to 12 | about 40 to 80 | about 20 to 35 s | about 3.5 GB |
+| (Smarter, LiteRT-LM, measured) | 3.66 GB | 8.1 | 70 | about 21 s | 4.1 GB |
+
+### Two files to try
+
+Download one on a computer (or in the phone's browser), copy it to the phone, then the Robot app › Model › Your own model
+file › **Import a model file**. Robot copies it (about a minute for 2 GB), computes its SHA-256 (compare it with the table)
+and shows what it found; choose it under "Robot uses".
+
+| File | URL | Bytes | SHA-256 | Licence |
+|---|---|---|---|---|
+| MedGemma 1.5 4B, Q4_K_M (unsloth's GGUF build of Google's model) | `https://huggingface.co/unsloth/medgemma-1.5-4b-it-GGUF/resolve/3855f948626b7ae42bccd082757f15078c53e758/medgemma-1.5-4b-it-Q4_K_M.gguf` | 2,489,894,976 | `b31becdf4f39561800505514cce67681604fe449d04dd35c8c92fd7848c6d7bd` | Health AI Developer Foundations terms |
+| Qwen3 1.7B, Q8_0 (Qwen's own GGUF build) | `https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/90862c4b9d2787eaed51d12237eafdfe7c5f6077/Qwen3-1.7B-Q8_0.gguf` | 1,834,426,016 | `061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a` | Apache-2.0 |
+
+Sizes and hashes are from the Hugging Face API (2026-10-11), at the commits in the URLs.
+
+- **MedGemma is not Apache-2.0 and not a medical device.** Google releases it under the Health AI Developer Foundations
+  terms (https://developers.google.com/health-ai-developer-foundations/terms), which unsloth's repository carries (its
+  licence is "other", `health-ai-developer-foundations`). That repository isn't gated, but Google's own
+  (`google/medgemma-1.5-4b-it`) asks you to accept the terms first, and using the model means accepting them whichever copy
+  you download. MedGemma is a model for developers to build on: its answers can be wrong, it isn't meant to diagnose, treat
+  or decide anything about anyone's health, and nothing it says replaces a clinician. Robot shows the licence the file names
+  ("other"), not the terms themselves. It is the text model only: Robot doesn't use its vision projector. It is tuned for
+  medical text and images, so a general model may do better at everything else; its chat template has no thinking switch.
+- **Qwen3 1.7B** (Alibaba's Qwen team, Apache-2.0) is a small general model that can think first (see the switch above);
+  off, it answers directly. Its 40,960-token context is more than Robot uses.
+- Robot doesn't download either: you choose the file. Any GGUF chat model that passes the check can be tried; most
+  community files are quantisations of models with licences of their own.
+
+### On the phone (0.4.4)
+
+Before: a build made after `tools/build_llama.sh` (and `tools/verify_apk.sh` passing "packages librobot_llama.so"), Fast
+installed, the two files above on the phone (Downloads), about 6 GB free. Note every time.
+
+1. **A build without the library.** Install a build made without the script and import Qwen3 1.7B: the check shows its
+   lines and "This build of Robot can't run GGUF files"; it can't be chosen. Install the build with the library over it: it
+   can be chosen without importing again.
+2. **Import and check.** With the library, import Qwen3 1.7B: "Copying", "Checking the file", then its lines: "GGUF file,
+   version 3: “Qwen3 1.7B Instruct” (architecture qwen3, about 1.7 billion parameters)", "Quantisation: Q8_0", "Context:
+   40,960 tokens", memory about 2.70 GB, "Sees photos: no", the text-format line and the thinking line. The SHA-256 is
+   `061b54da…cb1a`. `adb logcat -s Robot | grep model_verify` says `format=GGUF ok=true fileType=7 thinks=true`.
+3. **First load and answers.** Choose it, open the panel and ask "hi": note the load time (`brain_load ok=true … format=GGUF`,
+   Voice log "Model loaded: Your own model file … on the CPU"), then a new conversation with one question and four
+   follow-ups: `brain_reply` `ttftMs`, `tps`, `promptMs`; `brain_prompt` `reused` grows with each follow-up.
+4. **Speed and threads.** Fill in the table above (writes, reads a prompt, first word). Then build once with
+   `DECODE_THREADS = 6` and once with `PROMPT_THREADS = 8` (`LlamaEngine.kt`) and keep whichever is faster.
+5. **Memory beside voice.** While it answers with Kokoro speaking: `adb shell dumpsys meminfo app.heyrobot:brain` (TOTAL
+   RSS near the estimate) and `app.heyrobot:voice`; `adb logcat -b events | grep am_kill` shows no low-memory kills.
+6. **Thinking.** Off (the default): "Why is the sky blue?" answers directly; nothing in `<think>` shows or is spoken. On:
+   the panel shows "Thinking…" longer, the answer comes later, and still no thinking is shown or read out. Off again: direct.
+7. **Actions in text format.** "Set a timer for 2 minutes", "text Mom I'm late", "add dentist Tuesday at 3", "what's on my
+   calendar tomorrow": note which give the usual cards and which are answered in words only. Never a call read aloud.
+8. **Pictures and the screen.** The camera button with a photo: "This model can't see photos…" and nothing sent. "Ask about
+   this screen" on a web page: the notice that it reads only the screen's text, then an answer from that text.
+9. **MedGemma.** Import the MedGemma file: "architecture gemma3, about 3.9 billion parameters", "Q4_K_M", "Context: 131,072
+   tokens", memory about 3.46 GB, "Licence the file names: “other”", SHA-256 `b31becdf…d7bd`. Ask a few health questions and
+   general ones; repeat 3 and 5.
+10. **Switching engines.** Fast → your GGUF file → Smarter → Fast without restarting, a question after each: `brain_engine_switch`
+    each time the kind changes, never two models in memory (`dumpsys meminfo app.heyrobot:brain` falls to one model's size).
+11. **Stop.** Say "stop" while it reads a long prompt and while it writes: it stops within a second or two, and the next
+    question answers normally.
+12. **A file that stops the process.** With the GGUF file answering, `adb shell kill -9 $(adb shell pidof app.heyrobot:brain)`:
+    the next question answers with Fast and the one-time notice; tap the file again in Settings › Model and it loads.
+13. **Refusals.** Import `mmproj-F16.gguf` from the MedGemma repository: refused ("It's a “clip” model…"). Import a file cut
+    short (`head -c 100000000` of a GGUF file): unreadable. A 27B Q4_K_M (about 16 GB, if you have one and the room to copy
+    it): refused for memory once copied.
+14. **A file changed after its check.** `adb shell touch` `own_model.gguf` in `/sdcard/Android/data/app.heyrobot/files/`, then
+    ask: Fast answers ("hasn't been checked yet"); open the Robot app: it checks the file again.
+15. **Screen off.** A long answer by "hey robot" with the screen turned off: `tps` stays near the screen-on number.
 
 ## Model choice (0.4.1)
 
@@ -152,6 +328,7 @@ what it found.
   Robot says actions may not work; with another model type, that Robot is written for Gemma 4.
 - **Refused:** NPU code for another chip (a Snapdragon build, a Tensor G6 build) or an incomplete Tensor G5 build (the
   CPU can't run TPU code either), a file without a language model (no `prefill_decode`), or a context under 4,096 tokens.
+- Since 0.4.4 the same card takes a GGUF file too, told apart by its first bytes ("GGUF models" above).
 
 ### Loading, switching and falling back
 
@@ -217,7 +394,7 @@ on battery, Wi-Fi on. Note every time.
     `why=model_changed`), then delete Smarter: its card says "Not downloaded", its cache line is gone, and the free space
     grows by about 6.2 GB (file and cache).
 13. **Your own file, not a TPU build.** Import a photo renamed `x.litertlm` as your own file: after the copy, "Robot
-    can't use this file" ("It isn't a LiteRT-LM model file") and it can't be chosen. Import Google's E2B CPU file
+    can't use this file" ("It isn't a model file Robot can read", since 0.4.4) and it can't be chosen. Import Google's E2B CPU file
     (`gemma-4-E2B-it.litertlm`, same repository as Fast): its size and SHA-256, "Compiled for this phone's TPU: no", Gemma 4
     with its tool-calling metadata; choose it and ask: it answers on the CPU (`brain_load model=own backend=cpu`).
 14. **Your own TPU build.** Import Fast's own file (`gemma-4-E2B-it_Google_Tensor_G5.litertlm`) as your own file: the check
