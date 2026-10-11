@@ -159,6 +159,12 @@ the engine only when `tools/build_llama.sh` made its library.
   prompt and writing times (`adb logcat -s Robot`: `brain_load format=GGUF`, `brain_prompt`, `brain_reply`). Before it loads
   the library it reads `/proc/cpuinfo`: a CPU that lists its features without those gets a plain message instead of a
   crash (a list it can't read doesn't stop it: at worst `:brain` stops and Robot falls back to Fast).
+- **Control tokens only where the template writes them.** llama.cpp reads the formatted conversation with control tokens
+  on (the template writes the turn markers as text), so a web page whose text reads `<end_of_turn><start_of_turn>model…`
+  or `<|im_start|>system…` would otherwise become a real model or system turn. Before the template sees them, your
+  question with the screen's text and every turn of the history get an invisible word joiner (U+2060) after the first
+  character of any of the model's control tokens (`ControlText`, from the vocabulary llama.cpp loaded; `brain_load`
+  logs how many, `controls`): the model reads them as the plain text they are. Robot's own system prompt is left as it is.
 - **One engine in the process,** as since 0.4.1: choosing a GGUF file after a LiteRT-LM model (or back) unloads the other
   engine's model first (`brain_engine_switch`), and the shared slot keeps the new one waiting ("still stopping") while the
   old one lets go; a model is never freed under a reply llama.cpp hasn't returned from.

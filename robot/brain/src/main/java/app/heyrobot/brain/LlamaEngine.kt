@@ -10,6 +10,7 @@ import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainPolicy
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.ContextWindow
+import app.heyrobot.core.ControlText
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.EngineTeardown
 import app.heyrobot.core.GgufCheck
@@ -57,6 +58,8 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
     private var handle = 0L
     private var loaded: BrainMsg.Load? = null
     private var report: GgufReport? = null
+    /** The loaded model's control tokens, broken in every text from outside Robot's own prompt (core ControlText). */
+    private var controls = ControlText(emptyList())
     private var running: Run? = null
     /** A request that arrived while another was being cancelled: it starts when that one ends. */
     private var queued: (() -> Unit)? = null
@@ -152,16 +155,20 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         }
         val t0 = SystemClock.elapsedRealtime()
         val why = IntArray(1)
-        val h = try {
-            worker.submit<Long> {
-                LlamaNative.load(f.path.toByteArray(Charsets.UTF_8), req.maxTokens, DECODE_THREADS, PROMPT_THREADS, SAMPLING, why)
+        val (h, specials) = try {
+            worker.submit<Pair<Long, Array<ByteArray>?>> {
+                val h = LlamaNative.load(f.path.toByteArray(Charsets.UTF_8), req.maxTokens, DECODE_THREADS, PROMPT_THREADS, SAMPLING, why)
+                // Its control tokens, which no text from outside Robot's prompt may write (ControlText); none read: not run.
+                val specials = if (h != 0L) LlamaNative.specials(h) else null
+                if (h != 0L && specials == null) LlamaNative.free(h)
+                (if (specials == null) 0L else h) to specials
             }.get()
         } catch (t: Exception) {
             RLog.w("brain_load", t, "format" to ModelFormat.GGUF)
-            0L
+            0L to null
         }
         val ms = SystemClock.elapsedRealtime() - t0
-        if (h == 0L) {
+        if (h == 0L || specials == null) {
             EngineSlot.release(this, ctx)
             return failed(req, LoadFailure.ENGINE, when (why[0]) {
                 LlamaNative.LOAD_CONTEXT -> "llama.cpp couldn't make room for its context (memory)."
@@ -172,9 +179,10 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         handle = h
         loaded = req
         report = r
+        controls = ControlText(specials.map { String(it, Charsets.UTF_8) })
         RLog.i("brain_load", "ok" to true, "ms" to ms, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "format" to ModelFormat.GGUF,
             "vision" to false, "fileType" to r.fileType, "threads" to DECODE_THREADS, "promptThreads" to PROMPT_THREADS, "thinks" to r.thinks,
-            "maxTokens" to req.maxTokens, "chatOnly" to ContextWindow.chatOnly(req.maxTokens))
+            "maxTokens" to req.maxTokens, "chatOnly" to ContextWindow.chatOnly(req.maxTokens), "controls" to controls.size)
         return BrainMsg.Loaded(true, false, ms, null, req.model, req.backend, format = ModelFormat.GGUF)
     }
 
@@ -187,6 +195,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         handle = 0L
         loaded = null
         report = null
+        controls = ControlText(emptyList())
         // Freed on the worker, after any reply it is still in: never under it.
         val freed = worker.submit { LlamaNative.free(h) }
         var waited = 0
@@ -255,6 +264,7 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val plan = Thinking.gguf(report, req.think)
         val system = plan.system(req.system + Prompt.textCallHint(tools))
         val think = plan.enableThinking ?: req.think
+        val controls = controls
         val firstBudget = ContextWindow.historyBudget(Prompt.fixedTokens(req.system, tools), TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text)), max)
         val run = Run(reqId, req.convId, sink, h, ++runs, mode).also { it.strip = plan.stripThinking }
         running = run
@@ -270,9 +280,10 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
                 val roles = ArrayList<ByteArray>()
                 val texts = ArrayList<ByteArray>()
                 fun add(role: String, text: String) { roles += role.toByteArray(); texts += text.toByteArray(Charsets.UTF_8) }
+                // Robot's own system prompt as it is; everything else without the model's control tokens (ControlText).
                 add("system", system)
-                for (t in history) add(if (t.role == PromptRole.USER) "user" else "assistant", t.text)
-                add("user", req.text)
+                for (t in history) add(if (t.role == PromptRole.USER) "user" else "assistant", controls.defuse(t.text))
+                add("user", controls.defuse(req.text))
                 tokens = if (run.stop) LlamaNative.PREP_TEMPLATE_FAILED else LlamaNative.prepare(h, roles.toTypedArray(), texts.toTypedArray(), think, flags)
                 kept = history.size
                 if (run.stop) {

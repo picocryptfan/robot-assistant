@@ -227,6 +227,53 @@ JNIEXPORT void JNICALL Java_app_heyrobot_brain_LlamaNative_cancel(JNIEnv *, jcla
     while (cur < run && !r->cancel_upto.compare_exchange_weak(cur, run)) {}
 }
 
+/**
+ * The texts of the vocabulary's control and unknown tokens (two bytes or more, UTF-8): the ones llama.cpp reads as
+ * tokens only in a prompt read with its control tokens on, as prepare() reads the formatted conversation. LlamaEngine
+ * breaks them in every text from outside Robot's own prompt (core ControlText) before the template sees it. Null on
+ * failure.
+ */
+JNIEXPORT jobjectArray JNICALL Java_app_heyrobot_brain_LlamaNative_specials(JNIEnv * env, jclass, jlong h) {
+    Robot * r = of(h);
+    if (r == nullptr) return nullptr;
+    try {
+        std::vector<std::string> texts;
+        const int32_t n = llama_vocab_n_tokens(r->vocab);
+        for (int32_t id = 0; id < n; ++id) {
+            if ((llama_vocab_get_attr(r->vocab, id) & (LLAMA_TOKEN_ATTR_CONTROL | LLAMA_TOKEN_ATTR_UNKNOWN)) == 0) continue;
+            const char * t = llama_vocab_get_text(r->vocab, id);
+            if (t == nullptr) continue;
+            const size_t len = std::strlen(t);
+            if (len >= 2 && len <= 1024) texts.emplace_back(t, len);
+        }
+        jclass bytes = env->FindClass("[B");
+        if (bytes == nullptr) {
+            env->ExceptionClear();
+            return nullptr;
+        }
+        jobjectArray out = env->NewObjectArray(static_cast<jsize>(texts.size()), bytes, nullptr);
+        env->DeleteLocalRef(bytes);
+        if (out == nullptr) {
+            env->ExceptionClear();
+            return nullptr;
+        }
+        for (size_t i = 0; i < texts.size(); ++i) {
+            jbyteArray b = env->NewByteArray(static_cast<jsize>(texts[i].size()));
+            if (b == nullptr) {
+                env->ExceptionClear();
+                env->DeleteLocalRef(out);
+                return nullptr;
+            }
+            env->SetByteArrayRegion(b, 0, static_cast<jsize>(texts[i].size()), reinterpret_cast<const jbyte *>(texts[i].data()));
+            env->SetObjectArrayElement(out, static_cast<jsize>(i), b);
+            env->DeleteLocalRef(b);
+        }
+        return out;
+    } catch (...) {
+        return nullptr;
+    }
+}
+
 /** The context the model was trained with (its file's <arch>.context_length, as llama.cpp read it). */
 JNIEXPORT jint JNICALL Java_app_heyrobot_brain_LlamaNative_trainContext(JNIEnv *, jclass, jlong h) {
     Robot * r = of(h);

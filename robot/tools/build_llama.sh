@@ -149,7 +149,7 @@ done
 exports=$("$BIN/llvm-nm" -D --defined-only "$stripped" | awk '{ print $3 }' | sort)
 others=$(grep -vE '^(JNI_OnLoad|Java_app_heyrobot_brain_LlamaNative_[A-Za-z]+)$' <<<"$exports" || true)
 [ -z "$others" ] || fail "exports more than its JNI functions: $(echo $others | head -c 300)"
-for f in load free cancel trainContext prepare generate; do
+for f in load free cancel trainContext specials prepare generate; do
   grep -qx "Java_app_heyrobot_brain_LlamaNative_$f" <<<"$exports" || fail "doesn't export LlamaNative.$f"
 done
 # Imports: the C library and the dynamic loader only; no network, no GPU, no process spawning.

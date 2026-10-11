@@ -46,6 +46,8 @@ internal object LlamaNative {
     @JvmStatic external fun free(handle: Long)
     @JvmStatic external fun cancel(handle: Long, run: Long)
     @JvmStatic external fun trainContext(handle: Long): Int
+    /** The vocabulary's control (and unknown) tokens' texts, UTF-8; null on failure (core ControlText breaks them). */
+    @JvmStatic external fun specials(handle: Long): Array<ByteArray>?
     @JvmStatic external fun prepare(handle: Long, roles: Array<ByteArray>, texts: Array<ByteArray>, think: Boolean, flags: IntArray): Int
     @JvmStatic external fun generate(handle: Long, run: Long, maxTokens: Int, sink: Sink, stats: LongArray): Int
 

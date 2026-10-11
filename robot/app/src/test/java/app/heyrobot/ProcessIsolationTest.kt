@@ -273,7 +273,7 @@ class ProcessIsolationTest {
         val bridge = File(cpp, "robot_llama.cpp").readText()
         val externals = Regex("""external\s+fun\s+(\w+)""").findAll(native).map { it.groupValues[1] }.toSet()
         val jni = Regex("""Java_app_heyrobot_brain_LlamaNative_(\w+)\(""").findAll(bridge).map { it.groupValues[1] }.toSet()
-        assertEquals(setOf("load", "free", "cancel", "trainContext", "prepare", "generate"), externals)
+        assertEquals(setOf("load", "free", "cancel", "trainContext", "specials", "prepare", "generate"), externals)
         assertEquals(externals, jni)
         val exports = File(cpp, "exports.map").readText()
         assertTrue(exports.contains("Java_app_heyrobot_brain_LlamaNative_*;") && exports.contains("local:") && exports.contains("*;"))
