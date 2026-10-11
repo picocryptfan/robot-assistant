@@ -1002,9 +1002,9 @@ object PanelController {
         // A card waits: a typed or spoken "yes" or "no" answers it (Settings › Safety & privacy).
         if (st.phase == Phase.CONFIRMING && st.draft == null && answerCard(q, fromVoice)) return true
         if (st.busy || slot.running) {
-            if (fromVoice && st.phase == Phase.CONFIRMING) {
+            if (st.phase == Phase.CONFIRMING) {
                 notify(CARD_HINT)
-                cue(Cue.CHIME)
+                if (fromVoice) cue(Cue.CHIME)
             } else if (fromVoice) {
                 notify("Robot is still on the last question. Ask again when it's done.")
                 VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.BUSY)

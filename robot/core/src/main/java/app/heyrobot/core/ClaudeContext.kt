@@ -155,8 +155,8 @@ object ClaudeContext {
     fun recent(history: List<ChatTurn>, n: Int = RECENT_TURNS): List<ChatTurn> = history.filter { !it.error && it.text.isNotBlank() }.takeLast(n)
 
     /**
-     * "User: …" / "Robot: …" / "Claude: …" lines. Pictures and screen text were never stored, so a turn that had one
-     * says so in brackets. Action cards are never described: their summaries carry names and numbers from the contacts.
+     * "User: …" / "Robot: …" / "Claude: …" lines. Pictures and screen text are never part of it (even when kept for
+     * History, ChatTurn.picture and screenText), so a turn that had one says so in brackets. Action cards are never described: their summaries carry names and numbers from the contacts.
      */
     fun transcript(turns: List<ChatTurn>): String? = turns.mapNotNull { t ->
         if (t.error || t.text.isBlank()) return@mapNotNull null
