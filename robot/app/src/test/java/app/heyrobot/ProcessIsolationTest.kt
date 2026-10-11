@@ -448,8 +448,9 @@ class ProcessIsolationTest {
      * accessibility service (Ask Claude must not drive the Claude app).
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
+        // java.net.IDN only spells a host name in ASCII, like URLEncoder and URI (core web WebUrl, not wired yet).
         assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt"),
-            usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
+            usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b|IDN\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
             ours.filterKeys { !it.startsWith("claude/") }))
         // 0.4.0: the nearest place for the maps goes only to the Nominatim server in Settings (OpenStreetMap's unless you chose
         // another, checked by core NearbyServer: HTTPS only), a second apart at most, its raw request private, and only the
@@ -478,9 +479,11 @@ class ProcessIsolationTest {
         // helpers' companies' API addresses (0.6.0, core Helpers.kt's presets, used only by the :claude module's clients in
         // the :voice process, with your key, when you ask), and the example addresses Settings › Helpers shows when you type
         // your server's (text only, never fetched). Licences.kt (0.4.5) fetches none: it only checks that the licence list's
-        // links (assets/licenses/components.json) are https.
+        // links (assets/licenses/components.json) are https. Web search's request builders (core web SearchWire and
+        // Wikipedia: Brave, Kagi, Mojeek and Wikipedia's API addresses) are built in core but not wired yet: nothing fetches them.
         assertEquals(listOf("app/ui/HelpersScreens.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt", "core/core/ModelState.kt", "core/core/MtBundle.kt",
-            "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt", "core/core/helpers/Helpers.kt"),
+            "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt", "core/core/helpers/Helpers.kt",
+            "core/core/web/SearchWire.kt", "core/core/web/Wikipedia.kt"),
             ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
