@@ -176,6 +176,39 @@ class GgufTest {
         unreadable(FakeGguf.gguf(listOf("general.architecture" to "llama"), listOf(Tensor("a", listOf(32), offset = Long.MAX_VALUE - 8))))
     }
 
+    /**
+     * A header that never ends (a vocabulary of 1 MiB strings past the 192 MB cap, in a 64 GB file) is refused as "a header
+     * too large", having read no more than the cap: strings are skipped, never kept, and nothing is read past the cap.
+     */
+    @Test fun aHeaderPastTheCapIsRefusedWithoutReadingPastIt() {
+        val head = FakeGguf.Out().bytes("GGUF".toByteArray()).u32(3).u64(0).u64(1)
+            .str("tokenizer.ggml.tokens").u32(9).u32(8).u64(GgufCheck.MAX_ARRAY.toLong()).toByteArray()
+        val record = 8L + GgufCheck.MAX_STRING
+        var read = 0L
+        var furthest = 0L
+        val src = object : ByteSource {
+            override val size = 64L shl 30
+            override fun read(pos: Long, n: Int): ByteArray {
+                read += n
+                furthest = maxOf(furthest, pos + n)
+                return ByteArray(n) { i ->
+                    val p = pos + i
+                    if (p < head.size) head[p.toInt()]
+                    else {
+                        // Each string: its u64 length (1 MiB), then its bytes (zeros).
+                        val at = (p - head.size) % record
+                        if (at < 8) ((GgufCheck.MAX_STRING.toLong() shr (8 * at.toInt())) and 0xff).toByte() else 0
+                    }
+                }
+            }
+        }
+        val r = GgufCheck.check(src)
+        assertFalse(r.readable)
+        assertTrue(r.problem!!, r.problem!!.contains("a header too large"))
+        assertTrue("read $read", read <= GgufCheck.MAX_HEADER + (1 shl 20))
+        assertTrue("furthest $furthest", furthest <= GgufCheck.MAX_HEADER)
+    }
+
     /** The file is untrusted: random damage anywhere ends in a report, never an exception or a hang. */
     @Test fun damagedFilesNeverThrow() {
         val rnd = Random(44)
