@@ -304,8 +304,9 @@ class SummaryActivity : ComponentActivity() {
                 Checkbox(checked = card.anonymized, onCheckedChange = onNames)
                 Text(ConsentCard.TOGGLE, style = MaterialTheme.typography.bodyMedium)
             }
-            val tooLong = toApp && ConsentCard.appShare(card) == null
-            if (tooLong) Text(ConsentCard.TOO_LONG_FOR_APP, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            val tooLong = if (toApp) ConsentCard.appShare(card) == null else !ConsentCard.apiFits(card.blocks, ClaudeApiHelper.MAX_INPUT_TOKENS)
+            if (tooLong) Text(if (toApp) ConsentCard.TOO_LONG_FOR_APP else ConsentCard.TOO_LONG_FOR_API, style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
                 TextButton(onClick = onCancel, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                 Button(onClick = onSend, enabled = !tooLong, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send") }

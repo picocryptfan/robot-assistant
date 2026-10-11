@@ -453,6 +453,12 @@ class ConsentCard private constructor(
 
         /** The share text for the Claude app, or null when it is too long (the card offers export instead). */
         fun appShare(card: ConsentCard): String? = card.appText.takeIf { it.length <= APP_MAX_CHARS }
+
+        /** Too long for one request to a helper's API (Helper.maxInputTokens): nothing is sent, the card offers export. */
+        const val TOO_LONG_FOR_API = "Too long for one request; export it and attach the file."
+
+        /** A request of [blocks] fits a helper's API that takes at most [maxTokens] in (by the card's estimate, HelperCost). */
+        fun apiFits(blocks: List<ClaudeBlock.Text>, maxTokens: Int): Boolean = HelperCost.tokens(blocks.sumOf { it.text.length }) <= maxTokens
     }
 }
 
@@ -485,8 +491,10 @@ object HelperCost {
     const val CHARS_PER_TOKEN = 3.5
     const val OUTPUT_TOKENS = 2_500L
 
-    fun estimate(model: ClaudeModel, chars: Int): Double =
-        ClaudeCost.dollars(model, ClaudeUsage(input = (chars / CHARS_PER_TOKEN).roundToLong() + SYSTEM_TOKENS, output = OUTPUT_TOKENS))
+    fun estimate(model: ClaudeModel, chars: Int): Double = ClaudeCost.dollars(model, ClaudeUsage(input = tokens(chars), output = OUTPUT_TOKENS))
+
+    /** The input of a request of [chars] characters, with the system prompt, about. */
+    fun tokens(chars: Int): Long = (chars / CHARS_PER_TOKEN).roundToLong() + SYSTEM_TOKENS
 
     private const val SYSTEM_TOKENS = 200L
 }
