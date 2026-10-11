@@ -40,7 +40,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
   privacy › Safety cards, where "Always after Robot reads something" is the rule before 0.4.0); the read tools
   (contacts, notes, calendar) keep their own level;
   at most two actions and three tool rounds per answer; a call written as text runs only when :brain is in text-call
-  mode (its TPU build refused the tool API) and the whole reply is the call. An app name is resolved before the card,
+  mode (its TPU build refused the tool API, or since 0.4.4 the model is your own GGUF file) and the whole reply is the call. An app name is resolved before the card,
   which shows the app that will open. One question at a time: a waiting card counts as busy (a yes or no, spoken or typed, answers it), Stop declines it.
 - Context (4,096 tokens): the new message is cut to fit (the panel says so). A question about times or dates, an
   alarm or a timer, or any question in a conversation using the calendar tools, carries the time after it
