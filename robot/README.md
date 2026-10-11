@@ -69,6 +69,37 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
+## Releasing
+
+Every APK that is published goes out with the source of the GPL code in it. Robot's own source is this repository at the
+release's tag (`v<version>`); the prebuilt native code it ships is not built here, so each release also attaches its
+source:
+
+1. Tag the release and build the APK (above); check it with `tools/verify_apk.sh`.
+2. Make the third-party source bundle, on a machine with the network:
+
+   ```
+   tools/make_source_bundle.sh              # version from app/build.gradle; or --version 1.0.0
+   # -> build/source-bundle/robot-<version>-third-party-sources.tar.gz and its .sha256 (about 310 MB)
+   ```
+
+   It takes sherpa-onnx at the commit of v1.13.8 (`11afbd00`, checked by its commit id), reads from that source the
+   archives sherpa-onnx's Android build compiles into `libsherpa-onnx-jni.so` (espeak-ng at `ed530aa1`, piper-phonemize,
+   kaldi-native-fbank, kaldi-decoder, kaldifst, OpenFst, simple-sentencepiece, JSON for Modern C++, hclust-cpp, Eigen)
+   and downloads each from its pinned link (or sherpa-onnx's Hugging Face mirror), checking the SHA-256 sherpa-onnx pins;
+   one it can't download it takes from git at the pinned commit instead, checks the commit id, and says so in the
+   bundle's `MANIFEST.tsv` and `README.md`. It adds ONNX Runtime 1.28.2's source (tag v1.28.2, commit `33ca9628`; 280 MB
+   of the total, about 50 MB without it; `--without-onnxruntime` leaves it out, as its MIT licence allows, but sherpa-onnx's library is built to
+   require it, so keep it unless size forces otherwise). The archive is reproducible from the same inputs (sorted, no
+   owners or times). Never commit it.
+3. Attach to the GitHub release: the APK, `SHA256SUMS`, `robot-<version>-third-party-sources.tar.gz` and its
+   `.sha256`, and the release notes. Keep the bundle as long as that APK is offered (GPL-3.0 section 6).
+
+Settings › About › Licences names both places, from `app/src/main/assets/licenses/components.json` (`robot.sourceTag`,
+`robot.sourceBundle`, "{version}" filled in): `<repository>/tree/v<version>` and
+`<repository>/releases/download/v<version>/robot-<version>-third-party-sources.tar.gz`. The repository link there is
+today's (`picocryptfan/robot-gos-assistant`); change it in that one file if the public repository has another name.
+
 ## Short-context models (0.4.3)
 
 Your own model file (Settings › Model › "Your own model file") may now be built for a context of 2,048 to 4,095 tokens

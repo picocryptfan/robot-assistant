@@ -102,6 +102,9 @@ class LicencesTest {
         assertEquals("licenses/GPL-3.0.txt", book.robot.text)
         assertTrue(book.robot.bundleAt("1.2.3").endsWith("/releases/download/v1.2.3/robot-1.2.3-third-party-sources.tar.gz"))
         assertTrue(book.robot.sourceAt("1.2.3").endsWith("/tree/v1.2.3"))
+        // The script that makes that bundle names its file the same way.
+        val script = File(root, "tools/make_source_bundle.sh").readText()
+        assertTrue(script.contains("NAME=\"robot-\${VERSION}-third-party-sources\"") && script.contains("TGZ=\"\$OUT/\$NAME.tar.gz\""))
         // espeak-ng is GPL-3.0-or-later and says where its source is.
         val espeak = book.byId("espeak-ng")!!
         assertEquals("GPL-3.0-or-later", espeak.licence)
