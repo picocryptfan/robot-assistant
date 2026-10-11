@@ -93,6 +93,15 @@ class ChatOnlyTest {
         )) assertNull(q, ChatOnly.actionAsked(q))
     }
 
+    /** A pasted article or a long dictation is read in one pass (anchored patterns, bounded repeats): no hang, no action. */
+    @Test(timeout = 10_000) fun aLongTextIsReadQuicklyAndIsNoAction() {
+        val article = "The history of blood pressure measurement is long and full of clever ideas, find the nearest. ".repeat(600)
+        assertNull(ChatOnly.actionAsked(article + "?"))
+        assertEquals(ToolName.MAPS_SEARCH, ChatOnly.actionAsked("find " + article))
+        assertNull(ChatOnly.actionAsked("please ".repeat(5_000)))
+        assertNull(ChatOnly.actionAsked("add ".repeat(5_000) + "?"))
+    }
+
     @Test fun theAnswerSaysWhatItCantDoAndWhereToChoose() {
         assertTrue(ChatOnly.REPLY.contains("can only chat"))
         assertTrue(ChatOnly.REPLY.contains("choose Fast in Settings › Model"))
