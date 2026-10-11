@@ -715,62 +715,93 @@ Robot keeps its own list of people, so "text mom I'm running late" opens Cheogra
 text, and "email Bob" fills in Bob's address, even when neither is in the phone's address book (someone only in
 Cheogram's roster, or only in Proton Mail). There is no companion app and no WRITE_CONTACTS: People live in Robot's
 private storage (`files/people/people.json`, written atomically under a lock both app processes take), excluded from
-Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
+Android's backups like the rest of Robot's files. A file Robot can't read (damaged, cut short) is never written over:
+Robot knows no one in People and changes nothing until Settings › People › Start over, which keeps the old file aside as
+`people.json.bad`. Spec: `../docs/people.md`.
 
 ### Who "mom" is
 
 - `send_text`, `draft_email` and `lookup_contact` search People together with the phone's contacts, and People alone
   when Robot may not read the contacts (so People also work under GrapheneOS's Contact Scopes). A contact's id says
   where it comes from (`s:12` for the phone's, `r:<id>` for People), so the two lists never mix.
-- **Also called.** What you say ("mom", "maman") is an alias: said exactly, it beats every other match, even a phone
-  contact literally named "Mom". Case and accents don't matter ("Hélène" is "helene").
+- **Also called.** What you told Robot you call someone ("mom", "maman": typed in Also called, "Remember as…" after a
+  pick, or "Always use this for…") is an alias. Said exactly (a leading "my", "mon", "ma" or "mes" aside, which is
+  never kept), it beats every other match, even a phone contact literally named "Mom", but only when that person can
+  be reached by what you asked: a number or an XMPP address (with Cheogram) for a text, an email address for an
+  email. Otherwise it counts like any other name, so "bob" for someone you only text in Cheogram doesn't hide the
+  phone's Bob from "email bob". Nicknames from a contacts file, and names kept from a merge, are nicknames: they match
+  like the phone's nicknames, never ahead of others. Case and accents don't matter ("Hélène" is "helene").
 - **Remembered choices.** A place chosen with "Always use this for “mom”" is the only one offered for that person while
   it is still theirs; then one exact name and one place can go without a card under "Just do it". Settings shows it
   and can forget it.
 - **Learned names.** Someone learned from a Cheogram notification is unconfirmed, because whoever sends a message chooses
-  their own display name: such a name never stands beside a confirmed person who matches as well, a text or email to
-  them always shows the card ("· name seen in Cheogram"), and texting them, editing them or Keep confirms them.
+  their own display name. Such a name never displaces anyone confirmed: when a confirmed person matches the name at
+  all, they come first, and learned people who match at least as well are only offered after them as more choices
+  (never alone, never already filled in). Only when no one confirmed matches does a learned person stand alone, and
+  then as a choice to tap ("· name seen in Cheogram"), always on a card. Opening a draft to them doesn't confirm them;
+  only Keep or an edit in Settings › People, "Remember" after a pick, or the ticked "Always use this" box does.
 - The same number or address in both lists is offered once (a card still shows, since two entries matched).
 
 ### Ways in
 
 1. **Pick in Cheogram.** When no contact fits a text and Cheogram is the texting app, the card offers **Pick in
-   Cheogram** and, as before, **Choose in Cheogram** (the share screen). Pick opens Cheogram's own searchable contact
+   Cheogram** and, as before, **Choose in Cheogram** (the share screen), also when Robot may not read the contacts
+   (neither needs a permission; the card then has an Allow contacts button too). Pick opens Cheogram's own searchable contact
    list for a result: its `ShortcutActivity`, exported for `ACTION_CREATE_SHORTCUT`, titled "Create shortcut". Robot only
    reads the answer (`EXTRA_SHORTCUT_NAME`, and `EXTRA_SHORTCUT_INTENT`'s `xmpp:<jid>` and `"account"` extra); the icon
    is ignored and nothing is pinned, so nothing goes on the home screen, and the card says so. Then "Remember as
    **Mom**? (Cheogram calls them *Mom Martin*)" saves the person with what you said as an alias ("Remember who I pick"
    on), and their chat opens with the text. Next time "text mom" goes straight there. If the list doesn't open or
    nobody is picked, Robot offers the share screen instead. Settings › People › Add from Cheogram uses the same list.
-2. **The right account.** An XMPP address with its Cheogram account (from a pick, a notification or the editor) opens
-   through `StartConversationActivity` with `xmpp:<jid>?message;body=…` (the body encoded twice, as before) and the
-   `"account"` extra, so a contact in several accounts no longer shows a search and loses the text. The plain `xmpp:`
-   link stays as the fallback. Cheogram still keeps a draft already in that chat.
+2. **The right account.** An address picked in Cheogram's list, with the account it was picked in, opens through
+   `StartConversationActivity` with `xmpp:<jid>?message;body=…` (the body encoded twice, as before) and the
+   `"account"` extra, straight into that account's chat. Only picked addresses go this way: that activity looks for
+   the chat among the account's contacts, and for anyone else (a learned stranger, an account typed in the editor) it
+   would offer to add a contact instead. Everything else, and a picked address that doesn't open, goes by the plain
+   `xmpp:` link as before. In Cheogram's source that link goes to ShareViaAccountActivity, which opens the chat for
+   any address, asks first which account when you have several, and keeps the text. Accounts are kept in lower case
+   (Cheogram compares them exactly), and the newest pick or notification replaces an older one. A draft already in
+   that chat: the account's route keeps it (Cheogram says "already drafting"), the link adds Robot's text after it;
+   the card says which applies.
 3. **Import a contacts file (.vcf).** Settings › People › Import, through the system file picker (no storage
    permission). The reader (`core/VCard.kt`) takes vCard 2.1, 3.0 and 4.0: folded lines, item groups (`item1.EMAIL`,
-   with Apple-style labels), escapes, quoted-printable in any charset, several cards per file, files in UTF-8 or
-   Windows-1252. It keeps names (`FN`, else `N`), nicknames (`NICKNAME`, and the Contacts app's own export of them),
-   numbers (`TEL`, `tel:` URIs too), emails and XMPP addresses (`IMPP:xmpp:`, `X-JABBER`), and skips everything else
-   (postal addresses, birthdays, notes, photos, categories). A preview gives the counts, how many are new and how many
-   people already there (the same number, email or XMPP address) get something new. From Proton Mail: on the web,
-   Contacts › select all › Export selection as .VCF.
+   with Apple-style labels, "Mobile" counting as a mobile number), escapes, quoted-printable in any charset, several
+   cards per file (a last card without `END:VCARD` too), files in UTF-8, UTF-16 or Windows-1252, read in one pass with
+   pictures, sounds and keys dropped as they are read. It keeps names (`FN`, else `N`), nicknames (`NICKNAME`, and the
+   Contacts app's own export of them; kept as nicknames), numbers (`TEL`, `tel:` URIs too), emails and XMPP addresses
+   (`IMPP:xmpp:`, `X-JABBER`), and skips everything else (postal addresses, birthdays, notes, photos, categories). A preview gives the counts, how many are new and how many
+   people already there get something new. An entry merges with someone already in People only when they share a
+   number, an email or an XMPP address and either the names agree (a nickname or an alias counts) or every number and
+   address in the file's entry is already theirs; a shared landline or family email alone never merges two people.
+   The merge the preview worked out is written as it is (the file lock is held only for the write), unless the list
+   changed meanwhile. From Proton Mail: on the web, Contacts › select all › Export selection as .VCF.
 4. **Learn names from Cheogram notifications** (Settings › People, off by default). With notification access, a
    `NotificationListenerService` in the main process (no model, no voice process) keeps who messages you in Cheogram
-   (`com.cheogram.android`, or the Play build), for 1:1 chats only: the MessagingStyle sender's `Person.name`, its
-   `Person.key` (the bare address) and the chat's shortcut id (`"<account>#<jid>"`). Group chats and anything without
-   that shortcut are ignored; message text is never kept or logged. A confirmed person's name is never overwritten
-   (only a missing account is added); at most 200 learned people are kept. Settings lists them under "Learned from
-   Cheogram" with Keep and Remove. The service asks Android for conversation notifications only (never ongoing or
-   silent ones) and unbinds itself while the switch is off.
+   (only the build Robot hands texts to, `com.cheogram.android` or else the Play build), for 1:1 chats only: the
+   MessagingStyle sender's `Person.name`, its `Person.key` (the bare address) and the chat's shortcut id
+   (`"<account>#<jid>"`). Group chats and anything without that shortcut are ignored; message text is never kept or
+   logged. A notification counts only if Cheogram posted it for itself (`opPkg`) and Cheogram is signed as it was the
+   first time Robot saw it after you turned learning on: that certificate's SHA-256 is kept in
+   `files/people/cheogram.signer`, and an app under Cheogram's name signed by anyone else teaches nothing (turn the
+   switch off and on to trust a Cheogram you reinstalled from another source). A confirmed person's name is never
+   overwritten (the account is refreshed); at most 200 learned people are kept. Settings lists them under "Learned from
+   Cheogram" with Keep and Remove; Remove (or Delete on a learned person) also means their address is never learned
+   again, until Delete all. The service asks Android for conversation notifications only (never ongoing or silent
+   ones) and unbinds itself while the switch is off.
    **Restricted settings:** Android blocks notification access for apps installed from a file until you allow
-   restricted settings, and the menu item for that appears only after Android has refused once. Settings › People and
-   Assistant setup › People, notes and calendar give the steps with a button for each screen: Notification access (tap
+   restricted settings, and the menu item for that appears only after Android has refused once. Settings › People and,
+   once the switch is on, Assistant setup › People, notes and calendar give the steps with a button for each screen
+   (with the switch off, Assistant setup only says it is optional): Notification access (tap
    Robot; if Android says it's a restricted setting, tap OK), App info › ⋮ › Allow restricted settings, then
    Notification access again.
-5. **Add from phone contacts.** Android 17's contact picker (`ACTION_PICK_CONTACTS`, one contact's numbers and emails)
-   when the phone has it, else the older picker for one number or one email. No permission either way.
+5. **Add from phone contacts.** Android 17's contact picker (`ACTION_PICK_CONTACTS`, one contact's numbers and emails,
+   all of them) when the phone has it, else the older picker for one number or one email. No permission either way. A
+   picker that answers with no contact (no URI, also none in its ClipData) is said so.
 6. **By hand**, in Settings › People: name, "Also called", numbers (Mobile, Home, Work, Other), emails, XMPP addresses
-   with "Your Cheogram account".
+   with "Your Cheogram account". Save applies only what you changed, field by field and row by row, to the person as
+   stored now, so a choice the assistant remembered or an account a notification refreshed meanwhile is kept; someone
+   deleted meanwhile isn't brought back. With no unsaved changes the screen shows what is stored whenever it comes
+   back. Search runs off the main thread, a moment after the last key.
 7. **Always use this for “mom”.** A card with several numbers, addresses or people has this tick box over the choices
    ("Remember who I pick" on). Ticked, the place tapped becomes the person's choice for texts or emails and the name
    their alias (taken from anyone else who had it). For one of the phone's contacts Robot keeps a small People entry
@@ -790,8 +821,9 @@ Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
 People, names learned from notifications included, are personal content, like the contacts, notes and the calendar:
 never logged, never sent to Claude unless you include them. A lookup that finds someone makes the conversation personal
 (Ask Claude's rules above), and Claude never gets `lookup_contact`. The voice log records only what came of a pick
-(someone picked, nobody, no usable address, the list didn't open; whether Cheogram named the account; whether you chose
-to remember) and how a text reached Cheogram (the chat in its account, the `xmpp:` link, the share screen, the contact
+(someone picked; nobody, which also covers an answer Cheogram couldn't deliver, since Android reports both as a cancel
+with nothing; an answer that couldn't be read; no usable address; the list didn't open; whether Cheogram named the
+account; whether you chose to remember) and how a text reached Cheogram (the chat in its account, the `xmpp:` link, the share screen, the contact
 list), never who. `verify_apk.sh` and `ProcessIsolationTest` allow one more exported component, the notification
 listener, behind `BIND_NOTIFICATION_LISTENER_SERVICE` and in the main process, and check that the pick activity runs in
 `:voice` and isn't exported.
@@ -806,16 +838,18 @@ listener, behind `BIND_NOTIFICATION_LISTENER_SERVICE` and in the main process, a
    Nothing appears on the home screen, and no launcher asks to add a shortcut. "Text mom see you soon" then shows "Text
    **Mom Martin** (…) in Cheogram" and opens the chat directly. Also: Back in Cheogram's list, then Choose in Cheogram
    (the share screen, with the text). Send the voice log lines ("Pick in Cheogram: …", "Text handed to Cheogram: …").
-3. **The right account.** A number in two Cheogram accounts, picked once: the chat opens without the search screen.
-   Then with a draft already in that chat: which text stays.
+3. **The right account.** A number in two Cheogram accounts, picked once: the chat opens in the picked account, with
+   no account question. Someone you didn't pick (a learned person): the link route, and with two accounts Cheogram
+   asks which, keeping the text. Then with a draft already in that chat, by each route: which text stays.
 4. **Proton's .vcf.** Export from Proton web (Contacts › select all › Export selection as .VCF), import it in Settings ›
    People: the counts, names with accents, several emails per person. Note the file's vCard version, `itemN.` groups
    and `CATEGORIES`. "Email Bob about lunch" fills Bob's address, also with the contacts permission off.
 5. **Learning from notifications.** Turn on "Learn names from Cheogram notifications"; follow the steps (the restricted
    setting dialog, App info › ⋮ › Allow restricted settings, then the access). Someone only in Cheogram messages you:
    they appear under "Learned from Cheogram". "Text <their name> hi" under "Just do it" still shows the card with "·
-   name seen in Cheogram". A group chat message teaches nothing. Turn the switch off: nothing more is learned, and
-   Settings offers to open Android's page to take the access back.
+   name seen in Cheogram". A group chat message teaches nothing. Remove them, and have them message again: they don't
+   come back. Turn the switch off: nothing more is learned, and Settings offers to open Android's page to take the
+   access back.
 6. **Add from phone contacts**: does Android 17's picker open on GrapheneOS, or the older one (number or email)?
    With Robot under Contact Scopes (contacts allowed, a few granted): People still work, and a name only in People is
    found.
@@ -849,10 +883,12 @@ card says "Opened a draft in Cheogram: nothing is sent until Send is pressed the
   app opens with `smsto:` and `sms_body`. With both Cheogram builds installed, the F-Droid build
   (`com.cheogram.android`) is always used. A JID with a character Cheogram would cut at (`" & ' / : < > ? # %`) is
   refused, and a contact's XMPP address is offered before its numbers, never instead of them.
-- **Cheogram can keep its own draft.** If that chat already has a draft, Cheogram keeps it and drops Robot's text (it
-  shows "already drafting message"); if the number is a contact in several Cheogram accounts, it shows a search first
-  and the text is lost. Robot can't see either; the card says "If that chat already had a draft, Cheogram keeps the
-  old one."
+- **Cheogram's own draft.** Checked against Cheogram's source in 0.4.0: the `xmpp:` link goes to
+  ShareViaAccountActivity, which opens the chat (asking first which account when you have several, the text kept) and
+  adds Robot's text after a draft already in that chat; StartConversationActivity with an account (0.4.0, picked
+  addresses only) keeps the old draft and drops Robot's text ("already drafting message"). Robot can't see either; the
+  card says which applies. Earlier versions of this README said a contact in several accounts showed a search and
+  lost the text: that is StartConversationActivity without an account, not the link's route.
 - **People only in Cheogram (0.2.2).** Cheogram keeps its roster in its own database and only reads the phone's
   contacts, so someone who is only in Cheogram isn't found. With Cheogram as the texting app, a text to a name that no
   contact (or no contact with a number or XMPP address) fits shows "No contact matches “Bob”. Choose who to text in

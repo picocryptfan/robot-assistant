@@ -378,6 +378,7 @@ class TurnTest {
         assertEquals("No contact matches “Bob”. Choose who to text in Cheogram", card.summary)
         assertEquals("See you at 8", card.body)
         assertTrue(actions.ran.isEmpty())
+        assertFalse(card.allowContacts)
         assertTrue(conf.answer(id, true))
         // Cheogram opens (the panel leaves, as for any hand-off); a draft, told as not sent.
         assertEquals(TurnResult(DoneReason.END, launchedApp = true), turn.await())
@@ -393,6 +394,17 @@ class TurnTest {
         cancelled.await()
         assertTrue(cancelActions.ran.isEmpty())
         assertEquals(listOf(ActionStatus.DECLINED), cancelView.statuses())
+        // Without the contacts permission the card also offers to allow them.
+        val allowActions = FakeActions(auto).apply {
+            prepare = { a -> Recipients.notFound(a as Action.SendText, "x", TextVia.CHEOGRAM, pick = true, allowContacts = true) }
+        }
+        val allowView = FakeView()
+        val allowConf = Confirmations()
+        val allowTurn = async { runner(model(), allowActions, allowView, allowConf).run() }
+        val allowId = withTimeout(5_000) { allowView.pending.receive() }
+        assertTrue(allowView.cards[allowId]!!.allowContacts)
+        allowConf.answer(allowId, false)
+        assertEquals(listOf(ActionStatus.DECLINED), allowTurn.await().let { allowView.statuses() })
     }
 
     @Test fun aDraftOpenedIsToldAsNotSent() {

@@ -88,6 +88,8 @@ data class ActionView(
     val picture: Bitmap? = null,
     /** A tick box over [choices] that remembers the one tapped ("Always use this for “mom”"). */
     val remember: String? = null,
+    /** While it waits, an "Allow contacts" button ([CardActions.allow]): the person asked for may be in the contacts. */
+    val allowContacts: Boolean = false,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -296,11 +298,13 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
                     }
                 }
             }
-            if (more != null && (a.undo || a.status == ActionStatus.NEEDS_PERMISSION || a.openApp != null)) {
+            val allowContacts = a.allowContacts && a.status == ActionStatus.PENDING
+            if (more != null && (a.undo || a.status == ActionStatus.NEEDS_PERMISSION || a.openApp != null || allowContacts)) {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                     if (a.undo) TextButton(onClick = { more.undo(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Undo") }
                     a.openApp?.let { label -> FilledTonalButton(onClick = { more.openApp(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(label) } }
                     if (a.status == ActionStatus.NEEDS_PERMISSION) FilledTonalButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow") }
+                    if (allowContacts) TextButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow contacts") }
                 }
             }
             if (!a.body.isNullOrBlank()) {

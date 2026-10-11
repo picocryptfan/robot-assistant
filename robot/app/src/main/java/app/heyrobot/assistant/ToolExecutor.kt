@@ -46,6 +46,7 @@ import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RLog
 import app.heyrobot.core.Reach
+import app.heyrobot.core.Reachable
 import app.heyrobot.core.Read
 import app.heyrobot.core.Recipients
 import app.heyrobot.core.RobotSettings
@@ -136,8 +137,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 // A search, not a route (om://route needs coordinates): say what to tap next.
                 is Action.MapsNavigate -> maps(action.destination, "Opened an Organic Maps search for it: pick the place, then tap Route for directions")
                 is Action.Flashlight -> torch(action.on)
-                is Action.SendText -> text(action).also { if (it.status.succeeded) used(action.to, action.target?.from, action.target?.remember == true, email = false) }
-                is Action.DraftEmail -> email(action).also { if (it.status.succeeded) used(action.to, action.target?.from, action.target?.remember == true, email = true) }
+                is Action.SendText -> text(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = false) }
+                is Action.DraftEmail -> email(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = true) }
                 is Action.LookupContact -> lookup(action)
                 is Action.AddNote -> addNote(action)
                 is Action.FindNotes -> findNotes(action)
@@ -247,17 +248,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun kind(r: Reach): String? = listOfNotNull(r.label, if (r.learned) "seen in Cheogram" else null).joinToString(" · ").ifEmpty { null }
 
     /**
-     * After a text or an email opened: a person learned from a Cheogram notification is confirmed (you used them, after a
-     * card, always), and a place tapped with "Always use this for …" is remembered for the name asked ([asked]).
+     * After a text or an email opened from a place tapped with "Always use this for …": it is remembered for the name
+     * asked ([asked]), which also confirms a person learned from a notification. Nothing else confirms them: opening a
+     * draft (even after the card) doesn't, so one tap on a stranger's name never makes them someone you know.
      */
-    private fun used(asked: String, r: Reach?, remember: Boolean, email: Boolean) {
-        if (r == null || (!r.learned && !remember)) return
-        val key = if (remember) ContactIds.systemId(r.contactId)?.let { Contacts.lookupKey(ctx, it) } else null
-        val now = System.currentTimeMillis()
-        PeopleFiles.store(ctx).update { list ->
-            val confirmed = if (r.learned) PeopleEdit.confirm(list, ContactIds.peopleId(r.contactId), now) else list
-            if (remember) PeopleEdit.rememberChoice(confirmed, asked, r, email, key, now) else confirmed
-        } ?: RLog.w("people_save")
+    private fun remember(asked: String, r: Reach?, email: Boolean) {
+        r ?: return
+        val key = ContactIds.systemId(r.contactId)?.let { Contacts.lookupKey(ctx, it) }
+        PeopleFiles.store(ctx).update { PeopleEdit.rememberChoice(it, asked, r, email, key, System.currentTimeMillis()) } ?: RLog.w("people_save")
     }
 
     private fun prepareText(a: Action.SendText): Prepared {
@@ -285,11 +283,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         }
         // People, and the phone's contacts when Robot may read them.
         val book = PeopleFiles.book(ctx)
-        val all = book.best(to, max = Int.MAX_VALUE)
+        val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.text(xmppOk = via == TextVia.CHEOGRAM))
         if (all.isEmpty()) {
-            if (!Contacts.granted(ctx)) return needContacts()
-            // Not in the contacts: with Cheogram, the person may be in its own roster (the card offers its list).
-            return Recipients.notFound(a, "No contact matches “$to”.", via, pick = canPick(cheogram))
+            val granted = Contacts.granted(ctx)
+            if (!granted && via != TextVia.CHEOGRAM) return needContacts()
+            // Not in the contacts: with Cheogram, the person may be in its own roster (the card offers its list, which
+            // needs no permission). Contacts Robot may not read: the card also offers to allow them.
+            return Recipients.notFound(a, if (granted) "No contact matches “$to”." else "No one in People matches “$to”, and Robot can't read your contacts.",
+                via, pick = canPick(cheogram), allowContacts = !granted)
         }
         val matches = all.take(Recipients.MAX_PEOPLE)
         val options = Recipients.forText(book.cards(matches) { Contacts.cards(ctx, it) }, xmppOk = via == TextVia.CHEOGRAM).mapNotNull { r ->
@@ -299,10 +300,11 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 Recipients.Option(r.name, kind(r), it.display, a.copy(target = it), learned = r.learned,
                     remember = if (settings.rememberPicks) a.copy(target = it.copy(remember = true)) else null)
             }
-        }.distinctBy { (it.action as Action.SendText).target?.address }
+        }.distinctBy { (it.action as Action.SendText).target?.address }.let { Recipients.trusted(matches, it) }
         // Fixed wording: the contacts' names are not sent to the model here.
         if (options.isEmpty()) {
-            return Recipients.notFound(a, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.", via, pick = canPick(cheogram))
+            return Recipients.notFound(a, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.", via,
+                pick = canPick(cheogram), allowContacts = !Contacts.granted(ctx))
         }
         return Recipients.prepare(a, matches, options, all.size - matches.size, Recipients.rememberLabel(to)) { name -> a.copy(to = name) }
     }
@@ -315,25 +317,27 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         // An address the model wrote: the card always shows it.
         if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)), mustAsk = true)
         val book = PeopleFiles.book(ctx)
-        val all = book.best(to, max = Int.MAX_VALUE)
+        val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.email)
         if (all.isEmpty()) return if (Contacts.granted(ctx)) Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.") else needContacts()
         val matches = all.take(Recipients.MAX_PEOPLE)
         val options = Recipients.forEmail(book.cards(matches) { Contacts.cards(ctx, it) }).map { r ->
             val t = MailTarget(r.name, r.address, appName, from = r)
             Recipients.Option(r.name, kind(r), r.address, a.copy(target = t), learned = r.learned,
                 remember = if (settings.rememberPicks) a.copy(target = t.copy(remember = true)) else null)
-        }
+        }.let { Recipients.trusted(matches, it) }
         if (options.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No matching contact has an email address.")
         return Recipients.prepare(a, matches, options, all.size - matches.size, Recipients.rememberLabel(to)) { name -> a.copy(to = name) }
     }
 
     /**
-     * Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until you press Send. An XMPP
-     * address with a known Cheogram account (People) opens that account's chat directly (StartConversationActivity with
-     * the "account" extra), so a contact in several accounts needs no search; otherwise, or if that doesn't open, the
-     * xmpp: link as before. With no contact to text: Cheogram's contact list to pick someone (CheogramPickActivity), or
-     * its share screen (ShareWithActivity, exported for SEND text/plain), where you pick the person and the text is in
-     * their chat's box. The voice log gets the way it went, never who.
+     * Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until you press Send. An address
+     * picked in Cheogram's contact list, with its account, opens that account's chat directly (StartConversationActivity
+     * with the "account" extra: it finds the chat among that account's contacts, so only a picked address goes this way).
+     * Everything else, or a picked one that doesn't open, goes by the xmpp: link as before (Cheogram's own route for it,
+     * ShareViaAccountActivity, opens the chat for any address, and asks which account when there are several). With no
+     * contact to text: Cheogram's contact list to pick someone (CheogramPickActivity), or its share screen
+     * (ShareWithActivity, exported for SEND text/plain), where you pick the person and the text is in their chat's box.
+     * The voice log gets the way it went, never who.
      */
     private fun text(a: Action.SendText): Executed {
         val t = a.target ?: return Executed(ActionStatus.FAILED, "Robot didn't find who to text.")
@@ -356,12 +360,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val i = routes.indexOfFirst { start(it.second) }
         if (i < 0) return Executed(ActionStatus.NO_APP, "Install Cheogram.")
         VoiceLog.add(VoiceEvent.CHEOGRAM_HANDOFF, routes[i].first, if (i > 0) 1 else 0)
-        // A draft, not a sent text. Cheogram keeps a draft already in that chat instead of this one (it says "already
-        // drafting"): the card says so.
-        val detail = when (t.via) {
-            TextVia.CHEOGRAM -> "Opened a draft in Cheogram: nothing is sent until Send is pressed there. " +
-                "If that chat already had a draft, Cheogram keeps the old one."
-            TextVia.CHEOGRAM_LIST -> "Opened Cheogram's contact list: pick who it goes to, and their chat opens with the message. " +
+        // A draft, not a sent text. A draft already in that chat: the account's chat keeps it instead of this one (Cheogram
+        // says "already drafting"); the link's route adds this text after it (Cheogram's source). The card says which.
+        val detail = when {
+            t.via == TextVia.CHEOGRAM && routes[i].first == CheogramRoute.ACCOUNT -> "Opened a draft in Cheogram: nothing is sent until Send is " +
+                "pressed there. If that chat already had a draft, Cheogram keeps the old one."
+            t.via == TextVia.CHEOGRAM -> "Opened a draft in Cheogram: nothing is sent until Send is pressed there. With several Cheogram " +
+                "accounts, choose the account first. If that chat already had a draft, the text is added after it."
+            t.via == TextVia.CHEOGRAM_LIST -> "Opened Cheogram's contact list: pick who it goes to, and their chat opens with the message. " +
                 "Nothing is sent until Send is pressed there."
             else -> "Opened Cheogram with the message: choose who it goes to there. Nothing is sent until Send is pressed."
         }

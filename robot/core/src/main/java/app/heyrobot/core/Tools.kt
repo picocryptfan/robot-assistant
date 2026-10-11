@@ -360,7 +360,10 @@ data class TextTarget(
     /** Tapped with "Always use this for …": Robot remembers this place for the name asked (Action.SendText.to). */
     val remember: Boolean = false,
 ) {
-    /** The Cheogram account to open the chat in: Cheogram then needs no search (several accounts with that contact). */
+    /**
+     * The Cheogram account to open the chat in, for an address picked in Cheogram's list only: Cheogram then opens that
+     * account's chat without asking which account.
+     */
     val account: String? get() = from?.account
 }
 

@@ -22,9 +22,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.lifecycleScope
-import app.heyrobot.core.Addresses
+import app.heyrobot.core.CheogramLinks
 import app.heyrobot.core.CheogramPick
 import app.heyrobot.core.CheogramRoute
+import app.heyrobot.core.ContactMatcher
 import app.heyrobot.core.People
 import app.heyrobot.core.PeopleEdit
 import app.heyrobot.core.PickOutcome
@@ -108,11 +109,19 @@ class CheogramPickActivity : ComponentActivity() {
 
     /** Cheogram's answer: someone, a cancel, or something Robot can't use. */
     private fun picked(code: Int, data: Intent?) {
-        val pick = if (code == RESULT_OK) CheogramIntents.picked(data) else null
+        val (pick, readable) = if (code == RESULT_OK) CheogramIntents.read(data) else null to true
+        when (CheogramLinks.outcome(code == RESULT_OK, readable, pick)) {
+            PickOutcome.CANCELLED -> nobody(PickOutcome.CANCELLED, "Nobody was picked")
+            PickOutcome.UNREADABLE -> nobody(PickOutcome.UNREADABLE, "Cheogram's answer couldn't be read")
+            PickOutcome.NO_ADDRESS, PickOutcome.NO_LIST ->
+                nobody(PickOutcome.NO_ADDRESS, if (pick == null) "Cheogram didn't say who was picked" else "Robot can't open a chat with that address")
+            PickOutcome.PICKED -> if (pick != null) chosen(pick)
+        }
+    }
+
+    /** Someone Robot can open a chat with was picked. */
+    private fun chosen(pick: CheogramPick) {
         when {
-            pick == null && code == RESULT_OK -> nobody(PickOutcome.NO_ADDRESS, "Cheogram didn't say who was picked")
-            pick == null -> nobody(PickOutcome.CANCELLED, "Nobody was picked")
-            !Addresses.isJid(pick.jid) -> nobody(PickOutcome.NO_ADDRESS, "Robot can't open a chat with that address")
             !rememberOn -> {
                 VoiceLog.add(VoiceEvent.CHEOGRAM_PICK, PickOutcome.PICKED, if (pick.account != null) 1 else 0)
                 openChat(pick)
@@ -121,7 +130,8 @@ class CheogramPickActivity : ComponentActivity() {
                 // Already known by the name you said: nothing to ask (a missing account is added, quietly).
                 val known = withContext(Dispatchers.IO) {
                     PeopleFiles.store(applicationContext).list().any { p ->
-                        p.confirmed && p.xmpp.any { it.jid.equals(pick.jid, ignoreCase = true) } && (listOf(p.name) + p.aliases).any { People.sameName(it, spoken) }
+                        p.confirmed && p.xmpp.any { it.jid.equals(pick.jid, ignoreCase = true) } &&
+                            (People.sameName(p.name, People.aliasName(spoken)) || p.aliases.any { ContactMatcher.sameAlias(it, spoken) })
                     }
                 }
                 if (known) {
@@ -180,8 +190,9 @@ class CheogramPickActivity : ComponentActivity() {
         when (val s = step) {
             Step.Waiting -> {}
             is Step.Remember -> {
-                val asked = TextCommand.display(spoken)
-                val same = spoken.isEmpty() || People.sameName(spoken, s.pick.name)
+                // "my mom" is kept (and shown) as "mom".
+                val asked = TextCommand.display(People.aliasName(spoken))
+                val same = spoken.isEmpty() || People.sameName(People.aliasName(spoken), s.pick.name)
                 AlertDialog(
                     onDismissRequest = { finish() },
                     properties = props,

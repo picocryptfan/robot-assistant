@@ -85,10 +85,11 @@ sealed class Prepared {
      * surely the one named). [choices]: several people or numbers fit; the card lists them and the person taps one
      * (so it always asks). [more]: how many more fitted than the card lists. [note]: the card's line while it waits
      * (what its buttons do). [remember]: the words of the tick box that makes a choice remembered ("Always use this for
-     * “mom”"), when the choices can be.
+     * “mom”"), when the choices can be. [allowContacts]: the card also offers to allow reading the contacts (the person
+     * asked for may be there).
      */
     data class Ready(val action: Action, val mustAsk: Boolean = false, val choices: List<Choice> = emptyList(), val more: Int = 0,
-        val note: String? = null, val remember: String? = null) : Prepared()
+        val note: String? = null, val remember: String? = null, val allowContacts: Boolean = false) : Prepared()
     data class Refused(val status: ActionStatus, val detail: String) : Prepared()
 }
 
@@ -154,6 +155,8 @@ data class Card(
     val handOff: String? = null,
     /** The tick box next to [choices] that remembers the one tapped ("Always use this for “mom”"); null: none. */
     val remember: String? = null,
+    /** While it waits, the card also offers to allow reading the contacts ([Prepared.Ready.allowContacts]). */
+    val allowContacts: Boolean = false,
 )
 
 interface TurnView {
@@ -397,7 +400,7 @@ class TurnRunner(
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, untrusted || a.mustAsk || a.choices.isNotEmpty(), remote)
         val chosen = when (decision) {
             GateDecision.RUN -> a.action
-            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember)
+            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember, a.allowContacts)
             GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
@@ -434,9 +437,10 @@ class TurnRunner(
      * action when "Always use this" was ticked), or null (Cancel). [note]: the card's line while it waits. A turn stopped
      * meanwhile leaves the card declined, never waiting.
      */
-    private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int, note: String? = null, remember: String? = null): Action? {
+    private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int, note: String? = null, remember: String? = null,
+        allowContacts: Boolean = false): Action? {
         view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, note, a, body = a.body(), choices = choices, more = more, remote = remote,
-            remember = remember))
+            remember = remember, allowContacts = allowContacts))
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
             confirmations.ask(id)

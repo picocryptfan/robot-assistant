@@ -1,5 +1,7 @@
 package app.heyrobot.core
 
+import java.util.Locale
+
 // Pure. What Robot reads from Cheogram (docs/people.md, research in research-contacts.md): the person picked in its
 // contact list, the "<account>#<jid>" id of a chat's shortcut, and the sender of a 1:1 chat's notification. Cheogram is
 // a fork of Conversations; its activities keep the eu.siacs.conversations package in both builds.
@@ -24,9 +26,21 @@ object CheogramLinks {
      */
     fun pick(name: String?, uri: String?, account: String?): CheogramPick? {
         val jid = XmppLink.jid(uri) ?: return null
-        val acct = account?.trim()?.takeIf { Addresses.isAddress(it) }
+        val acct = account?.trim()?.lowercase(Locale.ROOT)?.takeIf { Addresses.isAddress(it) }
         val n = name?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() } ?: jid.substringBeforeLast('@')
         return CheogramPick(ToolCalls.safeTake(n, People.MAX_NAME), jid, acct)
+    }
+
+    /**
+     * What came of the pick, for the voice log and what Robot says: [resultOk] (RESULT_OK), whether Cheogram's answer
+     * could be read at all ([readable]), and the [pick] in it. Backing out of the list can't be told from an answer lost
+     * on the way (too large to deliver): both arrive as a cancel with nothing, so [PickOutcome.CANCELLED] says either.
+     */
+    fun outcome(resultOk: Boolean, readable: Boolean, pick: CheogramPick?): PickOutcome = when {
+        !resultOk -> PickOutcome.CANCELLED
+        !readable -> PickOutcome.UNREADABLE
+        pick == null || !Addresses.isJid(pick.jid) -> PickOutcome.NO_ADDRESS
+        else -> PickOutcome.PICKED
     }
 
     /** A chat shortcut's id, "<account>#<contact>" (ShortcutService.getShortcutId), as (account, contact); null otherwise. */
@@ -55,6 +69,46 @@ object CheogramNotices {
         if (name.isEmpty() || name.equals(contact, ignoreCase = true) || name.equals(contact.substringBeforeLast('@'), ignoreCase = true)) return null
         if (Addresses.isPhone(name) || Addresses.isAddress(name)) return null
         if (!Addresses.isJid(contact)) return null
-        return CheogramSender(ToolCalls.safeTake(name, People.MAX_NAME), contact, account)
+        return CheogramSender(ToolCalls.safeTake(name, People.MAX_NAME), contact, account.lowercase(Locale.ROOT))
+    }
+}
+
+/**
+ * Whose notifications may teach People: only the Cheogram build Robot hands texts to, posting for itself, signed as it
+ * was the first time Robot saw it after you turned learning on (its signing certificate's SHA-256 is kept in
+ * files/people/cheogram.signer, one "<package> <hex>" a line). Another app that takes the package name, signed by
+ * someone else, teaches nothing until you turn learning off and on again.
+ */
+object CheogramSigners {
+    const val FILE = "cheogram.signer"
+
+    enum class Verdict { TRUST, PIN, REFUSE }
+
+    /** The notification's [pkg] is the Cheogram build [installed] here, and posted it for itself ([opPkg], when known). */
+    fun fromCheogram(pkg: String?, opPkg: String?, installed: String?): Boolean =
+        !pkg.isNullOrEmpty() && pkg == installed && (opPkg.isNullOrEmpty() || opPkg == pkg)
+
+    /**
+     * [pinned]: the digest kept for the package, if any; [current]: its signer's digest now (null: unknown, or several
+     * signers); [pinnedStillSigns]: the system says [pinned] is in the package's signing lineage.
+     */
+    fun check(pinned: String?, current: String?, pinnedStillSigns: Boolean): Verdict = when {
+        pinned == null -> if (current != null) Verdict.PIN else Verdict.REFUSE
+        pinned == current || pinnedStillSigns -> Verdict.TRUST
+        else -> Verdict.REFUSE
+    }
+
+    fun parse(text: String?): Map<String, String> = text.orEmpty().lines().mapNotNull { line ->
+        val parts = line.trim().split(Regex("\\s+"))
+        if (parts.size == 2 && parts[0].isNotEmpty() && unhex(parts[1])?.size == 32) parts[0] to parts[1].lowercase(Locale.ROOT) else null
+    }.toMap()
+
+    fun write(pins: Map<String, String>): String = pins.entries.sortedBy { it.key }.joinToString("") { "${it.key} ${it.value}\n" }
+
+    fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+
+    fun unhex(s: String): ByteArray? {
+        if (s.length % 2 != 0 || !s.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) return null
+        return ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
     }
 }
