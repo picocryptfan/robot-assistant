@@ -1305,10 +1305,26 @@ Settings › Ask Claude › "When Robot needs help": **Off**, **Ask me first** (
 Claude?" under its reply and waits for a tap or a yes), or **Automatic** (the default once a key is saved; only the API
 escalates by itself, so without a key it is always "Ask me first" and opens the Claude app, if it is installed). Three triggers:
 deterministic words first (explain why/how, compare, plan, write me, draft, code, calculate, solve, step by step,
-latest, news, prices, scores, weather (not with the weather tool on, 0.4.0), or more than 40 words; never a timer, alarm, text, note, event, app, map or
-flashlight question, a door or wifi code, news from someone you know, or your credit score), Gemma's `ask_claude` tool
-(described only with Ask Claude on and somewhere for the question to go), and a hedged local answer ("I don't know",
-"I can't browse", "as an AI", or nothing). At most one escalation per turn; a Claude answer is never re-escalated.
+latest, news, headlines, updates on, prices, rates, scores, who won, who the president or prime minister is now, what
+happened in or yesterday, weather (not with the weather tool on, 0.4.0), and since 0.4.6 the same in French ("les
+dernières nouvelles", "l'actualité", "le prix de", "le taux de change", "qui a gagné", "le pointage", "la météo", "qui est
+le premier ministre", "qu'est-ce qui se passe en…"), or more than 40 words; never a timer, alarm, text, note, event, app,
+map or flashlight question, in either language, a door or wifi code, news from someone you know ("des nouvelles de ma
+sœur"), or your credit score), Gemma's `ask_claude` tool (described only with Ask Claude on and somewhere for the
+question to go), and a hedged local answer: "I don't know", "I'm not sure", "as an AI", a refusal ("I can't…", "I'm
+unable to…", "I won't be able to…", "I don't have access…", "je ne peux pas", "je peux pas", "je ne suis pas en mesure",
+"chu pas capable", "je n'ai pas accès", "je sais pas") near the start of the reply or in a short one, or nothing; and
+since 0.4.6, anywhere in the reply, words that say its facts may be out of date ("I don't have access to real-time
+information", "my knowledge cutoff", "for the latest information, check a reliable news source", "je n'ai pas accès à
+Internet", "pas accès aux nouvelles en temps réel", "mes connaissances s'arrêtent…") (`PreRouter`, `Hedge`, tested
+with real phrasings in both languages). At most one escalation per turn; a Claude answer is never re-escalated.
+
+Fixed in 0.4.6: "tell me about Donald Trump", with a key saved, got Robot's "I can't…" and no offer, while "ask Claude
+…" worked. Such a question has no signal of its own (Robot answers people questions first), and the hedge check knew
+only "I don't know", "I'm not sure", "I can't browse", "I can't check", "as an AI" and "I don't have real-time
+information" word for word: "I don't have access to real-time information", "I can't provide…", "I'm unable to…" and
+every French refusal but "je ne sais pas" went unnoticed, so nothing was offered. "What's the latest news on …" and "…
+according to the news" were already sent to Claude before the model by the words "latest" and "news".
 Automatically Robot sends only your question and the last two turns of plain conversation, and in a personal
 conversation only your question. A question about the screen or a photo always asks first. (Both unless Settings ›
 Safety & privacy › "Send personal content to helpers automatically" is on, 0.4.0: then the last two turns go anyway,

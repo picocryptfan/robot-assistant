@@ -85,6 +85,100 @@ class EscalationTest {
         assertFalse(Hedge.detect(long))
     }
 
+    /**
+     * 0.4.6, from the phone ("Claude with web search", a key saved): "tell me about Donald Trump" got Robot's "I can't…"
+     * and no offer. It has no signal of its own, so Robot answers first and its refusal brings Claude in (the hedge check,
+     * below); the other two go to Claude before the model is asked.
+     */
+    @Test fun theQuestionsFromThePhone() {
+        assertNull(PreRouter.signal("tell me about Donald Trump"))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("What's the latest news on the Artemis program?"))
+        // With the weather tool on, "weather" is Robot's, but "according to the news" still asks for today's sources.
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("What's the weather in Tokyo according to the news?", localWeather = true))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("What's the weather in Tokyo according to the news?"))
+        // What Robot's model answered, as it might put it: each one brings the offer (or, Automatic, Claude).
+        for (r in listOf(
+            "I'm sorry, but I can't provide information about political figures.",
+            "I don't have access to real-time information, so I can't tell you the latest news about the Artemis program.",
+            "I'm unable to browse the internet, but I can tell you about the weather in general.",
+        )) assertTrue(r, Hedge.detect(r))
+    }
+
+    /** 0.4.6: news, prices, scores and who holds an office now, in English and in Québec French. */
+    @Test fun currentEventsInEnglishAndFrench() {
+        for (q in listOf("any headlines this morning?", "who is the current prime minister of Canada", "who's the president of France",
+            "what happened in Gaza yesterday", "any updates on the Artemis program", "is Paul McCartney still alive",
+            "what are the current standings in the NHL", "what's the stock market doing today",
+            "Quelles sont les dernières nouvelles sur le programme Artemis?", "C'est quoi l'actualité aujourd'hui?",
+            "Les dernières nouvelles d'Artemis?", "Quel est le prix de l'essence à Montréal?", "Qui a gagné la game des Canadiens hier soir?",
+            "C'est quoi le pointage du match?", "Qui est le premier ministre du Québec?", "Qu'est-ce qui se passe en Ukraine?",
+            "Quel est le taux de change du dollar américain?", "C'est quoi la météo à Tokyo?")) {
+            assertEquals(q, PreRouter.Signal.CURRENT_INFO, PreRouter.signal(q))
+        }
+        // With the weather tool on, the weather alone is Robot's, in French too.
+        assertNull(PreRouter.signal("C'est quoi la météo à Tokyo?", localWeather = true))
+    }
+
+    @Test fun frenchEverydayNewsAndLocalActionsStayWithRobot() {
+        for (q in listOf("As-tu des nouvelles de ma sœur?", "Des nouvelles de Marie?", "Quelle est ma cote de crédit?",
+            "Mets une alarme pour les nouvelles de 6 heures", "Rappelle-moi de lire les nouvelles demain", "Ouvre l'appli de météo",
+            "Raconte-moi une histoire de dragon", "Tell me a long story about a dragon", "J'aime les nouvelles chaussures")) {
+            assertNull(q, PreRouter.signal(q))
+        }
+    }
+
+    /**
+     * 0.4.6: Robot's model refusing, or saying it can't know today's facts, the way it really puts it, in English and in
+     * Québec French. Until 0.4.6 "I don't have access to real-time information", "I'm unable to…", "I can't provide…" and
+     * every French refusal but "je ne sais pas" went unnoticed.
+     */
+    @Test fun refusalsAndOutOfDateAnswersAreHedges() {
+        for (s in listOf(
+            "I don't have access to real-time information.",
+            "I'm sorry, but I can't browse the internet.",
+            "As a large language model, I don't have access to current events.",
+            "I'm unable to provide real-time updates.",
+            "I cannot provide information about current political figures.",
+            "I can't help with that.",
+            "I'm not able to look that up.",
+            "I won't be able to check the weather in Tokyo.",
+            "I do not have the ability to search the web.",
+            "My knowledge cutoff is in 2024, so I may not have the latest information.",
+            "That's beyond my capabilities.",
+            "Je n'ai pas accès à Internet.",
+            "Je ne peux pas faire ça.",
+            "Désolé, je peux pas t'aider avec ça.",
+            "J'ai pas accès aux nouvelles en temps réel.",
+            "Je ne suis pas en mesure de vérifier les dernières nouvelles.",
+            "En tant qu'IA, je n'ai pas d'opinions.",
+            "Chu pas capable de faire ça.",
+            "Je sais pas.",
+            "Mes connaissances s'arrêtent en 2024.",
+        )) assertTrue("<$s>", Hedge.detect(s))
+        // A long answer that ends by saying its facts may be out of date: Claude, with today's sources, can do better.
+        val bio = "Donald Trump is an American businessman and politician. ".repeat(10) +
+            "For the most up-to-date information, please check a reliable news source."
+        assertTrue(Hedge.detect(bio))
+        val bioFr = "Le programme Artemis de la NASA vise à ramener des astronautes sur la Lune. ".repeat(8) +
+            "Je n'ai pas accès aux informations en temps réel, alors consulte le site de la NASA."
+        assertTrue(Hedge.detect(bioFr))
+    }
+
+    @Test fun answersAreNotHedges() {
+        for (s in listOf(
+            "The capital of France is Paris.",
+            "Real-time operating systems guarantee that tasks finish on time. They are used in cars and planes.",
+            "I can't wait to hear how your trip goes! Here are three things to see in Tokyo: Senso-ji, Shibuya and the Tsukiji market.",
+            "Je peux t'aider avec ça : voici la recette.",
+            "Voici ce que je sais sur Artemis : la NASA prévoit d'envoyer des astronautes autour de la Lune.",
+            "Les systèmes en temps réel sont utilisés dans les avions.",
+        )) assertFalse(s, Hedge.detect(s))
+        // A refusal deep in a long answer (a story's dialogue) is not one.
+        val story = "Once upon a time a dragon lived on a mountain and watched the village below every single day. ".repeat(6) +
+            "\"I can't fly today,\" said the dragon."
+        assertFalse(Hedge.detect(story))
+    }
+
     private val key = RobotSettings()
     private fun d(s: RobotSettings = key, keySaved: Boolean = true, personal: Boolean = false, locked: Boolean = false, budget: Boolean = false,
         already: Boolean = false, fromClaude: Boolean = false, declined: Boolean = false) =
