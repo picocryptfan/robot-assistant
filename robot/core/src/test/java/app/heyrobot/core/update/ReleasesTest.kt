@@ -195,6 +195,11 @@ class ReleasesTest {
         assertEquals("a b 😀", ReleaseNotes.plain("a\u0007 b\u001b \u0085😀"))
         // A tag that never closes stays as text rather than eating the rest.
         assertEquals("1 < 2 and 3 > 2", ReleaseNotes.plain("1 < 2 and 3 > 2"))
+        // Hundreds of combining marks on one letter ("Zalgo" text) would draw over the buttons below the notes: at most four
+        // in a row are kept, enough for any language's accents.
+        assertEquals("Ź̂̃̄a", ReleaseNotes.plain("Z" + "́̂̃̄̅̆".repeat(100) + "a"))
+        assertEquals("Việt Nam ở đây", ReleaseNotes.plain("Việt Nam ở đây"))
+        assertEquals("ẹ́", ReleaseNotes.plain("ẹ́"))
     }
 }
 

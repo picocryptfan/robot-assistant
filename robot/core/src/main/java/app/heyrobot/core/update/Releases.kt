@@ -216,7 +216,8 @@ class Sha256Sums private constructor(private val sums: Map<String, String>) {
 /**
  * Release notes for the Updates page: plain text, never HTML or links. Tags and comments are dropped, a Markdown link keeps
  * its words, images go, headings and emphasis lose their marks, invisible and direction-changing characters go (they could
- * make the text read differently from what it is), and it is cut at [MAX_LINES] lines and [MAX_CHARS] characters.
+ * make the text read differently from what it is), at most four combining marks stay on a character, and it is cut at
+ * [MAX_LINES] lines and [MAX_CHARS] characters.
  */
 object ReleaseNotes {
     const val MAX_CHARS = 3_000
@@ -229,6 +230,8 @@ object ReleaseNotes {
     private val HEADING = Regex("""^#{1,6}\s+""")
     private val BULLET = Regex("""^(\s*)[-*+]\s+""")
     private val EMPHASIS = Regex("""\*\*|__|`""")
+    /** More than four combining marks on one character ("Zalgo" text, which draws far above and below its line). */
+    private val MARK_PILE = Regex("""([\p{Mn}\p{Me}]{4})[\p{Mn}\p{Me}]+""")
     /** Control characters, invisible formatting (zero-width, direction marks and overrides) and line or paragraph separators. */
     private val HIDDEN = setOf(Character.CONTROL, Character.FORMAT, Character.LINE_SEPARATOR, Character.PARAGRAPH_SEPARATOR, Character.UNASSIGNED, Character.PRIVATE_USE)
 
@@ -242,6 +245,7 @@ object ReleaseNotes {
         t = IMAGE.replace(t, "")
         t = LINK.replace(t) { it.groupValues[1] }
         t = t.filter { c -> c == '\n' || c == '\t' || Character.getType(c).toByte() !in HIDDEN }
+        t = MARK_PILE.replace(t, "$1")
         val lines = t.split('\n').map { l ->
             BULLET.replace(HEADING.replace(l.replace('\t', ' '), ""), "$1• ").let { EMPHASIS.replace(it, "") }.trimEnd()
         }
