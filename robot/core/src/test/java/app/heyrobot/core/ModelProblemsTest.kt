@@ -46,6 +46,33 @@ class ModelProblemsTest {
         assertTrue(p.encode(), Regex("^[a-z0-9_ -]+$").matches(p.encode()))
     }
 
+    /**
+     * 0.6.0: where each request to the model is, from :brain's events, a one-shot's as much as a question's: on the model
+     * from EV_QUEUED 0, writing from its first chunk, off it while it waits (also after giving way), after its tool calls
+     * and at its end. The model is at the furthest stage of any request.
+     */
+    @Test fun requestStagesFollowTheQueueOneShotsToo() {
+        val P = BrainProtocol
+        assertEquals(listOf(P.REQ_GENERATE, P.REQ_TOOL_RESULT, P.REQ_ONE_SHOT), P.REQUESTS.filter(RequestStages::tracked).sorted())
+        // A translation waits behind the panel's question, starts, writes, gives way, starts over and ends.
+        var s: ProblemStage? = null
+        s = RequestStages.after(s, P.EV_QUEUED, 2); assertNull(s)
+        s = RequestStages.after(s, P.EV_QUEUED, 0); assertEquals(ProblemStage.READING, s)
+        s = RequestStages.after(s, P.EV_CHUNK); assertEquals(ProblemStage.WRITING, s)
+        s = RequestStages.after(s, P.EV_QUEUED, 1); assertNull(s)
+        s = RequestStages.after(s, P.EV_QUEUED, 0); assertEquals(ProblemStage.READING, s)
+        s = RequestStages.after(s, P.EV_CHUNK); assertEquals(ProblemStage.WRITING, s)
+        for (end in P.TERMINAL) assertNull(RequestStages.after(ProblemStage.WRITING, end))
+        // A question that asks for tools is off the model until its results go back (a request of its own).
+        assertNull(RequestStages.after(ProblemStage.WRITING, P.EV_TOOL_CALLS))
+        // Anything else leaves it where it was.
+        assertEquals(ProblemStage.READING, RequestStages.after(ProblemStage.READING, 999))
+        // One writes while another reads or waits: writing; reading alone: reading; none on the model: between answers.
+        assertEquals(ProblemStage.WRITING, RequestStages.now(listOf(ProblemStage.READING, ProblemStage.WRITING)))
+        assertEquals(ProblemStage.READING, RequestStages.now(listOf(ProblemStage.READING)))
+        assertNull(RequestStages.now(emptyList()))
+    }
+
     /** Paths in Android's free text never name a file of yours: only libraries and Robot's own model files keep a name. */
     @Test fun scrubKeepsNoPathOfYours() {
         assertEquals("crash in …/liblitertlm_jni.so", ProblemReport.scrub("crash in /data/app/~~x==/app.heyrobot-y==/lib/arm64/liblitertlm_jni.so"))

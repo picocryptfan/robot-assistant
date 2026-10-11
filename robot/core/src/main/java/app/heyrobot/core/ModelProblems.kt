@@ -8,10 +8,40 @@ import java.util.Locale
 // Pure (0.4.7). When the model fails on the GPU, the CPU or the TPU: the GPU failure Robot remembers (so a GPU that
 // crashes is never tried again by itself), the problem note the voice process keeps (codes and numbers only), and the
 // plain-text problem report the main app builds from it for you to copy or share. Nothing is ever sent by itself.
+// 0.6.0: the voice process knows each request's stage from :brain's events, one-shots (translations, summary steps) as
+// much as the panel's questions ([RequestStages]).
 
 /** Where the model was when it failed. */
 enum class ProblemStage(override val id: Int, override val title: String) : LogCode {
     LOADING(1, "loading"), READING(2, "reading the prompt"), WRITING(3, "writing the answer"), IDLE(4, "loaded, between answers"),
+}
+
+/**
+ * Which stage each request to the model is at, from :brain's events (0.6.0, pure): the panel's questions, their tool
+ * results and the one-shots (translations, summary steps) alike, as :brain's queue runs them. A request is on the model
+ * from EV_QUEUED 0 (it started: reading its prompt) and writing from its first chunk; while it waits in the queue
+ * (EV_QUEUED 1 and up, also after giving way), after its tool calls and after its end, it isn't (null). Several may be
+ * tracked at once (one runs, others wait): the model is at the furthest stage of any ([now]).
+ */
+object RequestStages {
+    /** The requests the model answers (a load, a status, a cancel aren't tracked). */
+    fun tracked(what: Int): Boolean =
+        what == BrainProtocol.REQ_GENERATE || what == BrainProtocol.REQ_TOOL_RESULT || what == BrainProtocol.REQ_ONE_SHOT
+
+    /** A request at [stage] after event [what] ([queued]: EV_QUEUED's position, else ignored). */
+    fun after(stage: ProblemStage?, what: Int, queued: Int = -1): ProblemStage? = when {
+        what == BrainProtocol.EV_QUEUED -> if (queued == 0) ProblemStage.READING else null
+        what == BrainProtocol.EV_CHUNK -> ProblemStage.WRITING
+        what == BrainProtocol.EV_TOOL_CALLS || what in BrainProtocol.TERMINAL -> null
+        else -> stage
+    }
+
+    /** Where the model is: writing if any request is, else reading if any is, else null (between answers, or only waiting ones). */
+    fun now(stages: Collection<ProblemStage>): ProblemStage? = when {
+        ProblemStage.WRITING in stages -> ProblemStage.WRITING
+        ProblemStage.READING in stages -> ProblemStage.READING
+        else -> null
+    }
 }
 
 /**

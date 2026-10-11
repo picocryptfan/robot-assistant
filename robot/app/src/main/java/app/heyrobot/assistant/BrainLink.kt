@@ -33,6 +33,7 @@ import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.ModelProblem
 import app.heyrobot.core.ProblemStage
 import app.heyrobot.core.RLog
+import app.heyrobot.core.RequestStages
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.readOrNull
@@ -75,16 +76,18 @@ class DeathOnce {
 }
 
 /**
- * [onDeath]: :brain stopped, with where the reply under way was (0.4.7). [onModelStopped] (0.4.5): the model's own process
- * stopped under a reply while :brain lives (llama.cpp's isolated process, for a GGUF file): the same for the file it ran,
- * nothing for :brain. [onEngineError] (0.4.7): the engine itself failed a reply (BrainError.ENGINE) at this stage; on the
- * GPU that is the GPU failing.
+ * [onDeath]: :brain stopped, with where the model was then (reading a prompt or writing; null between answers).
+ * [onModelStopped] (0.4.5): the model's own process stopped under a reply while :brain lives (llama.cpp's isolated
+ * process, for a GGUF file): the same for the file it ran, nothing for :brain. [onEngineError]
+ * (0.4.7): the engine itself failed a request it was answering (BrainError.ENGINE) at this stage; on the GPU that is the
+ * GPU failing. 0.6.0: every request the model answers is followed (core RequestStages), the panel's and the one-shots
+ * (translations, summary steps) alike, and each callback comes after the request's own event reached its waiter: a
+ * fallback it starts (which may let go of this binding) never takes that request's one terminal event away.
  */
 class BrainClient(
     private val ctx: Context,
     private val onDeath: (ProblemStage?) -> Unit,
     private val onModelStopped: () -> Unit = {},
-    /** 0.4.7: the engine itself failed a reply (BrainError.ENGINE) at this stage; on the GPU that is the GPU failing. */
     private val onEngineError: (ProblemStage) -> Unit = {},
 ) {
     private val death = DeathOnce()
@@ -95,28 +98,42 @@ class BrainClient(
     private val streams = ConcurrentHashMap<Int, Channel<BrainMsg>>()
     private val replyThread = HandlerThread("robot-brain-reply").apply { start() }
     private val replies = Messenger(Handler(replyThread.looper) { m -> onReply(m); true })
-    /** 0.4.7, for a problem report: where the reply under way is (reading the prompt, then writing), null between replies. */
-    @Volatile var stage: ProblemStage? = null
-        private set
-    @Volatile private var stageReq = 0
+    /** The requests the model answers, until their end (RequestStages.tracked), even one nobody waits for any more. */
+    private val tracked: MutableSet<Int> = ConcurrentHashMap.newKeySet()
+    /** Each tracked request on the model now and its stage (none while it waits in :brain's queue). */
+    private val stages = ConcurrentHashMap<Int, ProblemStage>()
+
+    /** 0.4.7, for a problem note: where the model is now (writing, or reading a prompt), null between answers. */
+    val stage: ProblemStage? get() = RequestStages.now(stages.values)
 
     private fun onReply(m: Message) {
         val msg = BrainWire.decode(m) ?: BrainMsg.Error(BrainError.BAD_REQUEST, "unreadable reply")
+        // Where this request was before this event: an engine error or a stopped model is about that stage.
+        val at = track(m.arg1, m.what, msg)
+        val ch = streams[m.arg1]
+        if (ch != null) {
+            ch.trySend(msg)
+            if (m.what in BrainProtocol.TERMINAL) {
+                streams.remove(m.arg1)
+                ch.close()
+            }
+        }
+        val code = (msg as? BrainMsg.Error)?.code
         // News of the file even for a reply nobody waits for any more: the panel gave up on a reply that went silent, and
         // :brain then ended llama.cpp's process for not coming back from the stop.
-        if (msg is BrainMsg.Error && msg.code == BrainError.STOPPED) onModelStopped()
-        if (m.arg1 == stageReq && stageReq != 0) {
-            val at = stage
-            if (m.what == BrainProtocol.EV_CHUNK) stage = ProblemStage.WRITING
-            else if (m.what in BrainProtocol.TERMINAL || m.what == BrainProtocol.EV_TOOL_CALLS) stage = null
-            if (m.what == BrainProtocol.EV_ERROR && (msg as? BrainMsg.Error)?.code == BrainError.ENGINE && at != null) onEngineError(at)
-        }
-        val ch = streams[m.arg1] ?: return
-        ch.trySend(msg)
-        if (m.what in BrainProtocol.TERMINAL) {
-            streams.remove(m.arg1)
-            ch.close()
-        }
+        if (code == BrainError.STOPPED) onModelStopped()
+        // 0.4.7: the engine failed a request it was answering (a one-shot too; never one still waiting in :brain's queue).
+        if (code == BrainError.ENGINE && at != null) onEngineError(at)
+    }
+
+    /** Follows request [id] through event [what] (core RequestStages); its stage before the event (null: untracked, or waiting). */
+    private fun track(id: Int, what: Int, msg: BrainMsg): ProblemStage? {
+        if (id !in tracked) return null
+        val before = stages[id]
+        val next = RequestStages.after(before, what, (msg as? BrainMsg.Queued)?.position ?: -1)
+        if (next == null) stages.remove(id) else stages[id] = next
+        if (what in BrainProtocol.TERMINAL) tracked.remove(id)
+        return before
     }
 
     suspend fun connect(timeoutMs: Long = 15_000): Boolean {
@@ -170,9 +187,10 @@ class BrainClient(
         return withTimeoutOrNull(timeoutMs) { ready.await() } ?: false
     }
 
-    /** Every open request ends: the model and its conversations are gone with the process. */
+    /** Every open request ends (once each): the model and its conversations are gone with the process. */
     private fun endAll() {
-        stage = null
+        tracked.clear()
+        stages.clear()
         for ((id, ch) in streams) {
             ch.trySend(BrainMsg.Error(BrainError.ENGINE, "model process stopped"))
             ch.close()
@@ -200,10 +218,7 @@ class BrainClient(
     /** Sends a request; its events (ending with a terminal one) come out of the returned channel. */
     fun request(what: Int, payload: BrainMsg, image: ByteArray? = null): Pair<Int, Flow<BrainMsg>> {
         val id = seq.incrementAndGet()
-        if (what == BrainProtocol.REQ_GENERATE || what == BrainProtocol.REQ_TOOL_RESULT) {
-            stageReq = id
-            stage = ProblemStage.READING
-        }
+        if (RequestStages.tracked(what)) tracked += id
         val ch = Channel<BrainMsg>(Channel.UNLIMITED)
         streams[id] = ch
         val m = messenger
@@ -212,6 +227,7 @@ class BrainClient(
             if (m == null) throw RemoteException("not connected")
             m.send(BrainWire.message(what, id, payload, mem).apply { replyTo = replies })
         } catch (e: Exception) {
+            tracked.remove(id)
             streams.remove(id)
             ch.trySend(BrainMsg.Error(BrainError.ENGINE, "not connected"))
             ch.close()
@@ -241,6 +257,8 @@ class BrainClient(
         conn?.let { try { ctx.unbindService(it) } catch (_: Exception) {} }
         conn = null
         messenger = null
+        tracked.clear()
+        stages.clear()
         for ((_, ch) in streams) ch.close()
         streams.clear()
         replyThread.quitSafely()
@@ -258,7 +276,9 @@ class BrainClient(
  * Robot offers it and Settings › Model › "Use the GPU" is on. A GPU that doesn't load the model, or whose process stops
  * while it loads or answers, or whose engine fails a reply, is remembered (sys Problems: across restarts, so a GPU crash
  * never loops) and Robot runs the model on the CPU at once, says so once, and keeps a problem report for you to copy or
- * share. Any model's crash (on the CPU or the TPU too) keeps one as well.
+ * share. Any model's crash (on the CPU or the TPU too) keeps one as well. 0.6.0: one-shots (translations, summary steps)
+ * run on the model as it is loaded, on the GPU too, and a GPU failure under one (an engine error, or :brain stopping)
+ * counts as under a question: the CPU from the next request on.
  */
 object BrainKeeper {
     enum class Readiness { UNKNOWN, NO_MODEL, LOADING, READY, FAILED }
@@ -581,9 +601,10 @@ object BrainKeeper {
     val ready: Boolean get() = _state.value.readiness == Readiness.READY
 
     /**
-     * 0.4.7: the engine failed a reply on the GPU (an OpenCL error, as a Tensor G4's Mali GPU can give after a few turns):
-     * the GPU counts as failed, as if it had crashed. The engine goes now, so the next question loads the model on the CPU;
-     * this reply's own error is shown as before. On the CPU or the TPU nothing changes (the panel says the model failed).
+     * 0.4.7: the engine failed a request on the GPU (an OpenCL error, as a Tensor G4's Mali GPU can give after a few turns;
+     * 0.6.0: a one-shot's as much as a question's): the GPU counts as failed, as if it had crashed. The engine goes now, so
+     * the next question (or one-shot) loads the model on the CPU; this request's own error has already reached its waiter,
+     * its one end. On the CPU or the TPU nothing changes (the panel says the model failed).
      */
     private fun onEngineError(stage: ProblemStage) {
         val p = holding ?: return
@@ -626,8 +647,9 @@ object BrainKeeper {
         if (p != null && p.model != fast) scope.launch {
             mutex.withLock { if (failed[p.model.id]?.first != p.fingerprint) failed[p.model.id] = p.fingerprint to FallbackWhy.STOPPED }
         }
-        // 0.4.7: a death while it answered (reading the prompt or writing) is a crash worth a report; one between answers
-        // is most likely Android reclaiming memory, and is left as before. On the GPU, the CPU from now on.
+        // 0.4.7: a death while it answered (reading the prompt or writing: a question, or 0.6.0 a one-shot) is a crash worth
+        // a report; one between answers is most likely Android reclaiming memory, and is left as before. On the GPU, the CPU
+        // from now on.
         if (p != null && ctx != null && !duringLoad && stage != null) scope.launch {
             if (p.backend == ModelBackend.GPU) {
                 Problems.gpuFailed(ctx, GpuFailure(p.model, System.currentTimeMillis(), stage, null))
