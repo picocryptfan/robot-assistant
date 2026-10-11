@@ -76,9 +76,9 @@ enum class BriefLock(val id: String, val title: String) {
 }
 
 /**
- * The routine and brief settings (design §1.5 and §2.9), with their defaults. They become fields of RobotSettings in
- * settings schema 9 when the Routines screen is wired; Settings.kt is not changed on this branch, so callers pass this
- * with its defaults until then. "Personal answers only in private headphones" comes with headset mode (OutputGuard).
+ * The routine and brief settings (design §1.5 and §2.9), with their defaults. 0.8 keeps them in their own small file,
+ * files/robot/routine_settings.json ([RoutineSettingsCodec], RoutineStore), not in settings.json (whose schema stays as
+ * it is). "Personal answers only in private headphones" comes with headset mode (OutputGuard).
  */
 data class RoutineSettings(
     /** Safety & privacy › "Routines can run while the phone is locked" (on). Off: a locked phone holds every step. */
@@ -101,6 +101,12 @@ data class RoutineSettings(
     val clockSilenceMinutes: Int = 10,
     /** `alarmWindow`: the default hours of a "when I turn off my alarm" trigger. */
     val alarmWindow: TimeWindow = TimeWindow.ALARM,
+    /** `briefTrigger`: when the built-in brief runs once you turn it on (BriefRoutine); its alarm hours are [alarmWindow]. */
+    val briefTrigger: RoutineTrigger = RoutineTrigger.AlarmDismissed(),
+    /** `briefOutput`: where the brief speaks. */
+    val briefOutput: RoutineOutput = RoutineOutput.HEADSET_OR_SPEAKER,
+    /** The brief's card listed Open-Meteo when you turned it on: its weather may go online by itself ([Routine.online]). */
+    val briefOnline: Boolean = false,
 )
 
 object RoutineGate {
@@ -245,11 +251,20 @@ object BriefPrivacy {
 
 /**
  * A step that waited for you ([StepGo.READY]): `routines/ready.json`. Personal: never shown on the lock screen with
- * details ([ReadyCards.publicLine]); it expires at the end of [day].
+ * details ([ReadyCards.publicLine]); it expires at the end of [day]. [missed]: instead of one step, the whole routine
+ * didn't run at that time (MissedRun.OFFER, after Doze or a reboot): the tap runs it ([step] is then its first step).
  */
-data class ReadyCard(val routineId: String, val routineName: String, val step: RoutineStep, val created: Long, val day: LocalDate) {
-    /** "Your “Leaving work” routine is ready to: Search Organic Maps for “home”. Tap to do it." */
-    fun text(): String = "Your “$routineName” routine is ready to: ${step.describe()}. Tap to do it."
+data class ReadyCard(val routineId: String, val routineName: String, val step: RoutineStep, val created: Long, val day: LocalDate,
+    val missed: java.time.LocalTime? = null) {
+    /**
+     * "Your “Leaving work” routine is ready to: Search Organic Maps for “home”. Tap to do it." / "Your “Morning” routine
+     * didn't run at 07:00. Tap to run it now."
+     */
+    fun text(): String = if (missed != null) "Your “$routineName” routine didn't run at ${java.lang.String.format(java.util.Locale.US, "%02d:%02d", missed.hour, missed.minute)}. Tap to run it now."
+        else "Your “$routineName” routine is ready to: ${step.describe()}. Tap to do it."
+
+    /** Names this card in a tap (a notification's, Settings' Ready list): stable for as long as it waits. */
+    val key: String get() = "$routineId|$created|" + (missed?.toString() ?: step.code.id.toString())
 }
 
 object ReadyCards {
@@ -264,7 +279,7 @@ object ReadyCards {
 
     /** [cards] with [card] added (expired ones gone, the same step of the same routine once, at most [MAX]). */
     fun add(cards: List<ReadyCard>, card: ReadyCard, today: LocalDate): List<ReadyCard> =
-        (live(cards, today).filterNot { it.routineId == card.routineId && it.step == card.step } + card).takeLast(MAX)
+        (live(cards, today).filterNot { it.routineId == card.routineId && it.step == card.step && it.missed == card.missed } + card).takeLast(MAX)
 
     /**
      * The silent notification after a run, only when a step was held or failed ("Ran “Leaving work” · 2 done, 1 ready");
@@ -279,7 +294,7 @@ object ReadyCards {
 
     fun encode(cards: List<ReadyCard>): String = JSONObject().put("v", VERSION).put("cards", JSONArray().apply {
         for (c in cards) put(JSONObject().put("routine", c.routineId).put("name", c.routineName).put("step", RoutineCodec.step(c.step))
-            .put("created", c.created).put("day", c.day.toString()))
+            .put("created", c.created).put("day", c.day.toString()).apply { c.missed?.let { put("missed", it.toString()) } })
     }).toString()
 
     /** The cards that can be read (a damaged one is left out; a damaged or newer file gives none). */
@@ -293,7 +308,8 @@ object ReadyCards {
             if (RoutineGate.classOf(step) == StepClass.NEVER) return@mapNotNull null
             ReadyCard(RoutineCodec.str(c, "routine")?.takeIf(RoutineCheck::validId) ?: return@mapNotNull null,
                 RoutineCodec.str(c, "name") ?: return@mapNotNull null, step, RoutineCodec.long(c, "created") ?: return@mapNotNull null,
-                RoutineCodec.date(RoutineCodec.str(c, "day")) ?: return@mapNotNull null)
+                RoutineCodec.date(RoutineCodec.str(c, "day")) ?: return@mapNotNull null,
+                if (c.has("missed")) RoutineCodec.time(RoutineCodec.str(c, "missed")) ?: return@mapNotNull null else null)
         }
     } catch (_: Exception) { emptyList() }
 }

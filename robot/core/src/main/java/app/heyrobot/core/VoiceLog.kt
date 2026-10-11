@@ -231,6 +231,31 @@ enum class VoiceEvent(val id: Int) {
     MODEL_FALLBACK(133),
     /** Another model was loaded, so Robot unloaded it first (never two at once): a = [ModelCode] unloaded, b = [ModelCode] to load. */
     MODEL_SWITCH(134),
+    // Routines and the morning brief (0.8): 140 to 159. Codes and counts only, never a routine's name, steps or words.
+    /** A trigger came: a = [TriggerKind], b = routines it started, c = routines it didn't start (ROUTINE_SKIPPED says why). */
+    ROUTINE_TRIGGER(140),
+    /** A Clock alarm ended (AlarmWatch): a = [AlarmEnd], b = minutes it rang. */
+    ALARM_END(141),
+    /** A routine its trigger didn't start: a = [SkipWhy], b = [TriggerKind]. */
+    ROUTINE_SKIPPED(142),
+    /** A run ended: a = steps, b = steps left for you (Ready cards, the unlock), c = ms. */
+    ROUTINE_RUN(143),
+    /** One step of a run: a = [StepCode], b = [StepGo], c = 1 if it didn't work. */
+    ROUTINE_STEP(144),
+    /** The brief: a = lines said, b = lines kept for the unlock, c = characters said. */
+    BRIEF_SPOKEN(145),
+    /** A Ready card was tapped: a = [StepCode] (0: a whole routine that didn't run at its time). */
+    READY_TAPPED(146),
+    /** How a run was said: a = [SpeechWay], b = 1 if the phone was locked. */
+    ROUTINE_SPEECH(147),
+    /** The one exact alarm for the next routine: a = minutes until it rings (-1: none to set), b = 1 exact, c = routines due then. */
+    ROUTINE_ALARM_SET(148),
+    /** A routine's time passed without it (Doze, a reboot): a = [MissedRun], b = minutes late. */
+    ROUTINE_MISSED(149),
+    /** A routine phrase in the panel, before the model: a = [RoutineCommandCode], b = 1 if it was done (a routine saved, run…). */
+    ROUTINE_COMMAND(150),
+    /** "Next", "skip", "repeat" or "stop" while a routine spoke: a = 1, 2, 3 or 4. */
+    BRIEF_CONTROL(151),
     ;
 
     companion object {
@@ -785,6 +810,20 @@ object VoiceLogText {
             VoiceEvent.CONV_CHECK -> "Transcription check (" + code(LangCode.entries, c) + "): $a% of words wrong over $b lines"
             VoiceEvent.MT_LOAD -> if (b == 1) "Fast translation loaded in $a ms ($c directions)" else "Fast translation didn't load ($a ms): " + code(MtError.entries, c)
             VoiceEvent.CONV_REHEARD -> "Segment heard again in two halves (" + secs(a) + " of speech): $b words, then $c"
+            VoiceEvent.ROUTINE_TRIGGER -> "Routine trigger: " + code(TriggerKind.entries, a) + " · " + count(b, "routine") + " started" +
+                (if (c > 0) " · $c not started" else "")
+            VoiceEvent.ALARM_END -> "Clock alarm ended: " + code(AlarmEnd.entries, a) + (if (b > 0) " after $b min" else "")
+            VoiceEvent.ROUTINE_SKIPPED -> "Routine not run after " + code(TriggerKind.entries, b) + ": " + code(SkipWhy.entries, a)
+            VoiceEvent.ROUTINE_RUN -> "Routine ran: " + count(a, "step") + (if (b > 0) " · $b left for you" else "") + " · " + secs(c)
+            VoiceEvent.ROUTINE_STEP -> "Routine step: " + code(StepCode.entries, a) + " · " + code(StepGo.entries, b) + (if (c == 1) " · didn't work" else "")
+            VoiceEvent.BRIEF_SPOKEN -> "Morning brief: " + count(a, "line") + " said" + (if (b > 0) " · $b kept for the unlock" else "") + " · $c characters"
+            VoiceEvent.READY_TAPPED -> "Ready card tapped: " + (if (a == 0) "a routine that didn't run at its time" else code(StepCode.entries, a))
+            VoiceEvent.ROUTINE_SPEECH -> "Routine speech: " + code(SpeechWay.entries, a) + (if (b == 1) " · phone locked" else "")
+            VoiceEvent.ROUTINE_ALARM_SET -> if (a < 0) "Routine alarm: none to set" else
+                "Routine alarm set for $a min from now (" + (if (b == 1) "exact" else "inexact") + ") · " + count(c, "routine")
+            VoiceEvent.ROUTINE_MISSED -> "Routine time missed by $b min: " + code(MissedRun.entries, a)
+            VoiceEvent.ROUTINE_COMMAND -> "Routine command: " + code(RoutineCommandCode.entries, a) + (if (b == 1) " · done" else "")
+            VoiceEvent.BRIEF_CONTROL -> "While a routine spoke: " + (listOf("next", "skip", "repeat", "stop").getOrNull(a - 1) ?: "#$a")
         }
     }
 

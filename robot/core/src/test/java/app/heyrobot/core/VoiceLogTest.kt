@@ -57,7 +57,9 @@ class VoiceLogTest {
             MtVerdict.entries, LangCode.entries, IoCode.entries, MicEvent.entries, ThermalStep.entries, HelperCode.entries, AppShareCode.entries,
             ExportKind.entries, ClaudeStage.entries, ClaudeErrorKind.entries, MtError.entries, ModelCode.entries, BackendCode.entries,
             FallbackWhy.entries, LoadFailure.entries, ClaudeEnd.entries, ClaudeFail.entries, ClaudeModelCode.entries, LocationCode.entries,
-            NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries)
+            NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries,
+            TriggerKind.entries, AlarmEnd.entries, SkipWhy.entries, StepCode.entries, StepGo.entries, MissedRun.entries, SpeechWay.entries,
+            RoutineCommandCode.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -84,6 +86,13 @@ class VoiceLogTest {
         val model = listOf(VoiceEvent.MODEL_CHOSEN, VoiceEvent.MODEL_LOADED, VoiceEvent.MODEL_LOAD_FAILED, VoiceEvent.MODEL_FALLBACK, VoiceEvent.MODEL_SWITCH)
         for (e in model) assertTrue(e.name, e.id in 130..139)
         assertEquals(model, VoiceEvent.entries.filter { it.id in 130..139 })
+        // 0.8's routines use 140 to 159, in the order Routine.kt lists them; never a routine's name or words (the enums
+        // and counts only, as the recording API's test checks).
+        val routines = listOf(VoiceEvent.ROUTINE_TRIGGER, VoiceEvent.ALARM_END, VoiceEvent.ROUTINE_SKIPPED, VoiceEvent.ROUTINE_RUN,
+            VoiceEvent.ROUTINE_STEP, VoiceEvent.BRIEF_SPOKEN, VoiceEvent.READY_TAPPED, VoiceEvent.ROUTINE_SPEECH, VoiceEvent.ROUTINE_ALARM_SET,
+            VoiceEvent.ROUTINE_MISSED, VoiceEvent.ROUTINE_COMMAND, VoiceEvent.BRIEF_CONTROL)
+        assertEquals((140..151).toList(), routines.map { it.id })
+        assertEquals(routines, VoiceEvent.entries.filter { it.id in 140..159 })
         // Every model and backend has a code of its own.
         assertEquals(BrainModel.entries.size, BrainModel.entries.map { ModelCode.of(it) }.toSet().size)
         assertEquals(ModelBackend.entries.size, ModelBackend.entries.map { BackendCode.of(it) }.toSet().size)
@@ -255,6 +264,26 @@ class VoiceLogTest {
         assertEquals("Segment heard again in two halves (4.2 s of speech): 3 words, then 11",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_REHEARD, 4200, 3, 11)))
         assertEquals("Languages this minute: 8 French · 5 English · 1 not sure", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_LANG, 8, 5, 1)))
+        // 0.8: routines, codes and counts only.
+        assertEquals("Routine trigger: an alarm turned off · 1 routine started · 1 not started",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_TRIGGER, TriggerKind.ALARM.id, 1, 1)))
+        assertEquals("Clock alarm ended: snoozed after 2 min", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ALARM_END, AlarmEnd.SNOOZED.id, 2)))
+        assertEquals("Routine not run after the first unlock: already ran today",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_SKIPPED, SkipWhy.ALREADY_RAN.id, TriggerKind.UNLOCK.id)))
+        assertEquals("Routine ran: 3 steps · 1 left for you · 2.5 s", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_RUN, 3, 1, 2500)))
+        assertEquals("Routine step: open app · ready card", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_STEP, StepCode.OPEN_APP.id, StepGo.READY.id)))
+        assertEquals("Routine step: weather · ran · didn't work",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_STEP, StepCode.WEATHER.id, StepGo.RUN.id, 1)))
+        assertEquals("Morning brief: 4 lines said · 3 kept for the unlock · 212 characters", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BRIEF_SPOKEN, 4, 3, 212)))
+        assertEquals("Ready card tapped: maps search", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.READY_TAPPED, StepCode.MAPS_SEARCH.id)))
+        assertEquals("Ready card tapped: a routine that didn't run at its time", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.READY_TAPPED, 0)))
+        assertEquals("Routine speech: Android refused it: a notification to tap · phone locked",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_SPEECH, SpeechWay.NOTIFICATION.id, 1)))
+        assertEquals("Routine alarm set for 540 min from now (exact) · 2 routines", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_ALARM_SET, 540, 1, 2)))
+        assertEquals("Routine alarm: none to set", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_ALARM_SET, -1)))
+        assertEquals("Routine time missed by 95 min: offered on a Ready card", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_MISSED, MissedRun.OFFER.id, 95)))
+        assertEquals("Routine command: make a routine · done", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_COMMAND, RoutineCommandCode.CREATE.id, 1)))
+        assertEquals("While a routine spoke: repeat", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BRIEF_CONTROL, 3)))
         assertEquals("now", VoiceLogText.ago(1_000))
         assertEquals("12 s ago", VoiceLogText.ago(12_000))
         assertEquals("3 min ago", VoiceLogText.ago(200_000))
