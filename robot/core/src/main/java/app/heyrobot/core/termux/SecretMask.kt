@@ -123,9 +123,21 @@ object SecretMask {
 
     /**
      * "-----BEGIN … PRIVATE KEY-----" (PEM, OpenSSH, PGP's "PRIVATE KEY BLOCK") through its END line; a block whose END
-     * never comes is hidden to the end of the text (a cut key is still secret).
+     * never comes is hidden to the end of the text, and an END line with no BEGIN before it everything before it (a cut
+     * key is still secret).
      */
     private fun privateKeys(text: String, out: MutableList<Found>) {
+        // Output Termux cut from its start can begin inside a key: its END line with no BEGIN before it hides all before.
+        val firstBegin = text.indexOf("-----BEGIN ")
+        var e = text.indexOf("-----END ")
+        while (e >= 0 && (firstBegin < 0 || e < firstBegin)) {
+            val close = text.indexOf("-----", e + 9)
+            if (close in 0..e + 89 && text.substring(e + 9, close).contains("PRIVATE KEY")) {
+                out += Found(0, close + 5, Kind.PRIVATE_KEY)
+                break
+            }
+            e = text.indexOf("-----END ", e + 9)
+        }
         var from = 0
         while (true) {
             val begin = text.indexOf("-----BEGIN ", from)

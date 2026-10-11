@@ -56,6 +56,9 @@ class SecretMaskTest {
         assertEquals("[hidden: looks like a private key]", SecretMask.mask("-----BEGIN PGP PRIVATE KEY BLOCK-----\nxyz\n-----END PGP PRIVATE KEY BLOCK-----"))
         // Cut off before its end: hidden to the end anyway.
         assertEquals("x [hidden: looks like a private key]", SecretMask.mask("x -----BEGIN EC PRIVATE KEY-----\nMHcCAQEE"))
+        // Its BEGIN line cut off (Termux keeps the end of long output): everything before its END line is hidden.
+        assertEquals("[hidden: looks like a private key]\nnext", SecretMask.mask("AAAAC3Nz\n-----END RSA PRIVATE KEY-----\nnext"))
+        assertEquals("x\n-----END CERTIFICATE-----", SecretMask.mask("x\n-----END CERTIFICATE-----"))
         // A public key or certificate isn't secret.
         val cert = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----"
         assertEquals(cert, SecretMask.mask(cert))
