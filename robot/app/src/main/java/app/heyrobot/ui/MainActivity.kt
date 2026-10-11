@@ -69,6 +69,7 @@ import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.RecognizerKeeper
+import app.heyrobot.update.Updater
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsIntents
@@ -76,6 +77,7 @@ import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.settings.SettingsNav
+import app.heyrobot.ui.settings.SettingsRoutes
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -105,6 +107,8 @@ class MainActivity : ComponentActivity() {
                 RecognizerKeeper.flushPending(app)
                 RecognizerKeeper.check(app, RepairWhen.APP)
             } catch (_: Throwable) {}
+            // The updater's daily check, scheduled if Settings › Updates has it on.
+            try { Updater.onAppOpen(app) } catch (_: Throwable) {}
         }, "robot-recognizer").start()
     }
 
@@ -117,7 +121,7 @@ class MainActivity : ComponentActivity() {
     private fun routeOf(i: Intent?): String? = when {
         i == null -> null
         i.component?.className == AppPages.NOTES_ALIAS -> AppPages.NOTES
-        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.MODEL }
+        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.MODEL || it == AppPages.UPDATES }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -336,8 +340,13 @@ fun RobotAppUi(activity: MainActivity) {
             AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
             AppPages.PERMISSIONS -> page = Page.Setup(people = true)
             AppPages.MODEL -> { tab = Tab.MODEL; page = null }
+            AppPages.UPDATES -> page = Page.Settings(SettingsRoutes.UPDATES)
         }
         activity.route.value = null
+    }
+    // Once after an update, when no notification could say it: "Robot updated to …".
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) { Updater.takeUpdatedNotice(ctx) }?.let(::say)
     }
 
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {

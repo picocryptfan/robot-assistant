@@ -15,6 +15,8 @@ import app.heyrobot.ui.Snapshot
 
 object SettingsRoutes {
     const val DISPLAY = "display"
+    /** Settings › About › Updates (the built-in updater). */
+    const val UPDATES = "updates"
 }
 
 /** The page for [route]; an unknown one (from a newer version's saved state) goes back to Settings. */
@@ -35,6 +37,7 @@ fun SettingsNav(
             val ctx = LocalContext.current
             DisplaySettingsScreen(LookStore.current(ctx), onChange = { LookStore.save(ctx, it) }, onBack = onBack)
         }
+        SettingsRoutes.UPDATES -> UpdatesRoute(snackbar, onBack)
         else -> LaunchedEffect(route) { onBack() }
     }
 }

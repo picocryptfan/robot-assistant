@@ -51,6 +51,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import app.heyrobot.ui.settings.UpdatesEntry
 import app.heyrobot.BuildConfig
 import app.heyrobot.core.Approval
 import app.heyrobot.core.BenchState
@@ -776,6 +777,7 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
                 "licence, credits and notices under Licences.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             NavRow(RIcons.Info, "Licences", "Robot's licence and source code, and every part it uses with its licence and notices") { a.openPage(Page.Licences) }
+            UpdatesEntry(a)
         }
         Spacer(Modifier.height(12.dp))
     }
