@@ -3,8 +3,8 @@ package app.heyrobot.core
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Pure. The IPC contract between a client (the main app's Test translation speed now; the voice process's
-// BergamotTranslator from phase 5.4) and MtService in the :mt process (docs/conversation-mode.md 4.5): Messenger
+// Pure. The IPC contract between a client (the main app's Test translation speed; the voice process's
+// BergamotTranslator, phase 5.4) and MtService in the :mt process (docs/conversation-mode.md 4.5): Messenger
 // messages whose `what` is a code below, `arg1` the request id and data a Bundle holding [MtProtocol.KEY_JSON], one of
 // the payloads below. The :mt process runs one engine: the fr↔en pair's two directions at most, loaded when first
 // needed, unloaded when idle or when Android needs memory. It translates one line at a time, the waiting lines in
@@ -62,6 +62,11 @@ object MtPolicy {
     const val REPLY_GRACE_MS = 5_000L
     /** The deadline of one interactive line (the interpreter's fallback; docs/conversation-mode.md 4.1). */
     const val LINE_DEADLINE_MS = 1_500L
+    /**
+     * The deadline of one transcript line's fast translation (batch priority, so it gives way to an interactive line);
+     * one not started by then gets Robot's model's first translation instead.
+     */
+    const val BACKLOG_LINE_DEADLINE_MS = 10_000L
 }
 
 enum class MtPriority { INTERACTIVE, BATCH }

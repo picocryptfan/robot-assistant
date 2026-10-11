@@ -8,7 +8,8 @@ import java.util.Locale
 // LineTranslator (an engine's answer checked by MtGuard; the interpreter's model first, the fast engine when the model
 // didn't start in 1.5 s, failed or failed a guard), TranslationBacklog (a transcript's better translations: newest
 // first, one at a time, none more than 60 s behind) and InterpreterVoice (who reads a translation aloud). The fast
-// engine (Bergamot over :mt) is another Translator, built on its own branch: everything here works without it.
+// engine (Bergamot over :mt, offered by FastEngineGate when its files are downloaded and verified) is another
+// Translator: everything here works with it or without it.
 
 /** Why a translation didn't come from an engine (logged as a code, never the words). */
 class TranslateFailure(val why: Why) : Exception(why.name) {
@@ -91,6 +92,14 @@ object TranslatePolicy {
 
     /** Robot's model leads the interpreter: on the TPU, or when there is no fast engine. */
     fun modelLeads(backend: ModelBackend?, fast: Boolean): Boolean = !fast || backend != ModelBackend.CPU
+
+    /**
+     * The interpreter's engines in order, for LineTranslator.firstThen: Robot's [model] first and the [fast] engine
+     * standing in, unless the model runs on the CPU and the fast engine is there; then the fast engine first, the model
+     * only when it fails. Either may be null (no fast engine; the model resting at SEVERE heat).
+     */
+    fun <T : Any> order(backend: ModelBackend?, model: T?, fast: T?): Pair<T?, T?> =
+        if (modelLeads(backend, fast != null)) model to fast else fast to model
 
     /**
      * The model works on transcript lines in the background (better translations; first ones too without the fast

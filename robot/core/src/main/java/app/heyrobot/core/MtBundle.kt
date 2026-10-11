@@ -99,10 +99,13 @@ object MtMark {
     fun ready(b: MtBundle, d: MtDirection, mark: List<InstalledFile>, onDisk: (String) -> Pair<Long, Long>?): Boolean =
         vouched(b, mark, onDisk).containsAll(b.filesOf(d).map { it.name })
 
-    /** [ready] for a real directory: what the :mt process asks before it loads a direction. */
-    fun ready(b: MtBundle, d: MtDirection, dir: File): Boolean = ready(b, d, VoiceMark.decode(readOrNull(File(dir, VoiceMark.FILE)))) { name ->
+    /** [vouched] for a real directory. */
+    fun vouched(b: MtBundle, dir: File): Set<String> = vouched(b, VoiceMark.decode(readOrNull(File(dir, VoiceMark.FILE)))) { name ->
         File(dir, name).takeIf { it.isFile }?.let { it.length() to it.lastModified() }
     }
+
+    /** [ready] for a real directory: what the :mt process asks before it loads a direction. */
+    fun ready(b: MtBundle, d: MtDirection, dir: File): Boolean = vouched(b, dir).containsAll(b.filesOf(d).map { it.name })
 
     fun complete(b: MtBundle, dir: File): Boolean = b.directions.all { ready(b, it, dir) }
 }

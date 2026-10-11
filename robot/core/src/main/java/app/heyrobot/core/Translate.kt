@@ -62,17 +62,22 @@ interface MtTransport {
 /**
  * Bergamot, the fast engine, over the :mt process (docs/conversation-mode.md 4.1, 4.5). It takes off a short line's full
  * stop before the engine sees it and puts it back after ([MtGuard.prepare]); the caller then runs [MtGuard.check], as for
- * Gemma. [translate] is one line someone waits for (the interpreter's fallback): interactive, [lineDeadlineMs].
- * [translateAll] is a backlog (a transcript's lines): batch priority, so an interactive line goes first.
+ * Gemma. [translate] is one line: at [priority] (interactive for a line someone waits for, the interpreter's; batch for a
+ * transcript's line, so an interactive one goes first), not started by :mt within [lineDeadlineMs] it times out.
+ * [translateAll] is a backlog (a transcript's lines): batch priority by default.
  */
-class BergamotTranslator(private val transport: MtTransport, private val lineDeadlineMs: Long = MtPolicy.LINE_DEADLINE_MS) : Translator {
+class BergamotTranslator(
+    private val transport: MtTransport,
+    private val lineDeadlineMs: Long = MtPolicy.LINE_DEADLINE_MS,
+    private val priority: MtPriority = MtPriority.INTERACTIVE,
+) : Translator {
     override val engine: MtEngine get() = MtEngine.BERGAMOT
 
     override suspend fun translate(text: String, from: String, to: String): String {
         val d = direction(from, to)
         val p = MtGuard.prepare(text, engine)
         if (p.text.isBlank()) return ""
-        val r = transport.translate(d.id, listOf(p.text), lineDeadlineMs, MtPriority.INTERACTIVE)
+        val r = transport.translate(d.id, listOf(p.text), lineDeadlineMs, priority)
         val out = r.out.firstOrNull() ?: throw MtException(if (r.failed > 0) MtError.FAILED else MtError.TIMEOUT)
         return MtGuard.restore(out, p)
     }

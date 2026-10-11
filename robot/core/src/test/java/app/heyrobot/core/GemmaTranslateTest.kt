@@ -134,6 +134,11 @@ class GemmaTranslateTest {
         assertTrue(TranslatePolicy.modelLeads(ModelBackend.TPU, fast = true))
         assertFalse(TranslatePolicy.modelLeads(ModelBackend.CPU, fast = true))
         assertTrue(TranslatePolicy.modelLeads(ModelBackend.CPU, fast = false))
+        // The interpreter's order: the second stands in when the first fails; a model resting at SEVERE heat is null.
+        assertEquals("model" to "fast", TranslatePolicy.order(ModelBackend.TPU, "model", "fast"))
+        assertEquals("fast" to "model", TranslatePolicy.order(ModelBackend.CPU, "model", "fast"))
+        assertEquals("model" to null, TranslatePolicy.order(ModelBackend.CPU, "model", null))
+        assertEquals(null to "fast", TranslatePolicy.order(ModelBackend.TPU, null, "fast"))
         assertEquals(TranslatePolicy.START_WITHIN_MS, tpu.startWithinMs)
         assertFalse(tpu.waitForLoad)
         // Without the fast engine there is nothing to fall back on: longer, and it waits for the model to load.
