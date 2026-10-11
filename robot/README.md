@@ -2740,3 +2740,48 @@ Tools: `tools/fetch_voice_models.sh <dir>` (the same files and hashes as the app
 
 Keep sherpa-onnx inside `:voice` (the isolation test enforces it) and list new models in `THIRD_PARTY.md`
 (`VoiceManifestTest` checks the manifest against it and the tools).
+
+## Built in core, not wired yet
+
+The pure logic of later work, in `:core` and tested on the JVM, merged on 0.6.0 so it builds and tests against 0.6.0's
+types. Nothing in the app calls it yet: no screen, setting, permission, receiver or service is new, and Robot does
+nothing new on the phone. Each section says what exists and what is left to wire.
+
+### Memory and messages (0.7, core only)
+
+The pure logic for 0.7 ("Memory and messages", `docs/plans/memory-messages-design.md` on the docs branch) is in `:core`
+with JVM tests; nothing in the app uses it yet, no setting or screen changed, and nothing new runs on the phone. The
+defaults are the design's answers to its open questions: replies are sent after a card (a tap; "Open the chat; I press
+Send" is the switch back), reading leaves messages as they were, messages stay in RAM only until their notification
+goes, nothing on the lock screen, suggestions as a quiet list, the search model offered once, and helpers get memory
+only through a card.
+
+- **Memory** (`core/memory/`): `MemoryItem` and `MemoryEdits` (kinds, pinning up to 6, caps, expiry, suggestions kept or
+  dismissed); `MemoryCodec` (versioned JSON; an unknown origin reads as content) and `MemoryEnvelope` (the encrypted
+  file's frame, with the `MemoryCipher` and `MemoryVault` interfaces for the Keystore vault; a file that can't be read is
+  never written over); `MemoryCommands` ("remember that…", "souviens-toi que…", "oublie pas que…", "forget that",
+  "oublie ça", "what do you remember about…", in English and Québec French; "remember to…" stays a note);
+  `SecretDetector` (PINs, passwords, codes, card, SIN/NAS and account numbers, keys, long digit runs that aren't phone
+  numbers); `MemoryText` and `Bm25Index` (accents folded, elisions, light stemming; 28 of the design's 48 bilingual
+  questions found first, in core test resources); `Retriever` with BM25, an embedding retriever (cosine over FloatArray,
+  Matryoshka cut to 256) and their hybrid; `PromptPacking` (pinned preferences at the end of the system prompt within 100
+  estimated tokens, the found items before the question within 150; secrets only when named and unlocked); `Suggestions`
+  (only from your own words, and a line the model wrote must be grounded in them); `MemorySettings` and `MemoryAccess`.
+- **Messages** (`core/messages/`): `NotificationParsing` over plain snapshots of MessagingStyle, its people and actions
+  (the reply found by SEMANTIC_ACTION_REPLY, or by its RemoteInput for GrapheneOS Messaging; never a contextual or a
+  Wear action), Signal's privacy and Android's code redaction said as hidden; `MessageApp` and `MessageAllowlist`
+  (Cheogram, Signal, Molly, Messaging, Google Messages; all off); `MessageBuffer` (RAM only, dropped when the
+  notification goes, at most 40 conversations of 25 messages); `MessageReading` and `MessageSummaries` (what Robot says,
+  in English and French; one-shot summary requests with no tools, one line per message); `ReplyPlanner` and `ReplyGuard`
+  (the recipient is the notification's own conversation; a tap sends by default, never a spoken yes for a group, a
+  draft or a translation; re-checked before sending); `MessageTaint` and `MessageQuarantine` (text from a message is
+  never an action; after a message every action asks, and one that leaves for someone else needs a tap, under every
+  Safety cards mode); `MessageSettings`.
+
+What remains to wire: the Keystore `MemoryCipher` and `MemoryVault` in `app/sys`; the settings fields in `RobotSettings`
+(the next schema) and People's `replyNoCard`/`replyLang`; voice log events (ids 180–189 memory, 190–199 messages,
+reserved in the settings files' comments); `Personal.MEMORY` and `Personal.MESSAGES`; the taint in `ChatTurn` and
+`ApprovalGate` (`MessageQuarantine.decide` shows the rule); `MemoryCommands` before the model and the `remember`/`forget`
+tools in `:voice`, with cards and History keeping item ids instead of note text; `REQ_EMBED` in `:brain` behind
+`TextEmbedder` and the model download; the listener's `MessageTap`, the `MessagesBridge` service and firing RemoteInput
+replies in the main process; and Settings › Memory and Settings › Messages.

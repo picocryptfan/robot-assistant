@@ -1,0 +1,226 @@
+package app.heyrobot.core.memory
+
+import app.heyrobot.core.ToolCalls
+import kotlin.random.Random
+
+// Pure. What Robot remembers because you asked (0.7 "Memory and messages", design §A2 and §A5): one item per thing you
+// said to keep ("Remember that my sister Julie's birthday is May 3"), each one you can see, edit, pin or delete in
+// Settings › Memory. Not memory: the History of conversations, Robot Notes ("remember to buy milk" stays a note),
+// People, and message text. The items live in one encrypted file (MemoryCodec, MemoryEnvelope); this file holds the
+// model and the pure list changes the vault applies under its file lock.
+
+/** What an item is. A [PREFERENCE] is pinned by itself while there is room ([MemoryLimits.MAX_PINNED]). */
+enum class MemoryKind {
+    /** "My sister Julie's birthday is May 3": retrieved when a question needs it. */
+    FACT,
+    /** "Call me Sam", "I prefer Celsius": pinned, given to the model with every answer. */
+    PREFERENCE,
+}
+
+/** Where an item came from. Only [CONTENT] isn't your own words. */
+enum class MemorySource(val title: String) {
+    SAID("You said it"),
+    TYPED("You typed it"),
+    SUGGESTED("A suggestion you kept"),
+    SETTINGS("Added in Settings"),
+    /** Screen text, a message, a transcript or a helper's words, kept through a card: content when retrieved. */
+    CONTENT("From something Robot read");
+
+    /** Your own words (or your tap on your own words): retrieving it never makes a conversation content. */
+    val own: Boolean get() = this != CONTENT
+}
+
+/**
+ * One remembered thing. [text] is as said or edited (at most [MemoryLimits.MAX_CHARS]). [secret]: a PIN, a password, a
+ * card or ID number ([SecretDetector], or marked by you): saved, but never pinned, never spoken unless you ask for it by
+ * name, never put in a prompt unless the question names it, never sent to a helper. [sourceLabel]: for a [MemorySource.CONTENT]
+ * item, where it came from in words ("a message from Mom"), shown and given to the model with it; never the message
+ * itself. [about]: People ids it mentions. [language]: "en" or "fr". [expiresAt]: "until tonight" (hidden from then,
+ * deleted a day later). [uses]: a counter only, no text of the answers.
+ *
+ * [toString] never prints the text: an item that reaches a log line or a crash report says only its id and size.
+ */
+data class MemoryItem(
+    val id: String,
+    val text: String,
+    val kind: MemoryKind = MemoryKind.FACT,
+    val secret: Boolean = false,
+    val pinned: Boolean = false,
+    val source: MemorySource = MemorySource.SAID,
+    val sourceLabel: String? = null,
+    val language: String? = null,
+    val about: List<String> = emptyList(),
+    val createdAt: Long,
+    val updatedAt: Long = createdAt,
+    val expiresAt: Long? = null,
+    val uses: Int = 0,
+    val usedAt: Long? = null,
+) {
+    /** Retrieved into a conversation, it makes that conversation content (later actions follow Safety cards). */
+    val tainted: Boolean get() = !source.own
+
+    /** Past its end ("until tonight"): never retrieved, deleted by [MemoryEdits.sweep] a day later. */
+    fun expired(now: Long): Boolean = expiresAt != null && now >= expiresAt
+
+    override fun toString(): String = "MemoryItem(id=$id, kind=$kind, secret=$secret, pinned=$pinned, source=$source, chars=${text.length})"
+}
+
+/** A suggestion waiting in Settings › Memory › Suggestions: never spoken, never saved without your tap. */
+data class MemorySuggestion(val id: String, val text: String, val kind: MemoryKind, val createdAt: Long) {
+    override fun toString(): String = "MemorySuggestion(id=$id, kind=$kind, chars=${text.length})"
+}
+
+/**
+ * Everything memory.enc holds: the [items], the [suggestions] waiting for a tap, and [negatives], the suggestions you
+ * answered with "Don't suggest things like this" (kept only to compare against; never sent anywhere).
+ */
+data class MemoryFile(
+    val items: List<MemoryItem> = emptyList(),
+    val suggestions: List<MemorySuggestion> = emptyList(),
+    val negatives: List<String> = emptyList(),
+)
+
+object MemoryLimits {
+    /** Items at most; a new one past this is refused ("Memory is full: delete some in Settings › Memory"). */
+    const val MAX_ITEMS = 2_000
+    /** Settings › Memory says the end is near from here. */
+    const val NOTE_AT = 1_500
+    /** Characters per item. */
+    const val MAX_CHARS = 300
+    const val MAX_SUGGESTIONS = 100
+    /** "Don't suggest things like this" examples kept. */
+    const val MAX_NEGATIVES = 200
+    /** Pinned items at most: the 7th asks which to unpin. */
+    const val MAX_PINNED = 6
+    /** A suggestion nobody answered is dropped after this many days. */
+    const val SUGGESTION_DAYS = 14
+    const val DAY_MS = 86_400_000L
+}
+
+object MemoryIds {
+    private const val DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz"
+    private val ID = Regex("^[ms]_[0-9a-z]{6,40}$")
+
+    /** An item id ("m_…") or a suggestion id ("s_…"): letters and digits only, so it is safe in a file or a log. */
+    fun valid(id: String?): Boolean = id != null && ID.matches(id)
+
+    /** "m_" + the time in base 36 (fixed width, so ids sort by time) + 6 random characters. */
+    fun newId(now: Long, random: Random = Random.Default, prefix: Char = 'm'): String {
+        val t = now.coerceAtLeast(0).toString(36).padStart(9, '0')
+        val r = CharArray(6) { DIGITS[random.nextInt(DIGITS.length)] }
+        return "${prefix}_$t${String(r)}"
+    }
+}
+
+/** What adding an item did. */
+enum class AddOutcome {
+    SAVED,
+    /** A preference saved unpinned: six are pinned already, Settings asks which to unpin. */
+    SAVED_PIN_FULL,
+    /** The same text was already kept: nothing new, [Added.item] is the old one. */
+    ALREADY_KEPT,
+    /** [MemoryLimits.MAX_ITEMS] reached: nothing saved. */
+    FULL,
+    /** Nothing left to save once trimmed. */
+    EMPTY,
+}
+
+data class Added(val file: MemoryFile, val item: MemoryItem?, val outcome: AddOutcome) {
+    /** Settings › Memory shows "Robot remembers 1,500 things" with the limit from here. */
+    val nearFull: Boolean get() = file.items.size >= MemoryLimits.NOTE_AT
+}
+
+/**
+ * The changes the vault makes, as pure functions of the file (the vault reads, applies one of these and writes, under
+ * its lock). Every change keeps the order of the other items: pinned items keep yours (Settings › Memory drags them).
+ */
+object MemoryEdits {
+    /** [text] tidied for keeping: whitespace collapsed, at most [MemoryLimits.MAX_CHARS] characters. */
+    fun clean(text: String): String = ToolCalls.safeTake(text.replace(Regex("\\s+"), " ").trim(), MemoryLimits.MAX_CHARS).trim()
+
+    /** The same words, ignoring case, accents and punctuation (so "May 3." and "may 3" are one item). */
+    fun sameText(a: String, b: String): Boolean = MemoryText.fold(a).replace(Regex("[^\\p{L}\\p{N}]+"), "") ==
+        MemoryText.fold(b).replace(Regex("[^\\p{L}\\p{N}]+"), "")
+
+    /**
+     * Adds [item] (its text cleaned, a secret marked by [SecretDetector] as well). A preference is pinned while fewer than
+     * [MemoryLimits.MAX_PINNED] are; a secret never is. The same text already kept is not added twice.
+     */
+    fun add(file: MemoryFile, item: MemoryItem): Added {
+        val text = clean(item.text)
+        if (text.isEmpty()) return Added(file, null, AddOutcome.EMPTY)
+        file.items.firstOrNull { sameText(it.text, text) }?.let { return Added(file, it, AddOutcome.ALREADY_KEPT) }
+        if (file.items.size >= MemoryLimits.MAX_ITEMS) return Added(file, null, AddOutcome.FULL)
+        val secret = item.secret || SecretDetector.isSecret(text)
+        val wantsPin = !secret && (item.pinned || item.kind == MemoryKind.PREFERENCE)
+        val room = file.items.count { it.pinned } < MemoryLimits.MAX_PINNED
+        val kept = item.copy(text = text, secret = secret, pinned = wantsPin && room)
+        return Added(file.copy(items = file.items + kept), kept, if (wantsPin && !room) AddOutcome.SAVED_PIN_FULL else AddOutcome.SAVED)
+    }
+
+    /** The file without [ids], and the items removed (for Undo, in their old places). */
+    fun forget(file: MemoryFile, ids: Collection<String>): Pair<MemoryFile, List<MemoryItem>> {
+        val gone = file.items.filter { it.id in ids }
+        return file.copy(items = file.items.filter { it.id !in ids }) to gone
+    }
+
+    /** Undo of [forget]: the items back (none twice), at the end of the list. */
+    fun restore(file: MemoryFile, items: List<MemoryItem>): MemoryFile {
+        val have = file.items.mapTo(HashSet()) { it.id }
+        return file.copy(items = file.items + items.filter { it.id !in have })
+    }
+
+    /** Pin or unpin [id]. Null when it is a secret, unknown, or six are already pinned (the UI asks which to unpin). */
+    fun pin(file: MemoryFile, id: String, pinned: Boolean): MemoryFile? {
+        val item = file.items.firstOrNull { it.id == id } ?: return null
+        if (item.pinned == pinned) return file
+        if (pinned && (item.secret || file.items.count { it.pinned } >= MemoryLimits.MAX_PINNED)) return null
+        return file.copy(items = file.items.map { if (it.id == id) it.copy(pinned = pinned) else it })
+    }
+
+    /**
+     * An edit ("Actually her birthday is May 4" on a card, or Settings): new text in the same place, re-checked for a
+     * secret (which also unpins it). Null when [id] is unknown or the text is empty.
+     */
+    fun edit(file: MemoryFile, id: String, text: String, now: Long): MemoryFile? {
+        val t = clean(text)
+        if (t.isEmpty() || file.items.none { it.id == id }) return null
+        return file.copy(items = file.items.map {
+            if (it.id != id) it else {
+                val secret = it.secret || SecretDetector.isSecret(t)
+                it.copy(text = t, secret = secret, pinned = it.pinned && !secret, updatedAt = now)
+            }
+        })
+    }
+
+    /** One more answer used these items (a counter and a time, no text). */
+    fun used(file: MemoryFile, ids: Collection<String>, now: Long): MemoryFile =
+        if (ids.isEmpty()) file else file.copy(items = file.items.map { if (it.id in ids) it.copy(uses = it.uses + 1, usedAt = now) else it })
+
+    /**
+     * Housekeeping on load: items that ended more than a day ago, suggestions older than [MemoryLimits.SUGGESTION_DAYS]
+     * days or past [MemoryLimits.MAX_SUGGESTIONS] (the newest kept), negatives past [MemoryLimits.MAX_NEGATIVES].
+     */
+    fun sweep(file: MemoryFile, now: Long): MemoryFile = file.copy(
+        items = file.items.filter { it.expiresAt == null || now < it.expiresAt + MemoryLimits.DAY_MS },
+        suggestions = file.suggestions.filter { now - it.createdAt < MemoryLimits.SUGGESTION_DAYS * MemoryLimits.DAY_MS }
+            .sortedByDescending { it.createdAt }.take(MemoryLimits.MAX_SUGGESTIONS),
+        negatives = file.negatives.takeLast(MemoryLimits.MAX_NEGATIVES),
+    )
+
+    /** Items a question may use now: not expired. */
+    fun live(items: List<MemoryItem>, now: Long): List<MemoryItem> = items.filter { !it.expired(now) }
+
+    /** "Keep" on a suggestion: it becomes an item (origin [MemorySource.SUGGESTED]) and leaves the list. */
+    fun keep(file: MemoryFile, suggestionId: String, now: Long, newId: () -> String = { MemoryIds.newId(now) }): Added {
+        val s = file.suggestions.firstOrNull { it.id == suggestionId } ?: return Added(file, null, AddOutcome.EMPTY)
+        val rest = file.copy(suggestions = file.suggestions - s)
+        return add(rest, MemoryItem(newId(), s.text, s.kind, source = MemorySource.SUGGESTED, createdAt = now))
+    }
+
+    /** "Not this" ([dontSuggest]: also "Don't suggest things like this", kept as a negative example). */
+    fun dismiss(file: MemoryFile, suggestionId: String, dontSuggest: Boolean): MemoryFile {
+        val s = file.suggestions.firstOrNull { it.id == suggestionId } ?: return file
+        return file.copy(suggestions = file.suggestions - s, negatives = if (dontSuggest) (file.negatives + s.text).takeLast(MemoryLimits.MAX_NEGATIVES) else file.negatives)
+    }
+}
