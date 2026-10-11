@@ -419,8 +419,9 @@ object PageText {
             if (name in BLOCKS) flush()
             if ((name == "td" || name == "th") && buf.isNotBlank() && hiddenDepth == 0) buf.append(" · ")
             val main = name == "article" || name == "main" || attrs["role"]?.trim()?.lowercase(Locale.ROOT) == "main"
-            // "<div/>" doesn't close a div in HTML (only void elements and foreign content self-close): it stays open.
-            if (selfClosing && (isOpen("svg") || isOpen("math"))) return
+            // "<div/>" doesn't close a div in HTML (only void elements and foreign content self-close): it stays open. An
+            // "<svg/>" icon, or "<path/>" inside one, closes at once.
+            if (selfClosing && (name == "svg" || name == "math" || isOpen("svg") || isOpen("math"))) return
             if (stack.size >= MAX_DEPTH) { tooDeep = true; i = h.length; return }
             stack += Open(name, hides, main, name == "a")
             openCount[name] = (openCount[name] ?: 0) + 1

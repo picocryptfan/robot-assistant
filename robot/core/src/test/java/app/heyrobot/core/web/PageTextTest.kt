@@ -72,6 +72,10 @@ class PageTextTest {
         assertTrue(text("<div hidden><p>secret a<p>secret b</div>after").contains("after"))
         // "<div/>" doesn't self-close: what follows is inside the hidden div.
         assertFalse(text("<div hidden/>secret</div>after").contains("secret"))
+        // A self-closed inline icon doesn't hide what follows; an unclosed one does.
+        assertTrue(text("<p>Icon <svg viewBox=\"0 0 1 1\"/> after the icon</p>").contains("Icon after the icon"))
+        assertTrue(text("<p>Icon <svg><path d=\"M0\"/><use href=\"#i\"/></svg> after</p>").contains("Icon after"))
+        assertFalse(text("<p>Icon <svg><text>secret</text> more secret").contains("secret"))
         // A hidden element never closed hides the rest of the page.
         assertFalse(text("<div style='display:none'>secret <p>more secret").contains("secret"))
         // Nested hidden inside visible, visible after.
