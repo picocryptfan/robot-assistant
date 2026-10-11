@@ -2,10 +2,15 @@ package app.heyrobot.core
 
 // Pure. The empty panel's tips (0.4.0): three things Robot can do, a different three each time the panel opens, from
 // the features that are on and can work right now (an action turned Off, texting off, the lock screen, no Claude, no
-// screen this time: not offered). Tapping one asks it, as if typed.
+// screen this time: not offered). A question is asked at once, as if typed; a tip that would do something (an alarm, a
+// note, the flashlight, a text) or go online (the weather, the nearest place, Claude) only fills the text field: its
+// details are an example, and nothing happens until you send it.
 
-/** [ASK]: tapping asks [Tip.text]. [SCREEN]: attaches the screen, then asks it. [PHOTO]: opens the camera and photos row. */
-enum class TipKind { ASK, SCREEN, PHOTO }
+/**
+ * [ASK]: tapping asks [Tip.text] (a question that only reads on the phone). [FILL]: tapping puts it in the text field, to
+ * change or send. [SCREEN]: attaches the screen, then asks it (the local model only). [PHOTO]: opens the camera and photos row.
+ */
+enum class TipKind { ASK, FILL, SCREEN, PHOTO }
 
 data class Tip(val text: String, val kind: TipKind = TipKind.ASK)
 
@@ -16,20 +21,26 @@ object Tips {
     /** What the panel can do right now. [claude]: Ask Claude is on and reachable; [screen]: the screen came with this panel. */
     data class Can(val settings: RobotSettings, val locked: Boolean, val claude: Boolean = false, val screen: Boolean = false)
 
-    private class Entry(val tip: Tip, val tool: ToolName? = null, val needs: (Can) -> Boolean = { true })
+    /**
+     * [tool]: what tapping it would do; [online]: it goes online without a tool of its own (Ask Claude). One that writes,
+     * leaves the phone or goes online only fills the text field ([TipKind.FILL]).
+     */
+    private class Entry(tip: Tip, val tool: ToolName? = null, online: Boolean = false, val needs: (Can) -> Boolean = { true }) {
+        val tip: Tip = if (tip.kind == TipKind.ASK && (online || (tool != null && (!tool.reads || tool.online)))) tip.copy(kind = TipKind.FILL) else tip
+    }
 
     /** In the order they rotate through, mixing kinds so any three show different sides of Robot. */
     private val ALL: List<Entry> = listOf(
         Entry(Tip("What's the weather tomorrow?"), ToolName.WEATHER),
         Entry(Tip("Set a timer for 10 minutes"), ToolName.SET_TIMER),
-        Entry(Tip("Text Mom I'm on my way"), ToolName.SEND_TEXT) { it.settings.textApp != TextApp.OFF },
+        Entry(Tip("Text Mom I'm on my way"), ToolName.SEND_TEXT, needs = { it.settings.textApp != TextApp.OFF }),
         Entry(Tip("What's on my calendar today?"), ToolName.READ_CALENDAR),
-        Entry(Tip("Ask about a photo", TipKind.PHOTO)) { !it.locked },
+        Entry(Tip("Ask about a photo", TipKind.PHOTO), needs = { !it.locked }),
         Entry(Tip("Remember that I parked on level 3"), ToolName.ADD_NOTE),
         Entry(Tip("How's my battery?"), ToolName.PHONE_STATUS),
-        Entry(Tip("Ask Claude why the sky is blue")) { it.claude },
+        Entry(Tip("Ask Claude why the sky is blue"), online = true, needs = { it.claude }),
         Entry(Tip("Directions to the nearest pharmacy"), ToolName.MAPS_NAVIGATE),
-        Entry(SCREEN) { it.screen },
+        Entry(SCREEN, needs = { it.screen }),
         Entry(Tip("Wake me up at 7:00"), ToolName.SET_ALARM),
         Entry(Tip("Help me free up space"), ToolName.FREE_STORAGE),
         Entry(Tip("Email Sam about dinner on Friday"), ToolName.DRAFT_EMAIL),

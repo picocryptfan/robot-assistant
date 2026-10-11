@@ -329,9 +329,9 @@ near match, a number or address the model wrote, a loose app name), and the near
 it really is must be seen, so Robot says why instead of "Say yes or no." ("Robot isn't sure who or which it is: check
 the card, then tap. Or say no."). A card or offer that sends personal content to Claude (what a read tool or the
 nearest place found for Claude included) needs the tap unless "Voice yes can send personal content" is on ("Tap Send to
-share it with Claude."); a no always works. The decisions are core's `CardAnswer.reply` (tested). The status line says "Waiting for you: tap the card, or answer yes or no". Off ("Answer
-cards by voice"), Robot doesn't listen, and neither the mic nor a spoken yes answers a card; typed answers still work.
-Logged as `card_answer yes=… spoken=…` only.
+share it with Claude."); a no always works. The decisions are core's `CardAnswer.reply` (tested). The status line says
+"Waiting for you: tap the card, or answer yes or no". Off ("Answer cards by voice"), Robot doesn't listen, and neither
+the mic nor a spoken yes answers a card; typed answers still work. Logged as `card_answer yes=… spoken=…` only.
 
 ### The panel
 
@@ -339,7 +339,11 @@ Logged as `card_answer yes=… spoken=…` only.
 - **Tips**: the three suggestion chips rotate through what Robot can do (`core/Tips.kt`, tested): the weather, timers,
   texting by name, the calendar, a photo (opens the camera row), notes, the battery, Ask Claude, the nearest pharmacy,
   the screen (when it came), alarms, freeing space, email, finding a note, the flashlight, adding an event, storage, a
-  fun fact. A different three each time the panel opens (from a random start per process, then in turn), and only what
+  fun fact. A question that only reads on the phone (the calendar, the battery, storage, finding a note, a fun fact, the
+  screen) is asked at once; a tip that would do something (a timer, an alarm, a note, the flashlight, a text, an email,
+  an event, freeing space) or go online (the weather, the nearest pharmacy, Ask Claude) only fills the text field, since
+  its details are an example: nothing happens until you send it. A different three each time the panel opens (from a
+  random start per process, then in turn), and only what
   can work: an action that is Off, texting off, Claude off or unreachable, the lock screen's actions, no camera while
   locked. The screen tip takes the last place once the screen arrives.
 
