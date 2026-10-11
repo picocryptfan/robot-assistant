@@ -3,10 +3,13 @@
 # components and their processes, the recognizer that keeps the assistant across restarts, permissions,
 # the arm64-only native libraries, and (phase 2) the Robot Notes launcher entry, the hand-off apps' <queries>
 # and the three runtime permissions; that the main-process entries stay in the main process, that nothing beyond an
-# allowlist is exported, and that no main-process class in the dex refers to an engine. Usage: tools/verify_apk.sh <apk>
+# allowlist is exported, and that no main-process class in the dex refers to an engine. 0.4.4: the native libraries are
+# exactly an allowlist of names, and Robot's llama.cpp library (when this build has it) exports only its JNI bridge, is
+# reached only from :brain's classes and can't go online or start a process. Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
 BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/36.0.0"
+NDK_BIN="${ANDROID_NDK_HOME:-${ANDROID_HOME:-/opt/android-sdk}/ndk/27.1.12297006}/toolchains/llvm/prebuilt/linux-x86_64/bin"
 EXPECT_CERT=402557a46a491750688a3dff714100fe1d20b2f61193a912358c2edd341a6b6a
 fails=0
 pass() { echo "PASS  $*"; }
@@ -131,6 +134,35 @@ has 'supportsLaunchVoiceAssistFromKeyguard(0x010104f1)=true' "$vi" "supportsLaun
 libs=$(unzip -Z1 "$APK" 'lib/*')
 for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
 echo "$libs" | grep -v '^lib/arm64-v8a/' | grep -q . && fail "non-arm64 libraries" || pass "no other ABIs"
+# Exactly these native libraries, by name. librobot_llama.so (0.4.4): Robot's llama.cpp for your own GGUF file, built by
+# tools/build_llama.sh and loaded by :brain only; a build without it is fine (Settings › Model then says GGUF files can't run).
+for l in $(echo "$libs" | sed -n 's#^lib/arm64-v8a/##p'); do
+  case "$l" in
+    libsherpa-onnx-jni.so|libonnxruntime.so|liblitertlm_jni.so|libLiteRtDispatch_GoogleTensor.so|libandroidx.graphics.path.so|librobot_llama.so) ;;
+    *) fail "unexpected native library $l" ;;
+  esac
+done
+llama=0
+if echo "$libs" | grep -qx 'lib/arm64-v8a/librobot_llama.so'; then
+  llama=1
+  pass "packages librobot_llama.so (GGUF files can run)"
+  if [ -x "$NDK_BIN/llvm-nm" ]; then
+    so=$(mktemp)
+    unzip -p "$APK" lib/arm64-v8a/librobot_llama.so > "$so"
+    others=$("$NDK_BIN/llvm-nm" -D --defined-only "$so" | awk '{ print $3 }' | grep -vE '^(JNI_OnLoad|Java_app_heyrobot_brain_LlamaNative_[A-Za-z]+)$' || true)
+    [ -z "$others" ] && pass "librobot_llama.so exports only its JNI bridge" || fail "librobot_llama.so exports more: $(echo $others | head -c 200)"
+    net=$("$NDK_BIN/llvm-nm" -D --undefined-only "$so" | awk '{ print $2 }' | sed 's/@.*//' |
+      grep -xE 'socket|connect|getaddrinfo|gethostbyname|bind|listen|accept4?|sendto|recvfrom|fork|vfork|clone|daemon|execv[pe]?|execl[pe]?|execve|posix_spawnp?|popen|system' || true)
+    [ -z "$net" ] && pass "librobot_llama.so imports no network or process functions" || fail "librobot_llama.so imports $(echo $net)"
+    needed=$("$NDK_BIN/llvm-readelf" -d "$so" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | grep -vxE 'libc\.so|libm\.so|libdl\.so|liblog\.so' || true)
+    [ -z "$needed" ] && pass "librobot_llama.so needs only the C library and the loader" || fail "librobot_llama.so needs $(echo $needed)"
+    rm -f "$so"
+  else
+    echo "NOTE  no NDK at $NDK_BIN: librobot_llama.so's symbols not checked"
+  fi
+else
+  pass "no librobot_llama.so (this build can't run GGUF files; Settings › Model says so)"
+fi
 echo "$libs" | grep -q CompilerPlugin && fail "compiler plugin packaged" || pass "no compiler plugin"
 # sherpa-onnx's JNI calls the TTS callback through GetMethodID(cls, "invoke", "([F)Ljava/lang/Integer;")
 # (v1.13.8 jni/offline-tts.cc). A Kotlin lambda has no such method and every voice is silent (0.1.2), so the
@@ -147,6 +179,11 @@ engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/n
   awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|people|core)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
   grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude)/')
 [ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine or the Anthropic SDK (dex)" || fail "main-process classes refer to engines or the SDK: $engine_refs"
+# 0.4.4: llama.cpp's bridge is :brain's alone: no class outside app/heyrobot/brain refers to it or to its engine.
+llama_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .L/{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/brain\//) } on' |
+  grep -cE 'Lapp/heyrobot/brain/(LlamaNative|LlamaEngine)')
+[ "$llama_refs" = "0" ] && pass "only :brain's classes refer to LlamaNative and LlamaEngine (dex)" || fail "classes outside :brain refer to llama.cpp's bridge: $llama_refs"
 # The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load.
 sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession);'"; done | wc -l)
 [ "$sdk_classes" = "2" ] && pass "Anthropic SDK client and ClaudeSession in the dex" || fail "Anthropic SDK classes in the dex: $sdk_classes"
@@ -189,6 +226,6 @@ has "assets/espeak-ng-data/lang/gmw/en-US" "$assets" "asset espeak-ng-data/lang/
 echo "$assets" | grep -qE '(encoder|decoder|joiner)\.int8\.onnx|/model(\.fp32|\.int8)?\.onnx|voices\.bin' && fail "a downloadable voice model is packaged" || pass "no downloadable voice model packaged"
 clip=$(unzip -l "$APK" assets/bench/test-clip.s16 | awk 'NR==4{print $1}')
 [ -n "$clip" ] && [ "$clip" -le 200000 ] && pass "benchmark clip ${clip} bytes (<= 200 KB)" || fail "benchmark clip size '$clip'"
-unzip -Z1 "$APK" | grep -qiE '\.(p12|jks|keystore|pass|litertlm)$' && fail "key or model file inside the APK" || pass "no key or model file inside the APK"
+unzip -Z1 "$APK" | grep -qiE '\.(p12|jks|keystore|pass|litertlm|gguf)$' && fail "key or model file inside the APK" || pass "no key or model file inside the APK"
 echo; [ "$fails" -eq 0 ] && echo "ALL CHECKS PASSED" || echo "$fails CHECK(S) FAILED"
 exit $((fails > 0))

@@ -9,7 +9,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Build check (source, Gradle and merged-manifest scan), as the probe's: LiteRT-LM lives only in :brain's
- * GemmaEngine.kt and runs only in the :brain process; sherpa-onnx lives only in the :voice module and runs
+ * GemmaEngine.kt and runs only in the :brain process (0.4.4: llama.cpp too, loaded only by :brain's LlamaNative.kt and
+ * built only by tools/build_llama.sh); sherpa-onnx lives only in the :voice module and runs
  * only in the :voice process; nothing the main (UI) process runs refers to either. Also: the components
  * sit in their processes, the recognizer stays discoverable (the restart finding), exported components
  * are guarded, the permissions are the expected few, nothing but DownloadManager, the Claude SDK, the Open-Meteo client
@@ -50,8 +51,8 @@ class ProcessIsolationTest {
         // Speech to text and text to speech (the voice plan's Kotlin API files) are sherpa-onnx too.
         assertTrue(users.toString(), users.containsAll(listOf("voice/voice/SherpaSpeechToText.kt", "voice/voice/SherpaTextToSpeech.kt")))
         for (f in listOf("OfflineRecognizer.kt", "OfflineStream.kt", "Tts.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
-        // Only the copied sherpa-onnx API loads its native library.
-        assertEquals(emptyList<String>(), usersOf(Regex("""System\.load(Library)?\s*\(""")))
+        // Only the copied sherpa-onnx API loads its native library (and, 0.4.4, :brain's llama.cpp bridge loads Robot's own).
+        assertEquals(listOf("brain/brain/LlamaNative.kt"), usersOf(Regex("""System\.load(Library)?\s*\(""")))
         val sherpa = sources(File(java("voice"), "com/k2fsa"))
         assertTrue(sherpa.any { Regex("""System\.loadLibrary\("sherpa-onnx-jni"\)""").containsMatchIn(it.readText()) })
         for (m in listOf("core", "brain", "app")) assertTrue("$m has sherpa sources", !File(java(m), "com/k2fsa").exists())
@@ -244,6 +245,55 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/ui/MainActivity.kt"), usersOf(Regex("""\bModelStore\.(startDownload|import|verify|delete|allowOwnTpu|cancelDownload)\(""")))
         assertEquals(listOf("app/assistant/BrainLink.kt"), usersOf(Regex("""\bModelStore\.plan\(""")))
         assertEquals(listOf("brain/brain/GemmaEngine.kt", "app/sys/ModelStore.kt").sorted(), usersOf(Regex("""\bLiteRtLmCheck\.check\(""")))
+    }
+
+    /**
+     * 0.4.4, your own GGUF file: llama.cpp lives only in the :brain module and runs only in the :brain process. One library,
+     * librobot_llama.so, built from the pinned llama.cpp source and Robot's committed JNI bridge by tools/build_llama.sh
+     * (never by Gradle), loaded by LlamaNative.kt alone, reached only through LlamaEngine and :brain's Engines; nothing of the
+     * voice or main process refers to either. Its JNI functions are exactly LlamaNative's external functions.
+     */
+    @Test fun llamaCppOnlyInTheBrainProcess() {
+        val native = File(java("brain"), "app/heyrobot/brain/LlamaNative.kt").readText()
+        assertTrue(native.contains("System.loadLibrary(LIB)") && native.contains("const val LIB = \"robot_llama\""))
+        assertEquals(listOf("brain/brain/LlamaNative.kt"), usersOf(Regex("""\bexternal\s+fun\b""")))
+        assertEquals(listOf("brain/brain/LlamaEngine.kt", "brain/brain/LlamaNative.kt"), usersOf(Regex("""\bLlamaNative\b""")))
+        assertEquals(listOf("brain/brain/Engine.kt", "brain/brain/LlamaEngine.kt"), usersOf(Regex("""\bLlamaEngine\b""")))
+        assertEquals(listOf("brain/brain/BrainService.kt", "brain/brain/Engine.kt"), usersOf(Regex("""\bEngines\b""")))
+        // The GGUF content check runs where LiteRT-LM's does: the main app's import check and :brain before a load.
+        assertEquals(listOf("app/sys/ModelStore.kt", "brain/brain/LlamaEngine.kt"), usersOf(Regex("""\bGgufCheck\.check\(""")))
+        // The native sources are :brain's alone; no module builds native code through Gradle.
+        for (m in modules) {
+            assertTrue(m, !File(root, "$m/build.gradle").readText().contains("externalNativeBuild"))
+            if (m != "brain") assertTrue(m, !File(main(m), "cpp").exists())
+        }
+        val cpp = File(main("brain"), "cpp")
+        assertEquals(setOf("CMakeLists.txt", "exports.map", "robot_llama.cpp"), cpp.list()!!.toSet())
+        // Each external function is a JNI function of the bridge, and the bridge exports nothing else.
+        val bridge = File(cpp, "robot_llama.cpp").readText()
+        val externals = Regex("""external\s+fun\s+(\w+)""").findAll(native).map { it.groupValues[1] }.toSet()
+        val jni = Regex("""Java_app_heyrobot_brain_LlamaNative_(\w+)\(""").findAll(bridge).map { it.groupValues[1] }.toSet()
+        assertEquals(setOf("load", "free", "cancel", "trainContext", "prepare", "generate"), externals)
+        assertEquals(externals, jni)
+        val exports = File(cpp, "exports.map").readText()
+        assertTrue(exports.contains("Java_app_heyrobot_brain_LlamaNative_*;") && exports.contains("local:") && exports.contains("*;"))
+        // The library, when built, is only :brain's (gitignored there); no other module packages one of that name.
+        for (m in modules.filter { it != "brain" }) assertTrue(m, !File(main(m), "jniLibs/arm64-v8a/librobot_llama.so").exists())
+        File(main("brain"), "jniLibs").takeIf { it.exists() }?.let { libs ->
+            assertEquals(setOf("arm64-v8a/librobot_llama.so"), libs.walkTopDown().filter { it.isFile }.map { it.relativeTo(libs).path }.toSet())
+        }
+        // The pins the build script checks, as THIRD_PARTY.md states them.
+        val script = File(root, "tools/build_llama.sh").readText()
+        val third = File(root, "THIRD_PARTY.md").readText()
+        for (pin in listOf("b11200", "81bc6b83f827df746eb129235488d325c49cae52", "26aa9265184fb08bf847f3fe843a2d7351985e67757abf270ea366bbe451e07b",
+            "0b2ee513397578a272a4e8a6c12589ef6534371c", "9348b969e042d8890a54b01a463dbe71f5a4c074b5329e9c26a85ef3b68aa19b")) {
+            assertTrue(pin, script.contains(pin) && third.contains(pin))
+        }
+        // The CPU only (no Vulkan, no OpenCL), with KleidiAI, and nothing exported but the bridge.
+        val cmake = File(cpp, "CMakeLists.txt").readText()
+        assertTrue(cmake.contains("GGML_VULKAN GGML_OPENCL") && cmake.contains("set(GGML_CPU_KLEIDIAI ON") && cmake.contains("--version-script"))
+        // The voice process and the main app never reach it (they bind :brain by class name).
+        assertEquals(emptyList<String>(), usersOf(Regex("""\b(LlamaEngine|LlamaNative|Engines|robot_llama)\b"""), ours.filterKeys { !it.startsWith("brain/") }))
     }
 
     /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */
