@@ -339,9 +339,9 @@ screenshots (`updates_light`, `updates_dark`, `updates_font200`).
 
 ### On the phone (updater)
 
-Not yet checked. You need a build of this branch installed as the release-signed app (the updater refuses a
-debug-signed APK against a release-signed install, as Android does), a test repository or the real one, and a GitHub
-token for it while it is private. Watch Settings › Voice › Voice log and `adb logcat -s Robot` (codes only).
+Not yet checked. You need a 0.6.0 build installed as the release-signed app (the updater refuses a debug-signed APK
+against a release-signed install, as Android does), a test repository or the real one, and a GitHub token for it while
+it is private. Watch Settings › Voice › Voice log and `adb logcat -s Robot` (codes only).
 
 1. **Up to date.** With no newer release (or none at all), Settings › About › Updates › **Check now**: "Last checked today
    at …. You're up to date." The About row says "Checked today at …".
