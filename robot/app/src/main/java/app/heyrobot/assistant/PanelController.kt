@@ -652,6 +652,22 @@ object PanelController {
         actions.map { UiAction(newId(), it.tool, it.summary, it.status, it.detail, content = it.content) }, stopped = stopped, error = error,
         claude = claude, readBack = readBack, sources = sources, cost = costMicros.takeIf { it > 0 && VoiceHub.settings.claudeShowCost }?.let { ClaudeCost.line(it / 1e6) })
 
+    /**
+     * "Remove saved screenshots and photos" (the main app): the conversation still held here loses its kept thumbnails
+     * and screen text too, and is saved again without them (its file may have been written back meanwhile).
+     */
+    fun forgetKeptMedia() {
+        var changed = false
+        for (i in chat.indices) {
+            val t = chat[i]
+            if (t.picture != null || t.screenText != null) {
+                chat[i] = t.copy(picture = null, screenText = null)
+                changed = true
+            }
+        }
+        if (changed) persist()
+    }
+
     /** The only way a conversation with screen content gets saved. */
     fun keepConversation() {
         keptByUser = true

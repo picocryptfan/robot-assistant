@@ -363,6 +363,8 @@ fun RobotAppUi(activity: MainActivity) {
         removeSavedMedia = {
             scope.launch {
                 val n = withContext(Dispatchers.IO) { ConversationStore.removeMedia(ctx) }
+                // The panel's live conversation too, or its next save would write them back.
+                Cmd.send(ctx, Cmd.MEDIA_REMOVED)
                 historyTick++
                 say(if (n == 0) "No saved screenshots or photos." else "Removed from $n conversation${if (n == 1) "" else "s"}.")
             }

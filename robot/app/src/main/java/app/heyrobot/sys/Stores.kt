@@ -77,7 +77,10 @@ object ConversationStore {
 
     fun load(ctx: Context, id: String): StoredConversation? = file(ctx, id)?.let(::readOrNull)?.let(ConversationCodec::fromJson)
 
-    /** [VOICE] The panel saves after each reply (never pictures or screen text: ChatTurn has none). */
+    /**
+     * [VOICE] The panel saves after each reply: pictures and screen text only as "Keep screenshots and photos in history"
+     * kept them (ChatTurn.picture and screenText).
+     */
     fun save(ctx: Context, c: StoredConversation) {
         val f = file(ctx, c.id) ?: return
         try { writeAtomic(f, ConversationCodec.toJson(c)) } catch (t: Throwable) { RLog.w("history_save", t) }
@@ -113,6 +116,11 @@ object Cmd {
     const val VOICE_BENCH = "voice_bench"
     /** The Claude API key was deleted: the voice process drops its client and ends Claude mode. */
     const val CLAUDE_KEY = "claude_key"
+    /**
+     * "Remove saved screenshots and photos" ran: the voice process drops them from the conversation it still holds, which
+     * would otherwise write them back with its next save.
+     */
+    const val MEDIA_REMOVED = "media_removed"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"
