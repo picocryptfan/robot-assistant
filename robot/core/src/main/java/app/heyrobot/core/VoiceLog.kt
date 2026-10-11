@@ -138,6 +138,10 @@ enum class VoiceEvent(val id: Int) {
      * b = [ScreenData] for the screen's text, c = [ScreenData] for the screenshot.
      */
     SCREEN_SHARED(60),
+    /** Pick in Cheogram (0.4.0): a = [PickOutcome], b = 1 if Cheogram named the account, c = 1 if you chose to remember them. */
+    CHEOGRAM_PICK(61),
+    /** A text handed to Cheogram (0.4.0): a = [CheogramRoute], b = 1 if an earlier route didn't open and this one did. */
+    CHEOGRAM_HANDOFF(62),
     ;
 
     companion object {
@@ -197,6 +201,17 @@ object CaptureFx {
             .joinToString(" and ").ifEmpty { "no effects" }
         return out.joinToString(" · ")
     }
+}
+
+/** What came of "Pick in Cheogram" (never who). */
+enum class PickOutcome(override val id: Int, override val title: String) : LogCode {
+    PICKED(1, "someone picked"), CANCELLED(2, "nobody picked"), NO_ADDRESS(3, "Cheogram's answer had no address Robot can use"),
+    NO_LIST(4, "Cheogram's list didn't open"),
+}
+
+/** How a text was handed to Cheogram. */
+enum class CheogramRoute(override val id: Int, override val title: String) : LogCode {
+    ACCOUNT(1, "the chat in its account"), LINK(2, "the xmpp: link"), SHARE(3, "the share screen"), LIST(4, "the contact list, to pick"),
 }
 
 enum class ListenWhy(override val id: Int, override val title: String) : LogCode {
@@ -518,6 +533,9 @@ object VoiceLogText {
             VoiceEvent.CAPTURE_INFO -> "Capture opened: " + (when (a) { 1 -> "silenced by Android"; 0 -> "not silenced"; else -> "silencing unknown" }) +
                 (if (b > 0) " · microphone at " + String.format(Locale.US, "%.1f kHz", b / 10.0) else "") + " · " + CaptureFx.words(c)
             VoiceEvent.BARGE_HIT -> "Barge-in test heard " + keyword(a) + (if (b >= 0) " " + secs(b) + " in" else "") + ": " + code(BargeHitKind.entries, c)
+            VoiceEvent.CHEOGRAM_PICK -> "Pick in Cheogram: " + code(PickOutcome.entries, a) + (if (b == 1) " · with its account" else "") +
+                (if (c == 1) " · remembered" else "")
+            VoiceEvent.CHEOGRAM_HANDOFF -> "Text handed to Cheogram: " + code(CheogramRoute.entries, a) + (if (b == 1) " (the first way didn't open)" else "")
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
         }

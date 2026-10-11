@@ -206,15 +206,25 @@ object Recipients {
         return Prepared.Ready(oneName?.let(named) ?: asked, choices = choices, more = options.size - choices.size + hiddenPeople)
     }
 
+    /** The card's line under "Pick in Cheogram" and "Choose in Cheogram". */
+    const val PICK_NOTE = "“Pick in Cheogram” opens Cheogram's contact list, titled “Create shortcut”: nothing goes on your home screen, " +
+        "and Robot remembers who you pick. “Choose in Cheogram” opens its share screen instead."
+
     /**
      * send_text found no one in the contacts to text ([reason] says why, as the card and the model are told). With
-     * Cheogram as the texting app (installed) the card offers "Choose in Cheogram" instead: Cheogram keeps its own roster
-     * and only reads the phone's contacts, so the person may be there. It always asks. The SMS app has no such list: not
-     * found.
+     * Cheogram as the texting app (installed) the card offers Cheogram's own list instead: Cheogram keeps its own roster
+     * and only reads the phone's contacts, so the person may be there. [pick]: Cheogram's contact list can be opened for
+     * a result ("Pick in Cheogram": Robot learns who was picked and opens their chat), offered first with the share screen
+     * ("Choose in Cheogram") as the fallback; otherwise only the share screen. It always asks. The SMS app has no such
+     * list: not found.
      */
-    fun notFound(asked: Action.SendText, reason: String, via: TextVia): Prepared =
-        if (via == TextVia.CHEOGRAM) Prepared.Ready(asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK)), mustAsk = true)
-        else Prepared.Refused(ActionStatus.NOT_FOUND, reason)
+    fun notFound(asked: Action.SendText, reason: String, via: TextVia, pick: Boolean = false): Prepared {
+        if (via != TextVia.CHEOGRAM) return Prepared.Refused(ActionStatus.NOT_FOUND, reason)
+        val share = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK))
+        if (!pick) return Prepared.Ready(share, mustAsk = true)
+        val list = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_LIST))
+        return Prepared.Ready(list, mustAsk = true, choices = listOf(Choice("Pick in Cheogram", list), Choice("Choose in Cheogram", share)), note = PICK_NOTE)
+    }
 
     /** Mobile numbers first (texts), then the rest in the contact's order; the same digits only once. */
     fun mobileFirst(phones: List<ContactPhone>): List<ContactPhone> =

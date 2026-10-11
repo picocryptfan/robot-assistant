@@ -78,6 +78,8 @@ data class RobotSettings(
     val eventCalendar: Long = CalendarPick.AUTO,
     /** Length of a new event when no end or duration was said. */
     val eventMinutes: Int = 60,
+    /** Settings › People › "Remember who I pick": Robot offers to remember who you pick in Cheogram or on a card. */
+    val rememberPicks: Boolean = true,
     /** The wake phrases (Settings › Voice › Wake words); "hey robot" at Medium until the user changes it. */
     val wakePhrases: List<WakePhrase> = WakePhrases.DEFAULT,
     /** Settings › Voice › "Hear me while Robot talks". */
@@ -137,6 +139,7 @@ data class RobotSettings(
         emailApp?.let { put("emailApp", it.name) }
         put("eventCalendar", eventCalendar)
         put("eventMinutes", eventMinutes)
+        put("rememberPicks", rememberPicks)
         put("wakePhrases", org.json.JSONArray().apply {
             for (p in wakePhrases) put(JSONObject().put("id", p.id).put("text", p.text).put("sensitivity", p.sensitivity.name).put("enabled", p.enabled))
         })
@@ -229,6 +232,7 @@ data class RobotSettings(
                 emailApp = enumValues<EmailApp>().firstOrNull { it.name == o.optString("emailApp") },
                 eventCalendar = o.optLong("eventCalendar", d.eventCalendar),
                 eventMinutes = clampEventMinutes(o.optInt("eventMinutes", d.eventMinutes)),
+                rememberPicks = o.optBoolean("rememberPicks", d.rememberPicks),
                 wakePhrases = o.optJSONArray("wakePhrases")?.let(::phrases) ?: d.wakePhrases,
                 bargeIn = enumOr(o.optString("bargeIn"), d.bargeIn),
                 playback = enumOr(o.optString("playback"), d.playback),

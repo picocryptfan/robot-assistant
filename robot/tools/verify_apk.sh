@@ -92,6 +92,9 @@ exported=$(echo "$mf" | awk '
   END { if (n != "" && ex) print n }' | sort | tr '\n' ' ')
 allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
 [ "$exported" = "$allow" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
+# People (0.4.0): "Pick in Cheogram" runs in :voice and isn't exported (only the panel's card starts it).
+has ':voice' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity in :voice"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity not exported"
 # Ask Claude: the key window runs in :voice and isn't exported (the main app never sees the key).
 has ':voice' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity not exported"

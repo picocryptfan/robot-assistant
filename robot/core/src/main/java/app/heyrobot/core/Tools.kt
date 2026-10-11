@@ -183,12 +183,19 @@ sealed class Action {
         override fun describe() = when {
             target == null -> "Text **$to**"
             target.via == TextVia.CHEOGRAM_PICK -> "${target.display} Choose who to text in Cheogram"
+            target.via == TextVia.CHEOGRAM_LIST -> "${target.display} Pick who to text in Cheogram"
             target.name == null -> "Text **${target.display}** in ${target.appName}"
             else -> "Text **${target.name}** (${target.display}) in ${target.appName}" + if (target.from?.learned == true) LEARNED else ""
         }
         override fun body() = message
         /** The button names the person too: the card's top line may be out of sight on a long message. */
-        override val confirmLabel get() = target?.let { if (it.via == TextVia.CHEOGRAM_PICK) "Choose in Cheogram" else "Open in ${it.appName} for ${it.name ?: it.display}" }
+        override val confirmLabel get() = target?.let {
+            when (it.via) {
+                TextVia.CHEOGRAM_PICK -> "Choose in Cheogram"
+                TextVia.CHEOGRAM_LIST -> "Pick in Cheogram"
+                else -> "Open in ${it.appName} for ${it.name ?: it.display}"
+            }
+        }
     }
 
     data class DraftEmail(val to: String, val subject: String, val text: String, val target: MailTarget? = null) : Action() {
@@ -258,7 +265,10 @@ data class TextTarget(
     val name: String?,
     /** For Cheogram the XMPP address (a number goes through the SMS gateway); for the SMS app the E.164 number. */
     val address: String,
-    /** What the card shows: "+1 514-555-0101" or the XMPP address; for [TextVia.CHEOGRAM_PICK], why no contact fitted. */
+    /**
+     * What the card shows: "+1 514-555-0101" or the XMPP address; for [TextVia.CHEOGRAM_PICK] and [TextVia.CHEOGRAM_LIST],
+     * why no contact fitted.
+     */
     val display: String,
     val appName: String,
     val via: TextVia,
@@ -280,6 +290,12 @@ enum class TextVia {
      * (its roster holds people the phone's contacts don't). No [TextTarget.address].
      */
     CHEOGRAM_PICK,
+    /**
+     * No contact fitted: Cheogram's contact list opens for a result (its "Create shortcut" screen, ACTION_CREATE_SHORTCUT;
+     * nothing goes on the home screen), Robot offers to remember who you picked, then opens their chat with the message.
+     * No [TextTarget.address].
+     */
+    CHEOGRAM_LIST,
 }
 
 /** Where an email draft goes. [appName] null: the system chooser asks which app. [from]: the contact's place it came from. */

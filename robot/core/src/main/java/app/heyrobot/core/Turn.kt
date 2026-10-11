@@ -80,9 +80,11 @@ sealed class Prepared {
     /**
      * [mustAsk]: show the card even where the action could just run (an app name that matched loosely, a person not
      * surely the one named). [choices]: several people or numbers fit; the card lists them and the person taps one
-     * (so it always asks). [more]: how many more fitted than the card lists.
+     * (so it always asks). [more]: how many more fitted than the card lists. [note]: the card's line while it waits
+     * (what its buttons do).
      */
-    data class Ready(val action: Action, val mustAsk: Boolean = false, val choices: List<Choice> = emptyList(), val more: Int = 0) : Prepared()
+    data class Ready(val action: Action, val mustAsk: Boolean = false, val choices: List<Choice> = emptyList(), val more: Int = 0,
+        val note: String? = null) : Prepared()
     data class Refused(val status: ActionStatus, val detail: String) : Prepared()
 }
 
@@ -375,7 +377,7 @@ class TurnRunner(
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, untrusted || a.mustAsk || a.choices.isNotEmpty(), remote)
         val chosen = when (decision) {
             GateDecision.RUN -> a.action
-            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more)
+            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note)
             GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
@@ -396,11 +398,11 @@ class TurnRunner(
     }
 
     /**
-     * Shows the card and waits: the action ("Do it"), the person or number tapped among [choices], or null (Cancel). A
-     * turn stopped meanwhile leaves the card declined, never waiting.
+     * Shows the card and waits: the action ("Do it"), the person or number tapped among [choices], or null (Cancel).
+     * [note]: the card's line while it waits. A turn stopped meanwhile leaves the card declined, never waiting.
      */
-    private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int): Action? {
-        view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, null, a, body = a.body(), choices = choices, more = more, remote = remote))
+    private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int, note: String? = null): Action? {
+        view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, note, a, body = a.body(), choices = choices, more = more, remote = remote))
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
             confirmations.ask(id)

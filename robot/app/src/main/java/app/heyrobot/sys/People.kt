@@ -16,6 +16,8 @@ import android.provider.Telephony
 import android.telephony.PhoneNumberUtils
 import android.telephony.TelephonyManager
 import app.heyrobot.core.AddressBook
+import app.heyrobot.core.CheogramLinks
+import app.heyrobot.core.CheogramPick
 import app.heyrobot.core.ContactCard
 import app.heyrobot.core.ContactIds
 import app.heyrobot.core.ContactMatch
@@ -26,6 +28,7 @@ import app.heyrobot.core.PeopleStore
 import app.heyrobot.core.PhoneKind
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.XmppAddress
+import app.heyrobot.core.XmppLink
 import java.io.File
 import java.util.Locale
 
@@ -162,6 +165,44 @@ object HandOffApps {
     fun robotPage(ctx: Context, page: String): Intent =
         Intent().setComponent(ComponentName(ctx.packageName, "app.heyrobot.ui.MainActivity")).putExtra(AppPages.EXTRA, page)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+}
+
+/**
+ * Cheogram's own screens (docs/people.md "Ways in" 1 and 2). Both builds keep Conversations' class names for them, and
+ * Robot names them explicitly, so they open whatever their intent filters say.
+ */
+object CheogramIntents {
+    /** Cheogram's searchable contact list, started for a result (its "Create shortcut" screen; nothing goes on the home screen). */
+    fun pick(pkg: String): Intent = Intent(Intent.ACTION_CREATE_SHORTCUT).setClassName(pkg, CheogramLinks.SHORTCUT_ACTIVITY)
+
+    /** The installed Cheogram exports its contact list for a result. */
+    fun canPick(ctx: Context, pkg: String): Boolean = HandOffApps.resolves(ctx, pick(pkg))
+
+    /**
+     * The chat with [jid] in your [account], with [body] in its box: StartConversationActivity reads the xmpp: link (body
+     * encoded twice, as XmppLink writes it) and the "account" extra, so a contact in several accounts needs no search.
+     */
+    fun chat(pkg: String, jid: String, account: String, body: String): Intent =
+        Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(jid, body))).setClassName(pkg, CheogramLinks.START_CONVERSATION)
+            .putExtra(CheogramLinks.EXTRA_ACCOUNT, account)
+
+    /** The xmpp: link alone (Cheogram picks the account; with the contact in several, it shows a search first). */
+    fun link(pkg: String, jid: String, body: String): Intent = Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(jid, body))).setPackage(pkg)
+
+    /** Cheogram's share screen with [body]: you choose who it goes to there. */
+    fun share(pkg: String, body: String): Intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, body).setPackage(pkg)
+
+    /**
+     * Who was picked, from the list's result: EXTRA_SHORTCUT_NAME, and EXTRA_SHORTCUT_INTENT's xmpp: link and "account"
+     * extra. The icon is never read, and nothing is pinned. Null when the result holds no usable address.
+     */
+    @Suppress("DEPRECATION") // The legacy shortcut extras: what ACTION_CREATE_SHORTCUT still answers with.
+    fun picked(data: Intent?): CheogramPick? = try {
+        val target = data?.getParcelableExtra(Intent.EXTRA_SHORTCUT_INTENT, Intent::class.java)
+        CheogramLinks.pick(data?.getStringExtra(Intent.EXTRA_SHORTCUT_NAME), target?.dataString, target?.getStringExtra(CheogramLinks.EXTRA_ACCOUNT))
+    } catch (_: Exception) {
+        null
+    }
 }
 
 /** Pages of the main app another process (the panel) or the Robot Notes launcher entry can open. */

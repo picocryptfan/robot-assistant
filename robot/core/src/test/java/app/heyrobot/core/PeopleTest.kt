@@ -222,6 +222,22 @@ class PeopleTest {
         assertEquals("Open in Cheogram for Mom", mom.confirmLabel)
     }
 
+    @Test fun pickInCheogramComesFirstAndTheShareScreenStaysAsTheFallback() {
+        // 0.4.0: Cheogram's contact list opens for a result, so Robot learns who was picked; its share screen stays.
+        val asked = Action.SendText("Mom", "I'm running late")
+        val p = Recipients.notFound(asked, "No contact matches “Mom”.", TextVia.CHEOGRAM, pick = true) as Prepared.Ready
+        assertTrue(p.mustAsk)
+        assertEquals(listOf("Pick in Cheogram", "Choose in Cheogram"), p.choices.map { it.label })
+        assertEquals(listOf(TextVia.CHEOGRAM_LIST, TextVia.CHEOGRAM_PICK), p.choices.map { (it.action as Action.SendText).target!!.via })
+        // The card says nothing goes on the home screen (Cheogram's screen is titled "Create shortcut").
+        assertTrue(p.note!!.contains("nothing goes on your home screen"))
+        assertEquals("No contact matches “Mom”. Pick who to text in Cheogram", p.action.describe())
+        assertEquals("Pick in Cheogram", p.action.confirmLabel)
+        assertEquals("I'm running late", p.action.body())
+        // With the SMS app: still not found.
+        assertEquals(ActionStatus.NOT_FOUND, (Recipients.notFound(asked, "x", TextVia.SMS, pick = true) as Prepared.Refused).status)
+    }
+
     @Test fun mobileNumbersComeFirstForTexts() {
         val r = Recipients.forText(listOf(mom), xmppOk = true)
         assertEquals(listOf("+1 514-555-0101", "514 555 0199"), r.map { it.address })

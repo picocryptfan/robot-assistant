@@ -233,7 +233,41 @@ object PeopleEdit {
         return upsert(list, p.copy(confirmed = true, updatedAt = now))
     }
 
+    /** [p] with [alias] (as said: "mom") unless it is already their name or an alias. */
+    private fun withAlias(p: Person, alias: String?): Person {
+        val a = alias?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { ContactMatcher.words(it).isNotEmpty() } ?: return p
+        if (People.sameName(a, p.name) || p.aliases.any { People.sameName(it, a) }) return p
+        return p.copy(aliases = p.aliases + a)
+    }
+
+    /** [alias] taken from everyone but [keep]: a name you gave one person means only them from now on. */
+    private fun takeAlias(list: List<Person>, alias: String?, keep: String): List<Person> {
+        if (alias.isNullOrBlank()) return list
+        return list.map { p -> if (p.id != keep && p.aliases.any { People.sameName(it, alias) }) p.copy(aliases = p.aliases.filter { !People.sameName(it, alias) }) else p }
+    }
+
     private fun sameJid(a: String, b: String) = a.trim().equals(b.trim(), ignoreCase = true)
+
+    /**
+     * Someone picked in Cheogram's list, remembered: the person with that XMPP address gets [spoken] (what you said:
+     * "mom") as an alias and the account it came from, and is confirmed; or a new person, named as Cheogram names them.
+     * Returns the list and the person.
+     */
+    fun rememberPick(list: List<Person>, spoken: String?, pick: CheogramPick, now: Long, newId: () -> String = PeopleStore::newId): Pair<List<Person>, Person> {
+        val old = list.firstOrNull { p -> p.xmpp.any { sameJid(it.jid, pick.jid) } }
+        val p = if (old == null) {
+            Person(newId(), pick.name, xmpp = listOf(XmppAddress(pick.jid, pick.account)), source = PersonSource.CHEOGRAM_PICK, confirmed = true, updatedAt = now)
+        } else {
+            // A learned name was the sender's choice: Cheogram's name (your roster's, or your contacts') replaces it.
+            old.copy(
+                name = if (old.confirmed) old.name else pick.name,
+                xmpp = old.xmpp.map { if (sameJid(it.jid, pick.jid) && it.account == null) it.copy(account = pick.account) else it },
+                confirmed = true, updatedAt = now,
+            )
+        }
+        val named = People.clean(withAlias(p, spoken))
+        return upsert(takeAlias(list, spoken, named.id), named) to named
+    }
 
     /** What an import did: people added, people who got something new, cards left out (nothing to reach them by). */
     data class Merged(val people: List<Person>, val added: Int, val updated: Int, val skipped: Int)

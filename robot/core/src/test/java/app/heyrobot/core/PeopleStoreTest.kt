@@ -81,6 +81,36 @@ class PeopleStoreTest {
         assertFalse(People.matches(bob, "zoe"))
     }
 
+    // ------------------------------------------------------------------ Cheogram pick
+
+    @Test fun aPickInCheogramIsRememberedUnderTheNameYouSaid() {
+        val pick = CheogramPick("Maman Martin", "+15145550101@cheogram.com", "me@jmp.chat")
+        val (l1, p1) = PeopleEdit.rememberPick(emptyList(), "mom", pick, 10, ids)
+        assertEquals(listOf("mom"), p1.aliases)
+        assertEquals("Maman Martin", p1.name)
+        assertEquals(listOf(XmppAddress("+15145550101@cheogram.com", "me@jmp.chat")), p1.xmpp)
+        assertEquals(PersonSource.CHEOGRAM_PICK, p1.source)
+        assertTrue(p1.confirmed)
+        assertEquals(listOf(p1), l1)
+        // The same person picked again for "maman": one more alias, not a second person.
+        val (l2, p2) = PeopleEdit.rememberPick(l1, "maman", pick, 11, ids)
+        assertEquals(1, l2.size)
+        assertEquals(listOf("mom", "maman"), p2.aliases)
+        // Said as Cheogram names them: no alias needed.
+        val (_, p3) = PeopleEdit.rememberPick(emptyList(), "maman martin", pick, 12, ids)
+        assertEquals(emptyList<String>(), p3.aliases)
+        // A learned person with that address takes Cheogram's name and is confirmed; an account missing is added.
+        val learned = Person("L", "Spoofed Name", xmpp = listOf(XmppAddress("+15145550101@cheogram.com")), source = PersonSource.NOTIFICATION, confirmed = false)
+        val (_, p4) = PeopleEdit.rememberPick(listOf(learned), "mom", pick, 13, ids)
+        assertEquals("Maman Martin", p4.name)
+        assertTrue(p4.confirmed)
+        assertEquals("me@jmp.chat", p4.xmpp.single().account)
+        // An alias moves: "mom" now means only the one you picked.
+        val other = Person("o", "Old Mom", aliases = listOf("Mom"), phones = listOf(ContactPhone("5145550000", PhoneKind.MOBILE, "Mobile")))
+        val (l5, _) = PeopleEdit.rememberPick(listOf(other), "mom", pick, 14, ids)
+        assertEquals(emptyList<String>(), l5.first { it.id == "o" }.aliases)
+    }
+
     // ------------------------------------------------------------------ importing
 
     @Test fun importsMergeByNumberEmailAndAddress() {

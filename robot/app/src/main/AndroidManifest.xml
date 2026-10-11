@@ -64,8 +64,9 @@
         </intent>
         <package android:name="app.organicmaps" />
         <!-- Phase 2 hand-offs: Cheogram (texts, xmpp:; and SEND text/plain to its share screen when no contact fits,
-             covered by its <package> entries), Proton Mail (mailto:), the SMS app (smsto:), the calendar app's editor
-             (INSERT). Drafts only: the owner presses Send there. -->
+             and since 0.4.0 its contact list and StartConversationActivity by class, all covered by its <package>
+             entries), Proton Mail (mailto:), the SMS app (smsto:), the calendar app's editor (INSERT). Drafts only: you
+             press Send there. -->
         <package android:name="com.cheogram.android" />
         <package android:name="com.cheogram.android.playstore" />
         <package android:name="ch.protonmail.android" />
@@ -186,6 +187,16 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Robot.Translucent" />
+        <!-- "Pick in Cheogram" (0.4.0): opens Cheogram's contact list for a result (ACTION_CREATE_SHORTCUT, nothing goes on the
+             home screen), offers to remember who was picked in People, then opens their chat with the text. Started by the
+             panel's card only. -->
+        <activity
+            android:name=".assistant.CheogramPickActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity="app.heyrobot.pick"
             android:theme="@style/Theme.Robot.Translucent" />
         <!-- The camera app writes the photo here (app cache, deleted right after it is read). -->
         <provider
