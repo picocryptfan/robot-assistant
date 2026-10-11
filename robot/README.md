@@ -85,7 +85,8 @@ because of a choice.
 The numbers were measured on this phone (Pixel 10 Pro, LiteRT-LM 0.18.0, lab runs of 2026-10-09): E2B on the TPU read
 prompts at 495 to 566 tokens a second and wrote 17.3 to 18.1, at 3.5 W; E4B on the CPU read 70 and wrote 8.1, took 8.3 s to
 the first token of a 549-token prompt, held 4,120 MB (RSS) at 8.85 W, and its first load took 8.9 s and wrote 2.54 GB of
-cache. "About 21 s" and "about 3 s" are for a cold prompt of about 1,500 tokens, the size of Robot's fixed prompt with its
+cache (Google's E4B file; Uncensored's "the same" is expected from its identical layout, not yet measured: phone test 10).
+"About 21 s" and "about 3 s" are for a cold prompt of about 1,500 tokens, the size of Robot's fixed prompt with its
 tools: the first question of a conversation, or after a tool group is added. Robot keeps the conversation going, so a
 follow-up reads only the new turn. On the CPU the E4B models use about 2.5 times the power while they write (more battery,
 more heat), and look at photos on the CPU too (seconds, against under one on the TPU). Settings › Model shows each one's
