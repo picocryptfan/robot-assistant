@@ -254,20 +254,26 @@ object Recipients {
     const val PICK_NOTE = "“Pick in Cheogram” opens Cheogram's contact list, titled “Create shortcut”: nothing goes on your home screen, " +
         "and Robot remembers who you pick. “Choose in Cheogram” opens its share screen instead."
 
+    /** Added to the card's line when Robot may not read the phone's contacts (its "Allow contacts" button). */
+    const val ALLOW_NOTE = "Robot can't read your contacts: allow it to find people there too."
+
     /**
      * send_text found no one in the contacts to text ([reason] says why, as the card and the model are told). With
      * Cheogram as the texting app (installed) the card offers Cheogram's own list instead: Cheogram keeps its own roster
      * and only reads the phone's contacts, so the person may be there. [pick]: Cheogram's contact list can be opened for
      * a result ("Pick in Cheogram": Robot learns who was picked and opens their chat), offered first with the share screen
      * ("Choose in Cheogram") as the fallback; otherwise only the share screen. It always asks. The SMS app has no such
-     * list: not found.
+     * list: not found. [allowContacts]: Robot may not read the phone's contacts (the person may be there), so the card
+     * also offers to allow it; neither Cheogram's list nor its share screen needs that permission.
      */
-    fun notFound(asked: Action.SendText, reason: String, via: TextVia, pick: Boolean = false): Prepared {
-        if (via != TextVia.CHEOGRAM) return Prepared.Refused(ActionStatus.NOT_FOUND, reason)
+    fun notFound(asked: Action.SendText, reason: String, via: TextVia, pick: Boolean = false, allowContacts: Boolean = false): Prepared {
+        if (via != TextVia.CHEOGRAM) return Prepared.Refused(if (allowContacts) ActionStatus.NEEDS_PERMISSION else ActionStatus.NOT_FOUND, reason)
         val share = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK))
-        if (!pick) return Prepared.Ready(share, mustAsk = true)
+        val allow = if (allowContacts) ALLOW_NOTE else null
+        if (!pick) return Prepared.Ready(share, mustAsk = true, note = allow, allowContacts = allowContacts)
         val list = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_LIST))
-        return Prepared.Ready(list, mustAsk = true, choices = listOf(Choice("Pick in Cheogram", list), Choice("Choose in Cheogram", share)), note = PICK_NOTE)
+        return Prepared.Ready(list, mustAsk = true, choices = listOf(Choice("Pick in Cheogram", list), Choice("Choose in Cheogram", share)),
+            note = listOfNotNull(PICK_NOTE, allow).joinToString(" "), allowContacts = allowContacts)
     }
 
     /** Mobile numbers first (texts), then the rest in the contact's order; the same digits only once. */

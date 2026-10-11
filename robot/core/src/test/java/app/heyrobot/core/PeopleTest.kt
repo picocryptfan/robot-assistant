@@ -236,6 +236,22 @@ class PeopleTest {
         assertEquals("I'm running late", p.action.body())
         // With the SMS app: still not found.
         assertEquals(ActionStatus.NOT_FOUND, (Recipients.notFound(asked, "x", TextVia.SMS, pick = true) as Prepared.Refused).status)
+        assertFalse(p.allowContacts)
+    }
+
+    @Test fun withoutTheContactsPermissionCheogramIsStillOffered() {
+        // Review 0.4.0 #11: Cheogram's list and its share screen need no permission, so an unknown name offers them,
+        // and the card also offers to allow the contacts (the person may be there).
+        val asked = Action.SendText("Mom", "I'm running late")
+        val p = Recipients.notFound(asked, "No one in People matches “Mom”.", TextVia.CHEOGRAM, pick = true, allowContacts = true) as Prepared.Ready
+        assertEquals(listOf("Pick in Cheogram", "Choose in Cheogram"), p.choices.map { it.label })
+        assertTrue(p.allowContacts)
+        assertTrue(p.note!!.contains("nothing goes on your home screen") && p.note!!.endsWith(Recipients.ALLOW_NOTE))
+        val share = Recipients.notFound(asked, "x", TextVia.CHEOGRAM, pick = false, allowContacts = true) as Prepared.Ready
+        assertTrue(share.allowContacts && share.choices.isEmpty())
+        assertEquals(Recipients.ALLOW_NOTE, share.note)
+        // The SMS app has no list: the permission is what's needed.
+        assertEquals(ActionStatus.NEEDS_PERMISSION, (Recipients.notFound(asked, "x", TextVia.SMS, allowContacts = true) as Prepared.Refused).status)
     }
 
     @Test fun severalChoicesCanBeRemembered() {

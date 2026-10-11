@@ -158,6 +158,8 @@ data class UiAction(
     val picture: Bitmap? = null,
     /** The tick box next to the choices that remembers the one tapped ("Always use this for “mom”"). */
     val remember: String? = null,
+    /** While it waits, an "Allow contacts" button too. */
+    val allowContacts: Boolean = false,
 )
 
 /**
@@ -1609,7 +1611,7 @@ object PanelController {
             // What a read tool finds goes to Claude only after this tap: the button says so.
             val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) "Share with Claude" else c.action?.confirmLabel
             upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo, c.content, c.more,
-                c.cancel, c.handOff, remember = c.remember))
+                c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()

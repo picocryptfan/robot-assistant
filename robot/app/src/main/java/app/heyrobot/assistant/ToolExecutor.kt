@@ -247,9 +247,12 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val book = PeopleFiles.book(ctx)
         val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.text(xmppOk = via == TextVia.CHEOGRAM))
         if (all.isEmpty()) {
-            if (!Contacts.granted(ctx)) return needContacts()
-            // Not in the contacts: with Cheogram, the person may be in its own roster (the card offers its list).
-            return Recipients.notFound(a, "No contact matches “$to”.", via, pick = canPick(cheogram))
+            val granted = Contacts.granted(ctx)
+            if (!granted && via != TextVia.CHEOGRAM) return needContacts()
+            // Not in the contacts: with Cheogram, the person may be in its own roster (the card offers its list, which
+            // needs no permission). Contacts Robot may not read: the card also offers to allow them.
+            return Recipients.notFound(a, if (granted) "No contact matches “$to”." else "No one in People matches “$to”, and Robot can't read your contacts.",
+                via, pick = canPick(cheogram), allowContacts = !granted)
         }
         val matches = all.take(Recipients.MAX_PEOPLE)
         val options = Recipients.forText(book.cards(matches) { Contacts.cards(ctx, it) }, xmppOk = via == TextVia.CHEOGRAM).mapNotNull { r ->
@@ -262,7 +265,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         }.distinctBy { (it.action as Action.SendText).target?.address }.let { Recipients.trusted(matches, it) }
         // Fixed wording: the contacts' names are not sent to the model here.
         if (options.isEmpty()) {
-            return Recipients.notFound(a, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.", via, pick = canPick(cheogram))
+            return Recipients.notFound(a, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.", via,
+                pick = canPick(cheogram), allowContacts = !Contacts.granted(ctx))
         }
         return Recipients.prepare(a, matches, options, all.size - matches.size, Recipients.rememberLabel(to)) { name -> a.copy(to = name) }
     }
