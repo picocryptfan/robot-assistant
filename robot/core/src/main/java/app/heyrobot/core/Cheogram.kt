@@ -1,5 +1,7 @@
 package app.heyrobot.core
 
+import java.util.Locale
+
 // Pure. What Robot reads from Cheogram (docs/people.md, research in research-contacts.md): the person picked in its
 // contact list, the "<account>#<jid>" id of a chat's shortcut, and the sender of a 1:1 chat's notification. Cheogram is
 // a fork of Conversations; its activities keep the eu.siacs.conversations package in both builds.
@@ -24,7 +26,7 @@ object CheogramLinks {
      */
     fun pick(name: String?, uri: String?, account: String?): CheogramPick? {
         val jid = XmppLink.jid(uri) ?: return null
-        val acct = account?.trim()?.takeIf { Addresses.isAddress(it) }
+        val acct = account?.trim()?.lowercase(Locale.ROOT)?.takeIf { Addresses.isAddress(it) }
         val n = name?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() } ?: jid.substringBeforeLast('@')
         return CheogramPick(ToolCalls.safeTake(n, People.MAX_NAME), jid, acct)
     }
@@ -55,6 +57,6 @@ object CheogramNotices {
         if (name.isEmpty() || name.equals(contact, ignoreCase = true) || name.equals(contact.substringBeforeLast('@'), ignoreCase = true)) return null
         if (Addresses.isPhone(name) || Addresses.isAddress(name)) return null
         if (!Addresses.isJid(contact)) return null
-        return CheogramSender(ToolCalls.safeTake(name, People.MAX_NAME), contact, account)
+        return CheogramSender(ToolCalls.safeTake(name, People.MAX_NAME), contact, account.lowercase(Locale.ROOT))
     }
 }

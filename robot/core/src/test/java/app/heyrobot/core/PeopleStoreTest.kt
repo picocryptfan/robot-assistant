@@ -24,6 +24,22 @@ class PeopleStoreTest {
 
     // ------------------------------------------------------------------ the file
 
+    @Test fun onlyAnAddressPickedInCheogramOpensInItsAccount() {
+        // Review 0.4.0 #4: Cheogram opens a chat in a named account only for a contact of that account (its list);
+        // anyone else goes by the plain link.
+        val card = ContactCard("r:x", "Zoé", xmpp = listOf(XmppAddress("zoe@example.org", "me@jmp.chat", picked = true), XmppAddress("z2@example.org", "me@jmp.chat")))
+        assertEquals(listOf("me@jmp.chat", null), Recipients.forText(listOf(card), xmppOk = true).map { it.account })
+        // A pick refreshes the account and marks it picked; accounts are kept in lower case, as Cheogram compares them.
+        val old = listOf(Person("z", "Zoé", xmpp = listOf(XmppAddress("zoe@example.org", "old@example.org"))))
+        val (_, p) = PeopleEdit.rememberPick(old, "zoé", CheogramPick("Zoé", "zoe@example.org", "me@jmp.chat"), 1, ids)
+        assertEquals(XmppAddress("zoe@example.org", "me@jmp.chat", picked = true), p.xmpp.single())
+        assertEquals("me@jmp.chat", People.clean(Person("y", "Y", xmpp = listOf(XmppAddress("y@example.org", " Me@JMP.chat ", picked = true)))).xmpp.single().account)
+        // No account, nothing picked.
+        assertEquals(XmppAddress("y@example.org"), People.clean(Person("y", "Y", xmpp = listOf(XmppAddress("y@example.org", " ", picked = true)))).xmpp.single())
+        val back = PeopleCodec.fromJson(PeopleCodec.toJson(listOf(p)))
+        assertTrue(back.single().xmpp.single().picked)
+    }
+
     @Test fun theFileRoundTripsAndToleratesDamage() {
         val learned = Person("p3", "Zoé", xmpp = listOf(XmppAddress("zoe@example.org", "me@example.org")), source = PersonSource.NOTIFICATION,
             confirmed = false, updatedAt = 3)
@@ -88,7 +104,7 @@ class PeopleStoreTest {
         val (l1, p1) = PeopleEdit.rememberPick(emptyList(), "mom", pick, 10, ids)
         assertEquals(listOf("mom"), p1.aliases)
         assertEquals("Maman Martin", p1.name)
-        assertEquals(listOf(XmppAddress("+15145550101@cheogram.com", "me@jmp.chat")), p1.xmpp)
+        assertEquals(listOf(XmppAddress("+15145550101@cheogram.com", "me@jmp.chat", picked = true)), p1.xmpp)
         assertEquals(PersonSource.CHEOGRAM_PICK, p1.source)
         assertTrue(p1.confirmed)
         assertEquals(listOf(p1), l1)
@@ -154,6 +170,10 @@ class PeopleStoreTest {
         val l2 = PeopleEdit.learn(confirmed, "Someone Else", "mom@example.org", "me@example.org", 33, ids)
         assertEquals("Mom", l2.single().name)
         assertEquals("me@example.org", l2.single().xmpp.single().account)
+        // Review 0.4.0 #4: a newer notification's account replaces an older one (even one picked), in lower case.
+        val picked = listOf(Person("c", "Mom", xmpp = listOf(XmppAddress("mom@example.org", "old@example.org", picked = true))))
+        val moved = PeopleEdit.learn(picked, "Mom", "mom@example.org", "New@Example.org", 37, ids).single().xmpp.single()
+        assertEquals(XmppAddress("mom@example.org", "new@example.org", picked = false), moved)
         assertSame(l2, PeopleEdit.learn(l2, "Someone Else", "mom@example.org", "me@example.org", 34, ids))
         // Nothing for a name-less or unusable sender.
         assertSame(confirmed, PeopleEdit.learn(confirmed, " ", "x@example.org", "me@example.org", 35, ids))
@@ -372,7 +392,8 @@ class PeopleStoreTest {
         assertEquals(learnedOnly, Recipients.trusted(m, learnedOnly))
         val reach = Recipients.forText(alone.cards(m) { emptyList() }, xmppOk = true).single()
         assertTrue(reach.learned)
-        assertEquals("me@example.org", reach.account)
+        // Its account was only seen in a notification: the chat opens by the xmpp: link, which needs no roster entry.
+        assertNull(reach.account)
         val t = TextTarget(reach.name, reach.address, reach.address, "Cheogram", TextVia.CHEOGRAM, from = reach)
         val p = Recipients.prepare(a, m, listOf(Recipients.Option(reach.name, "XMPP · seen in Cheogram", reach.address, a.copy(target = t), learned = true,
             remember = a.copy(target = t.copy(remember = true)))), 0, Recipients.rememberLabel("mom")) { a } as Prepared.Ready
@@ -381,7 +402,7 @@ class PeopleStoreTest {
         assertEquals(Recipients.LEARNED_NOTE, p.note)
         assertEquals("Always use this for “mom”", p.remember)
         assertEquals("Text **Mom** (spoof@example.org) in Cheogram · name seen in Cheogram", (p.action as Action.SendText).describe())
-        assertEquals("me@example.org", (p.action as Action.SendText).target!!.account)
+        assertNull((p.action as Action.SendText).target!!.account)
         // Keep (or an edit, or the ticked box) confirms them: from then on they count like anyone else.
         val c = PeopleEdit.confirm(listOf(spoof), "s", 40)
         assertTrue(c.single().confirmed)

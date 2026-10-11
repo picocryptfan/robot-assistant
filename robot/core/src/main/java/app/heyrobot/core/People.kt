@@ -41,8 +41,12 @@ data class ContactName(
     val lookupKey: String? = null,
 )
 
-/** An XMPP address, and the Cheogram account it was seen in ([account] null: Cheogram picks the account). */
-data class XmppAddress(val jid: String, val account: String? = null)
+/**
+ * An XMPP address, and the Cheogram account it was seen in ([account] null: Cheogram picks the account; kept in lower
+ * case, as Cheogram compares it exactly). [picked]: it came from Cheogram's contact list for that account (Pick in
+ * Cheogram), so it is a contact there and the chat can be opened in that account directly.
+ */
+data class XmppAddress(val jid: String, val account: String? = null, val picked: Boolean = false)
 
 /**
  * One contact's ways to reach it. [xmpp]: ContactsContract Im rows with the Jabber protocol, or People's XMPP addresses
@@ -160,8 +164,9 @@ object ContactMatcher {
 
 /**
  * One place a text or an email can go, as the card lists it ([label]: "Mobile", "Work", "XMPP"). [address]: as stored
- * with the contact. [account]: the Cheogram account an XMPP address was seen in. [learned]: the contact's name was seen
- * in a Cheogram notification (the card always shows, and says so).
+ * with the contact. [account]: the Cheogram account to open an XMPP address's chat in, known only for an address picked
+ * in Cheogram's contact list (XmppAddress.picked): any other address goes through the plain xmpp: link. [learned]: the
+ * contact's name was seen in a Cheogram notification (the card always shows, and says so).
  */
 data class Reach(
     val contactId: String,
@@ -185,7 +190,7 @@ object Recipients {
      */
     fun forText(cards: List<ContactCard>, xmppOk: Boolean): List<Reach> = cards.flatMap { c ->
         val jids = if (xmppOk) c.xmpp.filter { Addresses.isJid(it.jid) }.distinctBy { it.jid.lowercase(Locale.ROOT) } else emptyList()
-        val all = jids.map { Reach(c.id, c.name, it.jid, "XMPP", xmpp = true, account = it.account, learned = c.learned) } +
+        val all = jids.map { Reach(c.id, c.name, it.jid, "XMPP", xmpp = true, account = it.account?.takeIf { _ -> it.picked }, learned = c.learned) } +
             mobileFirst(c.phones).map { Reach(c.id, c.name, it.number, it.label, learned = c.learned) }
         Preferred.only(all, c.preferredText)
     }

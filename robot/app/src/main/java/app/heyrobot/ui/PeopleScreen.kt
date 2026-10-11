@@ -87,6 +87,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.InputStream
+import java.util.Locale
 
 // MAIN PROCESS. Settings › People (docs/people.md): Robot's own list of people, for texts and emails to someone who
 // isn't in the phone's contacts, or whom you call something else ("mom"). Ways in: by hand, a contacts file (.vcf, as
@@ -506,7 +507,12 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
         val o = original
         val phones = draft.phones.filter { it.second.isNotBlank() }.map { (k, n) -> ContactPhone(n.trim(), k, People.label(k)) }
         val emails = draft.emails.map { it.trim() }.filter { it.isNotEmpty() }
-        val xmpp = draft.xmpp.filter { it.first.isNotBlank() }.map { (j, acct) -> XmppAddress(j.trim(), acct.trim().ifEmpty { null }) }
+        // An address picked in Cheogram's list stays picked while its account is unchanged.
+        val xmpp = draft.xmpp.filter { it.first.isNotBlank() }.map { (j, acct) ->
+            val a = acct.trim().lowercase(Locale.ROOT).ifEmpty { null }
+            val was = o?.xmpp?.firstOrNull { it.jid.equals(j.trim(), ignoreCase = true) }
+            XmppAddress(j.trim(), a, picked = was?.picked == true && was.account == a)
+        }
         // A remembered choice that was removed here is forgotten.
         val text = o?.preferredText?.takeIf { pref -> phones.any { Preferred.same(it.number, pref) } || xmpp.any { Preferred.same(it.jid, pref) } }
         val mail = o?.preferredEmail?.takeIf { pref -> emails.any { it.equals(pref, ignoreCase = true) } }
@@ -619,7 +625,7 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                     OutlinedTextField(
                         value = acct, onValueChange = { v -> draft = draft.copy(xmpp = draft.xmpp.mapIndexed { j, x -> if (j == i) x.first to v else x }) },
                         singleLine = true, enabled = loaded, isError = showErrors && !accountOk[i], label = { Text("Your Cheogram account (optional)") },
-                        supportingText = { Text("The account this chat is in, so Cheogram opens it without a search.") },
+                        supportingText = { Text("Filled in when you pick them in Cheogram: Robot then opens their chat in that account directly.") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), modifier = Modifier.fillMaxWidth().padding(end = 48.dp),
                     )
                 }

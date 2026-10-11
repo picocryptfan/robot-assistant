@@ -525,10 +525,16 @@ Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
    **Mom**? (Cheogram calls them *Mom Martin*)" saves the person with what you said as an alias ("Remember who I pick"
    on), and their chat opens with the text. Next time "text mom" goes straight there. If the list doesn't open or
    nobody is picked, Robot offers the share screen instead. Settings › People › Add from Cheogram uses the same list.
-2. **The right account.** An XMPP address with its Cheogram account (from a pick, a notification or the editor) opens
-   through `StartConversationActivity` with `xmpp:<jid>?message;body=…` (the body encoded twice, as before) and the
-   `"account"` extra, so a contact in several accounts no longer shows a search and loses the text. The plain `xmpp:`
-   link stays as the fallback. Cheogram still keeps a draft already in that chat.
+2. **The right account.** An address picked in Cheogram's list, with the account it was picked in, opens through
+   `StartConversationActivity` with `xmpp:<jid>?message;body=…` (the body encoded twice, as before) and the
+   `"account"` extra, straight into that account's chat. Only picked addresses go this way: that activity looks for
+   the chat among the account's contacts, and for anyone else (a learned stranger, an account typed in the editor) it
+   would offer to add a contact instead. Everything else, and a picked address that doesn't open, goes by the plain
+   `xmpp:` link as before. In Cheogram's source that link goes to ShareViaAccountActivity, which opens the chat for
+   any address, asks first which account when you have several, and keeps the text. Accounts are kept in lower case
+   (Cheogram compares them exactly), and the newest pick or notification replaces an older one. A draft already in
+   that chat: the account's route keeps it (Cheogram says "already drafting"), the link adds Robot's text after it;
+   the card says which applies.
 3. **Import a contacts file (.vcf).** Settings › People › Import, through the system file picker (no storage
    permission). The reader (`core/VCard.kt`) takes vCard 2.1, 3.0 and 4.0: folded lines, item groups (`item1.EMAIL`,
    with Apple-style labels), escapes, quoted-printable in any charset, several cards per file, files in UTF-8 or
@@ -593,8 +599,9 @@ listener, behind `BIND_NOTIFICATION_LISTENER_SERVICE` and in the main process, a
    Nothing appears on the home screen, and no launcher asks to add a shortcut. "Text mom see you soon" then shows "Text
    **Mom Martin** (…) in Cheogram" and opens the chat directly. Also: Back in Cheogram's list, then Choose in Cheogram
    (the share screen, with the text). Send the voice log lines ("Pick in Cheogram: …", "Text handed to Cheogram: …").
-3. **The right account.** A number in two Cheogram accounts, picked once: the chat opens without the search screen.
-   Then with a draft already in that chat: which text stays.
+3. **The right account.** A number in two Cheogram accounts, picked once: the chat opens in the picked account, with
+   no account question. Someone you didn't pick (a learned person): the link route, and with two accounts Cheogram
+   asks which, keeping the text. Then with a draft already in that chat, by each route: which text stays.
 4. **Proton's .vcf.** Export from Proton web (Contacts › select all › Export selection as .VCF), import it in Settings ›
    People: the counts, names with accents, several emails per person. Note the file's vCard version, `itemN.` groups
    and `CATEGORIES`. "Email Bob about lunch" fills Bob's address, also with the contacts permission off.
@@ -636,10 +643,12 @@ card says "Opened a draft in Cheogram: nothing is sent until Send is pressed the
   app opens with `smsto:` and `sms_body`. With both Cheogram builds installed, the F-Droid build
   (`com.cheogram.android`) is always used. A JID with a character Cheogram would cut at (`" & ' / : < > ? # %`) is
   refused, and a contact's XMPP address is offered before its numbers, never instead of them.
-- **Cheogram can keep its own draft.** If that chat already has a draft, Cheogram keeps it and drops Robot's text (it
-  shows "already drafting message"); if the number is a contact in several Cheogram accounts, it shows a search first
-  and the text is lost. Robot can't see either; the card says "If that chat already had a draft, Cheogram keeps the
-  old one."
+- **Cheogram's own draft.** Checked against Cheogram's source in 0.4.0: the `xmpp:` link goes to
+  ShareViaAccountActivity, which opens the chat (asking first which account when you have several, the text kept) and
+  adds Robot's text after a draft already in that chat; StartConversationActivity with an account (0.4.0, picked
+  addresses only) keeps the old draft and drops Robot's text ("already drafting message"). Robot can't see either; the
+  card says which applies. Earlier versions of this README said a contact in several accounts showed a search and
+  lost the text: that is StartConversationActivity without an account, not the link's route.
 - **People only in Cheogram (0.2.2).** Cheogram keeps its roster in its own database and only reads the phone's
   contacts, so someone who is only in Cheogram isn't found. With Cheogram as the texting app, a text to a name that no
   contact (or no contact with a number or XMPP address) fits shows "No contact matches “Bob”. Choose who to text in

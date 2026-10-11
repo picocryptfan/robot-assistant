@@ -288,12 +288,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     }
 
     /**
-     * Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until you press Send. An XMPP
-     * address with a known Cheogram account (People) opens that account's chat directly (StartConversationActivity with
-     * the "account" extra), so a contact in several accounts needs no search; otherwise, or if that doesn't open, the
-     * xmpp: link as before. With no contact to text: Cheogram's contact list to pick someone (CheogramPickActivity), or
-     * its share screen (ShareWithActivity, exported for SEND text/plain), where you pick the person and the text is in
-     * their chat's box. The voice log gets the way it went, never who.
+     * Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until you press Send. An address
+     * picked in Cheogram's contact list, with its account, opens that account's chat directly (StartConversationActivity
+     * with the "account" extra: it finds the chat among that account's contacts, so only a picked address goes this way).
+     * Everything else, or a picked one that doesn't open, goes by the xmpp: link as before (Cheogram's own route for it,
+     * ShareViaAccountActivity, opens the chat for any address, and asks which account when there are several). With no
+     * contact to text: Cheogram's contact list to pick someone (CheogramPickActivity), or its share screen
+     * (ShareWithActivity, exported for SEND text/plain), where you pick the person and the text is in their chat's box.
+     * The voice log gets the way it went, never who.
      */
     private fun text(a: Action.SendText): Executed {
         val t = a.target ?: return Executed(ActionStatus.FAILED, "Robot didn't find who to text.")
@@ -316,12 +318,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val i = routes.indexOfFirst { start(it.second) }
         if (i < 0) return Executed(ActionStatus.NO_APP, "Install Cheogram.")
         VoiceLog.add(VoiceEvent.CHEOGRAM_HANDOFF, routes[i].first, if (i > 0) 1 else 0)
-        // A draft, not a sent text. Cheogram keeps a draft already in that chat instead of this one (it says "already
-        // drafting"): the card says so.
-        val detail = when (t.via) {
-            TextVia.CHEOGRAM -> "Opened a draft in Cheogram: nothing is sent until Send is pressed there. " +
-                "If that chat already had a draft, Cheogram keeps the old one."
-            TextVia.CHEOGRAM_LIST -> "Opened Cheogram's contact list: pick who it goes to, and their chat opens with the message. " +
+        // A draft, not a sent text. A draft already in that chat: the account's chat keeps it instead of this one (Cheogram
+        // says "already drafting"); the link's route adds this text after it (Cheogram's source). The card says which.
+        val detail = when {
+            t.via == TextVia.CHEOGRAM && routes[i].first == CheogramRoute.ACCOUNT -> "Opened a draft in Cheogram: nothing is sent until Send is " +
+                "pressed there. If that chat already had a draft, Cheogram keeps the old one."
+            t.via == TextVia.CHEOGRAM -> "Opened a draft in Cheogram: nothing is sent until Send is pressed there. With several Cheogram " +
+                "accounts, choose the account first. If that chat already had a draft, the text is added after it."
+            t.via == TextVia.CHEOGRAM_LIST -> "Opened Cheogram's contact list: pick who it goes to, and their chat opens with the message. " +
                 "Nothing is sent until Send is pressed there."
             else -> "Opened Cheogram with the message: choose who it goes to there. Nothing is sent until Send is pressed."
         }

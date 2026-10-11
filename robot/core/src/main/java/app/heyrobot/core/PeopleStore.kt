@@ -73,7 +73,7 @@ object PeopleCodec {
             })
             if (p.emails.isNotEmpty()) put("emails", JSONArray(p.emails))
             if (p.xmpp.isNotEmpty()) put("xmpp", JSONArray().apply {
-                p.xmpp.forEach { x -> put(JSONObject().put("jid", x.jid).apply { x.account?.let { put("account", it) } }) }
+                p.xmpp.forEach { x -> put(JSONObject().put("jid", x.jid).apply { x.account?.let { put("account", it) }; if (x.picked) put("picked", true) }) }
             })
             p.preferredText?.let { put("preferredText", it) }
             p.preferredEmail?.let { put("preferredEmail", it) }
@@ -107,7 +107,7 @@ object PeopleCodec {
             (0 until a.length()).mapNotNull { i ->
                 val x = a.optJSONObject(i) ?: return@mapNotNull null
                 val jid = x.optString("jid").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                XmppAddress(jid, x.optString("account").takeIf { it.isNotBlank() })
+                XmppAddress(jid, x.optString("account").takeIf { it.isNotBlank() }, x.optBoolean("picked", false))
             }
         }.orEmpty()
         return People.clean(Person(
@@ -246,8 +246,10 @@ object People {
             phones = p.phones.map { it.copy(number = line(it.number, 40), label = line(it.label, 40)) }.filter { it.number.isNotEmpty() }
                 .distinctBy { PhoneNumbers.digits(it.number).takeLast(10).ifEmpty { it.number } }.take(MAX_EACH),
             emails = p.emails.map { line(it, 254) }.filter { it.isNotEmpty() }.distinctBy { it.lowercase(Locale.ROOT) }.take(MAX_EACH),
-            xmpp = p.xmpp.map { XmppAddress(line(it.jid, 254), it.account?.let { a -> line(a, 254) }?.takeIf { a -> a.isNotEmpty() }) }
-                .filter { it.jid.isNotEmpty() }.distinctBy { it.jid.lowercase(Locale.ROOT) }.take(MAX_EACH),
+            xmpp = p.xmpp.map { x ->
+                val account = x.account?.let { a -> line(a, 254).lowercase(Locale.ROOT) }?.takeIf { a -> a.isNotEmpty() }
+                XmppAddress(line(x.jid, 254), account, x.picked && account != null)
+            }.filter { it.jid.isNotEmpty() }.distinctBy { it.jid.lowercase(Locale.ROOT) }.take(MAX_EACH),
         )
     }
 
@@ -302,18 +304,19 @@ object PeopleEdit {
 
     /**
      * Someone picked in Cheogram's list, remembered: the person with that XMPP address gets [spoken] (what you said:
-     * "mom") as an alias and the account it came from, and is confirmed; or a new person, named as Cheogram names them.
-     * Returns the list and the person.
+     * "mom") as an alias and the account it was picked in (the newest pick's, replacing an older one), and is confirmed;
+     * or a new person, named as Cheogram names them. Returns the list and the person.
      */
     fun rememberPick(list: List<Person>, spoken: String?, pick: CheogramPick, now: Long, newId: () -> String = PeopleStore::newId): Pair<List<Person>, Person> {
         val old = list.firstOrNull { p -> p.xmpp.any { sameJid(it.jid, pick.jid) } }
+        val address = XmppAddress(pick.jid, pick.account, picked = pick.account != null)
         val p = if (old == null) {
-            Person(newId(), pick.name, xmpp = listOf(XmppAddress(pick.jid, pick.account)), source = PersonSource.CHEOGRAM_PICK, confirmed = true, updatedAt = now)
+            Person(newId(), pick.name, xmpp = listOf(address), source = PersonSource.CHEOGRAM_PICK, confirmed = true, updatedAt = now)
         } else {
             // A learned name was the sender's choice: Cheogram's name (your roster's, or your contacts') replaces it.
             old.copy(
                 name = if (old.confirmed) old.name else pick.name,
-                xmpp = old.xmpp.map { if (sameJid(it.jid, pick.jid) && it.account == null) it.copy(account = pick.account) else it },
+                xmpp = old.xmpp.map { if (sameJid(it.jid, pick.jid) && pick.account != null) it.copy(account = pick.account, picked = true) else it },
                 confirmed = true, updatedAt = now,
             )
         }
@@ -335,7 +338,7 @@ object PeopleEdit {
         val base = old ?: Person(newId(), r.name, source = PersonSource.REMEMBERED, systemLookupKey = lookupKey, updatedAt = now)
         val kept = when {
             email -> if (base.emails.any { it.equals(r.address, ignoreCase = true) }) base else base.copy(emails = base.emails + r.address)
-            r.xmpp -> if (base.xmpp.any { sameJid(it.jid, r.address) }) base else base.copy(xmpp = base.xmpp + XmppAddress(r.address, r.account))
+            r.xmpp -> if (base.xmpp.any { sameJid(it.jid, r.address) }) base else base.copy(xmpp = base.xmpp + XmppAddress(r.address, r.account, r.account != null))
             base.phones.any { Preferred.same(it.number, r.address) } -> base
             else -> base.copy(phones = base.phones + ContactPhone(r.address, PhoneKind.OTHER, r.label ?: People.label(PhoneKind.OTHER)))
         }
@@ -346,22 +349,25 @@ object PeopleEdit {
 
     /**
      * Someone who messaged you in Cheogram (the notification listener): [name] as Cheogram showed it, their address and
-     * the account it came in on. Someone already known by that address keeps their name if you confirmed them (only a
-     * missing account is added); a learned one takes the newest name. New people are learned, unconfirmed, and at most
-     * [People.MAX_LEARNED] are kept (the oldest go). Unchanged (the same list) when there is nothing new.
+     * the account it came in on. Someone already known by that address keeps their name if you confirmed them; a learned
+     * one takes the newest name. The account is the newest one too (an older one, even picked, is replaced: the chat
+     * moved). New people are learned, unconfirmed, and at most [People.MAX_LEARNED] are kept (the oldest go). Unchanged
+     * (the same list) when there is nothing new.
      */
     fun learn(list: List<Person>, name: String, jid: String, account: String, now: Long, newId: () -> String = PeopleStore::newId): List<Person> {
         val n = name.replace(Regex("\\s+"), " ").trim()
         if (n.isEmpty() || !Addresses.isJid(jid)) return list
+        val acct = account.trim().lowercase(Locale.ROOT)
         val old = list.firstOrNull { p -> p.xmpp.any { sameJid(it.jid, jid) } }
         if (old != null) {
-            val needsAccount = old.xmpp.any { sameJid(it.jid, jid) && it.account == null }
+            val newAccount = old.xmpp.any { sameJid(it.jid, jid) && it.account != acct }
             val rename = !old.confirmed && old.name != People.clean(old.copy(name = n)).name
-            if (!needsAccount && !rename) return list
-            val xmpp = old.xmpp.map { if (sameJid(it.jid, jid) && it.account == null) it.copy(account = account) else it }
+            if (!newAccount && !rename) return list
+            // Seen in another account than the one picked: not known to be a contact there.
+            val xmpp = old.xmpp.map { if (sameJid(it.jid, jid) && it.account != acct) it.copy(account = acct, picked = false) else it }
             return upsert(list, People.clean(old.copy(name = if (rename) n else old.name, xmpp = xmpp, updatedAt = now)))
         }
-        val added = list + People.clean(Person(newId(), n, xmpp = listOf(XmppAddress(jid, account)), source = PersonSource.NOTIFICATION, confirmed = false,
+        val added = list + People.clean(Person(newId(), n, xmpp = listOf(XmppAddress(jid, acct)), source = PersonSource.NOTIFICATION, confirmed = false,
             updatedAt = now))
         val learned = added.filter { !it.confirmed }
         if (learned.size <= People.MAX_LEARNED) return added
