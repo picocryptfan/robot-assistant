@@ -1810,6 +1810,8 @@ object PanelController {
 
     /** [costMicros]: a Claude reply's estimated price, kept with it in the history. */
     private fun finishReply(replyId: String, reason: DoneReason, costMicros: Long = 0) {
+        // Before anything else: a reply the panel has moved on from still ends the unload it asked for.
+        unloadIfAsked(replyId)
         if (!current(replyId)) return
         val ui = _state.value.turns.firstOrNull { it.id == replyId }
         val claude = ui?.claude == true
@@ -1838,12 +1840,12 @@ object PanelController {
         lastActivity = System.currentTimeMillis()
         persist()
         if (closeConvAfterTurn) closeLiveConversation()
-        unloadIfAsked(replyId)
     }
 
     /**
      * free_memory asked for Robot's model to be unloaded during this answer (0.4.0): now that it has ended, unload it
-     * and put what Android reports came back on the card (and in the saved conversation).
+     * and put what Android reports came back on the card (and in the saved conversation). The card is updated after the
+     * reply is recorded: this runs on the main thread after the caller.
      */
     private fun unloadIfAsked(replyId: String) {
         val before = ModelUnload.take() ?: return
@@ -1863,6 +1865,7 @@ object PanelController {
     }
 
     private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
+        unloadIfAsked(replyId)
         if (!current(replyId)) return
         voice.finish(replyId, cancelled = true, speak = false)
         VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.FAILED)
@@ -1880,7 +1883,6 @@ object PanelController {
         }
         persist()
         if (closeConvAfterTurn) closeLiveConversation()
-        unloadIfAsked(replyId)
     }
 
     /** A finished reply has no card left waiting: one still pending was not done (and is never saved as waiting). */
