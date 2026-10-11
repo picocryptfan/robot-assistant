@@ -41,6 +41,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Badge
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -435,8 +438,8 @@ private fun ListeningRow(partial: String, transcribing: Boolean, card: Boolean =
 }
 
 /**
- * "Ask about this screen", or the picture that goes with the next question. The chip shows on every corner-swipe and
- * wake-word panel: without the screen it has an info icon, and a tap says why (core ScreenAccess).
+ * The picture or screen that goes with the next question, or "Read Claude's answer" over the Claude app. "Ask about
+ * this screen" is the screen button next to the camera (0.4.0; [ScreenButton]).
  */
 @Composable
 private fun ContextRow(st: PanelState) {
@@ -459,27 +462,33 @@ private fun ContextRow(st: PanelState) {
             }
             IconButton(onClick = PanelController::removeDraft, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Remove") }
         }
-    } else if ((st.screenChip != ScreenChip.HIDDEN || st.claudeScreen) && !st.busy) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Over the Claude app (your corner swipe): its last answer, read aloud in Claude's voice.
-            if (st.claudeScreen) {
-                AssistChip(
-                    onClick = PanelController::readClaudeAnswer,
-                    label = { Text("Read Claude's answer") },
-                    leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize)) },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                )
-            }
-            if (st.screenChip != ScreenChip.HIDDEN) {
-                AssistChip(
-                    onClick = PanelController::attachScreen,
-                    label = { Text("Ask about this screen") },
-                    leadingIcon = {
-                        Icon(if (st.screenAvailable) RIcons.Phone else RIcons.Info, ScreenAccess.iconDescription(st.screenChip), Modifier.size(AssistChipDefaults.IconSize))
-                    },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                )
-            }
+    } else if (st.claudeScreen && !st.busy) {
+        // Over the Claude app (your corner swipe): its last answer, read aloud in Claude's voice.
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+            AssistChip(
+                onClick = PanelController::readClaudeAnswer,
+                label = { Text("Read Claude's answer") },
+                leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            )
+        }
+    }
+}
+
+/**
+ * "Ask about this screen", next to the camera: on every corner-swipe and wake-word panel. With the screen here, a tap
+ * attaches it; without it, the button is dimmed with a dot, and a tap says why (core ScreenAccess), as the chip did.
+ */
+@Composable
+private fun ScreenButton(st: PanelState) {
+    val ready = st.screenAvailable
+    val state = ScreenAccess.iconDescription(st.screenChip)
+    IconButton(
+        onClick = PanelController::attachScreen, enabled = !st.busy && st.draft == null,
+        modifier = Modifier.size(52.dp).semantics { contentDescription = "Ask about this screen" + (state?.let { ". $it" } ?: "") },
+    ) {
+        BadgedBox(badge = { if (!ready) Badge(containerColor = MaterialTheme.colorScheme.tertiary) }) {
+            Icon(RIcons.ScreenShare, null, tint = if (ready) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.55f))
         }
     }
 }
@@ -508,6 +517,7 @@ private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, o
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         // No camera while a turn runs: the panel would hide with the answer still going.
         IconButton(onClick = onAttach, enabled = !st.busy, modifier = Modifier.size(52.dp)) { Icon(RIcons.Camera, "Add a photo") }
+        if (st.screenChip != ScreenChip.HIDDEN) ScreenButton(st)
         TextField(
             value = input,
             onValueChange = onInput,
