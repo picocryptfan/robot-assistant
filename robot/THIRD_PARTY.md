@@ -243,8 +243,16 @@ Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | 1.11.0 |
 | `com.google.errorprone:error_prone_annotations`, `com.google.guava:listenablefuture`, `org.jetbrains:annotations`, `org.jspecify:jspecify` | annotations only |
 
-The icons in `app/src/main/java/app/heyrobot/ui/common/Icons.kt` are path data from Google's Material
-Icons (Apache-2.0).
+The icons in `app/src/main/java/app/heyrobot/ui/common/Icons.kt` are path data from Google's **Material Symbols
+Outlined** (Apache-2.0; weight 400, grade 0, unfilled, 24 px), from the `google/material-design-icons` repository at
+commit `49d4db35df873165d6bd6ba09b063c7dafbac2f4` (`symbols/web/<name>/materialsymbolsoutlined/<name>_24px.svg`),
+written into the source by `tools/symbols.py` on a computer (since the 0.4.x UI redesign; before it, Material Icons,
+also Apache-2.0). Licence text: https://github.com/google/material-design-icons/blob/master/LICENSE. The robot glyph
+(`RIcons.Robot`, the Classic look's panel orb) is Robot's own.
+
+Robot's own colour scheme (`ui/theme/RobotColors.kt`, used when Settings › Display › "Use wallpaper colours" is off) is
+values computed from Robot's blue with Google's `@material/material-color-utilities` 0.3.0 (Apache-2.0) on a computer;
+no code of it is in the app.
 
 Phase 2 adds no dependency. Robot hands drafts to apps you install (Cheogram, Proton Mail, an SMS app, a
 calendar app) through Android intents only; nothing of them is bundled. Their source (Cheogram: GPL-3.0; Proton Mail
