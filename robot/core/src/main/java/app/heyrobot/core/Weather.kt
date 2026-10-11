@@ -64,6 +64,16 @@ enum class WeatherFail(override val id: Int, override val title: String, val tex
     TIMEOUT(10, "took too long", "The weather took too long to come. Try again in a moment."),
     /** Stop ended it. */
     STOPPED(11, "stopped", "Stopped."),
+    /** Android refused the location to the assistant's process (it counted as in the background). */
+    LOCATION_BACKGROUND(12, "location refused in the background",
+        "Android didn't let Robot see where you are from the assistant. Name a town, or set a Home for weather in Robot's settings."),
+}
+
+/** How the phone's position was looked for, for the voice log (VoiceEvent.WEATHER_LOCATION): codes only, never where. */
+enum class LocationCode(override val id: Int, override val title: String) : LogCode {
+    FIX(1, "a new fix"), RECENT(2, "the last known position, under 30 minutes old"), LAST_HOUR(3, "the last known position, under an hour old"),
+    NONE(4, "no position in time"), BACKGROUND(5, "refused: Android counted Robot as in the background"), OFF(6, "location is off"),
+    NOT_ALLOWED(7, "location not allowed"), TOO_OLD(8, "only a position over an hour old, not used"), STOPPED(9, "stopped"),
 }
 
 /** WMO weather interpretation codes (as Open-Meteo gives them) in plain words. */

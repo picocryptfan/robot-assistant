@@ -152,7 +152,13 @@ class WeatherToolTest {
         assertEquals("Weather from Open-Meteo for your Home for weather · forecast in 380 ms",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WEATHER, WeatherSource.HOME.id, 0, 380)))
         assertEquals("Weather lookup failed: rate limited (HTTP 429)", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WEATHER_FAILED, WeatherFail.BUSY.id, 429)))
-        assertTrue(VoiceEvent.WEATHER.id >= 80 && VoiceEvent.WEATHER_FAILED.id >= 80)
-        for (c in listOf(WeatherSource.entries, WeatherFail.entries)) assertEquals(c.size, c.map { it.id }.toSet().size)
+        assertTrue(VoiceEvent.WEATHER.id >= 80 && VoiceEvent.WEATHER_FAILED.id >= 80 && VoiceEvent.WEATHER_LOCATION.id >= 80)
+        for (c in listOf(WeatherSource.entries, WeatherFail.entries, LocationCode.entries)) assertEquals(c.size, c.map { it.id }.toSet().size)
+        // Why "here" had no position (the phone test of the assistant's process in the background), in codes.
+        assertEquals("Position for the weather: refused: Android counted Robot as in the background · process importance 125 · 3 ms",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WEATHER_LOCATION, LocationCode.BACKGROUND.id, 125, 3)))
+        assertEquals("Weather lookup failed: location refused in the background",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WEATHER_FAILED, WeatherFail.LOCATION_BACKGROUND.id)))
+        assertTrue(WeatherFail.LOCATION_BACKGROUND.text.contains("Home for weather"))
     }
 }

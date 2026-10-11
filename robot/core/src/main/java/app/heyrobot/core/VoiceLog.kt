@@ -145,6 +145,11 @@ enum class VoiceEvent(val id: Int) {
     WEATHER(80),
     /** A weather lookup failed: a = [WeatherFail], b = Open-Meteo's HTTP status (0: none). */
     WEATHER_FAILED(81),
+    /**
+     * The phone's position for the weather "here": a = [LocationCode], b = the assistant process's importance as Android
+     * gave it (100 foreground, 125 foreground service, 200 visible, 300+ background), c = ms spent. Never the position.
+     */
+    WEATHER_LOCATION(82),
     ;
 
     companion object {
@@ -528,6 +533,7 @@ object VoiceLogText {
             VoiceEvent.WEATHER -> "Weather from Open-Meteo for " + code(WeatherSource.entries, a) + (if (b > 0) " · place found in $b ms" else "") +
                 " · forecast in $c ms"
             VoiceEvent.WEATHER_FAILED -> "Weather lookup failed: " + code(WeatherFail.entries, a) + (if (b > 0) " (HTTP $b)" else "")
+            VoiceEvent.WEATHER_LOCATION -> "Position for the weather: " + code(LocationCode.entries, a) + " · process importance $b · $c ms"
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
         }

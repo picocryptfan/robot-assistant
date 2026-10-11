@@ -26,6 +26,7 @@ import app.heyrobot.core.ContactMatcher
 import app.heyrobot.core.Durations
 import app.heyrobot.core.EmailApp
 import app.heyrobot.core.EventPlan
+import app.heyrobot.core.LocationCode
 import app.heyrobot.core.LookupFallback
 import app.heyrobot.core.Events
 import app.heyrobot.core.FreeUp
@@ -456,12 +457,15 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 WeatherWhere.HERE -> {
                     // With a Home to fall back on, a fix gets only a few seconds.
                     val wait = if (home != null) WeatherAsk.FIX_WITH_HOME_MS else WeatherAsk.FIX_MS
-                    val fix = if (CoarseLocation.granted(ctx) && CoarseLocation.enabled(ctx)) CoarseLocation.find(ctx, wait, abort) else null
+                    val found = if (CoarseLocation.granted(ctx)) CoarseLocation.find(ctx, wait, abort) else null
+                    found?.let { VoiceLog.add(VoiceEvent.WEATHER_LOCATION, it.code, it.importance, it.ms) }
                     if (abort.cancelled) throw OpenMeteoClient.Failure(if (abort.expired) WeatherFail.TIMEOUT else WeatherFail.STOPPED)
+                    val fix = found?.fix
                     when {
                         fix != null -> WeatherPlace(HERE, fix.lat, fix.lon) to if (fix.fresh) WeatherSource.FIX else WeatherSource.LAST_KNOWN
-                        home != null -> home to if (CoarseLocation.granted(ctx)) WeatherSource.HOME_NO_FIX else WeatherSource.HOME
-                        !CoarseLocation.enabled(ctx) -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_OFF)
+                        home != null -> home to if (found != null) WeatherSource.HOME_NO_FIX else WeatherSource.HOME
+                        found?.code == LocationCode.OFF -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_OFF)
+                        found?.code == LocationCode.BACKGROUND -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_BACKGROUND)
                         else -> throw OpenMeteoClient.Failure(WeatherFail.NO_LOCATION)
                     }
                 }
