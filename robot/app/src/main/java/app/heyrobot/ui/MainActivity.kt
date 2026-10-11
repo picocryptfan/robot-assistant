@@ -43,6 +43,7 @@ import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestResult
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.CalendarInfo
+import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
@@ -194,6 +195,8 @@ data class Snapshot(
     val models: List<ModelStore.Snap> = emptyList(),
     val own: OwnModel? = null,
     val loaded: BrainModel? = null,
+    /** 0.4.4: this build has its llama.cpp library (tools/build_llama.sh), so your own GGUF file can run. */
+    val ggufEngine: Boolean = false,
     /** The voice models (speech recognition, voice, fast voice), in VoiceBundle order. */
     val voice: List<VoiceModelStore.Snap> = emptyList(),
     /** What the voice process last reported about its speech engines, and the last voice speed test. */
@@ -208,8 +211,9 @@ data class Snapshot(
 
     fun model(m: BrainModel): ModelStore.Snap? = models.firstOrNull { it.model == m }
 
-    /** [m] can be chosen: checked, and (your own file) runnable here, the TPU allowed if it needs it. */
-    fun ready(m: BrainModel): Boolean = model(m)?.status == ModelStatus.VERIFIED && (m != BrainModel.OWN || own?.backend != null)
+    /** [m] can be chosen: checked, and (your own file) runnable here, the TPU allowed if it needs it, llama.cpp in this build for a GGUF file. */
+    fun ready(m: BrainModel): Boolean = model(m)?.status == ModelStatus.VERIFIED &&
+        (m != BrainModel.OWN || own?.backend != null && (own.format != ModelFormat.GGUF || ggufEngine))
 
     /** Speech recognition and the default voice are installed. */
     val voiceReady: Boolean get() = voice(VoiceBundle.STT)?.status == ModelStatus.VERIFIED && voice(VoiceBundle.KOKORO)?.status == ModelStatus.VERIFIED
@@ -259,6 +263,7 @@ fun RobotAppUi(activity: MainActivity) {
                     models = models,
                     own = ModelStore.own(ctx),
                     loaded = ModelStore.loadedNow(ctx),
+                    ggufEngine = ModelStore.ggufEngine(ctx),
                     voice = VoiceBundle.entries.map { VoiceModelStore.snapshot(ctx, it) },
                     engines = VoiceEngineStatus.fromJson(readOrNull(Paths.voiceEngines(ctx))),
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
@@ -376,7 +381,7 @@ fun RobotAppUi(activity: MainActivity) {
         openAssistantSettings = { if (!Assistant.openSettings(ctx)) say("Open Settings > Apps > Default apps > Digital assistant app.") },
         download = { m -> ModelStore.startDownload(ctx, m)?.let(::say) },
         cancelDownload = { m -> ModelStore.cancelDownload(ctx, m) },
-        // Storage Access Framework: no storage permission; a .litertlm has no type of its own, so any file.
+        // Storage Access Framework: no storage permission; a .litertlm or .gguf has no type of its own, so any file.
         import = { m -> importTarget = m.id; importer.launch(arrayOf("*/*")) },
         verify = { m ->
             if (busy == null) {

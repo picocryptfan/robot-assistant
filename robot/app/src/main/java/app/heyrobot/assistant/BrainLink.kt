@@ -23,6 +23,7 @@ import app.heyrobot.core.ModelAvailability
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelChoice
 import app.heyrobot.core.ModelCode
+import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
@@ -218,6 +219,8 @@ object BrainKeeper {
         /** The model loaded (READY) or loading, and where it runs. */
         val model: BrainModel? = null,
         val backend: ModelBackend? = null,
+        /** 0.4.4: the model reads text only (a GGUF file, run by llama.cpp): it can't see a photo or the screen. */
+        val textOnly: Boolean = false,
         /** Robot is using Fast instead of the model you chose, and why (the panel shows it once per [fallbackSeq]). */
         val fallback: String? = null,
         val fallbackSeq: Int = 0,
@@ -289,10 +292,11 @@ object BrainKeeper {
     private suspend fun loadInto(ctx: Context, c: BrainClient, plan: LoadPlan, load: ModelChoice.Decision.Load, detail: String? = null): BrainClient? {
         val m = plan.model
         val st = c.call(BrainProtocol.REQ_STATUS, BrainMsg.Empty, 10_000) as? BrainMsg.Status
-        if (st?.loaded == true && st.model == m && st.backend == plan.backend) {
+        val textOnly = plan.format == ModelFormat.GGUF
+        if (st?.loaded == true && st.model == m && st.backend == plan.backend && (st.format ?: ModelFormat.LITERT_LM) == plan.format) {
             holding = plan
             noteFallback(load.instead, load.why, detail)
-            _state.value = State(Readiness.READY, vision = st.vision, model = m, backend = plan.backend).withFallback()
+            _state.value = State(Readiness.READY, vision = st.vision, model = m, backend = plan.backend, textOnly = textOnly).withFallback()
             return c
         }
         if (st?.loaded == true) {
@@ -302,13 +306,13 @@ object BrainKeeper {
         }
         noteFallback(load.instead, load.why, detail)
         holding = plan
-        _state.value = State(Readiness.LOADING, model = m, backend = plan.backend).withFallback()
-        val r = c.call(BrainProtocol.REQ_LOAD, BrainMsg.Load(plan.path, m, plan.backend, plan.contextTokens), 300_000) as? BrainMsg.Loaded
+        _state.value = State(Readiness.LOADING, model = m, backend = plan.backend, textOnly = textOnly).withFallback()
+        val r = c.call(BrainProtocol.REQ_LOAD, BrainMsg.Load(plan.path, m, plan.backend, plan.contextTokens, plan.format), 300_000) as? BrainMsg.Loaded
         if (r?.ok == true) {
             if (m != BrainModel.FAST) failed.remove(m.id)
-            _state.value = State(Readiness.READY, vision = r.vision, model = m, backend = plan.backend).withFallback()
+            _state.value = State(Readiness.READY, vision = r.vision, model = m, backend = plan.backend, textOnly = textOnly).withFallback()
             VoiceLog.add(VoiceEvent.MODEL_LOADED, ModelCode.of(m).id, BackendCode.of(plan.backend).id, r.loadMs.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
-            RLog.i("brain_ready", "loadMs" to r.loadMs, "vision" to r.vision, "model" to RLog.Code(m.id), "backend" to RLog.Code(plan.backend.id))
+            RLog.i("brain_ready", "loadMs" to r.loadMs, "vision" to r.vision, "model" to RLog.Code(m.id), "backend" to RLog.Code(plan.backend.id), "format" to plan.format)
             return c
         }
         val failure = r?.failure ?: if (r == null) (if (c.isConnected) LoadFailure.TIMEOUT else LoadFailure.PROCESS) else LoadFailure.ENGINE

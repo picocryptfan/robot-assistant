@@ -1218,7 +1218,10 @@ object PanelController {
         client = c
         // The model loaded without its vision encoder: a screen question still has the screen's text.
         val vision = BrainKeeper.state.value.vision
-        if (image != null && !vision && attachment == Attachment.PHOTO) return failReply(replyId, BrainError.NO_VISION.text())
+        // 0.4.4: a model that reads text only (your own GGUF file) says so, for a photo and for the screen.
+        val textOnly = BrainKeeper.state.value.textOnly
+        if (image != null && !vision && attachment == Attachment.PHOTO) return failReply(replyId, if (textOnly) TEXT_ONLY_PHOTO else BrainError.NO_VISION.text())
+        if (textOnly && attachment == Attachment.SCREEN) notify(TEXT_ONLY_SCREEN)
         val img = if (vision) image else null
         val convId = _state.value.convId
         val now = ZonedDateTime.now()
@@ -1259,6 +1262,8 @@ object PanelController {
                 text = fitted.text,
                 hasImage = img != null,
                 tools = tools.map { it.id },
+                // Settings › Model › "Let the model think first" (0.4.4): :brain tells a model that can think whether it may.
+                think = s.modelThinks,
             )
             // About what the context has left for a tool's answer beside the reply (as :brain will fit the history): the
             // weather gives fewer days when it is short.
@@ -2003,6 +2008,10 @@ object PanelController {
 
     /** The model's tool call itself, about. */
     private const val TOOL_CALL_TOKENS = 40
+
+    /** 0.4.4: your own GGUF file reads text only (Robot's llama.cpp has no vision part). */
+    private const val TEXT_ONLY_PHOTO = "This model can't see photos: it reads text only. Choose Fast or Smarter in the Robot app › Model to ask about a photo."
+    private const val TEXT_ONLY_SCREEN = "This model can't see the screen: it reads only the screen's text."
 
     /** What the turn shows: the reply bubble [replyId], its cards and the panel's phase. */
     private class PanelView(private val replyId: String) : TurnView {

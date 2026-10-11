@@ -300,7 +300,7 @@ object ModelLogic {
      */
     fun spaceProblem(
         m: BrainModel, freeBytes: Long, reclaimableBytes: Long, needBytes: Long = ModelFiles.needBytes(m), pendingBytes: Long = 0,
-        fileBytes: Long = m.bytes,
+        fileBytes: Long = m.bytes, gguf: Boolean = false,
     ): String? {
         if (freeBytes < 0) return null
         val pending = pendingBytes.coerceAtLeast(0)
@@ -308,7 +308,7 @@ object ModelLogic {
         if (free - pending >= needBytes) return null
         val left = if (pending > 0) "only ${gb((free - pending).coerceAtLeast(0))} will be left once the downloads under way finish"
         else "${gb(free)} is free"
-        val cache = if (m == BrainModel.OWN) ModelFiles.cacheEstimate(fileBytes) else m.cacheBytes
+        val cache = if (m == BrainModel.OWN) (if (gguf) 0 else ModelFiles.cacheEstimate(fileBytes)) else m.cacheBytes
         val what = if (cache > 0 && fileBytes > 0) "the ${gb(fileBytes)} file, about ${gb(cache)} for the cache the CPU writes on its first load, and 1 GB to spare"
         else "the file plus 1 GB to spare"
         return "Not enough free space: ${name(m)} needs ${gb(needBytes)} ($what) and $left."
@@ -335,9 +335,11 @@ object ModelLogic {
 
     /**
      * Null when an import of [docBytes] (-1 = the picker didn't say) into [m] may start, else why not. A built-in model
-     * takes only its own file (the exact size, then the SHA-256); your own file any size from [OWN_MIN_BYTES].
+     * takes only its own file (the exact size, then the SHA-256); your own file any size from [OWN_MIN_BYTES]. [gguf]: the
+     * picked file starts like a GGUF file (0.4.4), which needs no room for a cache.
      */
-    fun refuseImport(m: BrainModel, status: ModelStatus, docBytes: Long, freeBytes: Long, reclaimableBytes: Long, pendingBytes: Long = 0, busyWith: BrainModel? = null): String? = when {
+    fun refuseImport(m: BrainModel, status: ModelStatus, docBytes: Long, freeBytes: Long, reclaimableBytes: Long, pendingBytes: Long = 0, busyWith: BrainModel? = null,
+        gguf: Boolean = false): String? = when {
         busyWith != null && busyWith != m -> "“${busyWith.title}” is downloading or being copied. Wait for it to finish, or cancel it first."
         status == ModelStatus.IMPORTING -> "An import is already running."
         status == ModelStatus.VERIFYING -> "The model is being checked."
@@ -348,7 +350,7 @@ object ModelLogic {
         m.builtIn -> spaceProblem(m, freeBytes, reclaimableBytes, pendingBytes = pendingBytes)
         // Unknown size: the copy watches the free space as it goes.
         docBytes < 0 -> null
-        else -> spaceProblem(m, freeBytes, reclaimableBytes, ModelFiles.needBytes(m, docBytes), pendingBytes, fileBytes = docBytes)
+        else -> spaceProblem(m, freeBytes, reclaimableBytes, ModelFiles.needBytes(m, docBytes, gguf && !m.builtIn), pendingBytes, fileBytes = docBytes, gguf = gguf && !m.builtIn)
     }
 
     /** One line for the model card. */
