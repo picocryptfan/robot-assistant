@@ -109,6 +109,106 @@ Settings › About › Licences names both places, from `app/src/main/assets/lic
 `<repository>/releases/download/v<version>/robot-<version>-third-party-sources.tar.gz`. The repository link there is
 today's (`picocryptfan/robot-gos-assistant`); change it in that one file if the public repository has another name.
 
+## What's new in 0.4.6
+
+Fixes for what the 0.4.4 phone tests found; each has its section below and its checks in "On the phone (0.4.6)".
+
+- **Interrupt sensitivity** ("Hearing you while Robot talks"): a tap on the slider showed Low or High but saved the level
+  shown before the tap, so every barge-in run used Medium. Now the level tapped is saved, Low and High move "stop" as far
+  as a wake phrase's own Low and High, and the barge-in test's result names the level the listener used.
+- **"Stop" in a long reply** ("Stopping a long reply"): "stop", a tap, volume down or "Stop speaking" while the reply is
+  still being written now ends it as Stop does; EchoGuard sets "stop" aside only around Robot's own words like it in a
+  long sentence, not for the whole sentence; the screen stays on while Robot answers.
+- **Asking Claude when Robot can't** ("When Robot needs help"): a refusal ("I can't…", "I'm unable to…", "je ne peux
+  pas…") or words saying the answer may be out of date ("I don't have access to real-time information", "je n'ai pas
+  accès à Internet") bring the offer, or Claude with Automatic; French news, prices, scores and office holders go to
+  Claude as the English ones do.
+- **Learning names from Cheogram** (People, "Ways in" 4): Settings › People says why Android restricts notification
+  access, how to allow it step by step with a button for each page, what Robot reads and keeps, that it stays on the
+  phone and never goes to Claude or an online model by itself, and how to take it back.
+- Settings: no new setting; `settings.json` stays schema 12.
+
+### On the phone (0.4.6)
+
+Install the release over 0.4.5 (or 0.4.4), keeping its data: every Settings page as it was, Settings › About shows 0.4.6.
+Echo cancellation (the default) unless a step says otherwise.
+
+**Interrupt sensitivity**
+
+1. Settings › Voice › Interrupt sensitivity: **tap** the right end of the slider (don't drag). The label under it says
+   High. Go Back to Settings and open Settings › Voice again: the slider is still on High. Tap the left end: Low; leave
+   and come back: still Low. With TalkBack on, swipe up or down on the slider: the level read out stays after leaving and
+   coming back.
+2. Tap the middle (Medium). Under the barge-in test's buttons the line reads "Hear me while Robot talks: Echo
+   cancellation · Interrupt sensitivity: Medium · …". Run the test and say "stop" once, about 5 s in, at arm's length;
+   then Silent run; then Tricky words. Each result's last line says "Interrupt sensitivity: Medium". Write down: when
+   "stop" was heard and how fast she went quiet; false "stop"s in the silent run; Tricky words' "fired" and "got through".
+3. Tap Low. Repeat the three runs; each result says "Interrupt sensitivity: Low". Expected: no more false stops than on
+   Medium, often fewer, and Tricky words fires no more; a soft "stop" may be missed (say it clearly).
+4. Tap High. Repeat; each result says "Interrupt sensitivity: High". Expected: "stop" heard more easily, also said softly
+   or from 2 m; the silent and tricky runs may show more.
+5. Tap Medium again: the next result says Medium. None of this needed a restart (the voice log shows no new "Listening
+   for wake words" line for it).
+
+**"Stop" in a long reply**
+
+6. Set the phone's screen timeout to 30 s (Android Settings › Display). "Hey robot, tell me a long story about a dragon."
+   While she reads the first sentences and the text is still growing, say "stop": she is quiet within about a second, the
+   text stops growing and the reply shows as stopped. Tap the mic and ask "what's two plus two": answered right away, with
+   no "Robot is still on the last question".
+7. Ask for the long story again and let her read for more than a minute (until the text no longer grows): the screen
+   stays on the whole time. Say "stop" in the middle of a sentence: she stops within about a second. About 30 s later the
+   screen times out as usual.
+8. Again; while she reads, say "stop" in the second half of a long sentence that said "steep", "stepped", "stopped" or
+   "stamped" near its start: she stops. Then say "stop" right after such a word: it may be set aside (Settings › Voice ›
+   Voice log: "“Stop” ignored: Robot was saying a word like it herself"); say it again a few seconds later: she stops
+   ("“Stop” heard: Robot stopped talking").
+9. While the story is still being written, tap the conversation: speech and writing stop, and the next question works.
+   Again with volume down, and once with TalkBack's "Stop speaking" action on the conversation.
+10. "Text mom I'm running late" with "Answer cards by voice" on: while she says "Say yes or no.", say "stop": she is quiet
+    and the card still waits; "yes" or a tap still answers it.
+11. "Ask Claude to tell me a long story about a dragon": say "stop" while Claude's answer is still coming: Claude's voice
+    and the stream stop, the cost line shows, and the next question goes to Robot as usual.
+12. Settings › Voice › Barge-in test › Tricky words: compare "fired" and "got through" with step 2 (short sentences are
+    still guarded whole, so expect the same).
+
+**Asking Claude when Robot can't** (an API key saved; "When Robot needs help" on Automatic, the default with a key)
+
+13. "Tell me about Donald Trump." If Robot's answer says it can't, or that it has no real-time or current information
+    (anywhere in it), "Checking with Claude." follows and Claude answers (with web search on, it names its sources). If
+    Robot gives a plain answer with no such words, nothing follows: that is expected.
+14. "What's the latest news on the Artemis program?": "Checking with Claude." right away, then Claude.
+15. "What's the weather in Tokyo according to the news?": the same.
+16. Settings › Ask Claude › When Robot needs help: **Ask me first**. Step 13: the offer card "Want me to check with
+    Claude?" under Robot's refusal; say "yes": Claude answers. Steps 14 and 15: Robot answers first, then the offer.
+17. In French: « Quelles sont les dernières nouvelles sur le programme Artemis? » goes to Claude (or gets the offer on Ask
+    me first); « C'est quoi le pointage du Canadien hier soir? » too; « Raconte-moi une blague » stays with Robot; « Peux-tu
+    aller sur Internet pour moi? »: when Robot answers « Je ne peux pas… » or « Je n'ai pas accès à Internet… », the offer (or
+    Claude) follows.
+18. **Off**: steps 13 to 15 get Robot's answer and no offer. Back on Automatic, "tell me about Donald Trump, not Claude":
+    no offer for the rest of that conversation.
+19. Delete the key with the Claude app installed (the app route): step 13's refusal gets "Open Claude with: «…»".
+20. `adb logcat -s Robot | grep claude_`: `claude_trigger kind=HEDGE` for step 13, `kind=PRE_ROUTER` for 14 and 15;
+    codes only, never words.
+
+**Learning names from Cheogram**
+
+21. Settings › People, "Learn from Cheogram", switch off: under it "What Robot reads, and where it goes" with its four
+    paragraphs (every app's notifications but only Cheogram's kept; a 1:1 chat's sender name, address and your account,
+    never the message; on the phone, never to Claude or an online model by itself; how to take it back). No button.
+22. Turn the switch on (no access yet): "Allow notification access" says why Android calls it a restricted setting, then
+    steps 1 to 3 with a button each. Tap **Notification access**: Android's page for Robot (or the list) opens; turn it on:
+    Android says "Restricted setting"; OK. Back. Tap **App info**: Robot's App info opens; ⋮ › Allow restricted settings;
+    confirm (PIN or fingerprint if asked). Back. Tap **Notification access again**: turn it on, Allow. Back in Robot: "Notification
+    access allowed", and under the privacy note a **Notification access** button.
+23. Someone only in Cheogram messages you in a 1:1 chat: they appear under "Learned from Cheogram" with their name and
+    address, and nothing of the message anywhere in Robot. A group chat message teaches nothing. `adb logcat -s Robot`
+    shows no name and no text.
+24. Turn the switch off: "Notification access is still allowed" with Open; new messages teach nothing. Open › turn Robot
+    off. The names learned stay until Remove (or Delete all People).
+25. Assistant setup › People, notes and calendar, with the switch on and no access: the same three steps and buttons.
+    With TalkBack each button reads its name; at the largest font size the text wraps and nothing overlaps.
+
 ## What's new in 0.4.5
 
 Robot 0.4.5 brings three pieces of work together; each has its section below.
