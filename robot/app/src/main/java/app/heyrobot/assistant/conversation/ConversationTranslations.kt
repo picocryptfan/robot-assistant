@@ -10,6 +10,7 @@ import app.heyrobot.core.LangPair
 import app.heyrobot.core.LineTranslator
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.MtEngine
+import app.heyrobot.core.MtPriority
 import app.heyrobot.core.RLog
 import app.heyrobot.core.TranscriptEvent
 import app.heyrobot.core.TranscriptLine
@@ -30,12 +31,14 @@ import kotlinx.coroutines.launch
 
 // VOICE PROCESS. One session's translations (docs/conversation-mode.md 4.1, 5.2, 5.3; phase 5.4). The interpreter: each
 // turn in order, Robot's model first (on the TPU) with the fast engine standing in when the model hasn't started within
-// 1.5 s, fails or fails a guard (core LineTranslator, TranslatePolicy). A transcript with Translate on: the fast engine
-// at once, then Robot's model improves the lines in the background, newest on screen first, one at a time, none more
-// than 60 s behind, only with the screen on and the phone not too hot; a line you tap goes first. Without the fast
-// engine (its branch isn't merged, or its models aren't downloaded) Robot's model makes the first translations the same
-// way. Every translation is checked by MtGuard and saved through the session's writer (the session's control thread);
-// the voice log gets the engine, the time and the guard's verdict, never a word.
+// 1.5 s, fails or fails a guard; with a model on the CPU, the fast engine first and the model standing in (core
+// LineTranslator, TranslatePolicy). A transcript with Translate on: the fast engine at once (a first draft, marked
+// "fast"), then Robot's model replaces it with a better one in the background, newest on screen first, one at a time,
+// none more than 60 s behind, only with the screen on and the phone not too hot; a line you tap goes first. Without the
+// fast engine (not in the build, its files not downloaded and verified, or resting after a failure: FastTranslation)
+// Robot's model makes the first translations the same way. Every translation is checked by MtGuard and saved through
+// the session's writer (the session's control thread); the voice log gets the engine, the time and the guard's verdict,
+// never a word.
 
 class ConversationTranslations(private val app: Context, private val pair: LangPair, private val out: Out) {
     interface Out {
@@ -84,7 +87,8 @@ class ConversationTranslations(private val app: Context, private val pair: LangP
 
     private fun backend(): ModelBackend = BrainKeeper.state.value.backend ?: VoiceHub.settings.brainModelChoice.backend
 
-    private fun fast(): Translator? = FastTranslation.translator(app)
+    /** The fast engine now, for the interpreter's turns ([MtPriority.INTERACTIVE]) or a transcript's lines ([MtPriority.BATCH]). */
+    private fun fast(priority: MtPriority = MtPriority.INTERACTIVE): Translator? = FastTranslation.translator(app, pair, priority)
 
     private fun model(use: TranslateUse, fast: Boolean): GemmaTranslator = GemmaTranslator(BrainOneShots, use.priority, TranslatePolicy.budget(use, backend(), fast))
 
@@ -104,8 +108,8 @@ class ConversationTranslations(private val app: Context, private val pair: LangP
             val fast = fast()
             // Too hot: the fast engine only. Otherwise the model leads unless it runs on the CPU and the fast engine is there.
             val model = if (hot) null else model(TranslateUse.INTERPRETER, fast != null)
-            val r = if (TranslatePolicy.modelLeads(backend(), fast != null)) lineTranslator.firstThen(model, fast, l.text, from, to)
-                else lineTranslator.firstThen(fast, model, l.text, from, to)
+            val (lead, other) = TranslatePolicy.order(backend(), model, fast)
+            val r = lineTranslator.firstThen(lead, other, l.text, from, to)
             log(r)
             r.text?.let { out.translated(l.i, to, by(r.engine), it) }
             out.interpreted(l, from, to, r)
@@ -132,7 +136,7 @@ class ConversationTranslations(private val app: Context, private val pair: LangP
     /** A transcript line was heard (or its language changed): the fast engine first, then the model. */
     fun transcriptLine(l: TranscriptLine) {
         if (closed || !transcript || !translatable(l)) return
-        if (fast() != null) fastLines.trySend(l) else queue(l, first = true)
+        if (fast(MtPriority.BATCH) != null) fastLines.trySend(l) else queue(l, first = true)
     }
 
     /** You tapped "Better translation" under line [l]: the model's, first in line. */
@@ -144,13 +148,13 @@ class ConversationTranslations(private val app: Context, private val pair: LangP
     private suspend fun fastFirst(l: TranscriptLine) {
         val from = l.lang ?: return
         val to = pair.other(from) ?: return
-        val f = fast() ?: return queue(l, first = true)
+        if (!transcript) return
+        val f = fast(MtPriority.BATCH) ?: return queue(l, first = true)
         val r = lineTranslator.with(f, l.text, from, to)
         log(r)
-        if (r.text != null) {
-            out.translated(l.i, to, TranscriptEvent.BY_BERGAMOT, r.text!!)
-            queue(l, first = false)
-        } else queue(l, first = true)
+        r.text?.let { out.translated(l.i, to, TranscriptEvent.BY_BERGAMOT, it) }
+        // Translate turned off meanwhile: nothing more for Robot's model.
+        if (transcript) queue(l, first = r.text == null)
     }
 
     private fun queue(l: TranscriptLine, first: Boolean, asked: Boolean = false) {

@@ -102,8 +102,9 @@ fun ConversationSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotS
             }
             // 0.5.0, phases 5.4 and 5.6.
             SectionCard("Translation and summaries") {
-                SwitchRow("Translate transcripts", "Each line in the other language (" + s.convPairChoice.title + "), under it, by Robot's model " +
-                    "on this phone. The transcript screen's Translate turns it on or off for one transcript. The interpreter always translates.",
+                SwitchRow("Translate transcripts", "Each line in the other language (" + s.convPairChoice.title + "), under it, on this phone: " +
+                    "at once by the fast engine when it is downloaded (Fast translation, below), then better by Robot's model. The transcript " +
+                    "screen's Translate turns it on or off for one transcript. The interpreter always translates.",
                     s.convTranslate) { update(s.copy(convTranslate = it)) }
                 Text("Summaries in", style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -205,8 +206,9 @@ private fun SpeakersCard(s: RobotSettings, snap: Snapshot, update: (RobotSetting
 }
 
 /**
- * Settings › Conversation › Translation: the fast translation engine's files (download, cancel, delete, status) and Test
- * translation speed. The test keeps its link to the :mt process while this screen shows, so the engine stays loaded for
+ * Settings › Conversation › Fast translation: the fast translation engine's files (download, cancel, delete, status) and
+ * Test translation speed. Once the files are downloaded and verified, the voice process's sessions translate with it
+ * (FastTranslation). The test keeps its link to the :mt process while this screen shows, so the engine stays loaded for
  * `adb shell dumpsys meminfo app.heyrobot:mt`; leaving the screen lets it go.
  */
 @Composable
@@ -221,10 +223,11 @@ private fun TranslationCard(mt: MtModelStore.Snap?, a: AppActions) {
     val total = remember { MtSpeedRun.testSet(ctx).size }
     LaunchedEffect(Unit) { report = withContext(Dispatchers.IO) { MtSpeedRun.last(ctx) } }
     DisposableEffect(Unit) { onDispose { link?.close() } }
-    SectionCard("Translation") {
-        Text("Robot's fast translation engine translates French ↔ English on this phone, in a process of its own: Mozilla's " +
-            "Bergamot models, run by slimt. Translated transcripts and the interpreter use it in a later update (Gemma then " +
-            "improves the lines); for now you can download it and test it.",
+    SectionCard("Fast translation") {
+        Text("Robot's fast translation engine translates French ↔ English on this phone in a fraction of a second, in a process of " +
+            "its own: Mozilla's Bergamot models, run by slimt. Once it is downloaded, each transcript line gets its translation at " +
+            "once (marked “fast”) and Robot's model then replaces it with a better one; in the interpreter it stands in when Robot's " +
+            "model is slow, and leads when the model runs on the CPU. Without it, Robot's model translates alone, more slowly.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (mt == null) return@SectionCard
         StatusRow(

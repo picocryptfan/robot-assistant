@@ -677,7 +677,7 @@ class AppActions(
     /** 0.5.0: the interpreter (face to face, spoken translations). */
     val interpret: () -> Unit = {},
     val openTranscriptionCheck: () -> Unit = {},
-    /** 0.5.0: the fast translation engine's files (Settings › Conversation › Translation). */
+    /** 0.5.0: the fast translation engine's files (Settings › Conversation › Fast translation). */
     val mtDownload: () -> Unit = {},
     val mtCancel: () -> Unit = {},
     val mtDelete: () -> Unit = {},

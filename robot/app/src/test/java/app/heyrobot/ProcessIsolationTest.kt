@@ -87,10 +87,15 @@ class ProcessIsolationTest {
         // The library is never packaged by another module, and never in git (.gitignore).
         assertTrue(!File(main("voice"), "jniLibs/arm64-v8a/librobotmt.so").exists())
         assertTrue(File(root.parentFile, ".gitignore").readText().contains("robot/mt/src/main/jniLibs/"))
-        // Clients bind it by name, and only through MtLink (the main app's speed test; the voice process from phase 5.4).
+        // Clients bind it by name, and only through MtLink: the main app's speed test, and the voice process's sessions
+        // (phase 5.4) through FastTranslation alone, whose BergamotTranslator core's FastEngineGate makes.
         assertEquals("app.heyrobot.mt.MtService", Regex("""const val SERVICE_CLASS = "([^"]+)"""").find(File(java("core"), "app/heyrobot/core/MtProtocol.kt").readText())!!.groupValues[1])
         assertEquals(listOf("app/sys/MtLink.kt"), usersOf(Regex("""\bMtProtocol\.SERVICE_CLASS\b""")))
-        assertEquals(listOf("app/sys/MtLink.kt", "app/sys/MtSpeedRun.kt", "app/ui/ConversationSettings.kt"), usersOf(Regex("""\bMtLink\b""")))
+        assertEquals(listOf("app/assistant/conversation/FastTranslation.kt", "app/sys/MtLink.kt", "app/sys/MtSpeedRun.kt", "app/ui/ConversationSettings.kt"),
+            usersOf(Regex("""\bMtLink\b""")))
+        assertEquals(listOf("app/assistant/conversation/ConversationSession.kt", "app/assistant/conversation/ConversationTranslations.kt",
+            "app/assistant/conversation/FastTranslation.kt"), usersOf(Regex("""\bFastTranslation\b""")))
+        assertEquals(listOf("core/core/FastTranslate.kt"), usersOf(Regex("""(?<!class )\bBergamotTranslator\(""")))
         // The service checks who sent each message, as BrainService does.
         assertTrue(code(File(java("mt"), "app/heyrobot/mt/MtService.kt")).contains("msg.sendingUid != Process.myUid()"))
         // Robot's own native code in the library (the wrapper and its JNI; robotmt_check.cpp is the build machine's check,

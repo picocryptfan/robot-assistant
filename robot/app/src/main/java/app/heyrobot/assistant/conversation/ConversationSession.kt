@@ -75,9 +75,10 @@ import java.time.LocalDateTime
 // to seed the session's clusterer); what you change on the transcript screen (names, merges, "this is me", a line
 // moved or split) is appended through the session's writer, and the voices are dropped when the session ends.
 // Translation (phase 5.4): the interpreter face translates every turn, and a transcript does with Translate on
-// (ConversationTranslations: Robot's model through :brain's one-shot, the fast engine when it is there); translations are
-// saved as events through the session's writer, read aloud when Speak is on (French in Kokoro's French voice), and the
-// model is held loaded meanwhile. Robot never hears itself: its voice counts as silence, and 300 ms after.
+// (ConversationTranslations: Robot's model through :brain's one-shot, the fast engine in :mt when its files are
+// downloaded and verified); translations are saved as events through the session's writer, read aloud when Speak is on
+// (French in Kokoro's French voice), and the model is held loaded and :mt bound meanwhile. Robot never hears itself:
+// its voice counts as silence, and 300 ms after.
 
 object ConversationSession {
     enum class Status { IDLE, STARTING, RUNNING, PAUSED, STOPPING }
@@ -327,10 +328,12 @@ object ConversationSession {
         val pair = s.convPairChoice
         val theirs = pair.other(LangLabel.owner()) ?: pair.first
         val translate = mode == ConvMode.TRANSCRIBE && s.convTranslate
+        // The fast engine as the session starts (its files downloaded since, or an engine that rested, count again).
+        FastTranslation.recheck(app)
         _state.value = Ui(Status.RUNNING, w.id, mode, w.meta.createdAt, lines = earlier, total = w.lines, lockedStart = locked,
             speakersOn = on, speakers = so.speakers, names = so.names, me = so.me, retired = so.merges.keys,
             translate = translate, speak = ConversationSettings.speak(s, mode), pair = pair, theirs = theirs,
-            fastEngine = FastTranslation.translator(app) != null)
+            fastEngine = FastTranslation.translator(app, pair) != null)
         spoken.clear()
         severe = false
         translations = ConversationTranslations(app, pair, TrOut(w)).also { it.setTranscript(translate) }
@@ -377,6 +380,7 @@ object ConversationSession {
         translations = null
         holding = false
         BrainKeeper.releaseHold(MODEL_HOLD)
+        FastTranslation.release()
         // The open segment and everything queued are decoded and saved before the file is closed.
         try { e?.close() } catch (t: Throwable) { RLog.w("conv_close", t) }
         val now = System.currentTimeMillis()
@@ -773,7 +777,10 @@ object ConversationSession {
         }
     }
 
-    /** The model stays loaded while translations need it (the interpreter, or Translate on). */
+    /**
+     * The model stays loaded while translations need it (the interpreter, or Translate on), and the fast engine's :mt
+     * process stays bound with both directions loaded; when they stop, :mt is let go (it frees the engine).
+     */
     private fun holdModel() {
         val want = _state.value.translates && writer != null
         if (want == holding) return
@@ -781,7 +788,11 @@ object ConversationSession {
         if (want) {
             BrainKeeper.hold(MODEL_HOLD)
             BrainKeeper.prewarm(app)
-        } else BrainKeeper.releaseHold(MODEL_HOLD)
+            FastTranslation.hold(app, _state.value.pair)
+        } else {
+            BrainKeeper.releaseHold(MODEL_HOLD)
+            FastTranslation.release()
+        }
     }
 
     /** Transcribe or Interpreter: the same session, another face. The speakers' cap stays the one it started with. */
