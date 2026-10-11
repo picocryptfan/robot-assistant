@@ -240,11 +240,14 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             // Vision with a fixed 280-token image budget (read when the engine initialises), so the 300 tokens per image
             // Robot plans for hold; if this build refuses the budget, vision without it; then text only. 0.4.3: the budget
             // is Gemma 4's (other models' encoders give a fixed count: MedGemma's adapter 257), so only a Gemma 4 file gets
-            // it; and a file whose header has no vision encoder goes straight to text only (one load, not two).
+            // it; and a file whose header has no vision encoder goes straight to text only (one load, not two). Your own
+            // file only: a built-in model (its SHA-256 checked just above) loads exactly as in 0.4.2, whatever this
+            // header reader makes of its sections, so Fast and the E4B models never lose their vision to it.
             var budgetSet = false
             val budgets = when {
-                header?.vision == false -> emptyList()
-                header == null || header.gemma4 -> listOf(TokenEstimate.VISUAL_TOKEN_BUDGET, null)
+                req.model.builtIn || header == null -> listOf(TokenEstimate.VISUAL_TOKEN_BUDGET, null)
+                !header.vision -> emptyList()
+                header.gemma4 -> listOf(TokenEstimate.VISUAL_TOKEN_BUDGET, null)
                 else -> listOf(null)
             }
             if (budgets.isEmpty()) visionError = "NoVisionEncoder"

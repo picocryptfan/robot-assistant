@@ -107,6 +107,8 @@ answers" applies as you set it.
   adapter gives 257 per 896 × 896 image (read from the file: its output is `[1, 257, 2560]`). Gemma 4's visual token
   budget (280) is set only for a Gemma 4 file, and a file without a vision encoder now loads once, text only, instead of
   failing a vision load first; a photo question then says "This model can't look at photos: its file has no vision part."
+  This reading of the header decides only for your own file: Fast, Smarter and Uncensored load their vision exactly as in
+  0.4.2 (the 280 budget first, then without it, then text only).
 - **Actions.** Robot's routes that need no model work as always: "text Mom I'm late" (texting without the model), Ask
   Claude's phrases and the hand-over to Claude. A request clearly worded as an action, from its first words ("set a timer
   …", "remind me to…", "open Signal", "turn on the flashlight", "add … to my calendar", "navigate to…"), or a question only
