@@ -131,6 +131,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun AssistantPanel(onClose: () -> Unit) {
     val st by PanelController.state.collectAsState()
+    AssistantPanel(st, PanelActions.Default, onClose)
+}
+
+/** The panel for [st]; its parts ask [actions] for everything they do (PanelActions.Default on screen). */
+@Composable
+fun AssistantPanel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     var input by rememberSaveable(st.convId) { mutableStateOf("") }
     // The session (and this composition) survives a hide: a drag offset or an open attach row must not carry over
     // into the next show, or the panel opens shifted down with its input row off-screen.
@@ -167,7 +173,7 @@ fun AssistantPanel(onClose: () -> Unit) {
 
     // The field is cleared only when the question was taken (not while a turn is under way).
     fun send() {
-        if (PanelController.send(input)) {
+        if (actions.send(input)) {
             input = ""
             attachOpen = false
         }
@@ -203,14 +209,14 @@ fun AssistantPanel(onClose: () -> Unit) {
                     Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
                         Box(Modifier.size(width = 36.dp, height = 4.dp).clip(CircleShape).background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)))
                     }
-                    Header(st, onClose)
+                    Header(st, actions, onClose)
                 }
                 AnimatedVisibility(st.notice != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                    st.notice?.let { NoticeBar(it) }
+                    st.notice?.let { NoticeBar(it, actions) }
                 }
-                BrainBanner(st)
-                if (st.claudeMode) HelperModeChip(st.helperName ?: "Claude")
-                Messages(st, Modifier.weight(1f, fill = false))
+                BrainBanner(st, actions)
+                if (st.claudeMode) HelperModeChip(st.helperName ?: "Claude", actions)
+                Messages(st, actions, Modifier.weight(1f, fill = false))
                 // Listening for a question, or for the waiting card's "yes" or "no".
                 val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING || st.cardHearing != null
                 if (st.turns.isEmpty() && !hearing) {
@@ -223,14 +229,14 @@ fun AssistantPanel(onClose: () -> Unit) {
                                 try { focus.requestFocus() } catch (_: Exception) {}
                                 keyboard?.show()
                             }
-                            TipKind.SCREEN -> PanelController.askAboutScreen(tip.text)
+                            TipKind.SCREEN -> actions.askAboutScreen(tip.text)
                             TipKind.PHOTO -> attachOpen = true
                         }
                     }
                 }
-                if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING || st.cardHearing == Phase.TRANSCRIBING, card = st.cardHearing != null)
-                ContextRow(st)
-                AnimatedVisibility(attachOpen && st.draft == null && !st.busy) { AttachRow(st.locked) { attachOpen = false } }
+                if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING || st.cardHearing == Phase.TRANSCRIBING, card = st.cardHearing != null, actions = actions)
+                ContextRow(st, actions)
+                AnimatedVisibility(attachOpen && st.draft == null && !st.busy) { AttachRow(st.locked, actions) { attachOpen = false } }
                 InputRow(
                     st = st,
                     input = input,
@@ -238,6 +244,7 @@ fun AssistantPanel(onClose: () -> Unit) {
                     onSend = ::send,
                     onAttach = { attachOpen = !attachOpen },
                     focus = focus,
+                    actions = actions,
                 )
             }
         }
@@ -282,7 +289,7 @@ private fun keyboardPad(): Pair<Dp, Dp> {
 }
 
 @Composable
-private fun Header(st: PanelState, onClose: () -> Unit) {
+private fun Header(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         StatusOrb(st.phase)
         Spacer(Modifier.width(12.dp))
@@ -291,16 +298,16 @@ private fun Header(st: PanelState, onClose: () -> Unit) {
             Text(statusLine(st), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (!st.keep && st.turns.isNotEmpty()) {
-            TextButton(onClick = PanelController::keepConversation, modifier = Modifier.heightIn(min = 48.dp)) {
+            TextButton(onClick = actions::keepConversation, modifier = Modifier.heightIn(min = 48.dp)) {
                 Icon(RIcons.Bookmark, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Keep")
             }
         }
-        IconButton(onClick = PanelController::toggleSpeak, modifier = Modifier.size(48.dp)) {
+        IconButton(onClick = actions::toggleSpeak, modifier = Modifier.size(48.dp)) {
             Icon(if (st.speak) RIcons.VolumeUp else RIcons.VolumeOff, if (st.speak) "Speaking replies: on" else "Speaking replies: off")
         }
-        IconButton(onClick = { PanelController.newConversation() }, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, "New conversation") }
+        IconButton(onClick = actions::newConversation, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, "New conversation") }
         IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Close") }
     }
 }
@@ -323,10 +330,10 @@ private fun statusLine(st: PanelState): String = when (st.phase) {
 
 /** A helper's conversation is on: every question goes to [name] until "Back to Robot". */
 @Composable
-private fun HelperModeChip(name: String) {
+private fun HelperModeChip(name: String, actions: PanelActions) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
         AssistChip(
-            onClick = PanelController::endHelperMode,
+            onClick = actions::endHelperMode,
             label = { Text("Talking with $name · Back to Robot") },
             leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize), tint = MaterialTheme.colorScheme.tertiary) },
             colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer, labelColor = MaterialTheme.colorScheme.onTertiaryContainer),
@@ -342,7 +349,7 @@ private fun HelperModeChip(name: String) {
  * personal goes).
  */
 @Composable
-private fun OfferCard(replyId: String, o: Offer) {
+private fun OfferCard(replyId: String, o: Offer, actions: PanelActions) {
     Surface(
         shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
         modifier = Modifier.padding(top = 6.dp).widthIn(max = 340.dp).fillMaxWidth(),
@@ -364,8 +371,8 @@ private fun OfferCard(replyId: String, o: Offer) {
                     overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
             }
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
-                TextButton(onClick = { PanelController.dismissOffer(replyId) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("No thanks") }
-                FilledTonalButton(onClick = { PanelController.acceptOffer(replyId) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                TextButton(onClick = { actions.dismissOffer(replyId) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("No thanks") }
+                FilledTonalButton(onClick = { actions.acceptOffer(replyId) }, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text(if (o.api) "Send" else "Open Claude")
                 }
             }
@@ -395,7 +402,7 @@ private fun StatusOrb(phase: Phase) {
 }
 
 @Composable
-private fun NoticeBar(n: Notice) {
+private fun NoticeBar(n: Notice, actions: PanelActions) {
     Surface(
         color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
         shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
@@ -404,17 +411,17 @@ private fun NoticeBar(n: Notice) {
             Icon(RIcons.Info, null, Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
             Text(n.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
-            if (n.action == NoticeAction.OPEN_APP) TextButton(onClick = PanelController::openRobotApp) { Text("Open Robot") }
-            if (n.action == NoticeAction.OPEN_ASSIST_SETTINGS) TextButton(onClick = PanelController::openAssistSettings) { Text("Open settings") }
-            if (n.action == NoticeAction.OPEN_MODEL) TextButton(onClick = PanelController::openModelSettings) { Text("Open Model") }
-            IconButton(onClick = PanelController::dismissNotice, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Dismiss", Modifier.size(18.dp)) }
+            if (n.action == NoticeAction.OPEN_APP) TextButton(onClick = actions::openRobotApp) { Text("Open Robot") }
+            if (n.action == NoticeAction.OPEN_ASSIST_SETTINGS) TextButton(onClick = actions::openAssistSettings) { Text("Open settings") }
+            if (n.action == NoticeAction.OPEN_MODEL) TextButton(onClick = actions::openModelSettings) { Text("Open Model") }
+            IconButton(onClick = actions::dismissNotice, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Dismiss", Modifier.size(18.dp)) }
         }
     }
 }
 
 /** The model is missing or failed: say so before the person types a whole question. */
 @Composable
-private fun BrainBanner(st: PanelState) {
+private fun BrainBanner(st: PanelState, actions: PanelActions) {
     val b = st.brain
     if (st.notice != null) return
     if (b.readiness != BrainKeeper.Readiness.NO_MODEL && b.readiness != BrainKeeper.Readiness.FAILED) return
@@ -426,16 +433,14 @@ private fun BrainBanner(st: PanelState) {
             Icon(RIcons.Warning, null, Modifier.size(20.dp))
             Spacer(Modifier.width(10.dp))
             Text(b.problem ?: "The model isn't ready.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            if (b.readiness == BrainKeeper.Readiness.NO_MODEL) TextButton(onClick = PanelController::openRobotApp) { Text("Open Robot") }
+            if (b.readiness == BrainKeeper.Readiness.NO_MODEL) TextButton(onClick = actions::openRobotApp) { Text("Open Robot") }
         }
     }
 }
 
-private val cardActions = CardActions(choose = PanelController::choose, undo = PanelController::undo, allow = PanelController::openPermissions,
-    openApp = PanelController::openHandOff)
-
 @Composable
-private fun Messages(st: PanelState, modifier: Modifier) {
+private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) {
+    val cardActions = remember(actions) { CardActions(choose = actions::choose, undo = actions::undo, allow = actions::openPermissions, openApp = actions::openHandOff) }
     if (st.turns.isEmpty()) {
         Column(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
             Text(if (st.locked) LockScreen.headline(st.lockedTools) else "Ask me anything.", style = MaterialTheme.typography.headlineSmall)
@@ -466,11 +471,11 @@ private fun Messages(st: PanelState, modifier: Modifier) {
         state = list,
         modifier = modifier.fillMaxWidth().pointerInput(st.phase, st.speak) {
             // Tapping the conversation stops speech (spec item 4), also while the spoken reply still streams.
-            detectTapGestures { if (st.phase == Phase.SPEAKING || (st.phase == Phase.ANSWERING && st.speak)) PanelController.stopSpeaking() }
+            detectTapGestures { if (st.phase == Phase.SPEAKING || (st.phase == Phase.ANSWERING && st.speak)) actions.stopSpeaking() }
         }.semantics {
             // The same for TalkBack, which can't tap the list itself: an action on it while Robot talks.
             if (st.phase == Phase.SPEAKING || (st.phase == Phase.ANSWERING && st.speak)) {
-                customActions = listOf(CustomAccessibilityAction("Stop speaking") { PanelController.stopSpeaking(); true })
+                customActions = listOf(CustomAccessibilityAction("Stop speaking") { actions.stopSpeaking(); true })
             }
         },
         reverseLayout = true,
@@ -485,11 +490,11 @@ private fun Messages(st: PanelState, modifier: Modifier) {
                     actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
                         cancel = it.cancel, openApp = it.handOff?.let { h -> SettingsPage.label(h) ?: "Open Cheogram" }, picture = it.picture, remember = it.remember,
                         allowContacts = it.allowContacts) },
-                    onConfirm = PanelController::confirm,
+                    onConfirm = actions::confirm,
                     cardActions = cardActions,
                     claude = t.claude, readBack = t.readBack, footer = claudeFooter(t.sources, t.cost, t.by), by = t.by, home = t.home,
                 )
-                t.offer?.let { OfferCard(t.id, it) }
+                t.offer?.let { OfferCard(t.id, it, actions) }
             }
         }
     }
@@ -505,7 +510,7 @@ private fun Suggestions(tips: List<Tip>, onPick: (Tip) -> Unit) {
 }
 
 @Composable
-private fun ListeningRow(partial: String, transcribing: Boolean, card: Boolean = false) {
+private fun ListeningRow(partial: String, transcribing: Boolean, card: Boolean = false, actions: PanelActions) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         val t = rememberInfiniteTransition(label = "listen")
         val s by t.animateFloat(0.85f, 1.15f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "mic")
@@ -515,7 +520,7 @@ private fun ListeningRow(partial: String, transcribing: Boolean, card: Boolean =
         Spacer(Modifier.width(12.dp))
         Text(partial.ifEmpty { if (transcribing) "Writing it down…" else if (card) "Listening: yes or no?" else "Listening…" },
             style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-        if (!transcribing) TextButton(onClick = PanelController::micReleased) { Text("Done") }
+        if (!transcribing) TextButton(onClick = actions::micReleased) { Text("Done") }
     }
 }
 
@@ -524,7 +529,7 @@ private fun ListeningRow(partial: String, transcribing: Boolean, card: Boolean =
  * this screen" is the screen button next to the camera (0.4.0; [ScreenButton]).
  */
 @Composable
-private fun ContextRow(st: PanelState) {
+private fun ContextRow(st: PanelState, actions: PanelActions) {
     val d = st.draft
     if (d != null) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -542,13 +547,13 @@ private fun ContextRow(st: PanelState) {
                 Text(if (d.kind == Attachment.SCREEN) "Your screen" else "Photo", style = MaterialTheme.typography.titleSmall)
                 Text("Goes with your next question", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            IconButton(onClick = PanelController::removeDraft, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Remove") }
+            IconButton(onClick = actions::removeDraft, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Remove") }
         }
     } else if (st.claudeScreen && !st.busy) {
         // Over the Claude app (your corner swipe): its last answer, read aloud in Claude's voice.
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
             AssistChip(
-                onClick = PanelController::readClaudeAnswer,
+                onClick = actions::readClaudeAnswer,
                 label = { Text("Read Claude's answer") },
                 leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize)) },
                 modifier = Modifier.heightIn(min = 48.dp),
@@ -562,11 +567,11 @@ private fun ContextRow(st: PanelState) {
  * attaches it; without it, the button is dimmed with a dot, and a tap says why (core ScreenAccess), as the chip did.
  */
 @Composable
-private fun ScreenButton(st: PanelState) {
+private fun ScreenButton(st: PanelState, actions: PanelActions) {
     val ready = st.screenAvailable
     val state = ScreenAccess.iconDescription(st.screenChip)
     IconButton(
-        onClick = PanelController::attachScreen, enabled = !st.busy && st.draft == null,
+        onClick = actions::attachScreen, enabled = !st.busy && st.draft == null,
         modifier = Modifier.size(52.dp).semantics { contentDescription = "Ask about this screen" + (state?.let { ". $it" } ?: "") },
     ) {
         BadgedBox(badge = { if (!ready) Badge(containerColor = MaterialTheme.colorScheme.tertiary) }) {
@@ -576,10 +581,10 @@ private fun ScreenButton(st: PanelState) {
 }
 
 @Composable
-private fun AttachRow(locked: Boolean, onDone: () -> Unit) {
+private fun AttachRow(locked: Boolean, actions: PanelActions, onDone: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        BigChoice(RIcons.Camera, "Camera", Modifier.weight(1f)) { onDone(); PanelController.openCapture(CaptureActivity.MODE_CAMERA) }
-        BigChoice(RIcons.Image, "Photos", Modifier.weight(1f)) { onDone(); PanelController.openCapture(CaptureActivity.MODE_PHOTOS) }
+        BigChoice(RIcons.Camera, "Camera", Modifier.weight(1f)) { onDone(); actions.openCapture(CaptureActivity.MODE_CAMERA) }
+        BigChoice(RIcons.Image, "Photos", Modifier.weight(1f)) { onDone(); actions.openCapture(CaptureActivity.MODE_PHOTOS) }
     }
     if (locked) Text("Unlock to use the camera or your photos.", style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp))
@@ -595,11 +600,11 @@ private fun BigChoice(icon: ImageVector, label: String, modifier: Modifier, onCl
 }
 
 @Composable
-private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, onSend: () -> Unit, onAttach: () -> Unit, focus: FocusRequester) {
+private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, onSend: () -> Unit, onAttach: () -> Unit, focus: FocusRequester, actions: PanelActions) {
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         // No camera while a turn runs: the panel would hide with the answer still going.
         IconButton(onClick = onAttach, enabled = !st.busy, modifier = Modifier.size(52.dp)) { Icon(RIcons.Camera, "Add a photo") }
-        if (st.screenChip != ScreenChip.HIDDEN) ScreenButton(st)
+        if (st.screenChip != ScreenChip.HIDDEN) ScreenButton(st, actions)
         TextField(
             value = input,
             onValueChange = onInput,
@@ -620,14 +625,14 @@ private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, o
         when {
             // A card waits: the mic (or Send, for a typed "yes" or "no") answers it; Stop still declines it and ends the answer.
             st.phase == Phase.CONFIRMING -> {
-                IconButton(onClick = PanelController::stopGenerating, modifier = Modifier.size(48.dp)) { Icon(RIcons.Stop, "Stop") }
+                IconButton(onClick = actions::stopGenerating, modifier = Modifier.size(48.dp)) { Icon(RIcons.Stop, "Stop") }
                 if (canSend) FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, "Send") }
-                else MicButton(listening = st.cardHearing != null, hint = st.micHint)
+                else MicButton(listening = st.cardHearing != null, hint = st.micHint, actions = actions)
             }
-            st.busy -> FilledIconButton(onClick = PanelController::stopGenerating, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop") }
-            st.phase == Phase.SPEAKING && !canSend -> FilledTonalIconButton(onClick = PanelController::stopSpeaking, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop speaking") }
+            st.busy -> FilledIconButton(onClick = actions::stopGenerating, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop") }
+            st.phase == Phase.SPEAKING && !canSend -> FilledTonalIconButton(onClick = actions::stopSpeaking, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop speaking") }
             canSend -> FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, "Send") }
-            else -> MicButton(listening = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING, hint = st.micHint)
+            else -> MicButton(listening = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING, hint = st.micHint, actions = actions)
         }
     }
 }
@@ -639,7 +644,7 @@ private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, o
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MicButton(listening: Boolean, hint: String?) {
+private fun MicButton(listening: Boolean, hint: String?, actions: PanelActions) {
     val tip = rememberTooltipState()
     val scope = rememberCoroutineScope()
     LaunchedEffect(hint) { if (hint != null) tip.show() }
@@ -656,15 +661,15 @@ private fun MicButton(listening: Boolean, hint: String?) {
                 .semantics {
                     contentDescription = if (hint != null) "Talk to Robot. $hint" else "Talk to Robot"
                     role = Role.Button
-                    onClick(label = "Talk") { PanelController.micPressed(); true }
+                    onClick(label = "Talk") { actions.micPressed(); true }
                 }
                 .pointerInput(hint) {
                     detectTapGestures(onPress = {
                         if (hint != null) scope.launch { tip.show() }
                         val t0 = System.currentTimeMillis()
-                        PanelController.micPressed()
+                        actions.micPressed()
                         val released = tryAwaitRelease()
-                        if (released && System.currentTimeMillis() - t0 > 450) PanelController.micReleased()
+                        if (released && System.currentTimeMillis() - t0 > 450) actions.micReleased()
                     })
                 },
             contentAlignment = Alignment.Center,
