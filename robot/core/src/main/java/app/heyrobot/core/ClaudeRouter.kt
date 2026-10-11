@@ -253,6 +253,216 @@ object ClaudeRouter {
         }
     }
 
+    // ------------------------------------------------------------------ "not Claude"
+
+    /**
+     * You turned Claude down: "not Claude", "no Claude", "don't ask Claude", "don't check with Claude", "without Claude",
+     * "leave Claude out of it", "you tell me", "tell me yourself", "answer it yourself", "on your own", "pas Claude", "sans
+     * Claude", "ne demande pas à Claude", "réponds toi-même". Anywhere in what you said, not only at the start ("tell me
+     * about this screen. Not Claude"). Robot then answers itself and doesn't bring Claude in for the rest of the
+     * conversation, until you ask for Claude again ("ask Claude …", "go get Claude").
+     *
+     * Parakeet's mishearings count after a refusal word too ("not cloud", "don't ask clod"), but only where nothing could
+     * follow them but a pause or a polite word: "no cloud today?", "not cloud storage", "don't ask Clyde to pick up milk"
+     * and "without cloud" are about the weather, storage or a person. Words about someone called Claude never count:
+     * "is it not Claude's birthday", "Claude is not available", "it's not Claude, it's Sam", "whether or not Claude
+     * comes", "don't tell Claude", "tell me about yourself", "can you set alarms on your own?".
+     */
+    fun declines(text: String): Boolean {
+        val ws = words(text)
+        if (ws.isEmpty()) return false
+        val start = head(ws)
+        return ws.indices.any { i -> contrast(text, ws, i) || verbFirst(text, ws, i) || yourself(text, ws, i, start) || french(text, ws, i) }
+    }
+
+    /** Words after "not Claude" that keep it a refusal: "not Claude please", "not Claude this time", "pas Claude, toi". */
+    private val NOT_AFTER = setOf("please", "pls", "thanks", "thank", "thx", "this", "that", "for", "just", "you", "yourself", "i", "im", "robot", "ok",
+        "okay", "again", "now", "today", "here", "either", "but", "and", "so", "then", "only", "needed", "necessary", "required", "involved", "though",
+        "too", "anymore", "stp", "svp", "sil", "merci", "toi", "cette", "pour", "juste", "je", "mais", "et", "maintenant", "ici", "non", "ca", "cela")
+    /** After a word that only sounds like the name, fewer: "no cloud today?" is about the weather. */
+    private val NOT_AFTER_HEARD = setOf("please", "pls", "thanks", "thank", "thx", "just", "you", "yourself", "i", "im", "robot", "but", "stp", "svp",
+        "sil", "merci", "toi", "juste", "je", "mais")
+    /** "it's not Claude", "there's no Claude", "c'est pas Claude": who someone is, never a refusal. */
+    private val BE = setOf("is", "are", "am", "was", "were", "be", "been", "being", "im", "youre", "its", "thats", "hes", "shes", "theyre", "theres",
+        "there", "isnt", "wasnt", "whos", "whats", "est", "cest", "nest", "suis", "es", "sont", "etait", "a", "ya")
+    /** Pauses that end a refusal ("not Claude, you"); a hyphen joined to the word ("cloud-based") is not one. */
+    private const val PAUSES = ",:;!?.—-"
+
+    /** Word [k] ends a clause: the last word, or a pause right after it. */
+    private fun pauseAfter(text: String, ws: List<Word>, k: Int): Boolean {
+        if (k >= ws.size - 1) return true
+        val p = ws[k].punctAfter ?: return false
+        return p in PAUSES && !(p == '-' && text.getOrNull(ws[k].end) == '-')
+    }
+
+    /** The name (or a mishearing of it) at [k], and nothing after it but a pause or a word that can't go on about a person. */
+    private fun nameEnds(text: String, ws: List<Word>, k: Int): Boolean {
+        val w = ws.getOrNull(k)?.w ?: return false
+        if (w !in ALIASES) return false
+        return pauseAfter(text, ws, k) || ws[k + 1].w in (if (w == NAME) NOT_AFTER else NOT_AFTER_HEARD)
+    }
+
+    /** The name after a refusal verb ("don't ask Claude …"): anything may follow the name itself, but "if he …" is a person. */
+    private fun nameAfterVerb(text: String, ws: List<Word>, k: Int): Boolean {
+        val w = ws.getOrNull(k)?.w ?: return false
+        if (w != NAME) return nameEnds(text, ws, k)
+        return !(ws.getOrNull(k + 1)?.w in setOf("if", "whether", "si") && ws.getOrNull(k + 2)?.w in PERSON)
+    }
+
+    /** "not Claude", "no Claude", "without Claude", "pas Claude", "sans Claude", "not to Claude", "pas à Claude". */
+    private fun contrast(text: String, ws: List<Word>, i: Int): Boolean {
+        val neg = ws[i].w
+        if (neg !in setOf("not", "no", "pas", "sans", "without") || ws[i].punctAfter != null) return false
+        if (ws.getOrNull(i - 1)?.w in BE) return false
+        var k = i + 1
+        if (neg in setOf("not", "pas") && ws.getOrNull(k)?.w in setOf("to", "a", "au", "with", "avec")) k++
+        // "without cloud" is about storage: only the name itself counts after "without" and "sans".
+        if (neg in setOf("sans", "without") && ws.getOrNull(k)?.w != NAME) return false
+        return nameEnds(text, ws, k)
+    }
+
+    private val REFUSE_FIRST: List<Array<String>> = listOf(arrayOf("dont"), arrayOf("do", "not"), arrayOf("never"), arrayOf("stop"),
+        arrayOf("no", "need", "to"), arrayOf("without"))
+    /** What you might not want done with Claude: "don't ask / check with / use / bring in / send it to Claude". */
+    private val REFUSED = setOf("ask", "asking", "check", "checking", "use", "using", "call", "calling", "get", "getting", "bring", "bringing", "involve",
+        "involving", "send", "sending", "go", "going", "consult", "consulting", "hand", "handing", "pass", "passing", "forward", "forwarding", "run",
+        "running", "need", "want", "mind", "contact", "contacting", "wait", "waiting", "try", "trying")
+    /** Between the verb and the name: "check with", "send it to", "hand it over to", "run this by". */
+    private val CONNECT = setOf("with", "to", "in", "it", "this", "that", "over", "on", "through", "by", "past", "for", "the", "question", "one", "up", "at")
+
+    /**
+     * "don't ask Claude", "do not check with Claude", "never mind Claude", "stop asking Claude", "no need to ask Claude",
+     * "without asking Claude", "no need for Claude", "leave Claude out of it", "keep Claude out of this", "forget Claude".
+     */
+    private fun verbFirst(text: String, ws: List<Word>, i: Int): Boolean {
+        REFUSE_FIRST.firstOrNull { seq(ws, i, *it) }?.let { p ->
+            val v = i + p.size
+            if (ws.getOrNull(v)?.w !in REFUSED) return@let
+            var k = v + 1
+            while (k < ws.size && k - v <= 3 && ws[k].w in CONNECT) k++
+            // "don't use the cloud" is about storage: after "the", only the name itself.
+            if (ws.getOrNull(k - 1)?.w == "the" && ws.getOrNull(k)?.w != NAME) return@let
+            if (nameAfterVerb(text, ws, k)) return true
+        }
+        if (seq(ws, i, "no", "need", "for")) return nameEnds(text, ws, i + 3)
+        val w = ws[i].w
+        // "leave Claude out of it", "keep cloud out of this", "leave out Claude", "leave Claude alone".
+        if (w in setOf("leave", "keep")) {
+            val k = ws.getOrNull(i + 1)?.takeIf { it.w == "out" }?.let { i + 2 } ?: (i + 1)
+            if (ws.getOrNull(k)?.w !in ALIASES) return false
+            return k == i + 2 || ws.getOrNull(k + 1)?.w == "out" || (ws[k].w == NAME && ws.getOrNull(k + 1)?.w == "alone")
+        }
+        // "forget Claude", "forget about Claude", "skip Claude".
+        if (w in setOf("forget", "skip")) return nameEnds(text, ws, if (ws.getOrNull(i + 1)?.w == "about") i + 2 else i + 1)
+        return false
+    }
+
+    /** "tell me yourself": an answer the way you want it from Robot. Not after "don't" ("don't answer yourself, ask Claude"). */
+    private val SELF = setOf("tell", "answer", "do", "work", "figure", "explain", "describe", "say", "read", "decide", "think", "check", "look", "summarise",
+        "summarize", "handle", "solve", "reply", "respond", "find")
+    /** Between the verb and "yourself": "answer it yourself", "figure it out yourself", "do it by yourself", "think for yourself". */
+    private val SELF_MID = setOf("me", "us", "it", "this", "that", "out", "the", "answer", "question", "one", "for", "up", "screen", "at", "by", "on")
+    private val NEGATED = setOf("dont", "not", "never", "didnt", "cant", "cannot", "wont", "shouldnt")
+    /** Words that may open a clause before "you tell me": "no, you tell me", "so you tell me". */
+    private val OPENERS = setOf("no", "nope", "nah", "just", "so", "then", "please", "and", "but", "well", "ok", "okay", "now")
+
+    /** "you tell me", "tell me yourself", "answer it yourself", "on your own", "by yourself", "I'm asking you". */
+    private fun yourself(text: String, ws: List<Word>, i: Int, start: Int): Boolean {
+        fun clauseStart(k: Int) = k == start || (k > 0 && (ws[k - 1].punctAfter != null || ws[k - 1].w in OPENERS))
+        // "you tell me", "you answer", "you decide": you, not someone else, at the start of a clause ("can you tell me" is a request).
+        if (ws[i].w == "you" && ws[i].punctAfter == null && clauseStart(i)) {
+            val v = ws.getOrNull(i + 1)?.w
+            if (v == "tell" && ws.getOrNull(i + 2)?.w in setOf("me", "us")) return true
+            if (v in setOf("answer", "explain", "decide", "figure")) return true
+            if (v == "do" && ws.getOrNull(i + 2)?.w in setOf("it", "this", "that")) return true
+        }
+        // "tell me yourself", "answer it yourself".
+        if (ws[i].w == "yourself") return selfVerbBefore(ws, i)
+        // "on your own", "by yourself": after an answering verb or on their own, and nothing after them but a pause.
+        val phrase = when {
+            seq(ws, i, "on", "your", "own") -> 3
+            seq(ws, i, "by", "yourself") -> 2
+            else -> 0
+        }
+        if (phrase > 0) {
+            val last = i + phrase - 1
+            val ends = pauseAfter(text, ws, last) || ws[last + 1].w in NOT_AFTER
+            return ends && (clauseStart(i) || selfVerbBefore(ws, i))
+        }
+        // "I'm asking you", "I asked you" (and nothing more about it).
+        val asking = when {
+            seq(ws, i, "im", "asking", "you") -> i + 2
+            seq(ws, i, "i", "am", "asking", "you") -> i + 3
+            seq(ws, i, "i", "asked", "you") -> i + 2
+            else -> -1
+        }
+        return asking >= 0 && (pauseAfter(text, ws, asking) || ws[asking + 1].w in NOT_AFTER)
+    }
+
+    /** An answering verb ([SELF]) right before [k], past at most four small words ([SELF_MID]), and not negated. */
+    private fun selfVerbBefore(ws: List<Word>, k: Int): Boolean {
+        var j = k - 1
+        while (j >= 0 && k - j <= 4 && ws[j].w in SELF_MID && ws[j].w !in SELF) j--
+        if (j < 0 || ws[j].w !in SELF) return false
+        val before = ws.getOrNull(j - 1)?.w
+        // "don't answer yourself, ask Claude"; "did you do it yourself?" asks about something done.
+        return before !in NEGATED && !seq(ws, j - 2, "do", "not") && !(before == "you" && ws.getOrNull(j - 2)?.w in setOf("did", "do", "does", "have", "had"))
+    }
+
+    private val FR_VERBS = setOf("demande", "demandes", "demandez", "appelle", "appelles", "appelez", "consulte", "consultes", "consultez", "utilise",
+        "utilises", "utilisez", "verifie", "verifies", "verifiez", "interroge", "interroges", "interrogez", "passe", "passes", "passez", "envoie", "envoies",
+        "envoyez", "va", "vas", "allez")
+    private val FR_INF = setOf("demander", "appeler", "consulter", "utiliser", "verifier", "interroger", "passer", "envoyer", "chercher", "solliciter")
+    private val FR_CONNECT = setOf("a", "au", "avec", "de", "par", "ca", "cela", "le", "la", "chercher", "lui")
+    private val FR_SELF = setOf("reponds", "repond", "repondez", "dis", "dites", "fais", "faites", "explique", "expliquez", "decris", "resume", "reflechis",
+        "trouve", "lis")
+
+    /**
+     * "ne demande pas à Claude", "n'appelle pas Claude", "ne va pas chercher Claude", "ne pas demander à Claude", "sans
+     * passer par Claude", "pas besoin de Claude", "laisse Claude en dehors", "toi-même", "réponds tout seul".
+     */
+    private fun french(text: String, ws: List<Word>, i: Int): Boolean {
+        val w = ws[i].w
+        // "toi-même", "vous-même": you, yourself.
+        if (w in setOf("toi", "vous") && ws.getOrNull(i + 1)?.w == "meme") return true
+        // "réponds tout seul".
+        if (w in FR_SELF) {
+            for (k in i + 1..minOf(i + 4, ws.size - 2)) if (ws[k].w == "tout" && ws[k + 1].w == "seul" || ws[k].w == "toute" && ws[k + 1].w == "seule") return true
+        }
+        fun connectedName(from: Int): Boolean {
+            var k = from
+            while (k < ws.size && k - from < 3 && ws[k].w in FR_CONNECT) k++
+            return nameAfterVerb(text, ws, k)
+        }
+        // "(ne) demande pas à Claude", "n'appelle pas Claude" (the "n'" joins the verb), "ne va pas chercher Claude". Not
+        // "demande pas, Claude" or "ça va pas, Claude ?", which speak to someone.
+        val verb = if (w in FR_VERBS) w else w.drop(1).takeIf { w.startsWith("n") && it in FR_VERBS }
+        if (verb != null && ws.getOrNull(i + 1)?.w == "pas" && ws[i + 1].punctAfter == null) {
+            if (verb in setOf("va", "vas", "allez") && ws.getOrNull(i + 2)?.w != "chercher") return false
+            return connectedName(i + 2)
+        }
+        // "ne pas demander à Claude", "sans demander à Claude", "pas besoin de demander à Claude".
+        val inf = when {
+            seq(ws, i, "ne", "pas") -> i + 2
+            w == "sans" -> i + 1
+            seq(ws, i, "pas", "besoin", "de") -> i + 3
+            seq(ws, i, "inutile", "de") -> i + 2
+            else -> -1
+        }
+        if (inf >= 0) {
+            if (ws.getOrNull(inf)?.w in FR_INF) return connectedName(inf + 1)
+            // "pas besoin de Claude".
+            if (w == "pas" || w == "inutile") return nameEnds(text, ws, inf)
+        }
+        // "laisse Claude en dehors (de ça)", "laisse Claude de côté", "laisse tomber Claude".
+        if (w in setOf("laisse", "laissez", "laisser")) {
+            if (ws.getOrNull(i + 1)?.w == "tomber") return nameEnds(text, ws, i + 2)
+            if (ws.getOrNull(i + 1)?.w !in ALIASES) return false
+            return seq(ws, i + 2, "en", "dehors") || seq(ws, i + 2, "de", "cote")
+        }
+        return false
+    }
+
     private val YES = setOf("yes", "yeah", "yep", "yup", "sure", "please", "ok", "okay", "go", "ahead", "do", "it", "check", "oui",
         "daccord", "vas", "y", "please", "absolutely", "definitely", "go ahead", "with", "claude", "ask", "him")
 
