@@ -236,35 +236,35 @@ All files access, READ_EXTERNAL_STORAGE or KILL_BACKGROUND_PROCESSES; INTERNET i
    will it be in London Ontario tonight", "quelle est la météo demain à Québec", "is it going to snow next week" (short
    lines, at most 7 days), "what was the weather yesterday" (refused: forecasts only), "weather in Springfield, Atlantis"
    (refused: none there). Ask "weather in Tokyo on Friday" late on a Thursday evening.
-5a. "What's the weather this week in Paris?" and say "stop" (or tap Stop) while it is looking: the card says
+6. "What's the weather this week in Paris?" and say "stop" (or tap Stop) while it is looking: the card says
    "Stopped" at once and a new question works right away. Ask about the screen of a web page, then "and the weather
    tomorrow?": the weather shows a card first.
-6. Settings › People, notes and calendar › Phone region "US": "weather tomorrow" in °F, mph and inches. Clear it again.
-7. Lock the phone: "Hey robot, what's the weather tomorrow?": "Unlock your phone, then ask again."
-8. Wi-Fi and mobile data off: "No internet: Robot couldn't reach Open-Meteo". Then Robot's Network toggle off (data
+7. Settings › People, notes and calendar › Phone region "US": "weather tomorrow" in °F, mph and inches. Clear it again.
+8. Lock the phone: "Hey robot, what's the weather tomorrow?": "Unlock your phone, then ask again."
+9. Wi-Fi and mobile data off: "No internet: Robot couldn't reach Open-Meteo". Then Robot's Network toggle off (data
    back on): "Robot isn't allowed to use the network…".
-9. With Ask Claude on Automatic and a key: "what's the forecast for tomorrow" stays with Robot (no "Checking with
-   Claude…"); "Okay, cloud cover tomorrow?" never starts Claude mode. Set Weather lookups to Off: the same question goes
-   to Claude (or is offered). Back to Just do it.
-10. After a weather answer, "go get Claude" and a question: "Include the conversation so far? It contains your
+10. With Ask Claude on Automatic and a key: "what's the forecast for tomorrow" stays with Robot (no "Checking with
+    Claude…"); "Okay, cloud cover tomorrow?" never starts Claude mode. Set Weather lookups to Off: the same question goes
+    to Claude (or is offered). Back to Just do it.
+11. After a weather answer, "go get Claude" and a question: "Include the conversation so far? It contains your
     location." Start fresh. `adb logcat -s Robot | grep -iE "weather|tool_run"`: codes and times only.
-11. "How do I free up storage?": the phone status card (storage and "Largest apps: unknown…") with **Turn on Usage
+12. "How do I free up storage?": the phone status card (storage and "Largest apps: unknown…") with **Turn on Usage
     access**: it opens Android's Usage access page (Robot's own switch, or the list); turn it on. Ask again: the largest
     apps and the photo and video sizes, and **Open storage settings**. Note whether the advice is sensible.
-12. "How's my battery?" (only the battery: charging or not, minutes to full while charging, temperature) and "how much
+13. "How's my battery?" (only the battery: charging or not, minutes to full while charging, temperature) and "how much
     memory is free?" (with "Robot's own model holds about 2 GB while loaded").
-13. "Free up memory": the card "Unload Robot's model to free about 2 GB of memory" with **Unload**; tap it. Robot answers,
+14. "Free up memory": the card "Unload Robot's model to free about 2 GB of memory" with **Unload**; tap it. Robot answers,
     then the card's line becomes "Freed about … GB: … GB of memory available now." Note the numbers. The next question
     takes about 2 s longer (the model loads again).
-14. "Stop YouTube" (or any installed app): the card "Open YouTube's App info to force stop it"; Open App info shows that
+15. "Stop YouTube" (or any installed app): the card "Open YouTube's App info to force stop it"; Open App info shows that
     page. "Stop Robot" is refused. With Usage access, "free up memory" from inside an app while music plays: the model may
     name recent apps, never that app, the music app, the keyboard, the home screen, the phone app, Cheogram, Signal, a VPN
     or the Clock. Say "hey robot" and a question while the free-memory answer is still being read: the question answers
     normally.
-15. "Free up storage" with what Android offers: note which screen "Open Android's Free up space screen" opens on
+16. "Free up storage" with what Android offers: note which screen "Open Android's Free up space screen" opens on
     GrapheneOS. "Clear Robot's cache": the card shows its size; Clear says how much was cleared.
-16. "Which apps can I clear the cache of?": a card with five apps and their sizes (not Robot); tap one: its App info.
-17. Assistant setup › Photos and videos › Allow, choose "Select photos" and pick two large videos (no "Not allowed"
+17. "Which apps can I clear the cache of?": a card with five apps and their sizes (not Robot); tap one: its App info.
+18. Assistant setup › Photos and videos › Allow, choose "Select photos" and pick two large videos (no "Not allowed"
     message). "Delete my largest videos": the card lists only those; tap one: Android asks "Allow Robot to delete this
     video?"; Deny once (nothing is deleted; reopen the panel: the card says "Not deleted"), then Allow (it's gone from
     Files and the gallery; the card says "Deleted."). Allow again with all photos: five largest. History shows
