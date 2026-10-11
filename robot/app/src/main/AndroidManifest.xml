@@ -325,6 +325,13 @@
             <meta-data android:name="android.service.notification.default_filter_types" android:value="conversations" />
             <meta-data android:name="android.service.notification.disabled_filter_types" android:value="ongoing" />
         </service>
+        <!-- 0.7: how the panel (the :voice process) asks for your messages and sends a reply: main process, where the listener,
+             the RAM buffer and the notifications' PendingIntents are. Not exported, Robot's signature permission, and it
+             answers Robot's own uid only. -->
+        <service
+            android:name=".people.MessagesBridge"
+            android:exported="false"
+            android:permission="app.heyrobot.permission.INTERNAL" />
 
         <!-- Not exported: the system's boot broadcast still arrives, other apps cannot fake it. Direct-boot aware (0.2.3)
              so it also gets LOCKED_BOOT_COMPLETED, before the first unlock: there it only checks the speech recognizer

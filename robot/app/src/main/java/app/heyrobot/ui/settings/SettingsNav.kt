@@ -43,6 +43,8 @@ object SettingsRoutes {
     const val DISPLAY = "display"
     const val ADVANCED = "advanced"
     const val ABOUT = "about"
+    /** 0.7: Settings › Messages (messages.json). */
+    const val MESSAGES = "messages"
     /** Settings › Advanced › ADB fixes › one fix, by its id (core AdbFixes). */
     fun adbFix(id: String) = "adb/$id"
     /** Settings › People › Notification access: the three steps. */
@@ -78,6 +80,10 @@ fun SettingsNav(
         SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)
         SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
+        SettingsRoutes.MESSAGES -> {
+            val ctx = LocalContext.current
+            MessagesSettingsScreen(messagesFile(), snap.facts, onChange = { app.heyrobot.sys.MessagesStore.save(ctx, it) }, a, onBack)
+        }
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)
             else -> LaunchedEffect(route) { onBack() }

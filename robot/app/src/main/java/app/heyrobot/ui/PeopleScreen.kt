@@ -523,7 +523,8 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("What Robot reads, and where it goes", style = MaterialTheme.typography.titleSmall)
         Text("Notification access lets an app see every app's notifications. Robot asks Android for conversations only, drops all " +
-            "but Cheogram's at once, and ignores them all while this switch is off.", style = MaterialTheme.typography.bodyMedium, color = muted)
+            "but Cheogram's at once, and learns nothing from them while this switch is off. Settings › Messages, if you turn it on, " +
+            "uses the same access to read the apps you choose there, in memory only.", style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("From a Cheogram message in a one-to-one chat, Robot keeps only the sender's name and address and which of your accounts " +
             "got it. It never looks at, keeps or logs what the message says, and group chats teach it nothing. It checks Cheogram's " +
             "signature too, so an app pretending to be Cheogram teaches nothing.", style = MaterialTheme.typography.bodyMedium, color = muted)
@@ -814,6 +815,8 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                         TextButton(onClick = { forget(email = true) }) { Text("Forget") }
                     }
                 }
+                // 0.7: Settings › Messages on: replies to them without a card (3-second stop).
+                app.heyrobot.ui.settings.NoCardSwitch(o)
                 Text("${o.source.title} · changed ${DateUtils.getRelativeTimeSpanString(o.updatedAt)}", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = {

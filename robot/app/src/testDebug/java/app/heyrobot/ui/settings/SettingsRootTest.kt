@@ -54,6 +54,7 @@ class SettingsRootTest {
             "Actions" to "openPage ${Page.Settings(SettingsRoutes.ACTIONS)}",
             "Safety & privacy" to "openPage ${Page.Safety}",
             "People, notes and calendar" to "openPage ${Page.Settings(SettingsRoutes.PEOPLE_NOTES_CALENDAR)}",
+            "Messages" to "openPage ${Page.Settings(SettingsRoutes.MESSAGES)}",
             "Weather" to "openPage ${Page.Settings(SettingsRoutes.WEATHER)}",
             "Helpers" to "openPage ${Page.Helpers}",
             "Conversation" to "openPage ${Page.ConversationSettings}",
