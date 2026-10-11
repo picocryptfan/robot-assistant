@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.SystemClock
 import app.heyrobot.assistant.BrainKeeper
 import app.heyrobot.assistant.BrainOneShots
-import app.heyrobot.assistant.VoiceHub
 import app.heyrobot.core.GemmaTranslator
 import app.heyrobot.core.LangPair
 import app.heyrobot.core.LineTranslator
@@ -85,7 +84,8 @@ class ConversationTranslations(private val app: Context, private val pair: LangP
     /** A line Robot can translate: words, in one of the pair's languages. */
     private fun translatable(l: TranscriptLine): Boolean = l.text.isNotBlank() && pair.has(l.lang)
 
-    private fun backend(): ModelBackend = BrainKeeper.state.value.backend ?: VoiceHub.settings.brainModelChoice.backend
+    /** Where Robot's model runs, or (not loaded) would run: this phone's model and place (0.4.7: Fast on a Pixel 9a's GPU or CPU). */
+    private fun backend(): ModelBackend = BrainKeeper.state.value.backend ?: BrainKeeper.backendHere(app)
 
     /** The fast engine now, for the interpreter's turns ([MtPriority.INTERACTIVE]) or a transcript's lines ([MtPriority.BATCH]). */
     private fun fast(priority: MtPriority = MtPriority.INTERACTIVE): Translator? = FastTranslation.translator(app, pair, priority)

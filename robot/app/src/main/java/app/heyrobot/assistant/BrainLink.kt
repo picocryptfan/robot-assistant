@@ -610,6 +610,18 @@ object BrainKeeper {
     /** Ready now, and on what (for translation's choice of engine and deadlines). */
     val ready: Boolean get() = _state.value.readiness == Readiness.READY
 
+    /** The model you chose as this phone reads it (0.4.7: either Fast is this phone's), before anything loads. */
+    fun modelHere(ctx: Context): BrainModel = ModelCatalogue.resolve(VoiceHub.settings.brainModelChoice, ModelStore.phone(ctx))
+
+    /**
+     * Where [modelHere] would run now (0.4.7: the general E2B on the GPU unless "Use the GPU" is off or the GPU failed), for
+     * deadlines chosen before the model loads (translations).
+     */
+    fun backendHere(ctx: Context): ModelBackend {
+        val m = modelHere(ctx)
+        return ModelCatalogue.backend(m, ModelStore.phone(ctx), VoiceHub.settings.modelGpu, Problems.gpuFailure(ctx)?.model == m)
+    }
+
     /**
      * 0.4.7: the engine failed a request on the GPU (an OpenCL error, as a Tensor G4's Mali GPU can give after a few turns;
      * 0.6.0: a one-shot's as much as a question's): the GPU counts as failed, as if it had crashed. The engine goes now, so
