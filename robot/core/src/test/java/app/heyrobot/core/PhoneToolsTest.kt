@@ -113,6 +113,19 @@ class PhoneToolsTest {
         assertTrue(ContextWindow.newTurnLimit(everything) > 900)
     }
 
+    @Test fun thePhonesStatusIsPersonal() {
+        val history = listOf(
+            ChatTurn("1", TurnRole.USER, "how do I free up storage", 1),
+            ChatTurn("2", TurnRole.ASSISTANT, "Signal uses 12 GB.", 2,
+                actions = listOf(ActionRecord(ToolName.PHONE_STATUS, "Check your phone's storage", ActionStatus.DONE, "Read on this phone; nothing left it.", content = true))),
+        )
+        assertEquals(setOf(Personal.PHONE), ClaudeContext.personal(history))
+        assertEquals("Include the conversation so far? It contains your phone's status.", ClaudeContext.includeQuestion(history))
+        // Robot checking with Claude by itself sends the question only.
+        assertFalse(ClaudeContext.escalation("is that normal?", history, now, "CA").filterIsInstance<ClaudeBlock.Text>().any { it.text.contains("Signal") })
+        assertEquals("your location and your phone's status", Personal.list(setOf(Personal.PHONE, Personal.LOCATION)))
+    }
+
     @Test fun cardButtonsOpenSettingsPages() {
         assertEquals("Open storage settings", SettingsPage.label(SettingsPage.STORAGE))
         assertEquals("Turn on Usage access", SettingsPage.label(SettingsPage.USAGE_ACCESS))

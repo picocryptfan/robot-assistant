@@ -10,7 +10,8 @@ import java.util.Locale
 // per-turn clock), then the question.
 //
 // A conversation becomes personal from the first turn that carries screen text, a picture, what a read tool found
-// (contacts, calendar, notes), Claude's answer read off the Claude app, or an "ask Claude about my screen" question.
+// (contacts, calendar, notes, the weather and so where you are, your phone's status), Claude's answer read off the Claude
+// app, or an "ask Claude about my screen" question.
 // Robot checking with Claude on its own sends only the question from then on. Claude joining a personal conversation
 // sees what came before only after a tap on Include ("Start fresh" sends none of it). Never sent: audio, the wake-word
 // stream, the contacts list, the calendar, settings or logs. The :claude module turns these plain blocks into the

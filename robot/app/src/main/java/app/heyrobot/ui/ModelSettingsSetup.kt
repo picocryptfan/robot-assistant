@@ -393,8 +393,8 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
             ChoiceRow(e.title, e.detail + if (e == Escalation.AUTO && !keySaved) " Needs an API key: until then Robot asks first." else "", help == e) { update(s.copy(claudeHelp = e)) }
         }
         Text("By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
-            "a photo, or what Robot read from your contacts, calendar or notes, it sends only your question; anything more goes only after " +
-            "you tap a card that lists it.", style = MaterialTheme.typography.bodyMedium, color = muted)
+            "a photo, or what Robot read from your contacts, calendar or notes, the weather (where you are) or your phone's status, it sends " +
+            "only your question; anything more goes only after you tap a card that lists it.", style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("Daily budget", style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (c in RobotSettings.CLAUDE_BUDGETS) {

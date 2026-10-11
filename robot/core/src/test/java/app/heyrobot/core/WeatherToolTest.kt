@@ -122,6 +122,21 @@ class WeatherToolTest {
         assertNull(RobotSettings.fromJson("""{"schema":5,"weatherHome":"Montreal"}""").weatherHome)
     }
 
+    @Test fun aWeatherLookupMakesTheConversationPersonal() {
+        val q = ChatTurn("1", TurnRole.USER, "what's the weather tomorrow", 1)
+        val a = ChatTurn("2", TurnRole.ASSISTANT, "Cloudy, 12 degrees.", 2,
+            actions = listOf(ActionRecord(ToolName.WEATHER, "Check the weather here for Sun Oct 11", ActionStatus.DONE, "Forecast for where you are, from Open-Meteo.", content = true)))
+        val history = listOf(q, a)
+        assertEquals(setOf(Personal.LOCATION), ClaudeContext.personal(history))
+        assertEquals("Include the conversation so far? It contains your location.", ClaudeContext.includeQuestion(history))
+        // Robot checking with Claude by itself then sends the question only, and later actions ask first.
+        val blocks = ClaudeContext.escalation("and what about Paris?", history, now, "CA")
+        assertFalse(blocks.filterIsInstance<ClaudeBlock.Text>().any { it.text.contains("Cloudy") || it.text.contains("weather tomorrow") })
+        assertTrue(TurnRules.untrusted(history))
+        // The card's saved line names no place.
+        assertFalse(a.actions.single().detail!!.contains("Montreal"))
+    }
+
     @Test fun theVoiceLogSaysHowNotWhere() {
         assertEquals("Weather from Open-Meteo for a new location fix · place found in 2300 ms · forecast in 410 ms",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WEATHER, WeatherSource.FIX.id, 2300, 410)))

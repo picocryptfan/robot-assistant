@@ -356,6 +356,10 @@ enum class Personal(val label: String) {
     CALENDAR("your calendar"),
     NOTES("your notes"),
     CONTACTS("your contacts"),
+    /** 0.4.0: a weather lookup, which says where you are or where your Home for weather is. */
+    LOCATION("your location"),
+    /** 0.4.0: phone_status, your phone's storage, battery and memory and its biggest apps. */
+    PHONE("your phone's status"),
     /** Claude's answer read off the Claude app's screen. */
     CLAUDE_APP("text from the Claude app"),
     /** Another read tool's findings (none today besides the three above). */
@@ -374,6 +378,8 @@ enum class Personal(val label: String) {
             ToolName.READ_CALENDAR -> CALENDAR
             ToolName.FIND_NOTES -> NOTES
             ToolName.LOOKUP_CONTACT -> CONTACTS
+            ToolName.WEATHER -> LOCATION
+            ToolName.PHONE_STATUS -> PHONE
             else -> READ
         }
 
