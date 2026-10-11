@@ -164,7 +164,7 @@ class SettingsTest {
         assertEquals(false, d.voiceYesPersonal)
         assertEquals(true, d.voiceCards)
         assertEquals(false, RobotSettings.fromJson(d.copy(voiceCards = false).toJson().toString()).voiceCards)
-        assertEquals(7, RobotSettings.SCHEMA)
+        assertEquals(10, RobotSettings.SCHEMA)
         // A 0.3 or early 0.4 file: every rule as it was, and the new Safety cards default.
         for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", "{}")) {
             val o = RobotSettings.fromJson(old)
@@ -213,11 +213,11 @@ class SettingsTest {
         for (old in listOf("""{"schema":6,"speechRate":1.5}""", """{"schema":5}""", """{"schema":3}""", "{}", """{"schema":6,"brainModel":"e4b_cpu"}""")) {
             assertEquals(old, BrainModel.FAST, RobotSettings.fromJson(old).brainModelChoice)
         }
-        // An old file keeps everything else, and the next save writes schema 7 with Fast.
+        // An old file keeps everything else, and the next save writes this schema with Fast.
         val migrated = RobotSettings.fromJson("""{"schema":6,"speechRate":1.5,"keepModelMinutes":15}""")
         assertEquals(1.5f, migrated.speechRate)
         assertEquals(15, migrated.keepModelMinutes)
-        assertEquals(7, migrated.toJson().getInt("schema"))
+        assertEquals(RobotSettings.SCHEMA, migrated.toJson().getInt("schema"))
         assertEquals("e2b_tpu", migrated.toJson().getString("brainModel"))
         for (m in BrainModel.entries) {
             val s = RobotSettings(brainModel = m.id)
@@ -229,5 +229,30 @@ class SettingsTest {
         assertEquals(BrainModel.UNCENSORED, RobotSettings.fromJson("""{"schema":7,"brainModel":"e4b_cpu_uncensored"}""").brainModelChoice)
         // An unknown id is saved back as Fast's.
         assertEquals("e2b_tpu", RobotSettings(brainModel = "nope").toJson().getString("brainModel"))
+    }
+
+    /**
+     * Settings › Model › "Let the model think first" (schema 10, 0.4.4): off by default and for every older file (0.4.1's
+     * schema 7, and 8 and 9 of the other branches, which never had it, even if one said so); a file of schema 10 keeps
+     * what it says, and the rest of an older file is kept.
+     */
+    @Test fun thinkingSwitchDefaultsMigrationAndRoundTrip() {
+        assertEquals(false, RobotSettings().modelThinks)
+        assertEquals(false, RobotSettings().toJson().getBoolean("modelThinks"))
+        for (old in listOf("""{"schema":7,"brainModel":"own"}""", """{"schema":8}""", """{"schema":9,"modelThinks":true}""", """{"schema":6}""", "{}")) {
+            assertEquals(old, false, RobotSettings.fromJson(old).modelThinks)
+        }
+        val v041 = RobotSettings.fromJson("""{"schema":7,"brainModel":"own","speechRate":1.25,"directAnswers":false}""")
+        assertEquals(BrainModel.OWN, v041.brainModelChoice)
+        assertEquals(1.25f, v041.speechRate)
+        assertEquals(false, v041.directAnswers)
+        assertEquals(false, v041.modelThinks)
+        assertEquals(10, v041.toJson().getInt("schema"))
+        assertEquals(true, RobotSettings.fromJson("""{"schema":10,"modelThinks":true}""").modelThinks)
+        assertEquals(false, RobotSettings.fromJson("""{"schema":10,"modelThinks":false}""").modelThinks)
+        assertEquals(false, RobotSettings.fromJson("""{"schema":10,"modelThinks":"maybe"}""").modelThinks)
+        val on = v041.copy(modelThinks = true)
+        assertEquals(on, RobotSettings.fromJson(on.toJson().toString()))
+        assertEquals(true, RobotSettings.fromJson(on.toJson().toString()).modelThinks)
     }
 }

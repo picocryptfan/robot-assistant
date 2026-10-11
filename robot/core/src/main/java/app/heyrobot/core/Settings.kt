@@ -188,6 +188,12 @@ data class RobotSettings(
      * Fast, and the panel says so (ModelChoice).
      */
     val brainModel: String = BrainModel.DEFAULT.id,
+    /**
+     * Settings › Model › "Let the model think first" (0.4.4, schema 10; off): a model that can reason before it answers
+     * (Qwen3, MiniCPM 5, a GGUF file whose template takes enable_thinking) may; off, Robot tells it to answer directly.
+     * Robot's built-in Gemma 4 models are the same either way. The thinking is never shown or spoken (core Thinking).
+     */
+    val modelThinks: Boolean = false,
 ) {
     val brainModelChoice: BrainModel get() = BrainModel.of(brainModel)
 
@@ -256,6 +262,7 @@ data class RobotSettings(
         if (nearestOnlineAt > 0) put("nearestPlaceAt", nearestOnlineAt)
         if (safetyNotice) put("safetyNotice", true)
         put("brainModel", brainModelChoice.id)
+        put("modelThinks", modelThinks)
     }
 
     companion object {
@@ -270,8 +277,10 @@ data class RobotSettings(
          * behaviour, the lock screen still timers and alarms) except "Safety cards", which takes the new default, "When
          * you didn't ask for it", as the person asked.
          * 7 (0.4.1): Settings › Model. Older files had one model, the TPU's Gemma 4 E2B: they read as Fast, the same model.
+         * 8 and 9 are other branches' (conversation mode, helpers); a file of either reads here as what this branch knows of it.
+         * 10 (0.4.4): "Let the model think first", off unless a file of this schema or later says on (older files never had it).
          */
-        const val SCHEMA = 7
+        const val SCHEMA = 10
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -384,6 +393,8 @@ data class RobotSettings(
                 safetyNotice = if (o.optInt("schema", 1) < 6) true else o.optBoolean("safetyNotice", false),
                 // Schema 7: before it there was only the model Fast is (and no key); an unknown id is Fast too.
                 brainModel = if (o.optInt("schema", 1) < 7) BrainModel.FAST.id else BrainModel.of(o.optString("brainModel")).id,
+                // Schema 10: before it, models answered directly (no switch): off.
+                modelThinks = o.optInt("schema", 1) >= 10 && o.optBoolean("modelThinks", d.modelThinks),
             )
         }
 
