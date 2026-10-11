@@ -362,6 +362,59 @@ class LlamaEngineFlowTest {
         assertEquals(DoneReason.CANCELLED, c.done())
     }
 
+    @Test fun aTemplateThatNeverFinishesEndsItsProcessAndTheQuestionOnce() {
+        fake.stuckTemplate = true
+        val c = Client()
+        ask(c)
+        val waiting = Client()
+        oneShot(waiting, priority = Priority.TRANSCRIPT)
+        settle()
+        assertTrue(c.terminals.isEmpty())
+        shadowOf(main).idleFor(Duration.ofMillis(PREPARE_LIMIT_MS + 1_000))
+        pump("both ends") { c.terminals.isNotEmpty() && waiting.terminals.isNotEmpty() }
+        settle()
+        assertTrue("the process was told to exit", fake.dead)
+        assertEquals(BrainError.STOPPED, c.error())
+        assertEquals(BrainError.NOT_LOADED, waiting.error())
+        assertEquals(0, fake.generates.get())
+    }
+
+    /** HELLO: :brain hands a file only to a process whose call back came from an isolated uid, as the kernel says. */
+    @Test fun onlyAProcessThatCallsBackFromAnIsolatedUidIsAccepted() {
+        val hello = linkClass.getDeclaredMethod("hello").apply { isAccessible = true }
+        fun accepted(callerUid: Int): Boolean {
+            val f = FakeLlama().apply { this.callerUid = callerUid }
+            val l = newLink(f)
+            put(l, "uid", -1)
+            val h = hello.invoke(l)!!
+            return h.javaClass.getDeclaredField("isolated").apply { isAccessible = true }.get(h) as Boolean
+        }
+        // Robot's own uid (a service that lost android:isolatedProcess), another app's, root, system: refused.
+        for (uid in listOf(android.os.Process.myUid(), 10_321, 0, 1_000, 10 * 100_000 + 10_123)) assertFalse("$uid", accepted(uid))
+        // An isolated uid (a fresh one per process; another user's too).
+        for (uid in listOf(99_000, 99_999, 10 * 100_000 + 99_123)) assertTrue("$uid", accepted(uid))
+        // Its first answer counts: a second HELLO, even from an isolated uid, isn't taken.
+        val f = FakeLlama().apply { callerUid = 99_500 }
+        val l = newLink(f)
+        put(l, "uid", -1)
+        hello.invoke(l)
+        f.callerUid = 99_501
+        val again = hello.invoke(l)!!
+        assertFalse(again.javaClass.getDeclaredField("isolated").apply { isAccessible = true }.get(again) as Boolean)
+        assertEquals(99_500, get(l, "uid"))
+    }
+
+    @Test fun piecesFromAnotherUidThanTheProcessesAreRefused() {
+        // Another process holding :brain's callback (it can't, but whatever has it): its text never reaches the reply.
+        fake.callerUid = ISOLATED_UID + 1
+        val c = Client()
+        ask(c)
+        pump("the end") { c.terminals.isNotEmpty() }
+        settle()
+        assertEquals("", c.text)
+        assertEquals(DoneReason.CANCELLED, c.done())
+    }
+
     @Test fun onlyTextFromOutsideRobotsPromptHasItsMarkersBroken() {
         val j = ControlText.JOINER
         val c = Client()
@@ -396,6 +449,10 @@ class LlamaEngineFlowTest {
         @Volatile var cancelUpto = 0L
         @Volatile var holdPrompt: Set<Int> = emptySet()
         @Volatile var holdEnd: Set<Int> = emptySet()
+        /** Its template never finishes (only its process ending stops it). */
+        @Volatile var stuckTemplate = false
+        /** The kernel's uid its calls to :brain come from (Binder.getCallingUid there); null: the test's setting. */
+        @Volatile var callerUid: Int? = null
         val pieces = listOf("Hello", " there")
         val generates = AtomicInteger()
         val returned = AtomicInteger()
@@ -415,7 +472,28 @@ class LlamaEngineFlowTest {
                     dead = true
                     onExit()
                 }
+                HELLO -> {
+                    val cb = data.readStrongBinder()
+                    callback = cb
+                    val d = Parcel.obtain()
+                    val r = Parcel.obtain()
+                    val ok = try {
+                        d.writeInterfaceToken(CALLBACK)
+                        d.writeInt(4242)
+                        callerUid?.let { ShadowBinder.setCallingUid(it) }
+                        cb.transact(CB_HELLO, d, r, 0)
+                        r.readInt() == 1
+                    } finally {
+                        d.recycle()
+                        r.recycle()
+                    }
+                    reply!!.writeNoException()
+                    reply.writeInt(if (ok) 1 else 0)
+                    reply.writeString(null)
+                }
                 PREPARE -> {
+                    while (stuckTemplate && !dead) Thread.sleep(2)
+                    if (dead) throw DeadObjectException()
                     data.readLong()
                     val roles = arrays(data)
                     val texts = arrays(data)
@@ -452,6 +530,7 @@ class LlamaEngineFlowTest {
                 try {
                     d.writeInterfaceToken(CALLBACK)
                     d.writeByteArray(p.toByteArray())
+                    callerUid?.let { ShadowBinder.setCallingUid(it) }
                     callback!!.transact(CB_PIECE, d, r, 0)
                     if (r.readInt() != 1) { result = GEN_CANCELLED; break }
                 } finally {
@@ -477,14 +556,17 @@ class LlamaEngineFlowTest {
         // LlamaIpc's (internal to :brain), as robot_llama.cpp keeps them.
         const val DESCRIPTOR = "app.heyrobot.brain.ILlama"
         const val CALLBACK = "app.heyrobot.brain.ILlamaCallback"
+        const val HELLO = IBinder.FIRST_CALL_TRANSACTION
         const val CANCEL = IBinder.FIRST_CALL_TRANSACTION + 2
         const val PREPARE = IBinder.FIRST_CALL_TRANSACTION + 3
         const val GENERATE = IBinder.FIRST_CALL_TRANSACTION + 4
         const val EXIT = IBinder.FIRST_CALL_TRANSACTION + 5
+        const val CB_HELLO = IBinder.FIRST_CALL_TRANSACTION
         const val CB_PIECE = IBinder.FIRST_CALL_TRANSACTION + 1
         const val GEN_END = 0
         const val GEN_CANCELLED = 2
-        /** LlamaEngine's limit for a stopped reply to come back from llama.cpp. */
+        /** LlamaEngine's limits for a stopped reply to come back from llama.cpp, and for a prompt to be formatted. */
         const val STOP_LIMIT_MS = 15_000L
+        const val PREPARE_LIMIT_MS = 30_000L
     }
 }
