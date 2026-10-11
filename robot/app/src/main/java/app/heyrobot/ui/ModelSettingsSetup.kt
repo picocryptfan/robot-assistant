@@ -63,6 +63,8 @@ import app.heyrobot.core.ClaudeVoices
 import app.heyrobot.core.Escalation
 import app.heyrobot.core.EmailApp
 import app.heyrobot.core.LockScreen
+import app.heyrobot.core.Nearby
+import app.heyrobot.core.NearestOnline
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
@@ -625,13 +627,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
             // Ask Claude's own settings decide about ask_claude (it has no level of its own).
             for (t in ToolName.entries.filter { !it.internal }) {
                 ApprovalRow(t, s.approval(t), t in s.lockedTools) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
-                // Part of the maps actions (0.4.0): "the nearest …" found online.
-                if (t == ToolName.MAPS_NAVIGATE) SwitchRow("Find the nearest place online", "Uses the internet. “Directions to the nearest pharmacy”: " +
-                    "Robot asks OpenStreetMap for that kind of place around where you are (rounded to about 1 km) and opens Organic Maps' route to the " +
-                    "closest. Off: Organic Maps' search, which ranks places around you.", s.nearestOnline,
-                    enabled = s.approval(ToolName.MAPS_NAVIGATE) != Approval.OFF || s.approval(ToolName.MAPS_SEARCH) != Approval.OFF) {
-                    update(s.copy(nearestOnline = it))
-                }
+                // Part of the maps actions (0.4.0): "the nearest …" found online, asked the first time by default.
+                if (t == ToolName.MAPS_NAVIGATE) NearestOnlineChoice(s, snap, update)
             }
             Text(if (s.claudeActionCards) "Anything Claude asks Robot to do shows a card first." else "Claude's requests follow the levels above and Safety cards.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -696,6 +693,27 @@ internal fun SwitchRow(title: String, detail: String?, checked: Boolean, enabled
         }
         Spacer(Modifier.width(12.dp))
         Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+    }
+}
+
+/**
+ * Settings › Actions › "Find the nearest place online" (0.4.0): Ask the first time (the default), Always, Never. The
+ * panel's answer to its card ("Allow always", "Don't ask again") shows here when it is newer (core Nearby.mode).
+ */
+@Composable
+private fun NearestOnlineChoice(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit) {
+    val now = Nearby.mode(s, snap.nearestAnswer)
+    val maps = s.approval(ToolName.MAPS_NAVIGATE) != Approval.OFF || s.approval(ToolName.MAPS_SEARCH) != Approval.OFF
+    Column(Modifier.fillMaxWidth().padding(start = 36.dp, top = 4.dp, bottom = 4.dp)) {
+        Text("Find the nearest place online", style = MaterialTheme.typography.titleSmall)
+        Text("“Directions to the nearest pharmacy”: what would go is the words and your area (about 1 km), to OpenStreetMap's " +
+            "Nominatim." + if (maps) "" else " Maps search and directions are Off.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        for (m in NearestOnline.entries) {
+            ChoiceRow(m.title + if (m == NearestOnline.ASK) " (default)" else "", m.detail, now == m) {
+                update(s.copy(nearestOnline = m, nearestOnlineAt = System.currentTimeMillis()))
+            }
+        }
     }
 }
 

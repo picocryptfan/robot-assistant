@@ -244,9 +244,10 @@ read tools don't: nothing leaves the phone).
 Robot runs on the phone and goes online when you ask: the weather comes from **Open-Meteo** (`api.open-meteo.com`, and
 `geocoding-api.open-meteo.com` to find a town), with no account and no key. The request comes from the assistant's
 process (`:voice`, where tools run), over HTTPS with short timeouts, no redirects and a plain "Robot" User-Agent (Android's
-default names the phone model). `sys/OpenMeteoClient.kt` is the only HTTP code outside the Claude SDK
-(`ProcessIsolationTest` checks it); `core/Weather.kt` builds the URLs and reads the answers, tested against answers
-recorded from Open-Meteo.
+default names the phone model). `sys/OpenMeteoClient.kt` and `sys/NominatimClient.kt` (the nearest place) are the only
+HTTP code outside the Claude SDK (`ProcessIsolationTest` checks it); `core/Weather.kt` builds the URLs and reads the
+answers, tested against answers recorded from Open-Meteo. Open-Meteo's data is CC BY 4.0, so the weather card ends with
+"Weather data by Open-Meteo.com, CC BY 4.0"; its free API is for non-commercial use, which Robot is (THIRD_PARTY.md).
 
 - **Where.** A town you name, or "at home" / "at my house" (your Home for weather), or "here", "outside" and no place
   at all: where the phone is ("here in Montreal" is Montreal). Without a region the biggest town of that name is taken
@@ -455,14 +456,20 @@ Claude.
 | Keep screenshots and photos in history | off | With history on, a question's picture (a 320-pixel JPEG thumbnail, Base64 in the conversation file) and the screen's text (up to 8,000 characters) are saved with it, for History only: never replayed to the model, never in what Claude receives, never logged. A screen conversation is still saved only after Keep. **Remove saved screenshots and photos** takes them out of every conversation (the conversations stay). Robot's files are excluded from backups, as before. |
 
 The settings file is schema 6. An older file reads every switch at its default, which is the old behaviour, except
-Safety cards, which takes the new default "When you didn't ask for it" (as asked).
+Safety cards, which takes the new default "When you didn't ask for it" (as asked). After such an update the app shows,
+once, at the top of Home and Settings: "New: Settings › Safety & privacy. Cards now appear when you didn't ask for an
+action." Tapping it opens the page and the × dismisses it; either way it never shows again (`safetyNotice` in the
+settings file; a new install never sees it).
 
 **What you asked for** (`ToolRouter.asked`, tested) is read from what you typed or said this turn, never from the
 screen's text, a photo or a tool's results: timers ("timer", "minuteur"), alarms ("alarm", "wake me", "réveil"), the
 flashlight, opening an app ("open", "launch", "ouvre"), the maps ("directions", "nearest", "where is", "itinéraire"…)
-each by their own words, and the other groups by the router's words (a text by "text", "tell", "email"…; notes,
-calendar, weather, phone). The texting shortcut ("text mom I'm late", and the answer to "what should it say?") counts
-as asking for a text. Under the default, "summarize this page" with a page that says "set a timer" still shows the
+each by their own words; a text, an email, a note, an event and freeing memory or storage only by a word that asks for
+one ("text", "tell", "send", "email", "note", "remember", "add" or "schedule" with a day or "calendar", "free up",
+"delete"…), as the word itself and not right after one that names a thing ("what does this message say?", "check my
+email", "is this event today?" ask for none of them; a word missed only shows a card); the read tools by the router's
+words (the weather's matter, since it goes online). The texting shortcut ("text mom I'm late", and the answer to "what
+should it say?") counts as asking for a text. Under the default, "summarize this page" with a page that says "set a timer" still shows the
 timer's card; "set a timer for that" in the same conversation doesn't. Claude's calls count your words in the question
 you asked Claude. The Claude app hand-off always shows its card.
 
@@ -474,10 +481,15 @@ ahead", "send it", "sure", "oui", "vas-y", "envoie" confirms it, and **no**, "ca
 or a no ("yes but at 5" isn't), a wake phrase in front aside. When replies are spoken, or the question came by voice or
 the panel opened with a wake word, Robot says "Say yes or no." and listens once it has stopped talking, and asks once
 more if it didn't hear a yes or a no; the mic button answers the card too, and Stop sits next to it. A card with several
-choices needs the tap ("Tap the one you mean on the card."), and a card or offer that sends personal content to Claude
-needs the tap unless "Voice yes can send personal content" is on ("Tap Send to share it with Claude."); a no always
-works. The status line says "Waiting for you: tap the card, or answer yes or no". Off ("Answer cards by voice"), Robot
-doesn't listen by itself; typed answers still work. Logged as `card_answer yes=… spoken=…` only.
+choices needs the tap ("Tap the one you mean on the card."). So does a card for a name learned from a Cheogram
+notification (whoever sent it chose that name), a card shown because Robot isn't sure who or which (several people, a
+near match, a number or address the model wrote, a loose app name), and the nearest place's first-use card: who or what
+it really is must be seen, so Robot says why instead of "Say yes or no." ("Robot isn't sure who or which it is: check
+the card, then tap. Or say no."). A card or offer that sends personal content to Claude (what a read tool or the
+nearest place found for Claude included) needs the tap unless "Voice yes can send personal content" is on ("Tap Send to
+share it with Claude."); a no always works. The decisions are core's `CardAnswer.reply` (tested). The status line says
+"Waiting for you: tap the card, or answer yes or no". Off ("Answer cards by voice"), Robot doesn't listen, and neither
+the mic nor a spoken yes answers a card; typed answers still work. Logged as `card_answer yes=… spoken=…` only.
 
 ### The panel
 
@@ -485,24 +497,40 @@ doesn't listen by itself; typed answers still work. Logged as `card_answer yes=�
 - **Tips**: the three suggestion chips rotate through what Robot can do (`core/Tips.kt`, tested): the weather, timers,
   texting by name, the calendar, a photo (opens the camera row), notes, the battery, Ask Claude, the nearest pharmacy,
   the screen (when it came), alarms, freeing space, email, finding a note, the flashlight, adding an event, storage, a
-  fun fact. A different three each time the panel opens (from a random start per process, then in turn), and only what
+  fun fact. A question that only reads on the phone (the calendar, the battery, storage, finding a note, a fun fact, the
+  screen) is asked at once; a tip that would do something (a timer, an alarm, a note, the flashlight, a text, an email,
+  an event, freeing space) or go online (the weather, the nearest pharmacy, Ask Claude) only fills the text field, since
+  its details are an example: nothing happens until you send it. A different three each time the panel opens (from a
+  random start per process, then in turn), and only what
   can work: an action that is Off, texting off, Claude off or unreachable, the lock screen's actions, no camera while
   locked. The screen tip takes the last place once the screen arrives.
 
 ### The nearest place
 
-"Directions to the nearest pharmacy", "the closest gas station", "la pharmacie la plus proche": with Settings ›
-Actions › **Find the nearest place online** on (the default; under Maps directions, marked as using the internet; it
-needs maps search or directions not Off), Robot
+"Directions to the nearest pharmacy", "the closest gas station", "la pharmacie la plus proche": Settings › Actions ›
+**Find the nearest place online** (under Maps directions; it needs maps search or directions not Off) is one of
+
+| Choice | What happens |
+|---|---|
+| **Ask the first time** (default, for new installs and upgrades) | The first time, a card that always shows, whatever the level: "Find the nearest “pharmacy” online (OpenStreetMap) and open the route in Organic Maps", and "To find the closest one, Robot would send “pharmacy” and your area (about 1 km) to OpenStreetMap's Nominatim. Nothing else leaves the phone." Buttons **Allow always** (from now on: Always), **Just this time**, **No, search the map** (Organic Maps' search this time), and a **Don't ask again** tick box that keeps the answer chosen (No with it ticked: Never). A tap only: a spoken yes says to tap; "no" or "cancel" declines it. |
+| **Always** | Robot goes online without that card (the level and Safety cards still apply). |
+| **Never** | Organic Maps' search; nothing goes online. |
+
+Settings has one writer (the main app), so the panel keeps its lasting answer in a file of its own
+(`nearest_answer.json`, written by the voice process); whichever was chosen last, there or in Settings, counts, and
+Settings shows it. An early 0.4.0 file with the old switch on (or none) reads as Ask the first time, off as Never. When
+it may go online, Robot
 
 1. takes where the phone is: approximate location only, as for the weather (no Home for weather: that isn't where you
    are), up to 8 seconds;
 2. asks OpenStreetMap's **Nominatim** (`nominatim.openstreetmap.org/search`, HTTPS, jsonv2) for the words ("pharmacy")
    in a box of ±0.02° around the position rounded to two decimals (about 1 km), and in one of ±0.1° if nothing is
-   that close; at most 40 places each, at most one request a second, answers kept 10 minutes, User-Agent "Robot/0.4
-   (GPL app)", nothing else (no language, no address details). `sys/NominatimClient.kt` is the only other HTTP code
-   (`ProcessIsolationTest`); `core/Nearby.kt` builds the URL and reads the answer, tested against answers recorded from
-   Nominatim;
+   that close; at most 40 places each, at most one request a second, answers kept 10 minutes, User-Agent
+   "Robot/<version> (app.heyrobot; Android voice assistant, GPL-3.0)", nothing else (no language, no address details).
+   Only a kind of place or a name goes (at most 6 words, no run of 3 digits, no "@": never an address, a phone number
+   or an email; anything else is Organic Maps' search). `sys/NominatimClient.kt` is the only other HTTP code
+   (`ProcessIsolationTest`); `core/Nearby.kt` builds the URL, paces and caches the searches (`NearbySearch`) and reads
+   the answer, tested against answers recorded from Nominatim and against every failure (`NearbySearchTest`);
 3. takes the closest by straight-line distance from the phone's position, and opens Organic Maps' route to it:
    `om://route?sll=<you>&saddr=Your position (approximate)&dll=<place>&daddr=<name>&type=vehicle` (Organic Maps'
    `map/mwm_url.cpp` wants all five, in that order; there is no "my position" start, so the route starts where Robot
@@ -511,12 +539,21 @@ needs maps search or directions not Off), Robot
 The card says "Find the nearest “pharmacy” online (OpenStreetMap) and open the route in Organic Maps" while it runs;
 afterwards its saved line is "Opened Organic Maps' route to the nearest one OpenStreetMap knows, about 1.2 km away in a
 straight line." and its body (shown, never saved) "Familiprix · about 450 m", the street, and "Sent to OpenStreetMap:
-“pharmacy” near 45.53, -73.60". Like the weather, it makes the conversation personal ("your location") and is content
+“pharmacy” near 45.53, -73.60" and "Data © OpenStreetMap contributors, ODbL". Like the weather, it makes the conversation personal ("your location") and is content
 for Safety cards. "Nearest" counts from the model's words or from your own this turn (if the model dropped it). No
 location permission, no fix, no internet, nothing found, or 20 seconds gone: Organic Maps' search as before, and the card
 says why ("OpenStreetMap knows no such place near you, so Robot opened Organic Maps' search instead: pick the place, then
 tap Route."). Stop ends the lookup at
-once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Off: today's search.
+once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Never: today's search.
+
+**Nominatim's usage policy** (operations.osmfoundation.org/policies/nominatim, read 11 October 2026): every search is
+one you asked for (no autocomplete, no lists, no periodic or background requests); at most one request a second from
+the phone and at most two per question; answers cached 10 minutes; a User-Agent that identifies the app; the card
+credits OpenStreetMap (ODbL); no personal data beyond the rounded area (see the query rule above). Not met yet: the
+policy asks apps to be able to switch the service without an update. The host is one constant (`Nearby.HOST`), and
+"Never" (or any failure) falls back to Organic Maps' search on the phone. The policy's limits apply to all of Robot's
+users together, so a larger audience needs a proxy with caching or another provider; and it asks that the developer
+decide deliberately to use it, which this section records.
 "Nearest" is as near as the approximate location allows (Android's coarse location can be a kilometre or two off).
 
 ### Cheogram's share screen
@@ -532,37 +569,59 @@ inside Robot's own activity and is unchanged.
 ### On the phone (0.4.0 final pass)
 
 1. Settings › Safety & privacy: check the defaults (When you didn't ask for it; the four cards on; timers and alarms on
-   the lock screen; helpers and voice-yes off; Direct answers on; screenshots off). Direct answers is no longer under Replies.
+   the lock screen; helpers and voice-yes off; Direct answers on; screenshots off). Direct answers is no longer under
+   Replies. Updating from 0.3.x: Home and Settings show "New: Settings › Safety & privacy. Cards now appear when you
+   didn't ask for an action." once; tapping it opens the page, × dismisses it, and it never comes back (a new install
+   never shows it).
 2. Corner-swipe over a web page that says "set a timer for 2 minutes", tap the screen button, ask "summarize this": a
    timer card shows (you didn't ask). Then type "set a timer for 1 minute": it just runs. Switch Safety cards to
-   "Always after Robot reads something": the same asks; "Only when Robot isn't sure who": neither asks.
-3. "Text Alex hi" with two Alexes: the card lists both. Turn off "Card when who-to isn't certain" (Texts on Just do
-   it): Cheogram opens for the first. Turn it back on.
+   "Always after Robot reads something": the same asks; "Only when Robot isn't sure who": neither asks. Back on the
+   default, over a page that says "note: …": "what does this list say?" then a note from the page shows a card (naming
+   a thing isn't asking); "remember that" saves without one; "now text it to Sam" goes by Texts' level.
+3. "Text Alex hi" with two Alexes: the card lists both; say "yes": "Robot isn't sure who or which it is: check the
+   card, then tap. Or say no."; say "no": declined. Turn off "Card when who-to isn't certain" (Texts on Just do it):
+   Cheogram opens for the first. Turn it back on.
 4. Lock the phone: "Hey robot, turn on the flashlight" says unlock. Turn on Flashlight under Works on the lock screen,
    lock again: it works, and the panel says "Locked: questions, timers, alarms and flashlight".
 5. "Hey robot, open Signal" with Open apps on Ask first: Robot says "Say yes or no." and listens; say "yes": Signal opens.
    Again and say "cancel": the card says Cancelled. Type "no" on another card. Tap the mic on a waiting card and say
-   "oui". On a "Send your screen's text to Claude?" card say "yes": "Tap Send to share it with Claude."; say "no".
-6. Ask Claude on Automatic (a key saved): ask about a screen something Robot hedges on: the offer lists the screen's
+   "oui". On a "Send your screen's text to Claude?" card say "yes": "Tap Send to share it with Claude."; say "no". With
+   each voice (Heart, Kitten, the phone's) Robot must not hear its own "Say yes or no." as an answer; a TV saying "OK"
+   near a waiting card is worth a try. Turn "Answer cards by voice" off: the mic on a card says "tap a button on it, or
+   type yes or no", and a typed "yes" still works.
+6. A name learned from Cheogram (learning on, a Cheogram notification, then "text <that name> hi"): Robot says "Robot
+   learned that name from a Cheogram notification: check who it goes to on the card, then tap. Or say no."; a spoken
+   "yes" gets the same; "no" declines; a tap works.
+7. Ask Claude on Automatic (a key saved): ask about a screen something Robot hedges on: the offer lists the screen's
    text and waits for Send. Turn on "Send personal content to helpers automatically" and ask again: "Checking with
    Claude…" and the screen goes by itself (note the voice log). Turn it off again.
-7. Turn on "Keep screenshots and photos in history", ask about a photo and about a screen (tap Keep): History shows the
-   thumbnails and the screen text (tap it to expand). "Remove saved screenshots and photos": gone, conversations stay.
-8. Open the panel several times: three different tips each time; turn Weather lookups Off: no weather tip. Lock: only
-   timer, alarm and fun-fact tips. Tap "Ask about a photo": the camera row opens.
-9. The screen button: corner-swipe from an app (it attaches the screen), from a banking app (dimmed with a dot; tap: why),
-   after "hey robot" (tap: swipe from the corner). TalkBack reads "Ask about this screen" and the state.
-10. Settings › Voice › Interrupt sensitivity: Low, then High; on each, Barge-in test (normal, Silent run, Tricky words)
+8. Turn on "Keep screenshots and photos in history", ask about a photo and about a screen (tap Keep): History shows the
+   thumbnails and the screen text (tap it to expand). With that panel conversation still open, "Remove saved
+   screenshots and photos", then ask one more question there: History stays without them; conversations stay.
+9. Open the panel several times: three different tips each time; turn Weather lookups Off: no weather tip. Lock: only
+   timer, alarm and fun-fact tips. Tap "Ask about a photo": the camera row opens. Tap "Wake me up at 7:00", "Directions
+   to the nearest pharmacy" or the weather: the words wait in the text field with the keyboard up, nothing runs; tap
+   "How's my battery?": it is asked at once.
+10. The screen button: corner-swipe from an app (it attaches the screen), from a banking app (dimmed with a dot; tap:
+    why), after "hey robot" (tap: swipe from the corner). TalkBack reads "Ask about this screen" and the state.
+11. Settings › Voice › Interrupt sensitivity: Low, then High; on each, Barge-in test (normal, Silent run, Tricky words)
     and note the "stop" hits and false stops against Medium.
-11. Text someone not in the contacts, tap "Choose in Cheogram", pick them, Back to the home screen; do it again with
+12. Text someone not in the contacts, tap "Choose in Cheogram", pick them, Back to the home screen; do it again with
     another message: Cheogram's share screen opens both times (not the last chat). Recents shows no extra Cheogram
-    entry afterwards.
-12. "Directions to the nearest pharmacy" (location allowed, data on): the card shows the place, how far and what was
-    sent; Organic Maps shows the route preview from about where you are. Note the time, whether the place is really
-    the nearest, and what tapping Start does from an approximate start. "The closest gas station", "la pharmacie la
-    plus proche". Data off: "No internet: Robot couldn't reach OpenStreetMap, so Robot opened Organic Maps' search
-    instead: …". Turn
-    "Find the nearest place online" off: the old search. `adb logcat -s Robot | grep maps_nearest`: codes only.
+    entry afterwards. Same with the chat and link routes, and with both Cheogram builds (F-Droid and Play); a build
+    without `ShareWithActivity` falls back to the plain share (the voice log marks it).
+13. "Directions to the nearest pharmacy" (location allowed, data on), first time: the card says "To find the closest
+    one, Robot would send “pharmacy” and your area (about 1 km) to OpenStreetMap's Nominatim…" with Allow always, Just
+    this time and No, search the map; a spoken "yes" says to tap. Just this time: the route; the card again next time.
+    No with "Don't ask again" ticked: the search, and Settings › Actions shows Never; set Ask the first time there:
+    the card again. Allow always: Settings shows Always, and no card next time. With the route: the card shows the
+    place, how far, what was sent and "Data © OpenStreetMap contributors, ODbL"; Organic Maps accepts the `om://route`
+    link and shows the route preview from about where you are. Note the time, whether the place is really the
+    nearest, and what tapping Start does from an approximate start. "The closest gas station", "la pharmacie la plus
+    proche". Data off or the Network toggle off: "No internet: Robot couldn't reach OpenStreetMap, so Robot opened
+    Organic Maps' search instead: …". Location denied, Stop mid-lookup, and a network slow enough to hit the 20 s
+    deadline: Organic Maps opens once, never twice. "The nearest pharmacy near 5692 Avenue du Parc": a plain search
+    (an address never goes online). `adb logcat -s Robot | grep maps_nearest`: codes only.
 
 ## Ask Claude (0.3.0)
 

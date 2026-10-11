@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -36,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.heyrobot.core.NearestAnswer
 import app.heyrobot.core.Approval
 import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestResult
@@ -61,6 +63,7 @@ import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.ClaudeKeyFiles
 import app.heyrobot.sys.Cmd
+import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.RecognizerKeeper
@@ -198,6 +201,8 @@ data class Snapshot(
     val bench: VoiceBench? = null,
     /** The last barge-in test (Settings › Voice). */
     val bargeTest: BargeTestResult? = null,
+    /** The panel's answer to the nearest place's first-use card (Settings › Actions shows it when newer than its own). */
+    val nearestAnswer: NearestAnswer? = null,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
 
@@ -258,6 +263,7 @@ fun RobotAppUi(activity: MainActivity) {
                     engines = VoiceEngineStatus.fromJson(readOrNull(Paths.voiceEngines(ctx))),
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
                     bargeTest = readBargeTest(ctx),
+                    nearestAnswer = NearestAnswers.load(ctx),
                 )
             }
             // A finished voice download is checked and installed right away, one bundle at a time.
@@ -400,11 +406,20 @@ fun RobotAppUi(activity: MainActivity) {
                 say(if (!ok) "Robot couldn't change that." else if (allow) "Your model file may run on the TPU now." else "Your model file won't run on the TPU.")
             }
         },
-        deleteConversation = { id -> ConversationStore.delete(ctx, id); historyTick++; page = null },
-        deleteAllConversations = { ConversationStore.deleteAll(ctx); historyTick++; say("History deleted.") },
+        // The panel's live conversation too, or its next save would write a deleted one back.
+        deleteConversation = { id ->
+            ConversationStore.delete(ctx, id); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+            historyTick++; page = null
+        },
+        deleteAllConversations = {
+            ConversationStore.deleteAll(ctx); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED)
+            historyTick++; say("History deleted.")
+        },
         removeSavedMedia = {
             scope.launch {
                 val n = withContext(Dispatchers.IO) { ConversationStore.removeMedia(ctx) }
+                // The panel's live conversation too, or its next save would write them back.
+                Cmd.send(ctx, Cmd.MEDIA_REMOVED)
                 historyTick++
                 say(if (n == 0) "No saved screenshots or photos." else "Removed from $n conversation${if (n == 1) "" else "s"}.")
             }
@@ -499,13 +514,22 @@ fun RobotAppUi(activity: MainActivity) {
                 }
             },
         ) { pad ->
-            val m = Modifier.padding(pad)
-            when (tab) {
-                Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
-                Tab.NOTES -> NotesScreen(notes, actions, m)
-                Tab.HISTORY -> HistoryScreen(history, actions, m)
-                Tab.MODEL -> ModelScreen(settings, ::updateSettings, snap, busy, actions, m)
-                Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
+            Column(Modifier.padding(pad)) {
+                // Once, after updating to 0.4.0: what changed about cards, and where to choose (core SafetyNotice).
+                if (settings.safetyNotice && (tab == Tab.HOME || tab == Tab.SETTINGS)) {
+                    SafetyNoticeLine(
+                        onOpen = { updateSettings(settings.copy(safetyNotice = false)); page = Page.Safety },
+                        onDismiss = { updateSettings(settings.copy(safetyNotice = false)) },
+                    )
+                }
+                val m = Modifier.weight(1f)
+                when (tab) {
+                    Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
+                    Tab.NOTES -> NotesScreen(notes, actions, m)
+                    Tab.HISTORY -> HistoryScreen(history, actions, m)
+                    Tab.MODEL -> ModelScreen(settings, ::updateSettings, snap, busy, actions, m)
+                    Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
+                }
             }
         }
     }

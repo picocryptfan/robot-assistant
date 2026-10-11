@@ -7,6 +7,7 @@ package app.heyrobot.core
 class Abort(deadlineMs: Long = NO_DEADLINE, private val clock: () -> Long = ::nowMs) {
     private val deadline = if (deadlineMs == NO_DEADLINE) Long.MAX_VALUE else clock() + deadlineMs
     private val hooks = mutableListOf<() -> Unit>()
+    private val claimed = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /** Stop (or the deadline, [expired]) ended it: nothing more should be asked of the network. */
     @Volatile var cancelled = false
@@ -24,6 +25,12 @@ class Abort(deadlineMs: Long = NO_DEADLINE, private val clock: () -> Long = ::no
         if (run) hook()
         return { synchronized(hooks) { hooks.remove(hook) } }
     }
+
+    /**
+     * The one app this work may open once it ends: true for the first to ask (the work itself, or what stands in for it
+     * when the deadline passed), false for everyone after. So a late lookup and its fallback never both open Organic Maps.
+     */
+    fun claim(): Boolean = claimed.compareAndSet(false, true)
 
     fun cancel() {
         val todo = synchronized(hooks) {

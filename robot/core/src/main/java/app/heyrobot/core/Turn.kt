@@ -164,6 +164,12 @@ data class Card(
     val remember: String? = null,
     /** While it waits, the card also offers to allow reading the contacts ([Prepared.Ready.allowContacts]). */
     val allowContacts: Boolean = false,
+    /**
+     * Only a tap answers it, never a spoken or typed yes ([CardAnswer.tapFor]): a name learned from a Cheogram notification
+     * (whoever sent it chose it), not being sure who or which, or going online the first time; who or what it really is
+     * must be seen on the card. A no still declines it. Null: a yes may answer it.
+     */
+    val tapFor: AskWhy? = null,
 )
 
 interface TurnView {
@@ -401,7 +407,8 @@ class TurnRunner(
             return (a.tool.id to status.toolResponse(r?.forModel ?: detail, r?.results)) to launched
         }
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
-        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote)) {
+        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote,
+            online = asked.online)) {
             GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
             else -> {}
@@ -411,11 +418,11 @@ class TurnRunner(
             is Prepared.Ready -> p
         }
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, a.reasons, content = untrusted,
-            asked = a.action.tool in this.asked, remote = remote)
+            asked = a.action.tool in this.asked, remote = remote, online = a.action.online)
         val chosen = when (decision) {
             // No card for these choices (the settings say so): the first, the best match.
             GateDecision.RUN -> a.choices.firstOrNull()?.action ?: a.action
-            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember, a.allowContacts)
+            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember, a.allowContacts, tapFor = CardAnswer.tapFor(a.reasons))
             GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
@@ -453,9 +460,9 @@ class TurnRunner(
      * meanwhile leaves the card declined, never waiting.
      */
     private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int, note: String? = null, remember: String? = null,
-        allowContacts: Boolean = false): Action? {
+        allowContacts: Boolean = false, tapFor: AskWhy? = null): Action? {
         view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, note, a, body = a.body(), choices = choices, more = more, remote = remote,
-            remember = remember, allowContacts = allowContacts))
+            remember = remember, allowContacts = allowContacts, tapFor = tapFor))
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
             confirmations.ask(id)

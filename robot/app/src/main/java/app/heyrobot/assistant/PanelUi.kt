@@ -193,6 +193,12 @@ fun AssistantPanel(onClose: () -> Unit) {
                     Suggestions(st.tips) { tip ->
                         when (tip.kind) {
                             TipKind.ASK -> { input = tip.text; send() }
+                            // It would do something or go online: its words wait in the field, to change or send.
+                            TipKind.FILL -> {
+                                input = tip.text
+                                try { focus.requestFocus() } catch (_: Exception) {}
+                                keyboard?.show()
+                            }
                             TipKind.SCREEN -> PanelController.askAboutScreen(tip.text)
                             TipKind.PHOTO -> attachOpen = true
                         }

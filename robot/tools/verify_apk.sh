@@ -23,7 +23,7 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 # minSdk 34: AGP signs with v3 (API 28+) and may skip v2; either covers every phone Robot installs on.
 "$BT/apksigner" verify -v "$APK" 2>/dev/null | grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='app.heyrobot' versionCode='31' versionName='0.3.1'" "$badging" "package app.heyrobot 0.3.1 (31)"
+has "package: name='app.heyrobot' versionCode='40' versionName='0.4.0'" "$badging" "package app.heyrobot 0.4.0 (40)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"
@@ -48,7 +48,9 @@ has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootR
 for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE BIND_ACCESSIBILITY_SERVICE; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
-has '"android.permission.INTERNET"' "$mf" "declares INTERNET (model downloads, Ask Claude, the weather)"
+# 0.4.0: the weather (Open-Meteo) and the nearest place (OpenStreetMap's Nominatim) need nothing more: both go online
+# from the :voice process's tools only, which ProcessIsolationTest checks in the source.
+has '"android.permission.INTERNET"' "$mf" "declares INTERNET (model downloads, Ask Claude, the weather, the nearest place)"
 hasnt '"android.accessibilityservice.AccessibilityService"' "$mf" "no accessibility service (Robot never drives the Claude app)"
 has '"android.permission.MODIFY_AUDIO_SETTINGS"' "$mf" "declares MODIFY_AUDIO_SETTINGS (call audio playback)"
 has '"android.permission.WRITE_SECURE_SETTINGS"' "$mf" "declares WRITE_SECURE_SETTINGS (adb grant only: keeps the recognizer set)"

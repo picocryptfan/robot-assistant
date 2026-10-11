@@ -215,6 +215,13 @@ object CheogramIntents {
         .putExtra(Intent.EXTRA_TEXT, body).addFlags(FRESH)
 
     /**
+     * The same share as before 0.4.0, to the package rather than by name: for a Cheogram build whose share screen isn't
+     * [CheogramLinks.SHARE_ACTIVITY] ([share] doesn't resolve). Still in a task of its own.
+     */
+    fun shareAny(pkg: String, body: String): Intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, body).setPackage(pkg)
+        .addFlags(FRESH)
+
+    /**
      * Who was picked, from the list's result: EXTRA_SHORTCUT_NAME, and EXTRA_SHORTCUT_INTENT's xmpp: link and "account"
      * extra. The icon is never read, and nothing is pinned. Null when the result holds no usable address.
      */

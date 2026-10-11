@@ -154,6 +154,8 @@ object OpenMeteo {
     const val QUALIFIED_CANDIDATES = 30
     /** Name searches for one place at most (each a request). */
     const val MAX_SEARCHES = 3
+    /** The credit Open-Meteo's CC BY 4.0 data asks for wherever it is shown: the last line of the weather card. */
+    const val ATTRIBUTION = "Weather data by Open-Meteo.com, CC BY 4.0"
 
     private const val DAILY = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum," +
         "rain_sum,showers_sum,snowfall_sum,wind_speed_10m_max,wind_gusts_10m_max,cloud_cover_mean"

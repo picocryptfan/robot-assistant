@@ -40,6 +40,9 @@ import app.heyrobot.core.MailTarget
 import app.heyrobot.core.MailTo
 import app.heyrobot.core.Nearby
 import app.heyrobot.core.NearbyFail
+import app.heyrobot.core.NearbyLookup
+import app.heyrobot.core.NearestConsent
+import app.heyrobot.core.NearestOnline
 import app.heyrobot.core.NearestAsk
 import app.heyrobot.core.OrganicMapsRoute
 import app.heyrobot.core.NoteSearch
@@ -75,6 +78,7 @@ import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.CheogramIntents
 import app.heyrobot.sys.CoarseLocation
+import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.NominatimClient
 import app.heyrobot.sys.OpenMeteoClient
 import app.heyrobot.sys.PhoneInfo
@@ -127,8 +131,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.FreeMemory -> prepareFreeMemory(action)
             is Action.FreeStorage -> prepareFreeStorage(action)
             // "The nearest …" in the model's words or your own ([said], never screen text), with the setting on (0.4.0).
-            is Action.MapsSearch -> Prepared.Ready(action.copy(nearest = nearestWanted(action.query, action.nearest)))
-            is Action.MapsNavigate -> Prepared.Ready(action.copy(nearest = nearestWanted(action.destination, action.nearest)))
+            // Settings' "Find the nearest place online" (or the panel's newer answer): Ask the first time shows its card.
+            is Action.MapsSearch -> Nearby.prepare(action, action.query, nearestWanted(action.query, action.nearest), nearestMode())
+            is Action.MapsNavigate -> Nearby.prepare(action, action.destination, nearestWanted(action.destination, action.nearest), nearestMode())
             // The Claude app: installed or "Install Claude" before any card.
             is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
             else -> Prepared.Ready(action)
@@ -144,9 +149,15 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.SetTimer -> timer(action.seconds)
                 is Action.SetAlarm -> alarm(action.hour, action.minute)
                 is Action.OpenApp -> openApp(action)
-                is Action.MapsSearch -> if (action.nearest) nearest(action.query, SEARCH_DONE) else maps(action.query, SEARCH_DONE)
+                is Action.MapsSearch -> {
+                    keep(action.consent)
+                    if (action.nearest) nearest(action.query, SEARCH_DONE) else maps(action.query, SEARCH_DONE)
+                }
                 // A search, not a route (om://route needs coordinates): say what to tap next. The nearest one: its route.
-                is Action.MapsNavigate -> if (action.nearest) nearest(action.destination, NAVIGATE_DONE) else maps(action.destination, NAVIGATE_DONE)
+                is Action.MapsNavigate -> {
+                    keep(action.consent)
+                    if (action.nearest) nearest(action.destination, NAVIGATE_DONE) else maps(action.destination, NAVIGATE_DONE)
+                }
                 is Action.Flashlight -> torch(action.on)
                 is Action.SendText -> text(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = false) }
                 is Action.DraftEmail -> email(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = true) }
@@ -229,8 +240,20 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
     }
 
+    /** "The nearest …" in the model's or your words, and only a kind of place or a name (Nearby.sendable): never an address. */
     private fun nearestWanted(what: String, modelSaid: Boolean): Boolean =
-        settings.nearestOnline && (modelSaid || NearestAsk.inWords(said, what))
+        (modelSaid || NearestAsk.inWords(said, what)) && Nearby.sendable(what)
+
+    private fun nearestMode(): NearestOnline = Nearby.mode(settings, NearestAnswers.load(ctx))
+
+    /** The first-use card's lasting answer ("Allow always", or "No" with "Don't ask again"), kept for next time. */
+    private fun keep(consent: NearestConsent?) {
+        when (consent) {
+            NearestConsent.ALWAYS -> NearestAnswers.save(ctx, NearestOnline.ALWAYS)
+            NearestConsent.NEVER -> NearestAnswers.save(ctx, NearestOnline.NEVER)
+            else -> {}
+        }
+    }
 
     /**
      * "Directions to the nearest pharmacy" (0.4.0): where the phone is (coarse location), OpenStreetMap's Nominatim for that
@@ -242,32 +265,29 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun nearest(what: String, searchDone: String): Executed {
         val started = SystemClock.elapsedRealtime()
         var requests = 0
-        fun instead(why: NearbyFail): Executed {
-            RLog.i("maps_nearest", "found" to false, "why" to why, "requests" to requests, "ms" to (SystemClock.elapsedRealtime() - started))
-            if (abort.cancelled) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
-            val r = maps(what, searchDone)
-            return if (r.status.succeeded) r.copy(detail = Nearby.instead(why, navigate = searchDone == NAVIGATE_DONE)) else r
+        val r = Nearby.lookup(CoarseLocation.granted(ctx), abort,
+            locate = { CoarseLocation.find(ctx, Nearby.FIX_MS, abort).fix?.let { it.lat to it.lon } },
+            search = { lat, lon -> NominatimClient.search(ctx, what, lat, lon, abort) { requests = it } })
+        val ms = SystemClock.elapsedRealtime() - started
+        if (r is NearbyLookup.Instead) {
+            RLog.i("maps_nearest", "found" to false, "why" to r.why, "requests" to requests, "ms" to ms)
+            // Stopped, or its time ran out and the panel opens the search itself: only one app ever opens ([Abort.claim]).
+            if (abort.cancelled || !abort.claim()) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
+            val m = maps(what, searchDone)
+            return if (m.status.succeeded) m.copy(detail = Nearby.instead(r.why, navigate = searchDone == NAVIGATE_DONE)) else m
         }
-        if (!CoarseLocation.granted(ctx)) return instead(NearbyFail.NOT_ALLOWED)
-        val found = CoarseLocation.find(ctx, Nearby.FIX_MS, abort)
-        if (abort.cancelled) return instead(NearbyFail.STOPPED)
-        val fix = found.fix ?: return instead(NearbyFail.NO_LOCATION)
-        val places = try {
-            NominatimClient.search(ctx, what, fix.lat, fix.lon, abort) { requests = it }
-        } catch (e: NominatimClient.Failure) {
-            return instead(e.why)
-        }
-        val (place, metres) = Nearby.closest(places, fix.lat, fix.lon) ?: return instead(NearbyFail.NOTHING)
-        if (abort.cancelled) return instead(NearbyFail.STOPPED)
-        val opened = start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.uri(fix.lat, fix.lon, START_NAME, place.lat, place.lon, place.name))))
+        val f = r as NearbyLookup.Found
+        val place = f.place
+        if (abort.cancelled || !abort.claim()) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
+        val opened = start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.uri(f.lat, f.lon, START_NAME, place.lat, place.lon, place.name))))
             || start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.geo(place.lat, place.lon, place.name))))
         if (!opened) return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
-        val far = Nearby.distance(metres, WeatherUnits.of(region))
-        RLog.i("maps_nearest", "found" to true, "places" to places.size, "requests" to requests, "ms" to (SystemClock.elapsedRealtime() - started))
-        val sent = "Sent to OpenStreetMap: “$what” near ${Nearby.coord(fix.lat)}, ${Nearby.coord(fix.lon)}"
+        val far = Nearby.distance(f.metres, WeatherUnits.of(region))
+        RLog.i("maps_nearest", "found" to true, "places" to f.places, "requests" to requests, "ms" to ms)
+        val sent = "Sent to OpenStreetMap: “$what” near ${Nearby.coord(f.lat)}, ${Nearby.coord(f.lon)}"
         return Executed(ActionStatus.DONE, "Opened Organic Maps' route to the nearest one OpenStreetMap knows, $far away in a straight line.",
             launchedApp = true, results = listOf(mapOf("place" to place.name, "distance" to far)),
-            body = listOfNotNull("${place.name} · $far", place.address).joinToString("\n") + "\n\n" + sent)
+            body = listOfNotNull("${place.name} · $far", place.address).joinToString("\n") + "\n\n" + sent + "\n" + Nearby.ATTRIBUTION)
     }
 
     private fun torch(on: Boolean): Executed {
@@ -409,7 +429,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 CheogramRoute.LINK to CheogramIntents.link(pkg, t.address, a.message),
             )
             TextVia.CHEOGRAM_LIST -> listOf(CheogramRoute.LIST to CheogramPickActivity.intent(ctx, pkg, a.to, a.message, settings.rememberPicks))
-            TextVia.CHEOGRAM_PICK -> listOf(CheogramRoute.SHARE to CheogramIntents.share(pkg, a.message))
+            // Its share screen by name, resolved first (start); a build without that screen: the share to the package.
+            TextVia.CHEOGRAM_PICK -> listOf(CheogramRoute.SHARE to CheogramIntents.share(pkg, a.message), CheogramRoute.SHARE to CheogramIntents.shareAny(pkg, a.message))
             TextVia.SMS -> emptyList()
         }
         val i = routes.indexOfFirst { start(it.second) }
@@ -599,7 +620,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             val sent = if (source == WeatherSource.NAMED) "Sent to Open-Meteo: “${WeatherAsk.where(a.place).second ?: a.place}” (to find it), then $coords"
             else "Sent to Open-Meteo: $coords"
             Executed(ActionStatus.DONE, detail, results = listOf(mapOf("place" to named)) + report.results,
-                body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent,
+                body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent + "\n" + OpenMeteo.ATTRIBUTION,
                 spoken = "${named.replaceFirstChar { it.uppercase() }}. ${report.spoken}")
         } catch (e: OpenMeteoClient.Failure) {
             // Once the caller has given up (Stop, the deadline) it logs why; this result is dropped.

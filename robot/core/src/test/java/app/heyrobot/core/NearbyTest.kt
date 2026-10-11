@@ -17,7 +17,10 @@ class NearbyTest {
         // Two decimals of the position, never more: the box is built from the rounded centre.
         assertFalse(url.contains("45.508") || url.contains("73.587"))
         assertTrue(Nearby.searchUrl("pharmacie", 45.5, -73.6, 0.1).contains("viewbox=-73.70,45.60,-73.50,45.40"))
-        assertEquals("Robot/0.4 (GPL app)", Nearby.USER_AGENT)
+        // Nominatim's usage policy: a User-Agent naming the app (never the phone), and OpenStreetMap credited on the card.
+        assertEquals("Robot/0.4.0 (app.heyrobot; Android voice assistant, GPL-3.0)", Nearby.userAgent("0.4.0"))
+        assertEquals("Robot/0 (app.heyrobot; Android voice assistant, GPL-3.0)", Nearby.userAgent("(;)"))
+        assertEquals("Data © OpenStreetMap contributors, ODbL", Nearby.ATTRIBUTION)
         assertEquals(1_000L, Nearby.MIN_GAP_MS)
         assertEquals(listOf(0.02, 0.1), Nearby.BOXES)
         // A query is encoded strictly: no "&" or "=" of its own reaches the URL.
@@ -65,6 +68,14 @@ class NearbyTest {
         assertEquals("geo:45.523136,-73.603922?q=45.523136,-73.603922(Caf%C3%A9%20%26%20Co)", OrganicMapsRoute.geo(45.5231358, -73.603922, "Café & Co"))
     }
 
+    /** Only a kind of place or a name goes to Nominatim; an address, a number or an email stays on the phone. */
+    @Test fun onlyAKindOfPlaceOrANameGoesOnline() {
+        for (q in listOf("pharmacy", "gas station", "Tim Hortons", "7-Eleven", "pharmacie", "boulangerie ouverte", "Jean Coutu")) assertTrue(q, Nearby.sendable(q))
+        for (q in listOf("", "  ", "pharmacy near 5692 Avenue du Parc", "514 555 0199", "sam@example.com", "a b c d e f g", "x".repeat(61))) {
+            assertFalse(q, Nearby.sendable(q))
+        }
+    }
+
     @Test fun nearestInTheModelsWordsOrYourOwn() {
         for (s in listOf("the nearest pharmacy", "closest gas station", "Nearest Tim Hortons to me", "la pharmacie la plus proche", "le dépanneur le plus près")) {
             assertTrue(s, NearestAsk.said(s))
@@ -91,15 +102,56 @@ class NearbyTest {
         // Where you are: personal for Claude, as the weather is.
         assertEquals(Personal.LOCATION, Personal.of(ToolName.MAPS_NAVIGATE))
         assertEquals(Personal.LOCATION, Personal.of(ToolName.MAPS_SEARCH))
-        // On by default, and off stays off.
-        assertTrue(RobotSettings().nearestOnline)
-        assertFalse(RobotSettings.fromJson(RobotSettings(nearestOnline = false).toJson().toString()).nearestOnline)
-        assertTrue(RobotSettings.fromJson("""{"schema":5}""").nearestOnline)
+        // Ask the first time by default (SettingsTest has the migration).
+        assertEquals(NearestOnline.ASK, RobotSettings().nearestOnline)
         // Anything in the way: Organic Maps' search, and the card says why.
         assertEquals("No internet: Robot couldn't reach OpenStreetMap, so Robot opened Organic Maps' search instead: pick the place, then tap Route.",
             Nearby.instead(NearbyFail.NO_INTERNET, navigate = true))
         assertEquals("OpenStreetMap knows no such place near you, so Robot opened Organic Maps' search instead.", Nearby.instead(NearbyFail.NOTHING, navigate = false))
         // Every failure has its own words and log code.
         assertEquals(NearbyFail.entries.size, NearbyFail.entries.map { it.id }.distinct().size)
+    }
+
+    /** "Find the nearest place online": Ask the first time shows a card that says what goes; Always goes; Never doesn't. */
+    @Test fun askTheFirstTimeAlwaysOrNever() {
+        val a = Action.MapsNavigate("pharmacy", nearest = true)
+        // Not asked for the nearest, or Never: Organic Maps' search, no card of its own.
+        assertEquals(Prepared.Ready(Action.MapsNavigate("pharmacy")), Nearby.prepare(a, "pharmacy", wanted = false, mode = NearestOnline.ALWAYS))
+        assertEquals(Prepared.Ready(Action.MapsNavigate("pharmacy")), Nearby.prepare(a, "pharmacy", wanted = true, mode = NearestOnline.NEVER))
+        assertEquals(Prepared.Ready(Action.MapsNavigate("pharmacy", nearest = true)), Nearby.prepare(Action.MapsNavigate("pharmacy"), "pharmacy", true, NearestOnline.ALWAYS))
+        // Ask the first time: always a card (AskWhy.ONLINE), three buttons and "Don't ask again".
+        val card = Nearby.prepare(Action.MapsNavigate("pharmacy"), "pharmacy", wanted = true, mode = NearestOnline.ASK)
+        assertEquals(setOf(AskWhy.ONLINE), card.why)
+        assertEquals(listOf("Allow always", "Just this time", "No, search the map"), card.choices.map { it.label })
+        assertEquals("Don't ask again", card.remember)
+        assertEquals("To find the closest one, Robot would send “pharmacy” and your area (about 1 km) to OpenStreetMap's Nominatim. " +
+            "Nothing else leaves the phone. “No, search the map” uses Organic Maps' search instead, on the phone.", card.note)
+        val (always, once, no) = card.choices
+        assertEquals(Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ALWAYS), always.action)
+        assertEquals(Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ONCE), once.action)
+        assertEquals(Action.MapsNavigate("pharmacy", nearest = false, consent = NearestConsent.NO), no.action)
+        assertTrue(always.action.online && once.action.online && !no.action.online)
+        // "Don't ask again" keeps the answer: Always, or Never with No.
+        assertEquals(always.action, always.remember)
+        assertEquals(always.action, once.remember)
+        assertEquals(Action.MapsNavigate("pharmacy", nearest = false, consent = NearestConsent.NEVER), no.remember)
+        // The search's own words, whatever the card carried; a fallback never keeps an answer again.
+        assertEquals(Action.MapsSearch("x"), Nearby.prepare(Action.MapsSearch("x"), "x", true, NearestOnline.ASK).choices[2].action.let(Nearby::plain))
+        assertEquals(Action.MapsNavigate("pharmacy"), Nearby.plain(always.action))
+        // The gate always shows it, whatever the level or the switches.
+        val loose = RobotSettings(safetyCards = SafetyCards.UNSURE_ONLY, whoCards = false, learnedCards = false, deleteCards = false)
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, loose, why = card.why))
+    }
+
+    /** The panel's answer counts while it is newer than what Settings last chose. */
+    @Test fun thePanelsAnswerOrSettingsWhicheverIsNewer() {
+        val s = RobotSettings(nearestOnline = NearestOnline.ASK, nearestOnlineAt = 1_000)
+        assertEquals(NearestOnline.ASK, Nearby.mode(s, null))
+        assertEquals(NearestOnline.ALWAYS, Nearby.mode(s, NearestAnswer(NearestOnline.ALWAYS, 2_000)))
+        assertEquals(NearestOnline.ASK, Nearby.mode(s, NearestAnswer(NearestOnline.NEVER, 500)))
+        assertEquals(NearestOnline.NEVER, Nearby.mode(RobotSettings(), NearestAnswer(NearestOnline.NEVER, 1)))
+        val answer = NearestAnswer(NearestOnline.NEVER, 1_234)
+        assertEquals(answer, NearestAnswer.fromJson(answer.toJson()))
+        for (bad in listOf(null, "", "{", """{"choice":"MAYBE","at":1}""")) assertEquals("$bad", null, NearestAnswer.fromJson(bad))
     }
 }

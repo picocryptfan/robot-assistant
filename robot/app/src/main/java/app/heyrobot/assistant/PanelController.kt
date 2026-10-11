@@ -16,6 +16,7 @@ import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Approval
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainError
+import app.heyrobot.core.AskWhy
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainFail
 import app.heyrobot.core.BrainProtocol
@@ -184,7 +185,12 @@ data class UiAction(
     val allowContacts: Boolean = false,
     /** Its button sends personal content to Claude: a spoken or typed yes doesn't, unless "Voice yes can send personal content". */
     val personal: Boolean = false,
-)
+    /** Only a tap answers it, for this reason (core Card.tapFor: a learned name, not sure who, online the first time); "no" still declines. */
+    val tapFor: AskWhy? = null,
+) {
+    /** What a spoken or typed answer needs to know about it (core CardAnswer). */
+    val waiting: CardAnswer.Waiting get() = CardAnswer.Waiting(choices.size, tapFor, personal, confirm)
+}
 
 /**
  * "Want me to check with Claude?" under a reply (docs/ask-claude.md "When Robot needs help"): a tap (or a yes, when
@@ -658,6 +664,30 @@ object PanelController {
         actions.map { UiAction(newId(), it.tool, it.summary, it.status, it.detail, content = it.content) }, stopped = stopped, error = error,
         claude = claude, readBack = readBack, sources = sources, cost = costMicros.takeIf { it > 0 && VoiceHub.settings.claudeShowCost }?.let { ClaudeCost.line(it / 1e6) })
 
+    /**
+     * "Remove saved screenshots and photos" (the main app): the conversation still held here loses its kept thumbnails
+     * and screen text too, and is saved again without them (its file may have been written back meanwhile).
+     */
+    fun forgetKeptMedia() {
+        var changed = false
+        for (i in chat.indices) {
+            val t = chat[i]
+            if (t.picture != null || t.screenText != null) {
+                chat[i] = t.copy(picture = null, screenText = null)
+                changed = true
+            }
+        }
+        if (changed) persist()
+    }
+
+    /**
+     * History deleted the conversation still held here ([id]), or every conversation (null): start a new one, so the next
+     * save after a reply can't write the deleted one back.
+     */
+    fun forgetDeleted(id: String?) {
+        if (id == null || id == _state.value.convId) newConversation()
+    }
+
     /** The only way a conversation with screen content gets saved. */
     fun keepConversation() {
         keptByUser = true
@@ -786,8 +816,9 @@ object PanelController {
     // ------------------------------------------------------------------ voice input
 
     fun micPressed() {
-        // A card waits: the mic answers it ("yes", "no").
+        // A card waits: the mic answers it ("yes", "no"), with "Answer cards by voice" on (off: a tap or a typed answer).
         if (_state.value.phase == Phase.CONFIRMING) {
+            if (!VoiceHub.settings.voiceCards) return notify(CARD_TYPE_HINT)
             VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
             cardRetry = 0
             return listenForCard()
@@ -893,8 +924,10 @@ object PanelController {
         cardPromptSaid = false
         cardRetry = 0
         if (!s.voiceCards || !shown || !VoiceHub.stt.available || !(st.speak || spokenTurn || shownFrom == ShowSource.WAKE)) return
+        val card = pendingCard() ?: return
         if (st.speak) {
-            if (!said) VoiceHub.tts.speak(CARD_PROMPT)
+            // "Say yes or no.", or why it needs a tap (a learned name, not sure who, online the first time) and that "no" works.
+            if (!said) VoiceHub.tts.speak(CardAnswer.prompt(card.waiting))
             cardListenAfterSpeech = true
         } else {
             listenForCard()
@@ -959,7 +992,7 @@ object PanelController {
         if (cardRetry++ < 1) {
             notify(CARD_HINT)
             if (_state.value.speak) {
-                VoiceHub.tts.speak(CARD_PROMPT)
+                VoiceHub.tts.speak(pendingCard()?.waiting?.let(CardAnswer::prompt) ?: CardAnswer.PROMPT)
                 cardListenAfterSpeech = true
             } else {
                 listenForCard()
@@ -971,25 +1004,25 @@ object PanelController {
     }
 
     /**
-     * [text] answers the waiting card ([CardAnswer]): "no" declines it; "yes" confirms it, except a card with several
-     * choices (tap the one meant) or one that sends personal content to Claude (a tap, unless "Voice yes can send
-     * personal content"). False: not a yes or no, or no card waits.
+     * [text] answers the waiting card (core CardAnswer.reply, tested): "no" declines it; "yes" confirms it, except a card
+     * that needs a tap (a learned name, not sure who or which, online the first time), one with several choices, or one
+     * that sends personal content to Claude (unless "Voice yes can send personal content"): Robot says why. False: not a
+     * yes or no, no card waits, or it was [spoken] with "Answer cards by voice" off (a typed answer still works then).
      */
     private fun answerCard(text: String, spoken: Boolean): Boolean {
         val card = pendingCard() ?: return false
         val s = VoiceHub.settings
-        val kind = CardAnswer.of(text, s.wakePhrases.filter { it.enabled }.map { it.text }) ?: return false
-        RLog.i("card_answer", "yes" to (kind == CardAnswer.Kind.YES), "spoken" to spoken)
-        fun tell(words: String) {
-            notify(words)
-            if (_state.value.speak) VoiceHub.tts.speak(words)
-        }
-        when {
-            kind == CardAnswer.Kind.NO -> confirm(card.id, false)
-            card.choices.size > 1 -> tell("Tap the one you mean on the card.")
-            card.personal && !s.voiceYesPersonal -> tell("Tap ${card.confirm ?: "the button"} to share it with Claude.")
-            card.choices.size == 1 -> choose(card.id, 0)
-            else -> confirm(card.id, true)
+        val r = CardAnswer.reply(text, card.waiting, s.voiceCards, s.voiceYesPersonal, spoken, s.wakePhrases.filter { it.enabled }.map { it.text })
+            ?: return false
+        RLog.i("card_answer", "yes" to (r.does != CardAnswer.Does.DECLINE), "spoken" to spoken)
+        when (r.does) {
+            CardAnswer.Does.DECLINE -> confirm(card.id, false)
+            CardAnswer.Does.CONFIRM -> confirm(card.id, true)
+            CardAnswer.Does.CHOOSE_ONLY -> choose(card.id, 0)
+            CardAnswer.Does.TAP -> r.say?.let { words ->
+                notify(words)
+                if (_state.value.speak) VoiceHub.tts.speak(words)
+            }
         }
         return true
     }
@@ -1011,7 +1044,7 @@ object PanelController {
         if (st.phase == Phase.CONFIRMING && st.draft == null && answerCard(q, fromVoice)) return true
         if (st.busy || slot.running) {
             if (st.phase == Phase.CONFIRMING) {
-                notify(CARD_HINT)
+                notify(if (fromVoice && !VoiceHub.settings.voiceCards) CARD_TYPE_HINT else CARD_HINT)
                 if (fromVoice) cue(Cue.CHIME)
             } else if (fromVoice) {
                 notify("Robot is still on the last question. Ask again when it's done.")
@@ -1938,9 +1971,14 @@ object PanelController {
         override suspend fun run(action: Action): Executed {
             if (!action.online) return withContext(Dispatchers.IO) { executor().run(action) }
             val weather = action.tool == ToolName.WEATHER
+            val deadline = if (weather) WeatherAsk.DEADLINE_MS else Nearby.DEADLINE_MS
+            val abort = Abort(deadline)
             return try {
-                OnlineRun.run(if (weather) WeatherAsk.DEADLINE_MS else Nearby.DEADLINE_MS) { abort -> executor(abort).run(action) } ?: if (weather) {
+                OnlineRun.run(abort, deadline) { a -> executor(a).run(action) } ?: if (weather) {
                     Executed(ActionStatus.FAILED, WeatherFail.TIMEOUT.text).also { VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.TIMEOUT) }
+                } else if (!abort.claim()) {
+                    // The lookup got to open Organic Maps just as its time ran out: that one stays, nothing opens twice.
+                    Executed(ActionStatus.DONE, "Opened Organic Maps.", launchedApp = true)
                 } else {
                     // The nearest place took too long to find: Organic Maps' search instead, as with it turned off.
                     RLog.i("maps_nearest", "found" to false, "why" to NearbyFail.TIMEOUT)
@@ -1979,7 +2017,9 @@ object PanelController {
             // What a read tool finds goes to Claude only after this tap: the button says so.
             val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) "Share with Claude" else c.action?.confirmLabel
             upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo, c.content, c.more,
-                c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts, personal = c.remote && c.tool?.reads == true))
+                c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts,
+                // What it finds goes to Claude: a read, or an online lookup around where you are (the nearest place).
+                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapFor = c.tapFor))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
@@ -2253,6 +2293,6 @@ object PanelController {
     private const val WATCHDOG_TICK_MS = 5_000L
     private const val SORRY = "Sorry, I didn't catch that."
     private const val CARD_HINT = "A card is waiting: say yes or no, or tap a button on it."
-    private const val CARD_PROMPT = "Say yes or no."
+    private const val CARD_TYPE_HINT = "A card is waiting: tap a button on it, or type yes or no."
     private const val SORRY_NO_ANSWER = "Sorry, I couldn't answer that."
 }

@@ -459,6 +459,8 @@ object VoiceHub {
                 ClaudeLink.keyChanged(app)
                 main.post { PanelController.claudeKeyChanged() }
             }, "robot-claude-key").apply { isDaemon = true; start() }
+            Cmd.MEDIA_REMOVED -> PanelController.forgetKeptMedia()
+            Cmd.CONVERSATIONS_DELETED -> PanelController.forgetDeleted(i.getStringExtra(Cmd.EXTRA_ID))
             Cmd.SPEAK_TEST -> {
                 stopVoice(TtsStop.TEST)
                 tts.speak("Hi, I'm Robot. This is how I sound.")

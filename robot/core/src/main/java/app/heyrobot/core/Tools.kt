@@ -191,10 +191,11 @@ sealed class Action {
     }
 
     /**
-     * [nearest]: "the nearest/closest …" (0.4.0): with Settings › Actions › "Find the nearest place online" on, Robot finds
-     * the closest one with OpenStreetMap and opens Organic Maps' route to it (Nearby); otherwise the search, as before.
+     * [nearest]: "the nearest/closest …" (0.4.0): with Settings › Actions › "Find the nearest place online" allowing it, Robot
+     * finds the closest one with OpenStreetMap and opens Organic Maps' route to it (Nearby); otherwise the search, as before.
+     * [consent]: the first-use card's answer it carries (Nearby.prepare), kept when it runs.
      */
-    data class MapsSearch(val query: String, val nearest: Boolean = false) : Action() {
+    data class MapsSearch(val query: String, val nearest: Boolean = false, val consent: NearestConsent? = null) : Action() {
         override val tool get() = ToolName.MAPS_SEARCH
         override fun describe() = if (nearest) Nearby.describe(query) else "Search Organic Maps for “$query”"
         override val online get() = nearest
@@ -204,7 +205,7 @@ sealed class Action {
      * Organic Maps can't route to a name: this opens a search for [destination], and you pick it and tap Route; or, for the
      * [nearest] one, the route to the closest place OpenStreetMap knows ([MapsSearch.nearest]).
      */
-    data class MapsNavigate(val destination: String, val nearest: Boolean = false) : Action() {
+    data class MapsNavigate(val destination: String, val nearest: Boolean = false, val consent: NearestConsent? = null) : Action() {
         override val tool get() = ToolName.MAPS_NAVIGATE
         override fun describe() = if (nearest) Nearby.describe(destination) else "Search Organic Maps for “$destination”, then tap Route"
         override val online get() = nearest

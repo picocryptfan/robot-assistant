@@ -21,7 +21,8 @@ object ApprovalGate {
      *   default; questions always work): unlock first.
      * - The Claude app hand-off always shows "Open Claude with: «…»". [remote], Claude asked for it (its input may come
      *   from web pages): a card with "Card when Claude asks Robot to do something" on; and a read tool's findings go to
-     *   Claude only after a tap unless "Send personal content to helpers automatically" is on.
+     *   Claude only after a tap unless "Send personal content to helpers automatically" is on, and so does an action that
+     *   looks something up online for Claude ([online]: the nearest place, found around where you are).
      * - "Ask first", or a reason the prepared action gives ([why]): not certain who or which ("Card when who-to isn't
      *   certain"), a name learned from Cheogram ("Card for names learned from Cheogram"), deleting files ("Card before
      *   deleting files"), a list to pick from (always).
@@ -34,25 +35,26 @@ object ApprovalGate {
      *   are to Open-Meteo.
      */
     fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, why: Set<AskWhy> = emptySet(), content: Boolean = false,
-        asked: Boolean = false, remote: Boolean = false): GateDecision {
+        asked: Boolean = false, remote: Boolean = false, online: Boolean = tool.online): GateDecision {
         val level = settings.approval(tool)
         return when {
             level == Approval.OFF -> GateDecision.DISABLED
             locked && tool !in settings.lockedTools -> GateDecision.NEEDS_UNLOCK
             tool == ToolName.ASK_CLAUDE -> GateDecision.CONFIRM
             remote && settings.claudeActionCards -> GateDecision.CONFIRM
-            // What a read tool finds for Claude goes to Claude: "Share with Claude" unless personal content may go by itself.
-            remote && tool.reads && !settings.personalToHelpers -> GateDecision.CONFIRM
+            // What a read tool finds for Claude goes to Claude: "Share with Claude" unless personal content may go by itself. So
+            // does what an online lookup finds (the nearest pharmacy says where you are).
+            remote && (tool.reads || online) && !settings.personalToHelpers -> GateDecision.CONFIRM
             level == Approval.ASK -> GateDecision.CONFIRM
             asks(why, settings) -> GateDecision.CONFIRM
-            content && !(tool.reads && !tool.online) && contentAsks(settings.safetyCards, asked) -> GateDecision.CONFIRM
+            content && !(tool.reads && !online) && contentAsks(settings.safetyCards, asked) -> GateDecision.CONFIRM
             else -> GateDecision.RUN
         }
     }
 
     /** One of [why] needs a card with these settings. */
     fun asks(why: Set<AskWhy>, s: RobotSettings): Boolean =
-        AskWhy.PICK in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards)
+        AskWhy.PICK in why || AskWhy.ONLINE in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards)
 
     /** Content in the conversation makes this action ask first, under [mode] ([asked]: the person asked for it this turn). */
     fun contentAsks(mode: SafetyCards, asked: Boolean): Boolean = when (mode) {

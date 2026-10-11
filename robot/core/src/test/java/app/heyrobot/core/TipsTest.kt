@@ -40,6 +40,24 @@ class TipsTest {
         assertTrue(Tips.available(Tips.Can(d.copy(lockedTools = setOf(ToolName.FLASHLIGHT)), locked = true)).any { it.text.contains("flashlight") })
     }
 
+    /** A tip that would do something or go online only fills the text field; a question that reads on the phone asks at once. */
+    @Test fun tipsThatActOrGoOnlineOnlyFillTheField() {
+        val all = Tips.available(Tips.Can(d, locked = false, claude = true, screen = true)).associate { it.text to it.kind }
+        for (t in listOf("Set a timer for 10 minutes", "Wake me up at 7:00", "Remember that I parked on level 3", "Turn on the flashlight",
+                "Text Mom I'm on my way", "Email Sam about dinner on Friday", "Add lunch with Alex on Friday at noon", "Help me free up space",
+                "Directions to the nearest pharmacy", "What's the weather tomorrow?", "Ask Claude why the sky is blue")) {
+            assertEquals(t, TipKind.FILL, all[t])
+        }
+        for (t in listOf("What's on my calendar today?", "How's my battery?", "How much storage is free?", "Find my note about the wifi",
+                "Tell me a fun fact")) {
+            assertEquals(t, TipKind.ASK, all[t])
+        }
+        assertEquals(TipKind.SCREEN, all["What's on my screen?"])
+        assertEquals(TipKind.PHOTO, all["Ask about a photo"])
+        // Every tip is one of those: nothing new slips through as a question that acts.
+        assertEquals(18, all.size)
+    }
+
     @Test fun theScreenTipComesWithTheScreen() {
         val tips = Tips.pick(Tips.Can(d, locked = false), 0)
         val now = Tips.withScreen(tips)
