@@ -69,6 +69,42 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
+## Web search (core only)
+
+The pure, tested half of private web search (`../docs/plans/websearch-termux-design.md` in robot-docs, Part A) is in
+`core/.../core/web/`; nothing calls it yet, so Robot still says it can't check the news. What exists:
+
+- `SearchWire.kt`, `Wikipedia.kt`: request builders and parsers for your own or a public SearXNG (JSON), the Brave
+  Search API (web search and LLM context), Kagi's v1 Search API (POST with a Bearer key, as its OpenAPI reference says;
+  its help page shows GET with `Bot`, to check on the phone), Mojeek and Wikipedia (core REST search, TextExtracts
+  intros); one `SearchResult` with its provider for attribution; each service's limits and terms as `ServiceTerms`
+  constants with their sources. Tested against answers written from each service's documentation examples
+  (`core/src/test/resources/web`).
+- `QueryCheck.kt`: a query goes, shows its card (words only from web pages, screen text, a helper or your personal
+  content, not your own words) or never goes (emails, 6+ digit runs, links with data, code-like tokens, hidden
+  characters, more than 16 words or 200 characters, an address from the conversation's content).
+- `WebUrl.kt`: the page rules: only the results' own URLs, https (an http result tried once as https), the default
+  port, public addresses only in every numeric and IPv6 spelling (`PublicAddress` also checks resolved and connected
+  addresses), at most 3 redirects each checked again, no PDFs, files or video.
+- `PageText.kt`: HTML to text in plain Kotlin (no jsoup or Readability4J: :core takes no HTML library, and only
+  jsoup 1.13.1 and 1.15.1 are in the offline Gradle cache, as build-tool dependencies; Readability4J isn't): hidden
+  elements, scripts, styles, forms, navigation and invisible Unicode dropped, headings, paragraphs and lists kept,
+  1 MiB in, 40,000 characters out, "needs JavaScript" under 300. `Passages.kt`: BM25 passages for the question.
+- `WebAnswer.kt`: when to read pages and which, the tool-free one-shot (≤ 2,890 tokens in, 350 out spoken or 700
+  typed, smaller for a short-context model), citations checked and renumbered, the spoken text without marks, the
+  answer card and its saved line (domains only by default). `WebSettings.kt`: Settings › Web search as data (Off until
+  set up; Ask the first time; Kagi suggested first without a home server), the first search's tap-only card and its
+  `web_answer.json`, the User-Agents (honest `Robot/…` for the APIs, `Mozilla/5.0 (Linux; Android 17) Robot` for
+  pages, no contact yet, so Wikipedia stays off), failure words, and the log's numbers (voice log ids 160–169
+  reserved).
+
+Still to wire: the HTTP clients and the page fetcher in the voice process with the network rules (public-only DNS
+and connected-address checks, manual redirects, byte cap, deadlines and Stop; your SearXNG through 0.6.0's `LanRule`;
+keys in `HelperKeys`); the `web` object in Settings and the Settings › Web search screen; the consent card and the
+`web_search` tool (`ToolName`, the WEB group and its prompt lines, the gate's content flag after a web answer);
+`:brain` serving `REQ_ONE_SHOT` for the answer, which conversation mode is adding; the voice log events; History's
+sources line; `verify_apk.sh` and the network security config.
+
 ## Short-context models (0.4.3)
 
 Your own model file (Settings › Model › "Your own model file") may now be built for a context of 2,048 to 4,095 tokens
