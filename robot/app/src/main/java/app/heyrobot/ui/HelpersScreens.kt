@@ -1,32 +1,24 @@
 package app.heyrobot.ui
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,9 +27,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -70,13 +65,29 @@ import app.heyrobot.core.helpers.SearchStyle
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.HelperWindow
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.pref.ConfirmDialog
+import app.heyrobot.ui.pref.IntroPreference
+import app.heyrobot.ui.pref.ListPreference
+import app.heyrobot.ui.pref.MainSwitchBar
+import app.heyrobot.ui.pref.PreferenceBlock
+import app.heyrobot.ui.pref.PreferenceItem
+import app.heyrobot.ui.pref.PreferenceScreen
+import app.heyrobot.ui.pref.StatusPreference
+import app.heyrobot.ui.pref.SwitchPreference
+import app.heyrobot.ui.pref.TextPreference
+import app.heyrobot.ui.pref.preferenceFooter
+import app.heyrobot.ui.pref.preferenceGroup
+import app.heyrobot.ui.settings.escalationLabel
+import app.heyrobot.ui.theme.RobotTokens
 import java.util.Locale
 import kotlin.random.Random
 
 // MAIN PROCESS. Settings › Helpers (0.6.0): the other AIs Robot can ask when you say so (Claude, another company's model,
 // or a model on your own computer), each with its own page, and "Add a helper". Keys never pass through this process:
 // they are pasted in the helper's connection window, in the assistant's process (HelperWindow), which also runs Test
-// connection; this screen only shows the masked key and what Test connection found (AssistantFacts).
+// connection; this screen only shows the masked key and what Test connection found (AssistantFacts). Built like Android's
+// Settings (0.4.x redesign): a main switch per helper, radio dialogs for the choices, edit dialogs for the names, the long
+// explanations (what goes to a helper, what trust means) in each page's footer, word for word.
 
 private fun keySaved(f: AssistantFacts?, h: HelperConfig) = f?.keys?.containsKey(h.id) == true
 
@@ -119,106 +130,75 @@ private fun helperLine(h: HelperConfig): String {
     return (if (h.home) "Your server" else h.presetOf.company) + " · " + model + if (h.trust) " · trusted with personal content" else ""
 }
 
+/** A helper in a list: its symbol, name, company and model, and whether it can be used now. */
 @Composable
 private fun HelperRow(h: HelperConfig, f: AssistantFacts?, onClick: () -> Unit) {
     val (_, st) = status(h, f)
-    Box(Modifier.alpha(if (h.on) 1f else 0.55f)) {
-        NavRow(if (h.home) RIcons.Home else RIcons.Cloud, h.name, helperLine(h) + "\n" + st, onClick)
-    }
-}
-
-/** Settings' Helpers card: each helper on one line, who Robot checks with, today's spend, and the way to Settings › Helpers. */
-@Composable
-fun HelpersCard(s: RobotSettings, snap: Snapshot, a: AppActions) {
-    val f = snap.facts
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    SectionCard("Helpers") {
-        Text("Other AIs Robot asks only when you say so (“ask Claude …”, “go get Gemini”) or when you let it check hard questions. " +
-            "Only text leaves the phone.", style = MaterialTheme.typography.bodyMedium, color = muted)
-        for (h in s.helpers) HelperRow(h, f) { a.openPage(Page.Helper(h.id)) }
-        val target = HelperSettings.target(s) { keySaved(f, it) }
-        Text("When Robot needs help: " + (target?.let { "${HelperSettings.escalation(s, it, keySaved(f, it)).title} · ${it.name}" } ?: "no helper to ask"),
-            style = MaterialTheme.typography.bodyMedium)
-        Text("Today: ${ClaudeCost.dollarsText(f?.spend?.total ?: 0)} of ${ClaudeCost.dollarsText(s.helperBudgetCents * 10_000L)} (an estimate)",
-            style = MaterialTheme.typography.bodyMedium, color = muted)
-        NavRow(RIcons.Settings, "Helpers", "Add a helper, choose who Robot asks, the daily budget and the cost line") { a.openPage(Page.Helpers) }
-    }
+    PreferenceItem(h.name, helperLine(h) + " · " + st, if (h.home) RIcons.Home else RIcons.Cloud, onClick = onClick)
 }
 
 /** Settings › Helpers: your helpers, "Add a helper", when Robot may ask one by itself, and the budget for all of them. */
 @Composable
 fun HelpersScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     val f = snap.facts
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Scaffold(topBar = { BackBar("Helpers", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
-        Column(
-            Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text("Robot stays offline unless you ask a helper (“ask Claude …”, “go get Jarvis”) or let Robot check hard questions with one. " +
-                "Only text leaves the phone: your voice is turned into text here, and a helper's answer is read by Robot's voices.",
-                style = MaterialTheme.typography.bodyMedium, color = muted)
-            SectionCard("Your helpers") {
-                if (s.helpers.isEmpty()) Text("None: Robot answers everything itself.", style = MaterialTheme.typography.bodyMedium, color = muted)
-                for (h in s.helpers) HelperRow(h, f) { a.openPage(Page.Helper(h.id)) }
-                FilledTonalButton(onClick = { a.openPage(Page.AddHelper) }, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Icon(RIcons.Add, null); Spacer(Modifier.width(8.dp)); Text("Add a helper")
-                }
-            }
-            SectionCard("When Robot needs help") {
-                val target = HelperSettings.target(s) { keySaved(f, it) }
-                val help = target?.let { HelperSettings.escalation(s, it, keySaved(f, it)) } ?: s.help ?: Escalation.ASK
-                val ready = target != null && HelperSettings.apiReady(target, keySaved(f, target))
-                for (e in Escalation.entries) {
-                    val note = if (e == Escalation.AUTO && target != null && !ready) " ${target.name} needs ${if (target.presetOf.keyRequired) "an API key" else "Test connection"} first: until then Robot asks first." else ""
-                    ChoiceRow(e.title, e.detail + note, help == e) { update(s.copy(help = e)) }
-                }
-                val on = s.helpers.filter { it.on }
-                if (on.size > 1) {
-                    Text("Ask", style = MaterialTheme.typography.titleSmall)
-                    for (h in on) ChoiceRow(h.name, helperLine(h), target?.id == h.id) { update(s.copy(helpDefault = h.id)) }
-                }
-                if (target != null && help == Escalation.AUTO && !target.price.known) {
-                    Text("Robot doesn't know ${target.name}'s prices, so it asks first instead of checking by itself. Enter them on ${target.name}'s page.",
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
-                }
-                if (target != null && !target.searching) {
-                    Text("Questions about news, prices or anything current go to ${target.name} by itself only when it can search the web; " +
-                        "otherwise Robot answers and offers.", style = MaterialTheme.typography.bodyMedium, color = muted)
-                }
-                Text(if (s.personalToHelpers) "By itself, Robot sends your question and the last two turns of the conversation, with any screen text, " +
-                    "photo or what it read (Safety & privacy › Send personal content to helpers automatically is on)."
-                    else "By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
-                    "a photo, or what Robot read from your contacts, calendar or notes, the weather (where you are) or your phone's status, it sends " +
-                    "only your question (more for helpers you trust with personal content); anything more goes only after you tap a card that lists it.",
-                    style = MaterialTheme.typography.bodyMedium, color = muted)
-            }
-            SectionCard("Daily budget for all helpers") {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (c in RobotSettings.CLAUDE_BUDGETS) {
-                        FilterChip(selected = s.helperBudgetCents == c, onClick = { update(s.copy(helperBudgetCents = c)) },
-                            label = { Text(ClaudeCost.dollarsText(c * 10_000L).removeSuffix(".00")) }, modifier = Modifier.heightIn(min = 48.dp))
-                    }
-                }
-                val spend = f?.spend
-                Text("Today: ${ClaudeCost.dollarsText(spend?.total ?: 0)} of ${ClaudeCost.dollarsText(s.helperBudgetCents * 10_000L)} (an estimate). " +
-                    "Once it's reached, Robot asks before checking with a helper by itself until tomorrow. A helper whose prices Robot doesn't " +
-                    "know isn't counted.", style = MaterialTheme.typography.bodyMedium, color = muted)
-                for (h in s.helpers) spend?.by?.get(h.id)?.takeIf { it > 0 }?.let {
-                    Text("${h.name}: ${ClaudeCost.dollarsText(it)}", style = MaterialTheme.typography.bodyMedium)
-                }
-                SwitchRow("Show cost", "“≈ 1¢” under each helper's reply, estimated from the published prices (or the price the company reports); " +
-                    "“cost unknown” when Robot can't tell.", s.helperShowCost) { update(s.copy(helperShowCost = it)) }
-            }
-            Spacer(Modifier.height(12.dp))
+    val target = HelperSettings.target(s) { keySaved(f, it) }
+    val help = target?.let { HelperSettings.escalation(s, it, keySaved(f, it)) } ?: s.help ?: Escalation.ASK
+    val ready = target != null && HelperSettings.apiReady(target, keySaved(f, target))
+    val spend = f?.spend
+    PreferenceScreen("Helpers", onBack, snackbar = snackbar) {
+        item(key = "intro") {
+            IntroPreference("Other AIs Robot asks only when you say so (“ask Claude …”, “go get Gemini”) or when you let it check hard questions.")
         }
+        preferenceGroup("Your helpers", "helpers") {
+            if (s.helpers.isEmpty()) PreferenceItem("No helpers", "Robot answers everything itself")
+            for (h in s.helpers) HelperRow(h, f) { a.openPage(Page.Helper(h.id)) }
+            PreferenceItem("Add a helper", "A company's model, or one on your own computer", RIcons.Add, onClick = { a.openPage(Page.AddHelper) })
+        }
+        preferenceGroup("When Robot needs help", "help") {
+            ListPreference("When Robot needs help", help, Escalation.entries, ::escalationLabel, { e ->
+                e.detail + if (e == Escalation.AUTO && target != null && !ready)
+                    " ${target.name} needs ${if (target.presetOf.keyRequired) "an API key" else "Test connection"} first: until then Robot asks first." else ""
+            }, summary = escalationLabel(help) + (target?.let { " · ${it.name}" } ?: " · no helper to ask")) { update(s.copy(help = it)) }
+            val on = s.helpers.filter { it.on }
+            if (on.size > 1) {
+                ListPreference("Ask", target?.id ?: on.first().id, on.map { it.id }, { id -> s.helper(id)?.name ?: id },
+                    { id -> s.helper(id)?.let(::helperLine) }) { update(s.copy(helpDefault = it)) }
+            }
+            if (target != null && help == Escalation.AUTO && !target.price.known) {
+                StatusPreference("Robot doesn't know ${target.name}'s prices", "So it asks first instead of checking by itself. Enter them on ${target.name}'s page.",
+                    Mark.WARN, onClick = { a.openPage(Page.Helper(target.id)) })
+            }
+        }
+        preferenceGroup("Cost", "cost") {
+            ListPreference("Daily budget for all helpers", s.helperBudgetCents, RobotSettings.CLAUDE_BUDGETS,
+                { c -> ClaudeCost.dollarsText(c * 10_000L).removeSuffix(".00") },
+                summary = "Today: ${ClaudeCost.dollarsText(spend?.total ?: 0)} of ${ClaudeCost.dollarsText(s.helperBudgetCents * 10_000L)} (an estimate)") {
+                update(s.copy(helperBudgetCents = it))
+            }
+            val by = s.helpers.mapNotNull { h -> spend?.by?.get(h.id)?.takeIf { it > 0 }?.let { "${h.name}: ${ClaudeCost.dollarsText(it)}" } }
+            if (by.isNotEmpty()) PreferenceItem("Spent today", by.joinToString(" · "))
+            SwitchPreference("Show cost", "“≈ 1¢” under each helper's reply", s.helperShowCost) { update(s.copy(helperShowCost = it)) }
+        }
+        preferenceFooter(
+            "Robot stays offline unless you ask a helper (“ask Claude …”, “go get Jarvis”) or let Robot check hard questions with one. " +
+                "Only text leaves the phone: your voice is turned into text here, and a helper's answer is read by Robot's voices.\n\n" +
+                (if (s.personalToHelpers) "By itself, Robot sends your question and the last two turns of the conversation, with any screen text, " +
+                    "photo or what it read (Safety & privacy › Send personal content to helpers automatically is on)."
+                else "By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
+                    "a photo, or what Robot read from your contacts, calendar or notes, the weather (where you are) or your phone's status, it sends " +
+                    "only your question (more for helpers you trust with personal content); anything more goes only after you tap a card that lists it.") +
+                (if (target != null && !target.searching) "\n\nQuestions about news, prices or anything current go to ${target.name} by itself only " +
+                    "when it can search the web; otherwise Robot answers and offers." else "") +
+                "\n\nDaily budget: once it's reached, Robot asks before checking with a helper by itself until tomorrow. A helper whose " +
+                "prices Robot doesn't know isn't counted. Show cost: “≈ 1¢” under each helper's reply, estimated from the published " +
+                "prices (or the price the company reports); “cost unknown” when Robot can't tell.",
+        )
     }
 }
 
 /** "Add a helper": who (a company, your own server, or another company's compatible API), then its page and the key window. */
 @Composable
 fun AddHelperScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActions, snackbar: SnackbarHostState, onAdded: (String) -> Unit, onBack: () -> Unit) {
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
     var asking by remember { mutableStateOf<Preset?>(null) }
     var trustFor by remember { mutableStateOf<String?>(null) }
 
@@ -239,29 +219,24 @@ fun AddHelperScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAct
         }
     }
 
-    Scaffold(topBar = { BackBar("Add a helper", onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
-        Column(
-            Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Text("Who should Robot be able to ask? A company's model needs an API key from that company (paid separately from any app " +
-                "subscription). A model on your own computer needs no key and costs nothing.", style = MaterialTheme.typography.bodyMedium, color = muted)
-            SectionCard("Companies") {
-                for (p in Presets.ALL.filter { !it.needsAddress }) {
-                    val detail = p.models.take(3).joinToString(", ") { it.title }.ifEmpty { "Hundreds of models from many companies, with one key" }
-                    NavRow(RIcons.Cloud, p.title, detail) { add(p, null) }
-                }
+    PreferenceScreen("Add a helper", onBack, snackbar = snackbar) {
+        preferenceGroup("Companies", "companies") {
+            for (p in Presets.ALL.filter { !it.needsAddress }) {
+                val detail = p.models.take(3).joinToString(", ") { it.title }.ifEmpty { "Hundreds of models from many companies, with one key" }
+                PreferenceItem(p.title, detail, RIcons.Cloud, onClick = { add(p, null) })
             }
-            SectionCard("Your own AI") {
-                NavRow(RIcons.Home, Presets.HOME.title, "A computer on your network, or reached through Tailscale. Free, and private when the computer is yours.") {
-                    asking = Presets.HOME
-                }
-            }
-            SectionCard("Other") {
-                NavRow(RIcons.Cloud, Presets.OTHER.title, "Any company with an OpenAI-compatible API: you enter its address (https).") { asking = Presets.OTHER }
-            }
-            Spacer(Modifier.height(12.dp))
         }
+        preferenceGroup("Your own AI", "home") {
+            PreferenceItem(Presets.HOME.title, "A computer on your network, or reached through Tailscale", RIcons.Home, onClick = { asking = Presets.HOME })
+        }
+        preferenceGroup("Other", "other") {
+            PreferenceItem(Presets.OTHER.title, "Any company with an OpenAI-compatible API (https)", RIcons.Cloud, onClick = { asking = Presets.OTHER })
+        }
+        preferenceFooter(
+            "Who should Robot be able to ask? A company's model needs an API key from that company (paid separately from any app " +
+                "subscription). A model on your own computer needs no key and costs nothing, and is private when the computer is yours. " +
+                "For another company, you enter its OpenAI-compatible address (https).",
+        )
     }
 
     asking?.let { p ->
@@ -332,7 +307,10 @@ private fun AddressDialog(p: Preset, current: String?, onDismiss: () -> Unit, on
     )
 }
 
-/** A helper's page: its connection, name, model, what it may do, its voice, trust, cost, and Remove. */
+/**
+ * A helper's page: the main switch, its status and connection, name, model, what it may do, its voice, trust, cost, and
+ * Remove. Off, the rest of the page is disabled until it is on again (Remove stays).
+ */
 @Composable
 fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     val h = s.helper(id)
@@ -344,131 +322,134 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
     val p = h.presetOf
     val key = keySaved(f, h)
     val facts = factsOf(f, h)
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val on = h.on
     fun set(n: HelperConfig) = update(s.withHelper(n))
-    var confirmDelete by remember { mutableStateOf(false) }
-    var confirmRemove by remember { mutableStateOf(false) }
-    var editAddress by remember { mutableStateOf(false) }
-    Scaffold(topBar = { BackBar(h.name, onBack) }, snackbarHost = { SnackbarHost(snackbar) }) { pad ->
-        Column(
-            Modifier.fillMaxSize().padding(pad).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            SectionCard {
-                SwitchRow(h.name, if (h.home) "Your own server" else p.title, h.on) { set(h.copy(enabled = it)) }
-                val (mark, st) = status(h, f)
-                StatusRow(mark, "Status", st)
-            }
-            SectionCard("Connection") {
-                if (p.needsAddress) {
-                    StatusRow(if (facts.address(h) != null) Mark.OK else Mark.TODO, "Address", h.baseUrl ?: "None") {
-                        TextButton(onClick = { editAddress = true }) { Text("Change") }
-                    }
-                    if (h.home && LanRule.normalize(h.baseUrl.orEmpty())?.https == false) {
-                        Text("Not encrypted: anyone on the same Wi-Fi can read what Robot sends to ${h.name}" +
-                            (if (h.trust) ", including the personal content you trust it with." else ".") +
-                            " Use https or Tailscale on a network you share.", style = MaterialTheme.typography.bodyMedium, color = muted)
-                    }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    var confirmRemove by rememberSaveable { mutableStateOf(false) }
+    var editAddress by rememberSaveable { mutableStateOf(false) }
+    var editPrices by rememberSaveable { mutableStateOf(false) }
+    var pickModel by rememberSaveable { mutableStateOf(false) }
+    val effortStyle = h.catalogModel?.effort ?: p.quirks.effort
+    PreferenceScreen(h.name, onBack, snackbar = snackbar) {
+        item(key = "main") { MainSwitchBar("Use ${h.name}", on) { set(h.copy(enabled = it)) } }
+        preferenceGroup(null, "status") {
+            val (mark, st) = status(h, f)
+            StatusPreference(if (h.home) "Your own server" else p.title, st, mark)
+        }
+        preferenceGroup("Connection", "connection") {
+            if (p.needsAddress) {
+                StatusPreference("Address", h.baseUrl ?: "None", if (facts.address(h) != null) Mark.OK else Mark.TODO,
+                    action = { TextButton(onClick = { editAddress = true }, enabled = on) { Text("Change") } })
+                if (h.home && LanRule.normalize(h.baseUrl.orEmpty())?.https == false) {
+                    StatusPreference("Not encrypted", "Anyone on the same Wi-Fi can read what Robot sends to ${h.name}" +
+                        (if (h.trust) ", including the personal content you trust it with." else ".") +
+                        " Use https or Tailscale on a network you share.", Mark.WARN)
                 }
-                val unreadable = f?.keysUnreadable?.contains(h.id) == true
-                StatusRow(if (key) Mark.OK else if (unreadable) Mark.WARN else Mark.TODO, f?.keys?.get(h.id) ?: if (p.keyRequired) "No key" else "No key (not needed unless your server asks)",
-                    when {
-                        unreadable -> "Robot couldn't read the saved key (Android's keystore lost it), so it was removed. Add it again."
-                        p.keyWhere != null -> "From ${p.keyWhere}. " + p.billing.orEmpty()
-                        else -> p.billing
-                    }) {
+            }
+            val unreadable = f?.keysUnreadable?.contains(h.id) == true
+            StatusPreference(f?.keys?.get(h.id) ?: if (p.keyRequired) "No key" else "No key (not needed unless your server asks)",
+                when {
+                    unreadable -> "Robot couldn't read the saved key (Android's keystore lost it), so it was removed. Add it again."
+                    p.keyWhere != null -> "From ${p.keyWhere}. " + p.billing.orEmpty()
+                    else -> p.billing
+                },
+                if (key) Mark.OK else if (unreadable) Mark.WARN else Mark.TODO,
+                action = {
                     Row {
                         if (key) {
-                            TextButton(onClick = { a.helperWindow(h.id, HelperWindow.MODE_KEY) }) { Text("Replace") }
+                            TextButton(onClick = { a.helperWindow(h.id, HelperWindow.MODE_KEY) }, enabled = on) { Text("Replace") }
                             TextButton(onClick = { confirmDelete = true }) { Text("Delete") }
                         } else {
-                            FilledTonalButton(onClick = { a.helperWindow(h.id, HelperWindow.MODE_KEY) }) { Text("Add key") }
+                            FilledTonalButton(onClick = { a.helperWindow(h.id, HelperWindow.MODE_KEY) }, enabled = on) { Text("Add key") }
                         }
                     }
-                }
-                if (p.protocol != Protocol.ANTHROPIC) {
-                    val checked = if (facts.checkedAt > 0) "Last checked: " + (if (facts.answered) "a test question was answered" else "the server answered") +
-                        (if (facts.models.isNotEmpty()) ", ${facts.models.size} models listed" else "") + "." else "Robot hasn't reached ${h.name} yet."
-                    Text(checked, style = MaterialTheme.typography.bodyMedium, color = muted)
-                    OutlinedButton(onClick = { a.helperWindow(h.id, HelperWindow.MODE_TEST) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Test connection") }
-                }
-                p.dataUse?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = muted) }
-                if (p.quirks.zdr) {
-                    SwitchRow("Only providers that keep nothing", "Zero data retention: OpenRouter sends your questions only to providers that don't store " +
-                        "them. Some models have none; then ${h.name} says so.", h.zdr) { set(h.copy(zdr = it)) }
-                }
+                })
+            if (p.protocol != Protocol.ANTHROPIC) {
+                val checked = if (facts.checkedAt > 0) "Last checked: " + (if (facts.answered) "a test question was answered" else "the server answered") +
+                    (if (facts.models.isNotEmpty()) ", ${facts.models.size} models listed" else "") + "." else "Robot hasn't reached ${h.name} yet."
+                PreferenceItem("Test connection", checked, RIcons.Refresh, enabled = on, onClick = { a.helperWindow(h.id, HelperWindow.MODE_TEST) })
             }
-            if (p.app != null) {
-                SectionCard("Use") {
-                    val route = HelperSettings.route(h, key)
-                    for (r in ClaudeRoute.entries) {
-                        val note = when {
-                            r == ClaudeRoute.APP && f?.claudeApp?.installed == false -> " The ${p.defaultName} app isn't installed."
-                            r == ClaudeRoute.API && !key -> " Add a key first."
-                            else -> ""
-                        }
-                        ChoiceRow(r.title, r.detail + note, route == r) { set(h.copy(route = r)) }
-                    }
-                }
+            if (p.quirks.zdr) {
+                SwitchPreference("Only providers that keep nothing", "Zero data retention", h.zdr, enabled = on) { set(h.copy(zdr = it)) }
             }
-            SectionCard("Name used by voice") {
-                NameField(h, s) { set(it) }
-                AliasesField(h, s) { set(it) }
-            }
-            SectionCard("Model") { ModelPicker(h, facts, a) { set(it) } }
-            val effortStyle = h.catalogModel?.effort ?: p.quirks.effort
-            if (p.protocol == Protocol.ANTHROPIC || effortStyle != EffortStyle.NONE) {
-                SectionCard("How hard ${h.name} thinks") {
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        ClaudeEffortSetting.entries.forEachIndexed { i, v ->
-                            SegmentedButton(selected = h.effort == v, onClick = { set(h.copy(effort = v)) },
-                                shape = SegmentedButtonDefaults.itemShape(i, ClaudeEffortSetting.entries.size)) { Text(v.title) }
-                        }
-                    }
-                    Text("Automatic: low for spoken questions (fast), medium for typed ones, high when you ask ${h.name} to “think hard” or “take your time”." +
-                        when (effortStyle) {
-                            EffortStyle.MISTRAL -> " Mistral thinks either fully or not at all: Low means no thinking."
-                            EffortStyle.DEEPSEEK -> " For DeepSeek, High means its maximum."
-                            else -> ""
-                        }, style = MaterialTheme.typography.bodyMedium, color = muted)
-                }
-            }
-            SectionCard("What ${h.name} may do") {
-                val canSearch = p.canSearch && (h.catalogModel?.search ?: (p.quirks.search == SearchStyle.OPENROUTER))
-                SwitchRow("Let ${h.name} search the web", if (canSearch) searchNote(h) else p.searchNote ?: "This model can't search the web through this connection.",
-                    h.search && canSearch, enabled = canSearch) { set(h.copy(search = it)) }
-                val noTools = h.catalogModel?.tools == false || facts.noActions(h.model)
-                SwitchRow("Let ${h.name} ask Robot to do things", if (noTools) "This model didn't use Robot's actions when Robot checked, so it gets none."
-                    else "Timers, notes, messages and Robot's other actions. Each one shows a card first.", h.actions && !noTools, enabled = !noTools) {
-                    set(h.copy(actions = it))
-                }
-                if (p.protocol != Protocol.ANTHROPIC && h.actions) {
-                    TextButton(onClick = { a.helperWindow(h.id, HelperWindow.MODE_ACTIONS) }) { Text("Check actions") }
-                }
-                SwitchRow("Allow on lock screen", "Off: a locked phone can't show who is asking.", h.locked) { set(h.copy(locked = it)) }
-            }
-            SectionCard("${h.name}'s voice") {
-                for ((name, _) in ClaudeVoices.KOKORO) ChoiceRow(ClaudeVoices.title(name), s.helpers.firstOrNull { it.id != h.id && it.voice == name }?.let { "Also ${it.name}'s" },
-                    ClaudeVoices.of(h.voice) == name) { set(h.copy(voice = name)) }
-                Text("A Kokoro voice, so you hear who is talking. With the Kitten voice helpers use Kitten's other voice; with the phone's voice, a lower pitch.",
-                    style = MaterialTheme.typography.bodyMedium, color = muted)
-            }
-            SectionCard("Personal content") {
-                SwitchRow("Trusted with personal content", "Off (the default): when Robot checks with ${h.name} by itself in a conversation that holds " +
-                    "something personal (what Robot read from your calendar, notes or contacts, where you are, your phone's status), only your question " +
-                    "goes; “go get ${h.name}” asks before including the conversation; a spoken yes never sends personal content. On: all of that goes " +
-                    "to ${h.name} without asking. Your screen and photos still need a tap every time, and so does a conversation that had them. " +
-                    "Turn it on only for a helper you'd show your " +
-                    "calendar to: a server that is yours, or a company whose terms you accept.", h.trust) { set(h.copy(trust = it)) }
-                if (s.personalToHelpers) {
-                    Text("Safety & privacy › Send personal content to helpers automatically is on, so every helper gets this already.",
-                        style = MaterialTheme.typography.bodyMedium, color = muted)
-                }
-            }
-            SectionCard("Cost") { CostSection(h, f) { set(it) } }
-            OutlinedButton(onClick = { confirmRemove = true }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Remove ${h.name}") }
-            Spacer(Modifier.height(12.dp))
         }
+        if (p.app != null) {
+            preferenceGroup(null, "route") {
+                val route = HelperSettings.route(h, key)
+                ListPreference("Use", route, ClaudeRoute.entries, { it.title }, { r ->
+                    r.detail + when {
+                        r == ClaudeRoute.APP && f?.claudeApp?.installed == false -> " The ${p.defaultName} app isn't installed."
+                        r == ClaudeRoute.API && !key -> " Add a key first."
+                        else -> ""
+                    }
+                }, enabled = on) { set(h.copy(route = it)) }
+            }
+        }
+        preferenceGroup("Name used by voice", "names") {
+            val wake = wakeWords(s)
+            TextPreference("Name", h.name, h.name, "Name", "Say “ask ${h.name} …” or “go get ${h.name}”.", enabled = on,
+                keyboard = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
+                validate = { v -> (HelperNames.check(v, h.id, s, wake) as? NameCheck.Problem)?.why }) { v ->
+                if (HelperNames.check(v, h.id, s, wake) !is NameCheck.Problem && v.trim() != h.name) set(h.copy(name = HelperNames.clean(v)))
+            }
+            val shown = h.aliases.joinToString(", ")
+            TextPreference("Also answers to", shown, "None", "Also answers to",
+                "Other names you call it, separated by commas (at most ${HelperConfig.MAX_ALIASES}).", enabled = on,
+                validate = { v -> aliasProblem(v, h, s, wake) }) { v ->
+                if (aliasProblem(v, h, s, wake) == null) set(h.copy(aliases = aliasNames(v).filter { !it.equals(h.name, ignoreCase = true) }.take(HelperConfig.MAX_ALIASES)))
+            }
+        }
+        preferenceGroup("Model", "model") {
+            val shownModel = if (p.protocol == Protocol.ANTHROPIC) ClaudeModel.of(h.model).title
+                else h.catalogModel?.title ?: h.model.ifEmpty { "None chosen" }
+            PreferenceItem("Model", shownModel, RIcons.Chip, enabled = on, onClick = { pickModel = true })
+            if (effortStyle != EffortStyle.NONE || p.protocol == Protocol.ANTHROPIC) {
+                ListPreference("How hard ${h.name} thinks", h.effort, ClaudeEffortSetting.entries, { it.title }, { e ->
+                    if (e == ClaudeEffortSetting.AUTO) "Low for spoken questions, medium for typed ones, high when you ask for it" else null
+                }, enabled = on) { set(h.copy(effort = it)) }
+            }
+        }
+        preferenceGroup("What ${h.name} may do", "may") {
+            val canSearch = p.canSearch && (h.catalogModel?.search ?: (p.quirks.search == SearchStyle.OPENROUTER))
+            SwitchPreference("Let ${h.name} search the web", if (canSearch) searchNote(h) else p.searchNote ?: "This model can't search the web through this connection.",
+                h.search && canSearch, enabled = on && canSearch) { set(h.copy(search = it)) }
+            val noTools = h.catalogModel?.tools == false || facts.noActions(h.model)
+            SwitchPreference("Let ${h.name} ask Robot to do things", if (noTools) "This model didn't use Robot's actions when Robot checked, so it gets none."
+                else "Timers, notes, messages and more, each with a card first", h.actions && !noTools, enabled = on && !noTools) {
+                set(h.copy(actions = it))
+            }
+            if (p.protocol != Protocol.ANTHROPIC && h.actions) {
+                PreferenceItem("Check actions", "Whether this model uses Robot's actions", enabled = on, onClick = { a.helperWindow(h.id, HelperWindow.MODE_ACTIONS) })
+            }
+            SwitchPreference("Allow on lock screen", "A locked phone can't show who is asking", h.locked, enabled = on) { set(h.copy(locked = it)) }
+        }
+        preferenceGroup("Voice and trust", "voice") {
+            ListPreference("${h.name}'s voice", ClaudeVoices.of(h.voice), ClaudeVoices.KOKORO.map { it.first }, ClaudeVoices::title,
+                { name -> s.helpers.firstOrNull { it.id != h.id && it.voice == name }?.let { "Also ${it.name}'s" } }, enabled = on) { set(h.copy(voice = it)) }
+            SwitchPreference("Trusted with personal content",
+                if (s.personalToHelpers) "Every helper gets it already (Safety & privacy)" else if (h.trust) "What Robot read goes without asking"
+                else "Off: only your question goes by itself", h.trust, enabled = on) { set(h.copy(trust = it)) }
+        }
+        preferenceGroup("Cost", "cost") {
+            PreferenceBlock { Text(priceText(h), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            PreferenceItem(if (h.yourPrices != null) "Edit my prices" else if (h.home) "Add a price" else "Enter prices",
+                h.yourPrices?.let { "${usd(it.input)} in, ${usd(it.output)} out, per million tokens" } ?: "Dollars per million tokens", enabled = on,
+                onClick = { editPrices = true })
+            if (h.yourPrices != null) {
+                PreferenceItem("Use the published prices", null, RIcons.Refresh, enabled = on, onClick = { set(h.copy(prices = null, pricesFor = null)) })
+            }
+            if (h.price !is HelperPrice.Free) {
+                ListPreference<Int?>("Daily cap for ${h.name}", h.budgetCents, listOf<Int?>(null) + RobotSettings.CLAUDE_BUDGETS.take(4),
+                    { c -> c?.let { ClaudeCost.dollarsText(it * 10_000L).removeSuffix(".00") } ?: "None" },
+                    summary = "Today: ${ClaudeCost.dollarsText(f?.spend?.by?.get(h.id) ?: 0)}" +
+                        (h.budgetCents?.let { " of ${ClaudeCost.dollarsText(it * 10_000L)}" } ?: " · no cap") + " (an estimate)",
+                    enabled = on) { set(h.copy(budgetCents = it)) }
+            }
+        }
+        preferenceGroup(null, "remove") {
+            PreferenceItem("Remove ${h.name}", "Its key and what Robot found about it", RIcons.Delete, onClick = { confirmRemove = true })
+        }
+        preferenceFooter(helperFooter(h, s, effortStyle))
     }
     if (editAddress) {
         AddressDialog(p, h.baseUrl, onDismiss = { editAddress = false }) { address ->
@@ -487,23 +468,162 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
             }
         }
     }
+    if (pickModel) ModelDialog(h, facts, a, onDismiss = { pickModel = false }) { m -> pickModel = false; if (m != h.model) set(h.copy(model = m)) }
+    if (editPrices) PricesDialog(h, onDismiss = { editPrices = false }) { r -> editPrices = false; set(h.copy(prices = r, pricesFor = h.model)) }
     if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete the ${h.name} key?") },
-            text = { Text("Robot removes the key from this phone." + if (p.app != null) " ${h.name} uses the ${p.defaultName} app until you add a key again." else "") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; a.deleteHelperKey(h.id) }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-        )
+        ConfirmDialog("Delete the ${h.name} key?", "Robot removes the key from this phone." +
+            if (p.app != null) " ${h.name} uses the ${p.defaultName} app until you add a key again." else "", "Delete",
+            onDismiss = { confirmDelete = false }) { confirmDelete = false; a.deleteHelperKey(h.id) }
     }
     if (confirmRemove) {
-        AlertDialog(
-            onDismissRequest = { confirmRemove = false },
-            title = { Text("Remove ${h.name}?") },
-            text = { Text("Robot deletes its key and what it found about it. Conversations in History keep its answers.") },
-            confirmButton = { TextButton(onClick = { confirmRemove = false; a.removeHelper(h.id) }) { Text("Remove") } },
-            dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
-        )
+        ConfirmDialog("Remove ${h.name}?", "Robot deletes its key and what it found about it. Conversations in History keep its answers.", "Remove",
+            onDismiss = { confirmRemove = false }) { confirmRemove = false; a.removeHelper(h.id) }
+    }
+}
+
+/** A helper page's footer: the data use, the name, the effort styles, the voice and what trust means, word for word as before. */
+private fun helperFooter(h: HelperConfig, s: RobotSettings, effortStyle: EffortStyle): String {
+    val p = h.presetOf
+    val out = ArrayList<String>()
+    p.dataUse?.let(out::add)
+    if (p.quirks.zdr) out += "Only providers that keep nothing (zero data retention): OpenRouter sends your questions only to providers that don't " +
+        "store them. Some models have none; then ${h.name} says so."
+    if (p.misheard.isNotEmpty() && h.name == p.defaultName) {
+        out += "Robot also hears “${p.misheard.take(3).joinToString("”, “")}” as ${h.name}, but only after “ask” or “go get”."
+    }
+    out += "How hard ${h.name} thinks: Automatic is low for spoken questions (fast), medium for typed ones, high when you ask ${h.name} to " +
+        "“think hard” or “take your time”." + when (effortStyle) {
+            EffortStyle.MISTRAL -> " Mistral thinks either fully or not at all: Low means no thinking."
+            EffortStyle.DEEPSEEK -> " For DeepSeek, High means its maximum."
+            else -> ""
+        }
+    out += "${h.name}'s voice is a Kokoro voice, so you hear who is talking. With the Kitten voice helpers use Kitten's other voice; with " +
+        "the phone's voice, a lower pitch."
+    out += "Trusted with personal content: off (the default), when Robot checks with ${h.name} by itself in a conversation that holds " +
+        "something personal (what Robot read from your calendar, notes or contacts, where you are, your phone's status), only your question " +
+        "goes; “go get ${h.name}” asks before including the conversation; a spoken yes never sends personal content. On: all of that goes " +
+        "to ${h.name} without asking. Your screen and photos still need a tap every time, and so does a conversation that had them. " +
+        "Turn it on only for a helper you'd show your calendar to: a server that is yours, or a company whose terms you accept." +
+        if (s.personalToHelpers) " Safety & privacy › Send personal content to helpers automatically is on, so every helper gets this already." else ""
+    out += "The budget for all helpers is in Settings › Helpers."
+    return out.joinToString("\n\n")
+}
+
+/** Your aliases, cleaned and without repeats. */
+private fun aliasNames(v: String): List<String> = v.split(',').map(HelperNames::clean).filter { it.isNotEmpty() }.distinct()
+
+/** Why one of the names typed can't be used, or null. */
+private fun aliasProblem(v: String, h: HelperConfig, s: RobotSettings, wake: Set<String>): String? =
+    aliasNames(v).firstNotNullOfOrNull { n -> (HelperNames.check(n, h.id, s, wake) as? NameCheck.Problem)?.let { "$n: ${it.why}" } }
+
+/** Where the price comes from (and when it was read). */
+private fun priceText(h: HelperConfig): String = when (val pr = h.price) {
+    HelperPrice.Free -> "Free: your own server. If you pay for its electricity or a rented machine, you can add a price."
+    is HelperPrice.Yours -> "Your prices: ${usd(pr.rates.input)} per million tokens in, ${usd(pr.rates.output)} out."
+    is HelperPrice.Published -> {
+        val c = pr.card
+        "${usd(c.rates.input)} per million tokens in, ${usd(c.rates.output)} out" +
+            (if (c.rates.cacheRead != c.rates.input) ", ${usd(c.rates.cacheRead)} for cached input" else "") +
+            (c.long?.let { "; more for very long conversations" } ?: "") + (c.peak?.let { "; double at peak hours" } ?: "") +
+            (c.then?.let { "; ${usd(it.rates.input)} in and ${usd(it.rates.output)} out after ${c.until}" } ?: "") +
+            ". Prices ${c.line}."
+    }
+    is HelperPrice.Reported -> "${h.presetOf.company} reports what each answer cost; the cost line shows its figure."
+    HelperPrice.Unknown -> "Robot doesn't know this model's prices: replies show “cost unknown”, they aren't counted in today's spend, and Robot " +
+        "won't check with ${h.name} by itself. Enter the prices from ${if (h.home) "what you pay" else h.presetOf.company + "'s pricing page"}."
+}
+
+/** Your prices for the model in use: dollars per million tokens in and out; Save only with both. */
+@Composable
+private fun PricesDialog(h: HelperConfig, onDismiss: () -> Unit, onSave: (Rates) -> Unit) {
+    var input by rememberSaveable { mutableStateOf(h.yourPrices?.input?.toString().orEmpty()) }
+    var output by rememberSaveable { mutableStateOf(h.yourPrices?.output?.toString().orEmpty()) }
+    val i = input.replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..1000.0 }
+    val o = output.replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..1000.0 }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (h.home) "Price of ${h.name}" else "Prices for ${h.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = input, onValueChange = { input = it }, singleLine = true, label = { Text("$ in") }, isError = input.isNotEmpty() && i == null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                    OutlinedTextField(value = output, onValueChange = { output = it }, singleLine = true, label = { Text("$ out") }, isError = output.isNotEmpty() && o == null,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
+                }
+                Text("Dollars per million tokens, for ${h.model.ifEmpty { "this model" }}.", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(Rates(i!!, o!!)) }, enabled = i != null && o != null) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+/**
+ * The model: the catalog's (recommended first, with what each can do), the server's list (searchable when long, 40 shown at
+ * most), or any id you type. A pick closes the dialog.
+ */
+@Composable
+private fun ModelDialog(h: HelperConfig, facts: HelperFacts, a: AppActions, onDismiss: () -> Unit, onPick: (String) -> Unit) {
+    val p = h.presetOf
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    fun badges(tools: Boolean, search: Boolean, vision: Boolean) = listOfNotNull(
+        "can use Robot's actions".takeIf { tools }, "can search the web".takeIf { search }, "can see pictures".takeIf { vision },
+    ).joinToString(", ").takeIf { it.isNotEmpty() }?.let { " (${it.replaceFirstChar { c -> c.uppercase() }}.)" }.orEmpty()
+    var query by rememberSaveable { mutableStateOf("") }
+    var typed by rememberSaveable { mutableStateOf(h.model) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Model") },
+        text = {
+            Column(Modifier.selectableGroup().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (p.protocol == Protocol.ANTHROPIC) {
+                    for (m in ClaudeModel.entries) ModelChoice(m.title, m.detail, ClaudeModel.of(h.model) == m) { onPick(m.id) }
+                    return@Column
+                }
+                for (m in p.models) ModelChoice(m.title, m.detail + badges(m.tools, m.search, m.vision), h.model == m.id) { onPick(m.id) }
+                val listed = (if (facts.forAddress == null || facts.forAddress == h.baseUrl) facts.models else emptyList()).filter { id -> p.models.none { it.id == id } }
+                if (listed.size > 8) {
+                    OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true, label = { Text("Search ${listed.size} models") },
+                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false), modifier = Modifier.fillMaxWidth())
+                }
+                val matching = listed.filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) }
+                for (m in matching.take(40)) ModelChoice(m, null, h.model == m) { onPick(m) }
+                if (matching.size > 40) Text("More models match: narrow the search.", style = MaterialTheme.typography.bodyMedium, color = muted)
+                if (h.model.isNotEmpty() && p.models.none { it.id == h.model } && h.model !in listed) ModelChoice(h.model, "Entered by you", true) { onPick(h.model) }
+                OutlinedTextField(
+                    value = typed, onValueChange = { typed = it.trim().take(HelperConfig.MAX_MODEL) }, singleLine = true, label = { Text("Model id") },
+                    supportingText = { Text("Any model ${if (h.home) "your server has" else p.company + " offers"}, exactly as it's named.") },
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (typed.isNotEmpty()) onPick(typed) }),
+                    trailingIcon = { if (typed != h.model && typed.isNotEmpty()) TextButton(onClick = { onPick(typed) }) { Text("Use") } },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (listed.isEmpty() && p.models.isEmpty()) {
+                    Text("Test connection lists the models ${if (h.home) "your server has" else "you can use"}.", style = MaterialTheme.typography.bodyMedium, color = muted)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = if (p.protocol == Protocol.ANTHROPIC) null else ({ TextButton(onClick = { onDismiss(); a.helperWindow(h.id, HelperWindow.MODE_TEST) }) { Text("Refresh list") } }),
+    )
+}
+
+/** One model in [ModelDialog]: a 56 dp radio row. */
+@Composable
+private fun ModelChoice(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = RobotTokens.choiceRowHeight).clip(MaterialTheme.shapes.small)
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        }
     }
 }
 
@@ -515,153 +635,5 @@ private fun searchNote(h: HelperConfig): String {
         SearchStyle.ANTHROPIC -> "Up to 3 searches per question, $price. The answer lists the sites."
         SearchStyle.OPENROUTER -> "OpenRouter's web search (5 results); its price is part of the cost OpenRouter reports. The answer lists the sites."
         else -> "${h.presetOf.company}'s web search" + (price?.let { ", $it" } ?: "") + ". The answer lists the sites."
-    }
-}
-
-@Composable
-private fun NameField(h: HelperConfig, s: RobotSettings, set: (HelperConfig) -> Unit) {
-    var v by remember(h.name) { mutableStateOf(h.name) }
-    val check = HelperNames.check(v, h.id, s, wakeWords(s))
-    fun save() { if (check !is NameCheck.Problem && v.trim() != h.name) set(h.copy(name = HelperNames.clean(v))) }
-    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = v, onValueChange = { v = it }, label = { Text("Name") }, singleLine = true, isError = check is NameCheck.Problem,
-            supportingText = {
-                Text(when (check) {
-                    is NameCheck.Problem -> check.why
-                    is NameCheck.Warning -> check.why
-                    NameCheck.Ok -> "Say “ask ${v.trim()} …” or “go get ${v.trim()}”."
-                })
-            },
-            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { save() }),
-            modifier = Modifier.weight(1f),
-        )
-        if (v.trim() != h.name && check !is NameCheck.Problem) TextButton(onClick = { save() }) { Text("Save") }
-    }
-    if (h.presetOf.misheard.isNotEmpty() && h.name == h.presetOf.defaultName) {
-        Text("Robot also hears “${h.presetOf.misheard.take(3).joinToString("”, “")}” as ${h.name}, but only after “ask” or “go get”.",
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun AliasesField(h: HelperConfig, s: RobotSettings, set: (HelperConfig) -> Unit) {
-    val shown = h.aliases.joinToString(", ")
-    var v by remember(shown) { mutableStateOf(shown) }
-    val wake = wakeWords(s)
-    val names = v.split(',').map(HelperNames::clean).filter { it.isNotEmpty() }.distinct()
-    val bad = names.firstNotNullOfOrNull { n -> (HelperNames.check(n, h.id, s, wake) as? NameCheck.Problem)?.let { "$n: ${it.why}" } }
-    fun save() { if (bad == null) set(h.copy(aliases = names.filter { !it.equals(h.name, ignoreCase = true) }.take(HelperConfig.MAX_ALIASES))) }
-    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = v, onValueChange = { v = it }, label = { Text("Also answers to") }, singleLine = true, isError = bad != null,
-            supportingText = { Text(bad ?: "Other names you call it, separated by commas (at most ${HelperConfig.MAX_ALIASES}).") },
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { save() }),
-            modifier = Modifier.weight(1f),
-        )
-        if (v.trim() != shown && bad == null) TextButton(onClick = { save() }) { Text("Save") }
-    }
-}
-
-/** The model: the catalog's (recommended first, with what each can do), the server's list, or any id you type. */
-@Composable
-private fun ModelPicker(h: HelperConfig, facts: HelperFacts, a: AppActions, set: (HelperConfig) -> Unit) {
-    val p = h.presetOf
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    fun badges(tools: Boolean, search: Boolean, vision: Boolean) = listOfNotNull(
-        "can use Robot's actions".takeIf { tools }, "can search the web".takeIf { search }, "can see pictures".takeIf { vision },
-    ).joinToString(", ").takeIf { it.isNotEmpty() }?.let { " (${it.replaceFirstChar { c -> c.uppercase() }}.)" }.orEmpty()
-    if (p.protocol == Protocol.ANTHROPIC) {
-        for (m in ClaudeModel.entries) ChoiceRow(m.title, m.detail, ClaudeModel.of(h.model) == m) { set(h.copy(model = m.id)) }
-        return
-    }
-    // A change of model: your prices were for the other one, and the server's refusals are per model.
-    fun pick(id: String) { if (id != h.model) set(h.copy(model = id)) }
-    for (m in p.models) ChoiceRow(m.title, m.detail + badges(m.tools, m.search, m.vision), h.model == m.id) { pick(m.id) }
-    val listed = (if (facts.forAddress == null || facts.forAddress == h.baseUrl) facts.models else emptyList()).filter { id -> p.models.none { it.id == id } }
-    var query by remember { mutableStateOf("") }
-    if (listed.size > 8) {
-        OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true, label = { Text("Search ${listed.size} models") },
-            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false), modifier = Modifier.fillMaxWidth())
-    }
-    val shown = listed.filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) }.take(40)
-    for (m in shown) ChoiceRow(m, null, h.model == m) { pick(m) }
-    if (shown.size < listed.filter { query.isBlank() || it.contains(query.trim(), ignoreCase = true) }.size) {
-        Text("More models match: narrow the search.", style = MaterialTheme.typography.bodyMedium, color = muted)
-    }
-    if (h.model.isNotEmpty() && p.models.none { it.id == h.model } && h.model !in listed) ChoiceRow(h.model, "Entered by you", true) {}
-    var typed by remember(h.model) { mutableStateOf(h.model) }
-    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = typed, onValueChange = { typed = it.trim().take(HelperConfig.MAX_MODEL) }, singleLine = true, label = { Text("Model id") },
-            supportingText = { Text("Any model ${if (h.home) "your server has" else p.company + " offers"}, exactly as it's named.") },
-            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = { if (typed.isNotEmpty()) pick(typed) }),
-            modifier = Modifier.weight(1f),
-        )
-        if (typed != h.model && typed.isNotEmpty()) TextButton(onClick = { pick(typed) }) { Text("Use") }
-    }
-    if (listed.isEmpty() && p.models.isEmpty()) {
-        Text("Test connection lists the models ${if (h.home) "your server has" else "you can use"}.", style = MaterialTheme.typography.bodyMedium, color = muted)
-    }
-    TextButton(onClick = { a.helperWindow(h.id, HelperWindow.MODE_TEST) }) { Text("Refresh list") }
-}
-
-/** Where the price comes from (and when it was read), your own prices, this helper's daily cap and today's spend. */
-@Composable
-private fun CostSection(h: HelperConfig, f: AssistantFacts?, set: (HelperConfig) -> Unit) {
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    val text = when (val pr = h.price) {
-        HelperPrice.Free -> "Free: your own server. If you pay for its electricity or a rented machine, you can add a price."
-        is HelperPrice.Yours -> "Your prices: ${usd(pr.rates.input)} per million tokens in, ${usd(pr.rates.output)} out."
-        is HelperPrice.Published -> {
-            val c = pr.card
-            "${usd(c.rates.input)} per million tokens in, ${usd(c.rates.output)} out" +
-                (if (c.rates.cacheRead != c.rates.input) ", ${usd(c.rates.cacheRead)} for cached input" else "") +
-                (c.long?.let { "; more for very long conversations" } ?: "") + (c.peak?.let { "; double at peak hours" } ?: "") +
-                (c.then?.let { "; ${usd(it.rates.input)} in and ${usd(it.rates.output)} out after ${c.until}" } ?: "") +
-                ". Prices ${c.line}."
-        }
-        is HelperPrice.Reported -> "${h.presetOf.company} reports what each answer cost; the cost line shows its figure."
-        HelperPrice.Unknown -> "Robot doesn't know this model's prices: replies show “cost unknown”, they aren't counted in today's spend, and Robot " +
-            "won't check with ${h.name} by itself. Enter the prices from ${if (h.home) "what you pay" else h.presetOf.company + "'s pricing page"}."
-    }
-    Text(text, style = MaterialTheme.typography.bodyMedium, color = muted)
-    var editing by remember { mutableStateOf(false) }
-    if (!editing) {
-        Row {
-            TextButton(onClick = { editing = true }) { Text(if (h.yourPrices != null) "Edit my prices" else if (h.home) "Add a price" else "Enter prices") }
-            if (h.yourPrices != null) TextButton(onClick = { set(h.copy(prices = null, pricesFor = null)) }) { Text("Use the published prices") }
-        }
-    } else {
-        var input by remember { mutableStateOf(h.yourPrices?.input?.toString().orEmpty()) }
-        var output by remember { mutableStateOf(h.yourPrices?.output?.toString().orEmpty()) }
-        val i = input.replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..1000.0 }
-        val o = output.replace(',', '.').toDoubleOrNull()?.takeIf { it in 0.0..1000.0 }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value = input, onValueChange = { input = it }, singleLine = true, label = { Text("$ in") }, isError = input.isNotEmpty() && i == null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-            OutlinedTextField(value = output, onValueChange = { output = it }, singleLine = true, label = { Text("$ out") }, isError = output.isNotEmpty() && o == null,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.weight(1f))
-        }
-        Text("Dollars per million tokens, for ${h.model.ifEmpty { "this model" }}.", style = MaterialTheme.typography.bodySmall, color = muted)
-        Row {
-            TextButton(onClick = { editing = false }) { Text("Cancel") }
-            TextButton(onClick = { set(h.copy(prices = Rates(i!!, o!!), pricesFor = h.model)); editing = false }, enabled = i != null && o != null) { Text("Save") }
-        }
-    }
-    if (h.price !is HelperPrice.Free) {
-        Text("Daily cap for ${h.name}", style = MaterialTheme.typography.titleSmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = h.budgetCents == null, onClick = { set(h.copy(budgetCents = null)) }, label = { Text("None") }, modifier = Modifier.heightIn(min = 48.dp))
-            for (c in RobotSettings.CLAUDE_BUDGETS.take(4)) {
-                FilterChip(selected = h.budgetCents == c, onClick = { set(h.copy(budgetCents = c)) },
-                    label = { Text(ClaudeCost.dollarsText(c * 10_000L).removeSuffix(".00")) }, modifier = Modifier.heightIn(min = 48.dp))
-            }
-        }
-        Text("Today: ${ClaudeCost.dollarsText(f?.spend?.by?.get(h.id) ?: 0)}" + (h.budgetCents?.let { " of ${ClaudeCost.dollarsText(it * 10_000L)}" } ?: "") +
-            " (an estimate). The budget for all helpers is in Settings › Helpers.", style = MaterialTheme.typography.bodyMedium, color = muted)
     }
 }
