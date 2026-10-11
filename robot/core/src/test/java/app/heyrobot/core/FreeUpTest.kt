@@ -91,7 +91,7 @@ class FreeUpTest {
             // They write: screen text or a read tool's findings make even "Just do it" ask.
             val auto = d.copy(approvals = d.approvals + (t to Approval.AUTO))
             assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, auto))
-            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, auto, mustAsk = true))
+            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, auto, content = true))
             assertFalse(t.reads || t.online || t in ClaudeTools.OFFERED)
             assertEquals(Personal.PHONE, Personal.of(t))
         }

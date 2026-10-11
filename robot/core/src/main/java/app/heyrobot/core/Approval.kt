@@ -15,32 +15,50 @@ enum class GateDecision {
 
 object ApprovalGate {
     /**
-     * Lock-screen rules (spec item 1): only questions, timers and alarms while the keyguard is locked. Every phase 2
-     * tool (texts, email, contacts, notes, calendar) needs the phone unlocked.
+     * The gate (0.4.0: every rule a switch in Settings › Safety & privacy, [RobotSettings]). In order:
+     *
+     * - Off in Settings › Actions: not done. Locked, and not one of "Works on the lock screen" (timers and alarms by
+     *   default; questions always work): unlock first.
+     * - The Claude app hand-off always shows "Open Claude with: «…»". [remote], Claude asked for it (its input may come
+     *   from web pages): a card with "Card when Claude asks Robot to do something" on; and a read tool's findings go to
+     *   Claude only after a tap unless "Send personal content to helpers automatically" is on.
+     * - "Ask first", or a reason the prepared action gives ([why]): not certain who or which ("Card when who-to isn't
+     *   certain"), a name learned from Cheogram ("Card for names learned from Cheogram"), deleting files ("Card before
+     *   deleting files"), a list to pick from (always).
+     * - [content]: the conversation carries screen text, a picture, a read tool's findings or Claude's words (content Robot
+     *   didn't write and the person didn't type). "Safety cards" decides: every action that writes or leaves asks
+     *   (Always after Robot reads something), only one the person didn't ask for in their own words this turn ([asked]; When
+     *   you didn't ask for it, the default), or none (Only when Robot isn't sure who). The read tools ([ToolName.reads]:
+     *   lookup_contact, find_notes, read_calendar, phone_status) never ask for content: they only bring more to read; a
+     *   read that goes online ([ToolName.online], the weather) does, since injected text could send a word or where you
+     *   are to Open-Meteo.
      */
-    val ALLOWED_WHEN_LOCKED: Set<ToolName> = setOf(ToolName.SET_TIMER, ToolName.SET_ALARM)
-
-    /**
-     * [mustAsk]: "Just do it" becomes "Ask first" for this action. Set when the conversation carries screen text
-     * or a picture, or a read tool's findings (content Robot did not write and the person did not type: a page, a
-     * photo, a note or a calendar invite must never trigger an action without a tap), for an app name that matched
-     * only loosely, and when the card must show who a text or email goes to (several people, a guessed name, a number
-     * the model wrote). The read tools ([ToolName.reads]: lookup_contact, find_notes, read_calendar, phone_status) are
-     * exempt: they only bring more to read, nothing leaves the phone or changes; anything that writes or leaves still
-     * asks, and so does a read that goes online ([ToolName.online], the weather: injected text could send a word or where
-     * you are to Open-Meteo).
-     */
-    fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, mustAsk: Boolean = false, remote: Boolean = false): GateDecision {
+    fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, why: Set<AskWhy> = emptySet(), content: Boolean = false,
+        asked: Boolean = false, remote: Boolean = false): GateDecision {
         val level = settings.approval(tool)
         return when {
             level == Approval.OFF -> GateDecision.DISABLED
-            locked && tool !in ALLOWED_WHEN_LOCKED -> GateDecision.NEEDS_UNLOCK
-            // [remote]: Claude asked for it (its input may come from web pages): a card, always, read tools included.
-            // The Claude app hand-off always shows "Open Claude with: «…»" first.
-            remote || tool == ToolName.ASK_CLAUDE -> GateDecision.CONFIRM
-            level == Approval.AUTO && (!mustAsk || (tool.reads && !tool.online)) -> GateDecision.RUN
-            else -> GateDecision.CONFIRM
+            locked && tool !in settings.lockedTools -> GateDecision.NEEDS_UNLOCK
+            tool == ToolName.ASK_CLAUDE -> GateDecision.CONFIRM
+            remote && settings.claudeActionCards -> GateDecision.CONFIRM
+            // What a read tool finds for Claude goes to Claude: "Share with Claude" unless personal content may go by itself.
+            remote && tool.reads && !settings.personalToHelpers -> GateDecision.CONFIRM
+            level == Approval.ASK -> GateDecision.CONFIRM
+            asks(why, settings) -> GateDecision.CONFIRM
+            content && !(tool.reads && !tool.online) && contentAsks(settings.safetyCards, asked) -> GateDecision.CONFIRM
+            else -> GateDecision.RUN
         }
+    }
+
+    /** One of [why] needs a card with these settings. */
+    fun asks(why: Set<AskWhy>, s: RobotSettings): Boolean =
+        AskWhy.PICK in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards)
+
+    /** Content in the conversation makes this action ask first, under [mode] ([asked]: the person asked for it this turn). */
+    fun contentAsks(mode: SafetyCards, asked: Boolean): Boolean = when (mode) {
+        SafetyCards.AFTER_READING -> true
+        SafetyCards.UNASKED -> !asked
+        SafetyCards.UNSURE_ONLY -> false
     }
 }
 

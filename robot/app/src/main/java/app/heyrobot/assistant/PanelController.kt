@@ -976,7 +976,7 @@ object PanelController {
         // Not after "not Claude": that conversation stays with Robot. With the weather tool on, a weather question is
         // Robot's to answer (0.4.0). Locked, the tool can't run: as before, the question may go to Claude when Claude is
         // allowed on the lock screen.
-        val localWeather = s.approval(ToolName.WEATHER) != Approval.OFF && !Assistant.locked(VoiceHub.app)
+        val localWeather = s.approval(ToolName.WEATHER) != Approval.OFF && (!Assistant.locked(VoiceHub.app) || ToolName.WEATHER in s.lockedTools)
         if (attachment == Attachment.NONE && !claudeDeclined) PreRouter.signal(question, localWeather)?.let { signal ->
             RLog.i("claude_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
             when (decide(attachment, guardFree = !guard.used)) {
@@ -1014,13 +1014,15 @@ object PanelController {
             VoiceLog.add(VoiceEvent.CLAUDE_LEFT_OUT, leftOut)
         }
         var cutSaid = false
+        // What you asked for in your own words this turn (never the screen's text or a photo): Safety cards' "asked for".
+        val askedNow = ToolRouter.asked(question)
         // One run of the model on this question into the reply, with or without ask_claude (the second one, without it,
         // is Robot's own answer after the model handed over: afterLocal).
         suspend fun gemma(askClaude: Boolean): TurnResult {
             // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
             val tools = ToolRouter.tools(groups, s, askClaude)
             val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools,
-                weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers)
+                weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers, lockedTools = s.lockedTools)
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
             val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
             // The new turn always fits the model's context: cut (and say so) rather than overflow.
@@ -1043,7 +1045,8 @@ object PanelController {
             val fixedTokens = Prompt.fixedTokens(system, tools)
             val budget = ContextWindow.historyBudget(fixedTokens, TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, img != null)))
             toolRoom = budget - ContextWindow.fit(gen.history, budget).sumOf(TokenEstimate::turn) - TOOL_CALL_TOKENS
-            return TurnRunner(BrainTurn(c, convId, replyId, gen, img), PanelActions, PanelView(replyId), slot.confirmations, untrusted, newId = ::newId).run()
+            return TurnRunner(BrainTurn(c, convId, replyId, gen, img), PanelActions, PanelView(replyId), slot.confirmations, untrusted,
+                asked = askedNow, newId = ::newId).run()
         }
         val result = gemma(askClaude = leftOut == null)
         result.failure?.let { return failReply(replyId, it) }
@@ -1292,7 +1295,7 @@ object PanelController {
         // The key is decrypted and the client made off the main thread.
         val session = withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = false) } ?: return noKey(id)
         try {
-            runClaude(id, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, ClaudeRouter.deep(question)))
+            runClaude(id, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, ClaudeRouter.deep(question)), ToolRouter.asked(question))
         } finally {
             ClaudeLink.done(session)
         }
@@ -1379,7 +1382,7 @@ object PanelController {
                 }
                 else -> ClaudeContext.next(question ?: said, shared)
             }
-            runClaude(replyId, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, deep))
+            runClaude(replyId, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, deep), ToolRouter.asked(said))
         } finally {
             if (!mode) ClaudeLink.done(session)
         }
@@ -1390,7 +1393,7 @@ object PanelController {
      * One Claude turn through the API into the reply [replyId]: streamed into the bubble and spoken in Claude's voice,
      * Claude's calls as cards (always), then the cost line, today's spend, and Robot's own conversation rebuilt with it.
      */
-    private suspend fun runClaude(replyId: String, session: ClaudeSession, blocks: List<ClaudeBlock>, plan: ClaudePlan) {
+    private suspend fun runClaude(replyId: String, session: ClaudeSession, blocks: List<ClaudeBlock>, plan: ClaudePlan, asked: Set<ToolName>) {
         _state.update { st -> st.copy(claudeStatus = st.claudeStatus ?: ClaudeWords.THINKING, turns = st.turns.map { if (it.id == replyId) it.copy(claude = true) else it }) }
         val t0 = System.currentTimeMillis()
         var first = -1L
@@ -1438,7 +1441,7 @@ object PanelController {
             override fun stopped(results: List<Pair<String, Map<String, Any?>>>) = claudeTurn.stopped(results)
         }
         val result = try {
-            TurnRunner(rounds, PanelActions, PanelView(replyId), slot.confirmations, untrusted = true, remote = true, newId = ::newId).run()
+            TurnRunner(rounds, PanelActions, PanelView(replyId), slot.confirmations, untrusted = true, remote = true, asked = asked, newId = ::newId).run()
         } finally {
             val r = session.lastReport
             RLog.i("claude_turn", "model" to session.model, "effort" to plan.effort, "firstMs" to first, "ms" to (System.currentTimeMillis() - t0),
@@ -1617,7 +1620,8 @@ object PanelController {
         val wakes = VoiceHub.settings.wakePhrases.filter { it.enabled }.map { it.text }
         val answer = if (fromVoice && textingFor != null) TextCommand.stripWake(q, wakes) else q
         // Decided before any contact is read or anything asked: the lock first.
-        val req: TextRequest = when (TextCommand.route(answer, textingFor, Assistant.locked(VoiceHub.app), typed, wakes)) {
+        val locked = Assistant.locked(VoiceHub.app) && ToolName.SEND_TEXT !in VoiceHub.settings.lockedTools
+        val req: TextRequest = when (TextCommand.route(answer, textingFor, locked, typed, wakes)) {
             TextCommand.Route.MODEL -> return false
             // Said aloud as well: the question may have come by voice from across the room.
             TextCommand.Route.UNLOCK -> {
@@ -1658,7 +1662,9 @@ object PanelController {
         // A short line for the conversation, so later questions know what happened (the card has the rest).
         setText(replyId, "Texting $name.")
         val call = RawToolCall(ToolName.SEND_TEXT.id, mapOf("to" to req.name, "message" to req.message))
-        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, newId = ::newId).run()
+        // Your own words asked for this text (or answered "what should it say?").
+        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.SEND_TEXT),
+            newId = ::newId).run()
         result.failure?.let { failReply(replyId, it); return true }
         finishReply(replyId, result.reason ?: DoneReason.END)
         if (result.launchedApp) leaveForApp()

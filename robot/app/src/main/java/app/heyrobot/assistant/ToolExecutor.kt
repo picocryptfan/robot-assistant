@@ -17,6 +17,7 @@ import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Addresses
+import app.heyrobot.core.AskWhy
 import app.heyrobot.core.AppEntry
 import app.heyrobot.core.AppMatcher
 import app.heyrobot.core.CalendarFormat
@@ -108,7 +109,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.OpenApp -> {
                 val m = AppMatcher.match(action.name, launcherApps())
                 if (m == null) Prepared.Refused(ActionStatus.FAILED, "No app called “${action.name}” is installed.")
-                else Prepared.Ready(Action.OpenApp(m.app.label, m.app.key), mustAsk = m.loose)
+                else Prepared.Ready(Action.OpenApp(m.app.label, m.app.key), why = unsure(m.loose))
             }
             is Action.SendText -> prepareText(action)
             is Action.DraftEmail -> prepareEmail(action)
@@ -235,6 +236,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
 
     private val region by lazy { settings.regionFor(Phones.deviceRegion(ctx)) }
 
+    /** A name that matched an installed app only loosely: not certain which app. */
+    private fun unsure(loose: Boolean): Set<AskWhy> = if (loose) setOf(AskWhy.WHO) else emptySet()
+
     /** A number's target: its gateway address for Cheogram, the number itself for the SMS app. [from]: the contact's number. */
     private fun numberTarget(name: String?, e164: String, via: TextVia, appName: String, from: Reach? = null): TextTarget? {
         val address = if (via == TextVia.CHEOGRAM) PhoneNumbers.jid(e164, settings.smsGateway) ?: return null else e164
@@ -274,12 +278,12 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         if (Addresses.isAddress(to)) {
             if (via == TextVia.SMS) return Prepared.Refused(ActionStatus.FAILED, "The SMS app can't text an XMPP address.")
             if (!Addresses.isJid(to)) return Prepared.Refused(ActionStatus.INVALID, "That XMPP address can't be used.")
-            return Prepared.Ready(a.copy(target = TextTarget(null, to, to, appName, via)), mustAsk = true)
+            return Prepared.Ready(a.copy(target = TextTarget(null, to, to, appName, via)), why = setOf(AskWhy.WHO))
         }
         if (Addresses.isPhone(to)) {
             val t = Phones.e164(to, region)?.let { numberTarget(null, it, via, appName) }
                 ?: return Prepared.Refused(ActionStatus.INVALID, "That phone number couldn't be read.")
-            return Prepared.Ready(a.copy(target = t), mustAsk = true)
+            return Prepared.Ready(a.copy(target = t), why = setOf(AskWhy.WHO))
         }
         // People, and the phone's contacts when Robot may read them.
         val book = PeopleFiles.book(ctx)
@@ -315,7 +319,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val appName = if (settings.emailAppFor(proton) == EmailApp.PROTON && proton) "Proton Mail" else null
         val to = a.to.trim()
         // An address the model wrote: the card always shows it.
-        if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)), mustAsk = true)
+        if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)), why = setOf(AskWhy.WHO))
         val book = PeopleFiles.book(ctx)
         val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.email)
         if (all.isEmpty()) return if (Contacts.granted(ctx)) Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.") else needContacts()
@@ -578,7 +582,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val m = AppMatcher.match(name, launcherApps()) ?: return Prepared.Refused(ActionStatus.FAILED, "No app called “$name” is installed.")
         val pkg = m.app.key.substringBefore('/')
         if (pkg == ctx.packageName) return Prepared.Refused(ActionStatus.FAILED, "Robot can't stop itself. Say “free up memory” to unload its model.")
-        return Prepared.Ready(Action.FreeMemory(m.app.label, pkg), mustAsk = m.loose)
+        return Prepared.Ready(Action.FreeMemory(m.app.label, pkg), why = unsure(m.loose))
     }
 
     /**
@@ -612,14 +616,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
      */
     private fun prepareFreeStorage(a: Action.FreeStorage): Prepared = when (a.way) {
         StorageWay.ANDROID -> Prepared.Ready(a)
-        StorageWay.ROBOT -> Prepared.Ready(a.copy(bytes = PhoneInfo.robotCache(ctx)), mustAsk = true)
+        StorageWay.ROBOT -> Prepared.Ready(a.copy(bytes = PhoneInfo.robotCache(ctx)), why = setOf(AskWhy.DELETE))
         StorageWay.APPS -> if (!PhoneInfo.usageAccess(ctx)) {
             Prepared.Refused(ActionStatus.NEEDS_PERMISSION, "Turn on Usage access for Robot (Assistant setup in the Robot app) so it can list the apps using the most space.")
         } else {
             // Not Robot: its App info's "Clear storage" would delete its models.
             val top = PhoneStatus.top(PhoneInfo.apps(ctx).filter { it.pkg != ctx.packageName })
             if (top.isEmpty()) Prepared.Refused(ActionStatus.NOT_FOUND, "Robot couldn't read the apps' sizes.")
-            else Prepared.Ready(a, choices = top.map { Choice(FreeUp.appChoice(it), a.copy(target = it.pkg, label = it.label)) })
+            else Prepared.Ready(a, why = setOf(AskWhy.PICK), choices = top.map { Choice(FreeUp.appChoice(it), a.copy(target = it.pkg, label = it.label)) })
         }
         StorageWay.FILES -> if (!PhoneInfo.mediaGranted(ctx)) {
             Prepared.Refused(ActionStatus.NEEDS_PERMISSION, "Allow photos and videos for Robot in the Robot app, so it can find the largest ones.")
@@ -628,7 +632,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             val files = PhoneInfo.largeMedia(ctx)
             if (files.isEmpty()) Prepared.Refused(ActionStatus.NOT_FOUND,
                 if (PhoneInfo.mediaPartial(ctx)) "Robot sees only the photos and videos you picked, and none of them is there." else "No photos or videos found.")
-            else Prepared.Ready(a, choices = files.map { f ->
+            else Prepared.Ready(a, why = setOf(AskWhy.DELETE), choices = files.map { f ->
                 Choice(FreeUp.fileChoice(f, zone), a.copy(target = f.uri, label = if (f.video) "video" else "photo", bytes = f.bytes, summary = FreeUp.fileSummary(f, zone)))
             })
         }

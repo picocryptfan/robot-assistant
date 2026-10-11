@@ -50,7 +50,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import app.heyrobot.BuildConfig
 import app.heyrobot.core.Approval
-import app.heyrobot.core.ApprovalGate
 import app.heyrobot.core.BenchState
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.CalendarPick
@@ -476,7 +475,7 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
                 "writes or leaves the phone asks first (reading more doesn't).",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             // Ask Claude's own settings decide about ask_claude (it has no level of its own).
-            for (t in ToolName.entries.filter { !it.internal }) ApprovalRow(t, s.approval(t)) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
+            for (t in ToolName.entries.filter { !it.internal }) ApprovalRow(t, s.approval(t), t in s.lockedTools) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
             Text("Anything Claude asks Robot to do always shows a card first.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         PeopleSettingsCard(s, snap, calendars, update, a)
@@ -538,13 +537,13 @@ internal fun SwitchRow(title: String, detail: String?, checked: Boolean, enabled
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ApprovalRow(t: ToolName, level: Approval, onChange: (Approval) -> Unit) {
+private fun ApprovalRow(t: ToolName, level: Approval, worksLocked: Boolean, onChange: (Approval) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(toolIcon(t), null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(12.dp))
             Text(t.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            if (t in ApprovalGate.ALLOWED_WHEN_LOCKED) Text("works locked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (worksLocked) Text("works locked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (t.online) Text("uses the internet", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 6.dp)) {

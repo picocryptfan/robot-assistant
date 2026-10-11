@@ -86,10 +86,10 @@ class WeatherToolTest {
         assertEquals(Approval.AUTO, d.approval(ToolName.WEATHER))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.WEATHER, locked = false, settings = d))
         // It reads, but online: in a conversation with screen text, a photo or a read tool's findings it shows a card first.
-        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.WEATHER, locked = false, settings = d, mustAsk = true))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.WEATHER, locked = false, settings = d, content = true))
         // Locked: it would say where your Home for weather is, and go online, for whoever holds the phone.
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.WEATHER, locked = true, settings = d))
-        assertFalse(ToolName.WEATHER in ApprovalGate.ALLOWED_WHEN_LOCKED)
+        assertFalse(ToolName.WEATHER in d.lockedTools)
         assertTrue(ToolName.WEATHER.reads && ToolName.WEATHER.online && !ToolName.WEATHER.internal)
         // Claude is never offered it (it has web search, and where you are is yours).
         assertFalse(ToolName.WEATHER in ClaudeTools.OFFERED)
@@ -111,11 +111,11 @@ class WeatherToolTest {
         assertEquals(RawToolCall("weather", mapOf("place" to "Paris", "day" to "tomorrow")), calls.single().call)
     }
 
-    @Test fun theHomeForWeatherIsSavedWithSchemaFive() {
+    @Test fun theHomeForWeatherIsSavedSinceSchemaFive() {
         val home = WeatherPlace("Montreal, Quebec, Canada", 45.50884, -73.58781)
         val s = RobotSettings(weatherHome = home)
         val json = s.toJson()
-        assertEquals(5, json.getInt("schema"))
+        assertTrue(json.getInt("schema") >= 5)
         assertEquals(s, RobotSettings.fromJson(json.toString()))
         assertNull(RobotSettings().weatherHome)
         assertFalse(RobotSettings().toJson().has("weatherHome"))

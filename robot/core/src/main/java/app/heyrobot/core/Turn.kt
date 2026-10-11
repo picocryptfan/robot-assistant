@@ -81,15 +81,22 @@ data class Choice(val label: String, val action: Action, val remember: Action? =
  */
 sealed class Prepared {
     /**
-     * [mustAsk]: show the card even where the action could just run (an app name that matched loosely, a person not
-     * surely the one named). [choices]: several people or numbers fit; the card lists them and the person taps one
-     * (so it always asks). [more]: how many more fitted than the card lists. [note]: the card's line while it waits
-     * (what its buttons do). [remember]: the words of the tick box that makes a choice remembered ("Always use this for
-     * “mom”"), when the choices can be. [allowContacts]: the card also offers to allow reading the contacts (the person
-     * asked for may be there).
+     * [why]: why the card may show even where the action could just run (an app name that matched loosely, a person not
+     * surely the one named, a name learned from Cheogram, a file to delete); the gate asks the settings whether it does.
+     * [choices]: several people or numbers fit; the card lists them and the person taps one. When the settings let it
+     * run without a card, the first choice (the best) is taken. [more]: how many more fitted than the card lists.
+     * [note]: the card's line while it waits (what its buttons do). [remember]: the words of the tick box that makes a
+     * choice remembered ("Always use this for “mom”"), when the choices can be. [allowContacts]: the card also offers to
+     * allow reading the contacts (the person asked for may be there).
      */
-    data class Ready(val action: Action, val mustAsk: Boolean = false, val choices: List<Choice> = emptyList(), val more: Int = 0,
-        val note: String? = null, val remember: String? = null, val allowContacts: Boolean = false) : Prepared()
+    data class Ready(val action: Action, val why: Set<AskWhy> = emptySet(), val choices: List<Choice> = emptyList(), val more: Int = 0,
+        val note: String? = null, val remember: String? = null, val allowContacts: Boolean = false) : Prepared() {
+        /** Some reason to show the card besides the level (the settings decide whether it does). */
+        val mustAsk: Boolean get() = why.isNotEmpty()
+
+        /** [why] with a list to choose from that names no reason of its own counted as a pick. */
+        val reasons: Set<AskWhy> get() = if (choices.isNotEmpty() && why.isEmpty()) setOf(AskWhy.PICK) else why
+    }
     data class Refused(val status: ActionStatus, val detail: String) : Prepared()
 }
 
@@ -259,11 +266,17 @@ class TurnRunner(
      */
     private var untrusted: Boolean,
     /**
-     * Claude is the model (the API route): every call shows a card, only [ClaudeTools.OFFERED] exist, and each input
-     * is checked against its schema before it is read. Claude never calls ask_claude.
+     * Claude is the model (the API route): every call shows a card (unless Settings › Safety & privacy says otherwise),
+     * only [ClaudeTools.OFFERED] exist, and each input is checked against its schema before it is read. Claude never
+     * calls ask_claude.
      */
     private val remote: Boolean = false,
     private val maxRounds: Int = if (remote) TurnRules.CLAUDE_MAX_ROUNDS else TurnRules.MAX_ROUNDS,
+    /**
+     * The actions the person asked for in their own words this turn ([ToolRouter.asked], or a fast path's): under "Safety
+     * cards: When you didn't ask for it" content doesn't make these ask. Never screen text, a photo or a tool's results.
+     */
+    private val asked: Set<ToolName> = emptySet(),
     private val newId: () -> String,
 ) {
     private var budget = TurnRules.MAX_CALLS
@@ -388,7 +401,7 @@ class TurnRunner(
             return (a.tool.id to status.toolResponse(r?.forModel ?: detail, r?.results)) to launched
         }
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
-        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, untrusted, remote)) {
+        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote)) {
             GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
             else -> {}
@@ -397,15 +410,17 @@ class TurnRunner(
             is Prepared.Refused -> return done(asked, p.status, p.detail)
             is Prepared.Ready -> p
         }
-        val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, untrusted || a.mustAsk || a.choices.isNotEmpty(), remote)
+        val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, a.reasons, content = untrusted,
+            asked = a.action.tool in this.asked, remote = remote)
         val chosen = when (decision) {
-            GateDecision.RUN -> a.action
+            // No card for these choices (the settings say so): the first, the best match.
+            GateDecision.RUN -> a.choices.firstOrNull()?.action ?: a.action
             GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember, a.allowContacts)
             GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
         // The phone may have locked while the card waited.
-        if (actions.locked && chosen.tool !in ApprovalGate.ALLOWED_WHEN_LOCKED) {
+        if (actions.locked && chosen.tool !in actions.settings.lockedTools) {
             return done(chosen, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
         }
         fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {

@@ -91,6 +91,39 @@ object ToolRouter {
         }
     }
 
+    /**
+     * The always-described tools, each by its own words (0.4.0, "Safety cards: When you didn't ask for it"): CORE is in
+     * every route, so it can't say which of them the person asked for.
+     */
+    private val TIMER = setOf("timer", "countdown", "minuteur", "minuterie", "chrono", "chronometre")
+    private val ALARM = setOf("alarm", "wake me", "wake up", "alarme", "reveil", "reveille", "reveiller")
+    private val LIGHT = setOf("flashlight", "torch", "light", "lamp", "lampe", "lumiere", "flash")
+    private val OPEN = setOf("open", "launch", "start", "ouvre", "ouvrir", "lance", "lancer", "demarre")
+    private val MAP = setOf("map", "maps", "directions", "direction", "navigate", "navigation", "route", "take me", "get to", "how do i get",
+        "where is", "wheres", "find", "nearest", "closest", "near me", "nearby", "carte", "itineraire", "aller a", "emmene", "trouve",
+        "plus proche", "pres de", "ou est")
+
+    /**
+     * The actions the person asked for in their own words ([question]: what they typed or said this turn, never screen
+     * text, a photo or what a tool found): each always-described tool by its own words, the others by their group's
+     * ([route]). Robot's own ask_claude never counts (it always shows its card).
+     */
+    fun asked(question: String): Set<ToolName> {
+        val words = words(question)
+        val padded = " " + words.joinToString(" ") + " "
+        fun has(keys: Set<String>) = keys.any { k -> if (' ' in k) padded.contains(" $k ") else words.any { inflects(it, k) } }
+        val groups = route(question)
+        return buildSet {
+            if (has(TIMER)) add(ToolName.SET_TIMER)
+            if (has(ALARM)) add(ToolName.SET_ALARM)
+            if (has(LIGHT)) add(ToolName.FLASHLIGHT)
+            if (has(OPEN)) add(ToolName.OPEN_APP)
+            if (has(MAP)) { add(ToolName.MAPS_SEARCH); add(ToolName.MAPS_NAVIGATE) }
+            for (t in ToolName.entries) if (t.group != ToolGroup.CORE && t.group in groups) add(t)
+            remove(ToolName.ASK_CLAUDE)
+        }
+    }
+
     /** "Stop YouTube", "close the Signal app", "arrête Chrome"; not "stop the timer", "stop talking" or "close the door". */
     private fun stopsAnApp(words: List<String>): Boolean = words.withIndex().any { (i, w) ->
         w in STOP_VERBS && i + 1 < words.size && (words[i + 1] !in NOT_AN_APP || words.drop(i + 1).any { it == "app" || it == "appli" || it == "application" })

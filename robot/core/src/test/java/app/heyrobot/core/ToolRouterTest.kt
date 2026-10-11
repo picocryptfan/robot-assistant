@@ -96,4 +96,28 @@ class ToolRouterTest {
         assertEquals("core.people.calendar", ToolRouter.label(Prompt.CORE_TOOLS + ToolName.SEND_TEXT + ToolName.READ_CALENDAR))
         assertEquals("none", ToolRouter.label(emptyList()))
     }
+
+    /** "Safety cards: When you didn't ask for it": which actions your own words asked for this turn. */
+    @Test fun yourOwnWordsSayWhichActionsYouAskedFor() {
+        fun asked(q: String) = ToolRouter.asked(q)
+        assertEquals(setOf(ToolName.SET_TIMER), asked("set a timer for 10 minutes"))
+        assertTrue(ToolName.SET_ALARM in asked("wake me up at 7"))
+        assertTrue(ToolName.SET_ALARM in asked("mets une alarme à 7h"))
+        assertTrue(ToolName.FLASHLIGHT in asked("turn on the flashlight"))
+        assertTrue(ToolName.OPEN_APP in asked("open Signal"))
+        assertTrue(ToolName.MAPS_NAVIGATE in asked("directions to the nearest pharmacy"))
+        assertTrue(ToolName.MAPS_SEARCH in asked("where's the closest gas station"))
+        assertTrue(ToolName.SEND_TEXT in asked("text Mom I'm late") && ToolName.DRAFT_EMAIL in asked("text Mom I'm late"))
+        assertTrue(ToolName.ADD_NOTE in asked("note that the wifi code is 1234"))
+        assertTrue(ToolName.ADD_EVENT in asked("add the dentist to my calendar on Friday"))
+        assertTrue(ToolName.WEATHER in asked("will it rain tomorrow"))
+        assertTrue(ToolName.FREE_STORAGE in asked("free up some space"))
+        // A question about the screen asks for no action: what the page says never counts as your words.
+        assertEquals(emptySet<ToolName>(), asked("what does this page say?"))
+        assertEquals(emptySet<ToolName>(), asked("summarize this"))
+        assertFalse(ToolName.SET_TIMER in asked("what's the weather tomorrow"))
+        assertFalse(ToolName.OPEN_APP in asked("tell me a joke"))
+        // Robot's own hand-off never counts: it always shows its card.
+        assertFalse(ToolName.ASK_CLAUDE in asked("ask Claude to open the maps"))
+    }
 }

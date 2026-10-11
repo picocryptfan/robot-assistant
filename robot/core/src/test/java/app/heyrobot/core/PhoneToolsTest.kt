@@ -97,7 +97,7 @@ class PhoneToolsTest {
         val d = RobotSettings()
         assertEquals(Approval.AUTO, d.approval(ToolName.PHONE_STATUS))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.PHONE_STATUS, false, d))
-        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.PHONE_STATUS, false, d, mustAsk = true))
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.PHONE_STATUS, false, d, content = true))
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.PHONE_STATUS, true, d))
         assertFalse(ToolName.PHONE_STATUS.online || ToolName.PHONE_STATUS in ClaudeTools.OFFERED)
         // An older settings file reads the default.

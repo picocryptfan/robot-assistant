@@ -162,7 +162,7 @@ class TurnTest {
         val settings = RobotSettings().let { it.copy(approvals = it.approvals + (ToolName.OPEN_APP to Approval.AUTO)) }
         val model = FakeModel(ModelOutcome.Calls(listOf(call("open_app", "name" to "Warden"))))
         val actions = FakeActions(settings)
-        actions.prepare = { Prepared.Ready(Action.OpenApp("Bitwarden", "com.x8bit.bitwarden/.Main"), mustAsk = true) }
+        actions.prepare = { Prepared.Ready(Action.OpenApp("Bitwarden", "com.x8bit.bitwarden/.Main"), why = setOf(AskWhy.WHO)) }
         val view = FakeView()
         val conf = Confirmations()
         val turn = async { runner(model, actions, view, conf).run() }
@@ -669,5 +669,72 @@ class TurnTest {
         TurnRunner(FakeModel(ModelOutcome.Calls(listOf(call("ask_claude", "question" to "x")))), actions, v2, Confirmations(), untrusted = false) { "l${++ids}" }.runHandOff()
         assertEquals(listOf(ActionStatus.NEEDS_UNLOCK), v2.statuses())
     }
-}
 
+    /** "Safety cards: When you didn't ask for it" (the default): content no longer stops what your own words asked for. */
+    @Test fun whatYouAskedForRunsInAConversationWithContent() = runBlocking {
+        val actions = FakeActions()
+        val view = FakeView()
+        TurnRunner(FakeModel(ModelOutcome.Calls(listOf(timer))), actions, view, Confirmations(), untrusted = true, asked = setOf(ToolName.SET_TIMER)) { "s${++ids}" }.run()
+        assertEquals(listOf<Action>(Action.SetTimer(300)), actions.ran)
+        assertEquals(listOf(ActionStatus.DONE), view.statuses())
+        // The same timer, not asked for (the page said so): a card first.
+        val v2 = FakeView()
+        val conf = Confirmations()
+        val turn = async { TurnRunner(FakeModel(ModelOutcome.Calls(listOf(timer))), FakeActions(), v2, conf, untrusted = true, asked = setOf(ToolName.SEND_TEXT)) { "t${++ids}" }.run() }
+        val id = withTimeout(5_000) { v2.pending.receive() }
+        conf.answer(id, false)
+        turn.await()
+        assertEquals(listOf(ActionStatus.DECLINED), v2.statuses())
+        // "Always after Robot reads something": the card, asked for or not.
+        val after = FakeActions(RobotSettings(safetyCards = SafetyCards.AFTER_READING))
+        val v3 = FakeView()
+        val c3 = Confirmations()
+        val t3 = async { TurnRunner(FakeModel(ModelOutcome.Calls(listOf(timer))), after, v3, c3, untrusted = true, asked = setOf(ToolName.SET_TIMER)) { "u${++ids}" }.run() }
+        c3.answer(withTimeout(5_000) { v3.pending.receive() }, true)
+        t3.await()
+        assertEquals(listOf<Action>(Action.SetTimer(300)), after.ran)
+    }
+
+    /** "Card when who-to isn't certain" off: several people fit, and the first (the best match) is taken without a card. */
+    @Test fun withoutTheWhoCardTheBestChoiceIsTaken() = runBlocking {
+        val settings = RobotSettings(whoCards = false).let { it.copy(approvals = it.approvals + (ToolName.SEND_TEXT to Approval.AUTO)) }
+        val asked = Action.SendText("Alex", "hi")
+        val first = asked.copy(to = "Alex A")
+        val second = asked.copy(to = "Alex B")
+        val actions = FakeActions(settings)
+        actions.prepare = { Prepared.Ready(asked, why = setOf(AskWhy.WHO), choices = listOf(Choice("Alex A", first), Choice("Alex B", second))) }
+        val view = FakeView()
+        runner(FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "Alex", "message" to "hi")))), actions, view).run()
+        assertEquals(listOf<Action>(first), actions.ran)
+        assertFalse(view.phases.contains(TurnPhase.CONFIRMING))
+        // With it on (the default), the card lists them.
+        val on = FakeActions(settings.copy(whoCards = true))
+        on.prepare = actions.prepare
+        val v2 = FakeView()
+        val conf = Confirmations()
+        val turn = async { runner(FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "Alex", "message" to "hi")))), on, v2, conf).run() }
+        val id = withTimeout(5_000) { v2.pending.receive() }
+        assertEquals(listOf("Alex A", "Alex B"), v2.cards[id]!!.choices.map { it.label })
+        conf.choose(id, 1)
+        turn.await()
+        assertEquals(listOf<Action>(second), on.ran)
+    }
+
+    /** A phone locked while the card waited: only what "Works on the lock screen" allows still runs. */
+    @Test fun theLockScreenSettingHoldsAfterTheCard() = runBlocking {
+        val actions = FakeActions(RobotSettings(lockedTools = setOf(ToolName.MAPS_SEARCH)).let { it.copy(approvals = it.approvals + (ToolName.MAPS_SEARCH to Approval.ASK)) })
+        val view = FakeView()
+        val conf = Confirmations()
+        val turn = async { runner(FakeModel(ModelOutcome.Calls(listOf(call("maps_search", "query" to "pharmacy")))), actions, view, conf).run() }
+        val id = withTimeout(5_000) { view.pending.receive() }
+        actions.lockedNow = true
+        conf.answer(id, true)
+        turn.await()
+        assertEquals(listOf<Action>(Action.MapsSearch("pharmacy")), actions.ran)
+        // Timers aren't in that set any more.
+        val v2 = FakeView()
+        actions.lockedNow = true
+        runner(FakeModel(ModelOutcome.Calls(listOf(timer))), actions, v2).run()
+        assertEquals(listOf(ActionStatus.NEEDS_UNLOCK), v2.statuses())
+    }
+}

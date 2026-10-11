@@ -123,6 +123,27 @@ data class RobotSettings(
      * where it is (or isn't allowed to). Null: none.
      */
     val weatherHome: WeatherPlace? = null,
+    // Settings › Safety & privacy (0.4.0, schema 6): each rule that makes an action ask first is a switch.
+    /** "Safety cards": when content Robot read makes an action ask first (older files: the new default too). */
+    val safetyCards: SafetyCards = SafetyCards.UNASKED,
+    /** "Card when Claude asks Robot to do something". */
+    val claudeActionCards: Boolean = true,
+    /** "Card when who-to isn't certain": several people, a near match, a number or address the model wrote, a loose app name. */
+    val whoCards: Boolean = true,
+    /** "Card for names learned from Cheogram". */
+    val learnedCards: Boolean = true,
+    /** "Card before deleting files": free_storage's photos and videos (Android asks as well) and Robot's cache. */
+    val deleteCards: Boolean = true,
+    /** "Works on the lock screen": the actions allowed while locked (questions always). */
+    val lockedTools: Set<ToolName> = LockScreen.DEFAULT,
+    /**
+     * "Send personal content to helpers automatically" (off): Robot checking with Claude by itself may send the
+     * conversation's personal content and this question's screen or photo, and what a read tool finds for Claude goes
+     * without "Share with Claude". Claude joining ("go get Claude") still asks first.
+     */
+    val personalToHelpers: Boolean = false,
+    /** "Voice yes can send personal content" (off): a spoken or typed yes may send what otherwise needs a tap. */
+    val voiceYesPersonal: Boolean = false,
 ) {
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
@@ -174,6 +195,14 @@ data class RobotSettings(
         claudeHelp?.let { put("claudeHelp", it.name) }
         put("claudeBudgetCents", claudeBudgetCents)
         weatherHome?.let { put("weatherHome", JSONObject().put("name", it.name).put("lat", it.lat).put("lon", it.lon)) }
+        put("safetyCards", safetyCards.name)
+        put("claudeActionCards", claudeActionCards)
+        put("whoCards", whoCards)
+        put("learnedCards", learnedCards)
+        put("deleteCards", deleteCards)
+        put("lockedTools", org.json.JSONArray().apply { for (t in LockScreen.CHOICES) if (t in lockedTools) put(t.id) })
+        put("personalToHelpers", personalToHelpers)
+        put("voiceYesPersonal", voiceYesPersonal)
     }
 
     companion object {
@@ -184,8 +213,11 @@ data class RobotSettings(
          * 4 (0.3.1): opening apps and Organic Maps just happen by default. Older files saved "Ask first" for them
          * whether chosen or not, so there it reads as the new default; "Off" stays off.
          * 5 (0.4.0): the Home for weather (absent from older files: none) and the new actions' levels (their defaults).
+         * 6 (0.4.0): Settings › Safety & privacy. Older files keep every rule as it was (the switches' defaults are today's
+         * behaviour, the lock screen still timers and alarms) except "Safety cards", which takes the new default, "When
+         * you didn't ask for it", as the person asked.
          */
-        const val SCHEMA = 5
+        const val SCHEMA = 6
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -276,6 +308,17 @@ data class RobotSettings(
                 claudeHelp = enumValues<Escalation>().firstOrNull { it.name == o.optString("claudeHelp") },
                 claudeBudgetCents = o.optInt("claudeBudgetCents", d.claudeBudgetCents).coerceIn(0, 100_000),
                 weatherHome = o.optJSONObject("weatherHome")?.let(::place),
+                // Schema 6: absent from older files, which read as the defaults (the new "When you didn't ask for it" included).
+                safetyCards = enumOr(o.optString("safetyCards"), d.safetyCards),
+                claudeActionCards = o.optBoolean("claudeActionCards", d.claudeActionCards),
+                whoCards = o.optBoolean("whoCards", d.whoCards),
+                learnedCards = o.optBoolean("learnedCards", d.learnedCards),
+                deleteCards = o.optBoolean("deleteCards", d.deleteCards),
+                lockedTools = o.optJSONArray("lockedTools")?.let { a ->
+                    (0 until a.length()).mapNotNull { ToolName.of(a.optString(it)) }.filter { !it.internal }.toSet()
+                } ?: d.lockedTools,
+                personalToHelpers = o.optBoolean("personalToHelpers", d.personalToHelpers),
+                voiceYesPersonal = o.optBoolean("voiceYesPersonal", d.voiceYesPersonal),
             )
         }
 

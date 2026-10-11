@@ -146,4 +146,38 @@ class SettingsTest {
         assertEquals(true, RobotSettings.fromJson("""{"schema":4}""").rememberPicks)
         assertEquals(false, RobotSettings.fromJson("""{"schema":4}""").learnFromCheogram)
     }
+
+    /**
+     * Settings › Safety & privacy (schema 6): the switches default to today's behaviour, except "Safety cards", whose new
+     * default ("When you didn't ask for it") the person asked for, older files included.
+     */
+    @Test fun safetySettingsDefaultsMigrationAndRoundTrip() {
+        val d = RobotSettings()
+        assertEquals(SafetyCards.UNASKED, d.safetyCards)
+        assertEquals(true, d.claudeActionCards)
+        assertEquals(true, d.whoCards)
+        assertEquals(true, d.learnedCards)
+        assertEquals(true, d.deleteCards)
+        assertEquals(setOf(ToolName.SET_TIMER, ToolName.SET_ALARM), d.lockedTools)
+        assertEquals(false, d.personalToHelpers)
+        assertEquals(false, d.voiceYesPersonal)
+        assertEquals(6, RobotSettings.SCHEMA)
+        // A 0.3 or early 0.4 file: every rule as it was, and the new Safety cards default.
+        for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", "{}")) {
+            val o = RobotSettings.fromJson(old)
+            assertEquals(old, SafetyCards.UNASKED, o.safetyCards)
+            assertEquals(old, listOf(true, true, true, true), listOf(o.claudeActionCards, o.whoCards, o.learnedCards, o.deleteCards))
+            assertEquals(old, LockScreen.DEFAULT, o.lockedTools)
+            assertEquals(old, false, o.personalToHelpers || o.voiceYesPersonal)
+        }
+        val s = d.copy(safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
+            lockedTools = setOf(ToolName.FLASHLIGHT, ToolName.SET_TIMER), personalToHelpers = true, voiceYesPersonal = true)
+        assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        assertEquals(6, s.toJson().getInt("schema"))
+        // Emptied stays empty (only questions on the lock screen); unknown or internal tools are dropped; a bad mode is the default.
+        assertEquals(emptySet<ToolName>(), RobotSettings.fromJson(d.copy(lockedTools = emptySet()).toJson().toString()).lockedTools)
+        val bad = RobotSettings.fromJson("""{"schema":6,"lockedTools":["flashlight","ask_claude","teleport"],"safetyCards":"NEVER"}""")
+        assertEquals(setOf(ToolName.FLASHLIGHT), bad.lockedTools)
+        assertEquals(SafetyCards.UNASKED, bad.safetyCards)
+    }
 }

@@ -232,18 +232,22 @@ object Recipients {
     fun prepare(asked: Action, matches: List<ContactMatch>, options: List<Option>, hiddenPeople: Int, remember: String? = null,
         named: (String) -> Action): Prepared {
         if (options.size == 1 && !options[0].learned) {
-            return Prepared.Ready(options[0].action, mustAsk = hiddenPeople > 0 || !ContactMatcher.sure(matches, 1))
+            return Prepared.Ready(options[0].action, why = if (hiddenPeople > 0 || !ContactMatcher.sure(matches, 1)) setOf(AskWhy.WHO) else emptySet())
         }
         if (options.size == 1) {
             val o = options[0]
-            return Prepared.Ready(o.action, mustAsk = true, choices = listOf(Choice(listOfNotNull(o.kind, o.shown).joinToString(" · "), o.action, o.remember)),
+            // Only "Card for names learned from Cheogram" is about this one; any other match would make it unsure who too.
+            val why = if (hiddenPeople > 0 || matches.size > 1) setOf(AskWhy.LEARNED, AskWhy.WHO) else setOf(AskWhy.LEARNED)
+            return Prepared.Ready(o.action, why = why, choices = listOf(Choice(listOfNotNull(o.kind, o.shown).joinToString(" · "), o.action, o.remember)),
                 more = hiddenPeople, note = LEARNED_NOTE, remember = remember?.takeIf { o.remember != null })
         }
         val oneName = options.map { it.name }.distinct().singleOrNull()
         val choices = options.take(MAX_CHOICES).map { o ->
             Choice(listOfNotNull(if (oneName == null) o.name else null, o.kind, o.shown).joinToString(" · "), o.action, o.remember)
         }
-        return Prepared.Ready(oneName?.let(named) ?: asked, choices = choices, more = options.size - choices.size + hiddenPeople,
+        // Without a card the first choice is taken: a name learned from a notification asks under its own switch too.
+        val why = if (options[0].learned) setOf(AskWhy.WHO, AskWhy.LEARNED) else setOf(AskWhy.WHO)
+        return Prepared.Ready(oneName?.let(named) ?: asked, why = why, choices = choices, more = options.size - choices.size + hiddenPeople,
             remember = remember?.takeIf { choices.any { it.remember != null } })
     }
 
@@ -270,9 +274,9 @@ object Recipients {
         if (via != TextVia.CHEOGRAM) return Prepared.Refused(if (allowContacts) ActionStatus.NEEDS_PERMISSION else ActionStatus.NOT_FOUND, reason)
         val share = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_PICK))
         val allow = if (allowContacts) ALLOW_NOTE else null
-        if (!pick) return Prepared.Ready(share, mustAsk = true, note = allow, allowContacts = allowContacts)
+        if (!pick) return Prepared.Ready(share, why = setOf(AskWhy.WHO), note = allow, allowContacts = allowContacts)
         val list = asked.copy(target = TextTarget(null, "", reason, "Cheogram", TextVia.CHEOGRAM_LIST))
-        return Prepared.Ready(list, mustAsk = true, choices = listOf(Choice("Pick in Cheogram", list), Choice("Choose in Cheogram", share)),
+        return Prepared.Ready(list, why = setOf(AskWhy.WHO), choices = listOf(Choice("Pick in Cheogram", list), Choice("Choose in Cheogram", share)),
             note = listOfNotNull(PICK_NOTE, allow).joinToString(" "), allowContacts = allowContacts)
     }
 
