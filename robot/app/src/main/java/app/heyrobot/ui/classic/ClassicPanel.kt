@@ -97,6 +97,8 @@ import app.heyrobot.ui.common.CardActions
 import app.heyrobot.ui.common.MarkdownText
 import app.heyrobot.ui.common.OfferView
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.common.TurnActions
+import app.heyrobot.ui.common.TurnUi
 import app.heyrobot.ui.common.spans
 import app.heyrobot.ui.common.toolIcon
 import kotlinx.coroutines.launch
@@ -455,6 +457,20 @@ private fun MicButton(listening: Boolean, hint: String?, actions: ClassicInputAc
 }
 
 // ------------------------------------------------------------------ the conversation: bubbles
+
+/** One turn as 0.6.0's bubbles: the Classic look of ui/common TurnView, in the panel and in History. */
+@Composable
+fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modifier) {
+    if (t.user) UserBubble(t.text, t.attachment, t.thumb, modifier, screenText = t.screenText)
+    else Column(modifier) {
+        AssistantBubble(
+            text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error, actions = t.actions,
+            onConfirm = actions.confirm, cardActions = actions.card,
+            claude = t.helper, readBack = t.readBack, footer = t.footer, by = t.by, home = t.home,
+        )
+        t.offer?.let { ClassicOfferCard(it, onDismiss = { actions.dismissOffer(t.id) }, onAccept = { actions.acceptOffer(t.id) }) }
+    }
+}
 
 @Composable
 fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: Modifier = Modifier, screenText: String? = null) {

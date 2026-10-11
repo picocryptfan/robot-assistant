@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,7 +64,6 @@ import app.heyrobot.core.TipKind
 import app.heyrobot.core.TurnRole
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
-import app.heyrobot.ui.classic.AssistantBubble
 import app.heyrobot.ui.classic.ClassicAttachRow
 import app.heyrobot.ui.classic.ClassicBrainBanner
 import app.heyrobot.ui.classic.ClassicContextRow
@@ -76,18 +76,24 @@ import app.heyrobot.ui.classic.ClassicInputRow
 import app.heyrobot.ui.classic.ClassicInputState
 import app.heyrobot.ui.classic.ClassicListeningRow
 import app.heyrobot.ui.classic.ClassicNoticeBar
-import app.heyrobot.ui.classic.ClassicOfferCard
 import app.heyrobot.ui.classic.ClassicSuggestions
 import app.heyrobot.ui.classic.OrbMood
-import app.heyrobot.ui.classic.UserBubble
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.CardActions
 import app.heyrobot.ui.common.OfferView
+import app.heyrobot.ui.common.TurnActions
+import app.heyrobot.ui.common.TurnUi
+import app.heyrobot.ui.common.TurnView
 import app.heyrobot.ui.common.claudeFooter
+import app.heyrobot.ui.common.transcriptGap
+import app.heyrobot.ui.theme.LocalLook
+import app.heyrobot.ui.theme.LookStyle
 import kotlinx.coroutines.delay
 
 // VOICE PROCESS. The assistant panel: a bottom sheet over whatever is on screen, with the conversation,
-// a text field, push-to-talk, the camera, "Ask about this screen" and a stop button.
+// a text field, push-to-talk, the camera, "Ask about this screen" and a stop button. One panel for both looks (the
+// slots at the end pick each look's leaves); keyboardPad() and the sheet's size and drag are the 0.4.2 keyboard fix,
+// confirmed on the phone: leave them as they are.
 
 @Composable
 fun AssistantPanel(onClose: () -> Unit) {
@@ -167,19 +173,14 @@ fun AssistantPanel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
                         onDragStopped = { if (dragY > 140f) { dragY = 0f; onClose() } else dragY = 0f },
                     ),
                 ) {
-                    ClassicDragHandle()
-                    Header(st, actions, onClose)
+                    PanelTop(st, actions, onClose)
                 }
-                AnimatedVisibility(st.notice != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                    st.notice?.let { NoticeBar(it, actions) }
-                }
-                BrainBanner(st, actions)
-                if (st.claudeMode) HelperModeChip(st.helperName ?: "Claude", actions)
+                PanelNotices(st, actions)
                 Messages(st, actions, Modifier.weight(1f, fill = false))
                 // Listening for a question, or for the waiting card's "yes" or "no".
                 val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING || st.cardHearing != null
                 if (st.turns.isEmpty() && !hearing) {
-                    Suggestions(st.tips) { tip ->
+                    Tips(st.tips) { tip ->
                         when (tip.kind) {
                             TipKind.ASK -> { input = tip.text; send() }
                             // It would do something or go online: its words wait in the field, to change or send.
@@ -193,18 +194,8 @@ fun AssistantPanel(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
                         }
                     }
                 }
-                if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING || st.cardHearing == Phase.TRANSCRIBING, card = st.cardHearing != null, actions = actions)
-                ContextRow(st, actions)
-                AnimatedVisibility(attachOpen && st.draft == null && !st.busy) { AttachRow(st.locked, actions) { attachOpen = false } }
-                InputRow(
-                    st = st,
-                    input = input,
-                    onInput = { input = it },
-                    onSend = ::send,
-                    onAttach = { attachOpen = !attachOpen },
-                    focus = focus,
-                    actions = actions,
-                )
+                if (hearing) ListeningIndicator(st, actions)
+                PanelInputArea(st, input, { input = it }, ::send, attachOpen, { attachOpen = it }, focus, actions)
             }
         }
     }
@@ -247,12 +238,25 @@ private fun keyboardPad(): Pair<Dp, Dp> {
     return with(density) { pad.toDp() to slid.coerceAtLeast(0).toDp() }
 }
 
+// ------------------------------------------------------------------ the look's slots
+// The panel above is the same in both looks (state, focus, keyboard, drag, send). Only these leaves differ, by the
+// look in LocalLook (Settings › Display › Classic look): the standard parts (PanelParts.kt, ui/common Transcript.kt
+// and Chat.kt) or Robot 0.6.0's (ui/classic), which take plain values and what each tap does.
+
+/** The handle and the header (with the progress bar), or the Classic handle and orb. */
 @Composable
-private fun Header(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
-    ClassicHeader(
-        mood = orbMood(st.phase), status = statusLine(st), showKeep = !st.keep && st.turns.isNotEmpty(), speak = st.speak,
-        onKeep = actions::keepConversation, onToggleSpeak = actions::toggleSpeak, onNew = actions::newConversation, onClose = onClose,
-    )
+private fun PanelTop(st: PanelState, actions: PanelActions, onClose: () -> Unit) = when (LocalLook.current) {
+    LookStyle.STOCK -> {
+        SheetHandle(onClose)
+        PanelHeader(st, actions, onClose)
+    }
+    LookStyle.CLASSIC -> {
+        ClassicDragHandle()
+        ClassicHeader(
+            mood = orbMood(st.phase), status = classicStatusLine(st), showKeep = !st.keep && st.turns.isNotEmpty(), speak = st.speak,
+            onKeep = actions::keepConversation, onToggleSpeak = actions::toggleSpeak, onNew = actions::newConversation, onClose = onClose,
+        )
+    }
 }
 
 /** How the Classic orb groups the phases. */
@@ -263,7 +267,8 @@ private fun orbMood(p: Phase): OrbMood = when (p) {
     Phase.SPEAKING, Phase.CONFIRMING -> OrbMood.TALKING
 }
 
-private fun statusLine(st: PanelState): String = when (st.phase) {
+/** The Classic header's words, as 0.6.0 said them (the standard look's are panelStatus). */
+private fun classicStatusLine(st: PanelState): String = when (st.phase) {
     Phase.LISTENING -> "Listening…"
     Phase.TRANSCRIBING -> "Writing it down…"
     // "Claude is thinking…" (or "Checking with Claude…", "My server is loading its model…") until the helper's first words.
@@ -279,43 +284,66 @@ private fun statusLine(st: PanelState): String = when (st.phase) {
     }
 }
 
-/** A helper's conversation is on: every question goes to [name] until "Back to Robot". */
+/** A notice, the missing model, and a helper's conversation ("Back to Robot"). */
 @Composable
-private fun HelperModeChip(name: String, actions: PanelActions) = ClassicHelperModeChip(name, actions::endHelperMode)
-
-/** A notice's button: its words and what it does, or null. */
-private fun noticeAction(a: NoticeAction, actions: PanelActions): Pair<String, () -> Unit>? = when (a) {
-    NoticeAction.OPEN_APP -> "Open Robot" to actions::openRobotApp
-    NoticeAction.OPEN_ASSIST_SETTINGS -> "Open settings" to actions::openAssistSettings
-    NoticeAction.OPEN_MODEL -> "Open Model" to actions::openModelSettings
-    NoticeAction.NONE -> null
+private fun ColumnScope.PanelNotices(st: PanelState, actions: PanelActions) {
+    val look = LocalLook.current
+    AnimatedVisibility(st.notice != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        st.notice?.let { n ->
+            if (look == LookStyle.STOCK) PanelNotice(n, actions)
+            else {
+                val a = noticeAction(n.action, actions)
+                ClassicNoticeBar(n.text, a?.first, onAction = a?.second ?: {}, onDismiss = actions::dismissNotice)
+            }
+        }
+    }
+    when (look) {
+        LookStyle.STOCK -> {
+            ModelProblem(st, actions)
+            if (st.claudeMode) HelperModeChip(actions)
+        }
+        LookStyle.CLASSIC -> {
+            val b = st.brain
+            if (st.notice == null && (b.readiness == BrainKeeper.Readiness.NO_MODEL || b.readiness == BrainKeeper.Readiness.FAILED)) {
+                ClassicBrainBanner(b.problem, openRobot = b.readiness == BrainKeeper.Readiness.NO_MODEL, onOpenRobot = actions::openRobotApp)
+            }
+            if (st.claudeMode) ClassicHelperModeChip(st.helperName ?: "Claude", actions::endHelperMode)
+        }
+    }
 }
 
-@Composable
-private fun NoticeBar(n: Notice, actions: PanelActions) {
-    val a = noticeAction(n.action, actions)
-    ClassicNoticeBar(n.text, a?.first, onAction = a?.second ?: {}, onDismiss = actions::dismissNotice)
-}
-
-/** The model is missing or failed: say so before the person types a whole question. */
-@Composable
-private fun BrainBanner(st: PanelState, actions: PanelActions) {
-    val b = st.brain
-    if (st.notice != null) return
-    if (b.readiness != BrainKeeper.Readiness.NO_MODEL && b.readiness != BrainKeeper.Readiness.FAILED) return
-    ClassicBrainBanner(b.problem, openRobot = b.readiness == BrainKeeper.Readiness.NO_MODEL, onOpenRobot = actions::openRobotApp)
-}
-
-private fun Offer.view() = OfferView(api, text, sends, preview, asWell, name)
+/** A panel turn as both looks draw it (ui/common TurnUi). */
+internal fun UiTurn.toTurnUi() = TurnUi(
+    id = id, user = role == TurnRole.USER, text = text, attachment = attachment, thumb = thumb,
+    actions = actions.map {
+        ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
+            cancel = it.cancel, openApp = it.handOff?.let { h -> SettingsPage.label(h) ?: "Open Cheogram" }, picture = it.picture, remember = it.remember,
+            allowContacts = it.allowContacts)
+    },
+    streaming = streaming, stopped = stopped, error = error, helper = claude, readBack = readBack, by = by, home = home,
+    footer = if (role == TurnRole.USER) emptyList() else claudeFooter(sources, cost, by),
+    offer = offer?.let { OfferView(it.api, it.text, it.sends, it.preview, it.asWell, it.name) },
+)
 
 @Composable
 private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) {
-    val cardActions = remember(actions) { CardActions(choose = actions::choose, undo = actions::undo, allow = actions::openPermissions, openApp = actions::openHandOff) }
     if (st.turns.isEmpty()) {
-        ClassicEmptyState(st.locked, st.lockedTools, st.screenAvailable, modifier)
+        when (LocalLook.current) {
+            LookStyle.STOCK -> PanelEmptyState(st, modifier)
+            LookStyle.CLASSIC -> ClassicEmptyState(st.locked, st.lockedTools, st.screenAvailable, modifier)
+        }
         return
     }
+    val turnActions = remember(actions) {
+        TurnActions(
+            confirm = actions::confirm,
+            card = CardActions(choose = actions::choose, undo = actions::undo, allow = actions::openPermissions, openApp = actions::openHandOff),
+            acceptOffer = actions::acceptOffer,
+            dismissOffer = actions::dismissOffer,
+        )
+    }
     val reversed = remember(st.turns) { st.turns.asReversed() }
+    val first = st.turns.first().id
     val list = rememberLazyListState()
     // Follow the newest message. A LazyColumn keeps the item on screen in place when one is added below it, so a
     // new message would land out of sight; jump to it unless the person has scrolled up to read.
@@ -343,54 +371,62 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         },
         reverseLayout = true,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(transcriptGap()),
     ) {
         items(reversed, key = { it.id }) { t ->
-            if (t.role == TurnRole.USER) UserBubble(t.text, t.attachment, t.thumb)
-            else Column {
-                AssistantBubble(
-                    text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error,
-                    actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
-                        cancel = it.cancel, openApp = it.handOff?.let { h -> SettingsPage.label(h) ?: "Open Cheogram" }, picture = it.picture, remember = it.remember,
-                        allowContacts = it.allowContacts) },
-                    onConfirm = actions::confirm,
-                    cardActions = cardActions,
-                    claude = t.claude, readBack = t.readBack, footer = claudeFooter(t.sources, t.cost, t.by), by = t.by, home = t.home,
-                )
-                t.offer?.let { ClassicOfferCard(it.view(), onDismiss = { actions.dismissOffer(t.id) }, onAccept = { actions.acceptOffer(t.id) }) }
-            }
+            val turn = remember(t) { t.toTurnUi() }
+            TurnView(turn, turnActions, startsExchange = turn.user && t.id != first)
         }
     }
 }
 
-/** Three tips that show what Robot can do (core Tips: only what is on and can work now, a new three each open). */
+/** The empty panel's tips. */
 @Composable
-private fun Suggestions(tips: List<Tip>, onPick: (Tip) -> Unit) = ClassicSuggestions(tips, onPick)
+private fun Tips(tips: List<Tip>, onPick: (Tip) -> Unit) = when (LocalLook.current) {
+    LookStyle.STOCK -> PanelTips(tips, onPick)
+    LookStyle.CLASSIC -> ClassicSuggestions(tips, onPick)
+}
 
+/** While listening: the words so far as your pending line, or the Classic pulsing mic with "Done". */
 @Composable
-private fun ListeningRow(partial: String, transcribing: Boolean, card: Boolean = false, actions: PanelActions) =
-    ClassicListeningRow(partial, transcribing, card, onDone = actions::micReleased)
+private fun ListeningIndicator(st: PanelState, actions: PanelActions) = when (LocalLook.current) {
+    LookStyle.STOCK -> PendingLine(st.partial)
+    LookStyle.CLASSIC -> ClassicListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING || st.cardHearing == Phase.TRANSCRIBING,
+        card = st.cardHearing != null, onDone = actions::micReleased)
+}
 
-/**
- * The picture or screen that goes with the next question, or "Read Claude's answer" over the Claude app. "Ask about
- * this screen" is the screen button next to the camera (0.4.0).
- */
+/** What goes with the next question, the camera's choices, the text field and the main button. */
 @Composable
-private fun ContextRow(st: PanelState, actions: PanelActions) =
-    ClassicContextRow(st.draft?.kind, st.draft?.thumb, readClaude = st.claudeScreen && !st.busy, onRemove = actions::removeDraft, onReadClaude = actions::readClaudeAnswer)
-
-@Composable
-private fun AttachRow(locked: Boolean, actions: PanelActions, onDone: () -> Unit) = ClassicAttachRow(locked, onDone,
-    onCamera = { actions.openCapture(CaptureActivity.MODE_CAMERA) }, onPhotos = { actions.openCapture(CaptureActivity.MODE_PHOTOS) })
-
-@Composable
-private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, onSend: () -> Unit, onAttach: () -> Unit, focus: FocusRequester, actions: PanelActions) {
-    val state = ClassicInputState(
-        busy = st.busy, confirming = st.phase == Phase.CONFIRMING, speaking = st.phase == Phase.SPEAKING,
-        listening = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING, cardListening = st.cardHearing != null,
-        hasDraft = st.draft != null, screenChip = st.screenChip, micHint = st.micHint,
-    )
-    val buttons = ClassicInputActions(attach = onAttach, attachScreen = actions::attachScreen, stop = actions::stopGenerating,
-        stopSpeaking = actions::stopSpeaking, micPressed = actions::micPressed, micReleased = actions::micReleased)
-    ClassicInputRow(state, input, onInput, onSend, focus, buttons)
+private fun ColumnScope.PanelInputArea(
+    st: PanelState,
+    input: String,
+    onInput: (String) -> Unit,
+    onSend: () -> Unit,
+    attachOpen: Boolean,
+    onAttachOpen: (Boolean) -> Unit,
+    focus: FocusRequester,
+    actions: PanelActions,
+) {
+    when (LocalLook.current) {
+        LookStyle.STOCK -> {
+            ContextRow(st, actions)
+            PanelInput(st, input, onInput, onSend, attachOpen, onAttachOpen, focus, actions)
+        }
+        LookStyle.CLASSIC -> {
+            ClassicContextRow(st.draft?.kind, st.draft?.thumb, readClaude = st.claudeScreen && !st.busy, onRemove = actions::removeDraft,
+                onReadClaude = actions::readClaudeAnswer)
+            AnimatedVisibility(attachOpen && st.draft == null && !st.busy) {
+                ClassicAttachRow(st.locked, onDone = { onAttachOpen(false) },
+                    onCamera = { actions.openCapture(CaptureActivity.MODE_CAMERA) }, onPhotos = { actions.openCapture(CaptureActivity.MODE_PHOTOS) })
+            }
+            val state = ClassicInputState(
+                busy = st.busy, confirming = st.phase == Phase.CONFIRMING, speaking = st.phase == Phase.SPEAKING,
+                listening = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING, cardListening = st.cardHearing != null,
+                hasDraft = st.draft != null, screenChip = st.screenChip, micHint = st.micHint,
+            )
+            val buttons = ClassicInputActions(attach = { onAttachOpen(!attachOpen) }, attachScreen = actions::attachScreen, stop = actions::stopGenerating,
+                stopSpeaking = actions::stopSpeaking, micPressed = actions::micPressed, micReleased = actions::micReleased)
+            ClassicInputRow(state, input, onInput, onSend, focus, buttons)
+        }
+    }
 }
