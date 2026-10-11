@@ -427,7 +427,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 CheogramRoute.LINK to CheogramIntents.link(pkg, t.address, a.message),
             )
             TextVia.CHEOGRAM_LIST -> listOf(CheogramRoute.LIST to CheogramPickActivity.intent(ctx, pkg, a.to, a.message, settings.rememberPicks))
-            TextVia.CHEOGRAM_PICK -> listOf(CheogramRoute.SHARE to CheogramIntents.share(pkg, a.message))
+            // Its share screen by name, resolved first (start); a build without that screen: the share to the package.
+            TextVia.CHEOGRAM_PICK -> listOf(CheogramRoute.SHARE to CheogramIntents.share(pkg, a.message), CheogramRoute.SHARE to CheogramIntents.shareAny(pkg, a.message))
             TextVia.SMS -> emptyList()
         }
         val i = routes.indexOfFirst { start(it.second) }
