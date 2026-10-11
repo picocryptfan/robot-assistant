@@ -76,8 +76,8 @@ class WeatherToolTest {
         val d = RobotSettings()
         assertEquals(Approval.AUTO, d.approval(ToolName.WEATHER))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.WEATHER, locked = false, settings = d))
-        // It reads (nothing is written or sent to anyone): a conversation with screen text doesn't make it ask.
-        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.WEATHER, locked = false, settings = d, mustAsk = true))
+        // It reads, but online: in a conversation with screen text, a photo or a read tool's findings it shows a card first.
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.WEATHER, locked = false, settings = d, mustAsk = true))
         // Locked: it would say where your Home for weather is, and go online, for whoever holds the phone.
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.WEATHER, locked = true, settings = d))
         assertFalse(ToolName.WEATHER in ApprovalGate.ALLOWED_WHEN_LOCKED)

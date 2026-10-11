@@ -50,7 +50,9 @@ class ApprovalGateTest {
         }
         assertEquals(setOf(ToolName.LOOKUP_CONTACT, ToolName.FIND_NOTES, ToolName.READ_CALENDAR, ToolName.WEATHER, ToolName.PHONE_STATUS),
             ToolName.entries.filter { it.reads }.toSet())
-        for (t in ToolName.entries.filter { it.reads }) assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, defaults, mustAsk = true))
+        for (t in ToolName.entries.filter { it.reads && !it.online }) assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, defaults, mustAsk = true))
+        // A read that goes online (the weather) asks: screen text could otherwise send a word, or where you are, to Open-Meteo.
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.WEATHER, false, defaults, mustAsk = true))
         // Never looser than without it: off stays off, the lock screen still says unlock.
         val off = defaults.copy(approvals = defaults.approvals + (ToolName.SET_TIMER to Approval.OFF))
         assertEquals(GateDecision.DISABLED, ApprovalGate.decide(ToolName.SET_TIMER, false, off, mustAsk = true))
