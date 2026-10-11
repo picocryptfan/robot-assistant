@@ -61,7 +61,7 @@ class LiteRtLmTest {
         assertTrue(r.tensorG5Build)
         assertEquals(ModelBackend.TPU, r.backend)
         assertNull(r.unusable)
-        assertTrue(r.lines().any { it.startsWith("Compiled for this phone's TPU (Tensor G5): yes") })
+        assertTrue(r.lines().any { it.startsWith("Compiled for the Tensor G5's TPU (Pixel 10): yes") })
         // The stamp in a buffer after the flatbuffer (offset and size), as a "buffers outside" export keeps it, reads the same.
         assertEquals(ModelBackend.TPU, check(e2bG5(outside = true)).backend)
     }
@@ -202,7 +202,7 @@ class LiteRtLmTest {
             assertEquals(vision, r.vision)
             assertEquals(listOf(
                 "LiteRT-LM file, format 1.5.0, ${r.sections.size} sections.",
-                "Compiled for this phone's TPU: no. It runs on the CPU.",
+                "Compiled for a TPU: no. It runs on the CPU.",
                 "Model type “gemma3n”, not Gemma 4: Robot is written for Gemma 4, so answers may be odd.",
                 if (vision) "Can see photos: yes." else "Can see photos: no (questions about a photo won't work).",
                 "Short context (2048 tokens): chat only — no actions, shorter memory.",

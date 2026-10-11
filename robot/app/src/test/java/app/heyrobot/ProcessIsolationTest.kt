@@ -449,6 +449,28 @@ class ProcessIsolationTest {
             ours.filterKeys { !it.startsWith("brain/") }))
     }
 
+    /**
+     * 0.4.7, the problem report: only the assistant (BrainKeeper, in the :voice process) notes a model problem, as codes and
+     * numbers (core ModelProblem); only the main app builds the report from it (core ProblemReport, whose test checks that
+     * nothing personal gets in) and only when you open Settings › Model; and the report's code reads none of your
+     * conversations, notes, people or the crash trace (no tombstone in 0.4.7). Nothing sends it: copy and share are yours.
+     */
+    @Test fun problemReportsHoldCodesAndAreNeverSent() {
+        assertEquals(listOf("app/assistant/BrainLink.kt"), usersOf(Regex("""\bProblems\.(note|gpuFailed|gpuTrying)\(""")))
+        // (The raw text: MainActivity's "*/*" file type reads as a comment's start to code().)
+        assertEquals(listOf("app/ui/MainActivity.kt"),
+            ours.filter { Regex("""\bProblems\.(report|copy|share|forgetGpuFailure|dismiss)\(""").containsMatchIn(it.value.readText()) }.keys.sorted())
+        assertEquals(listOf("app/sys/Problems.kt"), usersOf(Regex("""\bProblemReport\.text\(""")))
+        val problems = code(File(java("app"), "app/heyrobot/sys/Problems.kt"))
+        for (bad in listOf("ConversationStore", "NotesFiles", "PeopleFiles", "getTraceInputStream", "VoiceLogText.describe(e, ", "HttpURLConnection")) {
+            assertTrue(bad, !problems.contains(bad))
+        }
+        // The voice log goes in through core ProblemReport, which describes wake phrases by number only.
+        assertTrue(problems.contains("VoiceLogCodec.decode(readOrNull(Paths.voiceLog(ctx)))"))
+        val report = code(File(java("core"), "app/heyrobot/core/ModelProblems.kt"))
+        assertTrue(report.contains("VoiceLogText.describe(e)"))
+    }
+
     /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */
     @Test fun onlyTheMainAppAsksForPermissions() {
         val askers = usersOf(Regex("""RequestMultiplePermissions|RequestPermission\b|requestPermissions\("""))

@@ -532,13 +532,14 @@ class SettingsTest {
         assertEquals(false, saved.getBoolean("convPartials"))
         assertEquals(false, saved.has("nearestServer") || saved.has("confirmedTerms"))
         assertEquals(read, RobotSettings.fromJson(saved.toString()))
-        // The 0.4.4 file has every key today's file can have but those added since, and none it doesn't.
+        // The 0.4.4 file has every key today's file can have but those added since (0.4.7's "Use the GPU" with no schema of
+        // its own among them), and none it doesn't.
         val keys044 = org.json.JSONObject(v044).keys().asSequence().toSet()
         val everything = chosen044.copy(modelThinks = true, nearestServer = "https://nominatim.example.org",
             confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1L), convSpeak = true, convSpeakers = true, convSummaryLang = "fr",
             convReminderAt = 5).toJson().keys().asSequence().toSet()
-        assertEquals(setOf("modelThinks", "nearestServer", "confirmedTerms", "convSpeak", "convSpeakers", "convSummaryLang", "convReminderAt") +
-            conversationKeys + helperKeys, everything - keys044)
+        assertEquals(setOf("modelThinks", "nearestServer", "confirmedTerms", "convSpeak", "convSpeakers", "convSummaryLang", "convReminderAt",
+            "modelGpu") + conversationKeys + helperKeys, everything - keys044)
         assertEquals(emptySet<String>(), keys044 - everything)
 
         // The GGUF branch's file (schema 10, never released): the same choices and the switch on, kept on through 13.
@@ -568,11 +569,11 @@ class SettingsTest {
         val saved = read.toJson()
         assertEquals(13, saved.getInt("schema"))
         assertEquals(read, RobotSettings.fromJson(saved.toString()))
-        // Everything 0.4.5 wrote is still written, and only conversation mode's and the helpers' keys are new.
+        // Everything 0.4.5 wrote is still written, and only conversation mode's, the helpers' and 0.4.7's GPU switch are new.
         val keys045 = org.json.JSONObject(v045).keys().asSequence().toSet()
         val keysNow = saved.keys().asSequence().toSet()
         assertEquals(emptySet<String>(), keys045 - keysNow)
-        assertEquals(conversationKeys + helperKeys, keysNow - keys045)
+        assertEquals(conversationKeys + helperKeys + "modelGpu", keysNow - keys045)
         // Live words for questions on (0.4.5's default): live words in a conversation on too, as for a new install.
         val withWords = RobotSettings.fromJson(v045.replace(""""livePartials":false""", """"livePartials":true"""))
         assertEquals(true, withWords.convPartials)
@@ -600,6 +601,48 @@ class SettingsTest {
         assertEquals(read, RobotSettings.fromJson(saved.toString()))
         // A 0.4.0 file whose model id came from elsewhere still reads as Fast (only schema 7 or later chose one).
         assertEquals(BrainModel.FAST, RobotSettings.fromJson(v040.removeSuffix("}") + ""","brainModel":"e4b_cpu"}""").brainModelChoice)
+    }
+
+    /**
+     * Settings › Model › "Use the GPU" (0.4.7, merged into 0.6.0): on by default, and for every file that never had it
+     * (absent means on: 0.4.7 added it to schema 12 without a bump, and 0.6.0 keeps schema 13 for it), off kept from a 0.4.7
+     * file (schema 12) and a 0.6.0 one (13). Fast's id from a Pixel 10 is left as saved; ModelCatalogue reads it as this
+     * phone's Fast.
+     */
+    @Test fun gpuSwitchDefaultsOnWithoutANewSchema() {
+        assertEquals(true, RobotSettings().modelGpu)
+        assertEquals(true, RobotSettings().toJson().getBoolean("modelGpu"))
+        assertEquals(13, RobotSettings.SCHEMA)
+        // Files of 0.4.0 (6), 0.4.1 to 0.4.4 (7), 0.4.5 (12) and 0.6.0 before the merge (13): none had the key, all read on.
+        val v060 = RobotSettings(convTranslate = true).toJson().apply { remove("modelGpu") }.toString()
+        for (old in listOf(v040, v044, v045, v060, """{"schema":12}""", """{"schema":7,"brainModel":"e2b_tpu"}""", "{}",
+            """{"schema":12,"modelGpu":"maybe"}""", """{"schema":13,"modelGpu":null}""")) {
+            assertEquals(old, true, RobotSettings.fromJson(old).modelGpu)
+        }
+        // Off, as 0.4.7 saved it (schema 12, 0.4.5's keys and the switch): kept through the migration to 13, every other choice too.
+        val v047 = v045.removeSuffix("}") + ""","modelGpu":false}"""
+        val from047 = RobotSettings.fromJson(v047)
+        assertEquals(false, from047.modelGpu)
+        assertEquals(chosen044.copy(modelThinks = true, nearestServer = "https://nominatim.example.org",
+            confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1_760_000_000_001), modelGpu = false), from047)
+        val saved047 = from047.toJson()
+        assertEquals(13, saved047.getInt("schema"))
+        assertEquals(false, saved047.getBoolean("modelGpu"))
+        assertEquals(from047, RobotSettings.fromJson(saved047.toString()))
+        assertEquals(conversationKeys + helperKeys, saved047.keys().asSequence().toSet() - org.json.JSONObject(v047).keys().asSequence().toSet())
+        // Off in a schema 13 file, and in older schemas too should one carry it: kept.
+        for (schema in listOf(6, 7, 12, 13)) {
+            assertEquals(schema.toString(), false, RobotSettings.fromJson("""{"schema":$schema,"modelGpu":false}""").modelGpu)
+        }
+        val off = RobotSettings(modelGpu = false)
+        assertEquals(false, RobotSettings.fromJson(off.toJson().toString()).modelGpu)
+        assertEquals(13, off.toJson().getInt("schema"))
+        // Fast chosen on a Pixel 10 (the TPU build's id) stays in the file; the general build's id reads as itself.
+        val fromPixel10 = RobotSettings.fromJson("""{"schema":12,"brainModel":"e2b_tpu"}""")
+        assertEquals(BrainModel.FAST, fromPixel10.brainModelChoice)
+        assertEquals("e2b_tpu", fromPixel10.toJson().getString("brainModel"))
+        assertEquals(BrainModel.GENERAL, RobotSettings.fromJson("""{"schema":12,"brainModel":"e2b"}""").brainModelChoice)
+        assertEquals(BrainModel.GENERAL, RobotSettings.fromJson("""{"schema":13,"brainModel":"e2b"}""").brainModelChoice)
     }
 
     /**

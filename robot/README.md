@@ -1,6 +1,7 @@
 # Robot (phases 1 and 2, Ask Claude, Helpers)
 
-A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
+A private voice assistant for GrapheneOS on the Pixel 10 Pro (since 0.4.7 also the Pixel 9a and other Pixels: "What's new
+in 0.4.7" below). Open it with the corner swipe, from the lock
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
 TPU answers, streams the reply and reads it aloud (since 0.4.1 you can choose a smarter but slower model instead, or
 your own model file: "Model choice" below; since 0.4.3 also a file built for a shorter context, such as MedGemma, as chat
@@ -383,6 +384,132 @@ it is private. Watch Settings › Voice › Voice log and `adb logcat -s Robot` 
     limit on checks from your network was reached (60 an hour without a token). Try again after …".
 13. **Fork.** Advanced › Repository: `nobody/x x` keeps Save off; a fork's `owner/name` (or its link) saves, Check now asks
     that repository; Use Robot's own repository goes back.
+
+## What's new in 0.4.7
+
+Robot on a **Pixel 9a** (and every other phone without a Tensor G5): until now Fast was Google's Tensor G5 TPU build,
+which only a Pixel 10 runs, so a 9a had no working built-in model.
+
+- **Fast on every phone.** Settings › Model shows "This phone: Pixel 9a (Tensor G4)" and whether Robot uses its TPU, with
+  the short list of which Pixels it does (core `Phones`, from `Build.SOC_MODEL`, read from each Pixel's factory image; the
+  Pixel's name when Android doesn't say):
+  - **Tensor G5** (Pixel 10, 10 Pro, 10 Pro XL, 10 Pro Fold): TPU supported. Fast is the TPU build, exactly as before;
+    nothing changes on a Pixel 10.
+  - **Tensor G6** (Pixel 11 series): Google publishes a TPU build (`gemma-4-E2B-it_Google_Tensor_G6.litertlm`, same
+    commit), but Robot hasn't run it on a Pixel 11 and its content check knows the Tensor G5 stamp only, so it isn't
+    offered yet: Fast is the general build on the CPU there.
+  - **Tensor G1 to G4** (Pixel 6 to 9 and their a models, the Pixel 10a, Fold, Tablet) and other phones: no TPU build
+    exists. Fast is **Gemma 4 E2B's general build** (`gemma-4-E2B-it.litertlm`, 2.59 GB, the same repository and commit as
+    the TPU build, Apache-2.0), on the **GPU** by default, or the CPU.
+  Only this phone's Fast is listed. A settings file that names the other one (the default, or Fast chosen on a Pixel 10)
+  reads as this phone's Fast; the file is left as it is, and Settings › Model says so in a line.
+- **The GPU, with the CPU as the safety net.** Settings › Model › Where Fast runs › **Use the GPU** (on). LiteRT-LM 0.18.0
+  already links its GPU accelerator (OpenCL, ML Drift) into `liblitertlm_jni.so`; Robot now declares the phone's own
+  `libOpenCL.so` (the Pixel 9a's vendor image lists it as a public library), runs the text on the GPU and the vision
+  encoder on the CPU, and keeps the GPU's caches (about 0.8 GB, written on the first load) in the model's folder. If the
+  GPU doesn't load the model, its process stops while it loads or answers, or the engine fails a reply on the GPU, Robot
+  switches to the CPU at once, says so once ("Fast stopped on the GPU, so Robot switched to the CPU."), and keeps to the
+  CPU, across restarts, until you tap **Try the GPU again**. A GPU load that takes the phone or Robot down is counted the
+  same way at the next start, so it can never loop. Never on a PowerVR GPU (the Tensor G5 and G6): the GPU lab ran this
+  file on the Pixel 10 Pro's at about a third of the TPU's writing speed.
+- **Speeds, measured or estimated.** Each model says how fast it is on this phone, labelled "Measured" (Robot's Pixel 10
+  Pro figures, on a Tensor G5) or "Estimate", with where the figures come from. On a Pixel 9a (estimates): on the GPU a new
+  conversation starts answering in about 3–5 s, later answers in about 1 s, then about 6–11 words a second; on the CPU
+  about 9–14 s, 1 s, 9–12 words a second. The GPU figures are scaled from the GPU lab's run of this file on the Pixel 10
+  Pro's GPU (about 540 tokens a second read, 12 written), not Google's Galaxy S26 Ultra figures (3,808 and 52.1), which a
+  Mali GPU won't reach; the CPU's are two thirds to four fifths of the Pixel 10 Pro's (about 160–210 read, 19–20 written).
+  The phone tests below replace them with measurements.
+- **Memory.** Fast's general build takes about 2.6 GB (the lab's CPU figure), which fits an 8 GB phone beside the voice.
+  The E4B models (about 4 GB) say on a phone with 8 GB or less that Android may stop them while they answer.
+- **Problem report.** When the model fails or crashes, on the GPU, the CPU or the TPU, Robot notes it (codes and
+  numbers only) and tells you once, in the panel and with a notification. Settings › Model then shows the problem with
+  **Copy report** and **Share report** (Android's share sheet, plain text) and **Show the report** to read it first: the
+  time, Robot's version, the phone, its chip and Android build, the model file with the start of its SHA-256 (never your
+  own file's name or hash), where it ran, at which stage, the failure, the memory, Android's record of how the model
+  process ended (`ApplicationExitInfo`: reason, status, description with paths removed, importance, memory) and the last
+  50 voice log events, wake phrases by number. Never what you said, asked or were answered. Robot sends nothing itself.
+- Photos: the general build has its vision encoder (Robot's content check of the pinned file finds it), run on the CPU,
+  so Fast still sees photos and the screen on a Pixel 9a.
+- Settings: one new switch, "Use the GPU", stored as `modelGpu` with no schema bump (absent means on): `settings.json`
+  stays schema 12. The voice log has one new event, 135 ("The GPU failed for …").
+- Later (0.4.8): the crash trace (tombstone) in the report, a "report on GitHub" button, a list of past reports, and
+  the Tensor G6's TPU build once Robot has run on a Pixel 11.
+
+### On the phone (0.4.7)
+
+Install the release over 0.4.6 (or fresh). Settings › About shows 0.4.7. `adb logcat -s Robot` alongside: codes and
+numbers only.
+
+**Pixel 9a: the phone and Fast**
+
+1. Model tab: the first card says "Pixel 9a (Tensor G4)" and "Google publishes no TPU build of Gemma for the Tensor G4:
+   Fast is Gemma 4 E2B's general build, on the GPU (recommended) or the CPU.", then the three-line TPU list. "Robot uses"
+   lists Fast, Smarter, Uncensored and your own file; there is no "Gemma 4 E2B (Tensor G5)" card anywhere. Fast's line
+   ends with "Estimate: a new conversation starts answering in about 3–5 s, …". Smarter and Uncensored say "This phone has
+   7.5 GB of memory: …" (or what the 9a reports).
+2. Home › Get started says "2.6 GB, once". The Fast card: Gemma 4 E2B, `gemma-4-E2B-it.litertlm`, SHA-256
+   `1819381…a63c`, "Download 2.59 GB, plus a cache its first load writes: about 0.90 GB on the GPU, up to 2.00 GB on the
+   CPU". Tap Download (Wi-Fi): it completes, is checked ("“Fast” is ready."), and Free on this phone drops by 2.6 GB.
+3. "Where Fast runs": Use the GPU is on; "On the GPU (now)" and "On the CPU" each with an estimate and its source.
+4. **First load on the GPU**: open the panel and ask "what's two plus two". The first load writes the GPU cache (expect
+   up to about 30 s; Settings › Voice › Voice log: "Model loaded: Fast (Gemma 4 E2B, general build) on the GPU in …").
+   Close the panel, wait for the model to unload (Settings › Model keep time, or Always off), ask again: the load now takes
+   a few seconds. Write down both load times.
+5. **Speed on the GPU**: a new conversation, "Tell me about the history of the bicycle in five sentences." Write down the
+   time to the first word (voice log "First words after … ms") and the words per second (count the words, divide by the
+   writing time; or the `brain_reply` line's `tps`, tokens a second). A second question in the same conversation: its first
+   word time. Repeat three times.
+6. **Speed on the CPU**: switch Use the GPU off. Settings › Model now marks "On the CPU (now)"; the next question loads on
+   the CPU (the first CPU load writes up to about 2 GB of cache). Repeat step 5. Then switch the GPU back on.
+7. **Actions and cards**: "set a timer for 2 minutes", "text mom I'm running late" (the card), "what's on my calendar
+   today", "add a note: buy milk": each works as on the Pixel 10, on the GPU.
+8. **Photos**: the panel's camera, a photo of a plant: "what is this?" answers about the plant (the vision encoder runs on
+   the CPU). "What's on my screen?" with screen sharing on: it reads it.
+9. **Screen off and long answers**: ask for a long story and let it read with the screen timing out: it keeps going; say
+   "stop": it stops.
+10. **Memory beside the voice**: with Kokoro and Parakeet installed, keep the model loaded Always, use the phone for an
+    hour with a few questions: no "stopped unexpectedly". Settings › Voice › Voice log has no "The model's process
+    stopped" lines. `adb shell dumpsys meminfo app.heyrobot:brain` while loaded on the GPU: write down TOTAL PSS and the
+    Graphics line.
+11. Five or more turns in one conversation, one with a photo: no "The model ran into a problem" (Tensor G4 Mali GPUs have
+    shown OpenCL queue errors after a few turns elsewhere; if one comes, the next step's fallback should follow by itself).
+
+**Pixel 9a: when the GPU fails**
+
+12. **A crash while loading**: make the next GPU load a long first one (Settings › Model › Fast › Delete this model, then
+    Download again: the cache goes with it). Open the panel, ask something, and while it loads (the first ~20 s) run
+    `adb shell am crash $(adb shell pidof app.heyrobot:brain)`. The answer comes from the CPU instead (its first CPU load
+    takes longer); the panel says "Fast didn't load on the GPU, so Robot switched to the CPU. The Robot app › Model has a
+    report you can copy or share." once; a "Robot's model had a problem" notification opens the Model tab. Voice log: "The
+    GPU failed for Fast … while loading (the model process stopped): the CPU from now on".
+13. **A crash while answering**: Try the GPU again (step 14), ask for a long story on the GPU and, while it writes, run the
+    same `am crash` command. The answer ends; the next question is answered on the CPU, with "Fast stopped on the GPU, so
+    Robot switched to the CPU. …" once and a notification. (If `am crash` is refused: a debug build and
+    `adb shell run-as app.heyrobot kill -9 <pid>`. A force stop of Robot during a GPU load counts as a failed load at the
+    next start too.)
+14. After either: Settings › Model › Where Fast runs says "The GPU didn't load (…)" or "The GPU stopped while writing the
+    answer" with the date, "so Robot runs Fast on the CPU.", and **Try the GPU again**; Use the GPU is still on. Close and
+    reopen Robot, restart the phone: still the CPU, no new notice. Tap Try the GPU again: the next question loads on the GPU.
+15. **The report**: the Model tab's "Model problem" card. Show the report: it reads "Robot problem report", the headline,
+    When, Robot 0.4.7 (47), Phone Pixel 9a · chip Tensor G4, Android and build fingerprint, Model Fast (e2b) ·
+    gemma-4-E2B-it.litertlm · SHA-256 18193810…, Ran on: GPU, the stage, Memory then, "How the model process ended" with a
+    line for :brain (reason CRASH after `am crash`, SIGNALED after kill -9; a real GPU driver crash would say CRASH_NATIVE),
+    and the voice log's last events. Check that nothing you said or Robot answered is in it, no contact or wake phrase text (wake words by
+    number), no path but library names. Copy report: "The report is on the clipboard"; paste it into a note: the same text.
+    Share report: Android's share sheet; pick an app, or back out (nothing is sent). Dismiss: the card goes; the GPU
+    failure stays until Try the GPU again.
+16. A model you chose that crashes on the CPU (Smarter, with heavy memory use) also shows the card ("Smarter, slower
+    stopped on the CPU, so Robot is using Fast on the GPU.").
+
+**Pixel 10 Pro: unchanged**
+
+17. Model tab: "Pixel 10 Pro (Tensor G5)", "Its TPU is supported: Fast is Google's Tensor G5 build of Gemma 4 E2B, on the
+    TPU."; Fast is "Gemma 4 E2B (Tensor G5)" as before, already checked (no new download); no "Where Fast runs" card, no
+    GPU switch, no general build. Its line keeps "Writes about 17 tokens (word pieces) a second; …".
+18. Ask a question: "Model loaded: Fast (Gemma 4 E2B, TPU) on the TPU in …", first word and speed as on 0.4.6. Photos
+    and actions as before. Smarter and Uncensored show no memory warning (16 GB).
+19. Your own Tensor G5 build (if you have one): its TPU card as before. On the Pixel 9a the same file says it was compiled
+    for the Tensor G5's TPU, which this phone doesn't have, and can't be chosen.
 
 ## What's new in 0.4.6
 

@@ -17,18 +17,28 @@ import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.BrainWire
 import app.heyrobot.core.ContextWindow
+import app.heyrobot.core.BrainLoaded
 import app.heyrobot.core.FallbackWhy
+import app.heyrobot.core.GpuFailure
+import app.heyrobot.core.GpuTrying
 import app.heyrobot.core.LoadFailure
 import app.heyrobot.core.LoadPlan
 import app.heyrobot.core.ModelAvailability
 import app.heyrobot.core.ModelBackend
+import app.heyrobot.core.ModelCatalogue
 import app.heyrobot.core.ModelChoice
 import app.heyrobot.core.ModelCode
+import app.heyrobot.core.ModelFiles
 import app.heyrobot.core.ModelFormat
+import app.heyrobot.core.ModelProblem
+import app.heyrobot.core.ProblemStage
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.readOrNull
 import app.heyrobot.sys.ModelStore
+import app.heyrobot.sys.Paths
+import app.heyrobot.sys.Problems
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineScope
@@ -65,10 +75,18 @@ class DeathOnce {
 }
 
 /**
- * [onDeath]: :brain stopped. [onModelStopped] (0.4.5): the model's own process stopped under a reply while :brain lives
- * (llama.cpp's isolated process, for a GGUF file): the same for the file it ran, nothing for :brain.
+ * [onDeath]: :brain stopped, with where the reply under way was (0.4.7). [onModelStopped] (0.4.5): the model's own process
+ * stopped under a reply while :brain lives (llama.cpp's isolated process, for a GGUF file): the same for the file it ran,
+ * nothing for :brain. [onEngineError] (0.4.7): the engine itself failed a reply (BrainError.ENGINE) at this stage; on the
+ * GPU that is the GPU failing.
  */
-class BrainClient(private val ctx: Context, private val onDeath: () -> Unit, private val onModelStopped: () -> Unit = {}) {
+class BrainClient(
+    private val ctx: Context,
+    private val onDeath: (ProblemStage?) -> Unit,
+    private val onModelStopped: () -> Unit = {},
+    /** 0.4.7: the engine itself failed a reply (BrainError.ENGINE) at this stage; on the GPU that is the GPU failing. */
+    private val onEngineError: (ProblemStage) -> Unit = {},
+) {
     private val death = DeathOnce()
     @Volatile private var messenger: Messenger? = null
     private var conn: ServiceConnection? = null
@@ -77,12 +95,22 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit, pri
     private val streams = ConcurrentHashMap<Int, Channel<BrainMsg>>()
     private val replyThread = HandlerThread("robot-brain-reply").apply { start() }
     private val replies = Messenger(Handler(replyThread.looper) { m -> onReply(m); true })
+    /** 0.4.7, for a problem report: where the reply under way is (reading the prompt, then writing), null between replies. */
+    @Volatile var stage: ProblemStage? = null
+        private set
+    @Volatile private var stageReq = 0
 
     private fun onReply(m: Message) {
         val msg = BrainWire.decode(m) ?: BrainMsg.Error(BrainError.BAD_REQUEST, "unreadable reply")
         // News of the file even for a reply nobody waits for any more: the panel gave up on a reply that went silent, and
         // :brain then ended llama.cpp's process for not coming back from the stop.
         if (msg is BrainMsg.Error && msg.code == BrainError.STOPPED) onModelStopped()
+        if (m.arg1 == stageReq && stageReq != 0) {
+            val at = stage
+            if (m.what == BrainProtocol.EV_CHUNK) stage = ProblemStage.WRITING
+            else if (m.what in BrainProtocol.TERMINAL || m.what == BrainProtocol.EV_TOOL_CALLS) stage = null
+            if (m.what == BrainProtocol.EV_ERROR && (msg as? BrainMsg.Error)?.code == BrainError.ENGINE && at != null) onEngineError(at)
+        }
         val ch = streams[m.arg1] ?: return
         ch.trySend(msg)
         if (m.what in BrainProtocol.TERMINAL) {
@@ -103,24 +131,26 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit, pri
                 }
 
                 override fun onServiceDisconnected(name: ComponentName?) {
+                    val at = stage
                     messenger = null
                     endAll()
                     RLog.i("brain_disconnected")
                     if (death.died()) {
                         VoiceLog.add(VoiceEvent.BRAIN_DIED)
-                        onDeath()
+                        onDeath(at)
                     }
                 }
 
                 // The binding will never connect again (Android gave up restarting :brain). Keeping it would make every
                 // later question wait 15 s for nothing; unbind, so the next connect() binds afresh.
                 override fun onBindingDied(name: ComponentName?) {
+                    val at = stage
                     RLog.i("brain_binding_died")
                     drop(this)
                     connected?.complete(false)
                     if (death.died()) {
                         VoiceLog.add(VoiceEvent.BRAIN_DIED)
-                        onDeath()
+                        onDeath(at)
                     }
                 }
 
@@ -142,6 +172,7 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit, pri
 
     /** Every open request ends: the model and its conversations are gone with the process. */
     private fun endAll() {
+        stage = null
         for ((id, ch) in streams) {
             ch.trySend(BrainMsg.Error(BrainError.ENGINE, "model process stopped"))
             ch.close()
@@ -169,6 +200,10 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit, pri
     /** Sends a request; its events (ending with a terminal one) come out of the returned channel. */
     fun request(what: Int, payload: BrainMsg, image: ByteArray? = null): Pair<Int, Flow<BrainMsg>> {
         val id = seq.incrementAndGet()
+        if (what == BrainProtocol.REQ_GENERATE || what == BrainProtocol.REQ_TOOL_RESULT) {
+            stageReq = id
+            stage = ProblemStage.READING
+        }
         val ch = Channel<BrainMsg>(Channel.UNLIMITED)
         streams[id] = ch
         val m = messenger
@@ -218,7 +253,12 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit, pri
  * in Settings › Model when it is ready, else Fast with a message that says why (core ModelChoice); another model in
  * memory is unloaded first, so two never coexist; a chosen model that fails to load is skipped (Fast instead) until you
  * choose it again or its file changes. 0.5.0: a conversation session that translates, or a summary being made, holds the
- * model ([hold]): the unload after the panel closes waits until the last hold goes.
+ * model ([hold]): the unload after the panel closes waits until the last hold goes. 0.4.7: "Fast" is this phone's (core
+ * ModelCatalogue: the TPU build on a Tensor G5, the general build elsewhere), and the general build runs on the GPU where
+ * Robot offers it and Settings › Model › "Use the GPU" is on. A GPU that doesn't load the model, or whose process stops
+ * while it loads or answers, or whose engine fails a reply, is remembered (sys Problems: across restarts, so a GPU crash
+ * never loops) and Robot runs the model on the CPU at once, says so once, and keeps a problem report for you to copy or
+ * share. Any model's crash (on the CPU or the TPU too) keeps one as well.
  */
 object BrainKeeper {
     enum class Readiness { UNKNOWN, NO_MODEL, LOADING, READY, FAILED }
@@ -259,6 +299,11 @@ object BrainKeeper {
     private var lastFallback: String? = null
     private var lastFallbackKey: String? = null
     private var fallbackSeq = 0
+    /** 0.4.7: a GPU fallback to say once, at the next state the panel sees (with any model fallback's words). */
+    @Volatile private var pendingNotice: String? = null
+    /** A load is under way: a :brain death during it is that load's failure (loadInto), not [onDeath]'s. */
+    @Volatile private var loadUnderWay = false
+    @Volatile private var appCtx: Context? = null
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state
 
@@ -269,19 +314,65 @@ object BrainKeeper {
 
     private fun failedBefore(p: LoadPlan?): FallbackWhy? = p?.let { failed[it.model.id]?.takeIf { f -> f.first == it.fingerprint }?.second }
 
-    /** The model to load now and why (pure core ModelChoice on what the files say). */
+    /** What counts as the GPU failing a load (0.4.7). */
+    private val GPU_FAILURES = setOf(LoadFailure.ENGINE, LoadFailure.TIMEOUT, LoadFailure.PROCESS, LoadFailure.NOT_ALLOWED)
+
+    /** This phone's Fast (0.4.7). */
+    private fun fastHere(ctx: Context): BrainModel = ModelCatalogue.fast(ModelStore.phone(ctx))
+
+    /** The model to load now and why (pure core ModelChoice on what the files say), placed where it runs ([placed]). */
     private fun decide(ctx: Context): Pair<ModelChoice.Decision, LoadPlan?> {
-        val chosen = VoiceHub.settings.brainModelChoice
+        val phone = ModelStore.phone(ctx)
+        val fast = ModelCatalogue.fast(phone)
+        // Either Fast in the settings is this phone's (a Pixel 10's choice, or the default, on a Pixel 9a: the general build).
+        val chosen = ModelCatalogue.resolve(VoiceHub.settings.brainModelChoice, phone)
         val (chosenState, chosenPlan) = planOf(ctx, chosen)
-        val (fastState, fastPlan) = if (chosen == BrainModel.FAST) chosenState to chosenPlan else planOf(ctx, BrainModel.FAST)
+        val (fastState, fastPlan) = if (chosen == fast) chosenState to chosenPlan else planOf(ctx, fast)
         val earlier = failedBefore(chosenPlan)
-        val d = ModelChoice.decide(chosen, chosenState, fastState, earlier != null, earlier ?: FallbackWhy.FAILED_EARLIER)
-        return d to if (d is ModelChoice.Decision.Load && d.model == chosen) chosenPlan else fastPlan
+        val d = ModelChoice.decide(chosen, chosenState, fastState, earlier != null, earlier ?: FallbackWhy.FAILED_EARLIER, fast)
+        return d to placed(ctx, if (d is ModelChoice.Decision.Load && d.model == chosen) chosenPlan else fastPlan)
+    }
+
+    /**
+     * [p] where it runs now (core ModelCatalogue.backend): the general E2B on the GPU when Robot offers it here, "Use the
+     * GPU" is on and the GPU hasn't failed; else the plan's own backend. A GPU load that another voice process started and
+     * never saw answered (the phone or Robot restarted in the middle of it) counts as a GPU failure first.
+     */
+    private fun placed(ctx: Context, p: LoadPlan?): LoadPlan? {
+        if (p == null || p.model == BrainModel.OWN) return p
+        Problems.staleGpuTry(ctx)?.let { t ->
+            Problems.gpuTrying(ctx, null)
+            if (Problems.gpuFailure(ctx) == null) {
+                Problems.gpuFailed(ctx, GpuFailure(t.model, t.time, ProblemStage.LOADING, null))
+                VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(t.model), ProblemStage.LOADING)
+                RLog.i("brain_gpu_failed", "stage" to ProblemStage.LOADING, "stale" to true)
+                val problem = ModelProblem(t.time, t.model, ModelBackend.GPU, ProblemStage.LOADING, null, t.model, ModelBackend.CPU)
+                Problems.note(ctx, problem)
+                pendingNotice = gpuNotice(problem)
+            }
+        }
+        val gpuFailed = Problems.gpuFailure(ctx)?.model == p.model
+        val b = ModelCatalogue.backend(p.model, ModelStore.phone(ctx), VoiceHub.settings.modelGpu, gpuFailed)
+        return if (b == p.backend) p else p.copy(backend = b)
+    }
+
+    private fun gpuNotice(p: ModelProblem) = p.headline() + " The Robot app › Model has a report you can copy or share."
+
+    /** Keeps a problem note (codes and numbers, core ModelProblem) with the memory now and :brain's process id, and tells you once. */
+    private fun noteProblem(ctx: Context, plan: LoadPlan, stage: ProblemStage, failure: LoadFailure?, then: BrainModel?, thenBackend: ModelBackend?): ModelProblem {
+        val (free, total, low) = Problems.memory(ctx)
+        val pid = BrainLoaded.decode(readOrNull(java.io.File(Paths.dir(ctx), ModelFiles.LOADED)))?.takeIf { it.model == plan.model }?.pid ?: 0
+        val p = ModelProblem(System.currentTimeMillis(), plan.model, plan.backend, stage, failure, then, thenBackend, free, total, low, pid)
+        Problems.note(ctx, p)
+        RLog.i("brain_problem", "model" to RLog.Code(plan.model.id), "backend" to RLog.Code(plan.backend.id), "stage" to stage,
+            "failure" to (failure?.let { RLog.Code(it.name) }), "low" to low)
+        return p
     }
 
     /** The connected client with a model loaded, or null (then [state] says why). */
     suspend fun ensureLoaded(ctx: Context): BrainClient? = mutex.withLock {
         touch()
+        appCtx = ctx.applicationContext
         val (decision, plan) = decide(ctx)
         if (decision is ModelChoice.Decision.NoLoad) {
             noteFallback(null, null, null)
@@ -297,7 +388,7 @@ object BrainKeeper {
                 return@withLock null
             }
         }
-        val c = client ?: BrainClient(ctx.applicationContext, ::onDeath, ::onModelStopped).also { client = it }
+        val c = client ?: BrainClient(ctx.applicationContext, ::onDeath, ::onModelStopped, ::onEngineError).also { client = it }
         if (!c.connect()) {
             _state.value = State(Readiness.FAILED, problem = "Robot couldn't start its model process.")
             return@withLock null
@@ -306,15 +397,15 @@ object BrainKeeper {
     }
 
     /**
-     * Loads [plan] (unloading another model first); on failure, Fast instead when that makes sense. [detail]: why the
-     * model you chose didn't load, for the fallback's message.
+     * Loads [plan] (unloading another model first); on failure, Fast instead when that makes sense (0.4.7: the CPU instead
+     * when the GPU failed it). [detail]: why the model you chose didn't load, for the fallback's message.
      */
     private suspend fun loadInto(ctx: Context, c: BrainClient, plan: LoadPlan, load: ModelChoice.Decision.Load, detail: String? = null): BrainClient? {
         val m = plan.model
         val st = c.call(BrainProtocol.REQ_STATUS, BrainMsg.Empty, 10_000) as? BrainMsg.Status
         val textOnly = plan.format == ModelFormat.GGUF
         // The same model with the same context (0.4.3: a file checked again may now say another) and the same kind of file
-        // (the engine that runs it): kept, else loaded again.
+        // (the engine that runs it) where it should run (0.4.7: the GPU or the CPU): kept, else loaded again.
         if (st?.loaded == true && st.model == m && st.backend == plan.backend && st.maxTokens == plan.contextTokens &&
             (st.format ?: ModelFormat.LITERT_LM) == plan.format) {
             holding = plan
@@ -332,9 +423,19 @@ object BrainKeeper {
         holding = plan
         _state.value = State(Readiness.LOADING, model = m, backend = plan.backend, textOnly = textOnly, contextTokens = plan.contextTokens,
             fileVision = plan.vision).withFallback()
-        val r = c.call(BrainProtocol.REQ_LOAD, BrainMsg.Load(plan.path, m, plan.backend, plan.contextTokens, plan.format), 300_000) as? BrainMsg.Loaded
+        val fast = fastHere(ctx)
+        // A GPU load is marked first: if it takes the phone or Robot down, the next start knows (placed).
+        val gpu = plan.backend == ModelBackend.GPU
+        if (gpu) Problems.gpuTrying(ctx, GpuTrying(m, System.currentTimeMillis(), android.os.Process.myPid()))
+        loadUnderWay = true
+        val r = try {
+            c.call(BrainProtocol.REQ_LOAD, BrainMsg.Load(plan.path, m, plan.backend, plan.contextTokens, plan.format), 300_000) as? BrainMsg.Loaded
+        } finally {
+            loadUnderWay = false
+            if (gpu) Problems.gpuTrying(ctx, null)
+        }
         if (r?.ok == true) {
-            if (m != BrainModel.FAST) failed.remove(m.id)
+            if (m != fast) failed.remove(m.id)
             _state.value = State(Readiness.READY, vision = r.vision, model = m, backend = plan.backend, textOnly = textOnly,
                 contextTokens = plan.contextTokens, fileVision = plan.vision).withFallback()
             VoiceLog.add(VoiceEvent.MODEL_LOADED, ModelCode.of(m).id, BackendCode.of(plan.backend).id, r.loadMs.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
@@ -345,10 +446,38 @@ object BrainKeeper {
         val failure = r?.failure ?: if (r == null) (if (c.isConnected) LoadFailure.TIMEOUT else LoadFailure.PROCESS) else LoadFailure.ENGINE
         holding = null
         VoiceLog.add(VoiceEvent.MODEL_LOAD_FAILED, ModelCode.of(m), failure)
-        if (m != BrainModel.FAST && ModelChoice.remember(failure)) failed[m.id] = plan.fingerprint to FallbackWhy.FAILED_EARLIER
-        val (fastState, fastPlan) = planOf(ctx, BrainModel.FAST)
-        val next = ModelChoice.afterFailure(m, failure, fastState, r?.error ?: "The model didn't load in time.")
-        if (next is ModelChoice.Decision.Load && fastPlan != null && m != BrainModel.FAST) {
+        // 0.4.7: the GPU didn't load it (an error, a refusal, no answer, or its process stopped): the CPU from now on,
+        // remembered across restarts until you try the GPU again, said once, with a report to copy or share. (No room
+        // for a cache, a missing file or the last model still stopping aren't the GPU's doing: they go on as before.)
+        if (gpu && failure in GPU_FAILURES) {
+            Problems.gpuFailed(ctx, GpuFailure(m, System.currentTimeMillis(), ProblemStage.LOADING, failure))
+            VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(m), ProblemStage.LOADING, failure.id)
+            RLog.i("brain_gpu_failed", "stage" to ProblemStage.LOADING, "failure" to RLog.Code(failure.name))
+            pendingNotice = gpuNotice(noteProblem(ctx, plan, ProblemStage.LOADING, failure, m, ModelBackend.CPU))
+            if (failure == LoadFailure.TIMEOUT) {
+                // :brain may still be stuck in the GPU load: let it go (its teardown ends the process if it has to) and load
+                // on the CPU from the next question, in a fresh binding.
+                client = null
+                c.close()
+                _state.value = State(Readiness.FAILED, problem = "Fast didn't load on the GPU in time. Robot uses the CPU from the next question.")
+                return null
+            }
+            if (!c.isConnected && !c.connect()) {
+                _state.value = State(Readiness.FAILED, problem = "Robot couldn't start its model process.")
+                return null
+            }
+            return loadInto(ctx, c, plan.copy(backend = ModelBackend.CPU), load, detail)
+        }
+        if (m != fast && ModelChoice.remember(failure)) failed[m.id] = plan.fingerprint to FallbackWhy.FAILED_EARLIER
+        val (fastState, fastPlanFound) = planOf(ctx, fast)
+        val fastPlan = placed(ctx, fastPlanFound)
+        val next = ModelChoice.afterFailure(m, failure, fastState, r?.error ?: "The model didn't load in time.", fast)
+        // A crash or no answer (not a refusal Robot explains itself) keeps a report too, on the CPU or the TPU.
+        if (failure == LoadFailure.ENGINE || failure == LoadFailure.TIMEOUT || failure == LoadFailure.PROCESS) {
+            val then = if (next is ModelChoice.Decision.Load && fastPlan != null && m != fast) fastPlan else null
+            noteProblem(ctx, plan, ProblemStage.LOADING, failure, then?.model, then?.backend)
+        }
+        if (next is ModelChoice.Decision.Load && fastPlan != null && m != fast) {
             // :brain may have died with the model: it comes back (or is bound again) for Fast.
             if (!c.isConnected && !c.connect()) {
                 _state.value = State(Readiness.FAILED, problem = "Robot couldn't start its model process.")
@@ -374,11 +503,18 @@ object BrainKeeper {
         val key = if (wanted != null && why != null) wanted.id + "/" + (if (why == FallbackWhy.FAILED_EARLIER) FallbackWhy.LOAD_FAILED else why).name else null
         if (key != null && key != lastFallbackKey) {
             fallbackSeq++
-            VoiceLog.add(VoiceEvent.MODEL_FALLBACK, ModelCode.of(wanted!!), why!!, ModelCode.FAST.id)
+            val fast = appCtx?.let { fastHere(it) } ?: BrainModel.FAST
+            VoiceLog.add(VoiceEvent.MODEL_FALLBACK, ModelCode.of(wanted!!), why!!, ModelCode.of(fast).id)
             RLog.i("brain_fallback", "wanted" to RLog.Code(wanted.id), "why" to why)
         }
         lastFallbackKey = key
         lastFallback = if (wanted != null && why != null) ModelChoice.fallbackText(wanted, why, detail) else null
+        // A GPU fallback is said once, beside any model fallback's words (its own count: never the model fallback again).
+        pendingNotice?.let { n ->
+            pendingNotice = null
+            fallbackSeq++
+            lastFallback = listOfNotNull(lastFallback, n).joinToString(" ")
+        }
     }
 
     private fun State.withFallback() = copy(fallback = lastFallback, fallbackSeq = fallbackSeq)
@@ -395,15 +531,17 @@ object BrainKeeper {
 
     /**
      * Settings changed (any save, so tapping the chosen model again retries it): forget load failures, and when the
-     * model in memory is no longer the one to use, let it go now (its memory, and so the app may delete it).
+     * model in memory is no longer the one to use, let it go now (its memory, and so the app may delete it). 0.4.7: also
+     * the same model elsewhere ("Use the GPU" switched, VoiceHub's [modelChanged]).
      */
     fun settingsChanged(ctx: Context, modelChanged: Boolean) {
         scope.launch {
             mutex.withLock { failed.clear() }
             if (!modelChanged) return@launch
             val inMemory = _state.value.model ?: return@launch
-            val (decision, _) = mutex.withLock { decide(ctx) }
-            if ((decision as? ModelChoice.Decision.Load)?.model != inMemory) release("model_changed")
+            val (decision, plan) = mutex.withLock { decide(ctx) }
+            // Another model, or the same one elsewhere ("Use the GPU" switched): let go of it now.
+            if ((decision as? ModelChoice.Decision.Load)?.model != inMemory || (plan != null && plan.backend != _state.value.backend)) release("model_changed")
         }
     }
 
@@ -442,9 +580,28 @@ object BrainKeeper {
     /** Ready now, and on what (for translation's choice of engine and deadlines). */
     val ready: Boolean get() = _state.value.readiness == Readiness.READY
 
-    private fun onDeath() {
+    /**
+     * 0.4.7: the engine failed a reply on the GPU (an OpenCL error, as a Tensor G4's Mali GPU can give after a few turns):
+     * the GPU counts as failed, as if it had crashed. The engine goes now, so the next question loads the model on the CPU;
+     * this reply's own error is shown as before. On the CPU or the TPU nothing changes (the panel says the model failed).
+     */
+    private fun onEngineError(stage: ProblemStage) {
+        val p = holding ?: return
+        val ctx = appCtx ?: return
+        if (p.backend != ModelBackend.GPU || loadUnderWay) return
+        scope.launch {
+            if (Problems.gpuFailure(ctx)?.model == p.model) return@launch
+            Problems.gpuFailed(ctx, GpuFailure(p.model, System.currentTimeMillis(), stage, LoadFailure.ENGINE))
+            VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(p.model), stage, LoadFailure.ENGINE.id)
+            RLog.i("brain_gpu_failed", "stage" to stage, "failure" to RLog.Code(LoadFailure.ENGINE.name))
+            pendingNotice = gpuNotice(noteProblem(ctx, p, stage, LoadFailure.ENGINE, p.model, ModelBackend.CPU))
+            release("gpu_failed")
+        }
+    }
+
+    private fun onDeath(stage: ProblemStage?) {
         synchronized(deaths) { deaths.addLast(System.currentTimeMillis()) }
-        modelStopped()
+        modelStopped(stage)
     }
 
     /**
@@ -454,17 +611,32 @@ object BrainKeeper {
     private fun onModelStopped() {
         VoiceLog.add(VoiceEvent.BRAIN_DIED)
         RLog.i("brain_model_stopped")
-        modelStopped()
+        modelStopped(null)
     }
 
-    private fun modelStopped() {
+    private fun modelStopped(stage: ProblemStage?) {
         // A model you chose that took its process down while in memory (a native crash as it answered, or Android
         // reclaiming its memory) isn't loaded again at the next question, nor at every one until the lockout above stops
         // Fast too: Fast instead, with a notice, until you choose it again. (A death during its load is the load's failure.)
         val p = holding
         holding = null
-        if (p != null && p.model != BrainModel.FAST) scope.launch {
+        val ctx = appCtx
+        val duringLoad = loadUnderWay
+        val fast = ctx?.let { fastHere(it) } ?: BrainModel.FAST
+        if (p != null && p.model != fast) scope.launch {
             mutex.withLock { if (failed[p.model.id]?.first != p.fingerprint) failed[p.model.id] = p.fingerprint to FallbackWhy.STOPPED }
+        }
+        // 0.4.7: a death while it answered (reading the prompt or writing) is a crash worth a report; one between answers
+        // is most likely Android reclaiming memory, and is left as before. On the GPU, the CPU from now on.
+        if (p != null && ctx != null && !duringLoad && stage != null) scope.launch {
+            if (p.backend == ModelBackend.GPU) {
+                Problems.gpuFailed(ctx, GpuFailure(p.model, System.currentTimeMillis(), stage, null))
+                VoiceLog.add(VoiceEvent.GPU_FALLBACK, ModelCode.of(p.model), stage)
+                RLog.i("brain_gpu_failed", "stage" to stage)
+                pendingNotice = gpuNotice(noteProblem(ctx, p, stage, null, p.model, ModelBackend.CPU))
+            } else {
+                noteProblem(ctx, p, stage, null, if (p.model != fast) fast else null, null)
+            }
         }
         _state.value = State(Readiness.UNKNOWN)
     }

@@ -74,7 +74,12 @@ import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
 import app.heyrobot.core.ModelBackend
+import app.heyrobot.core.ModelCatalogue
 import app.heyrobot.core.ModelFormat
+import app.heyrobot.core.ModelProblem
+import app.heyrobot.core.Phones
+import app.heyrobot.core.Speeds
+import app.heyrobot.core.TpuSupport
 import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelNotes
 import app.heyrobot.core.ModelStatus
@@ -99,22 +104,27 @@ import app.heyrobot.ui.common.toolIcon
 /**
  * Settings › Model (the Model tab, 0.4.1): which model Robot uses, one card per built-in model (download, check,
  * delete, where it comes from), your own model file (import, what the check found, the TPU's warning card), and the
- * voice models. 0.4.5: your own file may be a GGUF file (llama.cpp, on the CPU), and "Let the model think first".
+ * voice models. 0.4.5: your own file may be a GGUF file (llama.cpp, on the CPU), and "Let the model think first". 0.4.7:
+ * this phone and its chip, whether Robot uses its TPU (and which Pixels it does on), Fast's GPU switch with this phone's
+ * estimated speeds, and the last model problem with its report to copy or share. Only this phone's Fast is listed.
  */
 @Composable
 fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier) {
     var confirmDelete by remember { mutableStateOf<BrainModel?>(null) }
     /** A publisher's terms to tick before its file downloads (false) or is imported (true). */
     var askTerms by remember { mutableStateOf<Pair<ModelTerms, Boolean>?>(null) }
-    val chosen = s.brainModelChoice
+    val chosen = ModelCatalogue.resolve(s.brainModelChoice, snap.phone)
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         ScreenTitle("Model", "Robot's AI runs on this phone. It goes online only to download a model you pick.")
+        snap.problem?.let { ProblemCard(it, a) }
+        PhoneCard(snap)
         ModelChoiceCard(s, update, snap)
+        if (snap.fast.gpu) WhereFastRunsCard(s, update, snap, a)
         ThinkingCard(s, update)
-        for (m in BrainModel.entries.filter { it.builtIn }) {
+        for (m in ModelCatalogue.models(snap.phone).filter { it.builtIn }) {
             val terms = ModelTerms.of(m)
             ModelCard(m, snap, busy, a, onDelete = { confirmDelete = m }, termsConfirmed = terms?.let { s.confirmedTerms[it.id] },
                 onDownload = { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to false else a.download(m) },
@@ -140,13 +150,13 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
     }
     confirmDelete?.let { m ->
         val ms = snap.model(m)
-        val others = BrainModel.entries.any { it != m && snap.ready(it) }
+        val others = ModelCatalogue.models(snap.phone).any { it != m && snap.ready(it) }
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
             title = { Text("Delete “${m.title}”?") },
             text = {
                 Text("Removes its file (${ModelLogic.gb(ms?.fileBytes ?: 0)})" + (if ((ms?.cacheBytes ?: 0) > 0) " and its cache (${ModelLogic.gb(ms!!.cacheBytes)})" else "") +
-                    " from this phone." + (if (m == chosen && m != BrainModel.FAST) " Robot goes back to Fast." else "") +
+                    " from this phone." + (if (m == chosen && m != snap.fast) " Robot goes back to Fast." else "") +
                     (if (!others) " Robot can't answer until you download or import a model again." else ""))
             },
             confirmButton = { TextButton(onClick = { confirmDelete = null; a.deleteModel(m) }) { Text("Delete") } },
@@ -155,17 +165,110 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
     }
 }
 
+/**
+ * 0.4.7: this phone and its chip, whether its TPU runs Robot's model (and so which Fast it gets), and which Pixels Robot's
+ * TPU build runs on (core Phones).
+ */
+@Composable
+private fun PhoneCard(snap: Snapshot) {
+    val p = snap.phone
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    SectionCard("This phone") {
+        StatusRow(if (p.tpu == TpuSupport.SUPPORTED) Mark.OK else Mark.TODO, Phones.line(p).removePrefix("This phone: "), Phones.tpuLine(p))
+        Text("TPU support in Robot", style = MaterialTheme.typography.titleSmall)
+        for (line in Phones.TPU_LIST) Text("• $line", style = MaterialTheme.typography.bodySmall, color = muted)
+        Text("Speeds below are measured on a Pixel 10 Pro where it says so, otherwise estimates, each with where it comes from.",
+            style = MaterialTheme.typography.bodySmall, color = muted)
+    }
+}
+
+/**
+ * 0.4.7: where the general E2B runs: Settings › Model › "Use the GPU" (on by default where Robot offers the GPU), this
+ * phone's estimates on the GPU and the CPU, and the GPU's failure, if any, with "Try the GPU again".
+ */
+@Composable
+private fun WhereFastRunsCard(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, a: AppActions) {
+    val p = snap.phone
+    val g = BrainModel.GENERAL
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val offered = ModelCatalogue.gpuOffered(p)
+    val failure = snap.gpuFailure?.takeIf { it.model == g }
+    val now = ModelCatalogue.backend(g, p, s.modelGpu, failure != null)
+    SectionCard("Where Fast runs") {
+        if (offered) {
+            SwitchRow("Use the GPU", "Recommended. On the GPU, Fast starts answering sooner, uses less battery and leaves the CPU to " +
+                "Robot's voice; the CPU may write a little faster. If the GPU fails, Robot switches to the CPU by itself and says so.",
+                s.modelGpu) { update(s.copy(modelGpu = it)) }
+            if (failure != null) {
+                Text("The GPU ${failure.what} on ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(failure.time))}, so " +
+                    "Robot runs Fast on the CPU.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                OutlinedButton(onClick = a.tryGpuAgain, modifier = Modifier.heightIn(min = 48.dp)) { Text("Try the GPU again") }
+            }
+        } else {
+            Text("Robot doesn't use this phone's GPU (${p.chip.gpu.title}, as on the Pixel 10): Fast runs on the CPU.",
+                style = MaterialTheme.typography.bodyMedium, color = muted)
+        }
+        for (b in if (offered) listOf(ModelBackend.GPU, ModelBackend.CPU) else listOf(ModelBackend.CPU)) {
+            val e = Speeds.of(g, b, p) ?: continue
+            Text("On the ${b.title}" + if (b == now) " (now)" else "", style = MaterialTheme.typography.titleSmall)
+            Text(e.text(), style = MaterialTheme.typography.bodyMedium)
+            Text(e.source, style = MaterialTheme.typography.bodySmall, color = muted)
+        }
+    }
+}
+
+/**
+ * 0.4.7: the last model problem (core ModelProblem): what happened, and its report, which you can read here, then copy or
+ * share yourself. Robot never sends it.
+ */
+@Composable
+private fun ProblemCard(p: ModelProblem, a: AppActions) {
+    var text by remember(p.time) { mutableStateOf<String?>(null) }
+    var shown by remember(p.time) { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(p.time) {
+        text = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { try { a.reportText(p) } catch (_: Exception) { null } }
+    }
+    androidx.compose.material3.Surface(
+        color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(RIcons.Warning, null)
+                Spacer(Modifier.width(10.dp))
+                Text("Model problem", style = MaterialTheme.typography.titleSmall)
+            }
+            Text(p.headline(), style = MaterialTheme.typography.bodyMedium)
+            Text("${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.time))}. Robot made a report you can read, then copy " +
+                "or share if you want to help fix it: codes, this phone and its Android build, the model file and the last 50 voice log " +
+                "events. Never what you said or asked. Robot sends nothing itself.", style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FilledTonalButton(onClick = { text?.let(a.copyReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Copy report") }
+                OutlinedButton(onClick = { text?.let(a.shareReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Share report") }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(onClick = { shown = !shown }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (shown) "Hide the report" else "Show the report") }
+                TextButton(onClick = { a.dismissProblem(p) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Dismiss") }
+            }
+            if (shown) Text(text ?: "Making the report…", style = MaterialTheme.typography.bodySmall,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+        }
+    }
+}
+
 /** "Robot uses": a model can be chosen once it is on the phone and checked; until then Robot uses Fast. */
 @Composable
 private fun ModelChoiceCard(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot) {
-    val chosen = s.brainModelChoice
+    val chosen = ModelCatalogue.resolve(s.brainModelChoice, snap.phone)
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     SectionCard("Robot uses") {
-        for (m in BrainModel.entries) {
+        for (m in ModelCatalogue.models(snap.phone)) {
             val ready = snap.ready(m)
             val st = snap.model(m)?.status
             val note = when {
                 ready -> null
+                m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.tensorG5Build == true && snap.phone.tpu != TpuSupport.SUPPORTED ->
+                    "It was compiled for the Tensor G5's TPU, which this phone doesn't have."
                 m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.tensorG5Build == true -> "Allow the TPU for it below first."
                 m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.format == ModelFormat.GGUF && !snap.ggufEngine ->
                     "This build of Robot can't run GGUF files."
@@ -177,18 +280,27 @@ private fun ModelChoiceCard(s: RobotSettings, update: (RobotSettings) -> Unit, s
             // Your own file, checked and short (0.4.3): said where you choose it, not only on its card below.
             val short = if (m == BrainModel.OWN && ready) snap.own?.takeIf { it.shortContext }
                 ?.let { o -> " Chat only (short context): no actions." + if (o.vision) " Can see photos." else "" } else null
-            ChoiceRow(m.title, m.speed + (short ?: "") + (note?.let { " $it" } ?: ""), chosen == m, enabled = ready || chosen == m) {
+            // 0.4.7: this phone's figures for it (measured or estimated, Speeds), and a memory warning on 8 GB or less.
+            // (Fast on a Tensor G5 says its measured figures itself.)
+            val here = if (m == BrainModel.FAST) "" else Speeds.of(m, ModelCatalogue.backend(m, snap.phone, s.modelGpu, snap.gpuFailure?.model == m), snap.phone)
+                ?.let { " " + it.text() } ?: ""
+            val warning = ModelCatalogue.memoryWarning(m, snap.phone)?.let { " $it" } ?: ""
+            ChoiceRow(m.title, m.speed + here + warning + (short ?: "") + (note?.let { " $it" } ?: ""), chosen == m, enabled = ready || chosen == m) {
                 // Tapping the chosen one again saves too: Robot then retries a model that didn't load.
                 update(s.copy(brainModel = m.id))
             }
         }
-        if (!snap.ready(chosen) && chosen != BrainModel.FAST) {
+        if (!snap.ready(chosen) && chosen != snap.fast) {
             Text("Until “${chosen.title}” is ready, Robot uses Fast.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         }
         Text("Whichever model answers, Robot's cards and switches (Settings › Actions, Safety & privacy) decide what asks you first, " +
             "and nothing leaves the phone unless you ask. Questions in a new conversation take longer with the slower models.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
         snap.loaded?.let { Text("In memory now: ${it.title} (${it.modelName}).", style = MaterialTheme.typography.bodySmall, color = muted) }
+        // A Pixel 10's choice (or the default) on another phone: read as this phone's Fast, the file left as it is.
+        if (s.brainModelChoice == BrainModel.FAST && snap.fast != BrainModel.FAST) {
+            Text("Fast on this phone is Gemma 4 E2B's general build: the Tensor G5 build needs a Pixel 10.", style = MaterialTheme.typography.bodySmall, color = muted)
+        }
     }
 }
 
@@ -260,7 +372,8 @@ private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppAction
         if (st == ModelStatus.MISSING && ms.failure != null) Text(ms.failure, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
         if (st == ModelStatus.BAD) Text("The file's checksum is wrong, so Robot won't load it. Delete it and download it again.", style = MaterialTheme.typography.bodyMedium)
         Text(
-            "Download ${ModelLogic.gb(m.bytes)}" + (if (m.cacheBytes > 0) ", plus about ${ModelLogic.gb(m.cacheBytes)} of cache the CPU writes on its first load" else "") +
+            "Download ${ModelLogic.gb(m.bytes)}" + (if (m.gpu) ", plus a cache its first load writes: about ${ModelLogic.gb(app.heyrobot.core.ModelFiles.GPU_CACHE_BYTES)} on the GPU, " +
+                "up to ${ModelLogic.gb(m.cacheBytes)} on the CPU" else if (m.cacheBytes > 0) ", plus about ${ModelLogic.gb(m.cacheBytes)} of cache the CPU writes on its first load" else "") +
                 ". " + (if (ms.cacheBytes > 0) "Its cache holds ${ModelLogic.gb(ms.cacheBytes)} now. " else "") +
                 "Free on this phone: ${if (snap.freeBytes >= 0) ModelLogic.gb(snap.freeBytes) else "unknown"}.",
             style = MaterialTheme.typography.bodyMedium, color = muted,
@@ -336,6 +449,8 @@ private fun OwnModelCard(snap: Snapshot, busy: String?, a: AppActions, onDelete:
                     "Expect it to be slower than Fast: about the speed of the E4B models for a 4B file, faster for a smaller one."
                 own.backend == ModelBackend.CPU -> "Runs on the CPU: about as slow as the E4B models or slower, depending on its size. " +
                     if (ms.cacheBytes > 0) "Its cache holds ${ModelLogic.gb(ms.cacheBytes)} now." else "Its first load writes a cache next to it."
+                own.tensorG5Build && snap.phone.tpu != TpuSupport.SUPPORTED -> "It was compiled for the Tensor G5's TPU (Pixel 10), which this " +
+                    "phone doesn't have, and a TPU build can't run on the CPU: Robot can't use it here."
                 own.tensorG5Build -> "Waits for you to allow the TPU (below)."
                 else -> "Robot can't run it on this phone. Delete it to free the space."
             }, style = MaterialTheme.typography.bodyMedium)
@@ -346,7 +461,7 @@ private fun OwnModelCard(snap: Snapshot, busy: String?, a: AppActions, onDelete:
                     "and offers this page, where you can choose Fast. " + (if (own.vision) "It can see photos." else "It can't see photos."),
                     style = MaterialTheme.typography.bodyMedium)
             }
-            if (own.tensorG5Build && !own.tpuAllowed && st == ModelStatus.VERIFIED) TpuWarning(own, a)
+            if (own.tensorG5Build && !own.tpuAllowed && st == ModelStatus.VERIFIED && snap.phone.tpu == TpuSupport.SUPPORTED) TpuWarning(own, a)
             if (own.tpuAllowed) TextButton(onClick = { a.allowOwnTpu(false, null) }) { Text("Stop running it on the TPU") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -382,7 +497,7 @@ private fun TpuWarning(own: OwnModel, a: AppActions) {
                 Spacer(Modifier.width(10.dp))
                 Text("Run this file on the TPU?", style = MaterialTheme.typography.titleSmall)
             }
-            Text("Robot's check says this file was compiled for this phone's TPU (Tensor G5). It isn't Robot's pinned Fast model, so " +
+            Text("Robot's check says this file was compiled for the Tensor G5's TPU, which this phone has. It isn't Robot's pinned Fast model, so " +
                 "Robot can't vouch for it:", style = MaterialTheme.typography.bodyMedium)
             for (risk in TPU_RISKS) Text("• $risk", style = MaterialTheme.typography.bodyMedium)
             Text("${own.name} · ${ModelLogic.gb(own.bytes)} (${String.format(java.util.Locale.US, "%,d", own.bytes)} bytes)\nSHA-256 ${own.sha256}",
@@ -675,11 +790,13 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         WeatherSettingsCard(s, snap, update, a)
         HelpersCard(s, snap, a)
         SectionCard("Model") {
-            val model = s.brainModelChoice
-            NavRow(RIcons.Chip, "Robot's model", "${model.title}: ${model.modelName}. Download, choose or import a model") { a.openTab(Tab.MODEL) }
+            val model = ModelCatalogue.resolve(s.brainModelChoice, snap.phone)
+            val where = ModelCatalogue.backend(model, snap.phone, s.modelGpu, snap.gpuFailure?.model == model)
+            NavRow(RIcons.Chip, "Robot's model", "${model.title}: ${model.modelName}" + (if (model.gpu) " on the ${where.title}" else "") +
+                ". Download, choose or import a model") { a.openTab(Tab.MODEL) }
             val memory = if (model.memoryBytes > 0) "about ${PhoneStatus.size(model.memoryBytes)} of memory" else "about its file's size in memory"
             Text("Keep the model loaded after the panel closes ($memory; " +
-                (if (model.backend == ModelBackend.TPU) "it loads again in about 2 seconds)." else "it loads again in a few seconds once its cache is written)."),
+                (if (where == ModelBackend.TPU) "it loads again in about 2 seconds)." else "it loads again in a few seconds once its cache is written)."),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (m in RobotSettings.KEEP_CHOICES) {
