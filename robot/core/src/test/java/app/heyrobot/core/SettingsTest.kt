@@ -180,8 +180,8 @@ class SettingsTest {
         val s = RobotSettings(convTranslate = true, convSpeak = false, convPartials = false, convMaxSpeakers = 3, convWakeDuring = true,
             convStartLocked = false, convKeepAudio = true, convSummaryLang = "fr", convAutoOfferHelper = false, meVoiceprint = true)
         assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
-        assertEquals(8, RobotSettings.SCHEMA)
-        assertEquals(8, s.toJson().getInt("schema"))
+        assertEquals(9, RobotSettings.SCHEMA)
+        assertEquals(9, s.toJson().getInt("schema"))
         // A 0.4.0-era file (schema 5) gets the defaults, except that live words in a conversation follow live words for questions.
         val old = RobotSettings.fromJson("""{"schema":5,"livePartials":false,"speechRate":1.2}""")
         assertEquals(false, old.convPartials)

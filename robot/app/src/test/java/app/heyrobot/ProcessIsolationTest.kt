@@ -37,6 +37,12 @@ class ProcessIsolationTest {
         .replace(Regex("\"\"\".*?\"\"\"", RegexOption.DOT_MATCHES_ALL), "\"\"")
         .replace(Regex("\"(\\\\.|[^\"\\\\\n])*\""), "\"\"")
 
+    /** Source without comments, string literals kept (a URL in a string is one the code may use). */
+    private fun withoutComments(f: File): String = f.readText()
+        .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("(?m)^\\s*//[^\n]*"), "")
+        .replace(Regex("\\s// [^\n]*"), "")
+
     private fun usersOf(pattern: Regex, files: Map<String, File> = ours) = files.filter { pattern.containsMatchIn(code(it.value)) }.keys.sorted()
 
     @Test fun liteRtOnlyInTheBrainEngineFile() {
@@ -309,10 +315,13 @@ class ProcessIsolationTest {
         assertTrue(meteo.contains("private fun get(") && !meteo.contains("    fun get("))
         assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/OpenMeteoClient.kt", "app/ui/ToolsSettings.kt"), usersOf(Regex("""\bOpenMeteoClient\b""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""AccessibilityService|accessibilityservice""")))
-        // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, the
-        // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0).
-        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
-            ours.filter { it.value.readText().contains("https://") }.keys.sorted())
+        // The only URLs in code (comments that cite a page don't count): Gemma's and the voice models' pinned Hugging Face
+        // files, fetched by DownloadManager, the claude.ai link the Claude app hand-off tries (the API's host is the SDK's own),
+        // Open-Meteo's two and Nominatim's (0.4.0), and the helpers' companies' API addresses (0.6.0, core Helpers.kt's
+        // presets, used only by the :claude module's clients in the :voice process, with your key, when you ask).
+        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt",
+            "core/core/helpers/Helpers.kt"),
+            ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
         assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)"""), ours.filterKeys { it.startsWith("voice/") }))

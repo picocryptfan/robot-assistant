@@ -1,5 +1,6 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.helpers.HelperConfig
 import org.json.JSONObject
 
 // Pure. settings.json is written by the main app only; the voice process re-reads it when the main app
@@ -112,26 +113,18 @@ data class RobotSettings(
     val playback: Playback = Playback.ASSISTANT,
     /** The volume key that stops Robot talking while the panel shows. */
     val stopKey: StopKey = StopKey.VOLUME_DOWN,
-    // Ask Claude (docs/ask-claude.md). Null where the default depends on whether an API key is saved (ClaudeSettings).
-    /** Ask Claude on or off; null: on (the Claude app without a key, the API with one). */
-    val claudeEnabled: Boolean? = null,
-    /** The Claude app or the API; null: the app without a key, the API with one. */
-    val claudeRoute: ClaudeRoute? = null,
-    /** A [ClaudeModel] id. */
-    val claudeModel: String = ClaudeModel.DEFAULT.id,
-    val claudeEffort: ClaudeEffortSetting = ClaudeEffortSetting.AUTO,
-    /** "Let Claude search the web". */
-    val claudeSearch: Boolean = true,
-    /** "Allow on lock screen": off, because a locked phone can't show who is asking. */
-    val claudeLocked: Boolean = false,
-    /** Claude's Kokoro voice ([ClaudeVoices]). */
-    val claudeVoice: String = ClaudeVoices.DEFAULT,
-    /** "Show cost" under each Claude reply. */
-    val claudeShowCost: Boolean = true,
-    /** "When Robot needs help"; null: Automatic once a key is saved, Ask me first before. */
-    val claudeHelp: Escalation? = null,
-    /** Daily budget for Claude in cents (default $1.00); once reached, Automatic asks first for the rest of the day. */
-    val claudeBudgetCents: Int = 100,
+    // Helpers (0.6.0, schema 9; Ask Claude, docs/ask-claude.md, became the first of them). Null where the default depends on
+    // whether the helper's API key is saved (HelperSettings).
+    /** Claude and any helper you added, in your order. A new install has Claude, as before 0.6.0. */
+    val helpers: List<HelperConfig> = listOf(HelperConfig.claude()),
+    /** "When Robot needs help"; null: Automatic once the helper Robot asks can answer through its API, Ask me first before. */
+    val help: Escalation? = null,
+    /** "Ask:" the helper Robot checks with; null (or a helper you removed): the first that can answer through its API. */
+    val helpDefault: String? = null,
+    /** The daily budget for all helpers in cents (default $1.00); once reached, Automatic asks first for the rest of the day. */
+    val helperBudgetCents: Int = 100,
+    /** "Show cost" under each helper's reply. */
+    val helperShowCost: Boolean = true,
     /**
      * Settings › Weather › Home for weather (0.4.0): looked up once when you save it, then used when the phone can't say
      * where it is (or isn't allowed to). Null: none.
@@ -209,7 +202,19 @@ data class RobotSettings(
      */
     val safetyNotice: Boolean = false,
 ) {
-    val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
+    /** The Claude helper, or null when you removed it. */
+    val claude: HelperConfig? get() = helper(HelperConfig.CLAUDE_ID)
+
+    val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claude?.model)
+
+    fun helper(id: String?): HelperConfig? = helpers.firstOrNull { it.id == id }
+
+    /** These settings with [h] in place of the helper of the same id (added at the end when there is none). */
+    fun withHelper(h: HelperConfig): RobotSettings =
+        copy(helpers = if (helpers.any { it.id == h.id }) helpers.map { if (it.id == h.id) h else it } else helpers + h)
+
+    /** These settings with Claude changed by [f] (Claude as every install has it, when you had removed it). */
+    fun withClaude(f: (HelperConfig) -> HelperConfig): RobotSettings = withHelper(f(claude ?: HelperConfig.claude()))
 
     val convPairChoice: LangPair get() = LangPair.of(convPair)
 
@@ -251,16 +256,26 @@ data class RobotSettings(
         put("interrupt", interrupt.name)
         put("playback", playback.name)
         put("stopKey", stopKey.name)
-        claudeEnabled?.let { put("claudeEnabled", it) }
-        claudeRoute?.let { put("claudeRoute", it.name) }
-        put("claudeModel", claudeModel)
-        put("claudeEffort", claudeEffort.name)
-        put("claudeSearch", claudeSearch)
-        put("claudeLocked", claudeLocked)
-        put("claudeVoice", claudeVoice)
-        put("claudeShowCost", claudeShowCost)
-        claudeHelp?.let { put("claudeHelp", it.name) }
-        put("claudeBudgetCents", claudeBudgetCents)
+        put("helpers", org.json.JSONArray().apply { for (h in helpers) put(h.toJson()) })
+        help?.let { put("help", it.name) }
+        helpDefault?.let { put("helpDefault", it) }
+        put("helperBudgetCents", helperBudgetCents)
+        put("helperShowCost", helperShowCost)
+        // The 0.4/0.5 fields, written from the Claude helper for one release: an older Robot reading this file keeps
+        // Claude as it was set (and off when you removed it). The other helpers are new to it and ignored.
+        val c = claude
+        if (c == null) put("claudeEnabled", false) else {
+            c.enabled?.let { put("claudeEnabled", it) }
+            c.route?.let { put("claudeRoute", it.name) }
+            put("claudeModel", c.model)
+            put("claudeEffort", c.effort.name)
+            put("claudeSearch", c.search)
+            put("claudeLocked", c.locked)
+            put("claudeVoice", c.voice)
+        }
+        put("claudeShowCost", helperShowCost)
+        help?.let { put("claudeHelp", it.name) }
+        put("claudeBudgetCents", helperBudgetCents)
         weatherHome?.let { put("weatherHome", JSONObject().put("name", it.name).put("lat", it.lat).put("lon", it.lon)) }
         put("convPair", convPair)
         put("convTranslate", convTranslate)
@@ -301,8 +316,11 @@ data class RobotSettings(
          * you didn't ask for it", as the person asked.
          * 8 (0.5.0): conversation mode's settings. Absent from older files, so they read as the defaults, except that live
          * words in a conversation start off when you had turned live words off for questions (to save battery).
+         * 9 (0.6.0): helpers. A file without "helpers" gets one, Claude (id "claude"), made from its claude* fields, so Ask
+         * Claude goes on exactly as it was; the budget, "Show cost" and "When Robot needs help" become every helper's.
+         * The claude* fields are still written, from the Claude helper, for one release (a downgrade keeps Claude).
          */
-        const val SCHEMA = 8
+        const val SCHEMA = 9
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -341,7 +359,7 @@ data class RobotSettings(
 
         val EVENT_MINUTES = listOf(15, 30, 45, 60, 90, 120)
 
-        /** Daily Claude budgets offered in Settings, in cents. */
+        /** Daily budgets for all helpers offered in Settings, in cents. */
         val CLAUDE_BUDGETS = listOf(25, 50, 100, 200, 500)
 
         fun clampRate(v: Float): Float = if (v.isNaN()) 1.0f else v.coerceIn(0.5f, 2.0f)
@@ -386,16 +404,12 @@ data class RobotSettings(
                 interrupt = enumOr(o.optString("interrupt"), d.interrupt),
                 playback = enumOr(o.optString("playback"), d.playback),
                 stopKey = enumOr(o.optString("stopKey"), d.stopKey),
-                claudeEnabled = if (o.has("claudeEnabled")) o.optBoolean("claudeEnabled") else null,
-                claudeRoute = enumValues<ClaudeRoute>().firstOrNull { it.name == o.optString("claudeRoute") },
-                claudeModel = ClaudeModel.of(o.optString("claudeModel", d.claudeModel)).id,
-                claudeEffort = enumOr(o.optString("claudeEffort"), d.claudeEffort),
-                claudeSearch = o.optBoolean("claudeSearch", d.claudeSearch),
-                claudeLocked = o.optBoolean("claudeLocked", d.claudeLocked),
-                claudeVoice = ClaudeVoices.of(o.optString("claudeVoice", d.claudeVoice)),
-                claudeShowCost = o.optBoolean("claudeShowCost", d.claudeShowCost),
-                claudeHelp = enumValues<Escalation>().firstOrNull { it.name == o.optString("claudeHelp") },
-                claudeBudgetCents = o.optInt("claudeBudgetCents", d.claudeBudgetCents).coerceIn(0, 100_000),
+                // Schema 9: the list as saved (an empty one stays empty: you removed every helper); before it, Claude from claude*.
+                helpers = o.optJSONArray("helpers")?.let(HelperConfig::listFromJson) ?: listOf(legacyClaude(o, d)),
+                help = enumValues<Escalation>().firstOrNull { it.name == o.optString(if (o.has("help")) "help" else "claudeHelp") },
+                helpDefault = o.optString("helpDefault").takeIf { it.isNotEmpty() },
+                helperBudgetCents = o.optInt(if (o.has("helperBudgetCents")) "helperBudgetCents" else "claudeBudgetCents", d.helperBudgetCents).coerceIn(0, 100_000),
+                helperShowCost = o.optBoolean(if (o.has("helperShowCost")) "helperShowCost" else "claudeShowCost", d.helperShowCost),
                 weatherHome = o.optJSONObject("weatherHome")?.let(::place),
                 convPair = LangPair.of(o.optString("convPair", d.convPair)).id,
                 convTranslate = o.optBoolean("convTranslate", d.convTranslate),
@@ -428,6 +442,23 @@ data class RobotSettings(
                 nearestOnlineAt = o.optLong("nearestPlaceAt", 0).coerceAtLeast(0),
                 // A file from before schema 6 (0.3.x, early 0.4.0): an update, so the one-time line about Safety & privacy shows.
                 safetyNotice = if (o.optInt("schema", 1) < 6) true else o.optBoolean("safetyNotice", false),
+            )
+        }
+
+        /**
+         * Claude from a file before schema 9 (0.3 to 0.5): its claude* fields, each as that version read it, so the route,
+         * the escalation and the budget come out exactly as before.
+         */
+        private fun legacyClaude(o: JSONObject, d: RobotSettings): HelperConfig {
+            val c = HelperConfig.claude()
+            return c.copy(
+                enabled = if (o.has("claudeEnabled")) o.optBoolean("claudeEnabled") else null,
+                route = enumValues<ClaudeRoute>().firstOrNull { it.name == o.optString("claudeRoute") },
+                model = ClaudeModel.of(o.optString("claudeModel", c.model)).id,
+                effort = enumOr(o.optString("claudeEffort"), c.effort),
+                search = o.optBoolean("claudeSearch", c.search),
+                locked = o.optBoolean("claudeLocked", c.locked),
+                voice = ClaudeVoices.of(o.optString("claudeVoice", c.voice)),
             )
         }
 

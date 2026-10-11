@@ -29,6 +29,7 @@ import app.heyrobot.core.ClaudeBlock
 import app.heyrobot.core.ClaudeCommand
 import app.heyrobot.core.ClaudeContext
 import app.heyrobot.core.ClaudeCost
+import app.heyrobot.core.ClaudeEffortSetting
 import app.heyrobot.core.ClaudeFailure
 import app.heyrobot.core.ClaudeLeftOut
 import app.heyrobot.core.ClaudePayload
@@ -446,7 +447,7 @@ object PanelController {
             draftJpeg = null
         }
         // Claude mode never carries over onto the lock screen unless Claude is allowed there.
-        if (locked && !s.claudeLocked) endClaudeMode()
+        if (locked && !(s.claude?.locked == true)) endClaudeMode()
         _state.update {
             it.copy(locked = locked, screenChip = ScreenChip.HIDDEN, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint, partial = "",
                 showId = it.showId + 1, claudeScreen = false, lockedTools = s.lockedTools, tips = if (returning) it.tips else tips(s, locked))
@@ -583,7 +584,7 @@ object PanelController {
     private fun tips(s: RobotSettings, locked: Boolean): List<Tip> {
         val keySaved = ClaudeLink.keySaved(VoiceHub.app)
         val api = keySaved && ClaudeSettings.route(s, keySaved) == ClaudeRoute.API
-        val claude = ClaudeSettings.enabled(s, keySaved) && (if (locked) api && s.claudeLocked else api || ClaudeAppIntents.installed(VoiceHub.app))
+        val claude = ClaudeSettings.enabled(s, keySaved) && (if (locked) api && (s.claude?.locked == true) else api || ClaudeAppIntents.installed(VoiceHub.app))
         return Tips.pick(Tips.Can(s, locked, claude = claude), tipRound++)
     }
 
@@ -654,7 +655,7 @@ object PanelController {
 
     private fun ChatTurn.toUi() = UiTurn(id, role, text, attachment, keptPicture(picture),
         actions.map { UiAction(newId(), it.tool, it.summary, it.status, it.detail, content = it.content) }, stopped = stopped, error = error,
-        claude = claude, readBack = readBack, sources = sources, cost = costMicros.takeIf { it > 0 && VoiceHub.settings.claudeShowCost }?.let { ClaudeCost.line(it / 1e6) })
+        claude = claude, readBack = readBack, sources = sources, cost = costMicros.takeIf { it > 0 && VoiceHub.settings.helperShowCost }?.let { ClaudeCost.line(it / 1e6) })
 
     /**
      * "Remove saved screenshots and photos" (the main app): the conversation still held here loses its kept thumbnails
@@ -1509,12 +1510,12 @@ object PanelController {
         val id = if (reuseBubble && replyId != null) replyId.also { r -> _state.update { st -> st.copy(claudeStatus = ClaudeWords.CHECKING, turns = st.turns.map { if (it.id == r) it.copy(claude = true) else it }) } }
             else claudeBubble()
         if (_state.value.speak) VoiceHub.tts.speak(ClaudeWords.CHECKING.trimEnd('…') + ".")
-        if (Assistant.locked(app) && !s.claudeLocked) return localReply(id, ClaudeWords.LOCKED, claude = false)
+        if (Assistant.locked(app) && !(s.claude?.locked == true)) return localReply(id, ClaudeWords.LOCKED, claude = false)
         if (!ClaudeLink.networkAllowed(app)) return networkCard(id)
         // The key is decrypted and the client made off the main thread.
         val session = withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = false) } ?: return noKey(id)
         try {
-            runClaude(id, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, ClaudeRouter.deep(question)), ToolRouter.asked(question))
+            runClaude(id, session, blocks, ClaudePlan.of((s.claude?.effort ?: ClaudeEffortSetting.AUTO), voiceAsked, ClaudeRouter.deep(question)), ToolRouter.asked(question))
         } finally {
             ClaudeLink.done(session)
         }
@@ -1551,7 +1552,7 @@ object PanelController {
             return handOff(replyId, question ?: ClaudeAppLink.summary(history).orEmpty())
         }
         if (!keySaved) return localReply(replyId, ClaudeFailure.NO_KEY.text, claude = false)
-        if (Assistant.locked(app) && !s.claudeLocked) {
+        if (Assistant.locked(app) && !(s.claude?.locked == true)) {
             endClaudeMode()
             return localReply(replyId, ClaudeWords.LOCKED, claude = false)
         }
@@ -1602,7 +1603,7 @@ object PanelController {
                 }
                 else -> ClaudeContext.next(question ?: said, shared)
             }
-            runClaude(replyId, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, deep), ToolRouter.asked(said))
+            runClaude(replyId, session, blocks, ClaudePlan.of((s.claude?.effort ?: ClaudeEffortSetting.AUTO), voiceAsked, deep), ToolRouter.asked(said))
         } finally {
             if (!mode) ClaudeLink.done(session)
         }
@@ -1645,7 +1646,7 @@ object PanelController {
 
             override fun spent(dollars: Double) {
                 // Into today's spend as soon as it is known, so a crash mid-answer loses none of it.
-                scope.launch(Dispatchers.IO) { app.heyrobot.sys.ClaudeSpendStore.add(VoiceHub.app, dollars) }
+                scope.launch(Dispatchers.IO) { app.heyrobot.sys.HelperSpendStore.add(VoiceHub.app, app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID, dollars) }
             }
         }
         val claudeTurn = ClaudeTurn(session, blocks, plan, heard)
@@ -1679,7 +1680,7 @@ object PanelController {
         _state.update { st ->
             st.copy(turns = st.turns.map {
                 if (it.id == replyId) it.copy(sources = report.domains.takeIf { report.searches > 0 } ?: emptyList(),
-                    cost = ClaudeCost.line(report.dollars).takeIf { VoiceHub.settings.claudeShowCost && report.requests > 0 }) else it
+                    cost = ClaudeCost.line(report.dollars).takeIf { VoiceHub.settings.helperShowCost && report.requests > 0 }) else it
             })
         }
         // Cut off before it said anything (its thinking used the room): say so rather than leave an empty bubble.
@@ -2112,7 +2113,7 @@ object PanelController {
         val clean = SpeechText.clean(s)
         if (clean.isEmpty()) return
         // Claude's voice per sentence: Kokoro's French voice for a French one, Claude's own otherwise.
-        if (claude) ClaudeVoices.forSentence(VoiceHub.settings.voiceChoice, VoiceHub.settings.claudeVoice, clean).let { (sid, lang) -> VoiceHub.tts.speakOther(clean, sid, lang) }
+        if (claude) ClaudeVoices.forSentence(VoiceHub.settings.voiceChoice, VoiceHub.settings.claude?.voice, clean).let { (sid, lang) -> VoiceHub.tts.speakOther(clean, sid, lang) }
         else VoiceHub.tts.speak(clean)
     }
 

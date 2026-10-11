@@ -10,6 +10,8 @@ import android.net.Uri
 import android.os.PersistableBundle
 import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.ClaudeSpend
+import app.heyrobot.core.helpers.HelperConfig
+import app.heyrobot.core.helpers.HelperSpend
 import app.heyrobot.core.RLog
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
@@ -56,32 +58,40 @@ object ClaudeKeyFiles {
 }
 
 /**
- * Today's spend on Claude: written by the :voice process as each request's usage arrives (so a crash mid-answer loses
- * none of it), shown in Settings. The :voice process keeps its copy in memory once read.
+ * Today's spend on helpers (0.6.0; Claude's alone before): written by the :voice process as each request's usage arrives
+ * (so a crash mid-answer loses none of it), shown in Settings. The :voice process keeps its copy in memory once read.
+ * helpers_spend.json holds the total and each helper's part; without it, 0.4/0.5's claude_spend.json is Claude's spend.
+ * Claude's part is still written to claude_spend.json for one release, so a downgrade keeps today's Claude spend.
  */
-object ClaudeSpendStore {
-    private fun file(ctx: Context) = File(Paths.dir(ctx), "claude_spend.json")
+object HelperSpendStore {
+    private fun file(ctx: Context) = File(Paths.dir(ctx), "helpers_spend.json")
+    private fun legacy(ctx: Context) = File(Paths.dir(ctx), "claude_spend.json")
 
     /** [VOICE] The copy in memory, once read. */
-    @Volatile private var memo: ClaudeSpend? = null
+    @Volatile private var memo: HelperSpend? = null
 
-    /** From the file (Settings, in the main process). Background thread. */
-    fun load(ctx: Context): ClaudeSpend = ClaudeSpend.fromJson(readOrNull(file(ctx)))
+    /** From the files (Settings, in the main process). Background thread. */
+    fun load(ctx: Context): HelperSpend = HelperSpend.fromJson(readOrNull(file(ctx)), readOrNull(legacy(ctx)))
 
-    fun today(ctx: Context): Long = load(ctx).on(LocalDate.now()).micros
+    /** Today's spend on all helpers, and each one's (Settings). */
+    fun today(ctx: Context): HelperSpend = load(ctx).on(LocalDate.now())
 
-    /** [VOICE] Today's spend, from memory, or from the file the first time. Background thread. */
-    fun current(ctx: Context): ClaudeSpend = memo ?: load(ctx).also { memo = it }
+    /** [VOICE] Today's spend, from memory, or from the files the first time. Background thread. */
+    fun current(ctx: Context): HelperSpend = memo ?: load(ctx).also { memo = it }
 
-    /** [VOICE] Null until [current] has read the file. */
-    fun cached(): ClaudeSpend? = memo
+    /** [VOICE] Null until [current] has read the files. */
+    fun cached(): HelperSpend? = memo
 
     /** [VOICE] Background thread. */
     @Synchronized
-    fun add(ctx: Context, dollars: Double): ClaudeSpend {
-        val s = current(ctx).add(LocalDate.now(), dollars)
+    fun add(ctx: Context, helper: String, dollars: Double): HelperSpend {
+        val today = LocalDate.now()
+        val s = current(ctx).add(today, helper, dollars)
         memo = s
-        try { writeAtomic(file(ctx), s.toJson()) } catch (t: Throwable) { RLog.w("claude_spend_save", t) }
+        try {
+            writeAtomic(file(ctx), s.toJson())
+            if (helper == HelperConfig.CLAUDE_ID) writeAtomic(legacy(ctx), ClaudeSpend(s.day, s.of(today, helper)).toJson())
+        } catch (t: Throwable) { RLog.w("helper_spend_save", t) }
         return s
     }
 }

@@ -35,7 +35,7 @@ import app.heyrobot.core.WakeDrop
 import app.heyrobot.core.WakePhrases
 import app.heyrobot.core.enumOr
 import app.heyrobot.core.writeAtomic
-import app.heyrobot.sys.ClaudeSpendStore
+import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.KwsAssets
@@ -135,7 +135,7 @@ object VoiceHub {
         VoiceLog.init(Paths.voiceLog(app))
         worker = Handler(HandlerThread("robot-voice").apply { start() }.looper)
         // Whether a Claude key is saved and today's Claude spend, read off the main thread before the panel needs them.
-        Thread({ ClaudeLink.refresh(app); ClaudeSpendStore.current(app) }, "robot-claude-init").apply { isDaemon = true; start() }
+        Thread({ ClaudeLink.refresh(app); HelperSpendStore.current(app) }, "robot-claude-init").apply { isDaemon = true; start() }
         settings = SettingsStore.load(app)
         VoiceEngines.init(app, Paths.dir(app))
         tts = VoiceEngines.textToSpeech(app).also {

@@ -345,7 +345,7 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
             "with Claude (below). Only text leaves the phone: your voice is turned into text here, and Claude's answer is read by Robot's voices.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
         SwitchRow("Ask Claude", if (keySaved) "Questions for Claude go through your API key." else "Without a key, questions for Claude open the Claude app.",
-            ClaudeSettings.enabled(s, keySaved)) { update(s.copy(claudeEnabled = it)) }
+            ClaudeSettings.enabled(s, keySaved)) { update(s.withClaude { c -> c.copy(enabled = it) }) }
         Text("Use", style = MaterialTheme.typography.titleSmall)
         val route = ClaudeSettings.route(s, keySaved)
         for (r in ClaudeRoute.entries) {
@@ -354,7 +354,7 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
                 r == ClaudeRoute.API && !keySaved -> " Add a key first."
                 else -> ""
             }
-            ChoiceRow(r.title, r.detail + note, route == r) { update(s.copy(claudeRoute = r)) }
+            ChoiceRow(r.title, r.detail + note, route == r) { update(s.withClaude { it.copy(route = r) }) }
         }
         Text("API key", style = MaterialTheme.typography.titleSmall)
         var confirmDelete by remember { mutableStateOf(false) }
@@ -373,27 +373,27 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
             )
         }
         Text("Model", style = MaterialTheme.typography.titleSmall)
-        for (m in ClaudeModel.entries) ChoiceRow(m.title, m.detail, s.claudeModelChoice == m) { update(s.copy(claudeModel = m.id)) }
+        for (m in ClaudeModel.entries) ChoiceRow(m.title, m.detail, s.claudeModelChoice == m) { update(s.withClaude { it.copy(model = m.id) }) }
         Text("How hard Claude thinks", style = MaterialTheme.typography.titleSmall)
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
             ClaudeEffortSetting.entries.forEachIndexed { i, v ->
-                SegmentedButton(selected = s.claudeEffort == v, onClick = { update(s.copy(claudeEffort = v)) },
+                SegmentedButton(selected = s.claude?.effort == v, onClick = { update(s.withClaude { it.copy(effort = v) }) },
                     shape = SegmentedButtonDefaults.itemShape(i, ClaudeEffortSetting.entries.size)) { Text(v.title) }
             }
         }
         Text("Automatic: low for spoken questions (fast), medium for typed ones, high when you ask Claude to “think hard” or “take your time”.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
-        SwitchRow("Let Claude search the web", "Up to 3 searches per question, about 1¢ each. The answer lists the sites.", s.claudeSearch) { update(s.copy(claudeSearch = it)) }
-        SwitchRow("Allow on lock screen", "Off: a locked phone can't show who is asking.", s.claudeLocked) { update(s.copy(claudeLocked = it)) }
+        SwitchRow("Let Claude search the web", "Up to 3 searches per question, about 1¢ each. The answer lists the sites.", s.claude?.search == true) { update(s.withClaude { c -> c.copy(search = it) }) }
+        SwitchRow("Allow on lock screen", "Off: a locked phone can't show who is asking.", s.claude?.locked == true) { update(s.withClaude { c -> c.copy(locked = it) }) }
         Text("Claude's voice", style = MaterialTheme.typography.titleSmall)
-        for ((name, _) in ClaudeVoices.KOKORO) ChoiceRow(ClaudeVoices.title(name), null, ClaudeVoices.of(s.claudeVoice) == name) { update(s.copy(claudeVoice = name)) }
+        for ((name, _) in ClaudeVoices.KOKORO) ChoiceRow(ClaudeVoices.title(name), null, ClaudeVoices.of(s.claude?.voice) == name) { update(s.withClaude { it.copy(voice = name) }) }
         Text("A Kokoro voice, so you hear who is talking. With the Kitten voice Claude uses Kitten's other voice; with the phone's voice, a lower pitch.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
-        SwitchRow("Show cost", "“≈ 1¢” under each Claude reply, estimated from the published prices.", s.claudeShowCost) { update(s.copy(claudeShowCost = it)) }
+        SwitchRow("Show cost", "“≈ 1¢” under each Claude reply, estimated from the published prices.", s.helperShowCost) { update(s.copy(helperShowCost = it)) }
         Text("When Robot needs help", style = MaterialTheme.typography.titleSmall)
         val help = ClaudeSettings.escalation(s, keySaved)
         for (e in Escalation.entries) {
-            ChoiceRow(e.title, e.detail + if (e == Escalation.AUTO && !keySaved) " Needs an API key: until then Robot asks first." else "", help == e) { update(s.copy(claudeHelp = e)) }
+            ChoiceRow(e.title, e.detail + if (e == Escalation.AUTO && !keySaved) " Needs an API key: until then Robot asks first." else "", help == e) { update(s.copy(help = e)) }
         }
         Text(if (s.personalToHelpers) "By itself, Robot sends your question and the last two turns of the conversation, with any screen text, " +
             "photo or what it read (Safety & privacy › Send personal content to helpers automatically is on)."
@@ -403,11 +403,11 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
         Text("Daily budget", style = MaterialTheme.typography.titleSmall)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (c in RobotSettings.CLAUDE_BUDGETS) {
-                FilterChip(selected = s.claudeBudgetCents == c, onClick = { update(s.copy(claudeBudgetCents = c)) },
+                FilterChip(selected = s.helperBudgetCents == c, onClick = { update(s.copy(helperBudgetCents = c)) },
                     label = { Text(ClaudeCost.dollarsText(c * 10_000L).removeSuffix(".00")) }, modifier = Modifier.heightIn(min = 48.dp))
             }
         }
-        Text("Today: ${ClaudeCost.dollarsText(f?.claudeSpendMicros ?: 0)} of ${ClaudeCost.dollarsText(s.claudeBudgetCents * 10_000L)} (an estimate). " +
+        Text("Today: ${ClaudeCost.dollarsText(f?.spend?.total ?: 0)} of ${ClaudeCost.dollarsText(s.helperBudgetCents * 10_000L)} (an estimate). " +
             "Once it's reached, Robot asks before checking with Claude by itself until tomorrow.", style = MaterialTheme.typography.bodyMedium, color = muted)
     }
 }

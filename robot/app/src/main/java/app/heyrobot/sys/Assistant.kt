@@ -58,7 +58,8 @@ data class AssistantFacts(
     val claudeKey: String? = null,
     /** The saved key couldn't be decrypted and was removed: Settings says so. */
     val claudeKeyUnreadable: Boolean = false,
-    val claudeSpendMicros: Long = 0,
+    /** Today's spend on all helpers and each one's (millionths of a dollar). */
+    val spend: app.heyrobot.core.helpers.HelperSpend = app.heyrobot.core.helpers.HelperSpend(""),
     val claudeApp: ClaudeAppFacts = ClaudeAppFacts(installed = false, appLink = false, webLink = false, send = false),
     /** GrapheneOS's per-app Network toggle (INTERNET as a runtime permission). */
     val networkGranted: Boolean = true,
@@ -112,7 +113,7 @@ object Assistant {
             protonInstalled = HandOffApps.proton(ctx),
             claudeKey = ClaudeKeyFiles.masked(ctx),
             claudeKeyUnreadable = ClaudeKeyFiles.unreadable(ctx),
-            claudeSpendMicros = ClaudeSpendStore.today(ctx),
+            spend = HelperSpendStore.today(ctx),
             claudeApp = ClaudeAppIntents.facts(ctx),
             networkGranted = granted(ctx, Manifest.permission.INTERNET),
             secureSettingsGranted = RecognizerKeeper.canWrite(ctx),

@@ -10,7 +10,7 @@ import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.ClaudeKeyFiles
-import app.heyrobot.sys.ClaudeSpendStore
+import app.heyrobot.sys.HelperSpendStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -97,7 +97,7 @@ object ClaudeLink {
     fun session(ctx: Context, s: RobotSettings, conversation: Boolean): ClaudeSession? {
         val h = held(ctx) ?: return null
         h.users++
-        return ClaudeSession(h.client, s.claudeModelChoice, ClaudeTools.tools(s), s.claudeSearch, conversation).also { sessions[it] = h }
+        return ClaudeSession(h.client, s.claudeModelChoice, ClaudeTools.tools(s), (s.claude?.search == true), conversation).also { sessions[it] = h }
     }
 
     /** The panel is done with [session] (a one-shot answered, Claude mode ended). */
@@ -113,8 +113,8 @@ object ClaudeLink {
 
     /** Today's budget is used up. Kept in memory once read (this process is the only writer); the first read is on IO. */
     suspend fun budgetReached(ctx: Context, s: RobotSettings): Boolean {
-        val spend = ClaudeSpendStore.cached() ?: withContext(Dispatchers.IO) { ClaudeSpendStore.current(ctx) }
-        return spend.reached(LocalDate.now(), s.claudeBudgetCents)
+        val spend = HelperSpendStore.cached() ?: withContext(Dispatchers.IO) { HelperSpendStore.current(ctx) }
+        return spend.reached(LocalDate.now(), s.helperBudgetCents, s.claude?.id, s.claude?.budgetCents)
     }
 
     @Volatile private var warmed = false
@@ -126,7 +126,7 @@ object ClaudeLink {
     fun warm(ctx: Context, s: RobotSettings) {
         Thread({
             refresh(ctx)
-            ClaudeSpendStore.current(ctx)
+            HelperSpendStore.current(ctx)
             if (!warmed && saved == true && ClaudeSettings.enabled(s)) {
                 warmed = true
                 ClaudeClient.warm()
