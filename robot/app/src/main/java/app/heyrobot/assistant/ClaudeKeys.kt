@@ -1,13 +1,10 @@
 package app.heyrobot.assistant
 
 import android.app.Activity
-import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
-import android.security.keystore.KeyGenParameterSpec
-import android.security.keystore.KeyProperties
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -40,17 +37,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.ClaudeKeyFormat
-import app.heyrobot.core.RLog
-import app.heyrobot.core.writeAtomic
 import app.heyrobot.sys.ClaudeKeyFiles
+import app.heyrobot.sys.KeystoreSecret
 import app.heyrobot.ui.theme.RobotTheme
-import org.json.JSONObject
-import java.nio.ByteBuffer
-import java.security.KeyStore
-import javax.crypto.Cipher
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
-import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -63,73 +52,26 @@ import kotlinx.coroutines.withContext
 // clipboard if it still holds the key just saved.
 
 object ClaudeKeys {
-    private const val GCM_TAG_BITS = 128
-
     /** Shape of an Anthropic API key, checked before saving (a paste of something else is refused, not stored). */
     fun plausible(k: String): Boolean = ClaudeKeyFormat.plausible(k)
 
     /** "sk-ant-…AB12": shown in Settings. */
     fun mask(k: String): String = ClaudeKeyFormat.mask(k)
 
-    private fun secretKey(): SecretKey {
-        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (ks.getKey(ClaudeKeyFiles.ALIAS, null) as? SecretKey)?.let { return it }
-        val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        gen.init(KeyGenParameterSpec.Builder(ClaudeKeyFiles.ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build())
-        return gen.generateKey()
-    }
-
     /** Encrypts and saves [key]; false (nothing saved) if it can't. Background thread (Keystore and files). */
-    fun save(ctx: Context, key: String): Boolean = try {
-        val c = Cipher.getInstance("AES/GCM/NoPadding")
-        c.init(Cipher.ENCRYPT_MODE, secretKey())
-        val ct = c.doFinal(key.toByteArray(Charsets.UTF_8))
-        val iv = c.iv
-        val out = ByteBuffer.allocate(1 + iv.size + ct.size).put(iv.size.toByte()).put(iv).put(ct).array()
-        val f = ClaudeKeyFiles.secret(ctx)
-        val tmp = java.io.File(f.parentFile, f.name + ".tmp")
-        tmp.writeBytes(out)
-        if (!tmp.renameTo(f)) throw java.io.IOException("rename")
-        writeAtomic(ClaudeKeyFiles.meta(ctx), JSONObject().put("masked", mask(key)).put("saved", System.currentTimeMillis()).toString())
-        RLog.i("claude_key", "op" to RLog.Code("saved"))
-        true
-    } catch (t: Throwable) {
-        RLog.w("claude_key_save", t)
-        false
-    }
+    fun save(ctx: Context, key: String): Boolean = ClaudeKeyFiles.store.save(ctx, key, mask(key))
 
     /** The key, or null (none saved, or the Keystore key is gone: then [forget] removes it and you paste it again). */
-    fun read(ctx: Context): String? {
-        val f = ClaudeKeyFiles.secret(ctx)
-        if (!f.isFile) return null
-        return try {
-            val b = ByteBuffer.wrap(f.readBytes())
-            val iv = ByteArray(b.get().toInt()).also { b.get(it) }
-            val ct = ByteArray(b.remaining()).also { b.get(it) }
-            val c = Cipher.getInstance("AES/GCM/NoPadding")
-            c.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(GCM_TAG_BITS, iv))
-            String(c.doFinal(ct), Charsets.UTF_8)
-        } catch (t: Throwable) {
-            RLog.w("claude_key_read", t)
-            null
-        }
-    }
+    fun read(ctx: Context): String? = ClaudeKeyFiles.store.read(ctx)
 
     /**
      * A key that can't be decrypted any more reads as no key: its files and the Keystore entry go, and the note left
      * behind lets Settings say why.
      */
-    fun forget(ctx: Context) {
-        ClaudeKeyFiles.delete(ctx)
-        try { writeAtomic(ClaudeKeyFiles.meta(ctx), JSONObject().put("unreadable", true).toString()) } catch (t: Throwable) { RLog.w("claude_key_forget", t) }
-    }
+    fun forget(ctx: Context) = ClaudeKeyFiles.store.forget(ctx)
 
     /** Changes when the key file does: a cached client is rebuilt (or dropped) on the next turn. */
-    fun stamp(ctx: Context): Long = ClaudeKeyFiles.secret(ctx).let { if (it.isFile) it.lastModified() xor it.length() else 0L }
+    fun stamp(ctx: Context): Long = ClaudeKeyFiles.store.stamp(ctx)
 }
 
 /**
@@ -180,7 +122,7 @@ class ClaudeKeyActivity : ComponentActivity() {
                                         problem = "The key couldn't be saved on this phone."
                                         return@launch
                                     }
-                                    clearClipboard(k)
+                                    KeystoreSecret.clearClipboard(this@ClaudeKeyActivity, k)
                                     key = ""
                                     setResult(Activity.RESULT_OK)
                                     finish()
@@ -194,16 +136,5 @@ class ClaudeKeyActivity : ComponentActivity() {
         }
         // Compose's own autofill bridge too (the field is a password field).
         findViewById<android.view.ViewGroup>(android.R.id.content)?.getChildAt(0)?.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
-    }
-
-    /** The key was pasted: if the clipboard still holds exactly it, it is cleared (this window has focus, so it may read it). */
-    private fun clearClipboard(key: String) {
-        try {
-            val cm = getSystemService(ClipboardManager::class.java) ?: return
-            val clip = cm.primaryClip ?: return
-            if (clip.itemCount > 0 && clip.getItemAt(0).coerceToText(this)?.toString()?.trim() == key) cm.clearPrimaryClip()
-        } catch (t: Throwable) {
-            RLog.w("claude_key_clip", t)
-        }
     }
 }

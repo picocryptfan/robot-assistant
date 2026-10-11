@@ -13,9 +13,7 @@ import app.heyrobot.core.ClaudeSpend
 import app.heyrobot.core.RLog
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
-import org.json.JSONObject
 import java.io.File
-import java.security.KeyStore
 import java.time.LocalDate
 
 // Main and voice processes. Ask Claude's files and the Claude app's intents, without the API key: the key is encrypted
@@ -26,33 +24,26 @@ object ClaudeKeyFiles {
     /** The Android Keystore key that encrypts the API key (AES-GCM, not exportable). */
     const val ALIAS = "robot_claude_api_key"
 
+    /** The key's files and Keystore entry (sys/KeystoreSecret.kt, which the updater's token shares). */
+    val store = KeystoreSecret(ALIAS, "claude_key", "claude_key")
+
     /** IV and ciphertext, written and read only by the :voice process. */
-    fun secret(ctx: Context) = File(Paths.dir(ctx), "claude_key.bin")
+    fun secret(ctx: Context) = store.secret(ctx)
     /** Not secret: the masked form ("sk-ant-…AB12") and when it was saved, for Settings. */
-    fun meta(ctx: Context) = File(Paths.dir(ctx), "claude_key.json")
+    fun meta(ctx: Context) = store.meta(ctx)
 
-    fun saved(ctx: Context): Boolean = secret(ctx).isFile
+    fun saved(ctx: Context): Boolean = store.saved(ctx)
 
-    fun masked(ctx: Context): String? = if (!saved(ctx)) null else
-        readOrNull(meta(ctx))?.let { try { JSONObject(it).optString("masked").takeIf { m -> m.isNotEmpty() } } catch (_: Exception) { null } } ?: "Saved"
+    fun masked(ctx: Context): String? = store.masked(ctx)
 
     /** A saved key couldn't be decrypted and was removed (Settings says so until a new key is saved). */
-    fun unreadable(ctx: Context): Boolean = !saved(ctx) &&
-        (readOrNull(meta(ctx))?.let { try { JSONObject(it).optBoolean("unreadable") } catch (_: Exception) { false } } ?: false)
+    fun unreadable(ctx: Context): Boolean = store.unreadable(ctx)
 
     /**
      * "Delete key" (background thread): the files and the Keystore key go. The caller then tells the voice process
      * ([Cmd.CLAUDE_KEY]), which drops its client.
      */
-    fun delete(ctx: Context) {
-        secret(ctx).delete()
-        meta(ctx).delete()
-        try {
-            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(ALIAS)
-        } catch (t: Throwable) {
-            RLog.w("claude_key_delete", t)
-        }
-    }
+    fun delete(ctx: Context) = store.delete(ctx)
 }
 
 /**
