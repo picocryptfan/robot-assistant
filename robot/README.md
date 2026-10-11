@@ -5,7 +5,7 @@ screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or s
 TPU answers, streams the reply and reads it aloud. Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
 Mail), keeps and finds notes, reads and adds calendar events and looks up contacts. Everything runs on the phone.
 Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) and your phone's storage, battery and
-memory.
+memory, and helps free memory and storage.
 Since 0.3.0, and only when you ask (or let it), Robot can hand a question to Claude: through the Claude API with your
 key, or by opening the Claude app (see "Ask Claude" below). The build specs are `../docs/phase-1.md`,
 `../docs/phase-2.md` and `../docs/ask-claude.md`; the voice models and how they are used, `../docs/voice-plan.md`.
@@ -63,17 +63,20 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
-## Weather and phone status (0.4.0)
+## Weather, phone status and freeing space (0.4.0)
 
-Two read-only tools, so Robot can say whether tomorrow will be cloudy and help you free up storage. Both are "Just do
-it" by default, each with its own row in Settings › Actions, and both need the phone unlocked: the lock screen still
-allows only questions, timers and alarms. Their findings are content Robot didn't write, so later actions in that
-conversation ask first, and they make the conversation personal for Claude (below).
+Four tools, so Robot can say whether tomorrow will be cloudy and help you free up storage and memory. The two that read
+are "Just do it" by default; the two that unload, stop or delete something ask first. Each has its own row in Settings ›
+Actions, and all four need the phone unlocked: the lock screen still allows only questions, timers and alarms. What the
+reading ones find is content Robot didn't write, so later actions in that conversation ask first, and it makes the
+conversation personal for Claude (below).
 
 | Tool | Does | Default |
 |---|---|---|
 | `weather` (place, day; both optional) | Open-Meteo's forecast for a town you name, your Home for weather, or where the phone is: one line per day | Just do it (uses the internet) |
 | `phone_status` (about: storage, battery, memory or all) | Free and total storage, battery, memory, and with Usage access the apps using the most space and the size of photos, videos and audio, read on the phone | Just do it |
+| `free_memory` (app, optional) | Unloads Robot's own model (about 2 GB) once the answer ends, or opens the named app's App info, where you tap Force stop | Ask first |
+| `free_storage` (what: android, apps, files or robot) | Android's Free up space screen, an app's App info to clear its cache, a large photo or video deleted through Android's own confirmation, or Robot's cache | Ask first |
 
 ### Weather
 
@@ -139,9 +142,90 @@ up, stockage, batterie, mémoire, libérer…) the system prompt says "For this 
 phone_status first, then give practical advice from its numbers." It is personal for Claude ("your phone's status") and
 not offered to Claude.
 
-The two schemas cost about 140 and 110 tokens (estimated on the high side), only in conversations that use them.
-PACKAGE_USAGE_STATS and ACCESS_COARSE_LOCATION are the only new permissions (`ProcessIsolationTest` and
-`tools/verify_apk.sh` check the list; INTERNET is still the only network permission).
+### Freeing memory and storage
+
+What Android 14 and later let an app do, and no more. Both actions ask first by default, and picking a file to delete
+always shows a card, whatever the level.
+
+- **Memory.** `free_memory` with no app unloads Robot's own model, its biggest lever (about 2 GB): the same release as
+  Settings › Model memory's timer, but at once, as soon as the answer that asked for it has ended (Gemma is still
+  writing that answer when the action runs). The card then says what Android reports came back ("Freed about 2.1 GB: 6.3
+  GB of memory available now."); the model loads again, in about 2 seconds, for the next question. Robot can't stop
+  other apps: since Android 14 `killBackgroundProcesses` only reaches the caller's own processes, and
+  `getRunningAppProcesses` lists only Robot's, so Robot doesn't declare KILL_BACKGROUND_PROCESSES. For an app you name
+  ("stop YouTube") it opens that app's App info, where you tap Force stop (never Robot itself). With Usage access the
+  model also hears which apps were used in the last two hours, so it can suggest one; never the app you are in, Robot,
+  the keyboard, the home screen, messaging apps (Cheogram, Signal, Molly, the SMS app…) or clock apps (stopping one can
+  cancel its alarms). The model is told plainly that Android frees memory by itself when it needs it and that a stopped
+  app may start again: it helps most when one app misbehaves.
+- **Storage.** `free_storage` opens Android's own "Free up space" screen (`StorageManager.ACTION_MANAGE_STORAGE`, else
+  storage settings) by default. "apps" (with Usage access) lists the five apps using the most space, Robot aside (its App
+  info's Clear storage would delete its models), with their cache: tap one and its App info opens, to clear its cache.
+  "files" (with the photos and videos permission) lists your five largest photos and videos (MediaStore: name, size,
+  date): tap one and Android's own confirmation (`MediaStore.createDeleteRequest`, started by a small activity in
+  `:voice`, `MediaDeleteActivity`) asks "Allow Robot to delete this video?"; only Allow deletes it. Android 14's "Select
+  photos" works too: Robot then sees only the ones you picked. "robot" clears Robot's own cache (its models, notes,
+  history and settings are never touched) and says how much.
+- **Not done: clearing every app's cache.** `StorageManager.ACTION_CLEAR_APP_CACHE` needs All files access
+  (MANAGE_EXTERNAL_STORAGE), which would let Robot read and change every file in shared storage. That is far more than a
+  private assistant should hold for caches that Android clears by itself when space runs low, and GrapheneOS's Storage
+  Scopes exist so apps don't need it. Robot doesn't declare it; App info clears one app's cache.
+- **Privacy.** A file's name is on its card button only: the card's saved line is "Delete a video (1.2 GB, Mar 1,
+  2026)", the model is never told a name, and nothing about files reaches the logs (`media_delete deleted=true` only)
+  or Claude. The photos and videos permission (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED) is
+  asked for by the main app only, from Assistant setup › Weather and phone status or a card's Allow.
+
+The four schemas cost about 140 tokens for the weather and under 400 for the phone group (estimated on the high side),
+only in conversations that use them; "free up space" no longer brings in the calendar's tools ("free" stays a calendar
+word in "am I free tomorrow"). The new permissions are ACCESS_COARSE_LOCATION, PACKAGE_USAGE_STATS and the three photo
+and video ones (`ProcessIsolationTest` and `tools/verify_apk.sh` check the list, and that there is no fine location,
+All files access, READ_EXTERNAL_STORAGE or KILL_BACKGROUND_PROCESSES; INTERNET is still the only network permission).
+
+### On the phone (0.4.0)
+
+1. Settings › Actions: "Weather lookups" (marked "uses the internet") and "Phone status checks" on Just do it, "Memory
+   clean-ups" and "Storage clean-ups" on Ask first.
+2. With no Home for weather and location not allowed: "Hey robot, what's the cloud cover tomorrow?" The card says to
+   allow location or set a Home, with **Allow**; tap it: the Robot app opens Assistant setup, "Weather and phone status"
+   under People. Allow location: Android's dialog offers approximate location only.
+3. Ask again, spoken: the answer gives tomorrow's cloud cover (and the card body the day's line and "Sent to
+   Open-Meteo: 45.51, -73.59", two decimals). Note the time to the answer, indoors and outdoors. Settings › Voice › Voice
+   log: "Weather from Open-Meteo for a new location fix (or the last known location) · place found in … ms · forecast in …
+   ms", no place.
+4. Turn Location off in quick settings: "what's the weather here?" says location is off. Settings › Weather › Home for
+   weather: "Montreal", Look up: it shows "Montreal, Quebec, Canada" and its coordinates. Ask again: "Robot couldn't tell
+   where you are: forecast for your Home for weather". "What's the weather at home on Friday?" uses it too. Location back on.
+5. "Will it rain in Paris this weekend?" (Paris, France), "weather in Paris, Texas tomorrow" (Texas), "quelle est la
+   météo demain à Québec", "is it going to snow next week" (at most 7 days), "what was the weather yesterday" (refused:
+   forecasts only).
+6. Settings › People, notes and calendar › Phone region "US": "weather tomorrow" in °F, mph and inches. Clear it again.
+7. Lock the phone: "Hey robot, what's the weather tomorrow?": "Unlock your phone, then ask again."
+8. Wi-Fi and mobile data off: "No internet: Robot couldn't reach Open-Meteo". Then Robot's Network toggle off (data
+   back on): "Robot isn't allowed to use the network…".
+9. With Ask Claude on Automatic and a key: "what's the forecast for tomorrow" stays with Robot (no "Checking with
+   Claude…"); "Okay, cloud cover tomorrow?" never starts Claude mode. Set Weather lookups to Off: the same question goes
+   to Claude (or is offered). Back to Just do it.
+10. After a weather answer, "go get Claude" and a question: "Include the conversation so far? It contains your
+    location." Start fresh. `adb logcat -s Robot | grep -iE "weather|tool_run"`: codes and times only.
+11. "How do I free up storage?": the phone status card (storage and "Largest apps: unknown…") with **Turn on Usage
+    access**: it opens Android's Usage access page (Robot's own switch, or the list); turn it on. Ask again: the largest
+    apps and the photo and video sizes, and **Open storage settings**. Note whether the advice is sensible.
+12. "How's my battery?" (only the battery: charging or not, minutes to full while charging, temperature) and "how much
+    memory is free?" (with "Robot's own model holds about 2 GB while loaded").
+13. "Free up memory": the card "Unload Robot's model to free about 2 GB of memory" with **Unload**; tap it. Robot answers,
+    then the card's line becomes "Freed about … GB: … GB of memory available now." Note the numbers. The next question
+    takes about 2 s longer (the model loads again).
+14. "Stop YouTube" (or any installed app): the card "Open YouTube's App info to force stop it"; Open App info shows that
+    page. "Stop Robot" is refused. With Usage access, "free up memory" from inside an app: the model may name recent
+    apps, never that app, the keyboard, the home screen, Cheogram, Signal or the Clock.
+15. "Free up storage" with what Android offers: note which screen "Open Android's Free up space screen" opens on
+    GrapheneOS. "Clear Robot's cache": the card shows its size; Clear says how much was cleared.
+16. "Which apps can I clear the cache of?": a card with five apps and their sizes (not Robot); tap one: its App info.
+17. Assistant setup › Photos and videos › Allow, choose "Select photos" and pick two large videos. "Delete my largest
+    videos": the card lists only those; tap one: Android asks "Allow Robot to delete this video?"; Deny once (nothing is
+    deleted), then Allow (it's gone from Files and the gallery). Allow again with all photos: five largest. History shows
+    "Delete a video (… GB, …)" without the file's name; `adb logcat -s Robot | grep media_delete` shows only
+    `deleted=true` or `false`.
 
 ## Ask Claude (0.3.0)
 
