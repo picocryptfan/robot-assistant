@@ -639,8 +639,8 @@ Assistant setup as Android-style pages (next section). (c) the assistant panel a
   for the explanations. `ui/common/Cards.kt` has a standard card with list-style rows for the panel's cards. The older
   `SectionCard`, `StatusRow` and `NavRow` are restyled in place, so the screens not yet rebuilt already look closer.
 - **Classic look** (Settings › Display, off by default): brings back Robot 0.4's assistant panel (the round robot orb,
-  chat bubbles, the pill text box and round mic) and its type, for whoever prefers it. Until step (c) the panel is
-  still 0.4's in both looks, and the switch changes the type only. Settings and the other screens are standard in
+  chat bubbles, the pill text box and round mic) and its type, for whoever prefers it: since step (c) (below) the
+  panel and History's conversations are 0.6.0's exactly in it. Settings and the other screens are standard in
   both, and the icons are Material Symbols in both. Colours are a separate switch (Classic with wallpaper colours is 0.4.3 exactly). It may be removed after a
   release or two.
 - **Storage**: the two switches are in `files/robot/look.json` (`core/Look.kt`, `sys/LookStore.kt`), not in
@@ -780,6 +780,177 @@ colours" on for all of them unless a step says otherwise.
 - With them: **Back.** Settings › Voice › Barge-in test, then Back twice: Voice, then Settings. Assistant setup › Fix,
   then Back: Assistant setup. Rotate the phone on Settings › Helpers › Claude: the same page stays, and Back still goes
   to Helpers.
+
+### Step (c): the assistant panel
+
+The panel is now drawn like a system bottom sheet, not a chat app. One panel serves both looks: its state, focus,
+keyboard, drag and sending are shared (`assistant/PanelUi.kt`), and only the leaves differ by the look, the standard ones
+in `assistant/PanelParts.kt`, `ui/common/Transcript.kt` and `ui/common/Chat.kt`, the Classic ones in
+`ui/classic/ClassicPanel.kt`. The parts ask `PanelActions` (`assistant/PanelActions.kt`) for everything they do; on screen
+it goes to PanelController as before, which this step doesn't change.
+
+- **The sheet**: Material's modal sheet, a 32 % scrim (tap it to close, as before), `surfaceContainerLow` with no tonal
+  tint, at most 640 dp wide and centred (landscape, foldables). The handle is Material's (32 x 4 dp in a 48 dp row), and
+  TalkBack and Switch Access close the panel with it ("Drag handle, double tap to close"). **Unchanged**: the keyboard
+  padding (`keyboardPad()`, core `KeyboardPad.bottom`, the slide read from the window's position), "resize" for the
+  keyboard, the sheet's height (88 % of what the slide leaves) and drag to close: the 0.4.2 keyboard fix, as confirmed on
+  the phone.
+- **The header**: "Robot" and a one-line status under it, with a symbol only when it means something, read once by
+  TalkBack each time it changes (a polite live region): "On this phone", "Locked: …" (lock), "Talking with Claude:
+  questions go online" (cloud, or a house for your server), "Listening…" (mic), "Transcribing…", "Working…", "Loading the
+  model…", "Waiting for Claude…", "Answering…" or "Claude is answering…", "Confirm or cancel below", "Say yes or no"
+  (mic), "Reading aloud · tap to stop" (speaker). A thin progress bar under the header only while speech is written
+  down, Robot works or the model loads; nothing pulses. Then Keep, **Speak replies** (a toggle: TalkBack says "checked"
+  or "not checked"), New conversation and Close, all 48 dp.
+- **The conversation** is a transcript: your words as a quieter line (TalkBack: "You: …", a heading, so the headings
+  menu jumps from exchange to exchange), Robot's answer as plain text you can select and copy (long press), a helper's
+  answer under its name (cloud; a house for your server; "Claude, from the Claude app") with its search and cost lines, an
+  error after an error symbol. No typing dots and no caret: the text grows and the header says what is happening. A kept
+  photo or screen is a small thumbnail, the kept screen text opens with "Show all" and closes with "Show less".
+- **Cards** are standard cards: a first row like a list item (the tool's symbol or the app's icon, what it does, its state;
+  a check whose label is the state when done, a lock when the phone must be unlocked), the picture it would send, the
+  message in an inset (about 8 lines, then it scrolls inside), then the people or numbers as 56 dp rows with "Always use
+  this for “mom”" above them, and Cancel and **Do it** (or the card's own words: "Open in Cheogram for Mom", Include and
+  Start fresh, Send) at the end, then Undo, Open Cheogram, Allow or Allow contacts. The message now comes before the
+  choices and buttons, so TalkBack reads summary, state, message, choices, buttons. The offer under a reply reads "Ask
+  Claude?" or "Also ask Jarvis?", "Sends: your question.", Not now and Send ("Ask in the Claude app?" and Open Claude
+  without a key). Conversation mode's lines and cards ("Transcribing. …", Include and Start fresh) and the helpers'
+  answers use these same parts, in both looks.
+- **Notices** are neutral rows (an info symbol, the text, their button, Dismiss); the missing model keeps the error
+  colour. A helper's conversation shows "Back to Robot" under the header.
+- **Empty panel**: "Type a question or tap the microphone." (and "The screen button adds what's on screen." when it
+  came), the tips as one-line chips in a row that scrolls; tapping one does what it did.
+- **Listening**: no pulsing row; the words so far as your line at the bottom of the conversation, and the text field
+  says "Listening…" ("Listening: yes or no?" for a card).
+- **The input row**: the camera button opens a menu, "Take a photo" and "Choose a photo" (both off on the lock screen,
+  which says why); the screen button is dimmed when the screen didn't come and a tap says why (no dot; TalkBack reads the
+  reason as its state); a standard text field ("Type a question", "Type yes or no", "Ask about the photo", "Ask about
+  this screen"); and one floating action button (16 dp corners) whose job follows the state:
+
+  | When | Button | It does |
+  |---|---|---|
+  | Nothing typed | mic, **Talk** | tap: listen until you stop; hold: push to talk, ends on release |
+  | Text typed, or a photo or the screen attached | **Send** | sends |
+  | Listening or transcribing | stop in a circle, **Stop listening** (primary colour, state "Listening") | ends listening |
+  | Robot works on the answer or writes it | stop, **Stop answer** | Stop, as before |
+  | Robot reads its reply aloud | stop, **Stop reading aloud** | quiets the voice (and ends a reply still being written) |
+  | A card waits | mic, **Answer by voice**, with a **Cancel** button (Stop) left of it | listens for yes or no |
+
+  One button in every state, so a hold that starts listening ends on release even though the button became "Stop
+  listening" under the finger. The voice-input tooltip ("Download voice models") shows when the panel opens and on
+  each press, as before.
+- **Unchanged**: tapping the conversation, volume down, "stop" and TalkBack's "Stop speaking" action on the conversation
+  stop Robot (and end a reply still being written, 0.4.6); the screen stays on while Robot answers; the field is cleared
+  only when the question was taken; a waiting card hides the keyboard; the drag, the handle area and the scrim close the
+  panel.
+- **Classic look**: the 0.6.0 panel, exactly: the round orb and its words ("On this phone, private", "Thinking…"),
+  "Ask me anything." and the three two-line chips, bubbles, typing dots and the caret, the tonal cards with tonal choice
+  buttons and an outlined Cancel, "Want me to check with Claude?" with No thanks, the tertiary notices, the pill "Ask
+  Robot…" field, the round mic and stop buttons, the Camera and Photos row, the 36 % scrim and the full width. It is a
+  frozen copy (`ui/classic/`): new kinds of cards or notices are drawn by the standard parts in both looks.
+- **History › a conversation** shows the same transcript (bubbles in the Classic look), and its Continue button is named
+  for TalkBack (Material hides an extended button's text from it; the same is true of Notes' "New note" and Transcripts'
+  "Transcribe", left for step (d)).
+- **Tests**: `PanelLookTest` (both looks: no orb or bubble in the standard one and both in Classic, every control named,
+  48 dp and not overlapping, the same taps asking for the same actions, conversation mode's and the helpers' turns, the
+  look switch redrawing the panel), `PanelStatusTest` (each phase's words and symbol, the live region, the progress bar
+  only while working), `MicFabTest` (the table above, TalkBack's action, push to talk, the hold surviving the change to
+  Stop listening), `ActionCardTest` (56 dp rows, Cancel and Do it, the done card's label, History's cards without buttons,
+  200 % text), `TranscriptTest` (the "You: …" heading, copying Robot's answer, a helper's name, no caret, the screen text,
+  the offer, History in both looks). Screenshots: `panel_idle`, `panel_listening`, `panel_thinking`,
+  `panel_answer_card`, `panel_done_card`, `panel_helper_offer`, `panel_dark`, `panel_font200`, `panel_classic_idle`,
+  `panel_classic_listening`, `panel_classic_answer_card`, `panel_classic_helper_offer`, `action_cards_light`,
+  `action_cards_font200`, `history_conversation`, `history_conversation_classic`.
+
+### On the phone (the look, step c: the panel)
+
+Not yet checked: the design document's phone checks P-5 to P-10, P-12 and P-13 (section 6). Classic look off and wallpaper
+colours on unless a step says otherwise.
+
+**P-5 TalkBack in the panel**
+
+1. Turn TalkBack on. Corner swipe to open the panel with no conversation. Swipe right from the top: "Drag handle,
+   double tap to close", "Robot", "On this phone", (Keep only after a question in a conversation that isn't saved),
+   "Speak replies, checked" (or "not checked"), "New conversation", "Close", the empty panel's line and tips, "Add a
+   photo", (the screen button: "Ask about this screen" and its state), "Type a question, edit box", "Talk".
+2. Double tap "Speak replies": TalkBack says the new state; double tap again to put it back.
+3. Double tap "Talk" and ask "what's two plus two". TalkBack says "Listening…" once, then "Transcribing…", "Working…"
+   and "Answering…" once each, never the words as they are heard.
+4. Swipe to the conversation: "You: what's two plus two, heading", then the answer. Choose Headings in TalkBack's
+   reading controls and swipe down: it jumps from question to question.
+5. Ask for a long story with Speak replies on. While it is read, open TalkBack's actions on the conversation: "Stop
+   speaking" stops the voice and the writing.
+6. Swipe back to the drag handle and double tap: the panel closes.
+7. TalkBack off: long press Robot's answer: the selection handles and Copy appear; paste it into another app.
+
+**P-6 Voice Access**
+
+1. Turn Voice Access on and open the panel. Say "Tap Talk": Robot listens; ask something.
+2. Say "Tap Type a question", dictate a question, say "Tap Send": it is sent.
+3. "Text mom I'm running late" (one number for Mom): "Tap Do it" opens the draft; again, "Tap Cancel" cancels the card.
+
+**P-7 Lock screen**
+
+1. Lock the phone and open the panel there (corner swipe or "hey robot"). The status line has the lock symbol and
+   "Locked: …" with what works; the empty panel's line is the lock screen's.
+2. Tap the camera button: "Take a photo" and "Choose a photo" are greyed, with "Unlock to use the camera or photos" under
+   them. Tap outside the menu to close it.
+3. "Set a timer for 1 minute": the timer is set and its card shows the check and "Done".
+
+**P-8 The keyboard still sits right on the box** (the 0.4.2 fix)
+
+1. Open the panel and tap the text field: the keyboard opens and the field sits right on it, no gap and nothing
+   hidden; the header is still in view.
+2. Type four lines: the field grows (up to five lines) and stays on the keyboard.
+3. Rotate to landscape with the keyboard up, then back to portrait: the field is on the keyboard each time.
+4. Settings › Voice › Voice log: the keyboard line (its height, the slide and the padding) reads as it did in 0.6.0.
+5. Close the keyboard. Drag the handle down a little and let go: the panel springs back. Drag it down further: the panel
+   closes. Tap the dimmed app above the panel: it closes too.
+6. Keyboard up, type "text mom I'm running late" and send: the card appears and the keyboard goes away.
+7. With font and display size at their largest: the field and the button are usable with the keyboard up, nothing
+   overlaps in the header (the title shortens first).
+
+**P-9 A card from start to end**
+
+1. Give Mom two numbers. "Text mom I'm running late": the card reads "Text Mom in Cheogram", "Which one?", the message,
+   "Always use this for “mom”" above the rows "Mom · mobile" and "Mom · work", and Cancel at the end. The status line says
+   "Confirm or cancel below"; the main button is "Answer by voice" with Cancel left of it.
+2. Tick "Always use this for “mom”", tap "Mom · mobile": Cheogram opens the draft for that number. Next time, "text mom
+   hello" goes to that number without asking which.
+3. With one number: Cancel and "Open in Cheogram for Mom". With "Answer cards by voice" on, when Robot says "Say yes or
+   no", say "yes": the draft opens (the status line said "Say yes or no" with the mic while listening). Again and say
+   "no": the card says Cancelled.
+4. Again and tap the Cancel button left of the main button: the card is declined.
+5. With TalkBack: the card reads summary, state, message, choices, then the buttons.
+6. A 20-line message: about 8 lines show and the rest scrolls inside the card; the choices and buttons follow right under
+   it.
+7. "Note: buy coffee filters": the card's check reads "Done" (or "Saved") to TalkBack, and Undo works.
+
+**P-10 Classic look brings back the old panel exactly**
+
+1. Settings › Display › Classic look on. Open the panel: next to `Robot-0.4.3.apk` (or 0.6.0) screenshots it is the
+   same: the round robot orb (pulsing while it works), "On this phone, private", "Ask me anything." and three two-line
+   chips, the pill "Ask Robot…" field, the round mic.
+2. Ask by voice: the pulsing mic row with "Done"; then bubbles, typing dots and the caret while it writes.
+3. "Text mom I'm running late": the tonal card with tonal choice buttons and an outlined Cancel; "Want me to check with
+   Claude?" with No thanks on an offer; notices in the tertiary colour; the Camera and Photos row under the camera button.
+4. "Transcribe this conversation" and a helper's answer ("ask Claude why the sky is blue"): they show and work as in 0.6.0.
+5. History › a conversation: bubbles.
+6. Classic look off: the next panel is the standard one again, and History's conversation a transcript.
+
+**P-12 Notifications** (nothing in step (c) changes them; this records them for step (d))
+
+1. Restart the phone with Robot as the assistant: the restart notice's status-bar icon is legible, its actions are verbs,
+   and no action does what tapping the notification does.
+2. Start transcribing a conversation: the same for its notification; lock the phone: the lock-screen version shows no
+   words of the conversation. Note anything that isn't so.
+
+**P-13 Landscape**
+
+1. Rotate to landscape and open the panel: it is at most 640 dp wide (about two thirds of the Pixel's width), centred,
+   with the dimmed app on both sides; tapping either side closes it.
+2. Have a conversation of a few questions: the transcript scrolls and follows the newest answer; the text field and the
+   main button are reachable; the keyboard sits on the field (P-8, step 3).
 
 ## Licences, the search server and the model terms (0.4.5)
 

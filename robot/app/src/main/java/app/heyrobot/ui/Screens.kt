@@ -50,14 +50,17 @@ import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.ClaudeCost
 import app.heyrobot.core.StoredConversation
+import app.heyrobot.core.Attachment
 import app.heyrobot.core.TurnRole
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceModelLogic
 import app.heyrobot.ui.common.ActionView
-import app.heyrobot.ui.common.AssistantBubble
 import app.heyrobot.ui.common.RIcons
-import app.heyrobot.ui.common.UserBubble
+import app.heyrobot.ui.common.TurnActions
+import app.heyrobot.ui.common.TurnUi
+import app.heyrobot.ui.common.TurnView
 import app.heyrobot.ui.common.keptPicture
+import app.heyrobot.ui.common.transcriptGap
 import app.heyrobot.ui.common.claudeFooter
 
 // MAIN PROCESS. Home, history and one saved conversation.
@@ -245,7 +248,8 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
         floatingActionButton = {
             if (c != null) ExtendedFloatingActionButton(
                 onClick = { a.talk(c.id) },
-                icon = { Icon(RIcons.Mic, null) },
+                // Material hides the button's text from TalkBack (it can collapse to the icon), so the icon carries the name.
+                icon = { Icon(RIcons.Mic, "Continue") },
                 text = { Text("Continue") },
             )
         },
@@ -258,7 +262,7 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
         LazyColumn(
             Modifier.fillMaxSize().padding(pad),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(transcriptGap()),
         ) {
             item {
                 Text(DateUtils.formatDateTime(ctx, c.created, DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME),
@@ -266,15 +270,15 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                     modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
             }
             items(c.turns, key = { it.id }) { t ->
-                if (t.role == TurnRole.USER) {
-                    // A picture and screen text kept with it ("Keep screenshots and photos in history"); usually neither.
-                    val pic = remember(t.id, t.picture) { keptPicture(t.picture) }
-                    UserBubble(t.text, t.attachment, pic, screenText = t.screenText)
-                }
-                else AssistantBubble(t.text, streaming = false, stopped = t.stopped, error = t.error,
+                val user = t.role == TurnRole.USER
+                // A picture and screen text kept with it ("Keep screenshots and photos in history"); usually neither.
+                val pic = remember(t.id, t.picture) { if (user) keptPicture(t.picture) else null }
+                // The panel's look: a transcript, or the Classic look's bubbles. No buttons on the cards here.
+                TurnView(TurnUi(t.id, user, t.text, attachment = if (user) t.attachment else Attachment.NONE, thumb = pic, screenText = t.screenText,
                     actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
-                    claude = t.claude, readBack = t.readBack, by = t.by, home = t.home,
-                    footer = claudeFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { ClaudeCost.line(it / 1e6) }, t.by))
+                    stopped = t.stopped, error = t.error, helper = t.claude, readBack = t.readBack, by = t.by, home = t.home,
+                    footer = if (user) emptyList() else claudeFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { ClaudeCost.line(it / 1e6) }, t.by)),
+                    TurnActions.None, startsExchange = user && t.id != c.turns.first().id)
             }
         }
     }
