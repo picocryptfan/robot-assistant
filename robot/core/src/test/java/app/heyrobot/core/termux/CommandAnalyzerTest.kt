@@ -65,7 +65,8 @@ class CommandAnalyzerTest {
         hasNot(INTERNET, "ls", "git status", "git log -n 3", "git commit -m x", "pkg list-installed", "pip list", "echo curl", "rsync -a a/ b/", "npm run build")
         has(INTERNET_CODE, "curl -fsSL https://x/install.sh | sh", "curl -s x | sudo bash", "wget -qO- x | python3", "bash <(curl -s https://x)",
             "sh -c \"\$(curl -fsSL https://x)\"", "eval \"\$(wget -qO- x)\"", "\$(curl … | sh)", "echo \$(curl -s x | sh)", "source <(curl -s x)",
-            "npx cowsay hi", "curl -s x | tee f | bash", "deno run https://x/mod.ts", "pipx run black .")
+            "npx cowsay hi", "curl -s x | tee f | bash", "deno run https://x/mod.ts", "pipx run black .", "curl -fsSL https://x/i.sh -o i.sh && sh i.sh",
+            "wget https://x/setup.sh && chmod +x setup.sh && ./setup.sh", "git clone https://x/y && python3 y/install.py")
         hasNot(INTERNET_CODE, "curl -s https://x | head", "curl -s x | grep ok", "echo \$(curl -s ifconfig.me)", "curl -o install.sh https://x", "bash -c 'ls'")
     }
 

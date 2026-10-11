@@ -175,7 +175,8 @@ object CommandAnalyzer {
                 p = parse.command(p.parent)
             }
         }
-        if (local.anyDownloader && local.stdinCode) local += CommandWarning.INTERNET_CODE
+        // Downloaded, then run from a file or fed to a shell (curl -o i.sh … && sh i.sh, curl … | bash): said, to be safe.
+        if (local.anyDownloader && (local.stdinCode || local.argCode.isNotEmpty())) local += CommandWarning.INTERNET_CODE
         loops(parse, local)
         for (c in parse.commands) {
             val f = c.function ?: continue
@@ -266,6 +267,7 @@ object CommandAnalyzer {
         if (prog == null) {
             // A script or program by its path (~/robot/backup, ./x): what it does can't be read here.
             acc.complex = true
+            acc.argCode += c.id
             outsideIfAny(args, acc)
             return
         }
@@ -711,8 +713,12 @@ object CommandAnalyzer {
         val rest = v.drop(k + 1)
         fun opt(vararg o: String) = rest.any { a -> o.any { a == it || a.startsWith("$it=") } }
         when (sub) {
-            "clone" -> { acc += CommandWarning.INTERNET; acc += CommandWarning.OVERWRITES }
-            "pull" -> { acc += CommandWarning.INTERNET; acc += CommandWarning.OVERWRITES }
+            "clone", "pull" -> {
+                acc += CommandWarning.INTERNET
+                acc += CommandWarning.OVERWRITES
+                // What it brings may be run next (git clone … && ./install.sh).
+                acc.anyDownloader = true
+            }
             "push", "fetch", "ls-remote", "send-email", "request-pull" -> acc += CommandWarning.INTERNET
             "remote" -> if (rest.firstOrNull() in setOf("update", "prune", "show") ) acc += CommandWarning.INTERNET
             "submodule" -> { if (rest.firstOrNull() in setOf("update", "sync", "add")) acc += CommandWarning.INTERNET; if (rest.firstOrNull() == "foreach") acc.complex = true }

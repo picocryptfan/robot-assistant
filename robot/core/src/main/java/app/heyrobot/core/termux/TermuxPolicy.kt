@@ -53,6 +53,7 @@ enum class TermuxReason(val en: String, val fr: String) {
         "Ceci se recopierait sans fin jusqu'à bloquer le téléphone. Robot ne le lancera pas."),
     TOO_LONG("This command is too long for Robot to check (at most 4,096 characters).", "Cette commande est trop longue pour que Robot la vérifie (4 096 caractères au plus)."),
     EMPTY("There is no command to run.", "Il n'y a pas de commande à lancer."),
+    CANT_SEND("This command holds a character Termux can't receive.", "Cette commande contient un caractère que Termux ne peut pas recevoir."),
     NOT_A_SCRIPT("That isn't one of your scripts in ~/robot.", "Ce n'est pas un de vos scripts dans ~/robot."),
     BAD_ARGUMENTS("Robot couldn't split the arguments: check the quotes; no line breaks.", "Robot n'a pas pu séparer les arguments : vérifiez les guillemets ; pas de retour à la ligne."),
 
@@ -129,6 +130,7 @@ object TermuxPolicy {
             locked -> return refuse(TermuxReason.LOCKED)
             text.isBlank() -> return refuse(TermuxReason.EMPTY)
             text.length > CommandAnalyzer.MAX_CHARS -> return refuse(TermuxReason.TOO_LONG)
+            '\u0000' in text -> return refuse(TermuxReason.CANT_SEND)
             SecretMask.hasOwn(text, ownSecrets) -> return refuse(TermuxReason.OWN_SECRET)
             source != CommandSource.TYPED && SecretMask.hasRobotKey(text) -> return refuse(TermuxReason.KEY_SHAPE)
             CommandWarning.FORK_BOMB in w -> return refuse(TermuxReason.FORK_BOMB)
