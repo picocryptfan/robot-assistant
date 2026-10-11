@@ -70,3 +70,41 @@ object SessionRecovery {
     /** When the transcript is saved up to: its last line, else the last heartbeat. */
     fun savedUpTo(beat: SessionHeartbeat): Long = if (beat.lastLineAt > 0) beat.lastLineAt else beat.beatAt
 }
+
+/**
+ * The one-time consent reminder (docs/conversation-mode.md 8): before the first session Robot says to tell the people
+ * you're talking with, and you tick "I'll tell people". The :voice process keeps when you did (conv_consent.json); the
+ * main app writes settings.json, where Settings › Conversation › "Show the reminder again" sets
+ * [RobotSettings.convReminderAt]. The reminder shows again until a newer tick.
+ */
+data class ConsentRecord(val at: Long) {
+    fun toJson(): String = JSONObject().put("at", at).toString()
+
+    companion object {
+        const val FILE = "conv_consent.json"
+
+        /** "Before you transcribe or translate a conversation …" (shown before the first session, and again when asked). */
+        const val TEXT = "Before you transcribe or translate a conversation, tell the people you're talking with. The laws on recording " +
+            "conversations differ by place, and some require everyone's agreement. Robot keeps the text on this phone only, unless you send it somewhere."
+        /** The checkbox. */
+        const val TICK = "I'll tell people"
+        /** The subtle line at each start, and on the notification. */
+        const val LINE = "Recording — let others know."
+
+        fun fromJson(text: String?): ConsentRecord? = try {
+            JSONObject(text ?: return null).optLong("at", 0).takeIf { it > 0 }?.let(::ConsentRecord)
+        } catch (_: Exception) { null }
+
+        /** The reminder is needed: never ticked, or ticked before Settings asked to show it again. */
+        fun needed(record: ConsentRecord?, s: RobotSettings): Boolean = record == null || record.at <= s.convReminderAt
+    }
+}
+
+/** Whether a session may start on the lock screen (docs/conversation-mode.md 1.7). */
+object ConversationLock {
+    /** Starting needs an unlocked phone unless "Start from the lock screen" is on. */
+    fun mayStart(locked: Boolean, s: RobotSettings): Boolean = !locked || s.convStartLocked
+
+    /** A screen opened over the lock screen shows only the lines heard since then; unlocked, the whole transcript. */
+    fun showsEarlier(locked: Boolean): Boolean = !locked
+}

@@ -163,6 +163,11 @@ data class RobotSettings(
      * encrypted file in the :voice process, never in settings.
      */
     val meVoiceprint: Boolean = false,
+    /**
+     * Settings › Conversation › "Show the reminder again" (wall clock ms; 0: never): the consent reminder shows before
+     * the next session unless you ticked "I'll tell people" after this ([ConsentRecord], kept by the voice process).
+     */
+    val convReminderAt: Long = 0,
     // Settings › Safety & privacy (0.4.0, schema 6): each rule that makes an action ask first is a switch.
     /** "Safety cards": when content Robot read makes an action ask first (older files: the new default too). */
     val safetyCards: SafetyCards = SafetyCards.UNASKED,
@@ -273,6 +278,7 @@ data class RobotSettings(
         convSummaryLang?.let { put("convSummaryLang", it) }
         put("convAutoOfferHelper", convAutoOfferHelper)
         put("meVoiceprint", meVoiceprint)
+        if (convReminderAt > 0) put("convReminderAt", convReminderAt)
         put("safetyCards", safetyCards.name)
         put("claudeActionCards", claudeActionCards)
         put("whoCards", whoCards)
@@ -409,6 +415,8 @@ data class RobotSettings(
                 convSummaryLang = summaryLang(o.optString("convSummaryLang").takeIf { o.has("convSummaryLang") }),
                 convAutoOfferHelper = o.optBoolean("convAutoOfferHelper", d.convAutoOfferHelper),
                 meVoiceprint = o.optBoolean("meVoiceprint", d.meVoiceprint),
+                // Still schema 8 (0.5.0): absent means the reminder was never asked for again.
+                convReminderAt = o.optLong("convReminderAt", 0).coerceAtLeast(0),
                 // Schema 6: absent from older files, which read as the defaults (the new "When you didn't ask for it" included).
                 safetyCards = enumOr(o.optString("safetyCards"), d.safetyCards),
                 claudeActionCards = o.optBoolean("claudeActionCards", d.claudeActionCards),

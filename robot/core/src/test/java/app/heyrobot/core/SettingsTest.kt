@@ -198,6 +198,38 @@ class SettingsTest {
         assertEquals(2, RobotSettings.fromJson("""{"convMaxSpeakers":1}""").convMaxSpeakers)
     }
 
+    /** 5.2 adds "Show the reminder again" without a new schema (7 belongs to another branch): absent reads as never. */
+    @Test fun theConsentReminderSettingStaysInSchemaEight() {
+        assertEquals(0L, RobotSettings().convReminderAt)
+        val s = RobotSettings(convReminderAt = 1_760_000_000_000L)
+        assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        assertEquals(8, s.toJson().getInt("schema"))
+        // Not written while unset, so a file from 5.1 and one from today read the same.
+        assertTrue(!RobotSettings().toJson().has("convReminderAt"))
+        assertEquals(0L, RobotSettings.fromJson("""{"schema":8,"convWakeDuring":true}""").convReminderAt)
+        assertEquals(0L, RobotSettings.fromJson("""{"schema":5}""").convReminderAt)
+        assertEquals(0L, RobotSettings.fromJson("""{"schema":8,"convReminderAt":-5}""").convReminderAt)
+        assertEquals(RobotSettings().copy(convWakeDuring = true), RobotSettings.fromJson("""{"schema":8,"convWakeDuring":true}"""))
+    }
+
+    @Test fun theConsentReminderShowsUntilTickedAfterItWasAskedFor() {
+        val d = RobotSettings()
+        assertTrue(ConsentRecord.needed(null, d))
+        assertTrue(!ConsentRecord.needed(ConsentRecord(5_000), d))
+        // "Show the reminder again" after the tick: needed; a newer tick: not.
+        assertTrue(ConsentRecord.needed(ConsentRecord(5_000), d.copy(convReminderAt = 6_000)))
+        assertTrue(!ConsentRecord.needed(ConsentRecord(7_000), d.copy(convReminderAt = 6_000)))
+        assertEquals(ConsentRecord(7_000), ConsentRecord.fromJson(ConsentRecord(7_000).toJson()))
+        assertEquals(null, ConsentRecord.fromJson("""{"at":0}"""))
+        assertEquals(null, ConsentRecord.fromJson("nope"))
+        assertTrue(ConsentRecord.TEXT.startsWith("Before you transcribe or translate a conversation, tell the people you're talking with."))
+        // The lock screen: start only when allowed; a locked screen shows nothing older.
+        assertTrue(ConversationLock.mayStart(locked = true, d))
+        assertTrue(!ConversationLock.mayStart(locked = true, d.copy(convStartLocked = false)))
+        assertTrue(ConversationLock.mayStart(locked = false, d.copy(convStartLocked = false)))
+        assertTrue(!ConversationLock.showsEarlier(locked = true))
+    }
+
     /**
      * Settings › Safety & privacy (schema 6): the switches default to today's behaviour, except "Safety cards", whose new
      * default ("When you didn't ask for it") the person asked for, older files included.

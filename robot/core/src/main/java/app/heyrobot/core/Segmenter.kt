@@ -78,6 +78,9 @@ class Segmenter(val rules: SegmentRules = SegmentRules()) {
 
     val open: Boolean get() = openAt >= 0
 
+    /** Where the open segment's audio starts (samples; its padding is not counted), for the live words; null when none is open. */
+    val openStart: Long? get() = if (open) openAt * fs else null
+
     /** One frame: [isSpeech] the VAD's verdict, [level] its loudness (any scale), [robotSpeaking] Robot's voice is playing. */
     fun feed(isSpeech: Boolean, level: Float, robotSpeaking: Boolean): Segment? {
         val f = frames++
