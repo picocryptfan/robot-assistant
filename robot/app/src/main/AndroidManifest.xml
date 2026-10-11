@@ -262,6 +262,13 @@
             android:exported="false"
             android:taskAffinity="app.heyrobot.check"
             android:windowSoftInputMode="adjustResize" />
+        <!-- 0.5.0, phase 5.6: a transcript's summary, Robot's own or a stronger AI's after the consent card (in :voice: Robot's
+             model and the Claude key are reached from there only; the main app opens it by name). -->
+        <activity
+            android:name=".assistant.conversation.SummaryActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:taskAffinity="app.heyrobot.summary" />
         <!-- 0.5.0, phase 5.3: "Your voice", the optional "me" voiceprint (encrypted in :voice; the main app opens it by name). -->
         <activity
             android:name=".assistant.conversation.VoiceprintActivity"

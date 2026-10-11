@@ -100,6 +100,18 @@ object ClaudeLink {
         return ClaudeSession(h.client, s.claudeModelChoice, ClaudeTools.tools(s), s.claudeSearch, conversation).also { sessions[it] = h }
     }
 
+    /**
+     * 0.5.0 (docs/conversation-mode.md 7.2): a session for one transcript summary, with its own fixed prompt, no tools and
+     * no web search, or null without a key. Only the summary screen's helper asks for one, after your Send. Background thread.
+     */
+    @Synchronized
+    fun transcriptSession(ctx: Context, model: app.heyrobot.core.ClaudeModel): ClaudeSession? {
+        val h = held(ctx) ?: return null
+        h.users++
+        return ClaudeSession(h.client, model, emptyList(), search = false, conversation = false, system = app.heyrobot.core.ClaudePrompt.TRANSCRIPT_SYSTEM)
+            .also { sessions[it] = h }
+    }
+
     /** The panel is done with [session] (a one-shot answered, Claude mode ended). */
     @Synchronized
     fun done(session: ClaudeSession?) {

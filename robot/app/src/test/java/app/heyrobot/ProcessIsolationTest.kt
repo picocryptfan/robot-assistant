@@ -135,7 +135,9 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.conversation.ConversationService", "app.heyrobot.assistant.conversation.ConversationActivity",
             "app.heyrobot.assistant.conversation.TranscriptionCheckActivity", "app.heyrobot.assistant.conversation.ConversationTileService",
             // 0.5.0, phase 5.3: "Your voice" uses the speaker model and the voiceprint's key, both only in :voice.
-            "app.heyrobot.assistant.conversation.VoiceprintActivity")
+            "app.heyrobot.assistant.conversation.VoiceprintActivity",
+            // 0.5.0, phase 5.6: summaries reach Robot's model and the Claude key, both only from :voice.
+            "app.heyrobot.assistant.conversation.SummaryActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         val main = listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
@@ -157,7 +159,7 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
             "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
             "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
-            "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.sys.ExportProvider"))
+            "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider"))
             assertEquals(n, "false", exported(n))
         // 0.5.0: the session is a microphone foreground service; the tile only the system binds.
         assertEquals("microphone", c("app.heyrobot.assistant.conversation.ConversationService").getAttributeNS(ns, "foregroundServiceType"))
@@ -366,11 +368,20 @@ class ProcessIsolationTest {
             it == "core/core/TranscriptStore.kt" || it == "core/core/TranscriptionCheck.kt" || it == "core/core/ConversationCapture.kt" ||
             it == "app/sys/Transcripts.kt" || it == "app/ui/TranscriptsScreen.kt" }
         assertTrue(conv.keys.toString(), conv.size >= 10)
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bClaude(Link|Session|Client)\b|\bBrainClient\b|\bINTERNET\b|\bjava\.net\b"""), conv))
-        // Robot's model: the session holds it loaded; translations (and summaries) ask it through the one-shot client only.
-        assertEquals(listOf("app/assistant/conversation/ConversationSession.kt", "app/assistant/conversation/ConversationTranslations.kt"),
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bBrainClient\b|\bINTERNET\b|\bjava\.net\b"""), conv))
+        // Robot's model: the session and a summary hold it loaded; translations and summaries ask it through the one-shot
+        // client only.
+        assertEquals(listOf("app/assistant/conversation/ConversationSession.kt", "app/assistant/conversation/ConversationTranslations.kt",
+            "app/assistant/conversation/SummaryActivity.kt", "app/assistant/conversation/SummaryJobs.kt"),
             usersOf(Regex("""\bBrain(Keeper|Link|OneShots)\b"""), conv))
-        assertEquals(listOf("app/assistant/conversation/ConversationTranslations.kt"), usersOf(Regex("""\bBrainOneShots\b"""), conv))
+        assertEquals(listOf("app/assistant/conversation/ConversationTranslations.kt", "app/assistant/conversation/SummaryJobs.kt"),
+            usersOf(Regex("""\bBrainOneShots\b"""), conv))
+        // Claude: only the helpers, which act on a SummaryJob (made by the card's Send) and check HelperGate first.
+        assertEquals(listOf("app/assistant/conversation/Helpers.kt"), usersOf(Regex("""\bClaude(Session|Client|Listener|Outcome)\b|\btranscriptSession\b"""), conv))
+        val helpers = code(File(java("app"), "app/heyrobot/assistant/conversation/Helpers.kt"))
+        assertEquals(2, Regex("""HelperGate\.allowed\(job\)""").findAll(helpers).count())
+        // The summary screen and the summaries' job are in the voice process (the main app opens the screen by name).
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bSummary(Jobs|Activity)\b|\bClaude(Api|App)Helper\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
         // The clip reader reads what you picked; nothing in conversation mode writes audio.
         assertEquals(emptyList<String>(), usersOf(Regex("""openOutputStream|FileOutputStream|MediaMuxer|MediaRecorder|AudioRecord\b"""),
             conv.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))

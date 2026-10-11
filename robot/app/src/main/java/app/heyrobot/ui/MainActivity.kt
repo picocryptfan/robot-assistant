@@ -121,7 +121,11 @@ class MainActivity : ComponentActivity() {
         i.action == "android.service.quicksettings.action.QS_TILE_PREFERENCES" -> AppPages.CONVERSATION_SETTINGS
         // 0.5.0: the Transcripts library, or one transcript (the transcript screen's "Open", the "Transcripts" shortcut).
         i.getStringExtra(AppPages.EXTRA) == AppPages.TRANSCRIPTS ->
-            i.getStringExtra(AppPages.EXTRA_TRANSCRIPT)?.takeIf { app.heyrobot.core.TranscriptIds.valid(it) }?.let { "${AppPages.TRANSCRIPTS}:$it" } ?: AppPages.TRANSCRIPTS
+            i.getStringExtra(AppPages.EXTRA_TRANSCRIPT)?.takeIf { app.heyrobot.core.TranscriptIds.valid(it) }?.let { id ->
+                // A summary's [14:03] link: that line in view (phase 5.6).
+                val line = i.getIntExtra(AppPages.EXTRA_LINE, -1)
+                "${AppPages.TRANSCRIPTS}:$id" + if (line >= 0) ":$line" else ""
+            } ?: AppPages.TRANSCRIPTS
         // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
         // Model from a chat-only model's answer to an action (0.4.3).
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
@@ -348,7 +352,7 @@ fun RobotAppUi(activity: MainActivity) {
             r == AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
             r == AppPages.PERMISSIONS -> page = Page.Setup(people = true)
             r == AppPages.TRANSCRIPTS -> page = Page.Transcripts
-            r != null && r.startsWith(AppPages.TRANSCRIPTS + ":") -> page = Page.Transcript(r.substringAfter(':'))
+            r != null && r.startsWith(AppPages.TRANSCRIPTS + ":") -> r.split(':').let { p -> page = Page.Transcript(p[1], p.getOrNull(2)?.toIntOrNull()) }
             r == AppPages.CONVERSATION_SETTINGS -> page = Page.ConversationSettings
             r == AppPages.MODEL -> { tab = Tab.MODEL; page = null }
         }

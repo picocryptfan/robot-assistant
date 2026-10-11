@@ -34,7 +34,7 @@ class TranscriptExportTest {
             - Date: 11 October 2026, 14:02–14:43 (41 min)
             - Speakers: Marie (S1), You (S2)
             - Languages: French, English
-            - Transcribed on this phone by Robot (Parakeet v3). Translations: Gemma 4 E2B / Bergamot (marked "fast").
+            - Transcribed on this phone by Robot (Parakeet v3). Translations: Robot's model / Bergamot (marked "fast").
 
             **[14:02:11] Marie (FR):** On se reprend-tu demain? J'ai pogné un \*char\* de trafic.
             > EN: Shall we meet again tomorrow? I got stuck in traffic. _(fast)_
@@ -57,7 +57,7 @@ class TranscriptExportTest {
             Date: 11 October 2026, 14:02–14:43 (41 min)
             Speakers: Marie (S1), You (S2)
             Languages: French, English
-            Transcribed on this phone by Robot (Parakeet v3). Translations: Gemma 4 E2B / Bergamot (marked "fast").
+            Transcribed on this phone by Robot (Parakeet v3). Translations: Robot's model / Bergamot (marked "fast").
 
             [14:02:11] Marie (FR): On se reprend-tu demain? J'ai pogné un *char* de trafic.
                 EN: Shall we meet again tomorrow? I got stuck in traffic. (fast)
