@@ -185,6 +185,11 @@ data class RobotSettings(
      */
     val nearestServer: String = "",
     /**
+     * A model publisher's conditions you confirmed before its download ([ModelTerms], schema 12): the terms' id and when
+     * (wall clock ms). Empty until you tick them.
+     */
+    val confirmedTerms: Map<String, Long> = emptyMap(),
+    /**
      * Show [SafetyNotice.TEXT] once in the app (0.4.0): set for a settings file from before Safety & privacy (an update,
      * never a new install), cleared when it is tapped or dismissed.
      */
@@ -265,6 +270,7 @@ data class RobotSettings(
         put("nearestPlace", nearestOnline.name)
         if (nearestOnlineAt > 0) put("nearestPlaceAt", nearestOnlineAt)
         nearbyServer.saved.takeIf { it.isNotEmpty() }?.let { put("nearestServer", it) }
+        if (confirmedTerms.isNotEmpty()) put("confirmedTerms", JSONObject().apply { for ((id, at) in confirmedTerms) put(id, at) })
         if (safetyNotice) put("safetyNotice", true)
         put("brainModel", brainModelChoice.id)
     }
@@ -281,8 +287,9 @@ data class RobotSettings(
          * behaviour, the lock screen still timers and alarms) except "Safety cards", which takes the new default, "When
          * you didn't ask for it", as the person asked.
          * 7 (0.4.1): Settings › Model. Older files had one model, the TPU's Gemma 4 E2B: they read as Fast, the same model.
-         * 12 (1.0 compliance; 8 to 11 are the layouts of other branches): the nearest place's search server. Absent from older
-         * files, which read as OpenStreetMap's server, the only one before.
+         * 12 (1.0 compliance; 8 to 11 are the layouts of other branches): the nearest place's search server and the model
+         * terms you confirmed. Absent from older files, which read as OpenStreetMap's server (the only one before) and nothing
+         * confirmed (a model downloaded before keeps working; only a new download or import asks).
          */
         const val SCHEMA = 12
         const val KEEP_ALWAYS = -1
@@ -395,12 +402,19 @@ data class RobotSettings(
                 nearestOnlineAt = o.optLong("nearestPlaceAt", 0).coerceAtLeast(0),
                 // Schema 12: absent (older files) or unusable means OpenStreetMap's; kept in its checked form.
                 nearestServer = NearbyServer.of(o.optString("nearestServer")).saved,
+                confirmedTerms = o.optJSONObject("confirmedTerms")?.let(::terms) ?: d.confirmedTerms,
                 // A file from before schema 6 (0.3.x, early 0.4.0): an update, so the one-time line about Safety & privacy shows.
                 safetyNotice = if (o.optInt("schema", 1) < 6) true else o.optBoolean("safetyNotice", false),
                 // Schema 7: before it there was only the model Fast is (and no key); an unknown id is Fast too.
                 brainModel = if (o.optInt("schema", 1) < 7) BrainModel.FAST.id else BrainModel.of(o.optString("brainModel")).id,
             )
         }
+
+        /** Confirmed terms: an id (at most 200 characters) and a time after 1970; anything else is dropped, at most 50. */
+        private fun terms(x: JSONObject): Map<String, Long> = x.keys().asSequence()
+            .filter { it.isNotBlank() && it.length <= 200 }
+            .mapNotNull { k -> x.optLong(k, 0).takeIf { it > 0 }?.let { k to it } }
+            .take(50).toMap()
 
         /** A saved Home for weather; one without a name or with coordinates off the globe is dropped. */
         private fun place(x: JSONObject): WeatherPlace? {

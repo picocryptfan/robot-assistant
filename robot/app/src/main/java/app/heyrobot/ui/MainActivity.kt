@@ -48,6 +48,7 @@ import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.ModelTerms
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.ToolGroup
@@ -375,10 +376,11 @@ fun RobotAppUi(activity: MainActivity) {
         openConversation = { page = Page.Conversation(it) },
         askPermissions = { permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) },
         openAssistantSettings = { if (!Assistant.openSettings(ctx)) say("Open Settings > Apps > Default apps > Digital assistant app.") },
-        download = { m -> ModelStore.startDownload(ctx, m)?.let(::say) },
+        // A model whose publisher asks for conditions (core ModelTerms) downloads or imports only once you ticked them.
+        download = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else ModelStore.startDownload(ctx, m)?.let(::say) },
         cancelDownload = { m -> ModelStore.cancelDownload(ctx, m) },
         // Storage Access Framework: no storage permission; a .litertlm has no type of its own, so any file.
-        import = { m -> importTarget = m.id; importer.launch(arrayOf("*/*")) },
+        import = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else { importTarget = m.id; importer.launch(arrayOf("*/*")) } },
         verify = { m ->
             if (busy == null) {
                 busy = "verify"

@@ -264,4 +264,23 @@ class SettingsTest {
             assertEquals(bad, NearbyServer.DEFAULT, o.nearbyServer)
         }
     }
+
+    /** Schema 12: the model terms you confirmed (ModelTerms). Older files: none confirmed; damaged entries are dropped. */
+    @Test fun confirmedTermsSchema12MigrationAndRoundTrip() {
+        assertEquals(emptyMap<String, Long>(), RobotSettings().confirmedTerms)
+        assertEquals(false, RobotSettings().toJson().has("confirmedTerms"))
+        for (old in listOf("""{"schema":7,"brainModel":"e4b_cpu_uncensored"}""", """{"schema":6}""", "{}")) {
+            val o = RobotSettings.fromJson(old)
+            assertEquals(old, emptyMap<String, Long>(), o.confirmedTerms)
+            // A model chosen (and downloaded) before keeps being the choice: only a new download asks.
+            if (old.contains("uncensored")) assertEquals(BrainModel.UNCENSORED, o.brainModelChoice)
+        }
+        val s = RobotSettings(confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1_760_000_000_000))
+        assertEquals(1_760_000_000_000, s.toJson().getJSONObject("confirmedTerms").getLong(ModelTerms.UNCENSORED.id))
+        assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        val damaged = RobotSettings.fromJson("""{"schema":12,"confirmedTerms":{"a":1,"b":0,"c":"x","d":-5,"${"x".repeat(201)}":3}}""")
+        assertEquals(mapOf("a" to 1L), damaged.confirmedTerms)
+        assertEquals(emptyMap<String, Long>(), RobotSettings.fromJson("""{"schema":12,"confirmedTerms":[1,2]}""").confirmedTerms)
+    }
 }
+

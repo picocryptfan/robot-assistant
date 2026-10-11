@@ -139,6 +139,48 @@ enum class BrainModel(
     }
 }
 
+/**
+ * A publisher's own conditions for its model, asked as tick boxes before Robot downloads or imports the file (1.0). The
+ * Hugging Face repository shows them as an access form ("extra_gated_fields") but doesn't enforce it (it isn't gated), and
+ * Robot's one-tap download would skip it, so Robot asks them itself, in the publisher's words, and keeps that you confirmed
+ * them ([RobotSettings.confirmedTerms], schema 12). [id] names the model card at the pinned commit: a new commit, which may
+ * change the terms, is asked again.
+ */
+enum class ModelTerms(val id: String, val model: BrainModel, val publisher: String, val prompt: String, val ticks: List<String>) {
+    UNCENSORED(
+        id = "olekk/gemma-4-E4B-it-abliterated-litert-lm@a4eecccd",
+        model = BrainModel.UNCENSORED,
+        publisher = "olekk",
+        // The card's extra_gated_prompt and extra_gated_fields at commit a4eecccd, word for word.
+        prompt = "This is an ABLITERATED model: its trained refusal behavior has been removed and it will attempt to answer harmful " +
+            "or unsafe requests. It is released for research and personal experimentation only. By requesting access you confirm " +
+            "you are using it responsibly and accept sole responsibility for any outputs and downstream use.",
+        ticks = listOf(
+            "I use this for research / personal experimentation only",
+            "I accept responsibility for the outputs and any downstream use",
+        ),
+    );
+
+    /** Every box ticked ([ticked]: the indexes of [ticks] ticked): only then may it be confirmed. */
+    fun complete(ticked: Set<Int>): Boolean = ticks.indices.all { it in ticked }
+
+    companion object {
+        /** Robot's words around the publisher's: where they come from, and what still applies. */
+        const val INTRO = "Its publisher asks everyone who downloads it to confirm two things first:"
+        const val ALSO = "Google's Gemma Prohibited Use Policy still applies, as its publisher says, and Robot's cards and " +
+            "switches still decide what asks you first."
+        const val REFUSED = "Tick its publisher's two boxes on its card first."
+
+        fun of(m: BrainModel): ModelTerms? = entries.firstOrNull { it.model == m }
+
+        /** The terms [m] needs you to confirm before it downloads or imports, or null (none, or confirmed in [s]). */
+        fun missing(s: RobotSettings, m: BrainModel): ModelTerms? = of(m)?.takeIf { it.id !in s.confirmedTerms }
+
+        /** [s] with [t] confirmed at [now] (wall clock ms). */
+        fun confirm(s: RobotSettings, t: ModelTerms, now: Long): RobotSettings = s.copy(confirmedTerms = s.confirmedTerms + (t.id to now))
+    }
+}
+
 /** Where each model's files live: 0.4.0's names stay [BrainModel.FAST]'s, so an installed model stays checked. */
 object ModelFiles {
     /** In Robot's private folder (filesDir/robot), so the voice and brain processes can trust it too. */

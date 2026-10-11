@@ -245,6 +245,15 @@ may still refuse now and then, and its card asks that it be used for research an
 own its outputs, and says Google's Gemma Prohibited Use Policy still applies. Robot's own cards and switches are unchanged: the model only ever proposes an action, and Settings ›
 Safety & privacy decides what asks first, whichever model is loaded (`ApprovalGate` doesn't know which one is).
 
+**Its publisher's two conditions (1.0).** The card's Hugging Face page has an access form with two checkboxes, which
+Hugging Face doesn't enforce for this repository, and a one-tap download would skip it. So before Robot downloads or
+imports the Uncensored file, a window shows the publisher's own words and the same two tick boxes, "I use this for
+research / personal experimentation only" and "I accept responsibility for the outputs and any downstream use";
+**Confirm and download** works only with both ticked. Robot keeps that you confirmed them, and when (settings.json,
+schema 12, `confirmedTerms`), and the model's card says so; the main app's download and import refuse the file until
+then (`core/ModelState.kt`, `ModelTerms`). The confirmation is tied to the pinned commit (`…@a4eecccd`): a new pin asks
+again. A file downloaded before 1.0 keeps working; only a new download or import asks.
+
 ### Downloads, files and privacy
 
 - A built-in model downloads only when you tap Download, from Hugging Face, by DownloadManager in the main app process
@@ -349,7 +358,8 @@ on battery, Wi-Fi on. Note every time.
    `adb shell dumpsys battery | grep temperature` before and after. Pass: no collapse in speed, no thermal warning.
 9. **MTP and the sampler (A/B).** Build once with `CPU_MTP = true`, once with `CPU_SAMPLER = true` (`GemmaEngine.kt`):
    repeat 3 and 6. Keep whichever writes faster and answers as well; MTP's output should match without it.
-10. **Uncensored.** Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
+10. **Uncensored.** Tap Download: the window with the two tick boxes shows, and its button works only with both ticked
+    (Cancel downloads nothing; the card then says you ticked them, and a second download doesn't ask again). Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
     ones (refusals gone? answers sane?). Cards still show for texts, emails, events and deleting.
 11. **Switching.** Fast → Smarter → Uncensored → Fast without restarting, a question after each: Voice log "Unloaded … to
     load …" each time, never two models (`dumpsys meminfo app.heyrobot:brain` falls back to about 2 GB on Fast), and the
