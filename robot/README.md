@@ -185,6 +185,12 @@ a new release, downloads it, checks it, and hands it to Android, whose own windo
 4. Just before installing, all of it again on the file as it is then, and its SHA-256 a third time while Robot writes it
    into the install session: the session is committed only if it matches.
 
+What each check is worth: `SHA256SUMS` comes from the same release as the APK, so it catches a damaged, cut or mixed-up
+download, but anyone who can publish to the repository (a stolen GitHub account or token) can replace both. What they
+can't make is Robot's signature: check 3, which Android repeats when it installs, is what keeps an APK that isn't Robot's
+off the phone, and a release whose APK fails it is passed over (above). They could still publish a release that is never
+installed, or hold updates back by deleting releases; nothing on the phone can tell that from a quiet repository.
+
 The download stays in Robot's private storage (`files/updates/`), with a free-space check first (the rest of the file,
 room for Android's copy of it and 64 MB). Caps: 1 MB of JSON from the API, 64 KB of `SHA256SUMS`, the APK's size as
 GitHub gives it (at most 300 MB).

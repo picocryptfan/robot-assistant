@@ -8,7 +8,8 @@
 
 Robot does not collect anything about you. There is no account, no analytics, no ads, no crash reporting and no tracking.
 The people who make Robot receive nothing from your phone. Robot goes online only for the things listed below, and only
-when you start them, except the daily check for updates, which you can turn off.
+when you start them, except the daily check for updates and, on Wi-Fi, the download of an update it found, which you
+can turn off.
 
 ## What stays on your phone
 
@@ -58,11 +59,12 @@ when you start them, except the daily check for updates, which you can turn off.
    Robot fills in a draft or opens a route; that app sends something only when you tap Send, under its own policy.
 6. **Checking for updates** (Settings › About › Updates): once a day while "Check for updates automatically" is on (the
    default), and when you tap Check now. Robot asks GitHub (api.github.com) for the newest releases of Robot's repository,
-   or of the one you set in Advanced, and downloads an update from GitHub's servers (objects.githubusercontent.com,
-   release-assets.githubusercontent.com) when you tap Download, or by itself on Wi-Fi if "Download updates on Wi-Fi" is on
-   (the default). To GitHub: your IP address and Robot's version in the request ("Robot/0.4.5"); nothing else is sent. An
-   access token, if you add one, goes to api.github.com only. GitHub handles the requests under its own privacy statement.
-   Turn the automatic check off and Robot asks GitHub only when you tap Check now.
+   or of the one you set in Advanced, and downloads an update through api.github.com from GitHub's servers
+   (objects.githubusercontent.com, release-assets.githubusercontent.com, or github.com if GitHub sends it there) when you
+   tap Download, or by itself on Wi-Fi if "Download updates on Wi-Fi" is on (the default). To GitHub: your IP address and
+   Robot's version in the request ("Robot/0.4.5"); nothing else is sent. An access token, if you add one, goes to
+   api.github.com only. GitHub handles the requests under its own privacy statement. Turn the automatic check off and
+   Robot asks GitHub only when you tap Check now (and downloads only when you tap Download).
 
 Nothing else goes online. You can turn off Robot's Network permission in GrapheneOS: everything on the phone keeps
 working, and the online features above say they can't connect.
