@@ -102,6 +102,11 @@ data class BargeTestResult(
     val phoneVoice: Boolean = false,
     /** A silent run of [BargeTestLogic.TRICKY_PARAGRAPH]: what fires is Robot's own words. */
     val tricky: Boolean = false,
+    /**
+     * Settings › Voice › "Interrupt sensitivity" as the voice process's listener had it (0.4.6): the runs at Low, Medium and
+     * High can be told apart, and a level that never reached the listener shows.
+     */
+    val interrupt: InterruptSensitivity = InterruptSensitivity.MEDIUM,
 ) {
     val run: BargeRun get() = when {
         silent && tricky -> BargeRun.TRICKY
@@ -117,7 +122,7 @@ data class BargeTestResult(
         put("state", state.name); put("silent", silent); put("started", started); put("mode", mode.name); put("playback", playback.name)
         put("mic", mic); put("aec", aec); put("heard", heard); put("atMs", atMs); put("stopMs", stopMs)
         put("falseStops", falseStops); put("falseWakes", falseWakes); put("suppressed", suppressed); put("spokeMs", spokeMs); put("note", note)
-        put("count", count); put("counted", counted); put("phoneVoice", phoneVoice); put("tricky", tricky)
+        put("count", count); put("counted", counted); put("phoneVoice", phoneVoice); put("tricky", tricky); put("interrupt", interrupt.name)
         put("hits", org.json.JSONArray().apply { for (h in hits) put(org.json.JSONArray().put(h.phrase).put(h.atMs).put(h.kind.id)) })
     }
 
@@ -144,6 +149,8 @@ data class BargeTestResult(
                 spokeMs = o.optLong("spokeMs"), note = o.optString("note"),
                 count = o.optBoolean("count"), counted = o.optInt("counted"), hits = hits, phoneVoice = o.optBoolean("phoneVoice"),
                 tricky = o.optBoolean("tricky"),
+                // A result from before 0.4.6 ran at Medium, the only level a tap could save.
+                interrupt = enumOr(o.optString("interrupt"), InterruptSensitivity.MEDIUM),
             )
         } catch (_: Exception) { null }
     }
@@ -178,11 +185,13 @@ object BargeTestLogic {
     }
 
     /**
-     * The settings a test runs with (and ran with): "Hear me while Robot talks", how her voice plays, and whether the
-     * phone's voice speaks ([missing]: the voice model chosen isn't installed, so the phone's voice stands in).
+     * The settings a test runs with (and ran with): "Hear me while Robot talks", "Interrupt sensitivity" (0.4.6), how her
+     * voice plays, and whether the phone's voice speaks ([missing]: the voice model chosen isn't installed, so the phone's
+     * voice stands in).
      */
-    fun setup(mode: BargeIn, playback: Playback, phoneVoice: Boolean, missing: String? = null): String =
-        "Hear me while Robot talks: ${mode.title} · Robot's voice plays as ${playback.title}" +
+    fun setup(mode: BargeIn, playback: Playback, phoneVoice: Boolean, missing: String? = null,
+        interrupt: InterruptSensitivity = InterruptSensitivity.MEDIUM): String =
+        "Hear me while Robot talks: ${mode.title} · Interrupt sensitivity: ${interrupt.title} · Robot's voice plays as ${playback.title}" +
             (if (phoneVoice) " · the phone's voice" + (missing?.let { " ($it isn't installed)" } ?: "") else "")
 
     /**
@@ -227,7 +236,7 @@ object BargeTestLogic {
         if (r.state != BenchState.FAILED) {
             val mic = MicKind.entries.firstOrNull { it.id == r.mic }?.title
             val aec = AecState.entries.firstOrNull { it.id == r.aec }?.title
-            out += setup(r.mode, r.playback, r.phoneVoice) + (mic?.let { " · mic: $it" } ?: "") + (aec?.let { " · echo cancellation $it" } ?: "")
+            out += setup(r.mode, r.playback, r.phoneVoice, interrupt = r.interrupt) + (mic?.let { " · mic: $it" } ?: "") + (aec?.let { " · echo cancellation $it" } ?: "")
         }
         return out
     }

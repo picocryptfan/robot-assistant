@@ -1476,10 +1476,20 @@ and after every hit, the gate's 1 s pre-roll is emptied, so the wake phrase that
 
 **Interrupt sensitivity** (0.4.0, Settings › Voice, a three-step slider): how readily "stop" and the wake phrases are
 heard while Robot talks, on the spotter for her talking. **Medium** (the default) is exactly the thresholds above.
-**Low** raises each threshold by 0.05 and lowers each boost by 0.25 (fewer stops from her own voice or a TV; say it
-clearly); **High** does the opposite (a quiet or far voice; more accidental stops). Thresholds stay within 0.08 to 0.5 and
-boosts within 0.5 to 3.0 (`KwsThresholds.shift`, tested). The wake phrases' own sensitivity still sets their idle lines;
-while she talks they get the shifted lines, built once when the setting changes.
+**Low** raises each threshold by 0.10 and lowers each boost by 0.5 (fewer stops from her own voice or a TV; say it
+clearly); **High** lowers each threshold by 0.07 and raises each boost by 0.5 (a quiet or far voice; more accidental
+stops). Those are the steps a wake phrase's own Low and High take from its Medium, so "stop" without echo cancellation is
+at 0.35/1.0 on Low and 0.18/2.0 on High, and with it (0.20/1.5) at 0.30/1.0 and 0.13/2.0. Thresholds stay within 0.08 to
+0.5 and boosts within 0.5 to 3.0 (`KwsThresholds.shift`, tested). The wake phrases' own sensitivity still sets their idle
+lines; while she talks they get the shifted lines, built once when the setting changes; "stop" takes the new level at
+the next frame, without a restart.
+
+Fixed in 0.4.6: a **tap** on the slider (and TalkBack's adjust) showed the new level but saved the old one, so Low and
+High were never saved unless the thumb was dragged, and every barge-in run used Medium. Material's slider moves and
+ends the gesture in one go, before the screen is drawn again, and the level saved was the one drawn before the tap; it
+is now read from the slider's position when the gesture ends (`InterruptSensitivity.at`, tested; `InterruptSliderTest`
+taps the track). 0.4.0 to 0.4.5 also moved the thresholds by only 0.05 and the boosts by 0.25, too little to tell the
+levels apart in a few runs.
 
 **Robot's voice plays as**: *Assistant audio* (default, as before) or *Call audio* (the phone in communication mode
 with the loudspeaker as the call device while Robot speaks, as calling apps do; it uses the call volume and needs
@@ -1497,8 +1507,9 @@ often as you like, a few seconds apart (wakes closer than 2 s count once), and l
 what you said. **Tricky words** is a silent run of a paragraph full of words like "stop" ("step", "steep", "stoop",
 "stamp", "stomp", "stump", "stupid", "strip", "bus stop", "nonstop"): it lists every "stop" her own words fired, set
 aside by EchoGuard or not; any that got through would stop her in real use. The screen shows the "Hear me while Robot
-talks" mode and playback the test will use (and the phone's voice when the chosen voice model isn't installed), and
-the result the ones it ran with (and whether the phone's voice spoke).
+talks" mode, the interrupt sensitivity (0.4.6) and playback the test will use (and the phone's voice when the chosen
+voice model isn't installed), and the result the ones it ran with (and whether the phone's voice spoke); the result's
+interrupt sensitivity is the one the voice process's listener had, so a level that never reached it shows.
 
 **Volume key**: while Robot speaks and the panel is on screen, volume down (or either key, or off: Settings › Voice)
 stops her and doesn't change the volume. The panel's window handles it (its dialog's key listener, and the
