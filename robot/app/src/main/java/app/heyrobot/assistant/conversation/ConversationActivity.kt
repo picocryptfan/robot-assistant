@@ -1,7 +1,10 @@
 package app.heyrobot.assistant.conversation
 
 import android.app.KeyguardManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -86,13 +89,34 @@ class ConversationActivity : ComponentActivity() {
     /** A start asked for and waiting for the consent tick: how it was asked, and the transcript to resume. */
     private val pending = mutableStateOf<Pair<ConvEntry, String?>?>(null)
     private val keepOn = mutableStateOf(false)
+    /** The phone is locked: read again when the screen comes back and when you unlock, so what shows follows it. */
+    private val lockedNow = mutableStateOf(false)
+    /**
+     * This screen was opened on the lock screen for a session started there: it may stay over the lock screen (with
+     * nothing older) until a session started unlocked runs in it.
+     */
+    private var overLockGrant = false
+    private val lockWatch = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) { lockedNow.value = locked() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         ConversationSession.init(this)
+        lockedNow.value = locked()
+        try {
+            registerReceiver(lockWatch, IntentFilter().apply {
+                addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)
+            }, Context.RECEIVER_NOT_EXPORTED)
+        } catch (_: Throwable) {}
         handle(intent, first = savedInstanceState == null)
         setContent { RobotTheme { Screen() } }
+    }
+
+    override fun onDestroy() {
+        try { unregisterReceiver(lockWatch) } catch (_: Throwable) {}
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -103,7 +127,13 @@ class ConversationActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        lockedNow.value = locked()
         ConversationSession.watching(true)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        lockedNow.value = locked()
     }
 
     override fun onStop() {
@@ -113,13 +143,28 @@ class ConversationActivity : ComponentActivity() {
 
     private fun locked(): Boolean = Assistant.locked(this)
 
+    /**
+     * Over the lock screen only for the session started there: while one runs, its own flag decides; otherwise the
+     * screen keeps the place [handle] gave it (a start asked for on the lock screen, or "Saved" after one that ran there).
+     */
+    private fun applyOverLock(ui: ConversationSession.Ui) {
+        val runs = ui.status == ConversationSession.Status.RUNNING || ui.status == ConversationSession.Status.PAUSED
+        if (runs && !ui.lockedStart) overLockGrant = false
+        setShowWhenLocked(if (runs) ui.lockedStart else overLockGrant)
+    }
+
     private fun handle(i: Intent?, first: Boolean) {
         val locked = locked()
+        lockedNow.value = locked
         val s = SettingsStore.load(this)
         val ui = ConversationSession.state.value
-        val wantsStart = i?.action == Transcripts.ACTION_START || i?.action == Transcripts.ACTION_RESUME
+        // Opened again from Recents, the screen gets the intent that first opened it: that opens the screen, it never
+        // starts (or resumes) a recording by itself.
+        val fromRecents = i != null && (i.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        val wantsStart = !fromRecents && (i?.action == Transcripts.ACTION_START || i?.action == Transcripts.ACTION_RESUME)
         // Over the lock screen only for a session started there (or starting there now, when that is allowed).
         val overLock = (ui.active && ui.lockedStart) || (wantsStart && locked && ConversationLock.mayStart(true, s))
+        overLockGrant = overLock
         setShowWhenLocked(overLock)
         if (locked && !overLock) getSystemService(KeyguardManager::class.java).requestDismissKeyguard(this, null)
         if (!first || !wantsStart || ui.active) return
@@ -154,6 +199,9 @@ class ConversationActivity : ComponentActivity() {
     private fun Screen() {
         val ui by ConversationSession.state.collectAsState()
         val ask by pending
+        val locked by lockedNow
+        // A session that ends, or another that starts, moves the screen off or onto the lock screen.
+        LaunchedEffect(ui.status, ui.lockedStart) { applyOverLock(ui) }
         var menu by remember { mutableStateOf(false) }
         var help by remember { mutableStateOf(false) }
         var fixing by remember { mutableStateOf<TranscriptLine?>(null) }
@@ -190,7 +238,7 @@ class ConversationActivity : ComponentActivity() {
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 DropdownMenuItem(text = { Text(if (keepOn.value) "Let the screen turn off" else "Keep the screen on") }, onClick = { menu = false; setKeepOn(!keepOn.value) })
                                 DropdownMenuItem(text = { Text("Help") }, onClick = { menu = false; help = true })
-                                if (!ui.active && !locked()) DropdownMenuItem(text = { Text("Transcripts") }, onClick = { menu = false; openInApp(null) })
+                                if (!ui.active && !locked) DropdownMenuItem(text = { Text("Transcripts") }, onClick = { menu = false; openInApp(null) })
                             }
                         }
                     },
@@ -213,20 +261,22 @@ class ConversationActivity : ComponentActivity() {
                     item {
                         if (ask != null) ConsentCard(onStart = { tick -> if (tick) { Transcripts.saveConsent(this@ConversationActivity); ask?.let { begin(it.first, it.second) } } },
                             onCancel = { pending.value = null; finish() })
-                        else if (!ui.active && (ui.lines.isEmpty() || locked())) StartCard(onStart = {
+                        else if (!ui.active && (ui.lines.isEmpty() || locked)) StartCard(onStart = {
                             val s = SettingsStore.load(this@ConversationActivity)
                             if (ConsentRecord.needed(Transcripts.consent(this@ConversationActivity), s)) pending.value = ConvEntry.APP to null else begin(ConvEntry.APP, null)
                         })
                         else if (ui.active) Text(ConsentRecord.LINE, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    // On the lock screen only the lines of a session started there, while it runs: nothing older.
-                    val visible = if (!locked() || (ui.active && ui.lockedStart)) ui.lines else emptyList()
+                    // On the lock screen only the lines of a session started there, while it runs: nothing older, and
+                    // no live words of a session started unlocked either.
+                    val shows = !locked || (ui.active && ui.lockedStart)
+                    val visible = if (shows) ui.lines else emptyList()
                     items(visible, key = { it.i }) { l -> LineRow(ui, l) { fixing = l } }
-                    if (ui.partial.isNotEmpty()) item {
+                    if (shows && ui.partial.isNotEmpty()) item {
                         Text(ui.partial, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, fontStyle = FontStyle.Italic)
                     }
                     item {
-                        if (!ui.active && ui.savedId != null) SavedCard(locked = locked(), onOpen = { openInApp(ui.savedId) },
+                        if (!ui.active && ui.savedId != null) SavedCard(locked = locked, onOpen = { openInApp(ui.savedId) },
                             onAgain = { pending.value = null; begin(ConvEntry.APP, null) })
                         Text("Transcribed on this phone. Nothing leaves it unless you send it.", style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
