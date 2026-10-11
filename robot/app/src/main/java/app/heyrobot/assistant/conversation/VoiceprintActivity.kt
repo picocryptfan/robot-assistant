@@ -250,7 +250,7 @@ class VoiceprintActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable
     private fun Screen() {
-        val sentences = remember { Enrolment.sentences(LangLabel.owner()) }
+        val sentences = remember { Enrolment.sentences(LangLabel.yours()) }
         var confirmDelete by remember { mutableStateOf(false) }
         Scaffold(topBar = {
             TopAppBar(title = { Text("Your voice") }, navigationIcon = { IconButton(onClick = { finish() }) { Icon(RIcons.Back, "Back") } })

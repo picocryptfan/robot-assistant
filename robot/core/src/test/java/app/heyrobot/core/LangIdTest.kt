@@ -110,25 +110,25 @@ class LangIdTest {
     @Test fun aShortLineWeighsWhatIsKnownAroundIt() {
         val oui = id.detect("Oui.")
         // The push-to-talk side always wins, and is not a guess.
-        assertEquals(LineLang("en", false), LangLabel.choose(oui, forced = "en", speaker = "fr", owner = "fr"))
+        assertEquals(LineLang("en", false), LangLabel.choose(oui, forced = "en", speaker = "fr", yours = "fr"))
         // Agreeing with the speaker's language, or nothing known: its own language.
-        assertEquals(LineLang("fr", false), LangLabel.choose(oui, speaker = "fr", owner = "en"))
-        assertEquals(LineLang("fr", false), LangLabel.choose(oui, owner = "en"))
+        assertEquals(LineLang("fr", false), LangLabel.choose(oui, speaker = "fr", yours = "en"))
+        assertEquals(LineLang("fr", false), LangLabel.choose(oui, yours = "en"))
         // A weak short guess against the speaker's language: the speaker's, shown with "?".
         val weak = LangGuess("en", 3.0, 1, "en")
-        assertEquals(LineLang("fr", true), LangLabel.choose(weak, speaker = "fr", owner = "en"))
-        assertEquals(LineLang("fr", true), LangLabel.choose(weak, previous = "fr", owner = "en"))
+        assertEquals(LineLang("fr", true), LangLabel.choose(weak, speaker = "fr", yours = "en"))
+        assertEquals(LineLang("fr", true), LangLabel.choose(weak, previous = "fr", yours = "en"))
         // ... unless it leads strongly.
-        assertEquals(LineLang("en", false), LangLabel.choose(weak.copy(margin = 9.0), speaker = "fr", owner = "fr"))
+        assertEquals(LineLang("en", false), LangLabel.choose(weak.copy(margin = 9.0), speaker = "fr", yours = "fr"))
         // A longer sure line keeps its language whatever came before.
         val long = id.detect("I think we should leave before the traffic gets worse.")
-        assertEquals(LineLang("en", false), LangLabel.choose(long, speaker = "fr", previous = "fr", owner = "fr"))
-        // Not sure: the speaker's majority, then the previous line, then the table's best guess, then the owner's.
+        assertEquals(LineLang("en", false), LangLabel.choose(long, speaker = "fr", previous = "fr", yours = "fr"))
+        // Not sure: the speaker's majority, then the previous line, then the table's best guess, then yours.
         val name = id.detect("Montréal")
-        assertEquals(LineLang("en", true), LangLabel.choose(name, speaker = "en", previous = "fr", owner = "fr"))
-        assertEquals(LineLang("fr", true), LangLabel.choose(name, previous = "fr", owner = "en"))
-        assertEquals(LineLang("fr", true), LangLabel.choose(name, owner = "en"))
-        assertEquals(LineLang("fr", true), LangLabel.choose(LangGuess(null, 0.0, 0, null, LangUnsure.NO_WORDS), owner = "fr"))
+        assertEquals(LineLang("en", true), LangLabel.choose(name, speaker = "en", previous = "fr", yours = "fr"))
+        assertEquals(LineLang("fr", true), LangLabel.choose(name, previous = "fr", yours = "en"))
+        assertEquals(LineLang("fr", true), LangLabel.choose(name, yours = "en"))
+        assertEquals(LineLang("fr", true), LangLabel.choose(LangGuess(null, 0.0, 0, null, LangUnsure.NO_WORDS), yours = "fr"))
         assertEquals("FR?", LangLabel.tag(LineLang("fr", true)))
         assertEquals("EN", LangLabel.tag(LineLang("en", false)))
     }
@@ -137,8 +137,8 @@ class LangIdTest {
         assertEquals("fr", LangLabel.majority(listOf(LineLang("fr", false), LineLang("fr", false), LineLang("en", false), LineLang("en", true))))
         assertNull(LangLabel.majority(listOf(LineLang("fr", false), LineLang("en", false))))
         assertNull(LangLabel.majority(listOf(LineLang("fr", true))))
-        assertEquals("fr", LangLabel.owner(java.util.Locale.CANADA_FRENCH))
-        assertEquals("en", LangLabel.owner(java.util.Locale.CANADA))
+        assertEquals("fr", LangLabel.yours(java.util.Locale.CANADA_FRENCH))
+        assertEquals("en", LangLabel.yours(java.util.Locale.CANADA))
     }
 
     @Test fun withoutTheTableAWeakerStandInAnswers() {

@@ -189,15 +189,15 @@ data class Heard(val text: String, val tokens: List<String> = emptyList(), val t
 /**
  * Each line's language (docs/conversation-mode.md 2.3): the line's own words, and for a short or not-sure line its
  * speaker's usual language ([label]'s speakerLang, phase 5.3), else the previous line's, then the table's best guess,
- * then yours ([owner]).
+ * then yours ([yours]).
  */
-class LineLabeller(private val id: LangId, private val owner: String) {
+class LineLabeller(private val id: LangId, private val yours: String) {
     private var previous: String? = null
 
     /** [forced]: the interpreter's push-to-talk side was held (its language wins, and becomes the prior). */
     fun label(text: String, speakerLang: String? = null, forced: String? = null): Pair<LangGuess, LineLang> {
         val g = id.detect(text)
-        val l = LangLabel.choose(g, forced = forced, speaker = speakerLang, previous = previous, owner = owner)
+        val l = LangLabel.choose(g, forced = forced, speaker = speakerLang, previous = previous, yours = yours)
         // A label from the prior doesn't become the prior of the next line by itself... unless nothing better is known.
         if (!l.fromPrior || previous == null) previous = l.lang
         return g to l

@@ -304,7 +304,7 @@ object ConversationSession {
         val sp = ConversationSpeakers(on, ConversationSettings.maxSpeakers(s, mode),
             if (resumeId != null) SpeakerLabels.resumeMark(so.speakers + so.merges.keys) else "", mine?.vector)
         mine?.vector?.fill(0f)
-        val e = ConversationEngine(app, decoder, LangLabel.owner(), Output(w, sp), speakers = sp, embedder = embedder)
+        val e = ConversationEngine(app, decoder, LangLabel.yours(), Output(w, sp), speakers = sp, embedder = embedder)
         if (!e.start()) {
             // A new transcript with nothing in it goes again (not left as "Stopped unexpectedly"); a resumed one is closed.
             if (resumeId == null) store.delete(w.id) else w.close(System.currentTimeMillis(), SessionStatus.INTERRUPTED)
@@ -326,7 +326,7 @@ object ConversationSession {
         // Lines from before a crash show only when the phone is unlocked (a screen over the lock screen shows nothing older).
         val earlier = if (resumeId != null && ConversationLock.showsEarlier(locked)) w.current().lines.takeLast(ConversationRules.LIVE_LINES) else emptyList()
         val pair = s.convPairChoice
-        val theirs = pair.other(LangLabel.owner()) ?: pair.first
+        val theirs = pair.other(LangLabel.yours()) ?: pair.first
         val translate = mode == ConvMode.TRANSCRIBE && s.convTranslate
         // The fast engine as the session starts (its files downloaded since, or an engine that rested, count again).
         FastTranslation.recheck(app)

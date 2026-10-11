@@ -219,9 +219,9 @@ object LangLabel {
      * short or not-sure line the prior: this [speaker]'s running majority language, else the [previous] line's. A short
      * sure line keeps its own language when the prior agrees, when there is no prior, or when it leads by
      * [STRONG_MARGIN]; otherwise the prior wins, with "?". A line that is not sure takes the prior, else the table's
-     * best guess, else the [owner]'s language, always with "?".
+     * best guess, else your language ([yours]), always with "?".
      */
-    fun choose(guess: LangGuess, forced: String? = null, speaker: String? = null, previous: String? = null, owner: String): LineLang {
+    fun choose(guess: LangGuess, forced: String? = null, speaker: String? = null, previous: String? = null, yours: String): LineLang {
         if (forced != null) return LineLang(forced, false)
         val prior = speaker ?: previous
         val lang = guess.lang
@@ -229,7 +229,7 @@ object LangLabel {
             if (!guess.short || prior == null || prior == lang || guess.margin >= STRONG_MARGIN) return LineLang(lang, false)
             return LineLang(prior, true)
         }
-        return LineLang(prior ?: guess.best ?: owner, true)
+        return LineLang(prior ?: guess.best ?: yours, true)
     }
 
     /** The language most of a speaker's lines are in (labels from a prior don't count); null without a clear majority. */
@@ -239,8 +239,8 @@ object LangLabel {
         return if (counts.count { it.value == top.value } == 1) top.key else null
     }
 
-    /** "fr" for a French phone, else "en": the owner's language when nothing else is known (0.5.0 labels fr and en only). */
-    fun owner(locale: Locale = Locale.getDefault()): String = if (locale.language == "fr") "fr" else "en"
+    /** "fr" for a French phone, else "en": your language when nothing else is known (0.5.0 labels fr and en only). */
+    fun yours(locale: Locale = Locale.getDefault()): String = if (locale.language == "fr") "fr" else "en"
 
     /** "FR", "EN", "FR?": the tag on a line. */
     fun tag(l: LineLang): String = l.lang.uppercase(Locale.ROOT) + if (l.fromPrior) "?" else ""

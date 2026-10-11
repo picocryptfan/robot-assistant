@@ -193,7 +193,7 @@ class TranscriptionCheckActivity : ComponentActivity() {
         }
         busy.value = "Decoding…"
         work.execute {
-            val r = try { ConversationEngine.transcribe(this, decoder, audio, LangLabel.owner()) } catch (t: Throwable) { RLog.w("check_decode", t); null }
+            val r = try { ConversationEngine.transcribe(this, decoder, audio, LangLabel.yours()) } catch (t: Throwable) { RLog.w("check_decode", t); null }
             runOnUiThread {
                 busy.value = null
                 if (r == null) problem.value = "Robot couldn't decode that. Try again." else done(r.first, r.second, r.third.lang)
@@ -311,7 +311,7 @@ class TranscriptionCheckActivity : ComponentActivity() {
                     decode(audio) { text, ms, detected ->
                         heard = Triple(text, ms, audioMs)
                         fixed = text
-                        lang = detected ?: LangLabel.owner()
+                        lang = detected ?: LangLabel.yours()
                     }
                 } else {
                     Text("Robot heard: ${h.first.ifBlank { "(nothing)" }}", style = MaterialTheme.typography.bodyLarge)
@@ -393,7 +393,7 @@ class TranscriptionCheckActivity : ComponentActivity() {
                 runOnUiThread { busy.value = "Clip ${k + 1} of ${pairs.size}…" }
                 val audio = ClipReader.read(this, names.getValue(p.first))
                 if (audio == null || audio.size < Pcm.RATE / 4) { failed++; continue }
-                val r = try { ConversationEngine.transcribe(this, decoder, audio, LangLabel.owner()) } catch (t: Throwable) { RLog.w("check_clip_decode", t); null }
+                val r = try { ConversationEngine.transcribe(this, decoder, audio, LangLabel.yours()) } catch (t: Throwable) { RLog.w("check_clip_decode", t); null }
                 if (r == null) { failed++; continue }
                 val line = CheckLine(CheckMode.CLIP, lang, p.second, r.first, r.third.lang, r.second, Pcm.ms(audio.size), reader)
                 runOnUiThread { Results.lines += line }

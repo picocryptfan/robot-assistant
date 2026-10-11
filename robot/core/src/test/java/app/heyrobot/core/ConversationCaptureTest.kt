@@ -59,7 +59,7 @@ class ConversationCaptureTest {
     private val id: LangId by lazy { LangId.load(File(System.getProperty("user.dir") ?: ".", "src/main/assets/" + LangId.ASSET).inputStream()) }
 
     @Test fun shortLinesLeanOnThePreviousLine() {
-        val l = LineLabeller(id, owner = "en")
+        val l = LineLabeller(id, yours = "en")
         assertEquals(LineLang("fr", false), l.label("On se reprend-tu demain après-midi chez ma mère?").second)
         // A line with no words says nothing: it takes the previous line's language, marked "FR?".
         assertEquals(LineLang("fr", true), l.label("5 h 30").second)
@@ -75,7 +75,7 @@ class ConversationCaptureTest {
 
     /** The interpreter's push-to-talk (phase 5.4): the side held wins over language ID, and leads the next short lines. */
     @Test fun aPushToTalkSideForcesTheLanguage() {
-        val l = LineLabeller(id, owner = "en")
+        val l = LineLabeller(id, yours = "en")
         assertEquals(LineLang("fr", false), l.label("I'm running late because the bus never showed up.", forced = "fr").second)
         // Released: the next short line leans on it, as on any line's language.
         assertEquals(LineLang("fr", true), l.label("42").second)

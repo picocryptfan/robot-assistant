@@ -35,7 +35,7 @@ object ConversationSettings {
     fun partials(s: RobotSettings, screenOn: Boolean, warm: Boolean): Boolean = s.convPartials && screenOn && !warm
 
     /** The language of Robot's summaries: as set, else yours. */
-    fun summaryLang(s: RobotSettings, locale: Locale = Locale.getDefault()): String = s.convSummaryLang ?: LangLabel.owner(locale)
+    fun summaryLang(s: RobotSettings, locale: Locale = Locale.getDefault()): String = s.convSummaryLang ?: LangLabel.yours(locale)
 }
 
 /** The running session's heartbeat (filesDir/transcripts/.session.json). Times are wall clock, ms. */
