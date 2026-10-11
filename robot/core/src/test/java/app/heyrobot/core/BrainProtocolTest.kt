@@ -112,7 +112,7 @@ class BrainProtocolTest {
         assertTrue(BrainProtocol.EV_QUEUED in BrainProtocol.EVENTS && BrainProtocol.EV_QUEUED !in BrainProtocol.TERMINAL)
         val one = BrainMsg.OneShot(OneShotKind.TRANSLATE, Priority.INTERPRETER, Prompt.TRANSLATE_FR_EN, "On se reprend-tu demain?", 120)
         assertEquals(one, roundTrip(BrainProtocol.REQ_ONE_SHOT, one))
-        val map = BrainMsg.OneShot(OneShotKind.SUMMARY_MAP, Priority.SUMMARY, Prompt.SUMMARY_MAP, "Part 1 of 2 (14:02–14:10):\n[14:02] Owner (en): hi", 250)
+        val map = BrainMsg.OneShot(OneShotKind.SUMMARY_MAP, Priority.SUMMARY, Prompt.SUMMARY_MAP, "Part 1 of 2 (14:02–14:10):\n[14:02] User (en): hi", 250)
         assertEquals(map, roundTrip(BrainProtocol.REQ_ONE_SHOT, map))
         assertEquals(BrainMsg.Queued(2), roundTrip(BrainProtocol.EV_QUEUED, BrainMsg.Queued(2)))
         // A cap past the reply limit is held to it; an unknown kind or priority is not a request.

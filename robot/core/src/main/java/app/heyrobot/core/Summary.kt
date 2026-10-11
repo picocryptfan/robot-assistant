@@ -58,11 +58,11 @@ object SummaryPlanner {
         "[$time] $speaker (${lang ?: "?"}): " + text.replace(Regex("\\s+"), " ").trim()
 
     /**
-     * A speaker as Gemma reads them: the name you gave, else "Owner" for you, "Speaker 2" for S2, "Unknown speaker" for
-     * "?" (the prompt says the transcript was recorded on the owner's phone).
+     * A speaker as Gemma reads them: the name you gave, else "User" for you, "Speaker 2" for S2, "Unknown speaker" for
+     * "?" (the prompt says the transcript was recorded on the user's phone).
      */
     fun speakerName(t: Transcript, label: String): String = t.names[label] ?: when {
-        label == t.me || label == SpeakerClusterer.ME -> "Owner"
+        label == t.me || label == SpeakerClusterer.ME -> "User"
         label == SpeakerClusterer.UNKNOWN -> "Unknown speaker"
         Regex("S(\\d+)\\D*").matches(label) -> "Speaker " + Regex("\\d+").find(label)!!.value
         else -> label
@@ -217,7 +217,7 @@ object SummaryCheck {
     }
 
     /** Capitalised words that are not names: the summary's own headings, and words every summary may use. */
-    private val ALWAYS = setOf("i", "robot", "owner", "speaker", "speakers", "unknown", "english", "french", "anglais", "francais", "quebec",
+    private val ALWAYS = setOf("i", "robot", "user", "speaker", "speakers", "unknown", "english", "french", "anglais", "francais", "quebec",
         "decisions", "decision", "to", "do", "numbers", "dates", "open", "questions", "overview", "part", "parts", "notes", "summary", "gemma", "claude",
         "ok", "okay", "am", "pm")
 
