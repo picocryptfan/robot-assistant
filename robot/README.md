@@ -188,6 +188,18 @@ Claude is turned off. A spoken or typed "yes" sends it only when nothing persona
 Send to include …". A **daily budget** (default $1.00; Settings shows today's estimated spend) turns Automatic into Ask
 me first for the rest of the day, said once.
 
+**Robot answers first (0.3.1).** A question about the screen or a photo, and any follow-up in that conversation, goes to
+Gemma without `ask_claude` (no tool, no prompt line), so Robot answers it itself; "ask Claude about this screen" still
+goes to Claude behind its Send card, and a hedged answer still gets the offer. If Gemma hands a question over without
+a word and Claude isn't asked right away (Ask me first, a personal question, the lock screen), Robot runs Gemma once
+more without `ask_claude` in the same turn and shows its own short answer, with "Want Claude's take as well?" under it;
+"I'd rather check that with Claude." is left for when that second try gives nothing either. **"Not Claude"** ("no
+Claude", "don't ask Claude", "without Claude", "leave Claude out of it", "you tell me", "answer it yourself", "on your
+own", "pas Claude", "sans Claude", "ne demande pas à Claude", "réponds toi-même", and Parakeet's "not cloud") is
+heard anywhere in what you say (`ClaudeRouter.declines`, pure, tested): Robot answers, ends Claude mode if it was on,
+and for the rest of the conversation neither offers Claude nor checks with it, until a new conversation or an explicit
+"ask Claude …" or "go get Claude". The Voice log notes when Claude was left out and the second try (codes only).
+
 ### The Claude app's terms, and reading its answer back
 
 Anthropic's Consumer Terms (effective 8 October 2025, §3 item 7) forbid using the Claude apps "through automated or

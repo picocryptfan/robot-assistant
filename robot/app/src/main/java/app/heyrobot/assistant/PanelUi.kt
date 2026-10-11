@@ -95,6 +95,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.Attachment
+import app.heyrobot.core.ClaudeWords
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.TurnRole
@@ -254,7 +255,8 @@ private fun ClaudeModeChip() {
 }
 
 /**
- * "Want me to check with Claude?" under a reply, with what Send would send (and the start of the screen's text); or,
+ * "Want me to check with Claude?" under a reply ("Want Claude's take as well?" under Robot's own answer, after the local
+ * model first handed the question over), with what Send would send (and the start of the screen's text); or,
  * without an API key, "Open Claude with: «…»". Nothing happens until the tap (or a yes, when nothing personal goes).
  */
 @Composable
@@ -267,7 +269,8 @@ private fun OfferCard(replyId: String, o: Offer) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(RIcons.Cloud, null, Modifier.size(22.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(if (o.api) "Want me to check with Claude?" else "Open Claude with: «${o.text.take(120)}${if (o.text.length > 120) "…" else ""}»",
+                Text(if (!o.api) "Open Claude with: «${o.text.take(120)}${if (o.text.length > 120) "…" else ""}»"
+                    else if (o.asWell) ClaudeWords.OFFER_AS_WELL else ClaudeWords.OFFER,
                     style = MaterialTheme.typography.titleSmall)
             }
             if (o.sends.isNotEmpty()) {
