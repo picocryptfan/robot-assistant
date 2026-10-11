@@ -37,8 +37,8 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 - `:brain` is bound from the assistant with `BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_INCLUDE_CAPABILITIES`;
   it is not exported and requires Robot's signature permission `app.heyrobot.permission.INTERNAL`.
 - `:mt` (0.5.0) is bound by class name (`app/sys/MtLink.kt`, `BIND_AUTO_CREATE`), from the main app for Test translation
-  speed and, from phase 5.4, from the voice process; not exported, the same signature permission. Its module has no
-  network code and writes no file (`ProcessIsolationTest`).
+  speed and from the voice process while a conversation translates (`assistant/conversation/FastTranslation.kt`); not
+  exported, the same signature permission. Its module has no network code and writes no file (`ProcessIsolationTest`).
 - Tools run in the app process (`:voice`), never in `:brain`: the model only proposes calls
   (`automaticToolCalling = false`, constrained decoding when the TPU build allows it), the approval gate decides.
   In a conversation with screen text, a picture or something Robot read, an action that writes or leaves the phone and
@@ -139,7 +139,7 @@ speed test (5.0(b) and 5.4's Bergamot half, in its own `:mt` process) and summar
   microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the Transcription check, 119 re-heard; since 5.4 and
   5.6: 107 a line translated (engine, ms, the guard's verdict), 108 a translation read aloud (language, ms after the
   speech ended; or stopped by a tap), 113 Robot's summary (parts, seconds, how it ended), 114 a stronger AI's (which,
-  words ÷ 100, how it ended).
+  words ÷ 100, how it ended), 118 the fast engine loaded as a translating session starts (ms, directions; or why not).
 
 ### Speaker labels
 
@@ -236,17 +236,25 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
 - **Every translation is checked** (`MtGuard`) before it is shown or spoken: in the language asked for, about as long as
   what was said, at most three lines, without "Translation:", quotes or notes around it. A meaning error gets through:
   the translation is marked as a machine's.
-- **The fast engine** (Bergamot, `../docs/conversation-mode.md` §4.3) is a seam here (`FastTranslation`): when it is
-  there, it gives each transcript line a translation at once (marked "fast") that Robot's model then improves, and it
-  stands in for the interpreter when the model hasn't started within 1.5 s (the panel's question ahead), fails, or fails
-  a guard; with a model on the CPU (about 8 tokens a second), it leads the interpreter. Without it, Robot's model
-  translates alone, with longer deadlines, and the interpreter says "Translated by Robot's model on this phone".
+- **The fast engine** (Bergamot in `:mt`, "Fast translation engine" below) is used when this build has it and its files
+  are downloaded and verified (Settings › Conversation › Fast translation; a session sees a download within about
+  10 s). Then it gives each transcript line a translation at once (marked "fast") that Robot's model then replaces with
+  its own, and it stands in for the interpreter when the model hasn't started within 1.5 s (the panel's question ahead),
+  fails, or fails a guard; with a model on the CPU (about 8 tokens a second), it leads the interpreter and the model
+  stands in. Without it, Robot's model translates alone, with longer deadlines (8 s to start on the TPU, 10 s on the
+  CPU; a transcript's first translation waits up to 2 minutes), and the interpreter says "Translated by Robot's model on
+  this phone". A fast engine that fails in a way that may last (its files didn't load, `:mt` stopped) rests for a minute,
+  so the model gets its longer deadlines meanwhile; a new session tries it again. The voice process binds `:mt` only
+  while a session translates (both directions load as it starts: voice log 118) and lets it go when it stops, so `:mt`
+  frees the engine. An interpreter turn goes to `:mt` ahead of a transcript's waiting lines. A line goes to `:mt`, on the
+  phone, and nowhere else.
 - **A transcript's Translate** (top bar; its default in Settings › Conversation): each new line, in the other language
-  of the pair, in small italics under it (turned on mid-session, the latest 20 lines too). Robot's model works on the
-  newest lines on screen first, one at a time, skips a better translation for a line more than 60 s old, and works only
-  with the screen on and the phone not too hot (SEVERE heat: the fast engine only; voice log 112). Tap a translation (or
-  "Translate" under a line) for Robot's model's own. Changing a line's language translates it again. Translations are
-  events in the transcript's file and in exports.
+  of the pair, in small italics under it (turned on mid-session, the latest 20 lines too): the fast engine's at once
+  when it is there, then Robot's model's in its place. Robot's model works on the newest lines on screen first, one at
+  a time, skips a better translation for a line more than 60 s old, and works only with the screen on and the phone not
+  too hot (SEVERE heat: the fast engine only; voice log 112). Tap a translation (or "Translate" under a line) for Robot's
+  model's own. Changing a line's language translates it again. Translations are events in the transcript's file and in
+  exports.
 - **The interpreter** (Home › Conversation › Translate, the transcript screen's Interpreter, or "hey robot, translate
   this conversation" / "be my interpreter" / "traduis cette conversation"): the phone flat between two people; the top
   half turned to the other person, in their language (French by default on an English phone; ⋮ › Their language), the
@@ -265,31 +273,35 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
 ### Fast translation engine (0.5.0)
 
 Mozilla's Bergamot French ↔ English models (the ones Firefox translates with), run by slimt in a process of its own,
-`:mt`. It translates a line in tens of milliseconds, so every transcript line can have a translation at once; Gemma will
-improve them and lead the interpreter (5.4). Built so far: the engine, its download and its speed test; nothing
-translates conversations yet. The core's `BergamotTranslator` (behind the same `Translator` interface as Gemma's, with
-`MtGuard`) is ready for 5.4 to call.
+`:mt`. It translates a line in tens of milliseconds, so every transcript line can have a translation at once, which
+Robot's model then replaces; it stands in for the model in the interpreter, and leads it when the model runs on the CPU
+("Translation and the interpreter" above). The voice process reaches it through core's `BergamotTranslator` (behind the
+same `Translator` interface as Robot's model, with `MtGuard`), offered by `FastEngineGate` only while the library is in
+the build and both directions' files are verified.
 - **The library.** `tools/build_robotmt.sh` fetches slimt (DavidVentura's fork @ `2beb403a`, the one Offline Translator
   uses) and the commits of ruy, cpuinfo and SentencePiece it pins, checks the SHA-256 of each tree, and builds
   `librobotmt.so` for arm64-v8a with NDK 27.1.12297006 and CMake 3.22.1 from Robot's own wrapper (`mt/src/main/cpp/`:
   slimt's C++ API, a sentence splitter, Bergamot's doubled short sentence ("Oui." → "Yes. Yes.") kept once in every
   sentence, three JNI functions; nothing logged). It goes into `mt/src/main/jniLibs/` (not in
   git), where Gradle packages it; the same sources give the same bytes (THIRD_PARTY.md has the hash). Without it the app
-  still builds, and Settings › Conversation says the fast engine isn't in this build. `--check` also builds the wrapper
+  still builds, Settings › Conversation says the fast engine isn't in this build, and Robot's model translates alone.
+  `--check` also builds the wrapper
   for the computer, downloads and checks the model files, and translates the test set (`tools/lang/fr-CA/mt-test.tsv`),
   comparing each line with its "fast engine output" column. `ROBOTMT_NEON=ON` turns on slimt's own NEON float code
   (maybe faster on the phone, but then the phone no longer gives the build machine's exact outputs).
-- **The files.** Settings › Conversation › Translation › **Fast translation engine (52 MB)** › Download: five files at
+- **The files.** Settings › Conversation › Fast translation › **Fast translation engine (52 MB)** › Download: five files at
   pinned Mozilla URLs (the training run's id is in each path). Each `.gz` is checked (size, SHA-256), unpacked as a stream
   and checked again before the `:mt` process may load it; 73 MB in Robot's private storage. Delete removes them.
 - **The process.** One engine, both directions at most (about 300 MB with both loaded on the build machine), loaded on
-  first use and let go after five idle minutes, when Android is short of memory with the process in the background, or
-  when nothing is bound. A request is up to 64 lines (32,000 characters) of one direction, each translated on its own
-  (sentence by sentence) before its deadline; an interactive line goes before a waiting backlog, so it waits at most one line. slimt can
-  `abort()` on a bad model file: that ends `:mt` only (the transcript, the panel and Gemma go on), and the next request
-  starts it again. It never goes online and logs codes and numbers only; the voice log gets "Fast translation loaded in
+  first use (or as a translating session starts) and let go after five idle minutes, when Android is short of memory
+  with the process in the background, or when nothing is bound (a session binds it only while it translates; the speed
+  test while its screen shows). A request is up to 64 lines (32,000 characters) of one direction, each translated on its
+  own (sentence by sentence) before its deadline (1.5 s to start an interpreter's turn, 10 s a transcript's line); an
+  interactive line goes before a waiting backlog, so it waits at most one line. slimt can `abort()` on a bad model file:
+  that ends `:mt` only (the transcript, the panel and Gemma go on, Robot's model translating alone for a minute), and the
+  next request starts it again. It never goes online and logs codes and numbers only; the voice log gets "Fast translation loaded in
   … ms (2 directions)".
-- **Test translation speed** (Settings › Conversation › Translation, the phone gate of phase 5.0(b)): Robot's 23 test
+- **Test translation speed** (Settings › Conversation › Fast translation, the phone gate of phase 5.0(b)): Robot's 23 test
   lines (15 Québec French, 8 English) through the engine, timed line by line inside `:mt`, then its memory, each output
   compared with what the same engine gave on the build machine. The mark: a **median of 60 ms a line or less**, **450 MB
   or less** at most with both directions loaded, and **23 of 23 the same**. Copy the result copies the numbers and every
@@ -428,7 +440,7 @@ Phase 5.0(b) is done when steps 2 to 4 pass (design §9.1).
 1. **Build with the engine.** Run `tools/build_robotmt.sh` before `gradle :app:assembleRelease`; `tools/verify_apk.sh`
    then shows "packages librobotmt.so (the fast translation engine)", "librobotmt.so exports only its three JNI
    functions" and "only app.heyrobot.mt.Slimt loads librobotmt (dex)". (Without the script it prints a NOTE instead.)
-2. **Download.** Settings › Conversation › Translation › Download (52 MB): progress, then "Checking and installing", then
+2. **Download.** Settings › Conversation › Fast translation › Download (52 MB): progress, then "Checking and installing", then
    "Ready" and "The fast translation engine is ready." `adb shell run-as app.heyrobot ls -l files/models/mt-fr-en` lists the
    five files and `.verified` (73,135,034 bytes of files).
 3. **Test translation speed.** Tap it and note the four lines: the median (the mark is ≤ 60 ms) and the slowest line;
@@ -442,18 +454,19 @@ Phase 5.0(b) is done when steps 2 to 4 pass (design §9.1).
 6. **A crash stays in `:mt`.** Start a transcript (Home › Transcribe), then open Settings › Conversation, start the test
    and at once `adb shell am crash $(adb shell pidof app.heyrobot:mt)`: the test says the fast engine stopped; the
    transcript goes on (its notification stays, new lines arrive). Test again: it works (Android started `:mt` again).
-7. **Letting go.** Leave Settings › Conversation; after a few seconds `adb shell dumpsys meminfo app.heyrobot:mt` shows
-   no process, or one without the engine's memory.
-8. **Delete.** Translation › Delete: `files/models/mt-fr-en` is gone and Test translation speed is greyed out. Download
-   again works.
+7. **Letting go.** Leave Settings › Conversation (no session translating); after a few seconds `adb shell dumpsys
+   meminfo app.heyrobot:mt` shows no process, or one without the engine's memory.
+8. **Delete.** Fast translation › Delete: `files/models/mt-fr-en` is gone and Test translation speed is greyed out.
+   Download again works.
 9. **No network.** With the files there, turn on airplane mode and run the test: it works the same.
 10. **Voice log.** Settings › Voice › Voice log: "Fast translation loaded in … ms (2 directions)" for each first load.
 
 ### On the phone (0.5.0 translation and summaries)
 
 Phases 5.4 (Robot's model's half) and 5.6 are done when these pass (design §9.1). Robot is the assistant, the voice
-models are installed, Fast is the model, the phone is unlocked unless a step says otherwise. Without the fast engine
-installed (its own branch), steps that mention it are skipped and noted.
+models are installed, Fast is the model, the phone is unlocked unless a step says otherwise. Steps 1 to 5 are for
+Robot's model alone: delete the fast engine's files first (Settings › Conversation › Fast translation › Delete), or use
+a build without it; the next list checks what changes with it.
 1. **One-shots beside the panel.** Start a transcript with Translate on and talk French and English: each line gets an
    italic English or French line within a few seconds. Meanwhile open the panel and ask "what time is it?": it answers
    (the transcript pauses while the panel is open, as before); ask a second question that needs a card (a text to
@@ -466,7 +479,7 @@ installed (its own branch), steps that mention it are skipped and noted.
    large text in the listener's half is in their language); **Robot never translates itself** (no line of Robot's own
    voice in the transcript afterwards: open it in Robot › Transcripts); **the median from the end of speech to the first
    translated audio is ≤ 3.0 s** (time it on a recording, or read voice log 108's ms, which is up to the hand-off to the
-   voice, and add the voice's first-chunk time from "Test voice speed"); with the fast engine, ≤ 2.0 s in its turns.
+   voice, and add the voice's first-chunk time from "Test voice speed"); with the fast engine, the next list's step 3.
    Then hold the bottom half's button and say a French sentence: it is taken as yours (English) only while held, and
    translated into French; tap it on, speak English, tap it off. A tap on the screen while it reads stops it.
 3. **The panel during a session.** In the interpreter, "hey robot" (with "Hey robot works during a conversation" on) or
@@ -476,7 +489,7 @@ installed (its own branch), steps that mention it are skipped and noted.
    meanwhile get their translations once the screen is on (newest on screen first). (SEVERE heat can't be forced: note
    it if it happens; voice log 112 "fast translation only".)
 5. **CPU model.** Settings › Model › Smarter (E4B, CPU): the interpreter still translates (slower; note the time per
-   turn); with the fast engine installed, its translations lead. Back to Fast.
+   turn; with the fast engine, the next list's step 5). Back to Fast.
 6. **Robot's summary of an hour (≤ 4 min).** Record (or resume) a transcript of about an hour; Robot › Transcripts › that
    transcript › ⋮ › Summarize: the stronger-AI offer appears first (it is long); "Robot's summary anyway": the progress
    goes part by part, then "Putting the notes together…". Pass: **done in 4 minutes or less, no error** (`adb logcat -s
@@ -497,6 +510,48 @@ installed (its own branch), steps that mention it are skipped and noted.
    `summary-<n>.json`); exports and Share still carry the translations ("> EN: …"), not the summaries.
 10. **Voice.** "Hey robot, summarize this conversation" during a session: the session stops and the summary screen opens
     (locked: "Unlock your phone, then …").
+
+### On the phone (0.5.0 translation with the fast engine)
+
+Phase 5.4 is done when steps 3 and 5 pass, with the list above (design §9.1). A build with the engine (step 1 of the
+translation engine's checks), its files downloaded, Robot as the assistant, Fast as the model, the phone unlocked.
+1. **The download in Settings.** Settings › Conversation › Fast translation › Delete. "Translate transcripts" (Translation
+   and summaries) says the fast engine translates first when it is downloaded. Start a transcript with Translate on and
+   talk: the lines get Robot's model's translations only, none marked "fast". Leave it recording, open Settings ›
+   Conversation › Fast translation › Download and stay there until "Ready" and "The fast translation engine is ready."
+   (the files are installed while Robot's app is in front); back on the transcript, new lines get a "fast" translation
+   within about 10 s. Stop.
+2. **Transcript translations.** Start a transcript with Translate on; talk French and English: each line gets its
+   translation in italics marked "fast" at once (well under a second after the line shows), then Robot's model's in its
+   place within a few seconds (the mark goes). The voice log has "Line translated by the fast engine in … ms: kept", then
+   "Line translated by Gemma in … ms: kept", for the same lines; `adb shell run-as app.heyrobot cat
+   files/transcripts/<id>/lines.jsonl | grep '"e":"tr"'` shows each line's `"by":"bergamot"` event, then its
+   `"by":"gemma"` one. Turn the screen off for a minute and on again: the lines said meanwhile have their "fast"
+   translation at once, and Robot's model's come once the screen is on (newest on screen first). Turn Translate off:
+   nothing more is translated, and `adb shell dumpsys meminfo app.heyrobot:mt` soon shows no process, or one without the
+   engine's memory.
+3. **The interpreter with the fast engine, 10 turns.** As step 2 of the list above, with its pass marks: no "Translated
+   by Robot's model on this phone" line, and most turns are Robot's model's (no "fast" badge). A turn Robot's model can't
+   start within 1.5 s comes "fast" instead of waiting: say a turn as soon as the interpreter opens while Robot's model is
+   still loading (it was unloaded: the panel closed longer ago than Settings › Model's minutes), or open the panel and
+   ask a question just as a turn ends. Note how many turns came "fast". The voice log has "Fast translation loaded in …
+   ms (2 directions)" as the session starts, and `adb shell dumpsys meminfo app.heyrobot:mt` shows the engine's memory
+   during it.
+4. **The interpreter without it.** Settings › Conversation › Fast translation › Delete, then start the interpreter: it
+   says "Translated by Robot's model on this phone (the fast engine isn't installed)", no turn is "fast", and `adb shell
+   dumpsys meminfo app.heyrobot:mt` shows no process, or one without the engine's memory; every turn is still
+   translated, and a question in the panel during a turn now delays that turn instead. Download the files again.
+5. **A slow model: the CPU, 10 turns.** Settings › Model › Smarter (E4B, CPU; downloaded). In the interpreter, every turn
+   is "fast": the fast engine leads, and Robot's model stands in only when it fails. Pass: **the direction is right at
+   least 9 times, and the median from the end of speech to the first translated audio is ≤ 2.0 s** (the fast path; voice
+   log 108 plus the voice's first-chunk time). In a transcript with Translate on, the "fast" translations come at once
+   and Robot's model's replace them much later, or never for a line more than 60 s behind. Delete the fast engine's
+   files and start the interpreter again: Robot's model translates alone, slowly (note the time per turn: up to 30 s).
+   Download them again; back to Fast.
+6. **The fast engine stops.** During a transcript with Translate on, `adb shell am crash $(adb shell pidof
+   app.heyrobot:mt)`: the transcript goes on and its lines are still translated, by Robot's model alone for up to a
+   minute, then "fast" again (Android started `:mt` again). Nothing else stops (the panel still answers).
+7. **No network.** Airplane mode on: steps 2 and 3 work the same; a line goes to `:mt` and `:brain` on the phone only.
 
 ## Short-context models (0.4.3)
 
