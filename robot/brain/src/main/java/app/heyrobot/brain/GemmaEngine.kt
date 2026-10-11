@@ -523,6 +523,10 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
 
         override fun stop(giveWay: Boolean) {
             val r = running?.takeIf { it.job == id } ?: return
+            // LiteRT already ended this reply by itself (its callback is on its way to this thread): it ends as it is, with
+            // its terminal event, and is never run again (the scheduler's ended with terminalSent). Stopping it here would
+            // throw a whole reply (or an error) away and start it over.
+            if (giveWay && r.nativeEnded && r.stopReason == null) return
             if (r.stopReason == null) {
                 r.stopReason = DoneReason.CANCELLED
                 r.giveWay = giveWay
