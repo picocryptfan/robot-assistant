@@ -13,8 +13,9 @@ import app.heyrobot.core.RLog
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.SettingsStore
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 // MAIN PROCESS. "Learn names from Cheogram notifications" (docs/people.md "Ways in" 4): off until you turn it on in
 // Settings › People and allow Robot's notification access. Android then shows Robot every app's notifications (only
@@ -25,10 +26,11 @@ import java.util.concurrent.Executors
 
 class CheogramListener : NotificationListenerService() {
     /** Off the main thread (the app's UI thread when it is open): reading the settings and writing People. */
-    private val worker: ExecutorService = Executors.newSingleThreadExecutor { r -> Thread(r, "robot-people").apply { isDaemon = true } }
+    private val worker: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "robot-people").apply { isDaemon = true } }
 
     override fun onListenerConnected() {
-        worker.execute { if (!on()) unbind() }
+        // Turning the switch on asks for this binding before the settings are written: look a little later.
+        worker.schedule({ if (!on()) unbind() }, OFF_CHECK_S, TimeUnit.SECONDS)
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -68,5 +70,7 @@ class CheogramListener : NotificationListenerService() {
     private companion object {
         /** Notification.MessagingStyle.Message's bundle key for its sender (API 28+). */
         const val KEY_SENDER_PERSON = "sender_person"
+        /** Seconds after connecting before a switch that is off unbinds the listener. */
+        const val OFF_CHECK_S = 5L
     }
 }

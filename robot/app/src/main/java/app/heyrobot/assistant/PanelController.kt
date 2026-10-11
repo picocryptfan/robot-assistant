@@ -1511,9 +1511,10 @@ object PanelController {
             // The message itself; the approval gate still checks the lock. Only the wake phrase: Robot asks again.
             TextCommand.Route.ANSWER -> TextRequest(textingFor!!, answer.trim().ifEmpty { null })
             TextCommand.Route.PARSE -> {
-                // People's names and what you call them, with the phone's contacts when Robot may read them.
+                // People's names and what you call them, with the phone's contacts when Robot may read them. Not names learned
+                // from notifications: whoever sent the message chose those, so they never decide where the message starts.
                 val names = withContext(Dispatchers.IO) {
-                    PeopleFiles.book(VoiceHub.app).names.flatMap { listOf(it.name) + it.nicknames + it.aliases }
+                    PeopleFiles.book(VoiceHub.app).names.filter { !it.learned }.flatMap { listOf(it.name) + it.nicknames + it.aliases }
                 }
                 TextCommand.parse(answer, names, typed) ?: return false
             }
