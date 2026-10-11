@@ -1,0 +1,1 @@
+{"error": {"code": "toomanyvalues", "info": "Too many values supplied for parameter \"titles\". The limit is 50.", "docref": "See https://en.wikipedia.org/w/api.php for API usage."}, "servedby": "mw-api-ext.codfw.main-5c4b9b9f6-abcde"}

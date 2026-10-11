@@ -1,0 +1,43 @@
+{
+  "meta": {"trace": "97383064af92b8980b9b4d419b4ce4a9", "ms": 314, "node": "us-east4"},
+  "data": {
+    "search": [
+      {
+        "url": "https://en.wikipedia.org/wiki/Steve_Jobs",
+        "title": "Steve Jobs - Wikipedia",
+        "snippet": "Steve Jobs · Pioneer of the personal computer revolution with Steve Wozniak · Co-creator of the Apple II, Macintosh, iPod, iPhone, iPad, and first Apple Stores. ... Steven Paul Jobs (February 24, 1955 – October 5, 2011) was an American businessman, inventor, [2] and investor. After the company&#39;s board of directors fired him in 1985, he founded NeXT the same year.",
+        "time": "2012-02-23T07:00:59Z",
+        "image": {"url": "https://p.kagi.com/proxy/th?c=fl5H5doFdZVT3TYbM87OdIZHFmzy"},
+        "props": {"language": "en", "language_probability": 0.9653164148330688, "group_id": "en.wikipedia.org"}
+      },
+      {
+        "url": "https://www.britannica.com/money/Steve-Jobs",
+        "title": "Steve Jobs | Biography, Education, Apple, &amp; Facts | Britannica Money",
+        "snippet": "Learn about Steve Jobs, the cofounder of Apple and a visionary of the personal computer era.",
+        "time": "2026-05-17T20:22:53Z",
+        "props": {"ai_generated": false, "paywalled": true, "language": "en", "group_id": "britannica.com"}
+      },
+      {
+        "url": "https://www.apple.com/stevejobs/",
+        "title": "Remembering Steve Jobs - Apple",
+        "snippet": "Apple has lost a visionary and creative genius, and the world has lost an amazing human being.",
+        "props": {"language": "en", "group_id": "apple.com"}
+      }
+    ],
+    "adjacent_question": [
+      {
+        "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4924574/",
+        "title": "What can we learn from Steve Jobs about complementary and ... - PMC",
+        "snippet": "The untimely death of Steve Jobs from pancreatic cancer at the age of 56 in October 2011 was highly publicized.",
+        "props": {"question": "What caused Steve Jobs to pass away?", "language": "en"}
+      }
+    ],
+    "video": [
+      {"url": "https://www.youtube.com/watch?v=SCTHVKP0kmA", "title": "Steve Jobs - Founder of Apple Documentary - YouTube", "snippet": "Discover the unvarnished story of Steve Jobs.", "time": "2026-01-10T00:00:00Z"}
+    ],
+    "related_search": [
+      {"url": "https://kagi.com/search?q=steve+jobs+biography", "title": "steve jobs biography"},
+      {"url": "https://kagi.com/search?q=steve+jobs+death", "title": "steve jobs death"}
+    ]
+  }
+}

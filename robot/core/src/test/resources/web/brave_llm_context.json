@@ -1,0 +1,28 @@
+{
+  "grounding": {
+    "generic": [
+      {
+        "url": "https://en.wikipedia.org/wiki/List_of_tallest_mountains_in_the_Solar_System",
+        "title": "List of tallest mountains in the Solar System",
+        "snippets": [
+          "## List\n### Tallest mountains by elevation\n* Olympus Mons 72,000&nbsp;ft (22,000&nbsp;m)\n\n* Equatorial Ridge 65,617&nbsp;ft (20,000&nbsp;m)\n\n* Boösaule Mons 59,711&nbsp;ft (18,200&nbsp;m)",
+          "Olympus Mons on **Mars** is the tallest planetary mountain in the [Solar System](https://en.wikipedia.org/wiki/Solar_System)."
+        ]
+      },
+      {
+        "url": "https://www.nasa.gov/olympus-mons",
+        "title": "Olympus Mons",
+        "snippets": ["Olympus Mons is about 2.5 times the height of Mount Everest."]
+      }
+    ],
+    "map": []
+  },
+  "sources": {
+    "https://en.wikipedia.org/wiki/List_of_tallest_mountains_in_the_Solar_System": {
+      "title": "List of tallest mountains in the Solar System",
+      "hostname": "en.wikipedia.org",
+      "age": ["Friday, February 06, 2026", "2026-02-06", "11 days ago"]
+    },
+    "https://www.nasa.gov/olympus-mons": {"title": "Olympus Mons", "hostname": "www.nasa.gov", "age": null}
+  }
+}
