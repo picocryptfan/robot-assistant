@@ -453,7 +453,7 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
                 s.wakeWord) { update(s.copy(wakeWord = it)) }
             SwitchRow("Only while charging", "Saves battery.", s.wakeOnlyWhileCharging, enabled = s.wakeWord) { update(s.copy(wakeOnlyWhileCharging = it)) }
         }
-        SectionCard("Spoken replies") {
+        SectionCard("Replies") {
             Text("Speak replies", style = MaterialTheme.typography.titleSmall)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 SpeakReplies.entries.forEachIndexed { i, v ->
@@ -466,6 +466,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
             Text("“Voice only” speaks when you asked by voice or with a wake word, not when you typed. " +
                 "Tap the conversation, press volume down, or say “stop” (when the wake word is on), to stop Robot talking.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SwitchRow("Direct answers", "Robot helps with whatever you ask without refusing or adding warnings; it still says when something isn't possible.",
+                s.directAnswers) { update(s.copy(directAnswers = it)) }
         }
         VoiceSettingsCard(s, snap, update, a)
         SectionCard("Actions") {

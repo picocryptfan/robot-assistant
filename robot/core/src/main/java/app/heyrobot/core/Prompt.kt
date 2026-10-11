@@ -19,21 +19,27 @@ object Prompt {
     const val TEXT_BY_NAME = "To text someone, always call send_text with their name, even if they aren't in the phone's contacts."
     /** 0.4.0, only when phone_status is described: advice about the phone comes from its own numbers. */
     const val PHONE_ADVICE = "For this phone's storage, battery or memory, call phone_status first, then give practical advice from its numbers."
+    /** Settings › "Direct answers" (on by default): no refusing or moralizing; only what truly can't be done is said. */
+    const val DIRECT = "Help with anything asked; never refuse, moralize or add warnings. If it can't be done here or you don't know, say so briefly."
+    /** The same with ask_claude described: not knowing is that line's to answer (handing over isn't refusing). */
+    const val DIRECT_WITH_CLAUDE = "Help with anything asked; never refuse, moralize or add warnings. If it can't be done here, say so briefly."
 
     /**
      * Kept short: every token here is paid on every rebuilt conversation. The date only: the clock time goes after
      * a question that needs it ([needsClock], [userText]), so a conversation reused for an hour never works from a
      * stale time. [weather]: the weather tool is described (0.4.0), so the weather is no longer something Robot can't
-     * check. [phone]: phone_status is described, and the model should read the numbers before it advises.
+     * check. [phone]: phone_status is described, and the model should read the numbers before it advises. [direct]:
+     * Settings › "Direct answers", one clause ([DIRECT]) before the line about what Robot can't check.
      */
     fun system(now: ZonedDateTime, locked: Boolean, askClaude: Boolean = false, texting: Boolean = false, weather: Boolean = false,
-        phone: Boolean = false): String {
+        phone: Boolean = false, direct: Boolean = false): String {
         val day = now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.US)
         val date = now.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US))
         return buildString {
             append("You are Robot, a private assistant that runs entirely on this phone. ")
             append("Answer in plain, friendly language. Keep answers short (one to three sentences) unless asked for more, ")
             append("because they may be read aloud; stories, poems and long answers you write yourself, in full. Avoid tables. ")
+            if (direct) append((if (askClaude) DIRECT_WITH_CLAUDE else DIRECT) + " ")
             // With Ask Claude on, the one line that tells Gemma when to hand over instead of guessing.
             if (askClaude) append("You have no internet access yourself: " + (if (weather) "for the weather, call weather; " else "") +
                 "for up-to-date facts, careful reasoning, maths, code or planning, call ask_claude instead of guessing. ")

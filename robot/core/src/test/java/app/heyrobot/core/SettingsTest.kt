@@ -13,6 +13,17 @@ class SettingsTest {
         assertEquals(Approval.AUTO, d.approval(ToolName.SET_ALARM))
         assertEquals(Approval.AUTO, d.approval(ToolName.OPEN_APP))
         assertEquals(Approval.ASK, d.approval(ToolName.SEND_TEXT))
+        assertEquals(true, d.directAnswers)
+    }
+
+    /** Settings › "Direct answers": on by default, also for a file saved before it existed; off stays off. */
+    @Test fun directAnswersRoundTrip() {
+        assertEquals(true, RobotSettings.fromJson("""{"schema":5,"speechRate":1.5}""").directAnswers)
+        assertEquals(true, RobotSettings.fromJson("""{"schema":3}""").directAnswers)
+        val off = RobotSettings(directAnswers = false)
+        assertEquals(false, off.toJson().getBoolean("directAnswers"))
+        assertEquals(off, RobotSettings.fromJson(off.toJson().toString()))
+        assertEquals(true, RobotSettings.fromJson(RobotSettings().toJson().toString()).directAnswers)
     }
 
     @Test fun olderFilesOpenAppsAndMapsWithoutAsking() {

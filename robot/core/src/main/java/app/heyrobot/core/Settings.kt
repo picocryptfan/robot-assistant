@@ -61,6 +61,11 @@ data class RobotSettings(
     val voice: String = "",
     /** Show the words while you speak (decodes the speech so far about every 0.7 s; off saves battery). */
     val livePartials: Boolean = true,
+    /**
+     * Settings › "Direct answers" (0.4.0, on): the local model helps with whatever you ask without refusing or adding
+     * warnings, and still says when something isn't possible ([Prompt.DIRECT]). Off: the model's own judgment.
+     */
+    val directAnswers: Boolean = true,
     /** Minutes Gemma stays loaded after the panel closes; [KEEP_ALWAYS] = keep it loaded. */
     val keepModelMinutes: Int = 5,
     /** Save conversations to the history on this phone (screen conversations only when kept). */
@@ -140,6 +145,7 @@ data class RobotSettings(
         put("speechRate", speechRate.toDouble())
         put("voice", voice)
         put("livePartials", livePartials)
+        put("directAnswers", directAnswers)
         put("keepModelMinutes", keepModelMinutes)
         put("saveHistory", saveHistory)
         put("approvals", JSONObject().apply { for (t in ToolName.entries) put(t.id, approval(t).name) })
@@ -236,6 +242,8 @@ data class RobotSettings(
                 speechRate = clampRate(o.optDouble("speechRate", d.speechRate.toDouble()).toFloat()),
                 voice = o.optString("voice", d.voice),
                 livePartials = o.optBoolean("livePartials", d.livePartials),
+                // Absent from older files: on, the default (no new schema needed).
+                directAnswers = o.optBoolean("directAnswers", d.directAnswers),
                 keepModelMinutes = clampKeep(o.optInt("keepModelMinutes", d.keepModelMinutes)),
                 saveHistory = o.optBoolean("saveHistory", d.saveHistory),
                 approvals = ToolName.entries.associateWith { t ->

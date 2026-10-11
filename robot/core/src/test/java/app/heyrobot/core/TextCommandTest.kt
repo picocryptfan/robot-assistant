@@ -274,7 +274,9 @@ class TextCommandTest {
         val s = Prompt.system(now, locked = false, texting = true)
         assertTrue(s.contains("To text someone, always call send_text with their name, even if they aren't in the phone's contacts."))
         assertFalse(Prompt.system(now, locked = false).contains("send_text"))
-        // Still short: it is paid on every rebuild of a conversation that can text.
+        // Still short: it is paid on every rebuild of a conversation that can text (with "Direct answers", on by default,
+        // its one clause more).
         assertTrue(TokenEstimate.text(s) < 315)
+        assertTrue(TokenEstimate.text(Prompt.system(now, locked = false, texting = true, direct = true)) < 362)
     }
 }

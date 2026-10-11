@@ -989,7 +989,7 @@ object PanelController {
             // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
             val tools = ToolRouter.tools(groups, s, askClaude)
             val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools,
-                weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools)
+                weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers)
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
             val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
             // The new turn always fits the model's context: cut (and say so) rather than overflow.
