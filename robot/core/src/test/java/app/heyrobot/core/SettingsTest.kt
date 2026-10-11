@@ -188,8 +188,9 @@ class SettingsTest {
         assertEquals(false, old.convPartials)
         assertEquals(RobotSettings().copy(livePartials = false, speechRate = 1.2f, convPartials = false, safetyNotice = true), old)
         assertEquals(true, RobotSettings.fromJson("""{"schema":5}""").convPartials)
-        // A 0.4.0 file (schema 6) too, and 0.4.4's (7) and 0.4.5's (12); from schema 13 on, the two are separate choices.
-        for (n in listOf(6, 7, 12)) assertEquals("$n", false, RobotSettings.fromJson("""{"schema":$n,"livePartials":false}""").convPartials)
+        // A 0.4.0 file (schema 6) too, 0.4.4's (7), the GGUF branch's (10) and 0.4.5's (12); from schema 13 on, the two are
+        // separate choices.
+        for (n in listOf(6, 7, 10, 12)) assertEquals("$n", false, RobotSettings.fromJson("""{"schema":$n,"livePartials":false}""").convPartials)
         assertEquals(true, RobotSettings.fromJson("""{"schema":13,"livePartials":false}""").convPartials)
         // Out of range or unknown values fall back.
         val bad = RobotSettings.fromJson("""{"schema":6,"convPair":"fr-xx","convMaxSpeakers":40,"convSummaryLang":"de"}""")
