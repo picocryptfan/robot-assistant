@@ -31,7 +31,8 @@ class FileByteSource(file: File) : ByteSource, Closeable {
     override val size: Long = raf.length()
 
     override fun read(pos: Long, n: Int): ByteArray {
-        if (pos < 0 || n < 0 || pos + n > size) throw LiteRtLmFormat("outside the file")
+        // Never pos + n: a position near Long.MAX_VALUE would overflow past the check.
+        if (pos < 0 || n < 0 || pos > size - n) throw LiteRtLmFormat("outside the file")
         val b = ByteArray(n)
         raf.seek(pos)
         raf.readFully(b)
@@ -45,7 +46,7 @@ class ArrayByteSource(private val bytes: ByteArray) : ByteSource {
     override val size: Long get() = bytes.size.toLong()
 
     override fun read(pos: Long, n: Int): ByteArray {
-        if (pos < 0 || n < 0 || pos + n > bytes.size) throw LiteRtLmFormat("outside the file")
+        if (pos < 0 || n < 0 || pos > bytes.size.toLong() - n) throw LiteRtLmFormat("outside the file")
         return bytes.copyOfRange(pos.toInt(), pos.toInt() + n)
     }
 }
@@ -298,9 +299,9 @@ object LiteRtLmCheck {
     /** A flatbuffer in [base, limit) of the file: offsets are relative to [base], and nothing outside is ever read. */
     private class Fb(val src: ByteSource, val base: Long, val limit: Long) {
         fun bytes(off: Long, n: Int): ByteArray {
-            val p = base + off
-            if (off < 0 || n < 0 || p + n > limit) throw LiteRtLmFormat("an offset outside its section")
-            return src.read(p, n)
+            // Compared without adding: an offset from the file (a u64) can be near Long.MAX_VALUE.
+            if (off < 0 || n < 0 || off > limit - base - n) throw LiteRtLmFormat("an offset outside its section")
+            return src.read(base + off, n)
         }
 
         fun u8(off: Long): Int = bytes(off, 1)[0].toInt() and 0xff

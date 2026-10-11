@@ -10,6 +10,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -178,6 +179,31 @@ class LiteRtLmTest {
                 if (r.backend == ModelBackend.TPU) assertTrue(r.tensorG5Build)
             }
         }
+    }
+
+    /** Positions and offsets come from the file: one near Long.MAX_VALUE is outside the file, never an overflow past the check. */
+    @Test fun hugePositionsAreOutsideTheFile() {
+        val src = ArrayByteSource(ByteArray(64))
+        for (pos in listOf(Long.MAX_VALUE, Long.MAX_VALUE - 2, Long.MAX_VALUE - 63, -1L, 60L)) {
+            try { src.read(pos, 8); fail("read at $pos") } catch (_: LiteRtLmFormat) {}
+        }
+        assertEquals(8, src.read(56, 8).size)
+        val dir = Files.createTempDirectory("litertlm").toFile()
+        try {
+            FileByteSource(File(dir, "f").apply { writeBytes(ByteArray(64)) }).use { f ->
+                for (pos in listOf(Long.MAX_VALUE, Long.MAX_VALUE - 2, 60L)) {
+                    try { f.read(pos, 8); fail("read at $pos") } catch (_: LiteRtLmFormat) {}
+                }
+                assertEquals(8, f.read(56, 8).size)
+            }
+        } finally { dir.deleteRecursively() }
+        // A decoder whose stamp buffer says its bytes are at an offset near Long.MAX_VALUE: unreadable, never the TPU.
+        val decoder = FakeLiteRtLm.flatbuffer(FakeLiteRtLm.Obj(FakeLiteRtLm.U32(3), FakeLiteRtLm.Ref(FakeLiteRtLm.Vec(dispatchOps)), null, null,
+            FakeLiteRtLm.Ref(FakeLiteRtLm.Vec(listOf(FakeLiteRtLm.Obj(), FakeLiteRtLm.Obj(null, FakeLiteRtLm.U64(Long.MAX_VALUE - 4), FakeLiteRtLm.U64(16))))), null,
+            FakeLiteRtLm.Ref(FakeLiteRtLm.Vec(listOf(FakeLiteRtLm.Obj(FakeLiteRtLm.Ref(FakeLiteRtLm.Str("LiteRtStamp")), FakeLiteRtLm.U32(1)))))), ident = "TFL3")
+        val r = check(FakeLiteRtLm.litertlm(listOf(tfl("tf_lite_prefill_decode", decoder), small("tf_lite_aux"), meta())))
+        assertFalse(r.toString(), r.readable)
+        assertNull(r.backend)
     }
 
     @Test fun aRealFileOnDiskIsReadTheSameWay() {
