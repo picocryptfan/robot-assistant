@@ -188,10 +188,17 @@ object CheckClips {
         val byName = names.associateBy { base(it) }
         val tabbed = lines.filter { '\t' in it }
         if (tabbed.isNotEmpty() && tabbed.size >= lines.size - 1) {
+            // A Common Voice .tsv names its columns, and the clip isn't the first ("client_id", "path", "sentence_id",
+            // "sentence", ...): the clip is "path", the line "sentence". Otherwise "name<TAB>sentence".
+            val head = lines.first().split('\t').map { it.trim().lowercase(Locale.ROOT) }
+            val named = "path" in head && "sentence" in head
+            val nameAt = if (named) head.indexOf("path") else 0
+            val textAt = if (named) head.indexOf("sentence") else -1
             val found = tabbed.mapNotNull { l ->
                 val cols = l.split('\t')
-                val clip = byName[base(cols[0])] ?: return@mapNotNull null
-                val sentence = cols.drop(1).firstOrNull { it.isNotBlank() }?.trim() ?: return@mapNotNull null
+                val clip = byName[base(cols.getOrNull(nameAt) ?: return@mapNotNull null)] ?: return@mapNotNull null
+                val sentence = (if (textAt >= 0) cols.getOrNull(textAt)?.takeIf { it.isNotBlank() } else cols.drop(nameAt + 1).firstOrNull { it.isNotBlank() })
+                    ?.trim() ?: return@mapNotNull null
                 clip to sentence
             }.distinctBy { it.first }
             if (found.isEmpty()) return Pairing.Refused("None of the names in the text file matches a clip.")

@@ -86,6 +86,13 @@ class TranscriptionCheckTest {
         val tsv = "path\tsentence\ncommon_voice_fr_2.mp3\tdeuxième\ncommon_voice_fr_1.mp3\tpremière\n"
         assertEquals(CheckClips.Pairing.Ok(listOf("common_voice_fr_1.mp3" to "première", "common_voice_fr_2.mp3" to "deuxième")),
             CheckClips.pair(listOf("common_voice_fr_2.mp3", "common_voice_fr_1.mp3"), tsv))
+        // Common Voice's own lists (validated.tsv and the like): the client's id first, the clip under "path", its line under
+        // "sentence", and more columns after (some empty).
+        val cv = "client_id\tpath\tsentence_id\tsentence\tsentence_domain\tup_votes\tdown_votes\tage\tgender\taccents\tvariant\tlocale\tsegment\n" +
+            "9f2c\tcommon_voice_fr_41.mp3\tab12\tIl fait frette à matin.\t\t2\t0\t\t\tQuébec\t\tfr\t\n" +
+            "77e1\tcommon_voice_fr_40.mp3\tcd34\tMets ta tuque.\t\t3\t0\tthirties\t\t\t\tfr\t\n"
+        assertEquals(CheckClips.Pairing.Ok(listOf("common_voice_fr_40.mp3" to "Mets ta tuque.", "common_voice_fr_41.mp3" to "Il fait frette à matin.")),
+            CheckClips.pair(listOf("common_voice_fr_41.mp3", "common_voice_fr_40.mp3"), cv))
         // Without the extension in the list.
         assertEquals(CheckClips.Pairing.Ok(listOf("x.ogg" to "bonjour")), CheckClips.pair(listOf("x.ogg"), "x\tbonjour"))
         assertTrue(CheckClips.pair(listOf("a.mp3", "b.mp3"), "seule ligne") is CheckClips.Pairing.Refused)
