@@ -26,6 +26,8 @@ files on a computer and checks them.
 | `OfflineRecognizer.kt` | `85054fa9722913bce96c94c5c7eaaa7fd99606b79fbfbeac6cfb60040eae2164` |
 | `OfflineStream.kt` | `5c90b7c060cdd0a2222cc935b54f69465a4a7544de29240bafe4d3a8d86dbb6e` |
 | `Tts.kt` | `1a2a19e247553f774c5abdfda8319ce9e1a44e21279b16dc2c63e963a82ea9b1` |
+| `Speaker.kt` (0.5.0, speaker labels) | `4dcc84f4cf0682e0e4da837ba00130d66ad7aec4f803af4c021de3434246e871` |
+| `SpeakerEmbeddingExtractorConfig.kt` (0.5.0) | `d90c0ce88dce309813e720ff46abba737401e7e562f9635ee13fd5b32ce106c6` |
 
 - Licence text: `third_party/LICENSE-sherpa-onnx.txt`.
 - Statically linked into `libsherpa-onnx-jni.so` (nothing extra is packaged for them):
@@ -186,6 +188,22 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 | model.fp32.onnx | 56,768,002 | `2174dbf67b58b7b50d7b65294f89c2c53c172834533519b853c579879a04cc22` |
 | voices.bin | 3,276,800 | `d520519c4a3519d44fcfcd943ed0b1e3c5da5cee0eea501d922fac1a93cd24dc` |
 | tokens.txt | 1,064 | `934a4188addc7665dd3410256bb622169242357fbb99d840d9351209b486dabb` |
+
+### Speaker labels: NVIDIA TitaNet-S (Apache-2.0, the NeMo toolkit licence)
+
+> "TitaNet-S" (`titanet_small`) by NVIDIA, https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/titanet_small.
+> Its card: "License to use this model is covered by the license of the NeMo Toolkit", which is Apache-2.0
+> (https://github.com/NVIDIA/NeMo/blob/main/LICENSE; both re-read on 2026-10-11). Changed: exported to ONNX by the
+> sherpa-onnx project; Robot uses it unchanged from that export.
+
+Downloaded only when you turn on speaker labels (Settings › Conversation › Tell speakers apart), for conversation mode's
+transcripts (docs/conversation-mode.md 3). Repo `csukuangfj/speaker-embedding-models` @
+`0743f301363dec56491a490f6d6cbc9d67f9a3bf` (bundle `spk-titanet-small`, 40,257,283 bytes; size and hash re-checked on
+the build machine on 2026-10-11, equal to Hugging Face's LFS record).
+
+| file | bytes | sha256 |
+|---|---|---|
+| nemo_en_titanet_small.onnx | 40,257,283 | `ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e` |
 
 ## In the `:brain` process only
 

@@ -230,7 +230,8 @@ object VoiceHub {
             level != ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) return
         val s = stt.trim()
         val t = tts.trim()
-        RLog.i("voice_trim", "level" to level, "stt" to s, "tts" to t)
+        val k = VoiceEngines.trimSpeakers()
+        RLog.i("voice_trim", "level" to level, "stt" to s, "tts" to t, "spk" to k)
     }
 
     /** The assistant service is ready (from boot, after the first unlock, or after being chosen). */

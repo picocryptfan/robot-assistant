@@ -50,6 +50,9 @@ class ProcessIsolationTest {
         // Speech to text and text to speech (the voice plan's Kotlin API files) are sherpa-onnx too.
         assertTrue(users.toString(), users.containsAll(listOf("voice/voice/SherpaSpeechToText.kt", "voice/voice/SherpaTextToSpeech.kt")))
         for (f in listOf("OfflineRecognizer.kt", "OfflineStream.kt", "Tts.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
+        // 0.5.0: speaker labels use sherpa-onnx's speaker embedding API (the JNI was already in the library).
+        assertTrue(users.toString(), users.contains("voice/voice/SpeakerEmbedder.kt"))
+        for (f in listOf("Speaker.kt", "SpeakerEmbeddingExtractorConfig.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
         // Only the copied sherpa-onnx API loads its native library.
         assertEquals(emptyList<String>(), usersOf(Regex("""System\.load(Library)?\s*\(""")))
         val sherpa = sources(File(java("voice"), "com/k2fsa"))
