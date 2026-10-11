@@ -269,8 +269,11 @@ object PeopleEdit {
         return upsert(takeAlias(list, spoken, named.id), named) to named
     }
 
-    /** What an import did: people added, people who got something new, cards left out (nothing to reach them by). */
-    data class Merged(val people: List<Person>, val added: Int, val updated: Int, val skipped: Int)
+    /**
+     * What an import did: people added, people who got something new, cards left out (nothing to reach them by), and
+     * for each incoming entry the id of the person it is now part of (null: left out).
+     */
+    data class Merged(val people: List<Person>, val added: Int, val updated: Int, val skipped: Int, val landed: List<String?> = emptyList())
 
     /** Keys two entries share when they are the same person: a number (last 10 digits), an email or an XMPP address. */
     private fun keys(p: Person): Set<String> = buildSet {
@@ -294,17 +297,20 @@ object PeopleEdit {
         var added = 0
         var updated = 0
         var skipped = 0
+        val landed = ArrayList<String?>()
         for (raw in incoming) {
             val inc = People.clean(raw)
-            if (!inc.reachable || inc.name.isEmpty()) { skipped++; continue }
+            if (!inc.reachable || inc.name.isEmpty()) { skipped++; landed += null; continue }
             val k = keys(inc)
             val old = out.firstOrNull { p -> keys(p).any { it in k } }
             if (old == null) {
-                if (out.size >= People.MAX_PEOPLE) { skipped++; continue }
+                if (out.size >= People.MAX_PEOPLE) { skipped++; landed += null; continue }
                 out = out + inc.copy(updatedAt = now)
                 added++
+                landed += inc.id
                 continue
             }
+            landed += old.id
             val merged = People.clean(old.copy(
                 name = if (old.confirmed) old.name else inc.name,
                 aliases = old.aliases + inc.aliases + (if (old.confirmed && !People.sameName(old.name, inc.name)) listOf(inc.name) else emptyList()),
@@ -318,7 +324,7 @@ object PeopleEdit {
                 updated++
             }
         }
-        return Merged(out, added, updated, skipped)
+        return Merged(out, added, updated, skipped, landed)
     }
 }
 

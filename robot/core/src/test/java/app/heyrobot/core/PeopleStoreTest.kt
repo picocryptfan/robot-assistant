@@ -128,6 +128,7 @@ class PeopleStoreTest {
         assertEquals(1, m.added)
         assertEquals(2, m.updated)
         assertEquals(1, m.skipped)
+        assertEquals(listOf("p2", "p1", "i3", null), m.landed)
         val b = m.people.first { it.id == "p2" }
         assertEquals("Bob Tremblay", b.name)
         assertEquals(listOf("Robert Tremblay"), b.aliases)

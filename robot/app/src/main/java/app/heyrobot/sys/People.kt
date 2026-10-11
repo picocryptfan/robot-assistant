@@ -2,6 +2,7 @@ package app.heyrobot.sys
 
 import android.Manifest
 import android.content.ComponentName
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -24,7 +25,10 @@ import app.heyrobot.core.ContactMatch
 import app.heyrobot.core.ContactName
 import app.heyrobot.core.ContactPhone
 import app.heyrobot.core.NoteStore
+import app.heyrobot.core.People
 import app.heyrobot.core.PeopleStore
+import app.heyrobot.core.Person
+import app.heyrobot.core.PersonSource
 import app.heyrobot.core.PhoneKind
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.XmppAddress
@@ -103,7 +107,7 @@ object Contacts {
         }
     }
 
-    private fun kind(type: Int): PhoneKind = when (type) {
+    internal fun kind(type: Int): PhoneKind = when (type) {
         Phone.TYPE_MOBILE, Phone.TYPE_WORK_MOBILE -> PhoneKind.MOBILE
         Phone.TYPE_HOME -> PhoneKind.HOME
         Phone.TYPE_WORK, Phone.TYPE_COMPANY_MAIN -> PhoneKind.WORK
@@ -202,6 +206,91 @@ object CheogramIntents {
         CheogramLinks.pick(data?.getStringExtra(Intent.EXTRA_SHORTCUT_NAME), target?.dataString, target?.getStringExtra(CheogramLinks.EXTRA_ACCOUNT))
     } catch (_: Exception) {
         null
+    }
+}
+
+/**
+ * The phone's contacts without the contacts permission (docs/people.md "Add from phone contacts" and "Ways out"): the
+ * system contact picker, which hands back only what you pick, and the Contacts app's own "new contact" screen, where you
+ * choose the account and save. Robot never writes to the address book itself (no WRITE_CONTACTS).
+ */
+object PhoneContacts {
+    /**
+     * Android 17's contact picker (Intent.ACTION_PICK_CONTACTS and its extras, API 37; Robot builds against 36, so by
+     * name). It returns a session URI to read the picked contact's numbers and emails once.
+     */
+    const val ACTION_PICK_CONTACTS = "android.intent.action.PICK_CONTACTS"
+    private const val EXTRA_FIELDS = "android.intent.extra.PICK_CONTACTS_REQUESTED_DATA_FIELDS"
+    private const val EXTRA_LIMIT = "android.intent.extra.PICK_CONTACTS_SELECTION_LIMIT"
+    private const val EXTRA_MATCH_ALL = "android.intent.extra.PICK_CONTACTS_MATCH_ALL_DATA_FIELDS"
+
+    /** One contact, its numbers and emails. */
+    fun picker(): Intent = Intent(ACTION_PICK_CONTACTS)
+        .putStringArrayListExtra(EXTRA_FIELDS, arrayListOf(Phone.CONTENT_ITEM_TYPE, Email.CONTENT_ITEM_TYPE))
+        .putExtra(EXTRA_LIMIT, 1)
+        .putExtra(EXTRA_MATCH_ALL, false)
+
+    /** The older picker: one number ([email] false) or one email address, with the contact's name (Android 17 upgrades it). */
+    fun legacy(email: Boolean): Intent = Intent(Intent.ACTION_PICK).setType(if (email) Email.CONTENT_TYPE else Phone.CONTENT_TYPE)
+
+    /**
+     * The person the picker's [uri] holds (Android 17's session URI, or the older picker's data row), or null. Read once,
+     * right away: the access is temporary.
+     */
+    fun read(ctx: Context, uri: Uri, now: Long): Person? {
+        val rows = ArrayList<Array<String?>>()
+        val cr = ctx.contentResolver
+        // The session URI takes a projection only (no selection); the older picker's row has the same columns.
+        val wide = arrayOf(Data.CONTACT_ID, Data.DISPLAY_NAME_PRIMARY, Data.MIMETYPE, Data.DATA1, Data.DATA2, Data.DATA3)
+        val narrow = arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY, Data.MIMETYPE, Data.DATA1)
+        for (projection in listOf(wide, narrow)) {
+            try {
+                cr.query(uri, projection, null, null, null)?.use { c ->
+                    while (c.moveToNext()) rows += Array(6) { i -> if (i < projection.size) c.getString(i) else null }
+                }
+                break
+            } catch (_: Exception) {
+                rows.clear()
+            }
+        }
+        val first = rows.firstOrNull() ?: return null
+        val mine = rows.filter { it[0] == first[0] }
+        val name = mine.firstNotNullOfOrNull { it[1]?.takeIf { n -> n.isNotBlank() } } ?: return null
+        val phones = mine.filter { it[2] == Phone.CONTENT_ITEM_TYPE && !it[3].isNullOrBlank() }.map { r ->
+            val type = r[4]?.toIntOrNull() ?: Phone.TYPE_OTHER
+            val k = Contacts.kind(type)
+            ContactPhone(r[3]!!.trim(), k, if (type == Phone.TYPE_CUSTOM && !r[5].isNullOrBlank()) r[5]!! else People.label(k))
+        }
+        val emails = mine.filter { it[2] == Email.CONTENT_ITEM_TYPE && !it[3].isNullOrBlank() }.map { it[3]!!.trim() }
+        return Person(PeopleStore.newId(), name, phones = phones, emails = emails, source = PersonSource.PHONE_PICKER, confirmed = true, updatedAt = now)
+    }
+
+    private fun type(k: PhoneKind): Int = when (k) {
+        PhoneKind.MOBILE -> Phone.TYPE_MOBILE
+        PhoneKind.HOME -> Phone.TYPE_HOME
+        PhoneKind.WORK -> Phone.TYPE_WORK
+        PhoneKind.OTHER -> Phone.TYPE_OTHER
+    }
+
+    /**
+     * "Save to phone's contacts": the Contacts app's new-contact screen filled in with the name, what you call them
+     * (nicknames), numbers, emails and XMPP addresses (IM, Jabber, which Cheogram reads). You choose the account and save
+     * there; then Cheogram, Proton Mail and the dialer know the name too.
+     */
+    @Suppress("DEPRECATION") // Im's protocol columns: deprecated, still how a Jabber address is stored and read.
+    fun insert(p: Person): Intent {
+        val rows = ArrayList<ContentValues>()
+        p.aliases.forEach { rows += ContentValues().apply { put(Data.MIMETYPE, Nickname.CONTENT_ITEM_TYPE); put(Nickname.NAME, it) } }
+        p.phones.forEach { rows += ContentValues().apply {
+            put(Data.MIMETYPE, Phone.CONTENT_ITEM_TYPE); put(Phone.NUMBER, it.number); put(Phone.TYPE, type(it.kind))
+        } }
+        p.emails.forEach { rows += ContentValues().apply { put(Data.MIMETYPE, Email.CONTENT_ITEM_TYPE); put(Email.ADDRESS, it); put(Email.TYPE, Email.TYPE_OTHER) } }
+        p.xmpp.forEach { rows += ContentValues().apply {
+            put(Data.MIMETYPE, Im.CONTENT_ITEM_TYPE); put(Im.DATA, it.jid); put(Im.TYPE, Im.TYPE_OTHER); put(Im.PROTOCOL, Im.PROTOCOL_JABBER)
+        } }
+        return Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI)
+            .putExtra(ContactsContract.Intents.Insert.NAME, p.name)
+            .putParcelableArrayListExtra(ContactsContract.Intents.Insert.DATA, rows)
     }
 }
 
