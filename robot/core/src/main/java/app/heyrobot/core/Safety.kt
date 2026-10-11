@@ -51,6 +51,13 @@ object LockScreen {
         return if (all.size == 1) "questions only" else all.dropLast(1).joinToString(", ") + " and " + all.last()
     }
 
+    /** The empty panel's headline on the lock screen. */
+    fun headline(tools: Set<ToolName>): String = when {
+        tools == DEFAULT -> "Ask a question, or set a timer or alarm."
+        tools.isEmpty() -> "Ask a question."
+        else -> "Ask a question, or use: " + CHOICES.filter { it in tools }.joinToString(", ") { it.title.lowercase(Locale.ROOT) } + "."
+    }
+
     /**
      * The system prompt's line while locked. The default set keeps the exact words Robot always used (the prompt's tokens
      * are counted and cached); another set names its actions.

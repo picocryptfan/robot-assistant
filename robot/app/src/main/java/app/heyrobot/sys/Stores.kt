@@ -85,6 +85,12 @@ object ConversationStore {
 
     fun delete(ctx: Context, id: String) { file(ctx, id)?.delete() }
 
+    /**
+     * Settings › Safety & privacy › "Remove saved screenshots and photos": every saved conversation without the pictures
+     * and screen text "Keep screenshots and photos in history" kept. Returns how many conversations changed.
+     */
+    fun removeMedia(ctx: Context): Int = list(ctx).mapNotNull(ConversationCodec::withoutMedia).onEach { save(ctx, it) }.size
+
     fun deleteAll(ctx: Context) {
         Paths.conversations(ctx).listFiles().orEmpty().forEach { it.delete() }
     }

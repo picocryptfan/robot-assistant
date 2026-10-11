@@ -140,6 +140,10 @@ class ClaudeContextTest {
         assertEquals(2, ClaudeContext.recent(history).size)
         // This turn read the calendar (it is in the conversation now): the question only.
         assertFalse(texts(ClaudeContext.escalation("q", history, now, "CA", personal = setOf(Personal.CALENDAR))).contains("second"))
+        // "Send personal content to helpers automatically" on: the last turns go as they would in a plain conversation.
+        assertTrue(texts(ClaudeContext.escalation("q", history, now, "CA", personal = setOf(Personal.CALENDAR), includePersonal = true)).contains("second answer"))
+        val p = ClaudeContext.payload("q", history, now, "CA", personal = setOf(Personal.CALENDAR), includePersonal = true)
+        assertEquals(listOf("Your question", "The last turns of this conversation"), p.sends)
     }
 
     @Test fun personalContentIsListed() {

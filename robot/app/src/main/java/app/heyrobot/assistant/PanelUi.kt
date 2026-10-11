@@ -97,6 +97,7 @@ import androidx.compose.ui.unit.dp
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.ClaudeWords
+import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.TurnRole
@@ -235,7 +236,7 @@ private fun statusLine(st: PanelState): String = when (st.phase) {
     Phase.SPEAKING -> "Speaking · tap to stop"
     Phase.IDLE -> when {
         st.claudeMode -> "Talking with Claude: your questions go online"
-        st.locked -> "Locked: questions, timers and alarms"
+        st.locked -> "Locked: " + LockScreen.allowed(st.lockedTools)
         st.brain.readiness == BrainKeeper.Readiness.LOADING -> "Getting ready…"
         else -> "On this phone, private"
     }
@@ -356,7 +357,7 @@ private val cardActions = CardActions(choose = PanelController::choose, undo = P
 private fun Messages(st: PanelState, modifier: Modifier) {
     if (st.turns.isEmpty()) {
         Column(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
-            Text(if (st.locked) "Ask a question, or set a timer or alarm." else "Ask me anything.", style = MaterialTheme.typography.headlineSmall)
+            Text(if (st.locked) LockScreen.headline(st.lockedTools) else "Ask me anything.", style = MaterialTheme.typography.headlineSmall)
             Text(
                 if (st.screenAvailable) "I can also look at what's on your screen."
                 else "Type, take a photo, or say “hey robot” next time.",

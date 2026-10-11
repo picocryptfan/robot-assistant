@@ -84,4 +84,28 @@ class ConversationTest {
             p.map { it.text })
         assertTrue(p.none { it.text.contains("[Now") || it.text.contains("Current time") })
     }
+
+    /**
+     * "Keep screenshots and photos in history": a kept thumbnail and screen text round-trip, are never replayed to the
+     * model or described to Claude, and can be removed again; nothing is kept unless the turn holds it.
+     */
+    @Test fun keptPicturesAndScreenTextStayOutOfPromptsAndCanBeRemoved() {
+        val q = ChatTurn("q", TurnRole.USER, "what is this?", 1, Attachment.SCREEN, picture = "QUJD", screenText = "Invoice 42, due Friday")
+        val c = StoredConversation("m", 1, 2, listOf(q, ChatTurn("a", TurnRole.ASSISTANT, "An invoice.", 2)))
+        assertEquals(c, ConversationCodec.fromJson(ConversationCodec.toJson(c)))
+        val prompt = c.turns.toPromptTurns().joinToString(" ") { it.text }
+        assertFalse(prompt, prompt.contains("Invoice 42"))
+        assertFalse(ClaudeContext.transcript(c.turns)!!.contains("Invoice 42"))
+        assertEquals(setOf(Personal.SCREEN), ClaudeContext.personal(c.turns))
+        val stripped = ConversationCodec.withoutMedia(c)!!
+        assertEquals(listOf<String?>(null, null), stripped.turns.map { it.picture ?: it.screenText })
+        assertEquals(Attachment.SCREEN, stripped.turns[0].attachment)
+        assertEquals(null, ConversationCodec.withoutMedia(stripped))
+        // Nothing kept: the file has no such keys. A damaged picture is dropped on reading, never fatal.
+        assertFalse(ConversationCodec.toJson(conv).contains("picture") || ConversationCodec.toJson(conv).contains("screenText"))
+        val bad = ConversationCodec.toJson(c).replace("QUJD", "not base64!")
+        assertEquals(null, ConversationCodec.fromJson(bad)!!.turns[0].picture)
+        assertEquals(false, RobotSettings().keepMedia)
+        assertEquals(true, RobotSettings.fromJson(RobotSettings(keepMedia = true).toJson().toString()).keepMedia)
+    }
 }

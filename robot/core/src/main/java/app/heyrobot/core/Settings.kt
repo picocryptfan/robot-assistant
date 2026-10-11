@@ -144,6 +144,11 @@ data class RobotSettings(
     val personalToHelpers: Boolean = false,
     /** "Voice yes can send personal content" (off): a spoken or typed yes may send what otherwise needs a tap. */
     val voiceYesPersonal: Boolean = false,
+    /**
+     * "Keep screenshots and photos in history" (off): with history on, a question's picture (a small thumbnail) and the
+     * screen's text are saved with the conversation, for you to see in History. Off: only that one was attached.
+     */
+    val keepMedia: Boolean = false,
 ) {
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
@@ -203,6 +208,7 @@ data class RobotSettings(
         put("lockedTools", org.json.JSONArray().apply { for (t in LockScreen.CHOICES) if (t in lockedTools) put(t.id) })
         put("personalToHelpers", personalToHelpers)
         put("voiceYesPersonal", voiceYesPersonal)
+        put("keepMedia", keepMedia)
     }
 
     companion object {
@@ -319,6 +325,7 @@ data class RobotSettings(
                 } ?: d.lockedTools,
                 personalToHelpers = o.optBoolean("personalToHelpers", d.personalToHelpers),
                 voiceYesPersonal = o.optBoolean("voiceYesPersonal", d.voiceYesPersonal),
+                keepMedia = o.optBoolean("keepMedia", d.keepMedia),
             )
         }
 

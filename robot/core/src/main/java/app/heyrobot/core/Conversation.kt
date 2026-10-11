@@ -3,8 +3,10 @@ package app.heyrobot.core
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Pure. Conversation history in app-private storage (one JSON file per conversation). Pictures and
-// screen text are never stored: a turn records only that one was attached.
+// Pure. Conversation history in app-private storage (one JSON file per conversation). Pictures and screen text are not
+// stored by default: a turn records only that one was attached. With Settings › Safety & privacy › "Keep screenshots and
+// photos in history" on (0.4.0), a question keeps its picture's thumbnail and the screen's text too, for you to see in
+// History; neither is ever replayed to the model or sent to Claude.
 
 enum class Attachment { NONE, PHOTO, SCREEN }
 
@@ -35,6 +37,10 @@ data class ChatTurn(
     val sources: List<String> = emptyList(),
     /** The reply's estimated price in millionths of a dollar (the cost line), 0 when not a Claude reply. */
     val costMicros: Long = 0,
+    /** A question's picture as a small JPEG thumbnail, Base64 ("Keep screenshots and photos in history"); null: not kept. */
+    val picture: String? = null,
+    /** The screen's text that went with a question, when kept like [picture]. */
+    val screenText: String? = null,
 )
 
 data class StoredConversation(val id: String, val created: Long, val updated: Long, val turns: List<ChatTurn>) {
@@ -83,6 +89,16 @@ fun List<ChatTurn>.toPromptTurns(): List<PromptTurn> = mapNotNull { t ->
 
 object ConversationCodec {
     const val VERSION = 1
+    /** A kept thumbnail's Base64 at most (a 320-pixel JPEG is about 20 KB); a bigger or damaged one is dropped. */
+    const val MAX_PICTURE = 200_000
+    /** Kept screen text at most. */
+    const val MAX_SCREEN_TEXT = 8_000
+    private val BASE64 = Regex("^[A-Za-z0-9+/]+={0,2}$")
+
+    /** [c] without kept pictures and screen text ("Remove saved screenshots and photos"); null when it had none. */
+    fun withoutMedia(c: StoredConversation): StoredConversation? =
+        if (c.turns.none { it.picture != null || it.screenText != null }) null
+        else c.copy(turns = c.turns.map { it.copy(picture = null, screenText = null) })
 
     fun toJson(c: StoredConversation): String = JSONObject().apply {
         put("v", VERSION)
@@ -115,6 +131,8 @@ object ConversationCodec {
         if (t.readBack) put("readBack", true)
         if (t.sources.isNotEmpty()) put("sources", JSONArray(t.sources))
         if (t.costMicros > 0) put("costMicros", t.costMicros)
+        t.picture?.let { put("picture", it) }
+        t.screenText?.let { put("screenText", it) }
         if (t.actions.isNotEmpty()) put("actions", JSONArray().apply {
             t.actions.forEach { a ->
                 put(JSONObject().put("tool", a.tool.id).put("summary", a.summary).put("status", a.status.name).apply {
@@ -140,6 +158,8 @@ object ConversationCodec {
             readBack = o.optBoolean("readBack", false),
             sources = o.optJSONArray("sources")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotEmpty() } } }.orEmpty(),
             costMicros = o.optLong("costMicros", 0).coerceAtLeast(0),
+            picture = o.optString("picture").takeIf { it.isNotEmpty() && it.length <= MAX_PICTURE && BASE64.matches(it) },
+            screenText = o.optString("screenText").takeIf { it.isNotEmpty() }?.let { ToolCalls.safeTake(it, MAX_SCREEN_TEXT) },
             actions = if (acts == null) emptyList() else (0 until acts.length()).mapNotNull { i ->
                 val a = acts.optJSONObject(i) ?: return@mapNotNull null
                 val tool = ToolName.of(a.optString("tool")) ?: return@mapNotNull null

@@ -61,6 +61,7 @@ import app.heyrobot.core.ClaudeSettings
 import app.heyrobot.core.ClaudeVoices
 import app.heyrobot.core.Escalation
 import app.heyrobot.core.EmailApp
+import app.heyrobot.core.LockScreen
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
@@ -392,7 +393,9 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
         for (e in Escalation.entries) {
             ChoiceRow(e.title, e.detail + if (e == Escalation.AUTO && !keySaved) " Needs an API key: until then Robot asks first." else "", help == e) { update(s.copy(claudeHelp = e)) }
         }
-        Text("By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
+        Text(if (s.personalToHelpers) "By itself, Robot sends your question and the last two turns of the conversation, with any screen text, " +
+            "photo or what it read (Safety & privacy › Send personal content to helpers automatically is on)."
+            else "By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
             "a photo, or what Robot read from your contacts, calendar or notes, the weather (where you are) or your phone's status, it sends " +
             "only your question; anything more goes only after you tap a card that lists it.", style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("Daily budget", style = MaterialTheme.typography.titleSmall)
@@ -465,18 +468,21 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
             Text("“Voice only” speaks when you asked by voice or with a wake word, not when you typed. " +
                 "Tap the conversation, press volume down, or say “stop” (when the wake word is on), to stop Robot talking.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            SwitchRow("Direct answers", "Robot helps with whatever you ask without refusing or adding warnings; it still says when something isn't possible.",
-                s.directAnswers) { update(s.copy(directAnswers = it)) }
+        }
+        SectionCard("Safety & privacy") {
+            NavRow(RIcons.Lock, "Safety & privacy", "When Robot asks first (${s.safetyCards.title.replaceFirstChar { it.lowercase() }}), the lock screen, " +
+                "what Claude may get, direct answers (${if (s.directAnswers) "on" else "off"}), screenshots in history") { a.openPage(Page.Safety) }
         }
         VoiceSettingsCard(s, snap, update, a)
         SectionCard("Actions") {
-            Text("What Robot may do when you ask. On the lock screen only timers and alarms work; everything else asks you to unlock. " +
-                "After Robot read a note, an event, a contact, the weather or your phone's status in a conversation, everything in it that " +
-                "writes or leaves the phone asks first (reading more doesn't).",
+            Text("What Robot may do when you ask. On the lock screen: ${LockScreen.allowed(s.lockedTools)}; everything else asks you to unlock. " +
+                "When “Just do it” still shows a card (after Robot read something, a name it isn't sure of, Claude's requests) is in " +
+                "Safety & privacy.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             // Ask Claude's own settings decide about ask_claude (it has no level of its own).
             for (t in ToolName.entries.filter { !it.internal }) ApprovalRow(t, s.approval(t), t in s.lockedTools) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
-            Text("Anything Claude asks Robot to do always shows a card first.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(if (s.claudeActionCards) "Anything Claude asks Robot to do shows a card first." else "Claude's requests follow the levels above and Safety cards.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         PeopleSettingsCard(s, snap, calendars, update, a)
         WeatherSettingsCard(s, snap, update, a)
@@ -492,7 +498,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
             }
         }
         SectionCard("History") {
-            SwitchRow("Save conversations", "Kept in Robot's private storage on this phone. Photos and screen contents are never saved.", s.saveHistory) { update(s.copy(saveHistory = it)) }
+            SwitchRow("Save conversations", "Kept in Robot's private storage on this phone. " + if (s.keepMedia) "Thumbnails and screen text are kept too (Safety & privacy)."
+                else "Photos and screen contents aren't saved (Safety & privacy).", s.saveHistory) { update(s.copy(saveHistory = it)) }
             TextButton(onClick = { confirmHistory = true }) { Text("Delete all conversations") }
         }
         SectionCard("Assistant") {

@@ -136,6 +136,8 @@ sealed class Page {
     /** Settings › People (0.4.0), and one person ([id] null: a new one). */
     data object People : Page()
     data class PersonEdit(val id: String?) : Page()
+    /** Settings › Safety & privacy (0.4.0). */
+    data object Safety : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -152,6 +154,7 @@ sealed class Page {
                     AdbFixes -> "adbfixes"
                     People -> "people"
                     is PersonEdit -> "person:${p.id.orEmpty()}"
+                    Safety -> "safety"
                 }
             },
             restore = { v ->
@@ -165,6 +168,7 @@ sealed class Page {
                     v == "adbfixes" -> AdbFixes
                     v == "people" -> People
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
+                    v == "safety" -> Safety
                     else -> null
                 }
             },
@@ -356,6 +360,13 @@ fun RobotAppUi(activity: MainActivity) {
         deleteModel = { ModelStore.delete(ctx); say("The model was deleted.") },
         deleteConversation = { id -> ConversationStore.delete(ctx, id); historyTick++; page = null },
         deleteAllConversations = { ConversationStore.deleteAll(ctx); historyTick++; say("History deleted.") },
+        removeSavedMedia = {
+            scope.launch {
+                val n = withContext(Dispatchers.IO) { ConversationStore.removeMedia(ctx) }
+                historyTick++
+                say(if (n == 0) "No saved screenshots or photos." else "Removed from $n conversation${if (n == 1) "" else "s"}.")
+            }
+        },
         speakTest = { Cmd.send(ctx, Cmd.SPEAK_TEST) },
         say = ::say,
         voiceDownload = { b -> VoiceModelStore.startDownload(ctx, b)?.let(::say) },
@@ -431,6 +442,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.AdbFixes -> AdbFixesScreen(snackbar, onBack = { page = null })
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
+        Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -472,6 +484,8 @@ class AppActions(
     val deleteModel: () -> Unit,
     val deleteConversation: (String) -> Unit,
     val deleteAllConversations: () -> Unit,
+    /** Settings › Safety & privacy: every kept thumbnail and screen text out of the saved conversations. */
+    val removeSavedMedia: () -> Unit = {},
     val speakTest: () -> Unit,
     val say: (String) -> Unit,
     val voiceDownload: (VoiceBundle) -> Unit,

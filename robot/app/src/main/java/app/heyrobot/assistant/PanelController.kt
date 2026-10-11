@@ -46,6 +46,7 @@ import app.heyrobot.core.EscalationGuard
 import app.heyrobot.core.EscalationPolicy
 import app.heyrobot.core.EscalationTrigger
 import app.heyrobot.core.Hedge
+import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ModelOutcome
 import app.heyrobot.core.Personal
 import app.heyrobot.core.PreRouter
@@ -64,6 +65,7 @@ import app.heyrobot.core.TokenEstimate
 import app.heyrobot.core.PromptTurn
 import app.heyrobot.core.PromptRole
 import app.heyrobot.core.ContextWindow
+import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
@@ -106,6 +108,7 @@ import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.Phones
 import app.heyrobot.sys.SettingsIntents
+import app.heyrobot.ui.common.keptPicture
 import app.heyrobot.voice.Cues
 import app.heyrobot.voice.SpeechToText
 import kotlinx.coroutines.CancellationException
@@ -238,6 +241,8 @@ data class PanelState(
     val claudeStatus: String? = null,
     /** The corner swipe came from the Claude app: "Read Claude's answer". */
     val claudeScreen: Boolean = false,
+    /** What works on the lock screen (Settings › Safety & privacy), for the panel's words. */
+    val lockedTools: Set<ToolName> = LockScreen.DEFAULT,
 ) {
     /** A turn is under way, a confirmation card included: no new question, no mic, no camera until it ends. */
     val busy: Boolean get() = phase == Phase.THINKING || phase == Phase.ANSWERING || phase == Phase.CONFIRMING
@@ -414,7 +419,7 @@ object PanelController {
         if (locked && !s.claudeLocked) endClaudeMode()
         _state.update {
             it.copy(locked = locked, screenChip = ScreenChip.HIDDEN, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint, partial = "",
-                showId = it.showId + 1, claudeScreen = false)
+                showId = it.showId + 1, claudeScreen = false, lockedTools = s.lockedTools)
         }
         BrainKeeper.prewarm(VoiceHub.app)
         ClaudeLink.warm(VoiceHub.app, s)
@@ -602,7 +607,7 @@ object PanelController {
         }
     }
 
-    private fun ChatTurn.toUi() = UiTurn(id, role, text, attachment, null,
+    private fun ChatTurn.toUi() = UiTurn(id, role, text, attachment, keptPicture(picture),
         actions.map { UiAction(newId(), it.tool, it.summary, it.status, it.detail, content = it.content) }, stopped = stopped, error = error,
         claude = claude, readBack = readBack, sources = sources, cost = costMicros.takeIf { it > 0 && VoiceHub.settings.claudeShowCost }?.let { ClaudeCost.line(it / 1e6) })
 
@@ -884,7 +889,12 @@ object PanelController {
         // "Ask Claude about my screen" said without attaching it is still a screen question: the conversation is
         // personal from here on, and it is saved only with Keep.
         val marked = if (attachment != Attachment.NONE) attachment else (cmd as? ClaudeCommand.Ask)?.extra ?: Attachment.NONE
-        val user = ChatTurn(newId(), TurnRole.USER, q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, marked)
+        // "Keep screenshots and photos in history" (off by default): the thumbnail and the screen's text go into the saved
+        // conversation, for History only (never replayed to the model, never sent to Claude).
+        val kept = VoiceHub.settings.let { it.keepMedia && it.saveHistory } && attachment != Attachment.NONE
+        val user = ChatTurn(newId(), TurnRole.USER, q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, marked,
+            picture = if (kept) st.draft?.thumb?.let { b -> java.util.Base64.getEncoder().encodeToString(Images.jpeg(b, Images.THUMB_EDGE, 70)) } else null,
+            screenText = if (kept) sText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }?.let { ToolCalls.safeTake(it, ConversationCodec.MAX_SCREEN_TEXT) } else null)
         chat += user
         val way = FastPath.of(cmd, _state.value.claudeMode, attachment)
         val toClaude = way == FastPath.Way.CLAUDE
@@ -982,7 +992,8 @@ object PanelController {
             when (decide(attachment, guardFree = !guard.used)) {
                 EscalationDecision.AUTO -> {
                     guard.take(fromClaude = false)
-                    val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personalNow(null))
+                    val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personalNow(null),
+                        includePersonal = s.personalToHelpers)
                     return escalateNow(replyId, question, blocks, voiceAsked, reuseBubble = true)
                 }
                 EscalationDecision.OFFER -> offerAfter = EscalationTrigger.PRE_ROUTER
@@ -1067,12 +1078,15 @@ object PanelController {
         offerAfter?.let { afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, it, offerOnly = true) }
     }
 
-    /** The escalation policy for this question now ([attachment]: its screen or photo, which only a tap may send). */
+    /**
+     * The escalation policy for this question now ([attachment]: its screen or photo, which only a tap may send, unless
+     * "Send personal content to helpers automatically" is on).
+     */
     private suspend fun decide(attachment: Attachment, guardFree: Boolean): EscalationDecision {
         val s = VoiceHub.settings
         val app = VoiceHub.app
-        return EscalationPolicy.decide(s, ClaudeLink.keySaved(app), attachment != Attachment.NONE, Assistant.locked(app), ClaudeLink.budgetReached(app, s), !guardFree,
-            declined = claudeDeclined)
+        return EscalationPolicy.decide(s, ClaudeLink.keySaved(app), attachment != Attachment.NONE && !s.personalToHelpers, Assistant.locked(app),
+            ClaudeLink.budgetReached(app, s), !guardFree, declined = claudeDeclined)
     }
 
     /** The personal content in the conversation now, the reply [replyId] included while it is still on screen only. */
@@ -1133,7 +1147,10 @@ object PanelController {
         val personal = personalNow(replyId)
         when (decision) {
             EscalationDecision.AUTO -> if (offerOnly) finishOrDrop(replyId) else {
-                val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personal)
+                // A screen or photo question gets here only with personal content allowed to go by itself: it goes along.
+                val shared = if (attachment != Attachment.NONE && s.personalToHelpers) Shared(screenText = screen, image = image) else Shared()
+                val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, shared, personal = personal,
+                    includePersonal = s.personalToHelpers)
                 finishOrDrop(replyId)
                 escalateNow(null, question, blocks, voiceAsked, reuseBubble = false)
             }
@@ -1152,7 +1169,7 @@ object PanelController {
                 }
                 // What the tap sends is fixed now: this question's screen or picture, never one that arrives later.
                 val payload = if (!api) null else ClaudeContext.payload(question, history, ZonedDateTime.now(), userRegion, personal, attachment,
-                    Shared(screenText = screen, image = image))
+                    Shared(screenText = screen, image = image), includePersonal = s.personalToHelpers)
                 offer(replyId, PendingOffer(api, question, payload, voiceAsked, asWell))
             }
             EscalationDecision.NEEDS_UNLOCK -> {
@@ -1227,7 +1244,8 @@ object PanelController {
             return notify(ClaudeWords.OFF)
         }
         val personal = o.payload?.personal.orEmpty()
-        if (!tapped && personal.isNotEmpty()) {
+        // "Voice yes can send personal content" (off by default): otherwise only the tap sends it.
+        if (!tapped && personal.isNotEmpty() && !VoiceHub.settings.voiceYesPersonal) {
             val say = ClaudeWords.tapToInclude(personal)
             notify(say)
             if (_state.value.speak) VoiceHub.tts.speak(say)

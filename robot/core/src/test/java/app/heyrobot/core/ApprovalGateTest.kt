@@ -40,6 +40,15 @@ class ApprovalGateTest {
         assertEquals("questions, timers and alarms", LockScreen.allowed(defaults.lockedTools))
         assertEquals("questions only", LockScreen.allowed(emptySet()))
         assertEquals("questions and flashlight", LockScreen.allowed(setOf(ToolName.FLASHLIGHT)))
+        assertEquals("Ask a question, or set a timer or alarm.", LockScreen.headline(defaults.lockedTools))
+        // The model hears the same line as always by default (the prompt's tokens are counted), and the set otherwise.
+        val now = java.time.ZonedDateTime.of(2026, 10, 9, 12, 0, 0, 0, java.time.ZoneId.of("America/Toronto"))
+        assertTrue(Prompt.system(now, locked = true).endsWith(" The phone is locked: you can answer questions and set timers and alarms only."))
+        assertEquals(Prompt.system(now, locked = true), Prompt.system(now, locked = true, lockedTools = defaults.lockedTools))
+        assertTrue(Prompt.system(now, locked = true, lockedTools = emptySet()).endsWith(" The phone is locked: you can answer questions only."))
+        assertTrue(Prompt.system(now, locked = true, lockedTools = setOf(ToolName.FLASHLIGHT, ToolName.SET_TIMER))
+            .endsWith(" The phone is locked: you can answer questions and use only these actions: timers, flashlight."))
+        assertFalse(Prompt.system(now, locked = false, lockedTools = emptySet()).contains("locked"))
     }
 
     @Test fun unlockedDefaultsOpenAppsAndMapsButAskBeforeWriting() {
