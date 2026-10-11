@@ -559,7 +559,8 @@ object RoutineRouter {
 
     /**
      * The time [c] means. A bare 12-hour time ("at 7") takes the period said ("every morning", "in the evening"), else
-     * 5 to 11 are morning hours, 12 is noon and 1 to 4 afternoon ones; the card then says how it was read ([note]).
+     * 6 to 11 are morning hours, 12 is noon and 1 to 5 afternoon ones ("every Friday at 5" is 17:00); the card then says
+     * how it was read ([note]).
      */
     private fun resolve(c: Clock, per: Period?, notes: MutableList<String>): LocalTime {
         var h = c.h
@@ -570,7 +571,7 @@ object RoutineRouter {
                 Period.AM -> if (h == 12) h = 0
                 Period.PM -> if (h < 12) h += 12
                 null -> {
-                    if (h in 1..4) h += 12
+                    if (h in 1..5) h += 12
                     notes += "Read “${c.said}” as ${String.format(Locale.US, "%02d:%02d", h, c.m)}; change it in Routines if that's wrong."
                 }
             }

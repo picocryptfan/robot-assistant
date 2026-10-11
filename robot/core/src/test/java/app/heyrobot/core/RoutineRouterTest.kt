@@ -63,7 +63,7 @@ class RoutineRouterTest {
             conditions = RoutineConditions(between = TimeWindow.NIGHT))
         expect("Quand je mets le téléphone à charger le soir, règle un réveil à 6 h 30", RoutineTrigger.Charging(true),
             listOf(tool("set_alarm", "hour" to 6, "minute" to 30)), BriefLang.FR, RoutineConditions(between = TimeWindow.NIGHT))
-        expect("every Friday at 5, tell me the weather for the weekend", at(5, days = setOf(DayOfWeek.FRIDAY)), listOf(tool("weather", "day" to "this weekend")))
+        expect("every Friday at 5, tell me the weather for the weekend", at(17, days = setOf(DayOfWeek.FRIDAY)), listOf(tool("weather", "day" to "this weekend")))
     }
 
     @Test fun moreTimesAndDays() {
