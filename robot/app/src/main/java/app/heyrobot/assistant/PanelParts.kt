@@ -392,7 +392,7 @@ fun PanelInput(
         )
         Spacer(Modifier.width(8.dp))
         if (st.phase == Phase.CONFIRMING) IconButton(onClick = actions::stopGenerating) { Icon(RIcons.Stop, "Cancel") }
-        MicFab(fabMode(st, input.isNotBlank() || st.draft != null), st.micHint, actions, onSend)
+        MicFab(fabMode(st, input), st.micHint, actions, onSend)
     }
 }
 
@@ -416,19 +416,22 @@ enum class FabMode(val label: String, val icon: ImageVector) {
     val talks: Boolean get() = this == TALK || this == ANSWER_BY_VOICE
 }
 
-/** The button's job for [st] ([canSend]: text in the field, or a photo or screen to send). */
-fun fabMode(st: PanelState, canSend: Boolean): FabMode = when {
-    // A card waits: the mic (or Send, for a typed "yes" or "no") answers it.
-    st.phase == Phase.CONFIRMING -> when {
+/** The button's job for [st] with [input] in the field (text, or a photo or screen, can be sent). */
+fun fabMode(st: PanelState, input: String): FabMode {
+    val canSend = input.isNotBlank() || st.draft != null
+    return when {
+        // A card waits: the mic (or Send, for a typed "yes" or "no") answers it.
+        st.phase == Phase.CONFIRMING -> when {
+            canSend -> FabMode.SEND
+            st.cardHearing != null -> FabMode.STOP_LISTENING
+            else -> FabMode.ANSWER_BY_VOICE
+        }
+        st.busy -> FabMode.STOP_ANSWER
+        st.phase == Phase.SPEAKING && !canSend -> FabMode.STOP_READING
         canSend -> FabMode.SEND
-        st.cardHearing != null -> FabMode.STOP_LISTENING
-        else -> FabMode.ANSWER_BY_VOICE
+        st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING -> FabMode.STOP_LISTENING
+        else -> FabMode.TALK
     }
-    st.busy -> FabMode.STOP_ANSWER
-    st.phase == Phase.SPEAKING && !canSend -> FabMode.STOP_READING
-    canSend -> FabMode.SEND
-    st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING -> FabMode.STOP_LISTENING
-    else -> FabMode.TALK
 }
 
 /** The button's container: the primary colour while listening, secondary while reading aloud, else primaryContainer. */
