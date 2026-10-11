@@ -82,6 +82,7 @@ import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.sys.MtModelStore
 import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.model.ModelScreen
 import app.heyrobot.ui.settings.AppRoutes
 import app.heyrobot.ui.settings.SettingsNav
 import app.heyrobot.ui.settings.SettingsRoot
@@ -640,7 +641,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.Licences -> LicencesScreen(onOpen = { page = it }, onBack = nav::back)
         // Back from a notice goes to its part's licence, from a licence to the list.
         is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it }, onBack = nav::back)
-        is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = nav::back)
+        is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = nav::back, busy = busy)
         Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = nav::back)
         is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = nav::back)
         Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)

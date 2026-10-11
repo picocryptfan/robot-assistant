@@ -25,6 +25,7 @@ import app.heyrobot.ui.ROBOT_LICENCE
 import app.heyrobot.ui.Snapshot
 import app.heyrobot.ui.Tab
 import app.heyrobot.ui.WeatherSettingsScreen
+import app.heyrobot.ui.model.ModelRoute
 import kotlin.reflect.KProperty
 
 // MAIN PROCESS. Settings' sub-pages by route (Page.Settings, which survives a recreation as "settings:<route>"), the
@@ -59,7 +60,10 @@ fun SettingsNav(
     a: AppActions,
     snackbar: SnackbarHostState,
     onBack: () -> Unit,
+    busy: String? = null,
 ) {
+    // Settings › Model's pages (the Model tab's rows open them).
+    if (route.startsWith("model/") && ModelRoute(route, s, update, snap, busy, a, snackbar, onBack)) return
     when (route) {
         SettingsRoutes.DISPLAY -> {
             val ctx = LocalContext.current
@@ -89,6 +93,8 @@ fun parentOf(p: Page): Page? = when (p) {
     is Page.Settings -> when {
         p.route == SettingsRoutes.NOTIFICATION_ACCESS -> Page.People
         p.route.startsWith("adb/") -> Page.AdbFixes
+        // A model's page sits under the Model tab.
+        p.route.startsWith("model/") -> null
         '/' in p.route -> Page.Settings(p.route.substringBeforeLast('/'))
         else -> null
     }
