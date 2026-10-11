@@ -563,6 +563,26 @@ class ProcessIsolationTest {
     }
 
     /**
+     * After an update, as after a restart (README "Updates" › "After an update"): MY_PACKAGE_REPLACED runs the boot path's
+     * own routine (afterRestart: the recognizer setting and the assistant check) and then only the updater's part, and
+     * neither starts or binds anything. 0.6.0's processes need no step of their own: conversation capture in :voice (a
+     * session the update ended is closed when the assistant comes back, with Resume), :mt, :brain and its isolated :llama
+     * start when something asks them.
+     */
+    @Test fun afterAnUpdateRobotDoesWhatItDoesAfterARestart() {
+        val boot = code(File(java("app"), "app/heyrobot/boot/BootReceivers.kt"))
+        assertEquals(2, Regex("""\bafterRestart\(ctx, """).findAll(boot).count())
+        assertTrue(boot.contains("afterRestart(ctx, if (locked) RepairWhen.LOCKED_BOOT else RepairWhen.BOOT)"))
+        assertTrue(boot.contains("afterRestart(ctx, RepairWhen.UPDATE) { Updater.afterUpdate(it) }"))
+        val starts = Regex("""\b(startService|startForegroundService|bindService|startActivity)\b|\bConversation(Service|Session|Tile\w*)\b|""" +
+            """\b(MtLink|MtSpeedRun|BrainLink|BrainClient|BrainKeeper|VoiceHub|HelperLink|Transcripts)\b|\bLlama\w*""")
+        assertEquals(emptyList<String>(), usersOf(starts, ours.filterKeys { it.startsWith("app/boot/") }))
+        val up = code(File(java("app"), "app/heyrobot/update/Updater.kt"))
+        val after = up.substringAfter("fun afterUpdate(ctx: Context) {").substringBefore("\n    }\n")
+        assertTrue(after, after.contains("UpdateJobs.ensure(") && !starts.containsMatchIn(after))
+    }
+
+    /**
      * Privacy (spec item 10): no network code but the :claude module's SDK client and, since 0.4.0, the one Open-Meteo
      * client for the weather (DownloadManager does the model downloads), no audio files, no raw logging, never an
      * accessibility service (Ask Claude must not drive the Claude app).
