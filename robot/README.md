@@ -282,6 +282,23 @@ connection window's process, the compiled network security config, the client cl
     the key. No matches (kinds and codes only).
 19. **APK:** `tools/verify_apk.sh` passes (the connection window in `:voice`, the network security config, no key
     strings); the APK is within about 1 MB of 0.4.0's.
+20. **OpenAI and xAI conversations:** "go get ChatGPT", then two follow-ups, then "set a timer for 2 minutes" and a
+    follow-up after the card: every request is answered (the reasoning goes back encrypted; OpenAI documents that with
+    `store: false` a reasoning item can go back only that way, so without it the second request would be refused). The
+    same with Grok. If xAI refuses `include`, Test connection
+    lists "encrypted reasoning" among what Robot leaves out.
+21. **OpenRouter's zero data retention:** pick a model no zero-retention provider serves: the answer is a failure, and
+    OpenRouter's activity page shows no request sent without ZDR; the switch on the helper's page still says on.
+22. **An address moved to another host:** with a key saved for your server, change its address to another computer:
+    "The key was removed…", and that computer's log shows no `Authorization` header from Test connection. Changing only
+    the port keeps the key.
+23. **Actions off:** turn off "Let Jarvis ask Robot to do things" and point Jarvis at a server that answers with a tool
+    call anyway (any small script that replies with a `tool_calls` chunk): the card says "this tool wasn't offered" and
+    nothing runs, even with "Card when a helper asks Robot to do something" off.
+24. **Trust and the screen:** with a trusted helper as the one Robot asks (Automatic), ask about your screen, then a hard
+    question: Robot checks with the helper by itself with only your question (the server's log shows no earlier turns).
+25. **Numeric addresses:** typing `3232235777` or `10.1` as a server's address is refused in the dialog.
+26. **Network toggle off:** Test connection says Robot isn't allowed to use the network.
 
 ## Weather, phone status and freeing space (0.4.0)
 
