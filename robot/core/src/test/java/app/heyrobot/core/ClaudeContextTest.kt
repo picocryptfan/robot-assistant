@@ -227,10 +227,10 @@ class ClaudeContextTest {
     }
 
     @Test fun costEstimateFromUsage() {
-        // Opus 5.5: $4 in, $20 out, cache reads $0.20 per million.
+        // Opus 5.5: $4 in, $20 out, cache reads $0.20 per million; Sonnet 5.5 cache reads $0.10 (0.05x input on both).
         val u = ClaudeUsage(input = 1_000, output = 300, cacheRead = 2_000, cacheWrite = 0)
         assertEquals(0.004 + 0.006 + 0.0004, ClaudeCost.dollars(ClaudeModel.OPUS, u), 1e-9)
-        assertEquals(0.002 + 0.003 + 0.0004, ClaudeCost.dollars(ClaudeModel.SONNET, u), 1e-9)
+        assertEquals(0.002 + 0.003 + 0.0002, ClaudeCost.dollars(ClaudeModel.SONNET, u), 1e-9)
         assertEquals(0.0001 + 0.00015 + 0.00002, ClaudeCost.dollars(ClaudeModel.HAIKU, u), 1e-9)
         // Haiku's higher rate card over 100K prompt tokens; searches at a cent each; cache writes at 1.25×.
         assertEquals(200_000 * 0.50 / 1e6, ClaudeCost.dollars(ClaudeModel.HAIKU, ClaudeUsage(input = 200_000)), 1e-9)
