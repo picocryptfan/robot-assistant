@@ -4,6 +4,8 @@ A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the c
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
 TPU answers, streams the reply and reads it aloud. Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
 Mail), keeps and finds notes, reads and adds calendar events and looks up contacts. Everything runs on the phone.
+Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) and your phone's storage, battery and
+memory.
 Since 0.3.0, and only when you ask (or let it), Robot can hand a question to Claude: through the Claude API with your
 key, or by opening the Claude app (see "Ask Claude" below). The build specs are `../docs/phase-1.md`,
 `../docs/phase-2.md` and `../docs/ask-claude.md`; the voice models and how they are used, `../docs/voice-plan.md`.
@@ -23,7 +25,8 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 - The main app never loads an engine or the Anthropic SDK; `ProcessIsolationTest` checks sources, Gradle files and
   the merged manifest, and `tools/verify_apk.sh` checks the dex.
 - `app/sys/` (both app processes) reads ContactsContract and CalendarContract and holds the Robot Notes folder; only
-  the main app asks for permissions (`ProcessIsolationTest` checks that too).
+  the main app asks for permissions (`ProcessIsolationTest` checks that too). Since 0.4.0 it also holds the Open-Meteo
+  client (the only HTTP code outside the Claude SDK), the coarse location reader and what phone_status reads.
 - `:brain` is bound from the assistant with `BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_INCLUDE_CAPABILITIES`;
   it is not exported and requires Robot's signature permission `app.heyrobot.permission.INTERNAL`.
 - Tools run in the app process (`:voice`), never in `:brain`: the model only proposes calls
@@ -60,6 +63,86 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
+## Weather and phone status (0.4.0)
+
+Two read-only tools, so Robot can say whether tomorrow will be cloudy and help you free up storage. Both are "Just do
+it" by default, each with its own row in Settings › Actions, and both need the phone unlocked: the lock screen still
+allows only questions, timers and alarms. Their findings are content Robot didn't write, so later actions in that
+conversation ask first, and they make the conversation personal for Claude (below).
+
+| Tool | Does | Default |
+|---|---|---|
+| `weather` (place, day; both optional) | Open-Meteo's forecast for a town you name, your Home for weather, or where the phone is: one line per day | Just do it (uses the internet) |
+| `phone_status` (about: storage, battery, memory or all) | Free and total storage, battery, memory, and with Usage access the apps using the most space and the size of photos, videos and audio, read on the phone | Just do it |
+
+### Weather
+
+Robot runs on the phone and goes online when you ask: the weather comes from **Open-Meteo** (`api.open-meteo.com`, and
+`geocoding-api.open-meteo.com` to find a town), with no account and no key. The request comes from the assistant's
+process (`:voice`, where tools run), over HTTPS with short timeouts, no redirects and a plain "Robot" User-Agent (Android's
+default names the phone model). `sys/OpenMeteoClient.kt` is the only HTTP code outside the Claude SDK
+(`ProcessIsolationTest` checks it); `core/Weather.kt` builds the URLs and reads the answers, tested against answers
+recorded from Open-Meteo.
+
+- **Where.** A town you name ("weather in Paris", "Paris, Texas" picks the one in Texas, "London, Canada" the one in
+  Ontario; otherwise the biggest town of that name), "at home" (your Home for weather), or "here" and no place at all:
+  where the phone is. For that Robot holds **ACCESS_COARSE_LOCATION** only (never fine or background location), asked
+  for by the main app when you tap Allow (Assistant setup › Weather and phone status, Settings › Weather, or a card's
+  Allow, which opens the app; the panel never asks). It takes the last known position of any provider if it is under
+  30 minutes old, else asks every provider at once for up to 10 seconds (GrapheneOS has no Google network location, and
+  GPS alone can be slow or silent indoors), else a position up to a day old, else your Home for weather. Without any of
+  them the card says to name a town, set a Home for weather or allow location. What Open-Meteo gets is two coordinates
+  rounded to two decimals (about 1 km), or the town's name; the card shows them ("Sent to Open-Meteo: 45.51, -73.59").
+- **Home for weather** (Settings › Weather): type a town and Look up; Robot looks it up once with Open-Meteo (the main
+  app's only request besides the model downloads), shows what it found ("Montreal, Quebec, Canada") and keeps it in
+  settings.json (schema 5; older files read it as none). Clear removes it.
+- **Days.** Today when none is said; tomorrow, a weekday, "this week" (to Sunday), "this weekend", "next week", "the
+  next 3 days", and the French words (demain, après-demain, vendredi, cette semaine, ce week-end…), read with the
+  calendar's date parser before anything goes online and again in the place's own time zone (today in Tokyo is
+  Tokyo's today). Past days are refused; Open-Meteo forecasts today and the next 15 days; at most 7 days per answer.
+- **What the model gets**: one line per day, e.g. "tomorrow, Sun Oct 11: overcast, high 18°C, low 6°C, 5% chance of
+  rain, wind up to 11 km/h (gusts 25), cloud cover 100%", with the conditions (WMO codes in words), the chance and
+  amount of rain or snow, and for today the temperature and conditions now. °F, mph and inches in the United States,
+  Liberia and Myanmar (by the phone region: Settings, else the phone's own), °C, km/h, mm and cm elsewhere.
+- **Asking.** Weather words in English and French (weather, forecast, rain, snow, temperature, cloud, cloud cover, wind,
+  umbrella, météo, pluie, neige, température, nuageux, vent, parapluie, "quel temps"…) describe the tool for that
+  conversation, and the system prompt then says "For the weather, call weather" (otherwise it still says Robot can't
+  check the weather). With the tool on, a weather question no longer goes to Claude by itself (the pre-router's
+  current-information signal leaves weather out; "explain why it rains" still counts as reasoning, and "ask Claude about
+  the weather in Paris" still asks Claude). "Cloud" counts as a mishearing of "Claude" only after a command verb, so
+  "Okay, cloud cover tomorrow?" stays with Robot.
+- **Errors**, in fixed words, read aloud: no internet; Robot's Network permission off; the service busy (its free tier
+  has daily limits) or not answering properly; a town Open-Meteo doesn't know; location off or no position in time; no
+  Home for weather set; a day in the past or more than 15 days ahead.
+- **Lock screen: no.** A locked phone can't tell who is asking, and the answer would say where your Home is and go
+  online for them. Claude isn't offered the tool (it has web search).
+- **Privacy.** The card's saved line names no place ("Forecast for where you are, from Open-Meteo."); the place, the
+  days and what was sent are in its body, which is shown but never saved. A weather lookup makes the conversation
+  personal: "Include the conversation so far? It contains your location." The voice log gets "Weather from Open-Meteo for
+  a new location fix · place found in 2300 ms · forecast in 410 ms" or the failure, in codes and milliseconds
+  (`VoiceEvent.WEATHER` 80, `WEATHER_FAILED` 81), never a place.
+
+### Phone status
+
+Read on the phone; nothing leaves it. `StatFs` on the data partition gives free and total storage and the share used;
+`BatteryManager` the level, charging or not, Android's minutes to full and the battery's temperature; `ActivityManager`'s
+`MemoryInfo` the available and total memory and whether Android considers it low (and whether Robot's own model, about
+2 GB, is loaded). With **Usage access** (you turn it on for Robot in Android's settings: Assistant setup › Usage access ›
+Open, or the card's "Turn on Usage access"), `StorageStatsManager` adds the five apps using the most space (app and data,
+their cache from 100 MB) and the size of photos, videos and audio. Only apps with a launcher icon are counted (Robot has no
+QUERY_ALL_PACKAGES). With Usage access the card offers **Open storage settings**. Asked about one part ("how's my
+battery"), only that part is read.
+
+The answer is a few short lines (under 200 tokens), e.g. "Storage: 12 GB free of 238 GB (95% used) · Largest apps: Signal
+12 GB (cache 1.2 GB), …". In conversations where the tool is described (storage, space, battery, memory, RAM, cache, free
+up, stockage, batterie, mémoire, libérer…) the system prompt says "For this phone's storage, battery or memory, call
+phone_status first, then give practical advice from its numbers." It is personal for Claude ("your phone's status") and
+not offered to Claude.
+
+The two schemas cost about 140 and 110 tokens (estimated on the high side), only in conversations that use them.
+PACKAGE_USAGE_STATS and ACCESS_COARSE_LOCATION are the only new permissions (`ProcessIsolationTest` and
+`tools/verify_apk.sh` check the list; INTERNET is still the only network permission).
+
 ## Ask Claude (0.3.0)
 
 Robot stays offline by default. Nothing goes to Claude unless you ask for it ("hey robot, ask Claude why the sky is
@@ -94,8 +177,9 @@ an API key, questions for Claude open the Claude app. Spec: `../docs/ask-claude.
 
 GrapheneOS's per-app **Network** toggle must stay on for Robot. When Android reports Robot's network permission off, the
 panel shows a card saying so (and says it aloud); when the toggle shows as no network at all, "No internet" says to
-check Robot's Network permission. Robot's INTERNET permission is used for two things only: the model downloads and Ask
-Claude (also on the Assistant setup screen). It is still Robot's only network permission.
+check Robot's Network permission. Robot's INTERNET permission is used for three things only: the model downloads, Ask
+Claude, and the weather when you ask for it (0.4.0; also on the Assistant setup screen). It is still Robot's only network
+permission.
 
 ### What Claude receives, and when
 
@@ -108,7 +192,8 @@ Claude (also on the Assistant setup screen). It is still Robot's only network pe
 | "thanks Claude", "bye Claude", "back to Robot" | nothing: Claude mode ends |
 
 A conversation is **personal** from the first turn with screen text, a photo, something Robot read from your contacts,
-calendar or notes, Claude's answer read off the Claude app, or an "ask Claude about my screen" question. Then Robot
+calendar or notes, a weather lookup (your location) or your phone's status (0.4.0), Claude's answer read off the Claude
+app, or an "ask Claude about my screen" question. Then Robot
 checking with Claude by itself sends only your question, and Claude joining asks first: "Include the conversation so
 far? It contains …".
 
@@ -176,7 +261,7 @@ Settings › Ask Claude › "When Robot needs help": **Off**, **Ask me first** (
 Claude?" under its reply and waits for a tap or a yes), or **Automatic** (the default once a key is saved; only the API
 escalates by itself, so without a key it is always "Ask me first" and opens the Claude app, if it is installed). Three triggers:
 deterministic words first (explain why/how, compare, plan, write me, draft, code, calculate, solve, step by step,
-latest, news, prices, scores, weather, or more than 40 words; never a timer, alarm, text, note, event, app, map or
+latest, news, prices, scores, weather (not with the weather tool on, 0.4.0), or more than 40 words; never a timer, alarm, text, note, event, app, map or
 flashlight question, a door or wifi code, news from someone you know, or your credit score), Gemma's `ask_claude` tool
 (described only with Ask Claude on and somewhere for the question to go), and a hedged local answer ("I don't know",
 "I can't browse", "as an AI", or nothing). At most one escalation per turn; a Claude answer is never re-escalated.
