@@ -515,6 +515,15 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/assistant/conversation/Helpers.kt"), usersOf(Regex("""\bClaude(Session|Client|Listener|Outcome)\b|\btranscriptSession\b"""), conv))
         val helpers = code(File(java("app"), "app/heyrobot/assistant/conversation/Helpers.kt"))
         assertEquals(2, Regex("""HelperGate\.allowed\(job\)""").findAll(helpers).count())
+        // 0.6.0: never another helper's session (any company's API, your own server, Test connection), a key or Robot's
+        // actions: HelperLink only for Claude's transcript session (and whether Claude's key is saved, for the card)...
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bHelperLink\.session\(|\bHelper(Session|Http|Probe|Keys|KeyFiles)\b|\bOpenAiSession\b|""" +
+            """\bapp\.heyrobot\.helpers\b|\bClaudeTools\b"""), conv))
+        assertEquals(listOf("app/assistant/conversation/Helpers.kt", "app/assistant/conversation/SummaryActivity.kt"), usersOf(Regex("""\bHelperLink\b"""), conv))
+        // ...which is Claude's, with its fixed prompt, no tools and no web search.
+        val link = code(File(java("app"), "app/heyrobot/assistant/HelperLink.kt"))
+        assertTrue(Regex("""fun transcriptSession\([^{]*\{[^}]*HelperConfig\.claude\(\)[^}]*ClaudeSession\([^)]*\bemptyList\(\), search = false, """ +
+            """conversation = false, system = ClaudePrompt\.TRANSCRIPT_SYSTEM\)""").containsMatchIn(link))
         // The summary screen and the summaries' job are in the voice process (the main app opens the screen by name).
         assertEquals(emptyList<String>(), usersOf(Regex("""\bSummary(Jobs|Activity)\b|\bClaude(Api|App)Helper\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
         // The clip reader reads what you picked; nothing in conversation mode writes audio.
@@ -554,10 +563,12 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/assistant/conversation/VoiceprintActivity.kt"), usersOf(Regex("""\bVoiceprints\.save\(""")))
         assertEquals(listOf("app/assistant/conversation/Voiceprints.kt"), usersOf(Regex("""\bVoiceprintCodec\.(open|seal)\(""")))
         val main = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bVoiceprints\b|\bVoiceprintCodec\.(open|seal|decode)\b|\bCipher\b"""), main.filterKeys { it != "app/sys/ClaudeFiles.kt" }))
-        // Its Keystore key is its own, never the Claude key's.
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bVoiceprints\b|\bVoiceprintCodec\.(open|seal|decode)\b|\bCipher\b"""), main))
+        // Its Keystore key is its own, never a helper's (0.6.0: Claude's key is a helper's key, under its old alias).
         val keys = code(File(java("app"), "app/heyrobot/assistant/conversation/Voiceprints.kt"))
-        assertTrue(keys.contains("VoiceprintCodec.KEY_ALIAS") && !keys.contains("ClaudeKeyFiles"))
+        assertTrue(keys.contains("VoiceprintCodec.KEY_ALIAS") && !Regex("""\bHelperKey(s|Files)\b|\bClaudeKey""").containsMatchIn(keys))
+        val alias = app.heyrobot.core.VoiceprintCodec.KEY_ALIAS
+        assertTrue(alias != app.heyrobot.sys.HelperKeyFiles.CLAUDE_ALIAS && !alias.startsWith(app.heyrobot.sys.HelperKeyFiles.alias("x").removeSuffix("x")))
         // Never in settings: the setting is a flag.
         val settings = code(File(java("core"), "app/heyrobot/core/Settings.kt"))
         assertTrue(settings.contains("val meVoiceprint: Boolean"))
