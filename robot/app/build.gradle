@@ -59,7 +59,14 @@ android {
             excludes.add('**/libLiteRtCompilerPlugin_google_tensor.so')
             pickFirsts.add('**/libLiteRtDispatch_GoogleTensor.so')
         }
-        resources { excludes += ['META-INF/AL2.0', 'META-INF/LGPL2.1', 'META-INF/*.kotlin_module'] }
+        // META-INF/AL2.0 and LGPL2.1 used to be excluded here, copied from the probe's template: older kotlinx-coroutines
+        // jars each carried a copy, and duplicates fail the packaging. No jar Robot uses today has them (coroutines 1.11.0
+        // doesn't). A licence text a library ships is kept, one copy (pickFirst), never dropped; Settings › About ›
+        // Licences has the full texts and notices anyway (assets/licenses/, and :brain's AAR notices).
+        resources {
+            excludes += ['META-INF/*.kotlin_module']
+            pickFirsts += ['META-INF/AL2.0', 'META-INF/LGPL2.1']
+        }
     }
     testOptions {
         unitTests.all {
