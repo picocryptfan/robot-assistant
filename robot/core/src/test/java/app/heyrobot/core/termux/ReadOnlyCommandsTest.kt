@@ -15,7 +15,7 @@ class ReadOnlyCommandsTest {
             "head -n 5 notes.md", "tail -n 20 ~/logs/sync.log", "cat notes.md", "cat",
             "find ~ -name '*.md'", "find ~/notes -type f -mtime -1",
             "grep -n todo notes.md", "grep -rn TODO ~/projects", "grep -e x -e y notes.md",
-            "ps", "ps -eo pid,pcpu,comm --sort=-pcpu | head -5", "ps aux | grep ssh", "top -b -n 1", "top -bn1",
+            "ps", "ps -eo pid,pcpu,comm --sort=-pcpu | head -5", "ps aux | grep ssh", "ps -ef", "top -b -n 1", "top -bn1", "ls ~/storage/shared",
             "which git", "type ls", "command -v git",
             "git status", "git log -n 5", "git log -5 --oneline", "git log --max-count=3", "git diff --stat", "git branch", "git branch -a", "git show --stat",
             "git -C ~/notes status", "git -C ~/notes log -n 3 --oneline",
@@ -43,6 +43,9 @@ class ReadOnlyCommandsTest {
             "git diff --stat --ext-diff", "git -C / status", "git -C ~/.ssh status", "git pull", "git status && git pull",
             "pkg install x", "pkg list-all", "apt list", "dpkg -i x", "termux-battery-status x", "termux-location", "termux-sms-list",
             "echo hi | sh", "echo hi | xargs rm", "ls | head | sh", "ls | cat", "ls | less",
+            // Environments, files named through git objects, your shared storage.
+            "ps e", "ps auxe", "ps -o pid,environ", "git show --stat HEAD:.env", "git log -n 1 HEAD:notes.md", "cat ~/storage/shared/Documents/a.txt",
+            "head ~/storage/downloads/x",
             // Wrappers and paths to programs.
             "sudo ls", "nice ls", "command ls", "/system/bin/ls", "./ls", "busybox ls",
             // Hidden characters.

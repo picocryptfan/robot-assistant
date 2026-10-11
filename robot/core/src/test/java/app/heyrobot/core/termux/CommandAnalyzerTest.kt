@@ -138,7 +138,10 @@ class CommandAnalyzerTest {
         for (s in listOf("\$(echo rm) -rf ~", "\$X -rf ~", "echo \$(ls)", "echo `ls`", "(cd x; rm y)", "{ ls; }", "if true; then ls; fi", "f() { ls; }",
                 "FOO=1 ls", "a=(1 2)", "\$'\\x72\\x6d' -rf ~", "bash -c 'ls'", "sh script.sh", "./script", "~/robot/backup", "python3 -c 'print(1)'",
                 "xargs echo", "eval ls", ". ~/.profile", "echo 'open", "ls |", "echo \$PATH", "[[ -f x ]]", "awk '{system(\"rm x\")}'", "sed -n 'e ls' f",
-                "find . | xargs rm", "npm run build", "", "   ", "x".repeat(5000), "git -c core.pager=less log")) {
+                "find . | xargs rm", "npm run build", "", "   ", "x".repeat(5000), "git -c core.pager=less log", "make", "am start -a x", "pm list packages",
+                "settings put global x 1", "ssh -o ProxyCommand='nc %h %p' home", "rsync -e 'ssh -p 22' a home:", "tar --to-command='sh -c x' -xf a.tar",
+                "tar -I 'sh -c x' -xf a.tar", "ls | sort --compress-program=sh", "split --filter='sh -c x' f", "git rebase -x 'make' main",
+                "alias ls='rm -rf ~'", "trap 'rm -rf ~' EXIT", "shopt -s expand_aliases", "export LD_PRELOAD=x.so", "set -o allexport", "proot -0 ls")) {
             val r = a(s)
             assertTrue("'${s.take(40)}' should be complex", r.complex && r.tapOnly && UNREADABLE in r.warnings && !r.readOnly)
         }
@@ -156,6 +159,14 @@ class CommandAnalyzerTest {
         assertTrue(DELETES in warns("env -S 'rm x'"))
         assertTrue(DELETES in warns("timeout 5 rm x"))
         assertTrue(DELETES in warns("echo \$(rm -rf ~)"))
+        assertTrue(DELETES in warns("shopt -s expand_aliases; alias ls='rm -rf ~'\nls"))
+        assertTrue(DELETES in warns("trap 'rm -rf ~' EXIT; ls"))
+        // Ordinary options aren't mistaken for programs to run.
+        for (s in listOf("git push -u origin main", "git clean -n -x", "git cherry-pick -x abc", "tar xzf a.tgz", "ssh home uptime", "sort -k2 f",
+                "ssh -o BatchMode=yes -o ConnectTimeout=5 home uptime"))
+            assertFalse(s, a(s).complex)
+        // What runs on the other computer is read too.
+        assertTrue(a("ssh home 'rm -rf /srv; echo \$(id)'").let { DELETES in it.warnings && it.complex })
         assertTrue(DELETES in warns("cat <<EOF\n\$(rm -rf ~)\nEOF"))
         assertFalse(DELETES in warns("cat <<'EOF'\n\$(rm -rf ~)\nEOF"))
         // A here-document fed to python isn't read as shell.

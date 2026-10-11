@@ -274,6 +274,8 @@ object CommandAnalyzer {
         acc.programs += prog
         val v = args.map { it.value }
         val pos = positionals(v)
+        if (prog in OPAQUE) acc.complex = true
+        if (runsAnotherProgram(prog, v)) acc.complex = true
         when (prog) {
             // Wrappers: the command they run is what matters.
             "sudo", "doas", "pkexec" -> {
@@ -350,6 +352,18 @@ object CommandAnalyzer {
                 if (inner.isNotEmpty()) { if (inner.all { it.literal }) script(inner.joinToString(" ") { it.value }, acc, depth) else acc.complex = true }
             }
             "parallel" -> acc.complex = true
+            // Shell state that changes what later commands do: alias and trap hold commands of their own.
+            "alias" -> {
+                acc.complex = true
+                for (a in args) if ('=' in a.value) { if (a.literal) script(a.value.substringAfter('='), acc, depth) }
+            }
+            "trap" -> {
+                acc.complex = true
+                args.firstOrNull { !it.value.startsWith("-") }?.let { if (it.literal) script(it.value, acc, depth) }
+            }
+            "unalias", "bind", "complete", "enable", "shopt", "export", "declare", "typeset", "readonly", "local", "hash" -> acc.complex = true
+            "set" -> if (args.isNotEmpty()) acc.complex = true
+            "termux-open" -> if (v.any { it.startsWith("http://") || it.startsWith("https://") }) acc += CommandWarning.INTERNET
             "eval" -> { acc.argCode += c.id; if (args.all { it.literal }) script(v.joinToString(" "), acc, depth) else acc.complex = true }
             "source", "." -> { acc.argCode += c.id; acc.complex = true }
             in SHELLS -> shell(args, c, parse, acc, depth)
@@ -512,6 +526,32 @@ object CommandAnalyzer {
                 "termux-download" -> acc += CommandWarning.INTERNET
             }
             TermuxApi.HARMLESS -> {}
+        }
+    }
+
+    /** Programs whose effect Robot can't read from their arguments: build tools, sandboxes, Android's own shell tools. */
+    private val OPAQUE = setOf("make", "gmake", "ninja", "just", "task", "script", "expect", "proot", "proot-distro", "chroot", "unshare", "nsenter",
+        "runuser", "setarch", "am", "cmd", "pm", "settings", "content", "input", "svc", "wm", "appops", "dumpsys", "termux-am", "gdb", "lldb")
+
+    /** Options that name a program to run (ssh's ProxyCommand, tar's --to-command, rsync's -e…): the command is complex. */
+    private fun runsAnotherProgram(prog: String, v: List<String>): Boolean {
+        fun opt(vararg o: String) = v.any { a -> o.any { a == it || a.startsWith("$it=") || (it.length == 2 && a.startsWith(it) && !a.startsWith("--")) } }
+        return when (prog) {
+            "ssh", "scp", "sftp", "autossh", "sshfs" -> v.any { it.contains("command", ignoreCase = true) } || opt("-F", "-S")
+            "rsync" -> opt("-e", "--rsh", "--rsync-path")
+            "tar" -> opt("-I", "--use-compress-program", "--to-command", "--checkpoint-action", "--rsh-command", "--info-script", "--new-volume-script", "-F")
+            "zip", "unzip" -> opt("-TT", "--unzip-command")
+            "sort" -> opt("--compress-program")
+            "split" -> opt("--filter")
+            "man" -> opt("-P", "--pager", "-H", "--html")
+            "less", "more" -> v.any { it.startsWith("+") }
+            "git" -> {
+                val sub = v.firstOrNull { !it.startsWith("-") }
+                opt("--exec", "--extcmd", "--upload-pack", "--receive-pack") || sub == "bisect" || sub == "difftool" || (sub == "rebase" && opt("-x"))
+            }
+            "curl" -> opt("-K", "--config")
+            "vim", "vi", "nvim", "emacs" -> opt("-c", "--cmd", "--eval", "-S")
+            else -> false
         }
     }
 
@@ -764,10 +804,13 @@ object CommandAnalyzer {
             remote.isEmpty() && !noCommand -> acc += CommandWarning.NEEDS_TERMINAL
             remote.isNotEmpty() -> {
                 // The command runs on the other computer: its own warnings still say what it does there.
-                if (remote.any { !it.literal }) { acc.complex = true; return }
+                if (remote.any { !it.literal } || depth >= MAX_NESTING) { acc.complex = true; return }
+                val text = remote.joinToString(" ") { it.value }
+                val parse = ShellLexer.parse(text)
                 val there = Acc()
-                script(remote.joinToString(" ") { it.value }, there, depth)
-                acc.complex = acc.complex || there.complex
+                scan(parse, there, depth + 1)
+                if (there.complex || parse.features.any { it in COMPLEX } || hidden(text)) acc.complex = true
+                if (SecretMask.find(text).isNotEmpty()) acc += CommandWarning.SECRET
                 acc.warnings += there.warnings.filter { it in REMOTE_KEPT }
             }
         }

@@ -58,7 +58,8 @@ object ReadOnlyCommands {
                 (name == "tail" && it.startsWith("-") && !it.startsWith("--") && ('f' in it || 'F' in it)) } && paths(args, content = true)
             "find" -> find(args)
             in GREP -> grep(args)
-            "ps" -> true
+            // Not BSD-style "e" (it prints each process's environment, where tokens live).
+            "ps" -> v.none { it.contains("env", ignoreCase = true) || (!it.startsWith("-") && 'e' in it) }
             "top" -> top(v)
             "which", "type" -> v.all { !it.contains('/') }
             "command" -> v.firstOrNull() in setOf("-v", "-V") && v.drop(1).all { !it.startsWith("-") && !it.contains('/') }
@@ -113,6 +114,8 @@ object ReadOnlyCommands {
         if (content) {
             if (w.glob) return false
             if (path.removePrefix(TermuxPaths.FILES).split('/').any { it.startsWith(".") }) return false
+            // Shared storage holds your own documents and photos: reading them asks first.
+            if (TermuxPaths.shared(path)) return false
         }
         return true
     }
@@ -194,6 +197,8 @@ object ReadOnlyCommands {
         val rest = v.drop(k + 1)
         val bad = rest.any { a -> listOf("--output", "--ext-diff", "--no-index", "--exec", "--textconv", "--open-files-in-pager").any { a == it || a.startsWith("$it=") } }
         if (bad) return false
+        // rev:path names a file's content (git show --stat HEAD:.env prints it).
+        if (rest.any { !it.startsWith("-") && ':' in it }) return false
         return when (sub) {
             "status" -> true
             "log" -> rest.any { Regex("^-n$|^-n\\d{1,4}$|^-\\d{1,4}$|^--max-count=\\d{1,4}$").matches(it) } &&
