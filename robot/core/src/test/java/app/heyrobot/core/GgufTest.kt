@@ -153,6 +153,8 @@ class GgufTest {
         unreadable(FakeGguf.gguf(listOf("general.alignment" to 24), FakeGguf.tensors()))
         unreadable(FakeGguf.gguf(listOf("general.alignment" to 0), FakeGguf.tensors()))
         unreadable(FakeGguf.gguf(listOf("general.alignment" to Typed(10, 64L)), FakeGguf.tensors()))
+        unreadable(FakeGguf.gguf(listOf("general.alignment" to "64"), FakeGguf.tensors()))
+        unreadable(FakeGguf.gguf(listOf("general.alignment" to Arr(4, listOf(64))), FakeGguf.tensors()))
         assertTrue(check(FakeGguf.gguf(listOf("general.alignment" to 64), FakeGguf.tensors(), alignment = 64)).readable)
         // Dimensions whose product overflows, or negative.
         unreadable(FakeGguf.gguf(listOf("general.architecture" to "llama"), listOf(Tensor("a", listOf(1L shl 40, 1L shl 40)))))

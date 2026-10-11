@@ -290,6 +290,8 @@ object GgufCheck {
             if (key.isEmpty()) throw LiteRtLmFormat("an empty key")
             if (!keys.add(key)) throw LiteRtLmFormat("a key twice")
             val type = r.u32().toInt()
+            // As llama.cpp: general.alignment, when there, must be a u32 (checked below, whatever type it came as).
+            if (key == "general.alignment") alignmentType = type
             if (type == T_ARRAY) {
                 val elem = r.u32().toInt()
                 val n = r.u64()
@@ -311,7 +313,6 @@ object GgufCheck {
                 when {
                     type == T_STRING -> if (key in STRINGS) strings[key] = r.string(MAX_STRING) else r.skipString()
                     type in SIZES -> {
-                        if (key == "general.alignment") alignmentType = type
                         if (wanted(key) && type.isInteger()) ints[key] = r.int(type) else r.skip(SIZES.getValue(type).toLong())
                     }
                     else -> throw LiteRtLmFormat("a value of type $type")
