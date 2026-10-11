@@ -2747,6 +2747,52 @@ The pure logic of later work, in `:core` and tested on the JVM, merged on 0.6.0 
 types. Nothing in the app calls it yet: no screen, setting, permission, receiver or service is new, and Robot does
 nothing new on the phone. Each section says what exists and what is left to wire.
 
+### Routines and the morning brief (core only)
+
+The pure logic of routines and the morning brief (`../docs/plans/routines-headset-car-design.md`, §2) is in `:core`
+and tested on the JVM. Nothing in the app uses it yet: no screen, receiver, alarm, setting or permission is new, and
+nothing runs by itself.
+
+What exists:
+- **Routines** (`Routine.kt`): a trigger (a time on chosen days or one date; you turning off a Clock alarm between
+  4:00 and 12:00; the first unlock after a time; a headset or car connecting or disconnecting; charging starting or
+  stopping; only when you ask) and up to 8 steps, each one of Robot's tools with arguments fixed when you save it, or
+  the brief, a fixed sentence, the brief reminders, the unread count (0.7). `routines.json` schema 1: a routine with
+  anything unreadable is dropped whole, and tool steps are read back through the tools' own checks.
+- **What runs without you** (`RoutineGate.kt`): reads, timers, alarms, the flashlight and a fixed note run by
+  themselves; the weather only with "Routines may go online by themselves" and the service listed on the save card;
+  opening an app or a draft, maps and new events become a Ready card you tap; freeing memory or storage, deleting and
+  Ask Claude are never offered. Locked, the brief says only the time and the weather without the town, then "Unlock
+  to hear your day"; the rest continues if you unlock within 15 minutes. Asked or tapped, steps go through the
+  existing approval gate as a typed command would.
+- **The brief** (`Brief.kt`): fixed sentences in English and Québec French ("Il est 7 h 02, lundi 12 octobre"), no
+  model: greeting and time, weather from the weather tool's data, today's events (the count and the first five),
+  brief reminders, the unread count once 0.7 exists, about a minute at most.
+- **Alarms and times** (`AlarmWatch.kt`, `RoutineSchedule.kt`): dismissed, snoozed or missed from Clock's broadcasts
+  and the next alarm read after them; the next time a routine fires across America/Toronto's DST changes (a 1:30
+  routine fires once on the night 1:30 happens twice, a 2:30 one at 3:00 when 2:30 doesn't exist); what a late alarm
+  does after Doze or a reboot (within 10 minutes it runs; up to 3 hours late the same day it waits on a Ready card;
+  older, nothing); one run per trigger.
+- **By voice** (`RoutineRouter.kt`): "every weekday at 7, tell me the weather and my calendar", "quand je ferme mon
+  cadran, lis-moi mon résumé", "run my evening routine", "morning brief", "remind me in the morning to …" and their
+  French forms become a draft routine on its card. It is never saved by itself: a yes saves it, or only a tap when the
+  words came from the screen. A bare "at 7" reads as 07:00 and the card says so; words not understood are named on
+  the card, never guessed.
+
+What remains to wire:
+- In `:voice`, one exact `AlarmManager.setExactAndAllowWhileIdle` alarm (`USE_EXACT_ALARM`, already declared) for
+  the soonest routine, to a receiver that isn't exported, set again after boot (once unlocked), a time or time zone
+  change and every edit; never `setAlarmClock`.
+- A runtime receiver in `:voice` for GrapheneOS Clock's `com.android.deskclock.ALARM_ALERT` and `ALARM_DONE`, with
+  `getNextAlarmClock()` read 2 s after DONE; and the unlock, power and audio device callbacks.
+- **Speaking with the screen off**, the design's biggest open phone check (R0.3): Android 17's background audio rules
+  may silence the panel. Then a `mediaPlayback` foreground service is needed, and if it can't start in the
+  background, the brief waits for a tap on its notification. Also unchecked on the phone: that Clock's broadcasts
+  reach Robot (R0.1) and the network in Doze (R0.5).
+- The routines store and its files, the next settings schema (`RoutineSettings` holds the defaults until then),
+  voice log ids 140–159 (reserved in a comment in `Routine.kt`), the Routines screen and editor, Ready cards and
+  notifications, and routing spoken requests to `RoutineRouter` before Gemma.
+
 ### Memory and messages (0.7, core only)
 
 The pure logic for 0.7 ("Memory and messages", `docs/plans/memory-messages-design.md` on the docs branch) is in `:core`
