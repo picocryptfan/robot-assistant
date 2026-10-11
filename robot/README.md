@@ -351,10 +351,12 @@ needs maps search or directions not Off), Robot
    are), up to 8 seconds;
 2. asks OpenStreetMap's **Nominatim** (`nominatim.openstreetmap.org/search`, HTTPS, jsonv2) for the words ("pharmacy")
    in a box of ±0.02° around the position rounded to two decimals (about 1 km), and in one of ±0.1° if nothing is
-   that close; at most 40 places each, at most one request a second, answers kept 10 minutes, User-Agent "Robot/0.4
-   (GPL app)", nothing else (no language, no address details). `sys/NominatimClient.kt` is the only other HTTP code
-   (`ProcessIsolationTest`); `core/Nearby.kt` builds the URL and reads the answer, tested against answers recorded from
-   Nominatim;
+   that close; at most 40 places each, at most one request a second, answers kept 10 minutes, User-Agent
+   "Robot/<version> (app.heyrobot; Android voice assistant, GPL-3.0)", nothing else (no language, no address details).
+   Only a kind of place or a name goes (at most 6 words, no run of 3 digits, no "@": never an address, a phone number
+   or an email; anything else is Organic Maps' search). `sys/NominatimClient.kt` is the only other HTTP code
+   (`ProcessIsolationTest`); `core/Nearby.kt` builds the URL, paces and caches the searches (`NearbySearch`) and reads
+   the answer, tested against answers recorded from Nominatim and against every failure (`NearbySearchTest`);
 3. takes the closest by straight-line distance from the phone's position, and opens Organic Maps' route to it:
    `om://route?sll=<you>&saddr=Your position (approximate)&dll=<place>&daddr=<name>&type=vehicle` (Organic Maps'
    `map/mwm_url.cpp` wants all five, in that order; there is no "my position" start, so the route starts where Robot
@@ -363,12 +365,21 @@ needs maps search or directions not Off), Robot
 The card says "Find the nearest “pharmacy” online (OpenStreetMap) and open the route in Organic Maps" while it runs;
 afterwards its saved line is "Opened Organic Maps' route to the nearest one OpenStreetMap knows, about 1.2 km away in a
 straight line." and its body (shown, never saved) "Familiprix · about 450 m", the street, and "Sent to OpenStreetMap:
-“pharmacy” near 45.53, -73.60". Like the weather, it makes the conversation personal ("your location") and is content
+“pharmacy” near 45.53, -73.60" and "Data © OpenStreetMap contributors, ODbL". Like the weather, it makes the conversation personal ("your location") and is content
 for Safety cards. "Nearest" counts from the model's words or from your own this turn (if the model dropped it). No
 location permission, no fix, no internet, nothing found, or 20 seconds gone: Organic Maps' search as before, and the card
 says why ("OpenStreetMap knows no such place near you, so Robot opened Organic Maps' search instead: pick the place, then
 tap Route."). Stop ends the lookup at
 once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Off: today's search.
+
+**Nominatim's usage policy** (operations.osmfoundation.org/policies/nominatim, read 11 October 2026): every search is
+one you asked for (no autocomplete, no lists, no periodic or background requests); at most one request a second from
+the phone and at most two per question; answers cached 10 minutes; a User-Agent that identifies the app; the card
+credits OpenStreetMap (ODbL); no personal data beyond the rounded area (see the query rule above). Not met yet: the
+policy asks apps to be able to switch the service without an update. The host is one constant (`Nearby.HOST`), and
+"Never" (or any failure) falls back to Organic Maps' search on the phone. The policy's limits apply to all of Robot's
+users together, so a larger audience needs a proxy with caching or another provider; and it asks that the developer
+decide deliberately to use it, which this section records.
 "Nearest" is as near as the approximate location allows (Android's coarse location can be a kilometre or two off).
 
 ### Cheogram's share screen

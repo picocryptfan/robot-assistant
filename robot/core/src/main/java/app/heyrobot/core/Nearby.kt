@@ -103,10 +103,33 @@ class NearbySearch(private val clock: () -> Long, private val sleep: (Long) -> U
 }
 
 object Nearby {
+    /**
+     * The one place the nearest place is asked for (OpenStreetMap's public Nominatim). Its usage policy
+     * (operations.osmfoundation.org/policies/nominatim) asks that apps can switch it without an update; for now it is this
+     * one constant, and "Never" in Settings (or anything going wrong) falls back to Organic Maps' own search.
+     */
     const val HOST = "nominatim.openstreetmap.org"
     private const val SEARCH = "https://$HOST/search"
-    /** Nominatim's usage policy: an application that says who it is. */
-    const val USER_AGENT = "Robot/0.4 (GPL app)"
+    /** The card's credit for what OpenStreetMap found (its data is ODbL; Nominatim's usage policy asks for attribution). */
+    const val ATTRIBUTION = "Data © OpenStreetMap contributors, ODbL"
+
+    /**
+     * Nominatim's usage policy: a User-Agent that identifies the application. The app, its version ([version], the
+     * build's versionName) and where it comes from; nothing about the phone or the person.
+     */
+    fun userAgent(version: String): String =
+        "Robot/${version.filter { it.isLetterOrDigit() || it == '.' }.take(20).ifEmpty { "0" }} (app.heyrobot; Android voice assistant, GPL-3.0)"
+
+    /**
+     * [query] may go to Nominatim: a kind of place or a name ("pharmacy", "Tim Hortons", "7-Eleven"), at most 6 words and 60
+     * characters, with no run of 3 or more digits and no "@" (an address, a phone number or an email is personal, and the
+     * policy asks for none). Anything else: Organic Maps' search, which stays on the phone.
+     */
+    fun sendable(query: String): Boolean {
+        val q = query.trim()
+        return q.isNotEmpty() && q.length <= 60 && q.split(Regex("\\s+")).size <= 6 && !q.contains('@') && !Regex("\\d{3,}").containsMatchIn(q)
+    }
+
     /** Nominatim's usage policy: at most one request a second. */
     const val MIN_GAP_MS = 1_000L
     /** The whole lookup (position, at most two searches a second apart, then Organic Maps). */

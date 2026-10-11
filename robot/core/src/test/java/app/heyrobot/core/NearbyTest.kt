@@ -17,7 +17,10 @@ class NearbyTest {
         // Two decimals of the position, never more: the box is built from the rounded centre.
         assertFalse(url.contains("45.508") || url.contains("73.587"))
         assertTrue(Nearby.searchUrl("pharmacie", 45.5, -73.6, 0.1).contains("viewbox=-73.70,45.60,-73.50,45.40"))
-        assertEquals("Robot/0.4 (GPL app)", Nearby.USER_AGENT)
+        // Nominatim's usage policy: a User-Agent naming the app (never the phone), and OpenStreetMap credited on the card.
+        assertEquals("Robot/0.4.0 (app.heyrobot; Android voice assistant, GPL-3.0)", Nearby.userAgent("0.4.0"))
+        assertEquals("Robot/0 (app.heyrobot; Android voice assistant, GPL-3.0)", Nearby.userAgent("(;)"))
+        assertEquals("Data © OpenStreetMap contributors, ODbL", Nearby.ATTRIBUTION)
         assertEquals(1_000L, Nearby.MIN_GAP_MS)
         assertEquals(listOf(0.02, 0.1), Nearby.BOXES)
         // A query is encoded strictly: no "&" or "=" of its own reaches the URL.
@@ -63,6 +66,14 @@ class NearbyTest {
         val keys = uri.substringAfter('?').split('&').map { it.substringBefore('=') }
         assertEquals(listOf("sll", "saddr", "dll", "daddr", "type"), keys)
         assertEquals("geo:45.523136,-73.603922?q=45.523136,-73.603922(Caf%C3%A9%20%26%20Co)", OrganicMapsRoute.geo(45.5231358, -73.603922, "Café & Co"))
+    }
+
+    /** Only a kind of place or a name goes to Nominatim; an address, a number or an email stays on the phone. */
+    @Test fun onlyAKindOfPlaceOrANameGoesOnline() {
+        for (q in listOf("pharmacy", "gas station", "Tim Hortons", "7-Eleven", "pharmacie", "boulangerie ouverte", "Jean Coutu")) assertTrue(q, Nearby.sendable(q))
+        for (q in listOf("", "  ", "pharmacy near 5692 Avenue du Parc", "514 555 0199", "sam@example.com", "a b c d e f g", "x".repeat(61))) {
+            assertFalse(q, Nearby.sendable(q))
+        }
     }
 
     @Test fun nearestInTheModelsWordsOrYourOwn() {

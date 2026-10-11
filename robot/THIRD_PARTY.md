@@ -231,6 +231,17 @@ Build and test only (not in the APK): Android Gradle Plugin 8.8.2, Kotlin and it
 `sherpa-onnx==1.13.8` Python wheel (Apache-2.0), numpy (BSD-3-Clause), sentencepiece (Apache-2.0) and pypinyin (MIT)
 on the build machine only.
 
+## Online services the app asks (0.4.0; nothing bundled)
+
+- **OpenStreetMap's Nominatim** (`nominatim.openstreetmap.org`, operated by the OpenStreetMap Foundation): "directions to
+  the nearest …" when Settings › Actions › Find the nearest place online allows it. Map data © OpenStreetMap
+  contributors, available under the Open Database License (ODbL 1.0, https://opendatacommons.org/licenses/odbl/); the
+  card credits it ("Data © OpenStreetMap contributors, ODbL"). Used under the Nominatim usage policy
+  (https://operations.osmfoundation.org/policies/nominatim/); see the README's "The nearest place". Robot keeps none
+  of the data beyond a 10-minute cache in memory.
+- **Open-Meteo** (`api.open-meteo.com`, `geocoding-api.open-meteo.com`): the weather, under Open-Meteo's own terms (see
+  the README's "Weather").
+
 ## Code adapted from the phase 0 probe and the GPU lab (same author, GPL-3.0)
 
 The listener and wake word (probe `Listener.kt`, `WakeWord.kt`), the assistant service, recognizer stub and

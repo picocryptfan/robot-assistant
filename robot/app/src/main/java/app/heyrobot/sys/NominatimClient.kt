@@ -3,6 +3,7 @@ package app.heyrobot.sys
 import android.Manifest
 import android.content.Context
 import android.os.SystemClock
+import app.heyrobot.BuildConfig
 import app.heyrobot.core.Abort
 import app.heyrobot.core.Nearby
 import app.heyrobot.core.NearbyFail
@@ -21,7 +22,9 @@ import java.net.UnknownHostException
 // Voice process. The nearest place for "directions to the nearest pharmacy" (0.4.0): GETs to OpenStreetMap's Nominatim
 // search, only when you asked for the nearest one and Settings › Actions › "Find the nearest place online" allows it.
 // HTTPS only, one host ([Nearby.HOST]), no redirects, short timeouts cut to what is left of the lookup's deadline, at most
-// 512 KB read, and a User-Agent that names the app and nothing about the phone. The searches themselves
+// 512 KB read, and a User-Agent that names the app and its version and nothing about the phone (Nearby.userAgent).
+// Nominatim's usage policy: that User-Agent, one request a second at most, answers cached, only what you asked for (no
+// autocomplete, no lists), and the card credits OpenStreetMap (Nearby.ATTRIBUTION). The searches themselves
 // (the boxes, one request a second at most, answers kept 10 minutes: Nominatim's usage policy) are core's NearbySearch.
 // What goes: the words ("pharmacy") and a box around your position rounded to two decimals. Stop disconnects (Abort).
 // Nothing is logged here; the tool logs codes and times.
@@ -56,7 +59,7 @@ object NominatimClient {
             c.readTimeout = timeout
             c.instanceFollowRedirects = false
             c.useCaches = false
-            c.setRequestProperty("User-Agent", Nearby.USER_AGENT)
+            c.setRequestProperty("User-Agent", Nearby.userAgent(BuildConfig.VERSION_NAME))
             c.setRequestProperty("Accept", "application/json")
             val code = c.responseCode
             Nearby.httpFail(code)?.let { throw NearbyFailure(it, code) }

@@ -228,8 +228,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
     }
 
+    /** Only a kind of place or a name goes online (Nearby.sendable): never an address, a number or an email. */
     private fun nearestWanted(what: String, modelSaid: Boolean): Boolean =
-        settings.nearestOnline && (modelSaid || NearestAsk.inWords(said, what))
+        settings.nearestOnline && (modelSaid || NearestAsk.inWords(said, what)) && Nearby.sendable(what)
 
     /**
      * "Directions to the nearest pharmacy" (0.4.0): where the phone is (coarse location), OpenStreetMap's Nominatim for that
@@ -263,7 +264,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val sent = "Sent to OpenStreetMap: “$what” near ${Nearby.coord(f.lat)}, ${Nearby.coord(f.lon)}"
         return Executed(ActionStatus.DONE, "Opened Organic Maps' route to the nearest one OpenStreetMap knows, $far away in a straight line.",
             launchedApp = true, results = listOf(mapOf("place" to place.name, "distance" to far)),
-            body = listOfNotNull("${place.name} · $far", place.address).joinToString("\n") + "\n\n" + sent)
+            body = listOfNotNull("${place.name} · $far", place.address).joinToString("\n") + "\n\n" + sent + "\n" + Nearby.ATTRIBUTION)
     }
 
     private fun torch(on: Boolean): Executed {
