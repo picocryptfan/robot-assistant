@@ -322,7 +322,7 @@ class ConversationActivity : ComponentActivity() {
                     // Two speakers who sound alike: a merge offered, never made by itself.
                     val p = ui.proposal
                     if (p != null && editable) item(key = "similar") {
-                        SimilarCard(SpeakerView(ui.speakers, ui.names, ui.me), p.first, p.second,
+                        SimilarCard(SpeakerView(ui.speakers, ui.names, ui.me, ui.retired), p.first, p.second,
                             onMerge = { ConversationSession.merge(p.first, p.second) }, onDecline = { ConversationSession.decline(p.first, p.second) })
                     }
                     // On the lock screen only the lines of a session started there, while it runs: nothing older, and
@@ -345,7 +345,7 @@ class ConversationActivity : ComponentActivity() {
                 }
             }
         }
-        SpeakerEditDialog(edit, SpeakerView(ui.speakers, ui.names, ui.me), liveEdits) { edit = it }
+        SpeakerEditDialog(edit, SpeakerView(ui.speakers, ui.names, ui.me, ui.retired), liveEdits) { edit = it }
         fixing?.let { l ->
             AlertDialog(
                 onDismissRequest = { fixing = null },

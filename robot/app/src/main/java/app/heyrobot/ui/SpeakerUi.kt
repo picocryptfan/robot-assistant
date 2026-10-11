@@ -60,8 +60,11 @@ interface SpeakerActions {
     fun decline(from: String, to: String)
 }
 
-/** The transcript's speakers as a screen shows them. */
-data class SpeakerView(val speakers: List<String>, val names: Map<String, String>, val me: String?) {
+/**
+ * The transcript's speakers as a screen shows them; [retired]: labels no line has that a new person must not get
+ * (merged away, or already handed out in the session).
+ */
+data class SpeakerView(val speakers: List<String>, val names: Map<String, String>, val me: String?, val retired: Set<String> = emptySet()) {
     private val t = Transcript(names = names, me = me)
 
     fun nameOf(speaker: String): String = t.nameOf(speaker)
@@ -71,8 +74,11 @@ data class SpeakerView(val speakers: List<String>, val names: Map<String, String
 
     fun isMe(speaker: String): Boolean = speaker == SpeakerClusterer.ME || speaker == me
 
+    /** The label for "someone else": none the transcript ever used. */
+    val next: String get() = SpeakerLabels.next(speakers + retired)
+
     companion object {
-        fun of(t: Transcript) = SpeakerView(t.speakers, t.names, t.me)
+        fun of(t: Transcript) = SpeakerView(t.speakers, t.names, t.me, t.merges.keys)
     }
 }
 
@@ -140,7 +146,7 @@ private fun Pick(view: SpeakerView, except: String?, someoneElse: Boolean, pick:
             }
         }
         if (someoneElse) {
-            val next = SpeakerLabels.next(view.speakers)
+            val next = view.next
             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp)).clickable { pick(next) }.padding(horizontal = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(12.dp).clip(CircleShape).background(speakerColour(next)))

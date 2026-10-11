@@ -134,8 +134,15 @@ class ConversationSpeakers(
     /** You moved line [i] to [speaker]: its voice, if still in memory, teaches that speaker. */
     @Synchronized
     fun moved(i: Int, speaker: String) {
+        claimed(speaker)
         if (!enabled) return
         voices[i]?.let { k.teach(resolve(speaker), it) }
+    }
+
+    /** You gave a line to [label] (a new one for someone else): the clusterer never hands it to another voice. */
+    @Synchronized
+    fun claimed(label: String) {
+        k.reserve(label)
     }
 
     /** "Not the same person": that pair isn't proposed again in this session. */
@@ -145,10 +152,17 @@ class ConversationSpeakers(
         declined += to to from
     }
 
-    /** Pairs of speakers who sound alike ("S3 looks like S1 — merge?"), not ones you turned down. Nothing is changed. */
+    /**
+     * Pairs of speakers who sound alike ("S3 looks like S1 — merge?"), not ones you turned down. Nothing is changed. Their
+     * mean voices are compared at [PROPOSE_AT], looser than a line joining a speaker: one person heard near and far
+     * from the phone can split in two, and a merge is only offered.
+     */
     @Synchronized
     fun proposals(): List<Pair<String, String>> = if (!enabled) emptyList() else
-        k.proposals().map { (a, b) -> resolve(a) to resolve(b) }.filter { (a, b) -> a != b && (a to b) !in declined }.distinct()
+        k.proposals(PROPOSE_AT).map { (a, b) -> resolve(a) to resolve(b) }.filter { (a, b) -> a != b && (a to b) !in declined }.distinct()
+
+    /** The labels the clusterer has handed out (for "someone else" to avoid). */
+    val labels: List<String> @Synchronized get() = k.labels
 
     /** Your voiceprint was deleted during the session: "Me" is no longer seeded. */
     @Synchronized
@@ -169,6 +183,8 @@ class ConversationSpeakers(
         const val LANG_MEMORY = 30
         /** The voices of the newest this many lines (192 numbers each), for a line you move. */
         const val VOICE_MEMORY = 200
+        /** Two speakers' mean voices at least this close are offered as one person (tuned on the phone, 5.0(d)). */
+        const val PROPOSE_AT = 0.40f
     }
 }
 
@@ -189,18 +205,21 @@ object TranscriptEdits {
 
     /**
      * "[from] is [to]": all of [from]'s lines become [to]'s. Never from or into "?" (move those lines one by one), and
-     * never "Me" into someone else (the other way round).
+     * never "Me" into someone else (the other way round). Into "Me" also before your enrolled voice has a line.
      */
     fun merge(t: Transcript, from: String, to: String): TranscriptEvent.Merge? {
-        if (from == to || !known(t, from) || !known(t, to)) return null
+        if (from == to || !known(t, from) || !(known(t, to) || to == SpeakerClusterer.ME)) return null
         if (from == SpeakerClusterer.UNKNOWN || to == SpeakerClusterer.UNKNOWN || from == SpeakerClusterer.ME) return null
         return TranscriptEvent.Merge(from, to)
     }
 
-    /** "This is me": [speaker] is you. When your enrolled voice ("Me") is in the transcript too, that is a merge into it. */
-    fun me(t: Transcript, speaker: String): TranscriptEvent? {
+    /**
+     * "This is me": [speaker] is you. When your enrolled voice ("Me") is in the transcript, or [seeded] in the session
+     * recording it, that is a merge into it (one "You", and later lines in your voice go there too).
+     */
+    fun me(t: Transcript, speaker: String, seeded: Boolean = false): TranscriptEvent? {
         if (!known(t, speaker) || speaker == SpeakerClusterer.UNKNOWN || speaker == SpeakerClusterer.ME || t.me == speaker) return null
-        if (SpeakerClusterer.ME in t.speakers) return merge(t, speaker, SpeakerClusterer.ME)
+        if (seeded || SpeakerClusterer.ME in t.speakers) return merge(t, speaker, SpeakerClusterer.ME)
         return TranscriptEvent.Me(speaker)
     }
 

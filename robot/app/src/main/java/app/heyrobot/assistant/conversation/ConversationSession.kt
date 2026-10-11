@@ -92,6 +92,8 @@ object ConversationSession {
         val speakers: List<String> = emptyList(),
         val names: Map<String, String> = emptyMap(),
         val me: String? = null,
+        /** Labels no line has but nobody new may get: merged away, or handed out by the clusterer. */
+        val retired: Set<String> = emptySet(),
         /** Two speakers who sound alike ("S3" to "S1"), offered as a merge; null: none. */
         val proposal: Pair<String, String>? = null,
         /** The last session ended with this many such proposals left, offered on the transcript in Robot. */
@@ -278,7 +280,7 @@ object ConversationSession {
         // Lines from before a crash show only when the phone is unlocked (a screen over the lock screen shows nothing older).
         val earlier = if (resumeId != null && ConversationLock.showsEarlier(locked)) w.current().lines.takeLast(ConversationRules.LIVE_LINES) else emptyList()
         _state.value = Ui(Status.RUNNING, w.id, mode, w.meta.createdAt, lines = earlier, total = w.lines, lockedStart = locked,
-            speakersOn = on, speakers = so.speakers, names = so.names, me = so.me)
+            speakersOn = on, speakers = so.speakers, names = so.names, me = so.me, retired = so.merges.keys)
         // The wake phrases sleep for the session unless "Hey robot works during a conversation".
         VoiceHub.conversationWake(!s.convWakeDuring)
         wake = (app.getSystemService(PowerManager::class.java)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "robot:conversation").apply {
@@ -634,8 +636,8 @@ object ConversationSession {
     /** "[from] is [to]": their lines are one person's, and so are later lines that sound like either. */
     fun merge(from: String, to: String) = edit { t, _ -> TranscriptEdits.merge(t, from, to) }
 
-    /** "This is me". */
-    fun thisIsMe(speaker: String) = edit { t, _ -> TranscriptEdits.me(t, speaker) }
+    /** "This is me" (with your enrolled voice in the session: one "You", so later lines in that voice go there too). */
+    fun thisIsMe(speaker: String) = edit { t, _ -> TranscriptEdits.me(t, speaker, seeded = speakers?.seeded == true) }
 
     /** Line [i] was [speaker]'s (one of the transcript's, or a new label for someone else). */
     fun move(i: Int, speaker: String) = edit { t, _ -> TranscriptEdits.move(t, i, speaker) }
@@ -660,8 +662,10 @@ object ConversationSession {
         val sp = speakers
         val (e, t) = synchronized(writerLock) {
             if (discarded) return@post
-            val e = w.edit(make) ?: run {
-                w.failed?.let { saveFailed(it) }
+            var tried = false
+            val e = w.edit { tr, n -> make(tr, n)?.also { tried = true } } ?: run {
+                // Not saved: a disk that is full, or a transcript deleted meanwhile, stops the session as a line would.
+                if (tried) w.failed?.let { saveFailed(it) }
                 return@post
             }
             // In step with the file before the next line is written: a line labelled with the old speaker lands merged.
@@ -671,17 +675,22 @@ object ConversationSession {
             }
             e to w.current()
         }
+        // A line you gave to someone (a new label too) teaches that speaker, and the label is never handed to another voice.
         when (e) {
             is TranscriptEvent.Speaker -> sp?.moved(e.i, e.speaker)
+            is TranscriptEvent.Split -> e.speaker?.let { sp?.claimed(it) }
             else -> {}
         }
+        val retired = t.merges.keys + sp?.labels.orEmpty()
         _state.update { st ->
             val shown = st.lines.map { it.i }.toSet() + ((e as? TranscriptEvent.Split)?.n?.let { setOf(it) } ?: emptySet())
             st.copy(
                 // The lines on screen as the file now reads them (a newer line not folded here stays as it was).
                 lines = (st.lines.map { t.line(it.i) ?: it } + listOfNotNull((e as? TranscriptEvent.Split)?.let { s -> t.line(s.n) }))
                     .filter { it.i in shown }.distinctBy { it.i }.sortedWith(compareBy<TranscriptLine> { it.t0 }.thenBy { it.i }),
-                speakers = t.speakers, names = t.names, me = t.me, proposal = nextProposal(),
+                // The file's speakers, and any a newer line brought (not one merged away).
+                speakers = t.speakers + st.speakers.filter { it !in t.speakers && it !in t.merges },
+                names = t.names, me = t.me, retired = retired, proposal = nextProposal(),
             )
         }
     }

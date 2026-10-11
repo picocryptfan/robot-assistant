@@ -125,6 +125,20 @@ class SpeakersTest {
         assertEquals(emptyList<Pair<String, String>>(), q.proposals())
     }
 
+    @Test fun aLabelYouGaveIsNeverHandedToAnotherVoice() {
+        val s = ConversationSpeakers(enabled = true)
+        assertEquals("S1", s.say(a, 0))
+        // You gave a line to "someone else": S2 is theirs, so the next new voice is S3.
+        s.moved(4, "S2")
+        assertEquals("S3", s.say(b, 3_000))
+        // A resumed session's own marks: a plain label from before doesn't count against "S1′".
+        val r = ConversationSpeakers(enabled = true, mark = "′")
+        r.claimed("S1")
+        assertEquals("S1′", r.say(a, 0))
+        r.claimed("S2′")
+        assertEquals("S3′", r.say(b, 3_000))
+    }
+
     @Test fun aMovedLineTeachesItsNewSpeaker() {
         val s = ConversationSpeakers(enabled = true)
         s.say(a, 0)
@@ -188,6 +202,13 @@ class SpeakersTest {
         assertNull(TranscriptEdits.split(t, 0, at, 3, "S2"))
         assertNull(TranscriptEdits.split(t, 0, at, 4, "Luc"))
         assertEquals(listOf("S1", "S2", "S3"), TranscriptEdits.targets(t))
+    }
+
+    @Test fun withYourVoiceSeededThisIsMeIsAMergeEvenBeforeYouSpoke() {
+        assertEquals(TranscriptEvent.Merge("S2", "Me"), TranscriptEdits.me(t, "S2", seeded = true))
+        assertEquals(TranscriptEvent.Merge("S3", "Me"), TranscriptEdits.merge(t, "S3", "Me"))
+        val r = TranscriptFold(t).apply(TranscriptEvent.Merge("S2", "Me")).result()
+        assertEquals("You", r.nameOf(r.line(1)!!.speaker))
     }
 
     @Test fun withAnEnrolledVoiceThisIsMeIsAMerge() {

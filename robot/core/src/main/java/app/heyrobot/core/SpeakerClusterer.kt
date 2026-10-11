@@ -154,6 +154,15 @@ class SpeakerClusterer(
     }
 
     /**
+     * You gave a line to a label of your own ("someone else", S4): later speakers never get it. Only plain labels of this
+     * session's form count ("S4" with this clusterer's [mark]).
+     */
+    fun reserve(label: String) {
+        val n = Regex("^S([1-9][0-9]{0,2})${Regex.escape(mark)}$").matchEntire(label)?.groupValues?.get(1)?.toInt() ?: return
+        if (n >= next) next = n + 1
+    }
+
+    /**
      * You deleted your voiceprint during the session: the fixed "Me" goes (nothing made from the voiceprint stays in
      * memory). Lines heard since are compared with the others again; the lines already labelled keep "Me".
      */
