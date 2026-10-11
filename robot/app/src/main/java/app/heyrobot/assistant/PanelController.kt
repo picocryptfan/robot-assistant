@@ -1244,8 +1244,9 @@ object PanelController {
             when (decide(attachment, guardFree = !guard.used, needsSearch = signal == PreRouter.Signal.CURRENT_INFO)) {
                 EscalationDecision.AUTO -> {
                     guard.take(fromClaude = false)
-                    val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personalNow(null),
-                        includePersonal = HelperTrust.conversation(s, target))
+                    val personal = personalNow(null)
+                    val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personal,
+                        includePersonal = HelperTrust.conversation(s, target, personal))
                     // A helper that can't be reached (a server that's off, no connection): Robot answers itself instead.
                     if (!escalateNow(replyId, question, blocks, voiceAsked, reuseBubble = true, h = target, fallBack = true)) return
                     RLog.i("helper_fallback", "kind" to target.kind)
@@ -1409,7 +1410,7 @@ object PanelController {
                 // A screen or photo question gets here only with personal content allowed to go by itself: it goes along.
                 val shared = if (attachment != Attachment.NONE && HelperTrust.attachments(s)) Shared(screenText = screen, image = image) else Shared()
                 val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, shared, personal = personal,
-                    includePersonal = HelperTrust.conversation(s, target))
+                    includePersonal = HelperTrust.conversation(s, target, personal))
                 finishOrDrop(replyId)
                 escalateNow(null, question, blocks, voiceAsked, reuseBubble = false, h = target)
             }
@@ -1429,7 +1430,7 @@ object PanelController {
                 }
                 // What the tap sends is fixed now: this question's screen or picture, never one that arrives later.
                 val payload = if (!api) null else ClaudeContext.payload(question, history, ZonedDateTime.now(), userRegion, personal, attachment,
-                    Shared(screenText = screen, image = image), includePersonal = HelperTrust.conversation(s, target))
+                    Shared(screenText = screen, image = image), includePersonal = HelperTrust.conversation(s, target, personal))
                 offer(replyId, PendingOffer(api, question, payload, voiceAsked, asWell, target.id))
             }
             EscalationDecision.NEEDS_UNLOCK -> {

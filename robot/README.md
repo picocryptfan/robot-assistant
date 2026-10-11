@@ -166,7 +166,8 @@ a spoken yes never sends personal content; your screen and photos go only after 
 - **Trusted with personal content** (each helper's page, **off by default for every helper, your own server
   included**): Robot checking by itself may carry the last turns of a personal conversation, "go get …" (by its name)
   includes the conversation without the card, a spoken yes can send an offer, and what Robot reads for the helper goes
-  without "Share with …". Your screen and photos still need a tap every time. Adding a server asks once: "Is this
+  without "Share with …". Your screen and photos still need a tap every time, and so does a conversation that had one
+  (Robot's own words in it may repeat what was on the screen). Adding a server asks once: "Is this
   computer yours, and does it run the model itself?". Changing the address turns trust off.
 - Settings › Safety & privacy keeps its switches, now for every helper: "Send personal content to helpers
   automatically", "Voice yes can send personal content" and "Card when a helper asks Robot to do something".

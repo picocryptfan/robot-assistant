@@ -172,9 +172,14 @@ class HelperSettingsTest {
         val trusted = home(trust = true)
         // Off by default, for every helper, home servers included.
         assertFalse(HelperConfig.of(Presets.HOME, "x", "am_puck", baseUrl = "http://10.0.0.1/v1").trust)
-        assertFalse(HelperTrust.conversation(s, untrusted))
-        assertTrue(HelperTrust.conversation(s, trusted))
-        assertTrue(HelperTrust.conversation(s.copy(personalToHelpers = true), untrusted))
+        assertFalse(HelperTrust.conversation(s, untrusted, setOf(Personal.CALENDAR)))
+        assertTrue(HelperTrust.conversation(s, trusted, setOf(Personal.CALENDAR)))
+        assertTrue(HelperTrust.conversation(s.copy(personalToHelpers = true), untrusted, setOf(Personal.CALENDAR)))
+        // A conversation that had your screen or a photo: its last turns go by themselves only with the switch for all
+        // helpers, never on trust alone (Robot's own words may repeat what was on the screen).
+        assertFalse(HelperTrust.conversation(s, trusted, setOf(Personal.CALENDAR, Personal.SCREEN)))
+        assertFalse(HelperTrust.conversation(s, trusted, setOf(Personal.PHOTO)))
+        assertTrue(HelperTrust.conversation(s.copy(personalToHelpers = true), untrusted, setOf(Personal.SCREEN)))
         // A screen or photo with the question: only the switch for every helper lets it go without a tap, never trust.
         assertFalse(HelperTrust.attachments(s))
         assertTrue(HelperTrust.attachments(s.copy(personalToHelpers = true)))

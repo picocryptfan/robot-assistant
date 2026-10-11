@@ -457,7 +457,8 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
                 SwitchRow("Trusted with personal content", "Off (the default): when Robot checks with ${h.name} by itself in a conversation that holds " +
                     "something personal (what Robot read from your calendar, notes or contacts, where you are, your phone's status), only your question " +
                     "goes; “go get ${h.name}” asks before including the conversation; a spoken yes never sends personal content. On: all of that goes " +
-                    "to ${h.name} without asking. Your screen and photos still need a tap every time. Turn it on only for a helper you'd show your " +
+                    "to ${h.name} without asking. Your screen and photos still need a tap every time, and so does a conversation that had them. " +
+                    "Turn it on only for a helper you'd show your " +
                     "calendar to: a server that is yours, or a company whose terms you accept.", h.trust) { set(h.copy(trust = it)) }
                 if (s.personalToHelpers) {
                     Text("Safety & privacy › Send personal content to helpers automatically is on, so every helper gets this already.",
