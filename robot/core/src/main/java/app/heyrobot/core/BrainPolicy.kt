@@ -174,3 +174,72 @@ object EngineTeardown {
         else -> Step.END_PROCESS
     }
 }
+
+/**
+ * 0.4.4: the two engines :brain can run, by the kind of file asked for: LiteRT-LM (Robot's models and your own .litertlm)
+ * and llama.cpp (your own .gguf). Still one engine in the process: the other one lets its model go before this one loads,
+ * and the process's one engine slot (EngineTeardown.forLoad) keeps the new one waiting until it has.
+ */
+enum class EngineKind {
+    LITERT_LM, LLAMA_CPP;
+
+    companion object {
+        fun of(format: ModelFormat): EngineKind = if (format == ModelFormat.GGUF) LLAMA_CPP else LITERT_LM
+    }
+}
+
+object EngineSwitch {
+    enum class Step {
+        /** The engine for this file is the one in use (or none is): load with it. */
+        LOAD,
+        /** The other engine is in use: it unloads first, then this one loads (if the slot is free by then). */
+        UNLOAD_OTHER_FIRST,
+    }
+
+    /** [active]: the engine last asked to load in this service (null: none yet); [wanted]: the one for the file asked for. */
+    fun step(active: EngineKind?, wanted: EngineKind): Step =
+        if (active == null || active == wanted) Step.LOAD else Step.UNLOAD_OTHER_FIRST
+}
+
+/**
+ * llama.cpp's prompt (0.4.4): the conversation formatted by the model's own template is counted by the model's own
+ * tokenizer, and must leave the reply its room in Robot's 4,096 tokens ([ContextWindow]); else older turns go first, as
+ * with LiteRT-LM (at most [BrainPolicy.MAX_REBUILDS] times, then all of them). A question alone that the app's estimate let
+ * through but the real count doesn't still gets a shorter reply when at least [MIN_REPLY] tokens are left.
+ */
+object PromptFit {
+    const val MIN_REPLY = 128
+
+    sealed class Step {
+        data object Send : Step()
+        /** Format it again with this history budget (0: no history). */
+        data class Shorten(val historyBudget: Int) : Step()
+        data object TooLong : Step()
+    }
+
+    /** [realTokens]: the whole prompt as the model's tokenizer counts it; [historyTurns] of history in it, chosen within [budget]. */
+    fun after(realTokens: Int, historyTurns: Int, budget: Int, rebuilds: Int): Step = when {
+        realTokens + ContextWindow.REPLY_RESERVE <= ContextWindow.MAX_TOKENS -> Step.Send
+        historyTurns > 0 && rebuilds < BrainPolicy.MAX_REBUILDS -> Step.Shorten(ContextWindow.shrink(budget, realTokens, 0) ?: 0)
+        historyTurns > 0 -> Step.Shorten(0)
+        realTokens + MIN_REPLY <= ContextWindow.MAX_TOKENS -> Step.Send
+        else -> Step.TooLong
+    }
+}
+
+/**
+ * The CPU features Robot's llama.cpp library is built for (tools/build_llama.sh: Armv8.6-A with dotprod, i8mm and fp16;
+ * the Tensor G5 has them all). :brain reads /proc/cpuinfo before it loads the library: on a CPU without one of them the
+ * library would stop the process at its first such instruction.
+ */
+object LlamaCpu {
+    /** /proc/cpuinfo's names: dotprod, i8mm, and half-precision arithmetic (scalar and vector). */
+    val REQUIRED = listOf("asimddp", "i8mm", "fphp", "asimdhp")
+
+    /** The required features no core lists ("Features : …" lines of /proc/cpuinfo; every core must have them). Empty: all there. */
+    fun missing(cpuinfo: String?): List<String> {
+        val lines = cpuinfo?.lines()?.filter { it.trimStart().startsWith("Features") }.orEmpty()
+        if (lines.isEmpty()) return REQUIRED
+        return REQUIRED.filter { f -> lines.any { l -> f !in l.substringAfter(':').trim().split(Regex("\\s+")) } }
+    }
+}

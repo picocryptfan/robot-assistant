@@ -78,16 +78,19 @@ sealed class BrainMsg {
 
     // ---------------------------------------------------------------- requests
     /**
-     * Load [model]'s file at [path] on [backend] with a context of [maxTokens] (0.4.1: the catalogue entry's). :brain
-     * unloads any other model first: two engines never share the process.
+     * Load [model]'s file at [path] on [backend] with a context of [maxTokens] (0.4.1: the catalogue entry's), a file of
+     * [format] (0.4.4: a GGUF file runs with llama.cpp). :brain unloads any other model first, by either engine: one engine
+     * in the process.
      */
     data class Load(
         val path: String,
         val model: BrainModel = BrainModel.FAST,
         val backend: ModelBackend = model.backend,
         val maxTokens: Int = model.contextTokens,
+        val format: ModelFormat = ModelFormat.LITERT_LM,
     ) : BrainMsg() {
         override fun toJson() = JSONObject().put("path", path).put("model", model.id).put("backend", backend.id).put("maxTokens", maxTokens)
+            .put("format", format.id)
     }
 
     data class Generate(
@@ -100,11 +103,13 @@ sealed class BrainMsg {
         val hasImage: Boolean,
         /** The tools this conversation describes (ToolRouter: its groups, minus what's turned off), by id. */
         val tools: List<String> = Prompt.CORE_TOOLS.map { it.id },
+        /** Settings › Model › "Let the model think first" (0.4.4): :brain tells a model that can think whether it may (core Thinking). */
+        val think: Boolean = false,
     ) : BrainMsg() {
         override fun toJson() = JSONObject().apply {
             put("convId", convId); put("system", system); put("historyCount", historyCount); put("text", text); put("hasImage", hasImage)
             put("history", JSONArray().apply { history.forEach { put(JSONObject().put("role", it.role.name).put("text", it.text)) } })
-            put("tools", JSONArray(tools))
+            put("tools", JSONArray(tools)); put("think", think)
         }
 
         /** The known tools among [tools], in ToolName order (an unknown id is never described). */
@@ -131,14 +136,15 @@ sealed class BrainMsg {
     }
 
     // ---------------------------------------------------------------- events
-    /** [model] and [backend]: what is loaded (null when nothing is). */
+    /** [model], [backend] and [format]: what is loaded (null when nothing is). */
     data class Status(
         val loaded: Boolean, val vision: Boolean, val constrained: Boolean, val busy: Boolean,
-        val model: BrainModel? = null, val backend: ModelBackend? = null,
+        val model: BrainModel? = null, val backend: ModelBackend? = null, val format: ModelFormat? = null,
     ) : BrainMsg() {
         override fun toJson() = JSONObject().put("loaded", loaded).put("vision", vision).put("constrained", constrained).put("busy", busy).apply {
             model?.let { put("model", it.id) }
             backend?.let { put("backend", it.id) }
+            format?.let { put("format", it.id) }
         }
     }
 
@@ -146,12 +152,14 @@ sealed class BrainMsg {
     data class Loaded(
         val ok: Boolean, val vision: Boolean, val loadMs: Long, val error: String?,
         val model: BrainModel? = null, val backend: ModelBackend? = null, val failure: LoadFailure? = null,
+        val format: ModelFormat? = null,
     ) : BrainMsg() {
         override fun toJson() = JSONObject().apply {
             put("ok", ok); put("vision", vision); put("loadMs", loadMs); error?.let { put("error", it) }
             model?.let { put("model", it.id) }
             backend?.let { put("backend", it.id) }
             failure?.let { put("failure", it.name) }
+            format?.let { put("format", it.id) }
         }
     }
 
@@ -184,10 +192,11 @@ sealed class BrainMsg {
             val o = JSONObject(json ?: "{}")
             when (what) {
                 BrainProtocol.REQ_LOAD -> {
-                    // A request without the model (0.4.0's) is Fast's; an unknown model or backend isn't loaded.
+                    // A request without the model (0.4.0's) is Fast's; an unknown model, backend or kind of file isn't loaded.
                     val model = if (o.has("model")) BrainModel.byId(o.getString("model")) ?: return null else BrainModel.FAST
                     val backend = if (o.has("backend")) ModelBackend.of(o.getString("backend")) ?: return null else model.backend
-                    Load(o.getString("path"), model, backend, o.optInt("maxTokens", model.contextTokens))
+                    val format = if (o.has("format")) ModelFormat.of(o.getString("format")) ?: return null else ModelFormat.LITERT_LM
+                    Load(o.getString("path"), model, backend, o.optInt("maxTokens", model.contextTokens), format)
                 }
                 BrainProtocol.REQ_GENERATE -> {
                     val h = o.optJSONArray("history") ?: JSONArray()
@@ -202,6 +211,7 @@ sealed class BrainMsg {
                         text = o.getString("text"),
                         hasImage = o.optBoolean("hasImage", false),
                         tools = o.optJSONArray("tools")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: Prompt.CORE_TOOLS.map { it.id },
+                        think = o.optBoolean("think", false),
                     )
                 }
                 BrainProtocol.REQ_TOOL_RESULT -> {
@@ -215,10 +225,10 @@ sealed class BrainMsg {
                 BrainProtocol.REQ_CLOSE_CONV -> CloseConv(o.getString("convId"))
                 BrainProtocol.REQ_STATUS, BrainProtocol.REQ_UNLOAD, BrainProtocol.EV_UNLOADED -> Empty
                 BrainProtocol.EV_STATUS -> Status(o.optBoolean("loaded"), o.optBoolean("vision"), o.optBoolean("constrained"), o.optBoolean("busy"),
-                    BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")))
+                    BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")), ModelFormat.of(o.optString("format")))
                 BrainProtocol.EV_LOADED -> Loaded(o.optBoolean("ok"), o.optBoolean("vision"), o.optLong("loadMs"), o.optString("error").takeIf { o.has("error") },
                     BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")),
-                    LoadFailure.entries.firstOrNull { it.name == o.optString("failure") })
+                    LoadFailure.entries.firstOrNull { it.name == o.optString("failure") }, ModelFormat.of(o.optString("format")))
                 BrainProtocol.EV_CHUNK -> Chunk(o.getString("text"), o.optBoolean("thought", false))
                 BrainProtocol.EV_TOOL_CALLS -> {
                     val c = o.getJSONArray("calls")

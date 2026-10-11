@@ -149,4 +149,66 @@ class BrainPolicyTest {
         assertEquals(EngineTeardown.LoadStep.WAIT, EngineTeardown.forLoad(heldByAnother = true, sinceHolderDestroyedMs = EngineTeardown.PARKED_LIMIT_MS - 1))
         assertEquals(EngineTeardown.LoadStep.END_PROCESS, EngineTeardown.forLoad(heldByAnother = true, sinceHolderDestroyedMs = EngineTeardown.PARKED_LIMIT_MS))
     }
+
+    /**
+     * 0.4.4: two engines, one at a time. A GGUF file goes to llama.cpp, anything else to LiteRT-LM; asking for the other
+     * engine's kind of file unloads the one in use first, and the process's one slot (above) still keeps the new one
+     * waiting while the old one lets go (an engine of another kind holds it like any other).
+     */
+    @Test fun eachKindOfFileHasItsEngineAndTheOtherUnloadsFirst() {
+        assertEquals(EngineKind.LLAMA_CPP, EngineKind.of(ModelFormat.GGUF))
+        assertEquals(EngineKind.LITERT_LM, EngineKind.of(ModelFormat.LITERT_LM))
+        assertEquals(EngineSwitch.Step.LOAD, EngineSwitch.step(null, EngineKind.LLAMA_CPP))
+        assertEquals(EngineSwitch.Step.LOAD, EngineSwitch.step(EngineKind.LITERT_LM, EngineKind.LITERT_LM))
+        assertEquals(EngineSwitch.Step.LOAD, EngineSwitch.step(EngineKind.LLAMA_CPP, EngineKind.LLAMA_CPP))
+        assertEquals(EngineSwitch.Step.UNLOAD_OTHER_FIRST, EngineSwitch.step(EngineKind.LITERT_LM, EngineKind.LLAMA_CPP))
+        assertEquals(EngineSwitch.Step.UNLOAD_OTHER_FIRST, EngineSwitch.step(EngineKind.LLAMA_CPP, EngineKind.LITERT_LM))
+        // The other engine still letting its model go holds the slot: the load waits ("still stopping"), as in 0.4.1.
+        assertEquals(EngineTeardown.LoadStep.WAIT, EngineTeardown.forLoad(heldByAnother = true, sinceHolderDestroyedMs = -1))
+    }
+
+    /** llama.cpp's real count (the model's own tokenizer) decides what fits in Robot's 4,096 tokens, with room for the reply. */
+    @Test fun aGgufPromptFitsByTheModelsOwnCount() {
+        val fits = ContextWindow.MAX_TOKENS - ContextWindow.REPLY_RESERVE
+        assertEquals(PromptFit.Step.Send, PromptFit.after(fits, historyTurns = 6, budget = 2000, rebuilds = 0))
+        // Over by 100 with history: shorter history, by the overflow and at least a tenth.
+        assertEquals(PromptFit.Step.Shorten(1800), PromptFit.after(fits + 100, historyTurns = 6, budget = 2000, rebuilds = 0))
+        assertEquals(PromptFit.Step.Shorten(1500), PromptFit.after(fits + 500, historyTurns = 6, budget = 2000, rebuilds = 2))
+        // Out of rebuilds: no history at all, then the question alone.
+        assertEquals(PromptFit.Step.Shorten(0), PromptFit.after(fits + 100, historyTurns = 2, budget = 500, rebuilds = BrainPolicy.MAX_REBUILDS))
+        // The question alone, a little over the app's estimate: sent with a shorter reply; with no room for one, too long.
+        assertEquals(PromptFit.Step.Send, PromptFit.after(fits + 200, historyTurns = 0, budget = 0, rebuilds = 0))
+        assertEquals(PromptFit.Step.Send, PromptFit.after(ContextWindow.MAX_TOKENS - PromptFit.MIN_REPLY, historyTurns = 0, budget = 0, rebuilds = 0))
+        assertEquals(PromptFit.Step.TooLong, PromptFit.after(ContextWindow.MAX_TOKENS - PromptFit.MIN_REPLY + 1, historyTurns = 0, budget = 0, rebuilds = 0))
+        // Each rebuild drops something, so the loop ends.
+        var budget = 3000
+        var rebuilds = 0
+        var turns = 10
+        while (true) {
+            when (val step = PromptFit.after(4000, turns, budget, rebuilds)) {
+                is PromptFit.Step.Shorten -> { assertTrue(step.historyBudget < budget); budget = step.historyBudget; rebuilds++; if (budget == 0) turns = 0 }
+                else -> { assertEquals(PromptFit.Step.TooLong, step); break }
+            }
+            assertTrue(rebuilds <= BrainPolicy.MAX_REBUILDS + 1)
+        }
+    }
+
+    /** Robot's llama.cpp library needs dotprod, i8mm and fp16; :brain reads /proc/cpuinfo before it loads it. */
+    @Test fun theLibraryLoadsOnlyOnACpuWithItsFeatures() {
+        // A Tensor G5 core (Cortex-X4 / A725 / A520, Armv9.2-A), as /proc/cpuinfo lists them.
+        val g5 = "Features\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 " +
+            "sm3 sm4 asimddp sha512 sve asimdfhm dit uscat ilrcpc flagm ssbs sb paca pacg dcpodp sve2 sveaes svepmull svebitperm " +
+            "svesha3 svesm4 flagm2 frint svei8mm svebf16 i8mm bf16 dgh bti mte ecv afp mte3 wfxt"
+        val cpuinfo = (0 until 8).joinToString("\n\n") { "processor\t: $it\nBogoMIPS\t: 49.15\n$g5\nCPU implementer\t: 0x41" }
+        assertEquals(emptyList<String>(), LlamaCpu.missing(cpuinfo))
+        // A Cortex-A55 (Armv8.2-A, dotprod but no i8mm): refused.
+        val a55 = "processor\t: 0\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp"
+        assertEquals(listOf("i8mm"), LlamaCpu.missing(a55))
+        // Every core must have them (a big core with i8mm beside a little one without isn't enough).
+        assertEquals(listOf("i8mm"), LlamaCpu.missing(cpuinfo + "\n\n" + a55))
+        // "svei8mm" isn't "i8mm".
+        assertEquals(listOf("i8mm"), LlamaCpu.missing("Features : fp asimd asimddp fphp asimdhp svei8mm"))
+        assertEquals(LlamaCpu.REQUIRED, LlamaCpu.missing(null))
+        assertEquals(LlamaCpu.REQUIRED, LlamaCpu.missing("processor : 0"))
+    }
 }
