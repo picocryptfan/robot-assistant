@@ -80,7 +80,8 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         fun stopNow(reason: DoneReason) {
             if (stopReason == null) stopReason = reason
             stop = true
-            LlamaNative.cancel(handle, id)
+            // Only while its model is the one loaded: a freed model is never touched.
+            if (this@LlamaEngine.handle == handle) LlamaNative.cancel(handle, id)
         }
     }
 
