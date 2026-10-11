@@ -95,7 +95,8 @@ interpreter (5.4), summaries (5.6), keeping the audio.
   the session's own 20 s ring. Each segment is decoded by the same Parakeet as questions, in turn with them (one model
   in memory). A segment with too few words for its speech (under 0.9 a second over 3 s) is heard again in two halves,
   kept if that gives more words, and the line marked "heard again" (voice log 119). Audio stays in memory and is dropped
-  once decoded; nothing is ever written.
+  once decoded; nothing is ever written. At most 64 segments wait to be decoded (about 60 MB at worst): should decoding
+  ever fall that far behind, a segment is let go and the transcript says "[not transcribed …]" there.
 - **Language.** Each line is FR or EN from its own words (`LangId`, trained on Tatoeba's CC0 sentences). A line too short
   to tell ("OK", "5 h 30", a name) takes the previous line's language and shows "FR?" or "EN?": tap it to fix (an event
   in the file; the next short lines lean on your answer). Other languages are transcribed too, and tagged FR or EN by
@@ -119,8 +120,10 @@ interpreter (5.4), summaries (5.6), keeping the audio.
   screen, which goes on in the same transcript with a gap marker. Robot never starts recording again by itself. After
   your own Stop in Settings › Active apps, it closes the transcript without asking.
 - **Lock screen** (Settings › Conversation › Start from the lock screen, on): the tile and "hey robot" can start a
-  transcript while locked. Its screen shows over the lock screen with only what it heard since; the library, exporting,
-  renaming and deleting need the phone unlocked (they are in the main app).
+  transcript while locked. Its screen shows over the lock screen with only what it heard since; a session started
+  unlocked never shows there, not even its grey live words. The library, exporting, renaming and deleting need the phone
+  unlocked (they are in the main app). Opening the transcript screen again from Recents never starts or resumes a
+  recording; only Start, Resume, the tile, the shortcut or your voice do.
 - **Voice log** (numbers only): 100 start (how, locked), 101 stop (why, minutes, lines), 102/103 pause and resume, 104
   each minute's segments and median decode time, 105 French/English/not-sure lines, 109 a line that couldn't be saved,
   110 recovered (and resumed), 111 the microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the
@@ -148,8 +151,9 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
 - **Read:** 20 Québec-French sentences and 10 English ones, written for Robot without numbers (Parakeet writes numbers as
   digits); Record, read, Stop.
 - **Say anything:** Robot shows what it heard; correct it to what was said; Score it. The realistic test.
-- **Clips:** pick audio files and a .txt with one line per clip in the order of their names, or "name<TAB>sentence" lines
-  (Common Voice's lists), through Android's picker (no storage permission). Each is decoded in memory (up to 60 s).
+- **Clips:** pick audio files and a .txt with one line per clip in the order of their names, "name<TAB>sentence" lines,
+  or a Common Voice list as it comes (its `path` and `sentence` columns), through Android's picker (no storage
+  permission). Each is decoded in memory (up to 60 s).
 - Each recording is decoded exactly as a conversation is (the same detector, segments, re-hear rule and Parakeet), then
   scored with `Wer`: lower case, ’ as ', "œ" as "oe", hyphens and punctuation as spaces; a wrong accent counts, and is
   also reported apart. Per line: words wrong, accents, the language Robot heard and the decode time; per language: the
@@ -189,7 +193,9 @@ installed, the wake word is on.
 7. **A call** during a session: "[phone call …]" or "[microphone unavailable …]", and it goes on after the call. Another
    app recording: the same.
 8. **Lock screen.** Locked, tap the tile: the reminder or the screen over the lock screen, with nothing older; Open in
-   Transcripts needs the unlock. "Start from the lock screen" off: the tile asks to unlock.
+   Transcripts needs the unlock. "Start from the lock screen" off: the tile asks to unlock. Then, on that same screen:
+   unlock, Stop, "New transcript", and with Live words on and the screen in front, lock the phone and wake it: the
+   lock screen shows, not the transcript (no lines, no grey words).
 9. **Voice start.** "Hey robot, transcribe this conversation": Robot says "Transcribing.", the screen opens and the panel
    goes; nothing of the panel is transcribed. "Translate this conversation": not in this version, said so.
 10. **Library.** Search a word from the session (with and without its accent); rename; Share: pick another app (Files,
@@ -200,6 +206,11 @@ installed, the wake word is on.
 12. **Tile and shortcut.** Add "Transcribe" in Quick Settings: tap to start (the screen opens), tap to stop; long press:
     Settings › Conversation. Long-press Robot's icon: "Transcribe" and "Transcripts" work (if "Transcribe" doesn't open,
     note it: the shortcut targets a screen that isn't exported).
+13. **Stop, then start at once.** Tap the tile to stop and again straight away (or Stop, then "New transcript" within a
+    second): the new session records with its notification there the whole time (pull the shade: "Robot is
+    transcribing"); a session recording with no notification is a failure. The first transcript is saved whole.
+14. **Recents.** Start from the tile, press Back, stop from the notification; then open the transcript screen from
+    Recents: it opens on "Saved" and records nothing (no notification). The same after a Resume.
 
 ## Weather, phone status and freeing space (0.4.0)
 
