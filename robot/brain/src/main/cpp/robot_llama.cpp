@@ -414,9 +414,15 @@ JNIEXPORT jint JNICALL Java_app_heyrobot_brain_LlamaNative_generate(JNIEnv * env
             // reply's filter (core ThinkFilter) must see where thinking starts and ends, or its text would show.
             const char * raw = llama_vocab_get_text(r->vocab, tok);
             const bool think_tag = raw != nullptr && (std::strcmp(raw, "<think>") == 0 || std::strcmp(raw, "</think>") == 0);
-            int32_t len = llama_token_to_piece(r->vocab, tok, buf, sizeof(buf), 0, think_tag);
-            if (len < 0) len = 0; // a piece longer than the buffer: none of Robot's models has one
-            pending.append(buf, static_cast<size_t>(len));
+            const int32_t len = llama_token_to_piece(r->vocab, tok, buf, sizeof(buf), 0, think_tag);
+            if (len >= 0) {
+                pending.append(buf, static_cast<size_t>(len));
+            } else if (len > -(1 << 20)) {
+                // A piece longer than the buffer (-len bytes): asked for again with room for it, never dropped.
+                std::string big(static_cast<size_t>(-len), '\0');
+                const int32_t got = llama_token_to_piece(r->vocab, tok, &big[0], -len, 0, think_tag);
+                if (got > 0) pending.append(big.data(), std::min(static_cast<size_t>(got), big.size()));
+            }
             ++generated;
             if (st[S_FIRST_MS] < 0) st[S_FIRST_MS] = static_cast<jlong>(ms_since(t0));
             const size_t whole = whole_utf8(pending);
