@@ -624,10 +624,14 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
 
     private fun onChunk(run: Run, m: Message) {
         if (run.ended) return
-        // Chat only: no tool was described, so a call is never passed on (it would reach the approval gate).
+        // Chat only: no tool was described, so a call is never passed on (it would reach the approval gate). The
+        // conversation now holds a call no answer will follow: it is rebuilt from the history (text only) next time.
         if (m.toolCalls.isNotEmpty()) {
             if (BrainPolicy.acceptsCalls(run.live.mode)) run.calls += m.toolCalls.map { RawToolCall(it.name, it.arguments) }
-            else RLog.i("brain_calls_dropped", "calls" to m.toolCalls.size, "mode" to run.live.mode)
+            else {
+                run.live.dirty = true
+                RLog.i("brain_calls_dropped", "calls" to m.toolCalls.size, "mode" to run.live.mode)
+            }
         }
         if (!run.thoughtSent && !m.channels["thought"].isNullOrEmpty()) {
             run.thoughtSent = true
