@@ -203,6 +203,24 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
   sha256 `af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc` (checked by the app before it is ever loaded).
   Model card licence: Apache-2.0.
 
+## Language ID table (in the APK, from :core; 0.5.0 conversation mode)
+
+`core/src/main/assets/langid/fr-en.tsv` (in git, generated; 172,247 bytes, sha256
+`e58cc22e749e8b6479e17e2c2c22958194f64c7cc42551d629a17355fc1a38d4`) is the French/English word and character n-gram
+table core `LangId.kt` uses to tag each transcript line with its language (`../docs/conversation-mode.md` 2.3). It holds
+rounded log-probabilities only, no sentence. `tools/make_langid.py` builds it from **Tatoeba's CC0 export only**:
+
+- https://downloads.tatoeba.org/exports/sentences_CC0.tar.bz2, downloaded 2026-10-11, sha256
+  `74a1577f35d9f11134b281be3125cf17e5531b8a29054f68b3e858418387e17f` (newest sentence 2026-10-04 22:57:13): the
+  sentences their contributors released under the Creative Commons CC0 1.0 Universal public domain dedication
+  (https://creativecommons.org/publicdomain/zero/1.0/).
+- Used: the French (`fra`) and English (`eng`) sentences, after duplicates and the held-out lines were removed:
+  14,027 French and 41,292 English.
+- Not used, for the table or its tests: Tatoeba's per-language and full exports, which are mostly CC-BY 2.0 FR.
+
+The test resource `core/src/test/resources/langid/heldout-fr-en.tsv` holds 369 more sentences of the same CC0 export,
+with their Tatoeba ids, that the table never saw. `langid/colloquial.tsv` (62 short lines) was written for Robot.
+
 ## Every process (Apache-2.0)
 
 | dependency | version |
@@ -229,7 +247,7 @@ for Android: GPL-3.0) was read to match what they accept (`../docs/phase-2.md`);
 Build and test only (not in the APK): Android Gradle Plugin 8.8.2, Kotlin and its Compose compiler plugin
 2.4.0, JUnit 4.13.2 (EPL-1.0), org.json 20180813 (JSON licence, tests only). The tools in `tools/` use the
 `sherpa-onnx==1.13.8` Python wheel (Apache-2.0), numpy (BSD-3-Clause), sentencepiece (Apache-2.0) and pypinyin (MIT)
-on the build machine only.
+on the build machine only; `tools/make_langid.py` uses Python's standard library only.
 
 ## Code adapted from the phase 0 probe and the GPU lab (same author, GPL-3.0)
 
