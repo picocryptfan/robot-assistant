@@ -137,4 +137,16 @@ class BrainPolicyTest {
         assertTrue(EngineTeardown.mayLoad(0))
         assertFalse(EngineTeardown.mayLoad(1))
     }
+
+    /**
+     * 0.4.1 review: nor beside one an earlier BrainService is still loading or letting go of (its unload runs once its
+     * current call returns); if that never happens, the process ends rather than holding two models or none for ever.
+     */
+    @Test fun oneEngineInTheProcessWhicheverServiceLoadsIt() {
+        assertEquals(EngineTeardown.LoadStep.LOAD, EngineTeardown.forLoad(heldByAnother = false, sinceHolderDestroyedMs = -1))
+        assertEquals(EngineTeardown.LoadStep.WAIT, EngineTeardown.forLoad(heldByAnother = true, sinceHolderDestroyedMs = -1))
+        assertEquals(EngineTeardown.LoadStep.WAIT, EngineTeardown.forLoad(heldByAnother = true, sinceHolderDestroyedMs = 0))
+        assertEquals(EngineTeardown.LoadStep.WAIT, EngineTeardown.forLoad(heldByAnother = true, sinceHolderDestroyedMs = EngineTeardown.PARKED_LIMIT_MS - 1))
+        assertEquals(EngineTeardown.LoadStep.END_PROCESS, EngineTeardown.forLoad(heldByAnother = true, sinceHolderDestroyedMs = EngineTeardown.PARKED_LIMIT_MS))
+    }
 }

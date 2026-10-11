@@ -86,6 +86,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     private var parked: Parked? = null
     /** Set by [shutdown] while a parked engine keeps the work thread: runs when that engine is closed. */
     private var teardown: (() -> Unit)? = null
+    /** When BrainService.onDestroy ran (elapsed ms; 0: it lives), read by a newer service waiting for the engine slot. */
+    @Volatile private var destroyedAt = 0L
     /**
      * The fixed part's token count (system prompt plus tools) is logged once per tool set and mode per engine load
      * (docs/phase-2.md "Logging"): counts only. [counted] holds the sets logged exactly; [estimated] those logged as an
@@ -196,6 +198,18 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
                 return failed(req, LoadFailure.NO_SPACE, "There isn't enough free space for the cache it writes on its first load (about ${gb(need)}).")
             }
         }
+        // One engine in the whole process, whichever BrainService loads it: an earlier service destroyed while its thread
+        // was still loading or letting its engine go keeps that engine until its queued unload runs. Marked from the start
+        // too: the app must not delete the file (or its cache) while it loads, either.
+        when (EngineTeardown.forLoad(!claimSlot(req), slotHolderDestroyedMs())) {
+            EngineTeardown.LoadStep.LOAD -> {}
+            EngineTeardown.LoadStep.WAIT -> return failed(req, LoadFailure.STOPPING, STOPPING)
+            EngineTeardown.LoadStep.END_PROCESS -> {
+                RLog.i("brain_teardown", "step" to EngineTeardown.LoadStep.END_PROCESS)
+                android.os.Process.killProcess(android.os.Process.myPid())
+                return failed(req, LoadFailure.STOPPING, STOPPING)
+            }
+        }
         if (current != null && current.model != req.model) toolMode = ToolMode.TOOLS_CONSTRAINED
         ExperimentalFlags.enableBenchmark = true
         // MTP drafting: LiteRT-LM's default (off) on the TPU, as since 0.1; the A/B constant on the CPU.
@@ -203,8 +217,6 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val t0 = SystemClock.elapsedRealtime()
         var e: Engine? = null
         var visionError: String? = null
-        // Marked from the start: the app must not delete the file (or its cache) while it loads, either.
-        markLoaded(req)
         var ok = false
         try {
             // Vision with a fixed 280-token image budget (read when the engine initialises), so the 300 tokens per image
@@ -251,8 +263,39 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             return BrainMsg.Loaded(true, vision, ms, null, req.model, req.backend)
         } finally {
             ExperimentalFlags.enableSpeculativeDecoding = null
-            if (!ok) markUnloaded()
+            if (!ok) releaseSlot()
         }
+    }
+
+    /**
+     * Takes the process's one engine slot for [req] and marks it as the model in memory; false while an engine of an
+     * earlier BrainService in this process still holds it.
+     */
+    private fun claimSlot(req: BrainMsg.Load): Boolean = synchronized(SLOT) {
+        val h = slotHolder
+        if (h != null && h !== this) return false
+        slotHolder = this
+        markLoaded(req)
+        true
+    }
+
+    /** How long ago the service holding the slot was destroyed (-1: it lives, or nobody holds it). */
+    private fun slotHolderDestroyedMs(): Long = synchronized(SLOT) {
+        val at = slotHolder?.takeIf { it !== this }?.destroyedAt ?: 0L
+        if (at > 0) SystemClock.elapsedRealtime() - at else -1L
+    }
+
+    /** This service's engine is gone (closed, or never made): the slot is free and the marker goes. */
+    private fun releaseSlot() = synchronized(SLOT) {
+        if (slotHolder === this) {
+            slotHolder = null
+            markUnloaded()
+        }
+    }
+
+    /** BrainService.onDestroy (main thread), before the work thread gets to [shutdown]. */
+    fun destroyed() {
+        destroyedAt = SystemClock.elapsedRealtime()
     }
 
     /** filesDir/robot/brain_loaded.txt: which model is in memory, so the app never deletes it under the engine. */
@@ -299,7 +342,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         }
         all.forEach(::closeQuietly)
         try { e.close() } catch (ex: Exception) { RLog.w("brain_unload", ex) }
-        markUnloaded()
+        releaseSlot()
         RLog.i("brain_unload", "why" to RLog.Code(why))
     }
 
@@ -311,7 +354,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             try { p.engine.close() } catch (ex: Exception) { RLog.w("brain_unload", ex) }
         } finally {
             parkedInProcess.decrementAndGet()
-            if (engine == null) markUnloaded()
+            // A parked engine kept the slot (and the marker); no other engine loads before it is closed.
+            if (engine == null) releaseSlot()
         }
         RLog.i("brain_unload_parked_closed")
         teardown?.invoke()
@@ -680,6 +724,12 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         private const val STOPPING = "The model is still stopping. Try again in a moment."
         /** Engines parked in this process, by any BrainService instance (a new one may be created before the old one's closes). */
         private val parkedInProcess = AtomicInteger()
+        /**
+         * The process's one engine slot (0.4.1): the GemmaEngine whose engine is loading, loaded, being let go of or parked.
+         * A new BrainService can be created in this process before the old one's work thread has let its engine go.
+         */
+        private val SLOT = Any()
+        private var slotHolder: GemmaEngine? = null
     }
 
     /** Broken output (as the lab detects it): pad/unused tokens, or one character 32+ times in a row. */

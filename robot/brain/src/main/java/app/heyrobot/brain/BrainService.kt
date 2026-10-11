@@ -76,6 +76,8 @@ class BrainService : Service() {
     }
 
     override fun onDestroy() {
+        // Known at once, even while the work thread is still busy: a new service waits for this one's engine to go.
+        engine.destroyed()
         // On the work thread like every other engine call (never two threads in LiteRT at once). The thread stays
         // while an engine is parked: LiteRT posts the callback that closes it there (quitting at once, as 0.1.2 did,
         // dropped that callback and kept the model's memory and the TPU until :brain died). If LiteRT never lets go, :brain ends.

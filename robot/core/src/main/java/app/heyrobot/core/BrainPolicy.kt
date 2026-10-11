@@ -145,6 +145,28 @@ object EngineTeardown {
     /** A new engine may load only when no engine is parked anywhere in the :brain process (2 GB on the TPU, 4 GB on the CPU each). */
     fun mayLoad(parkedInProcess: Int): Boolean = parkedInProcess <= 0
 
+    enum class LoadStep {
+        /** The process's one engine slot is free (or this service's own): load. */
+        LOAD,
+        /** An earlier BrainService of this process still holds an engine (loading, loaded or being let go of): ask again in a moment. */
+        WAIT,
+        /** It has held on for [PARKED_LIMIT_MS] since its service was destroyed: its thread is stuck in LiteRT, and only ending the process frees it. */
+        END_PROCESS,
+    }
+
+    /**
+     * 0.4.1: one engine in the whole :brain process, whichever BrainService loads it. A service destroyed while its work
+     * thread was still loading, or still letting its engine go (the unload waits up to 10 s for a cancelled reply), keeps
+     * that engine until its queued unload runs; a new service in the same process must not load a second one meanwhile
+     * (Fast about 2 GB, an E4B about 4 GB). [heldByAnother]: an earlier service holds the slot; [sinceHolderDestroyedMs]:
+     * how long ago that service was destroyed (-1: not known yet).
+     */
+    fun forLoad(heldByAnother: Boolean, sinceHolderDestroyedMs: Long): LoadStep = when {
+        !heldByAnother -> LoadStep.LOAD
+        sinceHolderDestroyedMs < PARKED_LIMIT_MS -> LoadStep.WAIT
+        else -> LoadStep.END_PROCESS
+    }
+
     /** At, and after, the service's destroy ([sinceDestroyMs] ago), with an engine still [parked] or not. */
     fun afterDestroy(parked: Boolean, sinceDestroyMs: Long): Step = when {
         !parked -> Step.QUIT_THREAD
