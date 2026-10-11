@@ -473,11 +473,13 @@ internal fun openFirst(ctx: android.content.Context, intents: List<android.conte
 fun NotificationAccessScreen(facts: AssistantFacts?, onBack: () -> Unit) {
     PreferenceScreen("Notification access", onBack) {
         if (facts?.notificationAccess == true) {
-            preferenceGroup(null, "done") { StatusPreference("Notification access allowed", "Cheogram's one-to-one senders only", Mark.OK) }
+            preferenceGroup(null, "done") { StatusPreference("Notification access allowed", "What People and Messages turn on, nothing else", Mark.OK) }
         }
         preferenceGroup(null, "steps") { PreferenceBlock { NotificationAccessSteps() } }
-        preferenceFooter("Robot looks at Cheogram's notifications only, and of those only the sender of a one-to-one chat. Settings › People " +
-            "says what Robot reads, where it is kept, and how to take it back.")
+        // 0.7: Settings › Messages opens this page too.
+        preferenceFooter("To learn names, Robot looks at Cheogram's notifications only, and of those only the sender of a one-to-one chat. " +
+            "With Settings › Messages on, it also reads the messages of the apps you turn on there, in memory only. Settings › People and " +
+            "Settings › Messages say what Robot reads, where it is kept, and how to take it back.")
     }
 }
 

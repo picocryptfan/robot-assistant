@@ -86,6 +86,13 @@ fun MessagesSettingsScreen(
                 }
             }
         }
+        // Off with access still allowed (name learning may use it): how to take it back.
+        if (!s.on && granted) {
+            preferenceGroup(null, "still") {
+                StatusPreference("Notification access is still allowed", "Robot reads no message while this is off", Mark.TODO,
+                    action = { TextButton(onClick = { app.heyrobot.ui.openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text("Open") } })
+            }
+        }
         if (s.on) {
             preferenceGroup(null, "access") {
                 if (!granted) StatusPreference("Notification access", "Needed: three steps", Mark.TODO,

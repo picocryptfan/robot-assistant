@@ -152,6 +152,8 @@ object PanelMessages {
     /** The panel closed: a reply in its 3 seconds is not sent, and the bridge is let go. */
     fun onHide() {
         stopWindow(CardEnd.CLOSED)
+        // Not while a reply is on its way: its answer says whether it went.
+        if (link?.busy == true) return
         link?.close()
         link = null
     }
@@ -716,7 +718,14 @@ object PanelMessages {
         p.state = ReplyCardState.SENDING
         p.line = if (fr(lang)) "Envoi…" else "Sending…"
         update(p)
-        val a = link().reply(ReplyRequest(p.thread.key, plan.text, plan.newestSeen))
+        val a = link().reply(ReplyRequest(p.thread.key, plan.text, plan.newestSeen)) ?: run {
+            // No answer from the main process: it may have gone. Never sent again by itself.
+            p.state = ReplyCardState.FAILED
+            p.line = if (fr(lang)) "Robot ne sait pas si c'est parti. Regarde la conversation avant de renvoyer." else
+                "Robot can't tell whether it went. Check the chat before sending it again."
+            update(p)
+            return
+        }
         when (a.outcome) {
             ReplyOutcome.SENT -> {
                 p.state = ReplyCardState.SENT

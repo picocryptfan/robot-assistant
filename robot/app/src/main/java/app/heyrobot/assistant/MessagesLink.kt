@@ -16,7 +16,6 @@ import app.heyrobot.core.messages.MessageWire
 import app.heyrobot.core.messages.MessagesProtocol
 import app.heyrobot.core.messages.MessagesStatus
 import app.heyrobot.core.messages.ReplyAnswer
-import app.heyrobot.core.messages.ReplyOutcome
 import app.heyrobot.core.messages.ReplyRequest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
@@ -103,7 +102,11 @@ class MessagesLink(ctx: Context) : AutoCloseable {
         if (ids.isNotEmpty()) ask(MessagesProtocol.REQ_MARK_ROBOT, MessageWire.ids(ids))
     }
 
-    suspend fun reply(r: ReplyRequest): ReplyAnswer = ask(MessagesProtocol.REQ_REPLY, MessageWire.request(r))?.let(MessageWire::answer) ?: ReplyAnswer(ReplyOutcome.FAILED)
+    /** How the reply went; null when the bridge didn't answer (it may or may not have been sent). */
+    suspend fun reply(r: ReplyRequest): ReplyAnswer? = ask(MessagesProtocol.REQ_REPLY, MessageWire.request(r))?.let(MessageWire::answer)
+
+    /** A request is waiting for its answer (a reply on its way): not the moment to let the bridge go. */
+    val busy: Boolean get() = pending.isNotEmpty()
 
     suspend fun markRead(conversation: String): Boolean = MessageWire.ok(ask(MessagesProtocol.REQ_MARK_READ, MessageWire.key(conversation)))
 
