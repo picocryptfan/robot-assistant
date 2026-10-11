@@ -53,6 +53,34 @@ class UpdateDecisionTest {
         assertEquals(v("0.4.6"), UpdatePick.candidate(releases(Fixtures.release("v0.4.7", sums = false), Fixtures.release("v0.4.6")), current, false)!!.version)
     }
 
+    @Test fun aReleaseWhoseApkFailedAndroidsChecksDoesntHideAnOlderGoodOne() {
+        // "v9.9.9" whose APK matched SHA256SUMS but isn't signed with Robot's key (a stolen GitHub account, or a typo in a tag):
+        // without this, the highest version would be offered, refused and offered again, and no update would ever come.
+        val list = releases(Fixtures.release("v9.9.9", baseId = 900), Fixtures.release("v0.4.7", baseId = 300), Fixtures.release("v0.4.6", baseId = 200))
+        assertEquals(v("9.9.9"), UpdatePick.candidate(list, current, false)!!.version)
+        assertEquals(v("0.4.7"), UpdatePick.candidate(list, current, false, barred = setOf(901L))!!.version)
+        assertEquals(v("0.4.6"), UpdatePick.candidate(list, current, false, barred = setOf(901L, 301L))!!.version)
+        assertNull(UpdatePick.candidate(list, current, false, barred = setOf(901L, 301L, 201L)))
+        // The same version with its APK replaced (a new file id) is offered again.
+        assertEquals(v("9.9.9"), UpdatePick.candidate(releases(Fixtures.release("v9.9.9", baseId = 950)), current, false, barred = setOf(901L))!!.version)
+    }
+
+    @Test fun whichFilesStayBarred() {
+        // Only Android's checks bar a file: they ran on the bytes SHA256SUMS vouched for, so they would fail again. A wrong
+        // sum, a cut download or no space can be different next time.
+        for (f in UpdateFail.entries) {
+            val archive = f in setOf(UpdateFail.NOT_AN_APK, UpdateFail.WRONG_PACKAGE, UpdateFail.WRONG_VERSION, UpdateFail.NOT_NEWER, UpdateFail.UNSIGNED, UpdateFail.OTHER_SIGNER)
+            assertEquals(f.name, archive, UpdateDecision.bars(f))
+        }
+        assertEquals(listOf(1L, 2L, 3L), UpdateDecision.bar(listOf(1L, 2L), 3L))
+        assertEquals(listOf(1L, 2L), UpdateDecision.bar(listOf(2L, 1L), 2L))
+        assertEquals(UpdateDecision.MAX_BARRED, (1L..100L).fold(emptyList<Long>()) { b, id -> UpdateDecision.bar(b, id) }.size)
+        // Once GitHub no longer lists a barred file it is forgotten, so the list never grows.
+        val list = releases(Fixtures.release("v9.9.9", baseId = 900), Fixtures.release("v0.4.6", baseId = 200))
+        assertEquals(listOf(901L), UpdateDecision.stillBarred(listOf(555L, 901L), list))
+        assertEquals(emptyList<Long>(), UpdateDecision.stillBarred(listOf(555L), list))
+    }
+
     private val on = UpdateSettings()
     private val noWifiDownload = UpdateSettings(wifiDownload = false)
     private val now = 1_800_000_000_000L

@@ -55,7 +55,7 @@ class UpdateFilesTest {
         found = FoundRelease("o/r", "v0.4.6", "0.4.6", true, "2026-10-11T09:30:00Z", "Notes\n• one", FileRef(101, "Robot-0.4.6.apk", 97_000_000), FileRef(102, "SHA256SUMS", 250)),
         firstSeen = 1_799_000_000_000, downloaded = VerifiedDownload("0.4.6", "Robot-0.4.6.apk", "ab".repeat(32), 97_000_000, 101),
         notified = "0.4.6 ready", updatedTo = "0.4.6", install = InstallOutcome.CANCELLED, installVersion = "0.4.6",
-        refusedApk = 99, refusedWhy = UpdateFail.CHECKSUM_MISMATCH,
+        refusedApk = 99, refusedWhy = UpdateFail.CHECKSUM_MISMATCH, barred = listOf(901, 902),
     )
 
     @Test fun stateRoundTrips() {
@@ -83,6 +83,12 @@ class UpdateFilesTest {
         assertNull(d.downloaded)
         assertEquals(full.lastCheck, d.lastCheck)
         assertEquals(full.notified, d.notified)
+        // Barred files: ids only, positive, at most MAX_BARRED of them.
+        assertEquals(listOf(901L, 902L), d.barred)
+        assertEquals(listOf(5L), UpdateState.fromJson(JSONObject().put("barred", org.json.JSONArray().put(-1).put("7").put(5).put(1.5).put(0)).toString()).barred)
+        assertEquals(emptyList<Long>(), UpdateState.fromJson(JSONObject().put("barred", "901").toString()).barred)
+        val many = org.json.JSONArray().apply { (1..100).forEach { put(it) } }
+        assertEquals((100L - UpdateDecision.MAX_BARRED + 1..100L).toList(), UpdateState.fromJson(JSONObject().put("barred", many).toString()).barred)
     }
 
     @Test fun aDownloadsFileNameIsOnlyEverItsVersionsApk() {

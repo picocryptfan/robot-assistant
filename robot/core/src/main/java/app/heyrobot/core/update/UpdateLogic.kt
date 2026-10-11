@@ -14,16 +14,19 @@ data class Candidate(val release: GitHubRelease, val version: RobotVersion, val 
 object UpdatePick {
     /**
      * The newest release above [current] that may be offered: not a draft, a test build only with [testBuilds], its tag a
-     * version, and exactly its APK and SHA256SUMS attached ([ReleaseAssets.select]). The highest version wins, whatever
-     * order GitHub lists them in; between two tags of the same version, the one listed first (the newer).
+     * version, and exactly its APK and SHA256SUMS attached ([ReleaseAssets.select]), that APK not [barred] (it failed
+     * Android's checks before: [UpdateDecision.bars]). The highest version wins, whatever order GitHub lists them in; between
+     * two tags of the same version, the one listed first (the newer). So a release that can never be installed (another
+     * signer, a typo in its tag) doesn't hide an older one that can.
      */
-    fun candidate(releases: List<GitHubRelease>, current: RobotVersion, testBuilds: Boolean): Candidate? {
+    fun candidate(releases: List<GitHubRelease>, current: RobotVersion, testBuilds: Boolean, barred: Set<Long> = emptySet()): Candidate? {
         var best: Candidate? = null
         for (r in releases) {
             if (r.draft || (r.testBuild && !testBuilds)) continue
             val v = r.version ?: continue
             if (v <= current) continue
             val files = ReleaseAssets.select(r) ?: continue
+            if (files.apk.id in barred) continue
             if (best == null || v > best.version) best = Candidate(r, v, files)
         }
         return best
@@ -93,6 +96,25 @@ object UpdateDecision {
     fun spaceNeeded(size: Long, have: Long): Long = (size - have).coerceAtLeast(0) + size + SPACE_MARGIN
 
     const val SPACE_MARGIN = 64L * 1024 * 1024
+
+    /** At most this many barred release files are remembered (the newest). */
+    const val MAX_BARRED = 16
+
+    /**
+     * Whether a release file refused for [f] is never offered again: only when Android's checks refused it (package,
+     * version, signer). They ran on the very bytes SHA256SUMS vouched for, so they would fail again; a wrong sum, a cut
+     * download or a full phone can be different next time.
+     */
+    fun bars(f: UpdateFail): Boolean = ArchiveVerdict.entries.any { UpdateFail.of(it) == f }
+
+    /** [barred] with [apkId] added (last, as the newest), at most [MAX_BARRED]. */
+    fun bar(barred: List<Long>, apkId: Long): List<Long> = (barred.filter { it != apkId } + apkId).takeLast(MAX_BARRED)
+
+    /** The barred files GitHub still lists in [releases]; one it no longer lists is forgotten. */
+    fun stillBarred(barred: List<Long>, releases: List<GitHubRelease>): List<Long> {
+        val listed = releases.flatMap { r -> r.assets.map { it.id } }.toSet()
+        return barred.filter { it in listed }
+    }
 }
 
 /** An APK as Android describes it: package, versions and the SHA-256 of each signing certificate. */

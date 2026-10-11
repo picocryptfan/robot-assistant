@@ -1,5 +1,6 @@
 package app.heyrobot.core.update
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 // Pure. The updater's two small files, kept apart from settings.json (as look.json is) so they never meet its schema:
@@ -96,7 +97,8 @@ data class VerifiedDownload(val version: String, val file: String, val sha256: S
  * What the updater last found and did. [notified]: the notice last posted ("0.4.6 available", "0.4.6 ready"), so each is
  * posted once. [firstSeen]: when [found] was first offered (a download waiting for Wi-Fi says so after two days).
  * [updatedTo]: Robot was just updated to that version, to say once. [install]: the last install's outcome.
- * [refusedApk]: a release file that failed its checks, and why ([refusedWhy]).
+ * [refusedApk]: a release file that failed its checks, and why ([refusedWhy]). [barred]: release files Android's checks
+ * refused (another signer, package or version), never offered again while GitHub lists them ([UpdateDecision.bars]).
  */
 data class UpdateState(
     val lastCheck: Long = 0,
@@ -114,6 +116,7 @@ data class UpdateState(
     /** A release file that failed a check (its sum, its signer...): not downloaded again by itself, only when you ask. */
     val refusedApk: Long = 0,
     val refusedWhy: UpdateFail? = null,
+    val barred: List<Long> = emptyList(),
 ) {
     fun toJson(): String = JSONObject().apply {
         put("v", VERSION)
@@ -136,6 +139,7 @@ data class UpdateState(
         installVersion?.let { put("installVersion", it) }
         if (refusedApk > 0) put("refusedApk", refusedApk)
         refusedWhy?.let { put("refusedWhy", it.name) }
+        if (barred.isNotEmpty()) put("barred", JSONArray().apply { barred.forEach { put(it) } })
     }.toString()
 
     companion object {
@@ -161,6 +165,9 @@ data class UpdateState(
                 installVersion = str(o, "installVersion")?.let(RobotVersion::parse)?.text,
                 refusedApk = long(o, "refusedApk")?.takeIf { it > 0 } ?: 0,
                 refusedWhy = str(o, "refusedWhy")?.let { n -> UpdateFail.entries.firstOrNull { it.name == n } },
+                barred = (o.opt("barred") as? JSONArray)?.let { a ->
+                    (0 until a.length()).mapNotNull { i -> when (val v = a.opt(i)) { is Int -> v.toLong(); is Long -> v; else -> null }?.takeIf { it > 0 } }
+                }.orEmpty().takeLast(UpdateDecision.MAX_BARRED),
             )
         }
 

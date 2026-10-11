@@ -129,8 +129,9 @@ object Updater {
             val v = found.parsedVersion ?: return false
             if (fail == null) {
                 UpdateDecision.afterAutoDownload(s, v, st.notified)?.let { notify(ctx, found, it) }
-            } else if (st.refusedApk == found.apk.id) {
-                // Its file failed a check: say there is an update; the page says what was wrong.
+            } else if (st.refusedApk == found.apk.id && st.refusedWhy?.let(UpdateDecision::bars) != true) {
+                // Its file failed a check: say there is an update; the page says what was wrong. Not for a file Android's
+                // checks refused: it can never be installed, and the next check passes it over for an older one that can.
                 UpdateDecision.afterAutoCheck(s, v, false, st.notified, st.firstSeen, System.currentTimeMillis(), refused = true).notify?.let { notify(ctx, found, it) }
             }
             return false
@@ -161,7 +162,8 @@ object Updater {
         try {
             if (repo == null) throw GitHubClient.Failure(UpdateFail.NO_REPOSITORY)
             val list = GitHubReleases.parseList(GitHubClient.releases(ctx, repo, a, network)) ?: throw GitHubClient.Failure(UpdateFail.BAD_ANSWER)
-            val pick = UpdatePick.candidate(list, installed(), s.testBuilds)
+            // A release whose APK failed Android's checks before is passed over, so it can't hide an older one that works.
+            val pick = UpdatePick.candidate(list, installed(), s.testBuilds, UpdateStore.state(ctx).barred.toSet())
             val found = pick?.let { FoundRelease.of(repo, it.release, it.files) }
             val st = UpdateStore.update(ctx) { old ->
                 val was = old.found
@@ -179,6 +181,7 @@ object Updater {
                     downloaded = old.downloaded.takeIf { UpdateDecision.keepDownload(it, found, installed()) },
                     refusedApk = if (same) old.refusedApk else 0,
                     refusedWhy = if (same) old.refusedWhy else null,
+                    barred = UpdateDecision.stillBarred(old.barred, list),
                 )
             }
             tidy(ctx, st)
@@ -222,7 +225,9 @@ object Updater {
         if (dir.usableSpace < UpdateDecision.spaceNeeded(found.apk.size, have)) return UpdateFail.NO_SPACE
         fun refuse(f: UpdateFail): UpdateFail {
             part.delete()
-            UpdateStore.update(ctx) { it.copy(refusedApk = found.apk.id, refusedWhy = f) }
+            UpdateStore.update(ctx) {
+                it.copy(refusedApk = found.apk.id, refusedWhy = f, barred = if (UpdateDecision.bars(f)) UpdateDecision.bar(it.barred, found.apk.id) else it.barred)
+            }
             RLog.i("update_refused", "why" to f)
             return f
         }
