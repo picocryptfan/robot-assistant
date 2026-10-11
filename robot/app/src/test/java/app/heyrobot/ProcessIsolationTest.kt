@@ -15,7 +15,9 @@ import javax.xml.parsers.DocumentBuilderFactory
  * sit in their processes, the recognizer stays discoverable (the restart finding), exported components
  * are guarded, the permissions are the expected few, nothing but DownloadManager, the Claude SDK, the Open-Meteo client
  * (the weather) and the Nominatim client (the nearest place, 0.4.0) goes online, and those two only from the :voice
- * process's tools, audio is never written to disk and nothing logs except through RLog (which drops content).
+ * process's tools, audio is never written to disk and nothing logs except through RLog (which drops content). The updater
+ * (Settings › Updates) runs in the main process only, its GitHub client is the only code that reaches GitHub, and its access
+ * token goes to api.github.com only.
  */
 class ProcessIsolationTest {
     private val root: File = System.getProperty("robot.rootDir")?.let(::File) ?: File(System.getProperty("user.dir") ?: ".").absoluteFile.parentFile
@@ -94,7 +96,7 @@ class ProcessIsolationTest {
     @Test fun mainProcessCodeNeverReachesEngines() {
         val mainFiles = ours.filterKeys { k ->
             k.startsWith("core/") || k.startsWith("app/ui/") || k.startsWith("app/sys/") || k.startsWith("app/boot/") || k.startsWith("app/people/") ||
-                k == "app/RobotApp.kt"
+                k.startsWith("app/update/") || k == "app/RobotApp.kt"
         }
         assertTrue(mainFiles.size >= 25)
         val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|ClaudeLink|ClaudeKeys|ClaudeSession|ClaudeClient|ClaudeKeyActivity)\b""")
@@ -132,7 +134,8 @@ class ProcessIsolationTest {
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         val main = listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
-            "app.heyrobot.people.CheogramListener")
+            "app.heyrobot.people.CheogramListener", "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService",
+            "app.heyrobot.update.InstallStatusReceiver")
         for (n in main) assertEquals(n, "", proc(n))
         // Every Robot component is accounted for (a new one must be placed deliberately).
         val ourComps = comps.keys.filter { it.startsWith("app.heyrobot.") }.toSet()
@@ -148,8 +151,14 @@ class ProcessIsolationTest {
         assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.brain.BrainService"))
         for (n in listOf("app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
             "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
-            "app.heyrobot.assistant.CheogramPickActivity"))
+            "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService",
+            "app.heyrobot.update.InstallStatusReceiver"))
             assertEquals(n, "false", exported(n))
+        // The updater: only the system binds its job service; Android tells Robot alone that it was updated.
+        assertEquals("android.permission.BIND_JOB_SERVICE", perm("app.heyrobot.update.UpdateJobService"))
+        fun actions(n: String) = c(n).getElementsByTagName("action").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
+        assertEquals(setOf("android.intent.action.MY_PACKAGE_REPLACED"), actions("app.heyrobot.boot.UpdatedReceiver"))
+        assertEquals(emptySet<String>(), actions("app.heyrobot.update.InstallStatusReceiver"))
         // The recognizer MUST stay discoverable: with no current speech recognizer Android clears a third-party
         // assistant at every boot (VoiceInteractionManagerService.initForUser), which is how probe 1.1 failed.
         val rec = c("app.heyrobot.assistant.RobotRecognitionService")
@@ -198,7 +207,15 @@ class ProcessIsolationTest {
             "android.permission.PACKAGE_USAGE_STATS",
             // 0.4.0: photos and videos (or the ones you pick), for free_storage's largest files; asked for by the main app only.
             "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+            // The updater: installing Robot's own update (a special app access you turn on yourself)...
+            "android.permission.REQUEST_INSTALL_PACKAGES",
+            // ... and, only for "Install updates without asking" (off by default), asking Android to skip its confirmation for
+            // Robot's own update: without it Android ignores USER_ACTION_NOT_REQUIRED. A normal permission.
+            "android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION",
         ), used)
+        // Never installing or deleting other apps, never asking to update apps it didn't install.
+        assertTrue(listOf("INSTALL_PACKAGES", "DELETE_PACKAGES", "REQUEST_DELETE_PACKAGES", "INSTALL_PACKAGE_UPDATES", "INSTALL_SELF_UPDATES",
+            "ENFORCE_UPDATE_OWNERSHIP", "RUN_USER_INITIATED_JOBS", "FOREGROUND_SERVICE").none { "android.permission.$it" in used })
         // Never all files, never stopping other apps (Android 14 and later wouldn't let it anyway).
         assertTrue(listOf("MANAGE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE", "KILL_BACKGROUND_PROCESSES").none { "android.permission.$it" in used })
         assertTrue("android.permission.ACCESS_FINE_LOCATION" !in used && "android.permission.ACCESS_BACKGROUND_LOCATION" !in used)
@@ -344,14 +361,73 @@ class ProcessIsolationTest {
         for (l in listOf("libsherpa-onnx-jni.so", "libonnxruntime.so")) assertTrue(l, File(main("voice"), "jniLibs/arm64-v8a/$l").isFile)
     }
 
+    /** Source without comments, string literals kept (host names live in them). */
+    private fun codeWithStrings(f: File): String = f.readText()
+        .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("(?m)^\\s*//[^\n]*"), "")
+
+    /**
+     * Settings › Updates. Main process only: nothing of the voice or model processes (or :claude) refers to the updater, and
+     * its components have no android:process. GitHubClient is the only code that goes to GitHub, over HTTPS to the hosts core's
+     * GitHubHosts allows, following redirects itself; the access token is decrypted there alone and set only on a request
+     * GitHubHosts.mayAuthorize allows (api.github.com). The checks before an install can't be skipped: Updater hashes the file
+     * and runs ArchiveCheck before it hands it to UpdateInstaller, which hashes it again as it writes the session.
+     */
+    @Test fun theUpdaterStaysInTheMainProcessAndItsTokenGoesOnlyToGitHubsApi() {
+        val updater = Regex("""\bapp\.heyrobot\.(update|core\.update)\b|\b(Updater|UpdateStore|UpdateToken|GitHubClient|UpdateInstaller|UpdateJobs|UpdateNotices)\b""")
+        assertEquals(emptyList<String>(), usersOf(updater, ours.filterKeys { it.startsWith("voice/") || it.startsWith("brain/") || it.startsWith("claude/") || it.startsWith("app/assistant/") }))
+        // Who uses what.
+        assertEquals(listOf("app/update/GitHubClient.kt", "app/update/Updater.kt"), usersOf(Regex("""\bGitHubClient\b""")))
+        assertEquals(listOf("app/update/GitHubClient.kt"), usersOf(Regex("""\bUpdateToken\.read\(""")))
+        assertEquals(listOf("app/update/UpdateInstaller.kt", "app/update/Updater.kt"), usersOf(Regex("""\bUpdateInstaller\.install\(|\bPackageInstaller\b""")))
+        assertEquals(listOf("app/update/UpdateInstaller.kt"), usersOf(Regex("""\bPackageInstaller\b""")))
+        assertEquals(listOf("app/update/UpdateInstaller.kt"), usersOf(Regex("""\bcanRequestPackageInstalls\b|getPackageArchiveInfo""")))
+        // Only GitHubClient sets an Authorization header, once, on a request GitHubHosts.mayAuthorize allows, and never lets
+        // the platform follow a redirect with it.
+        assertEquals(listOf("app/update/GitHubClient.kt"), ours.filter { codeWithStrings(it.value).contains("\"Authorization\"") }.keys.sorted())
+        val client = codeWithStrings(File(java("app"), "app/heyrobot/update/GitHubClient.kt"))
+        val auth = client.lines().filter { it.contains("\"Authorization\"") }
+        assertEquals(1, auth.size)
+        assertTrue(auth.single(), auth.single().contains("if (token != null && GitHubHosts.mayAuthorize(url)) c.setRequestProperty(\"Authorization\", \"Bearer \$token\")"))
+        assertTrue(client.contains("c.instanceFollowRedirects = false") && client.contains("if (!GitHubHosts.allowed(url)) throw") &&
+            client.contains("GitHubHosts.redirect(url, c.getHeaderField(\"Location\"), ++hop)") && client.contains("as? HttpsURLConnection"))
+        // It opens only the URLs core builds from the repository and ids.
+        assertTrue(client.contains("repo.releasesUrl()") && client.contains("repo.assetUrl(file.id)"))
+        assertEquals(2, Regex("""repo\.assetUrl\(file\.id\)""").findAll(client).count())
+        // GitHub's URLs are written in one place, core's GitHub.kt (the Licences list's source link is data, not code).
+        assertEquals(listOf("core/core/update/GitHub.kt"), ours.filter { Regex("""https://[^"\s]*github""").containsMatchIn(codeWithStrings(it.value)) }.keys.sorted())
+        val hosts = File(java("core"), "app/heyrobot/core/update/GitHub.kt").readText()
+        assertTrue(hosts.contains("const val API = \"api.github.com\"") &&
+            hosts.contains("val ALLOWED: Set<String> = setOf(API, \"github.com\", \"objects.githubusercontent.com\", \"release-assets.githubusercontent.com\")") &&
+            hosts.contains("fun mayAuthorize(url: String): Boolean = hostOf(url) == API"))
+        // The token is stored exactly as Ask Claude's key is (one class, its own Keystore key), and the default repository is
+        // the one the Licences list names.
+        val store = File(java("app"), "app/heyrobot/update/UpdateStore.kt").readText()
+        assertTrue(store.contains("KeystoreSecret(ALIAS, \"github_token\", \"update_token\")") && store.contains("const val ALIAS = \"robot_github_token\""))
+        assertTrue(File(java("app"), "app/heyrobot/sys/ClaudeFiles.kt").readText().contains("KeystoreSecret(ALIAS, \"claude_key\", \"claude_key\")"))
+        assertEquals(listOf("app/sys/ClaudeFiles.kt", "app/sys/KeystoreSecret.kt", "app/update/UpdateStore.kt"), usersOf(Regex("""\bKeystoreSecret\(""")))
+        assertTrue(store.contains("GitHubRepo.fromSourceLink(LicenceBook.parse(json).robot.source)"))
+        // The checks before an install, in order: the hash, then what Android says about the APK, then the session.
+        val up = File(java("app"), "app/heyrobot/update/Updater.kt").readText()
+        val body = up.substringAfter("internal fun install(ctx: Context): String? {").substringBefore("\n    }\n")
+        val hash = body.indexOf("sha256(file) != d.sha256")
+        val archive = body.indexOf("ArchiveCheck.check(")
+        val session = body.indexOf("UpdateInstaller.install(")
+        assertTrue(body, hash in 0 until archive && archive < session)
+        val dl = up.substringAfter("internal fun download(").substringBefore("\n    }\n")
+        assertTrue(dl.indexOf("Sha256Sums.parse(") in 0 until dl.indexOf("GitHubClient.download(") && dl.contains("ArchiveCheck.check(") && dl.contains("part.renameTo(apk)"))
+        val installer = File(java("app"), "app/heyrobot/update/UpdateInstaller.kt").readText()
+        assertTrue(installer.contains("if (hex(md.digest()) != sha256) {") && installer.indexOf("session.abandon()") < installer.indexOf("session.commit("))
+    }
+
     /**
      * Privacy (spec item 10): no network code but the :claude module's SDK client and, since 0.4.0, the one Open-Meteo
      * client for the weather (DownloadManager does the model downloads), no audio files, no raw logging, never an
      * accessibility service (Ask Claude must not drive the Claude app).
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
-        assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt"),
-            usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
+        assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
+            usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b|\bopenConnection\("""),
             ours.filterKeys { !it.startsWith("claude/") }))
         // 0.4.0: the nearest place for the maps goes only to the Nominatim server in Settings (OpenStreetMap's unless you chose
         // another, checked by core NearbyServer: HTTPS only), a second apart at most, its raw request private, and only the
@@ -377,7 +453,9 @@ class ProcessIsolationTest {
         // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, the
         // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0).
         // Licences.kt (0.4.5) holds none: it only checks that the licence list's links (assets/licenses/components.json) are https.
-        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/Licences.kt", "core/core/ModelState.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
+        // The updater's (GitHub's API, a release's page) are built in core's GitHub.kt alone, from the repository and ids.
+        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/Licences.kt", "core/core/ModelState.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt",
+            "core/core/Weather.kt", "core/core/update/GitHub.kt"),
             ours.filter { it.value.readText().contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))

@@ -173,12 +173,24 @@ object BootCheck {
         try { ctx.getSystemService(NotificationManager::class.java).cancel(NOTICE_ID) } catch (_: Exception) {}
     }
 
-    fun readyThisBoot(ctx: Context): Boolean = readOrNull(Paths.marker(ctx, "vis_ready_boot"))?.trim()?.toIntOrNull() == Paths.bootCount(ctx)
+    /** The assistant started in this boot, and since Robot was last installed or updated. */
+    fun readyThisBoot(ctx: Context): Boolean {
+        val marker = Paths.marker(ctx, "vis_ready_boot")
+        if (readOrNull(marker)?.trim()?.toIntOrNull() != Paths.bootCount(ctx)) return false
+        val updated = try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).lastUpdateTime } catch (_: Throwable) { 0L }
+        return marker.lastModified() >= updated
+    }
 
-    /** [MAIN] From BOOT_COMPLETED: an exact alarm (USE_EXACT_ALARM), inexact if the system refuses. */
-    fun schedule(ctx: Context) {
+    /** The alarm's extra: the check follows an update rather than a restart. */
+    const val EXTRA_UPDATE = "robot_after_update"
+
+    /**
+     * [MAIN] From BOOT_COMPLETED (and MY_PACKAGE_REPLACED, [afterUpdate]): an exact alarm (USE_EXACT_ALARM), inexact if the
+     * system refuses.
+     */
+    fun schedule(ctx: Context, afterUpdate: Boolean = false) {
         val am = ctx.getSystemService(AlarmManager::class.java)
-        val pi = PendingIntent.getBroadcast(ctx, REQ_ALARM, Intent(ctx, BootCheckReceiver::class.java),
+        val pi = PendingIntent.getBroadcast(ctx, REQ_ALARM, Intent(ctx, BootCheckReceiver::class.java).putExtra(EXTRA_UPDATE, afterUpdate),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val at = SystemClock.elapsedRealtime() + DELAY_MS
         try {
@@ -190,15 +202,15 @@ object BootCheck {
     }
 
     /** [MAIN] The alarm. */
-    fun run(ctx: Context) {
+    fun run(ctx: Context, afterUpdate: Boolean = false) {
         val ever = Paths.marker(ctx, "vis_ever_ready").isFile
         val ready = readyThisBoot(ctx) || Assistant.facts(ctx).active == true
         val notify = BootLogic.shouldNotify(ever, ready)
-        RLog.i("boot_check", "everReady" to ever, "ready" to ready, "notify" to notify)
-        if (notify) notifyMissing(ctx)
+        RLog.i("boot_check", "everReady" to ever, "ready" to ready, "notify" to notify, "afterUpdate" to afterUpdate)
+        if (notify) notifyMissing(ctx, afterUpdate)
     }
 
-    private fun notifyMissing(ctx: Context) {
+    private fun notifyMissing(ctx: Context, afterUpdate: Boolean) {
         try {
             val nm = ctx.getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "Assistant after a restart", NotificationManager.IMPORTANCE_HIGH).apply {
@@ -207,7 +219,7 @@ object BootCheck {
             val target = Assistant.settingsIntent(ctx)
                 ?: Intent().setClassName(ctx.packageName, "app.heyrobot.ui.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val open = PendingIntent.getActivity(ctx, REQ_OPEN, target, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-            val text = "Android turned Robot off as your assistant during the restart. Tap, choose Digital assistant app, and pick Robot again."
+            val text = "Android turned Robot off as your assistant during the ${if (afterUpdate) "update" else "restart"}. Tap, choose Digital assistant app, and pick Robot again."
             nm.notify(NOTICE_ID, Notification.Builder(ctx, CHANNEL)
                 .setSmallIcon(R.drawable.ic_robot)
                 .setContentTitle("Turn Robot back on")
