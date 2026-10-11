@@ -184,6 +184,7 @@ class ApprovalGateTest {
                         level == Approval.ASK,
                         AskWhy.PICK in why,
                         AskWhy.ONLINE in why,
+                        AskWhy.MESSAGE in why,
                         AskWhy.WHO in why && who,
                         AskWhy.LEARNED in why && learned,
                         AskWhy.DELETE in why && delete,

@@ -1,5 +1,7 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.messages.MessageQuarantine
+import app.heyrobot.core.messages.MessageTaint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -37,8 +39,9 @@ object TurnRules {
     @JvmName("untrustedTurns")
     fun untrusted(turns: List<ChatTurn>): Boolean =
         untrusted(turns.map { it.attachment }) || turns.any { t -> t.actions.any { it.content } } ||
-            // Claude's answers (and one read off the Claude app's screen) are content Robot didn't write either.
-            turns.any { it.claude || it.readBack }
+            // Claude's answers (and one read off the Claude app's screen) are content Robot didn't write either; so are
+            // the messages Robot read you (0.7).
+            turns.any { it.claude || it.readBack || it.messages }
 }
 
 /** How a request to the model ended, as the turn sees it. */
@@ -290,6 +293,11 @@ class TurnRunner(
      * helper's reply is untrusted (a server can answer with any call at all), so a call to anything else is refused.
      */
     private val offered: Set<ToolName> = ClaudeTools.OFFERED.toSet(),
+    /**
+     * 0.7: the messages other people wrote that are in this conversation (core messages MessageQuarantine): every action
+     * that writes or leaves the phone asks, and one that sends something to anyone but their sender needs a tap.
+     */
+    private val messages: MessageTaint = MessageTaint.NONE,
     private val newId: () -> String,
 ) {
     private var budget = TurnRules.MAX_CALLS
@@ -416,7 +424,7 @@ class TurnRunner(
         }
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
         when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote,
-            online = asked.online, trusted = trusted)) {
+            online = asked.online, trusted = trusted, messages = messages.active)) {
             GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
             else -> {}
@@ -425,12 +433,18 @@ class TurnRunner(
             is Prepared.Refused -> return done(asked, p.status, p.detail)
             is Prepared.Ready -> p
         }
-        val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, a.reasons, content = untrusted,
-            asked = a.action.tool in this.asked, remote = remote, online = a.action.online, trusted = trusted)
+        // A message in the conversation: a tap for anything that leaves for someone else (the card says why).
+        val fromMessage = MessageQuarantine.why(a.action, messages)
+        val reasons = a.reasons + fromMessage
+        val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, reasons, content = untrusted,
+            asked = a.action.tool in this.asked, remote = remote, online = a.action.online, trusted = trusted, messages = messages.active)
+        if (messages.active && decision == GateDecision.CONFIRM) VoiceLog.add(VoiceEvent.MSG_GUARD,
+            if (fromMessage.isEmpty()) app.heyrobot.core.messages.GuardCode.ASKED else app.heyrobot.core.messages.GuardCode.TAP_REQUIRED)
         val chosen = when (decision) {
             // No card for these choices (the settings say so): the first, the best match.
             GateDecision.RUN -> a.choices.firstOrNull()?.action ?: a.action
-            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember, a.allowContacts, tapFor = CardAnswer.tapFor(a.reasons))
+            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, if (fromMessage.isNotEmpty()) MessageQuarantine.CARD_LINE else a.note,
+                a.remember, a.allowContacts, tapFor = CardAnswer.tapFor(reasons))
             GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)

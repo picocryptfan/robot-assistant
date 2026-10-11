@@ -206,6 +206,7 @@ object ClaudeContext {
             Personal.of(t.attachment)?.let(::add)
             for (a in t.actions) if (a.content) add(Personal.of(a.tool))
             if (t.readBack) add(Personal.CLAUDE_APP)
+            if (t.messages) add(Personal.MESSAGES)
         }
     }
 

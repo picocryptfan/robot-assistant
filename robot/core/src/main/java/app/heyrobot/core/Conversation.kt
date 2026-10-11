@@ -48,6 +48,13 @@ data class ChatTurn(
     val helper: String? = null,
     val by: String? = null,
     val home: Boolean = false,
+    /**
+     * 0.7: this turn holds messages other people wrote (read, summarized or translated), or answers in a conversation
+     * that does: content (every later action asks first), and never saved as it is: History keeps [kept] instead
+     * ("Robot read 3 messages from Mom (Cheogram)"), so no message's words reach the disk.
+     */
+    val messages: Boolean = false,
+    val kept: String? = null,
 ) {
     /** Who wrote this reply, for labels and transcripts: the helper's name, "Claude" for a reply saved before 0.6.0. */
     val author: String get() = by ?: if (claude) "Claude" else "Robot"
@@ -135,7 +142,9 @@ object ConversationCodec {
     private fun turn(t: ChatTurn) = JSONObject().apply {
         put("id", t.id)
         put("role", t.role.name)
-        put("text", t.text)
+        // A turn with messages in it is saved as its placeholder only (core messages MessageReading).
+        put("text", if (t.messages) t.kept ?: app.heyrobot.core.messages.MessageReading.NOT_KEPT else t.text)
+        if (t.messages) put("messages", true)
         put("time", t.time)
         if (t.attachment != Attachment.NONE) put("attachment", t.attachment.name)
         if (t.stopped) put("stopped", true)
@@ -176,6 +185,7 @@ object ConversationCodec {
             by = app.heyrobot.core.helpers.HelperNames.clean(o.optString("by")).takeIf { it.isNotEmpty() },
             home = o.optBoolean("home", false),
             readBack = o.optBoolean("readBack", false),
+            messages = o.optBoolean("messages", false),
             sources = o.optJSONArray("sources")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotEmpty() } } }.orEmpty(),
             costMicros = o.optLong("costMicros", 0).coerceAtLeast(0),
             picture = o.optString("picture").takeIf { it.isNotEmpty() && it.length <= MAX_PICTURE && BASE64.matches(it) },

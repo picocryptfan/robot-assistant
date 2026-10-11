@@ -34,9 +34,12 @@ object ApprovalGate {
      *   lookup_contact, find_notes, read_calendar, phone_status) never ask for content: they only bring more to read; a
      *   read that goes online ([ToolName.online], the weather) does, since injected text could send a word or where you
      *   are to Open-Meteo.
+     * - 0.7, [messages]: a message other people wrote is in the conversation (core messages MessageQuarantine): every
+     *   action that writes or leaves the phone asks, whatever Safety cards says; one that would send something to anyone
+     *   but that message's sender also carries [AskWhy.MESSAGE] (a tap). Not a switch.
      */
     fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, why: Set<AskWhy> = emptySet(), content: Boolean = false,
-        asked: Boolean = false, remote: Boolean = false, online: Boolean = tool.online, trusted: Boolean = false): GateDecision {
+        asked: Boolean = false, remote: Boolean = false, online: Boolean = tool.online, trusted: Boolean = false, messages: Boolean = false): GateDecision {
         val level = settings.approval(tool)
         return when {
             level == Approval.OFF -> GateDecision.DISABLED
@@ -49,6 +52,7 @@ object ApprovalGate {
             remote && (tool.reads || online) && !settings.personalToHelpers && !trusted -> GateDecision.CONFIRM
             level == Approval.ASK -> GateDecision.CONFIRM
             asks(why, settings) -> GateDecision.CONFIRM
+            messages && !(tool.reads && !online) -> GateDecision.CONFIRM
             content && !(tool.reads && !online) && contentAsks(settings.safetyCards, asked) -> GateDecision.CONFIRM
             else -> GateDecision.RUN
         }
@@ -56,7 +60,7 @@ object ApprovalGate {
 
     /** One of [why] needs a card with these settings. */
     fun asks(why: Set<AskWhy>, s: RobotSettings): Boolean =
-        AskWhy.PICK in why || AskWhy.ONLINE in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards)
+        AskWhy.PICK in why || AskWhy.ONLINE in why || AskWhy.MESSAGE in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards)
 
     /** Content in the conversation makes this action ask first, under [mode] ([asked]: the person asked for it this turn). */
     fun contentAsks(mode: SafetyCards, asked: Boolean): Boolean = when (mode) {

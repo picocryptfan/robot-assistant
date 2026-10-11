@@ -74,8 +74,11 @@ object HelperSettings {
  *   A screen or a photo still needs a tap every time: each capture is a new disclosure.
  */
 object HelperTrust {
-    /** A screen or a photo is in [personal]: each capture is a new disclosure, never sent on trust alone. */
-    private fun captured(personal: Set<Personal>): Boolean = Personal.SCREEN in personal || Personal.PHOTO in personal
+    /**
+     * A screen or a photo is in [personal]: each capture is a new disclosure, never sent on trust alone. So are messages
+     * you received (0.7): other people's words.
+     */
+    private fun captured(personal: Set<Personal>): Boolean = Personal.SCREEN in personal || Personal.PHOTO in personal || Personal.MESSAGES in personal
 
     /**
      * Robot checking with [h] by itself (or an offer's payload) may carry the last turns of a conversation that holds
@@ -83,7 +86,7 @@ object HelperTrust {
      * is in it (the last turns may be Robot's words about the screen; joining and a spoken yes follow the same rule).
      */
     fun conversation(s: RobotSettings, h: HelperConfig?, personal: Set<Personal>): Boolean =
-        s.personalToHelpers || (h?.trust == true && !captured(personal))
+        (s.personalToHelpers && Personal.MESSAGES !in personal) || (h?.trust == true && !captured(personal))
 
     /** This question's screen text and picture may go with an escalation without a tap (never by trust alone). */
     fun attachments(s: RobotSettings): Boolean = s.personalToHelpers

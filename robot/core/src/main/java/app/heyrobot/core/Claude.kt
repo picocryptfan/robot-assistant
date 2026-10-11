@@ -494,6 +494,11 @@ enum class Personal(val label: String) {
      * "Summarize with a stronger AI" card, never through an escalation, Claude mode or "include the conversation".
      */
     CONVERSATION("a recorded conversation"),
+    /**
+     * 0.7: messages you received, other people's words. Like a screen or a photo, never sent to a helper on trust alone
+     * or by "Send personal content to helpers automatically": only through a card that lists them (core helpers HelperTrust).
+     */
+    MESSAGES("messages you received"),
     ;
 
     companion object {

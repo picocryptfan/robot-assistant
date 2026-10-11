@@ -1,5 +1,6 @@
 package app.heyrobot.core.messages
 
+import app.heyrobot.core.Action
 import app.heyrobot.core.ApprovalGate
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.GateDecision
@@ -19,9 +20,9 @@ import java.util.Locale
 //   don't ask (they only bring more to read).
 // - A reply's recipient is the notification's own conversation (ReplyPlan.kt).
 //
-// Wiring later (Turn.kt and Approval.kt belong to other branches now): ChatTurn gains `messages = true` and
-// TurnRules.untrusted counts it; ApprovalGate.decide gains the taint, which is [MessageQuarantine.decide] here:
-// AskWhy.MESSAGE before the contentAsks branch, and tap-only cards.
+// Wired in 0.7: ChatTurn.messages marks a turn that holds message text and TurnRules.untrusted counts it; the panel's
+// TurnRunner carries the conversation's [MessageTaint], so ApprovalGate.decide(…, messages = true) asks before the
+// contentAsks branch and [MessageQuarantine.why] adds AskWhy.MESSAGE (a tap) for anything that leaves for someone else.
 
 /**
  * The marker a conversation carries once it holds text other people wrote: a message read, summarized or translated.
@@ -38,10 +39,28 @@ data class MessageTaint(val conversations: Set<String> = emptySet(), val senderK
     /** A recipient that is one of the senders (the caller resolves the address the action would use). */
     fun isSender(address: String?): Boolean = address != null && address.trim().lowercase(Locale.ROOT) in senderKeys
 
+    /**
+     * [isSender], or the same phone number: a JMP address in Cheogram ("+15145550101@cheogram.com") and that number in
+     * the SMS app ("+1 514-555-0101") are one person. At least 7 digits on both sides, the last 10 equal.
+     */
+    fun isSenderAddress(address: String?): Boolean {
+        if (address == null) return false
+        if (isSender(address)) return true
+        val d = phoneDigits(address) ?: return false
+        return senderKeys.any { k -> phoneDigits(k)?.let { it.takeLast(10) == d.takeLast(10) } == true }
+    }
+
     override fun toString(): String = "MessageTaint(conversations=${conversations.size}, senders=${senderKeys.size})"
 
     companion object {
         val NONE = MessageTaint()
+
+        /** The digits of a phone number, or of a JMP address's local part ("+15145550101@cheogram.com"); null otherwise. */
+        private fun phoneDigits(s: String): String? {
+            val local = s.trim().substringBefore('@')
+            if (!Regex("^\\+?[0-9 ()./-]{7,}$").matches(local)) return null
+            return local.filter(Char::isDigit).takeIf { it.length >= 7 }
+        }
     }
 }
 
@@ -102,6 +121,20 @@ object MessageQuarantine {
         tool.reads && !tool.online -> QuarantineVerdict.NONE
         leavesForOthers(tool) && !(toSender && tool == ToolName.SEND_TEXT) -> QuarantineVerdict.TAP_ONLY
         else -> QuarantineVerdict.CARD
+    }
+
+    /** A text back to the conversation's own sender (resolved by the app before the card), not to "someone else". */
+    fun toSender(a: Action, taint: MessageTaint): Boolean = a is Action.SendText && taint.isSenderAddress(a.target?.address)
+
+    /**
+     * What the gate's reasons gain for [a] in a conversation marked [taint]: [AskWhy.MESSAGE] (a card answered by a tap)
+     * when it would send something to anyone but the message's sender, or go online; nothing otherwise (the gate's
+     * `messages` flag already makes every write ask).
+     */
+    fun why(a: Action, taint: MessageTaint): Set<AskWhy> {
+        if (!taint.active) return emptySet()
+        val v = verdict(a.tool, ActionOrigin.MODEL, taint, toSender(a, taint))
+        return if (v == QuarantineVerdict.TAP_ONLY || a.online) setOf(AskWhy.MESSAGE) else emptySet()
     }
 
     /** [gate]'s decision with [verdict] applied: a run becomes a card; unlock-first and off stay as they are. */
