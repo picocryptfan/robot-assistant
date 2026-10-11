@@ -7,8 +7,10 @@ import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.OneShotBudget
 import app.heyrobot.core.OneShotFold
 import app.heyrobot.core.OneShotResult
+import app.heyrobot.core.OneShotStart
 import app.heyrobot.core.OneShotTransport
 import app.heyrobot.core.RLog
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -26,13 +28,21 @@ object BrainOneShots : OneShotTransport {
 
     override suspend fun run(req: BrainMsg.OneShot, budget: OneShotBudget, onText: (String) -> Unit): OneShotResult {
         val ctx = VoiceHub.app
+        val askedAt = SystemClock.elapsedRealtime()
         // A translation someone waits for doesn't wait for a model to load: the fast engine answers meanwhile, and the
         // model loads for the next one.
-        val c = if (!budget.waitForLoad && !BrainKeeper.ready) {
+        if (!budget.waitForLoad && !BrainKeeper.ready) {
             BrainKeeper.prewarm(ctx)
             return OneShotResult.Failed(BrainError.NOT_LOADED, unavailable = true)
-        } else BrainKeeper.ensureLoaded(ctx) ?: return OneShotResult.Failed(null, unavailable = true)
-        val t0 = SystemClock.elapsedRealtime()
+        }
+        // Even a ready model is checked first, by a status call through :brain's work thread (behind a rebuild, or an
+        // unload's wait): for a translation the fast engine stands in for, that time counts towards its start deadline
+        // (core OneShotStart), so the fast engine stands in at most 1.5 s after the line was asked, not 1.5 s after the check.
+        val ready = if (budget.waitForLoad) CompletableDeferred(BrainKeeper.ensureLoaded(ctx)) else BrainKeeper.loading(ctx)
+        val (c, t0, startBy) = when (val w = OneShotStart.await(budget, askedAt, SystemClock::elapsedRealtime, ready)) {
+            is OneShotStart.Wait.Ended -> return w.result
+            is OneShotStart.Wait.Ready -> Triple(w.client, w.from, w.startBy)
+        }
         val (id, flow) = c.request(BrainProtocol.REQ_ONE_SHOT, req)
         val fold = OneShotFold(t0)
         val late = AtomicBoolean(false)
@@ -43,7 +53,6 @@ object BrainOneShots : OneShotTransport {
                 // The deadlines: still waiting in :brain's queue after the start one, or running longer than the total
                 // one since it started (it starts over after giving way), and it is cancelled there.
                 val watch = launch {
-                    val startBy = budget.startWithinMs?.let { t0 + it }
                     while (true) {
                         delay(WATCH_MS)
                         val now = SystemClock.elapsedRealtime()

@@ -29,10 +29,12 @@ import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.sys.ModelStore
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -370,6 +372,12 @@ object BrainKeeper {
     fun prewarm(ctx: Context) {
         scope.launch { ensureLoaded(ctx) }
     }
+
+    /**
+     * [ensureLoaded] on the keeper's own scope: a one-shot that stops waiting for it at its start deadline (the fast
+     * engine stands in) leaves the check (or a load) to finish rather than cutting it short.
+     */
+    fun loading(ctx: Context): Deferred<BrainClient?> = scope.async { ensureLoaded(ctx) }
 
     /**
      * Settings changed (any save, so tapping the chosen model again retries it): forget load failures, and when the

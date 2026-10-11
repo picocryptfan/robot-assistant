@@ -239,8 +239,8 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
 - **The fast engine** (Bergamot in `:mt`, "Fast translation engine" below) is used when this build has it and its files
   are downloaded and verified (Settings › Conversation › Fast translation; a session sees a download within about
   10 s). Then it gives each transcript line a translation at once (marked "fast") that Robot's model then replaces with
-  its own, and it stands in for the interpreter when the model hasn't started within 1.5 s (the panel's question ahead),
-  fails, or fails a guard; with a model on the CPU (about 8 tokens a second), it leads the interpreter and the model
+  its own, and it stands in for the interpreter when the model hasn't started within 1.5 s of the turn's request (the
+  panel's question ahead, or `:brain` busy), fails, or fails a guard; with a model on the CPU (about 8 tokens a second), it leads the interpreter and the model
   stands in. Without it, Robot's model translates alone, with longer deadlines (8 s to start on the TPU, 10 s on the
   CPU; a transcript's first translation waits up to 2 minutes), and the interpreter says "Translated by Robot's model on
   this phone". A fast engine that fails in a way that may last (its files didn't load, `:mt` stopped) rests for a minute,

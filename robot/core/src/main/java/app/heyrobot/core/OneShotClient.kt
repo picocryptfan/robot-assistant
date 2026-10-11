@@ -1,14 +1,17 @@
 package app.heyrobot.core
 
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.withTimeoutOrNull
+
 // Pure. A one-shot request as its client sees it (docs/conversation-mode.md 4.2, phase 5.4): the events :brain sends
 // for it folded into one result (OneShotFold), with the client's two deadlines (OneShotBudget): one to start (a
 // translation someone waits for goes to the fast engine instead) and one for the whole reply. The app's transport over
 // the Messenger binding implements OneShotTransport; translations and summaries only see this interface.
 
 /**
- * How long a one-shot may take: to start on the model, from the request ([startWithinMs], null: as long as it takes),
- * and to run once started ([totalMs]). [waitForLoad]: false when a model that isn't loaded yet should not be waited for
- * (the fast engine answers meanwhile).
+ * How long a one-shot may take: to start on the model ([startWithinMs], null: as long as it takes; from the request when
+ * [waitForLoad] is false, else from when the model is ready: OneShotStart), and to run once started ([totalMs]).
+ * [waitForLoad]: false when a model that isn't loaded yet should not be waited for (the fast engine answers meanwhile).
  */
 data class OneShotBudget(val startWithinMs: Long?, val totalMs: Long, val waitForLoad: Boolean = true)
 
@@ -28,6 +31,39 @@ sealed class OneShotResult {
 
     /** No model to ask ([unavailable]: none loaded and not waited for, none chosen, :brain down) or it refused ([code]). */
     data class Failed(val code: BrainError?, val unavailable: Boolean = false) : OneShotResult()
+}
+
+/**
+ * A one-shot's wait for the model's client (the app's BrainKeeper: a status round trip through :brain's work thread, or
+ * a load) and the time its start deadline counts from. A request the fast engine stands in for ([OneShotBudget.waitForLoad]
+ * false) counts it from when it was asked, that wait included, and waits for the client no longer than the deadline:
+ * past it, NotStarted, while the check goes on by itself (it is not cancelled). Any other request waits for the client
+ * (a load, if need be) and counts its start deadline from then, as a load isn't the queue it measures.
+ */
+object OneShotStart {
+    sealed class Wait<out C> {
+        /** The client; the time the request counts from ([from]) and must have started by ([startBy], null: no deadline). */
+        data class Ready<C>(val client: C, val from: Long, val startBy: Long?) : Wait<C>()
+
+        /** No request to send: [result] is how it ended. */
+        data class Ended(val result: OneShotResult) : Wait<Nothing>()
+    }
+
+    /** Waits for [client] for a request asked at [askedAt] within [budget] ([now]: the same clock). */
+    suspend fun <C : Any> await(budget: OneShotBudget, askedAt: Long, now: () -> Long, client: Deferred<C?>): Wait<C> {
+        val within = budget.startWithinMs
+        if (!budget.waitForLoad && within != null && !client.isCompleted) {
+            val left = askedAt + within - now()
+            if ((left <= 0 || withTimeoutOrNull(left) { client.join() } == null) && !client.isCompleted) return Wait.Ended(OneShotResult.NotStarted)
+        }
+        return ready(budget, askedAt, now, client.await())
+    }
+
+    private fun <C : Any> ready(budget: OneShotBudget, askedAt: Long, now: () -> Long, got: C?): Wait<C> {
+        got ?: return Wait.Ended(OneShotResult.Failed(null, unavailable = true))
+        val from = if (budget.waitForLoad) now() else askedAt
+        return Wait.Ready(got, from, budget.startWithinMs?.let { from + it })
+    }
 }
 
 /** How a client reaches :brain's one-shot requests (the app: over BrainKeeper's binding). */
