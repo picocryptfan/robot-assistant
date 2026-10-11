@@ -41,7 +41,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import kotlin.math.roundToInt
 import app.heyrobot.core.InterruptSensitivity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.stateDescription
@@ -117,20 +116,7 @@ fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettin
         ChoiceRow(v.title + if (v == BargeIn.ECHO_CANCEL) " (default)" else "", v.detail, s.bargeIn == v) { update(s.copy(bargeIn = v)) }
     }
     Text("Interrupt sensitivity", style = MaterialTheme.typography.titleSmall)
-    // Three steps: Low, Medium (as before 0.4.0), High. Only while Robot talks; the wake phrases' own sensitivity stays.
-    var level by remember(s.interrupt) { mutableFloatStateOf(s.interrupt.ordinal.toFloat()) }
-    val shown = InterruptSensitivity.entries[level.roundToInt().coerceIn(0, InterruptSensitivity.entries.size - 1)]
-    Slider(value = level, onValueChange = { level = it }, valueRange = 0f..(InterruptSensitivity.entries.size - 1).toFloat(),
-        steps = InterruptSensitivity.entries.size - 2,
-        onValueChangeFinished = { update(s.copy(interrupt = shown)) },
-        modifier = Modifier.semantics { stateDescription = shown.title })
-    Row(Modifier.fillMaxWidth()) {
-        for (v in InterruptSensitivity.entries) Text(v.title, style = MaterialTheme.typography.labelMedium,
-            color = if (v == shown) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f), textAlign = when (v.ordinal) { 0 -> TextAlign.Start; InterruptSensitivity.entries.size - 1 -> TextAlign.End; else -> TextAlign.Center })
-    }
-    Text("How readily Robot hears “stop” and your wake phrases while she talks. ${shown.detail}." +
-        if (shown == InterruptSensitivity.MEDIUM) " (default)" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    InterruptSlider(s.interrupt) { if (it != s.interrupt) update(s.copy(interrupt = it)) }
     Text("Robot's voice plays as", style = MaterialTheme.typography.titleSmall)
     for (p in Playback.entries) {
         ChoiceRow(p.title + if (p == Playback.ASSISTANT) " (default)" else "", p.detail, s.playback == p) { update(s.copy(playback = p)) }
@@ -145,7 +131,7 @@ fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettin
         "result says what she heard and how fast she went quiet. Count run: she reads to the end while you say “stop” and your wake phrases as often " +
         "as you like, a few seconds apart; the result lists each one she heard. Silent run: stay quiet; it counts anything she hears anyway. " +
         "Tricky words: stay quiet while she reads words like “stop” (step, steep, stamp, bus stop); it shows how often her own words fire, and " +
-        "how many of those are set aside. Try each mode above.",
+        "how many of those are set aside. Try each mode and each interrupt sensitivity above: the result says which it ran with.",
         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     // What the test will run with (the phone's voice stands in while the chosen model isn't installed); the result says
     // what it ran with.
@@ -156,7 +142,7 @@ fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettin
         VoiceBundle.KITTEN -> "Kitten"
         else -> null
     }
-    Text(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM || missing, if (missing) modelName else null),
+    Text(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM || missing, if (missing) modelName else null, s.interrupt),
         style = MaterialTheme.typography.bodyMedium)
     val r = snap.bargeTest
     val running = r?.state == BenchState.RUNNING && System.currentTimeMillis() - r.started < BargeTestLogic.TIMEOUT_MS + 10_000
@@ -172,6 +158,34 @@ fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettin
         Text(line, style = MaterialTheme.typography.bodyMedium, color = if (r.state == BenchState.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
     }
     NavRow(RIcons.History, "Voice log", "What the voice side did, for when Robot didn't respond") { a.openPage(Page.VoiceLog) }
+}
+
+/**
+ * Settings › Voice › "Interrupt sensitivity": three steps, Low, Medium (as before 0.4.0) and High. Only while Robot talks;
+ * the wake phrases' own sensitivity stays. [onChange] gets the level where the slider was let go.
+ *
+ * The level saved is read from the slider's position when the gesture ends ([InterruptSensitivity.at]), never from what
+ * the screen last drew: a tap on the track (and TalkBack's adjust) moves the slider and ends the gesture in the same
+ * moment, before the screen is drawn again, so until 0.4.6 a tap on Low or High showed it and saved the old level.
+ */
+@Composable
+internal fun InterruptSlider(value: InterruptSensitivity, onChange: (InterruptSensitivity) -> Unit) {
+    var level by remember(value) { mutableFloatStateOf(value.ordinal.toFloat()) }
+    val shown = InterruptSensitivity.at(level)
+    Column {
+        Slider(value = level, onValueChange = { level = it }, valueRange = 0f..(InterruptSensitivity.entries.size - 1).toFloat(),
+            steps = InterruptSensitivity.entries.size - 2,
+            // Read now: level was just set by onValueChange, whether or not the screen has been drawn since.
+            onValueChangeFinished = { onChange(InterruptSensitivity.at(level)) },
+            modifier = Modifier.semantics { contentDescription = "Interrupt sensitivity"; stateDescription = shown.title })
+        Row(Modifier.fillMaxWidth()) {
+            for (v in InterruptSensitivity.entries) Text(v.title, style = MaterialTheme.typography.labelMedium,
+                color = if (v == shown) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f), textAlign = when (v.ordinal) { 0 -> TextAlign.Start; InterruptSensitivity.entries.size - 1 -> TextAlign.End; else -> TextAlign.Center })
+        }
+        Text("How readily Robot hears “stop” and your wake phrases while she talks. ${shown.detail}." +
+            if (shown == InterruptSensitivity.MEDIUM) " (default)" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

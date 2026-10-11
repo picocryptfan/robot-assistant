@@ -178,6 +178,15 @@ fun Phase.afterTurn(speaking: Boolean): Phase = when (this) {
 }
 
 /**
+ * "Stop" said, a tap on the conversation, a volume key or "Stop speaking" in this phase, with a turn under way
+ * ([turnRunning]): true when it ends the turn as the Stop button does, not only the voice (0.4.6). While the model (or
+ * Claude) is still writing the reply, stopping only the voice left the turn running: a long story went on being written
+ * for up to a minute, the mic button did nothing and a new question got "Robot is still on the last question". A card
+ * waiting for a yes or no stays: "stop" then only quiets Robot's "Say yes or no.".
+ */
+fun Phase.stopEndsTurn(turnRunning: Boolean): Boolean = turnRunning && (this == Phase.THINKING || this == Phase.ANSWERING)
+
+/**
  * [icon]: the real app's launcher icon on an open_app card. [body]: the full message, email or note, or what a read
  * tool found. [choices]: the people or numbers to tap while it waits. [confirm]: the button ("Open in Cheogram").
  * [undo]: a saved note's key for Undo. [content]: a read tool brought content into the conversation.
@@ -2495,8 +2504,13 @@ object PanelController {
         slot.stop()
     }
 
-    /** "Stop" said, a tap or a volume key: the voice stops, and the rest of a reply still streaming is shown but not spoken. */
+    /**
+     * "Stop" said, a tap, a volume key or "Stop speaking": the voice stops. A reply still being written (Robot's or
+     * Claude's) stops too, as with the Stop button (0.4.6; before, the rest was written on, shown but not spoken, and the
+     * turn stayed busy until it was done), so the next question can come at once.
+     */
     fun stopSpeaking(why: TtsStop = TtsStop.TAP) {
+        if (_state.value.phase.stopEndsTurn(slot.running)) return stopGenerating(why)
         voice.mute()
         VoiceHub.stopVoice(why)
         _state.update { if (it.phase == Phase.SPEAKING) it.copy(phase = Phase.IDLE) else it }

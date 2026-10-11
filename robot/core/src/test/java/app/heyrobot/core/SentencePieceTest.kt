@@ -160,10 +160,16 @@ class SentencePieceTest {
         assertEquals(InterruptSensitivity.MEDIUM, RobotSettings().interrupt)
         for (aec in listOf(false, true)) assertEquals(KwsThresholds.stop(aec), KwsThresholds.stop(aec, m))
         for (w in WakeSensitivity.entries) assertEquals(KwsThresholds.wake(w), KwsThresholds.talkWake(w, m))
-        assertEquals(KwsThresholds.Preset(0.3f, 1.25f), KwsThresholds.stop(false, InterruptSensitivity.LOW))
-        assertEquals(KwsThresholds.Preset(0.15f, 1.75f), KwsThresholds.stop(true, InterruptSensitivity.HIGH))
-        assertEquals(KwsThresholds.Preset(0.2f, 1.75f), KwsThresholds.talkWake(WakeSensitivity.MEDIUM, InterruptSensitivity.HIGH))
-        assertEquals(KwsThresholds.Preset(0.4f, 0.75f), KwsThresholds.talkWake(WakeSensitivity.LOW, InterruptSensitivity.LOW))
+        // 0.4.6: Low and High move "stop" as far as a wake phrase's own Low and High are from its Medium.
+        assertEquals(KwsThresholds.LOW, KwsThresholds.stop(false, InterruptSensitivity.LOW))
+        assertEquals(KwsThresholds.HIGH, KwsThresholds.stop(false, InterruptSensitivity.HIGH))
+        assertEquals(KwsThresholds.Preset(0.3f, 1.0f), KwsThresholds.stop(true, InterruptSensitivity.LOW))
+        assertEquals(KwsThresholds.Preset(0.13f, 2.0f), KwsThresholds.stop(true, InterruptSensitivity.HIGH))
+        assertEquals(KwsThresholds.HIGH, KwsThresholds.talkWake(WakeSensitivity.MEDIUM, InterruptSensitivity.HIGH))
+        assertEquals(KwsThresholds.Preset(0.45f, 0.5f), KwsThresholds.talkWake(WakeSensitivity.LOW, InterruptSensitivity.LOW))
+        assertEquals(KwsThresholds.Preset(0.11f, 2.5f), KwsThresholds.talkWake(WakeSensitivity.HIGH, InterruptSensitivity.HIGH))
+        // The three levels are three different "stop" lines, with echo cancellation or without: none is the same as another.
+        for (aec in listOf(false, true)) assertEquals(3, InterruptSensitivity.entries.map { KwsThresholds.stop(aec, it) }.toSet().size)
         // Easier to trigger as the setting goes up, for every preset; never past the bounds.
         for (base in WakeSensitivity.entries.map(KwsThresholds::wake) + KwsThresholds.STOP + KwsThresholds.STOP_AEC) {
             val (lo, mid, hi) = InterruptSensitivity.entries.map { KwsThresholds.shift(base, it) }
@@ -176,11 +182,29 @@ class SentencePieceTest {
         // The lines for while Robot talks: the same phrases, the moved presets; Medium writes exactly the idle lines.
         val phrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(2, "robot", WakeSensitivity.LOW))
         assertEquals(KeywordBuffer.wake(phrases, speller).text, KeywordBuffer.wake(phrases, speller) { KwsThresholds.talkWake(it.sensitivity, m) }.text)
-        assertEquals("▁HE Y ▁RO B O T :1.75 #0.2 @W1\n▁RO B O T :1.25 #0.3 @W2",
+        assertEquals("▁HE Y ▁RO B O T :2.0 #0.18 @W1\n▁RO B O T :1.5 #0.28 @W2",
             KeywordBuffer.wake(phrases, speller) { KwsThresholds.talkWake(it.sensitivity, InterruptSensitivity.HIGH) }.text)
         val back = RobotSettings.fromJson(RobotSettings(interrupt = InterruptSensitivity.HIGH).toJson().toString())
         assertEquals(InterruptSensitivity.HIGH, back.interrupt)
         assertEquals(InterruptSensitivity.MEDIUM, RobotSettings.fromJson("""{"schema":5}""").interrupt)
+    }
+
+    /**
+     * The slider in Settings › Voice: its position when it is let go is the level saved. Until 0.4.6 a tap saved the level
+     * the screen had drawn before the tap (Material's slider moves and ends the gesture in one go), so Low and High were
+     * never saved by a tap.
+     */
+    @Test fun theSliderPositionIsTheLevel() {
+        assertEquals(InterruptSensitivity.LOW, InterruptSensitivity.at(0f))
+        assertEquals(InterruptSensitivity.MEDIUM, InterruptSensitivity.at(1f))
+        assertEquals(InterruptSensitivity.HIGH, InterruptSensitivity.at(2f))
+        assertEquals(InterruptSensitivity.LOW, InterruptSensitivity.at(0.4f))
+        assertEquals(InterruptSensitivity.MEDIUM, InterruptSensitivity.at(0.6f))
+        assertEquals(InterruptSensitivity.HIGH, InterruptSensitivity.at(1.7f))
+        assertEquals(InterruptSensitivity.LOW, InterruptSensitivity.at(-3f))
+        assertEquals(InterruptSensitivity.HIGH, InterruptSensitivity.at(9f))
+        assertEquals(InterruptSensitivity.MEDIUM, InterruptSensitivity.at(Float.NaN))
+        for (v in InterruptSensitivity.entries) assertEquals(v, InterruptSensitivity.at(v.ordinal.toFloat()))
     }
 
     @Test fun phraseRules() {

@@ -657,11 +657,13 @@ object PreRouter {
     /** More words than this: a long question goes to Claude. */
     const val LONG_WORDS = 40
 
-    private val LOCAL = Regex("""\b(timer|alarm|wake me|remind|reminder|text|texto|sms|message|email|e mail|mail|courriel|note|notes|jot|calendar|calendrier|event|appointment|meeting|schedule|agenda|open|launch|flashlight|torch|lampe|navigate|directions|route to|map|maps|call|contact)\b""")
+    /** Local actions in English and (0.4.6) French: "mets une alarme", "rappelle-moi", "ouvre la météo". */
+    private val LOCAL = Regex("""\b(timer|alarm|wake me|remind|reminder|text|texto|sms|message|email|e mail|mail|courriel|note|notes|jot|calendar|calendrier|event|appointment|meeting|schedule|agenda|open|launch|flashlight|torch|lampe|navigate|directions|route to|map|maps|call|contact|minuteur|alarme|reveil|reveille moi|rappel|rappelle moi|evenement|rendez vous|ouvre|ouvrir|itineraire|appelle|appeler)\b""")
     /**
      * Everyday codes, news and scores, in any word order: "the wifi code", "the code for the front door", "news from
-     * my sister", "the latest from Sarah", "my credit score", "the score of my exam". They are taken out before the
-     * signals are looked for, so they never escalate (the rest of the question still counts).
+     * my sister", "the latest from Sarah", "my credit score", "the score of my exam", and in French "des nouvelles de ma
+     * sœur", "ma cote de crédit". They are taken out before the signals are looked for, so they never escalate (the rest
+     * of the question still counts).
      */
     private val EVERYDAY: List<Regex> = listOf(
         Regex("""\b(area|postal|zip|dress|promo|discount|coupon|qr|bar|country|door|gate|wifi|wi fi|access|entry|pin|lock|garage|security|building|alarm|locker|safe|parking|router|network) code\b"""),
@@ -672,6 +674,10 @@ object PreRouter {
         Regex("""\b(credit|fico|test|exam|sleep|health|my|our|his|her|their|your) scores?\b"""),
         Regex("""\bscores? (of|on|for|in|from) (my|our|his|her|their|your)\b( \w+)?"""),
         Regex("""\bscores? (of|on|for|in|from) (the |a )?(exam|test|quiz|midterm|final|essay|assignment|homework|credit check|sat|act)\b"""),
+        Regex("""\b(des )?nouvelles (de|d|du) (ma|mon|mes|notre|nos|ta|ton|tes|sa|son|ses|leur|leurs|votre|vos) \w+"""),
+        Regex("""\bdes nouvelles (de|d) \w+"""),
+        Regex("""\b(ma|mon|mes|sa|son|notre|ta|ton|leur|votre) (cote|score|pointage|resultat)s?\b"""),
+        Regex("""\bcote de credit\b"""),
     )
     private val CREATIVE = Regex("""\b(story|stories|poem|poems|joke|jokes|song|limerick|haiku|rhyme|riddle|fairy tale)\b""")
     private val SIGNALS: List<Pair<Signal, Regex>> = listOf(
@@ -679,11 +685,27 @@ object PreRouter {
         Signal.WRITING to Regex("""^(please )?(write me|draft)\b|\bwrite me\b|\bwrite (a|an) (poem|story|essay|letter|speech|cover letter)\b"""),
         Signal.CODE to Regex("""\bcode\b|\bpython\b|\bjavascript\b|\bkotlin\b|\bregex\b|\bsql\b"""),
         Signal.MATH to Regex("""\bcalculate\b|\bsolve\b|\bintegral\b|\bderivative\b|\bequation\b|\bpercent(age)? of\b"""),
-        Signal.CURRENT_INFO to Regex("""\blatest\b|\bnews\b|\btodays price\b|\bprice of\b|\bstock price\b|\bexchange rate\b|\bscore\b|\bweather\b|\bforecast\b|\bwho won\b"""),
+        // What changes from day to day, which Robot's model can't know (0.4.6: more of it, and in French): the news and
+        // the latest, prices and rates, scores and who won, who holds an office now, the weather.
+        Signal.CURRENT_INFO to Regex(listOf(
+            """\blatest\b""", """\bnews\b""", """\bheadlines?\b""", """\btodays price\b""", """\bprice of\b""", """\bstock (price|market)\b""",
+            """\bexchange rate\b""", """\bscore\b""", """\bweather\b""", """\bforecast\b""", """\bwho won\b""", """\belection results?\b""",
+            """\bupdates? (on|about)\b""", """\bstill alive\b""",
+            """\b(current|recent) (events|affairs|situation|president|prime minister|premier|ceo|leader|champions?|record|prices?|rates?|scores?|standings|rankings?|polls?)\b""",
+            """\b(who is|whos) (the )?(current |new )?(president|prime minister|premier|chancellor|mayor|ceo|pope|king|queen|governor)\b""",
+            """\b(what happened|whats happening|what is happening) (today|yesterday|this week|last night|in|with|at)\b""",
+            // French, without accents (ClaudeRouter.plain): "les dernières nouvelles sur Artemis", "l'actualité", "le prix
+            // de l'essence", "le taux de change", "qui a gagné", "le pointage", "la météo", "qui est le premier ministre".
+            """\bdernieres nouvelles\b""", """\bnouvelles (sur|de|du|des|concernant|a propos|dans)\b""",
+            """\bquelles sont les nouvelles\b""", """\bl?actualites?\b""", """\bl?actu\b""", """\bmanchettes?\b""", """\ble dernier (sur|de)\b""",
+            """\bprix (de|du|des|dun|dune)\b""", """\btaux de change\b""", """\bbourse\b""", """\bqui a gagne\b""", """\bpointage\b""", """\bmeteo\b""",
+            """\bqui est (le|la) (nouveau |nouvelle )?(president|presidente|premier ministre|premiere ministre|pdg|maire|mairesse|chef)\b""",
+            """\bquest ce qui se passe (a|au|aux|en|dans|avec)\b""",
+        ).joinToString("|")),
     )
 
-    /** The words that make a question current information only because of the weather (0.4.0). */
-    private val WEATHER_WORDS = Regex("""\b(weather|forecast)\b""")
+    /** The words that make a question current information only because of the weather (0.4.0; "météo", 0.4.6). */
+    private val WEATHER_WORDS = Regex("""\b(weather|forecast|meteo)\b""")
 
     /**
      * The strongest signal in [question], or null (Gemma answers). [localWeather]: the weather tool is on and may run (0.4.0;
@@ -704,21 +726,50 @@ object PreRouter {
 }
 
 /**
- * Gemma gave up (escalation trigger c): "I don't know", "I'm not sure", "I can't browse", "as an AI", or nothing at all.
- * Only near the start or in a short reply, so a long answer that says "I'm not sure you meant X, but…" in passing is
- * not a hedge.
+ * Gemma gave up (escalation trigger c): "I don't know", "I'm not sure", "I can't browse", "as an AI", a refusal ("I
+ * can't help with that", "I'm unable to provide…", "je ne peux pas faire ça"), or nothing at all. Only near the start or
+ * in a short reply, so a long answer that says "I'm not sure you meant X, but…" in passing is not a hedge. A reply that
+ * says its facts may be out of date ("I don't have access to real-time information", "my knowledge cutoff", "for the
+ * latest information, check…", "je n'ai pas accès à Internet") counts wherever it says so (0.4.6): Claude, with web
+ * search, can answer that from today's sources.
  */
 object Hedge {
-    private val PHRASES = Regex(
-        """\bi (do not|dont) know\b|\bi am not sure\b|\bim not sure\b|\bi cant browse\b|\bi cannot browse\b|\bas an ai\b|""" +
-            """\bi (cant|cannot|can not) check\b|\b(i )?(dont|do not) have (access to )?(the )?internet\b|\bno internet access\b|""" +
-            """\bi (dont|do not) have (real time|current|up to date|recent) (information|data)\b|\bi (cant|cannot) (access|look up)\b|""" +
-            """\bje ne sais pas\b|\bje ne suis pas sur\b""",
-    )
+    /** Words that say Robot's model can't or won't answer: only near the start or in a short reply. */
+    private val PHRASES = Regex(listOf(
+        """\bi (do not|dont) know\b""", """\b(i am|im) not (sure|certain)\b""", """\bas an? (ai|artificial intelligence|language model|large language model|ai model|ai assistant|ai language model)\b""",
+        // "I can't" with anything after it but the idioms that aren't a refusal ("I can't wait to…").
+        """\bi (cant|cannot|can not)\b(?! (wait|believe|stress|thank|imagine|emphasize|recommend|say enough|get enough|help but))""",
+        """\b(i am|im) (unable|not able|not allowed|not permitted) to\b""", """\bi (wont|will not) be able to\b""",
+        """\bi (dont|do not) have (the )?(ability|capability|means|capacity|tools|any way|a way) to\b""",
+        """\bi (dont|do not) have (any |enough |specific |reliable |current |up to date |recent |real time |live )?(access|internet|web|online|information|data|details|knowledge|info)\b""",
+        """\b(no|without) (internet|web|online|real time) access\b""", """\b(beyond|outside( of)?) my (capabilities|abilities|knowledge|scope)\b""",
+        // French, without accents or apostrophes (ClaudeRouter.plain): "je ne sais pas", "je sais pas", "je ne suis pas sûr",
+        // "je ne peux pas", "je peux pas" (Québec), "je ne suis pas en mesure", "chu pas capable", "je n'ai pas accès",
+        // "j'ai pas accès", "en tant qu'IA".
+        """\bje (ne )?sais pas\b""", """\b(chais|jsais|chsais) pas\b""", """\bje (ne )?suis pas (sur|sure|certain|certaine)\b""",
+        """\bje (ne )?(peux|peut|pourrai|pourrais|pourrait) pas\b""", """\bje (ne )?suis pas (capable|en mesure)\b""", """\bchu pas capable\b""",
+        """\bje suis incapable\b""", """\b(je nai|jai) pas (acces|access|la capacite|la possibilite|les moyens|dinformations?|de donnees|linformation|internet)\b""",
+        """\b(pas|aucun|sans) (dacces|acces) (a|aux|au)\b""", """\ben tant (quia|quintelligence|que (ia|modele|assistant|intelligence))\b""",
+    ).joinToString("|"))
+
+    /** Words that say the answer may be out of date: anywhere in the reply. */
+    private val STALE = Regex(listOf(
+        """\b(dont|do not|cant|cannot|can not|unable to|not able to|no|without)\b[a-z ]{0,30}\breal time (information|data|updates|news|access|results|info|events)\b""",
+        """\b(dont|do not|cant|cannot|can not|unable to|not able to)\b[a-z ]{0,20}\b(browse|search|access) the (internet|web)\b""",
+        """\b(knowledge|training) (cutoff|cut off)\b""", """\bas of my (last|latest|most recent) (knowledge )?(update|training)\b""",
+        """\bmy (knowledge|training data|training|information)\b[a-z ]{0,20}\b(goes up to|go up to|extends to|is limited to|only goes|ends in|stops in|out of date|outdated|not up to date)\b""",
+        """\bfor the (latest|most recent|most up to date|current|up to date) (information|news|updates|details|info)\b""",
+        """\b(reliable|reputable|trusted) news (source|sources|outlet|outlets|site|sites|website|websites)\b""",
+        // French: "pas accès aux informations en temps réel", "mes connaissances s'arrêtent en 2024", "pour les dernières nouvelles".
+        """\b(pas|aucun|sans|ne peux|peux pas)\b[a-z ]{0,40}\b(informations?|donnees|nouvelles|actualites|mises a jour) en temps reel\b""", """\bmes connaissances (sarretent|se limitent|datent|ne sont pas a jour|ne vont)\b""",
+        """\bdate limite de mes connaissances\b""", """\bpour (les|des) (dernieres|plus recentes) (informations|nouvelles)\b""",
+        """\b(je nai|jai) pas acces (a|aux|au) (internet|linternet|web|nouvelles|actualites|informations)\b""",
+    ).joinToString("|"))
 
     fun detect(reply: String): Boolean {
         val t = ClaudeRouter.plain(reply).replace(Regex("[^a-z0-9]+"), " ").trim()
         if (t.isEmpty()) return true
+        if (STALE.containsMatchIn(t)) return true
         val short = t.split(' ').size <= 60
         val m = PHRASES.find(t) ?: return false
         return short || m.range.first < 120

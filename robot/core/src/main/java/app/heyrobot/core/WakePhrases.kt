@@ -24,6 +24,17 @@ enum class InterruptSensitivity(val title: String, val detail: String) {
     LOW("Low", "Fewer false stops from Robot's own voice or the TV; say it clearly"),
     MEDIUM("Medium", "As tested: “stop” over Robot's voice at arm's length"),
     HIGH("High", "Hears you over Robot more easily, from further away; stops by accident more often"),
+    ;
+
+    companion object {
+        /**
+         * The level at a three-step slider's [position] (0 Low, 1 Medium, 2 High; anything between rounds to the nearest
+         * step, anything outside to the end). Settings › Voice reads it when the slider is let go, from the position
+         * then, not from what the screen last drew: a tap moves the slider and ends the gesture in the same moment.
+         */
+        fun at(position: Float): InterruptSensitivity =
+            if (position.isNaN()) MEDIUM else entries[Math.round(position).coerceIn(0, entries.size - 1)]
+    }
 }
 
 /** One wake phrase. [id] is stable (the keyword label "W<id>" and the voice log use it); [text] as the user typed it. */
@@ -67,9 +78,15 @@ object KwsThresholds {
     /** A wake phrase heard over Robot's voice: its own preset ([wake]) moved by the interrupt sensitivity (Medium: the same). */
     fun talkWake(s: WakeSensitivity, interrupt: InterruptSensitivity): Preset = shift(wake(s), interrupt)
 
-    /** How far Low and High move a preset: the threshold by this much, the boost by [BOOST_STEP]. */
-    const val THRESHOLD_STEP = 0.05f
-    const val BOOST_STEP = 0.25f
+    /**
+     * How far Low and High move a preset (0.4.6; 0.05 and 0.25 before, too little to hear a difference): as far as a wake
+     * phrase's own Low and High are from its Medium ([LOW], [HIGH]). Low raises the threshold by [THRESHOLD_UP], High
+     * lowers it by [THRESHOLD_DOWN]; the boost moves by [BOOST_STEP] either way. So "stop" without echo cancellation
+     * (0.25, 1.5) is at a wake phrase's Low (0.35, 1.0) on Low and at its High (0.18, 2.0) on High.
+     */
+    const val THRESHOLD_UP = 0.10f
+    const val THRESHOLD_DOWN = 0.07f
+    const val BOOST_STEP = 0.5f
     /** Never past these, whatever the settings: a threshold near 0 fires on anything, near 1 never. */
     const val MIN_THRESHOLD = 0.08f
     const val MAX_THRESHOLD = 0.5f
@@ -81,8 +98,8 @@ object KwsThresholds {
         fun r(x: Float) = Math.round(x * 100f) / 100f
         return when (interrupt) {
             InterruptSensitivity.MEDIUM -> p
-            InterruptSensitivity.LOW -> Preset(r((p.threshold + THRESHOLD_STEP).coerceAtMost(MAX_THRESHOLD)), r((p.boost - BOOST_STEP).coerceAtLeast(MIN_BOOST)))
-            InterruptSensitivity.HIGH -> Preset(r((p.threshold - THRESHOLD_STEP).coerceAtLeast(MIN_THRESHOLD)), r((p.boost + BOOST_STEP).coerceAtMost(MAX_BOOST)))
+            InterruptSensitivity.LOW -> Preset(r((p.threshold + THRESHOLD_UP).coerceAtMost(MAX_THRESHOLD)), r((p.boost - BOOST_STEP).coerceAtLeast(MIN_BOOST)))
+            InterruptSensitivity.HIGH -> Preset(r((p.threshold - THRESHOLD_DOWN).coerceAtLeast(MIN_THRESHOLD)), r((p.boost + BOOST_STEP).coerceAtMost(MAX_BOOST)))
         }
     }
 }
