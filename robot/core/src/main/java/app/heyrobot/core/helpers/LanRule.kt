@@ -128,6 +128,9 @@ object LanRule {
             host = (if (colon >= 0) authority.substring(0, colon) else authority).lowercase(Locale.ROOT).trimEnd('.')
             port = if (colon >= 0) authority.substring(colon + 1).toIntOrNull() ?: return null else null
             if (!Regex("[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*").matches(host)) return null
+            // Digits and dots only, but not a plain dotted quad ("3232235777", "10.1", "010.0.0.1"): the HTTP client takes
+            // it for an address in a form this rule doesn't read, and connects without asking the DNS filter.
+            if (numericNotQuad(host)) return null
         }
         if (host.isEmpty() || (port != null && port !in 1..65535)) return null
         val https = scheme == "https"
@@ -155,6 +158,12 @@ object LanRule {
         val ly = literal(y)
         return if (lx != null || ly != null) lx != null && ly != null && lx.contentEquals(ly) else x == y
     }
+
+    /**
+     * [host] is digits and dots but not a dotted quad Robot reads: never a name, and an HTTP client or the resolver may
+     * read it as an address of its own ("3232235777" is 192.168.1.1, "10.1" is 10.0.0.1, "010.0.0.1" is 8.0.0.1).
+     */
+    fun numericNotQuad(host: String): Boolean = host.isNotEmpty() && host.all { it.isDigit() || it == '.' } && parse4(host) == null
 
     /** The bytes of an IP address literal (IPv4 dotted quad, or IPv6), or null for a name. */
     fun literal(host: String): ByteArray? = parse4(host) ?: parse6(host.removePrefix("[").removeSuffix("]"))

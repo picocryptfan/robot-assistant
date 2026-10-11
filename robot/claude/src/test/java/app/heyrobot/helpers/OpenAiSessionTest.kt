@@ -307,6 +307,45 @@ class OpenAiSessionTest {
         try { app.heyrobot.helpers.http.LanDns(publicDns).lookup("x"); throw AssertionError("not refused") } catch (_: NotLocalException) {}
     }
 
+    @Test fun theInterceptorChecksTheAddressReallyConnected() {
+        // What OkHttp connected to (an address typed as a number never reaches the DNS filter): cleartext only to your network.
+        fun chain(ip: ByteArray, url: String = "http://box.example/v1/chat/completions") = object : okhttp3.Interceptor.Chain {
+            private val req = okhttp3.Request.Builder().url(url).build()
+            private val address = okhttp3.Address("box.example", 80, Dns.SYSTEM, javax.net.SocketFactory.getDefault(), null, null, null,
+                okhttp3.Authenticator.NONE, java.net.Proxy.NO_PROXY, listOf(okhttp3.Protocol.HTTP_1_1), listOf(okhttp3.ConnectionSpec.CLEARTEXT),
+                java.net.ProxySelector.getDefault())
+            private val conn = object : okhttp3.Connection {
+                override fun route() = okhttp3.Route(address, java.net.Proxy.NO_PROXY, java.net.InetSocketAddress(InetAddress.getByAddress(ip), 80))
+                override fun socket() = java.net.Socket()
+                override fun handshake(): okhttp3.Handshake? = null
+                override fun protocol() = okhttp3.Protocol.HTTP_1_1
+            }
+            override fun request() = req
+            override fun proceed(request: okhttp3.Request) =
+                okhttp3.Response.Builder().request(request).protocol(okhttp3.Protocol.HTTP_1_1).code(200).message("OK").build()
+            override fun connection() = conn
+            override fun call(): okhttp3.Call = throw UnsupportedOperationException()
+            override fun connectTimeoutMillis() = 0
+            override fun withConnectTimeout(timeout: Int, unit: TimeUnit) = this
+            override fun readTimeoutMillis() = 0
+            override fun withReadTimeout(timeout: Int, unit: TimeUnit) = this
+            override fun writeTimeoutMillis() = 0
+            override fun withWriteTimeout(timeout: Int, unit: TimeUnit) = this
+        }
+        val lan = byteArrayOf(192.toByte(), 168.toByte(), 1, 20)
+        val public = byteArrayOf(8, 8, 8, 8)
+        assertEquals(200, app.heyrobot.helpers.http.LanGuard.intercept(chain(lan)).code)
+        try {
+            app.heyrobot.helpers.http.LanGuard.intercept(chain(public))
+            throw AssertionError("a public address over http went through")
+        } catch (_: NotLocalException) {}
+        // Over https the certificate protects it.
+        assertEquals(200, app.heyrobot.helpers.http.LanGuard.intercept(chain(public, "https://box.example/v1/chat/completions")).code)
+        // A number the rule can't read ("134744072" is 8.8.8.8) would skip the DNS filter: no client at all.
+        assertNull(HelperHttp.create("http://134744072:11434/v1", key, home = true))
+        assertNull(HelperHttp.create("http://10.1:11434/v1", key, home = true))
+    }
+
     @Test fun anUnreachableServerSaysSo() = runBlocking {
         val port = server.port
         server.shutdown()

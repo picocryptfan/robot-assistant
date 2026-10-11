@@ -86,7 +86,9 @@ class HelperHttp private constructor(val client: OkHttpClient, val base: HttpUrl
             }
             if (home && https) b.proxy(Proxy.NO_PROXY)
             if (!https) {
-                // An address typed as a number is never looked up: check it now.
+                // An address typed as a number is never looked up: check it now. One in a form the rule doesn't read
+                // ("3232235777", "10.1") would skip the DNS filter too: refused.
+                if (LanRule.numericNotQuad(base.host)) return null
                 LanRule.literal(base.host)?.let { if (!LanRule.classify(it).cleartext) return null }
             }
             return HelperHttp(b.build(), base, key)

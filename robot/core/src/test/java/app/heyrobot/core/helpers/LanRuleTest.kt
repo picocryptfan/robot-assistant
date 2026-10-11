@@ -73,7 +73,9 @@ class LanRuleTest {
         assertEquals("http://192.168.1.20/v1", LanRule.normalize("http://192.168.1.20")!!.candidates.first())
         // Refused: userinfo, a query, a fragment, another scheme, spaces, a bad port, nothing.
         for (bad in listOf("http://user:pass@10.0.0.1", "10.0.0.1/?x=1", "10.0.0.1#top", "ftp://10.0.0.1", "file:///etc/hosts", "10.0.0.1:99999",
-            "10.0.0 .1", "", "   ", "http://", "fe80::1", "javascript:alert(1)", "10.0.0.1:abc", "[fe80::1"))
+            "10.0.0 .1", "", "   ", "http://", "fe80::1", "javascript:alert(1)", "10.0.0.1:abc", "[fe80::1",
+            // Numbers an HTTP client reads as addresses in forms this rule doesn't: never past the DNS filter unread.
+            "3232235777", "http://134744072:11434", "10.1", "010.0.0.1", "192.168.1.20.5"))
             assertNull(bad, LanRule.normalize(bad))
         assertTrue(LanRule.normalize("box.tail1234.ts.net")!!.hint!!.contains("Tailscale"))
         assertTrue(LanRule.normalize("nas.local")!!.hint!!.contains(".local"))
