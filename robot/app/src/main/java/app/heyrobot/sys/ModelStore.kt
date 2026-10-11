@@ -405,8 +405,13 @@ object ModelStore {
             val sha = md.digest().joinToString("") { "%02x".format(it) }
             if (m == BrainModel.OWN) {
                 // By its contents: a GGUF file gets the GGUF check (llama.cpp runs it), anything else the LiteRT-LM one.
-                val gguf = if (formatOf(f) == ModelFormat.GGUF) GgufCheck.check(f, totalRam(ctx)) else null
-                val report = if (gguf != null) OwnModel.NOT_LITERT_LM else LiteRtLmCheck.check(f)
+                val format = formatOf(f)
+                val gguf = if (format == ModelFormat.GGUF) GgufCheck.check(f, totalRam(ctx)) else null
+                val report = when {
+                    gguf != null -> OwnModel.NOT_LITERT_LM
+                    format == null -> NOT_A_MODEL
+                    else -> LiteRtLmCheck.check(f)
+                }
                 val before = own(ctx)
                 // A TPU allowed for this very file (same SHA-256) stays allowed; anything else asks again.
                 val allowed = gguf == null && before != null && before.sha256 == sha && before.tpuAllowed && report.tensorG5Build
@@ -472,4 +477,7 @@ object ModelStore {
     }
 
     private const val OWN_NAME = "own_name"
+
+    /** Neither kind of model file Robot reads, by its first bytes. */
+    private val NOT_A_MODEL = app.heyrobot.core.LiteRtLmReport(readable = false, problem = "It isn't a model file Robot can read (a .litertlm or .gguf file).")
 }
