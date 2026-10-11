@@ -104,10 +104,10 @@ enum class BrainModel(
     val speed: String get() = when (this) {
         FAST -> "Writes about 17 tokens (word pieces) a second; a new conversation starts answering in about 3 s. " +
             "About 2 GB of memory, light on the battery. Sees photos."
-        SMARTER -> "Better answers, slower: about 8 tokens a second, and about 20 s before the first word of a new " +
+        SMARTER -> "Better answers, slower: about 8 tokens a second, and about 21 s before the first word of a new " +
             "conversation (later answers about 1 to 3 s). About 4 GB of memory and more battery (about 9 W while it writes, " +
             "against 3.5 W). Sees photos, more slowly."
-        UNCENSORED -> "Like Smarter: about 8 tokens a second, about 20 s before the first word of a new conversation, " +
+        UNCENSORED -> "Like Smarter: about 8 tokens a second, about 21 s before the first word of a new conversation, " +
             "about 4 GB of memory and more battery."
         OWN -> "Runs on the CPU, unless Robot's check proves the file was compiled for this phone's TPU and you allow that."
     }

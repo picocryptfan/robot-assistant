@@ -91,7 +91,7 @@ class BrainModelTest {
 
     @Test fun honestNumbersAreShown() {
         assertTrue(BrainModel.FAST.speed.contains("17 tokens"))
-        assertTrue(BrainModel.SMARTER.speed.contains("8 tokens") && BrainModel.SMARTER.speed.contains("20 s") && BrainModel.SMARTER.speed.contains("4 GB"))
+        assertTrue(BrainModel.SMARTER.speed.contains("8 tokens") && BrainModel.SMARTER.speed.contains("21 s") && BrainModel.SMARTER.speed.contains("4 GB"))
         assertTrue(BrainModel.SMARTER.speed.contains("battery"))
     }
 
