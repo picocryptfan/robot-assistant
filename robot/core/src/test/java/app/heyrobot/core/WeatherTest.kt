@@ -15,6 +15,10 @@ class WeatherTest {
     private fun sample(name: String) = javaClass.classLoader!!.getResourceAsStream("weather/$name")!!.readBytes().toString(Charsets.UTF_8)
 
     private val montreal = ZoneId.of("America/Toronto")
+
+    /** The tool's way: the day read once in your zone, then mapped to the place's forecast. */
+    private fun report(f: Forecast, day: String?, at: ZonedDateTime, units: WeatherUnits, maxDays: Int = WeatherAsk.MAX_SHOWN): WeatherReport? =
+        WeatherText.report(f, (WeatherAsk.days(day, at) as Read.Ok).value, WeatherAsk.relative(day), at, units, maxDays)
     /** Saturday 10 October 2026, 19:50 in Montreal (the sample's "current" time). */
     private val now = ZonedDateTime.of(2026, 10, 10, 19, 50, 0, 0, montreal)
 
@@ -78,31 +82,31 @@ class WeatherTest {
 
     @Test fun tomorrowInMontrealIsOneSpeakableLine() {
         val f = OpenMeteo.forecast(sample("forecast_montreal.json"))!!
-        val r = WeatherText.report(f, "tomorrow", now, WeatherUnits.METRIC)!!
+        val r = report(f, "tomorrow", now, WeatherUnits.METRIC)!!
         assertEquals(1, r.results.size)
         assertEquals("tomorrow, Sun Oct 11", r.results[0]["day"])
         assertEquals("overcast, high 18°C, low 6°C, 5% chance of rain, wind up to 11 km/h (gusts 25), cloud cover 100%", r.results[0]["weather"])
         // Today carries the conditions now; Monday its rain.
-        val today = WeatherText.report(f, null, now, WeatherUnits.METRIC)!!
+        val today = report(f, null, now, WeatherUnits.METRIC)!!
         assertEquals("now 8°C and clear; overcast, high 13°C, low 3°C, 0% chance of rain, wind up to 10 km/h (gusts 17), cloud cover 8%",
             today.results.single()["weather"])
-        val monday = WeatherText.report(f, "Monday", now, WeatherUnits.METRIC)!!
+        val monday = report(f, "Monday", now, WeatherUnits.METRIC)!!
         assertEquals("Mon Oct 12: drizzle, high 16°C, low 8°C, 67% chance of rain (about 1.3 mm), wind up to 21 km/h (gusts 39), cloud cover 98%", monday.lines)
         // Every day it has, at most a week: this week is today to Sunday.
-        val week = WeatherText.report(f, "this week", now, WeatherUnits.METRIC)!!
+        val week = report(f, "this week", now, WeatherUnits.METRIC)!!
         assertEquals(listOf("today, Sat Oct 10", "tomorrow, Sun Oct 11"), week.results.map { it["day"] })
         assertEquals(week.lines.replace("\n", ". "), week.spoken)
         // A day the answer doesn't hold.
-        assertNull(WeatherText.report(f, "Friday", now, WeatherUnits.METRIC))
+        assertNull(report(f, "Friday", now, WeatherUnits.METRIC))
     }
 
     @Test fun anImperialForecastSpeaksFahrenheitMilesAndInches() {
         val f = OpenMeteo.forecast(sample("forecast_newyork_imperial.json"))!!
         val ny = ZonedDateTime.of(2026, 10, 10, 20, 5, 0, 0, ZoneId.of("America/New_York"))
-        val r = WeatherText.report(f, "tomorrow", ny, WeatherUnits.IMPERIAL)!!
+        val r = report(f, "tomorrow", ny, WeatherUnits.IMPERIAL)!!
         assertEquals("rain, high 65°F, low 55°F, 92% chance of rain (about 0.49 in), wind up to 14 mph (gusts 32), cloud cover 100%", r.results.single()["weather"])
         // Next week from a Saturday is Monday to Sunday: the sample holds Monday to Friday.
-        val next = WeatherText.report(f, "next week", ny, WeatherUnits.IMPERIAL)!!
+        val next = report(f, "next week", ny, WeatherUnits.IMPERIAL)!!
         assertEquals(listOf("Mon Oct 12", "Tue Oct 13", "Wed Oct 14", "Thu Oct 15", "Fri Oct 16"), next.results.map { it["day"] })
         assertTrue(next.lines.contains("Wed Oct 14: drizzle, high 78°F, low 61°F, 13% chance of rain (about 0.03 in)"))
     }
@@ -111,10 +115,29 @@ class WeatherTest {
         val f = OpenMeteo.forecast(sample("forecast_montreal.json"))!!
         // 01:30 on Sunday in Paris is still Saturday evening in Montreal: "today" is Montreal's Saturday.
         val paris = ZonedDateTime.of(2026, 10, 11, 1, 30, 0, 0, ZoneId.of("Europe/Paris"))
-        assertEquals("today, Sat Oct 10", WeatherText.report(f, "today", paris, WeatherUnits.METRIC)!!.results.single()["day"])
+        assertEquals("today, Sat Oct 10", report(f, "today", paris, WeatherUnits.METRIC)!!.results.single()["day"])
         // A day more is fetched for that.
         val range = (WeatherAsk.days("tomorrow", now) as Read.Ok).value
         assertEquals(3, WeatherAsk.fetchDays(range, now))
+        // Thursday 23:00 in Toronto, "Friday" in Tokyo: Tokyo is already on Friday, and Friday it is (not next week's).
+        val toronto = ZonedDateTime.of(2026, 10, 15, 23, 0, 0, 0, montreal)
+        val tokyo = Forecast(ZoneId.of("Asia/Tokyo"), WeatherNow(18.0, 1), (16..22).map { d ->
+            WeatherDay(LocalDate.of(2026, 10, d), 1, 20.0, 12.0, 10, 0.0, 0.0, 0.0, 0.0, 10.0, 15.0, 20)
+        })
+        assertEquals("today, Fri Oct 16", report(tokyo, "Friday", toronto, WeatherUnits.METRIC)!!.results.first()["day"])
+        // Tomorrow there is Tokyo's tomorrow.
+        assertEquals("tomorrow, Sat Oct 17", report(tokyo, "tomorrow", toronto, WeatherUnits.METRIC)!!.results.first()["day"])
+        assertTrue(WeatherAsk.relative("tomorrow") && WeatherAsk.relative("next 3 days") && WeatherAsk.relative(null))
+        assertFalse(WeatherAsk.relative("Friday") || WeatherAsk.relative("2026-10-12") || WeatherAsk.relative("October 14") || WeatherAsk.relative("next week"))
+    }
+
+    @Test fun moreDaysThanGivenAreSaid() {
+        val f = OpenMeteo.forecast(sample("forecast_newyork_imperial.json"))!!
+        val ny = ZonedDateTime.of(2026, 10, 10, 20, 5, 0, 0, ZoneId.of("America/New_York"))
+        val r = report(f, "next week", ny, WeatherUnits.IMPERIAL, maxDays = 3)!!
+        assertEquals(listOf("Mon Oct 12", "Tue Oct 13", "Wed Oct 14", null), r.results.map { it["day"] })
+        assertEquals("Only the first 3 of the 5 days asked are given.", r.results.last()["note"])
+        assertEquals(3, r.lines.lines().size)
     }
 
     @Test fun snowAndMixedDaysSayWhatFalls() {
@@ -150,6 +173,22 @@ class WeatherTest {
         assertEquals(sat.plusDays(2) to 1L, days("après-demain"))
         assertEquals(sat.plusDays(2) to 7L, days("la semaine prochaine"))
         assertEquals(sat.plusDays(6) to 1L, days("vendredi"))
+        // ISO dates, "tonight" after midnight (the coming night), more French, and numbers that are days, never a time.
+        assertEquals(sat.plusDays(2) to 1L, days("2026-10-12"))
+        val late = ZonedDateTime.of(2026, 10, 11, 1, 30, 0, 0, montreal)
+        assertEquals(sat.plusDays(1) to 1L, (WeatherAsk.days("tonight", late) as Read.Ok).value.let { it.from.toLocalDate() to it.days })
+        assertEquals(sat.plusDays(1) to 1L, (WeatherAsk.days("cette nuit", late) as Read.Ok).value.let { it.from.toLocalDate() to it.days })
+        assertEquals(sat.plusDays(1) to 1L, days("demain matin"))
+        assertEquals(sat.plusDays(1) to 1L, days("demain soir"))
+        assertEquals(sat.plusDays(6) to 1L, days("vendredi prochain"))
+        assertEquals(sat to 3L, days("les prochains jours"))
+        assertEquals(sat to 4L, days("les 4 prochains jours"))
+        assertEquals(sat to 2L, days("samedi et dimanche"))
+        assertEquals(sat to 2L, days("today and tomorrow"))
+        assertEquals(sat to 2L, days("aujourd'hui et demain"))
+        assertEquals(sat to 3L, days("3"))
+        assertEquals(sat to 7L, days("7 days"))
+        assertEquals(sat to 16L, days("40"))
         // Past days and days beyond Open-Meteo's 16 are refused; a range is cut to what it covers.
         assertTrue(WeatherAsk.days("yesterday", now) is Read.Unreadable)
         assertEquals(WeatherFail.NO_DAYS.text, (WeatherAsk.days("November 20", now) as Read.Unreadable).detail)

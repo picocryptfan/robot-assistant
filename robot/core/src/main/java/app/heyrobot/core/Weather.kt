@@ -328,29 +328,61 @@ object WeatherAsk {
     /** "today", "tomorrow", "Friday", "this week", "this weekend", "next 3 days", and the French words for them. */
     const val SAY_DAY = "say the day like today, tomorrow, Friday or this week"
 
+    /** Whole French phrases first, then words; a weekday followed by "prochain" is next week's. */
     private val FRENCH = listOf(
+        "aujourdhui et demain" to "next 2 days", "samedi et dimanche" to "this weekend", "les prochains jours" to "next 3 days",
         "apres demain" to "day after tomorrow", "aujourdhui" to "today", "demain" to "tomorrow", "ce soir" to "tonight", "cette nuit" to "tonight",
         "ce matin" to "this morning", "cet apres midi" to "this afternoon", "cette semaine" to "this week", "la semaine prochaine" to "next week",
         "semaine prochaine" to "next week", "ce week end" to "this weekend", "ce weekend" to "this weekend", "le week end" to "this weekend",
         "le weekend" to "this weekend", "week end" to "weekend", "lundi" to "monday", "mardi" to "tuesday", "mercredi" to "wednesday",
         "jeudi" to "thursday", "vendredi" to "friday", "samedi" to "saturday", "dimanche" to "sunday", "maintenant" to "today",
-        "prochains jours" to "next 3 days",
+        "prochains jours" to "next 3 days", "matin" to "morning", "apres midi" to "afternoon", "soir" to "evening", "nuit" to "night",
     )
-    private val TODAY = setOf("", "now", "right now", "currently", "today", "at the moment", "this moment", "later", "later today", "rest of the day")
-    private val NEXT_DAYS = Regex("""^(?:the )?(?:next|coming|following) (\d{1,2}|few|couple of|couple|two|three|four|five|six|seven) days$|^(?:the )?(?:next|coming) days$|^(?:a )?few days$""")
+    private val FRENCH_NEXT = Regex("""\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday) prochaine?\b""")
+    private val FRENCH_DAYS = Regex("""\bles (\d{1,2}) prochains jours\b""")
+    private val TODAY = setOf("", "now", "right now", "currently", "today", "at the moment", "this moment", "later", "later today", "rest of the day",
+        // The weather "tonight" is today's night, also after midnight (the calendar reads 01:00 "tonight" as the night under way).
+        "tonight", "this evening", "this afternoon", "this morning")
+    private val TWO_DAYS = setOf("today and tomorrow", "today tomorrow")
+    private val NEXT_DAYS = Regex("""^(?:the )?(?:next|coming|following) (\d{1,2}|few|couple of|couple|two|three|four|five|six|seven) days$|^(?:the )?(?:next|coming) days$|^(?:a )?few days$|^(\d{1,2}) days?$""")
+    /** A weekday, a month or a written date: a calendar day of its own, the same wherever the place is. */
+    private val CALENDAR_DAY = Regex("""\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|january|february|march|april|may|june|july|august|september|october|november|december|weekend|week)\b|\d{4}-\d{1,2}-\d{1,2}|\b\d{1,2}(st|nd|rd|th)\b""")
 
     /**
-     * The days [day] names at [now] (the place's own now, once its time zone is known): today when it is blank. Days
-     * before today, or all of them beyond Open-Meteo's 16, are refused; a range is cut to those it covers.
+     * The day words as the parser reads them: no accents, French translated, ISO dates and times kept ("2026-10-12"); a
+     * hyphen between letters is a space ("après-demain").
+     */
+    private fun words(day: String?): String {
+        var t = Normalizer.normalize(day.orEmpty(), Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
+            .replace("'", "").replace("’", "").replace(Regex("""(?<=[a-z])-(?=[a-z])"""), " ").replace(Regex("""[^a-z0-9:/\- ]+"""), " ")
+            .replace(Regex("\\s+"), " ").trim()
+        t = FRENCH_DAYS.replace(" $t ") { "next ${it.groupValues[1]} days" }.trim()
+        t = FRENCH.fold(" $t ") { acc, (fr, en) -> acc.replace(" $fr ", " $en ") }.replace(Regex("\\s+"), " ").trim()
+        return FRENCH_NEXT.replace(t) { "next ${it.groupValues[1]}" }
+    }
+
+    /**
+     * Whether [day] counts from today ("today", "tomorrow", "next 3 days": the place's own today, once known) rather than
+     * naming a calendar day ("Friday", "October 14", "2026-10-12": the same date anywhere).
+     */
+    fun relative(day: String?): Boolean = !CALENDAR_DAY.containsMatchIn(words(day))
+
+    /**
+     * The days [day] names, read once in your own time zone at [now]: today when it is blank, a bare number is that many
+     * days ("3"), never a clock time. Days before today, or all of them beyond Open-Meteo's 16, are refused; a range is cut
+     * to those it covers.
      */
     fun days(day: String?, now: ZonedDateTime): Read<DayRange> {
         val today = now.toLocalDate()
         fun range(from: LocalDate, to: LocalDate) = DayRange(from.atStartOfDay(now.zone), to.atStartOfDay(now.zone))
-        val k = key(day.orEmpty()).let { s -> FRENCH.fold(" $s ") { acc, (fr, en) -> acc.replace(" $fr ", " $en ") }.trim() }
+        val k = words(day)
         val r = when {
             k in TODAY -> range(today, today.plusDays(1))
+            k in TWO_DAYS -> range(today, today.plusDays(2))
+            Regex("""^\d{1,2}$""").matches(k) -> range(today, today.plusDays(k.toLong().coerceIn(1, OpenMeteo.MAX_DAYS.toLong())))
             NEXT_DAYS.matches(k) -> {
-                val n = NEXT_DAYS.find(k)?.groupValues?.get(1).orEmpty()
+                val g = NEXT_DAYS.find(k)!!.groupValues
+                val n = g[1].ifEmpty { g[2] }
                 val count = n.toIntOrNull() ?: when (n) { "couple of", "couple", "two" -> 2; "four" -> 4; "five" -> 5; "six" -> 6; "seven" -> 7; else -> 3 }
                 range(today, today.plusDays(count.coerceIn(1, OpenMeteo.MAX_DAYS).toLong()))
             }
@@ -380,19 +412,24 @@ data class WeatherReport(val results: List<Map<String, Any?>>, val lines: String
 
 object WeatherText {
     /**
-     * The asked days of [f] (read again at the place's own now, so "today" in Tokyo is Tokyo's today), at most
-     * [WeatherAsk.MAX_SHOWN]; null when none of them is in the forecast.
+     * The days of [f] that [range] names: [range] was read in your own zone (WeatherAsk.days); a [relative] one ("today",
+     * "tomorrow", "next 3 days") moves to the place's own today (today in Tokyo is Tokyo's today), a calendar day
+     * ("Friday", "October 14") keeps its date. At most [maxDays]; when more were asked, the model is told so. Null when
+     * none of them is in the forecast.
      */
-    fun report(f: Forecast, day: String?, phoneNow: ZonedDateTime, units: WeatherUnits): WeatherReport? {
-        val now = f.zone?.let { phoneNow.withZoneSameInstant(it) } ?: phoneNow
-        val range = (WeatherAsk.days(day, now) as? Read.Ok)?.value ?: return null
-        val today = now.toLocalDate()
-        val days = f.days.filter { !it.date.isBefore(range.from.toLocalDate()) && it.date.isBefore(range.to.toLocalDate()) }.take(WeatherAsk.MAX_SHOWN)
+    fun report(f: Forecast, range: DayRange, relative: Boolean, phoneNow: ZonedDateTime, units: WeatherUnits,
+        maxDays: Int = WeatherAsk.MAX_SHOWN): WeatherReport? {
+        val today = (f.zone?.let { phoneNow.withZoneSameInstant(it) } ?: phoneNow).toLocalDate()
+        val shift = if (relative) ChronoUnit.DAYS.between(phoneNow.toLocalDate(), today) else 0L
+        val from = range.from.toLocalDate().plusDays(shift)
+        val to = range.to.toLocalDate().plusDays(shift)
+        val wanted = f.days.filter { !it.date.isBefore(from) && it.date.isBefore(to) }
+        val days = wanted.take(maxDays.coerceAtLeast(1))
         if (days.isEmpty()) return null
-        val results = days.map { d ->
+        val results: List<Map<String, Any?>> = days.map { d ->
             linkedMapOf<String, Any?>("day" to label(d.date, today), "weather" to line(d, if (d.date == today) f.now else null, units))
-        }
-        val lines = results.joinToString("\n") { "${it["day"]}: ${it["weather"]}" }
+        } + listOfNotNull(if (wanted.size > days.size) mapOf("note" to "Only the first ${days.size} of the ${wanted.size} days asked are given.") else null)
+        val lines = results.filter { it.containsKey("day") }.joinToString("\n") { "${it["day"]}: ${it["weather"]}" }
         return WeatherReport(results, lines, lines.replace("\n", ". "))
     }
 

@@ -464,7 +464,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             }
             val found = SystemClock.elapsedRealtime()
             val f = OpenMeteoClient.forecast(ctx, place, WeatherAsk.fetchDays(range, now), units, abort)
-            val report = WeatherText.report(f, a.day, now, units) ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
+            val report = WeatherText.report(f, range, WeatherAsk.relative(a.day), now, units) ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
             VoiceLog.add(VoiceEvent.WEATHER, source, if (source == WeatherSource.HOME) 0 else (found - started).toInt(), (SystemClock.elapsedRealtime() - found).toInt())
             // The card's line is saved with the conversation, so it names no place; the place goes in the results (for
             // the model) and the body (shown, never saved), with what Open-Meteo was sent.
