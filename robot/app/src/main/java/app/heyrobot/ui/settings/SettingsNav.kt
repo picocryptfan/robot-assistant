@@ -7,6 +7,7 @@ import androidx.compose.ui.platform.LocalContext
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.sys.LookStore
+import app.heyrobot.ui.AdbFixScreen
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.NotificationAccessScreen
 import app.heyrobot.ui.WeatherSettingsScreen
@@ -18,6 +19,8 @@ import app.heyrobot.ui.Snapshot
 object SettingsRoutes {
     const val DISPLAY = "display"
     const val WEATHER = "weather"
+    /** Settings › Advanced › ADB fixes › one fix, by its id (core AdbFixes). */
+    fun adbFix(id: String) = "adb/$id"
     /** Settings › People › Notification access: the three steps. */
     const val NOTIFICATION_ACCESS = "people/notification-access"
 }
@@ -42,6 +45,9 @@ fun SettingsNav(
         }
         SettingsRoutes.WEATHER -> WeatherSettingsScreen(s, snap, update, a, snackbar, onBack)
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
-        else -> LaunchedEffect(route) { onBack() }
+        else -> when {
+            route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)
+            else -> LaunchedEffect(route) { onBack() }
+        }
     }
 }
