@@ -338,7 +338,7 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
     val keySaved = f?.claudeKey != null
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     SectionCard("Ask Claude") {
-        Text("Robot stays offline unless you ask for Claude: say “ask Claude …” or “go get Claude”, or let Robot check hard questions " +
+        Text("Nothing goes to Claude unless you ask for Claude: say “ask Claude …” or “go get Claude”, or let Robot check hard questions " +
             "with Claude (below). Only text leaves the phone: your voice is turned into text here, and Claude's answer is read by Robot's voices.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
         SwitchRow("Ask Claude", if (keySaved) "Questions for Claude go through your API key." else "Without a key, questions for Claude open the Claude app.",
@@ -469,14 +469,15 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         VoiceSettingsCard(s, snap, update, a)
         SectionCard("Actions") {
             Text("What Robot may do when you ask. On the lock screen only timers and alarms work; everything else asks you to unlock. " +
-                "After Robot read a note, an event or a contact in a conversation, everything in it that writes or leaves the phone asks first " +
-                "(reading more doesn't).",
+                "After Robot read a note, an event, a contact, the weather or your phone's status in a conversation, everything in it that " +
+                "writes or leaves the phone asks first (reading more doesn't).",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             // Ask Claude's own settings decide about ask_claude (it has no level of its own).
             for (t in ToolName.entries.filter { !it.internal }) ApprovalRow(t, s.approval(t)) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
             Text("Anything Claude asks Robot to do always shows a card first.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         PeopleSettingsCard(s, snap, calendars, update, a)
+        WeatherSettingsCard(s, snap, update, a)
         ClaudeSettingsCard(s, snap, update, a)
         SectionCard("Model memory") {
             Text("Keep Gemma loaded after the panel closes (about 2 GB of memory; it loads again in about 2 seconds).",
@@ -541,6 +542,7 @@ private fun ApprovalRow(t: ToolName, level: Approval, onChange: (Approval) -> Un
             Spacer(Modifier.width(12.dp))
             Text(t.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
             if (t in ApprovalGate.ALLOWED_WHEN_LOCKED) Text("works locked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (t.online) Text("uses the internet", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 6.dp)) {
             Approval.entries.forEachIndexed { i, v ->
@@ -581,7 +583,8 @@ private fun PeopleSetupCard(f: AssistantFacts, a: AppActions) {
 @Composable
 private fun ClaudeSetupCard(f: AssistantFacts, a: AppActions) {
     SectionCard("Ask Claude") {
-        Text("Robot uses the internet for two things only: downloading its models, and Ask Claude when you ask for Claude.",
+        Text("Robot uses the internet for three things only: downloading its models, Ask Claude when you ask for Claude, and the " +
+            "weather (Open-Meteo) when you ask for it.",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         StatusRow(if (f.networkGranted) Mark.OK else Mark.WARN, "Network",
             if (f.networkGranted) "Allowed, as Android reports it. If Ask Claude says “No internet” while you're online, check Robot's Network permission."
@@ -616,6 +619,7 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
             }
             // Opened from a card's "Allow": the permissions first.
             if (peopleFirst) PeopleSetupCard(f, a)
+            if (peopleFirst) ToolsSetupCard(f, a)
             SectionCard("Right now") {
                 StatusRow(if (f.roleHeld) Mark.OK else Mark.TODO, "Robot is the digital assistant",
                     if (f.roleHeld) "Android lists Robot as your assistant." else "Pick Robot in Settings › Apps › Default apps › Digital assistant app.")
@@ -664,6 +668,7 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                 }
             }
             if (!peopleFirst) PeopleSetupCard(f, a)
+            if (!peopleFirst) ToolsSetupCard(f, a)
             ClaudeSetupCard(f, a)
             SectionCard("After a restart") {
                 Text(

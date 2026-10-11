@@ -44,6 +44,7 @@ import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.ToolGroup
 import app.heyrobot.core.ToolName
@@ -63,6 +64,7 @@ import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
+import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.ui.common.RIcons
@@ -375,6 +377,11 @@ fun RobotAppUi(activity: MainActivity) {
             if (snap.facts?.active != true) say("Make Robot your digital assistant first: the test runs in the assistant.")
             else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putString(Cmd.EXTRA_RUN, run.name) })
         },
+        askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
+        openUsageAccess = {
+            val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
+            if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
+        },
     )
 
     /** Turning a people or calendar feature on (from Off) asks for what it needs, if it isn't allowed yet. */
@@ -459,4 +466,7 @@ class AppActions(
     val deleteClaudeKey: () -> Unit,
     val openPage: (Page) -> Unit,
     val bargeTest: (BargeRun) -> Unit,
+    /** 0.4.0: approximate location for the weather (asked here only), and Android's Usage access page for Robot. */
+    val askLocation: () -> Unit = {},
+    val openUsageAccess: () -> Unit = {},
 )

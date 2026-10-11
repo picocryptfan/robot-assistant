@@ -67,6 +67,9 @@ data class AssistantFacts(
     /** 0.3.1: "Use text from screen" and "Use screenshot" for the assistant (null: Android wouldn't say). */
     val screenTextOn: Boolean? = null,
     val screenshotOn: Boolean? = null,
+    /** 0.4.0, both optional: approximate location (the weather here) and Usage access (phone_status's largest apps). */
+    val locationGranted: Boolean = false,
+    val usageAccess: Boolean = false,
 )
 
 object Assistant {
@@ -108,6 +111,8 @@ object Assistant {
             secureSettingsGranted = RecognizerKeeper.canWrite(ctx),
             screenTextOn = screenText,
             screenshotOn = screenshot,
+            locationGranted = CoarseLocation.granted(ctx),
+            usageAccess = PhoneInfo.usageAccess(ctx),
         )
     }
 
