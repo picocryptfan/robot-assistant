@@ -79,9 +79,11 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit, pri
     private val replies = Messenger(Handler(replyThread.looper) { m -> onReply(m); true })
 
     private fun onReply(m: Message) {
-        val ch = streams[m.arg1] ?: return
         val msg = BrainWire.decode(m) ?: BrainMsg.Error(BrainError.BAD_REQUEST, "unreadable reply")
+        // News of the file even for a reply nobody waits for any more: the panel gave up on a reply that went silent, and
+        // :brain then ended llama.cpp's process for not coming back from the stop.
         if (msg is BrainMsg.Error && msg.code == BrainError.STOPPED) onModelStopped()
+        val ch = streams[m.arg1] ?: return
         ch.trySend(msg)
         if (m.what in BrainProtocol.TERMINAL) {
             streams.remove(m.arg1)
