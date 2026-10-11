@@ -98,6 +98,8 @@ object PanelMessages {
     /** Conversations still to read ("next"), by key, and the one read last ("reply …", "mark it as read"). */
     private val queue = ArrayList<String>()
     private var lastRead: String? = null
+    /** That conversation as it was read (RAM): a reply to it after its notification went still gets its card, which then offers the chat. */
+    private var lastThread: MessageThread? = null
     /** Robot is reading your messages in this conversation: "next", "stop" and "translate it" count. */
     private var reading = false
     private var taint = MessageTaint.NONE
@@ -132,6 +134,7 @@ object PanelMessages {
         convId = id
         queue.clear()
         lastRead = null
+        lastThread = null
         reading = false
         taint = MessageTaint.NONE
         readAloud.clear()
@@ -255,7 +258,6 @@ object PanelMessages {
                 reading = false
                 return say(replyId, MessageReader.stopped(lang), lang)
             }
-            is MessageCommand.Mark -> return mark(replyId, cmd)
             else -> {}
         }
         val locked = Assistant.locked(ctx)
@@ -265,6 +267,7 @@ object PanelMessages {
             refused(if (access == LockedMessages.NAMES_ONLY) MsgRefusal.NAMES_ONLY else MsgRefusal.UNLOCK_FIRST)
             return say(replyId, if (fr(lang)) MessageAccess.UNLOCK_FIRST_FR else MessageAccess.UNLOCK_FIRST, lang)
         }
+        if (cmd is MessageCommand.Mark) return mark(replyId, cmd)
         val (status, all) = refresh() ?: return say(replyId,
             if (fr(lang)) "Robot n'a pas pu joindre ses messages. Réessaie." else "Robot couldn't reach its messages. Please try again.", lang)
         if (!status.access) {
@@ -322,6 +325,7 @@ object PanelMessages {
         speak(page.spoken)
         val t = page.thread ?: return
         lastRead = t.key
+        lastThread = t
         reading = true
         taint = taint.with(t)
         // Said aloud, the microphone may hear it back: that is the message, never a request.
@@ -508,7 +512,10 @@ object PanelMessages {
         }
         val found = when {
             to != null -> MessagePeople.find(to, all, people)
-            else -> listOfNotNull(lastRead?.let { k -> all.firstOrNull { it.key == k } } ?: all.firstOrNull { it.incoming.any { m -> !m.historic } })
+            // The conversation read last, never another one in its place: gone from the shade meanwhile, its card finds out on
+            // Send and offers the chat instead.
+            lastRead != null -> all.filter { it.key == lastRead }.ifEmpty { listOfNotNull(lastThread?.takeIf { it.key == lastRead }) }
+            else -> listOfNotNull(all.firstOrNull { it.incoming.any { m -> !m.historic } })
         }
         if (found.isEmpty()) {
             return say(replyId, when {
@@ -566,6 +573,7 @@ object PanelMessages {
         val plan = p.plan!!
         if (first) PanelController.messagesReply(p.replyId, headline(p, plain = true) + ".")
         lastRead = t.key
+        lastThread = t
         when (plan.confirm) {
             app.heyrobot.core.messages.Confirm.STOP_WINDOW -> startWindow(p)
             else -> {

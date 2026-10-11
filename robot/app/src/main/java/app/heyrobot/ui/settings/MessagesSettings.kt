@@ -212,8 +212,8 @@ internal fun keepDetail(k: KeepMessages): String = when (k) {
 
 internal fun afterDetail(a: AfterReading): String = when (a) {
     AfterReading.LEAVE -> "Nothing changes in the app; Robot only remembers it read it."
-    AfterReading.CLEAR -> "The notification goes; the chat stays unread in the app."
-    AfterReading.MARK_READ -> "The sender may see you read it (Cheogram's read marker, Signal's receipts)."
+    AfterReading.CLEAR -> "The notification goes; the chat stays unread in the app. A reply then opens the chat."
+    AfterReading.MARK_READ -> "The sender may see you read it (Cheogram's read marker, Signal's receipts). A reply then opens the chat."
 }
 
 internal fun lockedDetail(l: MessagesLocked): String = when (l) {
