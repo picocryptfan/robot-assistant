@@ -144,6 +144,18 @@ object LanRule {
         return Typed(https, host, port, path, candidates)
     }
 
+    /**
+     * [a] and [b] (typed addresses) name the same host, so a key saved for one may go to the other; false when either
+     * isn't an address Robot would use. The port, path and scheme don't count (the same computer).
+     */
+    fun sameHost(a: String?, b: String?): Boolean {
+        val x = a?.let(::normalize)?.host ?: return false
+        val y = b?.let(::normalize)?.host ?: return false
+        val lx = literal(x)
+        val ly = literal(y)
+        return if (lx != null || ly != null) lx != null && ly != null && lx.contentEquals(ly) else x == y
+    }
+
     /** The bytes of an IP address literal (IPv4 dotted quad, or IPv6), or null for a name. */
     fun literal(host: String): ByteArray? = parse4(host) ?: parse6(host.removePrefix("[").removeSuffix("]"))
 

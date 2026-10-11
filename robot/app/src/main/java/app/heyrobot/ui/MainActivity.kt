@@ -351,6 +351,19 @@ fun RobotAppUi(activity: MainActivity) {
         SettingsStore.save(ctx, s)
     }
 
+    /** A helper's connection window, once the settings that added or changed the helper are on disk (it reads them in the assistant's process). */
+    fun openHelperWindow(id: String, mode: String) {
+        SettingsStore.afterSaves {
+            scope.launch(Dispatchers.Main) {
+                // By name: the main process never refers to the assistant's classes.
+                try {
+                    ctx.startActivity(Intent().setClassName(ctx.packageName, HelperWindow.CLASS).putExtra(HelperWindow.EXTRA_HELPER, id)
+                        .putExtra(HelperWindow.EXTRA_MODE, mode))
+                } catch (_: Exception) { say("Couldn't open the connection window.") }
+            }
+        }
+    }
+
     val actions = AppActions(
         talk = { id ->
             val f = snap.facts
@@ -411,16 +424,16 @@ fun RobotAppUi(activity: MainActivity) {
             } catch (_: Exception) { say("Open Settings › Apps › Robot › Permissions.") }
         },
         openNote = { id -> page = Page.NoteEdit(id) },
-        helperWindow = { id, mode ->
-            // Once the settings that added or changed the helper are on disk: the window reads them in the assistant's process.
-            SettingsStore.afterSaves {
-                scope.launch(Dispatchers.Main) {
-                    // By name: the main process never refers to the assistant's classes.
-                    try {
-                        ctx.startActivity(Intent().setClassName(ctx.packageName, HelperWindow.CLASS).putExtra(HelperWindow.EXTRA_HELPER, id)
-                            .putExtra(HelperWindow.EXTRA_MODE, mode))
-                    } catch (_: Exception) { say("Couldn't open the connection window.") }
+        helperWindow = ::openHelperWindow,
+        helperMoved = { id, dropKey ->
+            // The address now names another host: the key saved for the old one goes first (files and the Keystore; the
+            // assistant drops its client), so Test connection, which opens after, can't send it to the new address.
+            scope.launch(Dispatchers.IO) {
+                if (dropKey) {
+                    HelperKeyFiles.delete(ctx, id)
+                    Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
                 }
+                withContext(Dispatchers.Main) { openHelperWindow(id, HelperWindow.MODE_TEST) }
             }
         },
         deleteHelperKey = { id ->
@@ -559,6 +572,8 @@ class AppActions(
      * runs there, never through this one; [HelperWindow] modes); its key deleted here; the helper removed with its files.
      */
     val helperWindow: (id: String, mode: String) -> Unit = { _, _ -> },
+    /** A helper's address changed (already saved): its key goes first when [dropKey] (another host), then Test connection opens. */
+    val helperMoved: (id: String, dropKey: Boolean) -> Unit = { _, _ -> },
     val deleteHelperKey: (String) -> Unit = {},
     val removeHelper: (String) -> Unit = {},
     val openPage: (Page) -> Unit,

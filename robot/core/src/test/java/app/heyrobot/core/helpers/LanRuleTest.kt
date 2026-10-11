@@ -3,6 +3,7 @@ package app.heyrobot.core.helpers
 import app.heyrobot.core.helpers.LanRule.Range
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -77,6 +78,17 @@ class LanRuleTest {
         assertTrue(LanRule.normalize("box.tail1234.ts.net")!!.hint!!.contains("Tailscale"))
         assertTrue(LanRule.normalize("nas.local")!!.hint!!.contains(".local"))
         assertNull(LanRule.normalize("192.168.1.20")!!.hint)
+    }
+
+    @Test fun aKeyFollowsOnlyTheSameHost() {
+        assertTrue(LanRule.sameHost("192.168.1.20", "http://192.168.1.20:11434/v1"))
+        assertTrue(LanRule.sameHost("https://API.example.com/v1", "https://api.example.com./v2"))
+        assertTrue(LanRule.sameHost("[fd7a::1]:11434", "http://[fd7a:0:0:0:0:0:0:1]:8080"))
+        assertFalse(LanRule.sameHost("192.168.1.20", "192.168.1.21"))
+        assertFalse(LanRule.sameHost("https://api.example.com/v1", "https://api.example.org/v1"))
+        assertFalse(LanRule.sameHost("desktop.lan", "desktop.lan.evil.example"))
+        assertFalse(LanRule.sameHost(null, "192.168.1.20"))
+        assertFalse(LanRule.sameHost("http://user:pass@10.0.0.1", "10.0.0.1"))
     }
 
     @Test fun literalsOnly() {

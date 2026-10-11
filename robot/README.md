@@ -140,7 +140,9 @@ FLAG_SECURE, out of autofill, the clipboard cleared if it still holds the key), 
 Keystore key (AES-GCM) and decrypted only there: by `HelperLink` just before a client is made, and by Test
 connection. Claude keeps its key files and Keystore alias from 0.3.0; another helper's are in `helpers/<id>/`. Settings
 shows the key masked ("gsk_…AB12"); a key that doesn't start the company's usual way is only a warning. **Remove
-helper** deletes its key file and its Keystore key (crypto-shred) and what Test connection found. Backups and device
+helper** deletes its key file and its Keystore key (crypto-shred) and what Test connection found. Changing a helper's
+address to another host removes its key first (the same computer on another port or path keeps it), so a key never
+goes to a host it wasn't saved for. Backups and device
 transfer include nothing (`allowBackup="false"`, the data extraction rules exclude everything).
 
 ### Names and voice
@@ -168,7 +170,8 @@ a spoken yes never sends personal content; your screen and photos go only after 
   includes the conversation without the card, a spoken yes can send an offer, and what Robot reads for the helper goes
   without "Share with …". Your screen and photos still need a tap every time, and so does a conversation that had one
   (Robot's own words in it may repeat what was on the screen). Adding a server asks once: "Is this
-  computer yours, and does it run the model itself?". Changing the address turns trust off.
+  computer yours, and does it run the model itself?". Changing the address turns trust off (and, for another host,
+  removes the key).
 - Settings › Safety & privacy keeps its switches, now for every helper: "Send personal content to helpers
   automatically", "Voice yes can send personal content" and "Card when a helper asks Robot to do something".
 

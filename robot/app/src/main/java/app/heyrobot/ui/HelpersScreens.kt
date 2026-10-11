@@ -474,10 +474,16 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
         AddressDialog(p, h.baseUrl, onDismiss = { editAddress = false }) { address ->
             editAddress = false
             if (address != h.baseUrl) {
-                // A new address may be another computer: trust starts over, and Test connection finds the server.
+                // A new address may be another computer: trust starts over, a key saved for another host never goes to this
+                // one (it is removed), and Test connection finds the server.
+                val dropKey = key && !LanRule.sameHost(h.baseUrl, address)
                 set(h.copy(baseUrl = address, trust = false))
-                if (h.trust) a.say("“Trusted with personal content” was turned off: the address changed.")
-                a.helperWindow(h.id, HelperWindow.MODE_TEST)
+                when {
+                    h.trust && dropKey -> a.say("“Trusted with personal content” was turned off and the key was removed: the address changed. Add the key again if the server needs one.")
+                    h.trust -> a.say("“Trusted with personal content” was turned off: the address changed.")
+                    dropKey -> a.say("The key was removed: Robot sends a key only to the host it was saved for. Add it again if the server needs one.")
+                }
+                a.helperMoved(h.id, dropKey)
             }
         }
     }
