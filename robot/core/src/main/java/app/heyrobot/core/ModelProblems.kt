@@ -211,7 +211,9 @@ data class ReportFacts(
  * built-in model's, from the catalogue; never your own file's name or any path), the memory, Android's record of how the
  * model process ended, and the last [LOG_LINES] voice log events in words, wake phrases by number only. Never a question,
  * an answer, a name, a contact or a file of yours: none of those is in the note, the voice log or Android's records Robot
- * reads, and the free text Android adds is scrubbed of paths ([scrub]).
+ * reads, and the free text Android adds is scrubbed of paths ([scrub]). 0.6.0: nor a transcript's words, a helper's name,
+ * address or key, or the updater's access token: the report is built from [ModelProblem] and [ReportFacts] alone, which
+ * hold none of them (helpers and conversation mode are in the voice log as fixed codes and counts only).
  */
 object ProblemReport {
     const val LOG_LINES = 50

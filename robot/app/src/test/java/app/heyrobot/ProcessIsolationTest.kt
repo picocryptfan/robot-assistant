@@ -454,6 +454,7 @@ class ProcessIsolationTest {
      * numbers (core ModelProblem); only the main app builds the report from it (core ProblemReport, whose test checks that
      * nothing personal gets in) and only when you open Settings › Model; and the report's code reads none of your
      * conversations, notes, people or the crash trace (no tombstone in 0.4.7). Nothing sends it: copy and share are yours.
+     * 0.6.0: nor a helper's name, address or key, a transcript, a voiceprint or the updater's token.
      */
     @Test fun problemReportsHoldCodesAndAreNeverSent() {
         assertEquals(listOf("app/assistant/BrainLink.kt"), usersOf(Regex("""\bProblems\.(note|gpuFailed|gpuTrying)\(""")))
@@ -469,6 +470,18 @@ class ProcessIsolationTest {
         assertTrue(problems.contains("VoiceLogCodec.decode(readOrNull(Paths.voiceLog(ctx)))"))
         val report = code(File(java("core"), "app/heyrobot/core/ModelProblems.kt"))
         assertTrue(report.contains("VoiceLogText.describe(e)"))
+        // 0.6.0: nor the helpers (their names, addresses and keys), conversation mode's transcripts, voiceprints or the
+        // updater's access token: neither the code that builds the report nor the note and its facts reach them, and the
+        // settings (where the helpers' names and addresses are) aren't read either.
+        val secrets = Regex("""\b(HelperKeys|HelperKeyFiles|HelperFiles|HelperConfig|KeystoreSecret|UpdateStore|GitHubClient|Transcripts|TranscriptStore|""" +
+            """TranscriptCodec|TranscriptLine|VoiceprintFiles|Voiceprints|SettingsStore|RobotSettings|VoiceHub)\b|\bapp\.heyrobot\.(helpers|update|core\.helpers)\b""")
+        val reportCode = ours.filterKeys { it == "app/sys/Problems.kt" || it == "core/core/ModelProblems.kt" }
+        assertEquals(2, reportCode.size)
+        assertEquals(emptyList<String>(), usersOf(secrets, reportCode))
+        // The voice process notes a problem with BrainKeeper's own facts only (the plan, the memory, :brain's pid).
+        val keeper = code(File(java("app"), "app/heyrobot/assistant/BrainLink.kt"))
+        val note = keeper.substringAfter("private fun noteProblem(").substringBefore("\n    }\n")
+        assertTrue(note, note.contains("Problems.note(ctx, p)") && !secrets.containsMatchIn(note))
     }
 
     /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */
