@@ -148,6 +148,13 @@ class ApprovalGateTest {
         // What a read finds for Claude goes to Claude: a tap first, unless personal content may go by itself.
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.READ_CALENDAR, false, off, content = true, asked = true, remote = true))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.READ_CALENDAR, false, off.copy(personalToHelpers = true), content = true, asked = true, remote = true))
+        // So does what the nearest place found online says (where you are): the maps action going online asks like a read.
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, off, content = true, asked = true, remote = true, online = true))
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, off, content = true, asked = true, remote = true, online = false))
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, off.copy(personalToHelpers = true), content = true, asked = true,
+            remote = true, online = true))
+        // Robot's own model looking it up for you is no hand-over to Claude.
+        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.MAPS_NAVIGATE, false, off, online = true))
         // Never past the lock screen or a level of Off.
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.ADD_NOTE, true, off, remote = true))
         assertEquals(GateDecision.DISABLED, ApprovalGate.decide(ToolName.ADD_NOTE, false, off.copy(approvals = off.approvals + (ToolName.ADD_NOTE to Approval.OFF)), remote = true))

@@ -401,7 +401,8 @@ class TurnRunner(
             return (a.tool.id to status.toolResponse(r?.forModel ?: detail, r?.results)) to launched
         }
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
-        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote)) {
+        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote,
+            online = asked.online)) {
             GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
             else -> {}
@@ -411,7 +412,7 @@ class TurnRunner(
             is Prepared.Ready -> p
         }
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, a.reasons, content = untrusted,
-            asked = a.action.tool in this.asked, remote = remote)
+            asked = a.action.tool in this.asked, remote = remote, online = a.action.online)
         val chosen = when (decision) {
             // No card for these choices (the settings say so): the first, the best match.
             GateDecision.RUN -> a.choices.firstOrNull()?.action ?: a.action

@@ -720,6 +720,31 @@ class TurnTest {
         assertEquals(listOf<Action>(second), on.ran)
     }
 
+    /**
+     * Claude's "nearest pharmacy" says where you are once it is found: with "Card when Claude asks Robot to do something"
+     * off, it still waits for a tap unless "Send personal content to helpers automatically" is on.
+     */
+    @Test fun claudesNearestPlaceAsksLikeARead() = runBlocking {
+        val settings = RobotSettings(claudeActionCards = false)
+        val actions = FakeActions(settings)
+        actions.prepare = { a -> Prepared.Ready(if (a is Action.MapsNavigate) a.copy(nearest = true) else a) }
+        val view = FakeView()
+        val conf = Confirmations()
+        val go = call("maps_navigate", "destination" to "pharmacy")
+        val turn = async {
+            TurnRunner(FakeModel(ModelOutcome.Calls(listOf(go))), actions, view, conf, untrusted = true, remote = true, asked = setOf(ToolName.MAPS_NAVIGATE)) { "n${++ids}" }.run()
+        }
+        conf.answer(withTimeout(5_000) { view.pending.receive() }, false)
+        turn.await()
+        assertEquals(emptyList<Action>(), actions.ran)
+        // Personal content may go by itself: no tap.
+        val free = FakeActions(settings.copy(personalToHelpers = true))
+        free.prepare = actions.prepare
+        TurnRunner(FakeModel(ModelOutcome.Calls(listOf(go))), free, FakeView(), Confirmations(), untrusted = true, remote = true,
+            asked = setOf(ToolName.MAPS_NAVIGATE)) { "o${++ids}" }.run()
+        assertEquals(listOf<Action>(Action.MapsNavigate("pharmacy", nearest = true)), free.ran)
+    }
+
     /** A phone locked while the card waited: only what "Works on the lock screen" allows still runs. */
     @Test fun theLockScreenSettingHoldsAfterTheCard() = runBlocking {
         val actions = FakeActions(RobotSettings(lockedTools = setOf(ToolName.MAPS_SEARCH)).let { it.copy(approvals = it.approvals + (ToolName.MAPS_SEARCH to Approval.ASK)) })
