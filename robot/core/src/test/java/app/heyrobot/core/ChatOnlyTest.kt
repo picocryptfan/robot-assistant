@@ -61,6 +61,10 @@ class ChatOnlyTest {
             "what's the temperature in Paris" to ToolName.WEATHER,
             "directions to the hospital" to ToolName.MAPS_NAVIGATE,
             "what's John Smith's number" to ToolName.LOOKUP_CONTACT,
+            "Create a reminder to take my pills" to ToolName.ADD_EVENT,
+            "set up a meeting with Dr Martin" to ToolName.ADD_EVENT,
+            "add it to the calendar" to ToolName.ADD_EVENT,
+            "make a note to call the pharmacy" to ToolName.ADD_NOTE,
         )
         for ((q, tool) in asked) assertEquals(q, tool, ChatOnly.actionAsked(q))
     }
@@ -98,6 +102,9 @@ class ChatOnlyTest {
             "directions for use of amoxicillin",
             "Directions to take metformin",
             "route for insulin injection",
+            "Create a meal plan for after a cardiac event",
+            "add more fiber to my diet to lower the risk of a cardiac event",
+            "Write a note to my doctor about my symptoms",
         )) assertNull(q, ChatOnly.actionAsked(q))
     }
 
