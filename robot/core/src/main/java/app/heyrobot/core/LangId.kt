@@ -8,7 +8,7 @@ import java.util.Locale
 // `lang` is empty), so Robot reads it from the words: a naive Bayes over words and character 1-4-grams, its table
 // trained by tools/make_langid.py on Tatoeba's CC0 sentences only (assets langid/fr-en.tsv, about 170 kB), plus a few
 // cue rules (French accents and elisions, English contractions). French and English today; another language is one
-// more column in the table, trained the same way.
+// more column in the table, trained the same way (docs/languages.md, the playbook for adding one).
 //
 // Short lines are the hard part. A line with no word of two letters or more ("5 h 30", "OK!" spelled "K"), or a lone
 // name ("Montréal", "Marie-Ève Gagnon": every word capitalised and none the table knows) is not sure, and so is a line

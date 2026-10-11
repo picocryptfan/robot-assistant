@@ -1,26 +1,38 @@
 #!/usr/bin/env python3
-"""Builds the language-ID table for conversation mode (core LangId.kt) from Tatoeba's CC0 sentences.
+"""Builds the language-ID table for conversation mode (core LangId.kt) from public-domain sentences.
 
-Writes:
-- core/src/main/assets/langid/fr-en.tsv: the model. A naive Bayes over words and character 1-4-grams (docs/
+Writes (NAME is the languages joined by "-", "fr-en" today):
+- core/src/main/assets/langid/NAME.tsv: the model. A naive Bayes over words and character 1-4-grams (docs/
   conversation-mode.md 2.3): the most frequent TOP words and TOP n-grams of each language, with each language's
   smoothed log-probability, times SCALE and rounded. Lines starting with "#" are comments, "@" settings, the rest
   "feature<TAB>value per language". Words are written "w:word"; n-grams as they are, spaces included (a word is
   padded with one space on each side).
-- core/src/test/resources/langid/heldout-fr-en.tsv: HELD sentences per language and length that the model never
+- core/src/test/resources/langid/heldout-NAME.tsv: HELD sentences per language and length that the model never
   saw, each with this script's answer and margin. LangIdTest checks the accuracy on them, and that the Kotlin port
   gives exactly the same answer and margin for every line.
 
-Training data: ONLY Tatoeba's CC0 1.0 export (https://downloads.tatoeba.org/exports/sentences_CC0.tar.bz2), the
-sentences their authors released into the public domain. Never the per-language or full exports, which are mostly
-CC-BY 2.0 FR. THIRD_PARTY.md records the export's SHA-256 and date; this script prints them.
+Training data: public domain (CC0) text only, so the table and its test file carry no conditions.
+- Tatoeba's CC0 1.0 export (https://downloads.tatoeba.org/exports/sentences_CC0.tar.bz2), the sentences their authors
+  released into the public domain. Never the per-language or full exports, which are mostly CC-BY 2.0 FR. Plenty of
+  French, English and Russian; almost nothing for most other languages (docs/languages.md 3.1 has the counts).
+- For any other language, --text: plain text, one sentence per line, such as Common Voice's sentence files
+  (github.com/common-voice/common-voice, server/data/<locale>/*.txt, CC0 1.0). A directory means every *.txt in it
+  except europarl-*.txt, which come from the Europarl corpus and are not CC0.
+THIRD_PARTY.md records each source's SHA-256 and date; this script prints them and writes them in the table's header.
 
 The features and the cue rules here must stay the same as LangId.kt's (features(), CUES): LangIdTest checks the
 Kotlin side against the held-out lines, so a change on one side only shows up there.
 
-Usage: python3 -I tools/make_langid.py <sentences_CC0.tar.bz2> <robot project dir>
-Standard library only. Deterministic: the same export gives the same files.
+Usage:
+  python3 -I tools/make_langid.py <sentences_CC0.tar.bz2> <robot project dir>          (today's fr-en table)
+  python3 -I tools/make_langid.py --langs fr,en,es --tatoeba <sentences_CC0.tar.bz2> --text es=<cv>/server/data/es \
+      [--max N] [--top N] [--out <dir>] [--dry-run] [<robot project dir>]
+--langs: the table's languages, in order (ISO 639-1, as LangId and Parakeet's text use). --max: at most N training
+sentences per language (a deterministic sample; 0 = all). --out: write under <dir> instead of the project (a trial).
+--dry-run: print the measurements, write nothing. docs/languages.md is the playbook for adding a language.
+Standard library only. Deterministic: the same sources and options give the same files.
 """
+import argparse
 import csv
 import hashlib
 import io
@@ -33,6 +45,13 @@ import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
+# Tatoeba's language codes (ISO 639-3) for the table's (ISO 639-1). Parakeet v3's 25 languages, and a few more.
+TATOEBA = {
+    "bg": "bul", "ca": "cat", "cs": "ces", "da": "dan", "de": "deu", "el": "ell", "en": "eng", "es": "spa", "et": "est",
+    "eu": "eus", "fi": "fin", "fr": "fra", "ga": "gle", "gl": "glg", "hr": "hrv", "hu": "hun", "it": "ita", "lt": "lit",
+    "lv": "lvs", "mt": "mlt", "nb": "nob", "nl": "nld", "oc": "oci", "pl": "pol", "pt": "por", "ro": "ron", "ru": "rus",
+    "sk": "slk", "sl": "slv", "sv": "swe", "uk": "ukr", "br": "bre", "cy": "cym", "eo": "epo", "be": "bel",
+}
 LANGS = [("fra", "fr"), ("eng", "en")]
 TOP = 3000
 ALPHA = 0.5
@@ -79,6 +98,11 @@ def features(s):
     return out
 
 
+# A sentence's id: ("tatoeba", Tatoeba's id) or (file name, line number), written as "123" or "es.txt:45".
+def show_id(i):
+    return str(i[1]) if i[0] == "tatoeba" else f"{i[0]}:{i[1]}"
+
+
 def read_cc0(path):
     data = path.read_bytes()
     sha = hashlib.sha256(data).hexdigest()
@@ -88,16 +112,30 @@ def read_cc0(path):
     csv.field_size_limit(10 ** 7)
     by = defaultdict(list)
     newest = ""
+    codes = {t: c for t, c in LANGS}
     for row in csv.reader(io.StringIO(text), delimiter="\t", quoting=csv.QUOTE_NONE):
-        if len(row) >= 3 and row[1] in dict(LANGS):
-            by[dict(LANGS)[row[1]]].append((int(row[0]), row[2].strip()))
+        if len(row) >= 3 and row[1] in codes:
+            by[codes[row[1]]].append((("tatoeba", int(row[0])), row[2].strip()))
             if len(row) >= 4 and row[3] > newest:
                 newest = row[3]
     return by, sha, newest
 
 
+def read_text(lang, path):
+    """One sentence per line from a file, or from every *.txt in a directory but europarl-*.txt. Returns the rows and
+    one provenance line per file (name, lines, SHA-256)."""
+    files = [path] if path.is_file() else sorted(f for f in path.glob("*.txt") if not f.name.startswith("europarl"))
+    rows, notes = [], []
+    for f in files:
+        data = f.read_bytes()
+        lines = data.decode("utf-8").splitlines()
+        rows += [((f"{lang}/{f.name}", n + 1), t.strip()) for n, t in enumerate(lines) if t.strip()]
+        notes.append(f"{lang}: {f.name}, {len(lines)} lines, sha256 {hashlib.sha256(data).hexdigest()}")
+    return rows, notes
+
+
 def dedupe(by):
-    """One copy of each sentence (same words, any case or punctuation), and none that both languages have."""
+    """One copy of each sentence (same words, any case or punctuation), and none that two languages share."""
     keys = {}
     for lang, rows in by.items():
         seen = {}
@@ -106,7 +144,8 @@ def dedupe(by):
             if k and k not in seen:
                 seen[k] = (i, s)
         keys[lang] = seen
-    both = set.intersection(*(set(v) for v in keys.values()))
+    seen_in = Counter(k for v in keys.values() for k in v)
+    both = {k for k, n in seen_in.items() if n > 1}
     return {lang: [v for k, v in sorted(seen.items(), key=lambda kv: kv[1][0]) if k not in both] for lang, seen in keys.items()}
 
 
@@ -140,7 +179,9 @@ COMMON = 4000
 
 def everyday(s, common):
     raw = WORD.findall(unicodedata.normalize("NFC", s).replace("\u2019", "'"))
-    return (not QUIET.search(s) and all(w[0].islower() or w == "I" or w.startswith("I'") for w in raw[1:])
+    # A script without capitals (Hebrew, Arabic, Devanagari...) has no names to spot this way.
+    caseless = not any(c.isupper() or c.islower() for c in s)
+    return (not QUIET.search(s) and all(caseless or w[0].islower() or w == "I" or w.startswith("I'") for w in raw[1:])
             and all(w in common for w in words(s)))
 
 
@@ -251,11 +292,81 @@ def report(model, held, label):
             print(f"  {lo}-{hi} words: {100 * ok / tot:.1f}% right, {unsure} not sure, of {tot}")
 
 
-def main():
-    src, root = Path(sys.argv[1]), Path(sys.argv[2])
-    by, sha, newest = read_cc0(src)
-    by = dedupe(by)
+def short_lines(check, val):
+    """Short lines are rare in Tatoeba: the first one and two words of the validation sentences stand in for them."""
+    for k in (1, 2):
+        ok = unsure = tot = 0
+        wrong = Counter()
+        for lang, rows in val.items():
+            for _, s in rows:
+                if len(s.split()) > k:
+                    g, _ = check.detect(" ".join(s.split()[:k]))
+                    tot += 1
+                    ok += g == lang
+                    unsure += g is None
+                    if g is not None and g != lang:
+                        wrong[f"{lang}->{g}"] += 1
+        print(f"  first {k} word(s): {100 * ok / tot:.1f}% right, {100 * unsure / tot:.1f}% not sure, {100 * (tot - ok - unsure) / tot:.1f}% wrong, of {tot}")
+        if len(check.langs) > 2 and wrong:
+            print("    mistaken for: " + ", ".join(f"{k} {v}" for k, v in wrong.most_common(8)))
+
+
+def options(argv):
+    a = argparse.ArgumentParser(description="Build Robot's language-ID table (docs/languages.md).")
+    a.add_argument("paths", nargs="*", help="<sentences_CC0.tar.bz2> <robot project dir>, or just <robot project dir>")
+    a.add_argument("--langs", default="fr,en", help="the table's languages in order, ISO 639-1 (default fr,en)")
+    a.add_argument("--tatoeba", type=Path, help="Tatoeba's sentences_CC0.tar.bz2")
+    a.add_argument("--text", action="append", default=[], metavar="LANG=PATH",
+                   help="CC0 text, one sentence per line: a file, or a directory of *.txt (europarl-*.txt skipped)")
+    a.add_argument("--max", type=int, default=0, help="at most this many training sentences per language (0 = all)")
+    a.add_argument("--top", type=int, default=TOP, help=f"words and n-grams kept per language (default {TOP})")
+    a.add_argument("--out", type=Path, help="write under this directory instead of the project")
+    a.add_argument("--dry-run", action="store_true", help="measure only, write nothing")
+    o = a.parse_args(argv)
+    if len(o.paths) == 2 and o.tatoeba is None:
+        o.tatoeba, root = Path(o.paths[0]), Path(o.paths[1])
+    elif len(o.paths) == 1:
+        root = Path(o.paths[0])
+    elif not o.paths and (o.out or o.dry_run):
+        root = None
+    else:
+        a.error("give the robot project dir (or --out / --dry-run)")
+    o.root = o.out or root
+    o.langs = [x.strip() for x in o.langs.split(",") if x.strip()]
+    if len(o.langs) < 2:
+        a.error("--langs needs two languages or more")
+    o.text = [t.split("=", 1) for t in o.text]
+    if any(len(t) != 2 or t[0] not in o.langs for t in o.text):
+        a.error("--text is LANG=PATH, LANG one of --langs")
+    if o.tatoeba is None and not o.text:
+        a.error("no sentences: give --tatoeba and/or --text")
+    return o
+
+
+def main(argv=None):
+    global LANGS, TOP
+    o = options(sys.argv[1:] if argv is None else argv)
+    LANGS = [(TATOEBA.get(c, c), c) for c in o.langs]
+    TOP = o.top
+    by, sha, newest = defaultdict(list), None, ""
+    sources = []
+    if o.tatoeba:
+        by, sha, newest = read_cc0(o.tatoeba)
+        sources.append("tatoeba")
+    notes = []
+    for lang, path in o.text:
+        rows, n = read_text(lang, Path(path))
+        by[lang] += rows
+        notes += n
+    missing = [c for c in o.langs if len(by.get(c, [])) < 50]
+    if missing:
+        sys.exit(f"too few sentences for {', '.join(missing)} (fewer than 50); docs/languages.md 3.1 lists where to find more")
+    # In the order the sources first name each language (Tatoeba's file order, then --text): the held-out draw goes
+    # language by language from one seed, so this order is part of what makes a rebuild give the same files.
+    by = dedupe({c: by[c] for c in by if c in o.langs})
     held, train = split(by)
+    if o.max:
+        train = {l: sorted(random.Random(SEED + 2).sample(rows, min(o.max, len(rows)))) for l, rows in train.items()}
     model = Model(train)
     # A validation look before writing: a second split of the training sentences, so the margins above are not
     # tuned on the held-out file.
@@ -264,40 +375,50 @@ def main():
     val_ids = {i for rows in val.values() for i, _ in rows}
     check = Model({l: [r for r in rows if r[0] not in val_ids] for l, rows in train.items()})
     report(check, val, "validation (trained without it):")
-    # Short lines are rare in Tatoeba: the first one and two words of the validation sentences stand in for them.
-    for k in (1, 2):
-        ok = unsure = tot = 0
-        for lang, rows in val.items():
-            for _, s in rows:
-                if len(s.split()) > k:
-                    g, _ = check.detect(" ".join(s.split()[:k]))
-                    tot += 1
-                    ok += g == lang
-                    unsure += g is None
-        print(f"  first {k} word(s): {100 * ok / tot:.1f}% right, {100 * unsure / tot:.1f}% not sure, {100 * (tot - ok - unsure) / tot:.1f}% wrong, of {tot}")
+    short_lines(check, val)
     report(model, held, "held-out file:")
     counts = ", ".join(f"{l} {len(train[l])}" for l in model.langs)
-    header = [
-        "robot-langid 1: language ID for conversation mode (core LangId.kt), written by tools/make_langid.py.",
-        "Trained only on Tatoeba's CC0 1.0 sentences (public domain): https://downloads.tatoeba.org/exports/sentences_CC0.tar.bz2",
-        f"export sha256 {sha}, newest sentence {newest}; after removing duplicates and the held-out lines: {counts}.",
-        f"Top {TOP} words and top {TOP} character 1-4-grams per language, add-{ALPHA} smoothing, log-probabilities x {SCALE}.",
-    ]
-    asset = root / "core" / "src" / "main" / "assets" / "langid" / "fr-en.tsv"
+    name = "-".join(model.langs)
+    if sources == ["tatoeba"] and not notes:
+        header = [
+            "robot-langid 1: language ID for conversation mode (core LangId.kt), written by tools/make_langid.py.",
+            "Trained only on Tatoeba's CC0 1.0 sentences (public domain): https://downloads.tatoeba.org/exports/sentences_CC0.tar.bz2",
+            f"export sha256 {sha}, newest sentence {newest}; after removing duplicates and the held-out lines: {counts}.",
+        ]
+    else:
+        header = ["robot-langid 1: language ID for conversation mode (core LangId.kt), written by tools/make_langid.py.",
+                  "Trained only on public domain (CC0 1.0) sentences:"]
+        if sha:
+            header.append(f"Tatoeba https://downloads.tatoeba.org/exports/sentences_CC0.tar.bz2 sha256 {sha}, newest sentence {newest}")
+        header += notes
+        header.append(f"After removing duplicates and the held-out lines{f' (at most {o.max} each)' if o.max else ''}: {counts}.")
+    header.append(f"Top {TOP} words and top {TOP} character 1-4-grams per language, add-{ALPHA} smoothing, log-probabilities x {SCALE}.")
+    if o.dry_run:
+        print(f"dry run: {name}, {len(model.vocab)} features; nothing written")
+        return
+    asset = o.root / "core" / "src" / "main" / "assets" / "langid" / f"{name}.tsv"
     asset.parent.mkdir(parents=True, exist_ok=True)
     model.write(asset, header)
-    test = root / "core" / "src" / "test" / "resources" / "langid" / "heldout-fr-en.tsv"
+    test = o.root / "core" / "src" / "test" / "resources" / "langid" / f"heldout-{name}.tsv"
     test.parent.mkdir(parents=True, exist_ok=True)
     with open(test, "w", encoding="utf-8", newline="\n") as f:
-        f.write("# Tatoeba CC0 1.0 sentences (public domain) held out of core/src/main/assets/langid/fr-en.tsv by tools/make_langid.py.\n")
-        f.write(f"# export sha256 {sha}. Columns: Tatoeba sentence id, language, this script's answer (? = not sure), its margin x {SCALE}, sentence.\n")
+        if header[1].startswith("Trained only on Tatoeba"):
+            f.write(f"# Tatoeba CC0 1.0 sentences (public domain) held out of core/src/main/assets/langid/{name}.tsv by tools/make_langid.py.\n")
+            f.write(f"# export sha256 {sha}. Columns: Tatoeba sentence id, language, this script's answer (? = not sure), its margin x {SCALE}, sentence.\n")
+        else:
+            f.write(f"# CC0 1.0 sentences (public domain) held out of core/src/main/assets/langid/{name}.tsv by tools/make_langid.py;\n")
+            f.write("# sources as in the table's header. Read every line before committing: docs/languages.md 3.1.\n")
+            f.write(f"# Columns: sentence id (Tatoeba id, or file:line), language, this script's answer (? = not sure), its margin x {SCALE}, sentence.\n")
         for lang in model.langs:
             for i, s in sorted(held[lang], key=lambda r: (len(words(r[1])), r[0])):
                 g, m = model.detect(s)
-                f.write(f"{i}\t{lang}\t{g or '?'}\t{m}\t{s}\n")
+                f.write(f"{show_id(i)}\t{lang}\t{g or '?'}\t{m}\t{s}\n")
     print(f"{asset}: {asset.stat().st_size} bytes, {len(model.vocab)} features, sha256 {hashlib.sha256(asset.read_bytes()).hexdigest()}")
     print(f"{test}: {sum(len(v) for v in held.values())} lines")
-    print(f"export: {src.name} sha256 {sha}, newest sentence {newest}")
+    if sha:
+        print(f"export: {o.tatoeba.name} sha256 {sha}, newest sentence {newest}")
+    for n in notes:
+        print(f"text: {n}")
 
 
 if __name__ == "__main__":
