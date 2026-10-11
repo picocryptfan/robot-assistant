@@ -5,6 +5,8 @@ import org.json.JSONObject
 import java.io.Closeable
 import java.io.File
 import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
 
 // Pure (java.io). What a .litertlm file holds, read from its header without loading it (0.4.1, "your own model file"):
 // the LiteRT-LM header's sections, the decoder's TFLite operator codes and metadata, and the LlmMetadata proto. A Kotlin
@@ -40,6 +42,27 @@ class FileByteSource(file: File) : ByteSource, Closeable {
     }
 
     override fun close() = raf.close()
+}
+
+/**
+ * The bytes of a file already open (0.4.5): :brain reads a GGUF file's header through the very file it then hands to
+ * llama.cpp, never through its name again. The caller owns [channel] and closes it.
+ */
+class ChannelByteSource(private val channel: FileChannel) : ByteSource {
+    override val size: Long = channel.size()
+
+    override fun read(pos: Long, n: Int): ByteArray {
+        if (pos < 0 || n < 0 || pos > size - n) throw LiteRtLmFormat("outside the file")
+        val b = ByteBuffer.allocate(n)
+        var at = pos
+        while (b.hasRemaining()) {
+            val k = channel.read(b, at)
+            // The file shrank under the read (or a read that makes no progress): never a loop, never a short read.
+            if (k <= 0) throw LiteRtLmFormat("outside the file")
+            at += k
+        }
+        return b.array()
+    }
 }
 
 class ArrayByteSource(private val bytes: ByteArray) : ByteSource {
@@ -424,8 +447,10 @@ object LiteRtLmCheck {
 
 /**
  * Your own model file (Settings › Model), as the main app recorded it after the copy and the check: shown in the app,
- * read by the voice process before a load. [name] is the picked file's name, for the screen only (never a path, never
- * logged, never a reason to trust it). [fingerprint] is the copy's size and modification time when it was checked.
+ * read by the voice process before a load, and by :brain before it loads it. [name] is the picked file's name, for the
+ * screen only (never a path, never logged, never a reason to trust it). [fingerprint] is the copy's size and
+ * modification time when it was checked. A LiteRT-LM file has its [report]; a GGUF file (0.4.5) its [gguf] report, and
+ * then [report] only says it isn't a LiteRT-LM file.
  */
 data class OwnModel(
     val name: String,
@@ -436,35 +461,73 @@ data class OwnModel(
     /** You allowed the TPU for this file (its warning card); only ever true for a proven Tensor G5 build. */
     val tpuAllowed: Boolean = false,
     val checkedAt: Long = 0,
+    /** 0.4.5: the GGUF check of a GGUF file (llama.cpp runs it); null for a LiteRT-LM file. */
+    val gguf: GgufReport? = null,
 ) {
+    val format: ModelFormat get() = if (gguf != null) ModelFormat.GGUF else ModelFormat.LITERT_LM
+
+    /** A LiteRT-LM file compiled for this phone's TPU, by every sign Robot checks. */
+    val tensorG5Build: Boolean get() = gguf == null && report.tensorG5Build
+
+    /** Why Robot can't run it here at all; null when it can. */
+    val unusable: String? get() = if (gguf != null) gguf.unusable else report.unusable
+
+    /** Where its check says it can run, before your say about the TPU: a GGUF file on the CPU only; null: nowhere. */
+    val runsOn: ModelBackend? get() = if (gguf != null) (if (gguf.unusable == null) ModelBackend.CPU else null) else report.backend
+
     /** Where it runs: the TPU only for a proven Tensor G5 build you allowed, else the CPU; null: nowhere. */
-    val backend: ModelBackend? get() = when (report.backend) {
+    val backend: ModelBackend? get() = when (runsOn) {
         ModelBackend.TPU -> if (tpuAllowed) ModelBackend.TPU else null
-        else -> report.backend
+        else -> runsOn
     }
 
-    /** [fingerprintNow]: the file's now (null: no file). A changed file must be checked again. */
-    fun availability(fingerprintNow: String?): ModelAvailability = when {
+    /**
+     * The context Robot loads it with (ContextWindow.forFile), whichever kind of file: 4,096, or its own when it was built
+     * for 2,048 to 4,095 tokens (chat only); 0 when it is too short to run at all.
+     */
+    val contextTokens: Int get() = gguf?.contextTokens ?: report.contextTokens
+
+    /** Built for less than 4,096 tokens: Robot runs it as chat only (0.4.3), a GGUF file as a .litertlm. */
+    val shortContext: Boolean get() = gguf?.shortContext ?: report.shortContext
+
+    /** It can look at photos: a LiteRT-LM file with a vision encoder; never a GGUF file (llama.cpp runs text only here). */
+    val vision: Boolean get() = gguf == null && report.vision
+
+    /** What the check found, a line each, for Settings › Model. */
+    fun lines(): List<String> = gguf?.lines() ?: report.lines()
+
+    /**
+     * [fingerprintNow]: the file's now (null: no file). A changed file must be checked again. [ggufEngine]: this build of
+     * Robot has its llama.cpp library (tools/build_llama.sh); without it a GGUF file can't run.
+     */
+    fun availability(fingerprintNow: String?, ggufEngine: Boolean = true): ModelAvailability = when {
         fingerprintNow == null -> ModelAvailability.NOT_DOWNLOADED
         fingerprintNow != fingerprint -> ModelAvailability.NOT_CHECKED
-        report.backend == null -> ModelAvailability.UNUSABLE
-        report.backend == ModelBackend.TPU && !tpuAllowed -> ModelAvailability.NEEDS_TPU_OK
+        runsOn == null -> ModelAvailability.UNUSABLE
+        gguf != null && !ggufEngine -> ModelAvailability.UNUSABLE
+        runsOn == ModelBackend.TPU && !tpuAllowed -> ModelAvailability.NEEDS_TPU_OK
         else -> ModelAvailability.READY
     }
 
     fun toJson(): JSONObject = JSONObject().put("name", name).put("bytes", bytes).put("sha256", sha256).put("fingerprint", fingerprint)
-        .put("report", report.toJson()).put("tpuAllowed", tpuAllowed && report.tensorG5Build).put("checkedAt", checkedAt)
+        .put("report", report.toJson()).put("tpuAllowed", tpuAllowed && tensorG5Build).put("checkedAt", checkedAt)
+        .apply { gguf?.let { put("gguf", it.toJson()) } }
 
     companion object {
         private val SHA = Regex("^[0-9a-f]{64}$")
+
+        /** The [report] a GGUF file's record carries (the LiteRT-LM check doesn't read GGUF files). */
+        val NOT_LITERT_LM = LiteRtLmReport(readable = false, problem = "It is a GGUF file, not a LiteRT-LM file.")
 
         fun fromJson(text: String?): OwnModel? = try {
             val o = JSONObject(text ?: return null)
             val report = LiteRtLmReport.fromJson(o.optJSONObject("report")) ?: return null
             val sha = o.getString("sha256").takeIf { SHA.matches(it) } ?: return null
+            // A "gguf" entry that can't be read makes the whole record unreadable (checked again), never a LiteRT-LM one.
+            val gguf = if (o.has("gguf")) GgufReport.fromJson(o.optJSONObject("gguf")) ?: return null else null
             OwnModel(o.optString("name", "").take(120), o.getLong("bytes"), sha, o.getString("fingerprint"), report,
                 // Never the TPU for a file that isn't a proven Tensor G5 build, whatever the file says.
-                o.optBoolean("tpuAllowed", false) && report.tensorG5Build, o.optLong("checkedAt", 0))
+                o.optBoolean("tpuAllowed", false) && gguf == null && report.tensorG5Build, o.optLong("checkedAt", 0), gguf)
         } catch (_: Exception) { null }
     }
 }

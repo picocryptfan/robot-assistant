@@ -19,20 +19,21 @@ import app.heyrobot.core.RLog
 // :BRAIN PROCESS ONLY (android:process=":brain"). A native crash in LiteRT-LM or the TPU stack kills
 // this process alone; the assistant in :voice sees the binder die and reloads on the next question (or, when the model
 // you chose is the one that keeps failing, falls back to Fast: BrainKeeper).
-// No LiteRT import here: GemmaEngine.kt is the only file that touches it.
+// No LiteRT import here: GemmaEngine.kt is the only file that touches it, and LlamaNative.kt the only one that loads
+// llama.cpp (0.4.5, your own GGUF file). Engines picks one of the two for each load; one engine holds a model at a time.
 
 class BrainService : Service() {
     private lateinit var work: HandlerThread
     private lateinit var handler: Handler
     private lateinit var messenger: Messenger
-    private lateinit var engine: GemmaEngine
+    private lateinit var engine: Engines
 
     override fun onCreate() {
         super.onCreate()
         work = HandlerThread("robot-brain").apply { start() }
         handler = Handler(work.looper) { m -> handle(m); true }
         messenger = Messenger(handler)
-        engine = GemmaEngine(this, handler)
+        engine = Engines(this, handler)
         RLog.i("brain_service", "op" to RLog.Code("create"))
     }
 
@@ -58,7 +59,7 @@ class BrainService : Service() {
             send(reply, BrainProtocol.EV_ERROR, reqId, BrainMsg.Error(BrainError.BAD_REQUEST, null))
             return
         }
-        val sink = GemmaEngine.Sink { what, m -> send(reply, what, reqId, m) }
+        val sink = BrainEngine.Sink { what, m -> send(reply, what, reqId, m) }
         try {
             when (msg.what) {
                 BrainProtocol.REQ_STATUS -> sink.emit(BrainProtocol.EV_STATUS, engine.status())

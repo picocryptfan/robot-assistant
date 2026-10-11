@@ -232,7 +232,7 @@ class SettingsTest {
     }
 
     /**
-     * Schema 12 (1.0 compliance; 8 to 11 belong to other branches): the nearest place's search server. Older files read as
+     * Schema 12 (0.4.5, the compliance work; 8, 9 and 11 belong to other branches): the nearest place's search server. Older files read as
      * OpenStreetMap's server, the only one they knew; a server you chose round-trips in its checked form; anything
      * unusable in a file reads as OpenStreetMap's rather than failing.
      */
@@ -282,5 +282,99 @@ class SettingsTest {
         assertEquals(mapOf("a" to 1L), damaged.confirmedTerms)
         assertEquals(emptyMap<String, Long>(), RobotSettings.fromJson("""{"schema":12,"confirmedTerms":[1,2]}""").confirmedTerms)
     }
-}
 
+    /**
+     * Settings › Model › "Let the model think first" (schema 10, 0.4.5): off by default and for every older file (0.4.1's
+     * schema 7, and 8 and 9 of the other branches, which never had it, even if one said so); a file of schema 10 keeps
+     * what it says, and the rest of an older file is kept.
+     */
+    @Test fun thinkingSwitchDefaultsMigrationAndRoundTrip() {
+        assertEquals(false, RobotSettings().modelThinks)
+        assertEquals(false, RobotSettings().toJson().getBoolean("modelThinks"))
+        for (old in listOf("""{"schema":7,"brainModel":"own"}""", """{"schema":8}""", """{"schema":9,"modelThinks":true}""", """{"schema":6}""", "{}")) {
+            assertEquals(old, false, RobotSettings.fromJson(old).modelThinks)
+        }
+        val v041 = RobotSettings.fromJson("""{"schema":7,"brainModel":"own","speechRate":1.25,"directAnswers":false}""")
+        assertEquals(BrainModel.OWN, v041.brainModelChoice)
+        assertEquals(1.25f, v041.speechRate)
+        assertEquals(false, v041.directAnswers)
+        assertEquals(false, v041.modelThinks)
+        assertEquals(RobotSettings.SCHEMA, v041.toJson().getInt("schema"))
+        assertEquals(true, RobotSettings.fromJson("""{"schema":10,"modelThinks":true}""").modelThinks)
+        assertEquals(false, RobotSettings.fromJson("""{"schema":10,"modelThinks":false}""").modelThinks)
+        assertEquals(false, RobotSettings.fromJson("""{"schema":10,"modelThinks":"maybe"}""").modelThinks)
+        assertEquals(true, RobotSettings.fromJson("""{"schema":12,"modelThinks":true}""").modelThinks)
+        val on = v041.copy(modelThinks = true)
+        assertEquals(on, RobotSettings.fromJson(on.toJson().toString()))
+        assertEquals(true, RobotSettings.fromJson(on.toJson().toString()).modelThinks)
+    }
+
+    /**
+     * Updating to 0.4.5: a settings file as 0.4.4 wrote it (schema 7), every choice away from its default, reads with every
+     * choice kept, the thinking switch off (schema 10) and no search server or terms of its own (schema 12), and the next
+     * save writes schema 12. A file of the unreleased GGUF branch (schema 10) keeps its thinking switch as well.
+     */
+    @Test fun aFileFrom044AndOneOfTheGgufBranchMigrateToSchema12() {
+        val chosen = RobotSettings(
+            wakeWord = false, wakeOnlyWhileCharging = true, speakReplies = SpeakReplies.ALWAYS, speechRate = 1.25f,
+            voice = VoiceChoice.KITTEN.id, livePartials = false, directAnswers = false, keepModelMinutes = 15, saveHistory = false,
+            approvals = RobotSettings.DEFAULT_APPROVALS + (ToolName.SEND_TEXT to Approval.AUTO) + (ToolName.MAPS_SEARCH to Approval.OFF) +
+                (ToolName.FREE_MEMORY to Approval.OFF),
+            textApp = TextApp.CHEOGRAM, smsGateway = "sms.example.org", phoneRegion = "FR", emailApp = EmailApp.PROTON,
+            eventCalendar = 7, eventMinutes = 30, rememberPicks = false, learnFromCheogram = true,
+            wakePhrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(3, "robot", WakeSensitivity.LOW, enabled = false)),
+            bargeIn = BargeIn.ALWAYS, interrupt = InterruptSensitivity.HIGH, playback = Playback.CALL, stopKey = StopKey.EITHER,
+            claudeEnabled = false, claudeRoute = ClaudeRoute.API, claudeModel = ClaudeModel.SONNET.id, claudeEffort = ClaudeEffortSetting.HIGH,
+            claudeSearch = false, claudeLocked = true, claudeVoice = "bf_emma", claudeShowCost = false, claudeHelp = Escalation.AUTO,
+            claudeBudgetCents = 200, weatherHome = WeatherPlace("Lyon", 45.76, 4.84),
+            safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
+            lockedTools = setOf(ToolName.SET_TIMER, ToolName.FLASHLIGHT), personalToHelpers = true, voiceYesPersonal = true,
+            keepMedia = true, voiceCards = false, nearestOnline = NearestOnline.ALWAYS, nearestOnlineAt = 1_760_000_000_000,
+            safetyNotice = true, brainModel = BrainModel.OWN.id,
+        )
+        // Every field 0.4.4's RobotSettings had, as its toJson wrote them (the approvals of every tool, Ask Claude's too).
+        val v044 = """{"schema":7,"wakeWord":false,"wakeOnlyWhileCharging":true,"speakReplies":"ALWAYS","speechRate":1.25,""" +
+            """"voice":"kitten_expr_voice_5_f","livePartials":false,"directAnswers":false,"keepModelMinutes":15,"saveHistory":false,""" +
+            """"approvals":{"set_timer":"AUTO","set_alarm":"AUTO","open_app":"AUTO","maps_search":"OFF","maps_navigate":"AUTO",""" +
+            """"flashlight":"AUTO","send_text":"AUTO","draft_email":"ASK","lookup_contact":"AUTO","add_note":"AUTO","find_notes":"AUTO",""" +
+            """"add_event":"ASK","read_calendar":"AUTO","weather":"AUTO","phone_status":"AUTO","free_memory":"OFF","free_storage":"ASK",""" +
+            """"ask_claude":"ASK"},"textApp":"CHEOGRAM","smsGateway":"sms.example.org","phoneRegion":"FR","emailApp":"PROTON",""" +
+            """"eventCalendar":7,"eventMinutes":30,"rememberPicks":false,"learnFromCheogram":true,""" +
+            """"wakePhrases":[{"id":1,"text":"hey robot","sensitivity":"MEDIUM","enabled":true},""" +
+            """{"id":3,"text":"robot","sensitivity":"LOW","enabled":false}],"bargeIn":"ALWAYS","interrupt":"HIGH","playback":"CALL",""" +
+            """"stopKey":"EITHER","claudeEnabled":false,"claudeRoute":"API","claudeModel":"claude-sonnet-5-5","claudeEffort":"HIGH",""" +
+            """"claudeSearch":false,"claudeLocked":true,"claudeVoice":"bf_emma","claudeShowCost":false,"claudeHelp":"AUTO",""" +
+            """"claudeBudgetCents":200,"weatherHome":{"name":"Lyon","lat":45.76,"lon":4.84},"safetyCards":"AFTER_READING",""" +
+            """"claudeActionCards":false,"whoCards":false,"learnedCards":false,"deleteCards":false,"lockedTools":["set_timer","flashlight"],""" +
+            """"personalToHelpers":true,"voiceYesPersonal":true,"keepMedia":true,"voiceCards":false,"nearestPlace":"ALWAYS",""" +
+            """"nearestPlaceAt":1760000000000,"safetyNotice":true,"brainModel":"own"}"""
+        val read = RobotSettings.fromJson(v044)
+        assertEquals(chosen, read)
+        assertEquals(false, read.modelThinks)
+        assertEquals("", read.nearestServer)
+        assertEquals(NearbyServer.DEFAULT, read.nearbyServer)
+        assertEquals(emptyMap<String, Long>(), read.confirmedTerms)
+        val saved = read.toJson()
+        assertEquals(12, saved.getInt("schema"))
+        assertEquals(false, saved.getBoolean("modelThinks"))
+        assertEquals(false, saved.has("nearestServer") || saved.has("confirmedTerms"))
+        assertEquals(read, RobotSettings.fromJson(saved.toString()))
+        // The 0.4.4 file has every key today's file can have but the three added since, and none it doesn't.
+        val keys044 = org.json.JSONObject(v044).keys().asSequence().toSet()
+        val everything = chosen.copy(modelThinks = true, nearestServer = "https://nominatim.example.org",
+            confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1L)).toJson().keys().asSequence().toSet()
+        assertEquals(setOf("modelThinks", "nearestServer", "confirmedTerms"), everything - keys044)
+        assertEquals(emptySet<String>(), keys044 - everything)
+
+        // The GGUF branch's file (schema 10, never released): the same choices and the switch on, kept on through 12.
+        val v10 = v044.replace(""""schema":7""", """"schema":10""").removeSuffix("}") + ""","modelThinks":true}"""
+        val ggufRead = RobotSettings.fromJson(v10)
+        assertEquals(chosen.copy(modelThinks = true), ggufRead)
+        assertEquals("", ggufRead.nearestServer)
+        assertEquals(emptyMap<String, Long>(), ggufRead.confirmedTerms)
+        val ggufSaved = ggufRead.toJson()
+        assertEquals(12, ggufSaved.getInt("schema"))
+        assertEquals(true, ggufSaved.getBoolean("modelThinks"))
+        assertEquals(ggufRead, RobotSettings.fromJson(ggufSaved.toString()))
+    }
+}

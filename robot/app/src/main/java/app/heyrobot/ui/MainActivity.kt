@@ -43,6 +43,7 @@ import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestResult
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.CalendarInfo
+import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
@@ -145,7 +146,7 @@ sealed class Page {
     data class PersonEdit(val id: String?) : Page()
     /** Settings › Safety & privacy (0.4.0). */
     data object Safety : Page()
-    /** Settings › About › Licences (1.0), and one part's licence ([file]: one of its notices instead). */
+    /** Settings › About › Licences (0.4.5), and one part's licence ([file]: one of its notices instead). */
     data object Licences : Page()
     data class Licence(val id: String, val file: String? = null) : Page()
     /** A Settings page by route (ui/settings/SettingsNav.kt; 0.4.x: "display"). */
@@ -207,6 +208,8 @@ data class Snapshot(
     val models: List<ModelStore.Snap> = emptyList(),
     val own: OwnModel? = null,
     val loaded: BrainModel? = null,
+    /** 0.4.5: this build has its llama.cpp library (tools/build_llama.sh), so your own GGUF file can run. */
+    val ggufEngine: Boolean = false,
     /** The voice models (speech recognition, voice, fast voice), in VoiceBundle order. */
     val voice: List<VoiceModelStore.Snap> = emptyList(),
     /** What the voice process last reported about its speech engines, and the last voice speed test. */
@@ -221,8 +224,9 @@ data class Snapshot(
 
     fun model(m: BrainModel): ModelStore.Snap? = models.firstOrNull { it.model == m }
 
-    /** [m] can be chosen: checked, and (your own file) runnable here, the TPU allowed if it needs it. */
-    fun ready(m: BrainModel): Boolean = model(m)?.status == ModelStatus.VERIFIED && (m != BrainModel.OWN || own?.backend != null)
+    /** [m] can be chosen: checked, and (your own file) runnable here, the TPU allowed if it needs it, llama.cpp in this build for a GGUF file. */
+    fun ready(m: BrainModel): Boolean = model(m)?.status == ModelStatus.VERIFIED &&
+        (m != BrainModel.OWN || own?.backend != null && (own.format != ModelFormat.GGUF || ggufEngine))
 
     /** Speech recognition and the default voice are installed. */
     val voiceReady: Boolean get() = voice(VoiceBundle.STT)?.status == ModelStatus.VERIFIED && voice(VoiceBundle.KOKORO)?.status == ModelStatus.VERIFIED
@@ -272,6 +276,7 @@ fun RobotAppUi(activity: MainActivity) {
                     models = models,
                     own = ModelStore.own(ctx),
                     loaded = ModelStore.loadedNow(ctx),
+                    ggufEngine = ModelStore.ggufEngine(ctx),
                     voice = VoiceBundle.entries.map { VoiceModelStore.snapshot(ctx, it) },
                     engines = VoiceEngineStatus.fromJson(readOrNull(Paths.voiceEngines(ctx))),
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
@@ -391,7 +396,7 @@ fun RobotAppUi(activity: MainActivity) {
         // A model whose publisher asks for conditions (core ModelTerms) downloads or imports only once you ticked them.
         download = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else ModelStore.startDownload(ctx, m)?.let(::say) },
         cancelDownload = { m -> ModelStore.cancelDownload(ctx, m) },
-        // Storage Access Framework: no storage permission; a .litertlm has no type of its own, so any file.
+        // Storage Access Framework: no storage permission; a .litertlm or .gguf has no type of its own, so any file.
         import = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else { importTarget = m.id; importer.launch(arrayOf("*/*")) } },
         verify = { m ->
             if (busy == null) {

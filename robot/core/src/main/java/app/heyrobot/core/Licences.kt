@@ -3,7 +3,7 @@ package app.heyrobot.core
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Pure. Settings › About › Licences (1.0): Robot's own GPL-3.0 notice, where its source is, and every third-party part with
+// Pure. Settings › About › Licences (0.4.5): Robot's own GPL-3.0 notice, where its source is, and every third-party part with
 // its version, licence, copyright line, notices and full licence text. One data file holds the list,
 // app/src/main/assets/licenses/components.json, next to the texts it names; the app's LicencesTest keeps it in step with
 // THIRD_PARTY.md, with the libraries the release build packs and with the files in assets/licenses/.

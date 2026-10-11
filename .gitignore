@@ -25,6 +25,10 @@ robot/voice/src/main/assets/espeak-ng-data/
 robot/**/*.so
 robot/**/*.onnx
 robot/**/*.litertlm
+robot/**/*.gguf
+# Robot's GGUF engine (0.4.5): the checked llama.cpp sources, the build and the library come from robot/tools/build_llama.sh
+robot/build-native/
+robot/brain/src/main/jniLibs/
 
 # Editors
 .idea/

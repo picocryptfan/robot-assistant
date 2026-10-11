@@ -51,6 +51,28 @@ class BrainProtocolTest {
         assertEquals(listOf("e4b_cpu", "cpu", "4096"), listOf(j.getString("model"), j.getString("backend"), j.getInt("maxTokens").toString()))
     }
 
+    /**
+     * 0.4.5: the kind of file travels with the load (a GGUF file runs with llama.cpp), and is what :brain says it holds; an
+     * older load without it is a LiteRT-LM file, an unknown kind isn't understood. The thinking switch travels with each
+     * question (off when absent).
+     */
+    @Test fun ggufLoadsAndTheThinkingSwitchTravel() {
+        val gguf = BrainMsg.Load("/data/own_model.gguf", BrainModel.OWN, ModelBackend.CPU, 4096, ModelFormat.GGUF)
+        assertEquals(gguf, roundTrip(BrainProtocol.REQ_LOAD, gguf))
+        assertEquals("gguf", gguf.toJson().getString("format"))
+        assertEquals(ModelFormat.LITERT_LM, (BrainMsg.decode(BrainProtocol.REQ_LOAD, """{"path":"/x","model":"own","backend":"cpu"}""") as BrainMsg.Load).format)
+        assertEquals(ModelFormat.LITERT_LM, BrainMsg.Load("/x").format)
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_LOAD, """{"path":"/x","model":"own","backend":"cpu","format":"onnx"}"""))
+        val st = BrainMsg.Status(true, false, false, false, BrainModel.OWN, ModelBackend.CPU, 2048, ModelFormat.GGUF)
+        assertEquals(st, roundTrip(BrainProtocol.EV_STATUS, st))
+        val ld = BrainMsg.Loaded(true, false, 2100, null, BrainModel.OWN, ModelBackend.CPU, null, ModelFormat.GGUF)
+        assertEquals(ld, roundTrip(BrainProtocol.EV_LOADED, ld))
+        assertNull((roundTrip(BrainProtocol.EV_STATUS, BrainMsg.Status(false, false, false, false)) as BrainMsg.Status).format)
+        val gen = BrainMsg.Generate("c", "s", emptyList(), 0, "t", false, think = true)
+        assertEquals(gen, roundTrip(BrainProtocol.REQ_GENERATE, gen))
+        assertEquals(false, (BrainMsg.decode(BrainProtocol.REQ_GENERATE, """{"convId":"c","system":"s","text":"t"}""") as BrainMsg.Generate).think)
+    }
+
     @Test fun eventsRoundTrip() {
         val events = listOf(
             BrainProtocol.EV_STATUS to BrainMsg.Status(loaded = true, vision = false, constrained = true, busy = false),

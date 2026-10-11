@@ -8,7 +8,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Settings › About › Licences (1.0) is built from assets/licenses/components.json. This keeps that list complete: every
+ * Settings › About › Licences (0.4.5) is built from assets/licenses/components.json. This keeps that list complete: every
  * component THIRD_PARTY.md names is in it (its table row by row, its headings, its Maven artifacts), every library the
  * release build packs belongs to an entry, every text and notice it names ships, and the copies of Robot's own licence
  * texts are the repository's.
@@ -35,10 +35,12 @@ class LicencesTest {
             val file = asset(f)
             assertTrue("$f is missing (assets/licenses, or :brain's aarNotices)", file != null && file.length() > 200)
         }
-        // Robot's GPL is the repository's LICENSE, word for word; the shared Apache and Silero texts are the ones in third_party/.
+        // Robot's GPL is the repository's LICENSE, word for word; the shared Apache text and the Silero and llama.cpp texts are
+        // the ones in third_party/.
         assertEquals(File(root.parentFile, "LICENSE").readText(), File(assets, "licenses/GPL-3.0.txt").readText())
         assertEquals(File(root, "third_party/LICENSE-sherpa-onnx.txt").readText(), File(assets, "licenses/Apache-2.0.txt").readText())
         assertEquals(File(root, "third_party/LICENSE-silero-vad.txt").readText(), File(assets, "licenses/MIT-silero-vad.txt").readText())
+        assertEquals(File(root, "third_party/LICENSE-llama.cpp.txt").readText(), File(assets, "licenses/MIT-llama.cpp.txt").readText())
         // An MIT or BSD part ships its own text, whose copyright line is the one the screen shows.
         for (c in book.components.filter { it.where == LicenceWhere.APP && (it.licence == "MIT" || it.licence.startsWith("BSD")) }) {
             val text = asset(c.text ?: error("${c.id} needs its own ${c.licence} text"))!!.readText()
@@ -104,6 +106,20 @@ class LicencesTest {
         assertEquals(LicenceWhere.APP, symbols.where)
         assertTrue(symbols.version, symbols.version.endsWith(" at " + commit.take(8)))
         assertTrue(thirdParty.contains(commit))
+    }
+
+    /**
+     * Robot's llama.cpp library (0.4.5, tools/build_llama.sh): llama.cpp and KleidiAI are on the list at the versions the
+     * script pins, the libc++ entry names the NDK it builds with, and THIRD_PARTY.md names both commits.
+     */
+    @Test fun theLlamaLibrarysPartsAreOnTheListAtTheirPins() {
+        val script = File(root, "tools/build_llama.sh").readText()
+        fun pin(name: String) = Regex("""(?m)^$name=(\S+)$""").find(script)!!.groupValues[1]
+        assertEquals("${pin("LLAMA_TAG")} (${pin("LLAMA_COMMIT").take(8)})", book.byId("llama-cpp")!!.version)
+        assertEquals(pin("KLEIDIAI_TAG"), "v" + book.byId("kleidiai")!!.version)
+        assertTrue(script.contains("/ndk/" + book.byId("llvm-libcxx")!!.version.removePrefix("Android NDK ")))
+        for (id in listOf("llama-cpp", "kleidiai", "llvm-libcxx", "nlohmann-json")) assertEquals(id, LicenceWhere.APP, book.byId(id)!!.where)
+        assertTrue(thirdParty.contains(pin("LLAMA_COMMIT")) && thirdParty.contains(pin("KLEIDIAI_COMMIT")))
     }
 
     /** The GPL's notices: free software, no warranty, the licence a tap away, the source, and the GPL parts' source. */

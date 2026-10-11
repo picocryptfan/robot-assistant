@@ -61,6 +61,10 @@
   },
   "LicenseRef-own-file": {
    "name": "The file's own licence"
+  },
+  "Apache-2.0 WITH LLVM-exception": {
+   "name": "Apache License 2.0 with LLVM Exceptions",
+   "url": "https://llvm.org/LICENSE.txt"
   }
  },
  "components": [
@@ -154,7 +158,10 @@
    "url": "https://github.com/nlohmann/json",
    "where": "app",
    "text": "licenses/MIT-nlohmann-json.txt",
-   "note": "Linked into sherpa-onnx's library."
+   "note": "Linked into sherpa-onnx's library, and into Robot's llama.cpp library (librobot_llama.so), where llama.cpp b11200 vendors the same version for its chat templates.",
+   "match": [
+    "nlohmann/json"
+   ]
   },
   {
    "id": "hclust-cpp",
@@ -434,6 +441,45 @@
    "note": "Lets LiteRT-LM use the Tensor G5's TPU (libLiteRtDispatch_GoogleTensor.so). The TPU's own driver is the phone's, not Robot's."
   },
   {
+   "id": "llama-cpp",
+   "name": "llama.cpp (with ggml)",
+   "version": "b11200 (81bc6b83)",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2023-2026 The ggml authors",
+   "url": "https://github.com/ggml-org/llama.cpp",
+   "where": "app",
+   "text": "licenses/MIT-llama.cpp.txt",
+   "match": [
+    "llama.cpp",
+    "ggml"
+   ],
+   "note": "Runs your own GGUF model file on the CPU, in the model process only (librobot_llama.so, built from the tag's source by tools/build_llama.sh): llama.cpp's libllama, ggml with its CPU backend, and its chat-template code. The JSON for Modern C++ it vendors has its own entry."
+  },
+  {
+   "id": "kleidiai",
+   "name": "KleidiAI",
+   "version": "1.24.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2024-2026 Arm Limited and/or its affiliates",
+   "url": "https://github.com/ARM-software/kleidiai",
+   "where": "app",
+   "note": "Arm's matrix kernels for the CPU, compiled into Robot's llama.cpp library (librobot_llama.so) at the release llama.cpp b11200 names; ggml picks them at run time."
+  },
+  {
+   "id": "llvm-libcxx",
+   "name": "LLVM libc++",
+   "version": "Android NDK 27.1.12297006",
+   "licence": "Apache-2.0 WITH LLVM-exception",
+   "copyright": "Copyright the LLVM Project contributors",
+   "url": "https://github.com/llvm/llvm-project",
+   "where": "app",
+   "text": "licenses/LLVM-libcxx-LICENSE.txt",
+   "match": [
+    "libc++"
+   ],
+   "note": "The C++ standard library (libc++ and libc++abi), linked statically into Robot's llama.cpp library (librobot_llama.so) by the Android NDK. Its text: libc++'s and libc++abi's licences as the NDK states them."
+  },
+  {
    "id": "gson",
    "name": "Gson",
    "version": "2.14.0",
@@ -546,7 +592,7 @@
    "copyright": "Whoever made the file",
    "url": "https://huggingface.co/models",
    "where": "download",
-   "note": "Keeps its own licence: Robot neither ships nor downloads it. MedGemma, for example, is under Google's Health AI Developer Foundations terms, which you accept yourself on Hugging Face."
+   "note": "A .litertlm or .gguf file you import keeps its own licence: Robot neither ships nor downloads it, and Settings › Model shows the licence a GGUF file names. MedGemma, for example, is under Google's Health AI Developer Foundations terms, which you accept yourself on Hugging Face."
   },
   {
    "id": "parakeet",

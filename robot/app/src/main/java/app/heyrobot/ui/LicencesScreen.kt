@@ -41,7 +41,7 @@ import app.heyrobot.core.ThirdPartyComponent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// MAIN PROCESS. Settings › About › Licences (1.0): Robot's GPL-3.0 notice (free software, no warranty, the licence a tap
+// MAIN PROCESS. Settings › About › Licences (0.4.5): Robot's GPL-3.0 notice (free software, no warranty, the licence a tap
 // away), where its source and the source of the GPL native code are, and every third-party part with its version,
 // licence, copyright line and notices, each full text on tap. All from assets/licenses/ (core LicenceBook reads
 // components.json); nothing goes online, a link opens only if you tap it.

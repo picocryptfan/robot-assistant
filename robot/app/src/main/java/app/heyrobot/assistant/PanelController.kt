@@ -1241,9 +1241,16 @@ object PanelController {
         }
         // The model loaded without its vision encoder: a screen question still has the screen's text.
         val vision = loaded.vision
+        // A model that reads text only (your own GGUF file) says so, for a photo and for the screen.
+        val textOnly = loaded.textOnly
         if (image != null && !vision && attachment == Attachment.PHOTO) {
-            return failReply(replyId, if (loaded.fileVision) BrainError.NO_VISION.text() else NO_VISION_IN_FILE)
+            return failReply(replyId, when {
+                textOnly -> TEXT_ONLY_PHOTO
+                loaded.fileVision -> BrainError.NO_VISION.text()
+                else -> NO_VISION_IN_FILE
+            })
         }
+        if (textOnly && attachment == Attachment.SCREEN) notify(TEXT_ONLY_SCREEN)
         val img = if (vision) image else null
         val convId = _state.value.convId
         val now = ZonedDateTime.now()
@@ -1288,6 +1295,8 @@ object PanelController {
                 text = fitted.text,
                 hasImage = img != null,
                 tools = tools.map { it.id },
+                // Settings › Model › "Let the model think first" (0.4.5): :brain tells a model that can think whether it may.
+                think = s.modelThinks,
             )
             // About what the context has left for a tool's answer beside the reply (as :brain will fit the history): the
             // weather gives fewer days when it is short.
@@ -2038,6 +2047,10 @@ object PanelController {
 
     /** The model's tool call itself, about. */
     private const val TOOL_CALL_TOKENS = 40
+
+    /** Your own GGUF file reads text only (Robot's llama.cpp has no vision part). */
+    private const val TEXT_ONLY_PHOTO = "This model can't see photos: it reads text only. Choose Fast or Smarter in the Robot app › Model to ask about a photo."
+    private const val TEXT_ONLY_SCREEN = "This model can't see the screen: it reads only the screen's text."
 
     /** A photo question to a model whose file has no vision encoder (your own file, as its check found). */
     private const val NO_VISION_IN_FILE = "This model can't look at photos: its file has no vision part. Settings › Model says which ones can."

@@ -8,12 +8,14 @@ import android.os.StatFs
 import android.provider.OpenableColumns
 import app.heyrobot.core.BrainLoaded
 import app.heyrobot.core.BrainModel
+import app.heyrobot.core.GgufCheck
 import app.heyrobot.core.LiteRtLmCheck
 import app.heyrobot.core.LoadPlan
 import app.heyrobot.core.ModelAvailability
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelFacts
 import app.heyrobot.core.ModelFiles
+import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.OwnModel
@@ -32,6 +34,7 @@ import java.security.MessageDigest
 // and the SHA-256 check that must pass before a model is ever loaded. 0.4.1: one set of files per model of the catalogue
 // (core BrainModel): its file, download, verified mark and CPU cache folder, Fast keeping 0.4.0's names; one download or
 // copy at a time; and your own model file, checked by its contents (core LiteRtLmCheck) and recorded with its SHA-256.
+// 0.4.5: your own file may be a GGUF file (core GgufCheck), kept as own_model.gguf: its first bytes decide, never its name.
 
 object ModelStore {
     private const val PREFS = "robot_model"
@@ -39,7 +42,11 @@ object ModelStore {
     private const val SPACE_CHECK_EVERY = 256L shl 20
 
     fun dir(ctx: Context): File = ctx.getExternalFilesDir(null) ?: File(ctx.filesDir, "models")
-    fun file(ctx: Context, m: BrainModel) = File(dir(ctx), m.file)
+    fun file(ctx: Context, m: BrainModel): File = if (m == BrainModel.OWN) ownFile(ctx) else File(dir(ctx), m.file)
+    /** Your own file: own_model.gguf when the file you imported is a GGUF file, else 0.4.1's own_model.litertlm. */
+    private fun ownFile(ctx: Context): File = File(dir(ctx), ModelFiles.OWN_GGUF).takeIf { it.isFile } ?: File(dir(ctx), BrainModel.OWN.file)
+    /** Both places your own file can be (one at a time). */
+    private fun ownFiles(ctx: Context) = ModelFormat.entries.map { File(dir(ctx), ModelFiles.ownFile(it)) }
     private fun part(ctx: Context, m: BrainModel) = File(dir(ctx), "${m.file}.part")
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private fun key(m: BrainModel, k: String) = ModelFiles.prefKey(m, k)
@@ -53,13 +60,29 @@ object ModelStore {
     /** Your own model file's record (core OwnModel), whether or not it still matches the file. */
     fun own(ctx: Context): OwnModel? = OwnModel.fromJson(readOrNull(ownRecord(ctx)))
 
+    /**
+     * This build of Robot has its llama.cpp library (tools/build_llama.sh), so a GGUF file can run. Any process; only
+     * :brain ever loads the library.
+     */
+    fun ggufEngine(ctx: Context): Boolean = try { File(ctx.applicationInfo.nativeLibraryDir, "librobot_llama.so").isFile } catch (_: Exception) { false }
+
+    /** The phone's memory (for a GGUF file's memory check), 0 when unknown. */
+    fun totalRam(ctx: Context): Long = try {
+        ActivityManager.MemoryInfo().also { ctx.getSystemService(ActivityManager::class.java).getMemoryInfo(it) }.totalMem
+    } catch (_: Exception) { 0L }
+
+    /** The kind of model file [f] is, by its first bytes. */
+    private fun formatOf(f: File): ModelFormat? = try {
+        FileInputStream(f).use { input -> ByteArray(8).let { b -> val n = input.read(b); ModelFormat.sniff(b.copyOf(maxOf(n, 0))) } }
+    } catch (_: Exception) { null }
+
     /** [m]'s path if it is complete and checked (your own file: and runnable here), else null. Any process. */
     fun verifiedPath(ctx: Context, m: BrainModel): String? {
         val f = file(ctx, m)
         if (!f.isFile) return null
         if (m == BrainModel.OWN) {
             val r = own(ctx) ?: return null
-            return if (r.fingerprint == fingerprint(f) && r.report.backend != null) f.absolutePath else null
+            return if (r.fingerprint == fingerprint(f) && r.runsOn != null && f.name == ModelFiles.ownFile(r.format)) f.absolutePath else null
         }
         val mark = readOrNull(verifiedMark(ctx, m))?.trim() ?: return null
         return if (f.length() == m.bytes && mark == "${m.sha256}|${fingerprint(f)}") f.absolutePath else null
@@ -74,11 +97,16 @@ object ModelStore {
         if (m == BrainModel.OWN) {
             val fp = if (f.isFile && f.length() > 0) fingerprint(f) else null
             val r = own(ctx)
-            val a = r?.availability(fp) ?: if (fp == null) ModelAvailability.NOT_DOWNLOADED else ModelAvailability.NOT_CHECKED
+            // A GGUF file can run only with this build's llama.cpp library; a record of the other kind of file is checked again.
+            val a = when {
+                r != null && fp != null && f.name != ModelFiles.ownFile(r.format) -> ModelAvailability.NOT_CHECKED
+                else -> r?.availability(fp, ggufEngine(ctx)) ?: if (fp == null) ModelAvailability.NOT_DOWNLOADED else ModelAvailability.NOT_CHECKED
+            }
             val b = r?.backend
-            // Its context is the file's own when shorter than 4,096 (0.4.3, chat only); :brain checks the header again.
+            // Its context is the file's own when shorter than 4,096 (0.4.3, chat only), a GGUF file's too; :brain checks the
+            // header again. A GGUF file never sees photos.
             return if (a == ModelAvailability.READY && r != null && b != null && fp != null) {
-                a to LoadPlan(m, f.absolutePath, b, r.report.contextTokens, fp, r.report.vision)
+                a to LoadPlan(m, f.absolutePath, b, r.contextTokens, fp, r.vision, r.format)
             } else a to null
         }
         val path = verifiedPath(ctx, m) ?: return (if (f.isFile && f.length() == m.bytes) ModelAvailability.NOT_CHECKED else ModelAvailability.NOT_DOWNLOADED) to null
@@ -105,7 +133,7 @@ object ModelStore {
 
     fun facts(ctx: Context, m: BrainModel): ModelFacts {
         val f = file(ctx, m)
-        val bad = f.isFile && if (m == BrainModel.OWN) own(ctx)?.let { it.fingerprint == fingerprint(f) && it.report.backend == null } == true
+        val bad = f.isFile && if (m == BrainModel.OWN) own(ctx)?.let { it.fingerprint == fingerprint(f) && it.runsOn == null } == true
             else prefs(ctx).getString(key(m, "bad"), null) == fingerprint(f)
         return ModelFacts(
             fileBytes = if (f.isFile) f.length() else 0,
@@ -266,12 +294,18 @@ object ModelStore {
         // make "…ldom.litertlm" read as another name).
         ?.filter { !it.isISOControl() && Character.getType(it) != Character.FORMAT.toInt() }?.take(120)?.ifBlank { null } ?: "your file"
 
+    /** The picked file starts like a GGUF file (it needs no room for a cache then); its first bytes only. */
+    private fun docIsGguf(ctx: Context, uri: Uri): Boolean = try {
+        ctx.contentResolver.openInputStream(uri)?.use { input -> ByteArray(8).let { b -> val n = input.read(b); ModelFormat.sniff(b.copyOf(maxOf(n, 0))) == ModelFormat.GGUF } } == true
+    } catch (_: Exception) { false }
+
     /** Null when an import into [m] may start, else why not. */
     fun refuseImport(ctx: Context, m: BrainModel, uri: Uri): String? {
         if (loadedNow(ctx) == m) return inUse(m)
-        val reclaim = listOf(file(ctx, m), part(ctx, m)).filter { it.isFile }.sumOf { it.length() } + cacheBytes(ctx, m)
+        val reclaim = (listOf(part(ctx, m)) + if (m == BrainModel.OWN) ownFiles(ctx) else listOf(file(ctx, m))).filter { it.isFile }.sumOf { it.length() } +
+            cacheBytes(ctx, m)
         return ModelLogic.refuseImport(m, status(ctx, m), docSize(ctx, uri), freeBytes(ctx), reclaim,
-            VoiceModelStore.pendingBytes(ctx) + pendingBytes(ctx, except = m), busyWith(ctx))
+            VoiceModelStore.pendingBytes(ctx) + pendingBytes(ctx, except = m), busyWith(ctx), gguf = m == BrainModel.OWN && docIsGguf(ctx, uri))
     }
 
     /**
@@ -293,6 +327,7 @@ object ModelStore {
             prefs(ctx).edit().remove(key(m, "bad")).remove(key(m, "last_failure")).apply()
             if (m == BrainModel.OWN) {
                 ownRecord(ctx).delete()
+                ownFiles(ctx).forEach { it.delete() }
                 prefs(ctx).edit().putString(OWN_NAME, docName(ctx, uri)).apply()
             }
             var done = 0L
@@ -327,11 +362,13 @@ object ModelStore {
                 part.delete()
                 return "That file is too small to be a model."
             }
-            if (!part.renameTo(file(ctx, m))) {
+            // Your own file goes where its kind of file goes (its first bytes say which, never its name).
+            val target = if (m == BrainModel.OWN) File(dir(ctx), ModelFiles.ownFile(formatOf(part) ?: ModelFormat.LITERT_LM)) else file(ctx, m)
+            if (!part.renameTo(target)) {
                 part.delete()
                 return "Couldn't move the copied file into place."
             }
-            RLog.i("model_import", "ok" to true, "model" to RLog.Code(m.id))
+            RLog.i("model_import", "ok" to true, "model" to RLog.Code(m.id), "format" to (if (m == BrainModel.OWN) formatOf(target) else ModelFormat.LITERT_LM))
             return null
         } catch (t: Throwable) {
             part.delete()
@@ -371,15 +408,24 @@ object ModelStore {
             }
             val sha = md.digest().joinToString("") { "%02x".format(it) }
             if (m == BrainModel.OWN) {
-                val report = LiteRtLmCheck.check(f)
+                // By its contents: a GGUF file gets the GGUF check (llama.cpp runs it), anything else the LiteRT-LM one.
+                val format = formatOf(f)
+                val gguf = if (format == ModelFormat.GGUF) GgufCheck.check(f, totalRam(ctx)) else null
+                val report = when {
+                    gguf != null -> OwnModel.NOT_LITERT_LM
+                    format == null -> NOT_A_MODEL
+                    else -> LiteRtLmCheck.check(f)
+                }
                 val before = own(ctx)
                 // A TPU allowed for this very file (same SHA-256) stays allowed; anything else asks again.
-                val allowed = before != null && before.sha256 == sha && before.tpuAllowed && report.tensorG5Build
+                val allowed = gguf == null && before != null && before.sha256 == sha && before.tpuAllowed && report.tensorG5Build
                 val name = prefs(ctx).getString(OWN_NAME, null) ?: before?.name ?: "your file"
-                writeAtomic(ownRecord(ctx), OwnModel(name, total, sha, fp, report, allowed, System.currentTimeMillis()).toJson().toString())
-                val ok = report.backend != null
-                RLog.i("model_verify", "ok" to ok, "model" to RLog.Code(m.id), "tpu" to report.tensorG5Build, "gemma4" to report.gemma4,
-                    "tools" to report.toolTokens, "readable" to report.readable)
+                val record = OwnModel(name, total, sha, fp, report, allowed, System.currentTimeMillis(), gguf)
+                writeAtomic(ownRecord(ctx), record.toJson().toString())
+                val ok = record.runsOn != null
+                RLog.i("model_verify", "ok" to ok, "model" to RLog.Code(m.id), "format" to record.format, "tpu" to record.tensorG5Build,
+                    "gemma4" to report.gemma4, "tools" to report.toolTokens, "readable" to (gguf?.readable ?: report.readable),
+                    "fileType" to (gguf?.fileType ?: -1), "thinks" to (gguf?.thinks ?: false))
                 return ok
             }
             val ok = sha == m.sha256
@@ -406,7 +452,7 @@ object ModelStore {
      */
     fun allowOwnTpu(ctx: Context, allow: Boolean, sha256: String? = null): Boolean {
         val r = own(ctx) ?: return false
-        if (allow && (!r.report.tensorG5Build || r.sha256 != sha256 || r.fingerprint != fingerprint(file(ctx, BrainModel.OWN)))) return false
+        if (allow && (!r.tensorG5Build || r.sha256 != sha256 || r.fingerprint != fingerprint(file(ctx, BrainModel.OWN)))) return false
         writeAtomic(ownRecord(ctx), r.copy(tpuAllowed = allow).toJson().toString())
         RLog.i("model_own_tpu", "allowed" to allow)
         return true
@@ -426,6 +472,7 @@ object ModelStore {
         // Anything LiteRT-LM may have left beside the file (its name first: no other model's file starts like it).
         dir(ctx).listFiles { f -> f.name.startsWith(m.file) }?.forEach { it.deleteRecursively() }
         if (m == BrainModel.OWN) {
+            ownFiles(ctx).forEach { it.delete() }
             ownRecord(ctx).delete()
             prefs(ctx).edit().remove(OWN_NAME).apply()
         }
@@ -434,4 +481,7 @@ object ModelStore {
     }
 
     private const val OWN_NAME = "own_name"
+
+    /** Neither kind of model file Robot reads, by its first bytes. */
+    private val NOT_A_MODEL = app.heyrobot.core.LiteRtLmReport(readable = false, problem = "It isn't a model file Robot can read (a .litertlm or .gguf file).")
 }
