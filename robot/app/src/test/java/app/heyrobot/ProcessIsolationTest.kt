@@ -172,8 +172,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("46", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.4.6", m.getAttributeNS(ns, "versionName"))
+        assertEquals("47", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.4.7", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
