@@ -7,7 +7,7 @@ import org.junit.Test
 class SummaryCheckTest {
     private val transcript = listOf(
         "[14:02] Marie (fr): On se voit vendredi à 18 h 30 chez Julien? Le budget, c'est 1200 \$.",
-        "[14:03] Owner (en): OK, I'll bring three bottles. The address is 42 Rue Saint-Denis.",
+        "[14:03] User (en): OK, I'll bring three bottles. The address is 42 Rue Saint-Denis.",
         "[14:05] Marie (fr): Parfait. Hélène vient aussi, elle arrive de Québec le 3 novembre.",
     )
     private val names = listOf("Marie")
@@ -17,9 +17,9 @@ class SummaryCheckTest {
 
     @Test fun whatTheTranscriptBacksUpPasses() {
         val summary = """
-            Marie and the owner plan dinner at Julien's on Friday at 18 h 30 [14:02]. The budget is 1,200 ${'$'}.
+            Marie and the user plan dinner at Julien's on Friday at 18 h 30 [14:02]. The budget is 1,200 ${'$'}.
             Decisions
-            - The owner brings 3 bottles [14:03]; the address is 42 Rue Saint-Denis.
+            - The user brings 3 bottles [14:03]; the address is 42 Rue Saint-Denis.
             - Hélène arrives from Québec on 3 November [14:05].
             Open questions
             - None.
@@ -46,6 +46,6 @@ class SummaryCheckTest {
         assertEquals(emptyList<SummaryMiss>(), SummaryCheck.misses("- Paul will call Marie.", transcript, names + "Paul Tremblay", times))
         assertEquals(listOf(SummaryMiss("Paul", SummaryMiss.Kind.NAME)), misses("- Paul will call Marie."))
         // Possessives and the summary's own words are fine; a common word starting a sentence is not a name.
-        assertEquals(emptyList<SummaryMiss>(), misses("Overview: The owner and Marie's friends. They agreed. Numbers and dates: none."))
+        assertEquals(emptyList<SummaryMiss>(), misses("Overview: The user and Marie's friends. They agreed. Numbers and dates: none."))
     }
 }

@@ -49,6 +49,18 @@ enum class VoiceBundle(
             VoiceFile("voices.bin", 3_276_800, "d520519c4a3519d44fcfcd943ed0b1e3c5da5cee0eea501d922fac1a93cd24dc"),
             VoiceFile("tokens.txt", 1_064, "934a4188addc7665dd3410256bb622169242357fbb99d840d9351209b486dabb"),
         ),
+    ),
+    /**
+     * Conversation mode's speaker labels (0.5.0, docs/conversation-mode.md 3.1): NVIDIA TitaNet-S as sherpa-onnx exported
+     * it, one 192-number voice embedding per line. Only transcripts use it, and only when "Tell speakers apart" is on.
+     */
+    SPEAKERS(
+        "spk-titanet-small", "Speaker labels",
+        "NVIDIA TitaNet-S tells the people in a conversation apart by their voices, on this phone. Only transcripts use it.",
+        "csukuangfj/speaker-embedding-models", "0743f301363dec56491a490f6d6cbc9d67f9a3bf",
+        listOf(
+            VoiceFile("nemo_en_titanet_small.onnx", 40_257_283, "ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e"),
+        ),
     );
 
     val bytes: Long get() = files.sumOf { it.bytes }

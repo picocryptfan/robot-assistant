@@ -2,7 +2,9 @@
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
-TPU answers, streams the reply and reads it aloud. Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
+TPU answers, streams the reply and reads it aloud (since 0.4.1 you can choose a smarter but slower model instead, or
+your own model file: "Model choice" below; since 0.4.3 also a file built for a shorter context, such as MedGemma, as chat
+only: "Short-context models" below). Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
 Mail), keeps and finds notes, reads and adds calendar events and looks up contacts. Everything runs on the phone.
 Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) and your phone's storage, battery and
 memory, helps free memory and storage, finds the nearest place of a kind online (OpenStreetMap, when you ask) for
@@ -20,8 +22,8 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 | Module | Runs in | Holds |
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
-| `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM |
-| `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) |
+| `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM: the model you chose, on the TPU or the CPU, one at a time; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests |
+| `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
 | `:mt` | `:mt` | since 0.5.0, the fast translation engine: `MtService` (Messenger), `BergamotEngine` and `Slimt`, the only code that loads `librobotmt.so` (slimt, built by `tools/build_robotmt.sh`, not in git) |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
@@ -46,7 +48,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
   at most two actions and three tool rounds per answer; a call written as text runs only when :brain is in text-call
   mode (its TPU build refused the tool API) and the whole reply is the call. An app name is resolved before the card,
   which shows the app that will open. One question at a time: a waiting card counts as busy (a yes or no, spoken or typed, answers it), Stop declines it.
-- Context (4,096 tokens): the new message is cut to fit (the panel says so). A question about times or dates, an
+- Context (4,096 tokens; a short-context file's own, 2,048 to 4,095, since 0.4.3): the new message is cut to fit (the panel says so). A question about times or dates, an
   alarm or a timer, or any question in a conversation using the calendar tools, carries the time after it
   ("(Current time: 14:05.)"); others don't (0.2.1 put "[Now 14:05]" before every question and the model began its
   replies with it). A copy of the clock at the start of a reply, or of its text after a tool round, is removed before
@@ -76,11 +78,11 @@ goes into the repository or the build output.
 
 ## Conversation mode (0.5.0)
 
-Robot writes down a conversation, word for word as it hears it, in French and English, on the phone (the design is
-`../docs/conversation-mode.md`). Built so far: the Transcription check (phase 5.0(a)), capture and transcription (5.2),
-the Transcripts library (5.5), and the fast translation engine with its speed test (5.0(b) and the Bergamot half of
-5.4). Not yet: speaker labels (5.3: every line is "Speaker" for now), translated transcripts, Gemma's translations and the
-interpreter (5.4), summaries (5.6), keeping the audio.
+Robot writes down a conversation, word for word as it hears it, in French and English, on the phone, translates it
+(also face to face, aloud) and summarizes it (the design is `../docs/conversation-mode.md`). Built so far: the
+Transcription check (phase 5.0(a)), capture and transcription (5.2), speaker labels (5.3), the Transcripts library
+(5.5), translation by Robot's own model and the interpreter (5.4's Gemma half), the fast translation engine with its
+speed test (5.0(b) and 5.4's Bergamot half, in its own `:mt` process) and summaries (5.6). Not yet: keeping the audio.
 
 ### Transcribing
 
@@ -107,10 +109,11 @@ interpreter (5.4), summaries (5.6), keeping the audio.
   to tell ("OK", "5 h 30", a name) takes the previous line's language and shows "FR?" or "EN?": tap it to fix (an event
   in the file; the next short lines lean on your answer). Other languages are transcribed too, and tagged FR or EN by
   their closest guess.
-- **The screen** (Transcribe, in `:voice`) shows the lines with their time, "Speaker", the language tag, and while you
-  look at it with the screen on, the words of the line being spoken in grey (Settings › Conversation › Live words, on;
-  off when the phone is warm). It keeps the newest 500 lines; the file has them all. Overflow: keep the screen on, help.
-  It keeps working with the screen off.
+- **The screen** (Transcribe, in `:voice`) shows the lines with their time, the speaker's chip (colour and name, or
+  "Speaker" while only one voice is heard; see "Speaker labels" below), the language tag, and while you look at it with
+  the screen on, the words of the line being spoken in grey (Settings › Conversation › Live words, on; off when the phone
+  is warm). It keeps the newest 500 lines; the file has them all. Overflow: keep the screen on, help. It keeps working
+  with the screen off.
 - **The wake word sleeps** during a session, so nobody's "hey robot" opens the panel; "stop" still works while Robot
   talks, and the wake word is back when the session ends. Settings › Conversation › "Hey robot works during a
   conversation" (off) keeps it: then "hey robot" opens the panel, which pauses the transcript (nothing said to Robot is
@@ -131,9 +134,52 @@ interpreter (5.4), summaries (5.6), keeping the audio.
   unlocked (they are in the main app). Opening the transcript screen again from Recents never starts or resumes a
   recording; only Start, Resume, the tile, the shortcut or your voice do.
 - **Voice log** (numbers only): 100 start (how, locked), 101 stop (why, minutes, lines), 102/103 pause and resume, 104
-  each minute's segments and median decode time, 105 French/English/not-sure lines, 109 a line that couldn't be saved,
-  110 recovered (and resumed), 111 the microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the
-  Transcription check, 119 re-heard.
+  each minute's segments and median decode time, 105 French/English/not-sure lines, 106 speakers told apart, merges
+  proposed and whether your voice was seeded, 109 a line that couldn't be saved, 110 recovered (and resumed), 111 the
+  microphone silenced or back, 112 heat, 115 export, 116 delete, 117 the Transcription check, 119 re-heard; since 5.4 and
+  5.6: 107 a line translated (engine, ms, the guard's verdict), 108 a translation read aloud (language, ms after the
+  speech ended; or stopped by a tap), 113 Robot's summary (parts, seconds, how it ended), 114 a stronger AI's (which,
+  words ÷ 100, how it ended).
+
+### Speaker labels
+
+- **The speaker model** is NVIDIA TitaNet-S (Apache-2.0, through the NeMo toolkit's licence; `THIRD_PARTY.md`), one
+  40 MB file from Hugging Face at a pinned commit, checked against its size and SHA-256 like the voice models, and never
+  in the APK. Settings › Conversation › Speakers offers the download (it also lists under Model › Voice models, where it
+  can be deleted too); the transcript screen offers it once, with its size ("Not now" hides the offer). The main app
+  downloads and installs it (DownloadManager, then a checked copy into `files/models/spk-titanet-small/`, installed the
+  next time Robot's app is in front); the voice process only loads it, behind the crash guard, and frees it after 5
+  minutes unused.
+- **Tell speakers apart** (Settings › Conversation, on once the model is there): each line with a second or more of speech
+  gets a voice embedding (192 numbers, made in memory from that line's audio without its padding) and joins the nearest
+  speaker if it is close enough (cosine 0.45), starts a new one if it is far from everyone (under 0.30), and in between
+  is labelled with the nearest without changing them. A shorter line ("Oui", "OK") goes to whoever spoke less than a second
+  before, else "?". Labels are S1, S2… in the order people first speak, up to "Most speakers" (2–6, default 6; past that a
+  new voice goes to the nearest); a session resumed after a crash starts new labels (S1′…), since the voices were only in
+  memory. A short line's language leans on its speaker's usual language. Off, every line is "Speaker" (S1 in the file).
+- **On the transcript screen** (while it records, phone unlocked; or later in Robot › Transcripts): tap a line's chip to
+  **name** the speaker (kept in that transcript only, never linked to a voice or a contact), say they are the **same
+  person** as another (all their lines become the other's, and later lines that sound like either too), or "**this is
+  me**". Long-press a line to give it to **someone else** (another speaker, or a new label), or to **split** it where the
+  other person started (tap the first word they said, then who said it). Every change is one more event in the file;
+  Robot never relabels a line by itself. While a session runs, Robot offers "S3 sounds like S1. The same person?" when two
+  speakers' voices come close (their mean voices at cosine 0.40 or more): **Merge** or **Not the same**. The pairs left
+  when it stops are kept in `meta.json` and offered on the transcript in the library. Exports use the names ("Marie
+  (FR): …", and "You" for you; Speakers: "Marie (S1), You").
+- **Your voice** (Settings › Conversation, optional): read three short sentences (in French on a French phone, else in
+  English). Each recording's speech becomes an embedding; if the three sound like one voice they are averaged into your
+  voiceprint, which is encrypted with an Android Keystore key of its own (AES-256-GCM, not exportable) into
+  `files/robot/me.voiceprint` (written and read by the voice process only). Each session decrypts it once to seed a fixed
+  speaker "Me", so your lines say "You". The recordings stay in memory and are dropped once embedded. **A voiceprint is
+  biometric data**: it is never in settings (`meVoiceprint` only says one exists), a log, an intent or a backup, never
+  sent anywhere, and **Delete** (Settings › Conversation, or the Your voice screen) removes the file and its key at once;
+  a session running then stops using it. A voiceprint that can't be decrypted any more is deleted, never guessed.
+- **What is kept:** the labels and your changes, in the transcript. The voices of a session (its embeddings) live in
+  memory and are forgotten when it stops; only your voiceprint, if you made one, is stored.
+- **Limits** (also in the screen's help): two people talking at once go to one of them; very short replies go to whoever
+  spoke just before; the same person near and far from the phone can become two speakers (merge them); TitaNet was
+  trained on English, and same-person-across-languages and far-field table audio were not measured before the phone
+  test below. No diarization model runs live.
 
 ### Transcripts
 
@@ -147,9 +193,9 @@ interpreter (5.4), summaries (5.6), keeping the audio.
   **Copy** (marked sensitive) and **Delete**. "Delete all" removes them all. Deleting the transcript being recorded stops
   the recording: the app tells the voice process, which then writes nothing more of it (the folder is moved aside in one
   step before it is removed, so a late write can't bring it back). Deleting on flash storage is not a secure erase.
-- **Export format** (`TranscriptExport`): a header (date, time and length, speakers, languages, "Transcribed on this phone
-  by Robot (Parakeet v3).") and one line per line heard, "**[14:02:11] S1 (FR):** …", with "[paused …]" markers. Until
-  speaker labels come, every line is S1.
+- **Export format** (`TranscriptExport`): a header (date, time and length, speakers with the names you gave, languages,
+  "Transcribed on this phone by Robot (Parakeet v3).") and one line per line heard, "**[14:02:11] Marie (FR):** …" (S1
+  without a name, "You" for you), with "[paused …]" markers.
 
 ### Transcription check (Settings › Voice)
 
@@ -171,52 +217,50 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
   4.4): try Gemma's own audio input for short recordings, the Whisper-turbo QC model for recordings only, hotwords
   (needs a `bpe.vocab` Parakeet's export lacks), or a fine-tuned Parakeet; and record the number either way.
 
-### On the phone (0.5.0 capture)
+### Translation and the interpreter
 
-Phases 5.0(a), 5.2 and 5.5 are done when these pass (design §9.1). Robot is the assistant, the voice models are
-installed, the wake word is on.
-1. **Transcription check, French.** Settings › Voice › Transcription check › Read, Reader 1: read the 20 French
-   sentences; Reader 2 (another person): the same. Note the French total (pass: ≤ 15 % over 20+ lines from 2 readers) and
-   the decode times. Say anything: two minutes of free Québec French, corrected. Copy report without sentences: only
-   numbers; with: the sentences too. Voice log: "Transcription check (French): …% of words wrong over … lines".
-2. **English.** The 10 English sentences: ≤ 8 %. If you have them, Clips: Common Voice "Français du Canada" clips with
-   their list.
-3. **First start.** Home › Transcribe: the reminder, "I'll tell people", Start. The notification (Pause, Stop, Open; on
-   the lock screen only the title and the time), the microphone dot, the red dot and timer on the screen.
-4. **30 minutes, two languages, screen off.** Two people talk, switching between French and English (also within a
-   minute, "Can you pass the salt? — Oui, tiens."). Lock the phone for the rest. Then: every line is in Transcripts, in
-   order, none missing at the language switches (look for "heard again" lines), FR/EN right on most lines and "FR?" only
-   on short ones. Voice log: 104/105 once a minute; note the median decode time and the longest queue. Note the battery
-   used.
-5. **Wake word.** During a session, "hey robot, what time is it?": nothing opens (the voice log has no wake line). Stop
-   the session: "hey robot" works again. Turn on "Hey robot works during a conversation": "hey robot" opens the panel and
-   the transcript shows "[paused …]" for that moment; "stop transcribing" ends it.
-6. **Crash.** During a session, `adb shell am kill app.heyrobot` (if the foreground service keeps `:voice` alive, as it
-   may, use `adb shell am crash $(adb shell pidof app.heyrobot:voice)`). The notification goes; within a few seconds
-   (when Android restarts the assistant) "Transcription stopped unexpectedly. Saved up to …" appears. Every line shown before the kill is in the transcript (at most the line being spoken is lost).
-   Resume: the same transcript goes on with "[stopped unexpectedly …]". Then Stop Robot from Settings › Active apps
-   during a session (or `adb shell am force-stop app.heyrobot`): no Resume offer, the transcript is closed as ended.
-7. **A call** during a session: "[phone call …]" or "[microphone unavailable …]", and it goes on after the call. Another
-   app recording: the same.
-8. **Lock screen.** Locked, tap the tile: the reminder or the screen over the lock screen, with nothing older; Open in
-   Transcripts needs the unlock. "Start from the lock screen" off: the tile asks to unlock. Then, on that same screen:
-   unlock, Stop, "New transcript", and with Live words on and the screen in front, lock the phone and wake it: the
-   lock screen shows, not the transcript (no lines, no grey words).
-9. **Voice start.** "Hey robot, transcribe this conversation": Robot says "Transcribing.", the screen opens and the panel
-   goes; nothing of the panel is transcribed. "Translate this conversation": not in this version, said so.
-10. **Library.** Search a word from the session (with and without its accent); rename; Share: pick another app (Files,
-    a Markdown reader, a mail draft): the Markdown file opens there correctly (title, header, times, FR/EN). Save as
-    Markdown into Downloads and open it with another app. Copy and paste in a note.
-11. **Delete.** Delete one transcript: `adb shell run-as app.heyrobot ls files/transcripts` no longer lists its folder.
-    Delete the one being recorded: the session stops and the folder doesn't come back. Delete all.
-12. **Tile and shortcut.** Add "Transcribe" in Quick Settings: tap to start (the screen opens), tap to stop; long press:
-    Settings › Conversation. Long-press Robot's icon: "Transcribe" and "Transcripts" work (if "Transcribe" doesn't open,
-    note it: the shortcut targets a screen that isn't exported).
-13. **Stop, then start at once.** Tap the tile to stop and again straight away (or Stop, then "New transcript" within a
-    second): the new session records with its notification there the whole time (pull the shade: "Robot is
-    transcribing"); a session recording with no notification is a failure. The first transcript is saved whole.
-14. **Recents.** Start from the tile, press Back, stop from the notification; then open the transcript screen from
-    Recents: it opens on "Saved" and records nothing (no notification). The same after a Resume.
+- **Robot's model translates**, the one chosen in Settings › Model (Fast on the TPU by default), through a **one-shot
+  request** to `:brain` (`REQ_ONE_SHOT`): one message to a conversation of its own, with the plan's fixed prompt for the
+  direction ("Translate the user's message from Québec French to natural English. Keep the tone and register…", and
+  English to Québec French "as a Quebecer would say it (tu unless the message is formal)"), no earlier line, **no tools**
+  (none described, constrained decoding off, any call it writes dropped), streamed, then closed. It never sees or
+  changes the assistant's conversation: `:brain` still keeps one LiteRT conversation at a time, so a one-shot closes the
+  assistant's, which is rebuilt from the app's own history at your next question (a few seconds on the TPU; on a CPU
+  model, its long first-word wait again).
+- **`:brain`'s queue** (`BrainScheduler`, `BrainQueue`): the panel first (your newest question still cancels your older
+  one), then the interpreter's turns, then transcript translations, then summary steps. The panel never cancels an
+  interpreter turn (about a second) but goes next; a transcript translation gives way to the panel and the interpreter,
+  and a summary step to anything, and starts over afterwards. While the panel waits for its actions' results (a card
+  open), only the panel's own requests start, for at most 90 s. A request learns its place (`EV_QUEUED`) and when it
+  starts, and is cancelled if it hasn't started when its deadline passes.
+- **Every translation is checked** (`MtGuard`) before it is shown or spoken: in the language asked for, about as long as
+  what was said, at most three lines, without "Translation:", quotes or notes around it. A meaning error gets through:
+  the translation is marked as a machine's.
+- **The fast engine** (Bergamot, `../docs/conversation-mode.md` §4.3) is a seam here (`FastTranslation`): when it is
+  there, it gives each transcript line a translation at once (marked "fast") that Robot's model then improves, and it
+  stands in for the interpreter when the model hasn't started within 1.5 s (the panel's question ahead), fails, or fails
+  a guard; with a model on the CPU (about 8 tokens a second), it leads the interpreter. Without it, Robot's model
+  translates alone, with longer deadlines, and the interpreter says "Translated by Robot's model on this phone".
+- **A transcript's Translate** (top bar; its default in Settings › Conversation): each new line, in the other language
+  of the pair, in small italics under it (turned on mid-session, the latest 20 lines too). Robot's model works on the
+  newest lines on screen first, one at a time, skips a better translation for a line more than 60 s old, and works only
+  with the screen on and the phone not too hot (SEVERE heat: the fast engine only; voice log 112). Tap a translation (or
+  "Translate" under a line) for Robot's model's own. Changing a line's language translates it again. Translations are
+  events in the transcript's file and in exports.
+- **The interpreter** (Home › Conversation › Translate, the transcript screen's Interpreter, or "hey robot, translate
+  this conversation" / "be my interpreter" / "traduis cette conversation"): the phone flat between two people; the top
+  half turned to the other person, in their language (French by default on an English phone; ⋮ › Their language), the
+  bottom half yours. Each half shows, large, what the other side last said, translated; small, what Robot heard its own
+  side say. The direction follows each line's language; a half's microphone button forces its language (hold it while
+  you speak, or tap it on and off). Translations are read aloud (Speak, on by default here): English in Robot's voice,
+  French in Kokoro's French voice (Siwis) when Robot speaks with Kokoro. **Robot never translates itself**: it doesn't
+  listen while it speaks, nor for 300 ms after. A tap anywhere stops the reading. The screen stays on. At most two
+  speakers. The same session can switch between Transcribe and Interpreter; its file keeps every line.
+- **Speak in a transcript** (top bar, off by default): each line's first translation is read aloud, once, while it is
+  fresh; Robot doesn't listen meanwhile, and the screen says so once.
+- **The model stays loaded** while a session translates (and while a summary is made): the unload after the panel closes
+  waits until they end. Settings › Model's choice applies; a short-context model (0.4.3) translates too (a one-shot is
+  chat only anyway), within its own context.
 
 ### Fast translation engine (0.5.0)
 
@@ -256,6 +300,128 @@ translates conversations yet. The core's `BergamotTranslator` (behind the same `
   13 of the 23 lines only: the two engines quantize and decode differently, so the gate compares with this engine's own
   outputs.
 
+### Summaries
+
+- **Summarize** (a transcript in Robot › Transcripts › ⋮, "Summarize" on the saved transcript screen, or "hey robot,
+  summarize this conversation", which stops the session) opens the summary screen in the `:voice` process. The phone
+  must be unlocked.
+- **Robot's summary** is made on the phone by Robot's model: the transcript in parts of about 2,400 estimated tokens (8–10
+  minutes of talk; smaller for a short-context model), each part's notes ("at most 12 short bullet points… Add the time
+  of the line each bullet comes from, like [14:03]"), then the notes merged (in levels past 12 parts) into "a 2–3
+  sentence overview, then Decisions, To do, Numbers and dates, Open questions", in the language set in Settings ›
+  Conversation (yours by default). Every call fits the loaded model's window with room for its reply. It runs at the
+  lowest priority (your questions and translations go first; a step that gave way starts over), with a progress bar and
+  Cancel; each part's notes are kept as they come (`summary-draft.json`), so a summary stopped or failed halfway goes on
+  from the next part.
+- **Its label:** "Robot's summary — made on this phone by Gemma 4 E2B. It can miss or mix up details; check the
+  transcript." (the model it was made with). Each [14:03] links to that line in the transcript. **The number check**
+  (`SummaryCheck`): every number, name and [time] in the summary must be in the transcript (its lines and translations),
+  among the speakers' names or in your People; what isn't is listed under it ("Robot couldn't find “17 h” in the
+  transcript").
+- **A stronger AI:** for a conversation longer than about 25–30 minutes (more than 3 parts), one marked important (⋮ ›
+  Mark important on the transcript in the library), or
+  a summary the check flagged, Robot offers it first ("This conversation is long; a stronger AI will summarize it more
+  accurately": Summarize with Claude, Robot's summary anyway, Not now; Settings › Conversation › Translation and
+  summaries turns the offer off, and sets the summary's language).
+  **Nothing leaves the phone before Send on the card**, which says what goes ("41 min · 2 speakers · 6,120 words · French
+  and English. It includes what other people said and the names you gave them."), where ("Goes to: Anthropic (Claude
+  Opus 5.5), over the internet, with your API key. ≈ 9¢."), and offers "Replace names with “Speaker 1, 2”" (also where
+  the names were said). **The Claude API** (your key; Ask Claude on): one question with its own fixed prompt
+  (`ClaudePrompt.TRANSCRIPT_SYSTEM`), no tools, no web search, medium effort, room for 16,000 tokens; the answer streams,
+  is saved as "Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52.", and its cost is shown and counted in
+  the daily budget (which warns, never blocks what you asked for). **The Claude app:** the same text in a share to the
+  app (or, if it doesn't take one, on the clipboard marked sensitive, and the app opens): you press Send there; Robot
+  doesn't hear the answer. Too long for the app (over 100,000 characters): export the transcript and attach it.
+- **Where:** each summary is `summary-<n>.json` in the transcript's folder (who made it, with which model, how, when,
+  and your consent for a helper), listed on the transcript in the library (newest first, with its label and [time]
+  links, and Delete), not part of the transcript's exports, and deleted with the transcript.
+
+### On the phone (0.5.0 capture)
+
+Phases 5.0(a), 5.2 and 5.5 are done when these pass (design §9.1). Robot is the assistant, the voice models are
+installed, the wake word is on.
+1. **Transcription check, French.** Settings › Voice › Transcription check › Read, Reader 1: read the 20 French
+   sentences; Reader 2 (another person): the same. Note the French total (pass: ≤ 15 % over 20+ lines from 2 readers) and
+   the decode times. Say anything: two minutes of free Québec French, corrected. Copy report without sentences: only
+   numbers; with: the sentences too. Voice log: "Transcription check (French): …% of words wrong over … lines".
+2. **English.** The 10 English sentences: ≤ 8 %. If you have them, Clips: Common Voice "Français du Canada" clips with
+   their list.
+3. **First start.** Home › Transcribe: the reminder, "I'll tell people", Start. The notification (Pause, Stop, Open; on
+   the lock screen only the title and the time), the microphone dot, the red dot and timer on the screen.
+4. **30 minutes, two languages, screen off.** Two people talk, switching between French and English (also within a
+   minute, "Can you pass the salt? — Oui, tiens."). Lock the phone for the rest. Then: every line is in Transcripts, in
+   order, none missing at the language switches (look for "heard again" lines), FR/EN right on most lines and "FR?" only
+   on short ones. Voice log: 104/105 once a minute; note the median decode time and the longest queue. Note the battery
+   used.
+5. **Wake word.** During a session, "hey robot, what time is it?": nothing opens (the voice log has no wake line). Stop
+   the session: "hey robot" works again. Turn on "Hey robot works during a conversation": "hey robot" opens the panel and
+   the transcript shows "[paused …]" for that moment; "stop transcribing" ends it.
+6. **Crash.** During a session, `adb shell am kill app.heyrobot` (if the foreground service keeps `:voice` alive, as it
+   may, use `adb shell am crash $(adb shell pidof app.heyrobot:voice)`). The notification goes; within a few seconds
+   (when Android restarts the assistant) "Transcription stopped unexpectedly. Saved up to …" appears. Every line shown before the kill is in the transcript (at most the line being spoken is lost).
+   Resume: the same transcript goes on with "[stopped unexpectedly …]". Then Stop Robot from Settings › Active apps
+   during a session (or `adb shell am force-stop app.heyrobot`): no Resume offer, the transcript is closed as ended.
+7. **A call** during a session: "[phone call …]" or "[microphone unavailable …]", and it goes on after the call. Another
+   app recording: the same.
+8. **Lock screen.** Locked, tap the tile: the reminder or the screen over the lock screen, with nothing older; Open in
+   Transcripts needs the unlock. "Start from the lock screen" off: the tile asks to unlock. Then, on that same screen:
+   unlock, Stop, "New transcript", and with Live words on and the screen in front, lock the phone and wake it: the
+   lock screen shows, not the transcript (no lines, no grey words).
+9. **Voice start.** "Hey robot, transcribe this conversation": Robot says "Transcribing.", the screen opens and the panel
+   goes; nothing of the panel is transcribed. ("Translate this conversation" starts the interpreter since 5.4: see
+   "On the phone (0.5.0 translation and summaries)".)
+10. **Library.** Search a word from the session (with and without its accent); rename; Share: pick another app (Files,
+    a Markdown reader, a mail draft): the Markdown file opens there correctly (title, header, times, FR/EN). Save as
+    Markdown into Downloads and open it with another app. Copy and paste in a note.
+11. **Delete.** Delete one transcript: `adb shell run-as app.heyrobot ls files/transcripts` no longer lists its folder.
+    Delete the one being recorded: the session stops and the folder doesn't come back. Delete all.
+12. **Tile and shortcut.** Add "Transcribe" in Quick Settings: tap to start (the screen opens), tap to stop; long press:
+    Settings › Conversation. Long-press Robot's icon: "Transcribe" and "Transcripts" work (if "Transcribe" doesn't open,
+    note it: the shortcut targets a screen that isn't exported).
+13. **Stop, then start at once.** Tap the tile to stop and again straight away (or Stop, then "New transcript" within a
+    second): the new session records with its notification there the whole time (pull the shade: "Robot is
+    transcribing"); a session recording with no notification is a failure. The first transcript is saved whole.
+14. **Recents.** Start from the tile, press Back, stop from the notification; then open the transcript screen from
+    Recents: it opens on "Saved" and records nothing (no notification). The same after a Resume.
+
+### On the phone (0.5.0 speakers)
+
+Phase 5.3 is done when step 4 passes: that is gate 5.0(d) in the app (design §9.1). Robot is the assistant, the voice
+models are installed, nothing is recording.
+1. **Download.** Settings › Conversation › Speakers: "Download (40 MB)", the progress line, then (with Robot's app in
+   front) "Ready"; Model › Voice models lists "Speaker labels · 40 MB" too. `adb shell run-as app.heyrobot ls -l
+   files/models/spk-titanet-small` shows `nemo_en_titanet_small.onnx` at 40,257,283 bytes and `.verified`. Nothing of it
+   is in the APK (`unzip -l` the APK: no `.onnx` but the wake word's and the VAD's).
+2. **The offer.** Delete the speaker model (Settings › Conversation), open Transcribe: the card "Tell speakers apart?"
+   says 40 MB; Download opens Settings › Conversation; "Not now" hides it and it doesn't come back. Download it again.
+3. **Your voice.** Settings › Conversation › Set up your voice: read the three sentences (Record, Stop): "Saved". `adb
+   shell run-as app.heyrobot ls -l files/robot/me.voiceprint`: under a kilobyte; `adb shell run-as app.heyrobot xxd
+   files/robot/me.voiceprint | head -2` starts with `RVE` and nothing readable follows; `settings.json` has
+   `"meVoiceprint": true` and no numbers of yours. Set it up again with another person reading one sentence: "don't
+   sound like one voice", and the saved one stays.
+4. **Two people, 10 minutes (5.0(d)).** You and another person at a table, the phone flat between you, Transcribe,
+   talking normally (mixed French and English is fine) for 10 minutes, short replies included; then Stop. Your lines
+   should say "You", the other's S1 (or S2). In Robot › Transcripts › that transcript, make at most one merge (the
+   "sounds like" card or a chip's "Same person as…"). Then count, line by line, the time of the lines with the right
+   label (`adb shell run-as app.heyrobot cat files/transcripts/<id>/snapshot.json` has each line's `t0`, `t1`, `spk`; the
+   screen shows who each line is): **pass at 90 % or more of the speaking time**. Note the result, how many speakers and
+   proposals the voice log's 106 line shows ("Speakers: 2 · … · started from your voice"), and the mean embedding time
+   (`adb logcat -s Robot | grep conv_speakers`: `embedMs`). Repeat once with your
+   voiceprint deleted (both people as S1/S2), and once with the phone 2 m away from one of you.
+5. **Names and fixes, live.** During a session: tap a chip, "Name this speaker" (Marie): her lines say Marie at once.
+   Long-press a line, "Someone else said it", pick the other: it moves. Long-press a line where both of you spoke, "Two
+   people said it: split", tap the first word of the second person, pick them: two lines. "This is me" on a chip: those
+   lines say "You". Lock the phone (with a session started unlocked: the lock screen shows; started locked: the lines show
+   but chips can't be tapped, and no "sounds like" card).
+6. **Afterwards.** Stop; Share the Markdown: the header lists "Marie (S1), You", lines say "**[…] Marie (FR):**"; the
+   library's chips and long-presses do the same as live (not while it records: "It's being recorded…").
+7. **Delete your voice.** During a session, Settings › Conversation › Your voice › Delete: the file is gone (`ls`), lines
+   from then on that sound like you get an S label, earlier "You" lines stay; reopening Robot's app shows "meVoiceprint"
+   false in `settings.json`.
+8. **Crash.** Kill `:voice` during a two-person session (step 6 of the capture checks), Resume: new lines are S1′/S2′;
+   "Same person as…" on S1′ offers S1, and merging joins them.
+9. **Off.** "Tell speakers apart" off: the next session's lines are all "Speaker" and the 106 line isn't logged.
+
 ### On the phone (0.5.0 translation engine)
 
 Phase 5.0(b) is done when steps 2 to 4 pass (design §9.1).
@@ -283,6 +449,369 @@ Phase 5.0(b) is done when steps 2 to 4 pass (design §9.1).
 9. **No network.** With the files there, turn on airplane mode and run the test: it works the same.
 10. **Voice log.** Settings › Voice › Voice log: "Fast translation loaded in … ms (2 directions)" for each first load.
 
+### On the phone (0.5.0 translation and summaries)
+
+Phases 5.4 (Robot's model's half) and 5.6 are done when these pass (design §9.1). Robot is the assistant, the voice
+models are installed, Fast is the model, the phone is unlocked unless a step says otherwise. Without the fast engine
+installed (its own branch), steps that mention it are skipped and noted.
+1. **One-shots beside the panel.** Start a transcript with Translate on and talk French and English: each line gets an
+   italic English or French line within a few seconds. Meanwhile open the panel and ask "what time is it?": it answers
+   (the transcript pauses while the panel is open, as before); ask a second question that needs a card (a text to
+   someone, don't send): while the card is open, translations wait; tap Cancel: they go on. `adb logcat -s Robot | grep
+   -E "brain_one_shot|one_shot|brain_reply"`: one-shots with `oneShot=true`, never `calls>0`; the panel's replies rebuild
+   their conversation after a one-shot (`brain_rebuild`). Ask the panel about something said earlier in the panel
+   (not in the transcript): it remembers the panel's own conversation and knows nothing of the transcript.
+2. **The interpreter, 10 turns (the phase-4 4.2 criteria).** Home › Conversation › Translate (first time: the reminder).
+   Phone flat between you and a French speaker; take 10 turns. Pass: **the direction is right at least 9 times** (the
+   large text in the listener's half is in their language); **Robot never translates itself** (no line of Robot's own
+   voice in the transcript afterwards: open it in Robot › Transcripts); **the median from the end of speech to the first
+   translated audio is ≤ 3.0 s** (time it on a recording, or read voice log 108's ms, which is up to the hand-off to the
+   voice, and add the voice's first-chunk time from "Test voice speed"); with the fast engine, ≤ 2.0 s in its turns.
+   Then hold the bottom half's button and say a French sentence: it is taken as yours (English) only while held, and
+   translated into French; tap it on, speak English, tap it off. A tap on the screen while it reads stops it.
+3. **The panel during a session.** In the interpreter, "hey robot" (with "Hey robot works during a conversation" on) or
+   the corner swipe, ask a question: **the panel still answers** (the session pauses meanwhile); close it: the
+   interpreter goes on. Do it once while a translation is being made: the panel's answer comes after that turn.
+4. **Heat and screen.** In a transcript with Translate on, turn the screen off for a minute and on again: lines said
+   meanwhile get their translations once the screen is on (newest on screen first). (SEVERE heat can't be forced: note
+   it if it happens; voice log 112 "fast translation only".)
+5. **CPU model.** Settings › Model › Smarter (E4B, CPU): the interpreter still translates (slower; note the time per
+   turn); with the fast engine installed, its translations lead. Back to Fast.
+6. **Robot's summary of an hour (≤ 4 min).** Record (or resume) a transcript of about an hour; Robot › Transcripts › that
+   transcript › ⋮ › Summarize: the stronger-AI offer appears first (it is long); "Robot's summary anyway": the progress
+   goes part by part, then "Putting the notes together…". Pass: **done in 4 minutes or less, no error** (`adb logcat -s
+   Robot | grep -E "brain_one_shot_too_long|TOO_LONG"` empty); the label names the model; each [14:03] opens the
+   transcript at that line; the number check lists any number or name not in the transcript (say "Paul owes forty
+   dollars" nowhere, then compare). Cancel one halfway, Summarize again: it goes on from the next part (fewer parts
+   read; `summary_local` in the log). Voice log 113: parts, seconds.
+7. **Summarize with Claude, network off then on.** Turn Wi-Fi and mobile data off (or Robot's Network permission off).
+   Summarize › A stronger AI: the card shows what goes, where, and the price, with nothing sent (`adb logcat -s Robot`
+   has no `claude_` request line before Send; a proxy or the router shows no connection to api.anthropic.com). Tick
+   "Replace names": the speakers become "Speaker 1, 2". Send with the network off: "No internet…", nothing kept. Network
+   on, Send: Claude's summary streams in, labelled "Claude's summary — sent to Anthropic with your OK on …", with its cost;
+   today's spend in Settings › Ask Claude went up by about that. Voice log 114.
+8. **The Claude app.** With the app installed: Summarize › "Share it with the Claude app instead" › Send: the app opens
+   with the text (or "It's copied: paste it…"); note which way worked on the installed version (design T11).
+9. **Library.** The transcript's page lists the summaries, newest first, with their labels; a [14:03] scrolls to the
+   line; Delete removes one (`adb shell run-as app.heyrobot ls files/transcripts/<id>` no longer lists that
+   `summary-<n>.json`); exports and Share still carry the translations ("> EN: …"), not the summaries.
+10. **Voice.** "Hey robot, summarize this conversation" during a session: the session stops and the summary screen opens
+    (locked: "Unlock your phone, then …").
+
+## Short-context models (0.4.3)
+
+Your own model file (Settings › Model › "Your own model file") may now be built for a context of 2,048 to 4,095 tokens
+(LlmMetadata's `max_num_tokens`). Robot runs it as **chat only**: it answers questions by voice or text, also about a
+photo (when the file can see one) or the screen; it does no actions (timers, texts, notes, the calendar, maps, the
+weather…) and keeps less of the conversation. Under 2,048 tokens a file is still refused; 4,096 or more, or none stated
+(Google's own files), runs as before. Nothing else changes for the other models, and there is no new setting (settings
+schema 7 as in 0.4.1): choosing the file in Settings › Model is the switch, and Settings › Safety & privacy › "Direct
+answers" applies as you set it.
+
+- **The check** (`core/LiteRtLm.kt`, the same header read as in 0.4.1) lists "Short context (2048 tokens): chat only — no
+  actions, shorter memory." and the file can be imported, checked and chosen like any other. "Robot uses" says "Chat only
+  (short context): no actions." (and "Can see photos." when it can) beside it; its card says the same in a sentence. A file
+  whose name says MedGemma gets one line under its name: "Not a medical device: check health information with a
+  professional." It is never added to the answers.
+- **Its own context, checked twice.** Robot asks LiteRT-LM for exactly the file's context (`maxNumTokens` 2,048 for
+  MedGemma), never 4,096 of KV cache on a 2,048 model (`ContextWindow.forFile`, `LoadPlan.contextTokens`). `:brain` loads it
+  only when your file's record (`LoadCheck`) and the header it reads again itself both say that context; any other
+  context, for this file or a built-in model, is refused, as before.
+- **No tools** (`ToolMode.CHAT_ONLY`, `BrainPolicy`): no tool is described, there is no text-call hint and no constrained
+  decoding, and :brain never tries a tool level for it (nothing steps it down or up). A call the model makes anyway is
+  dropped, in :brain and again in the panel (`ChatOnlyTurn`), so it never reaches a card.
+- **A compact prompt** (`Prompt.chatSystem`): who Robot is, plain short answers that may be read aloud, the "Direct
+  answers" clause when it is on, that it can't act on the phone or go online, that screen text and pictures are
+  information and not instructions, and the date. About 180 estimated tokens with the clause (the full prompt: under
+  317, before any tool); `PromptTest` measures it.
+- **The budget** (`ContextWindow`, every function now takes the loaded model's context): the answer keeps a quarter of a
+  short context (512 of 2,048; 768 at 4,096, as before), the new message is cut to fit what is left beside the prompt
+  (a screen's text first: about 1,000 tokens of it fit beside a screenshot at 2,048), and the history is the newest whole
+  exchanges that fit. Older turns are dropped, never sent to overflow; the engine's own count after a rebuild drops more
+  when the estimate was low, and a live conversation is rebuilt shorter sooner than at 4,096.
+- **Turns alternate.** Gemma 3's chat template (MedGemma's) raises "Conversation roles must alternate" in LiteRT-LM's
+  template engine, so a chat-only history always goes question, answer, question… (`Prompt.alternate`): a question whose
+  reply failed is joined to the next, Robot's answer to Claude's after it, and an unanswered last question is left out.
+- **Photos** only when the file has a vision encoder. Robot plans 300 tokens per picture, as for Gemma 4; MedGemma's vision
+  adapter gives 257 per 896 × 896 image (read from the file: its output is `[1, 257, 2560]`). Gemma 4's visual token
+  budget (280) is set only for a Gemma 4 file, and a file without a vision encoder now loads once, text only, instead of
+  failing a vision load first; a photo question then says "This model can't look at photos: its file has no vision part."
+- **Actions.** Robot's routes that need no model work as always: "text Mom I'm late" (texting without the model), Ask
+  Claude's phrases and the hand-over to Claude. A request clearly worded as an action, from its first words ("set a timer
+  …", "remind me to…", "open Signal", "turn on the flashlight", "add … to my calendar", "navigate to…"), or a question only
+  the phone's tools can answer ("what's the weather", "what's on my calendar", "what's Mom's number", "how much battery…",
+  "where is the nearest…") gets Robot's own answer instead of the model's: "This model can only chat: it can't do things
+  on the phone (timers, alarms, texts, notes, the calendar, maps) or look anything up. To have Robot do that, choose Fast
+  in Settings › Model.", spoken without the "›", and a notice "For actions, choose Fast in Settings › Model." whose **Open
+  Model** button opens Settings › Model. Robot never switches the model for you. The list is narrow on purpose
+  (`ChatOnly.actionAsked`, tested both ways): "Open wound on my knee, should I cover it?", "light sensitivity and a
+  headache", "can cold weather trigger asthma?" go to the model, which is told it can't act and says so if asked.
+- **Logs** (codes and numbers only): `brain_load` adds `maxTokens` and `chatOnly`, `brain_ready` `chatOnly`, the panel
+  `chat_only_action` (which tool the request named), :brain `brain_calls_dropped`.
+
+### MedGemma 1.5 4B
+
+Google's MedGemma 1.5 4B (instruction-tuned, Gemma 3 based, trained for medical text and images) is the only medical
+model published in LiteRT-LM format as of October 2026: `litert-community/MedGemma-1.5-4B-IT` (Google's LiteRT community account),
+built for 2,048 tokens. Robot doesn't download it (it isn't in the catalogue): you download it and import it as your own
+file.
+
+| File | Bytes | SHA-256 | Sees photos |
+|---|---|---|---|
+| `medgemma-1.5-4b-it_q4_block32_ekv2048.litertlm` | 2,583,871,056 | `6778edd3137104d8b47f65b24dbc21c8eecb0329c987a3d64bd2fba201e6bf51` | no |
+| `medgemma-1.5-4b-it_q4_block32_vision_ekv2048.litertlm` | 3,023,069,488 | `1627e2e433c3799e4ff06ff0895408ca65b255f786dc270fb5cfa325e349233a` | yes |
+
+(The repository's third file, `medgemma-1.5-4b-it_q8_gpu_ekv2048.litertlm`, is for a GPU; Robot doesn't use the GPU.)
+
+- **Licence.** MedGemma is under Google's Health AI Developer Foundations terms of use
+  (https://developers.google.com/health-ai-developer-foundations/terms), not Apache-2.0. Among them: you must not use it
+  for the uses in the HAI-DEF Prohibited Use Policy, nor in any way that could make a health regulator deem Google the
+  maker of a medical device; you are responsible for its outputs; and you agree that Google isn't furnishing medical
+  advice by providing it. The terms cover the model "regardless of the source that you obtained it from". Robot ships
+  nothing of it and distributes nothing: you download the file and Robot copies it into its own storage on your phone.
+- **Download.** The repository is gated: sign in to Hugging Face with your account, open
+  https://huggingface.co/litert-community/MedGemma-1.5-4B-IT, read the terms and tap "Acknowledge license" (approval is
+  automatic), then download one of the two files in the phone's browser or on a computer (Robot's import opens Android's
+  file picker, so the phone's Downloads folder is fine).
+  An ungated copy of the vision file is at https://huggingface.co/warped-community/MedGemma-1.5-4B-litert-lm (commit
+  `34023a4b44b3ef9647813ef6a6e20de10a10b97e`, "maintained for the Warped Android app"); its file is byte-identical to the
+  one above (the same size, SHA-256 and Git LFS pointer).
+- **Import.** Settings › Model › "Your own model file" › "Import a .litertlm file", pick it, then "Check the file": Robot
+  shows its size and SHA-256 (compare them with the table) and what it found. It needs the file's size free, about three
+  quarters of it again for the CPU's cache and 1 GB to spare (about 6.3 GB in all for the vision file).
+- **What the check finds** (the vision file's header was read for this release with Robot's own code, over a few
+  range requests): LiteRT-LM 1.5.0; LlmMetadata `max_num_tokens` 2048; model type `gemma3n` with `<start_of_image>` and
+  `<end_of_image>` and 896 × 896 images; Gemma 3's Jinja template (the system text joined to the first question, roles
+  that must alternate, no tools section); `<end_of_turn>` as its stop; a CPU build (no TPU code), KV cache tensors of
+  2,048 positions; the sections `tf_lite_prefill_decode`, `tf_lite_embedder`, `tf_lite_vision_encoder`,
+  `tf_lite_vision_adapter`. So: "Compiled for this phone's TPU: no. It runs on the CPU.", "Model type “gemma3n”, not
+  Gemma 4: Robot is written for Gemma 4, so answers may be odd.", "Can see photos: yes." and the short-context line. The
+  text-only file should read the same without the two vision sections ("Can see photos: no").
+- **Expected, not measured:** it runs on the CPU like the E4B models (a 4B model: its speed, first load, cache and memory
+  aren't measured on the phone yet: "On the phone (0.4.3)" below). Ask it in plain words; Robot keeps the answers short
+  unless you ask for more.
+
+### On the phone (0.4.3)
+
+Before: 0.4.3 installed over 0.4.2 with Fast chosen, both MedGemma files on the phone (Downloads), about 7 GB free.
+
+1. **Import and check, text-only file.** Settings › Model › "Your own model file" › Import
+   `medgemma-1.5-4b-it_q4_block32_ekv2048.litertlm`, then "Check the file": 2,583,871,056 bytes and SHA-256 `6778edd3…`
+   as in the table; the lines "Compiled for this phone's TPU: no…", "Model type “gemma3n”, not Gemma 4…", "Can see photos:
+   no…", "Short context (2048 tokens): chat only — no actions, shorter memory."; "Not a medical device: check health
+   information with a professional." under its name; the card's "Chat only: it was built for 2048 tokens…". In "Robot
+   uses", the row says "Chat only (short context): no actions." and can be chosen.
+2. **Choose it and the first load.** Choose it, open the panel, ask "hi": `adb logcat -s Robot | grep brain_load` shows
+   `model=own backend=cpu maxTokens=2048 chatOnly=true vision=false visionError=NoVisionEncoder` (one load, no failed
+   vision load first); note the load time, the cache size on its card and `adb shell dumpsys meminfo app.heyrobot:brain`.
+3. **Medical questions by voice and by text.** Five of each ("what does a high white blood cell count mean?", "is
+   ibuprofen safe with high blood pressure?", "what are the signs of a migraine?"…): short answers in Robot's voice, no
+   warning added by Robot to each answer, no error. Note `brain_fixed_tokens` (groups `none`: the compact prompt's real
+   count, expected about 140) and each `brain_reply` (`ttftMs`, `tps`).
+4. **Direct answers.** The same two questions with Settings › Safety & privacy › "Direct answers" off, then on again:
+   the answers' tone follows the switch; the Model screen's note stays the only note.
+5. **A photo without vision.** With the text-only file, ask about a photo: "This model can't look at photos: its file has
+   no vision part. Settings › Model says which ones can."
+6. **The vision file.** Import `medgemma-1.5-4b-it_q4_block32_vision_ekv2048.litertlm` (3,023,069,488 bytes,
+   `1627e2e4…`): "Can see photos: yes."; the row adds "Can see photos."; `brain_load … maxTokens=2048 chatOnly=true
+   vision=true visualBudget=false`.
+7. **A skin spot and an X-ray.** Photograph a skin spot (or a picture of one) and ask "what could this be?"; then a
+   chest X-ray (a printed one, or one on a computer screen) and ask "what do you see?": the answers are about the
+   picture; note the first-token time; ask a follow-up about the same picture.
+8. **A screen.** Open a long lab report or article and "Ask about this screen": "The screen had a lot of text, so Robot
+   read only the first part." when it was cut, then an answer about its first part.
+9. **A long conversation.** Twenty or more exchanges by text in one conversation, some answers long: never "That's too
+   long…" nor "The model ran into a problem."; `brain_rebuild` shows `kept` below `of` as older turns drop (and
+   `brain_rebuild_shorter` when the estimate was low); a question about the first exchange may no longer be remembered
+   (expected: a shorter memory). A reply that fills the context stops as stopped, its text kept.
+10. **An action request.** "Set a timer for 5 minutes", "remind me to take my pills at 8", "turn on the flashlight",
+    "what's the weather tomorrow?", each by voice and by text: the reply "This model can only chat…", spoken without the
+    "›"; the notice "For actions, choose Fast in Settings › Model." with Open Model, which opens Settings › Model (locked:
+    "Unlock your phone…"); the model stays chosen. `grep chat_only_action` shows the tool. "Text Mom I'm late" still gets
+    the texting card (no model), "ask Claude …" still goes to Claude, and "I have an open wound on my knee, should I
+    cover it?" is answered by the model. `grep brain_calls_dropped` stays empty or shows a dropped call, never a card.
+11. **Back to Fast.** Settings › Model › Fast: `brain_release why=model_changed`; the next question loads Fast
+    (`brain_load model=e2b_tpu backend=npu maxTokens=4096 chatOnly=false`), "set a timer for 1 minute" sets it, and the
+    Voice log shows the switch.
+12. **Fallback as before.** Choose MedGemma again, `adb shell touch` its file in `/sdcard/Android/data/app.heyrobot/files/`
+    and ask: Fast answers with "“Your own model file” hasn't been checked yet, so Robot is using Fast…"; check it again in
+    the app and it is chosen again. Delete it: its file and cache go.
+
+## Model choice (0.4.1)
+
+Settings › **Model** (the Model tab; Settings › Model › "Robot's model" opens it) chooses which model answers. **Fast**, the
+model of every earlier version, stays the default, and nothing else downloads unless you tap Download. A model you choose
+that isn't ready, or doesn't load, falls back to Fast with a message that says why, so Robot is never left without a model
+because of a choice.
+
+| Choice | Model | Runs on | Download | Writes | First word, new conversation | Memory | Licence |
+|---|---|---|---|---|---|---|---|
+| **Fast** (default) | Gemma 4 E2B, Google's Tensor G5 build | TPU | 3.11 GB | about 17 tokens a second | about 3 s | about 2 GB | Apache-2.0 |
+| **Smarter, slower** | Gemma 4 E4B, Google's file | CPU | 3.66 GB, plus about 2.5 GB of cache written on the first load | about 8 tokens a second | about 21 s (follow-ups 1 to 3 s) | about 4.1 GB | Apache-2.0 |
+| **Uncensored, slower** | Gemma 4 E4B abliterated, a community build by olekk | CPU | the same | the same | the same | the same | Apache-2.0 |
+| **Your own model file** | a `.litertlm` you import | CPU; the TPU only for a proven Tensor G5 build you allow | its size, plus about three quarters of it for the cache (CPU) | depends | depends | depends | the file's own |
+
+The numbers were measured on this phone (Pixel 10 Pro, LiteRT-LM 0.18.0, lab runs of 2026-10-09): E2B on the TPU read
+prompts at 495 to 566 tokens a second and wrote 17.3 to 18.1, at 3.5 W; E4B on the CPU read 70 and wrote 8.1, took 8.3 s to
+the first token of a 549-token prompt, held 4,120 MB (RSS) at 8.85 W, and its first load took 8.9 s and wrote 2.54 GB of
+cache (Google's E4B file; Uncensored's "the same" is expected from its identical layout, not yet measured: phone test 10).
+"About 21 s" and "about 3 s" are for a cold prompt of about 1,500 tokens, the size of Robot's fixed prompt with its
+tools: the first question of a conversation, or after a tool group is added. Robot keeps the conversation going, so a
+follow-up reads only the new turn. On the CPU the E4B models use about 2.5 times the power while they write (more battery,
+more heat), and look at photos on the CPU too (seconds, against under one on the TPU). Settings › Model shows each one's
+line in plain words.
+
+**Why no E4B on the TPU.** No Gemma 4 E4B build for the Tensor TPU exists. Google publishes TPU builds of E2B only (G5 and
+G6); the one "E4B … `_Google_Tensor_G5.litertlm`" on Hugging Face (`safecircleai/horizon-edge-4b`) is that repository's
+generic CPU export under a new name: no TPU code, no Gemma 4 tool metadata, a child-safety classifier fine-tune under a
+non-commercial licence. Robot never offers it. Making an E4B TPU build takes Google's Tensor compiler, a closed beta whose
+terms forbid sharing what it builds. Both E4B choices therefore run on the CPU; a genuine E4B TPU file from Google can be
+added to the catalogue (`core/ModelState.kt`, `BrainModel`) once it is published, pinned and passes the content check below.
+
+**Uncensored.** The same Google E4B file with the model's own refusals removed (olekk patched two kinds of weights in place,
+keeping Google's quantization, vision, MTP drafter and tool metadata). Its maker spot-checked it and ran no benchmark; it
+may still refuse now and then, and its card asks that it be used for research and personal experimentation, says you
+own its outputs, and says Google's Gemma Prohibited Use Policy still applies. Robot's own cards and switches are unchanged: the model only ever proposes an action, and Settings ›
+Safety & privacy decides what asks first, whichever model is loaded (`ApprovalGate` doesn't know which one is).
+
+### Downloads, files and privacy
+
+- A built-in model downloads only when you tap Download, from Hugging Face, by DownloadManager in the main app process
+  (as since 0.1: it resumes by itself after a dropped connection), pinned to one commit, and its SHA-256 is checked
+  before it is ever loaded. Nothing you say or type goes there; Hugging Face sees a file download from your phone.
+  "Import a downloaded file" takes the same file from your computer instead (the exact size, then the same check).
+
+  | Choice | URL | Bytes | SHA-256 |
+  |---|---|---|---|
+  | Fast | `https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it_Google_Tensor_G5.litertlm` | 3,113,545,589 | `af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc` |
+  | Smarter | `https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/2eee7ac325f20eb8c9ac1d0e972f7c84663062da/gemma-4-E4B-it.litertlm` | 3,659,530,240 | `0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0` |
+  | Uncensored | `https://huggingface.co/olekk/gemma-4-E4B-it-abliterated-litert-lm/resolve/a4eecccd3b0ba1777660180cda60a396eedcb8aa/gemma-4-E4B-it-abliterated.litertlm` | 3,659,530,240 | `f5a6625e0368e853743c91b39fa6ac6a8add1fc4825b18f98f518966610f2a88` |
+
+- Each model has its own file (in Robot's app folder), its own verified mark, download and, on the CPU, its own cache
+  folder (`filesDir/litert_cache/<id>/`, passed to LiteRT-LM as its cache directory). Fast keeps 0.4.0's file and mark, so
+  an installed model stays checked across the update. The free-space check counts the file, the cache its first load
+  writes and 1 GB to spare (about 7.3 GB free for an E4B); one model download or copy runs at a time.
+- **Delete this model** removes its file, mark, download and cache. A model in memory is never deleted (`:brain` writes
+  which one it holds to `brain_loaded.txt`, with its process id): choose another model first, and Robot lets go of the
+  old one right away. Deleting the model you chose puts the choice back to Fast.
+
+### Your own model file
+
+"Import a .litertlm file" opens Android's file picker (the Storage Access Framework: no storage permission). Robot copies
+the file into its own storage under a fixed name (`own_model.litertlm`; the file's own name is shown, never used as a path
+or a reason to trust it), watching the free space as it copies, computes its SHA-256 and shows it with the size, and reads
+its header (`core/LiteRtLm.kt`: the LiteRT-LM sections, the decoder's TFLite operator codes and LiteRtStamp, and the
+LlmMetadata; a few kilobytes, every offset and count checked, a damaged file is simply "unreadable"). Settings › Model lists
+what it found.
+
+- **The TPU** (`Backend.NPU`) only when every sign of a Tensor G5 build is there: a `tf_lite_aux` section, a
+  `prefill_decode` whose operators include `DISPATCH_OP`, a `LiteRtStamp` naming `Tensor_G5`, and Gemma 4 metadata. Never by
+  its name: LiteRT-LM 0.18.0 runs a file without the aux section quietly on the CPU while the app believes it is on the
+  TPU. Even then it runs there only after you read its warning card and tap "I understand: run it on the TPU". The card
+  names the risks: compiled TPU code nobody can review, running through the phone's own TPU driver and vendor libraries,
+  outside what Robot's separate model process can contain; a bad or mismatched build can crash Robot's model, hang the TPU
+  until a restart or, rarely, restart the phone; a SHA-256 proves the file is the one you picked, not that it is safe; a
+  TPU build not published by Google may have been shared against the Tensor compiler's terms. It shows the file's name,
+  size and SHA-256, and the tap allows that very file only (by its SHA-256): a file changed since is checked again and
+  asks again. `:brain` reads the header again itself before it loads anything but Fast, and before any load it reads the
+  app's own records again rather than trust the request (`LoadCheck`): a built-in model's SHA-256 mark must match the
+  file now, and your own file must be the one recorded after its check (size and time unchanged), on the TPU only once
+  you allowed it.
+- **The CPU** for every other file it can run. Without Gemma 4's tool-call tokens (`<|tool_call>`, `<|tool_response>`)
+  Robot says actions may not work; with another model type, that Robot is written for Gemma 4.
+- **Refused:** NPU code for another chip (a Snapdragon build, a Tensor G6 build) or an incomplete Tensor G5 build (the
+  CPU can't run TPU code either), a file without a language model (no `prefill_decode`), or a context under 2,048 tokens
+  (before 0.4.3: under 4,096; from 2,048 to 4,095 a file now runs as chat only, "Short-context models" below).
+
+### Loading, switching and falling back
+
+- `:brain` is told the model, where it runs and its context in `BrainMsg.Load` (`Loaded` and `Status` say which model is
+  in memory). It unloads any other model first, so two engines never share the process (Fast about 2 GB, an E4B about
+  4 GB); the assistant asks it to unload first too, and the keep-loaded timer and `free_memory` work as before. The
+  process has one engine slot whichever `BrainService` holds it: a new service started before the old one's work thread
+  has let its model go answers "still stopping" until it has (and ends the process if that thread is stuck for 20 s).
+- On the CPU, `GemmaEngine` loads with `Backend.CPU()` (LiteRT-LM's default threads: 6 were no faster), the vision
+  encoder on the CPU, and the model's cache folder; a first load that the free space can't hold is refused with a plain
+  message. MTP speculative decoding (`CPU_MTP`) and a sampler (`CPU_SAMPLER`, Gemma's top-k 64, top-p 0.95, temperature 1.0)
+  are constants in `GemmaEngine.kt` for an A/B test on the phone; both start as on the TPU (off, no sampler). Constrained
+  tool calling comes first, as on the TPU, with the same step-down.
+- The context stays 4,096 tokens for every model (each catalogue entry says so, and the prompt budget, `ContextWindow`,
+  is 4,096): the CPU files could take more, but at about 70 tokens a second a longer prompt is slow to read. Since 0.4.3
+  your own file built for less (2,048 to 4,095) loads with its own context instead, as chat only.
+- **Fallback** (`core/ModelState.kt`, `ModelChoice`, tested): the chosen model not downloaded, not checked, waiting for the
+  TPU card, unusable, or failing to load means Fast instead, and the panel says so once, with Open Robot ("“Smarter,
+  slower” isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Model."). A model that failed
+  to load, or that stopped the model process while in memory (a native crash as it answered, or Android reclaiming its
+  memory), is skipped until you tap it again in Settings › Model (any change to the settings retries it) or its file
+  changes, so the next question doesn't wait for the same failure, and a model that keeps crashing can't reach the
+  three-stops-an-hour lockout that would stop Fast too. With Fast missing too, the panel says what to download.
+- Settings file schema 7: `brainModel`, a catalogue id; older files read as Fast, the model they had.
+- Voice log (Settings › Voice › Voice log), ids only, events 130 to 139: model chosen (130), loaded with where and how
+  long (131), didn't load and why (132), Fast used instead and why (133), another model unloaded first (134). `adb logcat
+  -s Robot` adds `brain_load`, `brain_switch`, `brain_fallback` and `model_verify` with codes, booleans and times only (never
+  a file's name or path).
+
+### On the phone (0.4.1)
+
+Before: Fast installed and chosen (the default), about 15 GB free (both E4B models with their caches, at once), the phone
+on battery, Wi-Fi on. Note every time.
+
+1. **Update from 0.4.0.** Settings › Model: Fast is chosen and "Ready" without a new download or check; the other three
+   rows are dimmed ("Download it below first", "Import a file below first"). Ask a question: it answers as before.
+2. **Download Smarter and its first load.** Download it: the notification, progress and resume after turning Wi-Fi off
+   and on; then "Checking the file" and "Ready". Choose it, open the panel and ask "hi": note the load time (Voice log
+   "Model loaded: Smarter … on the CPU in … s"; first-ever load about 9 s) and the Smarter card's "Its cache holds … now"
+   (about 2.5 GB). `adb logcat -s Robot | grep brain_load`: `model=e4b_cpu backend=cpu`.
+3. **Cold and warm first token, writing speed.** A new conversation, one question by voice and four follow-ups. Note
+   `brain_fixed_tokens` and each `brain_reply` (`ttftMs`, `tps`): cold first token at most 25 s, warm at most 3 s, writing
+   about 8 tokens a second. Panel: "Waking up the model…" then "Thinking…" while it reads.
+4. **Memory beside voice.** With the panel open and Kokoro speaking a long answer: `adb shell dumpsys meminfo
+   app.heyrobot:brain` (TOTAL RSS about 4.1 GB) and `adb shell dumpsys meminfo app.heyrobot:voice`; `adb logcat -b events
+   | grep am_kill` shows no low-memory kills. Then "how much memory is free?": "Robot's own model holds about 4.1 GB".
+5. **Photos on the CPU.** Two photo questions (camera button), and one "ask about this screen": correct answers; note the
+   first-token time (about 10 s expected). `brain_load` says `vision=true`.
+6. **Tool calling.** "Set a timer for 2 minutes", "text Mom I'm late", "add dentist Tuesday at 3", "what's on my calendar
+   tomorrow": the usual cards; `adb logcat -s Robot | grep brain_tool_mode_down` stays empty.
+7. **Screen off.** Ask a long question by "hey robot", turn the screen off and lock while it answers: the reply finishes at
+   normal speed (`tps` in `brain_reply`; the lab saw 1 token a second for a background app).
+8. **Ten minutes, warm.** Ten minutes of back-to-back questions on battery: note `tps` over time, the battery % used, and
+   `adb shell dumpsys battery | grep temperature` before and after. Pass: no collapse in speed, no thermal warning.
+9. **MTP and the sampler (A/B).** Build once with `CPU_MTP = true`, once with `CPU_SAMPLER = true` (`GemmaEngine.kt`):
+   repeat 3 and 6. Keep whichever writes faster and answers as well; MTP's output should match without it.
+10. **Uncensored.** Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
+    ones (refusals gone? answers sane?). Cards still show for texts, emails, events and deleting.
+11. **Switching.** Fast → Smarter → Uncensored → Fast without restarting, a question after each: Voice log "Unloaded … to
+    load …" each time, never two models (`dumpsys meminfo app.heyrobot:brain` falls back to about 2 GB on Fast), and the
+    TPU model answers again at its usual speed.
+12. **Delete while in use, and the clean-up.** With Smarter chosen and just used, Delete this model is refused ("Robot
+    has “Smarter, slower” loaded right now…"). Choose Fast (`adb logcat -s Robot | grep brain_release` says
+    `why=model_changed`), then delete Smarter: its card says "Not downloaded", its cache line is gone, and the free space
+    grows by about 6.2 GB (file and cache).
+13. **Your own file, not a TPU build.** Import a photo renamed `x.litertlm` as your own file: after the copy, "Robot
+    can't use this file" ("It isn't a LiteRT-LM model file") and it can't be chosen. Import Google's E2B CPU file
+    (`gemma-4-E2B-it.litertlm`, same repository as Fast): its size and SHA-256, "Compiled for this phone's TPU: no", Gemma 4
+    with its tool-calling metadata; choose it and ask: it answers on the CPU (`brain_load model=own backend=cpu`).
+14. **Your own TPU build.** Import Fast's own file (`gemma-4-E2B-it_Google_Tensor_G5.litertlm`) as your own file: the check
+    says it is a Tensor G5 build and shows the warning card with its size and SHA-256 (`af108298…`); it can't be chosen
+    until you tap "I understand: run it on the TPU"; then choose it and ask: `brain_load model=own backend=npu`, TPU speed.
+    "Stop running it on the TPU": Robot falls back to Fast with a notice. Delete it.
+15. **Fallback notice.** Choose your own CPU file from 13, then "Import another file" with a broken one: the next
+    question answers with Fast and the panel says once "Robot can't use “Your own model file” (the Robot app › Model says
+    why), so Robot is using Fast." with Open Robot; a second question says nothing more. Voice log: "Used Fast … instead of
+    your own model file: can't be used".
+16. **Delete everything but Fast** and check the free space matches what was there before step 2.
+17. **A model that stops the process.** With Smarter chosen and loaded, `adb shell kill -9 $(adb shell pidof
+    app.heyrobot:brain)`, then ask a question: it answers with Fast and the panel says once "“Smarter, slower” stopped
+    unexpectedly, so Robot is using Fast…"; a second question says nothing more. Tap Smarter again in Settings › Model: the
+    next question loads it again.
+18. **One engine, also across a restart of the model service.** With Smarter answering a long question, choose Fast in
+    Settings › Model, then ask again at once: either "The model is still stopping. Try again in a moment." or the answer
+    with Fast, never both models at once (`adb shell dumpsys meminfo app.heyrobot:brain` stays near one model's size;
+    `adb logcat -s Robot | grep brain_teardown` shows no `END_PROCESS`).
+19. **A file changed after its check.** With Smarter chosen and checked, `adb shell touch` its file in
+    `/sdcard/Android/data/app.heyrobot/files/`, then ask: Fast answers ("hasn't been checked yet"); open the Robot app and
+    it checks the file again. With your own TPU build allowed (14), import another Tensor G5 file: its card asks again.
+
 ## Weather, phone status and freeing space (0.4.0)
 
 Four tools, so Robot can say whether tomorrow will be cloudy and help you free up storage and memory. The two that read
@@ -298,7 +827,7 @@ read tools don't: nothing leaves the phone).
 |---|---|---|
 | `weather` (place, day; both optional) | Open-Meteo's forecast for a town you name, your Home for weather, or where the phone is: one line per day | Just do it (uses the internet) |
 | `phone_status` (about: storage, battery, memory or all) | Free and total storage, battery, memory, and with Usage access the apps using the most space and the size of photos, videos and audio, read on the phone | Just do it |
-| `free_memory` (app, optional) | Unloads Robot's own model (about 2 GB) once the answer ends, or opens the named app's App info, where you tap Force stop | Ask first |
+| `free_memory` (app, optional) | Unloads Robot's own model (about 2 GB; 4 GB for an E4B model) once the answer ends, or opens the named app's App info, where you tap Force stop | Ask first |
 | `free_storage` (what: android, apps, files or robot) | Android's Free up space screen, an app's App info to clear its cache, a large photo or video deleted through Android's own confirmation, or Robot's cache | Ask first |
 
 ### Weather
@@ -378,7 +907,7 @@ answers, tested against answers recorded from Open-Meteo. Open-Meteo's data is C
 Read on the phone; nothing leaves it. `StatFs` on the data partition gives free and total storage and the share used;
 `BatteryManager` the level, charging or not, Android's minutes to full and the battery's temperature; `ActivityManager`'s
 `MemoryInfo` the available and total memory and whether Android considers it low (and whether Robot's own model, about
-2 GB, is loaded). With **Usage access** (you turn it on for Robot in Android's settings: Assistant setup › Usage access ›
+2 GB for Fast or 4 GB for an E4B model, is loaded). With **Usage access** (you turn it on for Robot in Android's settings: Assistant setup › Usage access ›
 Open, or the card's "Turn on Usage access"), `StorageStatsManager` adds the five apps using the most space (app and data,
 their cache from 100 MB) and the size of photos, videos and audio. Robot itself is listed as "Robot (models, don't
 clear)", so the model doesn't suggest clearing it. Only apps with a launcher icon are counted (Robot has no
@@ -397,8 +926,8 @@ What Android 14 and later let an app do, and no more. Both actions ask first by 
 shows a card whatever the level, unless Settings › Safety & privacy › "Card before deleting files" is off: then Robot goes
 straight to Android's own confirmation for the largest one (Android still asks).
 
-- **Memory.** `free_memory` with no app unloads Robot's own model, its biggest lever (about 2 GB): the same release as
-  Settings › Model memory's timer, but at once, as soon as the answer that asked for it has ended (Gemma is still
+- **Memory.** `free_memory` with no app unloads Robot's own model, its biggest lever (about 2 GB; 4 GB for an E4B
+  model): the same release as Settings › Model's keep-loaded timer, but at once, as soon as the answer that asked for it has ended (Gemma is still
   writing that answer when the action runs; the release happens before that turn completes, so a next question can't
   race it). The card then says what Android reports came back ("Freed about 2.1 GB: 6.3
   GB of memory available now."); the model loads again, in about 2 seconds, for the next question. Robot can't stop

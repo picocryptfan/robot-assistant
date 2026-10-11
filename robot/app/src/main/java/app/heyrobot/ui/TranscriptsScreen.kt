@@ -10,7 +10,9 @@ import android.os.PersistableBundle
 import android.text.format.DateUtils
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,7 +63,17 @@ import androidx.core.content.FileProvider
 import app.heyrobot.core.ExportKind
 import app.heyrobot.core.ExportOptions
 import app.heyrobot.core.SessionStatus
+import app.heyrobot.core.SummaryCheckFor
+import app.heyrobot.core.SummaryRecord
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import app.heyrobot.core.Transcript
+import app.heyrobot.core.TranscriptEdits
+import app.heyrobot.core.TranscriptEvent
 import app.heyrobot.core.TranscriptExport
 import app.heyrobot.core.TranscriptGap
 import app.heyrobot.core.TranscriptHit
@@ -83,7 +95,13 @@ import java.time.ZoneId
 // newest first, a search over their words (accents and case ignored), one transcript to read, rename, export as
 // Markdown or text (saved where you choose, or shared), copy, and delete; and "Delete all". It reads the files the
 // voice process writes; the one being recorded can't be renamed until it stops, and deleting it stops the recording
-// (the voice process is told, so it can't write it back).
+// (the voice process is told, so it can't write it back). Speakers (phase 5.3): tap a line's chip to name the speaker
+// (in this transcript only), merge them with another or say "this is me"; long-press a line to give it to someone else
+// or split it; and the speakers who sounded alike when the session ended are offered as merges. Not while it records:
+// then the voice process is the transcript's only writer, and its own screen makes these changes. Phase 5.4 and 5.6:
+// each line's translation under it ("fast" for the fast engine), the summaries kept with the transcript (each with its
+// label, its [14:03] references taking you to their lines, and Delete), and Summarize, which opens the summary screen in
+// the voice process (Robot's model and the Claude key are reached from there only).
 
 private data class Row(val meta: TranscriptMeta, val live: Boolean, val bytes: Long)
 
@@ -220,6 +238,7 @@ private fun resumed(): Boolean {
 /** Lines and gap markers in time order. */
 private fun timeline(t: Transcript): List<Any> = (t.lines.map { it.t0 to it } + t.gaps.map { it.t0 to it }).sortedBy { it.first }.map { it.second }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, onBack: () -> Unit) {
     val ctx = LocalContext.current
@@ -232,12 +251,42 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
     var menu by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf(false) }
     var confirm by remember { mutableStateOf(false) }
+    var edit by remember { mutableStateOf<SpeakerEdit?>(null) }
+    var summaries by remember { mutableStateOf<List<Pair<Int, SummaryRecord>>>(emptyList()) }
+    var jump by remember { mutableStateOf<Int?>(null) }
     val zone = ZoneId.systemDefault()
+    /** Your changes to speakers, appended to the transcript's file here (main app) when nothing records it. */
+    val edits = remember(id) {
+        object : SpeakerActions {
+            fun change(make: (Transcript, Int) -> TranscriptEvent?) {
+                scope.launch {
+                    val done = withContext(Dispatchers.IO) {
+                        if (Transcripts.live(ctx) == id) null else Transcripts.store(ctx).edit(id, make) != null
+                    }
+                    tick++
+                    if (done == null) snackbar.showSnackbar("It's being recorded: change it on the transcript screen, or after it stops.")
+                }
+            }
+
+            override fun rename(speaker: String, name: String) = change { t, _ -> TranscriptEdits.rename(t, speaker, name) }
+            override fun merge(from: String, to: String) = change { t, _ -> TranscriptEdits.merge(t, from, to) }
+            override fun thisIsMe(speaker: String) = change { t, _ -> TranscriptEdits.me(t, speaker) }
+            override fun move(i: Int, speaker: String) = change { t, _ -> TranscriptEdits.move(t, i, speaker) }
+            override fun split(i: Int, at: Int, speaker: String?) = change { t, n -> TranscriptEdits.split(t, i, at, n, speaker) }
+            override fun decline(from: String, to: String) {
+                scope.launch {
+                    withContext(Dispatchers.IO) { if (Transcripts.live(ctx) != id) Transcripts.store(ctx).decline(id, from, to) }
+                    tick++
+                }
+            }
+        }
+    }
     val resumed = resumed()
     LaunchedEffect(id, tick, resumed) {
         while (true) {
             val (m, tr, l) = withContext(Dispatchers.IO) {
                 val s = Transcripts.store(ctx)
+                summaries = s.summaries(id)
                 Triple(s.meta(id), s.load(id), Transcripts.live(ctx) == id)
             }
             meta = m
@@ -278,6 +327,17 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                     Box {
                         IconButton(onClick = { menu = true }) { Icon(RIcons.Settings, "More") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                            DropdownMenuItem(text = { Text("Summarize") }, enabled = tr.lines.isNotEmpty(), onClick = {
+                                menu = false
+                                try { ctx.startActivity(Transcripts.summaryIntent(ctx, id)) } catch (_: Exception) {}
+                            })
+                            DropdownMenuItem(text = { Text(if (m.important) "Not important" else "Mark important") }, onClick = {
+                                menu = false
+                                scope.launch {
+                                    withContext(Dispatchers.IO) { Transcripts.store(ctx).setImportant(id, !m.important) }
+                                    tick++
+                                }
+                            })
                             DropdownMenuItem(text = { Text("Rename") }, enabled = !live, onClick = { menu = false; renaming = true })
                             DropdownMenuItem(text = { Text("Save as Markdown (.md)") }, onClick = { menu = false; saveMd.launch(TranscriptExport.fileName(m, "md", zone)) })
                             DropdownMenuItem(text = { Text("Save as text (.txt)") }, onClick = { menu = false; saveTxt.launch(TranscriptExport.fileName(m, "txt", zone)) })
@@ -305,9 +365,13 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
         }
         val all = remember(tr) { timeline(tr) }
         val list = rememberLazyListState()
-        LaunchedEffect(focusLine, all.size) {
-            val k = focusLine?.let { f -> all.indexOfFirst { it is TranscriptLine && it.i == f } } ?: -1
-            if (k >= 0) list.scrollToItem(k + 1)
+        // Speakers who sounded alike when the session ended: offered, one at a time, never merged by themselves.
+        val similar = m.similar.firstOrNull { (a, b) -> a in tr.speakers && b in tr.speakers }?.takeIf { !live }
+        val focus = jump ?: focusLine
+        LaunchedEffect(focus, all.size) {
+            val k = focus?.let { f -> all.indexOfFirst { it is TranscriptLine && it.i == f } } ?: -1
+            // After the header, the summaries and the merge card when there is one.
+            if (k >= 0) list.scrollToItem(k + 1 + summaries.size + if (similar != null) 1 else 0)
         }
         LazyColumn(Modifier.fillMaxSize().padding(pad), state = list, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -324,16 +388,29 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                 Text("${TranscriptExport.CREDIT} Nothing leaves the phone unless you share or export it.", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            // The summaries kept with it, newest first: the label says who made it; [14:03] goes to that line.
+            for ((n, r) in summaries.asReversed()) item(key = "summary$n") {
+                SummaryCard(r, m, tr, zone, onLine = { jump = it }, onDelete = {
+                    scope.launch {
+                        withContext(Dispatchers.IO) { Transcripts.store(ctx).deleteSummary(id, n) }
+                        tick++
+                    }
+                })
+            }
+            if (similar != null) item(key = "similar") {
+                SimilarCard(SpeakerView.of(tr), similar.first, similar.second, onMerge = { edits.merge(similar.first, similar.second) },
+                    onDecline = { edits.decline(similar.first, similar.second) })
+            }
             items(all.size) { k ->
                 when (val x = all[k]) {
                     is TranscriptGap -> Text(TranscriptExport.gapText(m, x, zone), style = MaterialTheme.typography.bodySmall, fontStyle = FontStyle.Italic,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    is TranscriptLine -> Column {
-                        val one = tr.speakers.size <= 1 && tr.names.isEmpty()
+                    is TranscriptLine -> Column(if (!live) Modifier.combinedClickable(onClick = {}, onLongClick = { edit = SpeakerEdit.LineMenu(x) },
+                        onLongClickLabel = "Change who said it") else Modifier) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(TranscriptExport.clock(m, x.t0, zone), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(Modifier.width(8.dp))
-                            Text(if (one) "Speaker" else tr.nameOf(x.speaker), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            SpeakerChip(x.speaker, if (tr.oneVoice) "Speaker" else tr.nameOf(x.speaker), if (!live) ({ edit = SpeakerEdit.Menu(x.speaker) }) else null)
                             Spacer(Modifier.width(8.dp))
                             Text(TranscriptExport.langTag(x), style = MaterialTheme.typography.labelMedium)
                             if (x.edited) {
@@ -342,12 +419,22 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                             }
                         }
                         Text(x.text, style = MaterialTheme.typography.bodyLarge,
-                            color = if (x.i == focusLine) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                            color = if (x.i == focus) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                        for (tl in x.translations.values) Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (tl.fast) {
+                                Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.tertiaryContainer) {
+                                    Text("fast", Modifier.padding(horizontal = 5.dp), style = MaterialTheme.typography.labelSmall)
+                                }
+                                Spacer(Modifier.width(6.dp))
+                            }
+                            Text(tl.text, style = MaterialTheme.typography.bodyMedium, fontStyle = FontStyle.Italic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
         }
     }
+    t?.let { tr -> SpeakerEditDialog(edit.takeIf { !live }, SpeakerView.of(tr), edits) { edit = it } }
     if (renaming) {
         var name by remember { mutableStateOf(meta?.title.orEmpty()) }
         AlertDialog(
@@ -382,6 +469,36 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                 }
             }) { Text("Delete") }
         },
+        dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
+    )
+}
+
+/** One summary kept with the transcript: its label, its text with [14:03] links to the lines, and Delete. */
+@Composable
+private fun SummaryCard(r: SummaryRecord, m: TranscriptMeta, t: Transcript, zone: ZoneId, onLine: (Int) -> Unit, onDelete: () -> Unit) {
+    var confirm by remember { mutableStateOf(false) }
+    Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(r.label(zone), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val links = SummaryCheckFor.links(r.text, m, t, zone)
+            val style = TextLinkStyles(SpanStyle(color = MaterialTheme.colorScheme.primary, textDecoration = TextDecoration.Underline))
+            Text(buildAnnotatedString {
+                var at = 0
+                for ((range, line) in links) {
+                    append(r.text.substring(at, range.first))
+                    withLink(LinkAnnotation.Clickable("line$line", style) { onLine(line) }) { append(r.text.substring(range)) }
+                    at = range.last + 1
+                }
+                append(r.text.substring(at))
+            }, style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { confirm = true }) { Text("Delete this summary") }
+        }
+    }
+    if (confirm) AlertDialog(
+        onDismissRequest = { confirm = false },
+        title = { Text("Delete this summary?") },
+        text = { Text("The transcript stays.") },
+        confirmButton = { TextButton(onClick = { confirm = false; onDelete() }) { Text("Delete") } },
         dismissButton = { TextButton(onClick = { confirm = false }) { Text("Cancel") } },
     )
 }

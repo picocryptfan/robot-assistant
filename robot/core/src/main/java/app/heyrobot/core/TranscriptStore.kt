@@ -102,6 +102,83 @@ class TranscriptStore(val root: File) {
         return writeMeta(m.copy(title = TranscriptTitles.clean(title))) == null
     }
 
+    /**
+     * [MAIN] Your change to a transcript nobody is recording (phase 5.3: a name, a merge, "this is me", a line moved or
+     * split): [make] gets the transcript as it stands and the next line index never used, and gives the event (null:
+     * nothing to do). It is appended, and meta.json's speakers and open proposals follow. The event saved, or null.
+     */
+    @Synchronized
+    fun edit(id: String, make: (Transcript, Int) -> TranscriptEvent?): TranscriptEvent? {
+        if (id in forgotten) return null
+        val d = dir(id)?.takeIf { it.isDirectory } ?: return null
+        val t = load(id) ?: return null
+        val e = make(t, TranscriptWriter.maxIndex(readOrNull(File(d, TranscriptFiles.LOG)) ?: "") + 1) ?: return null
+        if (append(id, e) != null) return null
+        meta(id)?.let { m ->
+            val after = TranscriptFold(t).apply(e).result()
+            val next = (if (e is TranscriptEvent.Merge) m.without(e.from, e.to) else m).withSpeakers(after)
+            if (next != m) writeMeta(next)
+        }
+        TranscriptEvents.publish(TranscriptChange.Updated(id))
+        return e
+    }
+
+    /** [MAIN] "Not the same person": the proposal to merge [from] and [to] goes from meta.json. */
+    @Synchronized
+    fun decline(id: String, from: String, to: String): Boolean {
+        val m = meta(id) ?: return false
+        return writeMeta(m.without(from, to)) == null
+    }
+
+    // ------------------------------------------------------------------ summaries (phase 5.6)
+
+    /** [MAIN] You marked it important (the stronger AI is offered first for its summary), or not. */
+    @Synchronized
+    fun setImportant(id: String, on: Boolean): Boolean {
+        val m = meta(id) ?: return false
+        return m.important == on || writeMeta(m.copy(important = on)) == null
+    }
+
+    /** [id]'s summaries (summary-<n>.json: Robot's own, or a helper's), oldest first, with their numbers. */
+    fun summaries(id: String): List<Pair<Int, SummaryRecord>> {
+        if (id in forgotten) return emptyList()
+        val d = dir(id)?.takeIf { it.isDirectory } ?: return emptyList()
+        return d.listFiles().orEmpty().mapNotNull { f -> SUMMARY.matchEntire(f.name)?.groupValues?.get(1)?.toIntOrNull()?.let { it to f } }
+            .sortedBy { it.first }.mapNotNull { (n, f) -> SummaryRecord.fromJson(readOrNull(f))?.let { n to it } }
+    }
+
+    /** Saves [r] as [id]'s next summary (atomically); its number, or null. Never creates the folder. */
+    @Synchronized
+    fun addSummary(id: String, r: SummaryRecord): Int? {
+        if (id in forgotten) return null
+        val d = dir(id)?.takeIf { it.isDirectory } ?: return null
+        val n = (d.listFiles().orEmpty().mapNotNull { SUMMARY.matchEntire(it.name)?.groupValues?.get(1)?.toIntOrNull() }.maxOrNull() ?: 0) + 1
+        if (writeIn(d, TranscriptFiles.summary(n), r.toJson()) != null) return null
+        TranscriptEvents.publish(TranscriptChange.Updated(id))
+        return n
+    }
+
+    @Synchronized
+    fun deleteSummary(id: String, n: Int): Boolean {
+        val d = dir(id)?.takeIf { it.isDirectory } ?: return false
+        return File(d, TranscriptFiles.summary(n)).delete().also { if (it) TranscriptEvents.publish(TranscriptChange.Updated(id)) }
+    }
+
+    /** The notes of Robot's summary under way for [id] (kept so a stopped one goes on), or null. */
+    fun draft(id: String): SummaryDraft? = dir(id)?.takeIf { it.isDirectory && id !in forgotten }?.let { SummaryDraft.fromJson(readOrNull(File(it, SummaryDraft.FILE))) }
+
+    @Synchronized
+    fun saveDraft(id: String, d: SummaryDraft): IoCode? {
+        if (id in forgotten) return IoCode.MISSING
+        val f = dir(id) ?: return IoCode.OTHER
+        return writeIn(f, SummaryDraft.FILE, d.toJson())
+    }
+
+    @Synchronized
+    fun clearDraft(id: String) {
+        dir(id)?.let { File(it, SummaryDraft.FILE).delete() }
+    }
+
     /** Bytes on storage (the folder's files). */
     fun bytes(id: String): Long = dir(id)?.walkTopDown()?.filter { it.isFile }?.sumOf { it.length() } ?: 0
 
@@ -193,7 +270,7 @@ class TranscriptStore(val root: File) {
         val t = load(beat.id) ?: Transcript()
         val upTo = SessionRecovery.savedUpTo(beat).coerceAtLeast(meta.createdAt)
         val status = if (action == SessionRecovery.Action.CLOSE) SessionStatus.ENDED else SessionStatus.INTERRUPTED
-        writeMeta(meta.copy(status = status, endedAt = upTo))
+        writeMeta(meta.copy(status = status, endedAt = upTo).withSpeakers(t))
         writeSnapshot(beat.id, t)
         clearBeat()
         return Recovered(beat.id, action, t.lines.size, ((upTo - meta.createdAt) / 60_000).toInt(), upTo)
@@ -230,6 +307,8 @@ class TranscriptStore(val root: File) {
     }
 
     companion object {
+        private val SUMMARY = Regex("""summary-(\d{1,6})\.json""")
+
         /** A deleted transcript's folder on its way out. */
         const val TRASH = ".trash-"
     }
@@ -294,9 +373,22 @@ class TranscriptWriter private constructor(val store: TranscriptStore, meta: Tra
     /** Seconds from the session's start to [now] (wall clock): where a run that begins now starts on the transcript's clock. */
     fun clock(now: Long): Double = ((now - meta.createdAt) / 10).coerceAtLeast(0) / 100.0
 
-    /** The session ends: meta.json says so, the snapshot is written, the heartbeat goes. */
-    fun close(now: Long, status: SessionStatus = SessionStatus.ENDED): IoCode? {
-        val m = meta.copy(status = status, endedAt = now)
+    /**
+     * Your change during the session (phase 5.3): [make] gets the transcript so far and the next line index, and gives
+     * the event (null: nothing to do). Appended like a line; the event, or null when there was nothing to save or it
+     * couldn't be saved ([failed] says why).
+     */
+    fun edit(make: (Transcript, Int) -> TranscriptEvent?): TranscriptEvent? {
+        val e = make(current(), next) ?: return null
+        return if (event(e) == null) e else null
+    }
+
+    /**
+     * The session ends: meta.json says so (with the speakers, and [similar]: those who sounded alike, offered as merges),
+     * the snapshot is written, the heartbeat goes.
+     */
+    fun close(now: Long, status: SessionStatus = SessionStatus.ENDED, similar: List<Pair<String, String>> = emptyList()): IoCode? {
+        val m = meta.copy(status = status, endedAt = now, similar = (meta.similar + similar).distinct()).withSpeakers(fold.result())
         val r = store.writeMeta(m)
         if (r == null) meta = m
         snapshot()

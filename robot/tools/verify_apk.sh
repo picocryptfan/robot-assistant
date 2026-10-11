@@ -29,7 +29,7 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 sigv=$("$BT/apksigner" verify -v "$APK" 2>/dev/null)
 grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" <<<"$sigv" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='app.heyrobot' versionCode='40' versionName='0.4.0'" "$badging" "package app.heyrobot 0.4.0 (40)"
+has "package: name='app.heyrobot' versionCode='43' versionName='0.4.3'" "$badging" "package app.heyrobot 0.4.3 (43)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"
@@ -134,7 +134,7 @@ conv=$(elem app.heyrobot.assistant.conversation.ConversationService)
 has ':voice' "$conv" "ConversationService in :voice"
 has 'exported(0x01010010)=false' "$conv" "ConversationService not exported"
 has 'foregroundServiceType' "$conv" "ConversationService declares its foreground service type (microphone)"
-for c in ConversationActivity TranscriptionCheckActivity; do
+for c in ConversationActivity TranscriptionCheckActivity VoiceprintActivity; do
   has ':voice' "$(elem app.heyrobot.assistant.conversation.$c)" "$c in :voice"
   has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.conversation.$c)" "$c not exported"
 done

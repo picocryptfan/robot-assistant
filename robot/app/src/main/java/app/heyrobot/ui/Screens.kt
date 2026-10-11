@@ -131,16 +131,17 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
         }
         // 0.5.0: conversation mode.
         SectionCard("Conversation") {
-            Text("Robot writes down a conversation, in French and English, on this phone.", style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Robot writes down a conversation, in French and English, translates it face to face, and summarizes it, on this phone.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 FilledTonalButton(onClick = a.transcribe, modifier = Modifier.heightIn(min = 48.dp)) {
                     Icon(RIcons.Mic, null)
                     Spacer(Modifier.width(8.dp))
                     Text("Transcribe")
                 }
-                TextButton(onClick = { a.openPage(Page.Transcripts) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Transcripts") }
+                FilledTonalButton(onClick = a.interpret, modifier = Modifier.heightIn(min = 48.dp)) { Text("Translate") }
             }
+            TextButton(onClick = { a.openPage(Page.Transcripts) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Transcripts") }
         }
         SectionCard("Ways to ask") {
             Tip(RIcons.Phone, "Swipe up from a bottom corner", "Works on the lock screen too. Robot can see the screen you're on.")

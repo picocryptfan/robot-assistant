@@ -25,6 +25,12 @@ object ConversationSettings {
 
     fun maxSpeakers(s: RobotSettings, mode: ConvMode): Int = if (mode == ConvMode.INTERPRET) INTERPRETER_SPEAKERS else s.convMaxSpeakers
 
+    /** Lines are labelled by voice: the speaker model is downloaded and verified ([modelReady]) and "Tell speakers apart" isn't off. */
+    fun speakers(s: RobotSettings, modelReady: Boolean): Boolean = modelReady && s.convSpeakers != false
+
+    /** The speaker model's download is offered (with its size): it isn't there, and you didn't turn speaker labels off. */
+    fun offerSpeakerModel(s: RobotSettings, modelReady: Boolean): Boolean = !modelReady && s.convSpeakers != false
+
     /** The open segment's words while people talk: as set, screen on only, and off once the phone is warm. */
     fun partials(s: RobotSettings, screenOn: Boolean, warm: Boolean): Boolean = s.convPartials && screenOn && !warm
 

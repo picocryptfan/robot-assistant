@@ -63,6 +63,11 @@ class PhoneToolsTest {
         assertEquals("18%, not charging, 88°F", PhoneStatus.batteryLine(BatteryFacts(18, false, false, 31.0, null), WeatherUnits.IMPERIAL))
         assertEquals("full in about 2 h", PhoneStatus.batteryLine(battery.copy(minutesToFull = 130)).split(", ")[2])
         assertEquals("400 MB available of 8 GB (Android says memory is low)", PhoneStatus.memoryLine(MemoryFacts(8_000_000_000, 400_000_000, true), false))
+        // 0.4.1: the loaded model's own size (about 4 GB for the E4B models).
+        assertEquals("3 GB available of 16 GB; Robot's own model holds about 4.1 GB while loaded",
+            PhoneStatus.memoryLine(MemoryFacts(16_000_000_000, 3_000_000_000, false), true, BrainModel.SMARTER.memoryBytes))
+        assertEquals("3 GB available of 16 GB; Robot's own model holds about 2 GB while loaded",
+            PhoneStatus.memoryLine(MemoryFacts(16_000_000_000, 3_000_000_000, false), true))
     }
 
     @Test fun theAboutArgumentNamesAPart() {

@@ -373,6 +373,10 @@ object AppPages {
     const val TRANSCRIPTS = "transcripts"
     const val CONVERSATION_SETTINGS = "conversation_settings"
     const val EXTRA_TRANSCRIPT = "robot_transcript"
+    /** 0.5.0, phase 5.6: the line a summary's [14:03] link points at, in [EXTRA_TRANSCRIPT]. */
+    const val EXTRA_LINE = "robot_transcript_line"
+    /** Settings › Model, the Model tab (0.4.3: from a chat-only model's answer to an action). */
+    const val MODEL = "model"
     /** The Robot Notes launcher entry (an activity-alias of MainActivity). */
     const val NOTES_ALIAS = "app.heyrobot.ui.NotesLauncher"
 }

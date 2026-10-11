@@ -212,6 +212,41 @@ class SettingsTest {
         assertEquals(RobotSettings().copy(convWakeDuring = true), RobotSettings.fromJson("""{"schema":8,"convWakeDuring":true}"""))
     }
 
+    /**
+     * 5.3 adds "Tell speakers apart" without a new schema: absent reads as "on once the speaker model is downloaded";
+     * the voiceprint setting stays a flag.
+     */
+    @Test fun speakerLabelsStayInSchemaEight() {
+        assertEquals(null, RobotSettings().convSpeakers)
+        for (v in listOf(true, false)) {
+            val s = RobotSettings(convSpeakers = v)
+            assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+            assertEquals(8, s.toJson().getInt("schema"))
+        }
+        // Not written while unset, so a file from 5.2 and one from today read the same.
+        assertTrue(!RobotSettings().toJson().has("convSpeakers"))
+        assertEquals(null, RobotSettings.fromJson("""{"schema":8,"convMaxSpeakers":4}""").convSpeakers)
+        assertEquals(null, RobotSettings.fromJson("""{"schema":5}""").convSpeakers)
+        assertEquals(RobotSettings().copy(convMaxSpeakers = 4), RobotSettings.fromJson("""{"schema":8,"convMaxSpeakers":4}"""))
+        assertEquals(false, RobotSettings.fromJson("""{"schema":8,"convSpeakers":false}""").convSpeakers)
+        // On once downloaded unless you turned it off; the download is offered unless you did.
+        val d = RobotSettings()
+        assertEquals(true, ConversationSettings.speakers(d, modelReady = true))
+        assertEquals(false, ConversationSettings.speakers(d, modelReady = false))
+        assertEquals(false, ConversationSettings.speakers(d.copy(convSpeakers = false), modelReady = true))
+        assertEquals(true, ConversationSettings.offerSpeakerModel(d, modelReady = false))
+        assertEquals(true, ConversationSettings.offerSpeakerModel(d.copy(convSpeakers = true), modelReady = false))
+        assertEquals(false, ConversationSettings.offerSpeakerModel(d.copy(convSpeakers = false), modelReady = false))
+        assertEquals(false, ConversationSettings.offerSpeakerModel(d, modelReady = true))
+        // The voiceprint is never in settings: only whether there is one.
+        val withMe = RobotSettings(meVoiceprint = true).toJson()
+        assertEquals(true, withMe.getBoolean("meVoiceprint"))
+        assertTrue(withMe.keys().asSequence().none { it.contains("voiceprint", ignoreCase = true) && it != "meVoiceprint" })
+        // The Interpreter tells two people apart; the transcript up to the setting.
+        assertEquals(2, ConversationSettings.maxSpeakers(d.copy(convMaxSpeakers = 6), ConvMode.INTERPRET))
+        assertEquals(4, ConversationSettings.maxSpeakers(d.copy(convMaxSpeakers = 4), ConvMode.TRANSCRIBE))
+    }
+
     @Test fun theConsentReminderShowsUntilTickedAfterItWasAskedFor() {
         val d = RobotSettings()
         assertTrue(ConsentRecord.needed(null, d))
@@ -246,7 +281,7 @@ class SettingsTest {
         assertEquals(false, d.voiceYesPersonal)
         assertEquals(true, d.voiceCards)
         assertEquals(false, RobotSettings.fromJson(d.copy(voiceCards = false).toJson().toString()).voiceCards)
-        assertTrue(RobotSettings.SCHEMA >= 6)
+        assertEquals(8, RobotSettings.SCHEMA)
         // A 0.3 or early 0.4 file: every rule as it was, and the new Safety cards default.
         for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", "{}")) {
             val o = RobotSettings.fromJson(old)
@@ -283,5 +318,56 @@ class SettingsTest {
         val bad = RobotSettings.fromJson("""{"schema":6,"lockedTools":["flashlight","ask_claude","teleport"],"safetyCards":"NEVER"}""")
         assertEquals(setOf(ToolName.FLASHLIGHT), bad.lockedTools)
         assertEquals(SafetyCards.UNASKED, bad.safetyCards)
+    }
+
+    /**
+     * Settings › Model (schema 7, 0.4.1): Fast by default; a file from 0.4.0 or earlier (one model, the TPU's E2B) reads
+     * as Fast; a choice saved with 0.4.1 is kept; an unknown one is Fast.
+     */
+    @Test fun modelChoiceDefaultsMigrationAndRoundTrip() {
+        assertEquals(BrainModel.FAST, RobotSettings().brainModelChoice)
+        assertEquals("e2b_tpu", RobotSettings().toJson().getString("brainModel"))
+        for (old in listOf("""{"schema":6,"speechRate":1.5}""", """{"schema":5}""", """{"schema":3}""", "{}", """{"schema":6,"brainModel":"e4b_cpu"}""")) {
+            assertEquals(old, BrainModel.FAST, RobotSettings.fromJson(old).brainModelChoice)
+        }
+        // An old file keeps everything else, and the next save writes schema 8 (0.5.0) with Fast.
+        val migrated = RobotSettings.fromJson("""{"schema":6,"speechRate":1.5,"keepModelMinutes":15}""")
+        assertEquals(1.5f, migrated.speechRate)
+        assertEquals(15, migrated.keepModelMinutes)
+        assertEquals(8, migrated.toJson().getInt("schema"))
+        assertEquals("e2b_tpu", migrated.toJson().getString("brainModel"))
+        for (m in BrainModel.entries) {
+            val s = RobotSettings(brainModel = m.id)
+            assertEquals(m, RobotSettings.fromJson(s.toJson().toString()).brainModelChoice)
+            assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        }
+        assertEquals(BrainModel.FAST, RobotSettings.fromJson("""{"schema":7,"brainModel":"horizon-edge-4b"}""").brainModelChoice)
+        assertEquals(BrainModel.FAST, RobotSettings.fromJson("""{"schema":7}""").brainModelChoice)
+        assertEquals(BrainModel.UNCENSORED, RobotSettings.fromJson("""{"schema":7,"brainModel":"e4b_cpu_uncensored"}""").brainModelChoice)
+        // An unknown id is saved back as Fast's.
+        assertEquals("e2b_tpu", RobotSettings(brainModel = "nope").toJson().getString("brainModel"))
+    }
+
+    /**
+     * The merge of 0.4.3 into 0.5.0: schema 8 holds both. A 0.4.3 file (schema 7) keeps its model and gets conversation
+     * mode's defaults (live words following live words for questions, as any file before 8); a 0.5.0 file from before the
+     * merge (schema 8, no model) reads as Fast; a 0.4.0 file (schema 6) gets both migrations.
+     */
+    @Test fun schemaEightKeepsTheModelChoiceAndConversationSettings() {
+        val from043 = RobotSettings.fromJson("""{"schema":7,"brainModel":"e4b_cpu","livePartials":false}""")
+        assertEquals(BrainModel.of("e4b_cpu"), from043.brainModelChoice)
+        assertEquals(false, from043.convPartials)
+        assertEquals(null, from043.convSpeakers)
+        assertEquals(0L, from043.convReminderAt)
+        val from050 = RobotSettings.fromJson("""{"schema":8,"convTranslate":true,"livePartials":false}""")
+        assertEquals(BrainModel.FAST, from050.brainModelChoice)
+        assertEquals(true, from050.convTranslate)
+        assertEquals(true, from050.convPartials)
+        val from040 = RobotSettings.fromJson("""{"schema":6,"brainModel":"e4b_cpu","livePartials":false}""")
+        assertEquals(BrainModel.FAST, from040.brainModelChoice)
+        assertEquals(false, from040.convPartials)
+        val both = RobotSettings(brainModel = BrainModel.UNCENSORED.id, convTranslate = true, convSpeakers = false, convReminderAt = 5L)
+        assertEquals(both, RobotSettings.fromJson(both.toJson().toString()))
+        assertEquals(8, both.toJson().getInt("schema"))
     }
 }

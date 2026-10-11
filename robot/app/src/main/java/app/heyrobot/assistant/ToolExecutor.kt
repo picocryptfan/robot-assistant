@@ -20,6 +20,7 @@ import app.heyrobot.core.Addresses
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.AppEntry
 import app.heyrobot.core.AppMatcher
+import app.heyrobot.core.BrainModel
 import app.heyrobot.core.CalendarFormat
 import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.CalendarPick
@@ -85,6 +86,7 @@ import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Contacts
 import app.heyrobot.sys.HandOffApps
+import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.Phones
@@ -634,13 +636,21 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
      * sizes when Usage access is on, and the card offers Android's storage settings; without it, to turn Usage access on.
      */
     private fun phoneCheck(a: Action.PhoneCheck): Executed {
-        val f = PhoneInfo.read(ctx, a.part, robotModelLoaded = BrainKeeper.state.value.readiness == BrainKeeper.Readiness.READY)
+        val brain = BrainKeeper.state.value
+        val f = PhoneInfo.read(ctx, a.part, robotModelLoaded = brain.readiness == BrainKeeper.Readiness.READY, robotModelBytes = modelBytes(brain.model))
         val results = PhoneStatus.results(f, a.part, WeatherUnits.of(region))
         if (results.isEmpty()) return Executed(ActionStatus.FAILED, "Robot couldn't read that on this phone.")
         val lines = PhoneStatus.lines(results)
         val storage = a.part == PhonePart.STORAGE || a.part == PhonePart.ALL
         val page = if (!storage) null else if (f.usageAccess) SettingsPage.STORAGE else SettingsPage.USAGE_ACCESS
         return Executed(ActionStatus.DONE, "Read on this phone; nothing left it.", results = results, body = lines, spoken = lines.replace("\n", ". "), handOff = page)
+    }
+
+    /** What the model in memory holds, about (0.4.1: Fast 2 GB, an E4B 4 GB, your own file about its size). */
+    private fun modelBytes(m: BrainModel?): Long = when {
+        m == null -> PhoneStatus.ROBOT_MODEL_BYTES
+        m.memoryBytes > 0 -> m.memoryBytes
+        else -> ModelStore.file(ctx, m).length().takeIf { it > 0 } ?: PhoneStatus.ROBOT_MODEL_BYTES
     }
 
     /**
@@ -666,7 +676,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             ModelUnload.request(ModelUnload.available(ctx))
             val recent = PhoneInfo.recentApps(ctx)
             val results = listOf(mapOf(
-                "memory" to PhoneStatus.memoryLine(PhoneInfo.memory(ctx), robotModel = true),
+                "memory" to PhoneStatus.memoryLine(PhoneInfo.memory(ctx), robotModel = true, modelBytes(BrainKeeper.state.value.model)),
                 "recent_apps" to when {
                     recent.isNotEmpty() -> FreeUp.names(recent) + " (used in the last 2 hours)"
                     PhoneInfo.usageAccess(ctx) -> "none, besides the one in use"

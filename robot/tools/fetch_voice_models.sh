@@ -7,7 +7,7 @@
 set -euo pipefail
 DEST="${1:?usage: fetch_voice_models.sh <dir> [bundle...]}"
 shift
-WANT=" ${*:-stt-parakeet-v3 tts-kokoro-v1.0 tts-kitten-nano-0.8} "
+WANT=" ${*:-stt-parakeet-v3 tts-kokoro-v1.0 tts-kitten-nano-0.8 spk-titanet-small} "
 
 # bundle repo commit file bytes sha256
 MANIFEST=$(cat <<'LIST'
@@ -21,6 +21,7 @@ tts-kokoro-v1.0 csukuangfj/kokoro-multi-lang-v1_0 f7b96bb6bef5c5da4d3aa4f4e0498f
 tts-kitten-nano-0.8 csukuangfj2/kitten-nano-en-v0_8-fp32 eb4fe4f70801b2eb1c3f45be046ccd553c7575e7 model.fp32.onnx 56768002 2174dbf67b58b7b50d7b65294f89c2c53c172834533519b853c579879a04cc22
 tts-kitten-nano-0.8 csukuangfj2/kitten-nano-en-v0_8-fp32 eb4fe4f70801b2eb1c3f45be046ccd553c7575e7 voices.bin 3276800 d520519c4a3519d44fcfcd943ed0b1e3c5da5cee0eea501d922fac1a93cd24dc
 tts-kitten-nano-0.8 csukuangfj2/kitten-nano-en-v0_8-fp32 eb4fe4f70801b2eb1c3f45be046ccd553c7575e7 tokens.txt 1064 934a4188addc7665dd3410256bb622169242357fbb99d840d9351209b486dabb
+spk-titanet-small csukuangfj/speaker-embedding-models 0743f301363dec56491a490f6d6cbc9d67f9a3bf nemo_en_titanet_small.onnx 40257283 ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e
 LIST
 )
 

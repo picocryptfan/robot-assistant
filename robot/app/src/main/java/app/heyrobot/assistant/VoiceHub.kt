@@ -21,6 +21,7 @@ import app.heyrobot.core.KwsThresholds
 import app.heyrobot.core.WakePhrase
 import app.heyrobot.core.InterruptSensitivity
 import app.heyrobot.core.ListenWhy
+import app.heyrobot.core.ModelCode
 import app.heyrobot.core.MicKind
 import app.heyrobot.core.PlaybackCode
 import app.heyrobot.core.Playback
@@ -230,7 +231,8 @@ object VoiceHub {
             level != ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) return
         val s = stt.trim()
         val t = tts.trim()
-        RLog.i("voice_trim", "level" to level, "stt" to s, "tts" to t)
+        val k = VoiceEngines.trimSpeakers()
+        RLog.i("voice_trim", "level" to level, "stt" to s, "tts" to t, "spk" to k)
     }
 
     /** The assistant service is ready (from boot, after the first unlock, or after being chosen). */
@@ -471,6 +473,10 @@ object VoiceHub {
                 if (ConversationSession.running) conversationWake(!settings.convWakeDuring)
                 applyListening(ListenWhy.SETTINGS)
                 updateCapture()
+                // Settings › Model (0.4.1): a new choice lets go of the model in memory now; any save retries a failed one.
+                val modelChanged = old.brainModelChoice != settings.brainModelChoice
+                if (modelChanged) VoiceLog.add(VoiceEvent.MODEL_CHOSEN, ModelCode.of(settings.brainModelChoice), ModelCode.of(old.brainModelChoice))
+                BrainKeeper.settingsChanged(app, modelChanged)
                 PanelController.settingsChanged()
             }
             Cmd.CLAUDE_KEY -> Thread({
@@ -481,6 +487,7 @@ object VoiceHub {
             Cmd.CONVERSATIONS_DELETED -> PanelController.forgetDeleted(i.getStringExtra(Cmd.EXTRA_ID))
             // 0.5.0: a session recording a deleted transcript stops without writing it back; a Resume offer for one goes.
             Cmd.TRANSCRIPTS_DELETED -> ConversationSession.transcriptsDeleted(app, i.getStringExtra(Cmd.EXTRA_ID))
+            Cmd.VOICEPRINT_DELETED -> ConversationSession.voiceprintDeleted()
             Cmd.SPEAK_TEST -> {
                 stopVoice(TtsStop.TEST)
                 tts.speak("Hi, I'm Robot. This is how I sound.")

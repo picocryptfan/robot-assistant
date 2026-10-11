@@ -43,8 +43,11 @@ class SpeakerClusterer(
     private class Cluster(val label: String, var centroid: FloatArray, var count: Int, val fixed: Boolean)
 
     private val clusters = ArrayList<Cluster>()
-    /** Every embedding labelled so far, for the end-of-session merge proposals. Memory only. */
-    private val seen = ArrayList<Pair<String, FloatArray>>()
+    /**
+     * The sum of every embedding labelled with each speaker so far (unit vectors), for the merge proposals: bounded by
+     * the speakers, not the length of the session. Memory only.
+     */
+    private val sums = LinkedHashMap<String, FloatArray>()
     private var next = 1
     private var lastLabel: String? = null
     private var lastEndMs = Long.MIN_VALUE / 2
@@ -95,8 +98,13 @@ class SpeakerClusterer(
             sim < newBelow -> SpeakerTurn(best.label, SpeakerKind.CAPPED, sim)
             else -> SpeakerTurn(best.label, SpeakerKind.PROVISIONAL, sim)
         }
-        seen += turn.label to e
+        add(turn.label, e)
         return turn
+    }
+
+    private fun add(label: String, e: FloatArray) {
+        val s = sums.getOrPut(label) { FloatArray(e.size) }
+        for (i in 0 until minOf(s.size, e.size)) s[i] += e[i]
     }
 
     /**
@@ -112,7 +120,7 @@ class SpeakerClusterer(
             b.count += a.count
         }
         clusters.remove(a)
-        for (i in seen.indices) if (seen[i].first == from) seen[i] = to to seen[i].second
+        sums.remove(from)?.let { add(to, it) }
         if (lastLabel == from) lastLabel = to
         return true
     }
@@ -125,7 +133,7 @@ class SpeakerClusterer(
             c.centroid = unit(FloatArray(e.size) { c.centroid[it] * c.count + e[it] })
             c.count++
         }
-        seen += label to e
+        add(label, e)
         return true
     }
 
@@ -134,7 +142,7 @@ class SpeakerClusterer(
      * merge?"), the newer first, nearest pairs first. Only proposals: nothing is relabelled.
      */
     fun proposals(threshold: Float = joinAt): List<Pair<String, String>> {
-        val means = seen.groupBy({ it.first }, { it.second }).mapValues { (_, v) -> unit(FloatArray(v[0].size) { i -> v.sumOf { it[i].toDouble() }.toFloat() }) }
+        val means = sums.mapValues { unit(it.value) }
         val order = clusters.map { it.label }.filter { it in means }
         val out = ArrayList<Triple<String, String, Float>>()
         for (i in order.indices) for (j in i + 1 until order.size) {
@@ -145,13 +153,33 @@ class SpeakerClusterer(
         return out.sortedByDescending { it.third }.map { (a, b) -> if (a == ME) b to a else a to b }
     }
 
+    /**
+     * You gave a line to a label of your own ("someone else", S4): later speakers never get it. Only plain labels of this
+     * session's form count ("S4" with this clusterer's [mark]).
+     */
+    fun reserve(label: String) {
+        val n = Regex("^S([1-9][0-9]{0,2})${Regex.escape(mark)}$").matchEntire(label)?.groupValues?.get(1)?.toInt() ?: return
+        if (n >= next) next = n + 1
+    }
+
+    /**
+     * You deleted your voiceprint during the session: the fixed "Me" goes (nothing made from the voiceprint stays in
+     * memory). Lines heard since are compared with the others again; the lines already labelled keep "Me".
+     */
+    fun forgetMe(): Boolean {
+        val me = clusters.firstOrNull { it.fixed } ?: return false
+        clusters.remove(me)
+        if (lastLabel == me.label) lastLabel = null
+        return true
+    }
+
     /** A speaker's centroid (a copy), for the tests. */
     internal fun centroidOf(label: String): FloatArray? = clusters.firstOrNull { it.label == label }?.centroid?.copyOf()
 
     /** Forget every embedding (the session ended); "Me" stays seeded only through the stored voiceprint. */
     fun clear() {
         clusters.clear()
-        seen.clear()
+        sums.clear()
         next = 1
         lastLabel = null
     }

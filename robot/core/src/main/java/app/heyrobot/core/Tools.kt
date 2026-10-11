@@ -321,7 +321,7 @@ sealed class Action {
      */
     data class FreeMemory(val app: String?, val pkg: String? = null) : Action() {
         override val tool get() = ToolName.FREE_MEMORY
-        override fun describe() = if (app == null) "Unload Robot's model to free about 2 GB of memory" else "Open **$app**'s App info to force stop it"
+        override fun describe() = if (app == null) "Unload Robot's model to free about 2 GB of memory (4 GB for an E4B model)" else "Open **$app**'s App info to force stop it"
         override val confirmLabel get() = if (app == null) "Unload" else "Open App info"
     }
 
@@ -664,7 +664,7 @@ object ToolCalls {
     }
 
     /**
-     * Text-call mode only (no tool API on this TPU build, :brain says so per reply): the calls in a reply that is
+     * Text-call mode only (the model's build refused the tool API, :brain says so per reply): the calls in a reply that is
      * nothing but calls, as the text-call hint asks. A reply with any other text (prose that explains, quotes or
      * mentions a call, screen text repeated back) yields no calls: nothing written in passing ever runs.
      */

@@ -31,6 +31,7 @@ import app.heyrobot.core.MediaFile
 import app.heyrobot.core.MediaFacts
 import app.heyrobot.core.MemoryFacts
 import app.heyrobot.core.PhoneFacts
+import app.heyrobot.core.PhoneStatus
 import app.heyrobot.core.PhonePart
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.StorageFacts
@@ -53,7 +54,7 @@ object PhoneInfo {
     }
 
     /** What [part] needs, each part on its own (one that can't be read is left out). */
-    fun read(ctx: Context, part: PhonePart, robotModelLoaded: Boolean? = null): PhoneFacts {
+    fun read(ctx: Context, part: PhonePart, robotModelLoaded: Boolean? = null, robotModelBytes: Long = PhoneStatus.ROBOT_MODEL_BYTES): PhoneFacts {
         val all = part == PhonePart.ALL
         val usage = usageAccess(ctx)
         val storage = all || part == PhonePart.STORAGE
@@ -65,6 +66,7 @@ object PhoneInfo {
             media = if (storage && usage) safe { media(ctx) } else null,
             usageAccess = usage,
             robotModelLoaded = robotModelLoaded,
+            robotModelBytes = robotModelBytes,
         )
     }
 

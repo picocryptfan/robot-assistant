@@ -7,11 +7,17 @@ import java.util.Locale
 // message fails. GemmaEngine only acts on them.
 
 /**
- * How tools reach the model on this TPU build, best last. :brain starts at [TOOLS_CONSTRAINED] and steps down for
- * the rest of the process only when the build's tool-call parser rejects a level ([EngineErrors.isToolParseError]),
- * never because of other errors (a full context, a native failure).
+ * How tools reach the model, best last. :brain starts at [TOOLS_CONSTRAINED] and steps down for
+ * the rest of the process (or until another model loads, 0.4.1) only when the build's tool-call parser rejects a level ([EngineErrors.isToolParseError]),
+ * never because of other errors (a full context, a native failure). [CHAT_ONLY] (0.4.3) is no level of that ladder: a
+ * short-context model gets it for as long as it is loaded, and nothing steps to it or from it.
  */
 enum class ToolMode {
+    /**
+     * 0.4.3, a model loaded with less than 4,096 tokens of context (ContextWindow.chatOnly): no tools described, no
+     * text-call hint, no constrained decoding, and any call it makes anyway is dropped (BrainPolicy.acceptsCalls).
+     */
+    CHAT_ONLY,
     /** No tool API: the system prompt shows the call syntax and the app reads a reply that is nothing but calls. */
     TEXT_CALLS,
     /** LiteRT-LM tools, no constrained decoding. */
@@ -19,8 +25,16 @@ enum class ToolMode {
     /** LiteRT-LM tools with conversation constrained decoding. */
     TOOLS_CONSTRAINED;
 
-    /** The next level down, or null at the bottom. */
-    val lower: ToolMode? get() = entries.getOrNull(ordinal - 1)
+    /** A level of the tool ladder (every mode but [CHAT_ONLY]). */
+    val tools: Boolean get() = this != CHAT_ONLY
+
+    /** The next level down, or null at the bottom (and for [CHAT_ONLY], which is off the ladder). */
+    val lower: ToolMode? get() = if (this == CHAT_ONLY || this == TEXT_CALLS) null else entries[ordinal - 1]
+
+    companion object {
+        /** The ladder's levels: TEXT_CALLS, TOOLS, TOOLS_CONSTRAINED. */
+        val LEVELS: Int = entries.count { it.tools }
+    }
 }
 
 /** Classifies LiteRT-LM's error messages (the messages themselves are never logged). */
@@ -40,7 +54,7 @@ object EngineErrors {
         return CONTEXT_FULL.any { m.contains(it) }
     }
 
-    /** The TPU build could not parse the model's tool call (the GPU lab's isToolParseError, verbatim). */
+    /** The model's build could not parse its tool call (the GPU lab's isToolParseError, verbatim). */
     fun isToolParseError(msg: String?): Boolean = msg != null && TOOL_PARSE.containsMatchIn(msg) && !isContextFull(msg)
 
     /** Creating a conversation failed over the tool setup itself (the parse signature, or the tool / constrained-decoding feature). */
@@ -73,9 +87,28 @@ object BrainPolicy {
      * group rebuilds it once), it runs at the current tool level, and the engine's own count leaves room for the new
      * turn and a reply.
      */
-    fun canReuse(live: LiveConv?, historyCount: Int, system: String, mode: ToolMode, newTurnTokens: Int, tools: List<String> = Prompt.CORE_TOOLS.map { it.id }): Boolean =
+    fun canReuse(live: LiveConv?, historyCount: Int, system: String, mode: ToolMode, newTurnTokens: Int, tools: List<String> = Prompt.CORE_TOOLS.map { it.id },
+        maxTokens: Int = ContextWindow.MAX_TOKENS): Boolean =
         live != null && !live.dirty && !live.awaitingTool && live.historyCount == historyCount && live.system == system &&
-            live.mode == mode && live.tools == tools && !ContextWindow.needsRebuild(live.tokens, newTurnTokens)
+            live.mode == mode && live.tools == tools && !ContextWindow.needsRebuild(live.tokens, newTurnTokens, maxTokens)
+
+    /**
+     * The tool level a conversation is built at: [ToolMode.CHAT_ONLY] for a model loaded with a short context (0.4.3),
+     * else the engine's current level [level] (which only the tool-parse error lowers).
+     */
+    fun modeFor(maxTokens: Int, level: ToolMode): ToolMode = if (ContextWindow.chatOnly(maxTokens)) ToolMode.CHAT_ONLY else level
+
+    /** The tools described to a conversation at [mode]: none in chat only, whatever the request lists. */
+    fun toolsFor(mode: ToolMode, requested: List<ToolName>): List<ToolName> = if (mode.tools) requested else emptyList()
+
+    /** Whether a call the model makes at [mode] reaches the app: never in chat only (no tool was described to it). */
+    fun acceptsCalls(mode: ToolMode): Boolean = mode.tools
+
+    /**
+     * The history a conversation at [mode] is built from: chat only, strictly alternating ([Prompt.alternate]), as the
+     * chat templates of models other than Gemma 4 insist; otherwise as the app sent it.
+     */
+    fun historyFor(mode: ToolMode, history: List<PromptTurn>): List<PromptTurn> = if (mode.tools) history else Prompt.alternate(history)
 
     /** What GemmaEngine does next. */
     sealed class Next {
@@ -93,7 +126,7 @@ object BrainPolicy {
     fun afterCreateError(msg: String?, mode: ToolMode, historyTurns: Int, historyBudget: Int, attempt: Int): Next {
         val lower = mode.lower
         return when {
-            attempt >= MAX_REBUILDS + ToolMode.entries.size -> Next.Fail(BrainError.ENGINE)
+            attempt >= MAX_REBUILDS + ToolMode.LEVELS -> Next.Fail(BrainError.ENGINE)
             EngineErrors.isContextFull(msg) -> if (historyTurns > 0) Next.Shorten(historyBudget / 2) else Next.Fail(BrainError.TOO_LONG)
             lower != null && EngineErrors.isToolSetupError(msg) -> Next.StepDown(lower)
             else -> Next.Fail(BrainError.ENGINE)
@@ -138,12 +171,34 @@ object EngineTeardown {
         QUIT_THREAD,
         /** Keep the work thread: LiteRT's callback is posted to it, and closes the parked engine. */
         WAIT,
-        /** LiteRT never let go: ending the process is the only way to free the engine's memory and the TPU. */
+        /** LiteRT never let go: ending the process is the only way to free the engine's memory (and the TPU). */
         END_PROCESS,
     }
 
-    /** A new engine may load only when no engine is parked anywhere in the :brain process (~2 GB and the TPU each). */
+    /** A new engine may load only when no engine is parked anywhere in the :brain process (2 GB on the TPU, 4 GB on the CPU each). */
     fun mayLoad(parkedInProcess: Int): Boolean = parkedInProcess <= 0
+
+    enum class LoadStep {
+        /** The process's one engine slot is free (or this service's own): load. */
+        LOAD,
+        /** An earlier BrainService of this process still holds an engine (loading, loaded or being let go of): ask again in a moment. */
+        WAIT,
+        /** It has held on for [PARKED_LIMIT_MS] since its service was destroyed: its thread is stuck in LiteRT, and only ending the process frees it. */
+        END_PROCESS,
+    }
+
+    /**
+     * 0.4.1: one engine in the whole :brain process, whichever BrainService loads it. A service destroyed while its work
+     * thread was still loading, or still letting its engine go (the unload waits up to 10 s for a cancelled reply), keeps
+     * that engine until its queued unload runs; a new service in the same process must not load a second one meanwhile
+     * (Fast about 2 GB, an E4B about 4 GB). [heldByAnother]: an earlier service holds the slot; [sinceHolderDestroyedMs]:
+     * how long ago that service was destroyed (-1: not known yet).
+     */
+    fun forLoad(heldByAnother: Boolean, sinceHolderDestroyedMs: Long): LoadStep = when {
+        !heldByAnother -> LoadStep.LOAD
+        sinceHolderDestroyedMs < PARKED_LIMIT_MS -> LoadStep.WAIT
+        else -> LoadStep.END_PROCESS
+    }
 
     /** At, and after, the service's destroy ([sinceDestroyMs] ago), with an engine still [parked] or not. */
     fun afterDestroy(parked: Boolean, sinceDestroyMs: Long): Step = when {
@@ -155,18 +210,20 @@ object EngineTeardown {
 
 /**
  * The order :brain serves requests in once conversation mode shares the model (docs/conversation-mode.md 4.2). Pure, so
- * every rule is tested (BrainQueueTest); GemmaEngine acts on its steps when REQ_ONE_SHOT is wired. Today's rule for the
+ * every rule is tested (BrainQueueTest); GemmaEngine acts on its steps through [BrainScheduler]. Today's rule for the
  * panel stays: a new panel question cancels the panel reply still running, and only the newest waiting one is kept. An
  * interpreter turn (about a second) is never cancelled by the panel: the question waits for it. Interpreter and
- * transcript requests run first in, first out. A summary step gives way to anything else: it is cancelled and queued
- * again (map steps start over cleanly).
+ * transcript requests run first in, first out. Background work gives way ([yields]): a summary step to anything else,
+ * a transcript line's better translation to the panel and the interpreter; it is cancelled and queued again, ahead of
+ * its own kind (it starts over cleanly). While the panel's conversation waits for its tool results ([hold]), only panel
+ * requests start: the next one is its own tool round.
  */
 class BrainQueue {
     data class Job(val id: Int, val priority: Priority)
 
     /**
      * What :brain does now: cancel the running request ([cancelRunning]), end the [dropped] waiting ones as cancelled,
-     * start [start]. [requeued]: a summary step that gave way is waiting again.
+     * start [start]. [requeued]: background work that gave way is waiting again.
      */
     data class Step(val cancelRunning: Boolean = false, val dropped: List<Job> = emptyList(), val start: Job? = null, val requeued: Job? = null)
 
@@ -176,6 +233,9 @@ class BrainQueue {
     /** Running jobs cancelled to give way, to be queued again when they end. */
     private val yielding = HashSet<Int>()
     private var cancelling = false
+    /** The panel's conversation waits for its tool results: nothing but a panel request starts. */
+    var held = false
+        private set
 
     /** The waiting requests, next first. */
     val queue: List<Job> get() = waiting.toList()
@@ -184,12 +244,16 @@ class BrainQueue {
         val dropped = if (job.priority == Priority.PANEL) waiting.filter { it.priority == Priority.PANEL }.also { waiting.removeAll(it.toSet()) } else emptyList()
         val r = running
         if (r == null) {
+            if (!mayStart(job)) {
+                enqueue(job, front = false)
+                return Step(dropped = dropped)
+            }
             running = job
             return Step(dropped = dropped, start = job)
         }
         val cancel = !cancelling && when {
             job.priority == Priority.PANEL && r.priority == Priority.PANEL -> true
-            r.priority == Priority.SUMMARY && job.priority != Priority.SUMMARY -> true.also { yielding += r.id }
+            yields(r.priority, job.priority) -> true.also { yielding += r.id }
             else -> false
         }
         if (cancel) cancelling = true
@@ -197,15 +261,16 @@ class BrainQueue {
         return Step(cancelRunning = cancel, dropped = dropped)
     }
 
-    /** The running request ended (done, failed, or cancelled): the next one starts. */
-    fun done(id: Int): Step {
+    /**
+     * The running request ended (done, failed, or cancelled): the next one starts. One that was giving way is queued
+     * again, unless it [finished] on its own meanwhile (its reply was whole, or cut at its cap: nothing to start over).
+     */
+    fun done(id: Int, finished: Boolean = false): Step {
         val r = running?.takeIf { it.id == id } ?: return Step()
         running = null
         cancelling = false
-        val again = if (yielding.remove(r.id)) r.also { enqueue(it, front = true) } else null
-        val next = if (waiting.isEmpty()) null else waiting.removeAt(0)
-        running = next
-        return Step(start = next, requeued = again)
+        val again = if (yielding.remove(r.id) && !finished) r.also { enqueue(it, front = true) } else null
+        return Step(start = next(), requeued = again)
     }
 
     /** The client cancelled request [id] (REQ_CANCEL): dropped if it waits, stopped if it runs (and not queued again). */
@@ -221,12 +286,47 @@ class BrainQueue {
         return Step(cancelRunning = true)
     }
 
+    /**
+     * The panel's conversation waits for its tool results ([on]), or no longer does: while it waits only panel requests
+     * start; when it stops, the next waiting request starts (if nothing runs).
+     */
+    fun hold(on: Boolean): Step {
+        if (held == on) return Step()
+        held = on
+        return if (on || running != null) Step() else Step(start = next())
+    }
+
+    /** The model went away (unloaded): every waiting request ends. The running one ends through [done]. */
+    fun dropWaiting(): List<Job> = waiting.toList().also { waiting.clear() }
+
     /** 0 while it runs, its place in line from 1 (EV_QUEUED), -1 when unknown. */
     fun position(id: Int): Int = if (running?.id == id) 0 else waiting.indexOfFirst { it.id == id }.let { if (it < 0) -1 else it + 1 }
+
+    /** The running request [id] is being cancelled to give way (it will be queued again when it ends). */
+    fun givingWay(id: Int): Boolean = id in yielding
+
+    private fun mayStart(job: Job): Boolean = !held || job.priority == Priority.PANEL
+
+    /** The first waiting request that may start now (under [hold], the first panel one), taken off the queue and running. */
+    private fun next(): Job? {
+        val i = waiting.indexOfFirst(::mayStart)
+        if (i < 0) return null
+        return waiting.removeAt(i).also { running = it }
+    }
 
     /** In priority order; first in, first out within a priority ([front]: ahead of its priority, for a job queued again). */
     private fun enqueue(job: Job, front: Boolean) {
         val at = if (front) waiting.indexOfFirst { it.priority >= job.priority } else waiting.indexOfFirst { it.priority > job.priority }
         if (at < 0) waiting += job else waiting.add(at, job)
+    }
+
+    companion object {
+        /**
+         * Background work running at [running] gives way to [incoming]: a summary step to anything else, a transcript
+         * line's better translation (already shown by the fast engine, or still to come) to the panel and the interpreter.
+         * The panel never cancels an interpreter turn (about a second, and someone is waiting for it).
+         */
+        fun yields(running: Priority, incoming: Priority): Boolean =
+            running >= Priority.TRANSCRIPT && incoming < running
     }
 }

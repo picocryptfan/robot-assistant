@@ -148,6 +148,11 @@ data class RobotSettings(
     val convPartials: Boolean = true,
     /** The most speakers a transcript tells apart, 2 to 6 (the Interpreter: always 2). */
     val convMaxSpeakers: Int = 6,
+    /**
+     * Settings › Conversation › "Tell speakers apart" (0.5.0, phase 5.3): label each line S1, S2… by its voice. Null: on
+     * once the speaker model is downloaded ([ConversationSettings.speakers]); false: off, and the download isn't offered.
+     */
+    val convSpeakers: Boolean? = null,
     /** "Hey robot works during a conversation" (off: the wake word sleeps for the whole session; "stop" still works while Robot talks). */
     val convWakeDuring: Boolean = false,
     /** "Start from the lock screen": a new recording shows nothing older. */
@@ -159,8 +164,9 @@ data class RobotSettings(
     /** Offer "Summarize with a stronger AI" first for a long or important conversation, or one the number check flagged. */
     val convAutoOfferHelper: Boolean = true,
     /**
-     * A "me" voiceprint is enrolled (Settings › Voice). Only that it exists: the voiceprint itself is in its own
-     * encrypted file in the :voice process, never in settings.
+     * A "me" voiceprint is enrolled (Settings › Conversation › Your voice). Only that it exists, kept in step with the
+     * file by the main app: the voiceprint itself is in its own encrypted file, written and read by the :voice process
+     * only (VoiceprintCodec), never in settings.
      */
     val meVoiceprint: Boolean = false,
     /**
@@ -213,7 +219,15 @@ data class RobotSettings(
      * never a new install), cleared when it is tapped or dismissed.
      */
     val safetyNotice: Boolean = false,
+    /**
+     * Settings › Model (0.4.1, schema 7): a [BrainModel] id, the model Robot loads; Fast (Gemma 4 E2B on the TPU) by
+     * default. Unknown or absent (older files) means Fast. A choice that isn't on the phone or doesn't load falls back to
+     * Fast, and the panel says so (ModelChoice).
+     */
+    val brainModel: String = BrainModel.DEFAULT.id,
 ) {
+    val brainModelChoice: BrainModel get() = BrainModel.of(brainModel)
+
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
     val convPairChoice: LangPair get() = LangPair.of(convPair)
@@ -272,6 +286,7 @@ data class RobotSettings(
         convSpeak?.let { put("convSpeak", it) }
         put("convPartials", convPartials)
         put("convMaxSpeakers", convMaxSpeakers)
+        convSpeakers?.let { put("convSpeakers", it) }
         put("convWakeDuring", convWakeDuring)
         put("convStartLocked", convStartLocked)
         put("convKeepAudio", convKeepAudio)
@@ -292,6 +307,7 @@ data class RobotSettings(
         put("nearestPlace", nearestOnline.name)
         if (nearestOnlineAt > 0) put("nearestPlaceAt", nearestOnlineAt)
         if (safetyNotice) put("safetyNotice", true)
+        put("brainModel", brainModelChoice.id)
     }
 
     companion object {
@@ -305,6 +321,7 @@ data class RobotSettings(
          * 6 (0.4.0): Settings › Safety & privacy. Older files keep every rule as it was (the switches' defaults are today's
          * behaviour, the lock screen still timers and alarms) except "Safety cards", which takes the new default, "When
          * you didn't ask for it", as the person asked.
+         * 7 (0.4.1): Settings › Model. Older files had one model, the TPU's Gemma 4 E2B: they read as Fast, the same model.
          * 8 (0.5.0): conversation mode's settings. Absent from older files, so they read as the defaults, except that live
          * words in a conversation start off when you had turned live words off for questions (to save battery).
          */
@@ -409,6 +426,8 @@ data class RobotSettings(
                 // Before schema 8 there was no such setting: it follows "Show the words while you speak".
                 convPartials = o.optBoolean("convPartials", if (o.optInt("schema", 1) < 8) o.optBoolean("livePartials", d.livePartials) else d.convPartials),
                 convMaxSpeakers = clampSpeakers(o.optInt("convMaxSpeakers", d.convMaxSpeakers)),
+                // Still schema 8 (0.5.0, phase 5.3): absent means "on once the speaker model is downloaded".
+                convSpeakers = if (o.has("convSpeakers")) o.optBoolean("convSpeakers") else null,
                 convWakeDuring = o.optBoolean("convWakeDuring", d.convWakeDuring),
                 convStartLocked = o.optBoolean("convStartLocked", d.convStartLocked),
                 convKeepAudio = o.optBoolean("convKeepAudio", d.convKeepAudio),
@@ -436,6 +455,8 @@ data class RobotSettings(
                 nearestOnlineAt = o.optLong("nearestPlaceAt", 0).coerceAtLeast(0),
                 // A file from before schema 6 (0.3.x, early 0.4.0): an update, so the one-time line about Safety & privacy shows.
                 safetyNotice = if (o.optInt("schema", 1) < 6) true else o.optBoolean("safetyNotice", false),
+                // Schema 7: before it there was only the model Fast is (and no key); an unknown id is Fast too.
+                brainModel = if (o.optInt("schema", 1) < 7) BrainModel.FAST.id else BrainModel.of(o.optString("brainModel")).id,
             )
         }
 

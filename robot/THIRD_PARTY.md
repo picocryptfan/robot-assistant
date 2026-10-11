@@ -27,6 +27,8 @@ files on a computer and checks them.
 | `OfflineRecognizer.kt` | `85054fa9722913bce96c94c5c7eaaa7fd99606b79fbfbeac6cfb60040eae2164` |
 | `OfflineStream.kt` | `5c90b7c060cdd0a2222cc935b54f69465a4a7544de29240bafe4d3a8d86dbb6e` |
 | `Tts.kt` | `1a2a19e247553f774c5abdfda8319ce9e1a44e21279b16dc2c63e963a82ea9b1` |
+| `Speaker.kt` (0.5.0, speaker labels) | `4dcc84f4cf0682e0e4da837ba00130d66ad7aec4f803af4c021de3434246e871` |
+| `SpeakerEmbeddingExtractorConfig.kt` (0.5.0) | `d90c0ce88dce309813e720ff46abba737401e7e562f9635ee13fd5b32ce106c6` |
 
 - Licence text: `third_party/LICENSE-sherpa-onnx.txt`.
 - Statically linked into `libsherpa-onnx-jni.so` (nothing extra is packaged for them):
@@ -188,6 +190,22 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 | voices.bin | 3,276,800 | `d520519c4a3519d44fcfcd943ed0b1e3c5da5cee0eea501d922fac1a93cd24dc` |
 | tokens.txt | 1,064 | `934a4188addc7665dd3410256bb622169242357fbb99d840d9351209b486dabb` |
 
+### Speaker labels: NVIDIA TitaNet-S (Apache-2.0, the NeMo toolkit licence)
+
+> "TitaNet-S" (`titanet_small`) by NVIDIA, https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/titanet_small.
+> Its card: "License to use this model is covered by the license of the NeMo Toolkit", which is Apache-2.0
+> (https://github.com/NVIDIA/NeMo/blob/main/LICENSE; both re-read on 2026-10-11). Changed: exported to ONNX by the
+> sherpa-onnx project; Robot uses it unchanged from that export.
+
+Downloaded only when you turn on speaker labels (Settings › Conversation › Tell speakers apart), for conversation mode's
+transcripts (docs/conversation-mode.md 3). Repo `csukuangfj/speaker-embedding-models` @
+`0743f301363dec56491a490f6d6cbc9d67f9a3bf` (bundle `spk-titanet-small`, 40,257,283 bytes; size and hash re-checked on
+the build machine on 2026-10-11, equal to Hugging Face's LFS record).
+
+| file | bytes | sha256 |
+|---|---|---|
+| nemo_en_titanet_small.onnx | 40,257,283 | `ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e` |
+
 ## In the `:mt` process only (0.5.0): the fast translation engine
 
 `librobotmt.so` (arm64-v8a) is Mozilla Bergamot translation run by slimt, built by `tools/build_robotmt.sh` from Robot's
@@ -244,19 +262,43 @@ was written for Robot.
 
 ## In the `:brain` process only
 
-- `com.google.ai.edge.litertlm:litertlm-android:0.18.0` (Apache-2.0), Google Maven; `liblitertlm_jni.so` arm64-v8a.
+- `com.google.ai.edge.litertlm:litertlm-android:0.18.0` (Apache-2.0), Google Maven; `liblitertlm_jni.so` arm64-v8a. It runs
+  the model you choose on the TPU (NPU backend) or the CPU (XNNPACK); nothing new is linked for the CPU models (0.4.1).
   Its LICENSE and THIRD_PARTY_NOTICE.txt ship inside the AAR.
 - `com.google.ai.edge.litert:litert-npu-runtime-google-tensor:2.3.0` (Apache-2.0), non-transitive;
   `libLiteRtDispatch_GoogleTensor.so` is packaged, `libLiteRtCompilerPlugin_google_tensor.so` excluded (as in the probe and the lab).
 - The Tensor TPU vendor libraries (`libedgetpu_*`) are the phone's own, declared with `<uses-native-library required="false">`, not bundled.
 - Transitive: `com.google.code.gson:gson:2.14.0`, `org.jetbrains.kotlin:kotlin-reflect:2.4.0` (Apache-2.0).
 
-## Gemma 4 E2B (not in the APK; downloaded or imported by the app on request)
+## Models (not in the APK; downloaded or imported by the app on request, Settings › Model)
 
-- `gemma-4-E2B-it_Google_Tensor_G5.litertlm`, https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm,
-  revision `b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1`, 3,113,545,589 bytes,
-  sha256 `af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc` (checked by the app before it is ever loaded).
-  Model card licence: Apache-2.0.
+Robot downloads a model only when you tap Download, from Hugging Face, pinned to one commit, and checks the file's size and
+SHA-256 before it is ever loaded. The weights are not part of Robot and are not linked into it: they are data files that
+LiteRT-LM reads at run time, so Robot's GPL-3.0 is not affected. Gemma 4 is released by Google under Apache-2.0 (Google's
+Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-2.0`).
+
+- **Fast (default): Gemma 4 E2B for the Tensor G5 TPU.** `gemma-4-E2B-it_Google_Tensor_G5.litertlm`,
+  https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm, revision `b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1`,
+  3,113,545,589 bytes, sha256 `af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc`. Published by Google
+  (litert-community). Licence: Apache-2.0.
+- **Smarter, slower: Gemma 4 E4B (CPU).** `gemma-4-E4B-it.litertlm`,
+  https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm, revision `2eee7ac325f20eb8c9ac1d0e972f7c84663062da`,
+  3,659,530,240 bytes, sha256 `0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0`. Published by Google
+  (litert-community). Licence: Apache-2.0.
+- **Uncensored, slower: Gemma 4 E4B abliterated (CPU).** `gemma-4-E4B-it-abliterated.litertlm`,
+  https://huggingface.co/olekk/gemma-4-E4B-it-abliterated-litert-lm, revision `a4eecccd3b0ba1777660180cda60a396eedcb8aa`,
+  3,659,530,240 bytes, sha256 `f5a6625e0368e853743c91b39fa6ac6a8add1fc4825b18f98f518966610f2a88`. A derivative of Google's
+  E4B file above by olekk (community build, not from Google; method and code at codeberg.org/oknyshuk/gemma4-e4b-abliterated).
+  Licence: Apache-2.0 (its model card). The card also asks that it be used for research and personal experimentation,
+  says you are responsible for its outputs, and says the base Gemma 4 Prohibited Use Policy
+  (https://ai.google.dev/gemma/prohibited_use_policy) applies.
+- **Your own model file.** Whatever `.litertlm` you import keeps its own licence. Robot doesn't ship it; it shows the
+  file's SHA-256 and size and reads what its header says it is (`core/LiteRtLm.kt`, written for Robot from LiteRT-LM's
+  published header schema and LlmMetadata protos, Apache-2.0; no code copied). For example MedGemma 1.5 4B (0.4.3, README
+  "Short-context models"): Google's Health AI Developer Foundations terms of use, not Apache-2.0; Robot neither ships nor
+  downloads it.
+- Not offered: no Gemma 4 E4B build for the Tensor TPU exists. `safecircleai/horizon-edge-4b` (a renamed CPU export of a
+  child-safety classifier fine-tune, under the non-commercial "SafeCircle Research License") is never offered.
 
 ## Language ID table (in the APK, from :core; 0.5.0 conversation mode)
 

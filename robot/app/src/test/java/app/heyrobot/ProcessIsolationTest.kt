@@ -51,6 +51,9 @@ class ProcessIsolationTest {
         // Speech to text and text to speech (the voice plan's Kotlin API files) are sherpa-onnx too.
         assertTrue(users.toString(), users.containsAll(listOf("voice/voice/SherpaSpeechToText.kt", "voice/voice/SherpaTextToSpeech.kt")))
         for (f in listOf("OfflineRecognizer.kt", "OfflineStream.kt", "Tts.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
+        // 0.5.0: speaker labels use sherpa-onnx's speaker embedding API (the JNI was already in the library).
+        assertTrue(users.toString(), users.contains("voice/voice/SpeakerEmbedder.kt"))
+        for (f in listOf("Speaker.kt", "SpeakerEmbeddingExtractorConfig.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
         // Only the copied sherpa-onnx API loads its native library (and, in the :mt module, the fast engine's JNI).
         assertEquals(listOf("mt/mt/Slimt.kt"), usersOf(Regex("""System\.load(Library)?\s*\(""")))
         val sherpa = sources(File(java("voice"), "com/k2fsa"))
@@ -174,7 +177,11 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.CheogramPickActivity",
             // 0.5.0, conversation mode: where the listener and the speech model are.
             "app.heyrobot.assistant.conversation.ConversationService", "app.heyrobot.assistant.conversation.ConversationActivity",
-            "app.heyrobot.assistant.conversation.TranscriptionCheckActivity", "app.heyrobot.assistant.conversation.ConversationTileService")
+            "app.heyrobot.assistant.conversation.TranscriptionCheckActivity", "app.heyrobot.assistant.conversation.ConversationTileService",
+            // 0.5.0, phase 5.3: "Your voice" uses the speaker model and the voiceprint's key, both only in :voice.
+            "app.heyrobot.assistant.conversation.VoiceprintActivity",
+            // 0.5.0, phase 5.6: summaries reach Robot's model and the Claude key, both only from :voice.
+            "app.heyrobot.assistant.conversation.SummaryActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         // 0.5.0: the fast translation engine in a process of its own, bound only by Robot's own processes.
@@ -200,7 +207,7 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
             "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
             "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
-            "app.heyrobot.sys.ExportProvider"))
+            "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider"))
             assertEquals(n, "false", exported(n))
         // 0.5.0: the session is a microphone foreground service; the tile only the system binds.
         assertEquals("microphone", c("app.heyrobot.assistant.conversation.ConversationService").getAttributeNS(ns, "foregroundServiceType"))
@@ -232,8 +239,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("40", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.4.0", m.getAttributeNS(ns, "versionName"))
+        assertEquals("43", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.4.3", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
@@ -295,6 +302,19 @@ class ProcessIsolationTest {
         assertTrue("claude.ai" in hosts)
         val mimes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "mimeType") } }.toSet()
         assertTrue("vnd.android.cursor.dir/event" in mimes)
+    }
+
+    /**
+     * 0.4.1, Settings › Model: every model still downloads by DownloadManager from the main app's stores (0.5.0: also the
+     * fast translation engine's files, MtModelStore), and only the main app downloads, imports, checks or deletes one; the
+     * voice process only asks which file to load (ModelStore.plan), and :brain reads a model's header (core LiteRtLm, no
+     * network) before it loads it.
+     */
+    @Test fun modelsDownloadOnlyFromTheMainApp() {
+        assertEquals(listOf("app/sys/ModelStore.kt", "app/sys/MtModelStore.kt", "app/sys/VoiceModelStore.kt"), usersOf(Regex("""\bDownloadManager\b""")))
+        assertEquals(listOf("app/ui/MainActivity.kt"), usersOf(Regex("""\bModelStore\.(startDownload|import|verify|delete|allowOwnTpu|cancelDownload)\(""")))
+        assertEquals(listOf("app/assistant/BrainLink.kt"), usersOf(Regex("""\bModelStore\.plan\(""")))
+        assertEquals(listOf("brain/brain/GemmaEngine.kt", "app/sys/ModelStore.kt").sorted(), usersOf(Regex("""\bLiteRtLmCheck\.check\(""")))
     }
 
     /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */
@@ -389,16 +409,30 @@ class ProcessIsolationTest {
     }
 
     /**
-     * 0.5.0, conversation mode (docs/conversation-mode.md 8): transcripts never reach a model, a helper or the network in
-     * this phase; the audio stays in memory (clips you pick are read, never written); the session is never started by
-     * Robot on its own (not sticky, not from boot); deleting transcripts tells the voice process.
+     * 0.5.0, conversation mode (docs/conversation-mode.md 8): a transcript reaches Robot's model only through the one-shot
+     * client, from the session's translations (5.4) and Robot's own summary (5.6); a helper only behind the consent card
+     * (5.6); never the network otherwise. The audio stays in memory (clips you pick are read, never written); the session
+     * is never started by Robot on its own (not sticky, not from boot); deleting transcripts tells the voice process.
      */
     @Test fun conversationModeStaysOnThePhone() {
         val conv = ours.filterKeys { it.startsWith("app/assistant/conversation/") || it == "voice/voice/ConversationEngine.kt" ||
             it == "core/core/TranscriptStore.kt" || it == "core/core/TranscriptionCheck.kt" || it == "core/core/ConversationCapture.kt" ||
             it == "app/sys/Transcripts.kt" || it == "app/ui/TranscriptsScreen.kt" }
         assertTrue(conv.keys.toString(), conv.size >= 10)
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bClaude(Link|Session|Client)\b|\bBrain(Client|Keeper|Link)\b|\bINTERNET\b|\bjava\.net\b"""), conv))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bBrainClient\b|\bINTERNET\b|\bjava\.net\b"""), conv))
+        // Robot's model: the session and a summary hold it loaded; translations and summaries ask it through the one-shot
+        // client only.
+        assertEquals(listOf("app/assistant/conversation/ConversationSession.kt", "app/assistant/conversation/ConversationTranslations.kt",
+            "app/assistant/conversation/SummaryActivity.kt", "app/assistant/conversation/SummaryJobs.kt"),
+            usersOf(Regex("""\bBrain(Keeper|Link|OneShots)\b"""), conv))
+        assertEquals(listOf("app/assistant/conversation/ConversationTranslations.kt", "app/assistant/conversation/SummaryJobs.kt"),
+            usersOf(Regex("""\bBrainOneShots\b"""), conv))
+        // Claude: only the helpers, which act on a SummaryJob (made by the card's Send) and check HelperGate first.
+        assertEquals(listOf("app/assistant/conversation/Helpers.kt"), usersOf(Regex("""\bClaude(Session|Client|Listener|Outcome)\b|\btranscriptSession\b"""), conv))
+        val helpers = code(File(java("app"), "app/heyrobot/assistant/conversation/Helpers.kt"))
+        assertEquals(2, Regex("""HelperGate\.allowed\(job\)""").findAll(helpers).count())
+        // The summary screen and the summaries' job are in the voice process (the main app opens the screen by name).
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bSummary(Jobs|Activity)\b|\bClaude(Api|App)Helper\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
         // The clip reader reads what you picked; nothing in conversation mode writes audio.
         assertEquals(emptyList<String>(), usersOf(Regex("""openOutputStream|FileOutputStream|MediaMuxer|MediaRecorder|AudioRecord\b"""),
             conv.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))
@@ -419,5 +453,40 @@ class ProcessIsolationTest {
         val ui = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.assistant\b"""), ui))
         assertTrue(File(java("app"), "app/heyrobot/sys/Transcripts.kt").readText().contains("\"app.heyrobot.assistant.conversation.ConversationActivity\""))
+    }
+
+    /**
+     * 0.5.0, phase 5.3 (docs/conversation-mode.md 3, 8): the speaker model is downloaded by the main app only, like every
+     * model; the voiceprint is decrypted in the :voice process only, seeds the session and nothing else; nothing about
+     * speakers goes online or into a log but numbers.
+     */
+    @Test fun speakerLabelsAndTheVoiceprintStayOnThePhone() {
+        // Downloads: DownloadManager in the main app's model stores (the fast engine's too), and those only from the main app's screens.
+        assertEquals(listOf("app/sys/ModelStore.kt", "app/sys/MtModelStore.kt", "app/sys/VoiceModelStore.kt"), usersOf(Regex("""\bDownloadManager\b""")))
+        val dl = usersOf(Regex("""\bVoiceModelStore\b"""))
+        assertTrue(dl.toString(), dl.isNotEmpty() && dl.all { it.startsWith("app/ui/") || it.startsWith("app/sys/") })
+        // The voiceprint: decrypted in one place (the session's start), encrypted and read only by the :voice code.
+        assertEquals(listOf("app/assistant/conversation/ConversationSession.kt"), usersOf(Regex("""\bVoiceprints\.read\(""")))
+        assertEquals(listOf("app/assistant/conversation/VoiceprintActivity.kt"), usersOf(Regex("""\bVoiceprints\.save\(""")))
+        assertEquals(listOf("app/assistant/conversation/Voiceprints.kt"), usersOf(Regex("""\bVoiceprintCodec\.(open|seal)\(""")))
+        val main = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bVoiceprints\b|\bVoiceprintCodec\.(open|seal|decode)\b|\bCipher\b"""), main.filterKeys { it != "app/sys/ClaudeFiles.kt" }))
+        // Its Keystore key is its own, never the Claude key's.
+        val keys = code(File(java("app"), "app/heyrobot/assistant/conversation/Voiceprints.kt"))
+        assertTrue(keys.contains("VoiceprintCodec.KEY_ALIAS") && !keys.contains("ClaudeKeyFiles"))
+        // Never in settings: the setting is a flag.
+        val settings = code(File(java("core"), "app/heyrobot/core/Settings.kt"))
+        assertTrue(settings.contains("val meVoiceprint: Boolean"))
+        assertTrue(!Regex("""\bVoiceprint\b|FloatArray""").containsMatchIn(settings))
+        // Nothing about speakers goes online, and the logs get numbers only: no name, label, text or voice in an RLog call.
+        val spk = ours.filterKeys { it in setOf("core/core/Speakers.kt", "core/core/Voiceprint.kt", "core/core/SpeakerClusterer.kt", "voice/voice/SpeakerEmbedder.kt",
+            "voice/voice/ConversationEngine.kt", "app/assistant/conversation/Voiceprints.kt", "app/assistant/conversation/VoiceprintActivity.kt",
+            "app/assistant/conversation/ConversationSession.kt", "app/sys/Speakers.kt", "app/ui/SpeakerUi.kt") }
+        assertEquals(10, spk.size)
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bINTERNET\b"""), spk))
+        val leaky = Regex("""RLog\.[iw]\([^\n]*\b(name|names|label|speaker|vector|embedding|voice|voices|mine|text|heard)\b""")
+        assertEquals(emptyList<String>(), usersOf(leaky, spk))
+        // The speaker model loads with sherpa's debug output off, like every model.
+        assertTrue(code(File(java("voice"), "app/heyrobot/voice/SpeakerEmbedder.kt")).contains("debug = false"))
     }
 }

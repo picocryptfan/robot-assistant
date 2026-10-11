@@ -22,6 +22,12 @@ class VoiceModelsTest {
         assertEquals("acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247", VoiceBundle.STT.files[0].sha256)
         assertEquals("b40f62b166ac8164b0627ef48a0b358eda0985e272fb03ef5252e7206305da11", VoiceBundle.KOKORO.files[0].sha256)
         assertEquals("2174dbf67b58b7b50d7b65294f89c2c53c172834533519b853c579879a04cc22", VoiceBundle.KITTEN.files[0].sha256)
+        // 0.5.0, docs/conversation-mode.md 3.1: TitaNet-S, 40 MB, the hash Hugging Face's LFS record gives (re-checked by download).
+        assertEquals(40_257_283L, VoiceBundle.SPEAKERS.bytes)
+        assertEquals(listOf("nemo_en_titanet_small.onnx"), VoiceBundle.SPEAKERS.files.map { it.name })
+        assertEquals("ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e", VoiceBundle.SPEAKERS.files[0].sha256)
+        assertEquals("0743f301363dec56491a490f6d6cbc9d67f9a3bf", VoiceBundle.SPEAKERS.commit)
+        assertEquals("40 MB", VoiceModelLogic.size(VoiceBundle.SPEAKERS.bytes))
     }
 
     @Test fun everyFileHasAPinnedUrlAndAWellFormedHash() {

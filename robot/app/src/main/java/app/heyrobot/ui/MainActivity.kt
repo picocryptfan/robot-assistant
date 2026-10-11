@@ -41,10 +41,12 @@ import app.heyrobot.core.NearestAnswer
 import app.heyrobot.core.Approval
 import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestResult
+import app.heyrobot.core.BrainModel
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
+import app.heyrobot.core.OwnModel
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.TextApp
@@ -70,6 +72,7 @@ import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.Transcripts
+import app.heyrobot.sys.VoiceprintFiles
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.sys.MtModelStore
@@ -120,8 +123,15 @@ class MainActivity : ComponentActivity() {
         i.action == "android.service.quicksettings.action.QS_TILE_PREFERENCES" -> AppPages.CONVERSATION_SETTINGS
         // 0.5.0: the Transcripts library, or one transcript (the transcript screen's "Open", the "Transcripts" shortcut).
         i.getStringExtra(AppPages.EXTRA) == AppPages.TRANSCRIPTS ->
-            i.getStringExtra(AppPages.EXTRA_TRANSCRIPT)?.takeIf { app.heyrobot.core.TranscriptIds.valid(it) }?.let { "${AppPages.TRANSCRIPTS}:$it" } ?: AppPages.TRANSCRIPTS
-        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS }
+            i.getStringExtra(AppPages.EXTRA_TRANSCRIPT)?.takeIf { app.heyrobot.core.TranscriptIds.valid(it) }?.let { id ->
+                // A summary's [14:03] link: that line in view (phase 5.6).
+                val line = i.getIntExtra(AppPages.EXTRA_LINE, -1)
+                "${AppPages.TRANSCRIPTS}:$id" + if (line >= 0) ":$line" else ""
+            } ?: AppPages.TRANSCRIPTS
+        // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
+        // Model from a chat-only model's answer to an action (0.4.3).
+        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
+            it == AppPages.MODEL }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -201,11 +211,16 @@ sealed class Page {
 /** Live facts the screens show, refreshed every second while the app is in front. */
 data class Snapshot(
     val facts: AssistantFacts? = null,
+    /** The model Robot answers with: the one you chose when it is ready, else Fast (Home's "Get started"). */
     val model: ModelStatus = ModelStatus.MISSING,
     val progress: String? = null,
     val percent: Int = -1,
     val failure: String? = null,
     val freeBytes: Long = -1,
+    /** Settings › Model (0.4.1): every model's card, your own file's record, and the model :brain holds now. */
+    val models: List<ModelStore.Snap> = emptyList(),
+    val own: OwnModel? = null,
+    val loaded: BrainModel? = null,
     /** The voice models (speech recognition, voice, fast voice), in VoiceBundle order. */
     val voice: List<VoiceModelStore.Snap> = emptyList(),
     /** What the voice process last reported about its speech engines, and the last voice speed test. */
@@ -217,8 +232,15 @@ data class Snapshot(
     val nearestAnswer: NearestAnswer? = null,
     /** 0.5.0: the fast translation engine's files (Settings › Conversation). */
     val mt: MtModelStore.Snap? = null,
+    /** 0.5.0: a "me" voiceprint is saved (only that: it is encrypted, and read by the voice process only). */
+    val voiceprint: Boolean = false,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
+
+    fun model(m: BrainModel): ModelStore.Snap? = models.firstOrNull { it.model == m }
+
+    /** [m] can be chosen: checked, and (your own file) runnable here, the TPU allowed if it needs it. */
+    fun ready(m: BrainModel): Boolean = model(m)?.status == ModelStatus.VERIFIED && (m != BrainModel.OWN || own?.backend != null)
 
     /** Speech recognition and the default voice are installed. */
     val voiceReady: Boolean get() = voice(VoiceBundle.STT)?.status == ModelStatus.VERIFIED && voice(VoiceBundle.KOKORO)?.status == ModelStatus.VERIFIED
@@ -240,6 +262,8 @@ fun RobotAppUi(activity: MainActivity) {
     var busy by remember { mutableStateOf<String?>(null) }
     var voiceInstalling by remember { mutableStateOf<VoiceBundle?>(null) }
     var mtInstalling by remember { mutableStateOf(false) }
+    /** The model the file picker is choosing a file for. */
+    var importTarget by rememberSaveable { mutableStateOf(BrainModel.FAST.id) }
     var notes by remember { mutableStateOf<List<Note>>(emptyList()) }
     var notesTick by remember { mutableIntStateOf(0) }
     var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
@@ -254,21 +278,32 @@ fun RobotAppUi(activity: MainActivity) {
     LaunchedEffect(resumed) {
         while (resumed) {
             snap = withContext(Dispatchers.IO) {
-                val dl = ModelStore.downloadProgress(ctx)
+                val models = BrainModel.entries.map { ModelStore.snapshot(ctx, it) }
+                val chosen = models.first { it.model == settings.brainModelChoice }
+                val use = chosen.takeIf { it.status == ModelStatus.VERIFIED } ?: models.first { it.model == BrainModel.FAST }
                 Snapshot(
                     facts = Assistant.facts(ctx),
-                    model = ModelStore.status(ctx),
-                    progress = ModelStore.importText?.let { "Copying: $it" } ?: ModelStore.verifyPercent?.let { "Checking the file: $it%" } ?: dl?.first,
-                    percent = ModelStore.verifyPercent ?: dl?.second ?: -1,
-                    failure = ModelStore.lastFailure(ctx),
+                    model = use.status,
+                    progress = use.progress,
+                    percent = use.percent,
+                    failure = use.failure,
                     freeBytes = ModelStore.freeBytes(ctx),
+                    models = models,
+                    own = ModelStore.own(ctx),
+                    loaded = ModelStore.loadedNow(ctx),
                     voice = VoiceBundle.entries.map { VoiceModelStore.snapshot(ctx, it) },
                     engines = VoiceEngineStatus.fromJson(readOrNull(Paths.voiceEngines(ctx))),
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
                     bargeTest = readBargeTest(ctx),
                     nearestAnswer = NearestAnswers.load(ctx),
                     mt = MtModelStore.snapshot(ctx, MtBundle.FR_EN),
+                    voiceprint = VoiceprintFiles.saved(ctx),
                 )
+            }
+            // The meVoiceprint setting is only a flag, kept in step with the file (made or deleted in the voice process).
+            if (snap.voiceprint != settings.meVoiceprint) {
+                settings = settings.copy(meVoiceprint = snap.voiceprint)
+                SettingsStore.save(ctx, settings)
             }
             // A finished voice download is checked and installed right away, one bundle at a time.
             snap.voice.firstOrNull { it.status == ModelStatus.UNVERIFIED }?.let { v ->
@@ -296,14 +331,16 @@ fun RobotAppUi(activity: MainActivity) {
                     }
                 }, "robot-mt-install").start()
             }
-            // A finished download (or import) is checked right away: the model is never loaded unchecked.
-            if (snap.model == ModelStatus.UNVERIFIED && busy == null) {
-                busy = "verify"
-                scope.launch(Dispatchers.IO) {
-                    val ok = ModelStore.verify(ctx)
-                    withContext(Dispatchers.Main) {
-                        busy = null
-                        say(if (ok) "Gemma is ready." else "The file is damaged. Delete it and download again.")
+            // A finished download (or import) is checked right away: a model is never loaded unchecked.
+            snap.models.firstOrNull { it.status == ModelStatus.UNVERIFIED }?.let { u ->
+                if (busy == null) {
+                    busy = "verify"
+                    scope.launch(Dispatchers.IO) {
+                        val ok = ModelStore.verify(ctx, u.model)
+                        withContext(Dispatchers.Main) {
+                            busy = null
+                            say(checkedText(u.model, ok))
+                        }
                     }
                 }
             }
@@ -333,8 +370,9 @@ fun RobotAppUi(activity: MainActivity) {
             r == AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
             r == AppPages.PERMISSIONS -> page = Page.Setup(people = true)
             r == AppPages.TRANSCRIPTS -> page = Page.Transcripts
-            r != null && r.startsWith(AppPages.TRANSCRIPTS + ":") -> page = Page.Transcript(r.substringAfter(':'))
+            r != null && r.startsWith(AppPages.TRANSCRIPTS + ":") -> r.split(':').let { p -> page = Page.Transcript(p[1], p.getOrNull(2)?.toIntOrNull()) }
             r == AppPages.CONVERSATION_SETTINGS -> page = Page.ConversationSettings
+            r == AppPages.MODEL -> { tab = Tab.MODEL; page = null }
         }
         activity.route.value = null
     }
@@ -359,16 +397,18 @@ fun RobotAppUi(activity: MainActivity) {
     }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val why = ModelStore.refuseImport(ctx, uri)
+        val target = BrainModel.of(importTarget)
+        val why = ModelStore.refuseImport(ctx, target, uri)
         if (why != null) return@rememberLauncherForActivityResult say(why)
         busy = "import"
-        // Not tied to this screen: the copy (minutes) goes on if it is left.
+        // Not tied to this screen: the copy (minutes) and the check go on if it is left.
         Thread({
-            val err = ModelStore.import(ctx.applicationContext, uri)
-            val ok = err == null && ModelStore.verify(ctx.applicationContext)
+            val err = ModelStore.import(ctx.applicationContext, target, uri)
+            val ok = err == null && ModelStore.verify(ctx.applicationContext, target)
             scope.launch {
                 busy = null
-                say(err ?: if (ok) "Gemma is ready." else "The copied file is damaged. Pick the right file or download it.")
+                say(err ?: if (target == BrainModel.OWN) checkedText(target, ok)
+                    else if (ok) "“${target.title}” is ready." else "The copied file is damaged. Pick the right file or download it.")
             }
         }, "robot-import").start()
     }
@@ -390,19 +430,39 @@ fun RobotAppUi(activity: MainActivity) {
         openConversation = { page = Page.Conversation(it) },
         askPermissions = { permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) },
         openAssistantSettings = { if (!Assistant.openSettings(ctx)) say("Open Settings > Apps > Default apps > Digital assistant app.") },
-        download = { ModelStore.startDownload(ctx)?.let(::say) },
-        cancelDownload = { ModelStore.cancelDownload(ctx) },
-        import = { importer.launch(arrayOf("*/*")) },
-        verify = {
+        download = { m -> ModelStore.startDownload(ctx, m)?.let(::say) },
+        cancelDownload = { m -> ModelStore.cancelDownload(ctx, m) },
+        // Storage Access Framework: no storage permission; a .litertlm has no type of its own, so any file.
+        import = { m -> importTarget = m.id; importer.launch(arrayOf("*/*")) },
+        verify = { m ->
             if (busy == null) {
                 busy = "verify"
                 scope.launch(Dispatchers.IO) {
-                    val ok = ModelStore.verify(ctx)
-                    withContext(Dispatchers.Main) { busy = null; say(if (ok) "The file checks out." else "The file is damaged. Delete it and download again.") }
+                    val ok = ModelStore.verify(ctx, m)
+                    withContext(Dispatchers.Main) {
+                        busy = null
+                        say(if (m == BrainModel.OWN) checkedText(m, ok) else if (ok) "The file checks out." else "The file is damaged. Delete it and download again.")
+                    }
                 }
             }
         },
-        deleteModel = { ModelStore.delete(ctx); say("The model was deleted.") },
+        deleteModel = { m ->
+            scope.launch {
+                val why = withContext(Dispatchers.IO) { ModelStore.delete(ctx, m) }
+                if (why != null) return@launch say(why)
+                // The choice goes back to Fast with its model.
+                val chosen = settings.brainModelChoice == m && m != BrainModel.FAST
+                if (chosen) update(settings.copy(brainModel = BrainModel.FAST.id))
+                say("“${m.title}” was deleted." + if (chosen) " Robot uses Fast again." else "")
+            }
+        },
+        allowOwnTpu = { allow, sha256 ->
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) { ModelStore.allowOwnTpu(ctx, allow, sha256) }
+                say(if (!ok && allow) "Robot couldn't allow that: the file changed since its check. Check it again first."
+                    else if (!ok) "Robot couldn't change that." else if (allow) "Your model file may run on the TPU now." else "Your model file won't run on the TPU.")
+            }
+        },
         // The panel's live conversation too, or its next save would write a deleted one back.
         deleteConversation = { id ->
             ConversationStore.delete(ctx, id); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
@@ -467,12 +527,31 @@ fun RobotAppUi(activity: MainActivity) {
             // By name: the screen runs in the voice process, which starts the session.
             try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name)) } catch (_: Exception) { say("Couldn't open the transcript screen.") }
         },
+        interpret = {
+            try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name, app.heyrobot.core.ConvMode.INTERPRET.name)) } catch (_: Exception) {
+                say("Couldn't open the interpreter.")
+            }
+        },
         openTranscriptionCheck = {
             try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { say("Couldn't open the Transcription check.") }
         },
         mtDownload = { MtModelStore.startDownload(ctx, MtBundle.FR_EN)?.let(::say) },
         mtCancel = { MtModelStore.cancelDownload(ctx, MtBundle.FR_EN) },
         mtDelete = { MtModelStore.delete(ctx, MtBundle.FR_EN); say("The fast translation engine's files were deleted.") },
+        openVoiceprint = {
+            // By name: the screen runs in the voice process, which alone holds the speaker model and the voiceprint's key.
+            try {
+                ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.conversation.VoiceprintActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) { say("Couldn't open Your voice.") }
+        },
+        deleteVoiceprint = {
+            // Off the main thread (the file and the Keystore); a running session stops comparing with it at once.
+            scope.launch(Dispatchers.IO) {
+                VoiceprintFiles.delete(ctx)
+                Cmd.send(ctx, Cmd.VOICEPRINT_DELETED)
+                withContext(Dispatchers.Main) { update(settings.copy(meVoiceprint = false)); say("Your voiceprint was deleted.") }
+            }
+        },
         openUsageAccess = {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
             if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
@@ -537,12 +616,19 @@ fun RobotAppUi(activity: MainActivity) {
                     Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
                     Tab.NOTES -> NotesScreen(notes, actions, m)
                     Tab.HISTORY -> HistoryScreen(history, actions, m)
-                    Tab.MODEL -> ModelScreen(snap, busy, actions, m)
+                    Tab.MODEL -> ModelScreen(settings, ::updateSettings, snap, busy, actions, m)
                     Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
                 }
             }
         }
     }
+}
+
+/** What a finished check of [m] means, in a line. */
+private fun checkedText(m: BrainModel, ok: Boolean): String = when {
+    m != BrainModel.OWN -> if (ok) "“${m.title}” is ready." else "The file is damaged. Delete it and download again."
+    ok -> "Your model file is checked. See what Robot found in Model."
+    else -> "Robot can't use that file. Model says why."
 }
 
 /** What the screens can ask for. */
@@ -553,11 +639,14 @@ class AppActions(
     val openConversation: (String) -> Unit,
     val askPermissions: () -> Unit,
     val openAssistantSettings: () -> Unit,
-    val download: () -> Unit,
-    val cancelDownload: () -> Unit,
-    val import: () -> Unit,
-    val verify: () -> Unit,
-    val deleteModel: () -> Unit,
+    /** Settings › Model (0.4.1): each model's download, import, check and delete. */
+    val download: (BrainModel) -> Unit,
+    val cancelDownload: (BrainModel) -> Unit,
+    val import: (BrainModel) -> Unit,
+    val verify: (BrainModel) -> Unit,
+    val deleteModel: (BrainModel) -> Unit,
+    /** Your own file is a Tensor G5 build: run it on the TPU (after its warning card), or stop. */
+    val allowOwnTpu: (allow: Boolean, sha256: String?) -> Unit = { _, _ -> },
     val deleteConversation: (String) -> Unit,
     val deleteAllConversations: () -> Unit,
     /** Settings › Safety & privacy: every kept thumbnail and screen text out of the saved conversations. */
@@ -585,9 +674,14 @@ class AppActions(
     val askMedia: () -> Unit = {},
     /** 0.5.0: the transcript screen (voice process), to start transcribing; Settings › Voice › Transcription check. */
     val transcribe: () -> Unit = {},
+    /** 0.5.0: the interpreter (face to face, spoken translations). */
+    val interpret: () -> Unit = {},
     val openTranscriptionCheck: () -> Unit = {},
     /** 0.5.0: the fast translation engine's files (Settings › Conversation › Translation). */
     val mtDownload: () -> Unit = {},
     val mtCancel: () -> Unit = {},
     val mtDelete: () -> Unit = {},
+    /** 0.5.0, phase 5.3: "Your voice" (voice process), and deleting the voiceprint (file and key). */
+    val openVoiceprint: () -> Unit = {},
+    val deleteVoiceprint: () -> Unit = {},
 )

@@ -25,8 +25,10 @@ object BrainProtocol {
     const val REQ_CLOSE_CONV = 7
     /**
      * 0.5.0 (docs/conversation-mode.md 4.2): one message to a fresh conversation with no tools and constrained decoding
-     * off, streamed, then closed: a translation or a summary step ([BrainMsg.OneShot]). Defined here, not in [REQUESTS]
-     * yet: until :brain's priority queue ([BrainQueue]) handles it, :brain answers it as a bad request.
+     * off, streamed, then closed: a translation or a summary step ([BrainMsg.OneShot]), at its own priority in :brain's
+     * queue ([BrainScheduler]). Its events: EV_QUEUED while it waits (and 0 as it starts), EV_CHUNK, then EV_DONE or
+     * EV_ERROR. EV_QUEUED after chunks means it gave way to a request with a higher priority and will start over: the
+     * client drops what came so far.
      */
     const val REQ_ONE_SHOT = 8
 
@@ -38,11 +40,14 @@ object BrainProtocol {
     const val EV_DONE = 105
     const val EV_ERROR = 106
     const val EV_UNLOADED = 107
-    /** 0.5.0: the request waits behind others, at [BrainMsg.Queued.position] (the client may cancel it, REQ_CANCEL). */
+    /**
+     * 0.5.0: the request waits behind others, at [BrainMsg.Queued.position] (the client may cancel it, REQ_CANCEL), or
+     * starts after waiting (position 0). Not terminal.
+     */
     const val EV_QUEUED = 108
 
     /** The requests :brain answers (anything else gets EV_ERROR BAD_REQUEST). */
-    val REQUESTS = setOf(REQ_STATUS, REQ_LOAD, REQ_UNLOAD, REQ_GENERATE, REQ_TOOL_RESULT, REQ_CANCEL, REQ_CLOSE_CONV)
+    val REQUESTS = setOf(REQ_STATUS, REQ_LOAD, REQ_UNLOAD, REQ_GENERATE, REQ_TOOL_RESULT, REQ_CANCEL, REQ_CLOSE_CONV, REQ_ONE_SHOT)
     val EVENTS = setOf(EV_STATUS, EV_LOADED, EV_CHUNK, EV_TOOL_CALLS, EV_DONE, EV_ERROR, EV_UNLOADED, EV_QUEUED)
     /** Events that end a request: the client stops listening for its id. */
     val TERMINAL = setOf(EV_STATUS, EV_LOADED, EV_DONE, EV_ERROR, EV_UNLOADED)
@@ -83,7 +88,7 @@ enum class BrainError {
     /** Plain language for the panel. */
     fun text(): String = when (this) {
         NOT_LOADED -> "The model isn't loaded."
-        NO_VISION -> "Pictures aren't available: the vision part of the model didn't load on the TPU."
+        NO_VISION -> "Pictures aren't available: the vision part of the model didn't load."
         BAD_REQUEST -> "Robot sent the model a request it couldn't read."
         ENGINE -> "The model ran into a problem."
         BUSY -> "The model is busy with another answer."
@@ -95,8 +100,18 @@ sealed class BrainMsg {
     abstract fun toJson(): JSONObject
 
     // ---------------------------------------------------------------- requests
-    data class Load(val path: String) : BrainMsg() {
-        override fun toJson() = JSONObject().put("path", path)
+    /**
+     * Load [model]'s file at [path] on [backend] with a context of [maxTokens] (0.4.1: the catalogue entry's; 0.4.3: your
+     * own file's when it is shorter, chat only). :brain unloads any other model first: two engines never share the
+     * process, and loads only with the context LoadCheck expects for that file.
+     */
+    data class Load(
+        val path: String,
+        val model: BrainModel = BrainModel.FAST,
+        val backend: ModelBackend = model.backend,
+        val maxTokens: Int = model.contextTokens,
+    ) : BrainMsg() {
+        override fun toJson() = JSONObject().put("path", path).put("model", model.id).put("backend", backend.id).put("maxTokens", maxTokens)
     }
 
     data class Generate(
@@ -149,12 +164,29 @@ sealed class BrainMsg {
     }
 
     // ---------------------------------------------------------------- events
-    data class Status(val loaded: Boolean, val vision: Boolean, val constrained: Boolean, val busy: Boolean) : BrainMsg() {
-        override fun toJson() = JSONObject().put("loaded", loaded).put("vision", vision).put("constrained", constrained).put("busy", busy)
+    /** [model], [backend] and [maxTokens] (its context, 0.4.3): what is loaded (null and 0 when nothing is). */
+    data class Status(
+        val loaded: Boolean, val vision: Boolean, val constrained: Boolean, val busy: Boolean,
+        val model: BrainModel? = null, val backend: ModelBackend? = null, val maxTokens: Int = 0,
+    ) : BrainMsg() {
+        override fun toJson() = JSONObject().put("loaded", loaded).put("vision", vision).put("constrained", constrained).put("busy", busy).apply {
+            model?.let { put("model", it.id) }
+            backend?.let { put("backend", it.id) }
+            if (maxTokens > 0) put("maxTokens", maxTokens)
+        }
     }
 
-    data class Loaded(val ok: Boolean, val vision: Boolean, val loadMs: Long, val error: String?) : BrainMsg() {
-        override fun toJson() = JSONObject().apply { put("ok", ok); put("vision", vision); put("loadMs", loadMs); error?.let { put("error", it) } }
+    /** [failure]: why it didn't load, when it didn't ([error] says it in plain words). */
+    data class Loaded(
+        val ok: Boolean, val vision: Boolean, val loadMs: Long, val error: String?,
+        val model: BrainModel? = null, val backend: ModelBackend? = null, val failure: LoadFailure? = null,
+    ) : BrainMsg() {
+        override fun toJson() = JSONObject().apply {
+            put("ok", ok); put("vision", vision); put("loadMs", loadMs); error?.let { put("error", it) }
+            model?.let { put("model", it.id) }
+            backend?.let { put("backend", it.id) }
+            failure?.let { put("failure", it.name) }
+        }
     }
 
     data class Chunk(val text: String, val thought: Boolean = false) : BrainMsg() {
@@ -190,7 +222,12 @@ sealed class BrainMsg {
         fun decode(what: Int, json: String?): BrainMsg? = try {
             val o = JSONObject(json ?: "{}")
             when (what) {
-                BrainProtocol.REQ_LOAD -> Load(o.getString("path"))
+                BrainProtocol.REQ_LOAD -> {
+                    // A request without the model (0.4.0's) is Fast's; an unknown model or backend isn't loaded.
+                    val model = if (o.has("model")) BrainModel.byId(o.getString("model")) ?: return null else BrainModel.FAST
+                    val backend = if (o.has("backend")) ModelBackend.of(o.getString("backend")) ?: return null else model.backend
+                    Load(o.getString("path"), model, backend, o.optInt("maxTokens", model.contextTokens))
+                }
                 BrainProtocol.REQ_GENERATE -> {
                     val h = o.optJSONArray("history") ?: JSONArray()
                     Generate(
@@ -218,8 +255,11 @@ sealed class BrainMsg {
                 BrainProtocol.REQ_ONE_SHOT -> OneShot(enumValueOf(o.getString("kind")), enumValueOf(o.getString("priority")), o.getString("system"),
                     o.getString("text"), o.optInt("maxChunks", Limits.MAX_REPLY_CHUNKS).coerceIn(1, Limits.MAX_REPLY_CHUNKS))
                 BrainProtocol.REQ_STATUS, BrainProtocol.REQ_UNLOAD, BrainProtocol.EV_UNLOADED -> Empty
-                BrainProtocol.EV_STATUS -> Status(o.optBoolean("loaded"), o.optBoolean("vision"), o.optBoolean("constrained"), o.optBoolean("busy"))
-                BrainProtocol.EV_LOADED -> Loaded(o.optBoolean("ok"), o.optBoolean("vision"), o.optLong("loadMs"), o.optString("error").takeIf { o.has("error") })
+                BrainProtocol.EV_STATUS -> Status(o.optBoolean("loaded"), o.optBoolean("vision"), o.optBoolean("constrained"), o.optBoolean("busy"),
+                    BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")), o.optInt("maxTokens", 0).coerceAtLeast(0))
+                BrainProtocol.EV_LOADED -> Loaded(o.optBoolean("ok"), o.optBoolean("vision"), o.optLong("loadMs"), o.optString("error").takeIf { o.has("error") },
+                    BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")),
+                    LoadFailure.entries.firstOrNull { it.name == o.optString("failure") })
                 BrainProtocol.EV_CHUNK -> Chunk(o.getString("text"), o.optBoolean("thought", false))
                 BrainProtocol.EV_TOOL_CALLS -> {
                     val c = o.getJSONArray("calls")

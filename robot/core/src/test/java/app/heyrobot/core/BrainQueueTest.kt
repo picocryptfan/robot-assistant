@@ -82,4 +82,70 @@ class BrainQueueTest {
         assertTrue(q.cancel(3).cancelRunning)
         assertEquals(BrainQueue.Step(), q.cancel(42))
     }
+
+    @Test fun aTranscriptTranslationGivesWayToThePanelAndTheInterpreter() {
+        assertTrue(BrainQueue.yields(Priority.TRANSCRIPT, Priority.PANEL))
+        assertTrue(BrainQueue.yields(Priority.TRANSCRIPT, Priority.INTERPRETER))
+        assertFalse(BrainQueue.yields(Priority.TRANSCRIPT, Priority.TRANSCRIPT))
+        assertFalse(BrainQueue.yields(Priority.TRANSCRIPT, Priority.SUMMARY))
+        assertFalse(BrainQueue.yields(Priority.INTERPRETER, Priority.PANEL))
+        assertFalse(BrainQueue.yields(Priority.PANEL, Priority.INTERPRETER))
+        val q = BrainQueue()
+        q.submit(job(1, Priority.TRANSCRIPT))
+        q.submit(job(2, Priority.TRANSCRIPT))
+        assertTrue(q.submit(job(3, Priority.PANEL)).cancelRunning)
+        assertTrue(q.givingWay(1))
+        val after = q.done(1)
+        assertEquals(3, after.start?.id)
+        assertEquals(1, after.requeued?.id)
+        // Back ahead of the other line, behind nothing else.
+        assertEquals(listOf(1, 2), q.queue.map { it.id })
+    }
+
+    @Test fun whileThePanelWaitsForItsToolResultsOnlyPanelRequestsStart() {
+        val q = BrainQueue()
+        assertEquals(1, q.submit(job(1, Priority.PANEL)).start?.id)
+        q.hold(true)
+        assertNull(q.done(1).start)
+        // A translation waits for the tool round; the tool results (a panel request) go first.
+        assertNull(q.submit(job(2, Priority.INTERPRETER)).start)
+        assertNull(q.submit(job(3, Priority.SUMMARY)).start)
+        assertEquals(1, q.position(2))
+        assertEquals(4, q.submit(job(4, Priority.PANEL)).start?.id)
+        // The tool round asks for more tools: still held.
+        assertNull(q.done(4).start)
+        assertEquals(BrainQueue.Step(), q.hold(true))
+        // The reply ends: the interpreter turn starts at once.
+        assertEquals(2, q.hold(false).start?.id)
+        assertEquals(3, q.done(2).start?.id)
+    }
+
+    @Test fun releasingTheHoldWhileARequestRunsStartsNothingYet() {
+        val q = BrainQueue()
+        q.submit(job(1, Priority.PANEL))
+        q.hold(true)
+        q.submit(job(2, Priority.TRANSCRIPT))
+        assertEquals(BrainQueue.Step(), q.hold(false))
+        assertEquals(2, q.done(1).start?.id)
+    }
+
+    @Test fun anUnloadedModelDropsEveryoneWaiting() {
+        val q = BrainQueue()
+        q.submit(job(1, Priority.INTERPRETER))
+        q.submit(job(2, Priority.PANEL))
+        q.submit(job(3, Priority.SUMMARY))
+        assertEquals(listOf(2, 3), q.dropWaiting().map { it.id })
+        assertTrue(q.queue.isEmpty())
+        assertNull(q.done(1).start)
+    }
+
+    @Test fun aStepThatFinishedWhileGivingWayIsNotQueuedAgain() {
+        val q = BrainQueue()
+        q.submit(job(1, Priority.SUMMARY))
+        assertTrue(q.submit(job(2, Priority.INTERPRETER)).cancelRunning)
+        val end = q.done(1, finished = true)
+        assertNull(end.requeued)
+        assertEquals(2, end.start?.id)
+        assertTrue(q.queue.isEmpty())
+    }
 }

@@ -141,7 +141,9 @@ object VoiceEngines {
     private lateinit var sttSlot: ModelSlot<Recognizer>
     private lateinit var kokoroSlot: ModelSlot<com.k2fsa.sherpa.onnx.OfflineTts>
     private lateinit var kittenSlot: ModelSlot<com.k2fsa.sherpa.onnx.OfflineTts>
+    private lateinit var speakerSlot: ModelSlot<Embedder>
     private var stt: SherpaSpeechToText? = null
+    @Volatile private var speakers: SpeakerEmbedder? = null
     private var tts: SherpaTextToSpeech? = null
     @Volatile private var benchRunning = false
 
@@ -153,11 +155,12 @@ object VoiceEngines {
         sttSlot = ModelSlot(VoiceBundle.STT, env) { it.release() }
         kokoroSlot = ModelSlot(VoiceBundle.KOKORO, env) { it.release() }
         kittenSlot = ModelSlot(VoiceBundle.KITTEN, env) { it.release() }
+        speakerSlot = ModelSlot(VoiceBundle.SPEAKERS, env) { it.release() }
         slots().forEach { it.refresh() }
         writeStatus()
     }
 
-    private fun slots() = listOf(sttSlot, kokoroSlot, kittenSlot)
+    private fun slots() = listOf(sttSlot, kokoroSlot, kittenSlot, speakerSlot)
 
     private fun armIdle() {
         main.removeCallbacks(idleCheck)
@@ -168,6 +171,7 @@ object VoiceEngines {
     private fun checkIdle() {
         stt?.unloadIfIdle()
         tts?.unloadIfIdle()
+        speakers?.unloadIfIdle()
         // Something used meanwhile re-arms through its slot; check again while anything is still loaded.
         if (slots().any { it.value != null }) main.postDelayed(idleCheck, 60_000)
     }
@@ -188,6 +192,18 @@ object VoiceEngines {
         }
     }
 
+    /**
+     * Conversation mode's speaker labels and the "me" enrolment (0.5.0): one embedder per process, on its own thread.
+     * Null before [init].
+     */
+    fun speakerEmbedder(): SpeakerEmbedding? {
+        if (!::env.isInitialized) return null
+        return speakers ?: synchronized(this) { speakers ?: SpeakerEmbedder(speakerSlot).also { speakers = it } }
+    }
+
+    /** Memory pressure: the speaker model goes unless a session holds it. */
+    fun trimSpeakers(): Boolean = speakers?.trim() ?: false
+
     fun textToSpeech(ctx: Context): TextToSpeech {
         val s = SherpaTextToSpeech(ctx.applicationContext, kokoroSlot, kittenSlot).also { tts = it }
         return VoiceOutput(ctx.applicationContext, s)
@@ -199,6 +215,7 @@ object VoiceEngines {
         val gone = slots().filter { !it.refresh() && it.value != null }.map { it.bundle }
         if (VoiceBundle.STT in gone) stt?.unload()
         if (VoiceBundle.KOKORO in gone || VoiceBundle.KITTEN in gone) tts?.unload()
+        if (VoiceBundle.SPEAKERS in gone) speakers?.unload()
         writeStatus()
     }
 
@@ -221,7 +238,7 @@ object VoiceEngines {
     }
 
     private fun writeStatus() {
-        if (!::env.isInitialized || !::kittenSlot.isInitialized) return
+        if (!::env.isInitialized || !::speakerSlot.isInitialized) return
         try {
             val st = VoiceEngineStatus(slots().associate { it.bundle to it.state }, System.currentTimeMillis())
             writeAtomic(File(env.stateDir, VoiceFiles.ENGINES), st.toJson().toString())
@@ -234,5 +251,6 @@ object VoiceEngines {
         VoiceBundle.STT -> sttSlot.state
         VoiceBundle.KOKORO -> kokoroSlot.state
         VoiceBundle.KITTEN -> kittenSlot.state
+        VoiceBundle.SPEAKERS -> speakerSlot.state
     }
 }

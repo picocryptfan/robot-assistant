@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Process
 import android.os.SystemClock
 import app.heyrobot.core.ConversationRules
+import app.heyrobot.core.ConversationSpeakers
 import app.heyrobot.core.Cut
 import app.heyrobot.core.SegmentCutter
 import app.heyrobot.core.FrameAssembler
@@ -18,6 +19,8 @@ import app.heyrobot.core.Rehear
 import app.heyrobot.core.Segment
 import app.heyrobot.core.SegmentRules
 import app.heyrobot.core.Segmenter
+import app.heyrobot.core.SpeakerAudio
+import app.heyrobot.core.SpeakerTurn
 import app.heyrobot.core.VadFlag
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
@@ -33,8 +36,9 @@ import java.util.concurrent.atomic.AtomicInteger
 // per-frame speech probability → the Segmenter's conversation rules (0.25 s of silence, 15 s at most, 0.2 s of padding
 // from the session's own audio ring) → a queue → one worker that decodes each segment with the same Parakeet as
 // questions (in turn with them), hears it again in two halves when too few words came back for the speech (event 119),
-// and labels its language. Audio lives in the ring (20 s) and in the queued segments only, in memory, and is dropped
-// once decoded; nothing is written anywhere. The queue holds at most [ConversationEngine.MAX_WAITING] segments (about
+// tells who said it (phase 5.3: the speech's voice embedding, compared with the session's speakers, when the speaker
+// model is there and "Tell speakers apart" is on) and labels its language. Audio lives in the ring (20 s) and in the
+// queued segments only, in memory, and is dropped once decoded; nothing is written anywhere. The queue holds at most [ConversationEngine.MAX_WAITING] segments (about
 // 60 MB of audio at worst): should decoding fall that far behind, a new segment is let go and the session marks the gap.
 
 /** Conversation mode's decoder: Parakeet v3, shared with questions (VoiceEngines.segmentDecoder). */
@@ -48,10 +52,11 @@ interface SegmentDecoder {
 
 /**
  * One decoded segment: [seg] in samples from the start of the run that began [offsetS] seconds into the session; what
- * was [heard] (after a re-hear, when [reheard]); its language; how long the decodes took.
+ * was [heard] (after a re-hear, when [reheard]); its language; how long the decodes took; who said it ([speaker], null
+ * for an empty line) and its [voice] embedding (null when none was made), which goes only to the session's speakers.
  */
-data class SegmentHeard(val seg: Segment, val offsetS: Double, val heard: Heard, val guess: LangGuess, val lang: LineLang, val reheard: Boolean,
-    val decodeMs: Long)
+class SegmentHeard(val seg: Segment, val offsetS: Double, val heard: Heard, val guess: LangGuess, val lang: LineLang, val reheard: Boolean,
+    val decodeMs: Long, val speaker: SpeakerTurn? = null, val voice: FloatArray? = null)
 
 class ConversationEngine(
     private val ctx: Context,
@@ -60,6 +65,10 @@ class ConversationEngine(
     private val owner: String,
     private val out: Output,
     private val rules: SegmentRules = SegmentRules(),
+    /** The session's speakers (phase 5.3); off: every line is S1, as before. */
+    private val speakers: ConversationSpeakers = ConversationSpeakers(enabled = false),
+    /** The speaker model, used only when [speakers] is on. */
+    private val embedder: SpeakerEmbedding? = null,
 ) {
     interface Output {
         /** A segment was decoded (worker thread). Empty text is passed too, so the caller can count it. */
@@ -73,12 +82,20 @@ class ConversationEngine(
         fun dropped(seg: Segment, offsetS: Double) {}
     }
 
-    private class Job(val seg: Segment?, val offsetS: Double, val audio: FloatArray, val run: Int)
+    /** [force]: the language of the push-to-talk side held while it was said (the interpreter), or null. */
+    private class Job(val seg: Segment?, val offsetS: Double, val audio: FloatArray, val run: Int, val force: String? = null)
 
     /** The numbers for voice log events 104 and 105, taken once a minute by the session. */
     val stats = MinuteStats()
     /** Live words of the open segment (screen on, the setting on, the phone not hot): set by the session. */
     @Volatile var partials = false
+    /**
+     * Push-to-talk (the interpreter, docs/conversation-mode.md 5.2): while set, what is said takes this language and
+     * skips language ID; a segment during which it was held at any moment keeps it.
+     */
+    @Volatile var forceLang: String? = null
+    /** Under vadLock: the language held during the open segment. */
+    private var heldLang: String? = null
 
     private val queue = LinkedBlockingDeque<Job>()
     private val waiting = AtomicInteger()
@@ -99,11 +116,19 @@ class ConversationEngine(
     /** Segments waiting to be decoded (the one being decoded included). */
     val queued: Int get() = waiting.get()
 
+    private val voices: SpeakerEmbedding? = embedder.takeIf { speakers.enabled }
+    @Volatile private var embeds = 0
+    @Volatile private var embedMs = 0L
+
+    /** Lines whose voice was embedded, and the mean time it took (ms), for the log at the end. */
+    val embedStats: Pair<Int, Int> get() = embeds to (if (embeds == 0) 0 else (embedMs / embeds).toInt())
+
     /** Makes the voice detector and starts the worker. False when the detector can't be made. */
     fun start(): Boolean {
         val v = makeVad(ctx) ?: return false
         synchronized(vadLock) { vad = SpeechFlag(v) }
         decoder.hold(true)
+        voices?.hold(true)
         thread = Thread({ work() }, "robot-conv").also { it.start() }
         return true
     }
@@ -114,6 +139,7 @@ class ConversationEngine(
         frames.reset()
         vad?.reset()
         this.offsetS = offsetS
+        heldLang = null
         run++
         running = true
         lastPartialAt = SystemClock.elapsedRealtime()
@@ -130,15 +156,18 @@ class ConversationEngine(
     fun feed(x: FloatArray, robotSpeaking: Boolean) = synchronized(vadLock) {
         if (!running || closed) return@synchronized
         val v = vad ?: return@synchronized
+        forceLang?.let { heldLang = it }
         frames.push(x) { f -> cutter.frame(f, v.frame(f), robotSpeaking)?.let { enqueue(it) } }
         maybePartial()
     }
 
     /** Under vadLock: a closed segment and its audio (sliced as it closed) on the queue, unless the queue is full. */
     private fun enqueue(c: Cut) {
+        val force = heldLang ?: forceLang
+        heldLang = forceLang
         if (waiting.get() >= MAX_WAITING) return out.dropped(c.seg, offsetS)
         waiting.incrementAndGet()
-        queue.offer(Job(c.seg, offsetS, c.audio, run))
+        queue.offer(Job(c.seg, offsetS, c.audio, run, force))
     }
 
     /** Under vadLock: the open segment's words every 1.5 s, only when nothing else waits. */
@@ -205,8 +234,25 @@ class ConversationEngine(
             }
         }
         stats.segment(spent, waiting.get())
-        val (guess, lang) = synchronized(labeller) { labeller.label(heard.text) }
-        out.segment(SegmentHeard(seg, job.offsetS, heard, guess, lang, reheard, spent))
+        // Who said it (docs/conversation-mode.md 3.2): the voice of a second or more of speech, compared with the
+        // session's speakers; a shorter line inherits. Nothing for an empty line (it is not saved).
+        var turn: SpeakerTurn? = null
+        var voice: FloatArray? = null
+        if (heard.text.isNotBlank()) {
+            voice = voices?.let { e ->
+                SpeakerAudio.speech(seg, job.audio)?.let { speech ->
+                    val t0 = SystemClock.elapsedRealtime()
+                    e.embed(speech).also {
+                        embedMs += SystemClock.elapsedRealtime() - t0
+                        embeds++
+                    }
+                }
+            }
+            val (a, b) = SpeakerAudio.clock(job.offsetS, seg, rules.sampleRate)
+            turn = speakers.assign(voice, seg.speechMs, a, b)
+        }
+        val (guess, lang) = synchronized(labeller) { labeller.label(heard.text, turn?.let { speakers.usualLang(it.label) }, forced = job.force) }
+        out.segment(SegmentHeard(seg, job.offsetS, heard, guess, lang, reheard, spent, turn, voice))
     }
 
     /** You fixed a line's language: the next short lines lean on it. */
@@ -231,6 +277,7 @@ class ConversationEngine(
             vad = null
         }
         decoder.hold(false)
+        voices?.hold(false)
     }
 
     /**
@@ -294,6 +341,32 @@ class ConversationEngine(
         } catch (t: Throwable) {
             RLog.w("conv_vad", t)
             null
+        }
+
+        /**
+         * "Your voice" (phase 5.3): only the frames of [samples] the voice detector hears as speech, joined, for the
+         * enrolment's embedding (the taps and pauses around a sentence say nothing about a voice). Null when the
+         * detector can't be made; empty when nobody spoke.
+         */
+        fun speechOnly(ctx: Context, samples: FloatArray): FloatArray? {
+            val v = SpeechFlag(makeVad(ctx) ?: return null)
+            try {
+                val f = Listener.FRAME
+                val out = FloatArray(samples.size)
+                var n = 0
+                var off = 0
+                while (off + f <= samples.size) {
+                    val frame = samples.copyOfRange(off, off + f)
+                    if (v.frame(frame)) {
+                        System.arraycopy(frame, 0, out, n, f)
+                        n += f
+                    }
+                    off += f
+                }
+                return out.copyOf(n)
+            } finally {
+                v.release()
+            }
         }
 
         /**

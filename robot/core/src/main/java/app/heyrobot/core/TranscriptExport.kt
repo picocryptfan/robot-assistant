@@ -15,7 +15,8 @@ data class ExportOptions(val translations: Boolean = true, val times: Boolean = 
 
 object TranscriptExport {
     const val CREDIT = "Transcribed on this phone by Robot (Parakeet v3)."
-    const val CREDIT_TRANSLATIONS = "Translations: Gemma 4 E2B / Bergamot (marked \"fast\")."
+    /** Translations by Robot's own model (the one chosen in Settings › Model, 0.4.1) or the fast engine. */
+    const val CREDIT_TRANSLATIONS = "Translations: Robot's model / Bergamot (marked \"fast\")."
 
     private val DAY = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US)
     private val HM = DateTimeFormatter.ofPattern("HH:mm", Locale.US)
@@ -57,7 +58,8 @@ object TranscriptExport {
         val end = Instant.ofEpochMilli(endMs).atZone(zone)
         val speakers = t.speakers.joinToString(", ") { s ->
             val shown = speaker(t, s, o)
-            if (o.names && shown != s) "$shown ($s)" else shown
+            // "Marie (S1)", so a label in a summary or an older copy still points at someone; "You" for your enrolled voice.
+            if (o.names && shown != s && s != SpeakerClusterer.ME) "$shown ($s)" else shown
         }
         val translated = o.translations && t.lines.any { it.translations.isNotEmpty() }
         return listOfNotNull(

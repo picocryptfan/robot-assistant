@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // Pure. free_memory and free_storage (0.4.0): what Robot can really do about memory and storage on Android 14 and later,
-// and the words for it. Memory: Robot unloads its own model (about 2 GB) once the answer that asked for it has ended;
+// and the words for it. Memory: Robot unloads its own model (about 2 GB; 4 GB for an E4B, 0.4.1) once the answer that asked for it has ended;
 // it can't stop other apps (since Android 14 killBackgroundProcesses only reaches the caller's own processes), so for an
 // app you name it opens that app's info page, where you tap Force stop. Storage: Android's own "Free up space" screen,
 // an app's info page to clear its cache, a large photo or video deleted through Android's own confirmation, or Robot's
@@ -108,10 +108,10 @@ object FreeUp {
     const val KEPT = "Not deleted: you didn't allow it."
 
     /** The unload card's line until the answer ends; then it says what came back ([freedLine]). */
-    const val UNLOADING = "Robot's model unloads when this answer ends (about 2 GB)."
+    const val UNLOADING = "Robot's model unloads when this answer ends (about 2 GB, 4 GB for an E4B model)."
 
     /** What the model is told about freeing memory: what Robot did, and what Android does by itself. */
-    const val MEMORY_FOR_MODEL = "Robot's own model (about 2 GB) is unloaded as soon as this answer ends and loads again for the next question. " +
+    const val MEMORY_FOR_MODEL = "Robot's own model (about 2 GB, or 4 GB for an E4B model) is unloaded as soon as this answer ends and loads again for the next question. " +
         "Android frees memory by itself when it needs it. Robot can't stop other apps (Android doesn't allow it), but it can open an app's " +
         "info page where the person taps Force stop: that helps most when one app misbehaves, and the app may start again."
 
