@@ -216,6 +216,12 @@ object ClaudeWords {
     const val CUT_EMPTY = "Claude ran out of room before it could answer. Ask again, or ask for a shorter answer."
     const val KEY_UNREADABLE = "Robot couldn't read your saved Claude key, so it was removed. Add it again in Robot's settings, under Ask Claude."
     const val SWIPE_TO_READ = "Open the Claude app, then swipe up from the corner and tap “Read Claude's answer”."
+    /** The offer under a reply: Robot didn't answer (a hedge, or the pre-router) ... */
+    const val OFFER = "Want me to check with Claude?"
+    /** ... or under Robot's own answer, after the local model first handed the question over. */
+    const val OFFER_AS_WELL = "Want Claude's take as well?"
+    /** The local model handed over and, asked again, still gave no answer of its own: the offer stands alone. */
+    const val RATHER = "I'd rather check that with Claude."
 
     /** A spoken yes to an offer that would send personal content [p]: only a tap sends it. */
     fun tapToInclude(p: Set<Personal>): String = "Tap Send to include ${Personal.list(p)}."
@@ -345,6 +351,50 @@ object ClaudeSettings {
     fun localTool(s: RobotSettings, keySaved: Boolean): Boolean = enabled(s, keySaved) && escalation(s, keySaved) != Escalation.OFF
 }
 
+/** Why ask_claude is left out of a question for the local model (logged as this code only, never the words). */
+enum class ClaudeLeftOut(override val id: Int, override val title: String) : LogCode {
+    OFF(1, "Ask Claude or “When Robot needs help” is off"),
+    NOWHERE(2, "no API key and no Claude app"),
+    DECLINED(3, "you said not Claude in this conversation"),
+    SCREEN(4, "a question about the screen: Robot answers it first"),
+    PHOTO(5, "a question about a photo: Robot answers it first"),
+}
+
+/**
+ * Whether the local model is told about ask_claude for one question: the tool and its one line in the system prompt go
+ * together, or neither does (docs/ask-claude.md "When Robot needs help"). Pure.
+ */
+object AskClaudeTool {
+    /**
+     * Null when ask_claude is described, otherwise why not, first reason first: Ask Claude off or escalation Off
+     * ([ClaudeSettings.localTool]); nowhere for the question to go ([reachable]: the API with a key, or the Claude app
+     * installed); you said "not Claude" in this conversation ([declined]); or the question is about the screen or a photo
+     * ([attachment], see [picture]): Robot answers those itself first, and "ask Claude about this screen" still goes to
+     * Claude.
+     */
+    fun leftOut(s: RobotSettings, keySaved: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): ClaudeLeftOut? = when {
+        !ClaudeSettings.localTool(s, keySaved) -> ClaudeLeftOut.OFF
+        !reachable -> ClaudeLeftOut.NOWHERE
+        declined -> ClaudeLeftOut.DECLINED
+        attachment == Attachment.SCREEN -> ClaudeLeftOut.SCREEN
+        attachment == Attachment.PHOTO -> ClaudeLeftOut.PHOTO
+        else -> null
+    }
+
+    fun offered(s: RobotSettings, keySaved: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): Boolean =
+        leftOut(s, keySaved, reachable, declined, attachment) == null
+
+    /**
+     * The screen or photo a question to the local model is about: its own, else the newest one earlier in the
+     * conversation ([history]). A follow-up ("and the second one?") is about it too, and the live conversation still
+     * holds that screen's text and picture: describing ask_claude again would change the system prompt, and the
+     * conversation would be rebuilt from the history, where screens and pictures are not resent.
+     */
+    fun picture(attachment: Attachment, history: List<ChatTurn>): Attachment =
+        if (attachment != Attachment.NONE) attachment
+        else history.lastOrNull { it.role == TurnRole.USER && it.attachment != Attachment.NONE }?.attachment ?: Attachment.NONE
+}
+
 /**
  * Personal content in a conversation (docs/ask-claude.md "What Claude receives"). From the first turn that carries one,
  * the conversation is personal: Robot checking with Claude by itself sends only the question, and Claude joining it
@@ -409,7 +459,8 @@ object EscalationPolicy {
      * [personal]: what would be sent includes this question's screen text or picture: always asks first, with a card
      * listing it (earlier personal turns are never sent by an escalation, so they don't need one). [budgetReached]:
      * Automatic drops to Ask first for the rest of the day. [alreadyEscalated]: at most one escalation per turn.
-     * [fromClaude]: a Claude answer is never re-escalated.
+     * [fromClaude]: a Claude answer is never re-escalated. [declined]: you said "not Claude" in this conversation, so
+     * Robot neither asks Claude nor offers to.
      */
     fun decide(
         s: RobotSettings,
@@ -419,8 +470,9 @@ object EscalationPolicy {
         budgetReached: Boolean,
         alreadyEscalated: Boolean = false,
         fromClaude: Boolean = false,
+        declined: Boolean = false,
     ): EscalationDecision {
-        if (fromClaude || alreadyEscalated || !ClaudeSettings.enabled(s, keySaved)) return EscalationDecision.NONE
+        if (fromClaude || alreadyEscalated || declined || !ClaudeSettings.enabled(s, keySaved)) return EscalationDecision.NONE
         val mode = ClaudeSettings.escalation(s, keySaved)
         if (mode == Escalation.OFF) return EscalationDecision.NONE
         val api = keySaved && ClaudeSettings.route(s, keySaved) == ClaudeRoute.API
@@ -428,6 +480,15 @@ object EscalationPolicy {
         if (locked && (!api || !s.claudeLocked)) return EscalationDecision.NEEDS_UNLOCK
         return if (api && mode == Escalation.AUTO && !personal && !budgetReached) EscalationDecision.AUTO else EscalationDecision.OFFER
     }
+
+    /**
+     * The local model handed the question over (ask_claude, [handedOver]) without a word or an action ([said] false), and
+     * Claude won't answer right now ([decision] isn't AUTO: an offer, the lock screen, or no Claude at all): Robot runs
+     * the model once more on the same question without ask_claude for its own short answer, and any offer goes under
+     * it. Never an answer of nothing but "I'd rather check that with Claude.".
+     */
+    fun ownAnswerFirst(decision: EscalationDecision, handedOver: Boolean, said: Boolean): Boolean =
+        handedOver && !said && decision != EscalationDecision.AUTO
 }
 
 /** At most one escalation per turn, and never one from a Claude answer (the "no loops" rule). */

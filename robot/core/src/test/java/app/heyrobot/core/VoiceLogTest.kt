@@ -52,7 +52,7 @@ class VoiceLogTest {
         assertEquals(27, VoiceEvent.TTS_STOP.id)
         val codes: List<List<LogCode>> = listOf(WakeAction.entries, WakeDrop.entries, ListenWhy.entries, MicKind.entries, AecState.entries, SttEnd.entries,
             ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries,
-            EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries)
+            EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries, ClaudeLeftOut.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -61,6 +61,8 @@ class VoiceLogTest {
         for (e in listOf(VoiceEvent.KWS_HIT, VoiceEvent.KWS_SET, VoiceEvent.KWS_REFUSED, VoiceEvent.SPEAK_RUN, VoiceEvent.CAPTURE_INFO, VoiceEvent.BARGE_HIT)) {
             assertTrue(e.name, e.id in 39..59)
         }
+        // The "not Claude" and own-answer events (0.3.1, Ask Claude) use 120 to 129.
+        for (e in listOf(VoiceEvent.CLAUDE_LEFT_OUT, VoiceEvent.OWN_ANSWER)) assertTrue(e.name, e.id in 120..129)
         assertEquals(4, VoiceEvent.STOP_SUPPRESSED.id)
         assertEquals(31, VoiceEvent.BARGE_TEST.id)
         // MicKind and AecState share KWS_HIT's third number as mic × 10 + aec: both must stay below 10.
@@ -129,6 +131,15 @@ class VoiceLogTest {
         assertEquals("Panel opened but no question heard: nothing heard", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.NO_QUESTION, NoQuestion.NO_SPEECH.id)))
         assertEquals("Question heard but no reply: the model failed", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.NO_REPLY, NoReply.FAILED.id)))
         assertEquals("Stopped listening: #99", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.LISTEN_STOP, 99)))
+        // Ask Claude kept out, and the model asked again for its own answer: codes and flags only.
+        assertEquals("Claude not offered to the model: you said not Claude in this conversation",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_LEFT_OUT, ClaudeLeftOut.DECLINED.id)))
+        assertEquals("Claude not offered to the model: a question about the screen: Robot answers it first",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_LEFT_OUT, ClaudeLeftOut.SCREEN.id)))
+        assertEquals("The model handed over to Claude without a word; asked again, it answered itself",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.OWN_ANSWER, 1)))
+        assertEquals("The model handed over to Claude without a word; asked again, it still gave no answer",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.OWN_ANSWER, 0)))
         // What Android sent of the screen: codes and flags only.
         assertEquals(60, VoiceEvent.SCREEN_SHARED.id)
         assertEquals("Screen from Android: text nothing · screenshot not sent (asked with: text, screenshot, assist gesture)",

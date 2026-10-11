@@ -138,6 +138,16 @@ enum class VoiceEvent(val id: Int) {
      * b = [ScreenData] for the screen's text, c = [ScreenData] for the screenshot.
      */
     SCREEN_SHARED(60),
+    /**
+     * ask_claude was left out of a question for the local model although Ask Claude could take it (0.3.1): a =
+     * [ClaudeLeftOut] (you said "not Claude" in this conversation, or the question is about the screen or a photo).
+     */
+    CLAUDE_LEFT_OUT(120),
+    /**
+     * The local model handed a question to Claude without a word, and Claude wasn't asking right away, so Robot asked
+     * the model again without ask_claude for its own answer (0.3.1): a = 1 if that gave an answer, 0 if not.
+     */
+    OWN_ANSWER(121),
     ;
 
     companion object {
@@ -518,6 +528,8 @@ object VoiceLogText {
             VoiceEvent.CAPTURE_INFO -> "Capture opened: " + (when (a) { 1 -> "silenced by Android"; 0 -> "not silenced"; else -> "silencing unknown" }) +
                 (if (b > 0) " · microphone at " + String.format(Locale.US, "%.1f kHz", b / 10.0) else "") + " · " + CaptureFx.words(c)
             VoiceEvent.BARGE_HIT -> "Barge-in test heard " + keyword(a) + (if (b >= 0) " " + secs(b) + " in" else "") + ": " + code(BargeHitKind.entries, c)
+            VoiceEvent.CLAUDE_LEFT_OUT -> "Claude not offered to the model: " + code(ClaudeLeftOut.entries, a)
+            VoiceEvent.OWN_ANSWER -> "The model handed over to Claude without a word; asked again, " + (if (a == 1) "it answered itself" else "it still gave no answer")
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
         }

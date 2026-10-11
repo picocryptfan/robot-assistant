@@ -84,25 +84,27 @@ class EscalationTest {
 
     private val key = RobotSettings()
     private fun d(s: RobotSettings = key, keySaved: Boolean = true, personal: Boolean = false, locked: Boolean = false, budget: Boolean = false,
-        already: Boolean = false, fromClaude: Boolean = false) =
-        EscalationPolicy.decide(s, keySaved, personal, locked, budget, already, fromClaude)
+        already: Boolean = false, fromClaude: Boolean = false, declined: Boolean = false) =
+        EscalationPolicy.decide(s, keySaved, personal, locked, budget, already, fromClaude, declined)
 
-    /** Setting × key present × personal content × locked × budget reached. */
+    /** Setting × key present × personal content × locked × budget reached × "not Claude". */
     @Test fun policyMatrix() {
         val settings = listOf(null, Escalation.OFF, Escalation.ASK, Escalation.AUTO)
         for (help in settings) for (keySaved in listOf(false, true)) for (personal in listOf(false, true)) for (locked in listOf(false, true))
-            for (allowLocked in listOf(false, true)) for (budget in listOf(false, true)) {
+            for (allowLocked in listOf(false, true)) for (budget in listOf(false, true)) for (declined in listOf(false, true)) {
                 val s = RobotSettings(claudeEnabled = true, claudeHelp = help, claudeLocked = allowLocked)
-                val got = d(s, keySaved, personal, locked, budget)
+                val got = d(s, keySaved, personal, locked, budget, declined = declined)
                 val mode = help ?: if (keySaved) Escalation.AUTO else Escalation.ASK
                 val expected = when {
+                    // "Not Claude" in this conversation: neither asked nor offered, locked or not.
+                    declined -> EscalationDecision.NONE
                     mode == Escalation.OFF -> EscalationDecision.NONE
                     // The app always needs the phone unlocked; the API only when Claude isn't allowed locked.
                     locked && (!keySaved || !allowLocked) -> EscalationDecision.NEEDS_UNLOCK
                     keySaved && mode == Escalation.AUTO && !personal && !budget -> EscalationDecision.AUTO
                     else -> EscalationDecision.OFFER
                 }
-                assertEquals("help=$help key=$keySaved personal=$personal locked=$locked allowLocked=$allowLocked budget=$budget", expected, got)
+                assertEquals("help=$help key=$keySaved personal=$personal locked=$locked allowLocked=$allowLocked budget=$budget declined=$declined", expected, got)
             }
     }
 
@@ -136,6 +138,93 @@ class EscalationTest {
         assertTrue(g.take(fromClaude = false))
         assertFalse(g.take(fromClaude = false))
         assertTrue(g.used)
+    }
+
+    @Test fun aRefusedClaudeIsNeverBroughtIn() {
+        // The phone test's settings (a key, Automatic): asked by itself before, offered for a screen question.
+        assertEquals(EscalationDecision.AUTO, d())
+        assertEquals(EscalationDecision.OFFER, d(personal = true))
+        assertEquals(EscalationDecision.NONE, d(declined = true))
+        assertEquals(EscalationDecision.NONE, d(personal = true, declined = true))
+        assertEquals(EscalationDecision.NONE, d(keySaved = false, declined = true))
+        // Not even the unlock hint.
+        assertEquals(EscalationDecision.NONE, d(locked = true, declined = true))
+    }
+
+    /** Whether the local model hears of ask_claude: settings, somewhere to go, "not Claude", and the question's screen or photo. */
+    @Test fun askClaudeIsLeftOutForRefusalsAndScreenOrPhotoQuestions() {
+        fun left(s: RobotSettings = key, keySaved: Boolean = true, reachable: Boolean = true, declined: Boolean = false, a: Attachment = Attachment.NONE) =
+            AskClaudeTool.leftOut(s, keySaved, reachable, declined, a)
+        assertNull(left())
+        assertNull(left(keySaved = false))
+        assertTrue(AskClaudeTool.offered(key, true, true, false, Attachment.NONE))
+        assertEquals(ClaudeLeftOut.OFF, left(RobotSettings(claudeEnabled = false)))
+        assertEquals(ClaudeLeftOut.OFF, left(RobotSettings(claudeHelp = Escalation.OFF)))
+        assertEquals(ClaudeLeftOut.NOWHERE, left(reachable = false))
+        assertEquals(ClaudeLeftOut.DECLINED, left(declined = true))
+        assertEquals(ClaudeLeftOut.SCREEN, left(a = Attachment.SCREEN))
+        assertEquals(ClaudeLeftOut.PHOTO, left(a = Attachment.PHOTO))
+        // The first reason wins: a refusal says more than the picture.
+        assertEquals(ClaudeLeftOut.DECLINED, left(declined = true, a = Attachment.SCREEN))
+        assertEquals(ClaudeLeftOut.OFF, left(RobotSettings(claudeEnabled = false), declined = true, a = Attachment.PHOTO))
+        for (s in listOf(key, RobotSettings(claudeHelp = Escalation.ASK), RobotSettings(claudeHelp = Escalation.AUTO))) for (keySaved in listOf(false, true))
+            for (declined in listOf(false, true)) for (a in Attachment.entries) {
+                val offered = AskClaudeTool.offered(s, keySaved, true, declined, a)
+                assertEquals("$s $keySaved $declined $a", !declined && a == Attachment.NONE, offered)
+            }
+        assertEquals(5, ClaudeLeftOut.entries.map { it.id }.toSet().size)
+    }
+
+    /** A follow-up in a conversation that showed Robot the screen or a photo is about it too. */
+    @Test fun aFollowUpIsAboutTheEarlierScreenOrPhoto() {
+        fun user(a: Attachment = Attachment.NONE) = ChatTurn("u", TurnRole.USER, "q", 0, a)
+        fun robot() = ChatTurn("r", TurnRole.ASSISTANT, "a", 0)
+        assertEquals(Attachment.NONE, AskClaudeTool.picture(Attachment.NONE, emptyList()))
+        assertEquals(Attachment.NONE, AskClaudeTool.picture(Attachment.NONE, listOf(user(), robot())))
+        assertEquals(Attachment.SCREEN, AskClaudeTool.picture(Attachment.SCREEN, emptyList()))
+        assertEquals(Attachment.SCREEN, AskClaudeTool.picture(Attachment.NONE, listOf(user(Attachment.SCREEN), robot(), user(), robot())))
+        // The newest one counts; the question's own wins.
+        assertEquals(Attachment.PHOTO, AskClaudeTool.picture(Attachment.NONE, listOf(user(Attachment.SCREEN), robot(), user(Attachment.PHOTO), robot())))
+        assertEquals(Attachment.SCREEN, AskClaudeTool.picture(Attachment.SCREEN, listOf(user(Attachment.PHOTO), robot())))
+        // So the phone test's follow-up keeps the same system prompt and tools as the screen question (the live conversation is reused).
+        val history = listOf(user(Attachment.SCREEN), robot())
+        assertEquals(ClaudeLeftOut.SCREEN, AskClaudeTool.leftOut(key, true, true, false, AskClaudeTool.picture(Attachment.NONE, history)))
+    }
+
+    /** Without ask_claude, neither the tool nor its line in the system prompt reaches the model. */
+    @Test fun aTurnWithoutAskClaudeHasNoToolAndNoPromptLine() {
+        val now = java.time.ZonedDateTime.of(2026, 10, 11, 9, 0, 0, 0, java.time.ZoneId.of("Europe/Paris"))
+        val core = setOf(ToolGroup.CORE)
+        for ((declined, a) in listOf(true to Attachment.NONE, false to Attachment.SCREEN, false to Attachment.PHOTO, true to Attachment.SCREEN)) {
+            val askClaude = AskClaudeTool.offered(key, true, true, declined, a)
+            assertFalse(askClaude)
+            assertFalse(ToolName.ASK_CLAUDE in ToolRouter.tools(ToolGroup.entries.toSet(), key, askClaude))
+            val system = Prompt.system(now, locked = false, askClaude = askClaude)
+            assertFalse(system, system.contains("ask_claude") || system.contains("Claude"))
+            assertFalse(Prompt.textCallHint(ToolRouter.tools(core, key, askClaude)).contains("ask_claude"))
+        }
+        // A plain question still gets both.
+        val askClaude = AskClaudeTool.offered(key, true, true, false, Attachment.NONE)
+        assertTrue(ToolName.ASK_CLAUDE in ToolRouter.tools(core, key, askClaude))
+        assertTrue(Prompt.system(now, locked = false, askClaude = askClaude).contains("call ask_claude instead of guessing"))
+    }
+
+    /** Gemma handed over without a word: unless Claude answers right away, Robot's own answer comes first. */
+    @Test fun ownAnswerBeforeAnyOffer() {
+        for (decision in EscalationDecision.entries) for (handedOver in listOf(false, true)) for (said in listOf(false, true)) {
+            val expected = handedOver && !said && decision != EscalationDecision.AUTO
+            assertEquals("$decision $handedOver $said", expected, EscalationPolicy.ownAnswerFirst(decision, handedOver, said))
+        }
+        // The phone test: a screen question (personal), so an offer; Gemma called ask_claude with nothing written.
+        assertTrue(EscalationPolicy.ownAnswerFirst(d(personal = true), handedOver = true, said = false))
+        // "Not Claude": no offer at all, but still an answer.
+        assertTrue(EscalationPolicy.ownAnswerFirst(d(declined = true), handedOver = true, said = false))
+        // Automatic: Claude answers, nothing to add first.
+        assertFalse(EscalationPolicy.ownAnswerFirst(d(), handedOver = true, said = false))
+        // The words around it.
+        assertEquals("Want me to check with Claude?", ClaudeWords.OFFER)
+        assertEquals("Want Claude's take as well?", ClaudeWords.OFFER_AS_WELL)
+        assertEquals("I'd rather check that with Claude.", ClaudeWords.RATHER)
     }
 
     @Test fun defaultRouteFollowsTheKey() {
