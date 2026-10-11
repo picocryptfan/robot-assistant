@@ -14,7 +14,8 @@ fails=0
 pass() { echo "PASS  $*"; }
 fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
 # A here-string, not a pipe: with pipefail, grep -q leaving early made a long echo fail with SIGPIPE, so a string near the
-# start of the manifest dump could read as missing.
+# start of the manifest dump could read as missing, and (in a "must not contain" check) a match as absent. Every
+# "grep -q" below reads a here-string or a file for the same reason, never a pipe.
 has() { grep -qF -- "$1" <<<"$2" && pass "$3" || fail "$3"; }
 hasnt() { grep -qF -- "$1" <<<"$2" && fail "$3" || pass "$3"; }
 # A component's xmltree lines from its android:name on, children included, up to the next component.
@@ -25,7 +26,8 @@ elem() { echo "$mf" | awk -v n="\"$1\"" '/^ *E: /{ if (index(b, n)) print b; b="
 cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
 [ "$cert" = "$EXPECT_CERT" ] && pass "signer $cert (Robot release key)" || fail "signer '$cert'"
 # minSdk 34: AGP signs with v3 (API 28+) and may skip v2; either covers every phone Robot installs on.
-"$BT/apksigner" verify -v "$APK" 2>/dev/null | grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
+sigv=$("$BT/apksigner" verify -v "$APK" 2>/dev/null)
+grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" <<<"$sigv" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
 has "package: name='app.heyrobot' versionCode='40' versionName='0.4.0'" "$badging" "package app.heyrobot 0.4.0 (40)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
@@ -159,13 +161,14 @@ has 'supportsAssist(0x010104f0)=true' "$vi" "supportsAssist"
 has 'supportsLaunchVoiceAssistFromKeyguard(0x010104f1)=true' "$vi" "supportsLaunchVoiceAssistFromKeyguard"
 libs=$(unzip -Z1 "$APK" 'lib/*')
 for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
-echo "$libs" | grep -v '^lib/arm64-v8a/' | grep -q . && fail "non-arm64 libraries" || pass "no other ABIs"
+other_abis=$(grep -v '^lib/arm64-v8a/' <<<"$libs")
+[ -z "$other_abis" ] && pass "no other ABIs" || fail "non-arm64 libraries: $other_abis"
 # Every packaged library by its exact name: sherpa-onnx's two (:voice), LiteRT-LM's and the TPU dispatch library (:brain),
 # Compose's graphics-path helper (androidx.graphics:graphics-path, every process), and since 0.5.0 librobotmt.so (:mt),
 # which is there only when tools/build_robotmt.sh built it.
 extra=$(echo "$libs" | sed 's|^lib/arm64-v8a/||' | grep -vxE 'libsherpa-onnx-jni\.so|libonnxruntime\.so|liblitertlm_jni\.so|libLiteRtDispatch_GoogleTensor\.so|libandroidx\.graphics\.path\.so|librobotmt\.so' | tr '\n' ' ')
 [ -z "$extra" ] && pass "native libraries are the allowlist" || fail "native libraries not on the allowlist: $extra"
-if echo "$libs" | grep -qx 'lib/arm64-v8a/librobotmt.so'; then
+if grep -qx 'lib/arm64-v8a/librobotmt.so' <<<"$libs"; then
   pass "packages librobotmt.so (the fast translation engine)"
   RE=$(ls "${ANDROID_HOME:-/opt/android-sdk}"/ndk/*/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf 2>/dev/null | head -1)
   [ -n "$RE" ] || RE=readelf
@@ -180,7 +183,7 @@ if echo "$libs" | grep -qx 'lib/arm64-v8a/librobotmt.so'; then
 else
   echo "NOTE  no librobotmt.so: this build has no fast translation engine (tools/build_robotmt.sh builds it)"
 fi
-echo "$libs" | grep -q CompilerPlugin && fail "compiler plugin packaged" || pass "no compiler plugin"
+grep -q CompilerPlugin <<<"$libs" && fail "compiler plugin packaged" || pass "no compiler plugin"
 # sherpa-onnx's JNI calls the TTS callback through GetMethodID(cls, "invoke", "([F)Ljava/lang/Integer;")
 # (v1.13.8 jni/offline-tts.cc). A Kotlin lambda has no such method and every voice is silent (0.1.2), so the
 # callback class must really declare it, public and not as a bridge, in the dex code that ships.
@@ -220,7 +223,7 @@ rm -rf "$dexdir"
 cbmembers=$(echo "$cbclass" | awk '/^ *#[0-9]+ *: \(in /{ if (n != "") print n, t, a; n = t = a = "" }
   /^ *name *: /{ n=$3 } /^ *type *: /{ t=$3 } /^ *access *: /{ a=$3 } END { if (n != "") print n, t, a }')
 has "'Lkotlin/jvm/functions/Function1;'" "$cbclass" "TtsCallback (sherpa TTS callback) implements kotlin Function1"
-echo "$cbmembers" | grep -qxF "'invoke' '([F)Ljava/lang/Integer;' 0x0001" \
+grep -qxF "'invoke' '([F)Ljava/lang/Integer;' 0x0001" <<<"$cbmembers" \
   && pass "TtsCallback declares public invoke([F)Ljava/lang/Integer; (what sherpa's JNI looks up)" \
   || fail "TtsCallback lacks public invoke([F)Ljava/lang/Integer;: downloaded voices would be silent"
 assets=$(unzip -Z1 "$APK" 'assets/*')
@@ -239,9 +242,12 @@ n=$(echo "$assets" | grep -c '^assets/espeak-ng-data/')
 has "assets/espeak-ng-data/phontab" "$assets" "asset espeak-ng-data/phontab"
 has "assets/espeak-ng-data/lang/gmw/en-US" "$assets" "asset espeak-ng-data/lang/gmw/en-US"
 # The speech recognition and voice models are downloaded by the app, never packaged.
-echo "$assets" | grep -qE '(encoder|decoder|joiner)\.int8\.onnx|/model(\.fp32|\.int8)?\.onnx|voices\.bin' && fail "a downloadable voice model is packaged" || pass "no downloadable voice model packaged"
+grep -qE '(encoder|decoder|joiner)\.int8\.onnx|/model(\.fp32|\.int8)?\.onnx|voices\.bin' <<<"$assets" && fail "a downloadable voice model is packaged" || pass "no downloadable voice model packaged"
 clip=$(unzip -l "$APK" assets/bench/test-clip.s16 | awk 'NR==4{print $1}')
 [ -n "$clip" ] && [ "$clip" -le 200000 ] && pass "benchmark clip ${clip} bytes (<= 200 KB)" || fail "benchmark clip size '$clip'"
-unzip -Z1 "$APK" | grep -qiE '\.(p12|jks|keystore|pass|litertlm)$' && fail "key or model file inside the APK" || pass "no key or model file inside the APK"
+# (0.5.0: the fast translation engine's Bergamot files too, which the app downloads.)
+entries=$(unzip -Z1 "$APK")
+[ -n "$entries" ] && ! grep -qiE '\.(p12|jks|keystore|pass|litertlm|spm)$|intgemm|\.s2t\.bin$' <<<"$entries" && pass "no key or model file inside the APK" \
+  || fail "key or model file inside the APK (or no entries)"
 echo; [ "$fails" -eq 0 ] && echo "ALL CHECKS PASSED" || echo "$fails CHECK(S) FAILED"
 exit $((fails > 0))
