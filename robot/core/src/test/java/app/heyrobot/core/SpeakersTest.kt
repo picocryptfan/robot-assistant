@@ -72,6 +72,12 @@ class SpeakersTest {
         // A third voice: the nearest of the two.
         assertEquals(2, s.count)
         assertTrue(s.say(b, 6_000) in setOf("Me", "S1"))
+        // "S1 is me": your voice from afar keeps its own cluster, which keeps learning, and is labelled you.
+        val far = ConversationSpeakers(enabled = true, me = c)
+        assertEquals("S1", far.say(a, 0))
+        far.merge("S1", "Me")
+        assertEquals("Me", far.say(v(1, 20.0), 3_000))
+        assertEquals("Me", far.say(v(3, 10.0).also { it[3] = 1f }, 6_000))
         // Your voiceprint deleted mid-session: "Me" is no longer told apart.
         assertTrue(s.forgetMe())
         assertFalse(s.seeded)

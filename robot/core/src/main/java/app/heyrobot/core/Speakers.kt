@@ -125,8 +125,9 @@ class ConversationSpeakers(
         val a = resolve(from)
         val b = resolve(to)
         if (a == b) return
-        // The clusterer merges the voices when it knows both; otherwise (a speaker from before a resume) the label maps.
-        k.merge(a, b)
+        // The clusterer merges the voices when it knows both; otherwise (a speaker from before a resume) the label maps. Into
+        // your enrolled voice, the label maps too: "Me" never moves, so the other voice stays and keeps learning as you.
+        if (b != SpeakerClusterer.ME) k.merge(a, b)
         merged[a] = b
         langs.remove(a)?.let { old -> langs.getOrPut(b) { ArrayDeque() }.apply { addAll(old); while (size > LANG_MEMORY) removeFirst() } }
     }
