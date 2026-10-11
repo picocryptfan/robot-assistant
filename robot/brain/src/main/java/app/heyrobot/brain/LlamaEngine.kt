@@ -66,9 +66,9 @@ import java.util.concurrent.TimeoutException
 // compared with the one recorded, byte for byte; that process proves an isolated uid before it gets the file; what
 // llama.cpp read of the context must be what Robot read; the prompt and its special tokens (ControlText), the thinking
 // filter, the reply's limits. Every call to it runs on one worker thread; replies come back to BrainService's work thread,
-// where all the state below lives. llama.cpp that never comes back from a load or a prompt ends its process, not :brain,
-// and a process that stops (a crash, Android, `kill`) ends the reply with BrainError.STOPPED: the assistant skips the file
-// and answers with Fast, as when :brain stopped.
+// where all the state below lives. llama.cpp that never comes back from a load, a prompt or a stop ends its process, not
+// :brain, and a process that stops (a crash, Android, `kill`) ends the reply with BrainError.STOPPED: the assistant skips
+// the file and answers with Fast, as when :brain stopped.
 //
 // 0.6.0: requests wait their turn in conversation mode's priority queue (core BrainScheduler), as in GemmaEngine: the
 // panel, then the interpreter, then transcript translations, then summaries, the panel's newest question still winning
@@ -124,12 +124,18 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         @Volatile var startsInside = false
         var strip = true
         val filter: ThinkFilter? by lazy { if (strip) ThinkFilter(startsInside) else null }
+        /** Its stop is watched ([watchStop]); [overdue]: llama.cpp didn't come back from it in time, and its process was ended. */
+        var stopWatched = false
+        var overdue = false
 
         fun stopNow(reason: DoneReason) {
             if (stopReason == null) stopReason = reason
             stop = true
             // Only while its model is the one loaded (one way: never waits on the isolated process).
-            if (this@LlamaEngine.handle == handle) link?.cancel(handle, id)
+            if (this@LlamaEngine.handle == handle) link?.let { l ->
+                l.cancel(handle, id)
+                watchStop(this, l)
+            }
         }
     }
 
@@ -630,6 +636,11 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
 
     private fun onEnd(run: Run, code: Int, stats: LongArray?) {
         if (run.ended) return
+        // It never came back from its stop, and its process was ended for it (watchStop): the model is lost, as in a crash.
+        if (code == LOST && run.overdue) {
+            run.giveWay = false
+            return fail(run, BrainError.STOPPED, "model process stopped")
+        }
         if (run.stopReason == null) run.filter?.flush()?.takeIf { it.isNotEmpty() }?.let { emitText(run, it) }
         val reason = run.stopReason ?: when (code) {
             LlamaIpc.GEN_END -> DoneReason.END
@@ -686,6 +697,24 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         backstop(l)
     }
 
+    /**
+     * [run] was told to stop (a cancel, a give-way, its cap, an unload). The one-way stop reaches llama.cpp between tokens
+     * and inside a prompt being read, so it comes back within a second or two; one that hasn't after [STOP_LIMIT_MS]
+     * (llama.cpp stuck where the stop can't reach it, or a process a hostile file took over) would leave the request
+     * without its end and every later one waiting behind it until an unload. Its process ends instead, as for the other
+     * watchdogs: the reply ends with STOPPED (gone(), or onEnd), the waiting requests as not loaded.
+     */
+    private fun watchStop(run: Run, l: LlamaLink) {
+        if (run.stopWatched) return
+        run.stopWatched = true
+        handler.postDelayed({
+            if (!run.nativeEnded && !run.ended && link === l) {
+                run.overdue = true
+                stuck(l, "stop")
+            }
+        }, STOP_LIMIT_MS)
+    }
+
     /** Broken output (as GemmaEngine detects it): one character 32+ times in a row. */
     private fun garbage(chunk: String, reply: CharSequence): Boolean {
         if (chunk.contains("<pad>") || chunk.contains("<unused")) return true
@@ -718,8 +747,10 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
         private const val NOT_ISOLATED = "llama.cpp's process isn't an isolated one, so Robot won't give it the file."
         /** How long llama.cpp may take to load a file (a few seconds; minutes for a large one read from flash the first time)… */
         private const val LOAD_LIMIT_MS = 180_000L
-        /** … and to format and count a prompt (milliseconds) before :brain gives it up for stuck and ends its process. */
+        /** … and to format and count a prompt (milliseconds) before :brain gives it up for stuck and ends its process… */
         private const val PREPARE_LIMIT_MS = 30_000L
+        /** … and to come back from a reply it was told to stop (a second or two: a 512-token batch's slowest step). */
+        private const val STOP_LIMIT_MS = 15_000L
         private const val STOPPING = "The model is still stopping. Try again in a moment."
         /** A one-shot's run has no conversation id of the app's. */
         private const val ONE_SHOT_CONV = ""

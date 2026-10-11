@@ -396,10 +396,12 @@ the engine only when `tools/build_llama.sh` made its library.
   system prompt is left as it is.
 - **Never stuck for good.** A chat template is the file's own little program, run by llama.cpp's Jinja engine, and
   nothing can stop it or a load in the middle. If llama.cpp hasn't finished loading a file after 3 minutes, or formatting
-  a prompt after 30 seconds (both take seconds or less), its isolated process ends, not `:brain` (`brain_stuck
-  in=load|prepare`, `brain_llama_end why=stuck_…`): the load fails ("llama.cpp didn't finish loading the file") or the
-  question ends with "The model stopped unexpectedly", and the assistant skips that file and answers with Fast with the
-  usual notice, as after a crash, instead of every later load waiting behind it ("still stopping").
+  a prompt after 30 seconds (both take seconds or less), or come back from a reply it was told to stop after 15 seconds
+  (a second or two: "stop", a newer question, a request with a higher priority), its isolated process ends, not `:brain`
+  (`brain_stuck in=load|prepare|stop`, `brain_llama_end why=stuck_…`): the load fails ("llama.cpp didn't finish loading
+  the file") or the question ends with "The model stopped unexpectedly", and the assistant skips that file and answers
+  with Fast with the usual notice, as after a crash, instead of every later load or request waiting behind it ("still
+  stopping").
 - **One model at a time,** as since 0.4.1: choosing a GGUF file after a LiteRT-LM model (or back) unloads the other
   engine's model first (`brain_engine_switch`), and the shared slot keeps the new one waiting ("still stopping") while the
   old one lets go. A GGUF model lets go by ending its isolated process, whatever llama.cpp is doing (its memory goes with

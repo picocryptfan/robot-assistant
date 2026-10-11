@@ -34,6 +34,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowBinder
+import java.time.Duration
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.TimeUnit
@@ -43,8 +44,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * :brain's llama.cpp engine (LlamaEngine and LlamaLink, as they are) against an in-process stand-in for the isolated
  * :llama process that speaks LlamaIpc's Binder calls: every request ends with exactly one terminal event (EV_DONE or
  * EV_ERROR) whatever happens to it (a cancel in the prompt or while it writes, a give-way, a cancel racing its end, the
- * process stopping, an unload), and only text from outside Robot's own prompt has its turn markers broken. The model is
- * put in place directly (LlamaEngine.load needs a real file, record and library), as a load that succeeded would leave it.
+ * process stopping, an unload, a process that doesn't stop when told), and only text from outside Robot's own prompt has
+ * its turn markers broken. The model is put in place directly (LlamaEngine.load needs a real file, record and library),
+ * as a load that succeeded would leave it.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -282,6 +284,44 @@ class LlamaEngineFlowTest {
         assertFalse(engine.status().loaded)
     }
 
+    @Test fun aProcessThatDoesntStopWhenToldIsEndedAndTheReplyEndsOnce() {
+        // llama.cpp stuck where the one-way stop can't reach it (or a process a hostile file took over that ignores it).
+        fake.holdEnd = setOf(1)
+        fake.honourCancel = false
+        val c = Client()
+        ask(c)
+        pump("the first piece") { c.text.isNotEmpty() }
+        engine.cancel(BrainScheduler.Key(c, 1))
+        // A request waits behind it meanwhile.
+        val waiting = Client()
+        oneShot(waiting, priority = Priority.TRANSCRIPT)
+        settle()
+        assertTrue(c.terminals.isEmpty())
+        assertFalse(fake.dead)
+        // Past the limit, :brain ends llama.cpp's process (not itself): the reply and the queue end, once each.
+        shadowOf(main).idleFor(Duration.ofMillis(STOP_LIMIT_MS + 1_000))
+        pump("the end") { c.terminals.isNotEmpty() && waiting.terminals.isNotEmpty() }
+        settle()
+        assertTrue("the process was told to exit", fake.dead)
+        assertEquals(BrainError.STOPPED, c.error())
+        assertEquals(1, waiting.terminals.size)
+        assertFalse(engine.status().loaded)
+    }
+
+    @Test fun aStopTheProcessHonoursInTimeEndsNothing() {
+        fake.holdEnd = setOf(1)
+        val c = Client()
+        ask(c)
+        pump("the first piece") { c.text.isNotEmpty() }
+        engine.cancel(BrainScheduler.Key(c, 1))
+        pump("the end") { c.terminals.isNotEmpty() }
+        shadowOf(main).idleFor(Duration.ofMillis(STOP_LIMIT_MS + 1_000))
+        settle()
+        assertFalse("the process lives on", fake.dead)
+        assertTrue(engine.status().loaded)
+        assertEquals(DoneReason.CANCELLED, c.done())
+    }
+
     @Test fun onlyTextFromOutsideRobotsPromptHasItsMarkersBroken() {
         val j = ControlText.JOINER
         val c = Client()
@@ -404,5 +444,7 @@ class LlamaEngineFlowTest {
         const val CB_PIECE = IBinder.FIRST_CALL_TRANSACTION + 1
         const val GEN_END = 0
         const val GEN_CANCELLED = 2
+        /** LlamaEngine's limit for a stopped reply to come back from llama.cpp. */
+        const val STOP_LIMIT_MS = 15_000L
     }
 }
