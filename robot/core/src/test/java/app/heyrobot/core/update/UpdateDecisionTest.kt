@@ -81,6 +81,17 @@ class UpdateDecisionTest {
         assertEquals(emptyList<Long>(), UpdateDecision.stillBarred(listOf(555L), list))
     }
 
+    @Test fun whichDownloadFailuresRunTheWifiDownloadAgainSoon() {
+        // Stopped, cut off, or the token unreadable just now (it is kept): the next try may work. A refused file, a full
+        // phone or a missing repository wait for the next daily check or for you.
+        for (f in UpdateFail.entries) {
+            assertEquals(f.name, f in setOf(UpdateFail.STOPPED, UpdateFail.NO_INTERNET, UpdateFail.TOKEN_UNAVAILABLE), UpdateDecision.downloadAgain(f))
+        }
+        assertFalse(UpdateDecision.downloadAgain(null))
+        // A token that couldn't be read just now never bars the release's file.
+        assertFalse(UpdateDecision.bars(UpdateFail.TOKEN_UNAVAILABLE))
+    }
+
     private val on = UpdateSettings()
     private val noWifiDownload = UpdateSettings(wifiDownload = false)
     private val now = 1_800_000_000_000L

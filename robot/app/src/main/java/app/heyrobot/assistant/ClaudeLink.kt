@@ -8,6 +8,7 @@ import app.heyrobot.core.ClaudeSettings
 import app.heyrobot.core.ClaudeTools
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.SecretRead
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.ClaudeKeyFiles
 import app.heyrobot.sys.ClaudeSpendStore
@@ -33,8 +34,12 @@ object ClaudeLink {
     /** Whether a key is saved, kept in memory: this process saves keys, and the main app says when it deleted one. */
     @Volatile private var saved: Boolean? = null
 
-    /** The saved key couldn't be decrypted (Android's keystore lost its key): it was removed, and Robot says why. */
+    /** The saved key could never be decrypted again (Android's keystore lost its key): it was removed, and Robot says why. */
     @Volatile var unreadable = false
+        private set
+
+    /** The last try couldn't read the saved key just now (a passing Keystore error): it is kept, and the next one tries again. */
+    @Volatile var unavailable = false
         private set
 
     /** Whether a key is saved (a file check only the first time; [refresh] does it off the main thread). */
@@ -60,6 +65,7 @@ object ClaudeLink {
     /** The client for the saved key, or null when there is none or it can't be read. Background thread. */
     @Synchronized
     private fun held(ctx: Context): Held? {
+        unavailable = false
         val stamp = ClaudeKeys.stamp(ctx)
         if (stamp == 0L) {
             saved = false
@@ -70,16 +76,26 @@ object ClaudeLink {
         current?.takeIf { it.stamp == stamp }?.let { return it }
         current?.let(::retire)
         current = null
-        val key = ClaudeKeys.read(ctx)
-        if (key == null) {
-            // It reads as no key from now on, and Settings says why.
-            ClaudeKeys.forget(ctx)
-            saved = false
-            unreadable = true
-            RLog.i("claude_key", "op" to RLog.Code("unreadable"))
-            return null
+        return when (val r = ClaudeKeys.read(ctx)) {
+            is SecretRead.Present -> Held(ClaudeClient.create(r.value), stamp).also { current = it }
+            SecretRead.Absent -> {
+                saved = false
+                null
+            }
+            is SecretRead.Invalidated -> {
+                // Removed as it was read: it reads as no key from now on, and Settings says why.
+                saved = false
+                unreadable = true
+                RLog.i("claude_key", "op" to RLog.Code("unreadable"))
+                null
+            }
+            is SecretRead.Unavailable -> {
+                // Kept, file and Keystore key: this question says so, and the next one reads it again.
+                unavailable = true
+                RLog.i("claude_key", "op" to RLog.Code("unavailable"))
+                null
+            }
         }
-        return Held(ClaudeClient.create(key), stamp).also { current = it }
     }
 
     private fun retire(h: Held) {

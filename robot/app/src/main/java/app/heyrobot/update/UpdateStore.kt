@@ -5,6 +5,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import app.heyrobot.core.LicenceBook
 import app.heyrobot.core.RLog
+import app.heyrobot.core.SecretRead
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.update.GitHubRepo
 import app.heyrobot.core.update.GitHubToken
@@ -112,16 +113,12 @@ object UpdateToken {
     fun save(ctx: Context, token: String): Boolean = plausible(token) && store.save(ctx, token, GitHubToken.mask(token))
 
     /**
-     * The token, or null. Only GitHubClient calls this (ProcessIsolationTest), right before its requests. One that can't be
-     * decrypted any more is removed, and Settings says so.
+     * The token ([SecretRead.Present]), or none saved. Only GitHubClient calls this (ProcessIsolationTest), right before its
+     * requests. One that can never be decrypted again ([SecretRead.Invalidated]) is removed as it is read, and Settings says
+     * so; one that couldn't be read just now ([SecretRead.Unavailable]) is kept, and the next request reads it again.
      */
-    fun read(ctx: Context): String? {
-        if (!store.saved(ctx)) return null
-        return store.read(ctx) ?: run {
-            store.forget(ctx)
-            RLog.i("update_token", "op" to RLog.Code("unreadable"))
-            null
-        }
+    fun read(ctx: Context): SecretRead = store.read(ctx).also {
+        if (it is SecretRead.Invalidated) RLog.i("update_token", "op" to RLog.Code("unreadable"))
     }
 
     /** The token was just pasted and saved: the clipboard is cleared if it still holds it. */

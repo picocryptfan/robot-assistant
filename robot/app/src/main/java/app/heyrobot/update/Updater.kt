@@ -123,7 +123,7 @@ object Updater {
         work.value = Work.Downloading(0, 0)
         try {
             val fail = download(ctx, a, network)
-            if (fail == UpdateFail.STOPPED || fail == UpdateFail.NO_INTERNET) return true
+            if (UpdateDecision.downloadAgain(fail)) return true
             val st = UpdateStore.state(ctx)
             val found = UpdateDecision.offered(st, UpdateStore.repo(ctx), installed()) ?: return false
             val v = found.parsedVersion ?: return false

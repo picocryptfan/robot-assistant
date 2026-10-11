@@ -215,6 +215,8 @@ object ClaudeWords {
     /** A reply cut at its length limit before it said anything (its thinking used the room). */
     const val CUT_EMPTY = "Claude ran out of room before it could answer. Ask again, or ask for a shorter answer."
     const val KEY_UNREADABLE = "Robot couldn't read your saved Claude key, so it was removed. Add it again in Robot's settings, under Ask Claude."
+    /** The saved key couldn't be read just now (a passing Keystore error): it is kept. */
+    const val KEY_UNAVAILABLE = "Robot couldn't read your saved Claude key just now. It's still saved, so try again in a moment."
     const val SWIPE_TO_READ = "Open the Claude app, then swipe up from the corner and tap “Read Claude's answer”."
     /** The offer under a reply: Robot didn't answer (a hedge, or the pre-router) ... */
     const val OFFER = "Want me to check with Claude?"

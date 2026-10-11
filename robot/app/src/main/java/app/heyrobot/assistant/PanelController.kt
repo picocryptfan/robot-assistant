@@ -1577,9 +1577,16 @@ object PanelController {
         } catch (_: Exception) { null }
     }
 
-    /** No key to use: none saved, or the saved one couldn't be read (then it was removed, and Robot says so). */
+    /**
+     * No key to use: none saved, the saved one couldn't be read just now (it is kept, and the next question tries again),
+     * or it could never be read again (then it was removed, and Robot says so).
+     */
     private fun noKey(replyId: String) {
-        val text = if (ClaudeLink.unreadable) ClaudeWords.KEY_UNREADABLE else ClaudeFailure.NO_KEY.text
+        val text = when {
+            ClaudeLink.unavailable -> ClaudeWords.KEY_UNAVAILABLE
+            ClaudeLink.unreadable -> ClaudeWords.KEY_UNREADABLE
+            else -> ClaudeFailure.NO_KEY.text
+        }
         failReply(replyId, text)
     }
 

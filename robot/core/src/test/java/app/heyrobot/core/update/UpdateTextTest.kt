@@ -30,6 +30,9 @@ class UpdateTextTest {
         assertTrue(UpdateText.fail(UpdateFail.RATE_LIMITED, null, zone).endsWith("Try again in an hour."))
         assertTrue(UpdateText.fail(UpdateFail.CHECKSUM_MISMATCH).contains("SHA256SUMS"))
         assertTrue(UpdateText.fail(UpdateFail.OTHER_SIGNER).contains("Robot's key"))
+        // A token that couldn't be read just now is kept: nothing to add again.
+        assertTrue(UpdateText.fail(UpdateFail.TOKEN_UNAVAILABLE).contains("just now") && UpdateText.fail(UpdateFail.TOKEN_UNAVAILABLE).contains("still saved"))
+        assertFalse(UpdateText.fail(UpdateFail.TOKEN_UNAVAILABLE).contains("add", ignoreCase = true))
     }
 
     @Test fun theLastCheckLine() {

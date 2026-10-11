@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Network
 import app.heyrobot.BuildConfig
 import app.heyrobot.core.Abort
+import app.heyrobot.core.SecretRead
 import app.heyrobot.core.update.ByteRange
 import app.heyrobot.core.update.FileRef
 import app.heyrobot.core.update.GitHubErrors
@@ -30,9 +31,11 @@ import javax.net.ssl.SSLException
 // MAIN PROCESS. The updater's only network code, and the only code in Robot that talks to GitHub: GETs to api.github.com for
 // a repository's releases and its files, following redirects to GitHub's download servers by hand (core GitHubHosts: HTTPS,
 // four hosts, at most five hops). The access token (UpdateToken) is decrypted here, and only a request to api.github.com
-// carries it; a download server never sees it. Every request names Robot and its version (User-Agent "Robot/0.4.5") and
-// nothing about the phone. Caps: 1 MB of JSON, 64 KB of SHA256SUMS, the APK's own size (at most 300 MB). Stop disconnects
-// (Abort). Nothing is logged here, least of all a URL with a signature in it or the token.
+// carries it; a download server never sees it. A saved token that couldn't be read just now is kept, and the request goes
+// without it: a public repository still answers, and a private one fails as TOKEN_UNAVAILABLE until a later try reads it.
+// Every request names Robot and its version (User-Agent "Robot/0.4.5") and nothing about the phone. Caps: 1 MB of JSON,
+// 64 KB of SHA256SUMS, the APK's own size (at most 300 MB). Stop disconnects (Abort). Nothing is logged here, least of all
+// a URL with a signature in it or the token.
 
 internal object GitHubClient {
     class Failure(val why: UpdateFail, val http: Int = 0, val retryAt: Long? = null) : Exception(why.name)
@@ -102,14 +105,17 @@ internal object GitHubClient {
     }
 
     /**
-     * Opens [start] and hands the 2xx answer to [read], following redirects only as core GitHubHosts allows, the token only
-     * to the API. A 3xx is never followed by the platform (instanceFollowRedirects off), so a header set here goes to the
-     * host it was set for and no other.
+     * Opens [start] and hands the 2xx answer to [read], following redirects only as core GitHubHosts allows, the token
+     * ([saved], as UpdateToken read it) only to the API. A 3xx is never followed by the platform (instanceFollowRedirects
+     * off), so a header set here goes to the host it was set for and no other.
      */
-    private fun <T> request(ctx: Context, start: String, accept: String, token: String?, from: Long, abort: Abort, network: Network?,
+    private fun <T> request(ctx: Context, start: String, accept: String, saved: SecretRead, from: Long, abort: Abort, network: Network?,
                             read: (HttpsURLConnection, Int) -> T): T {
         // GrapheneOS's Network toggle is the INTERNET permission at run time.
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) throw Failure(UpdateFail.NO_NETWORK_PERMISSION)
+        val token = (saved as? SecretRead.Present)?.value
+        // Saved but not readable just now: kept, and GitHub's "not found" for a private repository says so.
+        val tokenKept = saved is SecretRead.Unavailable
         var url = start
         var hop = 0
         while (true) {
@@ -140,7 +146,7 @@ internal object GitHubClient {
                     continue
                 }
                 if (code !in 200..299) {
-                    val (why, retryAt) = GitHubErrors.classify(code, token != null, { c.getHeaderField(it) }, System.currentTimeMillis())
+                    val (why, retryAt) = GitHubErrors.classify(code, token != null, { c.getHeaderField(it) }, System.currentTimeMillis(), tokenKept)
                     throw Failure(why, code, retryAt)
                 }
                 return read(c, code)

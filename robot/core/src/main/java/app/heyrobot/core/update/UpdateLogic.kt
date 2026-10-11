@@ -68,6 +68,12 @@ object UpdateDecision {
         return AutoPlan(if (waited) once(Notice.AVAILABLE) else null, true)
     }
 
+    /**
+     * Whether the download on Wi-Fi runs again soon after it failed with [f]: stopped, cut off, or the token unreadable
+     * just now. Each can be different next time; the others wait for the next daily check or for you.
+     */
+    fun downloadAgain(f: UpdateFail?): Boolean = f == UpdateFail.STOPPED || f == UpdateFail.NO_INTERNET || f == UpdateFail.TOKEN_UNAVAILABLE
+
     /** After a download on Wi-Fi passed its checks: "ready to install", once (not for a version skipped meanwhile). */
     fun afterAutoDownload(s: UpdateSettings, v: RobotVersion, notified: String?): Notice? =
         Notice.READY.takeIf { !skipped(s, v) && noticeKey(v, it) != notified }
@@ -164,6 +170,8 @@ enum class UpdateFail {
     NO_NETWORK_PERMISSION, NO_INTERNET, RATE_LIMITED, NOT_FOUND_NO_TOKEN, NOT_FOUND, TOKEN_REFUSED, FORBIDDEN, SERVICE,
     BAD_ANSWER, TOO_BIG, REDIRECT_REFUSED, NO_REPOSITORY, NO_SPACE, STORAGE, SUMS_BAD, SUMS_NO_LINE, CHECKSUM_MISMATCH,
     SIZE_MISMATCH, NOT_AN_APK, WRONG_PACKAGE, WRONG_VERSION, NOT_NEWER, UNSIGNED, OTHER_SIGNER, STOPPED, BUSY,
+    /** A private repository, and the saved token couldn't be read just now: it is kept, and the next check tries again. */
+    TOKEN_UNAVAILABLE,
     ;
 
     companion object {
@@ -255,6 +263,7 @@ object UpdateText {
         UpdateFail.OTHER_SIGNER -> "The downloaded app isn't signed with Robot's key, so it won't be installed. Android would refuse it too."
         UpdateFail.STOPPED -> "Stopped. Robot keeps what it downloaded and continues next time."
         UpdateFail.BUSY -> "Robot is already working on the update."
+        UpdateFail.TOKEN_UNAVAILABLE -> "Robot couldn't read your access token just now. It's still saved, and Robot will try again later."
     }
 
     fun install(o: InstallOutcome, v: String?): String = when (o) {

@@ -223,7 +223,9 @@ without asking (off). **Advanced**:
   and is kept out of autofill, encrypted exactly as Ask Claude's key is (AES-GCM with its own non-exportable Android
   Keystore key, `robot_github_token`; one class, `sys/KeystoreSecret`, does both), decrypted only by
   `update/GitHubClient` just before a request, shown masked ("github_pat_…AB12"), and **Remove** deletes it. A private
-  repository without a token gets "GitHub didn't find the repository. If it's private, add an access token…".
+  repository without a token gets "GitHub didn't find the repository. If it's private, add an access token…". A token
+  the keystore can't read just now (busy, or the phone locked) is kept, never removed: the check goes without it, says
+  "Robot couldn't read your access token just now" for a private repository, and the next check reads it again.
 
 The settings are in their own small file, `files/robot/updates.json`, and what the updater found and did in
 `update_state.json`, beside `settings.json` but not in it (`core/update/UpdateFiles.kt`; read forward-compatibly).
@@ -1413,6 +1415,8 @@ an API key, questions for Claude open the Claude app. Spec: `../docs/ask-claude.
    drops the key at once). The window can't be captured in screenshots or the recent-apps thumbnail, is kept out of
    autofill, and clears the clipboard if it still holds the key. A key is "sk-ant-" and ASCII letters, digits, "-" and
    "_" only. If Android's keystore ever loses the key that encrypts it, Robot removes the saved key and Settings says so.
+   An error that may pass (the keystore busy or the phone locked) removes nothing: Robot says it couldn't read your key
+   just now and reads it again at the next question.
 
 GrapheneOS's per-app **Network** toggle must stay on for Robot. When Android reports Robot's network permission off, the
 panel shows a card saying so (and says it aloud); when the toggle shows as no network at all, "No internet" says to

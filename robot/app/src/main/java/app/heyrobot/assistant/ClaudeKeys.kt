@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.ClaudeKeyFormat
+import app.heyrobot.core.SecretRead
 import app.heyrobot.sys.ClaudeKeyFiles
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
@@ -60,14 +61,12 @@ object ClaudeKeys {
     /** Encrypts and saves [key]; false (nothing saved) if it can't. Background thread (Keystore and files). */
     fun save(ctx: Context, key: String): Boolean = ClaudeKeyFiles.store.save(ctx, key, mask(key))
 
-    /** The key, or null (none saved, or the Keystore key is gone: then [forget] removes it and you paste it again). */
-    fun read(ctx: Context): String? = ClaudeKeyFiles.store.read(ctx)
-
     /**
-     * A key that can't be decrypted any more reads as no key: its files and the Keystore entry go, and the note left
-     * behind lets Settings say why.
+     * The key ([SecretRead.Present]), or none saved. One that can never be decrypted again ([SecretRead.Invalidated]) is
+     * removed as it is read, and the note left behind lets Settings say why; one that couldn't be read just now
+     * ([SecretRead.Unavailable]) is kept for the next question. Background thread.
      */
-    fun forget(ctx: Context) = ClaudeKeyFiles.store.forget(ctx)
+    fun read(ctx: Context): SecretRead = ClaudeKeyFiles.store.read(ctx)
 
     /** Changes when the key file does: a cached client is rebuilt (or dropped) on the next turn. */
     fun stamp(ctx: Context): Long = ClaudeKeyFiles.store.stamp(ctx)

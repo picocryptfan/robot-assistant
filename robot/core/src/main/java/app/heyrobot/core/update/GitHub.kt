@@ -141,18 +141,20 @@ object GitHubHosts {
 object GitHubErrors {
     /**
      * [code] isn't a success: why, and for a rate limit when it lifts (ms since 1970, null if GitHub didn't say).
-     * [header] reads a response header (any case). [hasToken]: the request carried the access token.
+     * [header] reads a response header (any case). [hasToken]: the request carried the access token. [tokenKept]: it went
+     * without one because the saved token couldn't be read just now (it is kept, and the next check reads it again).
      */
-    fun classify(code: Int, hasToken: Boolean, header: (String) -> String?, nowMs: Long): Pair<UpdateFail, Long?> {
+    fun classify(code: Int, hasToken: Boolean, header: (String) -> String?, nowMs: Long, tokenKept: Boolean = false): Pair<UpdateFail, Long?> {
         val remaining = header("x-ratelimit-remaining")?.trim()
         val reset = header("x-ratelimit-reset")?.trim()?.toLongOrNull()?.takeIf { it in 1..4_102_444_800L }?.times(1000)
         val retry = header("retry-after")?.trim()?.toLongOrNull()?.takeIf { it in 0..86_400 }?.let { nowMs + it * 1000 }
+        val noToken = if (tokenKept && !hasToken) UpdateFail.TOKEN_UNAVAILABLE else UpdateFail.NOT_FOUND_NO_TOKEN
         return when {
             code == 429 || (code == 403 && (remaining == "0" || retry != null)) -> UpdateFail.RATE_LIMITED to (retry ?: reset)
-            code == 401 -> (if (hasToken) UpdateFail.TOKEN_REFUSED else UpdateFail.NOT_FOUND_NO_TOKEN) to null
+            code == 401 -> (if (hasToken) UpdateFail.TOKEN_REFUSED else noToken) to null
             code == 403 -> UpdateFail.FORBIDDEN to null
             // GitHub answers 404 for a private repository it won't show without a token.
-            code == 404 -> (if (hasToken) UpdateFail.NOT_FOUND else UpdateFail.NOT_FOUND_NO_TOKEN) to null
+            code == 404 -> (if (hasToken) UpdateFail.NOT_FOUND else noToken) to null
             code == 416 -> UpdateFail.SIZE_MISMATCH to null
             else -> UpdateFail.SERVICE to null
         }

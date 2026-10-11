@@ -122,6 +122,21 @@ class GitHubPolicyTest {
         assertEquals(UpdateFail.SERVICE to null, GitHubErrors.classify(500, true, h(), now))
     }
 
+    @Test fun aTokenThatCouldntBeReadJustNow() {
+        val now = 1_000_000_000_000L
+        val none: (String) -> String? = { null }
+        // The request went without the token because it couldn't be read just now (it is kept): GitHub hiding a private
+        // repository says that, not that no token is saved.
+        assertEquals(UpdateFail.TOKEN_UNAVAILABLE to null, GitHubErrors.classify(404, false, none, now, tokenKept = true))
+        assertEquals(UpdateFail.TOKEN_UNAVAILABLE to null, GitHubErrors.classify(401, false, none, now, tokenKept = true))
+        // Everything else is as without a token.
+        assertEquals(UpdateFail.RATE_LIMITED to null, GitHubErrors.classify(429, false, none, now, tokenKept = true))
+        assertEquals(UpdateFail.FORBIDDEN to null, GitHubErrors.classify(403, false, none, now, tokenKept = true))
+        assertEquals(UpdateFail.SERVICE to null, GitHubErrors.classify(502, false, none, now, tokenKept = true))
+        assertEquals(UpdateFail.NOT_FOUND_NO_TOKEN to null, GitHubErrors.classify(404, false, none, now, tokenKept = false))
+        assertEquals(UpdateFail.NOT_FOUND to null, GitHubErrors.classify(404, true, none, now, tokenKept = true))
+    }
+
     @Test fun tokens() {
         assertTrue(GitHubToken.plausible("github_pat_" + "A1b2_".repeat(16) + "xy"))
         assertTrue(GitHubToken.plausible("ghp_" + "a1B2".repeat(9)))

@@ -1,5 +1,7 @@
 package app.heyrobot.sys
 
+import app.heyrobot.core.SecretRead
+import app.heyrobot.core.SecretReads
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,6 +49,9 @@ class KeystoreSecretTest {
         val k = aesKey()
         assertEquals(claudeKey, KeystoreSecret.open(k, sealAt045(k, claudeKey)))
         assertEquals("ghp_" + "a".repeat(36), KeystoreSecret.open(k, sealAt045(k, "ghp_" + "a".repeat(36))))
+        // Read through core's SecretReads (which removes only a file that can never decrypt): 0.4.5's file is well formed.
+        assertTrue(SecretReads.wellFormed(sealAt045(k, claudeKey)) && SecretReads.wellFormed(KeystoreSecret.seal(k, claudeKey)))
+        assertEquals(SecretRead.Present(claudeKey), SecretReads.read({ sealAt045(k, claudeKey) }, { k }, { key, stored -> KeystoreSecret.open(key, stored) }))
     }
 
     @Test fun aKeySavedNowReadsAs045ReadIt() {
