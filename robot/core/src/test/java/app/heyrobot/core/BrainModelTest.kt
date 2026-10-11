@@ -152,4 +152,21 @@ class BrainModelTest {
             assertTrue(t, t.contains(m.title) && !t.contains("owner"))
         }
     }
+
+    /**
+     * The approval gate decides the same whichever model you chose (the uncensored one included): the model only proposes
+     * an action, and Robot's cards and switches decide.
+     */
+    @Test fun theGateIgnoresTheModel() {
+        val bools = listOf(false, true)
+        for (base in listOf(RobotSettings(), RobotSettings(safetyCards = SafetyCards.AFTER_READING, whoCards = false))) {
+            for (t in ToolName.entries) for (locked in bools) for (content in bools) for (asked in bools) for (remote in bools) {
+                val why = setOf(AskWhy.WHO)
+                val fast = ApprovalGate.decide(t, locked, base, why, content, asked, remote)
+                for (m in BrainModel.entries) {
+                    assertEquals("$t $m", fast, ApprovalGate.decide(t, locked, base.copy(brainModel = m.id), why, content, asked, remote))
+                }
+            }
+        }
+    }
 }
