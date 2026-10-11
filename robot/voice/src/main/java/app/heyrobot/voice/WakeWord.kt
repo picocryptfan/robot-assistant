@@ -296,6 +296,9 @@ class WakeWord(private val assets: AssetManager, vadGate: Boolean = true) {
         preRoll.clear()
     }
 
+    /** Forgets the last second of audio without touching the stream (Robot started or stopped talking). */
+    fun clearPreRoll() = preRoll.clear()
+
     fun release() {
         dropStream()
         vad?.release()

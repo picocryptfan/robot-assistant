@@ -190,7 +190,9 @@ class CapturePolicyTest {
         assertTrue(feed.contains("preRoll.clear()"))
         assertTrue(src.substringAfter("fun resume()").substringBefore("fun release()").contains("preRoll.clear()"))
         val listener = java.io.File(System.getProperty("user.dir"), "src/main/java/app/heyrobot/voice/Listener.kt").readText()
-        assertTrue(listener.contains("if (wasPaused && !paused) ww?.resume()"))
+        assertTrue(listener.contains("if (wasPaused && !paused) try { ww?.resume() }"))
+        // Nor across the start or end of her speech.
+        assertTrue(listener.contains("if (speaking != wasSpeaking) try { ww?.clearPreRoll() }"))
     }
 
     @Test fun aStretchOfRobotTalkingIsSummedForTheLog() {

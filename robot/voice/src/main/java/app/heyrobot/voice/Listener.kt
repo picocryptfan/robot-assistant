@@ -28,6 +28,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import kotlin.math.log10
 import kotlin.math.max
@@ -123,7 +124,8 @@ class Listener(
     private var noise: NoiseSuppressor? = null
     private var thread: Thread? = null
     /** The recording callbacks and CAPTURE_INFO's delayed look; what is still scheduled at [stop] is dropped. */
-    private val callbackExec = ScheduledThreadPoolExecutor(1).apply { executeExistingDelayedTasksAfterShutdownPolicy = false }
+    // Discards a callback Android delivers just after [stop] shut it down, instead of throwing on Android's thread.
+    private val callbackExec = ScheduledThreadPoolExecutor(1, ThreadPoolExecutor.DiscardPolicy()).apply { executeExistingDelayedTasksAfterShutdownPolicy = false }
     private val audio = ctx.getSystemService(AudioManager::class.java)
     /** The wake-word model, once its loader thread is done (guarded by [wwLock] until the loop takes it). */
     private val wwLock = Any()
@@ -351,6 +353,7 @@ class Listener(
         Thread({
             val t0 = SystemClock.elapsedRealtime()
             var waited = 0L
+            var threw = false
             val ok = try {
                 NativeLoads.one("kws") {
                     waited = SystemClock.elapsedRealtime() - t0
@@ -359,12 +362,14 @@ class Listener(
                 }
             } catch (t: Throwable) {
                 RLog.w("wake_word_talk_init", t)
+                threw = true
                 false
             }
             val ms = SystemClock.elapsedRealtime() - t0
             RLog.i("kws_talk_load", "ok" to ok, "initMs" to ms, "waitedMs" to waited)
             if (config.wakeWord && ww.talkSpotterLoaded) VoiceLog.add(VoiceEvent.KWS_READY, (ms - waited).toInt(), waited.toInt(), 1)
-            else if (config.wakeWord && !ok) VoiceLog.add(VoiceEvent.KWS_READY, -1, waited.toInt(), 1)
+            // Not loaded because the listener stopped meanwhile is not a failure.
+            else if (config.wakeWord && !ok && threw) VoiceLog.add(VoiceEvent.KWS_READY, -1, waited.toInt(), 1)
         }, "robot-kws-talk-load").start()
     }
 
@@ -461,12 +466,15 @@ class Listener(
             val speaking = inputs.speaking
             val paused = wakePaused
             // Listening again after a question: nothing the wake word heard before it is fed again.
-            if (wasPaused && !paused) ww?.resume()
+            if (wasPaused && !paused) try { ww?.resume() } catch (t: Throwable) { RLog.w("wake_word_resume", t) }
+            // Nor across the start or end of Robot's speech: her last words would reach a fresh stream after her
+            // sentence's guard is gone (a wake phrase said over her final second is lost, as it can't be told apart).
+            if (speaking != wasSpeaking) try { ww?.clearPreRoll() } catch (t: Throwable) { RLog.w("wake_word_preroll", t) }
             wasPaused = paused
             val w = ww?.takeIf { !paused }
             if (speaking && w != null && !talkLoadStarted) {
                 talkLoadStarted = true
-                loadTalkSpotter(w)
+                try { loadTalkSpotter(w) } catch (t: Throwable) { RLog.w("wake_word_talk_start", t) }
             }
             val stop = if (speaking) KwsThresholds.stop(echoCancelled = communication && aec == AecState.ON) else null
             val hits = if (w == null) emptyList() else try { w.accept(x, inputs.wakeLines, stop) } catch (t: Throwable) {
@@ -483,7 +491,7 @@ class Listener(
                 VoiceLog.add(VoiceEvent.KWS_HIT, KeywordBuffer.idOf(hit) ?: 0, by.id, micKind.id * 10 + aec.id)
                 // Only a wake phrase marks where a question starts; "stop" is followed by Robot's own voice.
                 if (PreRoll.marksQuestion(hit)) synchronized(ringLock) { wakeAt = samplesSeen }
-                onWake(hit, lastFrameAt)
+                try { onWake(hit, lastFrameAt) } catch (t: Throwable) { RLog.w("wake_hit", t) }
             }
         }
         synchronized(wwLock) {

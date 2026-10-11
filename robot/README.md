@@ -322,7 +322,7 @@ fired "STOP" on "step", whose vowel differs, so the others may fire too; the bar
 it. Wake phrases said by Robot are guarded the same way, their last word with any ending ("robotic", "robots").
 
 Also since 0.3.1, while Robot speaks a second keyword spotter listens instead of the first (it is loaded the first time
-she speaks, about 14 MB, and kept while the listener runs). It fires once the model has output two blank frames (80 ms)
+she speaks, about 14 MB of weights and roughly 15–25 MB of memory, and kept while the listener runs). It fires once the model has output two blank frames (80 ms)
 after a keyword, as sherpa-onnx's C++ default has it, instead of three (the Kotlin API's default, which the first one
 keeps): probably Robot's voice, even echo-cancelled, seldom left 120 ms without a token after a "stop" said over her.
 And while she speaks the wake-word speech gate no longer decides what the spotter hears (it needs 0.25 s of speech to
