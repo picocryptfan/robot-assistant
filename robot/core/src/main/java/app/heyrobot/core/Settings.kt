@@ -44,6 +44,18 @@ enum class TextApp(val title: String) {
     OFF("Off"),
 }
 
+/**
+ * Settings › Actions › "Find the nearest place online" (0.4.0): whether "directions to the nearest pharmacy" may ask
+ * OpenStreetMap's Nominatim. [ASK] (the default): the first time, a card says what would leave the phone and you choose
+ * there ("Allow always", "Just this time", "No, search the map"; [NearestAnswer] keeps a lasting answer).
+ */
+enum class NearestOnline(val title: String, val detail: String) {
+    ASK("Ask the first time", "The first “nearest …” shows a card that says what would go online; you choose there."),
+    ALWAYS("Always", "Robot asks OpenStreetMap's Nominatim for that kind of place around where you are (about 1 km) and opens " +
+        "Organic Maps' route to the closest. It uses the internet."),
+    NEVER("Never", "Organic Maps' search, which ranks places around you. Nothing goes online."),
+}
+
 /** Which app opens with an email draft: Proton Mail, or the system chooser every time. */
 enum class EmailApp(val title: String) {
     PROTON("Proton Mail"),
@@ -61,6 +73,11 @@ data class RobotSettings(
     val voice: String = "",
     /** Show the words while you speak (decodes the speech so far about every 0.7 s; off saves battery). */
     val livePartials: Boolean = true,
+    /**
+     * Settings › "Direct answers" (0.4.0, on): the local model helps with whatever you ask without refusing or adding
+     * warnings, and still says when something isn't possible ([Prompt.DIRECT]). Off: the model's own judgment.
+     */
+    val directAnswers: Boolean = true,
     /** Minutes Gemma stays loaded after the panel closes; [KEEP_ALWAYS] = keep it loaded. */
     val keepModelMinutes: Int = 5,
     /** Save conversations to the history on this phone (screen conversations only when kept). */
@@ -89,6 +106,8 @@ data class RobotSettings(
     val wakePhrases: List<WakePhrase> = WakePhrases.DEFAULT,
     /** Settings › Voice › "Hear me while Robot talks". */
     val bargeIn: BargeIn = BargeIn.ECHO_CANCEL,
+    /** Settings › Voice › "Interrupt sensitivity" (0.4.0): "stop" and the wake phrases while Robot talks; Medium as before. */
+    val interrupt: InterruptSensitivity = InterruptSensitivity.MEDIUM,
     /** How Robot's voice is played (the echo canceller's reference may depend on it; the barge-in test compares). */
     val playback: Playback = Playback.ASSISTANT,
     /** The volume key that stops Robot talking while the panel shows. */
@@ -144,6 +163,51 @@ data class RobotSettings(
      * encrypted file in the :voice process, never in settings.
      */
     val meVoiceprint: Boolean = false,
+    // Settings › Safety & privacy (0.4.0, schema 6): each rule that makes an action ask first is a switch.
+    /** "Safety cards": when content Robot read makes an action ask first (older files: the new default too). */
+    val safetyCards: SafetyCards = SafetyCards.UNASKED,
+    /** "Card when Claude asks Robot to do something". */
+    val claudeActionCards: Boolean = true,
+    /** "Card when who-to isn't certain": several people, a near match, a number or address the model wrote, a loose app name. */
+    val whoCards: Boolean = true,
+    /** "Card for names learned from Cheogram". */
+    val learnedCards: Boolean = true,
+    /** "Card before deleting files": free_storage's photos and videos (Android asks as well) and Robot's cache. */
+    val deleteCards: Boolean = true,
+    /** "Works on the lock screen": the actions allowed while locked (questions always). */
+    val lockedTools: Set<ToolName> = LockScreen.DEFAULT,
+    /**
+     * "Send personal content to helpers automatically" (off): Robot checking with Claude by itself may send the
+     * conversation's personal content and this question's screen or photo, and what a read tool finds for Claude goes
+     * without "Share with Claude". Claude joining ("go get Claude") still asks first.
+     */
+    val personalToHelpers: Boolean = false,
+    /** "Voice yes can send personal content" (off): a spoken or typed yes may send what otherwise needs a tap. */
+    val voiceYesPersonal: Boolean = false,
+    /**
+     * "Keep screenshots and photos in history" (off): with history on, a question's picture (a small thumbnail) and the
+     * screen's text are saved with the conversation, for you to see in History. Off: only that one was attached.
+     */
+    val keepMedia: Boolean = false,
+    /**
+     * "Answer cards by voice" (on): while a card waits, Robot listens for "yes" or "no" when replies are spoken or the
+     * question came by voice. A yes never sends personal content to Claude unless [voiceYesPersonal].
+     */
+    val voiceCards: Boolean = true,
+    /**
+     * Settings › Actions › "Find the nearest place online" (0.4.0; Ask the first time): "directions to the nearest
+     * pharmacy" finds the closest one with OpenStreetMap and opens Organic Maps' route to it; Never: Organic Maps' search.
+     * The panel's own answer to the first-use card ([NearestAnswer], kept by the voice process) counts when it is newer
+     * than [nearestOnlineAt] (Nearby.mode).
+     */
+    val nearestOnline: NearestOnline = NearestOnline.ASK,
+    /** When [nearestOnline] was last chosen in Settings (wall clock ms); 0: never. */
+    val nearestOnlineAt: Long = 0,
+    /**
+     * Show [SafetyNotice.TEXT] once in the app (0.4.0): set for a settings file from before Safety & privacy (an update,
+     * never a new install), cleared when it is tapped or dismissed.
+     */
+    val safetyNotice: Boolean = false,
 ) {
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
@@ -168,6 +232,7 @@ data class RobotSettings(
         put("speechRate", speechRate.toDouble())
         put("voice", voice)
         put("livePartials", livePartials)
+        put("directAnswers", directAnswers)
         put("keepModelMinutes", keepModelMinutes)
         put("saveHistory", saveHistory)
         put("approvals", JSONObject().apply { for (t in ToolName.entries) put(t.id, approval(t).name) })
@@ -183,6 +248,7 @@ data class RobotSettings(
             for (p in wakePhrases) put(JSONObject().put("id", p.id).put("text", p.text).put("sensitivity", p.sensitivity.name).put("enabled", p.enabled))
         })
         put("bargeIn", bargeIn.name)
+        put("interrupt", interrupt.name)
         put("playback", playback.name)
         put("stopKey", stopKey.name)
         claudeEnabled?.let { put("claudeEnabled", it) }
@@ -207,6 +273,19 @@ data class RobotSettings(
         convSummaryLang?.let { put("convSummaryLang", it) }
         put("convAutoOfferHelper", convAutoOfferHelper)
         put("meVoiceprint", meVoiceprint)
+        put("safetyCards", safetyCards.name)
+        put("claudeActionCards", claudeActionCards)
+        put("whoCards", whoCards)
+        put("learnedCards", learnedCards)
+        put("deleteCards", deleteCards)
+        put("lockedTools", org.json.JSONArray().apply { for (t in LockScreen.CHOICES) if (t in lockedTools) put(t.id) })
+        put("personalToHelpers", personalToHelpers)
+        put("voiceYesPersonal", voiceYesPersonal)
+        put("keepMedia", keepMedia)
+        put("voiceCards", voiceCards)
+        put("nearestPlace", nearestOnline.name)
+        if (nearestOnlineAt > 0) put("nearestPlaceAt", nearestOnlineAt)
+        if (safetyNotice) put("safetyNotice", true)
     }
 
     companion object {
@@ -217,10 +296,13 @@ data class RobotSettings(
          * 4 (0.3.1): opening apps and Organic Maps just happen by default. Older files saved "Ask first" for them
          * whether chosen or not, so there it reads as the new default; "Off" stays off.
          * 5 (0.4.0): the Home for weather (absent from older files: none) and the new actions' levels (their defaults).
-         * 6 (0.5.0): conversation mode's settings. Absent from older files, so they read as the defaults, except that live
+         * 6 (0.4.0): Settings › Safety & privacy. Older files keep every rule as it was (the switches' defaults are today's
+         * behaviour, the lock screen still timers and alarms) except "Safety cards", which takes the new default, "When
+         * you didn't ask for it", as the person asked.
+         * 8 (0.5.0): conversation mode's settings. Absent from older files, so they read as the defaults, except that live
          * words in a conversation start off when you had turned live words off for questions (to save battery).
          */
-        const val SCHEMA = 6
+        const val SCHEMA = 8
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -280,6 +362,8 @@ data class RobotSettings(
                 speechRate = clampRate(o.optDouble("speechRate", d.speechRate.toDouble()).toFloat()),
                 voice = o.optString("voice", d.voice),
                 livePartials = o.optBoolean("livePartials", d.livePartials),
+                // Absent from older files: on, the default (no new schema needed).
+                directAnswers = o.optBoolean("directAnswers", d.directAnswers),
                 keepModelMinutes = clampKeep(o.optInt("keepModelMinutes", d.keepModelMinutes)),
                 saveHistory = o.optBoolean("saveHistory", d.saveHistory),
                 approvals = ToolName.entries.associateWith { t ->
@@ -299,6 +383,7 @@ data class RobotSettings(
                 learnFromCheogram = o.optBoolean("learnFromCheogram", d.learnFromCheogram),
                 wakePhrases = o.optJSONArray("wakePhrases")?.let(::phrases) ?: d.wakePhrases,
                 bargeIn = enumOr(o.optString("bargeIn"), d.bargeIn),
+                interrupt = enumOr(o.optString("interrupt"), d.interrupt),
                 playback = enumOr(o.optString("playback"), d.playback),
                 stopKey = enumOr(o.optString("stopKey"), d.stopKey),
                 claudeEnabled = if (o.has("claudeEnabled")) o.optBoolean("claudeEnabled") else null,
@@ -315,8 +400,8 @@ data class RobotSettings(
                 convPair = LangPair.of(o.optString("convPair", d.convPair)).id,
                 convTranslate = o.optBoolean("convTranslate", d.convTranslate),
                 convSpeak = if (o.has("convSpeak")) o.optBoolean("convSpeak") else null,
-                // Before schema 6 there was no such setting: it follows "Show the words while you speak".
-                convPartials = o.optBoolean("convPartials", if (o.optInt("schema", 1) < 6) o.optBoolean("livePartials", d.livePartials) else d.convPartials),
+                // Before schema 8 there was no such setting: it follows "Show the words while you speak".
+                convPartials = o.optBoolean("convPartials", if (o.optInt("schema", 1) < 8) o.optBoolean("livePartials", d.livePartials) else d.convPartials),
                 convMaxSpeakers = clampSpeakers(o.optInt("convMaxSpeakers", d.convMaxSpeakers)),
                 convWakeDuring = o.optBoolean("convWakeDuring", d.convWakeDuring),
                 convStartLocked = o.optBoolean("convStartLocked", d.convStartLocked),
@@ -324,6 +409,25 @@ data class RobotSettings(
                 convSummaryLang = summaryLang(o.optString("convSummaryLang").takeIf { o.has("convSummaryLang") }),
                 convAutoOfferHelper = o.optBoolean("convAutoOfferHelper", d.convAutoOfferHelper),
                 meVoiceprint = o.optBoolean("meVoiceprint", d.meVoiceprint),
+                // Schema 6: absent from older files, which read as the defaults (the new "When you didn't ask for it" included).
+                safetyCards = enumOr(o.optString("safetyCards"), d.safetyCards),
+                claudeActionCards = o.optBoolean("claudeActionCards", d.claudeActionCards),
+                whoCards = o.optBoolean("whoCards", d.whoCards),
+                learnedCards = o.optBoolean("learnedCards", d.learnedCards),
+                deleteCards = o.optBoolean("deleteCards", d.deleteCards),
+                lockedTools = o.optJSONArray("lockedTools")?.let { a ->
+                    (0 until a.length()).mapNotNull { ToolName.of(a.optString(it)) }.filter { !it.internal }.toSet()
+                } ?: d.lockedTools,
+                personalToHelpers = o.optBoolean("personalToHelpers", d.personalToHelpers),
+                voiceYesPersonal = o.optBoolean("voiceYesPersonal", d.voiceYesPersonal),
+                keepMedia = o.optBoolean("keepMedia", d.keepMedia),
+                voiceCards = o.optBoolean("voiceCards", d.voiceCards),
+                // Early 0.4.0 builds saved a switch ("nearestOnline", on by default): on or absent asks the first time, off is Never.
+                nearestOnline = if (o.has("nearestPlace")) enumOr(o.optString("nearestPlace"), d.nearestOnline)
+                    else if (!o.optBoolean("nearestOnline", true)) NearestOnline.NEVER else NearestOnline.ASK,
+                nearestOnlineAt = o.optLong("nearestPlaceAt", 0).coerceAtLeast(0),
+                // A file from before schema 6 (0.3.x, early 0.4.0): an update, so the one-time line about Safety & privacy shows.
+                safetyNotice = if (o.optInt("schema", 1) < 6) true else o.optBoolean("safetyNotice", false),
             )
         }
 

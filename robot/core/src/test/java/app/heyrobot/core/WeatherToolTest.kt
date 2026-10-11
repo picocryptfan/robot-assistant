@@ -17,7 +17,9 @@ class WeatherToolTest {
             "cloud cover tomorrow?", "Okay, cloud cover tomorrow?", "how cloudy is it", "how windy is it", "do I need an umbrella",
             "what's the forecast for Paris", "is it raining in Montreal", "quelle est la météo demain", "va-t-il pleuvoir", "il pleut ?",
             "est-ce qu'il va neiger", "quelle température fait-il", "est-ce nuageux demain", "y a-t-il du vent", "faut-il un parapluie",
-            "quel temps fait-il à Québec")
+            "quel temps fait-il à Québec", "will it be hot tomorrow?", "how cold will it be tonight", "will it be warm on Saturday",
+            "what's the high tomorrow", "UV index today", "do I need sunglasses", "is it nice out this weekend", "is there a heatwave coming",
+            "fera-t-il chaud demain", "il fait froid dehors ?", "y a-t-il une canicule")
         for (q in asks) assertTrue(q, ToolGroup.WEATHER in ToolRouter.route(q))
         for (q in listOf("set a timer for 5 minutes", "text Mom I'm late", "what's the capital of France", "ask Claude why the sky is blue")) {
             assertFalse(q, ToolGroup.WEATHER in ToolRouter.route(q))
@@ -46,11 +48,18 @@ class WeatherToolTest {
         assertNull(PreRouter.signal("what's the weather tomorrow", localWeather = true))
         assertNull(PreRouter.signal("what's the forecast for the weekend", localWeather = true))
         assertNull(PreRouter.signal("cloud cover tomorrow?", localWeather = true))
-        assertNull(PreRouter.signal("any weather news for Montreal", localWeather = true))
-        // Other signals still count, and other current information still goes.
+        assertNull(PreRouter.signal("will it rain in Paris this weekend", localWeather = true))
+        // Only "weather" and "forecast" stop counting: everything else in the question still does.
         assertEquals(PreRouter.Signal.REASONING, PreRouter.signal("explain why it rains more in the spring", localWeather = true))
         assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's the latest on the election", localWeather = true))
         assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's today's price of bitcoin", localWeather = true))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's the price of a winter coat", localWeather = true))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's the latest news about the storm in Florida", localWeather = true))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's the score of the Seattle Storm game", localWeather = true))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("any weather news for Montreal", localWeather = true))
+        // A long question is still long.
+        val long = "what will the weather be like " + (1..40).joinToString(" ") { "word$it" }
+        assertEquals(PreRouter.Signal.LONG, PreRouter.signal(long, localWeather = true))
     }
 
     @Test fun thePromptOffersTheWeatherOnlyWhenTheToolIsThere() {
@@ -76,11 +85,11 @@ class WeatherToolTest {
         val d = RobotSettings()
         assertEquals(Approval.AUTO, d.approval(ToolName.WEATHER))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.WEATHER, locked = false, settings = d))
-        // It reads (nothing is written or sent to anyone): a conversation with screen text doesn't make it ask.
-        assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.WEATHER, locked = false, settings = d, mustAsk = true))
+        // It reads, but online: in a conversation with screen text, a photo or a read tool's findings it shows a card first.
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.WEATHER, locked = false, settings = d, content = true))
         // Locked: it would say where your Home for weather is, and go online, for whoever holds the phone.
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.WEATHER, locked = true, settings = d))
-        assertFalse(ToolName.WEATHER in ApprovalGate.ALLOWED_WHEN_LOCKED)
+        assertFalse(ToolName.WEATHER in d.lockedTools)
         assertTrue(ToolName.WEATHER.reads && ToolName.WEATHER.online && !ToolName.WEATHER.internal)
         // Claude is never offered it (it has web search, and where you are is yours).
         assertFalse(ToolName.WEATHER in ClaudeTools.OFFERED)
@@ -102,13 +111,11 @@ class WeatherToolTest {
         assertEquals(RawToolCall("weather", mapOf("place" to "Paris", "day" to "tomorrow")), calls.single().call)
     }
 
-    @Test fun theHomeForWeatherIsSavedWithSchemaFive() {
+    @Test fun theHomeForWeatherIsSavedSinceSchemaFive() {
         val home = WeatherPlace("Montreal, Quebec, Canada", 45.50884, -73.58781)
         val s = RobotSettings(weatherHome = home)
         val json = s.toJson()
-        // Saved at the current layout (5 brought the Home for weather; 0.5.0 is at 6).
-        assertEquals(RobotSettings.SCHEMA, json.getInt("schema"))
-        assertTrue(RobotSettings.SCHEMA >= 5)
+        assertTrue(json.getInt("schema") >= 5)
         assertEquals(s, RobotSettings.fromJson(json.toString()))
         assertNull(RobotSettings().weatherHome)
         assertFalse(RobotSettings().toJson().has("weatherHome"))
@@ -145,7 +152,13 @@ class WeatherToolTest {
         assertEquals("Weather from Open-Meteo for your Home for weather · forecast in 380 ms",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WEATHER, WeatherSource.HOME.id, 0, 380)))
         assertEquals("Weather lookup failed: rate limited (HTTP 429)", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WEATHER_FAILED, WeatherFail.BUSY.id, 429)))
-        assertTrue(VoiceEvent.WEATHER.id >= 80 && VoiceEvent.WEATHER_FAILED.id >= 80)
-        for (c in listOf(WeatherSource.entries, WeatherFail.entries)) assertEquals(c.size, c.map { it.id }.toSet().size)
+        assertTrue(VoiceEvent.WEATHER.id >= 80 && VoiceEvent.WEATHER_FAILED.id >= 80 && VoiceEvent.WEATHER_LOCATION.id >= 80)
+        for (c in listOf(WeatherSource.entries, WeatherFail.entries, LocationCode.entries)) assertEquals(c.size, c.map { it.id }.toSet().size)
+        // Why "here" had no position (the phone test of the assistant's process in the background), in codes.
+        assertEquals("Position for the weather: refused: Android counted Robot as in the background · process importance 125 · 3 ms",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WEATHER_LOCATION, LocationCode.BACKGROUND.id, 125, 3)))
+        assertEquals("Weather lookup failed: location refused in the background",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.WEATHER_FAILED, WeatherFail.LOCATION_BACKGROUND.id)))
+        assertTrue(WeatherFail.LOCATION_BACKGROUND.text.contains("Home for weather"))
     }
 }

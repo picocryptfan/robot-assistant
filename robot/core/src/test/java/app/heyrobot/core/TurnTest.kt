@@ -162,7 +162,7 @@ class TurnTest {
         val settings = RobotSettings().let { it.copy(approvals = it.approvals + (ToolName.OPEN_APP to Approval.AUTO)) }
         val model = FakeModel(ModelOutcome.Calls(listOf(call("open_app", "name" to "Warden"))))
         val actions = FakeActions(settings)
-        actions.prepare = { Prepared.Ready(Action.OpenApp("Bitwarden", "com.x8bit.bitwarden/.Main"), mustAsk = true) }
+        actions.prepare = { Prepared.Ready(Action.OpenApp("Bitwarden", "com.x8bit.bitwarden/.Main"), why = setOf(AskWhy.WHO)) }
         val view = FakeView()
         val conf = Confirmations()
         val turn = async { runner(model, actions, view, conf).run() }
@@ -378,6 +378,7 @@ class TurnTest {
         assertEquals("No contact matches “Bob”. Choose who to text in Cheogram", card.summary)
         assertEquals("See you at 8", card.body)
         assertTrue(actions.ran.isEmpty())
+        assertFalse(card.allowContacts)
         assertTrue(conf.answer(id, true))
         // Cheogram opens (the panel leaves, as for any hand-off); a draft, told as not sent.
         assertEquals(TurnResult(DoneReason.END, launchedApp = true), turn.await())
@@ -393,6 +394,17 @@ class TurnTest {
         cancelled.await()
         assertTrue(cancelActions.ran.isEmpty())
         assertEquals(listOf(ActionStatus.DECLINED), cancelView.statuses())
+        // Without the contacts permission the card also offers to allow them.
+        val allowActions = FakeActions(auto).apply {
+            prepare = { a -> Recipients.notFound(a as Action.SendText, "x", TextVia.CHEOGRAM, pick = true, allowContacts = true) }
+        }
+        val allowView = FakeView()
+        val allowConf = Confirmations()
+        val allowTurn = async { runner(model(), allowActions, allowView, allowConf).run() }
+        val allowId = withTimeout(5_000) { allowView.pending.receive() }
+        assertTrue(allowView.cards[allowId]!!.allowContacts)
+        allowConf.answer(allowId, false)
+        assertEquals(listOf(ActionStatus.DECLINED), allowTurn.await().let { allowView.statuses() })
     }
 
     @Test fun aDraftOpenedIsToldAsNotSent() {
@@ -657,5 +669,144 @@ class TurnTest {
         TurnRunner(FakeModel(ModelOutcome.Calls(listOf(call("ask_claude", "question" to "x")))), actions, v2, Confirmations(), untrusted = false) { "l${++ids}" }.runHandOff()
         assertEquals(listOf(ActionStatus.NEEDS_UNLOCK), v2.statuses())
     }
-}
 
+    /** "Safety cards: When you didn't ask for it" (the default): content no longer stops what your own words asked for. */
+    @Test fun whatYouAskedForRunsInAConversationWithContent() = runBlocking {
+        val actions = FakeActions()
+        val view = FakeView()
+        TurnRunner(FakeModel(ModelOutcome.Calls(listOf(timer))), actions, view, Confirmations(), untrusted = true, asked = setOf(ToolName.SET_TIMER)) { "s${++ids}" }.run()
+        assertEquals(listOf<Action>(Action.SetTimer(300)), actions.ran)
+        assertEquals(listOf(ActionStatus.DONE), view.statuses())
+        // The same timer, not asked for (the page said so): a card first.
+        val v2 = FakeView()
+        val conf = Confirmations()
+        val turn = async { TurnRunner(FakeModel(ModelOutcome.Calls(listOf(timer))), FakeActions(), v2, conf, untrusted = true, asked = setOf(ToolName.SEND_TEXT)) { "t${++ids}" }.run() }
+        val id = withTimeout(5_000) { v2.pending.receive() }
+        conf.answer(id, false)
+        turn.await()
+        assertEquals(listOf(ActionStatus.DECLINED), v2.statuses())
+        // "Always after Robot reads something": the card, asked for or not.
+        val after = FakeActions(RobotSettings(safetyCards = SafetyCards.AFTER_READING))
+        val v3 = FakeView()
+        val c3 = Confirmations()
+        val t3 = async { TurnRunner(FakeModel(ModelOutcome.Calls(listOf(timer))), after, v3, c3, untrusted = true, asked = setOf(ToolName.SET_TIMER)) { "u${++ids}" }.run() }
+        c3.answer(withTimeout(5_000) { v3.pending.receive() }, true)
+        t3.await()
+        assertEquals(listOf<Action>(Action.SetTimer(300)), after.ran)
+    }
+
+    /** "Card when who-to isn't certain" off: several people fit, and the first (the best match) is taken without a card. */
+    @Test fun withoutTheWhoCardTheBestChoiceIsTaken() = runBlocking {
+        val settings = RobotSettings(whoCards = false).let { it.copy(approvals = it.approvals + (ToolName.SEND_TEXT to Approval.AUTO)) }
+        val asked = Action.SendText("Alex", "hi")
+        val first = asked.copy(to = "Alex A")
+        val second = asked.copy(to = "Alex B")
+        val actions = FakeActions(settings)
+        actions.prepare = { Prepared.Ready(asked, why = setOf(AskWhy.WHO), choices = listOf(Choice("Alex A", first), Choice("Alex B", second))) }
+        val view = FakeView()
+        runner(FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "Alex", "message" to "hi")))), actions, view).run()
+        assertEquals(listOf<Action>(first), actions.ran)
+        assertFalse(view.phases.contains(TurnPhase.CONFIRMING))
+        // With it on (the default), the card lists them.
+        val on = FakeActions(settings.copy(whoCards = true))
+        on.prepare = actions.prepare
+        val v2 = FakeView()
+        val conf = Confirmations()
+        val turn = async { runner(FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "Alex", "message" to "hi")))), on, v2, conf).run() }
+        val id = withTimeout(5_000) { v2.pending.receive() }
+        assertEquals(listOf("Alex A", "Alex B"), v2.cards[id]!!.choices.map { it.label })
+        conf.choose(id, 1)
+        turn.await()
+        assertEquals(listOf<Action>(second), on.ran)
+    }
+
+    /**
+     * Claude's "nearest pharmacy" says where you are once it is found: with "Card when Claude asks Robot to do something"
+     * off, it still waits for a tap unless "Send personal content to helpers automatically" is on.
+     */
+    @Test fun claudesNearestPlaceAsksLikeARead() = runBlocking {
+        val settings = RobotSettings(claudeActionCards = false)
+        val actions = FakeActions(settings)
+        actions.prepare = { a -> Prepared.Ready(if (a is Action.MapsNavigate) a.copy(nearest = true) else a) }
+        val view = FakeView()
+        val conf = Confirmations()
+        val go = call("maps_navigate", "destination" to "pharmacy")
+        val turn = async {
+            TurnRunner(FakeModel(ModelOutcome.Calls(listOf(go))), actions, view, conf, untrusted = true, remote = true, asked = setOf(ToolName.MAPS_NAVIGATE)) { "n${++ids}" }.run()
+        }
+        conf.answer(withTimeout(5_000) { view.pending.receive() }, false)
+        turn.await()
+        assertEquals(emptyList<Action>(), actions.ran)
+        // Personal content may go by itself: no tap.
+        val free = FakeActions(settings.copy(personalToHelpers = true))
+        free.prepare = actions.prepare
+        TurnRunner(FakeModel(ModelOutcome.Calls(listOf(go))), free, FakeView(), Confirmations(), untrusted = true, remote = true,
+            asked = setOf(ToolName.MAPS_NAVIGATE)) { "o${++ids}" }.run()
+        assertEquals(listOf<Action>(Action.MapsNavigate("pharmacy", nearest = true)), free.ran)
+    }
+
+    /** A name learned from Cheogram, or not being sure who: its card is answered by a tap only (no spoken or typed yes). */
+    @Test fun aLearnedOrUnsureNamesCardIsTapOnly() = runBlocking {
+        for ((why, tapFor) in listOf(setOf(AskWhy.LEARNED) to AskWhy.LEARNED, setOf(AskWhy.LEARNED, AskWhy.WHO) to AskWhy.LEARNED,
+                setOf(AskWhy.WHO) to AskWhy.WHO, emptySet<AskWhy>() to null)) {
+            val actions = FakeActions()
+            val text = Action.SendText("Mom", "hi")
+            actions.prepare = { Prepared.Ready(text, why = why, choices = listOf(Choice("Mom · xmpp", text))) }
+            val view = FakeView()
+            val conf = Confirmations()
+            val turn = async { runner(FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "Mom", "message" to "hi")))), actions, view, conf).run() }
+            val id = withTimeout(5_000) { view.pending.receive() }
+            assertEquals("$why", tapFor, view.cards[id]!!.tapFor)
+            conf.answer(id, false)
+            turn.await()
+        }
+    }
+
+    /**
+     * The nearest place's first-use card ("Find the nearest place online: Ask the first time"): it shows even under "Just
+     * do it", and Allow always, Just this time and No (with or without "Don't ask again") each run what they say.
+     */
+    @Test fun theNearestPlacesFirstUseCard() = runBlocking {
+        val go = call("maps_navigate", "destination" to "the nearest pharmacy")
+        for ((pick, remember, want) in listOf(
+            Triple(0, false, Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ALWAYS)),
+            Triple(1, false, Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ONCE)),
+            Triple(1, true, Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ALWAYS)),
+            Triple(2, false, Action.MapsNavigate("pharmacy", nearest = false, consent = NearestConsent.NO)),
+            Triple(2, true, Action.MapsNavigate("pharmacy", nearest = false, consent = NearestConsent.NEVER)),
+        )) {
+            val actions = FakeActions()
+            actions.prepare = { a -> Nearby.prepare(a, "pharmacy", wanted = true, mode = NearestOnline.ASK) }
+            val view = FakeView()
+            val conf = Confirmations()
+            val turn = async { runner(FakeModel(ModelOutcome.Calls(listOf(go))), actions, view, conf).run() }
+            val id = withTimeout(5_000) { view.pending.receive() }
+            val card = view.cards[id]!!
+            assertEquals("Don't ask again", card.remember)
+            assertEquals(3, card.choices.size)
+            // A tap only: a spoken yes says to tap.
+            assertEquals(AskWhy.ONLINE, card.tapFor)
+            conf.choose(id, pick, remember)
+            turn.await()
+            assertEquals("$pick $remember", listOf<Action>(want), actions.ran)
+        }
+    }
+
+    /** A phone locked while the card waited: only what "Works on the lock screen" allows still runs. */
+    @Test fun theLockScreenSettingHoldsAfterTheCard() = runBlocking {
+        val actions = FakeActions(RobotSettings(lockedTools = setOf(ToolName.MAPS_SEARCH)).let { it.copy(approvals = it.approvals + (ToolName.MAPS_SEARCH to Approval.ASK)) })
+        val view = FakeView()
+        val conf = Confirmations()
+        val turn = async { runner(FakeModel(ModelOutcome.Calls(listOf(call("maps_search", "query" to "pharmacy")))), actions, view, conf).run() }
+        val id = withTimeout(5_000) { view.pending.receive() }
+        actions.lockedNow = true
+        conf.answer(id, true)
+        turn.await()
+        assertEquals(listOf<Action>(Action.MapsSearch("pharmacy")), actions.ran)
+        // Timers aren't in that set any more.
+        val v2 = FakeView()
+        actions.lockedNow = true
+        runner(FakeModel(ModelOutcome.Calls(listOf(timer))), actions, v2).run()
+        assertEquals(listOf(ActionStatus.NEEDS_UNLOCK), v2.statuses())
+    }
+}

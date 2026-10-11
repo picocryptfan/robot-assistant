@@ -50,7 +50,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import app.heyrobot.BuildConfig
 import app.heyrobot.core.Approval
-import app.heyrobot.core.ApprovalGate
 import app.heyrobot.core.BenchState
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.CalendarPick
@@ -62,6 +61,9 @@ import app.heyrobot.core.ClaudeSettings
 import app.heyrobot.core.ClaudeVoices
 import app.heyrobot.core.Escalation
 import app.heyrobot.core.EmailApp
+import app.heyrobot.core.LockScreen
+import app.heyrobot.core.Nearby
+import app.heyrobot.core.NearestOnline
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
@@ -393,7 +395,9 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
         for (e in Escalation.entries) {
             ChoiceRow(e.title, e.detail + if (e == Escalation.AUTO && !keySaved) " Needs an API key: until then Robot asks first." else "", help == e) { update(s.copy(claudeHelp = e)) }
         }
-        Text("By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
+        Text(if (s.personalToHelpers) "By itself, Robot sends your question and the last two turns of the conversation, with any screen text, " +
+            "photo or what it read (Safety & privacy › Send personal content to helpers automatically is on)."
+            else "By itself, Robot sends only your question and the last two turns of plain conversation. Once a conversation has screen text, " +
             "a photo, or what Robot read from your contacts, calendar or notes, the weather (where you are) or your phone's status, it sends " +
             "only your question; anything more goes only after you tap a card that lists it.", style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("Daily budget", style = MaterialTheme.typography.titleSmall)
@@ -453,7 +457,7 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
                 s.wakeWord) { update(s.copy(wakeWord = it)) }
             SwitchRow("Only while charging", "Saves battery.", s.wakeOnlyWhileCharging, enabled = s.wakeWord) { update(s.copy(wakeOnlyWhileCharging = it)) }
         }
-        SectionCard("Spoken replies") {
+        SectionCard("Replies") {
             Text("Speak replies", style = MaterialTheme.typography.titleSmall)
             SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                 SpeakReplies.entries.forEachIndexed { i, v ->
@@ -467,15 +471,24 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
                 "Tap the conversation, press volume down, or say “stop” (when the wake word is on), to stop Robot talking.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        SectionCard("Safety & privacy") {
+            NavRow(RIcons.Lock, "Safety & privacy", "When Robot asks first (${s.safetyCards.title.replaceFirstChar { it.lowercase() }}), the lock screen, " +
+                "what Claude may get, direct answers (${if (s.directAnswers) "on" else "off"}), screenshots in history") { a.openPage(Page.Safety) }
+        }
         VoiceSettingsCard(s, snap, update, a)
         SectionCard("Actions") {
-            Text("What Robot may do when you ask. On the lock screen only timers and alarms work; everything else asks you to unlock. " +
-                "After Robot read a note, an event, a contact, the weather or your phone's status in a conversation, everything in it that " +
-                "writes or leaves the phone asks first (reading more doesn't).",
+            Text("What Robot may do when you ask. On the lock screen: ${LockScreen.allowed(s.lockedTools)}; everything else asks you to unlock. " +
+                "When “Just do it” still shows a card (after Robot read something, a name it isn't sure of, Claude's requests) is in " +
+                "Safety & privacy.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             // Ask Claude's own settings decide about ask_claude (it has no level of its own).
-            for (t in ToolName.entries.filter { !it.internal }) ApprovalRow(t, s.approval(t)) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
-            Text("Anything Claude asks Robot to do always shows a card first.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            for (t in ToolName.entries.filter { !it.internal }) {
+                ApprovalRow(t, s.approval(t), t in s.lockedTools) { lvl -> update(s.copy(approvals = s.approvals + (t to lvl))) }
+                // Part of the maps actions (0.4.0): "the nearest …" found online, asked the first time by default.
+                if (t == ToolName.MAPS_NAVIGATE) NearestOnlineChoice(s, snap, update)
+            }
+            Text(if (s.claudeActionCards) "Anything Claude asks Robot to do shows a card first." else "Claude's requests follow the levels above and Safety cards.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         PeopleSettingsCard(s, snap, calendars, update, a)
         WeatherSettingsCard(s, snap, update, a)
@@ -491,7 +504,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
             }
         }
         SectionCard("History") {
-            SwitchRow("Save conversations", "Kept in Robot's private storage on this phone. Photos and screen contents are never saved.", s.saveHistory) { update(s.copy(saveHistory = it)) }
+            SwitchRow("Save conversations", "Kept in Robot's private storage on this phone. " + if (s.keepMedia) "Thumbnails and screen text are kept too (Safety & privacy)."
+                else "Photos and screen contents aren't saved (Safety & privacy).", s.saveHistory) { update(s.copy(saveHistory = it)) }
             TextButton(onClick = { confirmHistory = true }) { Text("Delete all conversations") }
         }
         SectionCard("Assistant") {
@@ -534,15 +548,36 @@ internal fun SwitchRow(title: String, detail: String?, checked: Boolean, enabled
     }
 }
 
+/**
+ * Settings › Actions › "Find the nearest place online" (0.4.0): Ask the first time (the default), Always, Never. The
+ * panel's answer to its card ("Allow always", "Don't ask again") shows here when it is newer (core Nearby.mode).
+ */
+@Composable
+private fun NearestOnlineChoice(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit) {
+    val now = Nearby.mode(s, snap.nearestAnswer)
+    val maps = s.approval(ToolName.MAPS_NAVIGATE) != Approval.OFF || s.approval(ToolName.MAPS_SEARCH) != Approval.OFF
+    Column(Modifier.fillMaxWidth().padding(start = 36.dp, top = 4.dp, bottom = 4.dp)) {
+        Text("Find the nearest place online", style = MaterialTheme.typography.titleSmall)
+        Text("“Directions to the nearest pharmacy”: what would go is the words and your area (about 1 km), to OpenStreetMap's " +
+            "Nominatim." + if (maps) "" else " Maps search and directions are Off.",
+            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        for (m in NearestOnline.entries) {
+            ChoiceRow(m.title + if (m == NearestOnline.ASK) " (default)" else "", m.detail, now == m) {
+                update(s.copy(nearestOnline = m, nearestOnlineAt = System.currentTimeMillis()))
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ApprovalRow(t: ToolName, level: Approval, onChange: (Approval) -> Unit) {
+private fun ApprovalRow(t: ToolName, level: Approval, worksLocked: Boolean, onChange: (Approval) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(toolIcon(t), null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(12.dp))
             Text(t.title, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            if (t in ApprovalGate.ALLOWED_WHEN_LOCKED) Text("works locked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (worksLocked) Text("works locked", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (t.online) Text("uses the internet", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(top = 6.dp)) {
@@ -571,12 +606,18 @@ private fun PeopleSetupCard(f: AssistantFacts, a: AppActions) {
             if (f.cheogramInstalled) "Installed: texts open there as drafts." else "Not installed: texts use the SMS app (Settings › People, notes and calendar).")
         StatusRow(if (f.protonInstalled) Mark.OK else Mark.TODO, "Proton Mail",
             if (f.protonInstalled) "Installed: emails open there as drafts." else "Not installed: Android asks which email app to use.")
-        // 0.4.0: optional, for "Learn names from Cheogram notifications" (Settings › People).
-        StatusRow(if (f.notificationAccess) Mark.OK else Mark.TODO, "Cheogram notifications (optional)",
-            if (f.notificationAccess) "Notification access allowed. With “Learn names from Cheogram notifications” on (Settings › People), Robot keeps " +
-                "who messages you in Cheogram, never the text."
-            else "For “Learn names from Cheogram notifications” in Settings › People. Robot installed from a file needs one more step first:")
-        if (!f.notificationAccess) NotificationAccessSteps()
+        // 0.4.0: notification access is asked for only once "Learn names from Cheogram notifications" is on (Settings › People).
+        when {
+            f.learnFromCheogram && f.notificationAccess -> StatusRow(Mark.OK, "Cheogram notifications",
+                "Notification access allowed: Robot keeps who messages you in Cheogram, never the text.")
+            f.learnFromCheogram -> {
+                StatusRow(Mark.TODO, "Cheogram notifications", "“Learn names from Cheogram notifications” is on (Settings › People) and needs " +
+                    "notification access. Robot installed from a file needs one more step first:")
+                NotificationAccessSteps()
+            }
+            else -> Text("Optional: Settings › People can learn names from Cheogram notifications. It is off, and needs no access while it is off.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         if (!f.contactsGranted || !f.calendarGranted) {
             TextButton(onClick = a.openAppSettings) { Text("Android doesn't ask? Open Robot's app settings") }
         }

@@ -17,7 +17,10 @@ import app.heyrobot.core.RLog
 
 class MediaDeleteActivity : ComponentActivity() {
     private val confirm = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
-        RLog.i("media_delete", "deleted" to (r.resultCode == RESULT_OK))
+        val deleted = r.resultCode == RESULT_OK
+        RLog.i("media_delete", "deleted" to deleted)
+        // The card that waited for this answer now says what happened.
+        PanelController.mediaDeleteAnswered(deleted)
         finish()
     }
 

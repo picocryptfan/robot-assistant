@@ -15,6 +15,10 @@ class WeatherTest {
     private fun sample(name: String) = javaClass.classLoader!!.getResourceAsStream("weather/$name")!!.readBytes().toString(Charsets.UTF_8)
 
     private val montreal = ZoneId.of("America/Toronto")
+
+    /** The tool's way: the day read once in your zone, then mapped to the place's forecast. */
+    private fun report(f: Forecast, day: String?, at: ZonedDateTime, units: WeatherUnits, maxDays: Int = WeatherAsk.MAX_SHOWN): WeatherReport? =
+        WeatherText.report(f, (WeatherAsk.days(day, at) as Read.Ok).value, WeatherAsk.relative(day), at, units, maxDays)
     /** Saturday 10 October 2026, 19:50 in Montreal (the sample's "current" time). */
     private val now = ZonedDateTime.of(2026, 10, 10, 19, 50, 0, 0, montreal)
 
@@ -33,14 +37,15 @@ class WeatherTest {
         // Rounded, not cut, and always with a dot.
         assertEquals("45.51", OpenMeteo.coord(45.5061))
         assertEquals("-0.01", OpenMeteo.coord(-0.0051))
-        // Only the town's name is searched; what follows a comma is matched against the results.
-        assertEquals("https://geocoding-api.open-meteo.com/v1/search?name=Saint-Jean-sur-Richelieu&count=10&language=en&format=json",
-            OpenMeteo.geocodeUrl("Saint-Jean-sur-Richelieu, Quebec"))
-        assertEquals("https://geocoding-api.open-meteo.com/v1/search?name=Montr%C3%A9al%20Nord&count=10&language=en&format=json", OpenMeteo.geocodeUrl(" Montréal Nord "))
+        // Only the town's name is searched (the region is matched against the results, among more of them).
+        assertEquals("https://geocoding-api.open-meteo.com/v1/search?name=Saint-Jean-sur-Richelieu&count=30&language=en&format=json",
+            OpenMeteo.geocodeUrl(OpenMeteo.searches("Saint-Jean-sur-Richelieu, Quebec").first()))
+        assertEquals("https://geocoding-api.open-meteo.com/v1/search?name=Montr%C3%A9al%20Nord&count=10&language=en&format=json",
+            OpenMeteo.geocodeUrl(OpenMeteo.searches(" Montréal Nord ").first()))
     }
 
     @Test fun unitsFollowThePhoneRegion() {
-        for (r in listOf("US", "us", "LR", "MM")) assertEquals(r, WeatherUnits.IMPERIAL, WeatherUnits.of(r))
+        for (r in listOf("US", "us", "LR", "MM", "PR", "GU", "VI", "AS", "MP", "BS", "BZ", "KY", "PW", "FM", "MH")) assertEquals(r, WeatherUnits.IMPERIAL, WeatherUnits.of(r))
         for (r in listOf("CA", "FR", "GB", "", null)) assertEquals(r.toString(), WeatherUnits.METRIC, WeatherUnits.of(r))
     }
 
@@ -77,32 +82,40 @@ class WeatherTest {
 
     @Test fun tomorrowInMontrealIsOneSpeakableLine() {
         val f = OpenMeteo.forecast(sample("forecast_montreal.json"))!!
-        val r = WeatherText.report(f, "tomorrow", now, WeatherUnits.METRIC)!!
+        val r = report(f, "tomorrow", now, WeatherUnits.METRIC)!!
         assertEquals(1, r.results.size)
         assertEquals("tomorrow, Sun Oct 11", r.results[0]["day"])
         assertEquals("overcast, high 18°C, low 6°C, 5% chance of rain, wind up to 11 km/h (gusts 25), cloud cover 100%", r.results[0]["weather"])
         // Today carries the conditions now; Monday its rain.
-        val today = WeatherText.report(f, null, now, WeatherUnits.METRIC)!!
+        val today = report(f, null, now, WeatherUnits.METRIC)!!
         assertEquals("now 8°C and clear; overcast, high 13°C, low 3°C, 0% chance of rain, wind up to 10 km/h (gusts 17), cloud cover 8%",
             today.results.single()["weather"])
-        val monday = WeatherText.report(f, "Monday", now, WeatherUnits.METRIC)!!
+        val monday = report(f, "Monday", now, WeatherUnits.METRIC)!!
         assertEquals("Mon Oct 12: drizzle, high 16°C, low 8°C, 67% chance of rain (about 1.3 mm), wind up to 21 km/h (gusts 39), cloud cover 98%", monday.lines)
         // Every day it has, at most a week: this week is today to Sunday.
-        val week = WeatherText.report(f, "this week", now, WeatherUnits.METRIC)!!
-        assertEquals(listOf("today, Sat Oct 10", "tomorrow, Sun Oct 11"), week.results.map { it["day"] })
+        val week = report(f, "this week", now, WeatherUnits.METRIC)!!
+        assertEquals(listOf("today, Sat Oct 10", "tomorrow, Sun Oct 11"), week.lines.lines().map { it.substringBefore(":") })
+        // Several days reach the model in few tokens, the units said once; the card keeps the whole lines.
+        assertEquals("conditions, high/low °C, chance of rain or snow, wind km/h, cloud cover", week.results.single()["units"])
+        assertEquals("today, Sat Oct 10: now 8 clear; overcast 13/3 0% wind 10 cloud 8%\ntomorrow, Sun Oct 11: overcast 18/6 5% wind 11 cloud 100%",
+            week.results.single()["days"])
         assertEquals(week.lines.replace("\n", ". "), week.spoken)
         // A day the answer doesn't hold.
-        assertNull(WeatherText.report(f, "Friday", now, WeatherUnits.METRIC))
+        assertNull(report(f, "Friday", now, WeatherUnits.METRIC))
     }
 
     @Test fun anImperialForecastSpeaksFahrenheitMilesAndInches() {
         val f = OpenMeteo.forecast(sample("forecast_newyork_imperial.json"))!!
         val ny = ZonedDateTime.of(2026, 10, 10, 20, 5, 0, 0, ZoneId.of("America/New_York"))
-        val r = WeatherText.report(f, "tomorrow", ny, WeatherUnits.IMPERIAL)!!
+        val r = report(f, "tomorrow", ny, WeatherUnits.IMPERIAL)!!
         assertEquals("rain, high 65°F, low 55°F, 92% chance of rain (about 0.49 in), wind up to 14 mph (gusts 32), cloud cover 100%", r.results.single()["weather"])
         // Next week from a Saturday is Monday to Sunday: the sample holds Monday to Friday.
-        val next = WeatherText.report(f, "next week", ny, WeatherUnits.IMPERIAL)!!
-        assertEquals(listOf("Mon Oct 12", "Tue Oct 13", "Wed Oct 14", "Thu Oct 15", "Fri Oct 16"), next.results.map { it["day"] })
+        val next = report(f, "next week", ny, WeatherUnits.IMPERIAL)!!
+        assertEquals(listOf("Mon Oct 12", "Tue Oct 13", "Wed Oct 14", "Thu Oct 15", "Fri Oct 16"), next.lines.lines().map { it.substringBefore(":") })
+        // About 30 tokens a day for the model (estimated on the high side: every digit counts).
+        val perDay = (WeatherText.tokens(next.results) - TokenEstimate.text(WeatherText.unitsLine(WeatherUnits.IMPERIAL))) / 5
+        assertTrue("per day $perDay", perDay <= 37)
+        assertTrue((next.results.single()["days"] as String).startsWith("Mon Oct 12: light rain 73/58 56% wind 13 cloud 43%"))
         assertTrue(next.lines.contains("Wed Oct 14: drizzle, high 78°F, low 61°F, 13% chance of rain (about 0.03 in)"))
     }
 
@@ -110,10 +123,39 @@ class WeatherTest {
         val f = OpenMeteo.forecast(sample("forecast_montreal.json"))!!
         // 01:30 on Sunday in Paris is still Saturday evening in Montreal: "today" is Montreal's Saturday.
         val paris = ZonedDateTime.of(2026, 10, 11, 1, 30, 0, 0, ZoneId.of("Europe/Paris"))
-        assertEquals("today, Sat Oct 10", WeatherText.report(f, "today", paris, WeatherUnits.METRIC)!!.results.single()["day"])
+        assertEquals("today, Sat Oct 10", report(f, "today", paris, WeatherUnits.METRIC)!!.results.single()["day"])
         // A day more is fetched for that.
         val range = (WeatherAsk.days("tomorrow", now) as Read.Ok).value
         assertEquals(3, WeatherAsk.fetchDays(range, now))
+        // Thursday 23:00 in Toronto, "Friday" in Tokyo: Tokyo is already on Friday, and Friday it is (not next week's).
+        val toronto = ZonedDateTime.of(2026, 10, 15, 23, 0, 0, 0, montreal)
+        val tokyo = Forecast(ZoneId.of("Asia/Tokyo"), WeatherNow(18.0, 1), (16..22).map { d ->
+            WeatherDay(LocalDate.of(2026, 10, d), 1, 20.0, 12.0, 10, 0.0, 0.0, 0.0, 0.0, 10.0, 15.0, 20)
+        })
+        assertEquals("today, Fri Oct 16", report(tokyo, "Friday", toronto, WeatherUnits.METRIC)!!.results.first()["day"])
+        // Tomorrow there is Tokyo's tomorrow.
+        assertEquals("tomorrow, Sat Oct 17", report(tokyo, "tomorrow", toronto, WeatherUnits.METRIC)!!.results.first()["day"])
+        assertTrue(WeatherAsk.relative("tomorrow") && WeatherAsk.relative("next 3 days") && WeatherAsk.relative(null))
+        assertFalse(WeatherAsk.relative("Friday") || WeatherAsk.relative("2026-10-12") || WeatherAsk.relative("October 14") || WeatherAsk.relative("next week"))
+    }
+
+    @Test fun moreDaysThanGivenAreSaid() {
+        val f = OpenMeteo.forecast(sample("forecast_newyork_imperial.json"))!!
+        val ny = ZonedDateTime.of(2026, 10, 10, 20, 5, 0, 0, ZoneId.of("America/New_York"))
+        val r = report(f, "next week", ny, WeatherUnits.IMPERIAL, maxDays = 3)!!
+        assertEquals(3, (r.results.first()["days"] as String).lines().size)
+        assertEquals("Only the first 3 of the 5 days asked are given.", r.results.last()["note"])
+        assertEquals(3, r.lines.lines().size)
+        // A full context gets fewer days, at least one, and the note.
+        val range = (WeatherAsk.days("next week", ny) as Read.Ok).value
+        val all = WeatherText.reportFitting(f, range, false, ny, WeatherUnits.IMPERIAL, roomTokens = 10_000)!!
+        assertEquals(5, all.lines.lines().size)
+        val tight = WeatherText.reportFitting(f, range, false, ny, WeatherUnits.IMPERIAL, roomTokens = 120)!!
+        assertTrue(WeatherText.tokens(tight.results) <= 120)
+        assertTrue(tight.lines.lines().size in 1..3)
+        assertTrue((tight.results.last()["note"] as String).startsWith("Only the first"))
+        val none = WeatherText.reportFitting(f, range, false, ny, WeatherUnits.IMPERIAL, roomTokens = 0)!!
+        assertEquals(1, none.lines.lines().size)
     }
 
     @Test fun snowAndMixedDaysSayWhatFalls() {
@@ -149,11 +191,59 @@ class WeatherTest {
         assertEquals(sat.plusDays(2) to 1L, days("après-demain"))
         assertEquals(sat.plusDays(2) to 7L, days("la semaine prochaine"))
         assertEquals(sat.plusDays(6) to 1L, days("vendredi"))
+        // ISO dates, "tonight" after midnight (the coming night), more French, and numbers that are days, never a time.
+        assertEquals(sat.plusDays(2) to 1L, days("2026-10-12"))
+        val late = ZonedDateTime.of(2026, 10, 11, 1, 30, 0, 0, montreal)
+        assertEquals(sat.plusDays(1) to 1L, (WeatherAsk.days("tonight", late) as Read.Ok).value.let { it.from.toLocalDate() to it.days })
+        assertEquals(sat.plusDays(1) to 1L, (WeatherAsk.days("cette nuit", late) as Read.Ok).value.let { it.from.toLocalDate() to it.days })
+        assertEquals(sat.plusDays(1) to 1L, days("demain matin"))
+        assertEquals(sat.plusDays(1) to 1L, days("demain soir"))
+        assertEquals(sat.plusDays(6) to 1L, days("vendredi prochain"))
+        assertEquals(sat to 3L, days("les prochains jours"))
+        assertEquals(sat to 4L, days("les 4 prochains jours"))
+        assertEquals(sat to 2L, days("samedi et dimanche"))
+        assertEquals(sat to 2L, days("today and tomorrow"))
+        assertEquals(sat to 2L, days("aujourd'hui et demain"))
+        assertEquals(sat to 3L, days("3"))
+        assertEquals(sat to 7L, days("7 days"))
+        assertEquals(sat to 16L, days("40"))
         // Past days and days beyond Open-Meteo's 16 are refused; a range is cut to what it covers.
         assertTrue(WeatherAsk.days("yesterday", now) is Read.Unreadable)
         assertEquals(WeatherFail.NO_DAYS.text, (WeatherAsk.days("November 20", now) as Read.Unreadable).detail)
         assertEquals(sat.plusDays(9) to 7L, days("the week after next"))
         assertEquals(WeatherAsk.SAY_DAY, (WeatherAsk.days("whenever", now) as Read.Unreadable).detail)
+    }
+
+    @Test fun spokenPlacesWithoutACommaAreSearchedAgain() {
+        assertEquals(listOf(GeoSearch("Paris Texas"), GeoSearch("Paris", listOf("Texas"))), OpenMeteo.searches("Paris Texas"))
+        assertEquals(listOf(GeoSearch("Paris", listOf("TX"))), OpenMeteo.searches("Paris, TX"))
+        assertEquals(listOf(GeoSearch("Quebec City"), GeoSearch("Quebec")), OpenMeteo.searches("Quebec City"))
+        assertEquals(listOf(GeoSearch("ville de Québec"), GeoSearch("Québec")), OpenMeteo.searches("ville de Québec"))
+        assertEquals(listOf(GeoSearch("Springfield New Jersey"), GeoSearch("Springfield New", listOf("Jersey")), GeoSearch("Springfield", listOf("New Jersey"))),
+            OpenMeteo.searches("Springfield New Jersey"))
+        // Open-Meteo's answers by name (recorded: it knows no "Paris Texas", "Quebec City" or "Washington DC").
+        val answers = mapOf("Paris" to "geocode_paris.json", "London" to "geocode_london.json", "Washington" to "geocode_washington.json",
+            "Quebec" to "geocode_quebec.json", "Springfield" to "geocode_springfield.json")
+        val asked = mutableListOf<String>()
+        fun resolve(place: String) = OpenMeteo.resolve(place) { s ->
+            asked += s.name
+            answers[s.name]?.let { OpenMeteo.places(sample(it))!! } ?: OpenMeteo.places(sample("geocode_none.json"))!!
+        }
+        fun found(place: String) = (resolve(place) as GeoAnswer.Found).place.display
+        assertEquals("Paris, Texas, United States", found("Paris Texas"))
+        assertEquals("London, Ontario, Canada", found("London Ontario"))
+        assertEquals("Québec, Quebec, Canada", found("Quebec City"))
+        assertEquals("Washington D.C., District of Columbia, United States", found("Washington DC"))
+        assertEquals("Springfield, Oregon, United States", found("Springfield Oregon"))
+        assertEquals("Paris, Île-de-France Region, France", found("Paris"))
+        // Not where it was said to be: refused with your words; unknown: none.
+        val miss = resolve("Paris, Ontario") as GeoAnswer.NotThere
+        assertEquals("Open-Meteo knows places called Paris, but none in Ontario among the biggest. Try the nearest larger town.", miss.detail)
+        assertEquals(GeoAnswer.None, resolve("Xyzzy"))
+        // At most three requests for one place.
+        asked.clear()
+        resolve("Xyzzy Plugh Quux Zork")
+        assertEquals(3, asked.size)
     }
 
     @Test fun thePlaceArgumentSaysWhere() {
@@ -169,22 +259,41 @@ class WeatherTest {
         assertEquals(WeatherWhere.NAMED to "Québec", WeatherAsk.where("à Québec"))
         assertEquals(WeatherWhere.NAMED to "Le Mans", WeatherAsk.where("Le Mans"))
         assertEquals(WeatherWhere.NAMED to "Paris, Texas", WeatherAsk.where("Paris, Texas"))
+        // Home and here, the ways people say them; "here in Montreal" is Montreal.
+        for (p in listOf("at my house", "my house", "at home", "chez nous", "at our house")) assertEquals(p, WeatherWhere.HOME to null, WeatherAsk.where(p))
+        for (p in listOf("outside", "my city", "dehors", "out there")) assertEquals(p, WeatherWhere.HERE to null, WeatherAsk.where(p))
+        assertEquals(WeatherWhere.NAMED to "Montreal", WeatherAsk.where("here in Montreal"))
+        assertEquals(WeatherWhere.NAMED to "Québec", WeatherAsk.where("ici à Québec"))
     }
+
+    private fun pick(name: String, vararg quals: String, file: String) = OpenMeteo.pick(GeoSearch(name, quals.toList()), OpenMeteo.places(sample(file))!!)?.display
 
     @Test fun geocodingPicksTheOneAskedFor() {
         val all = OpenMeteo.places(sample("geocode_paris.json"))!!
         assertEquals(3, all.size)
-        assertEquals("Paris, Île-de-France Region, France", OpenMeteo.pick("Paris", all)!!.display)
-        assertEquals("Paris, Texas, United States", OpenMeteo.pick("Paris, Texas", all)!!.display)
-        assertEquals("Paris, Tennessee, United States", OpenMeteo.pick("Paris, tennessee", all)!!.display)
-        assertEquals("Paris, Île-de-France Region, France", OpenMeteo.pick("Paris, FR", all)!!.display)
-        // An unknown qualifier: the biggest town of that name.
-        assertEquals(48.85341, OpenMeteo.pick("Paris, Ontario", all)!!.lat, 0.0)
-        val p = OpenMeteo.pick("Paris, Texas", all)!!.place()
+        assertEquals("Paris, Île-de-France Region, France", pick("Paris", file = "geocode_paris.json"))
+        assertEquals("Paris, Texas, United States", pick("Paris", "Texas", file = "geocode_paris.json"))
+        assertEquals("Paris, Tennessee, United States", pick("Paris", "tennessee", file = "geocode_paris.json"))
+        assertEquals("Paris, Île-de-France Region, France", pick("Paris", "FR", file = "geocode_paris.json"))
+        // State, province and country abbreviations (all recorded from Open-Meteo, 10 and 11 October 2026).
+        assertEquals("Paris, Texas, United States", pick("Paris", "TX", file = "geocode_paris.json"))
+        assertEquals("Paris, Texas, United States", pick("Paris", "USA", file = "geocode_paris.json"))
+        assertEquals("London, Ontario, Canada", pick("London", "ON", file = "geocode_london.json"))
+        assertEquals("London, Ontario, Canada", pick("London", "Ontario", file = "geocode_london.json"))
+        assertEquals("London, Ontario, Canada", pick("London", "CA", file = "geocode_london.json"))
+        assertEquals("London, England, United Kingdom", pick("London", "UK", file = "geocode_london.json"))
+        assertEquals("Washington D.C., District of Columbia, United States", pick("Washington", "DC", file = "geocode_washington.json"))
+        assertEquals("Springfield, Oregon, United States", pick("Springfield", "Oregon", file = "geocode_springfield.json"))
+        // A town of that very name before one Open-Meteo matched by another name (Jackson, Minnesota comes first).
+        assertEquals("Springfield, Minnesota, United States", pick("Springfield", "MN", file = "geocode_springfield.json"))
+        assertEquals("Québec, Quebec, Canada", pick("Quebec", file = "geocode_quebec.json"))
+        // A region that matches nothing: refused, never the biggest town of that name.
+        assertNull(pick("Paris", "Ontario", file = "geocode_paris.json"))
+        val p = OpenMeteo.pick(GeoSearch("Paris", listOf("Texas")), all)!!.place()
         assertEquals(WeatherPlace("Paris, Texas, United States", 33.66094, -95.55551), p)
         // None found, or no answer at all.
         assertEquals(emptyList<GeoResult>(), OpenMeteo.places(sample("geocode_none.json")))
-        assertNull(OpenMeteo.pick("x", emptyList()))
+        assertNull(OpenMeteo.pick(GeoSearch("x"), emptyList()))
         assertNull(OpenMeteo.places(sample("error_limit.json")))
         assertNull(OpenMeteo.places("nope"))
         // A region named like the town is said once.

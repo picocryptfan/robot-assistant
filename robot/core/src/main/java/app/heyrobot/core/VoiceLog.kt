@@ -149,6 +149,17 @@ enum class VoiceEvent(val id: Int) {
      */
     OWN_ANSWER(121),
     /**
+     * Where a Claude request that ended in "Something went wrong with Claude" broke (0.4.0, after its CLAUDE_FAILED):
+     * a = [ClaudeStage], b = the HTTP status (0: none), c = [ClaudeErrorKind] (from the exception's class; 0: none).
+     */
+    CLAUDE_UNKNOWN(122),
+    /**
+     * Claude's reply had parts Robot reads with care (0.4.0, logged only when a number isn't 0): a = calls whose input
+     * came whole with their block instead of in pieces, b = server tool calls made from Claude's own code (web search's
+     * dynamic filtering), c = blocks or events Robot couldn't use and left out.
+     */
+    CLAUDE_READ(123),
+    /**
      * A weather lookup answered (0.4.0): a = [WeatherSource] (how the place was found), b = ms to find it (geocoding or
      * a location fix; 0 when nothing had to be found), c = ms for the forecast. Never the place.
      */
@@ -159,6 +170,11 @@ enum class VoiceEvent(val id: Int) {
     CHEOGRAM_PICK(61),
     /** A text handed to Cheogram (0.4.0): a = [CheogramRoute], b = 1 if an earlier route didn't open and this one did. */
     CHEOGRAM_HANDOFF(62),
+    /**
+     * The phone's position for the weather "here": a = [LocationCode], b = the assistant process's importance as Android
+     * gave it (100 foreground, 125 foreground service, 200 visible, 300+ background), c = ms spent. Never the position.
+     */
+    WEATHER_LOCATION(82),
     // Conversation mode (0.5.0, docs/conversation-mode.md 8): 100 to 119. Counts and codes only, never a word said.
     /** A conversation session started: a = [ConvMode], b = [ConvEntry], c = 1 if the phone was locked. */
     CONV_START(100),
@@ -263,8 +279,10 @@ object CaptureFx {
 
 /** What came of "Pick in Cheogram" (never who). */
 enum class PickOutcome(override val id: Int, override val title: String) : LogCode {
-    PICKED(1, "someone picked"), CANCELLED(2, "nobody picked"), NO_ADDRESS(3, "Cheogram's answer had no address Robot can use"),
-    NO_LIST(4, "Cheogram's list didn't open"),
+    // A cancel and an answer lost on the way (too large to deliver) both arrive as a cancel with nothing: CANCELLED says either.
+    PICKED(1, "someone picked"), CANCELLED(2, "nobody picked, or Cheogram's answer didn't arrive"),
+    NO_ADDRESS(3, "Cheogram's answer had no address Robot can use"), NO_LIST(4, "Cheogram's list didn't open"),
+    UNREADABLE(5, "Cheogram's answer couldn't be read"),
 }
 
 /** How a text was handed to Cheogram. */
@@ -446,6 +464,19 @@ enum class ExportKind(override val id: Int, override val title: String) : LogCod
     MARKDOWN(1, "Markdown file"), TEXT(2, "text file"), SHARE(3, "shared"), COPY(4, "copied"),
 }
 
+/** Where a Claude request that failed with "Something went wrong" broke (CLAUDE_UNKNOWN). */
+enum class ClaudeStage(override val id: Int, override val title: String) : LogCode {
+    REQUEST(1, "building the request"), HTTP(2, "the API's answer"), OPENING(3, "opening the connection"), SDK(4, "the SDK reading the stream"),
+    ROBOT(5, "Robot reading the reply"), CLOSED(6, "a stream that ended before Claude finished"), WORKER(7, "Robot's request thread stopping"),
+}
+
+/** What kind of error it was (CLAUDE_UNKNOWN), from the exception's class only. */
+enum class ClaudeErrorKind(override val id: Int, override val title: String) : LogCode {
+    INVALID_DATA(1, "data the SDK couldn't read"), API_ERROR(2, "an error from the API"), SDK_OTHER(3, "another SDK error"), JSON(4, "malformed JSON"),
+    IO(5, "the connection"), ILLEGAL_ARGUMENT(6, "an illegal argument"), ILLEGAL_STATE(7, "an illegal state"), NULL(8, "a missing value"),
+    MISSING_CODE(9, "code missing on this phone"), OTHER(10, "another error"),
+}
+
 /** One event: when (wall clock, ms), what, and up to three small numbers. */
 data class VoiceLogEntry(val time: Long, val event: VoiceEvent, val a: Int = 0, val b: Int = 0, val c: Int = 0)
 
@@ -585,6 +616,9 @@ object VoiceLogText {
 
     private fun secs(ms: Int): String = String.format(Locale.US, "%.1f s", ms / 1000.0)
 
+    /** "1 call", "2 calls". */
+    private fun count(n: Int, what: String): String = "$n $what" + if (n == 1) "" else "s"
+
     /**
      * One event in words. [phrase] names a wake phrase by id for display only (the log itself keeps the number);
      * null shows the number alone.
@@ -659,12 +693,18 @@ object VoiceLogText {
             VoiceEvent.BARGE_HIT -> "Barge-in test heard " + keyword(a) + (if (b >= 0) " " + secs(b) + " in" else "") + ": " + code(BargeHitKind.entries, c)
             VoiceEvent.CLAUDE_LEFT_OUT -> "Claude not offered to the model: " + code(ClaudeLeftOut.entries, a)
             VoiceEvent.OWN_ANSWER -> "The model handed over to Claude without a word; asked again, " + (if (a == 1) "it answered itself" else "it still gave no answer")
+            VoiceEvent.CLAUDE_UNKNOWN -> "Claude's error came from " + code(ClaudeStage.entries, a) + (if (b > 0) " · HTTP $b" else "") +
+                (if (c > 0) " · " + code(ClaudeErrorKind.entries, c) else "")
+            VoiceEvent.CLAUDE_READ -> "Claude's reply: " + listOfNotNull(if (a > 0) count(a, "call") + " with input in one piece" else null,
+                if (b > 0) count(b, "server call") + " from Claude's code" else null, if (c > 0) count(c, "part") + " left out" else null)
+                .joinToString(" · ").ifEmpty { "nothing unusual" }
             VoiceEvent.WEATHER -> "Weather from Open-Meteo for " + code(WeatherSource.entries, a) + (if (b > 0) " · place found in $b ms" else "") +
                 " · forecast in $c ms"
             VoiceEvent.WEATHER_FAILED -> "Weather lookup failed: " + code(WeatherFail.entries, a) + (if (b > 0) " (HTTP $b)" else "")
             VoiceEvent.CHEOGRAM_PICK -> "Pick in Cheogram: " + code(PickOutcome.entries, a) + (if (b == 1) " · with its account" else "") +
                 (if (c == 1) " · remembered" else "")
             VoiceEvent.CHEOGRAM_HANDOFF -> "Text handed to Cheogram: " + code(CheogramRoute.entries, a) + (if (b == 1) " (the first way didn't open)" else "")
+            VoiceEvent.WEATHER_LOCATION -> "Position for the weather: " + code(LocationCode.entries, a) + " · process importance $b · $c ms"
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
             VoiceEvent.CONV_START -> "Conversation started: " + code(ConvMode.entries, a) + " (" + code(ConvEntry.entries, b) + ")" +

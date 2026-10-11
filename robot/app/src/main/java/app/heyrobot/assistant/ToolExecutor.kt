@@ -13,9 +13,11 @@ import android.net.Uri
 import android.os.SystemClock
 import android.provider.AlarmClock
 import androidx.core.graphics.drawable.toBitmap
+import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Addresses
+import app.heyrobot.core.AskWhy
 import app.heyrobot.core.AppEntry
 import app.heyrobot.core.AppMatcher
 import app.heyrobot.core.CalendarFormat
@@ -26,6 +28,7 @@ import app.heyrobot.core.ContactIds
 import app.heyrobot.core.Durations
 import app.heyrobot.core.EmailApp
 import app.heyrobot.core.EventPlan
+import app.heyrobot.core.LocationCode
 import app.heyrobot.core.LookupFallback
 import app.heyrobot.core.Events
 import app.heyrobot.core.FreeUp
@@ -34,6 +37,13 @@ import app.heyrobot.core.Choice
 import app.heyrobot.core.Executed
 import app.heyrobot.core.MailTarget
 import app.heyrobot.core.MailTo
+import app.heyrobot.core.Nearby
+import app.heyrobot.core.NearbyFail
+import app.heyrobot.core.NearbyLookup
+import app.heyrobot.core.NearestConsent
+import app.heyrobot.core.NearestOnline
+import app.heyrobot.core.NearestAsk
+import app.heyrobot.core.OrganicMapsRoute
 import app.heyrobot.core.NoteSearch
 import app.heyrobot.core.OpenMeteo
 import app.heyrobot.core.PeopleEdit
@@ -44,6 +54,7 @@ import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RLog
 import app.heyrobot.core.Reach
+import app.heyrobot.core.Reachable
 import app.heyrobot.core.Read
 import app.heyrobot.core.Recipients
 import app.heyrobot.core.RobotSettings
@@ -66,6 +77,8 @@ import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.CheogramIntents
 import app.heyrobot.sys.CoarseLocation
+import app.heyrobot.sys.NearestAnswers
+import app.heyrobot.sys.NominatimClient
 import app.heyrobot.sys.OpenMeteoClient
 import app.heyrobot.sys.PhoneInfo
 import app.heyrobot.sys.SettingsIntents
@@ -88,7 +101,12 @@ import java.util.Locale
 // the contacts permission, and the weather comes from Open-Meteo over the internet (this is the process that goes
 // online for it). The log records the tool and the outcome, never arguments.
 
-class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val launch: (Intent) -> Boolean) {
+/**
+ * [abort]: an online tool's (the weather's) Stop and deadline (OnlineRun); the others run to the end. [roomTokens]: about
+ * what is left of the model's context for a tool's answer (PanelController's estimate): the weather gives fewer days.
+ */
+class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val abort: Abort = Abort(),
+    private val roomTokens: Int = Int.MAX_VALUE, private val said: String? = null, private val launch: (Intent) -> Boolean) {
     /**
      * Before the gate and the card: what the action will really do. open_app becomes the installed app it will open
      * (its real label and launcher activity); send_text and draft_email the person, number or address it goes to
@@ -100,7 +118,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.OpenApp -> {
                 val m = AppMatcher.match(action.name, launcherApps())
                 if (m == null) Prepared.Refused(ActionStatus.FAILED, "No app called “${action.name}” is installed.")
-                else Prepared.Ready(Action.OpenApp(m.app.label, m.app.key), mustAsk = m.loose)
+                else Prepared.Ready(Action.OpenApp(m.app.label, m.app.key), why = unsure(m.loose))
             }
             is Action.SendText -> prepareText(action)
             is Action.DraftEmail -> prepareEmail(action)
@@ -110,6 +128,10 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.Weather -> prepareWeather(action)
             is Action.FreeMemory -> prepareFreeMemory(action)
             is Action.FreeStorage -> prepareFreeStorage(action)
+            // "The nearest …" in the model's words or your own ([said], never screen text), with the setting on (0.4.0).
+            // Settings' "Find the nearest place online" (or the panel's newer answer): Ask the first time shows its card.
+            is Action.MapsSearch -> Nearby.prepare(action, action.query, nearestWanted(action.query, action.nearest), nearestMode())
+            is Action.MapsNavigate -> Nearby.prepare(action, action.destination, nearestWanted(action.destination, action.nearest), nearestMode())
             // The Claude app: installed or "Install Claude" before any card.
             is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
             else -> Prepared.Ready(action)
@@ -125,12 +147,18 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.SetTimer -> timer(action.seconds)
                 is Action.SetAlarm -> alarm(action.hour, action.minute)
                 is Action.OpenApp -> openApp(action)
-                is Action.MapsSearch -> maps(action.query, "Opened Organic Maps search")
-                // A search, not a route (om://route needs coordinates): say what to tap next.
-                is Action.MapsNavigate -> maps(action.destination, "Opened an Organic Maps search for it: pick the place, then tap Route for directions")
+                is Action.MapsSearch -> {
+                    keep(action.consent)
+                    if (action.nearest) nearest(action.query, SEARCH_DONE) else maps(action.query, SEARCH_DONE)
+                }
+                // A search, not a route (om://route needs coordinates): say what to tap next. The nearest one: its route.
+                is Action.MapsNavigate -> {
+                    keep(action.consent)
+                    if (action.nearest) nearest(action.destination, NAVIGATE_DONE) else maps(action.destination, NAVIGATE_DONE)
+                }
                 is Action.Flashlight -> torch(action.on)
-                is Action.SendText -> text(action).also { if (it.status.succeeded) used(action.to, action.target?.from, action.target?.remember == true, email = false) }
-                is Action.DraftEmail -> email(action).also { if (it.status.succeeded) used(action.to, action.target?.from, action.target?.remember == true, email = true) }
+                is Action.SendText -> text(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = false) }
+                is Action.DraftEmail -> email(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = true) }
                 is Action.LookupContact -> lookup(action)
                 is Action.AddNote -> addNote(action)
                 is Action.FindNotes -> findNotes(action)
@@ -210,6 +238,56 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
     }
 
+    /** "The nearest …" in the model's or your words, and only a kind of place or a name (Nearby.sendable): never an address. */
+    private fun nearestWanted(what: String, modelSaid: Boolean): Boolean =
+        (modelSaid || NearestAsk.inWords(said, what)) && Nearby.sendable(what)
+
+    private fun nearestMode(): NearestOnline = Nearby.mode(settings, NearestAnswers.load(ctx))
+
+    /** The first-use card's lasting answer ("Allow always", or "No" with "Don't ask again"), kept for next time. */
+    private fun keep(consent: NearestConsent?) {
+        when (consent) {
+            NearestConsent.ALWAYS -> NearestAnswers.save(ctx, NearestOnline.ALWAYS)
+            NearestConsent.NEVER -> NearestAnswers.save(ctx, NearestOnline.NEVER)
+            else -> {}
+        }
+    }
+
+    /**
+     * "Directions to the nearest pharmacy" (0.4.0): where the phone is (coarse location), OpenStreetMap's Nominatim for that
+     * kind of place around it (two decimals, two searches at most, a second apart), the closest one, and Organic Maps'
+     * route to it. The card's line (saved) names no place; its body (shown, never saved) has the place, how far, and what
+     * OpenStreetMap was sent. Anything in the way (no location, no internet, nothing found): Organic Maps' search, as
+     * before, and the card says why. The log gets codes and times, never the place.
+     */
+    private fun nearest(what: String, searchDone: String): Executed {
+        val started = SystemClock.elapsedRealtime()
+        var requests = 0
+        val r = Nearby.lookup(CoarseLocation.granted(ctx), abort,
+            locate = { CoarseLocation.find(ctx, Nearby.FIX_MS, abort).fix?.let { it.lat to it.lon } },
+            search = { lat, lon -> NominatimClient.search(ctx, what, lat, lon, abort) { requests = it } })
+        val ms = SystemClock.elapsedRealtime() - started
+        if (r is NearbyLookup.Instead) {
+            RLog.i("maps_nearest", "found" to false, "why" to r.why, "requests" to requests, "ms" to ms)
+            // Stopped, or its time ran out and the panel opens the search itself: only one app ever opens ([Abort.claim]).
+            if (abort.cancelled || !abort.claim()) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
+            val m = maps(what, searchDone)
+            return if (m.status.succeeded) m.copy(detail = Nearby.instead(r.why, navigate = searchDone == NAVIGATE_DONE)) else m
+        }
+        val f = r as NearbyLookup.Found
+        val place = f.place
+        if (abort.cancelled || !abort.claim()) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
+        val opened = start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.uri(f.lat, f.lon, START_NAME, place.lat, place.lon, place.name))))
+            || start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.geo(place.lat, place.lon, place.name))))
+        if (!opened) return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
+        val far = Nearby.distance(f.metres, WeatherUnits.of(region))
+        RLog.i("maps_nearest", "found" to true, "places" to f.places, "requests" to requests, "ms" to ms)
+        val sent = "Sent to OpenStreetMap: “$what” near ${Nearby.coord(f.lat)}, ${Nearby.coord(f.lon)}"
+        return Executed(ActionStatus.DONE, "Opened Organic Maps' route to the nearest one OpenStreetMap knows, $far away in a straight line.",
+            launchedApp = true, results = listOf(mapOf("place" to place.name, "distance" to far)),
+            body = listOfNotNull("${place.name} · $far", place.address).joinToString("\n") + "\n\n" + sent + "\n" + Nearby.ATTRIBUTION)
+    }
+
     private fun torch(on: Boolean): Executed {
         val cm = ctx.getSystemService(CameraManager::class.java)
         val id = cm.cameraIdList.firstOrNull { id ->
@@ -227,6 +305,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
 
     private val region by lazy { settings.regionFor(Phones.deviceRegion(ctx)) }
 
+    /** A name that matched an installed app only loosely: not certain which app. */
+    private fun unsure(loose: Boolean): Set<AskWhy> = if (loose) setOf(AskWhy.WHO) else emptySet()
+
     /** A number's target: its gateway address for Cheogram, the number itself for the SMS app. [from]: the contact's number. */
     private fun numberTarget(name: String?, e164: String, via: TextVia, appName: String, from: Reach? = null): TextTarget? {
         val address = if (via == TextVia.CHEOGRAM) PhoneNumbers.jid(e164, settings.smsGateway) ?: return null else e164
@@ -240,17 +321,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun kind(r: Reach): String? = listOfNotNull(r.label, if (r.learned) "seen in Cheogram" else null).joinToString(" · ").ifEmpty { null }
 
     /**
-     * After a text or an email opened: a person learned from a Cheogram notification is confirmed (you used them, after a
-     * card, always), and a place tapped with "Always use this for …" is remembered for the name asked ([asked]).
+     * After a text or an email opened from a place tapped with "Always use this for …": it is remembered for the name
+     * asked ([asked]), which also confirms a person learned from a notification. Nothing else confirms them: opening a
+     * draft (even after the card) doesn't, so one tap on a stranger's name never makes them someone you know.
      */
-    private fun used(asked: String, r: Reach?, remember: Boolean, email: Boolean) {
-        if (r == null || (!r.learned && !remember)) return
-        val key = if (remember) ContactIds.systemId(r.contactId)?.let { Contacts.lookupKey(ctx, it) } else null
-        val now = System.currentTimeMillis()
-        PeopleFiles.store(ctx).update { list ->
-            val confirmed = if (r.learned) PeopleEdit.confirm(list, ContactIds.peopleId(r.contactId), now) else list
-            if (remember) PeopleEdit.rememberChoice(confirmed, asked, r, email, key, now) else confirmed
-        } ?: RLog.w("people_save")
+    private fun remember(asked: String, r: Reach?, email: Boolean) {
+        r ?: return
+        val key = ContactIds.systemId(r.contactId)?.let { Contacts.lookupKey(ctx, it) }
+        PeopleFiles.store(ctx).update { PeopleEdit.rememberChoice(it, asked, r, email, key, System.currentTimeMillis()) } ?: RLog.w("people_save")
     }
 
     private fun prepareText(a: Action.SendText): Prepared {
@@ -269,20 +347,23 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         if (Addresses.isAddress(to)) {
             if (via == TextVia.SMS) return Prepared.Refused(ActionStatus.FAILED, "The SMS app can't text an XMPP address.")
             if (!Addresses.isJid(to)) return Prepared.Refused(ActionStatus.INVALID, "That XMPP address can't be used.")
-            return Prepared.Ready(a.copy(target = TextTarget(null, to, to, appName, via)), mustAsk = true)
+            return Prepared.Ready(a.copy(target = TextTarget(null, to, to, appName, via)), why = setOf(AskWhy.WHO))
         }
         if (Addresses.isPhone(to)) {
             val t = Phones.e164(to, region)?.let { numberTarget(null, it, via, appName) }
                 ?: return Prepared.Refused(ActionStatus.INVALID, "That phone number couldn't be read.")
-            return Prepared.Ready(a.copy(target = t), mustAsk = true)
+            return Prepared.Ready(a.copy(target = t), why = setOf(AskWhy.WHO))
         }
         // People, and the phone's contacts when Robot may read them.
         val book = PeopleFiles.book(ctx)
-        val all = book.best(to, max = Int.MAX_VALUE)
+        val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.text(xmppOk = via == TextVia.CHEOGRAM))
         if (all.isEmpty()) {
-            if (!Contacts.granted(ctx)) return needContacts()
-            // Not in the contacts: with Cheogram, the person may be in its own roster (the card offers its list).
-            return Recipients.notFound(a, "No contact matches “$to”.", via, pick = canPick(cheogram))
+            val granted = Contacts.granted(ctx)
+            if (!granted && via != TextVia.CHEOGRAM) return needContacts()
+            // Not in the contacts: with Cheogram, the person may be in its own roster (the card offers its list, which
+            // needs no permission). Contacts Robot may not read: the card also offers to allow them.
+            return Recipients.notFound(a, if (granted) "No contact matches “$to”." else "No one in People matches “$to”, and Robot can't read your contacts.",
+                via, pick = canPick(cheogram), allowContacts = !granted)
         }
         val matches = all.take(Recipients.MAX_PEOPLE)
         val options = Recipients.forText(book.cards(matches) { Contacts.cards(ctx, it) }, xmppOk = via == TextVia.CHEOGRAM).mapNotNull { r ->
@@ -292,10 +373,11 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 Recipients.Option(r.name, kind(r), it.display, a.copy(target = it), learned = r.learned,
                     remember = if (settings.rememberPicks) a.copy(target = it.copy(remember = true)) else null)
             }
-        }.distinctBy { (it.action as Action.SendText).target?.address }
+        }.distinctBy { (it.action as Action.SendText).target?.address }.let { Recipients.trusted(matches, it) }
         // Fixed wording: the contacts' names are not sent to the model here.
         if (options.isEmpty()) {
-            return Recipients.notFound(a, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.", via, pick = canPick(cheogram))
+            return Recipients.notFound(a, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.", via,
+                pick = canPick(cheogram), allowContacts = !Contacts.granted(ctx))
         }
         return Recipients.prepare(a, matches, options, all.size - matches.size, Recipients.rememberLabel(to)) { name -> a.copy(to = name) }
     }
@@ -306,27 +388,29 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val appName = if (settings.emailAppFor(proton) == EmailApp.PROTON && proton) "Proton Mail" else null
         val to = a.to.trim()
         // An address the model wrote: the card always shows it.
-        if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)), mustAsk = true)
+        if (Addresses.isAddress(to)) return Prepared.Ready(a.copy(target = MailTarget(null, to, appName)), why = setOf(AskWhy.WHO))
         val book = PeopleFiles.book(ctx)
-        val all = book.best(to, max = Int.MAX_VALUE)
+        val all = book.best(to, max = Int.MAX_VALUE, reach = Reachable.email)
         if (all.isEmpty()) return if (Contacts.granted(ctx)) Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.") else needContacts()
         val matches = all.take(Recipients.MAX_PEOPLE)
         val options = Recipients.forEmail(book.cards(matches) { Contacts.cards(ctx, it) }).map { r ->
             val t = MailTarget(r.name, r.address, appName, from = r)
             Recipients.Option(r.name, kind(r), r.address, a.copy(target = t), learned = r.learned,
                 remember = if (settings.rememberPicks) a.copy(target = t.copy(remember = true)) else null)
-        }
+        }.let { Recipients.trusted(matches, it) }
         if (options.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No matching contact has an email address.")
         return Recipients.prepare(a, matches, options, all.size - matches.size, Recipients.rememberLabel(to)) { name -> a.copy(to = name) }
     }
 
     /**
-     * Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until you press Send. An XMPP
-     * address with a known Cheogram account (People) opens that account's chat directly (StartConversationActivity with
-     * the "account" extra), so a contact in several accounts needs no search; otherwise, or if that doesn't open, the
-     * xmpp: link as before. With no contact to text: Cheogram's contact list to pick someone (CheogramPickActivity), or
-     * its share screen (ShareWithActivity, exported for SEND text/plain), where you pick the person and the text is in
-     * their chat's box. The voice log gets the way it went, never who.
+     * Cheogram (or the SMS app) opens with the text in its compose box: nothing is sent until you press Send. An address
+     * picked in Cheogram's contact list, with its account, opens that account's chat directly (StartConversationActivity
+     * with the "account" extra: it finds the chat among that account's contacts, so only a picked address goes this way).
+     * Everything else, or a picked one that doesn't open, goes by the xmpp: link as before (Cheogram's own route for it,
+     * ShareViaAccountActivity, opens the chat for any address, and asks which account when there are several). With no
+     * contact to text: Cheogram's contact list to pick someone (CheogramPickActivity), or its share screen
+     * (ShareWithActivity, exported for SEND text/plain), where you pick the person and the text is in their chat's box.
+     * The voice log gets the way it went, never who.
      */
     private fun text(a: Action.SendText): Executed {
         val t = a.target ?: return Executed(ActionStatus.FAILED, "Robot didn't find who to text.")
@@ -343,18 +427,21 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 CheogramRoute.LINK to CheogramIntents.link(pkg, t.address, a.message),
             )
             TextVia.CHEOGRAM_LIST -> listOf(CheogramRoute.LIST to CheogramPickActivity.intent(ctx, pkg, a.to, a.message, settings.rememberPicks))
-            TextVia.CHEOGRAM_PICK -> listOf(CheogramRoute.SHARE to CheogramIntents.share(pkg, a.message))
+            // Its share screen by name, resolved first (start); a build without that screen: the share to the package.
+            TextVia.CHEOGRAM_PICK -> listOf(CheogramRoute.SHARE to CheogramIntents.share(pkg, a.message), CheogramRoute.SHARE to CheogramIntents.shareAny(pkg, a.message))
             TextVia.SMS -> emptyList()
         }
         val i = routes.indexOfFirst { start(it.second) }
         if (i < 0) return Executed(ActionStatus.NO_APP, "Install Cheogram.")
         VoiceLog.add(VoiceEvent.CHEOGRAM_HANDOFF, routes[i].first, if (i > 0) 1 else 0)
-        // A draft, not a sent text. Cheogram keeps a draft already in that chat instead of this one (it says "already
-        // drafting"): the card says so.
-        val detail = when (t.via) {
-            TextVia.CHEOGRAM -> "Opened a draft in Cheogram: nothing is sent until Send is pressed there. " +
-                "If that chat already had a draft, Cheogram keeps the old one."
-            TextVia.CHEOGRAM_LIST -> "Opened Cheogram's contact list: pick who it goes to, and their chat opens with the message. " +
+        // A draft, not a sent text. A draft already in that chat: the account's chat keeps it instead of this one (Cheogram
+        // says "already drafting"); the link's route adds this text after it (Cheogram's source). The card says which.
+        val detail = when {
+            t.via == TextVia.CHEOGRAM && routes[i].first == CheogramRoute.ACCOUNT -> "Opened a draft in Cheogram: nothing is sent until Send is " +
+                "pressed there. If that chat already had a draft, Cheogram keeps the old one."
+            t.via == TextVia.CHEOGRAM -> "Opened a draft in Cheogram: nothing is sent until Send is pressed there. With several Cheogram " +
+                "accounts, choose the account first. If that chat already had a draft, the text is added after it."
+            t.via == TextVia.CHEOGRAM_LIST -> "Opened Cheogram's contact list: pick who it goes to, and their chat opens with the message. " +
                 "Nothing is sent until Send is pressed there."
             else -> "Opened Cheogram with the message: choose who it goes to there. Nothing is sent until Send is pressed."
         }
@@ -496,21 +583,28 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val started = SystemClock.elapsedRealtime()
         return try {
             val (place, source) = when (a.where ?: WeatherAsk.where(a.place).first) {
-                WeatherWhere.NAMED -> OpenMeteoClient.geocode(ctx, WeatherAsk.where(a.place).second ?: a.place.orEmpty()) to WeatherSource.NAMED
+                WeatherWhere.NAMED -> OpenMeteoClient.geocode(ctx, WeatherAsk.where(a.place).second ?: a.place.orEmpty(), abort) to WeatherSource.NAMED
                 WeatherWhere.HOME -> (home ?: throw OpenMeteoClient.Failure(WeatherFail.NO_HOME)) to WeatherSource.HOME
                 WeatherWhere.HERE -> {
-                    val fix = if (CoarseLocation.granted(ctx) && CoarseLocation.enabled(ctx)) CoarseLocation.find(ctx) else null
+                    // With a Home to fall back on, a fix gets only a few seconds.
+                    val wait = if (home != null) WeatherAsk.FIX_WITH_HOME_MS else WeatherAsk.FIX_MS
+                    val found = if (CoarseLocation.granted(ctx)) CoarseLocation.find(ctx, wait, abort) else null
+                    found?.let { VoiceLog.add(VoiceEvent.WEATHER_LOCATION, it.code, it.importance, it.ms) }
+                    if (abort.cancelled) throw OpenMeteoClient.Failure(if (abort.expired) WeatherFail.TIMEOUT else WeatherFail.STOPPED)
+                    val fix = found?.fix
                     when {
                         fix != null -> WeatherPlace(HERE, fix.lat, fix.lon) to if (fix.fresh) WeatherSource.FIX else WeatherSource.LAST_KNOWN
-                        home != null -> home to if (CoarseLocation.granted(ctx)) WeatherSource.HOME_NO_FIX else WeatherSource.HOME
-                        !CoarseLocation.enabled(ctx) -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_OFF)
+                        home != null -> home to if (found != null) WeatherSource.HOME_NO_FIX else WeatherSource.HOME
+                        found?.code == LocationCode.OFF -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_OFF)
+                        found?.code == LocationCode.BACKGROUND -> throw OpenMeteoClient.Failure(WeatherFail.LOCATION_BACKGROUND)
                         else -> throw OpenMeteoClient.Failure(WeatherFail.NO_LOCATION)
                     }
                 }
             }
             val found = SystemClock.elapsedRealtime()
-            val f = OpenMeteoClient.forecast(ctx, place, WeatherAsk.fetchDays(range, now), units)
-            val report = WeatherText.report(f, a.day, now, units) ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
+            val f = OpenMeteoClient.forecast(ctx, place, WeatherAsk.fetchDays(range, now), units, abort)
+            val report = WeatherText.reportFitting(f, range, WeatherAsk.relative(a.day), now, units, roomTokens - PLACE_TOKENS)
+                ?: throw OpenMeteoClient.Failure(WeatherFail.NO_DAYS)
             VoiceLog.add(VoiceEvent.WEATHER, source, if (source == WeatherSource.HOME) 0 else (found - started).toInt(), (SystemClock.elapsedRealtime() - found).toInt())
             // The card's line is saved with the conversation, so it names no place; the place goes in the results (for
             // the model) and the body (shown, never saved), with what Open-Meteo was sent.
@@ -520,13 +614,16 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 WeatherSource.HOME_NO_FIX -> "Robot couldn't tell where you are: forecast for your Home for weather, from Open-Meteo." to place.name
                 WeatherSource.NAMED -> "Forecast from Open-Meteo." to place.name
             }
-            val sent = "Sent to Open-Meteo: ${OpenMeteo.coord(place.lat)}, ${OpenMeteo.coord(place.lon)}"
+            val coords = "${OpenMeteo.coord(place.lat)}, ${OpenMeteo.coord(place.lon)}"
+            val sent = if (source == WeatherSource.NAMED) "Sent to Open-Meteo: “${WeatherAsk.where(a.place).second ?: a.place}” (to find it), then $coords"
+            else "Sent to Open-Meteo: $coords"
             Executed(ActionStatus.DONE, detail, results = listOf(mapOf("place" to named)) + report.results,
-                body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent,
+                body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent + "\n" + OpenMeteo.ATTRIBUTION,
                 spoken = "${named.replaceFirstChar { it.uppercase() }}. ${report.spoken}")
         } catch (e: OpenMeteoClient.Failure) {
-            VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
-            Executed(if (e.why == WeatherFail.NO_PLACE) ActionStatus.NOT_FOUND else ActionStatus.FAILED, e.why.text)
+            // Once the caller has given up (Stop, the deadline) it logs why; this result is dropped.
+            if (!abort.cancelled) VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
+            Executed(if (e.why == WeatherFail.NO_PLACE) ActionStatus.NOT_FOUND else ActionStatus.FAILED, e.text)
         }
     }
 
@@ -555,7 +652,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val m = AppMatcher.match(name, launcherApps()) ?: return Prepared.Refused(ActionStatus.FAILED, "No app called “$name” is installed.")
         val pkg = m.app.key.substringBefore('/')
         if (pkg == ctx.packageName) return Prepared.Refused(ActionStatus.FAILED, "Robot can't stop itself. Say “free up memory” to unload its model.")
-        return Prepared.Ready(Action.FreeMemory(m.app.label, pkg), mustAsk = m.loose)
+        return Prepared.Ready(Action.FreeMemory(m.app.label, pkg), why = unsure(m.loose))
     }
 
     /**
@@ -566,7 +663,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun freeMemory(a: Action.FreeMemory): Executed {
         val pkg = a.pkg
         if (a.app == null || pkg == null) {
-            ModelUnload.request(ctx)
+            ModelUnload.request(ModelUnload.available(ctx))
             val recent = PhoneInfo.recentApps(ctx)
             val results = listOf(mapOf(
                 "memory" to PhoneStatus.memoryLine(PhoneInfo.memory(ctx), robotModel = true),
@@ -589,14 +686,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
      */
     private fun prepareFreeStorage(a: Action.FreeStorage): Prepared = when (a.way) {
         StorageWay.ANDROID -> Prepared.Ready(a)
-        StorageWay.ROBOT -> Prepared.Ready(a.copy(bytes = PhoneInfo.robotCache(ctx)), mustAsk = true)
+        StorageWay.ROBOT -> Prepared.Ready(a.copy(bytes = PhoneInfo.robotCache(ctx)), why = setOf(AskWhy.DELETE))
         StorageWay.APPS -> if (!PhoneInfo.usageAccess(ctx)) {
             Prepared.Refused(ActionStatus.NEEDS_PERMISSION, "Turn on Usage access for Robot (Assistant setup in the Robot app) so it can list the apps using the most space.")
         } else {
             // Not Robot: its App info's "Clear storage" would delete its models.
             val top = PhoneStatus.top(PhoneInfo.apps(ctx).filter { it.pkg != ctx.packageName })
             if (top.isEmpty()) Prepared.Refused(ActionStatus.NOT_FOUND, "Robot couldn't read the apps' sizes.")
-            else Prepared.Ready(a, choices = top.map { Choice(FreeUp.appChoice(it), a.copy(target = it.pkg, label = it.label)) })
+            else Prepared.Ready(a, why = setOf(AskWhy.PICK), choices = top.map { Choice(FreeUp.appChoice(it), a.copy(target = it.pkg, label = it.label)) })
         }
         StorageWay.FILES -> if (!PhoneInfo.mediaGranted(ctx)) {
             Prepared.Refused(ActionStatus.NEEDS_PERMISSION, "Allow photos and videos for Robot in the Robot app, so it can find the largest ones.")
@@ -605,7 +702,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             val files = PhoneInfo.largeMedia(ctx)
             if (files.isEmpty()) Prepared.Refused(ActionStatus.NOT_FOUND,
                 if (PhoneInfo.mediaPartial(ctx)) "Robot sees only the photos and videos you picked, and none of them is there." else "No photos or videos found.")
-            else Prepared.Ready(a, choices = files.map { f ->
+            else Prepared.Ready(a, why = setOf(AskWhy.DELETE), choices = files.map { f ->
                 Choice(FreeUp.fileChoice(f, zone), a.copy(target = f.uri, label = if (f.video) "video" else "photo", bytes = f.bytes, summary = FreeUp.fileSummary(f, zone)))
             })
         }
@@ -627,9 +724,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         // Android's own confirmation decides; Robot never deletes a file itself.
         StorageWay.FILES -> {
             val uri = a.target
-            if (uri != null && start(MediaDeleteActivity.intent(ctx, Uri.parse(uri)))) {
-                Executed(ActionStatus.DONE, "Android asks you to confirm: the ${a.label ?: "file"} is deleted only if you allow it there.", launchedApp = true)
-            } else Executed(ActionStatus.FAILED, "Android's delete confirmation didn't open.")
+            // Like a draft: nothing is deleted until you allow it in Android's dialog; the card says so until it answers.
+            if (uri != null && start(MediaDeleteActivity.intent(ctx, Uri.parse(uri)))) Executed(ActionStatus.DRAFT_OPENED, FreeUp.DELETE_WAITING, launchedApp = true)
+            else Executed(ActionStatus.FAILED, "Android's delete confirmation didn't open.")
         }
     }
 
@@ -641,7 +738,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     /**
      * Opens the Claude app with the question by the first way that resolves on this phone (docs/ask-claude.md "The
      * Claude app route"): its claude:// link, its claude.ai link, a share, or just the app with the question on the
-     * clipboard. Robot only prefills; the owner presses Send there. The log has the way, never the words.
+     * clipboard. Robot only prefills; you press Send there. The log has the way, never the words.
      */
     private fun openClaude(a: Action.AskClaude): Executed {
         val way = ClaudeAppIntents.choose(ctx) ?: return Executed(ActionStatus.NO_APP, "Install Claude.")
@@ -662,5 +759,11 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         const val ICON_PX = 96
         /** The place name of a forecast for where the phone is (Open-Meteo has no reverse lookup, and none is wanted). */
         const val HERE = "where you are"
+        /** The weather's status, detail and place beside its days, about. */
+        const val PLACE_TOKENS = 60
+        const val SEARCH_DONE = "Opened Organic Maps search"
+        const val NAVIGATE_DONE = "Opened an Organic Maps search for it: pick the place, then tap Route for directions"
+        /** The route's start in Organic Maps: where Robot found the phone (approximate; Organic Maps' link has no "my position"). */
+        const val START_NAME = "Your position (approximate)"
     }
 }

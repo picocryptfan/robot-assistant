@@ -91,6 +91,18 @@ class CapturePolicyTest {
         assertTrue(inputs.speaking)
     }
 
+    /** "Interrupt sensitivity": the talking lines replace the idle ones only while Robot speaks, and only when set. */
+    @Test fun theTalkingWakeLinesApplyOnlyWhileRobotSpeaks() {
+        val inputs = KeywordInputs()
+        inputs.wakeLines = "▁HE Y ▁RO B O T :1.5 #0.25 @W1"
+        assertEquals(inputs.wakeLines, inputs.wake(speaking = false))
+        assertEquals(inputs.wakeLines, inputs.wake(speaking = true))
+        assertEquals(app.heyrobot.core.InterruptSensitivity.MEDIUM, inputs.interrupt)
+        inputs.talkWakeLines = "▁HE Y ▁RO B O T :1.75 #0.2 @W1"
+        assertEquals("▁HE Y ▁RO B O T :1.75 #0.2 @W1", inputs.wake(speaking = true))
+        assertEquals("▁HE Y ▁RO B O T :1.5 #0.25 @W1", inputs.wake(speaking = false))
+    }
+
     @Test fun theSystemVoiceCountsAsStuckWhenQuiet() {
         var q = 0
         for (busy in listOf(false, false)) q = SpeechWatchdog.next(q, busy)

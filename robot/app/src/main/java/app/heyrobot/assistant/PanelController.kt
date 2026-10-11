@@ -8,6 +8,7 @@ import app.heyrobot.claude.ClaudeSession
 import app.heyrobot.claude.ClaudeTurn
 import android.os.PowerManager
 import android.os.SystemClock
+import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.AskClaudeTool
 import app.heyrobot.core.ActionRecord
@@ -15,10 +16,12 @@ import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Approval
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainError
+import app.heyrobot.core.AskWhy
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainFail
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.Card
+import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.ClaudeAppAnswer
 import app.heyrobot.core.ClaudeAppLink
@@ -45,6 +48,7 @@ import app.heyrobot.core.EscalationGuard
 import app.heyrobot.core.EscalationPolicy
 import app.heyrobot.core.EscalationTrigger
 import app.heyrobot.core.Hedge
+import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ModelOutcome
 import app.heyrobot.core.Personal
 import app.heyrobot.core.PreRouter
@@ -56,9 +60,16 @@ import app.heyrobot.core.Executed
 import app.heyrobot.core.FastPath
 import app.heyrobot.core.FreeUp
 import app.heyrobot.core.NoQuestion
+import app.heyrobot.core.Nearby
+import app.heyrobot.core.NearbyFail
 import app.heyrobot.core.NoReply
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Prompt
+import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.PromptTurn
+import app.heyrobot.core.PromptRole
+import app.heyrobot.core.ContextWindow
+import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
@@ -74,6 +85,8 @@ import app.heyrobot.core.SpeechText
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.TextCommand
 import app.heyrobot.core.TextRequest
+import app.heyrobot.core.Tip
+import app.heyrobot.core.Tips
 import app.heyrobot.core.ToolCalls
 import app.heyrobot.core.ToolGroup
 import app.heyrobot.core.ToolRouter
@@ -89,6 +102,8 @@ import app.heyrobot.core.TtsStop
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.VolumeKeyStop
+import app.heyrobot.core.WeatherAsk
+import app.heyrobot.core.WeatherFail
 import app.heyrobot.core.toPromptTurns
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.ClaudeAppIntents
@@ -99,6 +114,7 @@ import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.Phones
 import app.heyrobot.sys.SettingsIntents
+import app.heyrobot.ui.common.keptPicture
 import app.heyrobot.voice.Cues
 import app.heyrobot.voice.SpeechToText
 import kotlinx.coroutines.CancellationException
@@ -165,7 +181,16 @@ data class UiAction(
     val picture: Bitmap? = null,
     /** The tick box next to the choices that remembers the one tapped ("Always use this for “mom”"). */
     val remember: String? = null,
-)
+    /** While it waits, an "Allow contacts" button too. */
+    val allowContacts: Boolean = false,
+    /** Its button sends personal content to Claude: a spoken or typed yes doesn't, unless "Voice yes can send personal content". */
+    val personal: Boolean = false,
+    /** Only a tap answers it, for this reason (core Card.tapFor: a learned name, not sure who, online the first time); "no" still declines. */
+    val tapFor: AskWhy? = null,
+) {
+    /** What a spoken or typed answer needs to know about it (core CardAnswer). */
+    val waiting: CardAnswer.Waiting get() = CardAnswer.Waiting(choices.size, tapFor, personal, confirm)
+}
 
 /**
  * "Want me to check with Claude?" under a reply (docs/ask-claude.md "When Robot needs help"): a tap (or a yes, when
@@ -229,6 +254,12 @@ data class PanelState(
     val claudeStatus: String? = null,
     /** The corner swipe came from the Claude app: "Read Claude's answer". */
     val claudeScreen: Boolean = false,
+    /** What works on the lock screen (Settings › Safety & privacy), for the panel's words. */
+    val lockedTools: Set<ToolName> = LockScreen.DEFAULT,
+    /** Listening for "yes" or "no" to the waiting card (LISTENING, then TRANSCRIBING); null: not. The phase stays CONFIRMING. */
+    val cardHearing: Phase? = null,
+    /** The empty panel's three tips (core Tips), a different three each time it opens. */
+    val tips: List<Tip> = emptyList(),
 ) {
     /** A turn is under way, a confirmation card included: no new question, no mic, no camera until it ends. */
     val busy: Boolean get() = phase == Phase.THINKING || phase == Phase.ANSWERING || phase == Phase.CONFIRMING
@@ -287,6 +318,17 @@ object PanelController {
     private var askingTextFor: String? = null
     /** That question was asked aloud: listen for the answer once Robot has said it. */
     private var listenAfterSpeech = false
+    /**
+     * "Answer cards by voice" (0.4.0): listen for the waiting card's yes or no once Robot has stopped talking. [cardListen]
+     * tells the callbacks of a listening that was stopped from the current one; [cardRetry] asks again once.
+     */
+    private var cardListenAfterSpeech = false
+    private var cardListen = 0
+    private var cardRetry = 0
+    /** askToShare said its own words about the card: no "Say yes or no." on top. */
+    private var cardPromptSaid = false
+    /** Which three tips the next panel shows: counts panel opens, from a random start so a new process doesn't repeat itself. */
+    private var tipRound = kotlin.random.Random.nextInt(0, 1_000)
 
     // Ask Claude (docs/ask-claude.md). Claude mode's conversation (API route), and when it last had a turn.
     private var claudeSession: ClaudeSession? = null
@@ -349,6 +391,8 @@ object PanelController {
 
     /** From VoiceHub (which owns the voice's listener since 0.2.3): Robot's voice started or stopped. */
     fun onSpeakingChanged(speaking: Boolean) {
+        // A sentence ends between two: listen only once Robot has really stopped talking.
+        if (!speaking && cardListenAfterSpeech) VoiceHub.main.postDelayed({ if (cardListenAfterSpeech && !VoiceHub.tts.isSpeaking) listenForCard() }, 350)
         if (!speaking && listenAfterSpeech) {
             listenAfterSpeech = false
             // "What should the text to Mom say?" was said aloud: the answer comes by voice too.
@@ -405,7 +449,7 @@ object PanelController {
         if (locked && !s.claudeLocked) endClaudeMode()
         _state.update {
             it.copy(locked = locked, screenChip = ScreenChip.HIDDEN, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint, partial = "",
-                showId = it.showId + 1, claudeScreen = false)
+                showId = it.showId + 1, claudeScreen = false, lockedTools = s.lockedTools, tips = if (returning) it.tips else tips(s, locked))
         }
         BrainKeeper.prewarm(VoiceHub.app)
         ClaudeLink.warm(VoiceHub.app, s)
@@ -435,6 +479,7 @@ object PanelController {
         if (st0.phase == Phase.LISTENING) VoiceLog.add(VoiceEvent.NO_QUESTION, NoQuestion.CLOSED)
         if (st0.busy && spokenTurn && hidingFor == null) VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.STOPPED)
         VoiceLog.add(VoiceEvent.SESSION_HIDDEN, ((SystemClock.elapsedRealtime() - shownAtE) / 1000).toInt())
+        stopCardListening()
         VoiceHub.stt.cancel()
         VoiceHub.listener?.wakePaused = false
         listenAfterSpeech = false
@@ -530,8 +575,22 @@ object PanelController {
         _state.update { st ->
             // The screen came after a tap said it hadn't ("still sending", "didn't share"): that notice no longer holds.
             val stale = chip == ScreenChip.READY && st.notice != null && st.notice === screenNotice
-            st.copy(screenChip = chip, notice = if (stale) null else st.notice)
+            st.copy(screenChip = chip, notice = if (stale) null else st.notice, tips = if (chip == ScreenChip.READY) Tips.withScreen(st.tips) else st.tips)
         }
+    }
+
+    /** The next three tips for an empty panel: only what is on and can work now (core Tips). */
+    private fun tips(s: RobotSettings, locked: Boolean): List<Tip> {
+        val keySaved = ClaudeLink.keySaved(VoiceHub.app)
+        val api = keySaved && ClaudeSettings.route(s, keySaved) == ClaudeRoute.API
+        val claude = ClaudeSettings.enabled(s, keySaved) && (if (locked) api && s.claudeLocked else api || ClaudeAppIntents.installed(VoiceHub.app))
+        return Tips.pick(Tips.Can(s, locked, claude = claude), tipRound++)
+    }
+
+    /** A tip that asks about the screen: the screen goes with it (or the panel says why it can't). */
+    fun askAboutScreen(question: String) {
+        attachScreen()
+        if (_state.value.draft?.kind == Attachment.SCREEN) send(question)
     }
 
     /**
@@ -565,7 +624,7 @@ object PanelController {
         lastActivity = System.currentTimeMillis()
         _state.update {
             PanelState(newId(), locked = locked, speak = it.speak, sttAvailable = it.sttAvailable, micHint = it.micHint, screenChip = it.screenChip,
-                showId = it.showId, brain = it.brain)
+                showId = it.showId, brain = it.brain, lockedTools = it.lockedTools, tips = it.tips)
         }
     }
 
@@ -589,13 +648,37 @@ object PanelController {
         lastActivity = System.currentTimeMillis()
         _state.update {
             PanelState(c.id, turns = c.turns.map { t -> t.toUi() }, keep = true, sttAvailable = it.sttAvailable, micHint = it.micHint,
-                showId = it.showId, brain = it.brain)
+                showId = it.showId, brain = it.brain, lockedTools = it.lockedTools, tips = it.tips)
         }
     }
 
-    private fun ChatTurn.toUi() = UiTurn(id, role, text, attachment, null,
+    private fun ChatTurn.toUi() = UiTurn(id, role, text, attachment, keptPicture(picture),
         actions.map { UiAction(newId(), it.tool, it.summary, it.status, it.detail, content = it.content) }, stopped = stopped, error = error,
         claude = claude, readBack = readBack, sources = sources, cost = costMicros.takeIf { it > 0 && VoiceHub.settings.claudeShowCost }?.let { ClaudeCost.line(it / 1e6) })
+
+    /**
+     * "Remove saved screenshots and photos" (the main app): the conversation still held here loses its kept thumbnails
+     * and screen text too, and is saved again without them (its file may have been written back meanwhile).
+     */
+    fun forgetKeptMedia() {
+        var changed = false
+        for (i in chat.indices) {
+            val t = chat[i]
+            if (t.picture != null || t.screenText != null) {
+                chat[i] = t.copy(picture = null, screenText = null)
+                changed = true
+            }
+        }
+        if (changed) persist()
+    }
+
+    /**
+     * History deleted the conversation still held here ([id]), or every conversation (null): start a new one, so the next
+     * save after a reply can't write the deleted one back.
+     */
+    fun forgetDeleted(id: String?) {
+        if (id == null || id == _state.value.convId) newConversation()
+    }
 
     /** The only way a conversation with screen content gets saved. */
     fun keepConversation() {
@@ -701,6 +784,21 @@ object PanelController {
         }
     }
 
+    /**
+     * From MediaDeleteActivity (same process, 0.4.0): Android's confirmation for a picked file answered. The card that
+     * waited for it (and the saved conversation) says whether it was deleted.
+     */
+    fun mediaDeleteAnswered(deleted: Boolean) {
+        fun settle(tool: ToolName?, detail: String?) = tool == ToolName.FREE_STORAGE && detail == FreeUp.DELETE_WAITING
+        val status = if (deleted) ActionStatus.DONE else ActionStatus.DECLINED
+        val detail = if (deleted) FreeUp.DELETED else FreeUp.KEPT
+        _state.update { st ->
+            st.copy(turns = st.turns.map { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail) else it }) })
+        }
+        chat.replaceAll { t -> t.copy(actions = t.actions.map { if (settle(it.tool, it.detail)) it.copy(status = status, detail = detail) else it }) }
+        persist()
+    }
+
     /** From CaptureActivity (same process): the picture to send with the next question. */
     fun onImagePicked(jpeg: ByteArray, thumb: Bitmap) {
         draftJpeg = jpeg
@@ -710,6 +808,13 @@ object PanelController {
     // ------------------------------------------------------------------ voice input
 
     fun micPressed() {
+        // A card waits: the mic answers it ("yes", "no"), with "Answer cards by voice" on (off: a tap or a typed answer).
+        if (_state.value.phase == Phase.CONFIRMING) {
+            if (!VoiceHub.settings.voiceCards) return notify(CARD_TYPE_HINT)
+            VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
+            cardRetry = 0
+            return listenForCard()
+        }
         if (_state.value.busy || slot.running) return
         VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
         if (VoiceHub.settings.speakReplies == SpeakReplies.VOICE) _state.update { it.copy(speak = true) }
@@ -795,6 +900,125 @@ object PanelController {
         _state.update { it.copy(phase = if (it.phase == Phase.LISTENING || it.phase == Phase.TRANSCRIBING) Phase.IDLE else it.phase, partial = "") }
     }
 
+    // ------------------------------------------------------------------ answering a card by voice (0.4.0)
+
+    /** The card waiting for an answer (the newest one still pending), or null. */
+    private fun pendingCard(): UiAction? = _state.value.turns.asReversed().firstNotNullOfOrNull { t -> t.actions.lastOrNull { it.status == ActionStatus.PENDING } }
+
+    /**
+     * A card now waits. With "Answer cards by voice" on, when replies are spoken or you are talking to Robot (a spoken
+     * question, a wake-word panel), Robot says how to answer and listens for "yes" or "no" once it has stopped talking.
+     */
+    private fun cardWaiting() {
+        val st = _state.value
+        val s = VoiceHub.settings
+        val said = cardPromptSaid
+        cardPromptSaid = false
+        cardRetry = 0
+        if (!s.voiceCards || !shown || !VoiceHub.stt.available || !(st.speak || spokenTurn || shownFrom == ShowSource.WAKE)) return
+        val card = pendingCard() ?: return
+        if (st.speak) {
+            // "Say yes or no.", or why it needs a tap (a learned name, not sure who, online the first time) and that "no" works.
+            if (!said) VoiceHub.tts.speak(CardAnswer.prompt(card.waiting))
+            cardListenAfterSpeech = true
+        } else {
+            listenForCard()
+        }
+    }
+
+    /** Listens for the waiting card's answer; the phase stays CONFIRMING (the turn is still waiting on the card). */
+    private fun listenForCard() {
+        cardListenAfterSpeech = false
+        val st = _state.value
+        if (st.phase != Phase.CONFIRMING || st.cardHearing != null || !shown || pendingCard() == null) return
+        if (!VoiceHub.stt.available) return notify(VoiceHub.stt.hint ?: "Voice input isn't available. Tap a button on the card.")
+        val token = ++cardListen
+        VoiceHub.listener?.wakePaused = true
+        _state.update { it.copy(cardHearing = Phase.LISTENING, partial = "", notice = null) }
+        val main = VoiceHub.main
+        VoiceHub.stt.start(object : SpeechToText.Listener {
+            fun mine() = token == cardListen
+            override fun onPartial(text: String) { main.post { if (mine()) _state.update { if (it.cardHearing == Phase.LISTENING) it.copy(partial = text) else it } } }
+            override fun onEndOfSpeech() {
+                main.post {
+                    if (!mine()) return@post
+                    VoiceHub.listener?.wakePaused = false
+                    _state.update { if (it.cardHearing != null) it.copy(cardHearing = Phase.TRANSCRIBING) else it }
+                }
+            }
+            override fun onFinal(text: String) {
+                main.post {
+                    if (!mine()) return@post
+                    endCardListening()
+                    heardForCard(text)
+                }
+            }
+            override fun onError(reason: SpeechToText.Reason, message: String) {
+                main.post {
+                    if (!mine()) return@post
+                    endCardListening()
+                    notify(if (reason == SpeechToText.Reason.NO_SPEECH) CARD_HINT else message)
+                }
+            }
+        })
+    }
+
+    private fun endCardListening() {
+        VoiceHub.listener?.wakePaused = false
+        _state.update { it.copy(cardHearing = null, partial = "") }
+    }
+
+    /** The card was answered or the turn stopped: no more listening for it. */
+    private fun stopCardListening() {
+        cardListenAfterSpeech = false
+        if (_state.value.cardHearing == null) return
+        cardListen++
+        VoiceHub.stt.cancel()
+        endCardListening()
+    }
+
+    /** What was said while the card waited: its answer, or (once) a reminder and another listen. */
+    private fun heardForCard(text: String) {
+        if (text.isNotBlank() && answerCard(text, spoken = true)) return
+        if (pendingCard() == null) return
+        if (cardRetry++ < 1) {
+            notify(CARD_HINT)
+            if (_state.value.speak) {
+                VoiceHub.tts.speak(pendingCard()?.waiting?.let(CardAnswer::prompt) ?: CardAnswer.PROMPT)
+                cardListenAfterSpeech = true
+            } else {
+                listenForCard()
+            }
+        } else {
+            notify(CARD_HINT)
+            cue(Cue.CHIME)
+        }
+    }
+
+    /**
+     * [text] answers the waiting card (core CardAnswer.reply, tested): "no" declines it; "yes" confirms it, except a card
+     * that needs a tap (a learned name, not sure who or which, online the first time), one with several choices, or one
+     * that sends personal content to Claude (unless "Voice yes can send personal content"): Robot says why. False: not a
+     * yes or no, no card waits, or it was [spoken] with "Answer cards by voice" off (a typed answer still works then).
+     */
+    private fun answerCard(text: String, spoken: Boolean): Boolean {
+        val card = pendingCard() ?: return false
+        val s = VoiceHub.settings
+        val r = CardAnswer.reply(text, card.waiting, s.voiceCards, s.voiceYesPersonal, spoken, s.wakePhrases.filter { it.enabled }.map { it.text })
+            ?: return false
+        RLog.i("card_answer", "yes" to (r.does != CardAnswer.Does.DECLINE), "spoken" to spoken)
+        when (r.does) {
+            CardAnswer.Does.DECLINE -> confirm(card.id, false)
+            CardAnswer.Does.CONFIRM -> confirm(card.id, true)
+            CardAnswer.Does.CHOOSE_ONLY -> choose(card.id, 0)
+            CardAnswer.Does.TAP -> r.say?.let { words ->
+                notify(words)
+                if (_state.value.speak) VoiceHub.tts.speak(words)
+            }
+        }
+        return true
+    }
+
     // ------------------------------------------------------------------ asking
 
     /**
@@ -808,8 +1032,13 @@ object PanelController {
         val st = _state.value
         val q = text.trim()
         if (q.isEmpty() && st.draft == null) return false
+        // A card waits: a typed or spoken "yes" or "no" answers it (Settings › Safety & privacy).
+        if (st.phase == Phase.CONFIRMING && st.draft == null && answerCard(q, fromVoice)) return true
         if (st.busy || slot.running) {
-            if (fromVoice) {
+            if (st.phase == Phase.CONFIRMING) {
+                notify(if (fromVoice && !VoiceHub.settings.voiceCards) CARD_TYPE_HINT else CARD_HINT)
+                if (fromVoice) cue(Cue.CHIME)
+            } else if (fromVoice) {
                 notify("Robot is still on the last question. Ask again when it's done.")
                 VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.BUSY)
                 cue(Cue.CHIME)
@@ -823,6 +1052,7 @@ object PanelController {
         }
         VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
         spokenTurn = fromVoice
+        turnSaid = q
         val textingFor = askingTextFor
         askingTextFor = null
         expireClaudeMode()
@@ -860,7 +1090,12 @@ object PanelController {
         // "Ask Claude about my screen" said without attaching it is still a screen question: the conversation is
         // personal from here on, and it is saved only with Keep.
         val marked = if (attachment != Attachment.NONE) attachment else (cmd as? ClaudeCommand.Ask)?.extra ?: Attachment.NONE
-        val user = ChatTurn(newId(), TurnRole.USER, q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, marked)
+        // "Keep screenshots and photos in history" (off by default): the thumbnail and the screen's text go into the saved
+        // conversation, for History only (never replayed to the model, never sent to Claude).
+        val kept = VoiceHub.settings.let { it.keepMedia && it.saveHistory } && attachment != Attachment.NONE
+        val user = ChatTurn(newId(), TurnRole.USER, q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, marked,
+            picture = if (kept) st.draft?.thumb?.let { b -> java.util.Base64.getEncoder().encodeToString(Images.jpeg(b, Images.THUMB_EDGE, 70)) } else null,
+            screenText = if (kept) sText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }?.let { ToolCalls.safeTake(it, ConversationCodec.MAX_SCREEN_TEXT) } else null)
         chat += user
         val way = FastPath.of(cmd, _state.value.claudeMode, attachment)
         val toClaude = way == FastPath.Way.CLAUDE
@@ -908,7 +1143,10 @@ object PanelController {
         return true
     }
 
-    /** Runs a turn in the slot; a stop finishes every reply still streaming as stopped, a crash fails it in words. */
+    /**
+     * Runs a turn in the slot; a stop finishes every reply still streaming as stopped, a crash fails it in words. A model
+     * unload free_memory asked for is done before the turn completes (0.4.0), so the next question can't start meanwhile.
+     */
     private fun startTurn(replyId: String, block: suspend () -> Unit) = slot.start {
         try {
             block()
@@ -920,6 +1158,8 @@ object PanelController {
         } catch (t: Throwable) {
             RLog.w("panel_turn", t)
             _state.value.turns.filter { it.streaming }.forEach { failReply(it.id, "Something went wrong. Please try again.") }
+        } finally {
+            withContext(NonCancellable) { unloadIfAsked(replyId) }
         }
     }
 
@@ -945,13 +1185,16 @@ object PanelController {
         // first, Gemma answers and the offer follows its reply.
         var offerAfter: EscalationTrigger? = null
         // Not after "not Claude": that conversation stays with Robot. With the weather tool on, a weather question is
-        // Robot's to answer (0.4.0).
-        if (attachment == Attachment.NONE && !claudeDeclined) PreRouter.signal(question, localWeather = s.approval(ToolName.WEATHER) != Approval.OFF)?.let { signal ->
+        // Robot's to answer (0.4.0). Locked, the tool can't run: as before, the question may go to Claude when Claude is
+        // allowed on the lock screen.
+        val localWeather = s.approval(ToolName.WEATHER) != Approval.OFF && (!Assistant.locked(VoiceHub.app) || ToolName.WEATHER in s.lockedTools)
+        if (attachment == Attachment.NONE && !claudeDeclined) PreRouter.signal(question, localWeather)?.let { signal ->
             RLog.i("claude_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
             when (decide(attachment, guardFree = !guard.used)) {
                 EscalationDecision.AUTO -> {
                     guard.take(fromClaude = false)
-                    val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personalNow(null))
+                    val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personalNow(null),
+                        includePersonal = s.personalToHelpers)
                     return escalateNow(replyId, question, blocks, voiceAsked, reuseBubble = true)
                 }
                 EscalationDecision.OFFER -> offerAfter = EscalationTrigger.PRE_ROUTER
@@ -983,13 +1226,15 @@ object PanelController {
             VoiceLog.add(VoiceEvent.CLAUDE_LEFT_OUT, leftOut)
         }
         var cutSaid = false
+        // What you asked for in your own words this turn (never the screen's text or a photo): Safety cards' "asked for".
+        val askedNow = ToolRouter.asked(question)
         // One run of the model on this question into the reply, with or without ask_claude (the second one, without it,
         // is Robot's own answer after the model handed over: afterLocal).
         suspend fun gemma(askClaude: Boolean): TurnResult {
             // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
             val tools = ToolRouter.tools(groups, s, askClaude)
             val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools,
-                weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools)
+                weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers, lockedTools = s.lockedTools)
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
             val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
             // The new turn always fits the model's context: cut (and say so) rather than overflow.
@@ -1007,7 +1252,13 @@ object PanelController {
                 hasImage = img != null,
                 tools = tools.map { it.id },
             )
-            return TurnRunner(BrainTurn(c, convId, replyId, gen, img), PanelActions, PanelView(replyId), slot.confirmations, untrusted, newId = ::newId).run()
+            // About what the context has left for a tool's answer beside the reply (as :brain will fit the history): the
+            // weather gives fewer days when it is short.
+            val fixedTokens = Prompt.fixedTokens(system, tools)
+            val budget = ContextWindow.historyBudget(fixedTokens, TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, img != null)))
+            toolRoom = budget - ContextWindow.fit(gen.history, budget).sumOf(TokenEstimate::turn) - TOOL_CALL_TOKENS
+            return TurnRunner(BrainTurn(c, convId, replyId, gen, img), PanelActions, PanelView(replyId), slot.confirmations, untrusted,
+                asked = askedNow, newId = ::newId).run()
         }
         val result = gemma(askClaude = leftOut == null)
         result.failure?.let { return failReply(replyId, it) }
@@ -1028,12 +1279,15 @@ object PanelController {
         offerAfter?.let { afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, it, offerOnly = true) }
     }
 
-    /** The escalation policy for this question now ([attachment]: its screen or photo, which only a tap may send). */
+    /**
+     * The escalation policy for this question now ([attachment]: its screen or photo, which only a tap may send, unless
+     * "Send personal content to helpers automatically" is on).
+     */
     private suspend fun decide(attachment: Attachment, guardFree: Boolean): EscalationDecision {
         val s = VoiceHub.settings
         val app = VoiceHub.app
-        return EscalationPolicy.decide(s, ClaudeLink.keySaved(app), attachment != Attachment.NONE, Assistant.locked(app), ClaudeLink.budgetReached(app, s), !guardFree,
-            declined = claudeDeclined)
+        return EscalationPolicy.decide(s, ClaudeLink.keySaved(app), attachment != Attachment.NONE && !s.personalToHelpers, Assistant.locked(app),
+            ClaudeLink.budgetReached(app, s), !guardFree, declined = claudeDeclined)
     }
 
     /** The personal content in the conversation now, the reply [replyId] included while it is still on screen only. */
@@ -1094,7 +1348,10 @@ object PanelController {
         val personal = personalNow(replyId)
         when (decision) {
             EscalationDecision.AUTO -> if (offerOnly) finishOrDrop(replyId) else {
-                val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personal)
+                // A screen or photo question gets here only with personal content allowed to go by itself: it goes along.
+                val shared = if (attachment != Attachment.NONE && s.personalToHelpers) Shared(screenText = screen, image = image) else Shared()
+                val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, shared, personal = personal,
+                    includePersonal = s.personalToHelpers)
                 finishOrDrop(replyId)
                 escalateNow(null, question, blocks, voiceAsked, reuseBubble = false)
             }
@@ -1113,7 +1370,7 @@ object PanelController {
                 }
                 // What the tap sends is fixed now: this question's screen or picture, never one that arrives later.
                 val payload = if (!api) null else ClaudeContext.payload(question, history, ZonedDateTime.now(), userRegion, personal, attachment,
-                    Shared(screenText = screen, image = image))
+                    Shared(screenText = screen, image = image), includePersonal = s.personalToHelpers)
                 offer(replyId, PendingOffer(api, question, payload, voiceAsked, asWell))
             }
             EscalationDecision.NEEDS_UNLOCK -> {
@@ -1188,7 +1445,8 @@ object PanelController {
             return notify(ClaudeWords.OFF)
         }
         val personal = o.payload?.personal.orEmpty()
-        if (!tapped && personal.isNotEmpty()) {
+        // "Voice yes can send personal content" (off by default): otherwise only the tap sends it.
+        if (!tapped && personal.isNotEmpty() && !VoiceHub.settings.voiceYesPersonal) {
             val say = ClaudeWords.tapToInclude(personal)
             notify(say)
             if (_state.value.speak) VoiceHub.tts.speak(say)
@@ -1256,7 +1514,7 @@ object PanelController {
         // The key is decrypted and the client made off the main thread.
         val session = withContext(Dispatchers.IO) { ClaudeLink.session(app, s, conversation = false) } ?: return noKey(id)
         try {
-            runClaude(id, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, ClaudeRouter.deep(question)))
+            runClaude(id, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, ClaudeRouter.deep(question)), ToolRouter.asked(question))
         } finally {
             ClaudeLink.done(session)
         }
@@ -1337,13 +1595,14 @@ object PanelController {
                     val before = history.take(claudeJoinedAt.coerceIn(0, history.size))
                     // Claude mode from a word that only sounded like the name asks too, personal or not.
                     val include = ClaudeContext.includeQuestion(before, claudeMisheard)?.let { q ->
-                        askToShare(replyId, q, null, "Include", "Start fresh", detail = "Start fresh: Claude sees only what you ask from now on.")
+                        askToShare(replyId, q, null, "Include", "Start fresh", detail = "Start fresh: Claude sees only what you ask from now on.",
+                            personal = ClaudeContext.personal(before).isNotEmpty())
                     } ?: false
                     ClaudeContext.join(before, question ?: said, now, userRegion, shared, include, claudeMisheard)
                 }
                 else -> ClaudeContext.next(question ?: said, shared)
             }
-            runClaude(replyId, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, deep))
+            runClaude(replyId, session, blocks, ClaudePlan.of(s.claudeEffort, voiceAsked, deep), ToolRouter.asked(said))
         } finally {
             if (!mode) ClaudeLink.done(session)
         }
@@ -1354,7 +1613,7 @@ object PanelController {
      * One Claude turn through the API into the reply [replyId]: streamed into the bubble and spoken in Claude's voice,
      * Claude's calls as cards (always), then the cost line, today's spend, and Robot's own conversation rebuilt with it.
      */
-    private suspend fun runClaude(replyId: String, session: ClaudeSession, blocks: List<ClaudeBlock>, plan: ClaudePlan) {
+    private suspend fun runClaude(replyId: String, session: ClaudeSession, blocks: List<ClaudeBlock>, plan: ClaudePlan, asked: Set<ToolName>) {
         _state.update { st -> st.copy(claudeStatus = st.claudeStatus ?: ClaudeWords.THINKING, turns = st.turns.map { if (it.id == replyId) it.copy(claude = true) else it }) }
         val t0 = System.currentTimeMillis()
         var first = -1L
@@ -1402,7 +1661,7 @@ object PanelController {
             override fun stopped(results: List<Pair<String, Map<String, Any?>>>) = claudeTurn.stopped(results)
         }
         val result = try {
-            TurnRunner(rounds, PanelActions, PanelView(replyId), slot.confirmations, untrusted = true, remote = true, newId = ::newId).run()
+            TurnRunner(rounds, PanelActions, PanelView(replyId), slot.confirmations, untrusted = true, remote = true, asked = asked, newId = ::newId).run()
         } finally {
             val r = session.lastReport
             RLog.i("claude_turn", "model" to session.model, "effort" to plan.effort, "firstMs" to first, "ms" to (System.currentTimeMillis() - t0),
@@ -1439,12 +1698,22 @@ object PanelController {
      * are spoken, so you know a tap is needed.
      */
     private suspend fun askToShare(replyId: String, summary: String, body: String?, confirm: String, cancel: String = "Cancel",
-        detail: String = "Nothing goes to Claude until you tap $confirm.", picture: Bitmap? = null): Boolean {
+        detail: String = "Nothing goes to Claude until you tap $confirm.", picture: Bitmap? = null, personal: Boolean = true): Boolean {
         val id = newId()
         val view = PanelView(replyId)
-        upsertAction(replyId, UiAction(id, ToolName.ASK_CLAUDE, summary, ActionStatus.PENDING, detail, body = body, confirm = confirm, cancel = cancel, picture = picture))
+        upsertAction(replyId, UiAction(id, ToolName.ASK_CLAUDE, summary, ActionStatus.PENDING, detail, body = body, confirm = confirm, cancel = cancel, picture = picture,
+            personal = personal))
+        if (_state.value.speak) {
+            val s = VoiceHub.settings
+            // A spoken yes sends personal content only with "Voice yes can send personal content" on; a no always works.
+            VoiceHub.tts.speak(when {
+                !s.voiceCards -> "$summary Tap $confirm or $cancel."
+                !personal || s.voiceYesPersonal -> "$summary Say yes or no."
+                else -> "$summary Tap $confirm, or say no."
+            })
+            cardPromptSaid = true
+        }
         view.phase(TurnPhase.CONFIRMING)
-        if (_state.value.speak) VoiceHub.tts.speak("$summary Tap $confirm or $cancel.")
         val pick = try {
             slot.confirmations.ask(id)
         } catch (e: CancellationException) {
@@ -1581,7 +1850,8 @@ object PanelController {
         val wakes = VoiceHub.settings.wakePhrases.filter { it.enabled }.map { it.text }
         val answer = if (fromVoice && textingFor != null) TextCommand.stripWake(q, wakes) else q
         // Decided before any contact is read or anything asked: the lock first.
-        val req: TextRequest = when (TextCommand.route(answer, textingFor, Assistant.locked(VoiceHub.app), typed, wakes)) {
+        val locked = Assistant.locked(VoiceHub.app) && ToolName.SEND_TEXT !in VoiceHub.settings.lockedTools
+        val req: TextRequest = when (TextCommand.route(answer, textingFor, locked, typed, wakes)) {
             TextCommand.Route.MODEL -> return false
             // Said aloud as well: the question may have come by voice from across the room.
             TextCommand.Route.UNLOCK -> {
@@ -1622,7 +1892,9 @@ object PanelController {
         // A short line for the conversation, so later questions know what happened (the card has the rest).
         setText(replyId, "Texting $name.")
         val call = RawToolCall(ToolName.SEND_TEXT.id, mapOf("to" to req.name, "message" to req.message))
-        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, newId = ::newId).run()
+        // Your own words asked for this text (or answered "what should it say?").
+        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.SEND_TEXT),
+            newId = ::newId).run()
         result.failure?.let { failReply(replyId, it); return true }
         finishReply(replyId, result.reason ?: DoneReason.END)
         if (result.launchedApp) leaveForApp()
@@ -1680,21 +1952,56 @@ object PanelController {
         override fun close() = c.post(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv(convId))
     }
 
-    /** The phone side of a turn: the approval inputs and ToolExecutor (contacts, calendar and files off the main thread). */
+    /**
+     * The phone side of a turn: the approval inputs and ToolExecutor (contacts, calendar and files off the main thread).
+     * An online tool (the weather) runs through [OnlineRun]: Stop ends it at once, and so does its deadline.
+     */
     private object PanelActions : TurnActions {
         override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
         override val settings: RobotSettings get() = VoiceHub.settings
         override suspend fun prepare(action: Action): Prepared = withContext(Dispatchers.IO) { executor().prepare(action) }
-        override suspend fun run(action: Action): Executed = withContext(Dispatchers.IO) { executor().run(action) }
+        override suspend fun run(action: Action): Executed {
+            if (!action.online) return withContext(Dispatchers.IO) { executor().run(action) }
+            val weather = action.tool == ToolName.WEATHER
+            val deadline = if (weather) WeatherAsk.DEADLINE_MS else Nearby.DEADLINE_MS
+            val abort = Abort(deadline)
+            return try {
+                OnlineRun.run(abort, deadline) { a -> executor(a).run(action) } ?: if (weather) {
+                    Executed(ActionStatus.FAILED, WeatherFail.TIMEOUT.text).also { VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.TIMEOUT) }
+                } else if (!abort.claim()) {
+                    // The lookup got to open Organic Maps just as its time ran out: that one stays, nothing opens twice.
+                    Executed(ActionStatus.DONE, "Opened Organic Maps.", launchedApp = true)
+                } else {
+                    // The nearest place took too long to find: Organic Maps' search instead, as with it turned off.
+                    RLog.i("maps_nearest", "found" to false, "why" to NearbyFail.TIMEOUT)
+                    withContext(Dispatchers.IO) { executor().run(Nearby.plain(action)) }.let { r ->
+                        if (r.status.succeeded) r.copy(detail = Nearby.instead(NearbyFail.TIMEOUT, navigate = action.tool == ToolName.MAPS_NAVIGATE)) else r
+                    }
+                }
+            } catch (e: CancellationException) {
+                if (weather) VoiceLog.add(VoiceEvent.WEATHER_FAILED, WeatherFail.STOPPED)
+                throw e
+            }
+        }
     }
 
-    private fun executor() = ToolExecutor(VoiceHub.app, VoiceHub.settings) { i -> host?.launch(i) ?: false }
+    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom, turnSaid) { i -> host?.launch(i) ?: false }
+
+    /** What you typed or said this turn (never screen text): "the nearest" in your own words counts for the maps tools. */
+    @Volatile private var turnSaid: String? = null
+
+    /** The room for a tool's answer in the turn under way (runTurn's estimate); no limit outside one. */
+    @Volatile private var toolRoom = Int.MAX_VALUE
+
+    /** The model's tool call itself, about. */
+    private const val TOOL_CALL_TOKENS = 40
 
     /** What the turn shows: the reply bubble [replyId], its cards and the panel's phase. */
     private class PanelView(private val replyId: String) : TurnView {
         override fun phase(p: TurnPhase) {
             if (!current(replyId)) return
             _state.update { it.copy(phase = if (p == TurnPhase.CONFIRMING) Phase.CONFIRMING else Phase.THINKING) }
+            if (p == TurnPhase.CONFIRMING) cardWaiting() else stopCardListening()
         }
 
         override fun card(c: Card) {
@@ -1702,7 +2009,9 @@ object PanelController {
             // What a read tool finds goes to Claude only after this tap: the button says so.
             val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) "Share with Claude" else c.action?.confirmLabel
             upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo, c.content, c.more,
-                c.cancel, c.handOff, remember = c.remember))
+                c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts,
+                // What it finds goes to Claude: a read, or an online lookup around where you are (the nearest place).
+                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapFor = c.tapFor))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
@@ -1859,6 +2168,7 @@ object PanelController {
 
     /** Stop button: stops the reply (or the model load) and its voice; a waiting card is declined. */
     fun stopGenerating(why: TtsStop = TtsStop.BUTTON) {
+        stopCardListening()
         val id = reqId
         if (id != 0) client?.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(id))
         // The voice stops now: nothing already queued, and not the cut-off last sentence (finishReply drops it).
@@ -1893,8 +2203,6 @@ object PanelController {
 
     /** [costMicros]: a Claude reply's estimated price, kept with it in the history. */
     private fun finishReply(replyId: String, reason: DoneReason, costMicros: Long = 0) {
-        // Before anything else: a reply the panel has moved on from still ends the unload it asked for.
-        unloadIfAsked(replyId)
         if (!current(replyId)) return
         val ui = _state.value.turns.firstOrNull { it.id == replyId }
         val claude = ui?.claude == true
@@ -1926,15 +2234,15 @@ object PanelController {
     }
 
     /**
-     * free_memory asked for Robot's model to be unloaded during this answer (0.4.0): now that it has ended, unload it
-     * and put what Android reports came back on the card (and in the saved conversation). The card is updated after the
-     * reply is recorded: this runs on the main thread after the caller.
+     * free_memory asked for Robot's model to be unloaded during this answer (0.4.0): now that it has ended, release it
+     * (inside the turn), then put what Android reports came back on the card and in the saved conversation.
      */
-    private fun unloadIfAsked(replyId: String) {
+    private suspend fun unloadIfAsked(replyId: String) {
         val before = ModelUnload.take() ?: return
+        BrainKeeper.release("free_memory").join()
         scope.launch {
-            val (b, after) = ModelUnload.unload(VoiceHub.app, before)
-            val line = FreeUp.freedLine(b, after)
+            val after = ModelUnload.settled(VoiceHub.app, before)
+            val line = FreeUp.freedLine(before, after)
             _state.update { st ->
                 st.copy(turns = st.turns.map { t ->
                     if (t.id != replyId) t else t.copy(actions = t.actions.map { if (it.tool == ToolName.FREE_MEMORY && it.detail == FreeUp.UNLOADING) it.copy(detail = line) else it })
@@ -1948,7 +2256,6 @@ object PanelController {
     }
 
     private fun failReply(replyId: String, message: String, action: NoticeAction = NoticeAction.NONE) {
-        unloadIfAsked(replyId)
         if (!current(replyId)) return
         voice.finish(replyId, cancelled = true, speak = false)
         VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.FAILED)
@@ -1977,5 +2284,7 @@ object PanelController {
     private const val EVENT_GAP_MS = 60_000L
     private const val WATCHDOG_TICK_MS = 5_000L
     private const val SORRY = "Sorry, I didn't catch that."
+    private const val CARD_HINT = "A card is waiting: say yes or no, or tap a button on it."
+    private const val CARD_TYPE_HINT = "A card is waiting: tap a button on it, or type yes or no."
     private const val SORRY_NO_ANSWER = "Sorry, I couldn't answer that."
 }

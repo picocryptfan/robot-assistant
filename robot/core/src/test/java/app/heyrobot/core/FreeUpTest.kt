@@ -16,7 +16,9 @@ class FreeUpTest {
 
     @Test fun freeMemoryUnloadsRobotUnlessAnAppIsNamed() {
         assertEquals(Action.FreeMemory(null), parse("free_memory", emptyMap()))
-        assertEquals(Action.FreeMemory(null), parse("free_memory", mapOf("app" to "Robot")))
+        assertEquals(Action.FreeMemory(null), parse("free_memory", mapOf("app" to "Robot's model")))
+        // "Stop Robot" names an app: the app process refuses it (Robot can't stop itself) rather than unload the model.
+        assertEquals(Action.FreeMemory("Robot"), parse("free_memory", mapOf("app" to "Robot")))
         assertEquals(Action.FreeMemory(null), parse("free_memory", mapOf("app" to "background apps")))
         assertEquals(Action.FreeMemory("Chrome"), parse("free_memory", mapOf("app" to " Chrome ")))
         assertEquals("Unload Robot's model to free about 2 GB of memory", Action.FreeMemory(null).describe())
@@ -38,6 +40,15 @@ class FreeUpTest {
         assertEquals(StorageWay.FILES, StorageWay.of("photos"))
         assertEquals(StorageWay.ROBOT, StorageWay.of("robot"))
         assertEquals(StorageWay.ROBOT, StorageWay.of("Robot's cache"))
+        // "Big apps" are apps; big or large alone are files; a cache is an app's.
+        assertEquals(StorageWay.APPS, StorageWay.of("big apps"))
+        assertEquals(StorageWay.APPS, StorageWay.of("the largest apps"))
+        assertEquals(StorageWay.FILES, StorageWay.of("largest"))
+        assertEquals(StorageWay.APPS, StorageWay.of("cache"))
+        // The text-call hint shows no app to copy.
+        assertFalse(Prompt.textCallHint(listOf(ToolName.FREE_MEMORY)).contains("app:"))
+        // A picked file's card waits for Android's answer, then says what happened.
+        assertTrue(FreeUp.DELETE_WAITING.startsWith("Waiting for your answer"))
         assertEquals(Action.FreeStorage(StorageWay.FILES), parse("free_storage", mapOf("what" to "files")))
         assertEquals(Action.FreeStorage(StorageWay.ANDROID), parse("free_storage", emptyMap()))
         assertEquals("Open Android's Free up space screen", Action.FreeStorage(StorageWay.ANDROID).describe())
@@ -80,10 +91,24 @@ class FreeUpTest {
             // They write: screen text or a read tool's findings make even "Just do it" ask.
             val auto = d.copy(approvals = d.approvals + (t to Approval.AUTO))
             assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, auto))
-            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, auto, mustAsk = true))
+            assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, auto, content = true))
             assertFalse(t.reads || t.online || t in ClaudeTools.OFFERED)
             assertEquals(Personal.PHONE, Personal.of(t))
         }
+    }
+
+    @Test fun stoppingAnAppAndBigFilesReachThePhoneGroup() {
+        val asks = listOf("Stop YouTube", "force stop YouTube", "Stop Robot", "close the Signal app", "kill Chrome", "close Maps",
+            "Delete my largest videos", "delete some photos", "what are my biggest files", "arrête YouTube", "ferme Chrome",
+            "mon téléphone est plein", "supprime mes plus grosses vidéos", "il n'y a plus d'espace", "ma mémoire est pleine")
+        for (q in asks) assertTrue(q, ToolGroup.PHONE in ToolRouter.route(q))
+        // "stop" before something that isn't an app is ordinary talk.
+        for (q in listOf("stop the timer", "stop talking", "stop it", "close the door", "stop", "please stop that", "arrête de parler")) {
+            assertFalse(q, ToolGroup.PHONE in ToolRouter.route(q))
+        }
+        // "stop Claude" stays Claude's (it ends Claude mode); "stop Robot" is not a Claude command.
+        assertEquals(ClaudeCommand.Leave, ClaudeRouter.route("stop Claude"))
+        assertNull(ClaudeRouter.route("Stop Robot"))
     }
 
     @Test fun freeingIsAboutThePhoneNotTheCalendar() {

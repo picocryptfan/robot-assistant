@@ -1,6 +1,7 @@
 package app.heyrobot.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsTest {
@@ -13,6 +14,17 @@ class SettingsTest {
         assertEquals(Approval.AUTO, d.approval(ToolName.SET_ALARM))
         assertEquals(Approval.AUTO, d.approval(ToolName.OPEN_APP))
         assertEquals(Approval.ASK, d.approval(ToolName.SEND_TEXT))
+        assertEquals(true, d.directAnswers)
+    }
+
+    /** Settings › "Direct answers": on by default, also for a file saved before it existed; off stays off. */
+    @Test fun directAnswersRoundTrip() {
+        assertEquals(true, RobotSettings.fromJson("""{"schema":5,"speechRate":1.5}""").directAnswers)
+        assertEquals(true, RobotSettings.fromJson("""{"schema":3}""").directAnswers)
+        val off = RobotSettings(directAnswers = false)
+        assertEquals(false, off.toJson().getBoolean("directAnswers"))
+        assertEquals(off, RobotSettings.fromJson(off.toJson().toString()))
+        assertEquals(true, RobotSettings.fromJson(RobotSettings().toJson().toString()).directAnswers)
     }
 
     @Test fun olderFilesOpenAppsAndMapsWithoutAsking() {
@@ -114,8 +126,9 @@ class SettingsTest {
             bargeIn = BargeIn.ALWAYS, playback = Playback.CALL, stopKey = StopKey.EITHER,
         )
         assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
-        // Settings from 0.2.2 (no such keys) get the defaults; an emptied list stays empty.
-        assertEquals(d, RobotSettings.fromJson("{}"))
+        // Settings from 0.2.2 (no such keys) get the defaults (and, as an update, the one-time line about Safety & privacy);
+        // an emptied list stays empty.
+        assertEquals(d.copy(safetyNotice = true), RobotSettings.fromJson("{}"))
         assertEquals(emptyList<WakePhrase>(), RobotSettings.fromJson(d.copy(wakePhrases = emptyList()).toJson().toString()).wakePhrases)
         // A damaged or invalid entry is dropped, never fatal.
         val j = """{"wakePhrases":[{"id":1,"text":"hey robot"},{"id":2,"text":"stop"},"x",{"id":5,"text":"jarvis","sensitivity":"NOPE"}],"bargeIn":"NOPE"}"""
@@ -167,20 +180,76 @@ class SettingsTest {
         val s = RobotSettings(convTranslate = true, convSpeak = false, convPartials = false, convMaxSpeakers = 3, convWakeDuring = true,
             convStartLocked = false, convKeepAudio = true, convSummaryLang = "fr", convAutoOfferHelper = false, meVoiceprint = true)
         assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
-        assertEquals(6, RobotSettings.SCHEMA)
-        assertEquals(6, s.toJson().getInt("schema"))
-        // A 0.4.0 file (schema 5) gets the defaults, except that live words in a conversation follow live words for questions.
+        assertEquals(8, RobotSettings.SCHEMA)
+        assertEquals(8, s.toJson().getInt("schema"))
+        // A 0.4.0-era file (schema 5) gets the defaults, except that live words in a conversation follow live words for questions.
         val old = RobotSettings.fromJson("""{"schema":5,"livePartials":false,"speechRate":1.2}""")
         assertEquals(false, old.convPartials)
-        assertEquals(RobotSettings().copy(livePartials = false, speechRate = 1.2f, convPartials = false), old)
+        assertEquals(RobotSettings().copy(livePartials = false, speechRate = 1.2f, convPartials = false, safetyNotice = true), old)
         assertEquals(true, RobotSettings.fromJson("""{"schema":5}""").convPartials)
-        // From schema 6 on, the two are separate choices.
-        assertEquals(true, RobotSettings.fromJson("""{"schema":6,"livePartials":false}""").convPartials)
+        // A 0.4.0 file (schema 6) too; from schema 8 on, the two are separate choices.
+        assertEquals(false, RobotSettings.fromJson("""{"schema":6,"livePartials":false}""").convPartials)
+        assertEquals(true, RobotSettings.fromJson("""{"schema":8,"livePartials":false}""").convPartials)
         // Out of range or unknown values fall back.
         val bad = RobotSettings.fromJson("""{"schema":6,"convPair":"fr-xx","convMaxSpeakers":40,"convSummaryLang":"de"}""")
         assertEquals(LangPair.FR_EN.id, bad.convPair)
         assertEquals(6, bad.convMaxSpeakers)
         assertEquals(null, bad.convSummaryLang)
         assertEquals(2, RobotSettings.fromJson("""{"convMaxSpeakers":1}""").convMaxSpeakers)
+    }
+
+    /**
+     * Settings › Safety & privacy (schema 6): the switches default to today's behaviour, except "Safety cards", whose new
+     * default ("When you didn't ask for it") the person asked for, older files included.
+     */
+    @Test fun safetySettingsDefaultsMigrationAndRoundTrip() {
+        val d = RobotSettings()
+        assertEquals(SafetyCards.UNASKED, d.safetyCards)
+        assertEquals(true, d.claudeActionCards)
+        assertEquals(true, d.whoCards)
+        assertEquals(true, d.learnedCards)
+        assertEquals(true, d.deleteCards)
+        assertEquals(setOf(ToolName.SET_TIMER, ToolName.SET_ALARM), d.lockedTools)
+        assertEquals(false, d.personalToHelpers)
+        assertEquals(false, d.voiceYesPersonal)
+        assertEquals(true, d.voiceCards)
+        assertEquals(false, RobotSettings.fromJson(d.copy(voiceCards = false).toJson().toString()).voiceCards)
+        assertTrue(RobotSettings.SCHEMA >= 6)
+        // A 0.3 or early 0.4 file: every rule as it was, and the new Safety cards default.
+        for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", "{}")) {
+            val o = RobotSettings.fromJson(old)
+            assertEquals(old, SafetyCards.UNASKED, o.safetyCards)
+            assertEquals(old, listOf(true, true, true, true), listOf(o.claudeActionCards, o.whoCards, o.learnedCards, o.deleteCards))
+            assertEquals(old, LockScreen.DEFAULT, o.lockedTools)
+            assertEquals(old, false, o.personalToHelpers || o.voiceYesPersonal)
+        }
+        val s = d.copy(safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
+            lockedTools = setOf(ToolName.FLASHLIGHT, ToolName.SET_TIMER), personalToHelpers = true, voiceYesPersonal = true)
+        assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        assertEquals(RobotSettings.SCHEMA, s.toJson().getInt("schema"))
+        // Emptied stays empty (only questions on the lock screen); unknown or internal tools are dropped; a bad mode is the default.
+        assertEquals(emptySet<ToolName>(), RobotSettings.fromJson(d.copy(lockedTools = emptySet()).toJson().toString()).lockedTools)
+        // The one-time line about Safety & privacy: for an update (a file from before schema 6), never a new install.
+        assertEquals(false, d.safetyNotice)
+        for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", """{"schema":1}""")) assertEquals(old, true, RobotSettings.fromJson(old).safetyNotice)
+        assertEquals(false, RobotSettings.fromJson(null).safetyNotice)
+        assertEquals(false, RobotSettings.fromJson("""{"schema":6}""").safetyNotice)
+        val updated = RobotSettings.fromJson("""{"schema":5}""")
+        assertEquals(true, RobotSettings.fromJson(updated.toJson().toString()).safetyNotice)
+        assertEquals(false, RobotSettings.fromJson(updated.copy(safetyNotice = false).toJson().toString()).safetyNotice)
+        assertEquals("New: Settings › Safety & privacy. Cards now appear when you didn't ask for an action.", SafetyNotice.TEXT)
+        // "Find the nearest place online": Ask the first time for new installs and older files; an early 0.4.0 switch that
+        // was on (or absent) asks the first time too, one turned off is Never; the three choices round-trip.
+        assertEquals(NearestOnline.ASK, d.nearestOnline)
+        for (old in listOf("""{"schema":5}""", """{"schema":6,"nearestOnline":true}""", "{}")) assertEquals(old, NearestOnline.ASK, RobotSettings.fromJson(old).nearestOnline)
+        assertEquals(NearestOnline.NEVER, RobotSettings.fromJson("""{"schema":6,"nearestOnline":false}""").nearestOnline)
+        for (m in NearestOnline.entries) {
+            val withIt = d.copy(nearestOnline = m, nearestOnlineAt = 1_700_000_000_000)
+            assertEquals(withIt, RobotSettings.fromJson(withIt.toJson().toString()))
+        }
+        assertEquals(NearestOnline.ASK, RobotSettings.fromJson("""{"schema":6,"nearestPlace":"SOMETIMES","nearestOnline":false}""").nearestOnline)
+        val bad = RobotSettings.fromJson("""{"schema":6,"lockedTools":["flashlight","ask_claude","teleport"],"safetyCards":"NEVER"}""")
+        assertEquals(setOf(ToolName.FLASHLIGHT), bad.lockedTools)
+        assertEquals(SafetyCards.UNASKED, bad.safetyCards)
     }
 }

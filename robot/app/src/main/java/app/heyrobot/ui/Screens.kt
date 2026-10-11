@@ -57,6 +57,7 @@ import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.AssistantBubble
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.UserBubble
+import app.heyrobot.ui.common.keptPicture
 import app.heyrobot.ui.common.claudeFooter
 
 // MAIN PROCESS. Home, history and one saved conversation.
@@ -250,7 +251,11 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                     modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp))
             }
             items(c.turns, key = { it.id }) { t ->
-                if (t.role == TurnRole.USER) UserBubble(t.text, t.attachment, null)
+                if (t.role == TurnRole.USER) {
+                    // A picture and screen text kept with it ("Keep screenshots and photos in history"); usually neither.
+                    val pic = remember(t.id, t.picture) { keptPicture(t.picture) }
+                    UserBubble(t.text, t.attachment, pic, screenText = t.screenText)
+                }
                 else AssistantBubble(t.text, streaming = false, stopped = t.stopped, error = t.error,
                     actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
                     claude = t.claude, readBack = t.readBack,

@@ -12,9 +12,9 @@ import javax.xml.parsers.DocumentBuilderFactory
  * GemmaEngine.kt and runs only in the :brain process; sherpa-onnx lives only in the :voice module and runs
  * only in the :voice process; nothing the main (UI) process runs refers to either. Also: the components
  * sit in their processes, the recognizer stays discoverable (the restart finding), exported components
- * are guarded, the permissions are the expected few, nothing but DownloadManager, the Claude SDK and the one
- * Open-Meteo client goes online, audio is never written to disk and nothing logs except through RLog (which drops
- * content).
+ * are guarded, the permissions are the expected few, nothing but DownloadManager, the Claude SDK, the Open-Meteo client
+ * (the weather) and the Nominatim client (the nearest place, 0.4.0) goes online, and those two only from the :voice
+ * process's tools, audio is never written to disk and nothing logs except through RLog (which drops content).
  */
 class ProcessIsolationTest {
     private val root: File = System.getProperty("robot.rootDir")?.let(::File) ?: File(System.getProperty("user.dir") ?: ".").absoluteFile.parentFile
@@ -171,8 +171,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("31", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.3.1", m.getAttributeNS(ns, "versionName"))
+        assertEquals("40", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.4.0", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
@@ -288,15 +288,30 @@ class ProcessIsolationTest {
      * accessibility service (Ask Claude must not drive the Claude app).
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
-        assertEquals(listOf("app/sys/OpenMeteoClient.kt"), usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
+        assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt"),
+            usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b"""),
             ours.filterKeys { !it.startsWith("claude/") }))
-        // It goes only to Open-Meteo's two hosts, over HTTPS (core Weather.kt builds the URLs).
+        // 0.4.0: the nearest place for the maps goes only to OpenStreetMap's Nominatim, over HTTPS, a second apart at most,
+        // its raw request private, and only the maps tools use it (core Nearby.kt builds the URL).
+        val osm = File(java("app"), "app/heyrobot/sys/NominatimClient.kt").readText()
+        assertTrue(osm.contains("private val HOSTS = setOf(Nearby.HOST)") && osm.contains("require(u.protocol == \"https\" && u.host in HOSTS)") &&
+            osm.contains("c.instanceFollowRedirects = false") && osm.contains("searches.search("))
+        assertTrue(osm.contains("private fun get(") && !osm.contains("    fun get("))
+        // The pace (a second apart at most) and the cache are core's NearbySearch, every request through it.
+        val nearby = File(java("core"), "app/heyrobot/core/Nearby.kt").readText()
+        assertTrue(nearby.contains("pace(abort)") && nearby.contains("Nearby.MIN_GAP_MS") && nearby.contains("Nearby.CACHE_MS"))
+        assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/NominatimClient.kt"), usersOf(Regex("""\bNominatimClient\b""")))
+        // It goes only to Open-Meteo's two hosts, over HTTPS (core Weather.kt builds the URLs), its raw request is private, and
+        // only the weather tool and Settings › Weather use it.
         val meteo = File(java("app"), "app/heyrobot/sys/OpenMeteoClient.kt").readText()
-        assertTrue(meteo.contains("setOf(\"api.open-meteo.com\", \"geocoding-api.open-meteo.com\")") && meteo.contains("u.protocol == \"https\""))
+        assertTrue(Regex("""private val HOSTS = setOf\("api\.open-meteo\.com", "geocoding-api\.open-meteo\.com"\)\n""").containsMatchIn(meteo))
+        assertTrue(meteo.contains("require(u.protocol == \"https\" && u.host in HOSTS)") && meteo.contains("c.instanceFollowRedirects = false"))
+        assertTrue(meteo.contains("private fun get(") && !meteo.contains("    fun get("))
+        assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/OpenMeteoClient.kt", "app/ui/ToolsSettings.kt"), usersOf(Regex("""\bOpenMeteoClient\b""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""AccessibilityService|accessibilityservice""")))
         // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, the
-        // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), and Open-Meteo's two (0.4.0).
-        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
+        // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0).
+        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
             ours.filter { it.value.readText().contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))

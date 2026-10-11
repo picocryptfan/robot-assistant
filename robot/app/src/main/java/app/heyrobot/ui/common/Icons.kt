@@ -40,6 +40,8 @@ object RIcons {
     val Place by lazy { icon("place", "M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87 -3.13,-7 -7,-7zM12,11.5c-1.38,0 -2.5,-1.12 -2.5,-2.5s1.12,-2.5 2.5,-2.5 2.5,1.12 2.5,2.5 -1.12,2.5 -2.5,2.5z") }
     val Flash by lazy { icon("flash", "M7,2v11h3v9l7,-12h-4l4,-8z") }
     val Bookmark by lazy { icon("bookmark", "M17,3H7c-1.1,0 -1.99,0.9 -1.99,2L5,21l7,-3 7,3V5c0,-1.1 -0.9,-2 -2,-2z") }
+    /** "Ask about this screen" (Material's mobile_screen_share). */
+    val ScreenShare by lazy { icon("mobile_screen_share", "M17,1.01L7,1c-1.1,0 -1.99,0.9 -1.99,2v18c0,1.1 0.89,2 1.99,2h10c1.1,0 2,-0.9 2,-2V3c0,-1.1 -0.9,-1.99 -2,-1.99zM17,19H7V5h10v14zM12.8,13.24v1.75L16,12l-3.2,-2.98v1.7c-3.11,0.43 -4.35,2.56 -4.8,4.7 1.11,-1.5 2.58,-2.18 4.8,-2.18z") }
     val Phone by lazy { icon("phone", "M17,1.01L7,1c-1.1,0 -2,0.9 -2,2v18c0,1.1 0.9,2 2,2h10c1.1,0 2,-0.9 2,-2V3c0,-1.1 -0.9,-1.99 -2,-1.99zM17,19H7V5h10v14z") }
     val Chevron by lazy { icon("chevron", "M10,6L8.59,7.41 13.17,12l-4.58,4.59L10,18l6,-6z") }
     val Info by lazy { icon("info", "M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM13,17h-2v-6h2v6zM13,9h-2V7h2v2z") }

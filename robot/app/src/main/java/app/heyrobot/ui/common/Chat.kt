@@ -38,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -88,6 +89,8 @@ data class ActionView(
     val picture: Bitmap? = null,
     /** A tick box over [choices] that remembers the one tapped ("Always use this for “mom”"). */
     val remember: String? = null,
+    /** While it waits, an "Allow contacts" button ([CardActions.allow]): the person asked for may be in the contacts. */
+    val allowContacts: Boolean = false,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -121,7 +124,7 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
 }
 
 @Composable
-fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: Modifier = Modifier) {
+fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: Modifier = Modifier, screenText: String? = null) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
         if (thumb != null) {
             Image(
@@ -131,6 +134,18 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
             )
         } else if (attachment != Attachment.NONE) {
             AttachmentTag(attachment)
+        }
+        // "Keep screenshots and photos in history": the screen's text kept with the question, a few lines until tapped.
+        if (!screenText.isNullOrBlank()) {
+            var open by remember { mutableStateOf(false) }
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 320.dp).toggleable(open, onValueChange = { open = it }),
+            ) {
+                Text(screenText, style = MaterialTheme.typography.bodySmall, maxLines = if (open) Int.MAX_VALUE else 4,
+                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+            }
         }
         if (text.isNotBlank()) {
             Surface(
@@ -143,6 +158,13 @@ fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: M
             }
         }
     }
+}
+
+/** A thumbnail kept with a question ([app.heyrobot.core.ChatTurn.picture], Base64 JPEG), or null if it can't be read. */
+fun keptPicture(b64: String?): Bitmap? = try {
+    b64?.let { java.util.Base64.getDecoder().decode(it) }?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
+} catch (_: Exception) {
+    null
 }
 
 @Composable
@@ -296,11 +318,13 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
                     }
                 }
             }
-            if (more != null && (a.undo || a.status == ActionStatus.NEEDS_PERMISSION || a.openApp != null)) {
+            val allowContacts = a.allowContacts && a.status == ActionStatus.PENDING
+            if (more != null && (a.undo || a.status == ActionStatus.NEEDS_PERMISSION || a.openApp != null || allowContacts)) {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                     if (a.undo) TextButton(onClick = { more.undo(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Undo") }
                     a.openApp?.let { label -> FilledTonalButton(onClick = { more.openApp(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(label) } }
                     if (a.status == ActionStatus.NEEDS_PERMISSION) FilledTonalButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow") }
+                    if (allowContacts) TextButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow contacts") }
                 }
             }
             if (!a.body.isNullOrBlank()) {

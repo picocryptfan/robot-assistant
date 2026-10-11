@@ -192,29 +192,48 @@ object CheogramIntents {
     fun canPick(ctx: Context, pkg: String): Boolean = HandOffApps.resolves(ctx, pick(pkg))
 
     /**
+     * Each hand-off starts in a task of its own (0.4.0), so it always runs: started into Cheogram's existing task, an intent
+     * equal to that task's first one (Android ignores the extras, so the share screen's text) only brought the task to the
+     * front, on Cheogram's last screen. Cheogram's screens finish once they open the chat (ConversationsActivity, in
+     * Cheogram's own task), and Android then drops the extra task from Recents. Cheogram's own back stack is left alone.
+     */
+    const val FRESH = Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+
+    /**
      * The chat with [jid] in your [account], with [body] in its box: StartConversationActivity reads the xmpp: link (body
      * encoded twice, as XmppLink writes it) and the "account" extra, so a contact in several accounts needs no search.
      */
     fun chat(pkg: String, jid: String, account: String, body: String): Intent =
         Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(jid, body))).setClassName(pkg, CheogramLinks.START_CONVERSATION)
-            .putExtra(CheogramLinks.EXTRA_ACCOUNT, account)
+            .putExtra(CheogramLinks.EXTRA_ACCOUNT, account).addFlags(FRESH)
 
     /** The xmpp: link alone (Cheogram picks the account; with the contact in several, it shows a search first). */
-    fun link(pkg: String, jid: String, body: String): Intent = Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(jid, body))).setPackage(pkg)
+    fun link(pkg: String, jid: String, body: String): Intent = Intent(Intent.ACTION_VIEW, Uri.parse(XmppLink.message(jid, body))).setPackage(pkg).addFlags(FRESH)
 
-    /** Cheogram's share screen with [body]: you choose who it goes to there. */
-    fun share(pkg: String, body: String): Intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, body).setPackage(pkg)
+    /** Cheogram's share screen with [body], by name and fresh ([CheogramLinks.SHARE_ACTIVITY]): you choose who it goes to there. */
+    fun share(pkg: String, body: String): Intent = Intent(Intent.ACTION_SEND).setClassName(pkg, CheogramLinks.SHARE_ACTIVITY).setType("text/plain")
+        .putExtra(Intent.EXTRA_TEXT, body).addFlags(FRESH)
+
+    /**
+     * The same share as before 0.4.0, to the package rather than by name: for a Cheogram build whose share screen isn't
+     * [CheogramLinks.SHARE_ACTIVITY] ([share] doesn't resolve). Still in a task of its own.
+     */
+    fun shareAny(pkg: String, body: String): Intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, body).setPackage(pkg)
+        .addFlags(FRESH)
 
     /**
      * Who was picked, from the list's result: EXTRA_SHORTCUT_NAME, and EXTRA_SHORTCUT_INTENT's xmpp: link and "account"
      * extra. The icon is never read, and nothing is pinned. Null when the result holds no usable address.
      */
     @Suppress("DEPRECATION") // The legacy shortcut extras: what ACTION_CREATE_SHORTCUT still answers with.
-    fun picked(data: Intent?): CheogramPick? = try {
+    fun picked(data: Intent?): CheogramPick? = read(data).first
+
+    /** [picked], and whether the answer could be read at all (false: its extras didn't unparcel). */
+    fun read(data: Intent?): Pair<CheogramPick?, Boolean> = try {
         val target = data?.getParcelableExtra(Intent.EXTRA_SHORTCUT_INTENT, Intent::class.java)
-        CheogramLinks.pick(data?.getStringExtra(Intent.EXTRA_SHORTCUT_NAME), target?.dataString, target?.getStringExtra(CheogramLinks.EXTRA_ACCOUNT))
+        CheogramLinks.pick(data?.getStringExtra(Intent.EXTRA_SHORTCUT_NAME), target?.dataString, target?.getStringExtra(CheogramLinks.EXTRA_ACCOUNT)) to true
     } catch (_: Exception) {
-        null
+        null to false
     }
 }
 
@@ -247,31 +266,43 @@ object PhoneContacts {
      * right away: the access is temporary.
      */
     fun read(ctx: Context, uri: Uri, now: Long): Person? {
-        val rows = ArrayList<Array<String?>>()
+        val rows = ArrayList<PickedRow>()
         val cr = ctx.contentResolver
-        // The session URI takes a projection only (no selection); the older picker's row has the same columns.
+        // The session URI takes a projection only (no selection); the older picker's row has the same columns. The
+        // narrow one names no contact (a data row's _ID isn't one): its rows are all the picked contact's.
         val wide = arrayOf(Data.CONTACT_ID, Data.DISPLAY_NAME_PRIMARY, Data.MIMETYPE, Data.DATA1, Data.DATA2, Data.DATA3)
-        val narrow = arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY, Data.MIMETYPE, Data.DATA1)
+        val narrow = arrayOf(Data.DISPLAY_NAME_PRIMARY, Data.MIMETYPE, Data.DATA1)
         for (projection in listOf(wide, narrow)) {
             try {
                 cr.query(uri, projection, null, null, null)?.use { c ->
-                    while (c.moveToNext()) rows += Array(6) { i -> if (i < projection.size) c.getString(i) else null }
+                    while (c.moveToNext()) {
+                        rows += if (projection === wide) PickedRow(c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), c.getString(5))
+                        else PickedRow(null, c.getString(0), c.getString(1), c.getString(2), null, null)
+                    }
                 }
                 break
             } catch (_: Exception) {
                 rows.clear()
             }
         }
+        return person(rows, now, PeopleStore.newId())
+    }
+
+    /** One row the picker's URI gave: its contact (null: the row doesn't say), name, mimetype and DATA1 to DATA3. */
+    internal data class PickedRow(val contact: String?, val name: String?, val mime: String?, val data1: String?, val data2: String?, val data3: String?)
+
+    /** The picked contact in [rows]: every row of the first row's contact (every row, when they name none). */
+    internal fun person(rows: List<PickedRow>, now: Long, id: String): Person? {
         val first = rows.firstOrNull() ?: return null
-        val mine = rows.filter { it[0] == first[0] }
-        val name = mine.firstNotNullOfOrNull { it[1]?.takeIf { n -> n.isNotBlank() } } ?: return null
-        val phones = mine.filter { it[2] == Phone.CONTENT_ITEM_TYPE && !it[3].isNullOrBlank() }.map { r ->
-            val type = r[4]?.toIntOrNull() ?: Phone.TYPE_OTHER
+        val mine = if (first.contact == null) rows else rows.filter { it.contact == first.contact }
+        val name = mine.firstNotNullOfOrNull { it.name?.takeIf { n -> n.isNotBlank() } } ?: return null
+        val phones = mine.filter { it.mime == Phone.CONTENT_ITEM_TYPE && !it.data1.isNullOrBlank() }.map { r ->
+            val type = r.data2?.toIntOrNull() ?: Phone.TYPE_OTHER
             val k = Contacts.kind(type)
-            ContactPhone(r[3]!!.trim(), k, if (type == Phone.TYPE_CUSTOM && !r[5].isNullOrBlank()) r[5]!! else People.label(k))
+            ContactPhone(r.data1!!.trim(), k, if (type == Phone.TYPE_CUSTOM && !r.data3.isNullOrBlank()) r.data3 else People.label(k))
         }
-        val emails = mine.filter { it[2] == Email.CONTENT_ITEM_TYPE && !it[3].isNullOrBlank() }.map { it[3]!!.trim() }
-        return Person(PeopleStore.newId(), name, phones = phones, emails = emails, source = PersonSource.PHONE_PICKER, confirmed = true, updatedAt = now)
+        val emails = mine.filter { it.mime == Email.CONTENT_ITEM_TYPE && !it.data1.isNullOrBlank() }.map { it.data1!!.trim() }
+        return Person(id, name, phones = phones, emails = emails, source = PersonSource.PHONE_PICKER, confirmed = true, updatedAt = now)
     }
 
     private fun type(k: PhoneKind): Int = when (k) {
@@ -351,6 +382,11 @@ object NotesFiles {
 object PeopleFiles {
     fun dir(ctx: Context): File = File(ctx.filesDir, "people").apply { mkdirs() }
     fun store(ctx: Context): PeopleStore = PeopleStore(dir(ctx))
+
+    /** Turning learning on trusts the Cheogram installed then: its signer is kept again at its next notification. */
+    fun forgetCheogramSigner(ctx: Context) {
+        File(dir(ctx), app.heyrobot.core.CheogramSigners.FILE).delete()
+    }
 
     /**
      * People and, when Robot may read them, the phone's contacts, as one address book for a name. Contacts that can't be

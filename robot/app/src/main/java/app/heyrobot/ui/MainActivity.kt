@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -36,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.heyrobot.core.NearestAnswer
 import app.heyrobot.core.Approval
 import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestResult
@@ -59,6 +61,7 @@ import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.ClaudeKeyFiles
 import app.heyrobot.sys.Cmd
+import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.RecognizerKeeper
@@ -136,6 +139,8 @@ sealed class Page {
     /** Settings › People (0.4.0), and one person ([id] null: a new one). */
     data object People : Page()
     data class PersonEdit(val id: String?) : Page()
+    /** Settings › Safety & privacy (0.4.0). */
+    data object Safety : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -152,6 +157,7 @@ sealed class Page {
                     AdbFixes -> "adbfixes"
                     People -> "people"
                     is PersonEdit -> "person:${p.id.orEmpty()}"
+                    Safety -> "safety"
                 }
             },
             restore = { v ->
@@ -165,6 +171,7 @@ sealed class Page {
                     v == "adbfixes" -> AdbFixes
                     v == "people" -> People
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
+                    v == "safety" -> Safety
                     else -> null
                 }
             },
@@ -187,6 +194,8 @@ data class Snapshot(
     val bench: VoiceBench? = null,
     /** The last barge-in test (Settings › Voice). */
     val bargeTest: BargeTestResult? = null,
+    /** The panel's answer to the nearest place's first-use card (Settings › Actions shows it when newer than its own). */
+    val nearestAnswer: NearestAnswer? = null,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
 
@@ -235,6 +244,7 @@ fun RobotAppUi(activity: MainActivity) {
                     engines = VoiceEngineStatus.fromJson(readOrNull(Paths.voiceEngines(ctx))),
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
                     bargeTest = readBargeTest(ctx),
+                    nearestAnswer = NearestAnswers.load(ctx),
                 )
             }
             // A finished voice download is checked and installed right away, one bundle at a time.
@@ -299,6 +309,15 @@ fun RobotAppUi(activity: MainActivity) {
         permissionTick++
         if (result.values.any { !it }) say("Not allowed. If Android doesn't ask again: Settings › Apps › Robot › Permissions.")
     }
+    // Photos and videos (0.4.0): "Select photos" grants only READ_MEDIA_VISUAL_USER_SELECTED, which is allowed too.
+    val mediaPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        permissionTick++
+        when {
+            result[Manifest.permission.READ_MEDIA_IMAGES] == true || result[Manifest.permission.READ_MEDIA_VIDEO] == true -> {}
+            result[Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED] == true -> say("Robot can see the photos and videos you picked.")
+            else -> say("Not allowed. If Android doesn't ask again: Settings › Apps › Robot › Permissions.")
+        }
+    }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         val why = ModelStore.refuseImport(ctx, uri)
@@ -345,8 +364,24 @@ fun RobotAppUi(activity: MainActivity) {
             }
         },
         deleteModel = { ModelStore.delete(ctx); say("The model was deleted.") },
-        deleteConversation = { id -> ConversationStore.delete(ctx, id); historyTick++; page = null },
-        deleteAllConversations = { ConversationStore.deleteAll(ctx); historyTick++; say("History deleted.") },
+        // The panel's live conversation too, or its next save would write a deleted one back.
+        deleteConversation = { id ->
+            ConversationStore.delete(ctx, id); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+            historyTick++; page = null
+        },
+        deleteAllConversations = {
+            ConversationStore.deleteAll(ctx); Cmd.send(ctx, Cmd.CONVERSATIONS_DELETED)
+            historyTick++; say("History deleted.")
+        },
+        removeSavedMedia = {
+            scope.launch {
+                val n = withContext(Dispatchers.IO) { ConversationStore.removeMedia(ctx) }
+                // The panel's live conversation too, or its next save would write them back.
+                Cmd.send(ctx, Cmd.MEDIA_REMOVED)
+                historyTick++
+                say(if (n == 0) "No saved screenshots or photos." else "Removed from $n conversation${if (n == 1) "" else "s"}.")
+            }
+        },
         speakTest = { Cmd.send(ctx, Cmd.SPEAK_TEST) },
         say = ::say,
         voiceDownload = { b -> VoiceModelStore.startDownload(ctx, b)?.let(::say) },
@@ -386,7 +421,7 @@ fun RobotAppUi(activity: MainActivity) {
         },
         askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
         askMedia = {
-            peoplePermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
+            mediaPermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
         },
         openUsageAccess = {
@@ -422,6 +457,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.AdbFixes -> AdbFixesScreen(snackbar, onBack = { page = null })
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
+        Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -436,13 +472,22 @@ fun RobotAppUi(activity: MainActivity) {
                 }
             },
         ) { pad ->
-            val m = Modifier.padding(pad)
-            when (tab) {
-                Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
-                Tab.NOTES -> NotesScreen(notes, actions, m)
-                Tab.HISTORY -> HistoryScreen(history, actions, m)
-                Tab.MODEL -> ModelScreen(snap, busy, actions, m)
-                Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
+            Column(Modifier.padding(pad)) {
+                // Once, after updating to 0.4.0: what changed about cards, and where to choose (core SafetyNotice).
+                if (settings.safetyNotice && (tab == Tab.HOME || tab == Tab.SETTINGS)) {
+                    SafetyNoticeLine(
+                        onOpen = { updateSettings(settings.copy(safetyNotice = false)); page = Page.Safety },
+                        onDismiss = { updateSettings(settings.copy(safetyNotice = false)) },
+                    )
+                }
+                val m = Modifier.weight(1f)
+                when (tab) {
+                    Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
+                    Tab.NOTES -> NotesScreen(notes, actions, m)
+                    Tab.HISTORY -> HistoryScreen(history, actions, m)
+                    Tab.MODEL -> ModelScreen(snap, busy, actions, m)
+                    Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
+                }
             }
         }
     }
@@ -463,6 +508,8 @@ class AppActions(
     val deleteModel: () -> Unit,
     val deleteConversation: (String) -> Unit,
     val deleteAllConversations: () -> Unit,
+    /** Settings › Safety & privacy: every kept thumbnail and screen text out of the saved conversations. */
+    val removeSavedMedia: () -> Unit = {},
     val speakTest: () -> Unit,
     val say: (String) -> Unit,
     val voiceDownload: (VoiceBundle) -> Unit,

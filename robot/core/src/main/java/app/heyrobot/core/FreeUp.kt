@@ -31,8 +31,10 @@ enum class StorageWay {
             val t = FreeUp.plain(text.orEmpty())
             return when {
                 Regex("""\brobots?\b""").containsMatchIn(t) -> ROBOT
-                Regex("""\b(files?|photos?|pictures?|videos?|media|large|big|downloads?|fichiers?|images?|videos?)\b""").containsMatchIn(t) -> FILES
-                Regex("""\b(apps?|applications?|cache|caches)\b""").containsMatchIn(t) -> APPS
+                // "big apps" are apps; "big" or "large" alone are files.
+                Regex("""\b(apps?|applications?|applis?)\b""").containsMatchIn(t) -> APPS
+                Regex("""\b(files?|photos?|pictures?|videos?|media|large|big|biggest|largest|downloads?|fichiers?|images?)\b""").containsMatchIn(t) -> FILES
+                Regex("""\b(cache|caches)\b""").containsMatchIn(t) -> APPS
                 else -> ANDROID
             }
         }
@@ -56,14 +58,18 @@ object FreeUp {
         "eu.siacs.conversations", "com.whatsapp", "org.telegram.messenger", "org.thunderdog.challegram", "im.vector.app",
         "chat.simplex.app", "org.briarproject.briar.android", "ch.threema.app", "network.loki.messenger")
 
-    /** free_memory's app argument, or null when it means Robot's own model (or nothing at all). */
+    /**
+     * free_memory's app argument, or null when it means Robot's own model (or nothing at all). "Robot" alone is an app
+     * name ("Stop Robot"), which the app refuses; "Robot's model" or "Robot's memory" is the model.
+     */
     fun appOrNull(text: String?): String? {
         val t = plain(text.orEmpty())
         if (t.isEmpty() || t in OWN) return null
         return text?.replace(Regex("\\s+"), " ")?.trim()
     }
 
-    private val OWN = setOf("robot", "robots model", "robot model", "the model", "model", "gemma", "yourself", "itself", "memory", "ram",
+    private val OWN = setOf("robots model", "robot model", "robots memory", "robot memory", "the model", "model", "gemma", "your model",
+        "yourself", "itself", "memory", "ram",
         "all", "everything", "background", "background apps", "apps", "other apps", "none")
 
     /** A card button for a file: "IMG_2041.jpg · 12 MB · Mar 1, 2026" (the name cut to 40 characters). */
@@ -92,6 +98,14 @@ object FreeUp {
         return if (freed >= 100_000_000) "Freed about ${PhoneStatus.size(freed)}: ${PhoneStatus.size(after)} of memory available now."
         else "Robot's model is unloaded. Android hasn't counted the memory as free yet (${PhoneStatus.size(after)} available)."
     }
+
+    /** Robot among the largest apps: most of it is its models, which clearing its storage would delete. */
+    const val ROBOT_LABEL = "Robot (models, don't clear)"
+
+    /** A picked file's card until Android's confirmation answers; then [DELETED] or [KEPT]. */
+    const val DELETE_WAITING = "Waiting for your answer in Android's confirmation: it's deleted only if you allow it there."
+    const val DELETED = "Deleted."
+    const val KEPT = "Not deleted: you didn't allow it."
 
     /** The unload card's line until the answer ends; then it says what came back ([freedLine]). */
     const val UNLOADING = "Robot's model unloads when this answer ends (about 2 GB)."

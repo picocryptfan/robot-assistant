@@ -40,14 +40,24 @@ object ToolRouter {
     /** The weather, English and French ("will it rain", "cloud cover tomorrow", "quel temps", "météo"). */
     private val WEATHER = setOf("weather", "forecast", "rain", "rainy", "snow", "snowy", "temperature", "cloud", "cloudy", "cloud cover",
         "wind", "windy", "umbrella", "sunny", "storm", "stormy", "thunder", "thunderstorm", "hail", "fog", "foggy", "drizzle", "sleet",
-        "frost", "freezing", "humid", "humidity", "degrees", "hot outside", "cold outside", "jacket", "coat", "sunscreen",
+        "frost", "freezing", "humid", "humidity", "degree", "degrees", "hot", "cold", "warm", "chilly", "heat", "heatwave", "uv",
+        "sunglasses", "outside", "nice out", "the high", "the low", "jacket", "coat", "sunscreen", "chaud", "froid", "chaleur",
+        "canicule", "dehors", "frais",
         "meteo", "pluie", "pleuvoir", "pleut", "neige", "neiger", "nuage", "nuageux", "vent", "venteux",
         "parapluie", "soleil", "ensoleille", "orage", "brouillard", "grele", "gel", "degres", "quel temps", "previsions", "manteau")
 
     /** The phone itself: storage, battery, memory, and freeing them ("free up space", "libérer de la place"). */
     private val PHONE = setOf("storage", "space", "free up", "clean up", "memory", "ram", "battery", "charge", "disk", "gigabytes", "gb",
         "megabytes", "cache", "phone status", "running out", "taking up", "stockage", "espace", "memoire", "batterie", "liberer", "libere",
-        "de la place", "nettoyer", "nettoie")
+        "de la place", "nettoyer", "nettoie", "delete", "biggest", "largest", "force stop", "kill", "plein", "pleine", "supprime",
+        "supprimer", "efface", "effacer", "plus grosses", "plus gros")
+    private val ELISION = Regex("""\b([dljnsmtc]|qu)['’](?=\p{L})""")
+
+    /** "Stop YouTube", "close Chrome", "arrête YouTube": a verb that may stop an app, then (not) one of these (0.4.0). */
+    private val STOP_VERBS = setOf("stop", "close", "quit", "kill", "arrete", "arreter", "ferme", "fermer", "quitte")
+    private val NOT_AN_APP = setOf("it", "that", "this", "talking", "listening", "reading", "speaking", "playing", "the", "a", "an", "me",
+        "now", "please", "there", "here", "timer", "timers", "alarm", "alarms", "recording", "music", "le", "la", "les", "l", "ca", "cela",
+        "de", "du", "des", "un", "une", "moi", "tout", "being", "doing", "worrying", "your", "my", "ton", "ta", "mon", "ma")
 
     /** "tell me a joke" is not about telling someone: "tell" counts only when it isn't followed by me or us. */
     private val NOT_PEOPLE = setOf("tell me", "tell us")
@@ -77,8 +87,91 @@ object ToolRouter {
             if (has(NOTES)) add(ToolGroup.NOTES)
             if (has(CALENDAR) || WHEN.containsMatchIn(plain)) add(ToolGroup.CALENDAR)
             if (has(WEATHER)) add(ToolGroup.WEATHER)
-            if (has(PHONE)) add(ToolGroup.PHONE)
+            if (has(PHONE) || stopsAnApp(words)) add(ToolGroup.PHONE)
         }
+    }
+
+    /**
+     * The always-described tools, each by its own words (0.4.0, "Safety cards: When you didn't ask for it"): CORE is in
+     * every route, so it can't say which of them the person asked for.
+     */
+    private val TIMER = setOf("timer", "countdown", "minuteur", "minuterie", "chrono", "chronometre")
+    private val ALARM = setOf("alarm", "wake me", "wake up", "alarme", "reveil", "reveille", "reveiller")
+    private val LIGHT = setOf("flashlight", "torch", "light", "lamp", "lampe", "lumiere", "flash")
+    private val OPEN = setOf("open", "launch", "start", "ouvre", "ouvrir", "lance", "lancer", "demarre")
+    private val MAP = setOf("map", "maps", "directions", "direction", "navigate", "navigation", "route", "take me", "get to", "how do i get",
+        "where is", "wheres", "find", "nearest", "closest", "near me", "nearby", "carte", "itineraire", "aller a", "emmene", "trouve",
+        "plus proche", "pres de", "ou est")
+
+    /**
+     * The actions that write or leave the phone, each asked for only by a word that asks for it (the router's topic words
+     * are too wide for this: "what does this message say?" routes to texting, "is it open today?" to the calendar).
+     * Exact words, not their endings ("messages", "texts" and "emails" are things, not requests).
+     */
+    private val TEXT_ASK = setOf("text", "texto", "sms", "message", "msg", "dm", "tell", "reply", "ping", "send", "write to", "ecris", "ecrire",
+        "envoie", "envoyer", "dis a", "dire a", "reponds", "repondre")
+    private val EMAIL_ASK = setOf("email", "e mail", "mail", "courriel", "send", "reply", "write to", "ecris", "ecrire", "envoie", "envoyer",
+        "reponds", "repondre")
+    private val NOTE_ASK = setOf("note", "remember", "remind", "write down", "jot", "save", "take a note", "make a note", "retiens", "souviens",
+        "rappelle", "enregistre", "sauvegarde", "prends note")
+    /** A new event: one of these, with the calendar's words ([route]'s CALENDAR: a day, a time, "calendar"). */
+    private val EVENT_ASK = setOf("schedule", "book", "remind", "rappelle", "planifie", "reserve", "programme")
+    /** "Add milk to my list", "put lunch on Friday": a note or an event, by the group the rest of the words name. */
+    private val ADD = setOf("add", "put", "create", "make", "ajoute", "ajouter", "mets", "mettre", "cree", "creer")
+    /** Freeing memory or storage: with the phone's words ([route]'s PHONE). */
+    private val FREE_ASK = setOf("free up", "clean up", "clear", "delete", "remove", "kill", "force stop", "stop", "close", "quit", "unload",
+        "liberer", "libere", "nettoie", "nettoyer", "supprime", "supprimer", "efface", "effacer", "vide", "vider", "ferme", "fermer", "arrete",
+        "arreter", "quitte")
+    /** "Tell me a joke", "can you tell what this is": not about telling someone. */
+    private val NOT_TOLD = setOf("me", "us", "what", "whether", "if", "how", "why", "who", "when", "where", "which", "the", "a", "apart")
+    /**
+     * Right before a word, these make it a thing named, not an action asked for: "this message", "the email", "my
+     * calendar", "cette note". An action's word never follows one.
+     */
+    private val NAMING = setOf("this", "that", "these", "those", "the", "a", "an", "my", "your", "his", "her", "their", "our", "its", "any",
+        "new", "last", "latest", "ce", "cet", "cette", "ces", "le", "la", "les", "l", "un", "une", "mon", "ma", "mes", "ton", "ta", "tes", "son",
+        "sa", "ses", "notre", "nos", "votre", "vos", "leur", "leurs", "du", "des", "de", "d")
+
+    /**
+     * The actions the person asked for in their own words ([question]: what they typed or said this turn, never screen
+     * text, a photo or what a tool found), for "Safety cards: When you didn't ask for it". Each always-described tool by
+     * its own words; each action that writes or leaves the phone by a word that asks for it, never one that only names
+     * a thing ([NAMING]); the read tools by their group's words ([route]): they only matter for the weather, which goes
+     * online. A word missed here only shows a card; a word too many skips one, so the lists ask rather than guess.
+     * Robot's own ask_claude never counts (it always shows its card).
+     */
+    fun asked(question: String): Set<ToolName> {
+        val words = words(question)
+        val padded = " " + words.joinToString(" ") + " "
+        fun has(keys: Set<String>) = keys.any { k -> if (' ' in k) padded.contains(" $k ") else words.any { inflects(it, k) } }
+        /** One of [keys] as a request: the word itself (no ending), not right after a word that names a thing. */
+        fun asks(keys: Set<String>): Boolean = keys.any { k ->
+            val n = k.split(' ')
+            (0..words.size - n.size).any { i ->
+                (0 until n.size).all { j -> words[i + j] == n[j] } && (i == 0 || words[i - 1] !in NAMING) &&
+                    !(k == "tell" && i + 1 < words.size && words[i + 1] in NOT_TOLD)
+            }
+        }
+        val groups = route(question)
+        return buildSet {
+            if (has(TIMER)) add(ToolName.SET_TIMER)
+            if (has(ALARM)) add(ToolName.SET_ALARM)
+            if (has(LIGHT)) add(ToolName.FLASHLIGHT)
+            if (has(OPEN)) add(ToolName.OPEN_APP)
+            if (has(MAP)) { add(ToolName.MAPS_SEARCH); add(ToolName.MAPS_NAVIGATE) }
+            if (asks(TEXT_ASK) || LET_KNOW.containsMatchIn(padded)) add(ToolName.SEND_TEXT)
+            if (asks(EMAIL_ASK)) add(ToolName.DRAFT_EMAIL)
+            if (asks(NOTE_ASK) || (asks(ADD) && ToolGroup.NOTES in groups)) add(ToolName.ADD_NOTE)
+            if ((asks(EVENT_ASK) || asks(ADD)) && ToolGroup.CALENDAR in groups) add(ToolName.ADD_EVENT)
+            if (asks(FREE_ASK) && ToolGroup.PHONE in groups) { add(ToolName.FREE_MEMORY); add(ToolName.FREE_STORAGE) }
+            for (t in ToolName.entries) if (t.reads && t.group != ToolGroup.CORE && t.group in groups) add(t)
+            remove(ToolName.ASK_CLAUDE)
+        }
+    }
+
+    /** "Stop YouTube", "close the Signal app", "arrête Chrome"; not "stop the timer", "stop talking" or "close the door". */
+    private fun stopsAnApp(words: List<String>): Boolean = words.withIndex().any { (i, w) ->
+        w in STOP_VERBS && i + 1 < words.size && (words[i + 1] !in NOT_AN_APP || words.drop(i + 1).any { it == "app" || it == "appli" || it == "application" })
     }
 
     /** The groups a saved conversation already used: its questions' words and the tools its answers ran. */
@@ -106,6 +199,8 @@ object ToolRouter {
 
     private fun words(s: String): List<String> =
         Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase(Locale.ROOT)
+            // French elision is two words ("d'espace", "l'appli"); "what's" and "aujourd'hui" stay one.
+            .replace(ELISION, "$1 ")
             .replace("'", "").replace("’", "")
             .split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
 

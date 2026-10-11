@@ -22,9 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import app.heyrobot.core.Abort
 import app.heyrobot.core.OpenMeteo
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ToolCalls
+import app.heyrobot.core.WeatherAsk
 import app.heyrobot.core.WeatherPlace
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.OpenMeteoClient
@@ -68,7 +70,7 @@ private fun HomeForWeather(s: RobotSettings, update: (RobotSettings) -> Unit, a:
         busy = true
         scope.launch {
             val r: Any? = withContext(Dispatchers.IO) {
-                try { OpenMeteoClient.geocode(ctx, asked) } catch (e: OpenMeteoClient.Failure) { e } catch (_: Exception) { null }
+                try { OpenMeteoClient.geocode(ctx, asked, Abort(WeatherAsk.DEADLINE_MS)) } catch (e: OpenMeteoClient.Failure) { e } catch (_: Exception) { null }
             }
             busy = false
             when (r) {
@@ -77,7 +79,7 @@ private fun HomeForWeather(s: RobotSettings, update: (RobotSettings) -> Unit, a:
                     text = ""
                     a.say("Home for weather: ${r.name}.")
                 }
-                is OpenMeteoClient.Failure -> a.say(r.why.text)
+                is OpenMeteoClient.Failure -> a.say(r.text)
                 else -> a.say("Robot couldn't look that up.")
             }
         }
@@ -106,8 +108,9 @@ private fun HomeForWeather(s: RobotSettings, update: (RobotSettings) -> Unit, a:
 private fun LocationRow(f: AssistantFacts?, a: AppActions) {
     val on = f?.locationGranted == true
     StatusRow(if (on) Mark.OK else Mark.TODO, "Location (optional)",
-        if (on) "Allowed, approximate only: “the weather here” uses where the phone is, rounded to about 1 km."
-        else "For “the weather here” when you travel. Without it, Robot uses your Home for weather.") {
+        if (on) "Allowed, approximate only: “the weather here” and “the nearest pharmacy” use where the phone is, rounded to about 1 km."
+        else "For “the weather here” when you travel, and “directions to the nearest …”. Without it, Robot uses your Home for weather " +
+            "and Organic Maps' search.") {
         if (!on) FilledTonalButton(onClick = a.askLocation) { Text("Allow") }
     }
 }

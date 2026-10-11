@@ -116,12 +116,14 @@ object ClaudeContext {
     /**
      * Robot checks with Claude: the user's question (their own words, never text the local model wrote for Claude) and
      * the last [RECENT_TURNS] turns of plain text. In a personal conversation ([personal] of everything so far, this turn
-     * included) only the question goes. What the user shared with this question ([shared]) goes only after a tap.
+     * included) only the question goes, unless [includePersonal] (Settings › Safety & privacy › "Send personal content to
+     * helpers automatically"). What the user shared with this question ([shared]) goes only after a tap, or with that
+     * switch on.
      */
     fun escalation(question: String, history: List<ChatTurn>, now: ZonedDateTime, region: String, shared: Shared = Shared(),
-        personal: Set<Personal> = personal(history)): List<ClaudeBlock> = buildList {
+        personal: Set<Personal> = personal(history), includePersonal: Boolean = false): List<ClaudeBlock> = buildList {
         add(ClaudeBlock.Text(ClaudePrompt.context(now, region)))
-        if (personal.isEmpty()) transcript(recent(history))?.let {
+        if (personal.isEmpty() || includePersonal) transcript(recent(history))?.let {
             add(ClaudeBlock.Text("The user was talking with Robot, the phone's on-device assistant. The last turns:\n$it"))
         }
         addAll(sharedBlocks(shared))
@@ -133,9 +135,9 @@ object ClaudeContext {
      * question was about, when [shared] carries it (the screen's text and screenshot, or the photo).
      */
     fun payload(question: String, history: List<ChatTurn>, now: ZonedDateTime, region: String, personal: Set<Personal>,
-        attachment: Attachment = Attachment.NONE, shared: Shared = Shared()): ClaudePayload {
-        val blocks = escalation(question, history, now, region, shared, personal)
-        val earlier = personal.isEmpty() && transcript(recent(history)) != null
+        attachment: Attachment = Attachment.NONE, shared: Shared = Shared(), includePersonal: Boolean = false): ClaudePayload {
+        val blocks = escalation(question, history, now, region, shared, personal, includePersonal)
+        val earlier = (personal.isEmpty() || includePersonal) && transcript(recent(history)) != null
         val screen = shared.screenText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }
         val sends = buildList {
             add("Your question")
@@ -164,8 +166,8 @@ object ClaudeContext {
     fun recent(history: List<ChatTurn>, n: Int = RECENT_TURNS): List<ChatTurn> = history.filter { !it.error && it.text.isNotBlank() }.takeLast(n)
 
     /**
-     * "User: …" / "Robot: …" / "Claude: …" lines. Pictures and screen text were never stored, so a turn that had one
-     * says so in brackets. Action cards are never described: their summaries carry names and numbers from the contacts.
+     * "User: …" / "Robot: …" / "Claude: …" lines. Pictures and screen text are never part of it (even when kept for
+     * History, ChatTurn.picture and screenText), so a turn that had one says so in brackets. Action cards are never described: their summaries carry names and numbers from the contacts.
      */
     fun transcript(turns: List<ChatTurn>): String? = turns.mapNotNull { t ->
         if (t.error || t.text.isBlank()) return@mapNotNull null

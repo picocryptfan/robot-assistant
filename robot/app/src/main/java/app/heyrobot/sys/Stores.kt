@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import app.heyrobot.core.ConversationCodec
+import app.heyrobot.core.NearestAnswer
+import app.heyrobot.core.NearestOnline
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.StoredConversation
@@ -17,7 +19,7 @@ import java.util.concurrent.Executors
 
 // Main and voice processes. App-private storage (credential-encrypted, available after the first unlock).
 // Each file has one writer: settings.json the main app, conversations the panel (the main app only
-// deletes them), voice_status.json and the boot markers the voice process.
+// deletes them), voice_status.json, nearest_answer.json and the boot markers the voice process.
 
 object Paths {
     fun dir(ctx: Context): File = File(ctx.filesDir, "robot").apply { mkdirs() }
@@ -32,6 +34,8 @@ object Paths {
     /** The main process's own few voice-log events (the recognizer repair): one writer per file. */
     fun voiceLogMain(ctx: Context) = File(dir(ctx), VoiceFiles.LOG_MAIN)
     fun bargeTest(ctx: Context) = File(dir(ctx), VoiceFiles.BARGE)
+    /** The panel's lasting answer to the nearest place's first-use card (core NearestAnswer): the voice process writes it. */
+    fun nearestAnswer(ctx: Context) = File(dir(ctx), "nearest_answer.json")
 
     fun bootCount(ctx: Context): Int = try {
         Settings.Global.getInt(ctx.contentResolver, Settings.Global.BOOT_COUNT, -1)
@@ -62,6 +66,18 @@ object SettingsStore {
     }
 }
 
+/**
+ * "Allow always", or "No" with "Don't ask again", on the nearest place's first-use card (0.4.0). [VOICE] writes it (the
+ * main app writes settings.json); both read it: it counts while newer than Settings' own choice (core Nearby.mode).
+ */
+object NearestAnswers {
+    fun load(ctx: Context): NearestAnswer? = NearestAnswer.fromJson(readOrNull(Paths.nearestAnswer(ctx)))
+
+    fun save(ctx: Context, choice: NearestOnline) {
+        try { writeAtomic(Paths.nearestAnswer(ctx), NearestAnswer(choice, System.currentTimeMillis()).toJson()) } catch (t: Throwable) { RLog.w("nearest_answer_save", t) }
+    }
+}
+
 object ConversationStore {
     private val ID = Regex("^[A-Za-z0-9-]{1,64}$")
 
@@ -77,13 +93,22 @@ object ConversationStore {
 
     fun load(ctx: Context, id: String): StoredConversation? = file(ctx, id)?.let(::readOrNull)?.let(ConversationCodec::fromJson)
 
-    /** [VOICE] The panel saves after each reply (never pictures or screen text: ChatTurn has none). */
+    /**
+     * [VOICE] The panel saves after each reply: pictures and screen text only as "Keep screenshots and photos in history"
+     * kept them (ChatTurn.picture and screenText).
+     */
     fun save(ctx: Context, c: StoredConversation) {
         val f = file(ctx, c.id) ?: return
         try { writeAtomic(f, ConversationCodec.toJson(c)) } catch (t: Throwable) { RLog.w("history_save", t) }
     }
 
     fun delete(ctx: Context, id: String) { file(ctx, id)?.delete() }
+
+    /**
+     * Settings › Safety & privacy › "Remove saved screenshots and photos": every saved conversation without the pictures
+     * and screen text "Keep screenshots and photos in history" kept. Returns how many conversations changed.
+     */
+    fun removeMedia(ctx: Context): Int = list(ctx).mapNotNull(ConversationCodec::withoutMedia).onEach { save(ctx, it) }.size
 
     fun deleteAll(ctx: Context) {
         Paths.conversations(ctx).listFiles().orEmpty().forEach { it.delete() }
@@ -107,6 +132,17 @@ object Cmd {
     const val VOICE_BENCH = "voice_bench"
     /** The Claude API key was deleted: the voice process drops its client and ends Claude mode. */
     const val CLAUDE_KEY = "claude_key"
+    /**
+     * "Remove saved screenshots and photos" ran: the voice process drops them from the conversation it still holds, which
+     * would otherwise write them back with its next save.
+     */
+    const val MEDIA_REMOVED = "media_removed"
+    /**
+     * Conversations were deleted from History (extra [EXTRA_ID]: the one deleted; none: all of them): if the panel still
+     * holds one of them, it starts a new conversation, or its next save would write the deleted one back.
+     */
+    const val CONVERSATIONS_DELETED = "conversations_deleted"
+    const val EXTRA_ID = "id"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"

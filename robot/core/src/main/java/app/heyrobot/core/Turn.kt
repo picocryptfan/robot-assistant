@@ -81,14 +81,22 @@ data class Choice(val label: String, val action: Action, val remember: Action? =
  */
 sealed class Prepared {
     /**
-     * [mustAsk]: show the card even where the action could just run (an app name that matched loosely, a person not
-     * surely the one named). [choices]: several people or numbers fit; the card lists them and the person taps one
-     * (so it always asks). [more]: how many more fitted than the card lists. [note]: the card's line while it waits
-     * (what its buttons do). [remember]: the words of the tick box that makes a choice remembered ("Always use this for
-     * “mom”"), when the choices can be.
+     * [why]: why the card may show even where the action could just run (an app name that matched loosely, a person not
+     * surely the one named, a name learned from Cheogram, a file to delete); the gate asks the settings whether it does.
+     * [choices]: several people or numbers fit; the card lists them and the person taps one. When the settings let it
+     * run without a card, the first choice (the best) is taken. [more]: how many more fitted than the card lists.
+     * [note]: the card's line while it waits (what its buttons do). [remember]: the words of the tick box that makes a
+     * choice remembered ("Always use this for “mom”"), when the choices can be. [allowContacts]: the card also offers to
+     * allow reading the contacts (the person asked for may be there).
      */
-    data class Ready(val action: Action, val mustAsk: Boolean = false, val choices: List<Choice> = emptyList(), val more: Int = 0,
-        val note: String? = null, val remember: String? = null) : Prepared()
+    data class Ready(val action: Action, val why: Set<AskWhy> = emptySet(), val choices: List<Choice> = emptyList(), val more: Int = 0,
+        val note: String? = null, val remember: String? = null, val allowContacts: Boolean = false) : Prepared() {
+        /** Some reason to show the card besides the level (the settings decide whether it does). */
+        val mustAsk: Boolean get() = why.isNotEmpty()
+
+        /** [why] with a list to choose from that names no reason of its own counted as a pick. */
+        val reasons: Set<AskWhy> get() = if (choices.isNotEmpty() && why.isEmpty()) setOf(AskWhy.PICK) else why
+    }
     data class Refused(val status: ActionStatus, val detail: String) : Prepared()
 }
 
@@ -154,6 +162,14 @@ data class Card(
     val handOff: String? = null,
     /** The tick box next to [choices] that remembers the one tapped ("Always use this for “mom”"); null: none. */
     val remember: String? = null,
+    /** While it waits, the card also offers to allow reading the contacts ([Prepared.Ready.allowContacts]). */
+    val allowContacts: Boolean = false,
+    /**
+     * Only a tap answers it, never a spoken or typed yes ([CardAnswer.tapFor]): a name learned from a Cheogram notification
+     * (whoever sent it chose it), not being sure who or which, or going online the first time; who or what it really is
+     * must be seen on the card. A no still declines it. Null: a yes may answer it.
+     */
+    val tapFor: AskWhy? = null,
 )
 
 interface TurnView {
@@ -256,16 +272,26 @@ class TurnRunner(
      */
     private var untrusted: Boolean,
     /**
-     * Claude is the model (the API route): every call shows a card, only [ClaudeTools.OFFERED] exist, and each input
-     * is checked against its schema before it is read. Claude never calls ask_claude.
+     * Claude is the model (the API route): every call shows a card (unless Settings › Safety & privacy says otherwise),
+     * only [ClaudeTools.OFFERED] exist, and each input is checked against its schema before it is read. Claude never
+     * calls ask_claude.
      */
     private val remote: Boolean = false,
     private val maxRounds: Int = if (remote) TurnRules.CLAUDE_MAX_ROUNDS else TurnRules.MAX_ROUNDS,
+    /**
+     * The actions the person asked for in their own words this turn ([ToolRouter.asked], or a fast path's): under "Safety
+     * cards: When you didn't ask for it" content doesn't make these ask. Never screen text, a photo or a tool's results.
+     */
+    private val asked: Set<ToolName> = emptySet(),
     private val newId: () -> String,
 ) {
     private var budget = TurnRules.MAX_CALLS
 
-    private class Round(val responses: List<Pair<String, Map<String, Any?>>>, val launched: Boolean)
+    /** [spoken]: what the round's actions say (their cards' text), for when no reply can follow them. */
+    private class Round(val responses: List<Pair<String, Map<String, Any?>>>, val launched: Boolean, val spoken: List<String> = emptyList())
+
+    /** The round under way's spoken texts ([Round.spoken]). */
+    private val spokenThisRound = mutableListOf<String>()
 
     /** The round under way's results so far: a stop meanwhile tells the model what ran ([TurnModel.stopped]). */
     private var inRound: MutableList<Pair<String, Map<String, Any?>>>? = null
@@ -290,7 +316,10 @@ class TurnRunner(
             }
             view.phase(TurnPhase.THINKING)
             view.paragraphBreak()
+            val before = view.text.length
             outcome = model.answer(round.responses)
+            // No room left for a reply after the results (CONTEXT_FULL): say what the cards say rather than nothing.
+            if (outcome is ModelOutcome.Done && outcome.reason == DoneReason.CONTEXT_FULL && view.text.length <= before) round.spoken.forEach(view::say)
         }
         return when (outcome) {
             is ModelOutcome.Failed -> TurnResult(null, failure = outcome.message)
@@ -340,6 +369,7 @@ class TurnRunner(
     private suspend fun runCalls(calls: List<RawToolCall>, speak: Boolean): Round {
         val out = mutableListOf<Pair<String, Map<String, Any?>>>()
         inRound = out
+        spokenThisRound.clear()
         for (raw in calls) {
             val parsed = parse(raw)
             if (budget <= 0) {
@@ -362,11 +392,11 @@ class TurnRunner(
                     val (response, launched) = decideAndRun(parsed.action, speak)
                     out += response
                     // The panel is leaving for another app: nothing more is done in this answer.
-                    if (launched) return Round(out, launched = true)
+                    if (launched) return Round(out, launched = true, spokenThisRound.toList())
                 }
             }
         }
-        return Round(out, launched = false)
+        return Round(out, launched = false, spokenThisRound.toList())
     }
 
     private suspend fun decideAndRun(asked: Action, speak: Boolean): Pair<Pair<String, Map<String, Any?>>, Boolean> {
@@ -377,7 +407,8 @@ class TurnRunner(
             return (a.tool.id to status.toolResponse(r?.forModel ?: detail, r?.results)) to launched
         }
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
-        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, untrusted, remote)) {
+        when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote,
+            online = asked.online)) {
             GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
             else -> {}
@@ -386,27 +417,41 @@ class TurnRunner(
             is Prepared.Refused -> return done(asked, p.status, p.detail)
             is Prepared.Ready -> p
         }
-        val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, untrusted || a.mustAsk || a.choices.isNotEmpty(), remote)
+        val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, a.reasons, content = untrusted,
+            asked = a.action.tool in this.asked, remote = remote, online = a.action.online)
         val chosen = when (decision) {
-            GateDecision.RUN -> a.action
-            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember)
+            // No card for these choices (the settings say so): the first, the best match.
+            GateDecision.RUN -> a.choices.firstOrNull()?.action ?: a.action
+            GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, a.note, a.remember, a.allowContacts, tapFor = CardAnswer.tapFor(a.reasons))
             GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
         // The phone may have locked while the card waited.
-        if (actions.locked && chosen.tool !in ApprovalGate.ALLOWED_WHEN_LOCKED) {
+        if (actions.locked && chosen.tool !in actions.settings.lockedTools) {
             return done(chosen, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
         }
-        // Once it runs it runs to the end, and its card says what really happened, even if Stop comes meanwhile: a saved
-        // note keeps its Undo, an added event isn't recorded as cancelled.
-        return withContext(NonCancellable) {
-            val r = actions.run(chosen)
+        fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {
             // What a read tool found is content: from now on every action in this conversation asks first.
             if (r.content) untrusted = true
             val launched = r.launchedApp && r.status.succeeded
             if (speak && !launched) view.say(r.spoken ?: r.detail)
-            done(chosen, r.status, r.detail, launched, r)
+            if (!launched) spokenThisRound += r.spoken ?: r.detail
+            return done(chosen, r.status, r.detail, launched, r)
         }
+        // An online lookup (the weather, the nearest place for the maps, 0.4.0) changes nothing until it is found and may
+        // wait seconds on the network: Stop ends it at once, and its card says it was stopped.
+        if (chosen.online) {
+            val r = try {
+                actions.run(chosen)
+            } catch (e: CancellationException) {
+                view.card(Card(id, chosen.tool, chosen.describe(), ActionStatus.DECLINED, "Stopped.", chosen, remote = remote))
+                throw e
+            }
+            return finish(r)
+        }
+        // Once it runs it runs to the end, and its card says what really happened, even if Stop comes meanwhile: a saved
+        // note keeps its Undo, an added event isn't recorded as cancelled.
+        return withContext(NonCancellable) { finish(actions.run(chosen)) }
     }
 
     /**
@@ -414,9 +459,10 @@ class TurnRunner(
      * action when "Always use this" was ticked), or null (Cancel). [note]: the card's line while it waits. A turn stopped
      * meanwhile leaves the card declined, never waiting.
      */
-    private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int, note: String? = null, remember: String? = null): Action? {
+    private suspend fun confirm(id: String, a: Action, choices: List<Choice>, more: Int, note: String? = null, remember: String? = null,
+        allowContacts: Boolean = false, tapFor: AskWhy? = null): Action? {
         view.card(Card(id, a.tool, a.describe(), ActionStatus.PENDING, note, a, body = a.body(), choices = choices, more = more, remote = remote,
-            remember = remember))
+            remember = remember, allowContacts = allowContacts, tapFor = tapFor))
         view.phase(TurnPhase.CONFIRMING)
         val pick = try {
             confirmations.ask(id)

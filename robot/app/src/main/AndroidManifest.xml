@@ -26,7 +26,7 @@
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- The assistant check 3 minutes after BOOT_COMPLETED (as in the probe). -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <!-- Phase 2, runtime permissions asked for only by the main app, when the owner taps Allow or turns a feature on:
+    <!-- Phase 2, runtime permissions asked for only by the main app, when you tap Allow or turn a feature on:
          contacts (texts and emails by name, lookups), the calendar (read events, add new ones). -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />

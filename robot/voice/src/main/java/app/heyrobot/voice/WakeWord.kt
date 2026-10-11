@@ -70,6 +70,8 @@ class WakeWord(private val assets: AssetManager, vadGate: Boolean = true) {
     // The keyword set wanted, recomputed only when its inputs change (accept runs every 32 ms).
     private var lastWake: String? = null
     private var lastStop: KwsThresholds.Preset? = null
+    /** The idle and the talking wake lines last seen (two sets that take turns, not a change of phrases). */
+    private val recentWakes = ArrayList<String>(3)
     private var wanted = ""
     /**
      * Sets sherpa-onnx refused: each is tried and logged once, not again at every start and stop of Robot's voice;
@@ -146,8 +148,13 @@ class WakeWord(private val assets: AssetManager, vadGate: Boolean = true) {
     /** The lines to listen for: [wake] (already built from the settings) and "STOP" with [stop]'s threshold, if set. */
     private fun wanted(wake: String, stop: KwsThresholds.Preset?): String {
         if (wake === lastWake && stop == lastStop) return wanted
-        // New wake phrases: a set refused before may be fine now that they changed.
-        if (wake != lastWake) refused.clear()
+        // New wake phrases: a set refused before may be fine now that they changed. The lines for while Robot talks
+        // (another interrupt sensitivity) alternate with the idle ones at every start and stop of her voice: not new.
+        if (wake != lastWake && wake !in recentWakes) {
+            refused.clear()
+            recentWakes.add(wake)
+            if (recentWakes.size > 2) recentWakes.removeAt(0)
+        }
         lastWake = wake
         lastStop = stop
         val st = stopTokens

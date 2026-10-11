@@ -41,6 +41,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.Badge
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -97,8 +100,11 @@ import androidx.compose.ui.unit.dp
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.ClaudeWords
+import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
+import app.heyrobot.core.Tip
+import app.heyrobot.core.TipKind
 import app.heyrobot.core.TurnRole
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.AssistantBubble
@@ -181,11 +187,24 @@ fun AssistantPanel(onClose: () -> Unit) {
                 BrainBanner(st)
                 if (st.claudeMode) ClaudeModeChip()
                 Messages(st, Modifier.weight(1f, fill = false))
-                val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING
+                // Listening for a question, or for the waiting card's "yes" or "no".
+                val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING || st.cardHearing != null
                 if (st.turns.isEmpty() && !hearing) {
-                    Suggestions(st.locked) { input = it; send() }
+                    Suggestions(st.tips) { tip ->
+                        when (tip.kind) {
+                            TipKind.ASK -> { input = tip.text; send() }
+                            // It would do something or go online: its words wait in the field, to change or send.
+                            TipKind.FILL -> {
+                                input = tip.text
+                                try { focus.requestFocus() } catch (_: Exception) {}
+                                keyboard?.show()
+                            }
+                            TipKind.SCREEN -> PanelController.askAboutScreen(tip.text)
+                            TipKind.PHOTO -> attachOpen = true
+                        }
+                    }
                 }
-                if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING)
+                if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING || st.cardHearing == Phase.TRANSCRIBING, card = st.cardHearing != null)
                 ContextRow(st)
                 AnimatedVisibility(attachOpen && st.draft == null && !st.busy) { AttachRow(st.locked) { attachOpen = false } }
                 InputRow(
@@ -231,11 +250,11 @@ private fun statusLine(st: PanelState): String = when (st.phase) {
     // "Claude is thinking…" (or "Checking with Claude…") until Claude's first words.
     Phase.THINKING -> st.claudeStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
     Phase.ANSWERING -> if (st.turns.lastOrNull()?.claude == true) "Claude is answering…" else "Answering…"
-    Phase.CONFIRMING -> "Waiting for you: tap a button on the card"
+    Phase.CONFIRMING -> if (st.cardHearing != null) "Say yes or no…" else "Waiting for you: tap the card, or answer yes or no"
     Phase.SPEAKING -> "Speaking · tap to stop"
     Phase.IDLE -> when {
         st.claudeMode -> "Talking with Claude: your questions go online"
-        st.locked -> "Locked: questions, timers and alarms"
+        st.locked -> "Locked: " + LockScreen.allowed(st.lockedTools)
         st.brain.readiness == BrainKeeper.Readiness.LOADING -> "Getting ready…"
         else -> "On this phone, private"
     }
@@ -356,7 +375,7 @@ private val cardActions = CardActions(choose = PanelController::choose, undo = P
 private fun Messages(st: PanelState, modifier: Modifier) {
     if (st.turns.isEmpty()) {
         Column(modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
-            Text(if (st.locked) "Ask a question, or set a timer or alarm." else "Ask me anything.", style = MaterialTheme.typography.headlineSmall)
+            Text(if (st.locked) LockScreen.headline(st.lockedTools) else "Ask me anything.", style = MaterialTheme.typography.headlineSmall)
             Text(
                 if (st.screenAvailable) "I can also look at what's on your screen."
                 else "Type, take a photo, or say “hey robot” next time.",
@@ -396,7 +415,8 @@ private fun Messages(st: PanelState, modifier: Modifier) {
                 AssistantBubble(
                     text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error,
                     actions = t.actions.map { ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
-                        cancel = it.cancel, openApp = it.handOff?.let { h -> SettingsPage.label(h) ?: "Open Cheogram" }, picture = it.picture, remember = it.remember) },
+                        cancel = it.cancel, openApp = it.handOff?.let { h -> SettingsPage.label(h) ?: "Open Cheogram" }, picture = it.picture, remember = it.remember,
+                        allowContacts = it.allowContacts) },
                     onConfirm = PanelController::confirm,
                     cardActions = cardActions,
                     claude = t.claude, readBack = t.readBack, footer = claudeFooter(t.sources, t.cost),
@@ -407,17 +427,17 @@ private fun Messages(st: PanelState, modifier: Modifier) {
     }
 }
 
+/** Three tips that show what Robot can do (core Tips: only what is on and can work now, a new three each open). */
 @Composable
-private fun Suggestions(locked: Boolean, onPick: (String) -> Unit) {
-    val items = if (locked) listOf("Set a timer for 5 minutes", "Set an alarm for 7:00", "Tell me a fun fact")
-    else listOf("Set a timer for 10 minutes", "What's on my calendar today?", "What can you do?")
+private fun Suggestions(tips: List<Tip>, onPick: (Tip) -> Unit) {
+    if (tips.isEmpty()) return
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (s in items) SuggestionChip(onClick = { onPick(s) }, label = { Text(s, maxLines = 2) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
+        for (t in tips) SuggestionChip(onClick = { onPick(t) }, label = { Text(t.text, maxLines = 2) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
     }
 }
 
 @Composable
-private fun ListeningRow(partial: String, transcribing: Boolean) {
+private fun ListeningRow(partial: String, transcribing: Boolean, card: Boolean = false) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         val t = rememberInfiniteTransition(label = "listen")
         val s by t.animateFloat(0.85f, 1.15f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "mic")
@@ -425,14 +445,15 @@ private fun ListeningRow(partial: String, transcribing: Boolean) {
             Icon(RIcons.Mic, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onPrimary)
         }
         Spacer(Modifier.width(12.dp))
-        Text(partial.ifEmpty { if (transcribing) "Writing it down…" else "Listening…" }, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(partial.ifEmpty { if (transcribing) "Writing it down…" else if (card) "Listening: yes or no?" else "Listening…" },
+            style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         if (!transcribing) TextButton(onClick = PanelController::micReleased) { Text("Done") }
     }
 }
 
 /**
- * "Ask about this screen", or the picture that goes with the next question. The chip shows on every corner-swipe and
- * wake-word panel: without the screen it has an info icon, and a tap says why (core ScreenAccess).
+ * The picture or screen that goes with the next question, or "Read Claude's answer" over the Claude app. "Ask about
+ * this screen" is the screen button next to the camera (0.4.0; [ScreenButton]).
  */
 @Composable
 private fun ContextRow(st: PanelState) {
@@ -455,27 +476,33 @@ private fun ContextRow(st: PanelState) {
             }
             IconButton(onClick = PanelController::removeDraft, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Remove") }
         }
-    } else if ((st.screenChip != ScreenChip.HIDDEN || st.claudeScreen) && !st.busy) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Over the Claude app (your corner swipe): its last answer, read aloud in Claude's voice.
-            if (st.claudeScreen) {
-                AssistChip(
-                    onClick = PanelController::readClaudeAnswer,
-                    label = { Text("Read Claude's answer") },
-                    leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize)) },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                )
-            }
-            if (st.screenChip != ScreenChip.HIDDEN) {
-                AssistChip(
-                    onClick = PanelController::attachScreen,
-                    label = { Text("Ask about this screen") },
-                    leadingIcon = {
-                        Icon(if (st.screenAvailable) RIcons.Phone else RIcons.Info, ScreenAccess.iconDescription(st.screenChip), Modifier.size(AssistChipDefaults.IconSize))
-                    },
-                    modifier = Modifier.heightIn(min = 48.dp),
-                )
-            }
+    } else if (st.claudeScreen && !st.busy) {
+        // Over the Claude app (your corner swipe): its last answer, read aloud in Claude's voice.
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
+            AssistChip(
+                onClick = PanelController::readClaudeAnswer,
+                label = { Text("Read Claude's answer") },
+                leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize)) },
+                modifier = Modifier.heightIn(min = 48.dp),
+            )
+        }
+    }
+}
+
+/**
+ * "Ask about this screen", next to the camera: on every corner-swipe and wake-word panel. With the screen here, a tap
+ * attaches it; without it, the button is dimmed with a dot, and a tap says why (core ScreenAccess), as the chip did.
+ */
+@Composable
+private fun ScreenButton(st: PanelState) {
+    val ready = st.screenAvailable
+    val state = ScreenAccess.iconDescription(st.screenChip)
+    IconButton(
+        onClick = PanelController::attachScreen, enabled = !st.busy && st.draft == null,
+        modifier = Modifier.size(52.dp).semantics { contentDescription = "Ask about this screen" + (state?.let { ". $it" } ?: "") },
+    ) {
+        BadgedBox(badge = { if (!ready) Badge(containerColor = MaterialTheme.colorScheme.tertiary) }) {
+            Icon(RIcons.ScreenShare, null, tint = if (ready) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.55f))
         }
     }
 }
@@ -504,15 +531,16 @@ private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, o
     Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         // No camera while a turn runs: the panel would hide with the answer still going.
         IconButton(onClick = onAttach, enabled = !st.busy, modifier = Modifier.size(52.dp)) { Icon(RIcons.Camera, "Add a photo") }
+        if (st.screenChip != ScreenChip.HIDDEN) ScreenButton(st)
         TextField(
             value = input,
             onValueChange = onInput,
-            placeholder = { Text(if (st.draft != null) "Ask about it…" else "Ask Robot…") },
+            placeholder = { Text(if (st.phase == Phase.CONFIRMING) "Yes or no…" else if (st.draft != null) "Ask about it…" else "Ask Robot…") },
             shape = RoundedCornerShape(26.dp),
             maxLines = 5,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
-            // While a turn runs the keyboard's Send does nothing (the text stays for later).
-            keyboardActions = KeyboardActions(onSend = { if (!st.busy) onSend() }),
+            // While a turn runs the keyboard's Send does nothing (the text stays for later), except to answer a waiting card.
+            keyboardActions = KeyboardActions(onSend = { if (!st.busy || st.phase == Phase.CONFIRMING) onSend() }),
             colors = TextFieldDefaults.colors(
                 focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent,
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -522,6 +550,12 @@ private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, o
         Spacer(Modifier.width(8.dp))
         val canSend = input.isNotBlank() || st.draft != null
         when {
+            // A card waits: the mic (or Send, for a typed "yes" or "no") answers it; Stop still declines it and ends the answer.
+            st.phase == Phase.CONFIRMING -> {
+                IconButton(onClick = PanelController::stopGenerating, modifier = Modifier.size(48.dp)) { Icon(RIcons.Stop, "Stop") }
+                if (canSend) FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, "Send") }
+                else MicButton(listening = st.cardHearing != null, hint = st.micHint)
+            }
             st.busy -> FilledIconButton(onClick = PanelController::stopGenerating, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop") }
             st.phase == Phase.SPEAKING && !canSend -> FilledTonalIconButton(onClick = PanelController::stopSpeaking, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop speaking") }
             canSend -> FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, "Send") }

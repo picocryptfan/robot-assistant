@@ -11,7 +11,8 @@ class PageSaverTest {
     private fun save(p: Page?): String = with(Page.Saver) { scope.save(p) }!!
 
     @Test fun everyPageRoundTrips() {
-        for (p in listOf(Page.Setup(), Page.Setup(true), Page.Conversation("abc-123"), Page.NoteEdit("4f1c-uuid"), Page.NoteEdit(null), null)) {
+        for (p in listOf(Page.Setup(), Page.Setup(true), Page.Conversation("abc-123"), Page.NoteEdit("4f1c-uuid"), Page.NoteEdit(null), Page.Safety,
+                Page.People, Page.PersonEdit("p1"), Page.WakePhrases, null)) {
             assertEquals(p, Page.Saver.restore(save(p)))
         }
     }

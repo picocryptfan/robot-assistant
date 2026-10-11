@@ -154,6 +154,35 @@ class SentencePieceTest {
         assertTrue(KwsThresholds.stop(true).threshold < KwsThresholds.stop(false).threshold)
     }
 
+    /** Settings › Voice › "Interrupt sensitivity": Medium is today's thresholds exactly; Low and High move them, within bounds. */
+    @Test fun interruptSensitivityMovesTheTalkingThresholds() {
+        val m = InterruptSensitivity.MEDIUM
+        assertEquals(InterruptSensitivity.MEDIUM, RobotSettings().interrupt)
+        for (aec in listOf(false, true)) assertEquals(KwsThresholds.stop(aec), KwsThresholds.stop(aec, m))
+        for (w in WakeSensitivity.entries) assertEquals(KwsThresholds.wake(w), KwsThresholds.talkWake(w, m))
+        assertEquals(KwsThresholds.Preset(0.3f, 1.25f), KwsThresholds.stop(false, InterruptSensitivity.LOW))
+        assertEquals(KwsThresholds.Preset(0.15f, 1.75f), KwsThresholds.stop(true, InterruptSensitivity.HIGH))
+        assertEquals(KwsThresholds.Preset(0.2f, 1.75f), KwsThresholds.talkWake(WakeSensitivity.MEDIUM, InterruptSensitivity.HIGH))
+        assertEquals(KwsThresholds.Preset(0.4f, 0.75f), KwsThresholds.talkWake(WakeSensitivity.LOW, InterruptSensitivity.LOW))
+        // Easier to trigger as the setting goes up, for every preset; never past the bounds.
+        for (base in WakeSensitivity.entries.map(KwsThresholds::wake) + KwsThresholds.STOP + KwsThresholds.STOP_AEC) {
+            val (lo, mid, hi) = InterruptSensitivity.entries.map { KwsThresholds.shift(base, it) }
+            assertTrue("$base", hi.threshold < mid.threshold && mid.threshold < lo.threshold)
+            assertTrue("$base", hi.boost > mid.boost && mid.boost > lo.boost)
+            for (p in listOf(lo, hi)) assertTrue("$p", p.threshold in KwsThresholds.MIN_THRESHOLD..KwsThresholds.MAX_THRESHOLD && p.boost in KwsThresholds.MIN_BOOST..KwsThresholds.MAX_BOOST)
+        }
+        val tiny = KwsThresholds.Preset(0.1f, 2.9f)
+        assertEquals(KwsThresholds.Preset(KwsThresholds.MIN_THRESHOLD, KwsThresholds.MAX_BOOST), KwsThresholds.shift(tiny, InterruptSensitivity.HIGH))
+        // The lines for while Robot talks: the same phrases, the moved presets; Medium writes exactly the idle lines.
+        val phrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(2, "robot", WakeSensitivity.LOW))
+        assertEquals(KeywordBuffer.wake(phrases, speller).text, KeywordBuffer.wake(phrases, speller) { KwsThresholds.talkWake(it.sensitivity, m) }.text)
+        assertEquals("▁HE Y ▁RO B O T :1.75 #0.2 @W1\n▁RO B O T :1.25 #0.3 @W2",
+            KeywordBuffer.wake(phrases, speller) { KwsThresholds.talkWake(it.sensitivity, InterruptSensitivity.HIGH) }.text)
+        val back = RobotSettings.fromJson(RobotSettings(interrupt = InterruptSensitivity.HIGH).toJson().toString())
+        assertEquals(InterruptSensitivity.HIGH, back.interrupt)
+        assertEquals(InterruptSensitivity.MEDIUM, RobotSettings.fromJson("""{"schema":5}""").interrupt)
+    }
+
     @Test fun phraseRules() {
         assertNull(WakePhrases.problem("hey robot"))
         assertNull(WakePhrases.problem("Hey Y'all"))

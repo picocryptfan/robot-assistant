@@ -24,6 +24,22 @@ class PeopleStoreTest {
 
     // ------------------------------------------------------------------ the file
 
+    @Test fun onlyAnAddressPickedInCheogramOpensInItsAccount() {
+        // Review 0.4.0 #4: Cheogram opens a chat in a named account only for a contact of that account (its list);
+        // anyone else goes by the plain link.
+        val card = ContactCard("r:x", "Zoé", xmpp = listOf(XmppAddress("zoe@example.org", "me@jmp.chat", picked = true), XmppAddress("z2@example.org", "me@jmp.chat")))
+        assertEquals(listOf("me@jmp.chat", null), Recipients.forText(listOf(card), xmppOk = true).map { it.account })
+        // A pick refreshes the account and marks it picked; accounts are kept in lower case, as Cheogram compares them.
+        val old = listOf(Person("z", "Zoé", xmpp = listOf(XmppAddress("zoe@example.org", "old@example.org"))))
+        val (_, p) = PeopleEdit.rememberPick(old, "zoé", CheogramPick("Zoé", "zoe@example.org", "me@jmp.chat"), 1, ids)
+        assertEquals(XmppAddress("zoe@example.org", "me@jmp.chat", picked = true), p.xmpp.single())
+        assertEquals("me@jmp.chat", People.clean(Person("y", "Y", xmpp = listOf(XmppAddress("y@example.org", " Me@JMP.chat ", picked = true)))).xmpp.single().account)
+        // No account, nothing picked.
+        assertEquals(XmppAddress("y@example.org"), People.clean(Person("y", "Y", xmpp = listOf(XmppAddress("y@example.org", " ", picked = true)))).xmpp.single())
+        val back = PeopleCodec.fromJson(PeopleCodec.toJson(listOf(p)))
+        assertTrue(back.single().xmpp.single().picked)
+    }
+
     @Test fun theFileRoundTripsAndToleratesDamage() {
         val learned = Person("p3", "Zoé", xmpp = listOf(XmppAddress("zoe@example.org", "me@example.org")), source = PersonSource.NOTIFICATION,
             confirmed = false, updatedAt = 3)
@@ -88,7 +104,7 @@ class PeopleStoreTest {
         val (l1, p1) = PeopleEdit.rememberPick(emptyList(), "mom", pick, 10, ids)
         assertEquals(listOf("mom"), p1.aliases)
         assertEquals("Maman Martin", p1.name)
-        assertEquals(listOf(XmppAddress("+15145550101@cheogram.com", "me@jmp.chat")), p1.xmpp)
+        assertEquals(listOf(XmppAddress("+15145550101@cheogram.com", "me@jmp.chat", picked = true)), p1.xmpp)
         assertEquals(PersonSource.CHEOGRAM_PICK, p1.source)
         assertTrue(p1.confirmed)
         assertEquals(listOf(p1), l1)
@@ -154,6 +170,10 @@ class PeopleStoreTest {
         val l2 = PeopleEdit.learn(confirmed, "Someone Else", "mom@example.org", "me@example.org", 33, ids)
         assertEquals("Mom", l2.single().name)
         assertEquals("me@example.org", l2.single().xmpp.single().account)
+        // Review 0.4.0 #4: a newer notification's account replaces an older one (even one picked), in lower case.
+        val picked = listOf(Person("c", "Mom", xmpp = listOf(XmppAddress("mom@example.org", "old@example.org", picked = true))))
+        val moved = PeopleEdit.learn(picked, "Mom", "mom@example.org", "New@Example.org", 37, ids).single().xmpp.single()
+        assertEquals(XmppAddress("mom@example.org", "new@example.org", picked = false), moved)
         assertSame(l2, PeopleEdit.learn(l2, "Someone Else", "mom@example.org", "me@example.org", 34, ids))
         // Nothing for a name-less or unusable sender.
         assertSame(confirmed, PeopleEdit.learn(confirmed, " ", "x@example.org", "me@example.org", 35, ids))
@@ -169,11 +189,12 @@ class PeopleStoreTest {
 
     // ------------------------------------------------------------------ importing
 
-    @Test fun importsMergeByNumberEmailAndAddress() {
+    @Test fun importsMergeOnlyTheSamePerson() {
         val incoming = listOf(
-            // Bob again, with a new number: merged, his name kept and the file's name an alias.
-            Person("i1", "Robert Tremblay", phones = listOf(ContactPhone("514-555-0199", PhoneKind.MOBILE, "Mobile"), ContactPhone("514 555 0177", PhoneKind.WORK, "Work"))),
-            // Mom's number at the gateway is the number in the file.
+            // Bob again: the same name in another form, and a number already his: merged, the file's name a nickname.
+            Person("i1", "Bob Tremblay", nicknames = listOf("Robert"), phones = listOf(ContactPhone("514-555-0199", PhoneKind.MOBILE, "Mobile"),
+                ContactPhone("514 555 0177", PhoneKind.WORK, "Work"))),
+            // Mom's number at the gateway is the number in the file, and it is all the file has: merged.
             Person("i2", "Maman", phones = listOf(ContactPhone("(514) 555-0101", PhoneKind.MOBILE, "Mobile"))),
             // Someone new.
             Person("i3", "Zoé Lefèvre", emails = listOf("zoe@example.org")),
@@ -187,11 +208,13 @@ class PeopleStoreTest {
         assertEquals(listOf("p2", "p1", "i3", null), m.landed)
         val b = m.people.first { it.id == "p2" }
         assertEquals("Bob Tremblay", b.name)
-        assertEquals(listOf("Robert Tremblay"), b.aliases)
+        assertEquals(listOf("Robert"), b.nicknames)
+        assertEquals(emptyList<String>(), b.aliases)
         assertEquals(2, b.phones.size)
         val mm = m.people.first { it.id == "p1" }
         assertEquals("Mom Martin", mm.name)
-        assertTrue(mm.aliases.containsAll(listOf("Mom", "Maman")))
+        assertEquals(listOf("Mom"), mm.aliases)
+        assertEquals(listOf("Maman"), mm.nicknames)
         assertEquals("Zoé Lefèvre", m.people.last().name)
         // The same file twice changes nothing more.
         val again = PeopleEdit.merge(m.people, incoming, 51)
@@ -202,6 +225,55 @@ class PeopleStoreTest {
         val m2 = PeopleEdit.merge(listOf(learned), listOf(Person("i", "Zoé Lefèvre", xmpp = listOf(XmppAddress("ZOE@example.org", "me@example.org")))), 52)
         assertEquals("Zoé Lefèvre", m2.people.single().name)
         assertTrue(m2.people.single().confirmed)
+    }
+
+    @Test fun aSharedLandlineOrEmailNeverMergesTwoPeople() {
+        // Review 0.4.0 #3: Mom has the home number; the file's Dad has it too, with his own mobile and email.
+        val home = Person("m", "Mom", phones = listOf(ContactPhone("514 555 0100", PhoneKind.HOME, "Home")), emails = listOf("family@example.org"))
+        val dad = Person("d", "Dad", phones = listOf(ContactPhone("514 555 0100", PhoneKind.HOME, "Home"), ContactPhone("514 555 0177", PhoneKind.MOBILE, "Mobile")),
+            emails = listOf("dad@example.org", "family@example.org"))
+        val m = PeopleEdit.merge(listOf(home), listOf(dad), 1)
+        assertEquals(1, m.added)
+        assertEquals(0, m.updated)
+        assertEquals(home, m.people.first { it.id == "m" })
+        assertEquals(listOf("514 555 0100", "514 555 0177"), m.people.first { it.id == "d" }.phones.map { it.number })
+        // "email mom" still has one address, and "text dad" finds Dad (not Mom under another name).
+        assertEquals(listOf("family@example.org"), m.people.first { it.id == "m" }.emails)
+        assertEquals(listOf(ContactIds.people("d")), AddressBook(emptyList(), m.people).best("dad").map { it.id })
+        // A name that is a nickname of someone already there is theirs.
+        val m2 = PeopleEdit.merge(listOf(home.copy(nicknames = listOf("Maman"))), listOf(Person("x", "maman", phones = listOf(ContactPhone("514 555 0188", PhoneKind.MOBILE, "Mobile")),
+            emails = listOf("family@example.org"))), 2)
+        assertEquals(1, m2.updated)
+        assertEquals(1, m2.people.size)
+    }
+
+    @Test fun aBigFileMergesInOnePass() {
+        val base = (0 until 2500).map { Person("b$it", "Person $it", phones = listOf(ContactPhone("+1 514 55${"%05d".format(it)}", PhoneKind.MOBILE, "Mobile"))) }
+        val file = (0 until 2500).map { Person("f$it", "Person ${it + 1250}", emails = listOf("p$it@example.org"),
+            phones = listOf(ContactPhone("+1 514 55${"%05d".format(it + 1250)}", PhoneKind.MOBILE, "Mobile"))) }
+        val m = PeopleEdit.merge(base, file, 1)
+        assertEquals(1250, m.updated)
+        assertEquals(1250, m.added)
+        assertEquals(3750, m.people.size)
+    }
+
+    @Test fun anImportIsWrittenAsMergedUnlessTheListChanged() {
+        val s = PeopleStore(tmp())
+        s.save(mom)
+        val before = s.list()
+        val incoming = listOf(Person("z", "Zoé", emails = listOf("zoe@example.org")))
+        val merged = PeopleEdit.merge(before, incoming, 1)
+        var again = 0
+        s.commit(before, merged.people) { again++; PeopleEdit.merge(it, incoming, 2).people }
+        assertEquals(0, again)
+        assertEquals(2, s.list().size)
+        // Something changed meanwhile (the assistant remembered someone): merged again with it, nothing lost.
+        val before2 = s.list()
+        val merged2 = PeopleEdit.merge(before2, listOf(Person("y", "Yves", emails = listOf("yves@example.org"))), 3)
+        s.save(bob)
+        s.commit(before2, merged2.people) { again++; PeopleEdit.merge(it, listOf(Person("y", "Yves", emails = listOf("yves@example.org"))), 4).people }
+        assertEquals(1, again)
+        assertEquals(setOf("p1", "z", "p2", "y"), s.list().map { it.id }.toSet())
     }
 
     // ------------------------------------------------------------------ the address book
@@ -242,33 +314,102 @@ class PeopleStoreTest {
         assertEquals(1, calls)
     }
 
-    @Test fun aLearnedNameNeverStandsBesideSomeoneConfirmed() {
+    @Test fun anAliasWinsOnlyForSomeoneTheToolCanReach() {
+        // Review 0.4.0 #2A: you picked "Bob Jones" in Cheogram for "bob" (XMPP only); the phone's Bob has an email.
+        val jones = Person("j", "Bob Jones", aliases = listOf("bob"), xmpp = listOf(XmppAddress("bob@jabber.example.org")))
+        val phoneBob = listOf(ContactName(ContactIds.system(3), "Bob"))
+        val book = AddressBook(phoneBob, listOf(jones))
+        // For a text (Cheogram), Bob Jones can be reached: the alias wins.
+        assertEquals(listOf(ContactIds.people("j") to NameMatch.ALIAS), book.best("bob", reach = Reachable.text(xmppOk = true)).map { it.id to it.kind })
+        // For an email he can't: the alias counts like any name, so the phone's Bob is found too.
+        val mail = book.best("bob", reach = Reachable.email)
+        assertEquals(setOf(ContactIds.system(3), ContactIds.people("j")), mail.map { it.id }.toSet())
+        assertTrue(mail.all { it.kind == NameMatch.EXACT })
+        // Nor by the SMS app (it can't text an XMPP address).
+        assertTrue(book.best("bob", reach = Reachable.text(xmppOk = false)).none { it.kind == NameMatch.ALIAS })
+        // An email-only person with an alias doesn't hide the phone's numbers from "text bob".
+        val proton = AddressBook(phoneBob, listOf(Person("p", "Robert Smith", aliases = listOf("Bob"), emails = listOf("bob@proton.me"))))
+        assertEquals(2, proton.best("bob", reach = Reachable.text(xmppOk = true)).size)
+        assertEquals(listOf(ContactIds.people("p")), proton.best("bob", reach = Reachable.email).map { it.id })
+    }
+
+    @Test fun importedNicknamesMatchAtTheirUsualRank() {
+        // Review 0.4.0 #2B: a file's NICKNAME is not a name you gave: the phone contact named exactly "Bob" isn't hidden.
+        val e = VCard.parse("BEGIN:VCARD\nVERSION:3.0\nFN:Robert Smith\nNICKNAME:Bob\nTEL;TYPE=CELL:+15145550101\nEND:VCARD\n").entries.single()
+        val robert = VCard.person(e, "r", 1)
+        assertEquals(listOf("Bob"), robert.nicknames)
+        assertEquals(emptyList<String>(), robert.aliases)
+        val book = AddressBook(listOf(ContactName(ContactIds.system(3), "Bob")), listOf(robert))
+        val m = book.best("bob", reach = Reachable.text(xmppOk = true))
+        assertEquals(setOf(ContactIds.system(3), ContactIds.people("r")), m.map { it.id }.toSet())
+        assertFalse(ContactMatcher.sure(m, 1))
+        // A name kept from a merge is a nickname too.
+        val merged = PeopleEdit.merge(listOf(robert), listOf(Person("x", "Bobby Smith", phones = listOf(ContactPhone("514 555 0101", PhoneKind.MOBILE, "Mobile")))), 2)
+        assertTrue(merged.people.single().aliases.isEmpty())
+    }
+
+    @Test fun possessivesAreLeftOutOfAliases() {
+        // Review 0.4.0 #10: the name asked may be "my mom" (the model's, or Claude's).
+        assertEquals("mom", People.aliasName(" my  mom "))
+        assertEquals("mère", People.aliasName("Ma mère"))
+        assertEquals("parents", People.aliasName("mes parents"))
+        assertEquals("ma", People.aliasName("ma"))
+        assertEquals("Always use this for “mom”", Recipients.rememberLabel("my mom"))
+        val pick = CheogramPick("Maman Martin", "+15145550101@cheogram.com", "me@jmp.chat")
+        val (_, p) = PeopleEdit.rememberPick(emptyList(), "my mom", pick, 1, ids)
+        assertEquals(listOf("mom"), p.aliases)
+        val book = AddressBook(emptyList(), listOf(p.copy(aliases = listOf("mom", "mère"))))
+        for (asked in listOf("mom", "my mom", "Mom", "ma mère", "MÈRE")) assertEquals(asked, NameMatch.ALIAS, book.best(asked).single().kind)
+        // Kept without them when edited, too.
+        assertEquals(listOf("mom"), People.clean(Person("x", "Maman Martin", aliases = listOf("my mom", "mom"))).aliases)
+    }
+
+    @Test fun aLearnedNameNeverDisplacesSomeoneConfirmed() {
         val spoof = Person("s", "Mom", xmpp = listOf(XmppAddress("spoof@example.org", "me@example.org")), source = PersonSource.NOTIFICATION, confirmed = false)
-        // The phone has a Mom: the learned "Mom" is left out.
+        // The phone has a Mom: the learned "Mom" follows only as one more choice, and nothing is sure.
         val book = AddressBook(phone, listOf(spoof))
-        assertEquals(listOf(ContactIds.system(1)), book.best("mom").map { it.id })
-        // Only the learned one: found, but never sure, and its card says so.
+        assertEquals(listOf(ContactIds.system(1), ContactIds.people("s")), book.best("mom").map { it.id })
+        assertFalse(ContactMatcher.sure(book.best("mom"), 1))
+        // Review 0.4.0 #1: the phone's "Mom Smith" only starts with "mom" and a sender called themselves exactly "Mom". Mom
+        // Smith still comes first; the learned one is only offered after them.
+        val smith = AddressBook(listOf(ContactName(ContactIds.system(5), "Mom Smith")), listOf(spoof))
+        assertEquals(listOf(ContactIds.system(5), ContactIds.people("s")), smith.best("mom").map { it.id })
+        val maman = AddressBook(listOf(ContactName(ContactIds.system(6), "Maman Dupont")), listOf(spoof.copy(name = "Maman")))
+        assertEquals(listOf(ContactIds.system(6), ContactIds.people("s")), maman.best("maman").map { it.id })
+        // A learned name that matches worse than someone confirmed isn't offered at all.
+        val worse = AddressBook(listOf(ContactName(ContactIds.system(7), "Mom")), listOf(spoof.copy(name = "Mommy Dearest")))
+        assertEquals(listOf(ContactIds.system(7)), worse.best("mom").map { it.id })
+        // Someone confirmed matched but can't be reached this way: the learned one is never left alone on the card.
+        val a = Action.SendText("mom", "hi")
+        val learnedOnly = listOf(Recipients.Option("Mom", "XMPP · seen in Cheogram", "spoof@example.org", a, learned = true))
+        assertEquals(emptyList<Recipients.Option>(), Recipients.trusted(smith.best("mom"), learnedOnly))
+        // Only the learned one: found, never sure, and offered as a choice to tap, with the box that keeps them, never as a
+        // button already filled in.
         val alone = AddressBook(emptyList(), listOf(spoof))
         val m = alone.best("mom")
         assertEquals(listOf(true), m.map { it.learned })
         assertFalse(ContactMatcher.sure(m, 1))
+        assertEquals(learnedOnly, Recipients.trusted(m, learnedOnly))
         val reach = Recipients.forText(alone.cards(m) { emptyList() }, xmppOk = true).single()
         assertTrue(reach.learned)
-        assertEquals("me@example.org", reach.account)
-        val a = Action.SendText("mom", "hi")
-        val t = a.copy(target = TextTarget(reach.name, reach.address, reach.address, "Cheogram", TextVia.CHEOGRAM, from = reach))
-        val p = Recipients.prepare(a, m, listOf(Recipients.Option(reach.name, "XMPP", reach.address, t, learned = true)), 0) { a } as Prepared.Ready
+        // Its account was only seen in a notification: the chat opens by the xmpp: link, which needs no roster entry.
+        assertNull(reach.account)
+        val t = TextTarget(reach.name, reach.address, reach.address, "Cheogram", TextVia.CHEOGRAM, from = reach)
+        val p = Recipients.prepare(a, m, listOf(Recipients.Option(reach.name, "XMPP · seen in Cheogram", reach.address, a.copy(target = t), learned = true,
+            remember = a.copy(target = t.copy(remember = true)))), 0, Recipients.rememberLabel("mom")) { a } as Prepared.Ready
         assertTrue(p.mustAsk)
+        assertEquals(listOf("XMPP · seen in Cheogram · spoof@example.org"), p.choices.map { it.label })
+        assertEquals(Recipients.LEARNED_NOTE, p.note)
+        assertEquals("Always use this for “mom”", p.remember)
         assertEquals("Text **Mom** (spoof@example.org) in Cheogram · name seen in Cheogram", (p.action as Action.SendText).describe())
-        assertEquals("me@example.org", (p.action as Action.SendText).target!!.account)
-        // A learned name that matches better than anyone confirmed is still offered (on a card).
-        val book2 = AddressBook(listOf(ContactName(ContactIds.system(9), "Momo Diallo")), listOf(spoof))
-        assertEquals(listOf(ContactIds.people("s")), book2.best("mom").map { it.id })
-        // Using (or editing) them confirms them: from then on they count like anyone else.
+        assertNull((p.action as Action.SendText).target!!.account)
+        // Keep (or an edit, or the ticked box) confirms them: from then on they count like anyone else.
         val c = PeopleEdit.confirm(listOf(spoof), "s", 40)
         assertTrue(c.single().confirmed)
         assertSame(c, PeopleEdit.confirm(c, "s", 41))
         assertTrue(ContactMatcher.sure(AddressBook(emptyList(), c).best("mom"), 1))
+        val ticked = PeopleEdit.rememberChoice(listOf(spoof), "mom", reach, email = false, lookupKey = null, now = 42)
+        assertTrue(ticked.single().confirmed)
     }
 
     @Test fun aRememberedChoiceIsTheOnlyPlaceOfferedWhileItExists() {
@@ -296,5 +437,111 @@ class PeopleStoreTest {
         assertNull(ContactIds.peopleId("r:"))
         assertNotNull(PeopleStore.newId())
         assertTrue(PeopleStore.validId(PeopleStore.newId()))
+    }
+
+    // ------------------------------------------------------------------ review 0.4.0, the lows
+
+    @Test fun aDamagedFileIsNeverWrittenOver() {
+        // Review 0.4.0 #9: a file cut short read as nobody, and the next write kept only the new entry.
+        val dir = tmp()
+        val store = PeopleStore(dir)
+        assertTrue(store.save(mom) && store.save(bob))
+        val f = File(dir, "people.json")
+        val cut = f.readText().dropLast(20)
+        f.writeText(cut)
+        assertTrue(store.damaged())
+        assertEquals(emptyList<Person>(), store.list())
+        // Nothing changes it: a notification, a save, Delete all.
+        assertFalse(store.learn(CheogramSender("Zoé", "zoe@example.org", "me@example.org"), 5))
+        assertFalse(store.save(Person("p9", "New")))
+        assertNull(store.update { it + Person("p9", "New") })
+        assertFalse(store.deleteAll())
+        assertEquals(cut, f.readText())
+        // Start over: the file is kept aside, and People works again.
+        assertTrue(store.reset())
+        assertEquals(cut, File(dir, "people.json.bad").readText())
+        assertFalse(store.damaged())
+        assertTrue(store.save(bob))
+        assertEquals(listOf(bob), store.list())
+        // A good file is never set aside.
+        assertTrue(store.reset())
+        assertEquals(listOf(bob), store.list())
+        assertEquals(cut, File(dir, "people.json.bad").readText())
+    }
+
+    @Test fun someoneRemovedIsNotLearnedAgain() {
+        // Review 0.4.0 #7: Remove on a learned person lasted only until their next message.
+        val store = PeopleStore(tmp())
+        val zoe = CheogramSender("Zoé", "Zoe@Example.org", "me@example.org")
+        assertTrue(store.learn(zoe, 1))
+        val learned = store.list().single()
+        assertFalse(learned.confirmed)
+        assertTrue(store.remove(learned.id, ignore = true))
+        assertEquals(setOf("zoe@example.org"), store.ignored())
+        assertTrue(store.learn(zoe.copy(name = "Zoé B."), 2))
+        assertEquals(emptyList<Person>(), store.list())
+        // The list survives other changes, and a confirmed person removed without it isn't ignored.
+        assertTrue(store.save(mom))
+        assertTrue(store.remove(mom.id, ignore = false))
+        assertEquals(setOf("zoe@example.org"), store.ignored())
+        // Delete all forgets it too.
+        assertTrue(store.deleteAll())
+        assertEquals(emptySet<String>(), store.ignored())
+        assertTrue(store.learn(zoe, 3))
+        assertEquals("Zoé", store.list().single().name)
+        // It is kept in the file.
+        val text = PeopleCodec.toJson(listOf(mom), setOf("a@example.org"))
+        assertEquals(PeopleFile(listOf(mom), setOf("a@example.org")), PeopleCodec.read(text))
+        assertNull(PeopleCodec.read("{\"v\":1}"))
+        assertEquals(PeopleFile(), PeopleCodec.read(""))
+    }
+
+    @Test fun theEditorAppliesOnlyWhatWasChanged() {
+        // Review 0.4.0 #8: Save replaced the whole entry with the one loaded when the screen opened.
+        val loaded = Person("p1", "Mom Martin", phones = listOf(ContactPhone("+1 514 555 0101", PhoneKind.MOBILE, "Mobile")),
+            xmpp = listOf(XmppAddress("mom@example.org", "me@example.org")), updatedAt = 1)
+        // Meanwhile: "Always use this for mom" on a card, and a notification moved the chat to another account.
+        val now = loaded.copy(aliases = listOf("mom"), preferredText = "mom@example.org",
+            xmpp = listOf(XmppAddress("mom@example.org", "other@example.org")), updatedAt = 2)
+        // The editor changed the name and added an email.
+        val edited = loaded.copy(name = "Marie Martin", emails = listOf("marie@example.org"))
+        val (list, p) = PeopleEdit.applyEdit(listOf(now, bob), loaded, edited, 9)!!
+        assertEquals("Marie Martin", p.name)
+        assertEquals(listOf("mom"), p.aliases)
+        assertEquals("mom@example.org", p.preferredText)
+        assertEquals(listOf(XmppAddress("mom@example.org", "other@example.org")), p.xmpp)
+        assertEquals(listOf("marie@example.org"), p.emails)
+        assertEquals(listOf(p, bob), list)
+        assertTrue(p.confirmed)
+        assertEquals(9L, p.updatedAt)
+        // Removing the remembered place forgets the choice; a number added meanwhile stays.
+        val more = now.copy(phones = now.phones + ContactPhone("+1 514 555 0202", PhoneKind.WORK, "Work"))
+        val (_, q) = PeopleEdit.applyEdit(listOf(more), loaded, loaded.copy(xmpp = emptyList()), 9)!!
+        assertEquals(emptyList<XmppAddress>(), q.xmpp)
+        assertNull(q.preferredText)
+        assertEquals(listOf("+1 514 555 0101", "+1 514 555 0202"), q.phones.map { it.number })
+        // An edited row wins over the stored one with the same address.
+        val (_, r) = PeopleEdit.applyEdit(listOf(now), loaded, loaded.copy(xmpp = listOf(XmppAddress("mom@example.org", "mine@example.org"))), 9)!!
+        assertEquals(listOf(XmppAddress("mom@example.org", "mine@example.org")), r.xmpp)
+        // Saving someone learned confirms them.
+        val learned = loaded.copy(source = PersonSource.NOTIFICATION, confirmed = false)
+        assertTrue(PeopleEdit.applyEdit(listOf(learned), learned, learned, 9)!!.second.confirmed)
+    }
+
+    @Test fun theEditorNeverBringsBackSomeoneDeletedAndSavesANewPersonOnce() {
+        val loaded = bob
+        assertNull(PeopleEdit.applyEdit(listOf(mom), loaded, loaded.copy(name = "Robert"), 9))
+        val store = PeopleStore(tmp())
+        assertTrue(store.save(mom))
+        // A new person: the editor keeps one id, so a second Save (a double tap) changes the same person.
+        val fresh = Person("new1", "Zoé", emails = listOf("zoe@example.org"))
+        repeat(2) { assertNotNull(store.update { l -> PeopleEdit.applyEdit(l, null, fresh, 9)!!.first }) }
+        assertEquals(listOf("p1", "new1"), store.list().map { it.id })
+        // Forget on a remembered choice is a change of its own.
+        val withChoice = PeopleEdit.upsert(store.list(), bob.copy(preferredText = "+1 514 555 0199", preferredEmail = "bob@example.org"))
+        val forgot = PeopleEdit.forgetChoice(withChoice, bob.id, email = false, now = 9).first { it.id == bob.id }
+        assertNull(forgot.preferredText)
+        assertEquals("bob@example.org", forgot.preferredEmail)
+        assertSame(withChoice, PeopleEdit.forgetChoice(withChoice, mom.id, email = true, now = 9))
     }
 }

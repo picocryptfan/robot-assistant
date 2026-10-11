@@ -407,7 +407,7 @@ enum class Personal(val label: String) {
     NOTES("your notes"),
     /** What a lookup found: the phone's contacts and Robot's People (names learned from notifications included). */
     CONTACTS("your contacts"),
-    /** 0.4.0: a weather lookup, which says where you are or where your Home for weather is. */
+    /** 0.4.0: a weather lookup or the nearest place found online, which say where you are (or where your Home for weather is). */
     LOCATION("your location"),
     /** 0.4.0: phone_status, your phone's storage, battery and memory and its biggest apps. */
     PHONE("your phone's status"),
@@ -434,7 +434,8 @@ enum class Personal(val label: String) {
             ToolName.READ_CALENDAR -> CALENDAR
             ToolName.FIND_NOTES -> NOTES
             ToolName.LOOKUP_CONTACT -> CONTACTS
-            ToolName.WEATHER -> LOCATION
+            // The weather, and (0.4.0) the nearest place found online: both say where you are.
+            ToolName.WEATHER, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE -> LOCATION
             ToolName.PHONE_STATUS, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE -> PHONE
             else -> READ
         }

@@ -5,7 +5,8 @@ screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or s
 TPU answers, streams the reply and reads it aloud. Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
 Mail), keeps and finds notes, reads and adds calendar events and looks up contacts. Everything runs on the phone.
 Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) and your phone's storage, battery and
-memory, and helps free memory and storage.
+memory, helps free memory and storage, finds the nearest place of a kind online (OpenStreetMap, when you ask) for
+Organic Maps' route, and has every rule about when it asks first as a switch in Settings › Safety & privacy.
 Since 0.3.0, and only when you ask (or let it), Robot can hand a question to Claude: through the Claude API with your
 key, or by opening the Claude app (see "Ask Claude" below). The build specs are `../docs/phase-1.md`,
 `../docs/phase-2.md` and `../docs/ask-claude.md`; the voice models and how they are used, `../docs/voice-plan.md`.
@@ -26,16 +27,19 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
   the merged manifest, and `tools/verify_apk.sh` checks the dex.
 - `app/sys/` (both app processes) reads ContactsContract and CalendarContract and holds the Robot Notes folder; only
   the main app asks for permissions (`ProcessIsolationTest` checks that too). Since 0.4.0 it also holds the Open-Meteo
-  client (the only HTTP code outside the Claude SDK), the coarse location reader and what phone_status reads.
+  client and the Nominatim client for the nearest place (the only HTTP code outside the Claude SDK), the coarse
+  location reader and what phone_status reads.
 - `:brain` is bound from the assistant with `BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_INCLUDE_CAPABILITIES`;
   it is not exported and requires Robot's signature permission `app.heyrobot.permission.INTERNAL`.
 - Tools run in the app process (`:voice`), never in `:brain`: the model only proposes calls
   (`automaticToolCalling = false`, constrained decoding when the TPU build allows it), the approval gate decides.
-  In a conversation with screen text or a picture every action that writes or leaves the phone needs a tap ("Just do
-  it" turns into "Ask first"); the read tools (contacts, notes, calendar) keep their own level;
+  In a conversation with screen text, a picture or something Robot read, an action that writes or leaves the phone and
+  that your own words this turn didn't ask for needs a tap ("Just do it" turns into "Ask first"; Settings › Safety &
+  privacy › Safety cards, where "Always after Robot reads something" is the rule before 0.4.0); the read tools
+  (contacts, notes, calendar) keep their own level;
   at most two actions and three tool rounds per answer; a call written as text runs only when :brain is in text-call
   mode (its TPU build refused the tool API) and the whole reply is the call. An app name is resolved before the card,
-  which shows the app that will open. One question at a time: a waiting card counts as busy, Stop declines it.
+  which shows the app that will open. One question at a time: a waiting card counts as busy (a yes or no, spoken or typed, answers it), Stop declines it.
 - Context (4,096 tokens): the new message is cut to fit (the panel says so). A question about times or dates, an
   alarm or a timer, or any question in a conversation using the calendar tools, carries the time after it
   ("(Current time: 14:05.)"); others don't (0.2.1 put "[Now 14:05]" before every question and the model began its
@@ -67,9 +71,12 @@ goes into the repository or the build output.
 
 Four tools, so Robot can say whether tomorrow will be cloudy and help you free up storage and memory. The two that read
 are "Just do it" by default; the two that unload, stop or delete something ask first. Each has its own row in Settings ›
-Actions, and all four need the phone unlocked: the lock screen still allows only questions, timers and alarms. What the
-reading ones find is content Robot didn't write, so later actions in that conversation ask first, and it makes the
-conversation personal for Claude (below).
+Actions, and all four need the phone unlocked by default: the lock screen allows only questions, timers and alarms
+unless Settings › Safety & privacy › Works on the lock screen says more. What the reading ones find is content Robot
+didn't write, so later actions in that conversation that you didn't ask for yourself ask first (Safety cards, below), and
+it makes the conversation personal for Claude (below). The weather goes online, so in a conversation with screen text, a
+photo or something a read tool found, it shows a card first too unless your own words asked for the weather (the other
+read tools don't: nothing leaves the phone).
 
 | Tool | Does | Default |
 |---|---|---|
@@ -83,47 +90,72 @@ conversation personal for Claude (below).
 Robot runs on the phone and goes online when you ask: the weather comes from **Open-Meteo** (`api.open-meteo.com`, and
 `geocoding-api.open-meteo.com` to find a town), with no account and no key. The request comes from the assistant's
 process (`:voice`, where tools run), over HTTPS with short timeouts, no redirects and a plain "Robot" User-Agent (Android's
-default names the phone model). `sys/OpenMeteoClient.kt` is the only HTTP code outside the Claude SDK
-(`ProcessIsolationTest` checks it); `core/Weather.kt` builds the URLs and reads the answers, tested against answers
-recorded from Open-Meteo.
+default names the phone model). `sys/OpenMeteoClient.kt` and `sys/NominatimClient.kt` (the nearest place) are the only
+HTTP code outside the Claude SDK (`ProcessIsolationTest` checks it); `core/Weather.kt` builds the URLs and reads the
+answers, tested against answers recorded from Open-Meteo. Open-Meteo's data is CC BY 4.0, so the weather card ends with
+"Weather data by Open-Meteo.com, CC BY 4.0"; its free API is for non-commercial use, which Robot is (THIRD_PARTY.md).
 
-- **Where.** A town you name ("weather in Paris", "Paris, Texas" picks the one in Texas, "London, Canada" the one in
-  Ontario; otherwise the biggest town of that name), "at home" (your Home for weather), or "here" and no place at all:
-  where the phone is. For that Robot holds **ACCESS_COARSE_LOCATION** only (never fine or background location), asked
+- **Where.** A town you name, or "at home" / "at my house" (your Home for weather), or "here", "outside" and no place
+  at all: where the phone is ("here in Montreal" is Montreal). Without a region the biggest town of that name is taken
+  ("weather in Paris" is Paris, France). Speech has no commas and Open-Meteo knows no "Paris Texas", so Robot searches
+  the whole name, then without "city" ("Quebec City"), then with the last word or two as the region or country ("Paris
+  Texas", "London Ontario", "Washington DC", "Springfield New Jersey"); at most three searches. States, provinces and
+  countries can be abbreviated ("Paris, TX", "London, ON", "USA", "UK"). A town found but not where you said is refused
+  ("Open-Meteo knows places called Paris, but none in Ontario among the biggest…"), never swapped for another. For that Robot holds **ACCESS_COARSE_LOCATION** only (never fine or background location), asked
   for by the main app when you tap Allow (Assistant setup › Weather and phone status, Settings › Weather, or a card's
-  Allow, which opens the app; the panel never asks). It takes the last known position of any provider if it is under
-  30 minutes old, else asks every provider at once for up to 10 seconds (GrapheneOS has no Google network location, and
-  GPS alone can be slow or silent indoors), else a position up to a day old, else your Home for weather. Without any of
-  them the card says to name a town, set a Home for weather or allow location. What Open-Meteo gets is two coordinates
-  rounded to two decimals (about 1 km), or the town's name; the card shows them ("Sent to Open-Meteo: 45.51, -73.59").
+  Allow, which opens the app; the panel never asks). Location is "while in use", and the assistant's process may not
+  count as in use: Robot first asks Android's location app-op whether it would get a position now, and if not falls
+  back at once (to your Home for weather, or says so) and logs it (step 3 below). It takes the last known position of
+  any provider if it is under 30 minutes old, else asks every provider at once for up to 10 seconds, 3 with a Home for
+  weather to fall back on (GrapheneOS has no Google network location, and GPS alone can be slow or silent indoors), else
+  a position up to an hour old (an older one may be another town), else your Home for weather. Without any of them the
+  card says to name a town, set a Home for weather or allow location. What Open-Meteo gets is two coordinates rounded to
+  two decimals (about 1 km), or the town's name; the card shows it ("Sent to Open-Meteo: 45.51, -73.59", or "“Paris”
+  (to find it), then 48.85, 2.35").
+- **Stop and the deadline.** A lookup runs on a thread of its own: Stop ends it at once (its connection is disconnected,
+  a location wait woken; the card says "Stopped"), and the whole lookup gives up after 15 seconds ("The weather took too
+  long to come"). Actions that write still run to the end after Stop.
 - **Home for weather** (Settings › Weather): type a town and Look up; Robot looks it up once with Open-Meteo (the main
   app's only request besides the model downloads), shows what it found ("Montreal, Quebec, Canada") and keeps it in
   settings.json (schema 5; older files read it as none). Clear removes it.
-- **Days.** Today when none is said; tomorrow, a weekday, "this week" (to Sunday), "this weekend", "next week", "the
-  next 3 days", and the French words (demain, après-demain, vendredi, cette semaine, ce week-end…), read with the
-  calendar's date parser before anything goes online and again in the place's own time zone (today in Tokyo is
-  Tokyo's today). Past days are refused; Open-Meteo forecasts today and the next 15 days; at most 7 days per answer.
-- **What the model gets**: one line per day, e.g. "tomorrow, Sun Oct 11: overcast, high 18°C, low 6°C, 5% chance of
+- **Days.** Today when none is said; tomorrow, a weekday, a date (also ISO, "2026-10-12"), "this week" (to Sunday),
+  "this weekend", "next week", "the next 3 days", "today and tomorrow", a bare number of days, and the French (demain,
+  demain matin, après-demain, vendredi prochain, les 3 prochains jours, samedi et dimanche, cette semaine…). The day is
+  read once, in your own time zone, before anything goes online; "today", "tomorrow" and "next N days" then move to the
+  place's own today (today in Tokyo is Tokyo's today), while a weekday or a date keeps its date. "Tonight" after
+  midnight is the coming night. Past days are refused; Open-Meteo forecasts today and the next 15 days; at most 7 days
+  per answer, fewer when the conversation has little room left, and the model is told when days were left out.
+- **What the model gets**: for one day a line like "tomorrow, Sun Oct 11: overcast, high 18°C, low 6°C, 5% chance of
   rain, wind up to 11 km/h (gusts 25), cloud cover 100%", with the conditions (WMO codes in words), the chance and
-  amount of rain or snow, and for today the temperature and conditions now. °F, mph and inches in the United States,
-  Liberia and Myanmar (by the phone region: Settings, else the phone's own), °C, km/h, mm and cm elsewhere.
+  amount of rain or snow, and for today the temperature and conditions now. For several days, short lines with the units
+  said once ("Mon Oct 12: drizzle 16/8 67% wind 21 cloud 98%", about 30 tokens a day); the card keeps the whole lines.
+  If the context is still full after the results, Robot says what the card says rather than nothing. °F, mph and inches
+  in the United States and its territories, Liberia, Myanmar, the Bahamas, Belize, the Cayman Islands, Palau,
+  Micronesia and the Marshall Islands (by the phone region: Settings, else the phone's own), °C, km/h, mm and cm
+  elsewhere.
 - **Asking.** Weather words in English and French (weather, forecast, rain, snow, temperature, cloud, cloud cover, wind,
-  umbrella, météo, pluie, neige, température, nuageux, vent, parapluie, "quel temps"…) describe the tool for that
-  conversation, and the system prompt then says "For the weather, call weather" (otherwise it still says Robot can't
-  check the weather). With the tool on, a weather question no longer goes to Claude by itself (the pre-router's
-  current-information signal leaves weather out; "explain why it rains" still counts as reasoning, and "ask Claude about
-  the weather in Paris" still asks Claude). "Cloud" counts as a mishearing of "Claude" only after a command verb, so
-  "Okay, cloud cover tomorrow?" stays with Robot.
+  umbrella, hot, cold, warm, UV, sunglasses, "the high", "nice out", météo, pluie, neige, température, nuageux, vent,
+  parapluie, chaud, froid, canicule, "quel temps"…) describe the tool for that conversation, and the system prompt then
+  says "For the weather, call weather" (otherwise it still says Robot can't check the weather). With the tool on and the
+  phone unlocked, "weather" and "forecast" no longer count as current information for Claude; everything else in the
+  question still does ("the price of a winter coat", "the latest news about the storm", "explain why it rains", a long
+  question), and "ask Claude about the weather in Paris" still asks Claude. On the lock screen, where the tool can't run,
+  a weather question goes to Claude as before when Claude is allowed there, else gets "Unlock your phone". "Cloud" counts
+  as a mishearing of "Claude" only after a command verb, so "Okay, cloud cover tomorrow?" stays with Robot.
 - **Errors**, in fixed words, read aloud: no internet; Robot's Network permission off; the service busy (its free tier
-  has daily limits) or not answering properly; a town Open-Meteo doesn't know; location off or no position in time; no
-  Home for weather set; a day in the past or more than 15 days ahead.
+  has daily limits) or not answering properly; a town Open-Meteo doesn't know, or none where you said; location off, no
+  position in time, or refused to the assistant; no Home for weather set; too long; a day in the past or more than 15
+  days ahead.
 - **Lock screen: no.** A locked phone can't tell who is asking, and the answer would say where your Home is and go
   online for them. Claude isn't offered the tool (it has web search).
 - **Privacy.** The card's saved line names no place ("Forecast for where you are, from Open-Meteo."); the place, the
-  days and what was sent are in its body, which is shown but never saved. A weather lookup makes the conversation
-  personal: "Include the conversation so far? It contains your location." The voice log gets "Weather from Open-Meteo for
-  a new location fix · place found in 2300 ms · forecast in 410 ms" or the failure, in codes and milliseconds
-  (`VoiceEvent.WEATHER` 80, `WEATHER_FAILED` 81), never a place.
+  days and what was sent are in its body, which is shown but never saved. Robot's own reply is saved with the
+  conversation as usual, though, and it often names the town ("In Montreal tomorrow…"): with history on, that is how a
+  Home or a position can end up in the history on the phone. A weather lookup makes the conversation personal: "Include
+  the conversation so far? It contains your location." The voice log gets "Weather from Open-Meteo for a new location fix
+  · place found in 2300 ms · forecast in 410 ms", "Position for the weather: refused: Android counted Robot as in the
+  background · process importance 125 · 3 ms" or the failure, in codes and milliseconds (`VoiceEvent.WEATHER` 80,
+  `WEATHER_FAILED` 81, `WEATHER_LOCATION` 82), never a place.
 
 ### Phone status
 
@@ -132,7 +164,8 @@ Read on the phone; nothing leaves it. `StatFs` on the data partition gives free 
 `MemoryInfo` the available and total memory and whether Android considers it low (and whether Robot's own model, about
 2 GB, is loaded). With **Usage access** (you turn it on for Robot in Android's settings: Assistant setup › Usage access ›
 Open, or the card's "Turn on Usage access"), `StorageStatsManager` adds the five apps using the most space (app and data,
-their cache from 100 MB) and the size of photos, videos and audio. Only apps with a launcher icon are counted (Robot has no
+their cache from 100 MB) and the size of photos, videos and audio. Robot itself is listed as "Robot (models, don't
+clear)", so the model doesn't suggest clearing it. Only apps with a launcher icon are counted (Robot has no
 QUERY_ALL_PACKAGES). With Usage access the card offers **Open storage settings**. Asked about one part ("how's my
 battery"), only that part is read.
 
@@ -145,25 +178,30 @@ not offered to Claude.
 ### Freeing memory and storage
 
 What Android 14 and later let an app do, and no more. Both actions ask first by default, and picking a file to delete
-always shows a card, whatever the level.
+shows a card whatever the level, unless Settings › Safety & privacy › "Card before deleting files" is off: then Robot goes
+straight to Android's own confirmation for the largest one (Android still asks).
 
 - **Memory.** `free_memory` with no app unloads Robot's own model, its biggest lever (about 2 GB): the same release as
   Settings › Model memory's timer, but at once, as soon as the answer that asked for it has ended (Gemma is still
-  writing that answer when the action runs). The card then says what Android reports came back ("Freed about 2.1 GB: 6.3
+  writing that answer when the action runs; the release happens before that turn completes, so a next question can't
+  race it). The card then says what Android reports came back ("Freed about 2.1 GB: 6.3
   GB of memory available now."); the model loads again, in about 2 seconds, for the next question. Robot can't stop
   other apps: since Android 14 `killBackgroundProcesses` only reaches the caller's own processes, and
   `getRunningAppProcesses` lists only Robot's, so Robot doesn't declare KILL_BACKGROUND_PROCESSES. For an app you name
   ("stop YouTube") it opens that app's App info, where you tap Force stop (never Robot itself). With Usage access the
   model also hears which apps were used in the last two hours, so it can suggest one; never the app you are in, Robot,
-  the keyboard, the home screen, messaging apps (Cheogram, Signal, Molly, the SMS app…) or clock apps (stopping one can
-  cancel its alarms). The model is told plainly that Android frees memory by itself when it needs it and that a stopped
+  the keyboard, the home screen, the phone app, messaging apps (Cheogram, Signal, Molly, the SMS app…), clock apps
+  (stopping one can cancel its alarms), VPN apps, or an app with a foreground service running (music, navigation, a
+  call). "Stop YouTube", "force stop", "kill" and "close <app>" (and "arrête", "ferme") reach this tool; "stop the
+  timer" or "stop talking" don't. "Stop Robot" is refused. The model is told plainly that Android frees memory by itself when it needs it and that a stopped
   app may start again: it helps most when one app misbehaves.
 - **Storage.** `free_storage` opens Android's own "Free up space" screen (`StorageManager.ACTION_MANAGE_STORAGE`, else
   storage settings) by default. "apps" (with Usage access) lists the five apps using the most space, Robot aside (its App
   info's Clear storage would delete its models), with their cache: tap one and its App info opens, to clear its cache.
   "files" (with the photos and videos permission) lists your five largest photos and videos (MediaStore: name, size,
   date): tap one and Android's own confirmation (`MediaStore.createDeleteRequest`, started by a small activity in
-  `:voice`, `MediaDeleteActivity`) asks "Allow Robot to delete this video?"; only Allow deletes it. Android 14's "Select
+  `:voice`, `MediaDeleteActivity`) asks "Allow Robot to delete this video?"; only Allow deletes it. The card says
+  "Waiting for your answer…" until Android's dialog answers, then "Deleted." or "Not deleted". Android 14's "Select
   photos" works too: Robot then sees only the ones you picked. "robot" clears Robot's own cache (its models, notes,
   history and settings are never touched) and says how much.
 - **Not done: clearing every app's cache.** `StorageManager.ACTION_CLEAR_APP_CACHE` needs All files access
@@ -175,8 +213,10 @@ always shows a card, whatever the level.
   or Claude. The photos and videos permission (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED) is
   asked for by the main app only, from Assistant setup › Weather and phone status or a card's Allow.
 
-The four schemas cost about 140 tokens for the weather and under 400 for the phone group (estimated on the high side),
-only in conversations that use them; "free up space" no longer brings in the calendar's tools ("free" stays a calendar
+The four schemas cost about 140 tokens for the weather and about 410 for the phone group (estimated on the high side),
+only in conversations that use them. Every group at once comes to about 2,560 tokens, and with Ask Claude on and every
+optional line of the system prompt about 2,800, which leaves about 500 for the new turn (screen text is cut to fit,
+older turns go first; `PromptTest` keeps both under 2,600 and 2,850); "free up space" no longer brings in the calendar's tools ("free" stays a calendar
 word in "am I free tomorrow"). The new permissions are ACCESS_COARSE_LOCATION, PACKAGE_USAGE_STATS and the three photo
 and video ones (`ProcessIsolationTest` and `tools/verify_apk.sh` check the list, and that there is no fine location,
 All files access, READ_EXTERNAL_STORAGE or KILL_BACKGROUND_PROCESSES; INTERNET is still the only network permission).
@@ -190,42 +230,244 @@ All files access, READ_EXTERNAL_STORAGE or KILL_BACKGROUND_PROCESSES; INTERNET i
    under People. Allow location: Android's dialog offers approximate location only.
 3. Ask again, spoken: the answer gives tomorrow's cloud cover (and the card body the day's line and "Sent to
    Open-Meteo: 45.51, -73.59", two decimals). Note the time to the answer, indoors and outdoors. Settings › Voice › Voice
-   log: "Weather from Open-Meteo for a new location fix (or the last known location) · place found in … ms · forecast in …
-   ms", no place.
+   log: "Position for the weather: …" then "Weather from Open-Meteo for a new location fix (or the last known location) ·
+   place found in … ms · forecast in … ms", no place. **The assistant's process and location:** with no Home for weather
+   and no location used for over 30 minutes (no other app either), open the panel with the corner swipe, then with "hey
+   robot", and ask "weather here" each time. Note the voice log's "Position for the weather" line (a new fix, or
+   "refused: Android counted Robot as in the background", and the process importance), `adb shell cmd appops get
+   app.heyrobot COARSE_LOCATION` (any reject time) and `adb shell dumpsys activity processes | grep -A3 "app.heyrobot:voice"`.
+   If it is refused, reading the position needs a short location-type foreground service or an assistant activity.
 4. Turn Location off in quick settings: "what's the weather here?" says location is off. Settings › Weather › Home for
    weather: "Montreal", Look up: it shows "Montreal, Quebec, Canada" and its coordinates. Ask again: "Robot couldn't tell
    where you are: forecast for your Home for weather". "What's the weather at home on Friday?" uses it too. Location back on.
-5. "Will it rain in Paris this weekend?" (Paris, France), "weather in Paris, Texas tomorrow" (Texas), "quelle est la
-   météo demain à Québec", "is it going to snow next week" (at most 7 days), "what was the weather yesterday" (refused:
-   forecasts only).
-6. Settings › People, notes and calendar › Phone region "US": "weather tomorrow" in °F, mph and inches. Clear it again.
-7. Lock the phone: "Hey robot, what's the weather tomorrow?": "Unlock your phone, then ask again."
-8. Wi-Fi and mobile data off: "No internet: Robot couldn't reach Open-Meteo". Then Robot's Network toggle off (data
+5. "Will it rain in Paris this weekend?" (Paris, France), spoken "weather in Paris Texas tomorrow" (Texas), "how cold
+   will it be in London Ontario tonight", "quelle est la météo demain à Québec", "is it going to snow next week" (short
+   lines, at most 7 days), "what was the weather yesterday" (refused: forecasts only), "weather in Springfield, Atlantis"
+   (refused: none there). Ask "weather in Tokyo on Friday" late on a Thursday evening.
+6. "What's the weather this week in Paris?" and say "stop" (or tap Stop) while it is looking: the card says
+   "Stopped" at once and a new question works right away. Ask about the screen of a web page, then "and the weather
+   tomorrow?": the weather shows a card first.
+7. Settings › People, notes and calendar › Phone region "US": "weather tomorrow" in °F, mph and inches. Clear it again.
+8. Lock the phone: "Hey robot, what's the weather tomorrow?": "Unlock your phone, then ask again."
+9. Wi-Fi and mobile data off: "No internet: Robot couldn't reach Open-Meteo". Then Robot's Network toggle off (data
    back on): "Robot isn't allowed to use the network…".
-9. With Ask Claude on Automatic and a key: "what's the forecast for tomorrow" stays with Robot (no "Checking with
-   Claude…"); "Okay, cloud cover tomorrow?" never starts Claude mode. Set Weather lookups to Off: the same question goes
-   to Claude (or is offered). Back to Just do it.
-10. After a weather answer, "go get Claude" and a question: "Include the conversation so far? It contains your
+10. With Ask Claude on Automatic and a key: "what's the forecast for tomorrow" stays with Robot (no "Checking with
+    Claude…"); "Okay, cloud cover tomorrow?" never starts Claude mode. Set Weather lookups to Off: the same question goes
+    to Claude (or is offered). Back to Just do it.
+11. After a weather answer, "go get Claude" and a question: "Include the conversation so far? It contains your
     location." Start fresh. `adb logcat -s Robot | grep -iE "weather|tool_run"`: codes and times only.
-11. "How do I free up storage?": the phone status card (storage and "Largest apps: unknown…") with **Turn on Usage
+12. "How do I free up storage?": the phone status card (storage and "Largest apps: unknown…") with **Turn on Usage
     access**: it opens Android's Usage access page (Robot's own switch, or the list); turn it on. Ask again: the largest
     apps and the photo and video sizes, and **Open storage settings**. Note whether the advice is sensible.
-12. "How's my battery?" (only the battery: charging or not, minutes to full while charging, temperature) and "how much
+13. "How's my battery?" (only the battery: charging or not, minutes to full while charging, temperature) and "how much
     memory is free?" (with "Robot's own model holds about 2 GB while loaded").
-13. "Free up memory": the card "Unload Robot's model to free about 2 GB of memory" with **Unload**; tap it. Robot answers,
+14. "Free up memory": the card "Unload Robot's model to free about 2 GB of memory" with **Unload**; tap it. Robot answers,
     then the card's line becomes "Freed about … GB: … GB of memory available now." Note the numbers. The next question
     takes about 2 s longer (the model loads again).
-14. "Stop YouTube" (or any installed app): the card "Open YouTube's App info to force stop it"; Open App info shows that
-    page. "Stop Robot" is refused. With Usage access, "free up memory" from inside an app: the model may name recent
-    apps, never that app, the keyboard, the home screen, Cheogram, Signal or the Clock.
-15. "Free up storage" with what Android offers: note which screen "Open Android's Free up space screen" opens on
+15. "Stop YouTube" (or any installed app): the card "Open YouTube's App info to force stop it"; Open App info shows that
+    page. "Stop Robot" is refused. With Usage access, "free up memory" from inside an app while music plays: the model may
+    name recent apps, never that app, the music app, the keyboard, the home screen, the phone app, Cheogram, Signal, a VPN
+    or the Clock. Say "hey robot" and a question while the free-memory answer is still being read: the question answers
+    normally.
+16. "Free up storage" with what Android offers: note which screen "Open Android's Free up space screen" opens on
     GrapheneOS. "Clear Robot's cache": the card shows its size; Clear says how much was cleared.
-16. "Which apps can I clear the cache of?": a card with five apps and their sizes (not Robot); tap one: its App info.
-17. Assistant setup › Photos and videos › Allow, choose "Select photos" and pick two large videos. "Delete my largest
-    videos": the card lists only those; tap one: Android asks "Allow Robot to delete this video?"; Deny once (nothing is
-    deleted), then Allow (it's gone from Files and the gallery). Allow again with all photos: five largest. History shows
+17. "Which apps can I clear the cache of?": a card with five apps and their sizes (not Robot); tap one: its App info.
+18. Assistant setup › Photos and videos › Allow, choose "Select photos" and pick two large videos (no "Not allowed"
+    message). "Delete my largest videos": the card lists only those; tap one: Android asks "Allow Robot to delete this
+    video?"; Deny once (nothing is deleted; reopen the panel: the card says "Not deleted"), then Allow (it's gone from
+    Files and the gallery; the card says "Deleted."). Allow again with all photos: five largest. History shows
     "Delete a video (… GB, …)" without the file's name; `adb logcat -s Robot | grep media_delete` shows only
     `deleted=true` or `false`.
+
+## Safety & privacy, answering cards and the nearest place (0.4.0)
+
+Nothing about when Robot asks first is fixed in code any more: every rule is a switch with a sensible default, so each
+person picks their own safety level. Settings › **Safety & privacy** (a row of its own on Settings, below Replies) holds them;
+each action's own level (Just do it, Ask first, Off) stays in Settings › Actions. The gate is `ApprovalGate.decide`
+(`core/Approval.kt`), pure and tested on every combination of tool, lock, level, rule, switch, reason, content, asked and
+Claude.
+
+| Switch | Default | What it does |
+|---|---|---|
+| Safety cards | **When you didn't ask for it** | When content Robot didn't write (screen text, a photo, what a read tool found, Claude's words) makes an action that writes or leaves the phone ask first. *Always after Robot reads something*: any such content, every such action (the rule before 0.4.0). *When you didn't ask for it*: only an action your own words this turn didn't ask for. *Only when Robot isn't sure who*: content never does; only the reasons below. |
+| Card when Claude asks Robot to do something | on | Every call Claude makes shows a card (before: fixed). Off: Claude's calls follow Safety cards like any content; a read tool's findings still need "Share with Claude" unless the next-but-two switch is on. |
+| Card when who-to isn't certain | on | Several people or numbers fit, a name only nearly matches, the model wrote a number or address itself, an app name matched loosely, no contact found (Cheogram's list or share screen). Off: Robot takes the best match (the card's first choice). |
+| Card for names learned from Cheogram | on | A name seen in a Cheogram notification (whoever sent it chose it). Off: such a person can be the best match like anyone. |
+| Card before deleting files | on | A large photo or video (Android's own confirmation still asks), or Robot's cache. Off: straight to Android's confirmation for the largest one. A list of apps to clear the cache of is a choice, not a safety card: it always shows. |
+| Answer cards by voice | on | Below. |
+| Works on the lock screen | timers, alarms | One switch per action; questions always work. Everything else says "Unlock your phone". The panel's words and the model's locked line follow the set (the default's line is the one Robot always had). |
+| Send personal content to helpers automatically | off | When Robot checks with Claude by itself, the last two turns go even in a personal conversation, and so do this question's screen text and screenshot or photo; what Robot reads for Claude goes without "Share with Claude". "Go get Claude" (Include or Start fresh) and "ask Claude about my screen" (Send) always ask. |
+| Voice yes can send personal content | off | A spoken or typed yes sends an offer or a card that carries personal content; off, only the tap does. |
+| Direct answers | on | Moved here from Settings › Replies (the Safety & privacy row on Settings says whether it is on). |
+| Keep screenshots and photos in history | off | With history on, a question's picture (a 320-pixel JPEG thumbnail, Base64 in the conversation file) and the screen's text (up to 8,000 characters) are saved with it, for History only: never replayed to the model, never in what Claude receives, never logged. A screen conversation is still saved only after Keep. **Remove saved screenshots and photos** takes them out of every conversation (the conversations stay). Robot's files are excluded from backups, as before. |
+
+The settings file is schema 6. An older file reads every switch at its default, which is the old behaviour, except
+Safety cards, which takes the new default "When you didn't ask for it" (as asked). After such an update the app shows,
+once, at the top of Home and Settings: "New: Settings › Safety & privacy. Cards now appear when you didn't ask for an
+action." Tapping it opens the page and the × dismisses it; either way it never shows again (`safetyNotice` in the
+settings file; a new install never sees it).
+
+**What you asked for** (`ToolRouter.asked`, tested) is read from what you typed or said this turn, never from the
+screen's text, a photo or a tool's results: timers ("timer", "minuteur"), alarms ("alarm", "wake me", "réveil"), the
+flashlight, opening an app ("open", "launch", "ouvre"), the maps ("directions", "nearest", "where is", "itinéraire"…)
+each by their own words; a text, an email, a note, an event and freeing memory or storage only by a word that asks for
+one ("text", "tell", "send", "email", "note", "remember", "add" or "schedule" with a day or "calendar", "free up",
+"delete"…), as the word itself and not right after one that names a thing ("what does this message say?", "check my
+email", "is this event today?" ask for none of them; a word missed only shows a card); the read tools by the router's
+words (the weather's matter, since it goes online). The texting shortcut ("text mom I'm late", and the answer to "what
+should it say?") counts as asking for a text. Under the default, "summarize this page" with a page that says "set a timer" still shows the
+timer's card; "set a timer for that" in the same conversation doesn't. Claude's calls count your words in the question
+you asked Claude. The Claude app hand-off always shows its card.
+
+### Answering a card by voice
+
+While a card waits, the mic and the text field work again (they were dead): a spoken or typed **yes**, "do it", "go
+ahead", "send it", "sure", "oui", "vas-y", "envoie" confirms it, and **no**, "cancel", "never mind", "non", "annule",
+"laisse tomber" declines it (the texting shortcut's cancel words; `CardAnswer`, tested). The whole answer must be a yes
+or a no ("yes but at 5" isn't), a wake phrase in front aside. When replies are spoken, or the question came by voice or
+the panel opened with a wake word, Robot says "Say yes or no." and listens once it has stopped talking, and asks once
+more if it didn't hear a yes or a no; the mic button answers the card too, and Stop sits next to it. A card with several
+choices needs the tap ("Tap the one you mean on the card."). So does a card for a name learned from a Cheogram
+notification (whoever sent it chose that name), a card shown because Robot isn't sure who or which (several people, a
+near match, a number or address the model wrote, a loose app name), and the nearest place's first-use card: who or what
+it really is must be seen, so Robot says why instead of "Say yes or no." ("Robot isn't sure who or which it is: check
+the card, then tap. Or say no."). A card or offer that sends personal content to Claude (what a read tool or the
+nearest place found for Claude included) needs the tap unless "Voice yes can send personal content" is on ("Tap Send to
+share it with Claude."); a no always works. The decisions are core's `CardAnswer.reply` (tested). The status line says
+"Waiting for you: tap the card, or answer yes or no". Off ("Answer cards by voice"), Robot doesn't listen, and neither
+the mic nor a spoken yes answers a card; typed answers still work. Logged as `card_answer yes=… spoken=…` only.
+
+### The panel
+
+- **Ask about this screen** is an icon button next to the camera (see "Ask about this screen" below).
+- **Tips**: the three suggestion chips rotate through what Robot can do (`core/Tips.kt`, tested): the weather, timers,
+  texting by name, the calendar, a photo (opens the camera row), notes, the battery, Ask Claude, the nearest pharmacy,
+  the screen (when it came), alarms, freeing space, email, finding a note, the flashlight, adding an event, storage, a
+  fun fact. A question that only reads on the phone (the calendar, the battery, storage, finding a note, a fun fact, the
+  screen) is asked at once; a tip that would do something (a timer, an alarm, a note, the flashlight, a text, an email,
+  an event, freeing space) or go online (the weather, the nearest pharmacy, Ask Claude) only fills the text field, since
+  its details are an example: nothing happens until you send it. A different three each time the panel opens (from a
+  random start per process, then in turn), and only what
+  can work: an action that is Off, texting off, Claude off or unreachable, the lock screen's actions, no camera while
+  locked. The screen tip takes the last place once the screen arrives.
+
+### The nearest place
+
+"Directions to the nearest pharmacy", "the closest gas station", "la pharmacie la plus proche": Settings › Actions ›
+**Find the nearest place online** (under Maps directions; it needs maps search or directions not Off) is one of
+
+| Choice | What happens |
+|---|---|
+| **Ask the first time** (default, for new installs and upgrades) | The first time, a card that always shows, whatever the level: "Find the nearest “pharmacy” online (OpenStreetMap) and open the route in Organic Maps", and "To find the closest one, Robot would send “pharmacy” and your area (about 1 km) to OpenStreetMap's Nominatim. Nothing else leaves the phone." Buttons **Allow always** (from now on: Always), **Just this time**, **No, search the map** (Organic Maps' search this time), and a **Don't ask again** tick box that keeps the answer chosen (No with it ticked: Never). A tap only: a spoken yes says to tap; "no" or "cancel" declines it. |
+| **Always** | Robot goes online without that card (the level and Safety cards still apply). |
+| **Never** | Organic Maps' search; nothing goes online. |
+
+Settings has one writer (the main app), so the panel keeps its lasting answer in a file of its own
+(`nearest_answer.json`, written by the voice process); whichever was chosen last, there or in Settings, counts, and
+Settings shows it. An early 0.4.0 file with the old switch on (or none) reads as Ask the first time, off as Never. When
+it may go online, Robot
+
+1. takes where the phone is: approximate location only, as for the weather (no Home for weather: that isn't where you
+   are), up to 8 seconds;
+2. asks OpenStreetMap's **Nominatim** (`nominatim.openstreetmap.org/search`, HTTPS, jsonv2) for the words ("pharmacy")
+   in a box of ±0.02° around the position rounded to two decimals (about 1 km), and in one of ±0.1° if nothing is
+   that close; at most 40 places each, at most one request a second, answers kept 10 minutes, User-Agent
+   "Robot/<version> (app.heyrobot; Android voice assistant, GPL-3.0)", nothing else (no language, no address details).
+   Only a kind of place or a name goes (at most 6 words, no run of 3 digits, no "@": never an address, a phone number
+   or an email; anything else is Organic Maps' search). `sys/NominatimClient.kt` is the only other HTTP code
+   (`ProcessIsolationTest`); `core/Nearby.kt` builds the URL, paces and caches the searches (`NearbySearch`) and reads
+   the answer, tested against answers recorded from Nominatim and against every failure (`NearbySearchTest`);
+3. takes the closest by straight-line distance from the phone's position, and opens Organic Maps' route to it:
+   `om://route?sll=<you>&saddr=Your position (approximate)&dll=<place>&daddr=<name>&type=vehicle` (Organic Maps'
+   `map/mwm_url.cpp` wants all five, in that order; there is no "my position" start, so the route starts where Robot
+   found you, and Organic Maps picks walking or driving by itself), `geo:` as a fallback.
+
+The card says "Find the nearest “pharmacy” online (OpenStreetMap) and open the route in Organic Maps" while it runs;
+afterwards its saved line is "Opened Organic Maps' route to the nearest one OpenStreetMap knows, about 1.2 km away in a
+straight line." and its body (shown, never saved) "Familiprix · about 450 m", the street, and "Sent to OpenStreetMap:
+“pharmacy” near 45.53, -73.60" and "Data © OpenStreetMap contributors, ODbL". Like the weather, it makes the conversation personal ("your location") and is content
+for Safety cards. "Nearest" counts from the model's words or from your own this turn (if the model dropped it). No
+location permission, no fix, no internet, nothing found, or 20 seconds gone: Organic Maps' search as before, and the card
+says why ("OpenStreetMap knows no such place near you, so Robot opened Organic Maps' search instead: pick the place, then
+tap Route."). Stop ends the lookup at
+once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Never: today's search.
+
+**Nominatim's usage policy** (operations.osmfoundation.org/policies/nominatim, read 11 October 2026): every search is
+one you asked for (no autocomplete, no lists, no periodic or background requests); at most one request a second from
+the phone and at most two per question; answers cached 10 minutes; a User-Agent that identifies the app; the card
+credits OpenStreetMap (ODbL); no personal data beyond the rounded area (see the query rule above). Not met yet: the
+policy asks apps to be able to switch the service without an update. The host is one constant (`Nearby.HOST`), and
+"Never" (or any failure) falls back to Organic Maps' search on the phone. The policy's limits apply to all of Robot's
+users together, so a larger audience needs a proxy with caching or another provider; and it asks that the developer
+decide deliberately to use it, which this section records.
+"Nearest" is as near as the approximate location allows (Android's coarse location can be a kilometre or two off).
+
+### Cheogram's share screen
+
+"Choose in Cheogram" opened Cheogram's last screen instead of its share screen: a plain `SEND` to Cheogram's package
+matched the first intent of Cheogram's task (an earlier share; Android ignores the text) and only brought that task to
+the front. It now names `ShareWithActivity` and starts it with `FLAG_ACTIVITY_NEW_DOCUMENT | FLAG_ACTIVITY_MULTIPLE_TASK`,
+in a task of its own (Cheogram's back stack is untouched; the chat opens in Cheogram's task; the extra task leaves
+Recents when the share screen finishes). The account (`StartConversationActivity`) and `xmpp:` link routes get the same
+flags, since the same text to the same person twice hit the same problem. Picking in Cheogram's list runs for a result
+inside Robot's own activity and is unchanged.
+
+### On the phone (0.4.0 final pass)
+
+1. Settings › Safety & privacy: check the defaults (When you didn't ask for it; the four cards on; timers and alarms on
+   the lock screen; helpers and voice-yes off; Direct answers on; screenshots off). Direct answers is no longer under
+   Replies. Updating from 0.3.x: Home and Settings show "New: Settings › Safety & privacy. Cards now appear when you
+   didn't ask for an action." once; tapping it opens the page, × dismisses it, and it never comes back (a new install
+   never shows it).
+2. Corner-swipe over a web page that says "set a timer for 2 minutes", tap the screen button, ask "summarize this": a
+   timer card shows (you didn't ask). Then type "set a timer for 1 minute": it just runs. Switch Safety cards to
+   "Always after Robot reads something": the same asks; "Only when Robot isn't sure who": neither asks. Back on the
+   default, over a page that says "note: …": "what does this list say?" then a note from the page shows a card (naming
+   a thing isn't asking); "remember that" saves without one; "now text it to Sam" goes by Texts' level.
+3. "Text Alex hi" with two Alexes: the card lists both; say "yes": "Robot isn't sure who or which it is: check the
+   card, then tap. Or say no."; say "no": declined. Turn off "Card when who-to isn't certain" (Texts on Just do it):
+   Cheogram opens for the first. Turn it back on.
+4. Lock the phone: "Hey robot, turn on the flashlight" says unlock. Turn on Flashlight under Works on the lock screen,
+   lock again: it works, and the panel says "Locked: questions, timers, alarms and flashlight".
+5. "Hey robot, open Signal" with Open apps on Ask first: Robot says "Say yes or no." and listens; say "yes": Signal opens.
+   Again and say "cancel": the card says Cancelled. Type "no" on another card. Tap the mic on a waiting card and say
+   "oui". On a "Send your screen's text to Claude?" card say "yes": "Tap Send to share it with Claude."; say "no". With
+   each voice (Heart, Kitten, the phone's) Robot must not hear its own "Say yes or no." as an answer; a TV saying "OK"
+   near a waiting card is worth a try. Turn "Answer cards by voice" off: the mic on a card says "tap a button on it, or
+   type yes or no", and a typed "yes" still works.
+6. A name learned from Cheogram (learning on, a Cheogram notification, then "text <that name> hi"): Robot says "Robot
+   learned that name from a Cheogram notification: check who it goes to on the card, then tap. Or say no."; a spoken
+   "yes" gets the same; "no" declines; a tap works.
+7. Ask Claude on Automatic (a key saved): ask about a screen something Robot hedges on: the offer lists the screen's
+   text and waits for Send. Turn on "Send personal content to helpers automatically" and ask again: "Checking with
+   Claude…" and the screen goes by itself (note the voice log). Turn it off again.
+8. Turn on "Keep screenshots and photos in history", ask about a photo and about a screen (tap Keep): History shows the
+   thumbnails and the screen text (tap it to expand). With that panel conversation still open, "Remove saved
+   screenshots and photos", then ask one more question there: History stays without them; conversations stay.
+9. Open the panel several times: three different tips each time; turn Weather lookups Off: no weather tip. Lock: only
+   timer, alarm and fun-fact tips. Tap "Ask about a photo": the camera row opens. Tap "Wake me up at 7:00", "Directions
+   to the nearest pharmacy" or the weather: the words wait in the text field with the keyboard up, nothing runs; tap
+   "How's my battery?": it is asked at once.
+10. The screen button: corner-swipe from an app (it attaches the screen), from a banking app (dimmed with a dot; tap:
+    why), after "hey robot" (tap: swipe from the corner). TalkBack reads "Ask about this screen" and the state.
+11. Settings › Voice › Interrupt sensitivity: Low, then High; on each, Barge-in test (normal, Silent run, Tricky words)
+    and note the "stop" hits and false stops against Medium.
+12. Text someone not in the contacts, tap "Choose in Cheogram", pick them, Back to the home screen; do it again with
+    another message: Cheogram's share screen opens both times (not the last chat). Recents shows no extra Cheogram
+    entry afterwards. Same with the chat and link routes, and with both Cheogram builds (F-Droid and Play); a build
+    without `ShareWithActivity` falls back to the plain share (the voice log marks it).
+13. "Directions to the nearest pharmacy" (location allowed, data on), first time: the card says "To find the closest
+    one, Robot would send “pharmacy” and your area (about 1 km) to OpenStreetMap's Nominatim…" with Allow always, Just
+    this time and No, search the map; a spoken "yes" says to tap. Just this time: the route; the card again next time.
+    No with "Don't ask again" ticked: the search, and Settings › Actions shows Never; set Ask the first time there:
+    the card again. Allow always: Settings shows Always, and no card next time. With the route: the card shows the
+    place, how far, what was sent and "Data © OpenStreetMap contributors, ODbL"; Organic Maps accepts the `om://route`
+    link and shows the route preview from about where you are. Note the time, whether the place is really the
+    nearest, and what tapping Start does from an approximate start. "The closest gas station", "la pharmacie la plus
+    proche". Data off or the Network toggle off: "No internet: Robot couldn't reach OpenStreetMap, so Robot opened
+    Organic Maps' search instead: …". Location denied, Stop mid-lookup, and a network slow enough to hit the 20 s
+    deadline: Organic Maps opens once, never twice. "The nearest pharmacy near 5692 Avenue du Parc": a plain search
+    (an address never goes online). `adb logcat -s Robot | grep maps_nearest`: codes only.
 
 ## Ask Claude (0.3.0)
 
@@ -314,8 +556,10 @@ calendar, settings, logs.
   Claude's turns go back exactly as they came (thinking blocks with their signatures), never edited. Each request logs
   `cache_read_input_tokens` (numbers only).
 - **Claude's actions**: Claude may ask for timers, alarms, maps, notes, the calendar, texts and email drafts, with the
-  same schemas as Gemma's (strict). Every call is checked against its schema and **always shows a card**, read tools included
-  ("Share with Claude"); the lock-screen rules apply; at most 2 calls and 3 tool rounds per answer; results go back as
+  same schemas as Gemma's (strict). Every call is checked against its schema and **shows a card**, read tools included
+  ("Share with Claude"), while Settings › Safety & privacy › "Card when Claude asks Robot to do something" is on (the
+  default; off, Claude's calls follow Safety cards like any content, and a read's findings still need "Share with Claude"
+  unless personal content may go to helpers automatically); the lock-screen rules apply; at most 2 calls and 3 tool rounds per answer; results go back as
   `tool_result` blocks with `is_error` when the action failed. Not open_app, the flashlight or contact lookups.
 - **Errors**: a refused key ("Your Claude key was refused"), a rate limit ("Claude is busy, try again in a minute"),
   overloaded or 5xx (one retry, then said), no network ("No internet", with the Network permission hint), 60 s without
@@ -350,11 +594,13 @@ flashlight question, a door or wifi code, news from someone you know, or your cr
 (described only with Ask Claude on and somewhere for the question to go), and a hedged local answer ("I don't know",
 "I can't browse", "as an AI", or nothing). At most one escalation per turn; a Claude answer is never re-escalated.
 Automatically Robot sends only your question and the last two turns of plain conversation, and in a personal
-conversation only your question. A question about the screen or a photo always asks first. "Checking with Claude…" is
+conversation only your question. A question about the screen or a photo always asks first. (Both unless Settings ›
+Safety & privacy › "Send personal content to helpers automatically" is on, 0.4.0: then the last two turns go anyway,
+and so do this question's screen text and screenshot or photo.) "Checking with Claude…" is
 said in Robot's voice, then Claude answers in Claude's. An **offer** lists what **Send** would send (with the start of
 any screen text), and that is fixed when it is made; it expires when the panel closes, you ask something else, or Ask
-Claude is turned off. A spoken or typed "yes" sends it only when nothing personal is in it; otherwise Robot says "Tap
-Send to include …". A **daily budget** (default $1.00; Settings shows today's estimated spend) turns Automatic into Ask
+Claude is turned off. A spoken or typed "yes" sends it only when nothing personal is in it (or with "Voice yes can send
+personal content" on, 0.4.0); otherwise Robot says "Tap Send to include …". A **daily budget** (default $1.00; Settings shows today's estimated spend) turns Automatic into Ask
 me first for the rest of the day, said once.
 
 **Robot answers first (0.3.1).** A question about the screen or a photo, and any follow-up in that conversation, goes to
@@ -512,6 +758,13 @@ the first spotter and the gate work exactly as phase 0 measured them. When wake 
 and after every hit, the gate's 1 s pre-roll is emptied, so the wake phrase that opened the panel is never fed again
 (with "Sorry, I didn't catch that." it could wake her a second time).
 
+**Interrupt sensitivity** (0.4.0, Settings › Voice, a three-step slider): how readily "stop" and the wake phrases are
+heard while Robot talks, on the spotter for her talking. **Medium** (the default) is exactly the thresholds above.
+**Low** raises each threshold by 0.05 and lowers each boost by 0.25 (fewer stops from her own voice or a TV; say it
+clearly); **High** does the opposite (a quiet or far voice; more accidental stops). Thresholds stay within 0.08 to 0.5 and
+boosts within 0.5 to 3.0 (`KwsThresholds.shift`, tested). The wake phrases' own sensitivity still sets their idle lines;
+while she talks they get the shifted lines, built once when the setting changes.
+
 **Robot's voice plays as**: *Assistant audio* (default, as before) or *Call audio* (the phone in communication mode
 with the loudspeaker as the call device while Robot speaks, as calling apps do; it uses the call volume and needs
 `MODIFY_AUDIO_SETTINGS`, a normal permission). On Pixel the echo canceller runs in the audio DSP and takes everything
@@ -600,9 +853,11 @@ prompt says to text people by name even if they aren't in the contacts.
 
 Android shares the screen's text and a screenshot with the assistant only with the corner swipe, only with "Use text
 from screen" on in Settings › Apps › Default apps › Digital assistant app ("Use screenshot" adds the picture), and
-never for some screens (banking apps, private tabs). A wake-word panel gets nothing on Android 17. The chip shows on
-every corner-swipe and wake-word panel, never in Robot's own app or on the lock screen (`core/ScreenAccess.kt`):
-with the screen it attaches it; after a swipe without it, a tap says Android didn't share the screen and names the
+never for some screens (banking apps, private tabs). A wake-word panel gets nothing on Android 17. The screen button
+(next to the camera; until 0.4.0 an "Ask about this screen" chip above the input row) shows on every corner-swipe and
+wake-word panel, never in Robot's own app or on the lock screen (`core/ScreenAccess.kt`). Its content description is
+"Ask about this screen" and the state ("Screen ready", "Screen not shared: tap to see why"…); without the screen it is
+dimmed with a dot. With the screen it attaches it; after a swipe without it, a tap says Android didn't share the screen and names the
 settings that are off, with **Open settings** (with both on, it says the app may keep its screen private); after "hey
 robot", it says to swipe up from a bottom corner. A screen that comes after such a tap takes the notice down.
 Android's "no screen" can come before the panel shows (Robot's session is reused); it counts either way. Assistant
@@ -615,7 +870,8 @@ a leading "nearest" or "closest" (and the "to me" after it), or the French "prè
 proche (de moi)", "le plus près" (`core/Maps.kt`): Organic Maps already searches around you and would search those
 words too. A leading "a" or "une" goes with them; "the", "la" or "des" stay, since they often start a name ("The
 Bay", "Des Moines"). It can only route between coordinates,
-so "directions to X" opens a search for X: the card says "Search Organic Maps for “X”, then tap Route".
+so "directions to X" opens a search for X: the card says "Search Organic Maps for “X”, then tap Route". The nearest
+one of a kind ("directions to the nearest pharmacy") is found online since 0.4.0 ("The nearest place", below).
 
 Opening an app and Organic Maps searches run without a card by default since 0.3.1 (they only show something);
 Settings › Actions sets each action to "Just do it", "Ask first" or "Off". A settings file from before 0.3.1 saved
@@ -671,62 +927,93 @@ Robot keeps its own list of people, so "text mom I'm running late" opens Cheogra
 text, and "email Bob" fills in Bob's address, even when neither is in the phone's address book (someone only in
 Cheogram's roster, or only in Proton Mail). There is no companion app and no WRITE_CONTACTS: People live in Robot's
 private storage (`files/people/people.json`, written atomically under a lock both app processes take), excluded from
-Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
+Android's backups like the rest of Robot's files. A file Robot can't read (damaged, cut short) is never written over:
+Robot knows no one in People and changes nothing until Settings › People › Start over, which keeps the old file aside as
+`people.json.bad`. Spec: `../docs/people.md`.
 
 ### Who "mom" is
 
 - `send_text`, `draft_email` and `lookup_contact` search People together with the phone's contacts, and People alone
   when Robot may not read the contacts (so People also work under GrapheneOS's Contact Scopes). A contact's id says
   where it comes from (`s:12` for the phone's, `r:<id>` for People), so the two lists never mix.
-- **Also called.** What you say ("mom", "maman") is an alias: said exactly, it beats every other match, even a phone
-  contact literally named "Mom". Case and accents don't matter ("Hélène" is "helene").
+- **Also called.** What you told Robot you call someone ("mom", "maman": typed in Also called, "Remember as…" after a
+  pick, or "Always use this for…") is an alias. Said exactly (a leading "my", "mon", "ma" or "mes" aside, which is
+  never kept), it beats every other match, even a phone contact literally named "Mom", but only when that person can
+  be reached by what you asked: a number or an XMPP address (with Cheogram) for a text, an email address for an
+  email. Otherwise it counts like any other name, so "bob" for someone you only text in Cheogram doesn't hide the
+  phone's Bob from "email bob". Nicknames from a contacts file, and names kept from a merge, are nicknames: they match
+  like the phone's nicknames, never ahead of others. Case and accents don't matter ("Hélène" is "helene").
 - **Remembered choices.** A place chosen with "Always use this for “mom”" is the only one offered for that person while
   it is still theirs; then one exact name and one place can go without a card under "Just do it". Settings shows it
   and can forget it.
 - **Learned names.** Someone learned from a Cheogram notification is unconfirmed, because whoever sends a message chooses
-  their own display name: such a name never stands beside a confirmed person who matches as well, a text or email to
-  them always shows the card ("· name seen in Cheogram"), and texting them, editing them or Keep confirms them.
+  their own display name. Such a name never displaces anyone confirmed: when a confirmed person matches the name at
+  all, they come first, and learned people who match at least as well are only offered after them as more choices
+  (never alone, never already filled in). Only when no one confirmed matches does a learned person stand alone, and
+  then as a choice to tap ("· name seen in Cheogram"), always on a card. Opening a draft to them doesn't confirm them;
+  only Keep or an edit in Settings › People, "Remember" after a pick, or the ticked "Always use this" box does.
 - The same number or address in both lists is offered once (a card still shows, since two entries matched).
 
 ### Ways in
 
 1. **Pick in Cheogram.** When no contact fits a text and Cheogram is the texting app, the card offers **Pick in
-   Cheogram** and, as before, **Choose in Cheogram** (the share screen). Pick opens Cheogram's own searchable contact
+   Cheogram** and, as before, **Choose in Cheogram** (the share screen), also when Robot may not read the contacts
+   (neither needs a permission; the card then has an Allow contacts button too). Pick opens Cheogram's own searchable contact
    list for a result: its `ShortcutActivity`, exported for `ACTION_CREATE_SHORTCUT`, titled "Create shortcut". Robot only
    reads the answer (`EXTRA_SHORTCUT_NAME`, and `EXTRA_SHORTCUT_INTENT`'s `xmpp:<jid>` and `"account"` extra); the icon
    is ignored and nothing is pinned, so nothing goes on the home screen, and the card says so. Then "Remember as
    **Mom**? (Cheogram calls them *Mom Martin*)" saves the person with what you said as an alias ("Remember who I pick"
    on), and their chat opens with the text. Next time "text mom" goes straight there. If the list doesn't open or
    nobody is picked, Robot offers the share screen instead. Settings › People › Add from Cheogram uses the same list.
-2. **The right account.** An XMPP address with its Cheogram account (from a pick, a notification or the editor) opens
-   through `StartConversationActivity` with `xmpp:<jid>?message;body=…` (the body encoded twice, as before) and the
-   `"account"` extra, so a contact in several accounts no longer shows a search and loses the text. The plain `xmpp:`
-   link stays as the fallback. Cheogram still keeps a draft already in that chat.
+2. **The right account.** An address picked in Cheogram's list, with the account it was picked in, opens through
+   `StartConversationActivity` with `xmpp:<jid>?message;body=…` (the body encoded twice, as before) and the
+   `"account"` extra, straight into that account's chat. Only picked addresses go this way: that activity looks for
+   the chat among the account's contacts, and for anyone else (a learned stranger, an account typed in the editor) it
+   would offer to add a contact instead. Everything else, and a picked address that doesn't open, goes by the plain
+   `xmpp:` link as before. In Cheogram's source that link goes to ShareViaAccountActivity, which opens the chat for
+   any address, asks first which account when you have several, and keeps the text. Accounts are kept in lower case
+   (Cheogram compares them exactly), and the newest pick or notification replaces an older one. A draft already in
+   that chat: the account's route keeps it (Cheogram says "already drafting"), the link adds Robot's text after it;
+   the card says which applies.
 3. **Import a contacts file (.vcf).** Settings › People › Import, through the system file picker (no storage
    permission). The reader (`core/VCard.kt`) takes vCard 2.1, 3.0 and 4.0: folded lines, item groups (`item1.EMAIL`,
-   with Apple-style labels), escapes, quoted-printable in any charset, several cards per file, files in UTF-8 or
-   Windows-1252. It keeps names (`FN`, else `N`), nicknames (`NICKNAME`, and the Contacts app's own export of them),
-   numbers (`TEL`, `tel:` URIs too), emails and XMPP addresses (`IMPP:xmpp:`, `X-JABBER`), and skips everything else
-   (postal addresses, birthdays, notes, photos, categories). A preview gives the counts, how many are new and how many
-   people already there (the same number, email or XMPP address) get something new. From Proton Mail: on the web,
-   Contacts › select all › Export selection as .VCF.
+   with Apple-style labels, "Mobile" counting as a mobile number), escapes, quoted-printable in any charset, several
+   cards per file (a last card without `END:VCARD` too), files in UTF-8, UTF-16 or Windows-1252, read in one pass with
+   pictures, sounds and keys dropped as they are read. It keeps names (`FN`, else `N`), nicknames (`NICKNAME`, and the
+   Contacts app's own export of them; kept as nicknames), numbers (`TEL`, `tel:` URIs too), emails and XMPP addresses
+   (`IMPP:xmpp:`, `X-JABBER`), and skips everything else (postal addresses, birthdays, notes, photos, categories). A preview gives the counts, how many are new and how many
+   people already there get something new. An entry merges with someone already in People only when they share a
+   number, an email or an XMPP address and either the names agree (a nickname or an alias counts) or every number and
+   address in the file's entry is already theirs; a shared landline or family email alone never merges two people.
+   The merge the preview worked out is written as it is (the file lock is held only for the write), unless the list
+   changed meanwhile. From Proton Mail: on the web, Contacts › select all › Export selection as .VCF.
 4. **Learn names from Cheogram notifications** (Settings › People, off by default). With notification access, a
    `NotificationListenerService` in the main process (no model, no voice process) keeps who messages you in Cheogram
-   (`com.cheogram.android`, or the Play build), for 1:1 chats only: the MessagingStyle sender's `Person.name`, its
-   `Person.key` (the bare address) and the chat's shortcut id (`"<account>#<jid>"`). Group chats and anything without
-   that shortcut are ignored; message text is never kept or logged. A confirmed person's name is never overwritten
-   (only a missing account is added); at most 200 learned people are kept. Settings lists them under "Learned from
-   Cheogram" with Keep and Remove. The service asks Android for conversation notifications only (never ongoing or
-   silent ones) and unbinds itself while the switch is off.
+   (only the build Robot hands texts to, `com.cheogram.android` or else the Play build), for 1:1 chats only: the
+   MessagingStyle sender's `Person.name`, its `Person.key` (the bare address) and the chat's shortcut id
+   (`"<account>#<jid>"`). Group chats and anything without that shortcut are ignored; message text is never kept or
+   logged. A notification counts only if Cheogram posted it for itself (`opPkg`) and Cheogram is signed as it was the
+   first time Robot saw it after you turned learning on: that certificate's SHA-256 is kept in
+   `files/people/cheogram.signer`, and an app under Cheogram's name signed by anyone else teaches nothing (turn the
+   switch off and on to trust a Cheogram you reinstalled from another source). A confirmed person's name is never
+   overwritten (the account is refreshed); at most 200 learned people are kept. Settings lists them under "Learned from
+   Cheogram" with Keep and Remove; Remove (or Delete on a learned person) also means their address is never learned
+   again, until Delete all. The service asks Android for conversation notifications only (never ongoing or silent
+   ones) and unbinds itself while the switch is off.
    **Restricted settings:** Android blocks notification access for apps installed from a file until you allow
-   restricted settings, and the menu item for that appears only after Android has refused once. Settings › People and
-   Assistant setup › People, notes and calendar give the steps with a button for each screen: Notification access (tap
+   restricted settings, and the menu item for that appears only after Android has refused once. Settings › People and,
+   once the switch is on, Assistant setup › People, notes and calendar give the steps with a button for each screen
+   (with the switch off, Assistant setup only says it is optional): Notification access (tap
    Robot; if Android says it's a restricted setting, tap OK), App info › ⋮ › Allow restricted settings, then
    Notification access again.
-5. **Add from phone contacts.** Android 17's contact picker (`ACTION_PICK_CONTACTS`, one contact's numbers and emails)
-   when the phone has it, else the older picker for one number or one email. No permission either way.
+5. **Add from phone contacts.** Android 17's contact picker (`ACTION_PICK_CONTACTS`, one contact's numbers and emails,
+   all of them) when the phone has it, else the older picker for one number or one email. No permission either way. A
+   picker that answers with no contact (no URI, also none in its ClipData) is said so.
 6. **By hand**, in Settings › People: name, "Also called", numbers (Mobile, Home, Work, Other), emails, XMPP addresses
-   with "Your Cheogram account".
+   with "Your Cheogram account". Save applies only what you changed, field by field and row by row, to the person as
+   stored now, so a choice the assistant remembered or an account a notification refreshed meanwhile is kept; someone
+   deleted meanwhile isn't brought back. With no unsaved changes the screen shows what is stored whenever it comes
+   back. Search runs off the main thread, a moment after the last key.
 7. **Always use this for “mom”.** A card with several numbers, addresses or people has this tick box over the choices
    ("Remember who I pick" on). Ticked, the place tapped becomes the person's choice for texts or emails and the name
    their alias (taken from anyone else who had it). For one of the phone's contacts Robot keeps a small People entry
@@ -746,8 +1033,9 @@ Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
 People, names learned from notifications included, are personal content, like the contacts, notes and the calendar:
 never logged, never sent to Claude unless you include them. A lookup that finds someone makes the conversation personal
 (Ask Claude's rules above), and Claude never gets `lookup_contact`. The voice log records only what came of a pick
-(someone picked, nobody, no usable address, the list didn't open; whether Cheogram named the account; whether you chose
-to remember) and how a text reached Cheogram (the chat in its account, the `xmpp:` link, the share screen, the contact
+(someone picked; nobody, which also covers an answer Cheogram couldn't deliver, since Android reports both as a cancel
+with nothing; an answer that couldn't be read; no usable address; the list didn't open; whether Cheogram named the
+account; whether you chose to remember) and how a text reached Cheogram (the chat in its account, the `xmpp:` link, the share screen, the contact
 list), never who. `verify_apk.sh` and `ProcessIsolationTest` allow one more exported component, the notification
 listener, behind `BIND_NOTIFICATION_LISTENER_SERVICE` and in the main process, and check that the pick activity runs in
 `:voice` and isn't exported.
@@ -762,16 +1050,18 @@ listener, behind `BIND_NOTIFICATION_LISTENER_SERVICE` and in the main process, a
    Nothing appears on the home screen, and no launcher asks to add a shortcut. "Text mom see you soon" then shows "Text
    **Mom Martin** (…) in Cheogram" and opens the chat directly. Also: Back in Cheogram's list, then Choose in Cheogram
    (the share screen, with the text). Send the voice log lines ("Pick in Cheogram: …", "Text handed to Cheogram: …").
-3. **The right account.** A number in two Cheogram accounts, picked once: the chat opens without the search screen.
-   Then with a draft already in that chat: which text stays.
+3. **The right account.** A number in two Cheogram accounts, picked once: the chat opens in the picked account, with
+   no account question. Someone you didn't pick (a learned person): the link route, and with two accounts Cheogram
+   asks which, keeping the text. Then with a draft already in that chat, by each route: which text stays.
 4. **Proton's .vcf.** Export from Proton web (Contacts › select all › Export selection as .VCF), import it in Settings ›
    People: the counts, names with accents, several emails per person. Note the file's vCard version, `itemN.` groups
    and `CATEGORIES`. "Email Bob about lunch" fills Bob's address, also with the contacts permission off.
 5. **Learning from notifications.** Turn on "Learn names from Cheogram notifications"; follow the steps (the restricted
    setting dialog, App info › ⋮ › Allow restricted settings, then the access). Someone only in Cheogram messages you:
    they appear under "Learned from Cheogram". "Text <their name> hi" under "Just do it" still shows the card with "·
-   name seen in Cheogram". A group chat message teaches nothing. Turn the switch off: nothing more is learned, and
-   Settings offers to open Android's page to take the access back.
+   name seen in Cheogram". A group chat message teaches nothing. Remove them, and have them message again: they don't
+   come back. Turn the switch off: nothing more is learned, and Settings offers to open Android's page to take the
+   access back.
 6. **Add from phone contacts**: does Android 17's picker open on GrapheneOS, or the older one (number or email)?
    With Robot under Contact Scopes (contacts allowed, a few granted): People still work, and a name only in People is
    found.
@@ -805,16 +1095,20 @@ card says "Opened a draft in Cheogram: nothing is sent until Send is pressed the
   app opens with `smsto:` and `sms_body`. With both Cheogram builds installed, the F-Droid build
   (`com.cheogram.android`) is always used. A JID with a character Cheogram would cut at (`" & ' / : < > ? # %`) is
   refused, and a contact's XMPP address is offered before its numbers, never instead of them.
-- **Cheogram can keep its own draft.** If that chat already has a draft, Cheogram keeps it and drops Robot's text (it
-  shows "already drafting message"); if the number is a contact in several Cheogram accounts, it shows a search first
-  and the text is lost. Robot can't see either; the card says "If that chat already had a draft, Cheogram keeps the
-  old one."
+- **Cheogram's own draft.** Checked against Cheogram's source in 0.4.0: the `xmpp:` link goes to
+  ShareViaAccountActivity, which opens the chat (asking first which account when you have several, the text kept) and
+  adds Robot's text after a draft already in that chat; StartConversationActivity with an account (0.4.0, picked
+  addresses only) keeps the old draft and drops Robot's text ("already drafting message"). Robot can't see either; the
+  card says which applies. Earlier versions of this README said a contact in several accounts showed a search and
+  lost the text: that is StartConversationActivity without an account, not the link's route.
 - **People only in Cheogram (0.2.2).** Cheogram keeps its roster in its own database and only reads the phone's
   contacts, so someone who is only in Cheogram isn't found. With Cheogram as the texting app, a text to a name that no
   contact (or no contact with a number or XMPP address) fits shows "No contact matches “Bob”. Choose who to text in
-  Cheogram" with the message and a **Choose in Cheogram** button (always a card; Unlock on the lock screen). It opens
-  Cheogram's share screen (`ACTION_SEND` text/plain with the message, to the installed Cheogram): pick the person
-  there, and the message is in their chat's box. The model is told `draft_opened_not_sent`. With the SMS app it stays
+  Cheogram" with the message and a **Choose in Cheogram** button (a card unless "Card when who-to isn't certain" is
+  off; Unlock on the lock screen). It opens Cheogram's share screen (`ACTION_SEND` text/plain with the message to
+  `ShareWithActivity` by name, since 0.4.0 in a task of its own: sent to the package, Android brought back Cheogram's
+  task as an earlier share had left it, on its last chat): pick the person there, and the message is in their chat's
+  box. The model is told `draft_opened_not_sent`. With the SMS app it stays
   "not found". Since 0.4.0 the card offers **Pick in Cheogram** first, and Robot can remember who you pick (People,
   above). To put them in the phone's contacts instead, open the contact in Cheogram and tap "Save to Device Contacts"
   (on its details screen): that saves the XMPP address as an IM entry with protocol Jabber, which Robot reads.

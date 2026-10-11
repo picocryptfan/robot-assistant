@@ -18,6 +18,8 @@ import app.heyrobot.core.BargeRun
 import app.heyrobot.core.EchoVoice
 import app.heyrobot.core.KeywordBuffer
 import app.heyrobot.core.KwsThresholds
+import app.heyrobot.core.WakePhrase
+import app.heyrobot.core.InterruptSensitivity
 import app.heyrobot.core.ListenWhy
 import app.heyrobot.core.MicKind
 import app.heyrobot.core.PlaybackCode
@@ -325,17 +327,25 @@ object VoiceHub {
      */
     private fun buildWakeLines() {
         val phrases = settings.wakePhrases
+        val interrupt = settings.interrupt
         val sp = KwsAssets.speller(app)
+        val talk: (WakePhrase) -> KwsThresholds.Preset = { KwsThresholds.talkWake(it.sensitivity, interrupt) }
+        val heyRobot = listOf("▁HE", "Y", "▁RO", "B", "O", "T")
+        val fallback = { preset: (WakePhrase) -> KwsThresholds.Preset ->
+            phrases.filter { it.enabled && WakePhrases.clean(it.text).equals("hey robot", ignoreCase = true) }
+                .joinToString("\n") { KeywordBuffer.line(heyRobot, preset(it), KeywordBuffer.label(it.id)) }
+        }
         val lines = if (sp != null) {
             val b = KeywordBuffer.wake(phrases, sp)
             if (b.refused.isNotEmpty()) RLog.i("wake_phrases_refused", "count" to b.refused.size)
             VoiceLog.add(VoiceEvent.KWS_SET, b.ids.size, b.refused.size)
             b.text
         } else {
-            phrases.filter { it.enabled && WakePhrases.clean(it.text).equals("hey robot", ignoreCase = true) }.joinToString("\n") {
-                KeywordBuffer.line(listOf("▁HE", "Y", "▁RO", "B", "O", "T"), KwsThresholds.wake(it.sensitivity), KeywordBuffer.label(it.id))
-            }.also { VoiceLog.add(VoiceEvent.KWS_SET, it.lines().count { l -> l.isNotBlank() }, 0, 1) }
+            fallback { KwsThresholds.wake(it.sensitivity) }.also { VoiceLog.add(VoiceEvent.KWS_SET, it.lines().count { l -> l.isNotBlank() }, 0, 1) }
         }
+        // While Robot talks: the same phrases at Settings › Voice › "Interrupt sensitivity" (Medium: these very lines).
+        inputs.talkWakeLines = if (interrupt == InterruptSensitivity.MEDIUM) null else if (sp != null) KeywordBuffer.wake(phrases, sp, talk).text else fallback(talk)
+        inputs.interrupt = interrupt
         inputs.wakeLines = lines
         RLog.i("wake_phrases", "enabled" to phrases.count { it.enabled }, "lines" to lines.lines().count { it.isNotBlank() })
     }
@@ -434,8 +444,8 @@ object VoiceHub {
                 tts.setPlayback(settings.playback)
                 tts.setWakeWords(WakePhrases.echoWords(settings.wakePhrases))
                 stt.configure(settings.livePartials)
-                // New wake phrases go to the running listener: no restart.
-                if (old.wakePhrases != settings.wakePhrases) worker.post { buildWakeLines() }
+                // New wake phrases (or interrupt sensitivity) go to the running listener: no restart.
+                if (old.wakePhrases != settings.wakePhrases || old.interrupt != settings.interrupt) worker.post { buildWakeLines() }
                 applyListening(ListenWhy.SETTINGS)
                 updateCapture()
                 PanelController.settingsChanged()
@@ -444,6 +454,8 @@ object VoiceHub {
                 ClaudeLink.keyChanged(app)
                 main.post { PanelController.claudeKeyChanged() }
             }, "robot-claude-key").apply { isDaemon = true; start() }
+            Cmd.MEDIA_REMOVED -> PanelController.forgetKeptMedia()
+            Cmd.CONVERSATIONS_DELETED -> PanelController.forgetDeleted(i.getStringExtra(Cmd.EXTRA_ID))
             Cmd.SPEAK_TEST -> {
                 stopVoice(TtsStop.TEST)
                 tts.speak("Hi, I'm Robot. This is how I sound.")

@@ -108,6 +108,8 @@ class VCardTest {
         assertEquals("Martin, Alice ; the second", e.name)
         assertEquals(listOf("Al", "Ali,ce"), e.nicknames)
         assertEquals(listOf("Maman", "Mobile"), e.phones.map { it.label })
+        // Apple's "Mobile" label makes it a mobile number (offered first for texts).
+        assertEquals(listOf(PhoneKind.OTHER, PhoneKind.MOBILE), e.phones.map { it.kind })
         assertEquals(listOf("alice@example.org"), e.emails)
         // Only xmpp: in IMPP; SIP and others aren't kept.
         assertEquals(listOf(XmppAddress("alice@jabber.example.org")), e.xmpp)
@@ -161,11 +163,38 @@ class VCardTest {
         assertEquals(listOf("5145550101"), f.entries[0].phones.map { it.number })
     }
 
-    @Test fun bytesAreUtf8OrWindows1252() {
+    @Test fun bytesAreUtf8OrWindows1252OrUtf16() {
         val utf8 = "FN:Zoé".toByteArray(Charsets.UTF_8)
         assertEquals("FN:Zoé", VCard.decode(utf8))
         assertEquals("FN:Zoé", VCard.decode(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()) + utf8))
         assertEquals("FN:Zoé", VCard.decode("FN:Zoé".toByteArray(charset("windows-1252"))))
+        // Review 0.4.0 #16: UTF-16 files (some Windows and Outlook exports), with or without a byte-order mark.
+        val card = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Zoé\r\nEMAIL:zoe@example.org\r\nEND:VCARD\r\n"
+        for (b in listOf(byteArrayOf(0xFF.toByte(), 0xFE.toByte()) + card.toByteArray(Charsets.UTF_16LE), byteArrayOf(0xFE.toByte(), 0xFF.toByte()) +
+            card.toByteArray(Charsets.UTF_16BE), card.toByteArray(Charsets.UTF_16LE), card.toByteArray(Charsets.UTF_16BE))) {
+            assertEquals("Zoé", VCard.parse(VCard.decode(b)).entries.single().name)
+        }
+    }
+
+    @Test fun aSoftBreakBeforeAnIndentedLineAndAnUnendedLastCard() {
+        // Review 0.4.0 #16: a quoted-printable soft break whose next line is also folded left "Hélène=Dupont".
+        val qp = "BEGIN:VCARD\r\nVERSION:2.1\r\nFN;CHARSET=UTF-8;ENCODING=QUOTED-PRINTABLE:H=C3=A9l=C3=A8ne =\r\n Dupont\r\nTEL:5145550101\r\nEND:VCARD\r\n"
+        assertEquals("Hélène Dupont", one(qp).name)
+        // The file's last card has no END:VCARD: kept.
+        val f = VCard.parse("BEGIN:VCARD\nVERSION:3.0\nFN:Ann\nEMAIL:ann@example.org\nEND:VCARD\nBEGIN:VCARD\nVERSION:3.0\nFN:Bea\nEMAIL:bea@example.org\n")
+        assertEquals(listOf("Ann", "Bea"), f.entries.map { it.name })
+        // ...unless there's nothing to reach them by.
+        assertEquals(1, VCard.parse("BEGIN:VCARD\nFN:Cy\n").skipped)
+    }
+
+    @Test fun longPicturesAreSkippedInOnePass() {
+        // Review 0.4.0 #5: a folded base64 PHOTO took seconds (each folded line copied the whole value again).
+        val photo = (1..20_000).joinToString("\r\n ") { "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo0NTY3ODkwYWJjZGVmZ2hpamtsbW5vcHFy" }
+        val text = "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Pic\r\nPHOTO;ENCODING=b;TYPE=JPEG:$photo\r\nLOGO;VALUE=uri:data:x\r\nEMAIL:pic@example.org\r\nEND:VCARD\r\n"
+        val t0 = System.nanoTime()
+        val e = one(text)
+        assertTrue((System.nanoTime() - t0) / 1_000_000 < 2_000)
+        assertEquals(listOf("pic@example.org"), e.emails)
     }
 
     @Test fun anExportReadsBackTheSame() {
