@@ -400,10 +400,11 @@ fun RobotAppUi(activity: MainActivity) {
                 say("“${m.title}” was deleted." + if (chosen) " Robot uses Fast again." else "")
             }
         },
-        allowOwnTpu = { allow ->
+        allowOwnTpu = { allow, sha256 ->
             scope.launch {
-                val ok = withContext(Dispatchers.IO) { ModelStore.allowOwnTpu(ctx, allow) }
-                say(if (!ok) "Robot couldn't change that." else if (allow) "Your model file may run on the TPU now." else "Your model file won't run on the TPU.")
+                val ok = withContext(Dispatchers.IO) { ModelStore.allowOwnTpu(ctx, allow, sha256) }
+                say(if (!ok && allow) "Robot couldn't allow that: the file changed since its check. Check it again first."
+                    else if (!ok) "Robot couldn't change that." else if (allow) "Your model file may run on the TPU now." else "Your model file won't run on the TPU.")
             }
         },
         // The panel's live conversation too, or its next save would write a deleted one back.
@@ -557,7 +558,7 @@ class AppActions(
     val verify: (BrainModel) -> Unit,
     val deleteModel: (BrainModel) -> Unit,
     /** Your own file is a Tensor G5 build: run it on the TPU (after its warning card), or stop. */
-    val allowOwnTpu: (Boolean) -> Unit = {},
+    val allowOwnTpu: (allow: Boolean, sha256: String?) -> Unit = { _, _ -> },
     val deleteConversation: (String) -> Unit,
     val deleteAllConversations: () -> Unit,
     /** Settings › Safety & privacy: every kept thumbnail and screen text out of the saved conversations. */

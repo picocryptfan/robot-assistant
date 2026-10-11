@@ -241,7 +241,7 @@ private fun OwnModelCard(snap: Snapshot, busy: String?, a: AppActions, onDelete:
                 else -> "Robot can't run it on this phone. Delete it to free the space."
             }, style = MaterialTheme.typography.bodyMedium)
             if (own.report.tensorG5Build && !own.tpuAllowed && st == ModelStatus.VERIFIED) TpuWarning(own, a)
-            if (own.tpuAllowed) TextButton(onClick = { a.allowOwnTpu(false) }) { Text("Stop running it on the TPU") }
+            if (own.tpuAllowed) TextButton(onClick = { a.allowOwnTpu(false, null) }) { Text("Stop running it on the TPU") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(onClick = { a.import(m) }, enabled = busy == null && st != ModelStatus.IMPORTING && st != ModelStatus.VERIFYING,
@@ -280,7 +280,8 @@ private fun TpuWarning(own: OwnModel, a: AppActions) {
             Text("${own.name} · ${ModelLogic.gb(own.bytes)} (${String.format(java.util.Locale.US, "%,d", own.bytes)} bytes)\nSHA-256 ${own.sha256}",
                 style = MaterialTheme.typography.bodySmall)
             Text("A TPU build can't run on the CPU: without the TPU, Robot doesn't use it.", style = MaterialTheme.typography.bodyMedium)
-            Button(onClick = { a.allowOwnTpu(true) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("I understand: run it on the TPU") }
+            // Bound to the file this card shows: a different file in the meantime is never allowed by this tap.
+            Button(onClick = { a.allowOwnTpu(true, own.sha256) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("I understand: run it on the TPU") }
         }
     }
 }

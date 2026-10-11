@@ -258,7 +258,10 @@ object ModelStore {
         ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
             if (c.moveToFirst() && !c.isNull(0)) c.getString(0) else null
         }
-    } catch (_: Exception) { null }?.filter { it >= ' ' }?.take(120)?.ifBlank { null } ?: "your file"
+    } catch (_: Exception) { null }
+        // Shown on the TPU's warning card: no control or invisible formatting characters (a right-to-left override could
+        // make "…ldom.litertlm" read as another name).
+        ?.filter { !it.isISOControl() && Character.getType(it) != Character.FORMAT.toInt() }?.take(120)?.ifBlank { null } ?: "your file"
 
     /** Null when an import into [m] may start, else why not. */
     fun refuseImport(ctx: Context, m: BrainModel, uri: Uri): String? {
@@ -394,10 +397,13 @@ object ModelStore {
         }
     }
 
-    /** Your own file is a proven Tensor G5 build: you allowed the TPU for it (its warning card), or took that back. */
-    fun allowOwnTpu(ctx: Context, allow: Boolean): Boolean {
+    /**
+     * Your own file is a proven Tensor G5 build: you allowed the TPU for it (its warning card), or took that back. Allowed
+     * only for the very file whose card you read ([sha256], as the card showed it), unchanged since its check.
+     */
+    fun allowOwnTpu(ctx: Context, allow: Boolean, sha256: String? = null): Boolean {
         val r = own(ctx) ?: return false
-        if (allow && !r.report.tensorG5Build) return false
+        if (allow && (!r.report.tensorG5Build || r.sha256 != sha256 || r.fingerprint != fingerprint(file(ctx, BrainModel.OWN)))) return false
         writeAtomic(ownRecord(ctx), r.copy(tpuAllowed = allow).toJson().toString())
         RLog.i("model_own_tpu", "allowed" to allow)
         return true
