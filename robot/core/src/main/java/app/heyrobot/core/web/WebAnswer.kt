@@ -251,11 +251,7 @@ object Citations {
         val known = sources.map { it.n }.toSet()
         val urls = sources.mapNotNull { WebUrl.parse(it.url)?.toString() }.toSet()
         var t = MD_LINK.replace(answer) { it.groupValues[1] }
-        t = URL.replace(t) { m ->
-            val raw = m.value.trimEnd('.', ',', ';', ':', '!', '?')
-            val tail = m.value.substring(raw.length)
-            if (WebUrl.parse(raw)?.toString() in urls) m.value else tail
-        }
+        t = links(t) { raw -> WebUrl.parse(raw)?.toString() in urls }
         t = MARK.replace(t) { m ->
             val ok = numbers(m.groupValues[1]).filter { it in known }.distinct()
             ok.joinToString("") { "[$it]" }
@@ -276,7 +272,13 @@ object Citations {
     }
 
     /** What Robot says: no [n] marks, no web addresses, tidy spaces before punctuation. */
-    fun forSpeech(text: String): String = tidy(URL.replace(MARK.replace(text, ""), ""))
+    fun forSpeech(text: String): String = tidy(links(MARK.replace(text, "")) { false })
+
+    /** [text] with each web address [keep] refuses taken out (the sentence's own punctuation after it stays). */
+    private fun links(text: String, keep: (String) -> Boolean): String = URL.replace(text) { m ->
+        val raw = m.value.trimEnd('.', ',', ';', ':', '!', '?')
+        if (keep(raw)) m.value else m.value.substring(raw.length)
+    }
 
     private fun tidy(s: String): String = s.replace(Regex("[ \\t]+([,.;:!?…])"), "$1").replace(Regex("\\(\\s*\\)"), "").replace(Regex("[ \\t]{2,}"), " ")
         .replace(Regex(" +\\n"), "\n").trim()
@@ -341,14 +343,16 @@ data class AnswerCard(
     companion object {
         /**
          * The card for an answer: [cited] as [Citations.finish] gave them; Wikipedia's licence credited once per
-         * article used, Brave's line when [poweredByBrave].
+         * article shown (from Wikipedia itself, or a wikipedia.org result any service found: its snippet and page are
+         * CC BY-SA text too), Brave's line when [poweredByBrave].
          */
         fun of(service: SearchService, query: String, cited: Cited, pagesRead: Int = 0, throughService: Boolean = false,
             skipped: List<Pair<String, PageSkip>> = emptyList(), showCost: Boolean = false, poweredByBrave: Boolean = true): AnswerCard {
             fun card(s: WebSource) = CardSource(s.n, s.title, s.domain, s.url)
             val all = cited.cited + cited.alsoFound
             val credits = buildList {
-                all.filter { it.provider == SearchProvider.WIKIPEDIA }.forEach { add(WikipediaWire.credit(it.title)) }
+                all.filter { it.provider == SearchProvider.WIKIPEDIA || it.domain == "wikipedia.org" || it.domain.endsWith(".wikipedia.org") }
+                    .forEach { add(WikipediaWire.credit(it.title.removeSuffix(" - Wikipedia").removeSuffix(" — Wikipédia").trim())) }
                 if (poweredByBrave && all.any { it.provider == SearchProvider.BRAVE }) add(SearchProvider.BRAVE.credit!!)
             }.distinct()
             return AnswerCard(service, query, cited.cited.map(::card), cited.alsoFound.map(::card), pagesRead, throughService, skipped,
