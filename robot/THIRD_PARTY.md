@@ -189,19 +189,40 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 
 ## In the `:brain` process only
 
-- `com.google.ai.edge.litertlm:litertlm-android:0.18.0` (Apache-2.0), Google Maven; `liblitertlm_jni.so` arm64-v8a.
+- `com.google.ai.edge.litertlm:litertlm-android:0.18.0` (Apache-2.0), Google Maven; `liblitertlm_jni.so` arm64-v8a. It runs
+  the model you choose on the TPU (NPU backend) or the CPU (XNNPACK); nothing new is linked for the CPU models (0.4.1).
   Its LICENSE and THIRD_PARTY_NOTICE.txt ship inside the AAR.
 - `com.google.ai.edge.litert:litert-npu-runtime-google-tensor:2.3.0` (Apache-2.0), non-transitive;
   `libLiteRtDispatch_GoogleTensor.so` is packaged, `libLiteRtCompilerPlugin_google_tensor.so` excluded (as in the probe and the lab).
 - The Tensor TPU vendor libraries (`libedgetpu_*`) are the phone's own, declared with `<uses-native-library required="false">`, not bundled.
 - Transitive: `com.google.code.gson:gson:2.14.0`, `org.jetbrains.kotlin:kotlin-reflect:2.4.0` (Apache-2.0).
 
-## Gemma 4 E2B (not in the APK; downloaded or imported by the app on request)
+## Models (not in the APK; downloaded or imported by the app on request, Settings › Model)
 
-- `gemma-4-E2B-it_Google_Tensor_G5.litertlm`, https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm,
-  revision `b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1`, 3,113,545,589 bytes,
-  sha256 `af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc` (checked by the app before it is ever loaded).
-  Model card licence: Apache-2.0.
+Robot downloads a model only when you tap Download, from Hugging Face, pinned to one commit, and checks the file's size and
+SHA-256 before it is ever loaded. The weights are not part of Robot and are not linked into it: they are data files that
+LiteRT-LM reads at run time, so Robot's GPL-3.0 is not affected. Gemma 4 is released by Google under Apache-2.0 (Google's
+Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-2.0`).
+
+- **Fast (default): Gemma 4 E2B for the Tensor G5 TPU.** `gemma-4-E2B-it_Google_Tensor_G5.litertlm`,
+  https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm, revision `b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1`,
+  3,113,545,589 bytes, sha256 `af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc`. Published by Google
+  (litert-community). Licence: Apache-2.0.
+- **Smarter, slower: Gemma 4 E4B (CPU).** `gemma-4-E4B-it.litertlm`,
+  https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm, revision `2eee7ac325f20eb8c9ac1d0e972f7c84663062da`,
+  3,659,530,240 bytes, sha256 `0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0`. Published by Google
+  (litert-community). Licence: Apache-2.0.
+- **Uncensored, slower: Gemma 4 E4B abliterated (CPU).** `gemma-4-E4B-it-abliterated.litertlm`,
+  https://huggingface.co/olekk/gemma-4-E4B-it-abliterated-litert-lm, revision `a4eecccd3b0ba1777660180cda60a396eedcb8aa`,
+  3,659,530,240 bytes, sha256 `f5a6625e0368e853743c91b39fa6ac6a8add1fc4825b18f98f518966610f2a88`. A derivative of Google's
+  E4B file above by olekk (community build, not from Google; method and code at codeberg.org/oknyshuk/gemma4-e4b-abliterated).
+  Licence: Apache-2.0 (its model card). The card also asks that it be used for research and personal experimentation and
+  says you are responsible for its outputs.
+- **Your own model file.** Whatever `.litertlm` you import keeps its own licence. Robot doesn't ship it; it shows the
+  file's SHA-256 and size and reads what its header says it is (`core/LiteRtLm.kt`, written for Robot from LiteRT-LM's
+  published header schema and LlmMetadata protos, Apache-2.0; no code copied).
+- Not offered: no Gemma 4 E4B build for the Tensor TPU exists. `safecircleai/horizon-edge-4b` (a renamed CPU export of a
+  child-safety classifier fine-tune, under the non-commercial "SafeCircle Research License") is never offered.
 
 ## Every process (Apache-2.0)
 

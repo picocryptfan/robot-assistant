@@ -2,7 +2,8 @@
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
-TPU answers, streams the reply and reads it aloud. Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
+TPU answers, streams the reply and reads it aloud (since 0.4.1 you can choose a smarter but slower model instead, or
+your own model file: "Model choice" below). Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
 Mail), keeps and finds notes, reads and adds calendar events and looks up contacts. Everything runs on the phone.
 Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) and your phone's storage, battery and
 memory, helps free memory and storage, finds the nearest place of a kind online (OpenStreetMap, when you ask) for
@@ -18,7 +19,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 | Module | Runs in | Holds |
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
-| `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM |
+| `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM: the model you chose, on the TPU or the CPU, one at a time |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
@@ -67,6 +68,159 @@ The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYST
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.
 
+## Model choice (0.4.1)
+
+Settings › **Model** (the Model tab; Settings › Model › "Robot's model" opens it) chooses which model answers. **Fast**, the
+model of every earlier version, stays the default, and nothing else downloads unless you tap Download. A model you choose
+that isn't ready, or doesn't load, falls back to Fast with a message that says why, so Robot is never left without a model
+because of a choice.
+
+| Choice | Model | Runs on | Download | Writes | First word, new conversation | Memory | Licence |
+|---|---|---|---|---|---|---|---|
+| **Fast** (default) | Gemma 4 E2B, Google's Tensor G5 build | TPU | 3.11 GB | about 17 tokens a second | about 3 s | about 2 GB | Apache-2.0 |
+| **Smarter, slower** | Gemma 4 E4B, Google's file | CPU | 3.66 GB, plus about 2.5 GB of cache written on the first load | about 8 tokens a second | about 21 s (follow-ups 1 to 3 s) | about 4.1 GB | Apache-2.0 |
+| **Uncensored, slower** | Gemma 4 E4B abliterated, a community build by olekk | CPU | the same | the same | the same | the same | Apache-2.0 |
+| **Your own model file** | a `.litertlm` you import | CPU; the TPU only for a proven Tensor G5 build you allow | its size, plus about three quarters of it for the cache (CPU) | depends | depends | depends | the file's own |
+
+The numbers were measured on this phone (Pixel 10 Pro, LiteRT-LM 0.18.0, lab runs of 2026-10-09): E2B on the TPU read
+prompts at 495 to 566 tokens a second and wrote 17.3 to 18.1, at 3.5 W; E4B on the CPU read 70 and wrote 8.1, took 8.3 s to
+the first token of a 549-token prompt, held 4,120 MB (RSS) at 8.85 W, and its first load took 8.9 s and wrote 2.54 GB of
+cache. "About 21 s" and "about 3 s" are for a cold prompt of about 1,500 tokens, the size of Robot's fixed prompt with its
+tools: the first question of a conversation, or after a tool group is added. Robot keeps the conversation going, so a
+follow-up reads only the new turn. On the CPU the E4B models use about 2.5 times the power while they write (more battery,
+more heat), and look at photos on the CPU too (seconds, against under one on the TPU). Settings › Model shows each one's
+line in plain words.
+
+**Why no E4B on the TPU.** No Gemma 4 E4B build for the Tensor TPU exists. Google publishes TPU builds of E2B only (G5 and
+G6); the one "E4B … `_Google_Tensor_G5.litertlm`" on Hugging Face (`safecircleai/horizon-edge-4b`) is that repository's
+generic CPU export under a new name: no TPU code, no Gemma 4 tool metadata, a child-safety classifier fine-tune under a
+non-commercial licence. Robot never offers it. Making an E4B TPU build takes Google's Tensor compiler, a closed beta whose
+terms forbid sharing what it builds. Both E4B choices therefore run on the CPU; a genuine E4B TPU file from Google can be
+added to the catalogue (`core/ModelState.kt`, `BrainModel`) once it is published, pinned and passes the content check below.
+
+**Uncensored.** The same Google E4B file with the model's own refusals removed (olekk patched two kinds of weights in place,
+keeping Google's quantization, vision, MTP drafter and tool metadata). Its maker spot-checked it and ran no benchmark; it
+may still refuse now and then, and its card asks that it be used for research and personal experimentation, and says you
+own its outputs. Robot's own cards and switches are unchanged: the model only ever proposes an action, and Settings ›
+Safety & privacy decides what asks first, whichever model is loaded (`ApprovalGate` doesn't know which one is).
+
+### Downloads, files and privacy
+
+- A built-in model downloads only when you tap Download, from Hugging Face, by DownloadManager in the main app process
+  (as since 0.1: it resumes by itself after a dropped connection), pinned to one commit, and its SHA-256 is checked
+  before it is ever loaded. Nothing you say or type goes there; Hugging Face sees a file download from your phone.
+  "Import a downloaded file" takes the same file from your computer instead (the exact size, then the same check).
+
+  | Choice | URL | Bytes | SHA-256 |
+  |---|---|---|---|
+  | Fast | `https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it_Google_Tensor_G5.litertlm` | 3,113,545,589 | `af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc` |
+  | Smarter | `https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/2eee7ac325f20eb8c9ac1d0e972f7c84663062da/gemma-4-E4B-it.litertlm` | 3,659,530,240 | `0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0` |
+  | Uncensored | `https://huggingface.co/olekk/gemma-4-E4B-it-abliterated-litert-lm/resolve/a4eecccd3b0ba1777660180cda60a396eedcb8aa/gemma-4-E4B-it-abliterated.litertlm` | 3,659,530,240 | `f5a6625e0368e853743c91b39fa6ac6a8add1fc4825b18f98f518966610f2a88` |
+
+- Each model has its own file (in Robot's app folder), its own verified mark, download and, on the CPU, its own cache
+  folder (`filesDir/litert_cache/<id>/`, passed to LiteRT-LM as its cache directory). Fast keeps 0.4.0's file and mark, so
+  an installed model stays checked across the update. The free-space check counts the file, the cache its first load
+  writes and 1 GB to spare (about 7.3 GB free for an E4B); one model download or copy runs at a time.
+- **Delete this model** removes its file, mark, download and cache. A model in memory is never deleted (`:brain` writes
+  which one it holds to `brain_loaded.txt`, with its process id): choose another model first, and Robot lets go of the
+  old one right away. Deleting the model you chose puts the choice back to Fast.
+
+### Your own model file
+
+"Import a .litertlm file" opens Android's file picker (the Storage Access Framework: no storage permission). Robot copies
+the file into its own storage under a fixed name (`own_model.litertlm`; the file's own name is shown, never used as a path
+or a reason to trust it), watching the free space as it copies, computes its SHA-256 and shows it with the size, and reads
+its header (`core/LiteRtLm.kt`: the LiteRT-LM sections, the decoder's TFLite operator codes and LiteRtStamp, and the
+LlmMetadata; a few kilobytes, every offset and count checked, a damaged file is simply "unreadable"). Settings › Model lists
+what it found.
+
+- **The TPU** (`Backend.NPU`) only when every sign of a Tensor G5 build is there: a `tf_lite_aux` section, a
+  `prefill_decode` whose operators include `DISPATCH_OP`, a `LiteRtStamp` naming `Tensor_G5`, and Gemma 4 metadata. Never by
+  its name: LiteRT-LM 0.18.0 runs a file without the aux section quietly on the CPU while the app believes it is on the
+  TPU. Even then it runs there only after you read its warning card and tap "I understand: run it on the TPU". The card
+  names the risks: compiled TPU code nobody can review, running through the phone's own TPU driver and vendor libraries,
+  outside what Robot's separate model process can contain; a bad or mismatched build can crash Robot's model, hang the TPU
+  until a restart or, rarely, restart the phone; a SHA-256 proves the file is the one you picked, not that it is safe; a
+  TPU build not published by Google may have been shared against the Tensor compiler's terms. It shows the file's name,
+  size and SHA-256. `:brain` reads the header again itself before it loads anything but Fast.
+- **The CPU** for every other file it can run. Without Gemma 4's tool-call tokens (`<|tool_call>`, `<|tool_response>`)
+  Robot says actions may not work; with another model type, that Robot is written for Gemma 4.
+- **Refused:** NPU code for another chip (a Snapdragon build, a Tensor G6 build) or an incomplete Tensor G5 build (the
+  CPU can't run TPU code either), a file without a language model (no `prefill_decode`), or a context under 4,096 tokens.
+
+### Loading, switching and falling back
+
+- `:brain` is told the model, where it runs and its context in `BrainMsg.Load` (`Loaded` and `Status` say which model is
+  in memory). It unloads any other model first, so two engines never share the process (Fast about 2 GB, an E4B about
+  4 GB); the assistant asks it to unload first too, and the keep-loaded timer and `free_memory` work as before.
+- On the CPU, `GemmaEngine` loads with `Backend.CPU()` (LiteRT-LM's default threads: 6 were no faster), the vision
+  encoder on the CPU, and the model's cache folder; a first load that the free space can't hold is refused with a plain
+  message. MTP speculative decoding (`CPU_MTP`) and a sampler (`CPU_SAMPLER`, Gemma's top-k 64, top-p 0.95, temperature 1.0)
+  are constants in `GemmaEngine.kt` for an A/B test on the phone; both start as on the TPU (off, no sampler). Constrained
+  tool calling comes first, as on the TPU, with the same step-down.
+- The context stays 4,096 tokens for every model (each catalogue entry says so, and the prompt budget, `ContextWindow`,
+  is 4,096): the CPU files could take more, but at about 70 tokens a second a longer prompt is slow to read.
+- **Fallback** (`core/ModelState.kt`, `ModelChoice`, tested): the chosen model not downloaded, not checked, waiting for the
+  TPU card, unusable, or failing to load means Fast instead, and the panel says so once, with Open Robot ("“Smarter,
+  slower” isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Model."). A model that failed
+  to load is skipped until you tap it again in Settings › Model or its file changes, so the next question doesn't wait for
+  the same failure. With Fast missing too, the panel says what to download.
+- Settings file schema 7: `brainModel`, a catalogue id; older files read as Fast, the model they had.
+- Voice log (Settings › Voice › Voice log), ids only, events 130 to 139: model chosen (130), loaded with where and how
+  long (131), didn't load and why (132), Fast used instead and why (133), another model unloaded first (134). `adb logcat
+  -s Robot` adds `brain_load`, `brain_switch`, `brain_fallback` and `model_verify` with codes, booleans and times only (never
+  a file's name or path).
+
+### On the phone (0.4.1)
+
+Before: Fast installed and chosen (the default), about 15 GB free (both E4B models with their caches, at once), the phone
+on battery, Wi-Fi on. Note every time.
+
+1. **Update from 0.4.0.** Settings › Model: Fast is chosen and "Ready" without a new download or check; the other three
+   rows are dimmed ("Download it below first", "Import a file below first"). Ask a question: it answers as before.
+2. **Download Smarter and its first load.** Download it: the notification, progress and resume after turning Wi-Fi off
+   and on; then "Checking the file" and "Ready". Choose it, open the panel and ask "hi": note the load time (Voice log
+   "Model loaded: Smarter … on the CPU in … s"; first-ever load about 9 s) and the Smarter card's "Its cache holds … now"
+   (about 2.5 GB). `adb logcat -s Robot | grep brain_load`: `model=e4b_cpu backend=cpu`.
+3. **Cold and warm first token, writing speed.** A new conversation, one question by voice and four follow-ups. Note
+   `brain_fixed_tokens` and each `brain_reply` (`ttftMs`, `tps`): cold first token at most 25 s, warm at most 3 s, writing
+   about 8 tokens a second. Panel: "Waking up the model…" then "Thinking…" while it reads.
+4. **Memory beside voice.** With the panel open and Kokoro speaking a long answer: `adb shell dumpsys meminfo
+   app.heyrobot:brain` (TOTAL RSS about 4.1 GB) and `adb shell dumpsys meminfo app.heyrobot:voice`; `adb logcat -b events
+   | grep am_kill` shows no low-memory kills. Then "how much memory is free?": "Robot's own model holds about 4.1 GB".
+5. **Photos on the CPU.** Two photo questions (camera button), and one "ask about this screen": correct answers; note the
+   first-token time (about 10 s expected). `brain_load` says `vision=true`.
+6. **Tool calling.** "Set a timer for 2 minutes", "text Mom I'm late", "add dentist Tuesday at 3", "what's on my calendar
+   tomorrow": the usual cards; `adb logcat -s Robot | grep brain_tool_mode_down` stays empty.
+7. **Screen off.** Ask a long question by "hey robot", turn the screen off and lock while it answers: the reply finishes at
+   normal speed (`tps` in `brain_reply`; the lab saw 1 token a second for a background app).
+8. **Ten minutes, warm.** Ten minutes of back-to-back questions on battery: note `tps` over time, the battery % used, and
+   `adb shell dumpsys battery | grep temperature` before and after. Pass: no collapse in speed, no thermal warning.
+9. **MTP and the sampler (A/B).** Build once with `CPU_MTP = true`, once with `CPU_SAMPLER = true` (`GemmaEngine.kt`):
+   repeat 3 and 6. Keep whichever writes faster and answers as well; MTP's output should match without it.
+10. **Uncensored.** Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
+    ones (refusals gone? answers sane?). Cards still show for texts, emails, events and deleting.
+11. **Switching.** Fast → Smarter → Uncensored → Fast without restarting, a question after each: Voice log "Unloaded … to
+    load …" each time, never two models (`dumpsys meminfo app.heyrobot:brain` falls back to about 2 GB on Fast), and the
+    TPU model answers again at its usual speed.
+12. **Delete while in use, and the clean-up.** With Smarter chosen and just used, Delete this model is refused ("Robot
+    has “Smarter, slower” loaded right now…"). Choose Fast (`adb logcat -s Robot | grep brain_release` says
+    `why=model_changed`), then delete Smarter: its card says "Not downloaded", its cache line is gone, and the free space
+    grows by about 6.2 GB (file and cache).
+13. **Your own file, not a TPU build.** Import a photo renamed `x.litertlm` as your own file: after the copy, "Robot
+    can't use this file" ("It isn't a LiteRT-LM model file") and it can't be chosen. Import Google's E2B CPU file
+    (`gemma-4-E2B-it.litertlm`, same repository as Fast): its size and SHA-256, "Compiled for this phone's TPU: no", Gemma 4
+    with its tool-calling metadata; choose it and ask: it answers on the CPU (`brain_load model=own backend=cpu`).
+14. **Your own TPU build.** Import Fast's own file (`gemma-4-E2B-it_Google_Tensor_G5.litertlm`) as your own file: the check
+    says it is a Tensor G5 build and shows the warning card with its size and SHA-256 (`af108298…`); it can't be chosen
+    until you tap "I understand: run it on the TPU"; then choose it and ask: `brain_load model=own backend=npu`, TPU speed.
+    "Stop running it on the TPU": Robot falls back to Fast with a notice. Delete it.
+15. **Fallback notice.** Choose your own CPU file from 13, then "Import another file" with a broken one: the next
+    question answers with Fast and the panel says once "Robot can't use “Your own model file” (the Robot app › Model says
+    why), so Robot is using Fast." with Open Robot; a second question says nothing more. Voice log: "Used Fast … instead of
+    your own model file: can't be used".
+16. **Delete everything but Fast** and check the free space matches what was there before step 2.
+
 ## Weather, phone status and freeing space (0.4.0)
 
 Four tools, so Robot can say whether tomorrow will be cloudy and help you free up storage and memory. The two that read
@@ -82,7 +236,7 @@ read tools don't: nothing leaves the phone).
 |---|---|---|
 | `weather` (place, day; both optional) | Open-Meteo's forecast for a town you name, your Home for weather, or where the phone is: one line per day | Just do it (uses the internet) |
 | `phone_status` (about: storage, battery, memory or all) | Free and total storage, battery, memory, and with Usage access the apps using the most space and the size of photos, videos and audio, read on the phone | Just do it |
-| `free_memory` (app, optional) | Unloads Robot's own model (about 2 GB) once the answer ends, or opens the named app's App info, where you tap Force stop | Ask first |
+| `free_memory` (app, optional) | Unloads Robot's own model (about 2 GB; 4 GB for an E4B model) once the answer ends, or opens the named app's App info, where you tap Force stop | Ask first |
 | `free_storage` (what: android, apps, files or robot) | Android's Free up space screen, an app's App info to clear its cache, a large photo or video deleted through Android's own confirmation, or Robot's cache | Ask first |
 
 ### Weather
@@ -161,7 +315,7 @@ recorded from Open-Meteo.
 Read on the phone; nothing leaves it. `StatFs` on the data partition gives free and total storage and the share used;
 `BatteryManager` the level, charging or not, Android's minutes to full and the battery's temperature; `ActivityManager`'s
 `MemoryInfo` the available and total memory and whether Android considers it low (and whether Robot's own model, about
-2 GB, is loaded). With **Usage access** (you turn it on for Robot in Android's settings: Assistant setup › Usage access ›
+2 GB for Fast or 4 GB for an E4B model, is loaded). With **Usage access** (you turn it on for Robot in Android's settings: Assistant setup › Usage access ›
 Open, or the card's "Turn on Usage access"), `StorageStatsManager` adds the five apps using the most space (app and data,
 their cache from 100 MB) and the size of photos, videos and audio. Robot itself is listed as "Robot (models, don't
 clear)", so the model doesn't suggest clearing it. Only apps with a launcher icon are counted (Robot has no
@@ -180,8 +334,8 @@ What Android 14 and later let an app do, and no more. Both actions ask first by 
 shows a card whatever the level, unless Settings › Safety & privacy › "Card before deleting files" is off: then Robot goes
 straight to Android's own confirmation for the largest one (Android still asks).
 
-- **Memory.** `free_memory` with no app unloads Robot's own model, its biggest lever (about 2 GB): the same release as
-  Settings › Model memory's timer, but at once, as soon as the answer that asked for it has ended (Gemma is still
+- **Memory.** `free_memory` with no app unloads Robot's own model, its biggest lever (about 2 GB; 4 GB for an E4B
+  model): the same release as Settings › Model's keep-loaded timer, but at once, as soon as the answer that asked for it has ended (Gemma is still
   writing that answer when the action runs; the release happens before that turn completes, so a next question can't
   race it). The card then says what Android reports came back ("Freed about 2.1 GB: 6.3
   GB of memory available now."); the model loads again, in about 2 seconds, for the next question. Robot can't stop
