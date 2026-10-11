@@ -435,7 +435,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val cfg = ConversationConfig(
             systemInstruction = Contents.of(if (mode == ToolMode.TEXT_CALLS) system + Prompt.textCallHint(tools) else system),
             initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(it.text) else Message.model(it.text) },
-            tools = if (mode == ToolMode.TEXT_CALLS) emptyList() else providers(tools),
+            // Only the tool API's levels describe tools: never chat only (its list is empty anyway, BrainPolicy.toolsFor).
+            tools = if (mode == ToolMode.TOOLS || mode == ToolMode.TOOLS_CONSTRAINED) providers(tools) else emptyList(),
             samplerConfig = sampler(),
             automaticToolCalling = false,
         )
