@@ -41,39 +41,76 @@ object GitHubReleases {
     /** The list of releases (newest first, as GitHub gives them), or null when the answer isn't one. */
     fun parseList(json: String?): List<GitHubRelease>? {
         if (!plausible(json)) return null
-        val a = try { JSONArray(json) } catch (_: Exception) { return null }
+        val a = try { JSONArray(json) } catch (_: Exception) { return null } catch (_: StackOverflowError) { return null }
         return (0 until minOf(a.length(), MAX_RELEASES)).mapNotNull { i -> (a.opt(i) as? JSONObject)?.let(::release) }
     }
 
     /** One release (/releases/latest), or null. */
     fun parseOne(json: String?): GitHubRelease? {
         if (!plausible(json)) return null
-        return try { release(JSONObject(json)) } catch (_: Exception) { null }
+        return try { release(JSONObject(json)) } catch (_: Exception) { null } catch (_: StackOverflowError) { null }
     }
 
-    /** Not too long, and not nested deeper than GitHub's answers ever are (a deep nest would overflow the JSON parser's stack). */
+    /**
+     * Not too long, strict JSON as GitHub writes it, and not nested deeper than GitHub's answers ever are (a deep nest would
+     * overflow the JSON parser's stack). Strict because org.json also reads single-quoted strings, bare words, comments, "="
+     * and ";": with any of those this count could see a string where the parser sees brackets. Here a string is only ever
+     * in double quotes, and every value (a string, a number, true, false, null, an array or an object) starts where a value
+     * may and is followed by ",", ":", "]", "}" or the end, so the two always agree where strings begin and end.
+     */
     private fun plausible(json: String?): Boolean {
         if (json == null || json.length > MAX_JSON) return false
         var depth = 0
-        var inString = false
-        var escaped = false
-        for (c in json) {
-            if (inString) {
-                when {
-                    escaped -> escaped = false
-                    c == '\\' -> escaped = true
-                    c == '"' -> inString = false
-                }
-                continue
-            }
+        // At the start, and after "[", "{", "," or ":", a value may start; after a value, only a separator or a close.
+        var valueMayStart = true
+        var i = 0
+        val n = json.length
+        while (i < n) {
+            val c = json[i]
             when (c) {
-                '"' -> inString = true
-                '[', '{' -> if (++depth > MAX_DEPTH) return false
-                ']', '}' -> depth--
+                ' ', '\t', '\n', '\r' -> {}
+                '[', '{' -> {
+                    if (!valueMayStart || ++depth > MAX_DEPTH) return false
+                }
+                ']', '}' -> {
+                    if (--depth < 0) return false
+                    valueMayStart = false
+                }
+                ',', ':' -> {
+                    if (valueMayStart) return false
+                    valueMayStart = true
+                }
+                '"' -> {
+                    if (!valueMayStart) return false
+                    i++
+                    while (true) {
+                        if (i >= n) return false
+                        when (json[i]) {
+                            '\\' -> i += 2
+                            '"' -> break
+                            else -> i++
+                        }
+                    }
+                    valueMayStart = false
+                }
+                else -> {
+                    if (!valueMayStart) return false
+                    val start = i
+                    if (c == '-' || c in '0'..'9') {
+                        while (i + 1 < n && json[i + 1].let { it in '0'..'9' || it == '.' || it == 'e' || it == 'E' || it == '+' || it == '-' }) i++
+                    } else {
+                        while (i + 1 < n && json[i + 1] in 'a'..'z') i++
+                        if (json.substring(start, i + 1) !in LITERALS) return false
+                    }
+                    valueMayStart = false
+                }
             }
+            i++
         }
-        return true
+        return depth == 0
     }
+
+    private val LITERALS = setOf("true", "false", "null")
 
     private fun release(o: JSONObject): GitHubRelease? {
         val tag = str(o, "tag_name")?.takeIf { it.isNotEmpty() && it.length <= MAX_NAME } ?: return null

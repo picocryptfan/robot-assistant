@@ -86,6 +86,19 @@ class ReleasesTest {
         assertNull(GitHubReleases.parseList("[" + "{\"a\":".repeat(50) + "1" + "}".repeat(50) + "]"))
         // Brackets inside strings don't count.
         assertNotNull(GitHubReleases.parseList(Fixtures.list(Fixtures.release("v0.4.6", body = "[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[ \\\" {{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{"))))
+        // org.json also reads what isn't JSON: single-quoted strings, bare words, comments, "=" and ";". Each could make the
+        // nesting check see a string where the parser sees brackets (or the other way round), so none is accepted: GitHub
+        // never writes them. Otherwise the parser's stack overflows, an Error the parse's catch didn't stop.
+        val deep = "[".repeat(200_000) + "]".repeat(200_000)
+        for (j in listOf("['\"', $deep, '\"']", "[a\"b, $deep, \"]", "[1\", $deep, \"]", "[/*\"*/ $deep /*\"*/]", "[# \"\n$deep, \"]",
+            "[true\", $deep, \"]", "{\"a\"=$deep}", "[1; $deep]")) {
+            assertNull(j.take(20), GitHubReleases.parseList(j))
+        }
+        for (j in listOf("[True]", "[nul]", "[\"x\" \"y\"]", "[1 2]", "[]]", "[\"unterminated]", "[\"x\\", "[] x", "[ ]")) {
+            assertNull(j, GitHubReleases.parseList(j))
+        }
+        // Ordinary JSON in all its forms still reads.
+        assertEquals(emptyList<GitHubRelease>(), GitHubReleases.parseList(" [ 1 , -2.5e+3 , true , false , null , \"\\\"[\\\\\" , { \"a\" : [ ] } ]\r\n"))
         // Over a megabyte: not read at all.
         assertNull(GitHubReleases.parseList(Fixtures.list(Fixtures.release("v0.4.6", body = "x".repeat(GitHubReleases.MAX_JSON)))))
         // A huge body just under the cap is cut.
