@@ -159,6 +159,47 @@ enum class VoiceEvent(val id: Int) {
     CHEOGRAM_PICK(61),
     /** A text handed to Cheogram (0.4.0): a = [CheogramRoute], b = 1 if an earlier route didn't open and this one did. */
     CHEOGRAM_HANDOFF(62),
+    // Conversation mode (0.5.0, docs/conversation-mode.md 8): 100 to 119. Counts and codes only, never a word said.
+    /** A conversation session started: a = [ConvMode], b = [ConvEntry], c = 1 if the phone was locked. */
+    CONV_START(100),
+    /** It stopped: a = [ConvStop], b = minutes, c = lines ÷ 10. */
+    CONV_STOP(101),
+    /** a = [ConvPause]. */
+    CONV_PAUSE(102),
+    /** a = the [ConvPause] that ended, b = seconds paused. */
+    CONV_RESUME(103),
+    /** Once a minute while it runs: a = segments, b = median decode ms, c = most segments waiting to be decoded. */
+    CONV_MINUTE(104),
+    /** Once a minute: a = French lines, b = English lines, c = lines whose language was not sure. */
+    CONV_LANG(105),
+    /** a = speakers told apart, b = merges proposed, c = 1 if "me" was seeded. */
+    CONV_SPEAKERS(106),
+    /** A line translated: a = [MtEngine], b = ms, c = [MtVerdict]. */
+    CONV_TRANSLATE(107),
+    /** A translation spoken: a = [LangCode], b = ms to the first audio, c = 1 if a tap stopped it. */
+    CONV_TTS(108),
+    /** A transcript record couldn't be saved: a = [IoCode]. */
+    CONV_SAVE_FAIL(109),
+    /** A session that stopped unexpectedly was found and closed: a = lines recovered, b = minutes, c = 1 if you resumed it. */
+    CONV_RECOVERED(110),
+    /** a = [MicEvent]. */
+    CONV_MIC(111),
+    /** a = Android's thermal status (0 none to 6 shutdown), b = [ThermalStep] taken. */
+    CONV_THERMAL(112),
+    /** Robot's own summary: a = parts, b = seconds, c = [DoneCode]. */
+    SUMMARY_LOCAL(113),
+    /** A summary by a stronger AI: a = [HelperCode], b = words ÷ 100, c = [ClaudeEnd] (API) or [AppShareCode] (app). */
+    SUMMARY_HELPER(114),
+    /** a = [ExportKind]. */
+    CONV_EXPORT(115),
+    /** a = transcripts, b = 1 if only their recordings were deleted. */
+    CONV_DELETE(116),
+    /** Settings › Voice › Transcription check: a = word error rate in %, b = lines, c = [LangCode]. */
+    CONV_CHECK(117),
+    /** The fast translation engine loaded: a = ms, b = 1 if it worked, c = directions. */
+    MT_LOAD(118),
+    /** A segment was decoded again in two halves (too few words for its speech): a = speech ms, b = words before, c = words after. */
+    CONV_REHEARD(119),
     ;
 
     companion object {
@@ -337,6 +378,72 @@ enum class ClaudeFail(override val id: Int, override val title: String) : LogCod
     companion object {
         fun of(f: ClaudeFailure): ClaudeFail = entries.firstOrNull { it.name == f.name } ?: UNKNOWN
     }
+}
+
+/** How a conversation session started (0.5.0). */
+enum class ConvEntry(override val id: Int, override val title: String) : LogCode {
+    VOICE(1, "by voice"), APP(2, "in the app"), TILE(3, "the Quick Settings tile"), SHORTCUT(4, "a launcher shortcut"),
+    NOTIFICATION(5, "the notification"), RESUME(6, "resumed after it stopped unexpectedly"),
+}
+
+/** Why a conversation session stopped. */
+enum class ConvStop(override val id: Int, override val title: String) : LogCode {
+    USER(1, "you stopped it"), TILE(2, "the tile"), NOTIFICATION(3, "the notification"), DISK(4, "storage nearly full"),
+    THERMAL(5, "the phone was too hot"), ERROR(6, "an error"), VOICE(7, "by voice"),
+}
+
+/** Why a conversation session paused. */
+enum class ConvPause(override val id: Int, override val title: String) : LogCode {
+    USER(1, "you paused it"), MIC_TAKEN(2, "another app took the microphone"), CALL(3, "a phone call"), THERMAL(4, "the phone was too hot"),
+    PANEL(5, "the panel opened"),
+}
+
+/** Which engine translated a line. */
+enum class MtEngine(override val id: Int, override val title: String) : LogCode {
+    GEMMA(1, "Gemma"), BERGAMOT(2, "the fast engine"),
+}
+
+/** A language in the log: the two Robot labels, another one, or not sure. */
+enum class LangCode(override val id: Int, override val title: String) : LogCode {
+    FR(1, "French"), EN(2, "English"), OTHER(3, "another language"), UNSURE(4, "not sure");
+
+    companion object {
+        fun of(lang: String?): LangCode = when (lang) {
+            null -> UNSURE
+            "fr" -> FR
+            "en" -> EN
+            else -> OTHER
+        }
+    }
+}
+
+/** Why a transcript record couldn't be saved. */
+enum class IoCode(override val id: Int, override val title: String) : LogCode {
+    NO_SPACE(1, "storage full"), WRITE(2, "the write failed"), MISSING(3, "the folder was missing"), OTHER(4, "another error"),
+}
+
+/** The microphone during a conversation. */
+enum class MicEvent(override val id: Int, override val title: String) : LogCode {
+    SILENCED(1, "another app took the microphone"), BACK(2, "the microphone is back"), SOURCE(3, "the microphone source changed"),
+}
+
+/** What a conversation does as the phone heats up (docs/conversation-mode.md 1.4). */
+enum class ThermalStep(override val id: Int, override val title: String) : LogCode {
+    PARTIALS_OFF(1, "live words off"), FAST_ONLY(2, "fast translation only"), PAUSED(3, "paused"), NORMAL(4, "back to normal"),
+}
+
+/** The stronger AI a summary went to. */
+enum class HelperCode(override val id: Int, override val title: String) : LogCode {
+    CLAUDE_API(1, "Claude API"), CLAUDE_APP(2, "the Claude app"),
+}
+
+/** How a transcript went to the Claude app (SUMMARY_HELPER's third number for the app). */
+enum class AppShareCode(override val id: Int, override val title: String) : LogCode {
+    SHARED(1, "shared to the app"), CLIPBOARD(2, "copied for you to paste"), TOO_LONG(3, "too long for the app"),
+}
+
+enum class ExportKind(override val id: Int, override val title: String) : LogCode {
+    MARKDOWN(1, "Markdown file"), TEXT(2, "text file"), SHARE(3, "shared"), COPY(4, "copied"),
 }
 
 /** One event: when (wall clock, ms), what, and up to three small numbers. */
@@ -560,8 +667,35 @@ object VoiceLogText {
             VoiceEvent.CHEOGRAM_HANDOFF -> "Text handed to Cheogram: " + code(CheogramRoute.entries, a) + (if (b == 1) " (the first way didn't open)" else "")
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
+            VoiceEvent.CONV_START -> "Conversation started: " + code(ConvMode.entries, a) + " (" + code(ConvEntry.entries, b) + ")" +
+                (if (c == 1) " · phone locked" else "")
+            VoiceEvent.CONV_STOP -> "Conversation stopped: " + code(ConvStop.entries, a) + " · $b min · " + (if (c > 0) "about ${c * 10} lines" else "under 10 lines")
+            VoiceEvent.CONV_PAUSE -> "Conversation paused: " + code(ConvPause.entries, a)
+            VoiceEvent.CONV_RESUME -> "Conversation resumed after " + code(ConvPause.entries, a) + " ($b s)"
+            VoiceEvent.CONV_MINUTE -> "Conversation minute: $a segments · median decode $b ms · up to $c waiting"
+            VoiceEvent.CONV_LANG -> "Languages this minute: $a French · $b English · $c not sure"
+            VoiceEvent.CONV_SPEAKERS -> "Speakers: $a" + (if (b > 0) " · $b merges proposed" else "") + (if (c == 1) " · started from your voice" else "")
+            VoiceEvent.CONV_TRANSLATE -> "Line translated by " + code(MtEngine.entries, a) + " in $b ms: " + code(MtVerdict.entries, c)
+            VoiceEvent.CONV_TTS -> "Translation spoken (" + code(LangCode.entries, a) + "): first audio after $b ms" + (if (c == 1) " · stopped by a tap" else "")
+            VoiceEvent.CONV_SAVE_FAIL -> "Couldn't save a transcript line: " + code(IoCode.entries, a)
+            VoiceEvent.CONV_RECOVERED -> "Transcript closed after it stopped unexpectedly: $a lines, $b min" + (if (c == 1) " · you resumed it" else "")
+            VoiceEvent.CONV_MIC -> "Conversation microphone: " + code(MicEvent.entries, a)
+            VoiceEvent.CONV_THERMAL -> "Phone heat " + thermal(a) + ": " + code(ThermalStep.entries, b)
+            VoiceEvent.SUMMARY_LOCAL -> "Robot's summary: $a parts in $b s (" + code(DoneCode.entries, c) + ")"
+            VoiceEvent.SUMMARY_HELPER -> "Summary with " + code(HelperCode.entries, a) + ": about ${b * 100} words · " +
+                (if (a == HelperCode.CLAUDE_APP.id) code(AppShareCode.entries, c) else code(ClaudeEnd.entries, c))
+            VoiceEvent.CONV_EXPORT -> "Transcript exported: " + code(ExportKind.entries, a)
+            VoiceEvent.CONV_DELETE -> (if (b == 1) "Recordings deleted, transcripts kept: " else "Transcripts deleted: ") + a
+            VoiceEvent.CONV_CHECK -> "Transcription check (" + code(LangCode.entries, c) + "): $a% of words wrong over $b lines"
+            VoiceEvent.MT_LOAD -> if (b == 1) "Fast translation loaded in $a ms ($c directions)" else "Fast translation didn't load ($a ms)"
+            VoiceEvent.CONV_REHEARD -> "Segment heard again in two halves (" + secs(a) + " of speech): $b words, then $c"
         }
     }
+
+    private val THERMAL = listOf("none", "light", "moderate", "severe", "critical", "emergency", "shutdown")
+
+    /** Android's PowerManager thermal status in words. */
+    fun thermal(status: Int): String = THERMAL.getOrNull(status) ?: "#$status"
 
     /** "now", "12 s ago", "3 min ago", "2 h ago", "4 d ago". */
     fun ago(ms: Long): String = when {

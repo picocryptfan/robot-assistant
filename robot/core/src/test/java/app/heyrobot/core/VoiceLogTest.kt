@@ -53,7 +53,9 @@ class VoiceLogTest {
         val codes: List<List<LogCode>> = listOf(WakeAction.entries, WakeDrop.entries, ListenWhy.entries, MicKind.entries, AecState.entries, SttEnd.entries,
             ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries,
             EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries, ClaudeLeftOut.entries,
-            PickOutcome.entries, CheogramRoute.entries)
+            PickOutcome.entries, CheogramRoute.entries, ConvMode.entries, ConvEntry.entries, ConvStop.entries, ConvPause.entries, MtEngine.entries,
+            MtVerdict.entries, LangCode.entries, IoCode.entries, MicEvent.entries, ThermalStep.entries, HelperCode.entries, AppShareCode.entries,
+            ExportKind.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -66,6 +68,16 @@ class VoiceLogTest {
         for (e in listOf(VoiceEvent.CLAUDE_LEFT_OUT, VoiceEvent.OWN_ANSWER)) assertTrue(e.name, e.id in 120..129)
         // 0.4.0's People events use 61 to 79 (80 and up are taken by other 0.4.0 work).
         for (e in listOf(VoiceEvent.CHEOGRAM_PICK, VoiceEvent.CHEOGRAM_HANDOFF)) assertTrue(e.name, e.id in 61..79)
+        // 0.5.0's conversation events use 100 to 119, in the order docs/conversation-mode.md 8 lists them.
+        val conv = listOf(VoiceEvent.CONV_START, VoiceEvent.CONV_STOP, VoiceEvent.CONV_PAUSE, VoiceEvent.CONV_RESUME, VoiceEvent.CONV_MINUTE,
+            VoiceEvent.CONV_LANG, VoiceEvent.CONV_SPEAKERS, VoiceEvent.CONV_TRANSLATE, VoiceEvent.CONV_TTS, VoiceEvent.CONV_SAVE_FAIL,
+            VoiceEvent.CONV_RECOVERED, VoiceEvent.CONV_MIC, VoiceEvent.CONV_THERMAL, VoiceEvent.SUMMARY_LOCAL, VoiceEvent.SUMMARY_HELPER,
+            VoiceEvent.CONV_EXPORT, VoiceEvent.CONV_DELETE, VoiceEvent.CONV_CHECK, VoiceEvent.MT_LOAD, VoiceEvent.CONV_REHEARD)
+        assertEquals((100..119).toList(), conv.map { it.id })
+        assertEquals(conv, VoiceEvent.entries.filter { it.id in 100..119 })
+        assertEquals(LangCode.FR, LangCode.of("fr"))
+        assertEquals(LangCode.UNSURE, LangCode.of(null))
+        assertEquals(LangCode.OTHER, LangCode.of("de"))
         assertEquals(4, VoiceEvent.STOP_SUPPRESSED.id)
         assertEquals(31, VoiceEvent.BARGE_TEST.id)
         // MicKind and AecState share KWS_HIT's third number as mic × 10 + aec: both must stay below 10.
@@ -193,6 +205,24 @@ class VoiceLogTest {
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BARGE_HIT, 2, 3100, BargeHitKind.COUNTED.id), names))
         assertEquals("Barge-in test heard “stop”: before her voice started", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BARGE_HIT, 0, -1, BargeHitKind.EARLY.id)))
         assertEquals("Barge-in test, count run: 4 “stop” or wake words heard", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BARGE_TEST, 2, 4)))
+        // 0.5.0: conversation mode, numbers and codes only.
+        assertEquals("Conversation started: transcribe (the Quick Settings tile) · phone locked",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_START, ConvMode.TRANSCRIBE.id, ConvEntry.TILE.id, 1)))
+        assertEquals("Conversation stopped: storage nearly full · 42 min · about 310 lines",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_STOP, ConvStop.DISK.id, 42, 31)))
+        assertEquals("Conversation resumed after a phone call (95 s)", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_RESUME, ConvPause.CALL.id, 95)))
+        assertEquals("Line translated by the fast engine in 41 ms: kept, a repeat removed",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_TRANSLATE, MtEngine.BERGAMOT.id, 41, MtVerdict.REPEAT.id)))
+        assertEquals("Phone heat severe: fast translation only", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_THERMAL, 3, ThermalStep.FAST_ONLY.id)))
+        assertEquals("Summary with the Claude app: about 6100 words · copied for you to paste",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_APP.id, 61, AppShareCode.CLIPBOARD.id)))
+        assertEquals("Summary with Claude API: about 1200 words · finished",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_API.id, 12, ClaudeEnd.END.id)))
+        assertEquals("Transcription check (French): 12% of words wrong over 20 lines",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_CHECK, 12, 20, LangCode.FR.id)))
+        assertEquals("Segment heard again in two halves (4.2 s of speech): 3 words, then 11",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_REHEARD, 4200, 3, 11)))
+        assertEquals("Languages this minute: 8 French · 5 English · 1 not sure", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_LANG, 8, 5, 1)))
         assertEquals("now", VoiceLogText.ago(1_000))
         assertEquals("12 s ago", VoiceLogText.ago(12_000))
         assertEquals("3 min ago", VoiceLogText.ago(200_000))
