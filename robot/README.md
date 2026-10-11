@@ -323,11 +323,13 @@ ahead", "send it", "sure", "oui", "vas-y", "envoie" confirms it, and **no**, "ca
 or a no ("yes but at 5" isn't), a wake phrase in front aside. When replies are spoken, or the question came by voice or
 the panel opened with a wake word, Robot says "Say yes or no." and listens once it has stopped talking, and asks once
 more if it didn't hear a yes or a no; the mic button answers the card too, and Stop sits next to it. A card with several
-choices needs the tap ("Tap the one you mean on the card."), a card for a name learned from a Cheogram notification
-needs the tap (whoever sent it chose that name, so who it really goes to must be seen on the card; Robot says so instead
-of "Say yes or no."), and a card or offer that sends personal content to Claude (what a read tool or the nearest place
-found for Claude included) needs the tap unless "Voice yes can send personal content" is on ("Tap Send to share it with
-Claude."); a no always works. The status line says "Waiting for you: tap the card, or answer yes or no". Off ("Answer
+choices needs the tap ("Tap the one you mean on the card."). So does a card for a name learned from a Cheogram
+notification (whoever sent it chose that name), a card shown because Robot isn't sure who or which (several people, a
+near match, a number or address the model wrote, a loose app name), and the nearest place's first-use card: who or what
+it really is must be seen, so Robot says why instead of "Say yes or no." ("Robot isn't sure who or which it is: check
+the card, then tap. Or say no."). A card or offer that sends personal content to Claude (what a read tool or the
+nearest place found for Claude included) needs the tap unless "Voice yes can send personal content" is on ("Tap Send to
+share it with Claude."); a no always works. The decisions are core's `CardAnswer.reply` (tested). The status line says "Waiting for you: tap the card, or answer yes or no". Off ("Answer
 cards by voice"), Robot doesn't listen, and neither the mic nor a spoken yes answers a card; typed answers still work.
 Logged as `card_answer yes=… spoken=…` only.
 

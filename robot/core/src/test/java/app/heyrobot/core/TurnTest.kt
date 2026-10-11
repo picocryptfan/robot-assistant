@@ -745,9 +745,10 @@ class TurnTest {
         assertEquals(listOf<Action>(Action.MapsNavigate("pharmacy", nearest = true)), free.ran)
     }
 
-    /** A name learned from a Cheogram notification: its card is answered by a tap only (no spoken or typed yes). */
-    @Test fun aLearnedNamesCardIsTapOnly() = runBlocking {
-        for ((why, tapOnly) in listOf(setOf(AskWhy.LEARNED) to true, setOf(AskWhy.LEARNED, AskWhy.WHO) to true, setOf(AskWhy.WHO) to false)) {
+    /** A name learned from Cheogram, or not being sure who: its card is answered by a tap only (no spoken or typed yes). */
+    @Test fun aLearnedOrUnsureNamesCardIsTapOnly() = runBlocking {
+        for ((why, tapFor) in listOf(setOf(AskWhy.LEARNED) to AskWhy.LEARNED, setOf(AskWhy.LEARNED, AskWhy.WHO) to AskWhy.LEARNED,
+                setOf(AskWhy.WHO) to AskWhy.WHO, emptySet<AskWhy>() to null)) {
             val actions = FakeActions()
             val text = Action.SendText("Mom", "hi")
             actions.prepare = { Prepared.Ready(text, why = why, choices = listOf(Choice("Mom · xmpp", text))) }
@@ -755,7 +756,7 @@ class TurnTest {
             val conf = Confirmations()
             val turn = async { runner(FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "Mom", "message" to "hi")))), actions, view, conf).run() }
             val id = withTimeout(5_000) { view.pending.receive() }
-            assertEquals("$why", tapOnly, view.cards[id]!!.tapOnly)
+            assertEquals("$why", tapFor, view.cards[id]!!.tapFor)
             conf.answer(id, false)
             turn.await()
         }
@@ -783,6 +784,8 @@ class TurnTest {
             val card = view.cards[id]!!
             assertEquals("Don't ask again", card.remember)
             assertEquals(3, card.choices.size)
+            // A tap only: a spoken yes says to tap.
+            assertEquals(AskWhy.ONLINE, card.tapFor)
             conf.choose(id, pick, remember)
             turn.await()
             assertEquals("$pick $remember", listOf<Action>(want), actions.ran)

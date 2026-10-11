@@ -16,6 +16,7 @@ import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Approval
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainError
+import app.heyrobot.core.AskWhy
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainFail
 import app.heyrobot.core.BrainProtocol
@@ -184,9 +185,12 @@ data class UiAction(
     val allowContacts: Boolean = false,
     /** Its button sends personal content to Claude: a spoken or typed yes doesn't, unless "Voice yes can send personal content". */
     val personal: Boolean = false,
-    /** Only a tap answers it (core Card.tapOnly: a name learned from a Cheogram notification); "no" still declines. */
-    val tapOnly: Boolean = false,
-)
+    /** Only a tap answers it, for this reason (core Card.tapFor: a learned name, not sure who, online the first time); "no" still declines. */
+    val tapFor: AskWhy? = null,
+) {
+    /** What a spoken or typed answer needs to know about it (core CardAnswer). */
+    val waiting: CardAnswer.Waiting get() = CardAnswer.Waiting(choices.size, tapFor, personal, confirm)
+}
 
 /**
  * "Want me to check with Claude?" under a reply (docs/ask-claude.md "When Robot needs help"): a tap (or a yes, when
@@ -904,13 +908,10 @@ object PanelController {
         cardPromptSaid = false
         cardRetry = 0
         if (!s.voiceCards || !shown || !VoiceHub.stt.available || !(st.speak || spokenTurn || shownFrom == ShowSource.WAKE)) return
-        // A name learned from a notification: who it goes to must be seen, so a tap answers it (not "Say yes or no").
-        if (pendingCard()?.tapOnly == true) {
-            if (st.speak && !said) VoiceHub.tts.speak(CARD_LEARNED_HINT)
-            return
-        }
+        val card = pendingCard() ?: return
         if (st.speak) {
-            if (!said) VoiceHub.tts.speak(CARD_PROMPT)
+            // "Say yes or no.", or why it needs a tap (a learned name, not sure who, online the first time) and that "no" works.
+            if (!said) VoiceHub.tts.speak(CardAnswer.prompt(card.waiting))
             cardListenAfterSpeech = true
         } else {
             listenForCard()
@@ -975,7 +976,7 @@ object PanelController {
         if (cardRetry++ < 1) {
             notify(CARD_HINT)
             if (_state.value.speak) {
-                VoiceHub.tts.speak(CARD_PROMPT)
+                VoiceHub.tts.speak(pendingCard()?.waiting?.let(CardAnswer::prompt) ?: CardAnswer.PROMPT)
                 cardListenAfterSpeech = true
             } else {
                 listenForCard()
@@ -987,28 +988,25 @@ object PanelController {
     }
 
     /**
-     * [text] answers the waiting card ([CardAnswer]): "no" declines it; "yes" confirms it, except a card with several
-     * choices (tap the one meant), one that sends personal content to Claude (a tap, unless "Voice yes can send
-     * personal content") or one for a name learned from a notification (a tap). False: not a yes or no, no card waits,
-     * or it was [spoken] with "Answer cards by voice" off (a typed answer still works then).
+     * [text] answers the waiting card (core CardAnswer.reply, tested): "no" declines it; "yes" confirms it, except a card
+     * that needs a tap (a learned name, not sure who or which, online the first time), one with several choices, or one
+     * that sends personal content to Claude (unless "Voice yes can send personal content"): Robot says why. False: not a
+     * yes or no, no card waits, or it was [spoken] with "Answer cards by voice" off (a typed answer still works then).
      */
     private fun answerCard(text: String, spoken: Boolean): Boolean {
         val card = pendingCard() ?: return false
         val s = VoiceHub.settings
-        if (spoken && !s.voiceCards) return false
-        val kind = CardAnswer.of(text, s.wakePhrases.filter { it.enabled }.map { it.text }) ?: return false
-        RLog.i("card_answer", "yes" to (kind == CardAnswer.Kind.YES), "spoken" to spoken)
-        fun tell(words: String) {
-            notify(words)
-            if (_state.value.speak) VoiceHub.tts.speak(words)
-        }
-        when {
-            kind == CardAnswer.Kind.NO -> confirm(card.id, false)
-            card.choices.size > 1 -> tell("Tap the one you mean on the card.")
-            card.tapOnly -> tell(CARD_LEARNED_HINT)
-            card.personal && !s.voiceYesPersonal -> tell("Tap ${card.confirm ?: "the button"} to share it with Claude.")
-            card.choices.size == 1 -> choose(card.id, 0)
-            else -> confirm(card.id, true)
+        val r = CardAnswer.reply(text, card.waiting, s.voiceCards, s.voiceYesPersonal, spoken, s.wakePhrases.filter { it.enabled }.map { it.text })
+            ?: return false
+        RLog.i("card_answer", "yes" to (r.does != CardAnswer.Does.DECLINE), "spoken" to spoken)
+        when (r.does) {
+            CardAnswer.Does.DECLINE -> confirm(card.id, false)
+            CardAnswer.Does.CONFIRM -> confirm(card.id, true)
+            CardAnswer.Does.CHOOSE_ONLY -> choose(card.id, 0)
+            CardAnswer.Does.TAP -> r.say?.let { words ->
+                notify(words)
+                if (_state.value.speak) VoiceHub.tts.speak(words)
+            }
         }
         return true
     }
@@ -2005,7 +2003,7 @@ object PanelController {
             upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo, c.content, c.more,
                 c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts,
                 // What it finds goes to Claude: a read, or an online lookup around where you are (the nearest place).
-                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapOnly = c.tapOnly))
+                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapFor = c.tapFor))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
@@ -2279,8 +2277,6 @@ object PanelController {
     private const val WATCHDOG_TICK_MS = 5_000L
     private const val SORRY = "Sorry, I didn't catch that."
     private const val CARD_HINT = "A card is waiting: say yes or no, or tap a button on it."
-    private const val CARD_PROMPT = "Say yes or no."
     private const val CARD_TYPE_HINT = "A card is waiting: tap a button on it, or type yes or no."
-    private const val CARD_LEARNED_HINT = "Robot learned that name from a Cheogram notification: check who it goes to on the card, then tap."
     private const val SORRY_NO_ANSWER = "Sorry, I couldn't answer that."
 }

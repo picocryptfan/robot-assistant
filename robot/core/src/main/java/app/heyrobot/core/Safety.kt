@@ -84,6 +84,60 @@ object LockScreen {
 object CardAnswer {
     enum class Kind { YES, NO }
 
+    /** The waiting card, as far as a spoken or typed answer goes ([Card.tapFor], [Card.choices], what its tap sends). */
+    data class Waiting(val choices: Int = 0, val tapFor: AskWhy? = null, val personal: Boolean = false, val confirm: String? = null)
+
+    /** What an answer does: decline, confirm, take the card's only choice, or say why a tap is needed ([Reply.say]). */
+    enum class Does { DECLINE, CONFIRM, CHOOSE_ONLY, TAP }
+    data class Reply(val does: Does, val say: String? = null)
+
+    const val PROMPT = "Say yes or no."
+    const val TAP_ONE = "Tap the one you mean on the card."
+    const val TAP_LEARNED = "Robot learned that name from a Cheogram notification: check who it goes to on the card, then tap."
+    const val TAP_UNSURE = "Robot isn't sure who or which it is: check the card, then tap."
+    const val TAP_ONLINE = "Tap Allow always, Just this time or No on the card."
+
+    /**
+     * Why a card needs a tap, whatever is said ([Card.tapFor]): a name learned from a Cheogram notification (whoever sent
+     * it chose it), not being sure who or which (several people, a near match, a number or address the model wrote, a
+     * loose app name), or going online for the first time. Null: a yes may answer it.
+     */
+    fun tapFor(why: Set<AskWhy>): AskWhy? = listOf(AskWhy.LEARNED, AskWhy.WHO, AskWhy.ONLINE).firstOrNull { it in why }
+
+    /** What Robot says when a yes can't answer a card that needs a tap for [why]. */
+    fun tapWords(why: AskWhy): String = when (why) {
+        AskWhy.LEARNED -> TAP_LEARNED
+        AskWhy.WHO -> TAP_UNSURE
+        AskWhy.ONLINE -> TAP_ONLINE
+        else -> TAP_ONE
+    }
+
+    /** What Robot says when [card] starts waiting and replies are spoken: how it may be answered ("no" always works). */
+    fun prompt(card: Waiting): String = when {
+        card.tapFor != null -> tapWords(card.tapFor) + " Or say no."
+        card.choices > 1 -> "Tap the one you mean on the card, or say no."
+        else -> PROMPT
+    }
+
+    /**
+     * What [text] does to the waiting [card]: null when it isn't a plain yes or no ([of]), or it was [spoken] with
+     * "Answer cards by voice" off ([voiceCards]; a typed answer still works then). A no always declines. A yes confirms,
+     * except a card that needs a tap ([Waiting.tapFor]), one with several choices, or one whose tap sends personal content
+     * to Claude unless "Voice yes can send personal content" ([voiceYesPersonal]); a card with one choice takes it.
+     */
+    fun reply(text: String, card: Waiting, voiceCards: Boolean, voiceYesPersonal: Boolean, spoken: Boolean, wakePhrases: List<String> = emptyList()): Reply? {
+        if (spoken && !voiceCards) return null
+        val kind = of(text, wakePhrases) ?: return null
+        return when {
+            kind == Kind.NO -> Reply(Does.DECLINE)
+            card.tapFor != null -> Reply(Does.TAP, tapWords(card.tapFor))
+            card.choices > 1 -> Reply(Does.TAP, TAP_ONE)
+            card.personal && !voiceYesPersonal -> Reply(Does.TAP, "Tap ${card.confirm ?: "the button"} to share it with Claude.")
+            card.choices == 1 -> Reply(Does.CHOOSE_ONLY)
+            else -> Reply(Does.CONFIRM)
+        }
+    }
+
     private val YES = phrases(
         "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "do it", "do that", "go ahead", "go for it", "go", "send it", "send", "send that",
         "confirm", "confirmed", "absolutely", "definitely", "of course", "please do", "yes please", "sounds good", "right", "correct",
