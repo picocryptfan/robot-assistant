@@ -326,7 +326,8 @@ class ProcessIsolationTest {
         assertEquals(emptyList<String>(), usersOf(Regex("""AccessibilityService|accessibilityservice""")))
         // The only URLs: Gemma's and the voice models' pinned Hugging Face files, fetched by DownloadManager, the
         // claude.ai link the Claude app hand-off tries (the API's host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0).
-        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/ModelState.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
+        // Licences.kt (1.0) holds none: it only checks that the licence list's links (assets/licenses/components.json) are https.
+        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/Licences.kt", "core/core/ModelState.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt"),
             ours.filter { it.value.readText().contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))

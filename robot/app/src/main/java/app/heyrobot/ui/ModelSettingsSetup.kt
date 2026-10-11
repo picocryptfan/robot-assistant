@@ -744,13 +744,11 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         }
         SectionCard("About") {
             Text("Robot ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
-            Text("Free software under the GNU GPL version 3. Third-party parts: LiteRT-LM and the Tensor NPU runtime (Apache-2.0), " +
-                "sherpa-onnx (Apache-2.0) with espeak-ng (GPL-3.0-or-later), ONNX Runtime (MIT), Silero VAD (MIT), Jetpack Compose and AndroidX (Apache-2.0), " +
-                "Gemma 4 E2B and E4B by Google (Apache-2.0), the Uncensored model by olekk (Gemma 4 E4B abliterated, Apache-2.0), " +
-                "your own model file under its own licence, Kokoro and Kitten TTS (Apache-2.0), the Anthropic Java SDK (MIT) with OkHttp, Okio and Jackson (Apache-2.0). " +
-                "Speech recognition: NVIDIA Parakeet TDT 0.6B v3 by NVIDIA, " +
-                "CC-BY-4.0, converted to ONNX by sherpa-onnx (huggingface.co/nvidia/parakeet-tdt-0.6b-v3).",
+            Text("Free software under the GNU GPL version 3, with NO WARRANTY. It uses LiteRT-LM, sherpa-onnx with espeak-ng, ONNX " +
+                "Runtime, Jetpack Compose and more, and downloads models such as Gemma 4 and Parakeet when you ask: each with its " +
+                "licence, credits and notices under Licences.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            NavRow(RIcons.Info, "Licences", "Robot's licence and source code, and every part it uses with its licence and notices") { a.openPage(Page.Licences) }
         }
         Spacer(Modifier.height(12.dp))
     }

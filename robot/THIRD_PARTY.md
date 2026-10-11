@@ -1,12 +1,91 @@
-# Third-party components in Robot 0.3.0 (phases 1 and 2, Ask Claude)
+# Third-party components in Robot
 
-Robot itself is GPL-3.0-only (see `../LICENSE`). Everything below keeps its own licence; all of them
-(Apache-2.0, MIT, CC-BY-4.0 for model weights, GPL-3.0-or-later for espeak-ng) are compatible with GPL-3.0.
-Native libraries, models and the espeak-ng data are not stored in git: `tools/fetch_third_party.sh` downloads
-the exact files below and checks every SHA-256 (same sources and hashes as the phase 0 probe, see
-`../probe/THIRD_PARTY.md`). The speech recognition and voice models are not in the APK at all: the app
-downloads them on request (see "Downloaded by the app" below); `tools/fetch_voice_models.sh` fetches the same
-files on a computer and checks them.
+Robot itself is GPL-3.0-only (see `../LICENSE`; Copyright (C) 2026 the Robot authors). Everything below keeps its own
+licence; all of them (Apache-2.0, MIT, BSD-2-Clause, MPL-2.0, CC-BY-4.0 for model weights and data, GPL-3.0-or-later for
+espeak-ng) are compatible with GPL-3.0. Native libraries, models and the espeak-ng data are not stored in git:
+`tools/fetch_third_party.sh` downloads the exact files below and checks every SHA-256 (same sources and hashes as the
+phase 0 probe, see `../probe/THIRD_PARTY.md`). The speech recognition and voice models are not in the APK at all: the app
+downloads them on request (see "Downloaded by the app" below); `tools/fetch_voice_models.sh` fetches the same files on a
+computer and checks them.
+
+## In the app: Settings › About › Licences
+
+The app shows every component below, with its version, licence, copyright line, notes and the full licence text, from
+one data file, `app/src/main/assets/licenses/components.json`, next to the texts it names (`app/src/main/assets/licenses/`:
+the GPL-3.0, Apache-2.0, MPL-2.0 and CC BY 4.0 texts, each MIT and BSD text with its own copyright line, ONNX Runtime's
+`ThirdPartyNotices.txt` and the Java libraries' NOTICE files). LiteRT-LM's and the NPU runtime's `LICENSE` and
+`THIRD_PARTY_NOTICE.txt` (2.2 MB and 148 KB) ship inside their AARs and would not reach the APK by themselves: `:brain`'s
+`aarNotices` task copies them from those very AARs into its assets at build time (`licenses/notices/`). The screen also
+carries Robot's own notice (free software, no warranty, the GPL a tap away), the link to Robot's source for that version
+and to the release's third-party source bundle (below).
+
+**Keep the list in step.** A new dependency, model or service needs a row in the table below and an entry in
+`components.json`; the app's `LicencesTest` fails otherwise. It checks that every row here is in the list with the same
+licence and place (and the reverse), that every heading below and every Maven artifact named here belongs to an entry,
+that every library the release build packs (`releaseRuntimeClasspath`) belongs to one, and that every text and notice
+file the list names exists.
+
+**Source for the GPL components.** espeak-ng (GPL-3.0-or-later) is statically linked into the prebuilt
+`libsherpa-onnx-jni.so`, and its compiled data files are in the APK. Robot's own repository doesn't hold that source, so
+each release attaches `robot-<version>-third-party-sources.tar.gz` (and its `.sha256`), made by
+`tools/make_source_bundle.sh`: sherpa-onnx at the commit of v1.13.8, the exact espeak-ng archive (fork at `ed530aa1`) and
+every other source sherpa-onnx's Android build compiles in, each checked against the SHA-256 sherpa-onnx's CMake files pin
+(or, where only git could reach it, against its commit), and ONNX Runtime 1.28.2's source. See the README's "Releasing".
+
+| Component | Version | Licence | Where |
+|---|---|---|---|
+| sherpa-onnx | 1.13.8 | Apache-2.0 | in the APK |
+| espeak-ng | csukuangfj/espeak-ng at ed530aa1 | GPL-3.0-or-later | in the APK |
+| piper-phonemize | csukuangfj/piper-phonemize at f3ff95af | MIT | in the APK |
+| kaldi-native-fbank | 1.22.3 | Apache-2.0 | in the APK |
+| kaldi-decoder | 0.3.0 | Apache-2.0 | in the APK |
+| kaldifst | 1.8.0 | Apache-2.0 | in the APK |
+| OpenFst | 1.8.5 (csukuangfj/openfst, 2026-07-09) | Apache-2.0 | in the APK |
+| simple-sentencepiece | 0.7 | Apache-2.0 | in the APK |
+| JSON for Modern C++ | 3.12.0 | MIT | in the APK |
+| hclust-cpp (fastcluster) | 2026-02-25 | BSD-2-Clause | in the APK |
+| Eigen | 5.0.1 | MPL-2.0 | in the APK |
+| ONNX Runtime | 1.28.2 | MIT | in the APK |
+| Silero VAD | silero_vad.onnx (9e2449e1) | MIT | in the APK |
+| Wake word model (zipformer, GigaSpeech, 3.3M) | 2024-01-01 | Apache-2.0 | in the APK |
+| Anthropic Java SDK | 2.71.0 | MIT | in the APK |
+| OkHttp | 4.12.0 | Apache-2.0 | in the APK |
+| Okio | 3.6.0 | Apache-2.0 | in the APK |
+| Public Suffix List (in OkHttp) | as in OkHttp 4.12.0 | MPL-2.0 | in the APK |
+| Jackson | 2.19.4 | Apache-2.0 | in the APK |
+| FastDoubleParser (in jackson-core) | as in jackson-core 2.19.4 | MIT | in the APK |
+| ClassMate | 1.7.0 | Apache-2.0 | in the APK |
+| jsonschema-generator | 4.38.0 | Apache-2.0 | in the APK |
+| Swagger Core annotations | 2.2.50 | Apache-2.0 | in the APK |
+| SLF4J API | 2.0.16 | MIT | in the APK |
+| Standard Webhooks | 1.2.0 | MIT | in the APK |
+| LiteRT-LM | 0.18.0 | Apache-2.0 | in the APK |
+| LiteRT NPU runtime for Google Tensor | 2.3.0 | Apache-2.0 | in the APK |
+| Gson | 2.14.0 | Apache-2.0 | in the APK |
+| Kotlin standard library and kotlin-reflect | 2.4.0 | Apache-2.0 | in the APK |
+| kotlinx.coroutines | 1.11.0 | Apache-2.0 | in the APK |
+| Jetpack Compose and AndroidX | Compose BOM 2025.06.01 (1.8.3), Material 3 1.3.2 | Apache-2.0 | in the APK |
+| Material Icons | path data | Apache-2.0 | in the APK |
+| Annotation libraries | as resolved | Apache-2.0 | in the APK |
+| Gemma 4 E2B (Tensor G5) | litert-community, b3ca0d2f | Apache-2.0 | downloaded when you ask |
+| Gemma 4 E4B | litert-community, 2eee7ac3 | Apache-2.0 | downloaded when you ask |
+| Gemma 4 E4B abliterated | olekk, a4eecccd | Apache-2.0 | downloaded when you ask |
+| Your own model file | the file you import | LicenseRef-own-file | downloaded when you ask |
+| Parakeet TDT 0.6B v3 | int8, csukuangfj, 2bda32ec | CC-BY-4.0 | downloaded when you ask |
+| Kokoro-82M | 1.0 (csukuangfj, f7b96bb6) | Apache-2.0 | downloaded when you ask |
+| SIWIS French Speech Synthesis Database | training data of Kokoro's ff_siwis voice | CC-BY-4.0 | downloaded when you ask |
+| Kitten TTS nano | 0.8 (csukuangfj2, eb4fe4f7) | Apache-2.0 | downloaded when you ask |
+| OpenStreetMap data, through Nominatim | service | ODbL-1.0 | online service |
+| Open-Meteo | service | CC-BY-4.0 | online service |
+| Android Gradle Plugin | 8.8.2 | Apache-2.0 | build and tests only |
+| Kotlin compiler and its Compose plugin | 2.4.0 | Apache-2.0 | build and tests only |
+| JUnit | 4.13.2 | EPL-1.0 | build and tests only |
+| org.json (JSON-java) | 20180813 | JSON | build and tests only |
+| OkHttp MockWebServer | 4.12.0 | Apache-2.0 | build and tests only |
+| sherpa-onnx Python package | 1.13.8 | Apache-2.0 | build and tests only |
+| NumPy | as installed | BSD-3-Clause | build and tests only |
+| SentencePiece (Python) | as installed | Apache-2.0 | build and tests only |
+| pypinyin | as installed | MIT | build and tests only |
 
 ## In the `:voice` process only
 
@@ -15,7 +94,11 @@ files on a computer and checks them.
 - Release https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.13.8, archive `sherpa-onnx-v1.13.8-android.tar.bz2`
   (sha256 `2ff63469a71cb6009aa2e3ed5f4a670f8abdcbe4bb9ffd23776afc792a6b4f44`), arm64-v8a only:
   - `voice/src/main/jniLibs/arm64-v8a/libsherpa-onnx-jni.so` sha256 `3c6492ea91ea68fd3b72b9495efdde6dd913f6b58c387e3b07389cf335f4d26f`
-  - `voice/src/main/jniLibs/arm64-v8a/libonnxruntime.so` (ONNX Runtime 1.28.2, **MIT**) sha256 `33847ad43bffe204699fd4a27f7f3603452a8cdaf2f9a44983a0bc31ffcf2da1`
+  - `voice/src/main/jniLibs/arm64-v8a/libonnxruntime.so` (ONNX Runtime 1.28.2, **MIT**; its `ThirdPartyNotices.txt` at
+    v1.28.2 is in the APK) sha256 `33847ad43bffe204699fd4a27f7f3603452a8cdaf2f9a44983a0bc31ffcf2da1`. Built by
+    sherpa-onnx's author (`csukuangfj/onnxruntime-libs` release v1.28.2, `onnxruntime-android-1.28.2.zip`, sha256
+    `01518867f78241138b6aa25925802e843a4fa9085af8d303d49e35bbb52aff4d` in sherpa-onnx's
+    `cmake/onnxruntime-android-aarch64.cmake`); its source is microsoft/onnxruntime at tag v1.28.2 (commit `33ca9628`).
 - Kotlin API copied verbatim from the repository at that tag (`sherpa-onnx/kotlin-api/`, commit
   `11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf`), package `com.k2fsa.sherpa.onnx` kept because the JNI binds to those
   names: `FeatureConfig.kt`, `HomophoneReplacerConfig.kt`, `KeywordSpotter.kt`, `OnlineRecognizer.kt`,
@@ -28,13 +111,16 @@ files on a computer and checks them.
 | `Tts.kt` | `1a2a19e247553f774c5abdfda8319ce9e1a44e21279b16dc2c63e963a82ea9b1` |
 
 - Licence text: `third_party/LICENSE-sherpa-onnx.txt`.
-- Statically linked into `libsherpa-onnx-jni.so` (nothing extra is packaged for them):
-  **espeak-ng** (GPL-3.0-or-later; built from the `csukuangfj/espeak-ng` fork at `ed530aa1`, per sherpa-onnx's
-  `cmake/espeak-ng-for-piper.cmake`), which turns text into phonemes for the Kokoro and Kitten voices;
-  piper-phonemize (MIT), kaldi-native-fbank (Apache-2.0), kaldi-decoder (Apache-2.0), kaldifst and OpenFst
-  (Apache-2.0), simple-sentencepiece (Apache-2.0), cppjieba (MIT). Robot is GPL-3.0, so espeak-ng's licence is
-  satisfied by Robot's own source availability; espeak-ng's source is at https://github.com/espeak-ng/espeak-ng
-  (and the fork above).
+- Statically linked into `libsherpa-onnx-jni.so` (nothing extra is packaged for them; the versions are the ones
+  sherpa-onnx v1.13.8's CMake files pin, read from its source):
+  **espeak-ng** (GPL-3.0-or-later; built from the `csukuangfj/espeak-ng` fork at
+  `ed530aa113046142eb5115cf2fc9157854d0ffe1`, per `cmake/espeak-ng-for-piper.cmake`), which turns text into phonemes for
+  the Kokoro and Kitten voices; piper-phonemize (MIT, fork at `f3ff95af`), kaldi-native-fbank 1.22.3, kaldi-decoder
+  0.3.0, kaldifst 1.8.0 and OpenFst 1.8.5 (csukuangfj's 2026-07-09 copy), simple-sentencepiece 0.7 (all Apache-2.0), JSON
+  for Modern C++ 3.12.0 (MIT), hclust-cpp 2026-02-25 (fastcluster, BSD-2-Clause, for speaker clustering) and Eigen 5.0.1
+  (MPL-2.0, header-only, through kaldi-decoder). (cppjieba, listed here before, is not part of v1.13.8.) espeak-ng's
+  GPL needs its Corresponding Source to go with the library: Robot's repository doesn't hold it, so every release
+  attaches the third-party source bundle (above); the GPL text itself is in the APK (Settings › About › Licences).
 
 ### Keyword model: sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01 (Apache-2.0)
 
@@ -124,9 +210,10 @@ What it brings with it at run time (resolved by Gradle, versions as built):
 
 | artifact | licence |
 |---|---|
-| `com.squareup.okhttp3:okhttp:4.12.0`, `com.squareup.okio:okio(-jvm):3.6.0` | Apache-2.0 |
+| `com.squareup.okhttp3:okhttp:4.12.0`, `com.squareup.okio:okio:3.6.0`, `com.squareup.okio:okio-jvm:3.6.0` | Apache-2.0 |
+| the Public Suffix List, compiled into OkHttp (`publicsuffixes.gz`; source: publicsuffix.org) | MPL-2.0 |
 | `com.fasterxml.jackson.core:jackson-core`, `-databind`, `-annotations` 2.19.4; `jackson-datatype-jdk8`, `-jsr310`, `jackson-module-kotlin` 2.19.4 | Apache-2.0 |
-| FastDoubleParser (bundled inside jackson-core 2.19.4, its LICENSE in the APK) | MIT |
+| FastDoubleParser (bundled inside jackson-core 2.19.4, its LICENSE in the APK; with code from fast_float, MIT, and bigint, BSD-2-Clause) | MIT |
 | `org.jetbrains.kotlin:kotlin-reflect` (for jackson-module-kotlin, which asks for 1.9.25; Gradle resolves the 2.4.0 that LiteRT-LM brings, and that one is in the APK) | Apache-2.0 |
 | `com.github.victools:jsonschema-generator`, `-module-jackson`, `-module-swagger-2` 4.38.0; `com.fasterxml:classmate:1.7.0` | Apache-2.0 |
 | `io.swagger.core.v3:swagger-annotations:2.2.50`, `com.google.errorprone:error_prone_annotations:2.50.0` | Apache-2.0 |
@@ -152,7 +239,8 @@ the voice process may load it (core `VoiceModels.kt`; docs/voice-plan.md 2.4). S
 > (https://github.com/k2-fsa/sherpa-onnx); Robot uses it unchanged from that conversion.
 
 Repo `csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8` @ `2bda32ec70b097a55adaa07d9a7173915b43cc78`
-(bundle `stt-parakeet-v3`, 670,478,772 bytes). The attribution is also shown in Settings › About.
+(bundle `stt-parakeet-v3`, 670,478,772 bytes). The attribution, with the licence's link and its "as is" disclaimer, is
+also shown in Settings › About › Licences.
 
 | file | bytes | sha256 |
 |---|---|---|
@@ -191,7 +279,8 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 
 - `com.google.ai.edge.litertlm:litertlm-android:0.18.0` (Apache-2.0), Google Maven; `liblitertlm_jni.so` arm64-v8a. It runs
   the model you choose on the TPU (NPU backend) or the CPU (XNNPACK); nothing new is linked for the CPU models (0.4.1).
-  Its LICENSE and THIRD_PARTY_NOTICE.txt ship inside the AAR.
+  Its LICENSE and THIRD_PARTY_NOTICE.txt ship inside the AAR; `:brain`'s `aarNotices` task copies both into the APK's
+  assets (as it does the NPU runtime's two).
 - `com.google.ai.edge.litert:litert-npu-runtime-google-tensor:2.3.0` (Apache-2.0), non-transitive;
   `libLiteRtDispatch_GoogleTensor.so` is packaged, `libLiteRtCompilerPlugin_google_tensor.so` excluded (as in the probe and the lab).
 - The Tensor TPU vendor libraries (`libedgetpu_*`) are the phone's own, declared with `<uses-native-library required="false">`, not bundled.

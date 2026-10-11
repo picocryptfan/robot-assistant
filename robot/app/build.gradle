@@ -76,9 +76,25 @@ android {
     }
 }
 
-// The isolation test also reads the merged manifest of the variant under test.
-tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { dependsOn 'processDebugMainManifest' }
-tasks.matching { it.name == 'testReleaseUnitTest' }.configureEach { dependsOn 'processReleaseMainManifest' }
+// Settings › About › Licences: every library the release build packs, one "group:artifact:version" a line, for LicencesTest
+// (each must belong to an entry of assets/licenses/components.json).
+def releaseRuntimeArtifacts = tasks.register('releaseRuntimeArtifacts') {
+    def runtime = configurations.named('releaseRuntimeClasspath')
+    def out = layout.buildDirectory.file('robot/release-runtime-artifacts.txt')
+    outputs.file(out)
+    outputs.upToDateWhen { false }
+    doLast {
+        def ids = runtime.get().incoming.resolutionResult.allComponents.collect { it.id }
+            .findAll { it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier }
+            .collect { "${it.group}:${it.module}:${it.version}" }.unique().sort()
+        out.get().asFile.text = ids.join('\n') + '\n'
+    }
+}
+
+// The isolation test also reads the merged manifest of the variant under test; LicencesTest the libraries above and the
+// licence files :brain copies out of its AARs.
+tasks.matching { it.name == 'testDebugUnitTest' }.configureEach { dependsOn 'processDebugMainManifest', releaseRuntimeArtifacts, ':brain:aarNotices' }
+tasks.matching { it.name == 'testReleaseUnitTest' }.configureEach { dependsOn 'processReleaseMainManifest', releaseRuntimeArtifacts, ':brain:aarNotices' }
 
 dependencies {
     implementation project(':core')

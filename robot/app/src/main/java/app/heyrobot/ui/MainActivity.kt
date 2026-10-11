@@ -144,6 +144,9 @@ sealed class Page {
     data class PersonEdit(val id: String?) : Page()
     /** Settings › Safety & privacy (0.4.0). */
     data object Safety : Page()
+    /** Settings › About › Licences (1.0), and one part's licence ([file]: one of its notices instead). */
+    data object Licences : Page()
+    data class Licence(val id: String, val file: String? = null) : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -161,6 +164,8 @@ sealed class Page {
                     People -> "people"
                     is PersonEdit -> "person:${p.id.orEmpty()}"
                     Safety -> "safety"
+                    Licences -> "licences"
+                    is Licence -> "licence:${p.id}|${p.file.orEmpty()}"
                 }
             },
             restore = { v ->
@@ -175,6 +180,8 @@ sealed class Page {
                     v == "people" -> People
                     v.startsWith("person:") -> PersonEdit(v.removePrefix("person:").ifEmpty { null })
                     v == "safety" -> Safety
+                    v == "licences" -> Licences
+                    v.startsWith("licence:") -> v.removePrefix("licence:").split('|', limit = 2).let { Licence(it[0], it.getOrNull(1)?.ifEmpty { null }) }
                     else -> null
                 }
             },
@@ -504,6 +511,10 @@ fun RobotAppUi(activity: MainActivity) {
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
         Page.Safety -> SafetyScreen(settings, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.Licences -> LicencesScreen(onOpen = { page = it }, onBack = { page = null })
+        // Back from a notice goes to its part's licence, from a licence to the list.
+        is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it },
+            onBack = { page = if (p.file != null && p.id != ROBOT_LICENCE) Page.Licence(p.id) else Page.Licences })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
