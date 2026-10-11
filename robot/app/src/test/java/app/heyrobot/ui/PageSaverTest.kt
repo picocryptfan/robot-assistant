@@ -22,7 +22,9 @@ class PageSaverTest {
 
     @Test fun aSettingsPageIsSavedByItsRoute() {
         assertEquals("settings:display", save(Page.Settings("display")))
-        for (p in listOf(Page.Settings("display"), Page.Settings("voice/wake"))) assertEquals(p, Page.Saver.restore(save(p)))
+        // Settings › About › Updates, which the updater's notifications open, too.
+        assertEquals("settings:updates", save(Page.Settings(app.heyrobot.ui.settings.SettingsRoutes.UPDATES)))
+        for (p in listOf(Page.Settings("display"), Page.Settings("voice/wake"), Page.Settings("updates"))) assertEquals(p, Page.Saver.restore(save(p)))
     }
 
     @Test fun anOpenNoteIsSavedByItsId() {
