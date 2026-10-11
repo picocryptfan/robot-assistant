@@ -192,7 +192,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         if (cacheDir != null) {
             cacheDir.mkdirs()
             // The first load writes the weight cache (about 2.5 GB for E4B): never start one that can't finish.
-            val cached = cacheDir.listFiles()?.sumOf { it.length() } ?: 0L
+            // Every file under it, as Settings › Model counts it (ModelStore.cacheBytes), so a cache already written is
+            // never taken for one still to write.
+            val cached = try { cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } catch (_: Exception) { 0L }
             val need = (if (req.model == BrainModel.OWN) ModelFiles.cacheEstimate(f.length()) else req.model.cacheBytes) - cached
             if (need > 0 && cacheDir.usableSpace in 0 until need + CACHE_SPARE) {
                 return failed(req, LoadFailure.NO_SPACE, "There isn't enough free space for the cache it writes on its first load (about ${gb(need)}).")
