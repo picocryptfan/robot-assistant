@@ -46,11 +46,18 @@ class WeatherToolTest {
         assertNull(PreRouter.signal("what's the weather tomorrow", localWeather = true))
         assertNull(PreRouter.signal("what's the forecast for the weekend", localWeather = true))
         assertNull(PreRouter.signal("cloud cover tomorrow?", localWeather = true))
-        assertNull(PreRouter.signal("any weather news for Montreal", localWeather = true))
-        // Other signals still count, and other current information still goes.
+        assertNull(PreRouter.signal("will it rain in Paris this weekend", localWeather = true))
+        // Only "weather" and "forecast" stop counting: everything else in the question still does.
         assertEquals(PreRouter.Signal.REASONING, PreRouter.signal("explain why it rains more in the spring", localWeather = true))
         assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's the latest on the election", localWeather = true))
         assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's today's price of bitcoin", localWeather = true))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's the price of a winter coat", localWeather = true))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's the latest news about the storm in Florida", localWeather = true))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("what's the score of the Seattle Storm game", localWeather = true))
+        assertEquals(PreRouter.Signal.CURRENT_INFO, PreRouter.signal("any weather news for Montreal", localWeather = true))
+        // A long question is still long.
+        val long = "what will the weather be like " + (1..40).joinToString(" ") { "word$it" }
+        assertEquals(PreRouter.Signal.LONG, PreRouter.signal(long, localWeather = true))
     }
 
     @Test fun thePromptOffersTheWeatherOnlyWhenTheToolIsThere() {

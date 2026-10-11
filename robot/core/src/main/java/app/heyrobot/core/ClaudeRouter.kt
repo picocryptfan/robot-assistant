@@ -317,19 +317,19 @@ object PreRouter {
         Signal.CURRENT_INFO to Regex("""\blatest\b|\bnews\b|\btodays price\b|\bprice of\b|\bstock price\b|\bexchange rate\b|\bscore\b|\bweather\b|\bforecast\b|\bwho won\b"""),
     )
 
+    /** The words that make a question current information only because of the weather (0.4.0). */
+    private val WEATHER_WORDS = Regex("""\b(weather|forecast)\b""")
+
     /**
-     * The strongest signal in [question], or null (Gemma answers). [localWeather]: the weather tool is on (0.4.0), so a
-     * weather question ("what's the forecast", "cloud cover tomorrow") is Robot's, not current news for Claude; the
-     * other signals in it still count ("explain why it rains").
+     * The strongest signal in [question], or null (Gemma answers). [localWeather]: the weather tool is on and may run (0.4.0;
+     * PanelController: not on the lock screen), so "weather" and "forecast" no longer count as current information; every
+     * other word and signal still does ("the price of a winter coat", "explain why it rains", a long question).
      */
     fun signal(question: String, localWeather: Boolean = false): Signal? {
         val t = ClaudeRouter.plain(question).replace(Regex("[^a-z0-9]+"), " ").trim()
         if (t.isEmpty() || LOCAL.containsMatchIn(t)) return null
-        val rest = EVERYDAY.fold(t) { acc, r -> r.replace(acc, " ") }
-        SIGNALS.firstOrNull { it.second.containsMatchIn(rest) }?.let { (signal, _) ->
-            if (signal == Signal.CURRENT_INFO && localWeather && ToolGroup.WEATHER in ToolRouter.route(question)) return null
-            return signal
-        }
+        val rest = EVERYDAY.fold(t) { acc, r -> r.replace(acc, " ") }.let { if (localWeather) WEATHER_WORDS.replace(it, " ") else it }
+        SIGNALS.firstOrNull { it.second.containsMatchIn(rest) }?.let { return it.first }
         return if (t.split(' ').size > LONG_WORDS) Signal.LONG else null
     }
 }

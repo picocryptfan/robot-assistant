@@ -923,8 +923,10 @@ object PanelController {
         // Escalation trigger a: strong signals go to Claude before Gemma spends a prefill (Automatic only); with Ask
         // first, Gemma answers and the offer follows its reply.
         var offerAfter: EscalationTrigger? = null
-        // With the weather tool on, a weather question is Robot's to answer (0.4.0).
-        if (attachment == Attachment.NONE) PreRouter.signal(question, localWeather = s.approval(ToolName.WEATHER) != Approval.OFF)?.let { signal ->
+        // With the weather tool on, a weather question is Robot's to answer (0.4.0). Locked, the tool can't run: as before,
+        // the question may go to Claude when Claude is allowed on the lock screen.
+        val localWeather = s.approval(ToolName.WEATHER) != Approval.OFF && !Assistant.locked(VoiceHub.app)
+        if (attachment == Attachment.NONE) PreRouter.signal(question, localWeather)?.let { signal ->
             RLog.i("claude_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
             when (decide(attachment, guardFree = !guard.used)) {
                 EscalationDecision.AUTO -> {
