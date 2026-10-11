@@ -196,7 +196,7 @@ object HeadsetSessionMachine {
         }
     }
 
-    /** End: stop what runs, release the route (the last owner out, as CallAudio.end), so music resumes. */
+    /** End: stop what runs, release the route (the last session out sets the normal audio mode again, as CallAudio.end), so music resumes. */
     private fun end(s: HeadsetSessionState, why: EndWhy, stop: Boolean = false, listening: Boolean = false): Pair<HeadsetSessionState, List<SessionEffect>> {
         val effects = buildList {
             add(SessionEffect.CancelTimers)
