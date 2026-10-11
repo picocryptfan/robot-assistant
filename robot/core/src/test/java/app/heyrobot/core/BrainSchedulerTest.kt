@@ -59,11 +59,11 @@ class BrainSchedulerTest {
     @Test fun aWaitingRequestIsToldItsPlaceAndWhenItStarts() {
         val a = submit(voice, 1, FakeWork("interp", Priority.INTERPRETER))
         val q = submit(panel, 1, FakeWork("panel", Priority.PANEL))
-        assertEquals(listOf("interp:start", "panel:queued 1"), events)
+        assertEquals(listOf("interp:queued 0", "interp:start", "panel:queued 1"), events)
         // The panel's question waits for the interpreter turn: never a cancel.
         assertNull(a.stopped)
         a.end()
-        assertEquals(listOf("interp:start", "panel:queued 1", "interp:done", "panel:queued 0", "panel:start"), events)
+        assertEquals(listOf("interp:queued 0", "interp:start", "panel:queued 1", "interp:done", "panel:queued 0", "panel:start"), events)
         assertEquals(q.id, sched.running)
     }
 
@@ -132,7 +132,7 @@ class BrainSchedulerTest {
         q.end()
         submit(voice, 1, FakeWork("interp", Priority.INTERPRETER))
         assertTrue(sched.holding)
-        assertEquals(listOf("panel:start", "panel:done", "interp:queued 1"), events)
+        assertEquals(listOf("panel:queued 0", "panel:start", "panel:done", "interp:queued 1"), events)
         // The tool results start at once (a panel request).
         val r = submit(panel, 2, FakeWork("results", Priority.PANEL))
         assertEquals(r.id, sched.running)

@@ -34,7 +34,7 @@ class BrainScheduler(private val clock: () -> Long, val toolHoldMs: Long = TOOL_
          */
         fun stop(giveWay: Boolean)
 
-        /** Its place in line (EV_QUEUED): 1 and up while it waits, 0 as it starts after waiting. */
+        /** Its place in line (EV_QUEUED): 1 and up while it waits, 0 as it starts (at once, or after waiting). */
         fun queued(position: Int)
 
         /** It ends without running: dropped by a newer panel request, cancelled while waiting, or [unloaded] (the model went). */
@@ -48,7 +48,7 @@ class BrainScheduler(private val clock: () -> Long, val toolHoldMs: Long = TOOL_
     private val works = HashMap<Int, Work>()
     private val ids = HashMap<Key, Int>()
     private val keys = HashMap<Int, Key>()
-    /** Told they wait (EV_QUEUED 1+): told again (0) when they start. */
+    /** Not yet told they started (EV_QUEUED 0, sent as they start; EV_QUEUED 1+ while they wait). */
     private val told = HashSet<Int>()
     private var seq = 0
     private val todo = ArrayDeque<() -> Unit>()
@@ -80,7 +80,8 @@ class BrainScheduler(private val clock: () -> Long, val toolHoldMs: Long = TOOL_
             keys[id] = key
             works[id] = work
             val s = queue.submit(BrainQueue.Job(id, work.priority))
-            if (s.start?.id != id) told += id
+            // Told as it starts (EV_QUEUED 0), at once or later: its client knows it began, not just that it waits.
+            told += id
             apply(s)
             if (id in told) queue.position(id).takeIf { it > 0 }?.let(work::queued)
         }
