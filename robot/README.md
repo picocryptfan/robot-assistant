@@ -25,9 +25,9 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 
 ## What's new in 0.6.0
 
-Robot 0.6.0 is 0.4.6 (0.4.5 with the fixes from the phone tests, "What's new in 0.4.6" below) with four pieces of work
-that were built beside it: conversation mode, the helpers, the engine hardening and the built-in updater; each has its
-section below, with its phone tests.
+Robot 0.6.0 is 0.4.7 (0.4.6, which is 0.4.5 with the fixes from the phone tests, and Pixel 9a support: "What's new in
+0.4.7" and "What's new in 0.4.6" below) with four pieces of work that were built beside it: conversation mode, the
+helpers, the engine hardening and the built-in updater; each has its section below, with its phone tests.
 
 - **Conversation mode** ([Conversation mode](#conversation-mode-050)): Robot writes down a conversation in French and
   English, word for word, on the phone ([Transcribing](#transcribing)); tells the speakers apart by their voices, yours
@@ -61,7 +61,19 @@ section below, with its phone tests.
   after a restart. Every helper's API key and the updater's access token are now kept by one class
   ([Keys](#keys)): a key the Keystore can't read just now is kept, and Robot says so in the helper's name; only one that
   can never be decrypted again is removed.
-- **Settings file schema 13.** A 0.4.6 or 0.4.5 file (schema 12), a 0.4.4 file (7) or older keeps every choice: Ask Claude's
+- **Pixel 9a support** ([What's new in 0.4.7](#whats-new-in-047)): Settings › Model shows this phone and its chip; a
+  Pixel 10's Fast is the Tensor G5 TPU build as before, and every other phone's (a Pixel 9a's Tensor G4) is Google's
+  general Gemma 4 E2B, on the GPU by default (Settings › Model › Where Fast runs › Use the GPU) or the CPU. A GPU that
+  fails is remembered and Robot uses the CPU until you tap Try the GPU again; any model crash keeps a problem report you
+  can read, copy or share (Robot never sends it). With 0.6.0's work: translations and summary steps run on the model as
+  it is loaded, on the GPU too, and a GPU that fails or stops under one falls back to the CPU as under a question (that
+  line or step ends once, with its error, and the fast engine or the summary's saved notes take over as for any failure);
+  on the GPU, which writes about half as fast as the TPU by the estimates, translations and summary steps get the CPU's
+  deadlines and the fast engine leads the interpreter; the general file's own tokenizer is read at load and its markers
+  broken like the Tensor G5 build's; the report says which process stopped, `:brain` (LiteRT-LM) or `:llama` (your GGUF
+  file: never Fast's or the GPU's), and never holds a helper's name, address or key, a transcript's words or the
+  updater's token. Its phone checks are "On the phone (0.4.7)" on 0.6.0, with steps 20 to 23 there for 0.6.0's parts.
+- **Settings file schema 13.** A 0.4.7, 0.4.6 or 0.4.5 file (schema 12; 0.4.7's "Use the GPU" kept, absent meaning on), a 0.4.4 file (7) or older keeps every choice: Ask Claude's
   settings become the Claude helper (and are still written for one release, so going back to 0.4.6 or 0.4.5 keeps Claude), and
   conversation mode starts from its defaults, live words in a conversation following "Show the words while you speak".
   The updater keeps its own two files beside it (`updates.json`, `update_state.json`), not in it.
@@ -81,7 +93,7 @@ section below, with its phone tests.
 | Module | Runs in | Holds |
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/`, `update/` (main: the updater, Settings › About › Updates) |
-| `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU or the CPU), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
+| `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU, the CPU, or since 0.4.7 the GPU for the general Gemma 4 E2B where Robot offers it), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
 | `:mt` | `:mt` | since 0.5.0, the fast translation engine: `MtService` (Messenger), `BergamotEngine` and `Slimt`, the only code that loads `librobotmt.so` (slimt, built by `tools/build_robotmt.sh`, not in git) |
@@ -511,6 +523,32 @@ numbers only.
 19. Your own Tensor G5 build (if you have one): its TPU card as before. On the Pixel 9a the same file says it was compiled
     for the Tensor G5's TPU, which this phone doesn't have, and can't be chosen.
 
+**0.6.0 on the Pixel 9a** (steps 1 to 19 hold on 0.6.0: the report says Robot 0.6.0 (60), and its "Ran on" line "GPU ·
+LiteRT-LM in :brain")
+
+20. **One-shots on the GPU.** Fast loaded on the GPU (step 4), the fast translation engine's files downloaded: Transcribe
+    with Translate on, speak French and English for a few minutes. Each line gets the fast engine's translation at once,
+    then Robot's model's in its place (`adb logcat -s Robot`: `brain_one_shot` lines, after `brain_load … backend=gpu`).
+    The interpreter: the fast engine's translation is read first (on the GPU, as on the CPU, it leads). Summarize the
+    transcript on the phone: it finishes (a part may take a minute); the summary's record names `e2b`.
+21. **A GPU failure under a one-shot.** Try the GPU again if it failed earlier. While the model improves a transcript's
+    lines (or makes a summary), run `adb shell am crash $(adb shell pidof app.heyrobot:brain)`. That line keeps its fast
+    translation (a summary stops, and goes on from its saved notes when you ask again); the notification "Robot's model had
+    a problem" comes once, Settings › Model › Where Fast runs says the GPU stopped while reading the prompt or writing the
+    answer, and the next lines' better translations come from the CPU (`backend=cpu`). Voice log: "The GPU failed for Fast
+    while … (its process stopped): the CPU from now on". The panel's next question says "Fast stopped on the GPU, so
+    Robot switched to the CPU." once.
+22. **A GGUF file's crash is :llama's.** With your own GGUF file chosen ("GGUF models" below), ask for a long story and,
+    while it writes, end llama.cpp's process (`adb shell am crash $(adb shell pidof app.heyrobot:llama)`, or the ways
+    "On the phone (0.4.5)" lists). The problem card says "Your own model file stopped on the CPU, so Robot is using Fast.";
+    Show the report: "Ran on: CPU · llama.cpp in :llama, an isolated process (your GGUF file, never Fast)", "failure: the
+    model process stopped (:llama)", and Android's records of :llama (or "none found": write down which). Where Fast
+    runs still says the GPU: a GGUF crash is never the GPU's.
+23. **Nothing of yours in the report.** With a helper set up (its name, key and, for your own server, its address), a
+    transcript, and an updater access token saved: Show the report after step 21. None of the helper's name, address or
+    key, no word of the transcript, no token; helpers and translations appear only as voice log codes ("Summary with
+    Claude API", "Line translated by Gemma").
+
 ## What's new in 0.4.6
 
 Fixes for what the 0.4.4 phone tests found; each has its section below and its checks in "On the phone (0.4.6)".
@@ -825,7 +863,8 @@ your own `.litertlm`, has the same problem, and Robot now defends it the same wa
   takes `<|image|>` or `<start_of_image>` in the rendered text for a picture's place, so such text on the screen made the
   question fail.
 - **What Robot does.** At every load `:brain` reads the file's own tokenizer (`LiteRtLmCheck.tokens`: the SentencePiece
-  model, or the zlib-compressed `tokenizer.json`), takes its control tokens and its marker-shaped user-defined ones
+  model, or the zlib-compressed `tokenizer.json`; 0.4.7's general E2B, Fast on a Pixel 9a's GPU or CPU, as much as the
+  Tensor G5 build), takes its control tokens and its marker-shaped user-defined ones
   (`PromptMarkers`: in brackets, with a bar or an underscore; never `<think>`, an HTML tag or the `<escape>` of Robot's own
   text calls) plus the known markers of the model families LiteRT-LM and llama.cpp run, and breaks every one of them in
   your question with the screen's text, every turn of the history (Robot's and Claude's replies) and, with LiteRT-LM's tool
@@ -1201,7 +1240,8 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
 
 ### Translation and the interpreter
 
-- **Robot's model translates**, the one chosen in Settings › Model (Fast on the TPU by default), through a **one-shot
+- **Robot's model translates**, the one chosen in Settings › Model (Fast by default: on the TPU on a Pixel 10, on the GPU
+  or the CPU elsewhere, 0.4.7), through a **one-shot
   request** to `:brain` (`REQ_ONE_SHOT`): one message to a conversation of its own, with the plan's fixed prompt for the
   direction ("Translate the user's message from Québec French to natural English. Keep the tone and register…", and
   English to Québec French "as a Quebecer would say it (tu unless the message is formal)"), no earlier line, **no tools**
@@ -1222,9 +1262,10 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
   are downloaded and verified (Settings › Conversation › Fast translation; a session sees a download within about
   10 s). Then it gives each transcript line a translation at once (marked "fast") that Robot's model then replaces with
   its own, and it stands in for the interpreter when the model hasn't started within 1.5 s of the turn's request (the
-  panel's question ahead, or `:brain` busy), fails, or fails a guard; with a model on the CPU (about 8 tokens a second), it leads the interpreter and the model
+  panel's question ahead, or `:brain` busy), fails, or fails a guard; with a model on the CPU (about 8 tokens a second),
+  or on the GPU (0.4.7's Fast on a Pixel 9a: about 8 to 14 by the estimates), it leads the interpreter and the model
   stands in. Without it, Robot's model translates alone, with longer deadlines (8 s to start on the TPU, 10 s on the
-  CPU; a transcript's first translation waits up to 2 minutes), and the interpreter says "Translated by Robot's model on
+  CPU or the GPU; a transcript's first translation waits up to 2 minutes), and the interpreter says "Translated by Robot's model on
   this phone". A fast engine that fails in a way that may last (its files didn't load, `:mt` stopped) rests for a minute,
   so the model gets its longer deadlines meanwhile; a new session tries it again. The voice process binds `:mt` only
   while a session translates (both directions load as it starts: voice log 118) and lets it go when it stops, so `:mt`
@@ -1257,7 +1298,7 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
 Mozilla's Bergamot French ↔ English models (the ones Firefox translates with), run by slimt in a process of its own,
 `:mt`. It translates a line in tens of milliseconds, so every transcript line can have a translation at once, which
 Robot's model then replaces; it stands in for the model in the interpreter, and leads it when the model runs on the CPU
-("Translation and the interpreter" above). The voice process reaches it through core's `BergamotTranslator` (behind the
+or the GPU ("Translation and the interpreter" above). The voice process reaches it through core's `BergamotTranslator` (behind the
 same `Translator` interface as Robot's model, with `MtGuard`), offered by `FastEngineGate` only while the library is in
 the build and both directions' files are verified.
 - **The library.** `tools/build_robotmt.sh` fetches slimt (DavidVentura's fork @ `2beb403a`, the one Offline Translator
