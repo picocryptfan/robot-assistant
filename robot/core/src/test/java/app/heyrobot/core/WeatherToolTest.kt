@@ -17,7 +17,9 @@ class WeatherToolTest {
             "cloud cover tomorrow?", "Okay, cloud cover tomorrow?", "how cloudy is it", "how windy is it", "do I need an umbrella",
             "what's the forecast for Paris", "is it raining in Montreal", "quelle est la météo demain", "va-t-il pleuvoir", "il pleut ?",
             "est-ce qu'il va neiger", "quelle température fait-il", "est-ce nuageux demain", "y a-t-il du vent", "faut-il un parapluie",
-            "quel temps fait-il à Québec")
+            "quel temps fait-il à Québec", "will it be hot tomorrow?", "how cold will it be tonight", "will it be warm on Saturday",
+            "what's the high tomorrow", "UV index today", "do I need sunglasses", "is it nice out this weekend", "is there a heatwave coming",
+            "fera-t-il chaud demain", "il fait froid dehors ?", "y a-t-il une canicule")
         for (q in asks) assertTrue(q, ToolGroup.WEATHER in ToolRouter.route(q))
         for (q in listOf("set a timer for 5 minutes", "text Mom I'm late", "what's the capital of France", "ask Claude why the sky is blue")) {
             assertFalse(q, ToolGroup.WEATHER in ToolRouter.route(q))
