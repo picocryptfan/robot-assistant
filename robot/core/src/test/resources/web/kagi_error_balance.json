@@ -1,0 +1,1 @@
+{"meta": {"trace": "7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d", "node": "us-east4", "ms": 3}, "data": [], "error": [{"code": "billing.insufficient_balance", "url": "https://help.kagi.com/api/errors#billing.insufficient_balance", "message": "Usage limit exhausted: top up your API credit", "location": null}]}

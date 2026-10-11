@@ -1,0 +1,8 @@
+{
+  "meta": {"id": "120145a4-ef91-4c42-9fd9-5a3bc6b5e0a8", "node": "us-east", "ms": 263, "api_balance": 9.975},
+  "data": [
+    {"t": 0, "rank": 1, "url": "https://kagi.com/", "title": "Kagi Search", "snippet": "Kagi is a premium search engine.", "published": "2024-01-02T00:00:00Z"},
+    {"t": 0, "rank": 2, "url": "https://help.kagi.com/kagi/api/search.html", "title": "Search API | Kagi's Docs", "snippet": "The Search API gives programmable access to Kagi's premium search results."},
+    {"t": 1, "list": ["kagi search review", "kagi pricing"]}
+  ]
+}

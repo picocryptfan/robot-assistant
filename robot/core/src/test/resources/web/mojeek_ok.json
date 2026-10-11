@@ -1,0 +1,42 @@
+{
+  "response": {
+    "status": "OK",
+    "head": {
+      "query": "mojeek",
+      "nword": 1,
+      "words": [{"full": "mojeek", "stem": "mojeek", "plus": 1, "hits": 112207}],
+      "timer": 0.61,
+      "start": 1,
+      "return": 2,
+      "exact": true,
+      "results": 112094,
+      "rankm": 169,
+      "dups": 0,
+      "more|excluded": 47315
+    },
+    "results": [
+      {
+        "url": "https://www.mojeek.com/",
+        "title": "Mojeek",
+        "desc": "Search Settings Site Search Boxes Add Mojeek to your browser Go to Mojeek UK Independent and unbiased search results with no user tracking. Learn More .",
+        "size": "1kb",
+        "timestamp": 1184044740,
+        "date": "Tue Jul 10 05:19:00 2007",
+        "pdate": 1184044740,
+        "cdatetimestamp": 1184044740,
+        "cdate": "Tue Jul 10 05:19:00 2007",
+        "mres": 1,
+        "score": 20.363069534301758,
+        "cfs": 5,
+        "image": {"url": "https://example.com", "width": 100, "height": 100}
+      },
+      {
+        "url": "https://blog.mojeek.com/",
+        "title": "Mojeek Blog &amp; News",
+        "desc": "Updates from Mojeek, the independent search engine.",
+        "score": 12.5,
+        "cfs": 5
+      }
+    ]
+  }
+}

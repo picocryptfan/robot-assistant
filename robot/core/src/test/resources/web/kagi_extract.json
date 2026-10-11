@@ -1,0 +1,28 @@
+{
+ "meta": {
+  "trace": "c0ffee",
+  "ms": 1580,
+  "node": "us-east4"
+ },
+ "data": {
+  "search": [
+   {
+    "url": "https://www.breville.com/us/en/support/descale.html",
+    "title": "How to descale | Breville",
+    "snippet": "# Descaling your Barista Express\n\nThe Barista Express has a **descale** mode. Here is how to run it.\n\n## What you need\n\n* Breville descaling powder or [citric acid](https://en.wikipedia.org/wiki/Citric_acid)\n* A large container under the group head\n\n## Steps\n\n1. Empty the drip tray and fill the tank with the solution.\n2. Press and hold the 1 CUP and 2 CUP buttons together for 5 seconds.\n3. Turn the dial to hot water, then to steam, and let the tank run empty.\n\n![machine](https://example.com/img.jpg)\n\nRinse the tank and repeat the cycle with clean water. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. Descaling every two to three months keeps the machine working well. ",
+    "time": "2026-03-02T10:00:00Z",
+    "props": {
+     "language": "en"
+    }
+   },
+   {
+    "url": "https://coffeegeek.example.org/guides/descale",
+    "title": "Descale guide",
+    "snippet": "A short snippet only.",
+    "props": {
+     "language": "en"
+    }
+   }
+  ]
+ }
+}
