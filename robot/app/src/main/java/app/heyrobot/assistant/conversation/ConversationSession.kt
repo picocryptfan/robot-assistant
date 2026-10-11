@@ -325,7 +325,7 @@ object ConversationSession {
     fun transcriptsDeleted(ctx: Context, id: String?) {
         init(ctx)
         val store = Transcripts.store(app)
-        store.forget(id)
+        id?.let(store::forget)
         ConversationNotices.cancelResume(app, id)
         ctl.post {
             val w = writer ?: run {
@@ -334,6 +334,8 @@ object ConversationSession {
                 return@post
             }
             if (id != null && id != w.id) return@post
+            // "Delete all" took the transcripts there were; one started just after it (its folder is there) goes on.
+            if (id == null && store.dir(w.id)?.isDirectory == true) return@post
             store.forget(w.id)
             discarded = true
             stopNow(ConvStop.USER)

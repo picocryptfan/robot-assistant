@@ -132,10 +132,12 @@ class TranscriptStore(val root: File) {
         root.listFiles { f -> f.name.startsWith(TRASH) }.orEmpty().forEach { removeAll(it) }
     }
 
-    /** The main app deleted [id] (null: all of them) while this process runs: nothing of it is written again. */
-    fun forget(id: String?) {
-        if (id != null) forgotten += id
-        else root.listFiles { f -> f.isDirectory && TranscriptIds.valid(f.name) }.orEmpty().forEach { forgotten += it.name }
+    /**
+     * The main app deleted [id] while this process runs: nothing of it is written again. (After "Delete all" there is
+     * nothing to list: the folders still there are ones made after it, which must go on being written.)
+     */
+    fun forget(id: String) {
+        forgotten += id
     }
 
     fun forgotten(id: String): Boolean = id in forgotten
