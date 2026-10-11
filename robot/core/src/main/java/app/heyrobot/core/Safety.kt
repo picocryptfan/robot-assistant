@@ -69,3 +69,51 @@ object LockScreen {
             CHOICES.filter { it in tools }.joinToString(", ") { it.title.lowercase(Locale.ROOT) } + "."
     }
 }
+
+/**
+ * A card answered in words (0.4.0, Settings › Safety & privacy › "Answer cards by voice"): while a card waits, a spoken
+ * or typed "yes", "do it", "go ahead", "send it", "oui", "envoie" confirms it and "no", "cancel", "never mind", "non",
+ * "annule" declines it ([TextCommand.cancelKind]'s words). Everything said must be used up, so "yes but at 5" or "send it
+ * to Sam" is neither: the card keeps waiting for a tap.
+ */
+object CardAnswer {
+    enum class Kind { YES, NO }
+
+    private val YES = phrases(
+        "yes", "yeah", "yep", "yup", "sure", "ok", "okay", "do it", "do that", "go ahead", "go for it", "go", "send it", "send", "send that",
+        "confirm", "confirmed", "absolutely", "definitely", "of course", "please do", "yes please", "sounds good", "right", "correct",
+        "oui", "ouais", "daccord", "vas y", "allez y", "allez", "envoie", "envoie le", "envoie la", "envoyer", "fais le", "fais ca", "cest bon",
+        "bien sur", "parfait", "exactement", "confirme",
+    )
+    /** Allowed around the yes: the wake phrase (heard whole while Robot waits), politeness, "it", "now". */
+    private val AROUND = phrases(
+        "hey robot", "hi robot", "ok robot", "okay robot", "robot", "um", "uh", "euh", "hmm", "please", "thanks", "thank you", "merci",
+        "sil te plait", "sil vous plait", "it", "that", "now", "then", "alors", "maintenant", "oh", "well", "yes", "oui",
+    )
+    private const val MAX_WORDS = 8
+
+    private fun phrases(vararg p: String): List<List<String>> = p.map { it.split(' ') }
+
+    private fun at(w: List<String>, i: Int, list: List<List<String>>): List<String>? =
+        list.filter { p -> i + p.size <= w.size && p.indices.all { w[i + it] == p[it] } }.maxByOrNull { it.size }
+
+    /** [text] answers the waiting card, or null (it isn't a plain yes or no). [wakePhrases]: yours, said in front. */
+    fun of(text: String, wakePhrases: List<String> = emptyList()): Kind? {
+        if (text.isBlank()) return null
+        if (TextCommand.cancelKind(text, wakePhrases) != null) return Kind.NO
+        val w = ClaudeRouter.plain(TextCommand.stripWake(text, wakePhrases, loose = true)).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+        if (w.isEmpty() || w.size > MAX_WORDS) return null
+        var i = 0
+        var yes = false
+        while (i < w.size) {
+            val y = at(w, i, YES)
+            val f = at(w, i, AROUND)
+            when {
+                y != null && y.size >= (f?.size ?: 0) -> { yes = true; i += y.size }
+                f != null -> i += f.size
+                else -> return null
+            }
+        }
+        return if (yes) Kind.YES else null
+    }
+}

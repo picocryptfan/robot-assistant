@@ -182,11 +182,12 @@ fun AssistantPanel(onClose: () -> Unit) {
                 BrainBanner(st)
                 if (st.claudeMode) ClaudeModeChip()
                 Messages(st, Modifier.weight(1f, fill = false))
-                val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING
+                // Listening for a question, or for the waiting card's "yes" or "no".
+                val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING || st.cardHearing != null
                 if (st.turns.isEmpty() && !hearing) {
                     Suggestions(st.locked) { input = it; send() }
                 }
-                if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING)
+                if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING || st.cardHearing == Phase.TRANSCRIBING, card = st.cardHearing != null)
                 ContextRow(st)
                 AnimatedVisibility(attachOpen && st.draft == null && !st.busy) { AttachRow(st.locked) { attachOpen = false } }
                 InputRow(
@@ -232,7 +233,7 @@ private fun statusLine(st: PanelState): String = when (st.phase) {
     // "Claude is thinking…" (or "Checking with Claude…") until Claude's first words.
     Phase.THINKING -> st.claudeStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
     Phase.ANSWERING -> if (st.turns.lastOrNull()?.claude == true) "Claude is answering…" else "Answering…"
-    Phase.CONFIRMING -> "Waiting for you: tap a button on the card"
+    Phase.CONFIRMING -> if (st.cardHearing != null) "Say yes or no…" else "Waiting for you: tap the card, or answer yes or no"
     Phase.SPEAKING -> "Speaking · tap to stop"
     Phase.IDLE -> when {
         st.claudeMode -> "Talking with Claude: your questions go online"
@@ -419,7 +420,7 @@ private fun Suggestions(locked: Boolean, onPick: (String) -> Unit) {
 }
 
 @Composable
-private fun ListeningRow(partial: String, transcribing: Boolean) {
+private fun ListeningRow(partial: String, transcribing: Boolean, card: Boolean = false) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         val t = rememberInfiniteTransition(label = "listen")
         val s by t.animateFloat(0.85f, 1.15f, infiniteRepeatable(tween(500), RepeatMode.Reverse), label = "mic")
@@ -427,7 +428,8 @@ private fun ListeningRow(partial: String, transcribing: Boolean) {
             Icon(RIcons.Mic, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onPrimary)
         }
         Spacer(Modifier.width(12.dp))
-        Text(partial.ifEmpty { if (transcribing) "Writing it down…" else "Listening…" }, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(partial.ifEmpty { if (transcribing) "Writing it down…" else if (card) "Listening: yes or no?" else "Listening…" },
+            style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
         if (!transcribing) TextButton(onClick = PanelController::micReleased) { Text("Done") }
     }
 }
@@ -509,12 +511,12 @@ private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, o
         TextField(
             value = input,
             onValueChange = onInput,
-            placeholder = { Text(if (st.draft != null) "Ask about it…" else "Ask Robot…") },
+            placeholder = { Text(if (st.phase == Phase.CONFIRMING) "Yes or no…" else if (st.draft != null) "Ask about it…" else "Ask Robot…") },
             shape = RoundedCornerShape(26.dp),
             maxLines = 5,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Send),
-            // While a turn runs the keyboard's Send does nothing (the text stays for later).
-            keyboardActions = KeyboardActions(onSend = { if (!st.busy) onSend() }),
+            // While a turn runs the keyboard's Send does nothing (the text stays for later), except to answer a waiting card.
+            keyboardActions = KeyboardActions(onSend = { if (!st.busy || st.phase == Phase.CONFIRMING) onSend() }),
             colors = TextFieldDefaults.colors(
                 focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, disabledIndicatorColor = Color.Transparent,
                 focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest, unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
@@ -524,6 +526,12 @@ private fun InputRow(st: PanelState, input: String, onInput: (String) -> Unit, o
         Spacer(Modifier.width(8.dp))
         val canSend = input.isNotBlank() || st.draft != null
         when {
+            // A card waits: the mic (or Send, for a typed "yes" or "no") answers it; Stop still declines it and ends the answer.
+            st.phase == Phase.CONFIRMING -> {
+                IconButton(onClick = PanelController::stopGenerating, modifier = Modifier.size(48.dp)) { Icon(RIcons.Stop, "Stop") }
+                if (canSend) FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, "Send") }
+                else MicButton(listening = st.cardHearing != null, hint = st.micHint)
+            }
             st.busy -> FilledIconButton(onClick = PanelController::stopGenerating, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop") }
             st.phase == Phase.SPEAKING && !canSend -> FilledTonalIconButton(onClick = PanelController::stopSpeaking, modifier = Modifier.size(56.dp)) { Icon(RIcons.Stop, "Stop speaking") }
             canSend -> FilledIconButton(onClick = onSend, modifier = Modifier.size(56.dp)) { Icon(RIcons.Send, "Send") }

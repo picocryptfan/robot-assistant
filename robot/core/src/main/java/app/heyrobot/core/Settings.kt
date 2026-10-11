@@ -149,6 +149,11 @@ data class RobotSettings(
      * screen's text are saved with the conversation, for you to see in History. Off: only that one was attached.
      */
     val keepMedia: Boolean = false,
+    /**
+     * "Answer cards by voice" (on): while a card waits, Robot listens for "yes" or "no" when replies are spoken or the
+     * question came by voice. A yes never sends personal content to Claude unless [voiceYesPersonal].
+     */
+    val voiceCards: Boolean = true,
 ) {
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
@@ -209,6 +214,7 @@ data class RobotSettings(
         put("personalToHelpers", personalToHelpers)
         put("voiceYesPersonal", voiceYesPersonal)
         put("keepMedia", keepMedia)
+        put("voiceCards", voiceCards)
     }
 
     companion object {
@@ -326,6 +332,7 @@ data class RobotSettings(
                 personalToHelpers = o.optBoolean("personalToHelpers", d.personalToHelpers),
                 voiceYesPersonal = o.optBoolean("voiceYesPersonal", d.voiceYesPersonal),
                 keepMedia = o.optBoolean("keepMedia", d.keepMedia),
+                voiceCards = o.optBoolean("voiceCards", d.voiceCards),
             )
         }
 

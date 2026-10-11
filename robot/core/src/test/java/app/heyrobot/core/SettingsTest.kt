@@ -161,6 +161,8 @@ class SettingsTest {
         assertEquals(setOf(ToolName.SET_TIMER, ToolName.SET_ALARM), d.lockedTools)
         assertEquals(false, d.personalToHelpers)
         assertEquals(false, d.voiceYesPersonal)
+        assertEquals(true, d.voiceCards)
+        assertEquals(false, RobotSettings.fromJson(d.copy(voiceCards = false).toJson().toString()).voiceCards)
         assertEquals(6, RobotSettings.SCHEMA)
         // A 0.3 or early 0.4 file: every rule as it was, and the new Safety cards default.
         for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", "{}")) {

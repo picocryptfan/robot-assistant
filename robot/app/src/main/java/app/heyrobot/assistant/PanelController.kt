@@ -20,6 +20,7 @@ import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainFail
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.Card
+import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.ClaudeAppAnswer
 import app.heyrobot.core.ClaudeAppLink
@@ -177,6 +178,8 @@ data class UiAction(
     val remember: String? = null,
     /** While it waits, an "Allow contacts" button too. */
     val allowContacts: Boolean = false,
+    /** Its button sends personal content to Claude: a spoken or typed yes doesn't, unless "Voice yes can send personal content". */
+    val personal: Boolean = false,
 )
 
 /**
@@ -243,6 +246,8 @@ data class PanelState(
     val claudeScreen: Boolean = false,
     /** What works on the lock screen (Settings › Safety & privacy), for the panel's words. */
     val lockedTools: Set<ToolName> = LockScreen.DEFAULT,
+    /** Listening for "yes" or "no" to the waiting card (LISTENING, then TRANSCRIBING); null: not. The phase stays CONFIRMING. */
+    val cardHearing: Phase? = null,
 ) {
     /** A turn is under way, a confirmation card included: no new question, no mic, no camera until it ends. */
     val busy: Boolean get() = phase == Phase.THINKING || phase == Phase.ANSWERING || phase == Phase.CONFIRMING
@@ -301,6 +306,15 @@ object PanelController {
     private var askingTextFor: String? = null
     /** That question was asked aloud: listen for the answer once Robot has said it. */
     private var listenAfterSpeech = false
+    /**
+     * "Answer cards by voice" (0.4.0): listen for the waiting card's yes or no once Robot has stopped talking. [cardListen]
+     * tells the callbacks of a listening that was stopped from the current one; [cardRetry] asks again once.
+     */
+    private var cardListenAfterSpeech = false
+    private var cardListen = 0
+    private var cardRetry = 0
+    /** askToShare said its own words about the card: no "Say yes or no." on top. */
+    private var cardPromptSaid = false
 
     // Ask Claude (docs/ask-claude.md). Claude mode's conversation (API route), and when it last had a turn.
     private var claudeSession: ClaudeSession? = null
@@ -363,6 +377,8 @@ object PanelController {
 
     /** From VoiceHub (which owns the voice's listener since 0.2.3): Robot's voice started or stopped. */
     fun onSpeakingChanged(speaking: Boolean) {
+        // A sentence ends between two: listen only once Robot has really stopped talking.
+        if (!speaking && cardListenAfterSpeech) VoiceHub.main.postDelayed({ if (cardListenAfterSpeech && !VoiceHub.tts.isSpeaking) listenForCard() }, 350)
         if (!speaking && listenAfterSpeech) {
             listenAfterSpeech = false
             // "What should the text to Mom say?" was said aloud: the answer comes by voice too.
@@ -449,6 +465,7 @@ object PanelController {
         if (st0.phase == Phase.LISTENING) VoiceLog.add(VoiceEvent.NO_QUESTION, NoQuestion.CLOSED)
         if (st0.busy && spokenTurn && hidingFor == null) VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.STOPPED)
         VoiceLog.add(VoiceEvent.SESSION_HIDDEN, ((SystemClock.elapsedRealtime() - shownAtE) / 1000).toInt())
+        stopCardListening()
         VoiceHub.stt.cancel()
         VoiceHub.listener?.wakePaused = false
         listenAfterSpeech = false
@@ -739,6 +756,12 @@ object PanelController {
     // ------------------------------------------------------------------ voice input
 
     fun micPressed() {
+        // A card waits: the mic answers it ("yes", "no").
+        if (_state.value.phase == Phase.CONFIRMING) {
+            VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
+            cardRetry = 0
+            return listenForCard()
+        }
         if (_state.value.busy || slot.running) return
         VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
         if (VoiceHub.settings.speakReplies == SpeakReplies.VOICE) _state.update { it.copy(speak = true) }
@@ -824,6 +847,123 @@ object PanelController {
         _state.update { it.copy(phase = if (it.phase == Phase.LISTENING || it.phase == Phase.TRANSCRIBING) Phase.IDLE else it.phase, partial = "") }
     }
 
+    // ------------------------------------------------------------------ answering a card by voice (0.4.0)
+
+    /** The card waiting for an answer (the newest one still pending), or null. */
+    private fun pendingCard(): UiAction? = _state.value.turns.asReversed().firstNotNullOfOrNull { t -> t.actions.lastOrNull { it.status == ActionStatus.PENDING } }
+
+    /**
+     * A card now waits. With "Answer cards by voice" on, when replies are spoken or you are talking to Robot (a spoken
+     * question, a wake-word panel), Robot says how to answer and listens for "yes" or "no" once it has stopped talking.
+     */
+    private fun cardWaiting() {
+        val st = _state.value
+        val s = VoiceHub.settings
+        val said = cardPromptSaid
+        cardPromptSaid = false
+        cardRetry = 0
+        if (!s.voiceCards || !shown || !VoiceHub.stt.available || !(st.speak || spokenTurn || shownFrom == ShowSource.WAKE)) return
+        if (st.speak) {
+            if (!said) VoiceHub.tts.speak(CARD_PROMPT)
+            cardListenAfterSpeech = true
+        } else {
+            listenForCard()
+        }
+    }
+
+    /** Listens for the waiting card's answer; the phase stays CONFIRMING (the turn is still waiting on the card). */
+    private fun listenForCard() {
+        cardListenAfterSpeech = false
+        val st = _state.value
+        if (st.phase != Phase.CONFIRMING || st.cardHearing != null || !shown || pendingCard() == null) return
+        if (!VoiceHub.stt.available) return notify(VoiceHub.stt.hint ?: "Voice input isn't available. Tap a button on the card.")
+        val token = ++cardListen
+        VoiceHub.listener?.wakePaused = true
+        _state.update { it.copy(cardHearing = Phase.LISTENING, partial = "", notice = null) }
+        val main = VoiceHub.main
+        VoiceHub.stt.start(object : SpeechToText.Listener {
+            fun mine() = token == cardListen
+            override fun onPartial(text: String) { main.post { if (mine()) _state.update { if (it.cardHearing == Phase.LISTENING) it.copy(partial = text) else it } } }
+            override fun onEndOfSpeech() {
+                main.post {
+                    if (!mine()) return@post
+                    VoiceHub.listener?.wakePaused = false
+                    _state.update { if (it.cardHearing != null) it.copy(cardHearing = Phase.TRANSCRIBING) else it }
+                }
+            }
+            override fun onFinal(text: String) {
+                main.post {
+                    if (!mine()) return@post
+                    endCardListening()
+                    heardForCard(text)
+                }
+            }
+            override fun onError(reason: SpeechToText.Reason, message: String) {
+                main.post {
+                    if (!mine()) return@post
+                    endCardListening()
+                    notify(if (reason == SpeechToText.Reason.NO_SPEECH) CARD_HINT else message)
+                }
+            }
+        })
+    }
+
+    private fun endCardListening() {
+        VoiceHub.listener?.wakePaused = false
+        _state.update { it.copy(cardHearing = null, partial = "") }
+    }
+
+    /** The card was answered or the turn stopped: no more listening for it. */
+    private fun stopCardListening() {
+        cardListenAfterSpeech = false
+        if (_state.value.cardHearing == null) return
+        cardListen++
+        VoiceHub.stt.cancel()
+        endCardListening()
+    }
+
+    /** What was said while the card waited: its answer, or (once) a reminder and another listen. */
+    private fun heardForCard(text: String) {
+        if (text.isNotBlank() && answerCard(text, spoken = true)) return
+        if (pendingCard() == null) return
+        if (cardRetry++ < 1) {
+            notify(CARD_HINT)
+            if (_state.value.speak) {
+                VoiceHub.tts.speak(CARD_PROMPT)
+                cardListenAfterSpeech = true
+            } else {
+                listenForCard()
+            }
+        } else {
+            notify(CARD_HINT)
+            cue(Cue.CHIME)
+        }
+    }
+
+    /**
+     * [text] answers the waiting card ([CardAnswer]): "no" declines it; "yes" confirms it, except a card with several
+     * choices (tap the one meant) or one that sends personal content to Claude (a tap, unless "Voice yes can send
+     * personal content"). False: not a yes or no, or no card waits.
+     */
+    private fun answerCard(text: String, spoken: Boolean): Boolean {
+        val card = pendingCard() ?: return false
+        val s = VoiceHub.settings
+        val kind = CardAnswer.of(text, s.wakePhrases.filter { it.enabled }.map { it.text }) ?: return false
+        RLog.i("card_answer", "yes" to (kind == CardAnswer.Kind.YES), "spoken" to spoken)
+        fun tell(words: String) {
+            notify(words)
+            if (_state.value.speak) VoiceHub.tts.speak(words)
+        }
+        when {
+            kind == CardAnswer.Kind.NO -> confirm(card.id, false)
+            card.choices.size > 1 -> tell("Tap the one you mean on the card.")
+            card.personal && !s.voiceYesPersonal -> tell("Tap ${card.confirm ?: "the button"} to share it with Claude.")
+            card.choices.size == 1 -> choose(card.id, 0)
+            else -> confirm(card.id, true)
+        }
+        return true
+    }
+
     // ------------------------------------------------------------------ asking
 
     /**
@@ -837,8 +977,13 @@ object PanelController {
         val st = _state.value
         val q = text.trim()
         if (q.isEmpty() && st.draft == null) return false
+        // A card waits: a typed or spoken "yes" or "no" answers it (Settings › Safety & privacy).
+        if (st.phase == Phase.CONFIRMING && st.draft == null && answerCard(q, fromVoice)) return true
         if (st.busy || slot.running) {
-            if (fromVoice) {
+            if (fromVoice && st.phase == Phase.CONFIRMING) {
+                notify(CARD_HINT)
+                cue(Cue.CHIME)
+            } else if (fromVoice) {
                 notify("Robot is still on the last question. Ask again when it's done.")
                 VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.BUSY)
                 cue(Cue.CHIME)
@@ -1394,7 +1539,8 @@ object PanelController {
                     val before = history.take(claudeJoinedAt.coerceIn(0, history.size))
                     // Claude mode from a word that only sounded like the name asks too, personal or not.
                     val include = ClaudeContext.includeQuestion(before, claudeMisheard)?.let { q ->
-                        askToShare(replyId, q, null, "Include", "Start fresh", detail = "Start fresh: Claude sees only what you ask from now on.")
+                        askToShare(replyId, q, null, "Include", "Start fresh", detail = "Start fresh: Claude sees only what you ask from now on.",
+                            personal = ClaudeContext.personal(before).isNotEmpty())
                     } ?: false
                     ClaudeContext.join(before, question ?: said, now, userRegion, shared, include, claudeMisheard)
                 }
@@ -1496,12 +1642,22 @@ object PanelController {
      * are spoken, so you know a tap is needed.
      */
     private suspend fun askToShare(replyId: String, summary: String, body: String?, confirm: String, cancel: String = "Cancel",
-        detail: String = "Nothing goes to Claude until you tap $confirm.", picture: Bitmap? = null): Boolean {
+        detail: String = "Nothing goes to Claude until you tap $confirm.", picture: Bitmap? = null, personal: Boolean = true): Boolean {
         val id = newId()
         val view = PanelView(replyId)
-        upsertAction(replyId, UiAction(id, ToolName.ASK_CLAUDE, summary, ActionStatus.PENDING, detail, body = body, confirm = confirm, cancel = cancel, picture = picture))
+        upsertAction(replyId, UiAction(id, ToolName.ASK_CLAUDE, summary, ActionStatus.PENDING, detail, body = body, confirm = confirm, cancel = cancel, picture = picture,
+            personal = personal))
+        if (_state.value.speak) {
+            val s = VoiceHub.settings
+            // A spoken yes sends personal content only with "Voice yes can send personal content" on; a no always works.
+            VoiceHub.tts.speak(when {
+                !s.voiceCards -> "$summary Tap $confirm or $cancel."
+                !personal || s.voiceYesPersonal -> "$summary Say yes or no."
+                else -> "$summary Tap $confirm, or say no."
+            })
+            cardPromptSaid = true
+        }
         view.phase(TurnPhase.CONFIRMING)
-        if (_state.value.speak) VoiceHub.tts.speak("$summary Tap $confirm or $cancel.")
         val pick = try {
             slot.confirmations.ask(id)
         } catch (e: CancellationException) {
@@ -1773,6 +1929,7 @@ object PanelController {
         override fun phase(p: TurnPhase) {
             if (!current(replyId)) return
             _state.update { it.copy(phase = if (p == TurnPhase.CONFIRMING) Phase.CONFIRMING else Phase.THINKING) }
+            if (p == TurnPhase.CONFIRMING) cardWaiting() else stopCardListening()
         }
 
         override fun card(c: Card) {
@@ -1780,7 +1937,7 @@ object PanelController {
             // What a read tool finds goes to Claude only after this tap: the button says so.
             val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) "Share with Claude" else c.action?.confirmLabel
             upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo, c.content, c.more,
-                c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts))
+                c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts, personal = c.remote && c.tool?.reads == true))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
@@ -1937,6 +2094,7 @@ object PanelController {
 
     /** Stop button: stops the reply (or the model load) and its voice; a waiting card is declined. */
     fun stopGenerating(why: TtsStop = TtsStop.BUTTON) {
+        stopCardListening()
         val id = reqId
         if (id != 0) client?.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(id))
         // The voice stops now: nothing already queued, and not the cut-off last sentence (finishReply drops it).
@@ -2052,5 +2210,7 @@ object PanelController {
     private const val EVENT_GAP_MS = 60_000L
     private const val WATCHDOG_TICK_MS = 5_000L
     private const val SORRY = "Sorry, I didn't catch that."
+    private const val CARD_HINT = "A card is waiting: say yes or no, or tap a button on it."
+    private const val CARD_PROMPT = "Say yes or no."
     private const val SORRY_NO_ANSWER = "Sorry, I couldn't answer that."
 }
