@@ -63,6 +63,18 @@ class CheogramGuideTest {
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
+    /**
+     * 0.6.0: Claude is one helper among others. A conversation in which Robot looked someone up reaches any of them only
+     * the ways it reaches Claude (Include, the personal-content switch) or through a helper you trust with personal content.
+     */
+    @Test fun thePrivacyNoteNamesEveryWayToAHelper() {
+        rule.show { Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) { CheogramPrivacy(canTakeBack = false) {} } }
+        for (t in listOf("share with Claude or another helper", "Include", "a helper you trust with personal content",
+            "Send personal content to helpers automatically")) {
+            rule.onNodeWithText(t, substring = true).assertExists()
+        }
+    }
+
     @Test fun noSecondButtonWhenTheRowAboveHasOne() {
         rule.show { CheogramPrivacy(canTakeBack = false) {} }
         rule.onAllNodesWithText("Notification access").assertCountEquals(0)

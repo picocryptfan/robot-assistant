@@ -23,7 +23,8 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 
 ## What's new in 0.6.0
 
-Robot 0.6.0 is 0.4.5 with two pieces of work that were built beside it; each has its section below, with its phone tests.
+Robot 0.6.0 is 0.4.6 (0.4.5 with the fixes from the phone tests, "What's new in 0.4.6" below) with two pieces of work
+that were built beside it; each has its section below, with its phone tests.
 
 - **Conversation mode** ([Conversation mode](#conversation-mode-050)): Robot writes down a conversation in French and
   English, word for word, on the phone ([Transcribing](#transcribing)); tells the speakers apart by their voices, yours
@@ -45,11 +46,16 @@ Robot 0.6.0 is 0.4.5 with two pieces of work that were built beside it; each has
   company's chat API (OpenAI, Gemini, Mistral, DeepSeek, Groq, OpenRouter, xAI, or another) or a model on your own
   computer, each with its own key, name, voice, price and trust (off by default for every helper); a server on your
   network may use `http://` only at a private address.
-- **Settings file schema 13.** A 0.4.5 file (schema 12), a 0.4.4 file (7) or older keeps every choice: Ask Claude's
-  settings become the Claude helper (and are still written for one release, so going back to 0.4.5 keeps Claude), and
+- **Settings file schema 13.** A 0.4.6 or 0.4.5 file (schema 12), a 0.4.4 file (7) or older keeps every choice: Ask Claude's
+  settings become the Claude helper (and are still written for one release, so going back to 0.4.6 or 0.4.5 keeps Claude), and
   conversation mode starts from its defaults, live words in a conversation following "Show the words while you speak".
 - **Settings › About › Licences** names slimt and the parts built into it (ruy, cpuinfo, SentencePiece with
   protobuf-lite, Abseil and Darts-clone), the Bergamot and TitaNet models and Tatoeba's CC0 data, with their texts.
+- **0.4.6's fixes** ([What's new in 0.4.6](#whats-new-in-046)): the interrupt sensitivity a tap saves, "stop" ending a
+  reply still being written, the offer when Robot's model refuses or says its facts may be out of date (English and
+  Québec French, with every helper; a helper that can't search the web is offered, not asked by itself, when the reply
+  says it has no current information), and the Cheogram guide in Settings › People, whose privacy note names every
+  helper. Its phone checks hold for 0.6.0, with Settings › Helpers where they say Settings › Ask Claude.
 - **Not in 0.6.0:** other helpers summarizing a transcript (only Claude does), keeping a conversation's audio, the look's
   next steps for the new screens. Nothing of 0.6.0 has run on the phone yet: every section's "On the phone" list is
   still to do.
@@ -1241,10 +1247,10 @@ connection window's process, the compiled network security config, the client cl
 
 ### On the phone (0.6.0)
 
-1. **Upgrade** from 0.4.5 (and once from 0.4.0) with a Claude key, a custom budget and some spend today: Claude answers without re-entering
+1. **Upgrade** from 0.4.6 or 0.4.5 (and once from 0.4.0) with a Claude key, a custom budget and some spend today: Claude answers without re-entering
    the key; Settings › Helpers shows Claude with its model, effort, search, voice and lock screen as they were; the
    budget and today's spend are unchanged; History still shows earlier Claude conversations with a cloud.
-2. **Downgrade** back to 0.4.5 (adb): Claude still works with the same key and settings, and earlier helper turns still
+2. **Downgrade** back to 0.4.6 or 0.4.5 (adb): Claude still works with the same key and settings, and earlier helper turns still
    make actions ask first.
 3. **Add Gemini, Mistral, DeepSeek, Groq and OpenRouter** with keys: Test connection runs by itself after Save and says
    "Connected"; "hey robot, ask Gemini why the sky is blue" is answered in Gemini's voice, labelled "Gemini", with a

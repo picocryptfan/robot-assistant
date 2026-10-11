@@ -475,7 +475,9 @@ internal fun NotificationAccessSteps() {
  * What "Learn names from Cheogram notifications" reads, where it is kept, and how to take it back (0.4.6), each claim as
  * the code does it: CheogramListener (Cheogram's packages only, signed as first seen, a 1:1 chat's sender name and key
  * and the shortcut's account; the manifest asks for conversations only), PeopleStore (files/people, left out of backups),
- * ClaudeContext (People and lookups never go to Claude unless you share a conversation that has one).
+ * ClaudeContext and HelperTrust (0.6.0: People and lookups never go to Claude or another helper unless a conversation that
+ * has one is shared: Include, a helper trusted with personal content, or "Send personal content to helpers
+ * automatically"; no helper is given lookup_contact, and what a text it asks for answers it doesn't say who got it).
  */
 @Composable
 internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
@@ -489,8 +491,9 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
             "signature too, so an app pretending to be Cheogram teaches nothing.", style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("Names stay on this phone, in Robot's private storage, left out of Android's backups. Robot never sends them anywhere by " +
             "itself: not to Claude, not to any other helper or online AI model. Robot's own model, on the phone, sees a name only when " +
-            "it looks someone up for you. Only if you choose to share with Claude a conversation in which Robot looked someone up " +
-            "(Include, or Safety & privacy › Send personal content to helpers automatically) can what Robot said about them go with it.",
+            "it looks someone up for you. Only if you choose to share with Claude or another helper a conversation in which Robot " +
+            "looked someone up (Include, a helper you trust with personal content, or Safety & privacy › Send personal content to " +
+            "helpers automatically) can what Robot said about them go with it.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("To take it back: turn this switch off, and Robot stops learning at once. Then turn Robot off in Notification access. " +
             "Names already learned stay until you tap Remove on them, or Delete all People.", style = MaterialTheme.typography.bodyMedium, color = muted)
