@@ -9,7 +9,8 @@
 # declared isolated and not exported. Since 0.5.0, the fast translation engine's :mt process and its library, allowed by
 # exact name and loaded only by the :mt module's class (0.6.0: required). The updater (Settings › About › Updates): its two
 # permissions, its job service and receivers in the main process and not exported, GitHub's addresses only in its core
-# code, no class of the voice or engine processes referring to it, and no GitHub token in the APK.
+# code, no class of the voice or engine processes referring to it, and no GitHub token in the APK. 0.4.7: the phone's
+# OpenCL libraries (the GPU, for the general Gemma 4 E2B) and its TPU libraries declared optional, never packaged.
 # Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
@@ -75,6 +76,17 @@ for a in 'permission(0x01010006)' allowSharedIsolatedProcess useAppZygote extern
 done
 hasnt '"android.intent.action' "$(subtree app.heyrobot.brain.LlamaService)" "LlamaService has no intent filter"
 [ "$(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")" = 1 ] && pass "LlamaService is the only isolated component" || fail "isolated components: $(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")"
+# 0.4.7: LiteRT-LM's GPU backend uses the phone's own OpenCL (a Pixel 9a's Mali), the TPU the phone's own Tensor libraries:
+# each declared, and every declaration optional (required defaults to true), so a phone without one still installs Robot
+# (the native library allowlist below keeps them out of the APK).
+natives=" $(grep -A1 'E: uses-native-library' <<<"$mf" | grep -o 'name(0x01010003)="[^"]*"' | sed 's/.*="//; s/"$//' | sort -u | tr '\n' ' ')"
+for l in libOpenCL.so libOpenCL-pixel.so libvndksupport.so libedgetpu_util.so libedgetpu_client.google.so libedgetpu_tachyon.google.so; do
+  has " $l " "$natives" "declares the phone's $l"
+done
+for l in $natives; do
+  nl=$(elem "$l")
+  [ "$(grep -c 'E: uses-native-library' <<<"$nl")" = "$(grep -c 'required(0x0101028e)=false' <<<"$nl")" ] && pass "$l is optional" || fail "$l is required somewhere"
+done
 # Helpers need nothing new: INTERNET stays the only network permission (a server on your network too, at targetSdk 36),
 # and nothing reads other apps' screens.
 for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE ACCESS_LOCAL_NETWORK BIND_ACCESSIBILITY_SERVICE; do
