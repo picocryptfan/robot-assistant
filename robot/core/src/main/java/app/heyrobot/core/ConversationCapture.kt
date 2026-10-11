@@ -89,6 +89,46 @@ class SampleRing(val capacity: Int) {
     }
 }
 
+/** A closed segment and its audio (padding included), as it goes on the decode queue. */
+class Cut(val seg: Segment, val audio: FloatArray)
+
+/**
+ * One run's audio side, without the detector (docs/conversation-mode.md 2.1): each frame goes into the run's ring and,
+ * with the detector's verdict, into the Segmenter; a segment that closes comes out with its audio, sliced at once
+ * (the ring moves on). The session makes a new one for each run (start, or going on after a pause).
+ */
+class SegmentCutter(val rules: SegmentRules = SegmentRules(), ringMs: Int = ConversationRules.RING_MS) {
+    private val segmenter = Segmenter(rules)
+    private val ring = SampleRing(rules.sampleRate * ringMs / 1000)
+
+    /** Samples fed so far. */
+    val position: Long get() = ring.end
+
+    /** One frame of [SegmentRules.frameSamples]: [speech] the detector's verdict, [robotSpeaking] Robot's voice playing. */
+    fun frame(f: FloatArray, speech: Boolean, robotSpeaking: Boolean): Cut? {
+        ring.push(f)
+        var ss = 0.0
+        for (x in f) ss += x * x
+        return segmenter.feed(speech, level(ss / f.size.coerceAtLeast(1)), robotSpeaking)?.let(::cut)
+    }
+
+    /** The run ends (a pause, the stop): the open segment, if it holds enough speech. */
+    fun flush(): Cut? = segmenter.flush()?.let(::cut)
+
+    /** The open segment's audio so far, from its padding on (the live words), or null when none is open. */
+    fun openAudio(): FloatArray? {
+        val open = segmenter.openStart ?: return null
+        return ring.slice((open - rules.samples(rules.padMs)).coerceAtLeast(0), ring.end)
+    }
+
+    private fun cut(seg: Segment): Cut? = ring.slice(seg.start, seg.end).takeIf { it.isNotEmpty() }?.let { Cut(seg, it) }
+
+    companion object {
+        /** A frame's loudness in dBFS (-120 for silence): the Segmenter cuts a long segment at its quietest frame. */
+        fun level(meanSquare: Double): Float = if (meanSquare <= 1e-12) -120f else (10 * Math.log10(meanSquare)).toFloat()
+    }
+}
+
 /** Gathers audio chunks of any length into frames of [size] samples (the voice detector's window). */
 class FrameAssembler(private val size: Int) {
     private val cur = FloatArray(size)

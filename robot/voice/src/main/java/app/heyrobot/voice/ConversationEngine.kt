@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Process
 import android.os.SystemClock
 import app.heyrobot.core.ConversationRules
+import app.heyrobot.core.Cut
+import app.heyrobot.core.SegmentCutter
 import app.heyrobot.core.FrameAssembler
 import app.heyrobot.core.Heard
 import app.heyrobot.core.LangGuess
@@ -13,7 +15,6 @@ import app.heyrobot.core.LineLang
 import app.heyrobot.core.MinuteStats
 import app.heyrobot.core.RLog
 import app.heyrobot.core.Rehear
-import app.heyrobot.core.SampleRing
 import app.heyrobot.core.Segment
 import app.heyrobot.core.SegmentRules
 import app.heyrobot.core.Segmenter
@@ -82,8 +83,7 @@ class ConversationEngine(
     private var vad: SpeechFlag? = null
     private val frames = FrameAssembler(rules.frameSamples)
     // The current run (from a start or a resume until a pause or stop), all guarded by vadLock.
-    private var segmenter = Segmenter(rules)
-    private var ring = SampleRing(rules.sampleRate * ConversationRules.RING_MS / 1000)
+    private var cutter = SegmentCutter(rules)
     private var offsetS = 0.0
     private var run = 0
     private var running = false
@@ -104,8 +104,7 @@ class ConversationEngine(
 
     /** A run starts (the session starts, or goes on after a pause), [offsetS] seconds into the session. */
     fun beginRun(offsetS: Double) = synchronized(vadLock) {
-        segmenter = Segmenter(rules)
-        ring = SampleRing(rules.sampleRate * ConversationRules.RING_MS / 1000)
+        cutter = SegmentCutter(rules)
         frames.reset()
         vad?.reset()
         this.offsetS = offsetS
@@ -118,39 +117,30 @@ class ConversationEngine(
     fun endRun() = synchronized(vadLock) {
         if (!running) return@synchronized
         running = false
-        segmenter.flush()?.let { enqueue(it) }
+        cutter.flush()?.let { enqueue(it) }
     }
 
     /** Microphone audio (the listener's thread). [robotSpeaking]: Robot's voice is playing, which counts as silence. */
     fun feed(x: FloatArray, robotSpeaking: Boolean) = synchronized(vadLock) {
         if (!running || closed) return@synchronized
         val v = vad ?: return@synchronized
-        frames.push(x) { f ->
-            ring.push(f)
-            var ss = 0.0
-            for (s in f) ss += s * s
-            val level = Listener.db(ss / f.size).toFloat()
-            segmenter.feed(v.frame(f), level, robotSpeaking)?.let { enqueue(it) }
-        }
+        frames.push(x) { f -> cutter.frame(f, v.frame(f), robotSpeaking)?.let { enqueue(it) } }
         maybePartial()
     }
 
-    /** Under vadLock: the segment's audio, padding and all, sliced now (the ring moves on). */
-    private fun enqueue(seg: Segment) {
-        val audio = ring.slice(seg.start, seg.end)
-        if (audio.isEmpty()) return
+    /** Under vadLock: a closed segment and its audio (sliced as it closed) on the queue. */
+    private fun enqueue(c: Cut) {
         waiting.incrementAndGet()
-        queue.offer(Job(seg, offsetS, audio, run))
+        queue.offer(Job(c.seg, offsetS, c.audio, run))
     }
 
     /** Under vadLock: the open segment's words every 1.5 s, only when nothing else waits. */
     private fun maybePartial() {
         if (!partials) return
-        val open = segmenter.openStart ?: return
         val now = SystemClock.elapsedRealtime()
         if (waiting.get() > 0 || decoding || now - lastPartialAt < ConversationRules.PARTIAL_MS) return
+        val audio = cutter.openAudio() ?: return
         lastPartialAt = now
-        val audio = ring.slice((open - rules.samples(rules.padMs)).coerceAtLeast(0), ring.end)
         if (audio.size < rules.sampleRate / 2) return
         queue.offer(Job(null, offsetS, audio, run))
     }

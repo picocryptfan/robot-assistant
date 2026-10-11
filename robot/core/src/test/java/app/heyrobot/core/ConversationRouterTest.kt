@@ -60,4 +60,13 @@ class ConversationRouterTest {
         // "Stop" alone is the stop-talking word, not the end of a session.
         assertNull(route("stop", running = true))
     }
+
+    /** The phrases the README and the help text name (0.5.0). */
+    @Test fun thePhrasesTheReadmeNames() {
+        for (t in listOf("hey robot, transcribe this conversation", "start transcribing", "transcris cette conversation", "commence à transcrire",
+            "Robot, transcris notre conversation s'il te plaît")) assertEquals(t, transcribe, route(t))
+        for (t in listOf("stop transcribing", "arrête de transcrire")) assertEquals(t, ConversationCommand.Stop, route(t, running = true))
+        for (t in listOf("pause", "mets en pause")) assertEquals(t, ConversationCommand.Pause, route(t, running = true))
+        for (t in listOf("resume transcribing", "reprends")) assertEquals(t, ConversationCommand.Resume, route(t, running = true))
+    }
 }

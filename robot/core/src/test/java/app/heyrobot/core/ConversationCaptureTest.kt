@@ -134,4 +134,57 @@ class ConversationCaptureTest {
         s.feed(true, 1f, false)
         assertEquals(10 * 512L, s.openStart)
     }
+
+    /** A frame of one loudness. */
+    @Suppress("UNUSED_PARAMETER")
+    private fun frame(k: Long, speech: Boolean, loud: Float = if (speech) 0.5f else 0.001f): FloatArray = FloatArray(512) { loud }
+
+    /** Frame [k] whose samples are their own position (sample n of the run is n), so a slice says where it came from. */
+    private fun numbered(k: Long): FloatArray = FloatArray(512) { (k * 512 + it).toFloat() }
+
+    @Test fun theSegmentQueueGetsEachSegmentWithItsPaddedAudio() {
+        val c = SegmentCutter(SegmentRules())
+        val cuts = ArrayList<Cut>()
+        // 1 s of silence, 1 s of speech, 0.3 s of silence: one segment, padded 0.2 s each side from the ring.
+        var k = 0L
+        repeat(31) { c.frame(numbered(k++), false, false)?.let(cuts::add) }
+        repeat(31) { c.frame(numbered(k++), true, false)?.let(cuts::add) }
+        repeat(10) { c.frame(numbered(k++), false, false)?.let(cuts::add) }
+        val cut = cuts.single()
+        assertEquals(SegmentEnd.SILENCE, cut.seg.ended)
+        assertEquals(31 * 512L, cut.seg.speechStart)
+        assertEquals(31 * 512L - 3_200, cut.seg.start)
+        assertEquals((cut.seg.end - cut.seg.start).toInt(), cut.audio.size)
+        // The audio is the ring's, from the padded start: sample k is k.
+        assertEquals(cut.seg.start.toFloat(), cut.audio.first())
+        assertEquals((cut.seg.end - 1).toFloat(), cut.audio.last())
+        assertEquals(k * 512, c.position)
+    }
+
+    @Test fun theQueueRespectsTheCapTheGateAndAPause() {
+        // 16 s of speech: cut at 15 s (at the quietest frame of the last 2 s), the rest goes on.
+        val c = SegmentCutter(SegmentRules())
+        val cuts = ArrayList<Cut>()
+        var k = 0L
+        repeat(500) { i -> c.frame(frame(k++, true, loud = if (i == 450) 0.01f else 0.5f), true, false)?.let(cuts::add) }
+        val capped = cuts.single()
+        assertEquals(SegmentEnd.CAP, capped.seg.ended)
+        assertEquals(451 * 512L, capped.seg.end)
+        assertEquals(capped.audio.size.toLong(), capped.seg.end - capped.seg.start)
+        // The open part's live words: from the cut (and the padding's worth before it); a pause flushes it with its audio.
+        assertEquals((500 - 451) * 512 + 3_200, c.openAudio()!!.size)
+        val rest = c.flush()!!
+        assertEquals(SegmentEnd.FLUSH, rest.seg.ended)
+        assertEquals(451 * 512L, rest.seg.start)
+        assertNull(c.flush())
+        assertNull(c.openAudio())
+        // Robot talking counts as silence: no segment of her voice.
+        val g = SegmentCutter(SegmentRules())
+        var n = 0L
+        val heard = (0 until 100).mapNotNull { g.frame(frame(n++, true), true, robotSpeaking = true) }
+        assertEquals(emptyList<Cut>(), heard)
+        assertNull(g.flush())
+        assertEquals(-120f, SegmentCutter.level(0.0))
+        assertEquals(-20f, SegmentCutter.level(0.01), 0.001f)
+    }
 }

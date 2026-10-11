@@ -177,4 +177,40 @@ class TranscriptStoreTest {
         assertNull(TranscriptWriter.start(s, "20261011-1402-0008", t0, ConvMode.TRANSCRIBE, LangPair.FR_EN))
         assertEquals(-1, TranscriptWriter.maxIndex(""))
     }
+
+    /** What a session writes exports as the library shares it (docs/conversation-mode.md 6.3): one speaker, a fix, a pause. */
+    @Test fun aRecordedTranscriptExportsAsMarkdownAndText() {
+        val utc = java.time.ZoneId.of("UTC")
+        val start = java.time.LocalDateTime.of(2026, 10, 11, 14, 2).atZone(utc).toInstant().toEpochMilli()
+        val s = store()
+        val w = TranscriptWriter.start(s, "20261011-1402-00b1", start, ConvMode.TRANSCRIBE, LangPair.FR_EN)!!
+        w.line(start + 5_000) { i -> TranscriptEvent.Line(i, 3.0, 5.5, "S1", "fr", "On se reprend-tu demain?") }
+        w.line(start + 9_000) { i -> TranscriptEvent.Line(i, 6.0, 6.4, "S1", "fr", "OK.", prior = true) }
+        w.event(TranscriptEvent.Lang(1, "en"))
+        w.event(TranscriptEvent.Gap(10.0, 70.0, TranscriptEvent.GAP_PAUSE))
+        w.line(start + 75_000) { i -> TranscriptEvent.Line(i, 71.0, 73.0, "S1", "en", "Sure, *tomorrow* works.") }
+        w.close(start + 80_000)
+        val meta = s.meta(w.id)!!
+        val shown = meta.copy(title = TranscriptTitles.shown(meta, utc))
+        val md = TranscriptExport.markdown(shown, s.load(w.id)!!, ExportOptions(), utc)
+        assertEquals("""# Conversation · 11 Oct, 14:02
+
+- Date: 11 October 2026, 14:02–14:03 (1 min)
+- Speakers: S1
+- Languages: English, French
+- Transcribed on this phone by Robot (Parakeet v3).
+
+**[14:02:03] S1 (FR):** On se reprend-tu demain?
+
+**[14:02:06] S1 (EN):** OK.
+
+*\[paused 14:02–14:03\]*
+
+**[14:03:11] S1 (EN):** Sure, \*tomorrow\* works.
+""", md)
+        assertEquals("Transcript 2026-10-11 1402.md", TranscriptExport.fileName(meta, "md", utc))
+        val txt = TranscriptExport.text(shown, s.load(w.id)!!, ExportOptions(times = false), utc)
+        assertTrue(txt.contains("\nS1 (FR): On se reprend-tu demain?\n"))
+        assertTrue(txt.contains("[paused 14:02–14:03]"))
+    }
 }
