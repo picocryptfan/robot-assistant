@@ -85,6 +85,7 @@ import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.settings.AppRoutes
 import app.heyrobot.ui.settings.SettingsNav
 import app.heyrobot.ui.settings.SettingsRoot
+import app.heyrobot.ui.settings.SetupScreen
 import app.heyrobot.ui.settings.rememberPageStack
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
