@@ -13,6 +13,8 @@ class SentencePieceModel private constructor(
     val addDummyPrefix: Boolean,
     val removeExtraWhitespaces: Boolean,
     val escapeWhitespaces: Boolean,
+    /** NormalizerSpec.precompiled_charsmap is set: the text is normalised (NFKC or a custom map) before it is encoded. */
+    val normalizes: Boolean = false,
 ) {
     /** TrainerSpec.ModelType. */
     enum class ModelType(val proto: Int) { UNIGRAM(1), BPE(2), WORD(3), CHAR(4) }
@@ -24,7 +26,8 @@ class SentencePieceModel private constructor(
 
     companion object {
         // ModelProto: 1 pieces, 2 trainer_spec, 3 normalizer_spec. SentencePiece: 1 piece, 2 score, 3 type.
-        // TrainerSpec: 3 model_type. NormalizerSpec: 3 add_dummy_prefix, 4 remove_extra_whitespaces, 5 escape_whitespaces.
+        // TrainerSpec: 3 model_type. NormalizerSpec: 2 precompiled_charsmap, 3 add_dummy_prefix, 4 remove_extra_whitespaces,
+        // 5 escape_whitespaces.
         fun parse(bytes: ByteArray): SentencePieceModel {
             val r = Proto(bytes, 0, bytes.size)
             val pieces = mutableListOf<Piece>()
@@ -32,6 +35,7 @@ class SentencePieceModel private constructor(
             var dummy = true
             var extra = true
             var escape = true
+            var normalizes = false
             while (!r.done) {
                 val (field, wire) = r.tag()
                 when {
@@ -54,6 +58,7 @@ class SentencePieceModel private constructor(
                                 f == 3 && w == 0 -> dummy = n.varint() != 0L
                                 f == 4 && w == 0 -> extra = n.varint() != 0L
                                 f == 5 && w == 0 -> escape = n.varint() != 0L
+                                f == 2 && w == 2 -> if (!n.message().done) normalizes = true
                                 else -> n.skip(w)
                             }
                         }
@@ -62,7 +67,7 @@ class SentencePieceModel private constructor(
                 }
             }
             require(pieces.isNotEmpty()) { "no pieces" }
-            return SentencePieceModel(type, pieces, dummy, extra, escape)
+            return SentencePieceModel(type, pieces, dummy, extra, escape, normalizes)
         }
 
         private fun piece(r: Proto): Piece {

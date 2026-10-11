@@ -5,9 +5,9 @@
 # and the three runtime permissions; that the main-process entries stay in the main process, that nothing beyond an
 # allowlist is exported, and that no main-process class in the dex refers to an engine. 0.4.5: the native libraries are
 # exactly an allowlist of names, and Robot's llama.cpp library (when this build has it) exports only its JNI bridge, is
-# reached only from :brain's classes and can't go online or start a process. Since 0.5.0, the fast translation engine's :mt
-# process and its library, allowed by exact name and loaded only by the :mt module's class (0.6.0: required).
-# Usage: tools/verify_apk.sh <apk>
+# reached only from the isolated :llama service's classes and can't go online or start a process; that service is
+# declared isolated and not exported. Since 0.5.0, the fast translation engine's :mt process and its library, allowed by
+# exact name and loaded only by the :mt module's class (0.6.0: required). Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
 BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/36.0.0"
@@ -59,6 +59,18 @@ has ':mt' "$mtsvc" "MtService in :mt (the fast translation engine)"
 has 'exported(0x01010010)=false' "$mtsvc" "MtService not exported"
 has '"app.heyrobot.permission.INTERNAL"' "$mtsvc" "MtService guarded by the signature permission"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver not exported"
+# 0.4.5: llama.cpp runs in its own isolated process (a uid of its own: no permissions, no network, none of Robot's files),
+# which only :brain binds: not exported, no permission either way, no shared isolated process, not from the app zygote.
+llm=$(elem app.heyrobot.brain.LlamaService)
+has '"app.heyrobot.brain.LlamaService"' "$mf" "manifest has brain.LlamaService"
+has 'process(0x01010011)=":llama"' "$llm" "LlamaService in :llama"
+has 'isolatedProcess(0x010103a9)=true' "$llm" "LlamaService runs in an isolated process"
+has 'exported(0x01010010)=false' "$llm" "LlamaService not exported"
+for a in 'permission(0x01010006)' allowSharedIsolatedProcess useAppZygote externalService; do
+  hasnt "$a" "$llm" "LlamaService has no $a"
+done
+hasnt '"android.intent.action' "$(subtree app.heyrobot.brain.LlamaService)" "LlamaService has no intent filter"
+[ "$(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")" = 1 ] && pass "LlamaService is the only isolated component" || fail "isolated components: $(grep -c 'isolatedProcess(0x010103a9)=true' <<<"$mf")"
 # Helpers need nothing new: INTERNET stays the only network permission (a server on your network too, at targetSdk 36),
 # and nothing reads other apps' screens.
 for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE ACCESS_LOCAL_NETWORK BIND_ACCESSIBILITY_SERVICE; do
@@ -245,6 +257,11 @@ llama_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/nu
   awk '/^Class #/{ on=0 } /Class descriptor  : .L/{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/brain\//) } on' |
   grep -cE 'Lapp/heyrobot/brain/(LlamaNative|LlamaEngine)')
 [ "$llama_refs" = "0" ] && pass "only :brain's classes refer to LlamaNative and LlamaEngine (dex)" || fail "classes outside :brain refer to llama.cpp's bridge: $llama_refs"
+# 0.4.5: of those, only the isolated service's own classes reach the bridge (it loads the library only in that process).
+native_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .L/{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/brain\/(LlamaNative|LlamaService)[;$]/) } on' |
+  grep -c 'Lapp/heyrobot/brain/LlamaNative')
+[ "$native_refs" = "0" ] && pass "only LlamaService's classes refer to LlamaNative: llama.cpp loads only in the isolated process (dex)" || fail "classes besides LlamaService refer to LlamaNative: $native_refs"
 # Only the :mt module's JNI class loads the fast translation engine (its library name appears in no other class's code).
 mt_loaders=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/Class descriptor  :/{ c = $4 } /const-string/ && /"robotmt"/ { print c }' | sort -u | tr '\n' ' ')

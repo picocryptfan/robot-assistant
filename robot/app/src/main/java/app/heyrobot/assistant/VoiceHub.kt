@@ -78,6 +78,9 @@ object VoiceHub {
     private lateinit var worker: Handler
 
     @Volatile var settings = RobotSettings(); private set
+
+    /** Settings › Voice › "Interrupt sensitivity" as the listener uses it now (the barge-in test's result says it). */
+    val interruptInUse: InterruptSensitivity get() = inputs.interrupt
     @Volatile var listener: Listener? = null; private set
     lateinit var tts: TextToSpeech; private set
     lateinit var stt: SpeechToText; private set
@@ -351,6 +354,8 @@ object VoiceHub {
     private fun buildWakeLines() {
         val phrases = settings.wakePhrases
         val interrupt = settings.interrupt
+        // "Stop" takes the new level at once, even if the wake lines below can't be built.
+        inputs.interrupt = interrupt
         val sp = KwsAssets.speller(app)
         val talk: (WakePhrase) -> KwsThresholds.Preset = { KwsThresholds.talkWake(it.sensitivity, interrupt) }
         val heyRobot = listOf("▁HE", "Y", "▁RO", "B", "O", "T")
@@ -368,7 +373,6 @@ object VoiceHub {
         }
         // While Robot talks: the same phrases at Settings › Voice › "Interrupt sensitivity" (Medium: these very lines).
         inputs.talkWakeLines = if (interrupt == InterruptSensitivity.MEDIUM) null else if (sp != null) KeywordBuffer.wake(phrases, sp, talk).text else fallback(talk)
-        inputs.interrupt = interrupt
         inputs.wakeLines = lines
         RLog.i("wake_phrases", "enabled" to phrases.count { it.enabled }, "lines" to lines.lines().count { it.isNotBlank() })
     }

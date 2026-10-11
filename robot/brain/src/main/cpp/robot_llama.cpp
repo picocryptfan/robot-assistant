@@ -1,19 +1,24 @@
-// :BRAIN PROCESS ONLY. Robot's JNI bridge to llama.cpp (0.4.5, GGUF model files), built by tools/build_llama.sh into
-// librobot_llama.so together with llama.cpp, ggml and KleidiAI from their pinned sources (THIRD_PARTY.md). Loaded only by
-// brain/LlamaNative.kt, for a file you imported that Robot's own check (core Gguf.kt) read first.
+// :LLAMA PROCESS ONLY (an android:isolatedProcess service). Robot's JNI bridge to llama.cpp (0.4.5, GGUF model files), built by
+// tools/build_llama.sh into librobot_llama.so together with llama.cpp, ggml and KleidiAI from their pinned sources
+// (THIRD_PARTY.md). Loaded only by brain/LlamaNative.kt, inside LlamaService's isolated process, for a file you imported
+// that Robot's own check (core Gguf.kt) read first in :brain. That process has no permissions and can't open a file by
+// name: it gets the checked file as an open descriptor, and llama.cpp reads and maps that very file.
 //
 // Minimal on purpose: load a model (memory-mapped, the CPU only), format a conversation with the model's own chat
 // template (llama.cpp's Jinja support, tokenizer.chat_template), count its tokens with the model's tokenizer, stream a
 // reply with a cancel flag, report timings, free everything. Text only. Nothing here logs: llama.cpp's own log goes to a
 // callback that drops it, and the shared log of its common library is paused.
 //
-// Threads: every call but cancel() comes from LlamaEngine's one worker thread; cancel() may come from any thread and
-// only raises an atomic counter (read between tokens, and inside llama_decode through the abort callback).
+// Threads: LlamaService runs every call but cancel() one at a time (in the order :brain's one llama worker sends them);
+// cancel() may come from any thread and only raises an atomic counter (read between tokens, and inside llama_decode
+// through the abort callback).
 
 #include <jni.h>
 
 #include <cerrno>
+#include <cstdio>
 #include <cstdlib>
+#include <fcntl.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -155,11 +160,13 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *, void *) {
 }
 
 /**
- * Loads the model at [path] memory-mapped on the CPU and makes a context of [nCtx] tokens. [sampling]: top-k, top-p,
- * min-p, temperature (llama.cpp's own defaults unless Robot says otherwise). 0 on failure, and [why] (out, 1 element)
- * says which part failed: LOAD_MODEL, LOAD_CONTEXT or LOAD_TEMPLATE.
+ * Loads the model from the open file [fd] (read-only, from :brain, which checked it) memory-mapped on the CPU and makes a
+ * context of [nCtx] tokens. llama.cpp reads the file through its own copy of the descriptor, never by a name: this
+ * isolated process couldn't open one anyway. [sampling]: top-k, top-p, min-p, temperature (llama.cpp's own defaults
+ * unless Robot says otherwise). 0 on failure, and [why] (out, 1 element) says which part failed: LOAD_MODEL, LOAD_CONTEXT
+ * or LOAD_TEMPLATE.
  */
-JNIEXPORT jlong JNICALL Java_app_heyrobot_brain_LlamaNative_load(JNIEnv * env, jclass, jbyteArray path, jint nCtx, jint threads,
+JNIEXPORT jlong JNICALL Java_app_heyrobot_brain_LlamaNative_load(JNIEnv * env, jclass, jint fd, jint nCtx, jint threads,
         jint batchThreads, jfloatArray sampling, jintArray why) {
     Robot * r = nullptr;
     jint stage = LOAD_MODEL;
@@ -169,7 +176,6 @@ JNIEXPORT jlong JNICALL Java_app_heyrobot_brain_LlamaNative_load(JNIEnv * env, j
         return 0;
     };
     try {
-        const std::string file = bytes(env, path);
         float s[4] = {40.0f, 0.95f, 0.05f, 0.8f};
         if (sampling != nullptr && env->GetArrayLength(sampling) >= 4) env->GetFloatArrayRegion(sampling, 0, 4, s);
         r = new Robot();
@@ -178,7 +184,18 @@ JNIEXPORT jlong JNICALL Java_app_heyrobot_brain_LlamaNative_load(JNIEnv * env, j
         mp.load_mode = LLAMA_LOAD_MODE_MMAP;
         mp.check_tensors = false;
         mp.progress_callback = nullptr;
-        r->model = llama_model_load_from_file(file.c_str(), mp);
+        // llama.cpp's FILE over a copy of the descriptor, from the file's start; closed after the load (the mapping keeps
+        // the file, and llama.cpp doesn't read it again).
+        const int own = fd < 0 ? -1 : fcntl(fd, F_DUPFD_CLOEXEC, 0);
+        if (own < 0) return failed();
+        FILE * file = fdopen(own, "rb");
+        if (file == nullptr) {
+            close(own);
+            return failed();
+        }
+        struct Closer { FILE * f; ~Closer() { std::fclose(f); } } closer{file};
+        if (fseeko(file, 0, SEEK_SET) != 0) return failed();
+        r->model = llama_model_load_from_file_ptr(file, mp);
         if (r->model == nullptr) return failed();
         stage = LOAD_CONTEXT;
         r->vocab = llama_model_get_vocab(r->model);
@@ -231,19 +248,23 @@ JNIEXPORT void JNICALL Java_app_heyrobot_brain_LlamaNative_cancel(JNIEnv *, jcla
 }
 
 /**
- * The texts of the vocabulary's control and unknown tokens (two bytes or more, UTF-8): the ones llama.cpp reads as
- * tokens only in a prompt read with its control tokens on, as prepare() reads the formatted conversation. LlamaEngine
- * breaks them in every text from outside Robot's own prompt (core ControlText) before the template sees it. Null on
- * failure.
+ * The texts (two bytes or more, UTF-8) of the vocabulary's control and unknown tokens, or with [userDefined] of its
+ * user-defined ones: llama.cpp reads the first only in a prompt read with its control tokens on, as prepare() reads the
+ * formatted conversation, and the second wherever a text has them. LlamaEngine (in :brain) breaks the control ones and
+ * the marker-shaped user-defined ones in every text from outside Robot's own prompt (core ControlText, PromptMarkers)
+ * before the template sees it. Null on failure.
  */
-JNIEXPORT jobjectArray JNICALL Java_app_heyrobot_brain_LlamaNative_specials(JNIEnv * env, jclass, jlong h) {
+JNIEXPORT jobjectArray JNICALL Java_app_heyrobot_brain_LlamaNative_specials(JNIEnv * env, jclass, jlong h, jboolean userDefined) {
     Robot * r = of(h);
     if (r == nullptr) return nullptr;
     try {
         std::vector<std::string> texts;
         const int32_t n = llama_vocab_n_tokens(r->vocab);
         for (int32_t id = 0; id < n; ++id) {
-            if ((llama_vocab_get_attr(r->vocab, id) & (LLAMA_TOKEN_ATTR_CONTROL | LLAMA_TOKEN_ATTR_UNKNOWN)) == 0) continue;
+            const auto attr = llama_vocab_get_attr(r->vocab, id);
+            const bool want = userDefined == JNI_TRUE ? (attr & LLAMA_TOKEN_ATTR_USER_DEFINED) != 0
+                                                      : (attr & (LLAMA_TOKEN_ATTR_CONTROL | LLAMA_TOKEN_ATTR_UNKNOWN)) != 0;
+            if (!want) continue;
             const char * t = llama_vocab_get_text(r->vocab, id);
             if (t == nullptr) continue;
             const size_t len = std::strlen(t);

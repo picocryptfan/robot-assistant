@@ -169,6 +169,13 @@ class GgufTest {
         unreadable(FakeGguf.gguf(listOf("general.alignment" to "64"), FakeGguf.tensors()))
         unreadable(FakeGguf.gguf(listOf("general.alignment" to Arr(4, listOf(64))), FakeGguf.tensors()))
         assertTrue(check(FakeGguf.gguf(listOf("general.alignment" to 64), FakeGguf.tensors(), alignment = 64)).readable)
+        // 0.4.5: a smaller alignment is read, but tensor data that doesn't start on 32 bytes can't be mapped from the open
+        // file llama.cpp gets: refused. Over 32 header lengths, both happen.
+        val small = (0 until 32).map { n ->
+            check(FakeGguf.gguf(listOf("general.alignment" to 16, "general.name" to "x".repeat(n + 1)), FakeGguf.tensors(), alignment = 16))
+        }
+        assertTrue(small.any { it.readable } && small.any { !it.readable })
+        assertTrue(small.filter { !it.readable }.all { it.problem.orEmpty().contains("32-byte") })
         // Dimensions whose product overflows, or negative.
         unreadable(FakeGguf.gguf(listOf("general.architecture" to "llama"), listOf(Tensor("a", listOf(1L shl 40, 1L shl 40)))))
         unreadable(FakeGguf.gguf(listOf("general.architecture" to "llama"), listOf(Tensor("a", listOf(-32L)))))

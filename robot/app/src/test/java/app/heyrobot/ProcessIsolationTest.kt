@@ -9,10 +9,11 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Build check (source, Gradle and merged-manifest scan), as the probe's: LiteRT-LM lives only in :brain's
- * GemmaEngine.kt and runs only in the :brain process (0.4.5: llama.cpp too, loaded only by :brain's LlamaNative.kt and
- * built only by tools/build_llama.sh); sherpa-onnx lives only in the :voice module and runs only in the :voice process;
- * the fast translation engine (librobotmt.so, 0.5.0) lives only in the :mt module and runs only in the :mt process,
- * which never goes online; nothing the main (UI) process runs refers to any of them. Also: the components
+ * GemmaEngine.kt and runs only in the :brain process (0.4.5: llama.cpp is built only by tools/build_llama.sh and loaded
+ * only by LlamaNative.kt, which only LlamaService reaches, in its own isolated ":llama" process); sherpa-onnx lives only
+ * in the :voice module and runs only in the :voice process; the fast translation engine (librobotmt.so, 0.5.0) lives only
+ * in the :mt module and runs only in the :mt process, which never goes online; nothing the main (UI) process runs refers
+ * to any of them. Also: the components
  * sit in their processes, the recognizer stays discoverable (the restart finding), exported components
  * are guarded, the permissions are the expected few, nothing but DownloadManager, the Claude SDK, the Open-Meteo client
  * (the weather) and the Nominatim client (the nearest place, 0.4.0) goes online, and those two only from the :voice
@@ -61,8 +62,8 @@ class ProcessIsolationTest {
         // 0.5.0: speaker labels use sherpa-onnx's speaker embedding API (the JNI was already in the library).
         assertTrue(users.toString(), users.contains("voice/voice/SpeakerEmbedder.kt"))
         for (f in listOf("Speaker.kt", "SpeakerEmbeddingExtractorConfig.kt")) assertTrue(f, File(java("voice"), "com/k2fsa/sherpa/onnx/$f").isFile)
-        // Only the copied sherpa-onnx API loads its native library (and, 0.4.5, :brain's llama.cpp bridge loads Robot's
-        // own, and, 0.5.0, the :mt module the fast engine's JNI).
+        // Only the copied sherpa-onnx API loads its native library (and, 0.4.5, llama.cpp's bridge loads Robot's own, in
+        // the isolated :llama process, and, 0.5.0, the :mt module the fast engine's JNI).
         assertEquals(listOf("brain/brain/LlamaNative.kt", "mt/mt/Slimt.kt"), usersOf(Regex("""System\.load(Library)?\s*\(""")))
         val sherpa = sources(File(java("voice"), "com/k2fsa"))
         assertTrue(sherpa.any { Regex("""System\.loadLibrary\("sherpa-onnx-jni"\)""").containsMatchIn(it.readText()) })
@@ -203,6 +204,19 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.conversation.SummaryActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
+        // 0.4.5: llama.cpp's own process, isolated: Android runs it under a uid of its own with no permissions, no network
+        // and none of Robot's files. Not exported, no intent filter, never guarded by (or holding) a permission, never
+        // sharing its process with another isolated service nor started from the app zygote.
+        val llama = c("app.heyrobot.brain.LlamaService")
+        assertEquals(":llama", proc("app.heyrobot.brain.LlamaService"))
+        assertEquals("true", llama.getAttributeNS(ns, "isolatedProcess"))
+        assertEquals("false", exported("app.heyrobot.brain.LlamaService"))
+        assertEquals("", perm("app.heyrobot.brain.LlamaService"))
+        for (a in listOf("allowSharedIsolatedProcess", "useAppZygote", "externalService", "foregroundServiceType")) assertEquals(a, "", llama.getAttributeNS(ns, a))
+        assertEquals(0, llama.getElementsByTagName("intent-filter").length)
+        // No other component is isolated, and nothing else runs in :llama.
+        assertEquals(listOf("app.heyrobot.brain.LlamaService"), comps.filter { it.value.getAttributeNS(ns, "isolatedProcess") == "true" }.keys.toList())
+        assertEquals(listOf("app.heyrobot.brain.LlamaService"), comps.filter { it.value.getAttributeNS(ns, "process") == ":llama" }.keys.toList())
         // 0.5.0: the fast translation engine in a process of its own, bound only by Robot's own processes.
         assertEquals(":mt", proc("app.heyrobot.mt.MtService"))
         assertEquals("false", exported("app.heyrobot.mt.MtService"))
@@ -212,7 +226,8 @@ class ProcessIsolationTest {
         for (n in main) assertEquals(n, "", proc(n))
         // Every Robot component is accounted for (a new one must be placed deliberately).
         val ourComps = comps.keys.filter { it.startsWith("app.heyrobot.") }.toSet()
-        assertEquals(main.toSet() + "app.heyrobot.brain.BrainService" + "app.heyrobot.mt.MtService" + voice.filter { it.startsWith("app.heyrobot.") }, ourComps)
+        assertEquals(main.toSet() + "app.heyrobot.brain.BrainService" + "app.heyrobot.brain.LlamaService" + "app.heyrobot.mt.MtService" +
+            voice.filter { it.startsWith("app.heyrobot.") }, ourComps)
         // Exported components are guarded: the system-only BIND_VOICE_INTERACTION, or nothing to guard.
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotVoiceService"))
         assertEquals("android.permission.BIND_VOICE_INTERACTION", perm("app.heyrobot.assistant.RobotSessionService"))
@@ -345,19 +360,33 @@ class ProcessIsolationTest {
     }
 
     /**
-     * 0.4.5, your own GGUF file: llama.cpp lives only in the :brain module and runs only in the :brain process. One library,
-     * librobot_llama.so, built from the pinned llama.cpp source and Robot's committed JNI bridge by tools/build_llama.sh
-     * (never by Gradle), loaded by LlamaNative.kt alone, reached only through LlamaEngine and :brain's Engines; nothing of the
-     * voice or main process refers to either. Its JNI functions are exactly LlamaNative's external functions.
+     * 0.4.5, your own GGUF file: llama.cpp lives only in the :brain module and runs only in LlamaService's isolated ":llama"
+     * process. One library, librobot_llama.so, built from the pinned llama.cpp source and Robot's committed JNI bridge by
+     * tools/build_llama.sh (never by Gradle), loaded by LlamaNative.kt alone, which only LlamaService reaches, and only in an
+     * isolated process (Process.isIsolated()); :brain's LlamaEngine talks to it only through LlamaLink's Binder calls
+     * (LlamaIpc) and binds it by name, so no :brain code refers to the service or the bridge. Nothing of the voice or main
+     * process refers to any of it. Its JNI functions are exactly LlamaNative's external functions.
      */
-    @Test fun llamaCppOnlyInTheBrainProcess() {
+    @Test fun llamaCppOnlyInTheIsolatedProcess() {
         val native = File(java("brain"), "app/heyrobot/brain/LlamaNative.kt").readText()
         assertTrue(native.contains("System.loadLibrary(LIB)") && native.contains("const val LIB = \"robot_llama\""))
+        // The library loads only after the process proved isolated.
+        assertTrue(Regex("""if \(!android\.os\.Process\.isIsolated\(\)\) LlamaIpc\.NOT_ISOLATED\s+else try \{\s+System\.loadLibrary\(LIB\)""").containsMatchIn(native))
         // (0.5.0: the fast translation engine's JNI class in :mt is the other one: fastEngineOnlyInTheMtProcess.)
         assertEquals(listOf("brain/brain/LlamaNative.kt", "mt/mt/Slimt.kt"), usersOf(Regex("""\bexternal\s+fun\b""")))
-        assertEquals(listOf("brain/brain/LlamaEngine.kt", "brain/brain/LlamaNative.kt"), usersOf(Regex("""\bLlamaNative\b""")))
+        assertEquals(listOf("brain/brain/LlamaNative.kt", "brain/brain/LlamaService.kt"), usersOf(Regex("""\bLlamaNative\b""")))
+        // The service's class: referred to by nothing but itself (bound by name, LlamaIpc.SERVICE_CLASS, as in the manifest).
+        assertEquals(listOf("brain/brain/LlamaService.kt"), usersOf(Regex("""\bLlamaService\b""")))
+        assertTrue(File(java("brain"), "app/heyrobot/brain/LlamaIpc.kt").readText().contains("const val SERVICE_CLASS = \"app.heyrobot.brain.LlamaService\""))
+        assertTrue(File(main("brain"), "AndroidManifest.xml").readText().contains("android:name=\"app.heyrobot.brain.LlamaService\""))
+        assertEquals(listOf("brain/brain/LlamaEngine.kt", "brain/brain/LlamaLink.kt"), usersOf(Regex("""\bLlamaLink\b""")))
+        assertEquals(listOf("brain/brain/LlamaEngine.kt", "brain/brain/LlamaIpc.kt", "brain/brain/LlamaLink.kt", "brain/brain/LlamaNative.kt", "brain/brain/LlamaService.kt"),
+            usersOf(Regex("""\bLlamaIpc\b""")))
         assertEquals(listOf("brain/brain/Engine.kt", "brain/brain/LlamaEngine.kt"), usersOf(Regex("""\bLlamaEngine\b""")))
         assertEquals(listOf("brain/brain/BrainService.kt", "brain/brain/Engine.kt"), usersOf(Regex("""\bEngines\b""")))
+        // :brain hands the file over only to a process that proved an isolated uid (core IsolatedUid, from Binder's calling uid).
+        val link = File(java("brain"), "app/heyrobot/brain/LlamaLink.kt").readText()
+        assertTrue(link.contains("IsolatedUid.of(from)") && link.contains("Binder.getCallingUid()"))
         // The GGUF content check runs where LiteRT-LM's does: the main app's import check and :brain before a load.
         assertEquals(listOf("app/sys/ModelStore.kt", "brain/brain/LlamaEngine.kt"), usersOf(Regex("""\bGgufCheck\.check\(""")))
         // The native sources are :brain's (and, 0.5.0, the fast engine's in :mt); no module builds native code through Gradle.
@@ -373,6 +402,8 @@ class ProcessIsolationTest {
         val jni = Regex("""Java_app_heyrobot_brain_LlamaNative_(\w+)\(""").findAll(bridge).map { it.groupValues[1] }.toSet()
         assertEquals(setOf("load", "free", "cancel", "trainContext", "specials", "prepare", "generate"), externals)
         assertEquals(externals, jni)
+        // llama.cpp reads the model only through the descriptor it is given: the isolated process can't open a file by name.
+        assertTrue(bridge.contains("llama_model_load_from_file_ptr(file, mp)") && !Regex("""llama_model_load_from_file\(|llama_model_load_from_splits\(""").containsMatchIn(bridge))
         val exports = File(cpp, "exports.map").readText()
         assertTrue(exports.contains("Java_app_heyrobot_brain_LlamaNative_*;") && exports.contains("local:") && exports.contains("*;"))
         // The library, when built, is only :brain's (gitignored there); no other module packages one of that name.
@@ -391,7 +422,8 @@ class ProcessIsolationTest {
         val cmake = File(cpp, "CMakeLists.txt").readText()
         assertTrue(cmake.contains("GGML_VULKAN GGML_OPENCL") && cmake.contains("set(GGML_CPU_KLEIDIAI ON") && cmake.contains("--version-script"))
         // The voice process and the main app never reach it (they bind :brain by class name).
-        assertEquals(emptyList<String>(), usersOf(Regex("""\b(LlamaEngine|LlamaNative|Engines|robot_llama)\b"""), ours.filterKeys { !it.startsWith("brain/") }))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\b(LlamaEngine|LlamaNative|LlamaService|LlamaLink|LlamaIpc|Engines|robot_llama)\b"""),
+            ours.filterKeys { !it.startsWith("brain/") }))
     }
 
     /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */

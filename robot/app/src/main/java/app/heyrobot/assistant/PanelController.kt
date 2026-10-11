@@ -178,6 +178,15 @@ fun Phase.afterTurn(speaking: Boolean): Phase = when (this) {
 }
 
 /**
+ * "Stop" said, a tap on the conversation, a volume key or "Stop speaking" in this phase, with a turn under way
+ * ([turnRunning]): true when it ends the turn as the Stop button does, not only the voice (0.4.6). While the model (or
+ * Claude) is still writing the reply, stopping only the voice left the turn running: a long story went on being written
+ * for up to a minute, the mic button did nothing and a new question got "Robot is still on the last question". A card
+ * waiting for a yes or no stays: "stop" then only quiets Robot's "Say yes or no.".
+ */
+fun Phase.stopEndsTurn(turnRunning: Boolean): Boolean = turnRunning && (this == Phase.THINKING || this == Phase.ANSWERING)
+
+/**
  * [icon]: the real app's launcher icon on an open_app card. [body]: the full message, email or note, or what a read
  * tool found. [choices]: the people or numbers to tap while it waits. [confirm]: the button ("Open in Cheogram").
  * [undo]: a saved note's key for Undo. [content]: a read tool brought content into the conversation.
@@ -1272,6 +1281,8 @@ object PanelController {
         // Escalation trigger a: strong signals go to the helper before Gemma spends a prefill (Automatic only); with Ask
         // first, Gemma answers and the offer follows its reply.
         var offerAfter: EscalationTrigger? = null
+        // The offer is for current information: decided again after Gemma's answer, a helper that can't search still offers.
+        var offerNeedsSearch = false
         // Not after "not Claude": that conversation stays with Robot. With the weather tool on, a weather question is
         // Robot's to answer (0.4.0). Locked, the tool can't run: as before, the question may go to the helper when it is
         // allowed on the lock screen. Current information goes by itself only to a helper that can search (0.6.0).
@@ -1288,7 +1299,10 @@ object PanelController {
                     if (!escalateNow(replyId, question, blocks, voiceAsked, reuseBubble = true, h = target, fallBack = true)) return
                     RLog.i("helper_fallback", "kind" to target.kind)
                 }
-                EscalationDecision.OFFER -> offerAfter = EscalationTrigger.PRE_ROUTER
+                EscalationDecision.OFFER -> {
+                    offerAfter = EscalationTrigger.PRE_ROUTER
+                    offerNeedsSearch = signal == PreRouter.Signal.CURRENT_INFO
+                }
                 else -> {}
             }
         }
@@ -1392,13 +1406,15 @@ object PanelController {
         }
         finishReply(replyId, result.reason ?: DoneReason.END)
         if (result.launchedApp) return leaveForApp()
-        // Escalation trigger c: the reply hedged ("I don't know", "I can't browse", nothing at all).
+        // Escalation trigger c: the reply hedged ("I don't know", "I can't browse", nothing at all). One that says it has no
+        // current information goes by itself, like current information, only to a helper that can search (0.6.0).
         val reply = chat.lastOrNull { it.id == replyId }
         if (result.reason == DoneReason.END && reply != null && reply.actions.isEmpty() && Hedge.detect(reply.text)) {
             RLog.i("claude_trigger", "kind" to EscalationTrigger.HEDGE)
-            return afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, EscalationTrigger.HEDGE)
+            return afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, EscalationTrigger.HEDGE,
+                needsSearch = Hedge.needsSearch(reply.text))
         }
-        offerAfter?.let { afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, it, offerOnly = true) }
+        offerAfter?.let { afterLocal(replyId, question, history, attachment, screen, image, voiceAsked, guard, it, offerOnly = true, needsSearch = offerNeedsSearch) }
     }
 
     /**
@@ -1425,12 +1441,15 @@ object PanelController {
      * At most one escalation per turn ([guard]); [offerOnly]: the pre-router's offer, after Gemma's answer. [screen] and
      * [image]: this question's screen text and picture, which only an offer's tap may send. [ownAnswer]: the model once
      * more on the same question without ask_claude, for when it handed over without a word and Claude isn't asked right
-     * away (EscalationPolicy.ownAnswerFirst): its answer comes first and any offer goes under it.
+     * away (EscalationPolicy.ownAnswerFirst): its answer comes first and any offer goes under it. [needsSearch]: the
+     * question needs today's sources (the pre-router's current information, or a reply that said it has none): it goes by
+     * itself only to a helper that can search, as the pre-router decided (0.6.0).
      */
     private suspend fun afterLocal(replyId: String, question: String, history: List<ChatTurn>, attachment: Attachment, screen: String?, image: ByteArray?,
-        voiceAsked: Boolean, guard: EscalationGuard, trigger: EscalationTrigger, offerOnly: Boolean = false, ownAnswer: (suspend () -> TurnResult)? = null) {
+        voiceAsked: Boolean, guard: EscalationGuard, trigger: EscalationTrigger, offerOnly: Boolean = false, ownAnswer: (suspend () -> TurnResult)? = null,
+        needsSearch: Boolean = false) {
         // A turn that already escalated decides NONE here.
-        val decision = decide(attachment, guardFree = !guard.used)
+        val decision = decide(attachment, guardFree = !guard.used, needsSearch = needsSearch)
         guard.take(fromClaude = false)
         val s = VoiceHub.settings
         val app = VoiceHub.app
@@ -2495,8 +2514,13 @@ object PanelController {
         slot.stop()
     }
 
-    /** "Stop" said, a tap or a volume key: the voice stops, and the rest of a reply still streaming is shown but not spoken. */
+    /**
+     * "Stop" said, a tap, a volume key or "Stop speaking": the voice stops. A reply still being written (Robot's or
+     * Claude's) stops too, as with the Stop button (0.4.6; before, the rest was written on, shown but not spoken, and the
+     * turn stayed busy until it was done), so the next question can come at once.
+     */
     fun stopSpeaking(why: TtsStop = TtsStop.TAP) {
+        if (_state.value.phase.stopEndsTurn(slot.running)) return stopGenerating(why)
         voice.mute()
         VoiceHub.stopVoice(why)
         _state.update { if (it.phase == Phase.SPEAKING) it.copy(phase = Phase.IDLE) else it }

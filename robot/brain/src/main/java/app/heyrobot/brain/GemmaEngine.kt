@@ -10,11 +10,13 @@ import app.heyrobot.core.BrainModel
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainPolicy
 import app.heyrobot.core.BrainProtocol
+import app.heyrobot.core.ControlText
 import app.heyrobot.core.BrainScheduler
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.EngineErrors
 import app.heyrobot.core.EngineTeardown
+import app.heyrobot.core.FileByteSource
 import app.heyrobot.core.Json
 import app.heyrobot.core.Limits
 import app.heyrobot.core.LiteRtLmCheck
@@ -28,6 +30,7 @@ import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.OneShotRules
 import app.heyrobot.core.Priority
 import app.heyrobot.core.Prompt
+import app.heyrobot.core.PromptMarkers
 import app.heyrobot.core.PromptRole
 import app.heyrobot.core.PromptTurn
 import app.heyrobot.core.RLog
@@ -75,7 +78,10 @@ import java.util.concurrent.CancellationException
 // only (ToolMode.CHAT_ONLY): no tools described, no text-call hint, no step down, its calls dropped, its history
 // alternating, every budget from its context. 0.4.5: one of :brain's two engines (Engine.kt); the process's one slot is
 // EngineSlot, shared with LlamaEngine. Your own Qwen3 or MiniCPM 5 file is told what Settings › Model › "Let the model
-// think first" says (core Thinking), and its thinking is kept out of the reply.
+// think first" says (core Thinking), and its thinking is kept out of the reply. LiteRT-LM encodes the rendered
+// conversation with the model's tokenizer, which reads Gemma 4's "<|turn>", "<|tool_call>"… (SentencePiece user-defined
+// pieces) wherever the text has them: your question, the history and the tools' results reach it with the file's special
+// tokens broken (core ControlText, from its tokenizer: LiteRtLmCheck.tokens); Robot's own system prompt as it is.
 //
 // 0.5.0 (docs/conversation-mode.md 4.2): requests wait their turn in a priority queue (core BrainScheduler: the panel,
 // then the interpreter, then transcript translations, then summaries; the panel's newest question still wins over its
@@ -111,6 +117,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
     /** When BrainService.onDestroy ran (elapsed ms; 0: it lives), read by a newer service waiting for the engine slot. */
     @Volatile override var destroyedAt = 0L
         private set
+    /** The loaded file's special tokens, broken in every text from outside Robot's own prompt (core ControlText). */
+    private var controls = ControlText(PromptMarkers.KNOWN)
     /** Your own file's LlmMetadata model type (for its thinking switch); null for Robot's own models. */
     private var ownModelType: String? = null
     /**
@@ -321,15 +329,28 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             counted.clear()
             estimated.clear()
             val ms = SystemClock.elapsedRealtime() - t0
+            // Its tokenizer's special tokens, which no text from outside Robot's prompt may write. A built-in file (its
+            // SHA-256 checked above) is Gemma 4's, whose tokenizer encodes the joiner as itself; your own file whose tokenizer
+            // can't be read gets the known markers broken by a plain space, which every tokenizer reads as a space.
+            val tokens = try { FileByteSource(f).use { LiteRtLmCheck.tokens(it) } } catch (_: Exception) { null }
+            controls = tokens?.controlText() ?: ControlText(PromptMarkers.KNOWN, if (req.model.builtIn) ControlText.JOINER else ControlText.SPACE)
+            val tokensMs = SystemClock.elapsedRealtime() - t0 - ms
             RLog.i("brain_load", "ok" to true, "ms" to ms, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "vision" to vision,
                 "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) }, "mtp" to (req.backend == ModelBackend.CPU && CPU_MTP == true),
                 "sampler" to (req.backend == ModelBackend.CPU && CPU_SAMPLER), "maxTokens" to req.maxTokens,
-                "chatOnly" to ContextWindow.chatOnly(req.maxTokens))
+                "chatOnly" to ContextWindow.chatOnly(req.maxTokens), "controls" to controls.size, "tokenizer" to (tokens != null),
+                "breaker" to RLog.Code(breakerCode(controls.breaker)), "tokensMs" to tokensMs)
             return BrainMsg.Loaded(true, vision, ms, null, req.model, req.backend, format = ModelFormat.LITERT_LM)
         } finally {
             ExperimentalFlags.enableSpeculativeDecoding = null
             if (!ok) releaseSlot()
         }
+    }
+
+    private fun breakerCode(b: String) = when (b) {
+        ControlText.JOINER -> "joiner"
+        ControlText.ZERO_WIDTH_SPACE -> "zwsp"
+        else -> "space"
     }
 
     /** This engine's model is gone (closed, or never made): the process's slot is free and the marker goes. */
@@ -451,7 +472,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val e = engine ?: throw IllegalStateException("not loaded")
         val cfg = ConversationConfig(
             systemInstruction = Contents.of(plan.system(if (mode == ToolMode.TEXT_CALLS) system + Prompt.textCallHint(tools) else system)),
-            initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(it.text) else Message.model(it.text) },
+            // Robot's own system prompt as it is; the turns (your questions with the screen's text, Robot's and Claude's
+            // replies) without the file's special tokens.
+            initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(controls.defuse(it.text)) else Message.model(controls.defuse(it.text)) },
             // Only the tool API's levels describe tools: never chat only (its list is empty anyway, BrainPolicy.toolsFor).
             tools = if (mode == ToolMode.TOOLS || mode == ToolMode.TOOLS_CONSTRAINED) providers(tools) else emptyList(),
             samplerConfig = sampler(),
@@ -659,7 +682,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val run = Run(job, req.convId, l, sink, rebuilt, resend, Attempt(attempt.sends, budget, turns), if (plan.stripThinking) ThinkFilter() else null)
         val parts = buildList {
             image?.let { add(Content.ImageBytes(it)) }
-            add(Content.Text(req.text))
+            add(Content.Text(controls.defuse(req.text)))
         }
         send(run) { cb -> l.conv.sendMessageAsync(Message.user(Contents.of(parts)), cb) }
     }
@@ -698,7 +721,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         }
         val run = Run(job, req.convId, l, sink, rebuilt = false, resend = null, attempt = Attempt(1, null, 0),
             filter = if (thinking(false).stripThinking) ThinkFilter() else null)
-        val parts = req.results.map { (name, response) -> Content.ToolResponse(name, response) }
+        // What a tool found (an event's title, a contact's name, a note) is text from outside Robot's prompt too.
+        val parts = req.results.map { (name, response) -> Content.ToolResponse(name, controls.defuse(response)) }
         send(run) { cb -> l.conv.sendMessageAsync(Message.tool(Contents.of(parts)), cb) }
     }
 
@@ -744,7 +768,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val run = Run(job, ONE_SHOT_CONV, live, sink, rebuilt = true, resend = null, attempt = Attempt(1, null, 0),
             filter = if (plan.stripThinking) ThinkFilter() else null, oneShot = true, maxChunks = OneShotRules.maxChunks(req, max))
         RLog.i("brain_one_shot", "kind" to req.kind, "priority" to req.priority, "tokens" to OneShotRules.tokens(req), "maxChunks" to run.maxChunks)
-        send(run) { cb -> conv.sendMessageAsync(Message.user(Contents.of(listOf(Content.Text(req.text)))), cb) }
+        // Its system prompt is Robot's own; its one turn (a transcript line, a summary's notes) is text from outside it.
+        send(run) { cb -> conv.sendMessageAsync(Message.user(Contents.of(listOf(Content.Text(controls.defuse(req.text))))), cb) }
     }
 
     /** A one-shot's conversation goes once LiteRT is done with it (an unload parks it otherwise). */

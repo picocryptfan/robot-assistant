@@ -154,6 +154,17 @@ fun AssistantPanel(onClose: () -> Unit) {
         }
     }
 
+    // 0.4.6: the screen stays on while Robot answers or reads her reply aloud. A long story outlasts the screen timeout,
+    // and with the screen off the panel isn't visible: Android then runs the voice process in the background, where the
+    // microphone and the "stop" spotter may not keep up, and the Stop button can't be seen. Back to the phone's own
+    // timeout as soon as she is done or stopped.
+    val view = LocalView.current
+    val answering = st.phase == Phase.THINKING || st.phase == Phase.ANSWERING || st.phase == Phase.SPEAKING
+    DisposableEffect(view, answering) {
+        view.keepScreenOn = answering
+        onDispose { view.keepScreenOn = false }
+    }
+
     // The field is cleared only when the question was taken (not while a turn is under way).
     fun send() {
         if (PanelController.send(input)) {

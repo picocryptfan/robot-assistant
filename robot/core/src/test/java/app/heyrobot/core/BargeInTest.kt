@@ -41,7 +41,7 @@ class BargeInTest {
             hits = listOf(BargeHit(0, 6200, BargeHitKind.STOPPED_HER)))
         assertEquals(r, BargeTestResult.fromJson(r.toJson().toString()))
         assertEquals(listOf("Heard your “stop” 6.2 s in; Robot was silent 140 ms later.",
-            "Hear me while Robot talks: Echo cancellation · Robot's voice plays as Assistant audio · mic: call (echo cancellation) · echo cancellation on"),
+            "Hear me while Robot talks: Echo cancellation · Interrupt sensitivity: Medium · Robot's voice plays as Assistant audio · mic: call (echo cancellation) · echo cancellation on"),
             BargeTestLogic.lines(r))
         val silent = r.copy(silent = true, heard = 0, falseStops = 2, falseWakes = 1, suppressed = 1, spokeMs = 19_800, mode = BargeIn.OFF, mic = MicKind.RECOGNITION.id,
             aec = AecState.OFF.id, hits = listOf(BargeHit(0, 3000, BargeHitKind.FALSE), BargeHit(0, 9000, BargeHitKind.FALSE), BargeHit(1, 12_000, BargeHitKind.FALSE),
@@ -71,7 +71,7 @@ class BargeInTest {
         assertEquals(listOf("Heard your wake phrase “robot” 4.1 s in; Robot was silent 300 ms later.",
             "Heard: 2.0 s “stop” (set aside) · 4.1 s “robot” · 4.3 s “stop” (after the first)",
             "1 set aside as possibly Robot's own voice.",
-            "Hear me while Robot talks: Always echo cancellation · Robot's voice plays as Call audio · the phone's voice"),
+            "Hear me while Robot talks: Always echo cancellation · Interrupt sensitivity: Medium · Robot's voice plays as Call audio · the phone's voice"),
             BargeTestLogic.lines(wake) { if (it == 2) "robot" else null })
         // Results from 0.3.0 (no hits) still read.
         val old = BargeTestResult.fromJson("""{"state":"DONE","silent":false,"started":1,"mode":"ECHO_CANCEL","playback":"ASSISTANT","heard":2,"atMs":3000,"stopMs":90}""")!!
@@ -108,10 +108,24 @@ class BargeInTest {
     }
 
     @Test fun theSetupSaysWhenThePhonesVoiceStandsIn() {
-        assertEquals("Hear me while Robot talks: Echo cancellation · Robot's voice plays as Assistant audio",
+        assertEquals("Hear me while Robot talks: Echo cancellation · Interrupt sensitivity: Medium · Robot's voice plays as Assistant audio",
             BargeTestLogic.setup(BargeIn.ECHO_CANCEL, Playback.ASSISTANT, phoneVoice = false))
-        assertEquals("Hear me while Robot talks: Off · Robot's voice plays as Call audio · the phone's voice (Kokoro isn't installed)",
+        assertEquals("Hear me while Robot talks: Off · Interrupt sensitivity: Medium · Robot's voice plays as Call audio · the phone's voice (Kokoro isn't installed)",
             BargeTestLogic.setup(BargeIn.OFF, Playback.CALL, phoneVoice = true, missing = "Kokoro"))
+    }
+
+    /** 0.4.6: each run says the "Interrupt sensitivity" the voice process listened with, so Low, Medium and High can be compared. */
+    @Test fun theResultSaysWhichInterruptSensitivityItRanWith() {
+        assertEquals("Hear me while Robot talks: Echo cancellation · Interrupt sensitivity: High · Robot's voice plays as Assistant audio",
+            BargeTestLogic.setup(BargeIn.ECHO_CANCEL, Playback.ASSISTANT, phoneVoice = false, interrupt = InterruptSensitivity.HIGH))
+        val r = BargeTestResult(BenchState.DONE, silent = true, started = 1000, mode = BargeIn.ECHO_CANCEL, playback = Playback.ASSISTANT, spokeMs = 19_000,
+            interrupt = InterruptSensitivity.LOW)
+        assertEquals(r, BargeTestResult.fromJson(r.toJson().toString()))
+        assertEquals("Hear me while Robot talks: Echo cancellation · Interrupt sensitivity: Low · Robot's voice plays as Assistant audio",
+            BargeTestLogic.lines(r).last())
+        // A result saved before 0.4.6 has none: it ran at Medium, the only level a tap could save then.
+        val old = BargeTestResult.fromJson("""{"state":"DONE","silent":true,"started":1,"mode":"ECHO_CANCEL","playback":"ASSISTANT","spokeMs":19000}""")!!
+        assertEquals(InterruptSensitivity.MEDIUM, old.interrupt)
     }
 
     @Test fun theCountRunListsWhatRobotHeard() {

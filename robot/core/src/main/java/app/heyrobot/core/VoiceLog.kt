@@ -355,7 +355,7 @@ enum class ShowSource(override val id: Int, override val title: String) : LogCod
 enum class BrainFail(override val id: Int, override val title: String) : LogCode {
     NO_MODEL(1, "no model"), LOAD_FAILED(2, "the model didn't load"), NOT_CONNECTED(3, "model process unreachable"), NOT_LOADED(4, "model not loaded"),
     NO_VISION(5, "no vision"), BAD_REQUEST(6, "bad request"), ENGINE(7, "engine error"), BUSY(8, "busy"), TOO_LONG(9, "too long"),
-    TIMEOUT(10, "no answer in time"), CRASHES(11, "stopped too often"), OTHER(12, "other error");
+    TIMEOUT(10, "no answer in time"), CRASHES(11, "stopped too often"), OTHER(12, "other error"), STOPPED(13, "model process stopped");
 
     companion object {
         /** BrainError by name (an unknown one is OTHER). */

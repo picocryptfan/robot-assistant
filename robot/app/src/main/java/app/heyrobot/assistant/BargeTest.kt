@@ -40,7 +40,7 @@ object BargeTest {
         if (active) return
         val hub = VoiceHub
         val base = BargeTestResult(BenchState.RUNNING, run == BargeRun.SILENT || run == BargeRun.TRICKY, System.currentTimeMillis(), hub.settings.bargeIn,
-            hub.settings.playback, count = run == BargeRun.COUNT, tricky = run == BargeRun.TRICKY)
+            hub.settings.playback, count = run == BargeRun.COUNT, tricky = run == BargeRun.TRICKY, interrupt = hub.interruptInUse)
         val l = hub.listener
         if (l == null || !l.running || !l.wakeWordLoaded) {
             write(base.copy(state = BenchState.FAILED, note = "Robot isn't listening for wake words right now. Turn the wake word on (Settings › Voice) " +

@@ -283,6 +283,8 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                             TextButton(onClick = { openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text("Open") }
                         }
                     }
+                    // 0.4.6: what Robot reads, where it is kept, and how to take it back, before and after turning it on.
+                    CheogramPrivacy(canTakeBack = granted && s.learnFromCheogram) { openFirst(ctx, NotificationAccess.settings(ctx), a) }
                     if (learned.isNotEmpty()) {
                         Text("Learned from Cheogram (${learned.size})", style = MaterialTheme.typography.titleSmall)
                         for (p in learned.take(MAX_LEARNED_SHOWN)) {
@@ -444,27 +446,59 @@ internal fun openFirst(ctx: android.content.Context, intents: List<android.conte
 /**
  * Notification access, step by step. Android blocks it for apps installed from a file (Robot, from its release page)
  * until "Allow restricted settings" is on in the app's App info, and that menu item only appears once Android has
- * refused the access, hence the order.
+ * refused the access, hence the order. 0.4.6: says why Android calls it a restricted setting, and each step has the
+ * button that opens its page.
  */
 @Composable
 internal fun NotificationAccessSteps() {
     val ctx = LocalContext.current
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    fun access() { for (i in NotificationAccess.settings(ctx)) { try { ctx.startActivity(i); return } catch (_: Exception) {} } }
+    fun appInfo() { try { ctx.startActivity(NotificationAccess.appInfo(ctx)) } catch (_: Exception) {} }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Allow notification access", style = MaterialTheme.typography.titleSmall)
-        Text("1. Tap Notification access and turn Robot on. If Android says it's a restricted setting, tap OK.", style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("2. Tap App info, then ⋮ (top right) › Allow restricted settings, and confirm. No such item? Android isn't blocking Robot: skip this.",
+        Text("Android calls notification access a restricted setting for apps installed from a file instead of an app store, as Robot " +
+            "is: harmful apps installed that way have used it to read people's messages and login codes. So it takes three steps.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("3. Tap Notification access again and turn Robot on.", style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("Notification access lets Robot see every app's notifications; it looks at Cheogram's only, and keeps names and addresses, never text.",
+        Text("1. Tap Notification access and turn on Robot's access (in a list, tap Robot first). If Android says “Restricted " +
+            "setting”, tap OK.", style = MaterialTheme.typography.bodyMedium)
+        FilledTonalButton(onClick = ::access, modifier = Modifier.heightIn(min = 48.dp)) { Text("Notification access") }
+        Text("2. Tap App info, then ⋮ (top right) › Allow restricted settings, and confirm; Android may ask for your PIN or " +
+            "fingerprint. No such item? Android isn't blocking Robot: skip this step.", style = MaterialTheme.typography.bodyMedium)
+        OutlinedButton(onClick = ::appInfo, modifier = Modifier.heightIn(min = 48.dp)) { Text("App info") }
+        Text("3. Tap Notification access again, turn on Robot's access and tap Allow.", style = MaterialTheme.typography.bodyMedium)
+        FilledTonalButton(onClick = ::access, modifier = Modifier.heightIn(min = 48.dp)) { Text("Notification access again") }
+    }
+}
+
+/**
+ * What "Learn names from Cheogram notifications" reads, where it is kept, and how to take it back (0.4.6), each claim as
+ * the code does it: CheogramListener (Cheogram's packages only, signed as first seen, a 1:1 chat's sender name and key
+ * and the shortcut's account; the manifest asks for conversations only), PeopleStore (files/people, left out of backups),
+ * ClaudeContext and HelperTrust (0.6.0: People and lookups never go to Claude or another helper unless a conversation that
+ * has one is shared: Include, a helper trusted with personal content, or "Send personal content to helpers
+ * automatically"; no helper is given lookup_contact, and what a text it asks for answers it doesn't say who got it).
+ */
+@Composable
+internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("What Robot reads, and where it goes", style = MaterialTheme.typography.titleSmall)
+        Text("Notification access lets an app see every app's notifications. Robot asks Android for conversations only, drops all " +
+            "but Cheogram's at once, and ignores them all while this switch is off.", style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text("From a Cheogram message in a one-to-one chat, Robot keeps only the sender's name and address and which of your accounts " +
+            "got it. It never looks at, keeps or logs what the message says, and group chats teach it nothing. It checks Cheogram's " +
+            "signature too, so an app pretending to be Cheogram teaches nothing.", style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text("Names stay on this phone, in Robot's private storage, left out of Android's backups. Robot never sends them anywhere by " +
+            "itself: not to Claude, not to any other helper or online AI model. Robot's own model, on the phone, sees a name only when " +
+            "it looks someone up for you. Only if you choose to share with Claude or another helper a conversation in which Robot " +
+            "looked someone up (Include, a helper you trust with personal content, or Safety & privacy › Send personal content to " +
+            "helpers automatically) can what Robot said about them go with it.",
             style = MaterialTheme.typography.bodyMedium, color = muted)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = {
-                for (i in NotificationAccess.settings(ctx)) { try { ctx.startActivity(i); return@FilledTonalButton } catch (_: Exception) {} }
-            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Notification access") }
-            OutlinedButton(onClick = { try { ctx.startActivity(NotificationAccess.appInfo(ctx)) } catch (_: Exception) {} },
-                modifier = Modifier.heightIn(min = 48.dp)) { Text("App info") }
-        }
+        Text("To take it back: turn this switch off, and Robot stops learning at once. Then turn Robot off in Notification access. " +
+            "Names already learned stay until you tap Remove on them, or Delete all People.", style = MaterialTheme.typography.bodyMedium, color = muted)
+        // While the switch is off and access is still allowed, the row above already has the button.
+        if (canTakeBack) TextButton(onClick = openAccess, modifier = Modifier.heightIn(min = 48.dp)) { Text("Notification access") }
     }
 }
 
