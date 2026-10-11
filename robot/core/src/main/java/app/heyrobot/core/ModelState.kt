@@ -391,6 +391,8 @@ object LoadCheck {
 enum class FallbackWhy(override val id: Int, override val title: String) : LogCode {
     NOT_DOWNLOADED(1, "not downloaded"), NOT_CHECKED(2, "not checked yet"), NEEDS_TPU_OK(3, "waits for you to allow the TPU"),
     UNUSABLE(4, "can't be used"), LOAD_FAILED(5, "didn't load"), FAILED_EARLIER(6, "didn't load earlier"),
+    /** Its model process stopped while it was in memory (a native crash, or Android reclaiming its memory). */
+    STOPPED(7, "stopped unexpectedly"),
 }
 
 /** Why a model didn't load (BrainMsg.Loaded, and the voice log stores [id]). */
@@ -402,8 +404,9 @@ enum class LoadFailure(override val id: Int, override val title: String) : LogCo
 
 /**
  * Which model the assistant loads (pure, tested): the one you chose when it is ready, else Fast with a message that
- * says why, so Robot is never left without a model because of a choice. A model that failed to load in this process is
- * skipped until you choose it again (any save of the settings) or its file changes.
+ * says why, so Robot is never left without a model because of a choice. A model that failed to load in this process, or
+ * whose model process stopped while it was in memory, is skipped until you choose it again (any save of the settings)
+ * or its file changes: never loaded again and again until the crash lockout stops Fast too.
  */
 object ModelChoice {
     sealed class Decision {
@@ -416,16 +419,19 @@ object ModelChoice {
     const val NO_MODEL = "Robot's model isn't on this phone yet. Open the Robot app to download it."
 
     /**
-     * [chosenFailedBefore]: [chosen] failed to load earlier in this process (Fast is never skipped: it is tried every
-     * time, as before 0.4.1).
+     * [chosenFailedBefore]: [chosen] failed to load earlier in this process, or stopped it ([earlier] says which; Fast is
+     * never skipped: it is tried every time, as before 0.4.1).
      */
-    fun decide(chosen: BrainModel, chosenState: ModelAvailability, fastState: ModelAvailability, chosenFailedBefore: Boolean): Decision {
+    fun decide(
+        chosen: BrainModel, chosenState: ModelAvailability, fastState: ModelAvailability, chosenFailedBefore: Boolean,
+        earlier: FallbackWhy = FallbackWhy.FAILED_EARLIER,
+    ): Decision {
         if (chosen == BrainModel.FAST) {
             return if (fastState == ModelAvailability.READY) Decision.Load(BrainModel.FAST) else Decision.NoLoad(NO_MODEL, openApp = true)
         }
         val why = when {
             chosenState != ModelAvailability.READY -> whyFor(chosenState)
-            chosenFailedBefore -> FallbackWhy.FAILED_EARLIER
+            chosenFailedBefore -> earlier
             else -> return Decision.Load(chosen)
         }
         return if (fastState == ModelAvailability.READY) Decision.Load(BrainModel.FAST, chosen, why)
@@ -465,6 +471,7 @@ object ModelChoice {
             FallbackWhy.UNUSABLE -> "Robot can't use $name (the Robot app › Model says why), so Robot is using Fast."
             FallbackWhy.LOAD_FAILED -> "$name didn't load" + (detail?.let { " ($it)" } ?: "") + ", so Robot is using Fast."
             FallbackWhy.FAILED_EARLIER -> "$name didn't load earlier, so Robot is using Fast. Tap it again in the Robot app › Model to retry."
+            FallbackWhy.STOPPED -> "$name stopped unexpectedly, so Robot is using Fast. Tap it again in the Robot app › Model to retry."
         }
     }
 

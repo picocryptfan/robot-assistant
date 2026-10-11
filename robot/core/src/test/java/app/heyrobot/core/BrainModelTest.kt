@@ -140,6 +140,24 @@ class BrainModelTest {
         assertTrue((ModelChoice.afterFailure(BrainModel.OWN, LoadFailure.PROCESS, ModelAvailability.NOT_DOWNLOADED) as ModelChoice.Decision.NoLoad).openApp)
     }
 
+    /**
+     * A chosen model whose model process stopped while it was in memory (a native crash while it answered, or Android
+     * reclaiming 4 GB) is skipped at the next question, so it isn't loaded again and again until the crash lockout (three
+     * stops an hour) stops Fast too.
+     */
+    @Test fun aModelThatStoppedTheProcessIsSkipped() {
+        assertEquals(ModelChoice.Decision.Load(BrainModel.FAST, BrainModel.UNCENSORED, FallbackWhy.STOPPED),
+            ModelChoice.decide(BrainModel.UNCENSORED, ready, ready, chosenFailedBefore = true, earlier = FallbackWhy.STOPPED))
+        assertEquals("“Uncensored, slower” stopped unexpectedly, so Robot is using Fast. Tap it again in the Robot app › Model to retry.",
+            ModelChoice.fallbackText(BrainModel.UNCENSORED, FallbackWhy.STOPPED))
+        val alone = ModelChoice.decide(BrainModel.SMARTER, ready, ModelAvailability.NOT_DOWNLOADED, true, FallbackWhy.STOPPED) as ModelChoice.Decision.NoLoad
+        assertEquals("“Smarter, slower” stopped unexpectedly, and Fast isn't on this phone either. Open the Robot app › Model.", alone.problem)
+        // Fast itself is tried every time, as before.
+        assertEquals(ModelChoice.Decision.Load(BrainModel.FAST), ModelChoice.decide(BrainModel.FAST, ready, ready, true, FallbackWhy.STOPPED))
+        assertEquals("Used Fast (Gemma 4 E2B, TPU) instead of Smarter (Gemma 4 E4B, CPU): stopped unexpectedly",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_FALLBACK, ModelCode.SMARTER.id, FallbackWhy.STOPPED.id, ModelCode.FAST.id)))
+    }
+
     @Test fun fallbackMessagesArePlain() {
         assertEquals("“Smarter, slower” isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Model.",
             ModelChoice.fallbackText(BrainModel.SMARTER, FallbackWhy.NOT_DOWNLOADED))

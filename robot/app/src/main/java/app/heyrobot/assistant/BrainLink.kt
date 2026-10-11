@@ -228,8 +228,10 @@ object BrainKeeper {
     private var client: BrainClient? = null
     private var unloadJob: Job? = null
     private val deaths = ArrayDeque<Long>()
-    /** Models that failed to load in this process, by id, with their file's fingerprint then. */
-    private val failed = HashMap<String, String>()
+    /** Models that failed to load in this process, or stopped it, by id: their file's fingerprint then, and which it was. */
+    private val failed = HashMap<String, Pair<String, FallbackWhy>>()
+    /** The model loading or in memory (any fallback included), for [onDeath]. */
+    @Volatile private var holding: LoadPlan? = null
     /** The fallback in force, and which one it is (the panel shows a new one once, not the same one at every question). */
     private var lastFallback: String? = null
     private var lastFallbackKey: String? = null
@@ -242,14 +244,15 @@ object BrainKeeper {
         ModelAvailability.NOT_CHECKED to null
     }
 
-    private fun failedBefore(p: LoadPlan?): Boolean = p != null && failed[p.model.id] == p.fingerprint
+    private fun failedBefore(p: LoadPlan?): FallbackWhy? = p?.let { failed[it.model.id]?.takeIf { f -> f.first == it.fingerprint }?.second }
 
     /** The model to load now and why (pure core ModelChoice on what the files say). */
     private fun decide(ctx: Context): Pair<ModelChoice.Decision, LoadPlan?> {
         val chosen = VoiceHub.settings.brainModelChoice
         val (chosenState, chosenPlan) = planOf(ctx, chosen)
         val (fastState, fastPlan) = if (chosen == BrainModel.FAST) chosenState to chosenPlan else planOf(ctx, BrainModel.FAST)
-        val d = ModelChoice.decide(chosen, chosenState, fastState, failedBefore(chosenPlan))
+        val earlier = failedBefore(chosenPlan)
+        val d = ModelChoice.decide(chosen, chosenState, fastState, earlier != null, earlier ?: FallbackWhy.FAILED_EARLIER)
         return d to if (d is ModelChoice.Decision.Load && d.model == chosen) chosenPlan else fastPlan
     }
 
@@ -287,6 +290,7 @@ object BrainKeeper {
         val m = plan.model
         val st = c.call(BrainProtocol.REQ_STATUS, BrainMsg.Empty, 10_000) as? BrainMsg.Status
         if (st?.loaded == true && st.model == m && st.backend == plan.backend) {
+            holding = plan
             noteFallback(load.instead, load.why, detail)
             _state.value = State(Readiness.READY, vision = st.vision, model = m, backend = plan.backend).withFallback()
             return c
@@ -297,6 +301,7 @@ object BrainKeeper {
             c.call(BrainProtocol.REQ_UNLOAD, BrainMsg.Empty, 30_000)
         }
         noteFallback(load.instead, load.why, detail)
+        holding = plan
         _state.value = State(Readiness.LOADING, model = m, backend = plan.backend).withFallback()
         val r = c.call(BrainProtocol.REQ_LOAD, BrainMsg.Load(plan.path, m, plan.backend, plan.contextTokens), 300_000) as? BrainMsg.Loaded
         if (r?.ok == true) {
@@ -307,8 +312,9 @@ object BrainKeeper {
             return c
         }
         val failure = r?.failure ?: if (r == null) (if (c.isConnected) LoadFailure.TIMEOUT else LoadFailure.PROCESS) else LoadFailure.ENGINE
+        holding = null
         VoiceLog.add(VoiceEvent.MODEL_LOAD_FAILED, ModelCode.of(m), failure)
-        if (m != BrainModel.FAST && ModelChoice.remember(failure)) failed[m.id] = plan.fingerprint
+        if (m != BrainModel.FAST && ModelChoice.remember(failure)) failed[m.id] = plan.fingerprint to FallbackWhy.FAILED_EARLIER
         val (fastState, fastPlan) = planOf(ctx, BrainModel.FAST)
         val next = ModelChoice.afterFailure(m, failure, fastState, r?.error ?: "The model didn't load in time.")
         if (next is ModelChoice.Decision.Load && fastPlan != null && m != BrainModel.FAST) {
@@ -381,6 +387,14 @@ object BrainKeeper {
 
     private fun onDeath() {
         synchronized(deaths) { deaths.addLast(System.currentTimeMillis()) }
+        // A model you chose that took :brain down while in memory (a native crash as it answered, or Android reclaiming
+        // its memory) isn't loaded again at the next question, nor at every one until the lockout above stops Fast too:
+        // Fast instead, with a notice, until you choose it again. (A death during its load is the load's failure.)
+        val p = holding
+        holding = null
+        if (p != null && p.model != BrainModel.FAST) scope.launch {
+            mutex.withLock { if (failed[p.model.id]?.first != p.fingerprint) failed[p.model.id] = p.fingerprint to FallbackWhy.STOPPED }
+        }
         _state.value = State(Readiness.UNKNOWN)
     }
 
@@ -389,6 +403,7 @@ object BrainKeeper {
         mutex.withLock {
             val c = client ?: return@withLock
             client = null
+            holding = null
             // Unbinding is enough: BrainService unloads when its last client leaves.
             c.close()
             _state.value = State(Readiness.UNKNOWN)
