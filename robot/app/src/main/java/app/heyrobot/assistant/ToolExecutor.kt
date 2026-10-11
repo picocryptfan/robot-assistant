@@ -39,6 +39,7 @@ import app.heyrobot.core.MailTarget
 import app.heyrobot.core.MailTo
 import app.heyrobot.core.Nearby
 import app.heyrobot.core.NearbyFail
+import app.heyrobot.core.NearbyLookup
 import app.heyrobot.core.NearestAsk
 import app.heyrobot.core.OrganicMapsRoute
 import app.heyrobot.core.NoteSearch
@@ -240,29 +241,25 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun nearest(what: String, searchDone: String): Executed {
         val started = SystemClock.elapsedRealtime()
         var requests = 0
-        fun instead(why: NearbyFail): Executed {
-            RLog.i("maps_nearest", "found" to false, "why" to why, "requests" to requests, "ms" to (SystemClock.elapsedRealtime() - started))
+        val r = Nearby.lookup(CoarseLocation.granted(ctx), abort,
+            locate = { CoarseLocation.find(ctx, Nearby.FIX_MS, abort).fix?.let { it.lat to it.lon } },
+            search = { lat, lon -> NominatimClient.search(ctx, what, lat, lon, abort) { requests = it } })
+        val ms = SystemClock.elapsedRealtime() - started
+        if (r is NearbyLookup.Instead) {
+            RLog.i("maps_nearest", "found" to false, "why" to r.why, "requests" to requests, "ms" to ms)
             if (abort.cancelled) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
-            val r = maps(what, searchDone)
-            return if (r.status.succeeded) r.copy(detail = Nearby.instead(why, navigate = searchDone == NAVIGATE_DONE)) else r
+            val m = maps(what, searchDone)
+            return if (m.status.succeeded) m.copy(detail = Nearby.instead(r.why, navigate = searchDone == NAVIGATE_DONE)) else m
         }
-        if (!CoarseLocation.granted(ctx)) return instead(NearbyFail.NOT_ALLOWED)
-        val found = CoarseLocation.find(ctx, Nearby.FIX_MS, abort)
-        if (abort.cancelled) return instead(NearbyFail.STOPPED)
-        val fix = found.fix ?: return instead(NearbyFail.NO_LOCATION)
-        val places = try {
-            NominatimClient.search(ctx, what, fix.lat, fix.lon, abort) { requests = it }
-        } catch (e: NominatimClient.Failure) {
-            return instead(e.why)
-        }
-        val (place, metres) = Nearby.closest(places, fix.lat, fix.lon) ?: return instead(NearbyFail.NOTHING)
-        if (abort.cancelled) return instead(NearbyFail.STOPPED)
-        val opened = start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.uri(fix.lat, fix.lon, START_NAME, place.lat, place.lon, place.name))))
+        val f = r as NearbyLookup.Found
+        val place = f.place
+        if (abort.cancelled) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
+        val opened = start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.uri(f.lat, f.lon, START_NAME, place.lat, place.lon, place.name))))
             || start(Intent(Intent.ACTION_VIEW, Uri.parse(OrganicMapsRoute.geo(place.lat, place.lon, place.name))))
         if (!opened) return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
-        val far = Nearby.distance(metres, WeatherUnits.of(region))
-        RLog.i("maps_nearest", "found" to true, "places" to places.size, "requests" to requests, "ms" to (SystemClock.elapsedRealtime() - started))
-        val sent = "Sent to OpenStreetMap: “$what” near ${Nearby.coord(fix.lat)}, ${Nearby.coord(fix.lon)}"
+        val far = Nearby.distance(f.metres, WeatherUnits.of(region))
+        RLog.i("maps_nearest", "found" to true, "places" to f.places, "requests" to requests, "ms" to ms)
+        val sent = "Sent to OpenStreetMap: “$what” near ${Nearby.coord(f.lat)}, ${Nearby.coord(f.lon)}"
         return Executed(ActionStatus.DONE, "Opened Organic Maps' route to the nearest one OpenStreetMap knows, $far away in a straight line.",
             launchedApp = true, results = listOf(mapOf("place" to place.name, "distance" to far)),
             body = listOfNotNull("${place.name} · $far", place.address).joinToString("\n") + "\n\n" + sent)

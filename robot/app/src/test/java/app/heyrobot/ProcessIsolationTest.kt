@@ -295,8 +295,11 @@ class ProcessIsolationTest {
         // its raw request private, and only the maps tools use it (core Nearby.kt builds the URL).
         val osm = File(java("app"), "app/heyrobot/sys/NominatimClient.kt").readText()
         assertTrue(osm.contains("private val HOSTS = setOf(Nearby.HOST)") && osm.contains("require(u.protocol == \"https\" && u.host in HOSTS)") &&
-            osm.contains("c.instanceFollowRedirects = false") && osm.contains("pace(abort)"))
+            osm.contains("c.instanceFollowRedirects = false") && osm.contains("searches.search("))
         assertTrue(osm.contains("private fun get(") && !osm.contains("    fun get("))
+        // The pace (a second apart at most) and the cache are core's NearbySearch, every request through it.
+        val nearby = File(java("core"), "app/heyrobot/core/Nearby.kt").readText()
+        assertTrue(nearby.contains("pace(abort)") && nearby.contains("Nearby.MIN_GAP_MS") && nearby.contains("Nearby.CACHE_MS"))
         assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/NominatimClient.kt"), usersOf(Regex("""\bNominatimClient\b""")))
         // It goes only to Open-Meteo's two hosts, over HTTPS (core Weather.kt builds the URLs), its raw request is private, and
         // only the weather tool and Settings › Weather use it.

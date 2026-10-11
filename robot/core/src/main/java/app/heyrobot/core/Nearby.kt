@@ -31,6 +31,77 @@ enum class NearbyFail(override val id: Int, override val title: String, val text
     STOPPED(9, "stopped", "Stopped"),
 }
 
+/** A search that failed ([NearbySearch]'s fetch, the app's NominatimClient): why, and the HTTP status when there was one. */
+class NearbyFailure(val why: NearbyFail, val http: Int = 0) : Exception(why.name)
+
+/** How "the nearest …" went ([Nearby.lookup]): the closest place found, or why Organic Maps' search opens instead. */
+sealed class NearbyLookup {
+    /** [place], [metres] from where the phone is ([lat], [lon], never sent), among [places] found. */
+    data class Found(val place: NearbyPlace, val metres: Double, val lat: Double, val lon: Double, val places: Int) : NearbyLookup()
+    data class Instead(val why: NearbyFail) : NearbyLookup()
+}
+
+/**
+ * The searches for the nearest place, the network aside (0.4.0): [search]'s fetch GETs one URL and throws
+ * [NearbyFailure] (the app's NominatimClient: HTTPS to [Nearby.HOST] only, no redirects). The small box first, the
+ * larger only if it found nothing; at most one request a second and each answer kept [Nearby.CACHE_MS] (Nominatim's
+ * usage policy). [clock]: elapsed milliseconds; [sleep] waits (an interrupt ends the search). One instance per process,
+ * so the pace and the cache hold for every search in it.
+ */
+class NearbySearch(private val clock: () -> Long, private val sleep: (Long) -> Unit) {
+    /** When the last request went ([clock]), for the one-a-second rule; null: none yet. */
+    private var lastAt: Long? = null
+    private val cache = LinkedHashMap<String, Pair<Long, List<NearbyPlace>>>()
+
+    /** The places matching [query] around [lat], [lon]. Blocking. [requests] is told how many went online. */
+    fun search(query: String, lat: Double, lon: Double, abort: Abort, fetch: (String, Abort) -> String, requests: (Int) -> Unit = {}): List<NearbyPlace> {
+        var sent = 0
+        try {
+            for (half in Nearby.BOXES) {
+                val url = Nearby.searchUrl(query, lat, lon, half)
+                val found = synchronized(cache) { cache[url]?.takeIf { clock() - it.first < Nearby.CACHE_MS }?.second } ?: run {
+                    if (abort.cancelled || abort.remainingMs() < MIN_MS) throw ended(abort)
+                    pace(abort)
+                    sent++
+                    val places = Nearby.places(fetch(url, abort)) ?: throw NearbyFailure(NearbyFail.SERVICE)
+                    synchronized(cache) {
+                        cache[url] = clock() to places
+                        while (cache.size > MAX_CACHED) cache.remove(cache.keys.first())
+                    }
+                    places
+                }
+                if (found.isNotEmpty()) return found
+            }
+            return emptyList()
+        } finally {
+            requests(sent)
+        }
+    }
+
+    /** Waits out the one-a-second rule (Stop or too little time left ends the search instead). */
+    private fun pace(abort: Abort) {
+        while (true) {
+            val wait = synchronized(this) {
+                val now = clock()
+                val left = lastAt?.let { it + Nearby.MIN_GAP_MS - now } ?: 0L
+                if (left <= 0) { lastAt = now; 0L } else left
+            }
+            if (wait <= 0) return
+            if (abort.cancelled || abort.remainingMs() < wait + MIN_MS) throw ended(abort)
+            try { sleep(wait) } catch (_: InterruptedException) { throw ended(abort) }
+        }
+    }
+
+    companion object {
+        /** Less time than this left: no new request. */
+        const val MIN_MS = 500L
+        const val MAX_CACHED = 16
+
+        /** Stop, or the deadline. */
+        fun ended(abort: Abort) = NearbyFailure(if (abort.cancelled && !abort.expired) NearbyFail.STOPPED else NearbyFail.TIMEOUT)
+    }
+}
+
 object Nearby {
     const val HOST = "nominatim.openstreetmap.org"
     private const val SEARCH = "https://$HOST/search"
@@ -105,6 +176,31 @@ object Nearby {
         val dLon = Math.toRadians(lon2 - lon1)
         val h = sin(dLat / 2).pow(2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2)
         return 2 * r * asin(sqrt(h.coerceIn(0.0, 1.0)))
+    }
+
+    /** Nominatim's answer [code]: null for 200 (read it), BUSY when it asks to slow down, SERVICE otherwise. */
+    fun httpFail(code: Int): NearbyFail? = when (code) {
+        200 -> null
+        429, 503 -> NearbyFail.BUSY
+        else -> NearbyFail.SERVICE
+    }
+
+    /**
+     * The nearest [query] around where the phone is: [allowed] (approximate location), [locate] (the position, or null
+     * when none came), [search] (the places around a position; throws [NearbyFailure]). Anything in the way, and Stop or
+     * the deadline ([abort]), is [NearbyLookup.Instead] with why; the app then opens Organic Maps' search.
+     */
+    fun lookup(allowed: Boolean, abort: Abort, locate: () -> Pair<Double, Double>?, search: (Double, Double) -> List<NearbyPlace>): NearbyLookup {
+        fun ended() = NearbyLookup.Instead(if (abort.cancelled && !abort.expired) NearbyFail.STOPPED else NearbyFail.TIMEOUT)
+        if (!allowed) return NearbyLookup.Instead(NearbyFail.NOT_ALLOWED)
+        if (abort.cancelled) return ended()
+        val fix = locate()
+        if (abort.cancelled) return ended()
+        val (lat, lon) = fix ?: return NearbyLookup.Instead(NearbyFail.NO_LOCATION)
+        val places = try { search(lat, lon) } catch (e: NearbyFailure) { return NearbyLookup.Instead(e.why) }
+        val (place, metres) = closest(places, lat, lon) ?: return NearbyLookup.Instead(NearbyFail.NOTHING)
+        if (abort.cancelled) return ended()
+        return NearbyLookup.Found(place, metres, lat, lon, places.size)
     }
 
     /** The closest of [places] to the phone ([lat], [lon] as Android gave them, never sent anywhere), and how far. */
