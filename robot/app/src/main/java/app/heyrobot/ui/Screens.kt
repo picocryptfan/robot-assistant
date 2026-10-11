@@ -248,7 +248,8 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
         floatingActionButton = {
             if (c != null) ExtendedFloatingActionButton(
                 onClick = { a.talk(c.id) },
-                icon = { Icon(RIcons.Mic, null) },
+                // Material hides the button's text from TalkBack (it can collapse to the icon), so the icon carries the name.
+                icon = { Icon(RIcons.Mic, "Continue") },
                 text = { Text("Continue") },
             )
         },
