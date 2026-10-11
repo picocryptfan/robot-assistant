@@ -98,7 +98,9 @@ release: a build has the engine only when `tools/build_llama.sh` made its librar
 - **The CPU only:** no TPU (no GGUF file has TPU code), and no GPU: llama.cpp's Vulkan and OpenCL backends are left out, as
   the Pixel 10's GPU path proved unreliable in the 0.4.1 lab.
 - **4,096 tokens**, as for every model: a file trained for less is refused; Robot counts the prompt with the model's own
-  tokenizer and drops older turns until the reply has its room (`core/BrainPolicy.kt`, `PromptFit`).
+  tokenizer and drops older turns until the reply has its room (`core/BrainPolicy.kt`, `PromptFit`). The template gets the
+  turns alternating, as strict ones (Gemma's) require: a question whose reply failed isn't replayed, and two replies in a
+  row (Robot's, then Claude's) are joined.
 
 ### How Robot checks a GGUF file
 
@@ -153,7 +155,8 @@ release: a build has the engine only when `tools/build_llama.sh` made its librar
   engine's model first (`brain_engine_switch`), and the shared slot keeps the new one waiting ("still stopping") while the
   old one lets go; a model is never freed under a reply llama.cpp hasn't returned from.
 - Without the library (a build that skipped the script), a GGUF file is still checked and shown, and Settings › Model says
-  "This build of Robot can't run GGUF files"; choosing it falls back to Fast with the usual notice.
+  "This build of Robot can't run GGUF files"; it can't be chosen, and if it was chosen before, Robot uses Fast with the
+  usual notice.
 
 ### Let the model think first
 
