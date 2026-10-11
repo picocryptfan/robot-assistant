@@ -326,10 +326,19 @@ class ChatReply {
     private fun addCalls(a: JSONArray) {
         for (i in 0 until a.length()) {
             val t = a.optJSONObject(i) ?: continue
-            val index = if (t.has("index")) t.optInt("index") else calls.size
-            val call = calls.getOrPut(index) { Call() }
-            t.optString("id").takeIf { it.isNotEmpty() && it != "null" }?.let { call.id = it }
             val fn = t.optJSONObject("function")
+            val newId = t.optString("id").takeIf { it.isNotEmpty() && it != "null" }
+            val named = fn?.optString("name")?.takeIf { it.isNotEmpty() && it != "null" } != null
+            val index = when {
+                t.has("index") -> t.optInt("index")
+                calls.isEmpty() -> 0
+                // No index (some servers): a piece with neither a name nor another id continues the last call (its
+                // arguments in pieces); anything else starts a new one.
+                !named && (newId == null || newId == calls.getValue(calls.lastKey()).id) -> calls.lastKey()
+                else -> calls.lastKey() + 1
+            }
+            val call = calls.getOrPut(index) { Call() }
+            newId?.let { call.id = it }
             // The name comes once (OpenAI), or again with every piece (some servers), or in pieces (others).
             fn?.optString("name")?.takeIf { it.isNotEmpty() && it != "null" }?.let { n -> call.name = call.name.let { old -> if (old.isNullOrEmpty() || old == n) n else old + n } }
             fn?.opt("arguments")?.let { args ->

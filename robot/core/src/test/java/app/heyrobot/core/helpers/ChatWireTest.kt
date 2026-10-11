@@ -248,6 +248,20 @@ class ChatWireTest {
         assertTrue(d.complete)
     }
 
+    @Test fun callPiecesWithoutAnIndexJoinTheirCall() {
+        // A server that leaves out "index": the arguments' later pieces belong to the call they follow; a new id or name
+        // starts the next call.
+        val (_, d) = play(
+            chunk("""{"tool_calls":[{"id":"a","type":"function","function":{"name":"set_timer","arguments":""}}]}"""),
+            chunk("""{"tool_calls":[{"function":{"arguments":"{\"minutes\":"}}]}"""),
+            chunk("""{"tool_calls":[{"id":"a","function":{"arguments":"5}"}}]}"""),
+            chunk("""{"tool_calls":[{"id":"b","type":"function","function":{"name":"add_note","arguments":"{\"text\":\"milk\"}"}}]}"""),
+            chunk("""{"tool_calls":[{"type":"function","function":{"name":"add_note","arguments":"{\"text\":\"eggs\"}"}}]}""", "tool_calls"),
+        )
+        assertEquals(listOf("a", "b", "call_robot_2"), d.calls.map { it.first })
+        assertEquals(listOf(mapOf("minutes" to 5), mapOf("text" to "milk"), mapOf("text" to "eggs")), d.calls.map { it.second.args })
+    }
+
     @Test fun thinkTagsSplitAnywhereNeverReachTheVoice() {
         val text = "<think>Let me think about it.</think>The answer is 4."
         for (cut in 0..text.length) for (cut2 in cut..text.length) {
