@@ -8,7 +8,7 @@
 
 Robot does not collect anything about you. There is no account, no analytics, no ads, no crash reporting and no tracking.
 The people who make Robot receive nothing from your phone. Robot goes online only for the things listed below, and only
-when you start them.
+when you start them, except the daily check for updates, which you can turn off.
 
 ## What stays on your phone
 
@@ -26,8 +26,9 @@ when you start them.
   the question you asked.
 - **Names learned from Cheogram** (off unless you turn on Settings › People › "Learn names from Cheogram
   notifications"): who messages you in Cheogram (name, address, account), never the messages.
-- **API keys** you add for Claude. They are encrypted with a key that never leaves your phone's secure hardware (Android
-  Keystore, AES-GCM), and decrypted only when Robot calls Claude.
+- **API keys** you add for Claude, and the **access token** you may add for a private update repository (Settings ›
+  About › Updates › Advanced). They are encrypted with a key that never leaves your phone's secure hardware (Android
+  Keystore, AES-GCM), and decrypted only when Robot calls Claude, or GitHub's API for the token.
 - **Robot's diagnostic logs** (Settings › Voice › Voice log, and Android's log) hold codes and numbers only, never what
   you said or what Robot answered. They stay on the phone; you can copy the Voice log yourself for a bug report.
 
@@ -55,6 +56,13 @@ when you start them.
      you press Send there.
 5. **Other apps you hand things to** (Cheogram, Proton Mail, your SMS or calendar app, Organic Maps, the Claude app).
    Robot fills in a draft or opens a route; that app sends something only when you tap Send, under its own policy.
+6. **Checking for updates** (Settings › About › Updates): once a day while "Check for updates automatically" is on (the
+   default), and when you tap Check now. Robot asks GitHub (api.github.com) for the newest releases of Robot's repository,
+   or of the one you set in Advanced, and downloads an update from GitHub's servers (objects.githubusercontent.com,
+   release-assets.githubusercontent.com) when you tap Download, or by itself on Wi-Fi if "Download updates on Wi-Fi" is on
+   (the default). To GitHub: your IP address and Robot's version in the request ("Robot/0.4.5"); nothing else is sent. An
+   access token, if you add one, goes to api.github.com only. GitHub handles the requests under its own privacy statement.
+   Turn the automatic check off and Robot asks GitHub only when you tap Check now.
 
 Nothing else goes online. You can turn off Robot's Network permission in GrapheneOS: everything on the phone keeps
 working, and the online features above say they can't connect.
@@ -70,11 +78,14 @@ network permissions are granted at install; GrapheneOS lets you turn the network
 - **Approximate location:** the weather "here" and the nearest place.
 - **Photos and videos** (or only the ones you pick): finding large files to free space. Deleting one always asks you
   again, in Android's own window.
-- **Notifications:** alarms, timers and reminders, such as the one after a restart.
+- **Notifications:** alarms, timers and reminders, such as the one after a restart, and that an update is available.
 - **Alarms** (at install): timers and alarms.
 - **Usage access** (optional, in Android's settings): which apps use the most space.
 - **Notification access** (optional, only for learning names from Cheogram).
 - **Network** (at install): the online features above.
+- **Install unknown apps** (optional, in Android's settings, which Settings › Updates opens): so Robot can install its own
+  updates. It installs nothing else. "Install updates without asking" (off by default) uses a permission granted at
+  install that lets Robot ask Android to skip its confirmation for Robot's own update.
 
 ## Children
 
