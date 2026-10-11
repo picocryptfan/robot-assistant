@@ -37,7 +37,7 @@ import app.heyrobot.core.WakePhrases
 import app.heyrobot.core.enumOr
 import app.heyrobot.core.writeAtomic
 import app.heyrobot.assistant.conversation.ConversationSession
-import app.heyrobot.sys.ClaudeSpendStore
+import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.KwsAssets
@@ -136,8 +136,8 @@ object VoiceHub {
         app = ctx.applicationContext
         VoiceLog.init(Paths.voiceLog(app))
         worker = Handler(HandlerThread("robot-voice").apply { start() }.looper)
-        // Whether a Claude key is saved and today's Claude spend, read off the main thread before the panel needs them.
-        Thread({ ClaudeLink.refresh(app); ClaudeSpendStore.current(app) }, "robot-claude-init").apply { isDaemon = true; start() }
+        // Whether each helper's key is saved and today's spend, read off the main thread before the panel needs them.
+        Thread({ HelperLink.refresh(app, settings); HelperSpendStore.current(app) }, "robot-helper-init").apply { isDaemon = true; start() }
         settings = SettingsStore.load(app)
         VoiceEngines.init(app, Paths.dir(app))
         tts = VoiceEngines.textToSpeech(app).also {
@@ -479,10 +479,13 @@ object VoiceHub {
                 BrainKeeper.settingsChanged(app, modelChanged)
                 PanelController.settingsChanged()
             }
-            Cmd.CLAUDE_KEY -> Thread({
-                ClaudeLink.keyChanged(app)
-                main.post { PanelController.claudeKeyChanged() }
-            }, "robot-claude-key").apply { isDaemon = true; start() }
+            Cmd.HELPER_KEY -> {
+                val id = i.getStringExtra(Cmd.EXTRA_ID) ?: return
+                Thread({
+                    HelperLink.keyChanged(app, id)
+                    main.post { PanelController.helperKeyChanged(id) }
+                }, "robot-helper-key").apply { isDaemon = true; start() }
+            }
             Cmd.MEDIA_REMOVED -> PanelController.forgetKeptMedia()
             Cmd.CONVERSATIONS_DELETED -> PanelController.forgetDeleted(i.getStringExtra(Cmd.EXTRA_ID))
             // 0.5.0: a session recording a deleted transcript stops without writing it back; a Resume offer for one goes.

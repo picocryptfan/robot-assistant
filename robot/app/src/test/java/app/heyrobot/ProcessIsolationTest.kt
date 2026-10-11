@@ -39,6 +39,12 @@ class ProcessIsolationTest {
         .replace(Regex("\"\"\".*?\"\"\"", RegexOption.DOT_MATCHES_ALL), "\"\"")
         .replace(Regex("\"(\\\\.|[^\"\\\\\n])*\""), "\"\"")
 
+    /** Source without comments, string literals kept (a URL in a string is one the code may use). */
+    private fun withoutComments(f: File): String = f.readText()
+        .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
+        .replace(Regex("(?m)^\\s*//[^\n]*"), "")
+        .replace(Regex("\\s// [^\n]*"), "")
+
     private fun usersOf(pattern: Regex, files: Map<String, File> = ours) = files.filter { pattern.containsMatchIn(code(it.value)) }.keys.sorted()
 
     @Test fun liteRtOnlyInTheBrainEngineFile() {
@@ -116,15 +122,21 @@ class ProcessIsolationTest {
         assertTrue(users.toString(), users.isNotEmpty() && users.all { it.startsWith("claude/") })
         val claudeUsers = usersOf(Regex("""\bapp\.heyrobot\.claude\b"""), ours.filterKeys { !it.startsWith("claude/") })
         assertTrue(claudeUsers.toString(), claudeUsers.isNotEmpty() && claudeUsers.all { it.startsWith("app/assistant/") })
+        // 0.6.0: the other helpers' clients (plain OkHttp, no other SDK) live in the same module, used only by the assistant.
+        val helperUsers = usersOf(Regex("""\bapp\.heyrobot\.helpers\b"""), ours.filterKeys { !it.startsWith("claude/") })
+        assertTrue(helperUsers.toString(), helperUsers.isNotEmpty() && helperUsers.all { it.startsWith("app/assistant/") })
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bokhttp3\b"""), ours.filterKeys { !it.startsWith("claude/") }))
         fun deps(m: String) = File(root, "$m/build.gradle").readText()
+        assertTrue(deps("claude").contains("com.squareup.okhttp3:okhttp:4.12.0"))
         assertTrue(deps("claude").contains("com.anthropic:anthropic-java:"))
         for (m in listOf("core", "brain", "voice", "app")) assertTrue(m, !deps(m).contains("com.anthropic"))
         for (m in listOf("core", "brain", "voice")) assertTrue(m, !deps(m).contains("project(':claude')"))
         assertTrue(deps("app").contains("project(':claude')"))
         assertTrue(!deps("claude").contains("litert") && !deps("claude").contains("project(':voice')") && !deps("claude").contains("project(':brain')"))
-        // The API key is decrypted in one place, in the :voice process, and handed only to the SDK client.
-        assertEquals(listOf("app/assistant/ClaudeLink.kt"), usersOf(Regex("""\bClaudeKeys\.read\(""")))
-        assertTrue(usersOf(Regex("""\bClaudeKeys\b""")).all { it.startsWith("app/assistant/") })
+        // A helper's API key is decrypted in the :voice process only, and handed only to its client: for questions
+        // (HelperLink) and for Test connection (the connection window).
+        assertEquals(listOf("app/assistant/HelperConnectionActivity.kt", "app/assistant/HelperLink.kt"), usersOf(Regex("""\bHelperKeys\.read\(""")))
+        assertTrue(usersOf(Regex("""\bHelperKeys\b""")).all { it.startsWith("app/assistant/") })
         // The SDK never logs (its requests carry the key), and never retries on its own.
         val client = File(java("claude"), "app/heyrobot/claude/ClaudeClient.kt").readText()
         assertTrue(client.contains(".logLevel(LogLevel.OFF)") && client.contains(".maxRetries(0)"))
@@ -149,7 +161,7 @@ class ProcessIsolationTest {
                 k == "app/RobotApp.kt"
         }
         assertTrue(mainFiles.size >= 25)
-        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude|mt)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|ClaudeLink|ClaudeKeys|ClaudeSession|ClaudeClient|ClaudeKeyActivity|MtService|BergamotEngine|Slimt)\b""")
+        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude|mt)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|HelperLink|HelperKeys|ClaudeSession|ClaudeClient|HelperSession|OpenAiSession|HelperHttp|HelperProbe|HelperConnectionActivity|MtService|BergamotEngine|Slimt)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b""")
         assertEquals(emptyList<String>(), usersOf(forbidden, mainFiles))
         // And the :voice code must not load LiteRT or the fast translation engine either (it binds :brain and :mt by class name).
         assertEquals(emptyList<String>(), usersOf(Regex("""litertlm|\bGemmaEngine\b|\bBrainService\b|\bapp\.heyrobot\.mt\b|\b(MtService|BergamotEngine|Slimt)\b"""),
@@ -180,7 +192,7 @@ class ProcessIsolationTest {
         fun perm(n: String) = c(n).getAttributeNS(ns, "permission")
         val voice = listOf("app.heyrobot.assistant.RobotVoiceService", "app.heyrobot.assistant.RobotSessionService",
             "app.heyrobot.assistant.RobotRecognitionService", "app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider",
-            "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
+            "app.heyrobot.assistant.HelperConnectionActivity", "app.heyrobot.assistant.MediaDeleteActivity",
             "app.heyrobot.assistant.CheogramPickActivity",
             // 0.5.0, conversation mode: where the listener and the speech model are.
             "app.heyrobot.assistant.conversation.ConversationService", "app.heyrobot.assistant.conversation.ConversationActivity",
@@ -211,7 +223,7 @@ class ProcessIsolationTest {
         assertEquals("false", exported("app.heyrobot.brain.BrainService"))
         assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.brain.BrainService"))
         for (n in listOf("app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
-            "app.heyrobot.assistant.ClaudeKeyActivity", "app.heyrobot.assistant.MediaDeleteActivity",
+            "app.heyrobot.assistant.HelperConnectionActivity", "app.heyrobot.assistant.MediaDeleteActivity",
             "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
             "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
             "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider"))
@@ -284,6 +296,14 @@ class ProcessIsolationTest {
         assertTrue(used.none { it.contains("NETWORK_STATE") || it.contains("WIFI") || it.contains("ACCESSIBILITY") })
         val app = doc.getElementsByTagName("application").item(0) as Element
         assertEquals("false", app.getAttributeNS(ns, "allowBackup"))
+        // 0.6.0: cleartext only where Robot's own rule allows it (a server on your network), never to a company; no user CAs.
+        assertEquals("@xml/network_security_config", app.getAttributeNS(ns, "networkSecurityConfig"))
+        val nsc = File(main("app"), "res/xml/network_security_config.xml").readText()
+        assertTrue(Regex("""<domain-config cleartextTrafficPermitted="false">""").containsMatchIn(nsc))
+        for (d in listOf("anthropic.com", "openai.com", "googleapis.com", "mistral.ai", "x.ai", "deepseek.com", "groq.com", "openrouter.ai", "huggingface.co",
+            "open-meteo.com", "openstreetmap.org"))
+            assertTrue(d, nsc.contains("<domain includeSubdomains=\"true\">$d</domain>"))
+        assertTrue(!nsc.contains("src=\"user\"") && nsc.contains("<certificates src=\"system\" />"))
     }
 
     /** Phase 2: the "Robot Notes" launcher entry is an alias of MainActivity in the main process; <queries> names the hand-off apps. */
@@ -452,13 +472,16 @@ class ProcessIsolationTest {
         assertTrue(meteo.contains("private fun get(") && !meteo.contains("    fun get("))
         assertEquals(listOf("app/assistant/ToolExecutor.kt", "app/sys/OpenMeteoClient.kt", "app/ui/ToolsSettings.kt"), usersOf(Regex("""\bOpenMeteoClient\b""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""AccessibilityService|accessibilityservice""")))
-        // The only URLs: Gemma's and the voice models' pinned Hugging Face files and the fast translation engine's pinned
-        // Mozilla files (0.5.0), fetched by DownloadManager, the claude.ai link the Claude app hand-off tries (the API's
-        // host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0). Licences.kt (0.4.5) holds none: it only checks
-        // that the licence list's links (assets/licenses/components.json) are https.
-        assertEquals(listOf("core/core/ClaudeApp.kt", "core/core/Licences.kt", "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt",
-            "core/core/VoiceModels.kt", "core/core/Weather.kt"),
-            ours.filter { it.value.readText().contains("https://") }.keys.sorted())
+        // The only URLs in code (comments that cite a page don't count): Gemma's and the voice models' pinned Hugging Face
+        // files and the fast translation engine's pinned Mozilla files (0.5.0), fetched by DownloadManager, the claude.ai link
+        // the Claude app hand-off tries (the API's host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0), and the
+        // helpers' companies' API addresses (0.6.0, core Helpers.kt's presets, used only by the :claude module's clients in
+        // the :voice process, with your key, when you ask), and the example addresses Settings › Helpers shows when you type
+        // your server's (text only, never fetched). Licences.kt (0.4.5) fetches none: it only checks that the licence list's
+        // links (assets/licenses/components.json) are https.
+        assertEquals(listOf("app/ui/HelpersScreens.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt", "core/core/ModelState.kt", "core/core/MtBundle.kt",
+            "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt", "core/core/helpers/Helpers.kt"),
+            ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
         assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)"""), ours.filterKeys { it.startsWith("voice/") }))

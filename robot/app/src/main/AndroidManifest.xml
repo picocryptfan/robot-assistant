@@ -8,11 +8,12 @@
         android:protectionLevel="signature" />
     <uses-permission android:name="app.heyrobot.permission.INTERNAL" />
 
-    <!-- Three uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
-         engine's files from Mozilla's storage.googleapis.com bucket); when you ask, Ask Claude (the :voice process,
-         api.anthropic.com); and when you ask for the weather (0.4.0), Open-Meteo (the :voice process, and the main app once
-         to look up your Home for weather). Everything else runs on the phone; the :mt process never goes online. The only
-         network permission. -->
+    <!-- Four uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
+         engine's files from Mozilla's storage.googleapis.com bucket); when you ask, a helper (the :voice process: Claude at
+         api.anthropic.com, or the company you added, 0.6.0); your own AI server, if you add one (0.6.0, the :voice process,
+         only addresses on your own network or https); and when you ask for the weather or the nearest place (0.4.0),
+         Open-Meteo and a Nominatim server (the :voice process, and the main app once to look up your Home for weather).
+         Everything else runs on the phone; the :mt process never goes online. The only network permission. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 0.2.3, "Call audio" playback only (Settings › Voice): the phone in communication mode with the loudspeaker as the
@@ -133,6 +134,7 @@
         android:extractNativeLibs="true"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="true">
 
         <!-- Main process: the app (history, settings, model manager, assistant setup). Never loads an engine. -->
@@ -214,10 +216,11 @@
             android:noHistory="false"
             android:taskAffinity="app.heyrobot.capture"
             android:theme="@style/Theme.Robot.Translucent" />
-        <!-- Ask Claude's API key is pasted here, in the :voice process: it is encrypted there and never passes through the
-             main app (which opens this window by class name). -->
+        <!-- A helper's connection window (0.6.0; Ask Claude's key window before): its API key is pasted here, in the :voice
+             process, encrypted there and never passes through the main app (which opens this window by class name), and Test
+             connection runs here. -->
         <activity
-            android:name=".assistant.ClaudeKeyActivity"
+            android:name=".assistant.HelperConnectionActivity"
             android:process=":voice"
             android:exported="false"
             android:excludeFromRecents="true"

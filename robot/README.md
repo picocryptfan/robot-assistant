@@ -1,4 +1,4 @@
-# Robot (phases 1 and 2, Ask Claude)
+# Robot (phases 1 and 2, Ask Claude, Helpers)
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
@@ -14,9 +14,10 @@ Since 0.3.0, and only when you ask (or let it), Robot can hand a question to Cla
 key, or by opening the Claude app (see "Ask Claude" below). Since 0.4.5 Settings › About › Licences lists every part
 Robot is made of, with its licence, and the look has begun to move to stock Android ("What's new in 0.4.5" below). Since
 0.6.0 it also transcribes a conversation in French and English, on the phone, translates it (also face to face, aloud)
-and summarizes it (see "Conversation mode (0.5.0)" below). The build specs are `../docs/phase-1.md`,
-`../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models and how they are
-used, `../docs/voice-plan.md`.
+and summarizes it (see "Conversation mode (0.5.0)" below), and it can hand a question to any company's model or to a
+model on your own computer the way it hands one to Claude (see "Helpers (0.6.0)" below). The build specs are
+`../docs/phase-1.md`, `../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models
+and how they are used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
@@ -27,11 +28,11 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
 | `:brain` | `:brain` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU or the CPU), and since 0.4.5 `LlamaEngine` with `LlamaNative`, the only code that loads Robot's llama.cpp library (your own GGUF file, on the CPU); since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
-| `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
+| `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
 | `:mt` | `:mt` | since 0.5.0, the fast translation engine: `MtService` (Messenger), `BergamotEngine` and `Slimt`, the only code that loads `librobotmt.so` (slimt, built by `tools/build_robotmt.sh`, not in git) |
-| `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
+| `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction; the helpers' presets, rules, prices, address rule and wire formats (`core/helpers/`, 0.6.0) |
 
-- The main app never loads an engine or the Anthropic SDK; `ProcessIsolationTest` checks sources, Gradle files and
+- The main app never loads an engine, the Anthropic SDK or a helper's HTTP client; `ProcessIsolationTest` checks sources, Gradle files and
   the merged manifest, and `tools/verify_apk.sh` checks the dex.
 - `app/sys/` (both app processes) reads ContactsContract and CalendarContract and holds the Robot Notes folder; only
   the main app asks for permissions (`ProcessIsolationTest` checks that too). Since 0.4.0 it also holds the Open-Meteo
@@ -881,7 +882,7 @@ a build without it; the next list checks what changes with it.
    has no `claude_` request line before Send; a proxy or the router shows no connection to api.anthropic.com). Tick
    "Replace names": the speakers become "Speaker 1, 2". Send with the network off: "No internet…", nothing kept. Network
    on, Send: Claude's summary streams in, labelled "Claude's summary — sent to Anthropic with your OK on …", with its cost;
-   today's spend in Settings › Ask Claude went up by about that. Voice log 114.
+   today's spend in Settings › Helpers went up by about that. Voice log 114.
 8. **The Claude app.** With the app installed: Summarize › "Share it with the Claude app instead" › Send: the app opens
    with the text (or "It's copied: paste it…"); note which way worked on the installed version (design T11).
 9. **Library.** The transcript's page lists the summaries, newest first, with their labels; a [14:03] scrolls to the
@@ -931,6 +932,240 @@ translation engine's checks), its files downloaded, Robot as the assistant, Fast
    app.heyrobot:mt)`: the transcript goes on and its lines are still translated, by Robot's model alone for up to a
    minute, then "fast" again (Android started `:mt` again). Nothing else stops (the panel still answers).
 7. **No network.** Airplane mode on: steps 2 and 3 work the same; a line goes to `:mt` and `:brain` on the phone only.
+
+## Helpers (0.6.0)
+
+Ask Claude became **Helpers**: any company's model, or a model on your own computer, with everything Ask Claude has
+(the model picker, effort, web search, Robot's actions behind cards, its own voice, the lock screen switch, the cost
+line, the daily budget, "When Robot needs help", "go get …" conversations). Claude is the first helper and works
+exactly as before. Robot still stays offline unless you ask a helper ("ask Gemini …", "go get Jarvis") or let Robot
+check hard questions with one, and only text leaves the phone. Design: `../docs/ask-claude.md` for the rules every
+helper follows; this section for what 0.6.0 adds.
+
+### What you can add (Settings › Helpers › Add a helper)
+
+| Helper | How Robot talks to it | Models it lists first | Web search |
+| --- | --- | --- | --- |
+| Anthropic (Claude) | the Anthropic Java SDK, as since 0.3.0 (or the Claude app without a key) | Opus 5.5, Sonnet 5.5, Haiku 5.5, Fable 5.1 | yes, $10 per 1,000 |
+| OpenAI (GPT) | the Responses API (`store: false`, reasoning sent back encrypted) | gpt-6.1-sol, gpt-6-astra, gpt-6-luna | yes, $10 per 1,000 |
+| Google (Gemini) | its OpenAI-compatible Chat Completions | gemini-3.8-flash, gemini-3.1-pro-preview, gemini-3.5-flash-lite | no (not through this connection) |
+| Mistral | Chat Completions | mistral-medium-3-5, mistral-large-4-0, mistral-small-latest | no (Agents API only) |
+| DeepSeek | Chat Completions | deepseek-flash, deepseek-v4-pro | no |
+| Groq | Chat Completions | openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.8-27b | off (its price isn't published where Robot can check) |
+| OpenRouter | Chat Completions, only zero-data-retention providers by default | any of its models (Test connection lists them) | yes, `openrouter:web_search`, in its reported cost |
+| xAI (Grok) | the Responses API | grok-4.7 | yes, $5 per 1,000 |
+| Your own server | Chat Completions (Ollama, LM Studio, llama.cpp, vLLM, LocalAI, Open WebUI) | whatever it serves | no |
+| Another company | Chat Completions at the https address you enter | any id you type | no |
+
+- **Wire formats.** Anthropic Messages (the SDK, unchanged), OpenAI Chat Completions and OpenAI Responses, the last two
+  on plain OkHttp 4.12.0 (already in the APK for the Anthropic SDK; no OpenAI SDK). The request and stream mappers are
+  pure `:core` code (`core/helpers/wire/ChatWire.kt`, `RespWire.kt`, tested on recorded shapes). Each provider's small
+  differences are data (`Quirks`: the length parameter, streamed usage, strict tools, `tool_choice`, how effort and
+  search are sent, reported cost, zero data retention), not code paths. A server that refuses an optional part
+  (`stream_options`, effort, strict tools, tools, images) before sending anything gets the same question again without
+  it, once per part, and Robot remembers it for that model (`helpers/<id>/facts.json`). When the error names the part
+  (OpenAI-style `param`), only that part goes; an error that names another part, a question that was too long or a key
+  problem drops nothing. OpenRouter's zero data retention is never dropped by Robot: only its switch turns it off.
+- **The same promises as Claude's session** (`HelperSession`): a failed, declined or stopped question leaves no trace;
+  tool rounds that ran stay with their results; the helper's own turns go back byte for byte (reasoning, thinking
+  chunks and encrypted reasoning included); a history the server would refuse ends the conversation with a plain
+  message; usage is counted however a request ends; one retry for an overloaded or failing server before anything was
+  shown. `<think>…</think>` text is never shown or spoken.
+- **Effort.** Automatic / Low / Medium / High as for Claude, sent the provider's way (`reasoning_effort`, Responses'
+  `reasoning.effort`, OpenRouter's `reasoning`, Mistral's all-or-nothing, DeepSeek's high and max) and hidden where a
+  model has none.
+
+### Your own server
+
+- Add it by its address: `192.168.1.20`, `desktop.lan`, `desktop.lan:11434` or `https://box.tail1234.ts.net`. A bare
+  name or IP is tried on the usual ports (11434 Ollama, 1234 LM Studio, 9931 and 8080 llama.cpp, 8080 LocalAI, 8000
+  vLLM, 3000/api Open WebUI) by **Test connection**, which runs in the connection window, finds the port, lists the
+  models (`/v1/models`, then Ollama's and Open WebUI's own lists) and asks a tiny streamed question through the same
+  code a real question takes. **Check actions** also offers one tool and sees whether the model calls it. Nothing scans the network.
+- **Cleartext only on your own network** (core `LanRule`): `http://` goes only to loopback, private (10/8, 172.16/12,
+  192.168/16), link-local, Tailscale's 100.64/10 and IPv6 unique-local addresses (IPv4-mapped ones too; NAT64 counts
+  as public). It is checked on the typed address, on every DNS answer (a name that resolves to a public address is
+  refused) and again on every connection (a network interceptor); redirects are never followed and no proxy is used.
+  On mobile data an `http://192.168…` helper says it isn't answering (or that the address "isn't on your home
+  network"), and nothing goes anywhere else.
+- `res/xml/network_security_config.xml` (new): cleartext is allowed app-wide only so OkHttp can try a home server; it is
+  never allowed to the companies' domains, the model downloads, Open-Meteo or OpenStreetMap, and only the system's CAs
+  are trusted (never one a user added). A company's client refuses `http://` in code too.
+- **https** works with a real certificate (Tailscale HTTPS gives one). A self-signed certificate fails with a
+  plain message suggesting Tailscale HTTPS or `http://` on your network: trusting a certificate on first use (pinning)
+  isn't in 0.6.0.
+- Waits are longer for a home server (a cold model loads): "My server is loading its model…" after 8 s without an
+  answer, and up to 300 s for the first word.
+- A server costs nothing unless you enter a price.
+
+### Keys
+
+One key per helper, pasted in the helper's connection window in the assistant's process (`HelperConnectionActivity`,
+FLAG_SECURE, out of autofill, the clipboard cleared if it still holds the key), encrypted there with its own Android
+Keystore key (AES-GCM) and decrypted only there: by `HelperLink` just before a client is made, and by Test
+connection. Claude keeps its key files and Keystore alias from 0.3.0; another helper's are in `helpers/<id>/`. Settings
+shows the key masked ("gsk_…AB12"); a key that doesn't start the company's usual way is only a warning. **Remove
+helper** deletes its key file and its Keystore key (crypto-shred) and what Test connection found. Changing a helper's
+address to another host removes its key first (the same computer on another port or path keeps it), so a key never
+goes to a host it wasn't saved for. Backups and device
+transfer include nothing (`allowBackup="false"`, the data extraction rules exclude everything).
+
+### Names and voice
+
+- Each helper has a name you call it by ("ask Jarvis …", "go get Jarvis", "thanks Jarvis"), the preset's spellings
+  ("chat gpt", "open router") and your own "Also answers to" names. The router takes the longest name it hears.
+- Names are checked as you type: one to three words of letters and digits; not "robot", a word of your wake phrases,
+  a command word, or the same name (or one that sounds the same, "Groq" and "Grok") as another helper's. A common word
+  or first name ("Max", "Sam") is allowed with a warning that "ask Max …" will go to the helper.
+- Mishearings count only right after a command verb ("ask", "go get"), and only Claude has a curated list ("cloud",
+  "clod", …); a conversation started from a word that only sounded like the name asks before including what came
+  before. Other names are matched by sound (a phonetic key and a small edit distance) in the same place only.
+- Each helper speaks in its own Kokoro voice (a new one gets the first voice nobody else uses), so you hear who talks.
+  Its replies are labelled with its name; a server on your network shows a house instead of a cloud, in the panel and
+  in History.
+
+### What goes to a helper, and trust
+
+Every helper follows Claude's rules (`HelperTrust`, `ClaudeContext`): Robot checking by itself in a personal
+conversation sends only your question; "go get …" in a personal conversation asks "Include the conversation so far?";
+a spoken yes never sends personal content; your screen and photos go only after a tap on their card.
+
+- **Trusted with personal content** (each helper's page, **off by default for every helper, your own server
+  included**): Robot checking by itself may carry the last turns of a personal conversation, "go get …" (by its name)
+  includes the conversation without the card, a spoken yes can send an offer, and what Robot reads for the helper goes
+  without "Share with …". Your screen and photos still need a tap every time, and so does a conversation that had one
+  (Robot's own words in it may repeat what was on the screen). Adding a server asks once: "Is this
+  computer yours, and does it run the model itself?". Changing the address turns trust off (and, for another host,
+  removes the key).
+- Settings › Safety & privacy keeps its switches, now for every helper: "Send personal content to helpers
+  automatically", "Voice yes can send personal content" and "Card when a helper asks Robot to do something".
+
+### When Robot needs help
+
+Off / Ask me first / Automatic as before, plus **Ask:** (which helper). Automatic needs the API route (a key, or a
+server), a price Robot knows (or Free), and today's spend under the budget for all helpers and the helper's own cap;
+otherwise Robot offers. A question about current events goes by itself only to a helper that can search the web.
+When Robot asked a helper by itself before its own model ran and the helper can't be reached (your server is off, no
+connection, a timeout), Robot answers itself instead, with a short notice why. Gemma's `ask_claude` tool keeps its name
+(`:brain` reads it); Robot's prompt names the helper when it isn't Claude.
+
+### Cost
+
+- **Published prices**, read on 11 Oct 2026 from each provider's own page and shipped in `core/helpers/Pricing.kt`
+  (`PriceTable`, with the source and date on each card):
+  - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing.md (Claude's prices stay in `ClaudeModel`)
+  - OpenAI: https://developers.openai.com/api/docs/pricing.md (Standard, long-context rates over 272K input tokens)
+  - Google: https://ai.google.dev/gemini-api/docs/pricing (paid tier; Gemini 3.8 Flash doubles on 1 Jan 2027)
+  - DeepSeek: https://api-docs.deepseek.com/quick_start/pricing (off-peak; double 01:00–04:00 and 06:00–10:00 UTC on weekdays)
+  - Groq: https://console.groq.com/docs/models.md and each model's page
+  - xAI: https://docs.x.ai/developers/pricing.md
+  - OpenRouter reports each request's cost (`usage.cost`), and Robot uses its figure.
+  - Mistral's page isn't readable outside a browser, so no Mistral price ships: enter it on the helper's page.
+- A model without a known price shows "cost unknown", isn't counted in today's spend and is never asked
+  automatically. Your own prices (per million tokens, for the model they were entered for) win over the table.
+- One daily budget for all helpers (the old Claude budget, $1 by default), an optional cap per helper, and one spend
+  file, `helpers_spend.json` (`claude_spend.json` is still read and written for Claude, so a downgrade keeps today's
+  spend).
+
+### Settings and upgrades
+
+- Settings has a **Helpers** card (each helper on one line with its status, who Robot asks, today's spend) and
+  **Settings › Helpers** (your helpers, Add a helper, When Robot needs help, the budget, Show cost). Each helper has
+  its own page: on/off, connection (address, key, Test connection, OpenRouter's zero data retention), the Claude app or
+  the API (Claude), name and other names, model (the catalog, the server's list with a search box, or any id), effort,
+  web search, actions, lock screen, voice, trust, cost and cap, and Remove.
+- **Settings schema 13** (9 on the helpers' branch, never released). A settings file without `helpers` (0.4.5's schema 12
+  and every older one) becomes one helper, `claude`, made from the old claude
+  fields, so Ask Claude behaves exactly as before. The old fields are still written for Claude, so an older Robot reads
+  its settings back. A helper's reply in History is still marked `claude` (content Robot didn't write) and also carries
+  the helper's id and name.
+
+### How it's built
+
+| Where | What |
+| --- | --- |
+| `core/helpers/` | `Helpers.kt` (presets, quirks, catalog, `HelperConfig`, names), `HelperRules.kt` (routes, the default helper, trust, words), `Pricing.kt`, `LanRule.kt`, `HelperFacts.kt`, `wire/` (Chat Completions and Responses mappers, errors, `<think>` filter) |
+| `:claude` module, `app.heyrobot.helpers` | `HelperSession` (Claude's session implements it too), `openai/OpenAiSession`, `http/HelperHttp` (OkHttp with the LAN rules), `HelperProbe` (Test connection). The module keeps its name so the build's test tasks stay as they are |
+| `app/assistant/` | `HelperLink` (one client per helper and key), `HelperKeys`, `HelperConnectionActivity`; `PanelController` routes each turn to its helper |
+| `app/ui/HelpersScreens.kt` | the Helpers card, Settings › Helpers, Add a helper, a helper's page |
+
+`ProcessIsolationTest` checks that only the assistant uses `app.heyrobot.helpers` and OkHttp, that keys are read only
+in `HelperLink` and the connection window, and the network security config; `tools/verify_apk.sh` checks the
+connection window's process, the compiled network security config, the client classes and every company's key shape.
+
+### Not in 0.6.0, and not verified yet
+
+- Not built: trusting a self-signed certificate on first use; handing a question to ChatGPT's, Gemini's or other
+  companies' apps (only Claude's app); "Read the answer" for other apps; Together AI; a warning when a helper has a
+  contact's name; teaching Robot how you say a name.
+- Not verified against the real services (no keys here): every provider's live behaviour, including whether OpenAI
+  Chat's `prompt_tokens` include `cache_write_tokens`, Gemini's error and thought-signature fields, whether Mistral
+  takes its thinking chunks back, Groq's usage field while streaming, which status xAI uses for "no credits", vLLM's
+  and LocalAI's ports and keys, Open WebUI's `/api/models` shape, and the companies' key prefixes (warnings only).
+  Whether Android treats a Tailscale 100.x address as "local network" once Robot targets SDK 37.
+
+### On the phone (0.6.0)
+
+1. **Upgrade** from 0.4.5 (and once from 0.4.0) with a Claude key, a custom budget and some spend today: Claude answers without re-entering
+   the key; Settings › Helpers shows Claude with its model, effort, search, voice and lock screen as they were; the
+   budget and today's spend are unchanged; History still shows earlier Claude conversations with a cloud.
+2. **Downgrade** back to 0.4.5 (adb): Claude still works with the same key and settings, and earlier helper turns still
+   make actions ask first.
+3. **Add Gemini, Mistral, DeepSeek, Groq and OpenRouter** with keys: Test connection runs by itself after Save and says
+   "Connected"; "hey robot, ask Gemini why the sky is blue" is answered in Gemini's voice, labelled "Gemini", with a
+   cost line (Mistral: "cost unknown" until you enter its prices). Note the time to the first word. The next day,
+   compare the cost lines with each dashboard (within about 10%).
+4. **Effort High** on DeepSeek and Mistral: no thinking text is shown or spoken.
+5. **Actions:** "ask Gemini to set a timer for 10 minutes" shows a card, and Cancel leaves nothing. "Ask Groq what's on
+   my calendar tomorrow": the read card says "Share with Groq". OpenRouter with web search lists the sites.
+6. **Ollama on a computer on your Wi-Fi over `http://`:** add it by typing only its IP; the port is found and the
+   models are listed. A cold model shows "My server is loading its model…", then the answer is spoken. A qwen or
+   gpt-oss model gets a tool card (Check actions says so). A model that writes `<think>` never speaks its thinking.
+7. **Server off, or a wrong IP:** within about 5 s, "My server isn't answering". With My server as the helper Robot
+   asks and Automatic on, a hard question Robot sends by itself is answered by Gemma instead, with a notice.
+8. **The same helper on mobile data** (Wi-Fi off): it says "My server isn't answering" (or "That address isn't on your
+   home network"); the server's log and the voice log show nothing went anywhere else.
+9. **https:** Tailscale `https://….ts.net` works with no dialog; `http://100.x` works only while Tailscale is on; a
+   self-signed server fails with the certificate message.
+10. **LM Studio** with "Require Authentication" (add the key), **llama.cpp** with `--api-key`, **Open WebUI** at
+    `…:3000/api`: each passes Test connection and answers.
+11. **Names:** add a server called Jarvis; "go get Jarvis", two follow-ups, "thanks Jarvis". Try naming a helper
+    "Grok" while Groq exists (refused), "Max" (warning), "stop" (refused). With Jarvis on, "go get Claude" switches the
+    chip to Claude.
+12. **OpenAI (Responses):** gpt-6.1-sol with a timer card, web search with sites, effort High not cut off at 60 s, the
+    cost line against the dashboard. An account without credits says "out of API credits", not "busy".
+13. **xAI:** grok-4.7 with web search; a follow-up after a tool round works.
+14. **Trust:** with My server as the helper Robot asks and trusted, in a conversation that read the calendar, Robot
+    checking by itself carries the last turns, and "go get My server" skips the Include card. Turn trust off: only the
+    question goes, and a spoken "yes" to an offer that lists screen text says "Tap Send".
+15. **Budget across helpers:** reaching the budget for all helpers drops Automatic to Ask me first for every helper;
+    a helper's own cap does the same for that helper; a model with an unknown price never escalates by itself.
+16. **Lock screen** per helper; the GrapheneOS Network toggle off shows the network card for a server on your network
+    too.
+17. **Remove a helper:** its key and facts go (Assistant setup no longer lists it); "ask Jarvis …" afterwards is
+    ordinary talk or says the helper isn't set up.
+18. **Privacy:** export the voice log and `adb logcat -s Robot`: grep for the IP, the host name, the helper's name and
+    the key. No matches (kinds and codes only).
+19. **APK:** `tools/verify_apk.sh` passes (the connection window in `:voice`, the network security config, no key
+    strings); the helpers add about 1 MB at most (compare with a 0.6.0 build without them, or with 0.4.5's plus
+    conversation mode's code and `librobotmt.so`).
+20. **OpenAI and xAI conversations:** "go get ChatGPT", then two follow-ups, then "set a timer for 2 minutes" and a
+    follow-up after the card: every request is answered (the reasoning goes back encrypted; OpenAI documents that with
+    `store: false` a reasoning item can go back only that way, so without it the second request would be refused). The
+    same with Grok. If xAI refuses `include`, Test connection
+    lists "encrypted reasoning" among what Robot leaves out.
+21. **OpenRouter's zero data retention:** pick a model no zero-retention provider serves: the answer is a failure, and
+    OpenRouter's activity page shows no request sent without ZDR; the switch on the helper's page still says on.
+22. **An address moved to another host:** with a key saved for your server, change its address to another computer:
+    "The key was removed…", and that computer's log shows no `Authorization` header from Test connection. Changing only
+    the port keeps the key.
+23. **Actions off:** turn off "Let Jarvis ask Robot to do things" and point Jarvis at a server that answers with a tool
+    call anyway (any small script that replies with a `tool_calls` chunk): the card says "this tool wasn't offered" and
+    nothing runs, even with "Card when a helper asks Robot to do something" off.
+24. **Trust and the screen:** with a trusted helper as the one Robot asks (Automatic), ask about your screen, then a hard
+    question: Robot checks with the helper by itself with only your question (the server's log shows no earlier turns).
+25. **Numeric addresses:** typing `3232235777` or `10.1` as a server's address is refused in the dialog.
+26. **Network toggle off:** Test connection says Robot isn't allowed to use the network.
 
 ## Short-context models (0.4.3)
 

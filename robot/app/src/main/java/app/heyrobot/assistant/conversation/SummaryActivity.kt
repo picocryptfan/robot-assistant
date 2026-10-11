@@ -47,7 +47,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
-import app.heyrobot.assistant.ClaudeLink
+import app.heyrobot.assistant.HelperLink
 import app.heyrobot.assistant.VoiceHub
 import app.heyrobot.core.ClaudeCost
 import app.heyrobot.core.ClaudeSettings
@@ -101,6 +101,14 @@ class SummaryActivity : ComponentActivity() {
         SummaryJobs.clear(tid)
         // Unlock first: a summary shows what was said (docs/conversation-mode.md 1.7).
         if (Assistant.locked(this)) getSystemService(KeyguardManager::class.java).requestDismissKeyguard(this, null)
+    }
+
+    /** Settings › Helpers in Robot's app (0.6.0), where Claude's key is added. */
+    private fun openHelpers() {
+        try {
+            startActivity(Intent().setClassName(packageName, "app.heyrobot.ui.MainActivity").putExtra(AppPages.EXTRA, AppPages.HELPERS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: Throwable) {}
     }
 
     /** The transcript in Robot's app, at line [line] (a [14:03] link), or at its top. */
@@ -212,12 +220,15 @@ class SummaryActivity : ComponentActivity() {
                                 OutlinedButton(onClick = { ask = cardFor(meta, tr, toApp = false) ?: cardFor(meta, tr, toApp = true) ?: run { note = NO_HELPER; null } },
                                     modifier = Modifier.heightIn(min = 48.dp)) { Text("A stronger AI") }
                             }
-                            if (ClaudeAppIntents.installed(this@SummaryActivity) && ClaudeLink.keySaved(this@SummaryActivity))
+                            if (ClaudeAppIntents.installed(this@SummaryActivity) && HelperLink.keySaved(this@SummaryActivity, app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID))
                                 TextButton(onClick = { ask = cardFor(meta, tr, toApp = true) }) { Text("Share it with the Claude app instead") }
                         }
                     }
                 }
-                note?.let { n -> item { Text(n, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary) } }
+                note?.let { n -> item {
+                    Text(n, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    if (n == NO_HELPER) TextButton(onClick = ::openHelpers) { Text("Open Settings › Helpers") }
+                } }
                 job.error?.takeIf { job.id == t && !busy }?.let { e -> item { Text(e, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) } }
                 // The summary just made, with its check; then the ones kept before.
                 val fresh = job.record?.takeIf { job.id == t && !busy }
@@ -249,7 +260,7 @@ class SummaryActivity : ComponentActivity() {
             if (!ClaudeAppIntents.installed(this)) null
             else Ask.Card(ConsentCard.build(ClaudeAppHelper.ID, "the Claude app", ClaudeAppHelper(this).disclosure, meta, tr, ZonedDateTime.now(zone), region, lang, zone), true)
         } else {
-            if (!ClaudeLink.keySaved(this) || !ClaudeSettings.enabled(s, true)) null
+            if (!HelperLink.keySaved(this, app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID) || !ClaudeSettings.enabled(s, true)) null
             else {
                 // The price on the card is estimated from the very text it would send.
                 val first = ConsentCard.build(ClaudeApiHelper.ID, "Claude", Disclosure("Anthropic", null, ""), meta, tr, ZonedDateTime.now(zone), region, lang, zone)
@@ -336,7 +347,7 @@ class SummaryActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val NO_HELPER = "To use a stronger AI, add your Claude API key in Settings › Ask Claude, or install the Claude app."
+        private const val NO_HELPER = "To use a stronger AI, add your Claude API key in Settings › Helpers › Claude, or install the Claude app."
     }
 }
 

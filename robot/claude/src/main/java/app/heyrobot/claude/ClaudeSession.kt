@@ -19,10 +19,12 @@ import app.heyrobot.core.ModelOutcome
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolSpec
 import app.heyrobot.core.TurnModel
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.helpers.HelperSession
 import com.anthropic.core.JsonValue
 import com.anthropic.core.http.StreamResponse
 import com.anthropic.errors.AnthropicServiceException
@@ -51,7 +53,10 @@ import java.util.concurrent.atomic.AtomicReference
 // Before every request the history is checked (ClaudeHistory.check): one the API would refuse ends the conversation
 // with a plain message instead.
 
-/** What a Claude turn tells the panel while it streams. Called on the caller's coroutine (the panel's main thread). */
+/**
+ * What a helper's turn tells the panel while it streams (every helper since 0.6.0). Called on the caller's coroutine
+ * (the panel's main thread).
+ */
 interface ClaudeListener {
     /** More of Claude's reply. */
     fun text(delta: String)
@@ -62,6 +67,9 @@ interface ClaudeListener {
     /** Claude started thinking (a thinking block opened): "Claude is thinking…" until its words arrive. */
     fun thinking() {}
 
+    /** 0.6.0: a server on your network sent nothing for a while: it is probably loading its model ("… is loading its model…"). */
+    fun loading() {}
+
     /**
      * More of the turn's estimated price became known (a request's input as it starts, the rest as it ends, or an
      * estimate when it was stopped or failed): the panel adds it to today's spend at once.
@@ -69,7 +77,7 @@ interface ClaudeListener {
     fun spent(dollars: Double) {}
 }
 
-/** How one ask or answer ended. */
+/** How one ask or answer ended (every helper's, since 0.6.0). */
 sealed class ClaudeOutcome {
     /** [cut]: stopped at max_tokens (or the context window), or after too many search continuations. */
     data class Done(val cut: Boolean = false) : ClaudeOutcome()
@@ -92,6 +100,11 @@ data class ClaudeTurnReport(
     val searches: Int = 0,
     /** Web search results that came back as an error object. */
     val searchErrors: Int = 0,
+    /**
+     * 0.6.0: Robot could tell what the turn cost. False for a helper whose price isn't known (nothing is added to the
+     * spend, and the cost line says "cost unknown").
+     */
+    val costKnown: Boolean = true,
 )
 
 class ClaudeSession(
@@ -109,7 +122,7 @@ class ClaudeSession(
      * summary (0.5.0, docs/conversation-mode.md 7.2: one question, no tools, no search).
      */
     private val system: String = ClaudePrompt.SYSTEM,
-) {
+) : HelperSession {
     private val messages = mutableListOf<BetaMessageParam>()
     /** Each message's thinking blocks as they came ([ClaudeHistory.seal]); empty for the user's. */
     private val seals = mutableListOf<List<String>>()
@@ -136,13 +149,15 @@ class ClaudeSession(
     }
 
     /** Nothing has been said to Claude in this conversation yet (Claude mode's first question carries what came before). */
-    val fresh: Boolean get() = messages.isEmpty()
+    override val fresh: Boolean get() = messages.isEmpty()
 
     /** The numbers of the last turn ([ask] starts a new one). */
-    val lastReport: ClaudeTurnReport get() = report
+    override val lastReport: ClaudeTurnReport get() = report
+
+    override val offered: Set<ToolName> = tools.map { it.tool }.toSet()
 
     /** A new question: [blocks] from ClaudeContext. */
-    suspend fun ask(blocks: List<ClaudeBlock>, plan: ClaudePlan, listener: ClaudeListener): ClaudeOutcome {
+    override suspend fun ask(blocks: List<ClaudeBlock>, plan: ClaudePlan, listener: ClaudeListener): ClaudeOutcome {
         // The last turn was stopped while a card waited and nobody said what ran: nothing did.
         if (pending.isNotEmpty()) abandon(emptyList(), stopped = true)
         this.plan = if (!conversation) plan else firstPlan?.let { plan.keeping(it) } ?: plan.also { firstPlan = it }
@@ -162,7 +177,7 @@ class ClaudeSession(
     }
 
     /** The results of Claude's calls, in the order it asked ([TurnModel.answer]). */
-    suspend fun answer(results: List<Map<String, Any?>>, listener: ClaudeListener): ClaudeOutcome {
+    override suspend fun answer(results: List<Map<String, Any?>>, listener: ClaudeListener): ClaudeOutcome {
         val ids = pending
         pending = emptyList()
         messages += ClaudeHistory.message(BetaMessageParam.Role.USER, ClaudeRequests.results(ids, results))
@@ -177,7 +192,7 @@ class ClaudeSession(
      * many rounds, or a stop while a card waited ([stopped]). The results go with the next question; the calls that
      * never ran say so. A stop before anything of the turn ran leaves no trace of it.
      */
-    fun abandon(results: List<Map<String, Any?>> = emptyList(), stopped: Boolean = false) {
+    override fun abandon(results: List<Map<String, Any?>>, stopped: Boolean) {
         if (pending.isEmpty()) return
         if (stopped && results.isEmpty() && keep < 0) {
             rollBack()
@@ -608,15 +623,21 @@ class ClaudeSession(
 }
 
 /**
- * Claude as a [TurnModel]: the turn runner shows Claude's calls as cards (remote = true) and sends their results back.
- * [first]: the question's blocks.
+ * A helper as a [TurnModel] (Claude's, and every helper's since 0.6.0): the turn runner shows the helper's calls as cards
+ * (remote = true) and sends their results back. [first]: the question's blocks.
  */
 class ClaudeTurn(
-    private val session: ClaudeSession,
+    private val session: HelperSession,
     private val first: List<ClaudeBlock>,
     private val plan: ClaudePlan,
     private val listener: ClaudeListener,
+    /** How a failure is said: Claude's words, or another helper's (HelperWho). */
+    private val say: (ClaudeFailure) -> String = { it.text },
 ) : TurnModel {
+    /** Why the last request failed, if it did (a server that can't be reached may give the question back to Robot). */
+    var failure: ClaudeFailure? = null
+        private set
+
     override suspend fun ask(): ModelOutcome = outcome(session.ask(first, plan, listener))
 
     override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = outcome(session.answer(results.map { it.second }, listener))
@@ -632,6 +653,9 @@ class ClaudeTurn(
         is ClaudeOutcome.Calls -> ModelOutcome.Calls(o.calls)
         // The listener already put "Claude declined that one." in place of the reply.
         ClaudeOutcome.Declined -> ModelOutcome.Done(DoneReason.END)
-        is ClaudeOutcome.Failed -> ModelOutcome.Failed(o.failure.text)
+        is ClaudeOutcome.Failed -> {
+            failure = o.failure
+            ModelOutcome.Failed(say(o.failure))
+        }
     }
 }

@@ -74,7 +74,8 @@ object Prompt {
      * works on the lock screen (Settings › Safety & privacy; the default's line is the one Robot always had).
      */
     fun system(now: ZonedDateTime, locked: Boolean, askClaude: Boolean = false, texting: Boolean = false, weather: Boolean = false,
-        phone: Boolean = false, direct: Boolean = false, lockedTools: Set<ToolName> = LockScreen.DEFAULT): String {
+        phone: Boolean = false, direct: Boolean = false, lockedTools: Set<ToolName> = LockScreen.DEFAULT, helper: String? = null,
+        helperSearches: Boolean = true, helperHome: Boolean = false): String {
         val day = now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.US)
         val date = now.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US))
         return buildString {
@@ -83,8 +84,12 @@ object Prompt {
             append("because they may be read aloud; stories, poems and long answers you write yourself, in full. Avoid tables. ")
             if (direct) append((if (askClaude) DIRECT_WITH_CLAUDE else DIRECT) + " ")
             // With Ask Claude on, the one line that tells Gemma when to hand over instead of guessing.
+            // 0.6.0: [helper] is who ask_claude asks when it isn't Claude (named, and where it is); up-to-date facts only
+            // when it can search the web.
             if (askClaude) append("You have no internet access yourself: " + (if (weather) "for the weather, call weather; " else "") +
-                "for up-to-date facts, careful reasoning, maths, code or planning, call ask_claude instead of guessing. ")
+                "for " + (if (helperSearches) "up-to-date facts, " else "") + "careful reasoning, maths, code or planning, call ask_claude" +
+                (if (helper != null && helper != "Claude") " (it asks $helper, a stronger AI ${if (helperHome) "on the user's own computer" else "online"})" else "") +
+                " instead of guessing. ")
             else if (weather) append("For the weather, call weather. Otherwise you have no internet access: for news or prices, say you can't check that. ")
             else append("You have no internet access: for news, weather or prices, say you can't check that. ")
             append("Use a tool only when the person clearly asks for that action; otherwise just answer. ")

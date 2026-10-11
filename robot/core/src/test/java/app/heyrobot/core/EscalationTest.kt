@@ -95,7 +95,7 @@ class EscalationTest {
         val settings = listOf(null, Escalation.OFF, Escalation.ASK, Escalation.AUTO)
         for (help in settings) for (keySaved in listOf(false, true)) for (personal in listOf(false, true)) for (locked in listOf(false, true))
             for (allowLocked in listOf(false, true)) for (budget in listOf(false, true)) for (declined in listOf(false, true)) {
-                val s = RobotSettings(claudeEnabled = true, claudeHelp = help, claudeLocked = allowLocked)
+                val s = claudeSettings(claudeEnabled = true, claudeHelp = help, claudeLocked = allowLocked)
                 val got = d(s, keySaved, personal, locked, budget, declined = declined)
                 val mode = help ?: if (keySaved) Escalation.AUTO else Escalation.ASK
                 val expected = when {
@@ -112,22 +112,22 @@ class EscalationTest {
     }
 
     @Test fun withoutAKeyEscalationAlwaysAsksFirstThroughTheApp() {
-        val s = RobotSettings(claudeEnabled = true, claudeHelp = Escalation.AUTO)
+        val s = claudeSettings(claudeEnabled = true, claudeHelp = Escalation.AUTO)
         assertEquals(Escalation.ASK, ClaudeSettings.escalation(s, keySaved = false))
         assertEquals(EscalationDecision.OFFER, d(s, keySaved = false))
         // A key but the app route chosen: still asks first (only the API escalates automatically).
-        assertEquals(EscalationDecision.OFFER, d(s.copy(claudeRoute = ClaudeRoute.APP), keySaved = true))
-        assertEquals(EscalationDecision.AUTO, d(s.copy(claudeRoute = ClaudeRoute.API), keySaved = true))
+        assertEquals(EscalationDecision.OFFER, d(s.withClaude { it.copy(route = ClaudeRoute.APP) }, keySaved = true))
+        assertEquals(EscalationDecision.AUTO, d(s.withClaude { it.copy(route = ClaudeRoute.API) }, keySaved = true))
     }
 
     @Test fun askClaudeOffMeansNoEscalation() {
-        assertEquals(EscalationDecision.NONE, d(RobotSettings(claudeEnabled = false), keySaved = true))
+        assertEquals(EscalationDecision.NONE, d(claudeSettings(claudeEnabled = false), keySaved = true))
         // On by default: without a key Robot offers the Claude app, with one it checks by itself.
         assertEquals(EscalationDecision.OFFER, d(RobotSettings(), keySaved = false))
         assertEquals(EscalationDecision.AUTO, d(RobotSettings(), keySaved = true))
         assertTrue(ClaudeSettings.localTool(RobotSettings(), keySaved = false))
         assertTrue(ClaudeSettings.localTool(RobotSettings(), keySaved = true))
-        assertFalse(ClaudeSettings.localTool(RobotSettings(claudeHelp = Escalation.OFF), keySaved = true))
+        assertFalse(ClaudeSettings.localTool(claudeSettings(claudeHelp = Escalation.OFF), keySaved = true))
     }
 
     @Test fun oncePerTurnAndNeverFromClaude() {
@@ -161,16 +161,16 @@ class EscalationTest {
         assertNull(left())
         assertNull(left(keySaved = false))
         assertTrue(AskClaudeTool.offered(key, true, true, false, Attachment.NONE))
-        assertEquals(ClaudeLeftOut.OFF, left(RobotSettings(claudeEnabled = false)))
-        assertEquals(ClaudeLeftOut.OFF, left(RobotSettings(claudeHelp = Escalation.OFF)))
+        assertEquals(ClaudeLeftOut.OFF, left(claudeSettings(claudeEnabled = false)))
+        assertEquals(ClaudeLeftOut.OFF, left(claudeSettings(claudeHelp = Escalation.OFF)))
         assertEquals(ClaudeLeftOut.NOWHERE, left(reachable = false))
         assertEquals(ClaudeLeftOut.DECLINED, left(declined = true))
         assertEquals(ClaudeLeftOut.SCREEN, left(a = Attachment.SCREEN))
         assertEquals(ClaudeLeftOut.PHOTO, left(a = Attachment.PHOTO))
         // The first reason wins: a refusal says more than the picture.
         assertEquals(ClaudeLeftOut.DECLINED, left(declined = true, a = Attachment.SCREEN))
-        assertEquals(ClaudeLeftOut.OFF, left(RobotSettings(claudeEnabled = false), declined = true, a = Attachment.PHOTO))
-        for (s in listOf(key, RobotSettings(claudeHelp = Escalation.ASK), RobotSettings(claudeHelp = Escalation.AUTO))) for (keySaved in listOf(false, true))
+        assertEquals(ClaudeLeftOut.OFF, left(claudeSettings(claudeEnabled = false), declined = true, a = Attachment.PHOTO))
+        for (s in listOf(key, claudeSettings(claudeHelp = Escalation.ASK), claudeSettings(claudeHelp = Escalation.AUTO))) for (keySaved in listOf(false, true))
             for (declined in listOf(false, true)) for (a in Attachment.entries) {
                 val offered = AskClaudeTool.offered(s, keySaved, true, declined, a)
                 assertEquals("$s $keySaved $declined $a", !declined && a == Attachment.NONE, offered)
@@ -234,11 +234,11 @@ class EscalationTest {
         assertEquals(ClaudeRoute.APP, ClaudeSettings.route(RobotSettings(), keySaved = false))
         assertEquals(ClaudeRoute.API, ClaudeSettings.route(RobotSettings(), keySaved = true))
         // Your choice stands either way.
-        assertEquals(ClaudeRoute.APP, ClaudeSettings.route(RobotSettings(claudeRoute = ClaudeRoute.APP), keySaved = true))
-        assertEquals(ClaudeRoute.API, ClaudeSettings.route(RobotSettings(claudeRoute = ClaudeRoute.API), keySaved = false))
+        assertEquals(ClaudeRoute.APP, ClaudeSettings.route(claudeSettings(claudeRoute = ClaudeRoute.APP), keySaved = true))
+        assertEquals(ClaudeRoute.API, ClaudeSettings.route(claudeSettings(claudeRoute = ClaudeRoute.API), keySaved = false))
         // Deleting the key doesn't turn Ask Claude off: the Claude app takes the questions.
         assertTrue(ClaudeSettings.enabled(RobotSettings(), keySaved = false))
         assertTrue(ClaudeSettings.enabled(RobotSettings(), keySaved = true))
-        assertTrue(ClaudeSettings.enabled(RobotSettings(claudeEnabled = true), keySaved = false))
+        assertTrue(ClaudeSettings.enabled(claudeSettings(claudeEnabled = true), keySaved = false))
     }
 }

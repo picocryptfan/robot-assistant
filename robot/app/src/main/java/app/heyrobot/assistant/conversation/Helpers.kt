@@ -6,7 +6,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.PersistableBundle
-import app.heyrobot.assistant.ClaudeLink
+import app.heyrobot.assistant.HelperLink
 import app.heyrobot.claude.ClaudeListener
 import app.heyrobot.claude.ClaudeOutcome
 import app.heyrobot.core.AppShareCode
@@ -26,7 +26,8 @@ import app.heyrobot.core.HelperRoute
 import app.heyrobot.core.RLog
 import app.heyrobot.core.SummaryJob
 import app.heyrobot.sys.ClaudeAppIntents
-import app.heyrobot.sys.ClaudeSpendStore
+import app.heyrobot.sys.HelperSpendStore
+import app.heyrobot.core.helpers.HelperConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -54,8 +55,8 @@ class ClaudeApiHelper(private val ctx: Context, private val model: ClaudeModel, 
         if (!HelperGate.allowed(job) || job.helper != ID) return HelperResult.Failed("Nothing was sent: Robot needs your OK on the card.")
         // More than one request takes: it would leave the phone only to be refused there.
         if (!ConsentCard.apiFits(job.blocks, maxInputTokens())) return HelperResult.Failed("Nothing was sent. " + ConsentCard.TOO_LONG_FOR_API)
-        if (!ClaudeLink.networkAllowed(ctx)) return HelperResult.Failed(ClaudeFailure.NO_INTERNET.text)
-        val session = withContext(Dispatchers.IO) { ClaudeLink.transcriptSession(ctx, model) } ?: return HelperResult.Failed(ClaudeFailure.NO_KEY.text)
+        if (!HelperLink.networkAllowed(ctx)) return HelperResult.Failed(ClaudeFailure.NO_INTERNET.text)
+        val session = withContext(Dispatchers.IO) { HelperLink.transcriptSession(ctx, model) } ?: return HelperResult.Failed(ClaudeFailure.NO_KEY.text)
         val text = StringBuilder()
         try {
             val out = session.ask(job.blocks, ClaudePlan(ClaudeEffort.MEDIUM, MAX_TOKENS), object : ClaudeListener {
@@ -68,8 +69,8 @@ class ClaudeApiHelper(private val ctx: Context, private val model: ClaudeModel, 
 
                 override fun spent(dollars: Double) {
                     spent += dollars
-                    // The daily budget counts it (it warns; it never blocks what you asked for).
-                    try { ClaudeSpendStore.add(ctx, dollars) } catch (t: Throwable) { RLog.w("summary_spend", t) }
+                    // The daily budget for all helpers, and Claude's own cap, count it (it warns; it never blocks what you asked for).
+                    try { HelperSpendStore.add(ctx, HelperConfig.CLAUDE_ID, dollars) } catch (t: Throwable) { RLog.w("summary_spend", t) }
                 }
             })
             return when (out) {
@@ -81,7 +82,7 @@ class ClaudeApiHelper(private val ctx: Context, private val model: ClaudeModel, 
                 is ClaudeOutcome.Calls -> HelperResult.Failed("Claude answered with something Robot can't use.")
             }
         } finally {
-            ClaudeLink.done(session)
+            HelperLink.done(session)
         }
     }
 

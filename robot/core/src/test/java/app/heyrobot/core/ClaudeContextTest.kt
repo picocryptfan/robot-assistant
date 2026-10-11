@@ -356,7 +356,7 @@ class ClaudeContextTest {
     }
 
     @Test fun settingsRoundTrip() {
-        val s = RobotSettings(claudeEnabled = true, claudeRoute = ClaudeRoute.API, claudeModel = ClaudeModel.HAIKU.id, claudeEffort = ClaudeEffortSetting.HIGH,
+        val s = claudeSettings(claudeEnabled = true, claudeRoute = ClaudeRoute.API, claudeModel = ClaudeModel.HAIKU.id, claudeEffort = ClaudeEffortSetting.HIGH,
             claudeSearch = false, claudeLocked = true, claudeVoice = "bf_emma", claudeShowCost = false, claudeHelp = Escalation.ASK, claudeBudgetCents = 250)
         assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
         val d = RobotSettings.fromJson("{}")
@@ -364,7 +364,7 @@ class ClaudeContextTest {
         // On by default, with or without a key (without one, questions go to the Claude app).
         assertTrue(ClaudeSettings.enabled(d, keySaved = false) && ClaudeSettings.enabled(d, keySaved = true))
         assertEquals(ClaudeRoute.APP, ClaudeSettings.route(d, keySaved = false))
-        assertFalse(ClaudeSettings.enabled(d.copy(claudeEnabled = false), keySaved = true))
+        assertFalse(ClaudeSettings.enabled(d.withClaude { it.copy(enabled = false) }, keySaved = true))
         assertNull(d.claudeRoute)
         assertNull(d.claudeHelp)
         assertEquals(ClaudeModel.OPUS, d.claudeModelChoice)
@@ -379,8 +379,8 @@ class ClaudeContextTest {
     }
 
     @Test fun modelIdsAreExact() {
-        assertEquals(listOf("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"), ClaudeModel.entries.map { it.id })
-        assertTrue(ClaudeModel.OPUS.fallback && ClaudeModel.SONNET.fallback && !ClaudeModel.HAIKU.fallback)
+        assertEquals(listOf("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5", "claude-fable-5-1"), ClaudeModel.entries.map { it.id })
+        assertTrue(ClaudeModel.OPUS.fallback && ClaudeModel.SONNET.fallback && !ClaudeModel.HAIKU.fallback && ClaudeModel.FABLE.fallback)
     }
 
     @Test fun conversationRecordsClaudeTurns() {

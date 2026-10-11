@@ -246,8 +246,12 @@ What it brings with it at run time (resolved by Gradle, versions as built):
 | `org.slf4j:slf4j-api:2.0.16` (no binding: it logs nothing) | MIT |
 | `com.standardwebhooks:standardwebhooks:1.2.0` | MIT |
 
+Since 0.6.0 the `:claude` module also uses OkHttp 4.12.0 (and its Okio) directly, the same jars as above, for the other
+helpers' clients (OpenAI Chat Completions and Responses, `app.heyrobot.helpers`, in the `:voice` process only); no other
+SDK is added.
+
 Tests only (not in the APK): `com.squareup.okhttp3:mockwebserver:4.12.0` (Apache-2.0), the local mock server the
-network tests talk to through the SDK's base-URL override.
+network tests talk to through the SDK's base-URL override (and, 0.6.0, the helpers' clients).
 
 ## Downloaded by the app (not in the APK; Model › Voice models)
 

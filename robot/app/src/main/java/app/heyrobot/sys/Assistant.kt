@@ -54,11 +54,15 @@ data class AssistantFacts(
     val calendarGranted: Boolean = false,
     val cheogramInstalled: Boolean = false,
     val protonInstalled: Boolean = false,
-    /** Ask Claude: the masked API key (null: none saved), today's spend, the Claude app and which hand-off resolves. */
-    val claudeKey: String? = null,
-    /** The saved key couldn't be decrypted and was removed: Settings says so. */
-    val claudeKeyUnreadable: Boolean = false,
-    val claudeSpendMicros: Long = 0,
+    /**
+     * Helpers (0.6.0): each one's masked API key by helper id (none saved: not there), the helpers whose saved key
+     * couldn't be decrypted and was removed (Settings says so), and what each one's Test connection found.
+     */
+    val keys: Map<String, String> = emptyMap(),
+    val keysUnreadable: Set<String> = emptySet(),
+    val helperFacts: Map<String, app.heyrobot.core.helpers.HelperFacts> = emptyMap(),
+    /** Today's spend on all helpers and each one's (millionths of a dollar). */
+    val spend: app.heyrobot.core.helpers.HelperSpend = app.heyrobot.core.helpers.HelperSpend(""),
     val claudeApp: ClaudeAppFacts = ClaudeAppFacts(installed = false, appLink = false, webLink = false, send = false),
     /** GrapheneOS's per-app Network toggle (INTERNET as a runtime permission). */
     val networkGranted: Boolean = true,
@@ -77,7 +81,11 @@ data class AssistantFacts(
     val notificationAccess: Boolean = false,
     /** 0.4.0: "Learn names from Cheogram notifications" is on (Settings › People): only then is notification access asked for. */
     val learnFromCheogram: Boolean = false,
-)
+) {
+    /** Claude's masked key (null: none saved). */
+    val claudeKey: String? get() = keys[app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID]
+    val claudeKeyUnreadable: Boolean get() = app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID in keysUnreadable
+}
 
 object Assistant {
     /** By name: the main process never refers to the assistant classes. */
@@ -96,6 +104,7 @@ object Assistant {
         val rec = try { Settings.Secure.getString(ctx.contentResolver, "voice_recognition_service") ?: "unset" } catch (_: Throwable) { "unreadable" }
         val found = try { ctx.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0).size } catch (_: Throwable) { 0 }
         val status = readOrNull(Paths.voiceStatus(ctx))?.let { try { JSONObject(it) } catch (_: Exception) { null } }
+        val helpers = try { SettingsStore.load(ctx).helpers } catch (_: Exception) { emptyList() }
         return AssistantFacts(
             roleHeld = roleHeld,
             active = active,
@@ -110,9 +119,10 @@ object Assistant {
             calendarGranted = granted(ctx, Manifest.permission.READ_CALENDAR) && granted(ctx, Manifest.permission.WRITE_CALENDAR),
             cheogramInstalled = HandOffApps.cheogram(ctx) != null,
             protonInstalled = HandOffApps.proton(ctx),
-            claudeKey = ClaudeKeyFiles.masked(ctx),
-            claudeKeyUnreadable = ClaudeKeyFiles.unreadable(ctx),
-            claudeSpendMicros = ClaudeSpendStore.today(ctx),
+            keys = helpers.mapNotNull { h -> HelperKeyFiles.masked(ctx, h.id)?.let { h.id to it } }.toMap(),
+            keysUnreadable = helpers.filter { HelperKeyFiles.unreadable(ctx, it.id) }.map { it.id }.toSet(),
+            helperFacts = helpers.filter { it.presetOf.protocol != app.heyrobot.core.helpers.Protocol.ANTHROPIC }.associate { it.id to HelperFactsStore.load(ctx, it.id) },
+            spend = HelperSpendStore.today(ctx),
             claudeApp = ClaudeAppIntents.facts(ctx),
             networkGranted = granted(ctx, Manifest.permission.INTERNET),
             secureSettingsGranted = RecognizerKeeper.canWrite(ctx),

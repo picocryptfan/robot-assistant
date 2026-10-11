@@ -1,5 +1,6 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.helpers.HelperConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -438,9 +439,10 @@ class SettingsTest {
         eventCalendar = 7, eventMinutes = 30, rememberPicks = false, learnFromCheogram = true,
         wakePhrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(3, "robot", WakeSensitivity.LOW, enabled = false)),
         bargeIn = BargeIn.ALWAYS, interrupt = InterruptSensitivity.HIGH, playback = Playback.CALL, stopKey = StopKey.EITHER,
-        claudeEnabled = false, claudeRoute = ClaudeRoute.API, claudeModel = ClaudeModel.SONNET.id, claudeEffort = ClaudeEffortSetting.HIGH,
-        claudeSearch = false, claudeLocked = true, claudeVoice = "bf_emma", claudeShowCost = false, claudeHelp = Escalation.AUTO,
-        claudeBudgetCents = 200, weatherHome = WeatherPlace("Lyon", 45.76, 4.84),
+        // Ask Claude's fields (0.3 to 0.4.5) become the Claude helper and every helper's budget, cost line and escalation.
+        helpers = listOf(HelperConfig.claude().copy(enabled = false, route = ClaudeRoute.API, model = ClaudeModel.SONNET.id,
+            effort = ClaudeEffortSetting.HIGH, search = false, locked = true, voice = "bf_emma")),
+        helperShowCost = false, help = Escalation.AUTO, helperBudgetCents = 200, weatherHome = WeatherPlace("Lyon", 45.76, 4.84),
         safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
         lockedTools = setOf(ToolName.SET_TIMER, ToolName.FLASHLIGHT), personalToHelpers = true, voiceYesPersonal = true,
         keepMedia = true, voiceCards = false, nearestOnline = NearestOnline.ALWAYS, nearestOnlineAt = 1_760_000_000_000,
@@ -478,6 +480,33 @@ class SettingsTest {
     private val conversationKeys = setOf("convPair", "convTranslate", "convPartials", "convMaxSpeakers", "convWakeDuring", "convStartLocked",
         "convKeepAudio", "convAutoOfferHelper", "meVoiceprint")
 
+    /** The helpers' keys schema 13 adds for these files ("helpDefault" only once you choose who Robot asks). */
+    private val helperKeys = setOf("helpers", "help", "helperBudgetCents", "helperShowCost")
+
+    /** Ask Claude's fields as 0.3 to 0.4.5 wrote them: still written, from the Claude helper, so a downgrade keeps Claude. */
+    private val claudeKeys = listOf("claudeEnabled", "claudeRoute", "claudeModel", "claudeEffort", "claudeSearch", "claudeLocked", "claudeVoice",
+        "claudeShowCost", "claudeHelp", "claudeBudgetCents")
+
+    /** Ask Claude as [file] set it is the Claude helper (the only one), and the next save writes the same claude* fields back. */
+    private fun assertClaudeKept(file: String, read: RobotSettings) {
+        val o = org.json.JSONObject(file)
+        val claude = read.claude!!
+        assertEquals(listOf(HelperConfig.CLAUDE_ID), read.helpers.map { it.id })
+        assertEquals(false, claude.enabled)
+        assertEquals(ClaudeRoute.API, claude.route)
+        assertEquals(ClaudeModel.SONNET, read.claudeModelChoice)
+        assertEquals(ClaudeEffortSetting.HIGH, claude.effort)
+        assertEquals(false, claude.search)
+        assertEquals(true, claude.locked)
+        assertEquals("bf_emma", claude.voice)
+        assertEquals(Escalation.AUTO, read.help)
+        assertEquals(null, read.helpDefault)
+        assertEquals(200, read.helperBudgetCents)
+        assertEquals(false, read.helperShowCost)
+        val saved = read.toJson()
+        for (k in claudeKeys) assertEquals(k, o.get(k).toString(), saved.get(k).toString())
+    }
+
     /**
      * Updating 0.4.4 to 0.6.0: a settings file as 0.4.4 wrote it (schema 7), every choice away from its default, reads with
      * every choice kept, the thinking switch off (schema 10), no search server or terms of its own (schema 12) and conversation
@@ -486,6 +515,7 @@ class SettingsTest {
     @Test fun aFileFrom044MigratesToSchema13() {
         val read = RobotSettings.fromJson(v044)
         assertEquals(chosen044, read)
+        assertClaudeKept(v044, read)
         assertEquals(false, read.modelThinks)
         assertEquals("", read.nearestServer)
         assertEquals(NearbyServer.DEFAULT, read.nearbyServer)
@@ -507,13 +537,14 @@ class SettingsTest {
             confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1L), convSpeak = true, convSpeakers = true, convSummaryLang = "fr",
             convReminderAt = 5).toJson().keys().asSequence().toSet()
         assertEquals(setOf("modelThinks", "nearestServer", "confirmedTerms", "convSpeak", "convSpeakers", "convSummaryLang", "convReminderAt") +
-            conversationKeys, everything - keys044)
+            conversationKeys + helperKeys, everything - keys044)
         assertEquals(emptySet<String>(), keys044 - everything)
 
         // The GGUF branch's file (schema 10, never released): the same choices and the switch on, kept on through 13.
         val v10 = v044.replace(""""schema":7""", """"schema":10""").removeSuffix("}") + ""","modelThinks":true}"""
         val ggufRead = RobotSettings.fromJson(v10)
         assertEquals(chosen044.copy(modelThinks = true), ggufRead)
+        assertClaudeKept(v10, ggufRead)
         val ggufSaved = ggufRead.toJson()
         assertEquals(13, ggufSaved.getInt("schema"))
         assertEquals(true, ggufSaved.getBoolean("modelThinks"))
@@ -530,16 +561,17 @@ class SettingsTest {
         val expected = chosen044.copy(modelThinks = true, nearestServer = "https://nominatim.example.org",
             confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1_760_000_000_001))
         assertEquals(expected, read)
+        assertClaudeKept(v045, read)
         assertEquals(false, read.convPartials)
         assertEquals("nominatim.example.org", read.nearbyServer.name)
         val saved = read.toJson()
         assertEquals(13, saved.getInt("schema"))
         assertEquals(read, RobotSettings.fromJson(saved.toString()))
-        // Everything 0.4.5 wrote is still written, and only conversation mode's keys are new.
+        // Everything 0.4.5 wrote is still written, and only conversation mode's and the helpers' keys are new.
         val keys045 = org.json.JSONObject(v045).keys().asSequence().toSet()
         val keysNow = saved.keys().asSequence().toSet()
         assertEquals(emptySet<String>(), keys045 - keysNow)
-        assertEquals(conversationKeys, keysNow - keys045)
+        assertEquals(conversationKeys + helperKeys, keysNow - keys045)
         // Live words for questions on (0.4.5's default): live words in a conversation on too, as for a new install.
         val withWords = RobotSettings.fromJson(v045.replace(""""livePartials":false""", """"livePartials":true"""))
         assertEquals(true, withWords.convPartials)
@@ -555,6 +587,7 @@ class SettingsTest {
     @Test fun aFileFrom040MigratesToSchema13() {
         val read = RobotSettings.fromJson(v040)
         assertEquals(chosen044.copy(brainModel = BrainModel.FAST.id), read)
+        assertClaudeKept(v040, read)
         assertEquals(BrainModel.FAST, read.brainModelChoice)
         assertEquals(false, read.modelThinks)
         assertEquals(false, read.convPartials)

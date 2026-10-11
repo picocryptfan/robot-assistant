@@ -107,7 +107,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.SettingsPage
 import app.heyrobot.core.Attachment
-import app.heyrobot.core.ClaudeWords
 import app.heyrobot.core.KeyboardPad
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
@@ -199,7 +198,7 @@ fun AssistantPanel(onClose: () -> Unit) {
                     st.notice?.let { NoticeBar(it) }
                 }
                 BrainBanner(st)
-                if (st.claudeMode) ClaudeModeChip()
+                if (st.claudeMode) HelperModeChip(st.helperName ?: "Claude")
                 Messages(st, Modifier.weight(1f, fill = false))
                 // Listening for a question, or for the waiting card's "yes" or "no".
                 val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING || st.cardHearing != null
@@ -298,26 +297,26 @@ private fun Header(st: PanelState, onClose: () -> Unit) {
 private fun statusLine(st: PanelState): String = when (st.phase) {
     Phase.LISTENING -> "Listening…"
     Phase.TRANSCRIBING -> "Writing it down…"
-    // "Claude is thinking…" (or "Checking with Claude…") until Claude's first words.
-    Phase.THINKING -> st.claudeStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
-    Phase.ANSWERING -> if (st.turns.lastOrNull()?.claude == true) "Claude is answering…" else "Answering…"
+    // "Claude is thinking…" (or "Checking with Claude…", "My server is loading its model…") until the helper's first words.
+    Phase.THINKING -> st.helperStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
+    Phase.ANSWERING -> st.turns.lastOrNull()?.takeIf { it.claude }?.let { "${it.by ?: "Claude"} is answering…" } ?: "Answering…"
     Phase.CONFIRMING -> if (st.cardHearing != null) "Say yes or no…" else "Waiting for you: tap the card, or answer yes or no"
     Phase.SPEAKING -> "Speaking · tap to stop"
     Phase.IDLE -> when {
-        st.claudeMode -> "Talking with Claude: your questions go online"
+        st.claudeMode -> "Talking with ${st.helperName ?: "Claude"}: your questions go " + if (st.helperHome) "to your server" else "online"
         st.locked -> "Locked: " + LockScreen.allowed(st.lockedTools)
         st.brain.readiness == BrainKeeper.Readiness.LOADING -> "Getting ready…"
         else -> "On this phone, private"
     }
 }
 
-/** Claude mode is on: every question goes to Claude until "Back to Robot". */
+/** A helper's conversation is on: every question goes to [name] until "Back to Robot". */
 @Composable
-private fun ClaudeModeChip() {
+private fun HelperModeChip(name: String) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp)) {
         AssistChip(
-            onClick = PanelController::endClaudeMode,
-            label = { Text("Talking with Claude · Back to Robot") },
+            onClick = PanelController::endHelperMode,
+            label = { Text("Talking with $name · Back to Robot") },
             leadingIcon = { Icon(RIcons.Cloud, null, Modifier.size(AssistChipDefaults.IconSize), tint = MaterialTheme.colorScheme.tertiary) },
             colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer, labelColor = MaterialTheme.colorScheme.onTertiaryContainer),
             modifier = Modifier.heightIn(min = 48.dp),
@@ -326,9 +325,10 @@ private fun ClaudeModeChip() {
 }
 
 /**
- * "Want me to check with Claude?" under a reply ("Want Claude's take as well?" under Robot's own answer, after the local
- * model first handed the question over), with what Send would send (and the start of the screen's text); or,
- * without an API key, "Open Claude with: «…»". Nothing happens until the tap (or a yes, when nothing personal goes).
+ * "Want me to check with Claude?" under a reply (any helper, by its name; "Want Claude's take as well?" under Robot's own
+ * answer, after the local model first handed the question over), with what Send would send (and the start of the
+ * screen's text); or, without an API key, "Open Claude with: «…»". Nothing happens until the tap (or a yes, when nothing
+ * personal goes).
  */
 @Composable
 private fun OfferCard(replyId: String, o: Offer) {
@@ -341,7 +341,7 @@ private fun OfferCard(replyId: String, o: Offer) {
                 Icon(RIcons.Cloud, null, Modifier.size(22.dp))
                 Spacer(Modifier.width(10.dp))
                 Text(if (!o.api) "Open Claude with: «${o.text.take(120)}${if (o.text.length > 120) "…" else ""}»"
-                    else if (o.asWell) ClaudeWords.OFFER_AS_WELL else ClaudeWords.OFFER,
+                    else if (o.asWell) "Want ${o.name}'s take as well?" else "Want me to check with ${o.name}?",
                     style = MaterialTheme.typography.titleSmall)
             }
             if (o.sends.isNotEmpty()) {
@@ -476,7 +476,7 @@ private fun Messages(st: PanelState, modifier: Modifier) {
                         allowContacts = it.allowContacts) },
                     onConfirm = PanelController::confirm,
                     cardActions = cardActions,
-                    claude = t.claude, readBack = t.readBack, footer = claudeFooter(t.sources, t.cost),
+                    claude = t.claude, readBack = t.readBack, footer = claudeFooter(t.sources, t.cost, t.by), by = t.by, home = t.home,
                 )
                 t.offer?.let { OfferCard(t.id, it) }
             }

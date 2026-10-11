@@ -398,13 +398,14 @@ enum class Cue(override val id: Int, override val title: String) : LogCode {
 }
 
 enum class ClaudeModelCode(override val id: Int, override val title: String) : LogCode {
-    OPUS(1, "Claude Opus"), SONNET(2, "Claude Sonnet"), HAIKU(3, "Claude Haiku");
+    OPUS(1, "Claude Opus"), SONNET(2, "Claude Sonnet"), HAIKU(3, "Claude Haiku"), FABLE(4, "Claude Fable");
 
     companion object {
         fun of(m: ClaudeModel): ClaudeModelCode = when (m) {
             ClaudeModel.OPUS -> OPUS
             ClaudeModel.SONNET -> SONNET
             ClaudeModel.HAIKU -> HAIKU
+            ClaudeModel.FABLE -> FABLE
         }
     }
 }
@@ -429,7 +430,10 @@ enum class ClaudeFail(override val id: Int, override val title: String) : LogCod
     KEY_REFUSED(1, "key refused"), NO_CREDITS(2, "no API credits"), NOT_ALLOWED(3, "not allowed"), MODEL_UNAVAILABLE(4, "model unavailable"),
     RATE_LIMITED(5, "rate limited"), OVERLOADED(6, "overloaded"), SERVER(7, "server error"), BAD_REQUEST(8, "bad request"), TOO_LONG(9, "too long"),
     NO_INTERNET(10, "no internet"), NO_NETWORK_PERMISSION(11, "no network permission"), TIMEOUT(12, "no answer in time"), NO_KEY(13, "no key"),
-    UNKNOWN(14, "other error"), RESET(15, "conversation reset");
+    UNKNOWN(14, "other error"), RESET(15, "conversation reset"),
+    // 0.6.0: helpers on your network and other companies.
+    UNREACHABLE(16, "server not answering"), NOT_LOCAL(17, "address not on your network"), CERTIFICATE(18, "certificate not trusted"),
+    NO_ADDRESS(19, "server's port not found yet");
 
     companion object {
         fun of(f: ClaudeFailure): ClaudeFail = entries.firstOrNull { it.name == f.name } ?: UNKNOWN
@@ -603,15 +607,22 @@ object VoiceLog {
         }
     }
 
+    private val counter = java.util.concurrent.atomic.AtomicLong()
+
+    /** Events recorded since the process started (the ring keeps only the last [CAPACITY]): tests take what came after a point. */
+    val total: Long get() = counter.get()
+
     /** Records an event: [a], [b], [c] as that [VoiceEvent] documents them. */
     fun add(event: VoiceEvent, a: Int = 0, b: Int = 0, c: Int = 0) {
         ring.add(clock(), event, a, b, c)
+        counter.incrementAndGet()
         scheduleFlush()
     }
 
     /** Records an event that happened at [time] (wall clock, ms), noted elsewhere first (before the first unlock). */
     fun addAt(time: Long, event: VoiceEvent, a: Int = 0, b: Int = 0, c: Int = 0) {
         ring.add(time, event, a, b, c)
+        counter.incrementAndGet()
         scheduleFlush()
     }
 

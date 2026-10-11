@@ -235,10 +235,10 @@ class ClaudeSessionTest {
     @Test fun theVoiceLogGetsCodesForClaudeRequests() = runBlocking {
         server.enqueue(textReply("Fine."))
         server.enqueue(error(429, "rate_limit_error"))
-        val before = app.heyrobot.core.VoiceLog.entries().size
+        val before = app.heyrobot.core.VoiceLog.total
         session().ask(ask("why is the sky blue"), voicePlan, Heard())
         session().ask(ask("q"), voicePlan, Heard())
-        val events = app.heyrobot.core.VoiceLog.entries().take(app.heyrobot.core.VoiceLog.entries().size - before).asReversed()
+        val events = app.heyrobot.core.VoiceLog.entries().take((app.heyrobot.core.VoiceLog.total - before).toInt()).asReversed()
         assertEquals(listOf(app.heyrobot.core.VoiceEvent.CLAUDE_SENT, app.heyrobot.core.VoiceEvent.CLAUDE_FIRST, app.heyrobot.core.VoiceEvent.CLAUDE_DONE,
             app.heyrobot.core.VoiceEvent.CLAUDE_SENT, app.heyrobot.core.VoiceEvent.CLAUDE_FAILED), events.map { it.event })
         assertEquals(app.heyrobot.core.ClaudeEnd.END.id, events[2].b)

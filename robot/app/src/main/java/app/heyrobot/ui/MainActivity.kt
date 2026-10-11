@@ -63,7 +63,8 @@ import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.Calendars
-import app.heyrobot.sys.ClaudeKeyFiles
+import app.heyrobot.sys.HelperKeyFiles
+import app.heyrobot.sys.HelperWindow
 import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
@@ -134,7 +135,7 @@ class MainActivity : ComponentActivity() {
         // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
         // Model from a chat-only model's answer to an action (0.4.3).
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL }
+            it == AppPages.MODEL || it == AppPages.HELPERS }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -172,6 +173,10 @@ sealed class Page {
     data object Transcripts : Page()
     data class Transcript(val id: String, val line: Int? = null) : Page()
     data object ConversationSettings : Page()
+    /** Settings › Helpers (0.6.0), one helper's page, and "Add a helper". */
+    data object Helpers : Page()
+    data class Helper(val id: String) : Page()
+    data object AddHelper : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -195,6 +200,9 @@ sealed class Page {
                     Transcripts -> "transcripts"
                     is Transcript -> "transcript:${p.id}:${p.line ?: -1}"
                     ConversationSettings -> "convsettings"
+                    Helpers -> "helpers"
+                    is Helper -> "helper:${p.id}"
+                    AddHelper -> "addhelper"
                 }
             },
             restore = { v ->
@@ -215,6 +223,9 @@ sealed class Page {
                     v == "transcripts" -> Transcripts
                     v.startsWith("transcript:") -> v.split(':').let { Transcript(it[1], it.getOrNull(2)?.toIntOrNull()?.takeIf { n -> n >= 0 }) }
                     v == "convsettings" -> ConversationSettings
+                    v == "helpers" -> Helpers
+                    v.startsWith("helper:") -> Helper(v.removePrefix("helper:"))
+                    v == "addhelper" -> AddHelper
                     else -> null
                 }
             },
@@ -390,6 +401,7 @@ fun RobotAppUi(activity: MainActivity) {
             r == AppPages.TRANSCRIPTS -> page = Page.Transcripts
             r != null && r.startsWith(AppPages.TRANSCRIPTS + ":") -> r.split(':').let { p -> page = Page.Transcript(p[1], p.getOrNull(2)?.toIntOrNull()) }
             r == AppPages.CONVERSATION_SETTINGS -> page = Page.ConversationSettings
+            r == AppPages.HELPERS -> page = Page.Helpers
             r == AppPages.MODEL -> { tab = Tab.MODEL; page = null }
         }
         activity.route.value = null
@@ -435,6 +447,19 @@ fun RobotAppUi(activity: MainActivity) {
         settings = s
         // Off the main thread, one save at a time in order (SettingsStore).
         SettingsStore.save(ctx, s)
+    }
+
+    /** A helper's connection window, once the settings that added or changed the helper are on disk (it reads them in the assistant's process). */
+    fun openHelperWindow(id: String, mode: String) {
+        SettingsStore.afterSaves {
+            scope.launch(Dispatchers.Main) {
+                // By name: the main process never refers to the assistant's classes.
+                try {
+                    ctx.startActivity(Intent().setClassName(ctx.packageName, HelperWindow.CLASS).putExtra(HelperWindow.EXTRA_HELPER, id)
+                        .putExtra(HelperWindow.EXTRA_MODE, mode))
+                } catch (_: Exception) { say("Couldn't open the connection window.") }
+            }
+        }
     }
 
     val actions = AppActions(
@@ -518,18 +543,37 @@ fun RobotAppUi(activity: MainActivity) {
             } catch (_: Exception) { say("Open Settings › Apps › Robot › Permissions.") }
         },
         openNote = { id -> page = Page.NoteEdit(id) },
-        addClaudeKey = {
-            // By name: the main process never refers to the assistant's classes.
-            try {
-                ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.ClaudeKeyActivity"))
-            } catch (_: Exception) { say("Couldn't open the key window.") }
+        helperWindow = ::openHelperWindow,
+        helperMoved = { id, dropKey ->
+            // The address now names another host: the key saved for the old one goes first (files and the Keystore; the
+            // assistant drops its client), so Test connection, which opens after, can't send it to the new address.
+            scope.launch(Dispatchers.IO) {
+                if (dropKey) {
+                    HelperKeyFiles.delete(ctx, id)
+                    Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+                }
+                withContext(Dispatchers.Main) { openHelperWindow(id, HelperWindow.MODE_TEST) }
+            }
         },
-        deleteClaudeKey = {
+        deleteHelperKey = { id ->
+            val name = settings.helper(id)?.name ?: "helper's"
             // Off the main thread (files and the Keystore); then the assistant drops its client at once.
             scope.launch(Dispatchers.IO) {
-                ClaudeKeyFiles.delete(ctx)
-                Cmd.send(ctx, Cmd.CLAUDE_KEY)
-                withContext(Dispatchers.Main) { say("The Claude key was deleted.") }
+                HelperKeyFiles.delete(ctx, id)
+                Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+                withContext(Dispatchers.Main) { say("The $name key was deleted.") }
+            }
+        },
+        removeHelper = { id ->
+            settings.helper(id)?.let { h ->
+                update(settings.copy(helpers = settings.helpers.filter { it.id != id }, helpDefault = settings.helpDefault.takeIf { it != id }))
+                page = Page.Helpers
+                // Its key (crypto-shredded), what Test connection found and its folder; the assistant ends its conversation.
+                scope.launch(Dispatchers.IO) {
+                    HelperKeyFiles.removeAll(ctx, id)
+                    Cmd.send(ctx, Cmd.HELPER_KEY, Bundle().apply { putString(Cmd.EXTRA_ID, id) })
+                    withContext(Dispatchers.Main) { say("${h.name} was removed.") }
+                }
             }
         },
         openPage = { page = it },
@@ -589,12 +633,12 @@ fun RobotAppUi(activity: MainActivity) {
     }
 
     BackHandler(enabled = page != null || (tab != Tab.HOME && !(tab == Tab.NOTES && fromNotesIcon))) {
-        if (page != null) page = null else tab = Tab.HOME
+        if (page != null) page = if (page is Page.Helper || page == Page.AddHelper) Page.Helpers else null else tab = Tab.HOME
     }
 
     when (val p = page) {
-        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people)
-        is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.claudeShowCost, onBack = { page = null })
+        is Page.Setup -> SetupScreen(snap.facts, actions, snackbar, onBack = { page = null }, peopleFirst = p.people, helpers = settings.helpers)
+        is Page.Conversation -> ConversationScreen(history.firstOrNull { it.id == p.id }, actions, snackbar, settings.helperShowCost, onBack = { page = null })
         // A new note keeps the id its first save gave it; a save as the editor closes (Back, a route) never reopens it.
         is Page.NoteEdit -> NoteScreen(p.id, notesTick, actions, snackbar,
             onCreated = { id -> if (page == Page.NoteEdit(null)) page = Page.NoteEdit(id) }, onBack = { page = null; notesTick++ })
@@ -613,6 +657,9 @@ fun RobotAppUi(activity: MainActivity) {
         Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = { page = null })
         is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = { page = Page.Transcripts })
         Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.Helpers -> HelpersScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
+        is Page.Helper -> HelperScreen(p.id, settings, snap, ::updateSettings, actions, snackbar, onBack = { page = Page.Helpers })
+        Page.AddHelper -> AddHelperScreen(settings, ::updateSettings, actions, snackbar, onAdded = { page = Page.Helper(it) }, onBack = { page = Page.Helpers })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -686,9 +733,15 @@ class AppActions(
     val askCalendar: () -> Unit,
     val openAppSettings: () -> Unit,
     val openNote: (String?) -> Unit,
-    /** Ask Claude's key: pasted in a window of the assistant's process (never through this one); deleted here. */
-    val addClaudeKey: () -> Unit,
-    val deleteClaudeKey: () -> Unit,
+    /**
+     * Helpers (0.6.0): a helper's connection window, in the assistant's process (its key is pasted and Test connection
+     * runs there, never through this one; [HelperWindow] modes); its key deleted here; the helper removed with its files.
+     */
+    val helperWindow: (id: String, mode: String) -> Unit = { _, _ -> },
+    /** A helper's address changed (already saved): its key goes first when [dropKey] (another host), then Test connection opens. */
+    val helperMoved: (id: String, dropKey: Boolean) -> Unit = { _, _ -> },
+    val deleteHelperKey: (String) -> Unit = {},
+    val removeHelper: (String) -> Unit = {},
     val openPage: (Page) -> Unit,
     val bargeTest: (BargeRun) -> Unit,
     /** 0.4.0: approximate location for the weather (asked here only), and Android's Usage access page for Robot. */
