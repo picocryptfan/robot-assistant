@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import app.heyrobot.core.ConversationCodec
+import app.heyrobot.core.NearestAnswer
+import app.heyrobot.core.NearestOnline
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.StoredConversation
@@ -17,7 +19,7 @@ import java.util.concurrent.Executors
 
 // Main and voice processes. App-private storage (credential-encrypted, available after the first unlock).
 // Each file has one writer: settings.json the main app, conversations the panel (the main app only
-// deletes them), voice_status.json and the boot markers the voice process.
+// deletes them), voice_status.json, nearest_answer.json and the boot markers the voice process.
 
 object Paths {
     fun dir(ctx: Context): File = File(ctx.filesDir, "robot").apply { mkdirs() }
@@ -32,6 +34,8 @@ object Paths {
     /** The main process's own few voice-log events (the recognizer repair): one writer per file. */
     fun voiceLogMain(ctx: Context) = File(dir(ctx), VoiceFiles.LOG_MAIN)
     fun bargeTest(ctx: Context) = File(dir(ctx), VoiceFiles.BARGE)
+    /** The panel's lasting answer to the nearest place's first-use card (core NearestAnswer): the voice process writes it. */
+    fun nearestAnswer(ctx: Context) = File(dir(ctx), "nearest_answer.json")
 
     fun bootCount(ctx: Context): Int = try {
         Settings.Global.getInt(ctx.contentResolver, Settings.Global.BOOT_COUNT, -1)
@@ -59,6 +63,18 @@ object SettingsStore {
     private fun write(ctx: Context, s: RobotSettings) {
         try { writeAtomic(file(ctx), s.toJson().toString(1)) } catch (t: Throwable) { RLog.w("settings_save", t) }
         Cmd.send(ctx, Cmd.SETTINGS)
+    }
+}
+
+/**
+ * "Allow always", or "No" with "Don't ask again", on the nearest place's first-use card (0.4.0). [VOICE] writes it (the
+ * main app writes settings.json); both read it: it counts while newer than Settings' own choice (core Nearby.mode).
+ */
+object NearestAnswers {
+    fun load(ctx: Context): NearestAnswer? = NearestAnswer.fromJson(readOrNull(Paths.nearestAnswer(ctx)))
+
+    fun save(ctx: Context, choice: NearestOnline) {
+        try { writeAtomic(Paths.nearestAnswer(ctx), NearestAnswer(choice, System.currentTimeMillis()).toJson()) } catch (t: Throwable) { RLog.w("nearest_answer_save", t) }
     }
 }
 

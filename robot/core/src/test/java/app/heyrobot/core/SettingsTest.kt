@@ -178,6 +178,16 @@ class SettingsTest {
         assertEquals(6, s.toJson().getInt("schema"))
         // Emptied stays empty (only questions on the lock screen); unknown or internal tools are dropped; a bad mode is the default.
         assertEquals(emptySet<ToolName>(), RobotSettings.fromJson(d.copy(lockedTools = emptySet()).toJson().toString()).lockedTools)
+        // "Find the nearest place online": Ask the first time for new installs and older files; an early 0.4.0 switch that
+        // was on (or absent) asks the first time too, one turned off is Never; the three choices round-trip.
+        assertEquals(NearestOnline.ASK, d.nearestOnline)
+        for (old in listOf("""{"schema":5}""", """{"schema":6,"nearestOnline":true}""", "{}")) assertEquals(old, NearestOnline.ASK, RobotSettings.fromJson(old).nearestOnline)
+        assertEquals(NearestOnline.NEVER, RobotSettings.fromJson("""{"schema":6,"nearestOnline":false}""").nearestOnline)
+        for (m in NearestOnline.entries) {
+            val withIt = d.copy(nearestOnline = m, nearestOnlineAt = 1_700_000_000_000)
+            assertEquals(withIt, RobotSettings.fromJson(withIt.toJson().toString()))
+        }
+        assertEquals(NearestOnline.ASK, RobotSettings.fromJson("""{"schema":6,"nearestPlace":"SOMETIMES","nearestOnline":false}""").nearestOnline)
         val bad = RobotSettings.fromJson("""{"schema":6,"lockedTools":["flashlight","ask_claude","teleport"],"safetyCards":"NEVER"}""")
         assertEquals(setOf(ToolName.FLASHLIGHT), bad.lockedTools)
         assertEquals(SafetyCards.UNASKED, bad.safetyCards)

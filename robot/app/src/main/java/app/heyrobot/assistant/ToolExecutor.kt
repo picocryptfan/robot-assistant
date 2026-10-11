@@ -40,6 +40,8 @@ import app.heyrobot.core.MailTo
 import app.heyrobot.core.Nearby
 import app.heyrobot.core.NearbyFail
 import app.heyrobot.core.NearbyLookup
+import app.heyrobot.core.NearestConsent
+import app.heyrobot.core.NearestOnline
 import app.heyrobot.core.NearestAsk
 import app.heyrobot.core.OrganicMapsRoute
 import app.heyrobot.core.NoteSearch
@@ -75,6 +77,7 @@ import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.CheogramIntents
 import app.heyrobot.sys.CoarseLocation
+import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.NominatimClient
 import app.heyrobot.sys.OpenMeteoClient
 import app.heyrobot.sys.PhoneInfo
@@ -126,8 +129,9 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.FreeMemory -> prepareFreeMemory(action)
             is Action.FreeStorage -> prepareFreeStorage(action)
             // "The nearest …" in the model's words or your own ([said], never screen text), with the setting on (0.4.0).
-            is Action.MapsSearch -> Prepared.Ready(action.copy(nearest = nearestWanted(action.query, action.nearest)))
-            is Action.MapsNavigate -> Prepared.Ready(action.copy(nearest = nearestWanted(action.destination, action.nearest)))
+            // Settings' "Find the nearest place online" (or the panel's newer answer): Ask the first time shows its card.
+            is Action.MapsSearch -> Nearby.prepare(action, action.query, nearestWanted(action.query, action.nearest), nearestMode())
+            is Action.MapsNavigate -> Nearby.prepare(action, action.destination, nearestWanted(action.destination, action.nearest), nearestMode())
             // The Claude app: installed or "Install Claude" before any card.
             is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
             else -> Prepared.Ready(action)
@@ -143,9 +147,15 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.SetTimer -> timer(action.seconds)
                 is Action.SetAlarm -> alarm(action.hour, action.minute)
                 is Action.OpenApp -> openApp(action)
-                is Action.MapsSearch -> if (action.nearest) nearest(action.query, SEARCH_DONE) else maps(action.query, SEARCH_DONE)
+                is Action.MapsSearch -> {
+                    keep(action.consent)
+                    if (action.nearest) nearest(action.query, SEARCH_DONE) else maps(action.query, SEARCH_DONE)
+                }
                 // A search, not a route (om://route needs coordinates): say what to tap next. The nearest one: its route.
-                is Action.MapsNavigate -> if (action.nearest) nearest(action.destination, NAVIGATE_DONE) else maps(action.destination, NAVIGATE_DONE)
+                is Action.MapsNavigate -> {
+                    keep(action.consent)
+                    if (action.nearest) nearest(action.destination, NAVIGATE_DONE) else maps(action.destination, NAVIGATE_DONE)
+                }
                 is Action.Flashlight -> torch(action.on)
                 is Action.SendText -> text(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = false) }
                 is Action.DraftEmail -> email(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = true) }
@@ -228,9 +238,20 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         return Executed(ActionStatus.FAILED, "Organic Maps isn't installed.")
     }
 
-    /** Only a kind of place or a name goes online (Nearby.sendable): never an address, a number or an email. */
+    /** "The nearest …" in the model's or your words, and only a kind of place or a name (Nearby.sendable): never an address. */
     private fun nearestWanted(what: String, modelSaid: Boolean): Boolean =
-        settings.nearestOnline && (modelSaid || NearestAsk.inWords(said, what)) && Nearby.sendable(what)
+        (modelSaid || NearestAsk.inWords(said, what)) && Nearby.sendable(what)
+
+    private fun nearestMode(): NearestOnline = Nearby.mode(settings, NearestAnswers.load(ctx))
+
+    /** The first-use card's lasting answer ("Allow always", or "No" with "Don't ask again"), kept for next time. */
+    private fun keep(consent: NearestConsent?) {
+        when (consent) {
+            NearestConsent.ALWAYS -> NearestAnswers.save(ctx, NearestOnline.ALWAYS)
+            NearestConsent.NEVER -> NearestAnswers.save(ctx, NearestOnline.NEVER)
+            else -> {}
+        }
+    }
 
     /**
      * "Directions to the nearest pharmacy" (0.4.0): where the phone is (coarse location), OpenStreetMap's Nominatim for that

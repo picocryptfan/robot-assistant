@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.heyrobot.core.NearestAnswer
 import app.heyrobot.core.Approval
 import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestResult
@@ -59,6 +60,7 @@ import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.ClaudeKeyFiles
 import app.heyrobot.sys.Cmd
+import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.RecognizerKeeper
@@ -191,6 +193,8 @@ data class Snapshot(
     val bench: VoiceBench? = null,
     /** The last barge-in test (Settings › Voice). */
     val bargeTest: BargeTestResult? = null,
+    /** The panel's answer to the nearest place's first-use card (Settings › Actions shows it when newer than its own). */
+    val nearestAnswer: NearestAnswer? = null,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
 
@@ -239,6 +243,7 @@ fun RobotAppUi(activity: MainActivity) {
                     engines = VoiceEngineStatus.fromJson(readOrNull(Paths.voiceEngines(ctx))),
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
                     bargeTest = readBargeTest(ctx),
+                    nearestAnswer = NearestAnswers.load(ctx),
                 )
             }
             // A finished voice download is checked and installed right away, one bundle at a time.

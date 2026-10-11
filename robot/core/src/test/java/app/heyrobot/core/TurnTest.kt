@@ -761,6 +761,34 @@ class TurnTest {
         }
     }
 
+    /**
+     * The nearest place's first-use card ("Find the nearest place online: Ask the first time"): it shows even under "Just
+     * do it", and Allow always, Just this time and No (with or without "Don't ask again") each run what they say.
+     */
+    @Test fun theNearestPlacesFirstUseCard() = runBlocking {
+        val go = call("maps_navigate", "destination" to "the nearest pharmacy")
+        for ((pick, remember, want) in listOf(
+            Triple(0, false, Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ALWAYS)),
+            Triple(1, false, Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ONCE)),
+            Triple(1, true, Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ALWAYS)),
+            Triple(2, false, Action.MapsNavigate("pharmacy", nearest = false, consent = NearestConsent.NO)),
+            Triple(2, true, Action.MapsNavigate("pharmacy", nearest = false, consent = NearestConsent.NEVER)),
+        )) {
+            val actions = FakeActions()
+            actions.prepare = { a -> Nearby.prepare(a, "pharmacy", wanted = true, mode = NearestOnline.ASK) }
+            val view = FakeView()
+            val conf = Confirmations()
+            val turn = async { runner(FakeModel(ModelOutcome.Calls(listOf(go))), actions, view, conf).run() }
+            val id = withTimeout(5_000) { view.pending.receive() }
+            val card = view.cards[id]!!
+            assertEquals("Don't ask again", card.remember)
+            assertEquals(3, card.choices.size)
+            conf.choose(id, pick, remember)
+            turn.await()
+            assertEquals("$pick $remember", listOf<Action>(want), actions.ran)
+        }
+    }
+
     /** A phone locked while the card waited: only what "Works on the lock screen" allows still runs. */
     @Test fun theLockScreenSettingHoldsAfterTheCard() = runBlocking {
         val actions = FakeActions(RobotSettings(lockedTools = setOf(ToolName.MAPS_SEARCH)).let { it.copy(approvals = it.approvals + (ToolName.MAPS_SEARCH to Approval.ASK)) })

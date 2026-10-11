@@ -183,6 +183,7 @@ class ApprovalGateTest {
                         remote && t.reads && !helpers,
                         level == Approval.ASK,
                         AskWhy.PICK in why,
+                        AskWhy.ONLINE in why,
                         AskWhy.WHO in why && who,
                         AskWhy.LEARNED in why && learned,
                         AskWhy.DELETE in why && delete,

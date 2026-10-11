@@ -44,6 +44,18 @@ enum class TextApp(val title: String) {
     OFF("Off"),
 }
 
+/**
+ * Settings › Actions › "Find the nearest place online" (0.4.0): whether "directions to the nearest pharmacy" may ask
+ * OpenStreetMap's Nominatim. [ASK] (the default): the first time, a card says what would leave the phone and you choose
+ * there ("Allow always", "Just this time", "No, search the map"; [NearestAnswer] keeps a lasting answer).
+ */
+enum class NearestOnline(val title: String, val detail: String) {
+    ASK("Ask the first time", "The first “nearest …” shows a card that says what would go online; you choose there."),
+    ALWAYS("Always", "Robot asks OpenStreetMap's Nominatim for that kind of place around where you are (about 1 km) and opens " +
+        "Organic Maps' route to the closest. It uses the internet."),
+    NEVER("Never", "Organic Maps' search, which ranks places around you. Nothing goes online."),
+}
+
 /** Which app opens with an email draft: Proton Mail, or the system chooser every time. */
 enum class EmailApp(val title: String) {
     PROTON("Proton Mail"),
@@ -157,10 +169,14 @@ data class RobotSettings(
      */
     val voiceCards: Boolean = true,
     /**
-     * Settings › Actions › "Find the nearest place online" (0.4.0, on; it uses the internet): "directions to the nearest
-     * pharmacy" finds the closest one with OpenStreetMap and opens Organic Maps' route to it. Off: Organic Maps' search.
+     * Settings › Actions › "Find the nearest place online" (0.4.0; Ask the first time): "directions to the nearest
+     * pharmacy" finds the closest one with OpenStreetMap and opens Organic Maps' route to it; Never: Organic Maps' search.
+     * The panel's own answer to the first-use card ([NearestAnswer], kept by the voice process) counts when it is newer
+     * than [nearestOnlineAt] (Nearby.mode).
      */
-    val nearestOnline: Boolean = true,
+    val nearestOnline: NearestOnline = NearestOnline.ASK,
+    /** When [nearestOnline] was last chosen in Settings (wall clock ms); 0: never. */
+    val nearestOnlineAt: Long = 0,
 ) {
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
@@ -223,7 +239,8 @@ data class RobotSettings(
         put("voiceYesPersonal", voiceYesPersonal)
         put("keepMedia", keepMedia)
         put("voiceCards", voiceCards)
-        put("nearestOnline", nearestOnline)
+        put("nearestPlace", nearestOnline.name)
+        if (nearestOnlineAt > 0) put("nearestPlaceAt", nearestOnlineAt)
     }
 
     companion object {
@@ -343,7 +360,10 @@ data class RobotSettings(
                 voiceYesPersonal = o.optBoolean("voiceYesPersonal", d.voiceYesPersonal),
                 keepMedia = o.optBoolean("keepMedia", d.keepMedia),
                 voiceCards = o.optBoolean("voiceCards", d.voiceCards),
-                nearestOnline = o.optBoolean("nearestOnline", d.nearestOnline),
+                // Early 0.4.0 builds saved a switch ("nearestOnline", on by default): on or absent asks the first time, off is Never.
+                nearestOnline = if (o.has("nearestPlace")) enumOr(o.optString("nearestPlace"), d.nearestOnline)
+                    else if (!o.optBoolean("nearestOnline", true)) NearestOnline.NEVER else NearestOnline.ASK,
+                nearestOnlineAt = o.optLong("nearestPlaceAt", 0).coerceAtLeast(0),
             )
         }
 

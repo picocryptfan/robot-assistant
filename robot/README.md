@@ -343,9 +343,19 @@ Logged as `card_answer yes=… spoken=…` only.
 
 ### The nearest place
 
-"Directions to the nearest pharmacy", "the closest gas station", "la pharmacie la plus proche": with Settings ›
-Actions › **Find the nearest place online** on (the default; under Maps directions, marked as using the internet; it
-needs maps search or directions not Off), Robot
+"Directions to the nearest pharmacy", "the closest gas station", "la pharmacie la plus proche": Settings › Actions ›
+**Find the nearest place online** (under Maps directions; it needs maps search or directions not Off) is one of
+
+| Choice | What happens |
+|---|---|
+| **Ask the first time** (default, for new installs and upgrades) | The first time, a card that always shows, whatever the level: "Find the nearest “pharmacy” online (OpenStreetMap) and open the route in Organic Maps", and "To find the closest one, Robot would send “pharmacy” and your area (about 1 km) to OpenStreetMap's Nominatim. Nothing else leaves the phone." Buttons **Allow always** (from now on: Always), **Just this time**, **No, search the map** (Organic Maps' search this time), and a **Don't ask again** tick box that keeps the answer chosen (No with it ticked: Never). A tap only: a spoken yes says to tap; "no" or "cancel" declines it. |
+| **Always** | Robot goes online without that card (the level and Safety cards still apply). |
+| **Never** | Organic Maps' search; nothing goes online. |
+
+Settings has one writer (the main app), so the panel keeps its lasting answer in a file of its own
+(`nearest_answer.json`, written by the voice process); whichever was chosen last, there or in Settings, counts, and
+Settings shows it. An early 0.4.0 file with the old switch on (or none) reads as Ask the first time, off as Never. When
+it may go online, Robot
 
 1. takes where the phone is: approximate location only, as for the weather (no Home for weather: that isn't where you
    are), up to 8 seconds;
@@ -370,7 +380,7 @@ for Safety cards. "Nearest" counts from the model's words or from your own this 
 location permission, no fix, no internet, nothing found, or 20 seconds gone: Organic Maps' search as before, and the card
 says why ("OpenStreetMap knows no such place near you, so Robot opened Organic Maps' search instead: pick the place, then
 tap Route."). Stop ends the lookup at
-once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Off: today's search.
+once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Never: today's search.
 
 **Nominatim's usage policy** (operations.osmfoundation.org/policies/nominatim, read 11 October 2026): every search is
 one you asked for (no autocomplete, no lists, no periodic or background requests); at most one request a second from
@@ -424,8 +434,8 @@ inside Robot's own activity and is unchanged.
     sent; Organic Maps shows the route preview from about where you are. Note the time, whether the place is really
     the nearest, and what tapping Start does from an approximate start. "The closest gas station", "la pharmacie la
     plus proche". Data off: "No internet: Robot couldn't reach OpenStreetMap, so Robot opened Organic Maps' search
-    instead: …". Turn
-    "Find the nearest place online" off: the old search. `adb logcat -s Robot | grep maps_nearest`: codes only.
+    instead: …". "Find the nearest place online" on Never: the old search. `adb logcat -s Robot | grep maps_nearest`:
+    codes only.
 
 ## Ask Claude (0.3.0)
 

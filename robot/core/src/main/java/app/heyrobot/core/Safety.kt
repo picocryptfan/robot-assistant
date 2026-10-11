@@ -34,6 +34,11 @@ enum class AskWhy {
     DELETE,
     /** A list to choose from that isn't about safety (which app's cache to clear): always a card. */
     PICK,
+    /**
+     * It would go online for the first time ("Find the nearest place online: Ask the first time"): always a card that
+     * says what would leave the phone, answered by a tap.
+     */
+    ONLINE,
 }
 
 /** What Robot may do while the phone is locked, as the panel and the model are told. */

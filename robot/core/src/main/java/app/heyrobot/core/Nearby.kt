@@ -1,6 +1,7 @@
 package app.heyrobot.core
 
 import org.json.JSONArray
+import org.json.JSONObject
 import java.text.Normalizer
 import java.util.Locale
 import kotlin.math.asin
@@ -11,9 +12,41 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 // Pure. "Directions to the nearest pharmacy" (0.4.0): Organic Maps can't route to a name, and its search, while it ranks
-// around you, is a list to tap through. With Settings › Actions › "Find the nearest place online" on, Robot asks
-// OpenStreetMap's Nominatim for that kind of place around where the phone is (two decimals, about 1 km, as for the
-// weather), takes the closest, and opens Organic Maps' route to it. Off, or anything going wrong: today's search.
+// around you, is a list to tap through. With Settings › Actions › "Find the nearest place online" allowing it (Ask the
+// first time, the default, shows a card the first time; Always; Never), Robot asks OpenStreetMap's Nominatim for that
+// kind of place around where the phone is (two decimals, about 1 km, as for the weather), takes the closest, and opens
+// Organic Maps' route to it. Never, a "No" on the card, or anything going wrong: today's search.
+
+/** The first-use card's answer a maps action carries (Nearby.prepare): what it keeps when it runs. */
+enum class NearestConsent {
+    /** "Allow always": Settings becomes Always, and it goes online now. */
+    ALWAYS,
+    /** "Just this time": online now, the card again next time. */
+    ONCE,
+    /** "No, search the map": Organic Maps' search now, the card again next time. */
+    NO,
+    /** "No" with "Don't ask again" ticked: Settings becomes Never, and Organic Maps' search now. */
+    NEVER,
+}
+
+/**
+ * The panel's lasting answer to the first-use card ("Allow always", or "No" with "Don't ask again"), [at] wall clock ms.
+ * The voice process keeps it in a file of its own (settings.json has one writer, the main app); it counts while it is
+ * newer than what Settings last chose ([RobotSettings.nearestOnlineAt], [Nearby.mode]).
+ */
+data class NearestAnswer(val choice: NearestOnline, val at: Long) {
+    fun toJson(): String = JSONObject().put("choice", choice.name).put("at", at).toString()
+
+    companion object {
+        fun fromJson(text: String?): NearestAnswer? = try {
+            val o = JSONObject(text ?: return null)
+            val c = NearestOnline.entries.firstOrNull { it.name == o.optString("choice") } ?: return null
+            NearestAnswer(c, o.optLong("at", 0))
+        } catch (_: Exception) {
+            null
+        }
+    }
+}
 
 /** A place Nominatim found: its name, the rest of its address (a line or two), where it is. */
 data class NearbyPlace(val name: String, val address: String?, val lat: Double, val lon: Double)
@@ -146,11 +179,52 @@ object Nearby {
     /** Nominatim's answer is cached this long (its policy asks for it): the same question again needn't go online. */
     const val CACHE_MS = 10 * 60_000L
 
-    /** [a] as a plain Organic Maps search (the setting is off, or the nearest place couldn't be found in time). */
-    fun plain(a: Action): Action = when (a) {
-        is Action.MapsSearch -> a.copy(nearest = false)
-        is Action.MapsNavigate -> a.copy(nearest = false)
+    /** [a] as a plain Organic Maps search (Never, or the nearest place couldn't be found in time). */
+    fun plain(a: Action): Action = withNearest(a, nearest = false, consent = null)
+
+    /** [a] (a maps action) going online or not, carrying the first-use card's [consent]. */
+    private fun withNearest(a: Action, nearest: Boolean, consent: NearestConsent?): Action = when (a) {
+        is Action.MapsSearch -> a.copy(nearest = nearest, consent = consent)
+        is Action.MapsNavigate -> a.copy(nearest = nearest, consent = consent)
         else -> a
+    }
+
+    /** "Find the nearest place online" now: Settings' choice, or the panel's answer when that is newer. */
+    fun mode(settings: RobotSettings, answer: NearestAnswer?): NearestOnline =
+        if (answer != null && answer.at > settings.nearestOnlineAt) answer.choice else settings.nearestOnline
+
+    /** The first-use card's buttons and its tick box. */
+    const val ALLOW_ALWAYS = "Allow always"
+    const val JUST_THIS_TIME = "Just this time"
+    const val NO_SEARCH = "No, search the map"
+    const val DONT_ASK = "Don't ask again"
+
+    /** The first-use card's line: exactly what would leave the phone, and to whom. */
+    fun consentNote(what: String): String =
+        "To find the closest one, Robot would send “$what” and your area (about 1 km) to OpenStreetMap's Nominatim. Nothing " +
+            "else leaves the phone. “$NO_SEARCH” uses Organic Maps' search instead, on the phone."
+
+    /**
+     * The maps action [a] ready for its card: [wanted] is "the nearest …" in the model's or your words, and something
+     * that may go (Nearby.sendable). Never, or not wanted: Organic Maps' search. Always: online. Ask the first time: a card
+     * that always shows ([AskWhy.ONLINE]) with [ALLOW_ALWAYS], [JUST_THIS_TIME] and [NO_SEARCH]; "Don't ask again" ticked
+     * keeps the answer chosen (Always, or Never with No).
+     */
+    fun prepare(a: Action, what: String, wanted: Boolean, mode: NearestOnline): Prepared.Ready {
+        if (!wanted || mode == NearestOnline.NEVER) return Prepared.Ready(plain(a))
+        if (mode == NearestOnline.ALWAYS) return Prepared.Ready(withNearest(a, nearest = true, consent = null))
+        val always = withNearest(a, nearest = true, consent = NearestConsent.ALWAYS)
+        return Prepared.Ready(
+            withNearest(a, nearest = true, consent = null),
+            why = setOf(AskWhy.ONLINE),
+            choices = listOf(
+                Choice(ALLOW_ALWAYS, always, always),
+                Choice(JUST_THIS_TIME, withNearest(a, nearest = true, consent = NearestConsent.ONCE), always),
+                Choice(NO_SEARCH, withNearest(a, nearest = false, consent = NearestConsent.NO), withNearest(a, nearest = false, consent = NearestConsent.NEVER)),
+            ),
+            note = consentNote(what),
+            remember = DONT_ASK,
+        )
     }
 
     /** The card's line when the nearest place couldn't be found and Organic Maps' search opened instead ([navigate]: directions). */
