@@ -340,9 +340,12 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
         }
         val all = remember(tr) { timeline(tr) }
         val list = rememberLazyListState()
+        // Speakers who sounded alike when the session ended: offered, one at a time, never merged by themselves.
+        val similar = m.similar.firstOrNull { (a, b) -> a in tr.speakers && b in tr.speakers }?.takeIf { !live }
         LaunchedEffect(focusLine, all.size) {
             val k = focusLine?.let { f -> all.indexOfFirst { it is TranscriptLine && it.i == f } } ?: -1
-            if (k >= 0) list.scrollToItem(k + 1)
+            // After the header (and the merge card when there is one).
+            if (k >= 0) list.scrollToItem(k + 1 + if (similar != null) 1 else 0)
         }
         LazyColumn(Modifier.fillMaxSize().padding(pad), state = list, contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -359,9 +362,7 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                 Text("${TranscriptExport.CREDIT} Nothing leaves the phone unless you share or export it.", style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            // Speakers who sounded alike when the session ended: offered, one at a time, never merged by themselves.
-            val similar = m.similar.firstOrNull { (a, b) -> a in tr.speakers && b in tr.speakers }
-            if (similar != null && !live) item(key = "similar") {
+            if (similar != null) item(key = "similar") {
                 SimilarCard(SpeakerView.of(tr), similar.first, similar.second, onMerge = { edits.merge(similar.first, similar.second) },
                     onDecline = { edits.decline(similar.first, similar.second) })
             }

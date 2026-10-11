@@ -252,7 +252,7 @@ class ConversationActivity : ComponentActivity() {
         var edit by remember { mutableStateOf<SpeakerEdit?>(null) }
         // Speakers are changed while the session runs, with the phone unlocked; afterwards in Robot › Transcripts.
         val editable = ui.active && ui.status != ConversationSession.Status.STOPPING && !locked
-        if (!editable && edit != null) edit = null
+        LaunchedEffect(editable) { if (!editable) edit = null }
         var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
         LaunchedEffect(ui.active) {
             while (ui.active) {
