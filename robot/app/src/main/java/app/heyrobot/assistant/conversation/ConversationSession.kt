@@ -446,6 +446,8 @@ object ConversationSession {
         val store = Transcripts.store(app)
         id?.let(store::forget)
         ConversationNotices.cancelResume(app, id)
+        // A summary of it being made stops: nothing more of a deleted transcript is read or kept.
+        SummaryJobs.deleted(id)
         ctl.post {
             val w = writer ?: run {
                 // Not running: "Saved: open it" must not point at a deleted transcript.

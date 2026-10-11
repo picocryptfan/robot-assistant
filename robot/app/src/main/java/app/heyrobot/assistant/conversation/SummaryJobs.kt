@@ -180,6 +180,18 @@ object SummaryJobs {
         job?.cancel()
     }
 
+    /**
+     * The app deleted transcript [id] (null: all of them; Cmd.TRANSCRIPTS_DELETED): a summary of it being made stops
+     * (Robot's model reads no more of it, Claude's answer isn't waited for), and what was made of it is forgotten.
+     */
+    @Synchronized
+    fun deleted(id: String?) {
+        if (id != null && _state.value.id != id) return
+        job?.cancel()
+        job = null
+        _state.value = Ui()
+    }
+
     /** The screen moved on to another transcript, or closed after the job ended: forget the last result. */
     fun clear(id: String?) {
         if (!running && _state.value.id != id) _state.value = Ui(id = id)
