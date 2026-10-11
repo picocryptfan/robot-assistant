@@ -511,8 +511,8 @@ installed, the two files above on the phone (Downloads), about 6 GB free. Note e
 
 "The UI needs to look more like stock and less like AI": Robot is being redrawn as an ordinary Android (GrapheneOS)
 app, in four steps so the branches in flight merge easily. (a) is in 0.4.5: the theme, the icons, the shared building
-blocks, the Classic look switch and the tests. (b) Settings as Android-style pages, (c) the assistant panel, (d) the other
-screens follow; conversation mode's and the helpers' screens, merged in 0.6.0, use the shared building blocks until then.
+blocks, the Classic look switch and the tests. (b), on `feature/ui-settings`, rebuilds every Settings page, the Model tab and
+Assistant setup as Android-style pages (next section). (c) the assistant panel and (d) the other screens follow.
 
 - **Theme** (`ui/theme/`): the wallpaper's colours (Material You) by default; Settings › Display › "Use wallpaper
   colours" off gives Robot's own full scheme (`RobotColors.kt`, generated from Robot's blue). Light or dark follows the
@@ -554,6 +554,119 @@ Not yet checked: the redesign plan's phone checks P-1 to P-4 (its design documen
 - **P-4 Largest sizes.** Font and display size at their largest.
 - With them: Settings › About › Licences (its card and the About row are the restyled `SectionCard` and `NavRow`) and the
   Uncensored model's two-tick-box window, with and without wallpaper colours (C-1 and C-2 in the next section).
+
+### Settings as Android pages (step (b))
+
+Every Settings screen is now built from `ui/pref/` like Android's own Settings: a large top bar that collapses, rows in
+rounded groups under a small header, the current state on one line under each title, switches on the right, a main switch
+bar where a page is on or off as a whole (turning it off greys out the rest), single choices in a radio dialog that closes on
+a pick (no segmented buttons or chips left in Settings), text in an edit dialog whose Save stays off while the text is
+wrong, status rows with the button that fixes them, and the long explanations in each page's footer. Settings are stock-only:
+the Classic look changes the panel, never these pages. No setting changed its meaning, default or storage (`settings.json`
+stays schema 13).
+
+- **Settings** is a list of pages (`ui/settings/SettingsRoot.kt`), fourteen rows, each saying its state: Wake word
+  ("On · “hey robot” and 2 others"), Voice, Actions, Safety & privacy, People, notes and calendar, Weather, Helpers,
+  Conversation, Model (opens the Model tab), History, Display, Assistant setup ("Needs attention" with a red symbol when
+  something is wrong), Advanced and About.
+- **Wake word** (was Settings › Voice › Wake words, plus the two switches from the old Settings page): the main switch
+  "Use wake words", "Only while charging", each phrase as a row with two targets (the text opens its sensitivity and Remove
+  in a dialog; the switch, read as "Listen for “hey robot”", turns it on and off), "Add a wake phrase" in an edit dialog
+  checked as you type, Test wake words, and the sensitivity table in the footer.
+- **Voice** (`VoiceSettings.kt`): the voice, speed and Test the voice; Speak replies (Voice only, Always, Never) and live
+  words; Hear you while Robot talks, Interrupt sensitivity (the 0.4.6 slider, unchanged), Voice plays as, Volume key stops
+  Robot; and Troubleshooting: the engines' state, Test voice speed, the **Barge-in test** (now a page of its own, its four
+  runs as rows), the Transcription check and the voice log.
+- **Actions** (`ActionsSettings.kt`): one row per action, in groups, its level and whether it works locked or goes online
+  under the title ("Ask first · works locked"); a tap opens Just do it / Ask first / Off. "Find the nearest place online"
+  and its Search server (an edit dialog that refuses `http://` with the reason) sit under Maps directions.
+- **Safety & privacy**, **People** (the ways to add someone first; import, export and Delete all in the ⋮ menu; Keep and
+  Remove read as "Keep Ana", "Remove Ana"; letter avatars; notification access's three steps on a page of their own,
+  with the 0.4.6 privacy note unchanged), **People, notes and calendar** (radio dialogs for the apps, the calendar and the
+  length; edit dialogs for the SMS gateway and the phone region, which now refuses "USA" instead of saving nothing),
+  **Weather** (the Home for weather in a dialog that looks the town up and shows Open-Meteo's error under the field),
+  **Helpers** (a main switch per helper; when Robot needs help, the model, the voice, the budget and each helper's cap in
+  radio dialogs; names and prices in edit dialogs; what goes to a helper and what "Trusted with personal content" means
+  in the footers, word for word; keys still only ever pasted in the helper's own window), **Conversation** (the speaker
+  model and the fast engine as status rows with Download, Cancel or Delete; the consent text under "Telling people"),
+  **History** (the main switch "Save conversations"; Delete all works either way), **Advanced** (ADB fixes, voice log),
+  **About** (version, Licences) and **Assistant setup** (status rows in groups, each with its button; the Claude app's
+  hand-offs in words; what happens after a restart in the footer).
+- **ADB fixes**: a status row per fix; each opens a page with why it is needed, the commands (selectable, monospace) and
+  Copy.
+- **The Model tab** (`ui/model/ModelPages.kt`): "Robot uses" as radio rows (a model not ready is greyed out with the
+  reason) with a details button each that opens the model's page: its downloads, Import, Check and Delete, sizes, cache, free
+  space, licence, source and the SHA-256 to select; the Uncensored model's two tick boxes as before. Your own file's page
+  says what Robot found inside, and "Run on the TPU" opens the risks in a dialog bound to that file's SHA-256 (it was an
+  inline card). Thinking, and "Keep the model loaded" (moved here from the old Settings page), then the voice models, each
+  with its page.
+- **Back goes up one page**, as in Android's Settings (Settings › Voice › Barge-in test › Back shows Voice; ADB fixes
+  opened from Assistant setup goes back to Assistant setup). The open pages survive a rotation; a page opened by a link
+  from elsewhere goes back to its parent. The links from outside (the panel's "Open Model" and "Allow", the transcript
+  and summary screens, the tile's long press, the Robot Notes icon) are in `ui/settings/SettingsNav.kt` (`AppRoutes`), each
+  tested.
+- **Wording**: "you", never "I" or "the owner"; Robot is "it". Core's own strings that say "me" or "she" ("Ask me first",
+  "When I ask by voice", the barge-in modes' long texts) are untouched, since core is shared with other branches; the pages
+  show their own words for them.
+- **Tests**: one Robolectric test per page (it renders with fixed settings, every target is labelled, at least 48 dp and not
+  overlapping, each switch and choice writes exactly its setting, a main switch disables the rest, a radio dialog closes on
+  a pick, an edit dialog's Save stays off while the text is wrong), `PageSaverTest` over every page and the back stack,
+  `AppRoutesTest` over every outside link, and screenshots: `settings_root`, `voice_light`, `voice_font200`,
+  `actions_light`, `actions_dialog`, `safety_light`, `helpers_light`, `display_dark`, `model_light`, `conversation_light`,
+  `people_light`.
+
+### On the phone (step (b), Settings)
+
+The design's phone checks for this step (`docs/plans/ui-stock-design.md`, section 6). Settings › Display › "Use wallpaper
+colours" on for all of them unless a step says otherwise.
+
+- **P-3 Beside Android's Settings.**
+  1. Split screen: GrapheneOS Settings › Sound & vibration on top, Robot › Settings › Voice below.
+  2. Compare the page background and the rounded groups: the same darker page, the same corners, the same 2 dp gaps
+     between rows. If GrapheneOS Settings shows flat rows (no rounded groups), note it: `RobotTokens.groupedSettings`
+     becomes `false`.
+  3. Compare the title sizes (20 sp rows, 14 sp lines under them) and the group headers (small, in the theme colour).
+  4. Compare a switch in each: a check in the thumb when on, a cross when off.
+  5. Open GrapheneOS Settings › Network & internet › Internet (Wi-Fi's main switch) beside Robot › Settings › Wake word:
+     the "Use wake words" bar is the same pill, coloured when on, grey when off; turning it off greys out every row under it.
+  6. In Robot › Settings › Actions, tap Texts: a dialog with three radio rows; tap Just do it: it closes at once and the row
+     reads "Just do it". Set it back to Ask first.
+  7. Settings › People, notes and calendar › Phone region: type `USA`: Save is greyed out and the line under the field says
+     why; type `ca`: Save works and the row reads `CA`. Clear it again (empty is this phone's own region).
+- **P-4 Largest font and display size.**
+  1. Android Settings › Display › Display size and text: Font size and Display size at their largest.
+  2. Robot › Settings: every row's title wraps instead of being cut, nothing overlaps, and the groups still fit the
+     screen's width.
+  3. Open Voice, Actions, Helpers › Claude and the Model tab: titles wrap, the switches stay on the right, the Interrupt
+     sensitivity slider's Low, Medium and High labels stay readable, and the details buttons on the Model tab stay
+     tappable.
+  4. Open a radio dialog (Speak replies) and an edit dialog (Add a wake phrase): the rows and the field fit, and the
+     buttons stay on screen with the keyboard up.
+  5. Put both sizes back.
+- **P-5 TalkBack, Settings part.**
+  1. Turn TalkBack on and open Robot › Settings.
+  2. Swipe through: each row is one stop, read as its title then its state ("Wake word, On, “hey robot”"); the group
+     headers are headings (swipe up then down to choose Headings, then swipe to jump group by group).
+  3. Settings › Wake word: the main switch reads "Use wake words, switch, on"; each phrase is two stops, the phrase
+     ("“hey robot”, Sensitivity Medium") and its switch ("Listen for “hey robot”, switch, on").
+  4. Settings › Voice › Speak replies: read as a button with its value ("Voice only"); double-tap opens the dialog, the
+     choices read as radio buttons, one selected; double-tap another and the dialog closes.
+  5. Settings › Voice › Interrupt sensitivity: swipe up or down on it: it moves a step and says Low, Medium or High, and
+     the level stays after you leave the page and come back.
+  6. Settings › People: "Keep Ana" and "Remove Ana" (for a learned name) are read with the name; the letter avatars are
+     skipped.
+  7. Assistant setup: each status row starts with "Done", "To do" or "Problem"; buttons read "Allow the microphone",
+     "Fix it with ADB fixes".
+  8. Turn TalkBack off.
+- **P-11 Remove animations.**
+  1. Android Settings › Accessibility › Color and motion › Remove animations: on.
+  2. Robot › Settings: open pages and dialogs; nothing pulses or glows anywhere, and Back still goes up one page.
+  3. Model tab › Smarter › Download (cancel right after) and Settings › Weather › Home for weather › Look up: the progress
+     bars show without moving shine.
+  4. Turn Remove animations off again.
+- With them: **Back.** Settings › Voice › Barge-in test, then Back twice: Voice, then Settings. Assistant setup › Fix,
+  then Back: Assistant setup. Rotate the phone on Settings › Helpers › Claude: the same page stays, and Back still goes
+  to Helpers.
 
 ## Licences, the search server and the model terms (0.4.5)
 

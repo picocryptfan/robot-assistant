@@ -307,7 +307,9 @@ fun BargeTestScreen(s: RobotSettings, snap: Snapshot, a: AppActions, snackbar: S
     val names = s.wakePhrases.associate { it.id to it.text }
     PreferenceScreen("Barge-in test", onBack, snackbar = snackbar) {
         item(key = "setup") {
-            IntroPreference(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM || missing, if (missing) modelName else null, s.interrupt))
+            // Core's line speaks as you ("Hear me …", shared with other branches): the page says it as the Voice page does.
+            IntroPreference(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM || missing, if (missing) modelName else null, s.interrupt)
+                .replaceFirst("Hear me while Robot talks", "Hear you while Robot talks"))
         }
         preferenceGroup("Run", "runs") {
             PreferenceItem("Run the test", if (running) "Testing…" else "Say “stop” or one wake phrase, once", enabled = !running,
