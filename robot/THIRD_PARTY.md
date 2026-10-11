@@ -239,8 +239,12 @@ on the build machine only.
   card credits it ("Data © OpenStreetMap contributors, ODbL"). Used under the Nominatim usage policy
   (https://operations.osmfoundation.org/policies/nominatim/); see the README's "The nearest place". Robot keeps none
   of the data beyond a 10-minute cache in memory.
-- **Open-Meteo** (`api.open-meteo.com`, `geocoding-api.open-meteo.com`): the weather, under Open-Meteo's own terms (see
-  the README's "Weather").
+- **Open-Meteo** (`api.open-meteo.com`, `geocoding-api.open-meteo.com`): the weather. Weather data by Open-Meteo.com
+  (https://open-meteo.com/), under Creative Commons Attribution 4.0 (CC BY 4.0,
+  https://creativecommons.org/licenses/by/4.0/); the weather card credits it ("Weather data by Open-Meteo.com, CC BY
+  4.0"), and Robot shortens the forecast into its own lines. The free API is for non-commercial use, with limits of
+  10,000 calls a day, 5,000 an hour and 600 a minute (Open-Meteo's terms, https://open-meteo.com/en/terms); Robot is a
+  free, non-commercial app and asks only when you ask about the weather. See the README's "Weather".
 
 ## Code adapted from the phase 0 probe and the GPU lab (same author, GPL-3.0)
 

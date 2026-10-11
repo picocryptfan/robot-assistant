@@ -90,9 +90,10 @@ read tools don't: nothing leaves the phone).
 Robot runs on the phone and goes online when you ask: the weather comes from **Open-Meteo** (`api.open-meteo.com`, and
 `geocoding-api.open-meteo.com` to find a town), with no account and no key. The request comes from the assistant's
 process (`:voice`, where tools run), over HTTPS with short timeouts, no redirects and a plain "Robot" User-Agent (Android's
-default names the phone model). `sys/OpenMeteoClient.kt` is the only HTTP code outside the Claude SDK
-(`ProcessIsolationTest` checks it); `core/Weather.kt` builds the URLs and reads the answers, tested against answers
-recorded from Open-Meteo.
+default names the phone model). `sys/OpenMeteoClient.kt` and `sys/NominatimClient.kt` (the nearest place) are the only
+HTTP code outside the Claude SDK (`ProcessIsolationTest` checks it); `core/Weather.kt` builds the URLs and reads the
+answers, tested against answers recorded from Open-Meteo. Open-Meteo's data is CC BY 4.0, so the weather card ends with
+"Weather data by Open-Meteo.com, CC BY 4.0"; its free API is for non-commercial use, which Robot is (THIRD_PARTY.md).
 
 - **Where.** A town you name, or "at home" / "at my house" (your Home for weather), or "here", "outside" and no place
   at all: where the phone is ("here in Montreal" is Montreal). Without a region the biggest town of that name is taken

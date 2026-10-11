@@ -618,7 +618,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             val sent = if (source == WeatherSource.NAMED) "Sent to Open-Meteo: “${WeatherAsk.where(a.place).second ?: a.place}” (to find it), then $coords"
             else "Sent to Open-Meteo: $coords"
             Executed(ActionStatus.DONE, detail, results = listOf(mapOf("place" to named)) + report.results,
-                body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent,
+                body = named.replaceFirstChar { it.uppercase() } + "\n" + report.lines + "\n\n" + sent + "\n" + OpenMeteo.ATTRIBUTION,
                 spoken = "${named.replaceFirstChar { it.uppercase() }}. ${report.spoken}")
         } catch (e: OpenMeteoClient.Failure) {
             // Once the caller has given up (Stop, the deadline) it logs why; this result is dropped.
