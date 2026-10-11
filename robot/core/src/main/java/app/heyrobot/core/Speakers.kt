@@ -227,8 +227,11 @@ object TranscriptEdits {
     fun wordStarts(text: String): List<Int> = Regex("\\S+").findAll(text).map { it.range.first }.toList()
 
     /** The speakers a line or speaker can go to: the transcript's, without "?", yours first. */
-    fun targets(t: Transcript): List<String> = t.speakers.filter { it != SpeakerClusterer.UNKNOWN }
-        .sortedWith(compareBy<String> { if (it == SpeakerClusterer.ME || it == t.me) 0 else 1 }.thenBy { SpeakerLabels.colour(it) })
+    fun targets(t: Transcript): List<String> = targets(t.speakers, t.me)
+
+    /** [targets] from a screen's list of [speakers] and who is you ([me]). */
+    fun targets(speakers: List<String>, me: String?): List<String> = speakers.filter { it != SpeakerClusterer.UNKNOWN }.distinct()
+        .sortedWith(compareBy<String> { if (it == SpeakerClusterer.ME || it == me) 0 else 1 }.thenBy { SpeakerLabels.colour(it) })
 }
 
 /** The audio speaker labels look at (docs/conversation-mode.md 3.2). */
