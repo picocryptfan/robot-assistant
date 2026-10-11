@@ -71,6 +71,7 @@ every other source sherpa-onnx's Android build compiles in, each checked against
 | Material Symbols | google/material-design-icons at 49d4db35 | Apache-2.0 | in the APK |
 | Annotation libraries | as resolved | Apache-2.0 | in the APK |
 | Gemma 4 E2B (Tensor G5) | litert-community, b3ca0d2f | Apache-2.0 | downloaded when you ask |
+| Gemma 4 E2B | litert-community, b3ca0d2f | Apache-2.0 | downloaded when you ask |
 | Gemma 4 E4B | litert-community, 2eee7ac3 | Apache-2.0 | downloaded when you ask |
 | Gemma 4 E4B abliterated | olekk, a4eecccd | Apache-2.0 | downloaded when you ask |
 | Your own model file | the file you import | LicenseRef-own-file | downloaded when you ask |
@@ -287,11 +288,15 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 
 - `com.google.ai.edge.litertlm:litertlm-android:0.18.0` (Apache-2.0), Google Maven; `liblitertlm_jni.so` arm64-v8a. It runs
   the model you choose on the TPU (NPU backend) or the CPU (XNNPACK); nothing new is linked for the CPU models (0.4.1).
+  0.4.7: the general Gemma 4 E2B also runs on the GPU through the GPU accelerator already linked into `liblitertlm_jni.so`
+  (ML Drift's OpenCL path); nothing new is bundled for it.
   Its LICENSE and THIRD_PARTY_NOTICE.txt ship inside the AAR; `:brain`'s `aarNotices` task copies both into the APK's
   assets (as it does the NPU runtime's two).
 - `com.google.ai.edge.litert:litert-npu-runtime-google-tensor:2.3.0` (Apache-2.0), non-transitive;
   `libLiteRtDispatch_GoogleTensor.so` is packaged, `libLiteRtCompilerPlugin_google_tensor.so` excluded (as in the probe and the lab).
 - The Tensor TPU vendor libraries (`libedgetpu_*`) are the phone's own, declared with `<uses-native-library required="false">`, not bundled.
+- 0.4.7: the phone's OpenCL (`libOpenCL.so`, `libOpenCL-pixel.so`, `libvndksupport.so`) is the phone's own too, declared the
+  same way for the GPU, not bundled.
 - Transitive: `com.google.code.gson:gson:2.14.0`, `org.jetbrains.kotlin:kotlin-reflect:2.4.0` (Apache-2.0).
 
 ### llama.cpp b11200 (MIT): your own GGUF model file (0.4.5)
@@ -339,10 +344,15 @@ SHA-256 before it is ever loaded. The weights are not part of Robot and are not 
 LiteRT-LM reads at run time, so Robot's GPL-3.0 is not affected. Gemma 4 is released by Google under Apache-2.0 (Google's
 Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-2.0`).
 
-- **Fast (default): Gemma 4 E2B for the Tensor G5 TPU.** `gemma-4-E2B-it_Google_Tensor_G5.litertlm`,
+- **Fast (default) on a Tensor G5 (Pixel 10): Gemma 4 E2B for the Tensor G5 TPU.** `gemma-4-E2B-it_Google_Tensor_G5.litertlm`,
   https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm, revision `b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1`,
   3,113,545,589 bytes, sha256 `af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc`. Published by Google
   (litert-community). Licence: Apache-2.0.
+- **Fast (default) on every other phone (0.4.7; a Pixel 9a): Gemma 4 E2B, the general build (GPU or CPU).**
+  `gemma-4-E2B-it.litertlm`, https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm, revision
+  `b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1` (the same repository and commit as above; not gated), 2,588,147,712 bytes,
+  sha256 `181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c`. Published by Google (litert-community).
+  Licence: Apache-2.0.
 - **Smarter, slower: Gemma 4 E4B (CPU).** `gemma-4-E4B-it.litertlm`,
   https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm, revision `2eee7ac325f20eb8c9ac1d0e972f7c84663062da`,
   3,659,530,240 bytes, sha256 `0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0`. Published by Google
@@ -360,6 +370,9 @@ Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-
   specification; no code copied), and shows the licence a GGUF file names (`general.license`). For example MedGemma 1.5 4B
   (its LiteRT-LM files, README "Short-context models", or unsloth's GGUF build): Google's Health AI Developer Foundations
   terms of use, not Apache-2.0; Qwen3 1.7B (Qwen's own GGUF build) is Apache-2.0.
+- Not offered yet: Google's Tensor G6 build (`gemma-4-E2B-it_Google_Tensor_G6.litertlm`, same commit, for the Pixel 11
+  series), until Robot has run it on a Pixel 11; and the `-gpu` build, which gave garbage on the Pixel 10 Pro's GPU in
+  Robot's GPU lab.
 - Not offered: no Gemma 4 E4B build for the Tensor TPU exists. `safecircleai/horizon-edge-4b` (a renamed CPU export of a
   child-safety classifier fine-tune, under the non-commercial "SafeCircle Research License") is never offered.
 

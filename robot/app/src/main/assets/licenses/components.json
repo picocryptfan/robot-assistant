@@ -415,7 +415,7 @@
    "maven": [
     "com.google.ai.edge.litertlm:*"
    ],
-   "note": "Runs the model you choose, on the TPU or the CPU (liblitertlm_jni.so)."
+   "note": "Runs the model you choose, on the TPU, the GPU (with the phone's own OpenCL) or the CPU (liblitertlm_jni.so)."
   },
   {
    "id": "litert-npu-google-tensor",
@@ -562,7 +562,17 @@
    "copyright": "Copyright Google LLC",
    "url": "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm",
    "where": "download",
-   "note": "Settings › Model › Fast. Google's Gemma 4 licence is the Apache License 2.0."
+   "note": "Settings › Model › Fast on a Tensor G5 (Pixel 10). Google's Gemma 4 licence is the Apache License 2.0."
+  },
+  {
+   "id": "gemma-4-e2b-general",
+   "name": "Gemma 4 E2B",
+   "version": "litert-community, b3ca0d2f",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm",
+   "where": "download",
+   "note": "Settings › Model › Fast on every other phone (a Pixel 9a): the general build, on the GPU or the CPU. Google's Gemma 4 licence is the Apache License 2.0."
   },
   {
    "id": "gemma-4-e4b",
