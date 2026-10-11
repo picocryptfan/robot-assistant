@@ -134,6 +134,11 @@ enum class VoiceEvent(val id: Int) {
     /** Barge-in test, every keyword heard: a = phrase id (0: "stop"), b = ms after Robot's voice started (-1: before), c = [BargeHitKind]. */
     BARGE_HIT(44),
     /**
+     * The keyboard opened over the panel (0.4.2), once it settled: a = the keyboard's height, b = how far Android slid the
+     * panel's window up (0 expected: the panel moves itself), c = the panel's bottom padding; all in pixels.
+     */
+    KEYBOARD(45),
+    /**
      * What Android sent of the screen for a panel (0.3.1, once per panel): a = its show flags (ScreenAccess.SHOW_*),
      * b = [ScreenData] for the screen's text, c = [ScreenData] for the screenshot.
      */
@@ -216,10 +221,43 @@ enum class VoiceEvent(val id: Int) {
     MT_LOAD(118),
     /** A segment was decoded again in two halves (too few words for its speech): a = speech ms, b = words before, c = words after. */
     CONV_REHEARD(119),
+    /** Settings › Model (0.4.1; events 130 to 139): you chose a model. a = [ModelCode] now, b = [ModelCode] before. */
+    MODEL_CHOSEN(130),
+    /** A model loaded: a = [ModelCode], b = [BackendCode], c = ms the load took. */
+    MODEL_LOADED(131),
+    /** A model didn't load: a = [ModelCode], b = [LoadFailure]. */
+    MODEL_LOAD_FAILED(132),
+    /** Robot used Fast instead of the model you chose: a = the [ModelCode] you chose, b = [FallbackWhy], c = [ModelCode] used (0: none). */
+    MODEL_FALLBACK(133),
+    /** Another model was loaded, so Robot unloaded it first (never two at once): a = [ModelCode] unloaded, b = [ModelCode] to load. */
+    MODEL_SWITCH(134),
     ;
 
     companion object {
         fun of(id: Int): VoiceEvent? = entries.firstOrNull { it.id == id }
+    }
+}
+
+/** A model of the catalogue (BrainModel), as the voice log stores it. */
+enum class ModelCode(override val id: Int, override val title: String) : LogCode {
+    FAST(1, "Fast (Gemma 4 E2B, TPU)"), SMARTER(2, "Smarter (Gemma 4 E4B, CPU)"), UNCENSORED(3, "Uncensored (Gemma 4 E4B abliterated, CPU)"),
+    OWN(4, "your own model file");
+
+    companion object {
+        fun of(m: BrainModel): ModelCode = when (m) {
+            BrainModel.FAST -> FAST
+            BrainModel.SMARTER -> SMARTER
+            BrainModel.UNCENSORED -> UNCENSORED
+            BrainModel.OWN -> OWN
+        }
+    }
+}
+
+enum class BackendCode(override val id: Int, override val title: String) : LogCode {
+    TPU(1, "TPU"), CPU(2, "CPU");
+
+    companion object {
+        fun of(b: ModelBackend): BackendCode = if (b == ModelBackend.TPU) TPU else CPU
     }
 }
 
@@ -691,6 +729,7 @@ object VoiceLogText {
             VoiceEvent.CAPTURE_INFO -> "Capture opened: " + (when (a) { 1 -> "silenced by Android"; 0 -> "not silenced"; else -> "silencing unknown" }) +
                 (if (b > 0) " · microphone at " + String.format(Locale.US, "%.1f kHz", b / 10.0) else "") + " · " + CaptureFx.words(c)
             VoiceEvent.BARGE_HIT -> "Barge-in test heard " + keyword(a) + (if (b >= 0) " " + secs(b) + " in" else "") + ": " + code(BargeHitKind.entries, c)
+            VoiceEvent.KEYBOARD -> "Keyboard over the panel: $a px high, window slid up $b px, panel padded $c px"
             VoiceEvent.CLAUDE_LEFT_OUT -> "Claude not offered to the model: " + code(ClaudeLeftOut.entries, a)
             VoiceEvent.OWN_ANSWER -> "The model handed over to Claude without a word; asked again, " + (if (a == 1) "it answered itself" else "it still gave no answer")
             VoiceEvent.CLAUDE_UNKNOWN -> "Claude's error came from " + code(ClaudeStage.entries, a) + (if (b > 0) " · HTTP $b" else "") +
@@ -705,6 +744,12 @@ object VoiceLogText {
                 (if (c == 1) " · remembered" else "")
             VoiceEvent.CHEOGRAM_HANDOFF -> "Text handed to Cheogram: " + code(CheogramRoute.entries, a) + (if (b == 1) " (the first way didn't open)" else "")
             VoiceEvent.WEATHER_LOCATION -> "Position for the weather: " + code(LocationCode.entries, a) + " · process importance $b · $c ms"
+            VoiceEvent.MODEL_CHOSEN -> "Model chosen: " + code(ModelCode.entries, a) + (if (b > 0 && b != a) " (was " + code(ModelCode.entries, b) + ")" else "")
+            VoiceEvent.MODEL_LOADED -> "Model loaded: " + code(ModelCode.entries, a) + " on the " + code(BackendCode.entries, b) + " in " + secs(c)
+            VoiceEvent.MODEL_LOAD_FAILED -> "Model didn't load: " + code(ModelCode.entries, a) + " (" + code(LoadFailure.entries, b) + ")"
+            VoiceEvent.MODEL_FALLBACK -> "Used " + (if (c > 0) code(ModelCode.entries, c) else "no model") + " instead of " + code(ModelCode.entries, a) +
+                ": " + code(FallbackWhy.entries, b)
+            VoiceEvent.MODEL_SWITCH -> "Unloaded " + code(ModelCode.entries, a) + " to load " + code(ModelCode.entries, b)
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
             VoiceEvent.CONV_START -> "Conversation started: " + code(ConvMode.entries, a) + " (" + code(ConvEntry.entries, b) + ")" +

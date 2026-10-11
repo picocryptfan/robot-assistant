@@ -17,7 +17,8 @@ import app.heyrobot.core.EngineTeardown
 import app.heyrobot.core.RLog
 
 // :BRAIN PROCESS ONLY (android:process=":brain"). A native crash in LiteRT-LM or the TPU stack kills
-// this process alone; the assistant in :voice sees the binder die and reloads on the next question.
+// this process alone; the assistant in :voice sees the binder die and reloads on the next question (or, when the model
+// you chose is the one that keeps failing, falls back to Fast: BrainKeeper).
 // No LiteRT import here: GemmaEngine.kt is the only file that touches it.
 
 class BrainService : Service() {
@@ -37,7 +38,7 @@ class BrainService : Service() {
 
     override fun onBind(intent: Intent?): IBinder = messenger.binder
 
-    /** Every client left: free the model's memory (about 2 GB) right away; onDestroy follows. */
+    /** Every client left: free the model's memory (about 2 GB for Fast, 4 GB for an E4B) right away; onDestroy follows. */
     override fun onUnbind(intent: Intent?): Boolean {
         handler.post { engine.unload("unbound") }
         return false
@@ -61,7 +62,7 @@ class BrainService : Service() {
         try {
             when (msg.what) {
                 BrainProtocol.REQ_STATUS -> sink.emit(BrainProtocol.EV_STATUS, engine.status())
-                BrainProtocol.REQ_LOAD -> sink.emit(BrainProtocol.EV_LOADED, engine.load((payload as BrainMsg.Load).path))
+                BrainProtocol.REQ_LOAD -> sink.emit(BrainProtocol.EV_LOADED, engine.load(payload as BrainMsg.Load))
                 BrainProtocol.REQ_UNLOAD -> { engine.unload("asked"); sink.emit(BrainProtocol.EV_UNLOADED, BrainMsg.Empty) }
                 BrainProtocol.REQ_GENERATE -> engine.generate(reqId, payload as BrainMsg.Generate, BrainWire.takeImage(msg), sink)
                 BrainProtocol.REQ_TOOL_RESULT -> engine.toolResult(reqId, payload as BrainMsg.ToolResult, sink)
@@ -75,9 +76,11 @@ class BrainService : Service() {
     }
 
     override fun onDestroy() {
+        // Known at once, even while the work thread is still busy: a new service waits for this one's engine to go.
+        engine.destroyed()
         // On the work thread like every other engine call (never two threads in LiteRT at once). The thread stays
         // while an engine is parked: LiteRT posts the callback that closes it there (quitting at once, as 0.1.2 did,
-        // dropped that callback and kept ~2 GB and the TPU until :brain died). If LiteRT never lets go, :brain ends.
+        // dropped that callback and kept the model's memory and the TPU until :brain died). If LiteRT never lets go, :brain ends.
         handler.post {
             try {
                 engine.shutdown { step ->

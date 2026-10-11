@@ -2,7 +2,9 @@
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro. Open it with the corner swipe, from the lock
 screen, or by saying "hey robot" (or wake phrases of your own); talk, type, or show it a photo or the screen; Gemma 4 E2B on the Tensor G5
-TPU answers, streams the reply and reads it aloud. Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
+TPU answers, streams the reply and reads it aloud (since 0.4.1 you can choose a smarter but slower model instead, or
+your own model file: "Model choice" below; since 0.4.3 also a file built for a shorter context, such as MedGemma, as chat
+only: "Short-context models" below). Since 0.2.0 it also drafts texts (Cheogram) and emails (Proton
 Mail), keeps and finds notes, reads and adds calendar events and looks up contacts. Everything runs on the phone.
 Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) and your phone's storage, battery and
 memory, helps free memory and storage, finds the nearest place of a kind online (OpenStreetMap, when you ask) for
@@ -20,7 +22,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
 | Module | Runs in | Holds |
 |---|---|---|
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/` |
-| `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM |
+| `:brain` | `:brain` | `BrainService` (Messenger) and `GemmaEngine`, the only code that touches LiteRT-LM: the model you chose, on the TPU or the CPU, one at a time |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
 | `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction |
@@ -42,7 +44,7 @@ Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `
   at most two actions and three tool rounds per answer; a call written as text runs only when :brain is in text-call
   mode (its TPU build refused the tool API) and the whole reply is the call. An app name is resolved before the card,
   which shows the app that will open. One question at a time: a waiting card counts as busy (a yes or no, spoken or typed, answers it), Stop declines it.
-- Context (4,096 tokens): the new message is cut to fit (the panel says so). A question about times or dates, an
+- Context (4,096 tokens; a short-context file's own, 2,048 to 4,095, since 0.4.3): the new message is cut to fit (the panel says so). A question about times or dates, an
   alarm or a timer, or any question in a conversation using the calendar tools, carries the time after it
   ("(Current time: 14:05.)"); others don't (0.2.1 put "[Now 14:05]" before every question and the model began its
   replies with it). A copy of the clock at the start of a reply, or of its text after a tool round, is removed before
@@ -291,6 +293,320 @@ models are installed, nothing is recording.
    "Same person as…" on S1′ offers S1, and merging joins them.
 9. **Off.** "Tell speakers apart" off: the next session's lines are all "Speaker" and the 106 line isn't logged.
 
+## Short-context models (0.4.3)
+
+Your own model file (Settings › Model › "Your own model file") may now be built for a context of 2,048 to 4,095 tokens
+(LlmMetadata's `max_num_tokens`). Robot runs it as **chat only**: it answers questions by voice or text, also about a
+photo (when the file can see one) or the screen; it does no actions (timers, texts, notes, the calendar, maps, the
+weather…) and keeps less of the conversation. Under 2,048 tokens a file is still refused; 4,096 or more, or none stated
+(Google's own files), runs as before. Nothing else changes for the other models, and there is no new setting (settings
+schema 7 as in 0.4.1): choosing the file in Settings › Model is the switch, and Settings › Safety & privacy › "Direct
+answers" applies as you set it.
+
+- **The check** (`core/LiteRtLm.kt`, the same header read as in 0.4.1) lists "Short context (2048 tokens): chat only — no
+  actions, shorter memory." and the file can be imported, checked and chosen like any other. "Robot uses" says "Chat only
+  (short context): no actions." (and "Can see photos." when it can) beside it; its card says the same in a sentence. A file
+  whose name says MedGemma gets one line under its name: "Not a medical device: check health information with a
+  professional." It is never added to the answers.
+- **Its own context, checked twice.** Robot asks LiteRT-LM for exactly the file's context (`maxNumTokens` 2,048 for
+  MedGemma), never 4,096 of KV cache on a 2,048 model (`ContextWindow.forFile`, `LoadPlan.contextTokens`). `:brain` loads it
+  only when your file's record (`LoadCheck`) and the header it reads again itself both say that context; any other
+  context, for this file or a built-in model, is refused, as before.
+- **No tools** (`ToolMode.CHAT_ONLY`, `BrainPolicy`): no tool is described, there is no text-call hint and no constrained
+  decoding, and :brain never tries a tool level for it (nothing steps it down or up). A call the model makes anyway is
+  dropped, in :brain and again in the panel (`ChatOnlyTurn`), so it never reaches a card.
+- **A compact prompt** (`Prompt.chatSystem`): who Robot is, plain short answers that may be read aloud, the "Direct
+  answers" clause when it is on, that it can't act on the phone or go online, that screen text and pictures are
+  information and not instructions, and the date. About 180 estimated tokens with the clause (the full prompt: under
+  317, before any tool); `PromptTest` measures it.
+- **The budget** (`ContextWindow`, every function now takes the loaded model's context): the answer keeps a quarter of a
+  short context (512 of 2,048; 768 at 4,096, as before), the new message is cut to fit what is left beside the prompt
+  (a screen's text first: about 1,000 tokens of it fit beside a screenshot at 2,048), and the history is the newest whole
+  exchanges that fit. Older turns are dropped, never sent to overflow; the engine's own count after a rebuild drops more
+  when the estimate was low, and a live conversation is rebuilt shorter sooner than at 4,096.
+- **Turns alternate.** Gemma 3's chat template (MedGemma's) raises "Conversation roles must alternate" in LiteRT-LM's
+  template engine, so a chat-only history always goes question, answer, question… (`Prompt.alternate`): a question whose
+  reply failed is joined to the next, Robot's answer to Claude's after it, and an unanswered last question is left out.
+- **Photos** only when the file has a vision encoder. Robot plans 300 tokens per picture, as for Gemma 4; MedGemma's vision
+  adapter gives 257 per 896 × 896 image (read from the file: its output is `[1, 257, 2560]`). Gemma 4's visual token
+  budget (280) is set only for a Gemma 4 file, and a file without a vision encoder now loads once, text only, instead of
+  failing a vision load first; a photo question then says "This model can't look at photos: its file has no vision part."
+- **Actions.** Robot's routes that need no model work as always: "text Mom I'm late" (texting without the model), Ask
+  Claude's phrases and the hand-over to Claude. A request clearly worded as an action, from its first words ("set a timer
+  …", "remind me to…", "open Signal", "turn on the flashlight", "add … to my calendar", "navigate to…"), or a question only
+  the phone's tools can answer ("what's the weather", "what's on my calendar", "what's Mom's number", "how much battery…",
+  "where is the nearest…") gets Robot's own answer instead of the model's: "This model can only chat: it can't do things
+  on the phone (timers, alarms, texts, notes, the calendar, maps) or look anything up. To have Robot do that, choose Fast
+  in Settings › Model.", spoken without the "›", and a notice "For actions, choose Fast in Settings › Model." whose **Open
+  Model** button opens Settings › Model. Robot never switches the model for you. The list is narrow on purpose
+  (`ChatOnly.actionAsked`, tested both ways): "Open wound on my knee, should I cover it?", "light sensitivity and a
+  headache", "can cold weather trigger asthma?" go to the model, which is told it can't act and says so if asked.
+- **Logs** (codes and numbers only): `brain_load` adds `maxTokens` and `chatOnly`, `brain_ready` `chatOnly`, the panel
+  `chat_only_action` (which tool the request named), :brain `brain_calls_dropped`.
+
+### MedGemma 1.5 4B
+
+Google's MedGemma 1.5 4B (instruction-tuned, Gemma 3 based, trained for medical text and images) is the only medical
+model published in LiteRT-LM format as of October 2026: `litert-community/MedGemma-1.5-4B-IT` (Google's LiteRT community account),
+built for 2,048 tokens. Robot doesn't download it (it isn't in the catalogue): you download it and import it as your own
+file.
+
+| File | Bytes | SHA-256 | Sees photos |
+|---|---|---|---|
+| `medgemma-1.5-4b-it_q4_block32_ekv2048.litertlm` | 2,583,871,056 | `6778edd3137104d8b47f65b24dbc21c8eecb0329c987a3d64bd2fba201e6bf51` | no |
+| `medgemma-1.5-4b-it_q4_block32_vision_ekv2048.litertlm` | 3,023,069,488 | `1627e2e433c3799e4ff06ff0895408ca65b255f786dc270fb5cfa325e349233a` | yes |
+
+(The repository's third file, `medgemma-1.5-4b-it_q8_gpu_ekv2048.litertlm`, is for a GPU; Robot doesn't use the GPU.)
+
+- **Licence.** MedGemma is under Google's Health AI Developer Foundations terms of use
+  (https://developers.google.com/health-ai-developer-foundations/terms), not Apache-2.0. Among them: you must not use it
+  for the uses in the HAI-DEF Prohibited Use Policy, nor in any way that could make a health regulator deem Google the
+  maker of a medical device; you are responsible for its outputs; and you agree that Google isn't furnishing medical
+  advice by providing it. The terms cover the model "regardless of the source that you obtained it from". Robot ships
+  nothing of it and distributes nothing: you download the file and Robot copies it into its own storage on your phone.
+- **Download.** The repository is gated: sign in to Hugging Face with your account, open
+  https://huggingface.co/litert-community/MedGemma-1.5-4B-IT, read the terms and tap "Acknowledge license" (approval is
+  automatic), then download one of the two files in the phone's browser or on a computer (Robot's import opens Android's
+  file picker, so the phone's Downloads folder is fine).
+  An ungated copy of the vision file is at https://huggingface.co/warped-community/MedGemma-1.5-4B-litert-lm (commit
+  `34023a4b44b3ef9647813ef6a6e20de10a10b97e`, "maintained for the Warped Android app"); its file is byte-identical to the
+  one above (the same size, SHA-256 and Git LFS pointer).
+- **Import.** Settings › Model › "Your own model file" › "Import a .litertlm file", pick it, then "Check the file": Robot
+  shows its size and SHA-256 (compare them with the table) and what it found. It needs the file's size free, about three
+  quarters of it again for the CPU's cache and 1 GB to spare (about 6.3 GB in all for the vision file).
+- **What the check finds** (the vision file's header was read for this release with Robot's own code, over a few
+  range requests): LiteRT-LM 1.5.0; LlmMetadata `max_num_tokens` 2048; model type `gemma3n` with `<start_of_image>` and
+  `<end_of_image>` and 896 × 896 images; Gemma 3's Jinja template (the system text joined to the first question, roles
+  that must alternate, no tools section); `<end_of_turn>` as its stop; a CPU build (no TPU code), KV cache tensors of
+  2,048 positions; the sections `tf_lite_prefill_decode`, `tf_lite_embedder`, `tf_lite_vision_encoder`,
+  `tf_lite_vision_adapter`. So: "Compiled for this phone's TPU: no. It runs on the CPU.", "Model type “gemma3n”, not
+  Gemma 4: Robot is written for Gemma 4, so answers may be odd.", "Can see photos: yes." and the short-context line. The
+  text-only file should read the same without the two vision sections ("Can see photos: no").
+- **Expected, not measured:** it runs on the CPU like the E4B models (a 4B model: its speed, first load, cache and memory
+  aren't measured on the phone yet: "On the phone (0.4.3)" below). Ask it in plain words; Robot keeps the answers short
+  unless you ask for more.
+
+### On the phone (0.4.3)
+
+Before: 0.4.3 installed over 0.4.2 with Fast chosen, both MedGemma files on the phone (Downloads), about 7 GB free.
+
+1. **Import and check, text-only file.** Settings › Model › "Your own model file" › Import
+   `medgemma-1.5-4b-it_q4_block32_ekv2048.litertlm`, then "Check the file": 2,583,871,056 bytes and SHA-256 `6778edd3…`
+   as in the table; the lines "Compiled for this phone's TPU: no…", "Model type “gemma3n”, not Gemma 4…", "Can see photos:
+   no…", "Short context (2048 tokens): chat only — no actions, shorter memory."; "Not a medical device: check health
+   information with a professional." under its name; the card's "Chat only: it was built for 2048 tokens…". In "Robot
+   uses", the row says "Chat only (short context): no actions." and can be chosen.
+2. **Choose it and the first load.** Choose it, open the panel, ask "hi": `adb logcat -s Robot | grep brain_load` shows
+   `model=own backend=cpu maxTokens=2048 chatOnly=true vision=false visionError=NoVisionEncoder` (one load, no failed
+   vision load first); note the load time, the cache size on its card and `adb shell dumpsys meminfo app.heyrobot:brain`.
+3. **Medical questions by voice and by text.** Five of each ("what does a high white blood cell count mean?", "is
+   ibuprofen safe with high blood pressure?", "what are the signs of a migraine?"…): short answers in Robot's voice, no
+   warning added by Robot to each answer, no error. Note `brain_fixed_tokens` (groups `none`: the compact prompt's real
+   count, expected about 140) and each `brain_reply` (`ttftMs`, `tps`).
+4. **Direct answers.** The same two questions with Settings › Safety & privacy › "Direct answers" off, then on again:
+   the answers' tone follows the switch; the Model screen's note stays the only note.
+5. **A photo without vision.** With the text-only file, ask about a photo: "This model can't look at photos: its file has
+   no vision part. Settings › Model says which ones can."
+6. **The vision file.** Import `medgemma-1.5-4b-it_q4_block32_vision_ekv2048.litertlm` (3,023,069,488 bytes,
+   `1627e2e4…`): "Can see photos: yes."; the row adds "Can see photos."; `brain_load … maxTokens=2048 chatOnly=true
+   vision=true visualBudget=false`.
+7. **A skin spot and an X-ray.** Photograph a skin spot (or a picture of one) and ask "what could this be?"; then a
+   chest X-ray (a printed one, or one on a computer screen) and ask "what do you see?": the answers are about the
+   picture; note the first-token time; ask a follow-up about the same picture.
+8. **A screen.** Open a long lab report or article and "Ask about this screen": "The screen had a lot of text, so Robot
+   read only the first part." when it was cut, then an answer about its first part.
+9. **A long conversation.** Twenty or more exchanges by text in one conversation, some answers long: never "That's too
+   long…" nor "The model ran into a problem."; `brain_rebuild` shows `kept` below `of` as older turns drop (and
+   `brain_rebuild_shorter` when the estimate was low); a question about the first exchange may no longer be remembered
+   (expected: a shorter memory). A reply that fills the context stops as stopped, its text kept.
+10. **An action request.** "Set a timer for 5 minutes", "remind me to take my pills at 8", "turn on the flashlight",
+    "what's the weather tomorrow?", each by voice and by text: the reply "This model can only chat…", spoken without the
+    "›"; the notice "For actions, choose Fast in Settings › Model." with Open Model, which opens Settings › Model (locked:
+    "Unlock your phone…"); the model stays chosen. `grep chat_only_action` shows the tool. "Text Mom I'm late" still gets
+    the texting card (no model), "ask Claude …" still goes to Claude, and "I have an open wound on my knee, should I
+    cover it?" is answered by the model. `grep brain_calls_dropped` stays empty or shows a dropped call, never a card.
+11. **Back to Fast.** Settings › Model › Fast: `brain_release why=model_changed`; the next question loads Fast
+    (`brain_load model=e2b_tpu backend=npu maxTokens=4096 chatOnly=false`), "set a timer for 1 minute" sets it, and the
+    Voice log shows the switch.
+12. **Fallback as before.** Choose MedGemma again, `adb shell touch` its file in `/sdcard/Android/data/app.heyrobot/files/`
+    and ask: Fast answers with "“Your own model file” hasn't been checked yet, so Robot is using Fast…"; check it again in
+    the app and it is chosen again. Delete it: its file and cache go.
+
+## Model choice (0.4.1)
+
+Settings › **Model** (the Model tab; Settings › Model › "Robot's model" opens it) chooses which model answers. **Fast**, the
+model of every earlier version, stays the default, and nothing else downloads unless you tap Download. A model you choose
+that isn't ready, or doesn't load, falls back to Fast with a message that says why, so Robot is never left without a model
+because of a choice.
+
+| Choice | Model | Runs on | Download | Writes | First word, new conversation | Memory | Licence |
+|---|---|---|---|---|---|---|---|
+| **Fast** (default) | Gemma 4 E2B, Google's Tensor G5 build | TPU | 3.11 GB | about 17 tokens a second | about 3 s | about 2 GB | Apache-2.0 |
+| **Smarter, slower** | Gemma 4 E4B, Google's file | CPU | 3.66 GB, plus about 2.5 GB of cache written on the first load | about 8 tokens a second | about 21 s (follow-ups 1 to 3 s) | about 4.1 GB | Apache-2.0 |
+| **Uncensored, slower** | Gemma 4 E4B abliterated, a community build by olekk | CPU | the same | the same | the same | the same | Apache-2.0 |
+| **Your own model file** | a `.litertlm` you import | CPU; the TPU only for a proven Tensor G5 build you allow | its size, plus about three quarters of it for the cache (CPU) | depends | depends | depends | the file's own |
+
+The numbers were measured on this phone (Pixel 10 Pro, LiteRT-LM 0.18.0, lab runs of 2026-10-09): E2B on the TPU read
+prompts at 495 to 566 tokens a second and wrote 17.3 to 18.1, at 3.5 W; E4B on the CPU read 70 and wrote 8.1, took 8.3 s to
+the first token of a 549-token prompt, held 4,120 MB (RSS) at 8.85 W, and its first load took 8.9 s and wrote 2.54 GB of
+cache (Google's E4B file; Uncensored's "the same" is expected from its identical layout, not yet measured: phone test 10).
+"About 21 s" and "about 3 s" are for a cold prompt of about 1,500 tokens, the size of Robot's fixed prompt with its
+tools: the first question of a conversation, or after a tool group is added. Robot keeps the conversation going, so a
+follow-up reads only the new turn. On the CPU the E4B models use about 2.5 times the power while they write (more battery,
+more heat), and look at photos on the CPU too (seconds, against under one on the TPU). Settings › Model shows each one's
+line in plain words.
+
+**Why no E4B on the TPU.** No Gemma 4 E4B build for the Tensor TPU exists. Google publishes TPU builds of E2B only (G5 and
+G6); the one "E4B … `_Google_Tensor_G5.litertlm`" on Hugging Face (`safecircleai/horizon-edge-4b`) is that repository's
+generic CPU export under a new name: no TPU code, no Gemma 4 tool metadata, a child-safety classifier fine-tune under a
+non-commercial licence. Robot never offers it. Making an E4B TPU build takes Google's Tensor compiler, a closed beta whose
+terms forbid sharing what it builds. Both E4B choices therefore run on the CPU; a genuine E4B TPU file from Google can be
+added to the catalogue (`core/ModelState.kt`, `BrainModel`) once it is published, pinned and passes the content check below.
+
+**Uncensored.** The same Google E4B file with the model's own refusals removed (olekk patched two kinds of weights in place,
+keeping Google's quantization, vision, MTP drafter and tool metadata). Its maker spot-checked it and ran no benchmark; it
+may still refuse now and then, and its card asks that it be used for research and personal experimentation, says you
+own its outputs, and says Google's Gemma Prohibited Use Policy still applies. Robot's own cards and switches are unchanged: the model only ever proposes an action, and Settings ›
+Safety & privacy decides what asks first, whichever model is loaded (`ApprovalGate` doesn't know which one is).
+
+### Downloads, files and privacy
+
+- A built-in model downloads only when you tap Download, from Hugging Face, by DownloadManager in the main app process
+  (as since 0.1: it resumes by itself after a dropped connection), pinned to one commit, and its SHA-256 is checked
+  before it is ever loaded. Nothing you say or type goes there; Hugging Face sees a file download from your phone.
+  "Import a downloaded file" takes the same file from your computer instead (the exact size, then the same check).
+
+  | Choice | URL | Bytes | SHA-256 |
+  |---|---|---|---|
+  | Fast | `https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it_Google_Tensor_G5.litertlm` | 3,113,545,589 | `af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc` |
+  | Smarter | `https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/2eee7ac325f20eb8c9ac1d0e972f7c84663062da/gemma-4-E4B-it.litertlm` | 3,659,530,240 | `0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0` |
+  | Uncensored | `https://huggingface.co/olekk/gemma-4-E4B-it-abliterated-litert-lm/resolve/a4eecccd3b0ba1777660180cda60a396eedcb8aa/gemma-4-E4B-it-abliterated.litertlm` | 3,659,530,240 | `f5a6625e0368e853743c91b39fa6ac6a8add1fc4825b18f98f518966610f2a88` |
+
+- Each model has its own file (in Robot's app folder), its own verified mark, download and, on the CPU, its own cache
+  folder (`filesDir/litert_cache/<id>/`, passed to LiteRT-LM as its cache directory). Fast keeps 0.4.0's file and mark, so
+  an installed model stays checked across the update. The free-space check counts the file, the cache its first load
+  writes and 1 GB to spare (about 7.3 GB free for an E4B); one model download or copy runs at a time.
+- **Delete this model** removes its file, mark, download and cache. A model in memory is never deleted (`:brain` writes
+  which one it holds to `brain_loaded.txt`, with its process id): choose another model first, and Robot lets go of the
+  old one right away. Deleting the model you chose puts the choice back to Fast.
+
+### Your own model file
+
+"Import a .litertlm file" opens Android's file picker (the Storage Access Framework: no storage permission). Robot copies
+the file into its own storage under a fixed name (`own_model.litertlm`; the file's own name is shown, never used as a path
+or a reason to trust it), watching the free space as it copies, computes its SHA-256 and shows it with the size, and reads
+its header (`core/LiteRtLm.kt`: the LiteRT-LM sections, the decoder's TFLite operator codes and LiteRtStamp, and the
+LlmMetadata; a few kilobytes, every offset and count checked, a damaged file is simply "unreadable"). Settings › Model lists
+what it found.
+
+- **The TPU** (`Backend.NPU`) only when every sign of a Tensor G5 build is there: a `tf_lite_aux` section, a
+  `prefill_decode` whose operators include `DISPATCH_OP`, a `LiteRtStamp` naming `Tensor_G5`, and Gemma 4 metadata. Never by
+  its name: LiteRT-LM 0.18.0 runs a file without the aux section quietly on the CPU while the app believes it is on the
+  TPU. Even then it runs there only after you read its warning card and tap "I understand: run it on the TPU". The card
+  names the risks: compiled TPU code nobody can review, running through the phone's own TPU driver and vendor libraries,
+  outside what Robot's separate model process can contain; a bad or mismatched build can crash Robot's model, hang the TPU
+  until a restart or, rarely, restart the phone; a SHA-256 proves the file is the one you picked, not that it is safe; a
+  TPU build not published by Google may have been shared against the Tensor compiler's terms. It shows the file's name,
+  size and SHA-256, and the tap allows that very file only (by its SHA-256): a file changed since is checked again and
+  asks again. `:brain` reads the header again itself before it loads anything but Fast, and before any load it reads the
+  app's own records again rather than trust the request (`LoadCheck`): a built-in model's SHA-256 mark must match the
+  file now, and your own file must be the one recorded after its check (size and time unchanged), on the TPU only once
+  you allowed it.
+- **The CPU** for every other file it can run. Without Gemma 4's tool-call tokens (`<|tool_call>`, `<|tool_response>`)
+  Robot says actions may not work; with another model type, that Robot is written for Gemma 4.
+- **Refused:** NPU code for another chip (a Snapdragon build, a Tensor G6 build) or an incomplete Tensor G5 build (the
+  CPU can't run TPU code either), a file without a language model (no `prefill_decode`), or a context under 2,048 tokens
+  (before 0.4.3: under 4,096; from 2,048 to 4,095 a file now runs as chat only, "Short-context models" below).
+
+### Loading, switching and falling back
+
+- `:brain` is told the model, where it runs and its context in `BrainMsg.Load` (`Loaded` and `Status` say which model is
+  in memory). It unloads any other model first, so two engines never share the process (Fast about 2 GB, an E4B about
+  4 GB); the assistant asks it to unload first too, and the keep-loaded timer and `free_memory` work as before. The
+  process has one engine slot whichever `BrainService` holds it: a new service started before the old one's work thread
+  has let its model go answers "still stopping" until it has (and ends the process if that thread is stuck for 20 s).
+- On the CPU, `GemmaEngine` loads with `Backend.CPU()` (LiteRT-LM's default threads: 6 were no faster), the vision
+  encoder on the CPU, and the model's cache folder; a first load that the free space can't hold is refused with a plain
+  message. MTP speculative decoding (`CPU_MTP`) and a sampler (`CPU_SAMPLER`, Gemma's top-k 64, top-p 0.95, temperature 1.0)
+  are constants in `GemmaEngine.kt` for an A/B test on the phone; both start as on the TPU (off, no sampler). Constrained
+  tool calling comes first, as on the TPU, with the same step-down.
+- The context stays 4,096 tokens for every model (each catalogue entry says so, and the prompt budget, `ContextWindow`,
+  is 4,096): the CPU files could take more, but at about 70 tokens a second a longer prompt is slow to read. Since 0.4.3
+  your own file built for less (2,048 to 4,095) loads with its own context instead, as chat only.
+- **Fallback** (`core/ModelState.kt`, `ModelChoice`, tested): the chosen model not downloaded, not checked, waiting for the
+  TPU card, unusable, or failing to load means Fast instead, and the panel says so once, with Open Robot ("“Smarter,
+  slower” isn't on this phone yet, so Robot is using Fast. Download it in the Robot app › Model."). A model that failed
+  to load, or that stopped the model process while in memory (a native crash as it answered, or Android reclaiming its
+  memory), is skipped until you tap it again in Settings › Model (any change to the settings retries it) or its file
+  changes, so the next question doesn't wait for the same failure, and a model that keeps crashing can't reach the
+  three-stops-an-hour lockout that would stop Fast too. With Fast missing too, the panel says what to download.
+- Settings file schema 7: `brainModel`, a catalogue id; older files read as Fast, the model they had.
+- Voice log (Settings › Voice › Voice log), ids only, events 130 to 139: model chosen (130), loaded with where and how
+  long (131), didn't load and why (132), Fast used instead and why (133), another model unloaded first (134). `adb logcat
+  -s Robot` adds `brain_load`, `brain_switch`, `brain_fallback` and `model_verify` with codes, booleans and times only (never
+  a file's name or path).
+
+### On the phone (0.4.1)
+
+Before: Fast installed and chosen (the default), about 15 GB free (both E4B models with their caches, at once), the phone
+on battery, Wi-Fi on. Note every time.
+
+1. **Update from 0.4.0.** Settings › Model: Fast is chosen and "Ready" without a new download or check; the other three
+   rows are dimmed ("Download it below first", "Import a file below first"). Ask a question: it answers as before.
+2. **Download Smarter and its first load.** Download it: the notification, progress and resume after turning Wi-Fi off
+   and on; then "Checking the file" and "Ready". Choose it, open the panel and ask "hi": note the load time (Voice log
+   "Model loaded: Smarter … on the CPU in … s"; first-ever load about 9 s) and the Smarter card's "Its cache holds … now"
+   (about 2.5 GB). `adb logcat -s Robot | grep brain_load`: `model=e4b_cpu backend=cpu`.
+3. **Cold and warm first token, writing speed.** A new conversation, one question by voice and four follow-ups. Note
+   `brain_fixed_tokens` and each `brain_reply` (`ttftMs`, `tps`): cold first token at most 25 s, warm at most 3 s, writing
+   about 8 tokens a second. Panel: "Waking up the model…" then "Thinking…" while it reads.
+4. **Memory beside voice.** With the panel open and Kokoro speaking a long answer: `adb shell dumpsys meminfo
+   app.heyrobot:brain` (TOTAL RSS about 4.1 GB) and `adb shell dumpsys meminfo app.heyrobot:voice`; `adb logcat -b events
+   | grep am_kill` shows no low-memory kills. Then "how much memory is free?": "Robot's own model holds about 4.1 GB".
+5. **Photos on the CPU.** Two photo questions (camera button), and one "ask about this screen": correct answers; note the
+   first-token time (about 10 s expected). `brain_load` says `vision=true`.
+6. **Tool calling.** "Set a timer for 2 minutes", "text Mom I'm late", "add dentist Tuesday at 3", "what's on my calendar
+   tomorrow": the usual cards; `adb logcat -s Robot | grep brain_tool_mode_down` stays empty.
+7. **Screen off.** Ask a long question by "hey robot", turn the screen off and lock while it answers: the reply finishes at
+   normal speed (`tps` in `brain_reply`; the lab saw 1 token a second for a background app).
+8. **Ten minutes, warm.** Ten minutes of back-to-back questions on battery: note `tps` over time, the battery % used, and
+   `adb shell dumpsys battery | grep temperature` before and after. Pass: no collapse in speed, no thermal warning.
+9. **MTP and the sampler (A/B).** Build once with `CPU_MTP = true`, once with `CPU_SAMPLER = true` (`GemmaEngine.kt`):
+   repeat 3 and 6. Keep whichever writes faster and answers as well; MTP's output should match without it.
+10. **Uncensored.** Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
+    ones (refusals gone? answers sane?). Cards still show for texts, emails, events and deleting.
+11. **Switching.** Fast → Smarter → Uncensored → Fast without restarting, a question after each: Voice log "Unloaded … to
+    load …" each time, never two models (`dumpsys meminfo app.heyrobot:brain` falls back to about 2 GB on Fast), and the
+    TPU model answers again at its usual speed.
+12. **Delete while in use, and the clean-up.** With Smarter chosen and just used, Delete this model is refused ("Robot
+    has “Smarter, slower” loaded right now…"). Choose Fast (`adb logcat -s Robot | grep brain_release` says
+    `why=model_changed`), then delete Smarter: its card says "Not downloaded", its cache line is gone, and the free space
+    grows by about 6.2 GB (file and cache).
+13. **Your own file, not a TPU build.** Import a photo renamed `x.litertlm` as your own file: after the copy, "Robot
+    can't use this file" ("It isn't a LiteRT-LM model file") and it can't be chosen. Import Google's E2B CPU file
+    (`gemma-4-E2B-it.litertlm`, same repository as Fast): its size and SHA-256, "Compiled for this phone's TPU: no", Gemma 4
+    with its tool-calling metadata; choose it and ask: it answers on the CPU (`brain_load model=own backend=cpu`).
+14. **Your own TPU build.** Import Fast's own file (`gemma-4-E2B-it_Google_Tensor_G5.litertlm`) as your own file: the check
+    says it is a Tensor G5 build and shows the warning card with its size and SHA-256 (`af108298…`); it can't be chosen
+    until you tap "I understand: run it on the TPU"; then choose it and ask: `brain_load model=own backend=npu`, TPU speed.
+    "Stop running it on the TPU": Robot falls back to Fast with a notice. Delete it.
+15. **Fallback notice.** Choose your own CPU file from 13, then "Import another file" with a broken one: the next
+    question answers with Fast and the panel says once "Robot can't use “Your own model file” (the Robot app › Model says
+    why), so Robot is using Fast." with Open Robot; a second question says nothing more. Voice log: "Used Fast … instead of
+    your own model file: can't be used".
+16. **Delete everything but Fast** and check the free space matches what was there before step 2.
+17. **A model that stops the process.** With Smarter chosen and loaded, `adb shell kill -9 $(adb shell pidof
+    app.heyrobot:brain)`, then ask a question: it answers with Fast and the panel says once "“Smarter, slower” stopped
+    unexpectedly, so Robot is using Fast…"; a second question says nothing more. Tap Smarter again in Settings › Model: the
+    next question loads it again.
+18. **One engine, also across a restart of the model service.** With Smarter answering a long question, choose Fast in
+    Settings › Model, then ask again at once: either "The model is still stopping. Try again in a moment." or the answer
+    with Fast, never both models at once (`adb shell dumpsys meminfo app.heyrobot:brain` stays near one model's size;
+    `adb logcat -s Robot | grep brain_teardown` shows no `END_PROCESS`).
+19. **A file changed after its check.** With Smarter chosen and checked, `adb shell touch` its file in
+    `/sdcard/Android/data/app.heyrobot/files/`, then ask: Fast answers ("hasn't been checked yet"); open the Robot app and
+    it checks the file again. With your own TPU build allowed (14), import another Tensor G5 file: its card asks again.
+
 ## Weather, phone status and freeing space (0.4.0)
 
 Four tools, so Robot can say whether tomorrow will be cloudy and help you free up storage and memory. The two that read
@@ -306,7 +622,7 @@ read tools don't: nothing leaves the phone).
 |---|---|---|
 | `weather` (place, day; both optional) | Open-Meteo's forecast for a town you name, your Home for weather, or where the phone is: one line per day | Just do it (uses the internet) |
 | `phone_status` (about: storage, battery, memory or all) | Free and total storage, battery, memory, and with Usage access the apps using the most space and the size of photos, videos and audio, read on the phone | Just do it |
-| `free_memory` (app, optional) | Unloads Robot's own model (about 2 GB) once the answer ends, or opens the named app's App info, where you tap Force stop | Ask first |
+| `free_memory` (app, optional) | Unloads Robot's own model (about 2 GB; 4 GB for an E4B model) once the answer ends, or opens the named app's App info, where you tap Force stop | Ask first |
 | `free_storage` (what: android, apps, files or robot) | Android's Free up space screen, an app's App info to clear its cache, a large photo or video deleted through Android's own confirmation, or Robot's cache | Ask first |
 
 ### Weather
@@ -386,7 +702,7 @@ answers, tested against answers recorded from Open-Meteo. Open-Meteo's data is C
 Read on the phone; nothing leaves it. `StatFs` on the data partition gives free and total storage and the share used;
 `BatteryManager` the level, charging or not, Android's minutes to full and the battery's temperature; `ActivityManager`'s
 `MemoryInfo` the available and total memory and whether Android considers it low (and whether Robot's own model, about
-2 GB, is loaded). With **Usage access** (you turn it on for Robot in Android's settings: Assistant setup › Usage access ›
+2 GB for Fast or 4 GB for an E4B model, is loaded). With **Usage access** (you turn it on for Robot in Android's settings: Assistant setup › Usage access ›
 Open, or the card's "Turn on Usage access"), `StorageStatsManager` adds the five apps using the most space (app and data,
 their cache from 100 MB) and the size of photos, videos and audio. Robot itself is listed as "Robot (models, don't
 clear)", so the model doesn't suggest clearing it. Only apps with a launcher icon are counted (Robot has no
@@ -405,8 +721,8 @@ What Android 14 and later let an app do, and no more. Both actions ask first by 
 shows a card whatever the level, unless Settings › Safety & privacy › "Card before deleting files" is off: then Robot goes
 straight to Android's own confirmation for the largest one (Android still asks).
 
-- **Memory.** `free_memory` with no app unloads Robot's own model, its biggest lever (about 2 GB): the same release as
-  Settings › Model memory's timer, but at once, as soon as the answer that asked for it has ended (Gemma is still
+- **Memory.** `free_memory` with no app unloads Robot's own model, its biggest lever (about 2 GB; 4 GB for an E4B
+  model): the same release as Settings › Model's keep-loaded timer, but at once, as soon as the answer that asked for it has ended (Gemma is still
   writing that answer when the action runs; the release happens before that turn completes, so a next question can't
   race it). The card then says what Android reports came back ("Freed about 2.1 GB: 6.3
   GB of memory available now."); the model loads again, in about 2 seconds, for the next question. Robot can't stop

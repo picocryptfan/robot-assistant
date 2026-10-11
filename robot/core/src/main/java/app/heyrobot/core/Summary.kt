@@ -12,7 +12,8 @@ import kotlin.math.roundToLong
 
 // Pure. Summaries of a conversation (docs/conversation-mode.md 7). Robot's own: Gemma reads the transcript in parts of
 // about 2,400 estimated tokens (8 to 10 minutes of talk), each part gives at most 12 notes, and the notes are merged,
-// in levels when there are more than 12 parts; every call fits Gemma's 4,096-token window by TokenEstimate. A
+// in levels when there are more than 12 parts; every call fits the loaded model's window by TokenEstimate (4,096 tokens,
+// or a short-context file's own since 0.4.3: its parts are smaller, and its reply room a quarter of its context). A
 // deterministic check then flags numbers, names and [times] in the summary that the transcript doesn't have. For a long
 // or important conversation Robot offers a stronger AI first, through the Helper interface: the Claude API or the Claude
 // app now, any helper from 0.6.0. A transcript goes to a helper only from a consent card listing exactly what it sends,
@@ -38,14 +39,19 @@ object SummaryPlanner {
     /** Notes merged by one reduce call at most. */
     const val FAN_IN = 12
 
-    /** The estimated tokens one call's user turn may use next to [system] and the reply's room. */
-    fun budget(system: String): Int =
-        ContextWindow.MAX_TOKENS - ContextWindow.REPLY_RESERVE - TokenEstimate.text(system) - TEMPLATE_TOKENS - TokenEstimate.TURN_OVERHEAD
+    /**
+     * The estimated tokens one call's user turn may use next to [system] and the reply's room, in a context of
+     * [maxTokens] (the loaded model's: 4,096, or a short-context file's own, 0.4.3).
+     */
+    fun budget(system: String, maxTokens: Int = ContextWindow.MAX_TOKENS): Int =
+        maxTokens - ContextWindow.replyReserve(maxTokens) - TokenEstimate.text(system) - TEMPLATE_TOKENS - TokenEstimate.TURN_OVERHEAD
 
-    /** True when [call] fits Gemma's window with the reply's room, by the estimate. */
-    fun fits(call: SummaryCall): Boolean =
-        TokenEstimate.text(call.system) + TEMPLATE_TOKENS + TokenEstimate.turn(PromptTurn(PromptRole.USER, call.user)) + ContextWindow.REPLY_RESERVE <=
-            ContextWindow.MAX_TOKENS && call.maxChunks <= ContextWindow.REPLY_RESERVE
+    /** True when [call] fits a window of [maxTokens] with the reply's room, by the estimate. */
+    fun fits(call: SummaryCall, maxTokens: Int = ContextWindow.MAX_TOKENS): Boolean {
+        val reserve = ContextWindow.replyReserve(maxTokens)
+        return TokenEstimate.text(call.system) + TEMPLATE_TOKENS + TokenEstimate.turn(PromptTurn(PromptRole.USER, call.user)) + reserve <= maxTokens &&
+            call.maxChunks <= reserve
+    }
 
     /** "[14:03] Marie (fr): text", the line format Gemma reads. */
     fun line(time: String, speaker: String, lang: String?, text: String): String =
@@ -71,8 +77,8 @@ object SummaryPlanner {
      * between lines. A line too long for a part on its own (a long edited line) is cut between words, each piece
      * keeping the line's "[time] speaker (lang):" so nothing is lost.
      */
-    fun chunks(lines: List<String>, system: String): List<List<String>> {
-        val room = minOf(CHUNK_TOKENS, budget(system) - HEADER_TOKENS)
+    fun chunks(lines: List<String>, system: String, maxTokens: Int = ContextWindow.MAX_TOKENS): List<List<String>> {
+        val room = minOf(CHUNK_TOKENS, budget(system, maxTokens) - HEADER_TOKENS)
         val out = ArrayList<MutableList<String>>()
         var used = 0
         for (l in lines.flatMap { pieces(it, room) }) {
@@ -110,10 +116,13 @@ object SummaryPlanner {
     /** "Part 3 of 7 (14:20–14:31):\n<lines>". */
     fun partText(part: Int, of: Int, from: String, to: String, lines: List<String>): String = "Part $part of $of ($from–$to):\n" + lines.joinToString("\n")
 
-    /** The map calls for [lines] (as [SummaryPlanner.lines] writes them) in Robot's summary language [lang]; each part says which minutes it covers. */
-    fun plan(lines: List<String>, lang: String): SummaryPlan {
+    /**
+     * The map calls for [lines] (as [SummaryPlanner.lines] writes them) in Robot's summary language [lang], for a model
+     * with a context of [maxTokens]; each part says which minutes it covers.
+     */
+    fun plan(lines: List<String>, lang: String, maxTokens: Int = ContextWindow.MAX_TOKENS): SummaryPlan {
         val system = Prompt.summaryMap(lang)
-        val parts = chunks(lines, system)
+        val parts = chunks(lines, system, maxTokens)
         val calls = parts.mapIndexed { k, p -> SummaryCall(system, partText(k + 1, parts.size, timeOf(p.first()), timeOf(p.last()), p), NOTE_TOKENS) }
         return SummaryPlan(calls, levels(calls.size))
     }
@@ -130,8 +139,8 @@ object SummaryPlanner {
      * One reduce level: [notes] (labelled, in order) packed into calls of at most [FAN_IN] notes that fit the window
      * with [system]. A note too long for a call on its own is cut to fit. The result lists the notes' indexes per call.
      */
-    fun reduceGroups(notes: List<String>, system: String): List<List<Int>> {
-        val room = budget(system)
+    fun reduceGroups(notes: List<String>, system: String, maxTokens: Int = ContextWindow.MAX_TOKENS): List<List<Int>> {
+        val room = budget(system, maxTokens)
         val out = ArrayList<MutableList<Int>>()
         var used = 0
         for ((k, n) in notes.withIndex()) {
@@ -147,9 +156,9 @@ object SummaryPlanner {
     }
 
     /** A reduce call over [notes] (each already labelled, "Notes on part 3 (14:20–14:31):\n…"). */
-    fun reduceCall(notes: List<String>, lang: String): SummaryCall {
+    fun reduceCall(notes: List<String>, lang: String, maxTokens: Int = ContextWindow.MAX_TOKENS): SummaryCall {
         val system = Prompt.summaryReduce(lang)
-        val room = budget(system)
+        val room = budget(system, maxTokens)
         return SummaryCall(system, notes.joinToString("\n\n") { fitNote(it, room) }, REDUCE_TOKENS)
     }
 
@@ -475,8 +484,11 @@ data class SummaryRecord(
     fun toJson(): String = JSONObject().put("by", by).put("model", model).put("via", via).put("createdAt", createdAt).put("consent", consent)
         .put("sentAt", sentAt).put("chunks", parts).put("text", text).toString()
 
-    /** "Robot's summary — made on this phone by Gemma 4 E2B. …" or "Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52." */
-    fun label(zone: ZoneId = ZoneId.systemDefault()): String = if (via == VIA_PHONE) ROBOT_LABEL
+    /**
+     * "Robot's summary — made on this phone by Gemma 4 E2B. …" (the model that made it: [model] is its BrainModel id) or
+     * "Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52."
+     */
+    fun label(zone: ZoneId = ZoneId.systemDefault()): String = if (via == VIA_PHONE) robotLabel(model)
     else "Claude's summary — sent to Anthropic with your OK on " +
         DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.US).format(Instant.ofEpochMilli(if (sentAt > 0) sentAt else createdAt).atZone(zone)) + "."
 
@@ -484,7 +496,16 @@ data class SummaryRecord(
         const val VIA_PHONE = "phone"
         const val VIA_API = "api"
         const val VIA_APP = "app"
-        const val ROBOT_LABEL = "Robot's summary — made on this phone by Gemma 4 E2B. It can miss or mix up details; check the transcript."
+
+        /** Robot's own summary's label, naming the model it was made with (0.4.1: the one chosen in Settings › Model). */
+        fun robotLabel(model: String): String = "Robot's summary — made on this phone by ${modelName(model)}. It can miss or mix up details; check the transcript."
+
+        /** A model as a summary names it: "Gemma 4 E2B", "Gemma 4 E4B", "your own model file"; Robot's model when unknown. */
+        fun modelName(model: String): String = when (val m = BrainModel.byId(model)) {
+            null -> "Robot's model"
+            BrainModel.OWN -> "your own model file"
+            else -> m.modelName.substringBefore(" (")
+        }
 
         fun fromJson(text: String?): SummaryRecord? = try {
             val o = JSONObject(text ?: return null)

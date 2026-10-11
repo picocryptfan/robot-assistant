@@ -21,7 +21,7 @@ class FreeUpTest {
         assertEquals(Action.FreeMemory("Robot"), parse("free_memory", mapOf("app" to "Robot")))
         assertEquals(Action.FreeMemory(null), parse("free_memory", mapOf("app" to "background apps")))
         assertEquals(Action.FreeMemory("Chrome"), parse("free_memory", mapOf("app" to " Chrome ")))
-        assertEquals("Unload Robot's model to free about 2 GB of memory", Action.FreeMemory(null).describe())
+        assertEquals("Unload Robot's model to free about 2 GB of memory (4 GB for an E4B model)", Action.FreeMemory(null).describe())
         assertEquals("Unload", Action.FreeMemory(null).confirmLabel)
         assertEquals("Open **Chrome**'s App info to force stop it", Action.FreeMemory("Chrome", "com.android.chrome").describe())
         assertEquals("Open App info", Action.FreeMemory("Chrome").confirmLabel)

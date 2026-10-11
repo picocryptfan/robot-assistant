@@ -6,6 +6,8 @@ import android.content.Context
 import android.os.Handler
 import android.os.SystemClock
 import app.heyrobot.core.BrainError
+import app.heyrobot.core.BrainLoaded
+import app.heyrobot.core.BrainModel
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainPolicy
 import app.heyrobot.core.BrainProtocol
@@ -15,7 +17,13 @@ import app.heyrobot.core.EngineErrors
 import app.heyrobot.core.EngineTeardown
 import app.heyrobot.core.Json
 import app.heyrobot.core.Limits
+import app.heyrobot.core.LiteRtLmCheck
+import app.heyrobot.core.LiteRtLmReport
 import app.heyrobot.core.LiveConv
+import app.heyrobot.core.LoadCheck
+import app.heyrobot.core.LoadFailure
+import app.heyrobot.core.ModelBackend
+import app.heyrobot.core.ModelFiles
 import app.heyrobot.core.Prompt
 import app.heyrobot.core.PromptRole
 import app.heyrobot.core.PromptTurn
@@ -26,6 +34,8 @@ import app.heyrobot.core.ToolMode
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolRouter
 import app.heyrobot.core.ToolSpecs
+import app.heyrobot.core.readOrNull
+import app.heyrobot.core.writeAtomic
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
 import com.google.ai.edge.litertlm.Contents
@@ -38,6 +48,7 @@ import com.google.ai.edge.litertlm.ExperimentalFlags
 import com.google.ai.edge.litertlm.Message
 import com.google.ai.edge.litertlm.MessageCallback
 import com.google.ai.edge.litertlm.OpenApiTool
+import com.google.ai.edge.litertlm.SamplerConfig
 import com.google.ai.edge.litertlm.ToolProvider
 import com.google.ai.edge.litertlm.tool
 import java.io.File
@@ -46,18 +57,27 @@ import java.util.concurrent.atomic.AtomicInteger
 
 // :BRAIN PROCESS ONLY. The one file that uses LiteRT-LM (ProcessIsolationTest enforces that).
 //
-// Gemma 4 E2B on the Tensor G5 TPU exactly as the probe and the GPU lab (config T) load it:
-// Backend.NPU(nativeLibraryDir), the vision encoder on the NPU with a text-only fallback, maxNumTokens
-// 4096, cacheDir null, no sampler on the NPU. Every method runs on BrainService's work thread; LiteRT's
+// The model the assistant asks for (0.4.1, BrainMsg.Load), one engine at a time: another model is unloaded first.
+// On the TPU (Fast, Gemma 4 E2B) exactly as the probe and the GPU lab (config T) load it: Backend.NPU(nativeLibraryDir),
+// the vision encoder on the NPU with a text-only fallback, maxNumTokens 4096, cacheDir null, no sampler. On the CPU
+// (Gemma 4 E4B, or your own file) as the lab's run E: Backend.CPU() with LiteRT-LM's default threads (6 threads were no
+// faster), the vision encoder on the CPU too (the generic files' vision runs only there), and the model's own cache
+// folder for XNNPACK's weight cache (about 2.5 GB, written on the first load). MTP and the sampler on the CPU are the
+// constants below, for an A/B test on the phone. Every method runs on BrainService's work thread; LiteRT's
 // callbacks are posted back to it, so the state below has a single thread. The decisions (reuse, step down,
-// shorten, give up) are core's BrainPolicy; this file only acts on them.
+// shorten, give up) are core's BrainPolicy; this file only acts on them. 0.4.3: your own file built for 2,048 to 4,095
+// tokens loads with exactly its own context (LoadCheck and the header read here must both say so) and runs as chat
+// only (ToolMode.CHAT_ONLY): no tools described, no text-call hint, no step down, its calls dropped, its history
+// alternating, every budget from its context.
 
 class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     fun interface Sink { fun emit(what: Int, msg: BrainMsg) }
 
     private var engine: Engine? = null
+    /** What [engine] is: the model, where it runs, its file. */
+    private var loaded: BrainMsg.Load? = null
     private var vision = false
-    /** How tools reach the model; stepped down for good (until the process restarts) only on the tool-parse error. */
+    /** How tools reach the model; stepped down for good (until the process restarts or another model loads) only on the tool-parse error. */
     private var toolMode = ToolMode.TOOLS_CONSTRAINED
     private val convs = HashMap<String, Live>()
     private var running: Run? = null
@@ -70,6 +90,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     private var parked: Parked? = null
     /** Set by [shutdown] while a parked engine keeps the work thread: runs when that engine is closed. */
     private var teardown: (() -> Unit)? = null
+    /** When BrainService.onDestroy ran (elapsed ms; 0: it lives), read by a newer service waiting for the engine slot. */
+    @Volatile private var destroyedAt = 0L
     /**
      * The fixed part's token count (system prompt plus tools) is logged once per tool set and mode per engine load
      * (docs/phase-2.md "Logging"): counts only. [counted] holds the sets logged exactly; [estimated] those logged as an
@@ -114,68 +136,211 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
 
     private fun npu() = Backend.NPU(nativeLibraryDir = ctx.applicationInfo.nativeLibraryDir)
 
-    private fun config(path: String, withVision: Boolean) = EngineConfig(
-        modelPath = path,
-        backend = npu(),
-        visionBackend = if (withVision) npu() else null,
+    private fun backend(b: ModelBackend): Backend = if (b == ModelBackend.TPU) npu() else Backend.CPU()
+
+    private fun config(req: BrainMsg.Load, withVision: Boolean, cacheDir: File?) = EngineConfig(
+        modelPath = req.path,
+        backend = backend(req.backend),
+        visionBackend = if (withVision) backend(req.backend) else null,
         audioBackend = null,
-        maxNumTokens = ContextWindow.MAX_TOKENS,
-        cacheDir = null,
+        maxNumTokens = req.maxTokens,
+        cacheDir = cacheDir?.path,
     )
 
-    fun status() = BrainMsg.Status(loaded = engine != null, vision = vision, constrained = toolMode == ToolMode.TOOLS_CONSTRAINED, busy = running != null)
+    fun status() = BrainMsg.Status(loaded = engine != null, vision = vision, constrained = mode() == ToolMode.TOOLS_CONSTRAINED, busy = running != null,
+        model = loaded?.model?.takeIf { engine != null }, backend = loaded?.backend?.takeIf { engine != null },
+        maxTokens = loaded?.maxTokens?.takeIf { engine != null } ?: 0)
 
-    fun load(path: String): BrainMsg.Loaded {
-        if (engine != null) return BrainMsg.Loaded(true, vision, 0, null)
-        parked?.let { p -> if (p.run.nativeEnded) closeParked() else return BrainMsg.Loaded(false, false, 0, STOPPING) }
-        // Nor beside an engine an earlier BrainService in this process parked: that would be a second ~2 GB on the TPU.
-        if (!EngineTeardown.mayLoad(parkedInProcess.get())) return BrainMsg.Loaded(false, false, 0, STOPPING)
-        val f = File(path)
-        // Only the model file in Robot's own storage.
+    /** The loaded engine's context (4,096 when none is loaded: nothing is sent then anyway). */
+    private fun maxTokens(): Int = loaded?.maxTokens ?: ContextWindow.MAX_TOKENS
+
+    /** The level conversations are built at now: chat only for a short-context model, else the tool level. */
+    private fun mode(): ToolMode = BrainPolicy.modeFor(maxTokens(), toolMode)
+
+    private fun failed(req: BrainMsg.Load, failure: LoadFailure, error: String, ms: Long = 0): BrainMsg.Loaded {
+        RLog.i("brain_load", "ok" to false, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "failure" to failure)
+        return BrainMsg.Loaded(false, false, ms, error, req.model, req.backend, failure)
+    }
+
+    fun load(req: BrainMsg.Load): BrainMsg.Loaded {
+        val current = loaded
+        if (engine != null && current != null) {
+            if (current.model == req.model && current.backend == req.backend && current.path == req.path && current.maxTokens == req.maxTokens) {
+                return BrainMsg.Loaded(true, vision, 0, null, req.model, req.backend)
+            }
+            // Another model: the engine in memory goes first, so two never share the process (Fast about 2 GB on the
+            // TPU, an E4B about 4 GB on the CPU). If a reply still holds it, it is parked and this load waits (STOPPING).
+            RLog.i("brain_switch", "from" to RLog.Code(current.model.id), "to" to RLog.Code(req.model.id))
+            unload("switch")
+        }
+        parked?.let { p -> if (p.run.nativeEnded) closeParked() else return failed(req, LoadFailure.STOPPING, STOPPING) }
+        // Nor beside an engine an earlier BrainService in this process parked: that would be a second model in memory.
+        if (!EngineTeardown.mayLoad(parkedInProcess.get())) return failed(req, LoadFailure.STOPPING, STOPPING)
+        val f = File(req.path)
+        // Only a model file in Robot's own storage, and Fast only from its own pinned file.
         val allowed = listOfNotNull(ctx.getExternalFilesDir(null), ctx.filesDir).any { f.canonicalPath.startsWith(it.canonicalPath + File.separator) }
-        if (!allowed || !f.isFile) return BrainMsg.Loaded(false, false, 0, "The model file is missing.")
+        if (!allowed || !f.isFile || f.name != req.model.file) return failed(req, LoadFailure.NO_FILE, "The model file is missing.")
+        // The app's own records, read here again rather than trusted from the request: a built-in model's SHA-256 mark
+        // for this very file, or your own file's record (unchanged since its check; the TPU only once you allowed it); and
+        // the context Robot's prompts are made for with it (4,096, or a short file's own: 0.4.3).
+        val records = File(ctx.filesDir, "robot")
+        LoadCheck.refuse(
+            req.model, req.backend, ModelFiles.fingerprint(f.length(), f.lastModified()),
+            mark = if (req.model.builtIn) readOrNull(File(records, ModelFiles.verifiedMark(req.model))) else null,
+            ownRecord = if (req.model == BrainModel.OWN) readOrNull(File(records, ModelFiles.OWN_RECORD)) else null,
+            maxTokens = req.maxTokens,
+        )?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
+        // The TPU only for Fast's pinned file (its SHA-256 mark, just above) or a file whose contents prove a Tensor G5
+        // build and that you allowed there; and never TPU code on the CPU. Read here again, from the file about to load,
+        // with its context: never a KV cache larger than the file was built with, nor a short one for a file that isn't.
+        var header: LiteRtLmReport? = null
+        if (req.model != BrainModel.FAST || req.backend != ModelBackend.TPU) {
+            val r = LiteRtLmCheck.check(f)
+            val ok = when (req.backend) {
+                ModelBackend.TPU -> r.tensorG5Build
+                ModelBackend.CPU -> r.backend == ModelBackend.CPU
+            }
+            if (!ok) return failed(req, LoadFailure.NOT_ALLOWED, r.unusable ?: "Robot's check of the file says it can't run on the ${req.backend.title}.")
+            if (r.contextTokens != req.maxTokens) return failed(req, LoadFailure.NOT_ALLOWED, LoadCheck.wrongContext(r.contextTokens))
+            header = r
+        }
+        val cacheDir = ModelFiles.cacheDir(req.model, req.backend)?.let { File(ctx.filesDir, it) }
+        if (cacheDir != null) {
+            cacheDir.mkdirs()
+            // The first load writes the weight cache (about 2.5 GB for E4B): never start one that can't finish.
+            // Every file under it, as Settings › Model counts it (ModelStore.cacheBytes), so a cache already written is
+            // never taken for one still to write.
+            val cached = try { cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } } catch (_: Exception) { 0L }
+            val need = (if (req.model == BrainModel.OWN) ModelFiles.cacheEstimate(f.length()) else req.model.cacheBytes) - cached
+            if (need > 0 && cacheDir.usableSpace in 0 until need + CACHE_SPARE) {
+                return failed(req, LoadFailure.NO_SPACE, "There isn't enough free space for the cache it writes on its first load (about ${gb(need)}).")
+            }
+        }
+        // One engine in the whole process, whichever BrainService loads it: an earlier service destroyed while its thread
+        // was still loading or letting its engine go keeps that engine until its queued unload runs. Marked from the start
+        // too: the app must not delete the file (or its cache) while it loads, either.
+        when (EngineTeardown.forLoad(!claimSlot(req), slotHolderDestroyedMs())) {
+            EngineTeardown.LoadStep.LOAD -> {}
+            EngineTeardown.LoadStep.WAIT -> return failed(req, LoadFailure.STOPPING, STOPPING)
+            EngineTeardown.LoadStep.END_PROCESS -> {
+                RLog.i("brain_teardown", "step" to EngineTeardown.LoadStep.END_PROCESS)
+                android.os.Process.killProcess(android.os.Process.myPid())
+                return failed(req, LoadFailure.STOPPING, STOPPING)
+            }
+        }
+        if (current != null && current.model != req.model) toolMode = ToolMode.TOOLS_CONSTRAINED
         ExperimentalFlags.enableBenchmark = true
+        // MTP drafting: LiteRT-LM's default (off) on the TPU, as since 0.1; the A/B constant on the CPU.
+        ExperimentalFlags.enableSpeculativeDecoding = if (req.backend == ModelBackend.CPU) CPU_MTP else null
         val t0 = SystemClock.elapsedRealtime()
         var e: Engine? = null
         var visionError: String? = null
-        // Vision with a fixed 280-token image budget (read when the engine initialises), so the 300 tokens per image
-        // Robot plans for hold; if this TPU build refuses the budget, vision without it; then text only.
-        var budgetSet = false
-        for (budget in listOf(TokenEstimate.VISUAL_TOKEN_BUDGET, null)) {
-            try {
-                ExperimentalFlags.visualTokenBudget = budget
-                e = Engine(config(path, withVision = true))
-                e.initialize()
-                // The vision encoder starts with the first conversation: open one so a TPU failure shows here.
-                e.createConversation().close()
-                budgetSet = budget != null
-                break
-            } catch (ex: Exception) {
-                // The lab and Off Grid catch Exception only here; anything else is a real crash.
-                visionError = ex.javaClass.simpleName
-                try { e?.close() } catch (_: Exception) {}
-                e = null
+        var ok = false
+        try {
+            // Vision with a fixed 280-token image budget (read when the engine initialises), so the 300 tokens per image
+            // Robot plans for hold; if this build refuses the budget, vision without it; then text only. 0.4.3: the budget
+            // is Gemma 4's (other models' encoders give a fixed count: MedGemma's adapter 257), so only a Gemma 4 file gets
+            // it; and a file whose header has no vision encoder goes straight to text only (one load, not two).
+            var budgetSet = false
+            val budgets = when {
+                header?.vision == false -> emptyList()
+                header == null || header.gemma4 -> listOf(TokenEstimate.VISUAL_TOKEN_BUDGET, null)
+                else -> listOf(null)
             }
-        }
-        vision = e != null
-        if (e == null) {
-            ExperimentalFlags.visualTokenBudget = null
-            try {
-                e = Engine(config(path, withVision = false))
-                e.initialize()
-            } catch (ex: Exception) {
-                try { e?.close() } catch (_: Exception) {}
-                RLog.w("brain_load", ex, "ok" to false)
-                return BrainMsg.Loaded(false, false, SystemClock.elapsedRealtime() - t0, "The model didn't load (${ex.javaClass.simpleName}).")
+            if (budgets.isEmpty()) visionError = "NoVisionEncoder"
+            for (budget in budgets) {
+                try {
+                    ExperimentalFlags.visualTokenBudget = budget
+                    e = Engine(config(req, withVision = true, cacheDir))
+                    e.initialize()
+                    // The vision encoder starts with the first conversation: open one so a failure shows here.
+                    e.createConversation().close()
+                    budgetSet = budget != null
+                    break
+                } catch (ex: Exception) {
+                    // The lab and Off Grid catch Exception only here; anything else is a real crash.
+                    visionError = ex.javaClass.simpleName
+                    try { e?.close() } catch (_: Exception) {}
+                    e = null
+                }
             }
+            vision = e != null
+            if (e == null) {
+                ExperimentalFlags.visualTokenBudget = null
+                try {
+                    e = Engine(config(req, withVision = false, cacheDir))
+                    e.initialize()
+                } catch (ex: Exception) {
+                    try { e?.close() } catch (_: Exception) {}
+                    RLog.w("brain_load", ex, "ok" to false, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id))
+                    return BrainMsg.Loaded(false, false, SystemClock.elapsedRealtime() - t0, "The model didn't load (${ex.javaClass.simpleName}).",
+                        req.model, req.backend, LoadFailure.ENGINE)
+                }
+            }
+            engine = e
+            loaded = req
+            ok = true
+            counted.clear()
+            estimated.clear()
+            val ms = SystemClock.elapsedRealtime() - t0
+            RLog.i("brain_load", "ok" to true, "ms" to ms, "model" to RLog.Code(req.model.id), "backend" to RLog.Code(req.backend.id), "vision" to vision,
+                "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) }, "mtp" to (req.backend == ModelBackend.CPU && CPU_MTP == true),
+                "sampler" to (req.backend == ModelBackend.CPU && CPU_SAMPLER), "maxTokens" to req.maxTokens,
+                "chatOnly" to ContextWindow.chatOnly(req.maxTokens))
+            return BrainMsg.Loaded(true, vision, ms, null, req.model, req.backend)
+        } finally {
+            ExperimentalFlags.enableSpeculativeDecoding = null
+            if (!ok) releaseSlot()
         }
-        engine = e
-        counted.clear()
-        estimated.clear()
-        val ms = SystemClock.elapsedRealtime() - t0
-        RLog.i("brain_load", "ok" to true, "ms" to ms, "vision" to vision, "visualBudget" to budgetSet, "visionError" to visionError?.let { RLog.Code(it) })
-        return BrainMsg.Loaded(true, vision, ms, null)
     }
+
+    /**
+     * Takes the process's one engine slot for [req] and marks it as the model in memory; false while an engine of an
+     * earlier BrainService in this process still holds it.
+     */
+    private fun claimSlot(req: BrainMsg.Load): Boolean = synchronized(SLOT) {
+        val h = slotHolder
+        if (h != null && h !== this) return false
+        slotHolder = this
+        markLoaded(req)
+        true
+    }
+
+    /** How long ago the service holding the slot was destroyed (-1: it lives, or nobody holds it). */
+    private fun slotHolderDestroyedMs(): Long = synchronized(SLOT) {
+        val at = slotHolder?.takeIf { it !== this }?.destroyedAt ?: 0L
+        if (at > 0) SystemClock.elapsedRealtime() - at else -1L
+    }
+
+    /** This service's engine is gone (closed, or never made): the slot is free and the marker goes. */
+    private fun releaseSlot() = synchronized(SLOT) {
+        if (slotHolder === this) {
+            slotHolder = null
+            markUnloaded()
+        }
+    }
+
+    /** BrainService.onDestroy (main thread), before the work thread gets to [shutdown]. */
+    fun destroyed() {
+        destroyedAt = SystemClock.elapsedRealtime()
+    }
+
+    /** filesDir/robot/brain_loaded.txt: which model is in memory, so the app never deletes it under the engine. */
+    private fun loadedFile() = File(File(ctx.filesDir, "robot"), ModelFiles.LOADED)
+
+    private fun markLoaded(req: BrainMsg.Load) {
+        try { writeAtomic(loadedFile(), BrainLoaded(req.model, req.backend, android.os.Process.myPid()).encode()) } catch (t: Throwable) { RLog.w("brain_loaded_mark", t) }
+    }
+
+    private fun markUnloaded() {
+        try { loadedFile().delete() } catch (_: Throwable) {}
+    }
+
+    /** The sampler for a conversation: none on the TPU (as since 0.1), the A/B constants on the CPU. */
+    private fun sampler(): SamplerConfig? =
+        if (loaded?.backend == ModelBackend.CPU && CPU_SAMPLER) SamplerConfig(CPU_TOP_K, CPU_TOP_P, CPU_TEMPERATURE, 0) else null
+
+    private fun gb(bytes: Long) = String.format(java.util.Locale.US, "%.1f GB", bytes / 1e9)
 
     fun unload(why: String) {
         val e = engine ?: return
@@ -192,6 +357,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val all = convs.values.map { it.conv }
         convs.clear()
         engine = null
+        // Parked or closed, it no longer answers; the marker goes once its memory does (closeParked), so the app still
+        // keeps its file meanwhile.
         if (r != null && !r.nativeEnded) {
             // Still decoding after the wait: park the engine rather than close it under LiteRT (a native crash here
             // would count towards the assistant's crash lockout). The run's callback closes it.
@@ -202,6 +369,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         }
         all.forEach(::closeQuietly)
         try { e.close() } catch (ex: Exception) { RLog.w("brain_unload", ex) }
+        releaseSlot()
         RLog.i("brain_unload", "why" to RLog.Code(why))
     }
 
@@ -213,6 +381,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             try { p.engine.close() } catch (ex: Exception) { RLog.w("brain_unload", ex) }
         } finally {
             parkedInProcess.decrementAndGet()
+            // A parked engine kept the slot (and the marker); no other engine loads before it is closed.
+            if (engine == null) releaseSlot()
         }
         RLog.i("brain_unload_parked_closed")
         teardown?.invoke()
@@ -265,8 +435,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         val cfg = ConversationConfig(
             systemInstruction = Contents.of(if (mode == ToolMode.TEXT_CALLS) system + Prompt.textCallHint(tools) else system),
             initialMessages = history.map { if (it.role == PromptRole.USER) Message.user(it.text) else Message.model(it.text) },
-            tools = if (mode == ToolMode.TEXT_CALLS) emptyList() else providers(tools),
-            samplerConfig = null,
+            // Only the tool API's levels describe tools: never chat only (its list is empty anyway, BrainPolicy.toolsFor).
+            tools = if (mode == ToolMode.TOOLS || mode == ToolMode.TOOLS_CONSTRAINED) providers(tools) else emptyList(),
+            samplerConfig = sampler(),
             automaticToolCalling = false,
         )
         try {
@@ -304,22 +475,24 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     }
 
     private fun startGenerate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: Sink, attempt: Attempt) {
-        val tools = req.toolNames
+        val max = maxTokens()
+        // Chat only (a short-context model): no tools, whatever the request lists.
+        val tools = BrainPolicy.toolsFor(mode(), req.toolNames)
         val toolIds = tools.map { it.id }
         val fixed = Prompt.fixedTokens(req.system, tools)
         val newTurn = TokenEstimate.turn(PromptTurn(PromptRole.USER, req.text, image != null))
         // The app cuts the new turn to fit (Prompt.fitTurn); a turn that still can't fit is never sent anyway.
-        if (newTurn > ContextWindow.newTurnLimit(fixed)) {
-            RLog.i("brain_too_long", "newTurn" to newTurn, "fixed" to fixed)
+        if (newTurn > ContextWindow.newTurnLimit(fixed, max)) {
+            RLog.i("brain_too_long", "newTurn" to newTurn, "fixed" to fixed, "maxTokens" to max)
             return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.TOO_LONG, null))
         }
         var live = convs[req.convId]
         val reuse = attempt.historyBudget == null && BrainPolicy.canReuse(
             live?.let { LiveConv(it.historyCount, it.system, it.mode, it.dirty, it.awaitingTool, tokenCount(it.conv), it.tools) },
-            req.historyCount, req.system, toolMode, newTurn, toolIds,
+            req.historyCount, req.system, mode(), newTurn, toolIds, max,
         )
         var rebuilt = false
-        var budget = attempt.historyBudget ?: ContextWindow.historyBudget(fixed, newTurn)
+        var budget = attempt.historyBudget ?: ContextWindow.historyBudget(fixed, newTurn, max)
         // Turns of history in the conversation this message goes to (a reused one holds the client's whole history).
         var turns = if (reuse) req.history.size else 0
         if (!reuse) {
@@ -330,8 +503,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             var tries = 0
             var rebuilds = 0
             while (true) {
-                val history = ContextWindow.fit(req.history, budget)
-                val mode = toolMode
+                val mode = mode()
+                // Chat only: strictly alternating turns (the chat templates of models other than Gemma 4 demand it).
+                val history = ContextWindow.fit(BrainPolicy.historyFor(mode, req.history), budget)
                 val conv = try {
                     newConversation(req.system, history, mode, tools)
                 } catch (ex: Exception) {
@@ -351,7 +525,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
                 }
                 // The estimate chose the history; the engine's own count says whether the turn and a reply still fit.
                 val real = tokenCount(conv, unknown = -1)
-                val smaller = ContextWindow.shrink(budget, real, newTurn)
+                val smaller = ContextWindow.shrink(budget, real, newTurn, max)
                 if (smaller != null && history.isNotEmpty() && rebuilds < BrainPolicy.MAX_REBUILDS) {
                     closeQuietly(conv)
                     rebuilds++
@@ -394,7 +568,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
         // conversation is rebuilt (shorter) from the history next time.
         val responses = req.results.sumOf { (n, r) -> TokenEstimate.text(n) + TokenEstimate.text(Json.obj(r).toString()) } + TokenEstimate.TURN_OVERHEAD
         val live = tokenCount(l.conv)
-        if (!ContextWindow.roomForToolRound(live, responses)) {
+        if (!ContextWindow.roomForToolRound(live, responses, maxTokens())) {
             convs.remove(req.convId)
             closeQuietly(l.conv)
             RLog.i("brain_tool_round_full", "tokens" to live, "responses" to responses)
@@ -447,7 +621,11 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
 
     private fun onChunk(run: Run, m: Message) {
         if (run.ended) return
-        if (m.toolCalls.isNotEmpty()) run.calls += m.toolCalls.map { RawToolCall(it.name, it.arguments) }
+        // Chat only: no tool was described, so a call is never passed on (it would reach the approval gate).
+        if (m.toolCalls.isNotEmpty()) {
+            if (BrainPolicy.acceptsCalls(run.live.mode)) run.calls += m.toolCalls.map { RawToolCall(it.name, it.arguments) }
+            else RLog.i("brain_calls_dropped", "calls" to m.toolCalls.size, "mode" to run.live.mode)
+        }
         if (!run.thoughtSent && !m.channels["thought"].isNullOrEmpty()) {
             run.thoughtSent = true
             run.sink.emit(BrainProtocol.EV_CHUNK, BrainMsg.Chunk("", thought = true))
@@ -510,7 +688,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
             is BrainPolicy.Next.Fail -> {
                 // Output already reached the app, so nothing is resent; a genuine parse error still lowers the level for next time.
                 val after = BrainPolicy.modeAfter(msg, run.live.mode)
-                if (after < toolMode) {
+                // Only a step down lowers the level (chat only never steps: it is no level).
+                if (after != run.live.mode && after < toolMode) {
                     toolMode = after
                     RLog.i("brain_tool_mode_down", "to" to toolMode, "at" to RLog.Code("reply"))
                 }
@@ -543,7 +722,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
 
     /**
      * Logs the fixed cost of [tools] at [mode] once per engine load, from the conversation just built (never a second
-     * one: one LiteRT conversation at a time is what the TPU was proven with). LiteRT-LM 0.18 takes the history only
+     * one: one LiteRT conversation at a time is what the TPU was proven with, and the CPU runs the same way). LiteRT-LM 0.18 takes the history only
      * at creation, so [real] counts system, tools and [history]: exact when there was no history, otherwise [real] less
      * the history's estimate, logged as estimated until an exact count comes.
      */
@@ -560,11 +739,33 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) {
     }
 
     companion object {
+        /**
+         * A/B on the phone (README "On the phone (0.4.1)"): MTP speculative decoding for the CPU models, whose files carry
+         * an MTP drafter. null is LiteRT-LM's default (off). Google measured 1.2 to 1.7× faster writing on a Galaxy S26's
+         * CPU; on this phone's GPU it was slower, and on its CPU it is unmeasured. Try true.
+         */
+        private val CPU_MTP: Boolean? = null
+        /**
+         * A/B: a sampler for the CPU models (false: none, as on the TPU). Abliterated models can ramble without one; try
+         * true with Gemma's own values below, and compare the answers.
+         */
+        private const val CPU_SAMPLER = false
+        private const val CPU_TOP_K = 64
+        private const val CPU_TOP_P = 0.95
+        private const val CPU_TEMPERATURE = 1.0
+        /** Free space left over once a first-load cache is written. */
+        private const val CACHE_SPARE = 500_000_000L
         /** How long unload waits for a cancelled decode to end before parking the engine instead of closing it. */
         private const val UNLOAD_WAIT_MS = 10_000
         private const val STOPPING = "The model is still stopping. Try again in a moment."
         /** Engines parked in this process, by any BrainService instance (a new one may be created before the old one's closes). */
         private val parkedInProcess = AtomicInteger()
+        /**
+         * The process's one engine slot (0.4.1): the GemmaEngine whose engine is loading, loaded, being let go of or parked.
+         * A new BrainService can be created in this process before the old one's work thread has let its engine go.
+         */
+        private val SLOT = Any()
+        private var slotHolder: GemmaEngine? = null
     }
 
     /** Broken output (as the lab detects it): pad/unused tokens, or one character 32+ times in a row. */

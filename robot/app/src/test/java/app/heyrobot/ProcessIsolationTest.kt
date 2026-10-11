@@ -189,8 +189,8 @@ class ProcessIsolationTest {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
         assertEquals("app.heyrobot", m.getAttribute("package"))
-        assertEquals("40", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.4.0", m.getAttributeNS(ns, "versionName"))
+        assertEquals("43", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("0.4.3", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
@@ -252,6 +252,18 @@ class ProcessIsolationTest {
         assertTrue("claude.ai" in hosts)
         val mimes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "mimeType") } }.toSet()
         assertTrue("vnd.android.cursor.dir/event" in mimes)
+    }
+
+    /**
+     * 0.4.1, Settings › Model: every model still downloads by DownloadManager from the main app's stores, and only the main
+     * app downloads, imports, checks or deletes one; the voice process only asks which file to load (ModelStore.plan), and
+     * :brain reads a model's header (core LiteRtLm, no network) before it loads it.
+     */
+    @Test fun modelsDownloadOnlyFromTheMainApp() {
+        assertEquals(listOf("app/sys/ModelStore.kt", "app/sys/VoiceModelStore.kt"), usersOf(Regex("""\bDownloadManager\b""")))
+        assertEquals(listOf("app/ui/MainActivity.kt"), usersOf(Regex("""\bModelStore\.(startDownload|import|verify|delete|allowOwnTpu|cancelDownload)\(""")))
+        assertEquals(listOf("app/assistant/BrainLink.kt"), usersOf(Regex("""\bModelStore\.plan\(""")))
+        assertEquals(listOf("brain/brain/GemmaEngine.kt", "app/sys/ModelStore.kt").sorted(), usersOf(Regex("""\bLiteRtLmCheck\.check\(""")))
     }
 
     /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */

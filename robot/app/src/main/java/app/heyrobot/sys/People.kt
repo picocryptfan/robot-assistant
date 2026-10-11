@@ -373,6 +373,8 @@ object AppPages {
     const val TRANSCRIPTS = "transcripts"
     const val CONVERSATION_SETTINGS = "conversation_settings"
     const val EXTRA_TRANSCRIPT = "robot_transcript"
+    /** Settings › Model, the Model tab (0.4.3: from a chat-only model's answer to an action). */
+    const val MODEL = "model"
     /** The Robot Notes launcher entry (an activity-alias of MainActivity). */
     const val NOTES_ALIAS = "app.heyrobot.ui.NotesLauncher"
 }

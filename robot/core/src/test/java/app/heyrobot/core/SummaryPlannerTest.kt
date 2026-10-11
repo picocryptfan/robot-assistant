@@ -114,11 +114,41 @@ class SummaryPlannerTest {
     }
 
     @Test fun theSummarysLabel() {
-        val robot = SummaryRecord("robot", "gemma-4-e2b", SummaryRecord.VIA_PHONE, start, "- [14:03] …", parts = 3)
+        val robot = SummaryRecord("robot", BrainModel.FAST.id, SummaryRecord.VIA_PHONE, start, "- [14:03] …", parts = 3)
         assertEquals(robot, SummaryRecord.fromJson(robot.toJson()))
         assertEquals("Robot's summary — made on this phone by Gemma 4 E2B. It can miss or mix up details; check the transcript.", robot.label(zone))
+        // The model chosen in Settings › Model (0.4.1) is the one named.
+        assertEquals("Robot's summary — made on this phone by Gemma 4 E4B. It can miss or mix up details; check the transcript.",
+            robot.copy(model = BrainModel.SMARTER.id).label(zone))
+        assertTrue(robot.copy(model = BrainModel.OWN.id).label(zone).contains("by your own model file."))
+        assertTrue(robot.copy(model = "nope").label(zone).contains("by Robot's model."))
         val claude = SummaryRecord("claude-opus-5-5", "claude-opus-5-5", SummaryRecord.VIA_API, start, "Overview…", consent = true,
             sentAt = ZonedDateTime.of(2026, 10, 11, 14, 52, 0, 0, zone).toInstant().toEpochMilli())
         assertEquals("Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52.", claude.label(zone))
+    }
+
+    /**
+     * 0.4.3's short-context models (2,048 to 4,095 tokens, chat only) summarize too: smaller parts, every call within
+     * their own window with a quarter of it kept for the reply.
+     */
+    @Test fun aShortContextModelGetsSmallerPartsThatFitItsWindow() {
+        val lines = (0 until 600).map { k -> SummaryPlanner.line("14:%02d".format(k % 60), "Speaker ${k % 3 + 1}", if (k % 2 == 0) "fr" else "en",
+            "On se reprend demain à dix heures pour le budget, c'est-tu correct pour toi? Ça me va, je t'envoie le fichier ce soir.") }
+        val full = SummaryPlanner.plan(lines, "en")
+        for (max in listOf(2048, 3000, 4095)) {
+            val p = SummaryPlanner.plan(lines, "en", max)
+            // 2,048 leaves room for smaller parts only; near 4,096 the parts stay 2,400 estimated tokens.
+            assertTrue(if (max == 2048) p.parts > full.parts else p.parts >= full.parts)
+            for (c in p.map) {
+                assertTrue(SummaryPlanner.fits(c, max))
+                assertTrue(c.maxChunks <= ContextWindow.replyReserve(max))
+            }
+            val notes = (1..p.parts).map { k -> SummaryPlanner.noteLabel(k, k, "14:00", "14:10") + "\n" + "- [14:03] Speaker 1 will send the file tonight. ".repeat(12) }
+            for (g in SummaryPlanner.reduceGroups(notes, Prompt.SUMMARY_REDUCE, max)) {
+                assertTrue(SummaryPlanner.fits(SummaryPlanner.reduceCall(g.map { notes[it] }, "en", max), max))
+            }
+        }
+        // A 4,096 call doesn't fit 2,048.
+        assertTrue(full.map.any { !SummaryPlanner.fits(it, 2048) })
     }
 }

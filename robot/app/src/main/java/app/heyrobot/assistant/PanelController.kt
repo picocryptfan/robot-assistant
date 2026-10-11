@@ -22,6 +22,8 @@ import app.heyrobot.core.BrainFail
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.Card
 import app.heyrobot.core.CardAnswer
+import app.heyrobot.core.ChatOnly
+import app.heyrobot.core.ChatOnlyTurn
 import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.ClaudeAppAnswer
 import app.heyrobot.core.ClaudeAppLink
@@ -232,8 +234,11 @@ data class UiTurn(
 
 data class Draft(val kind: Attachment, val thumb: Bitmap?)
 
-/** OPEN_ASSIST_SETTINGS: the Digital assistant app page, where "Use text from screen" and "Use screenshot" are. */
-enum class NoticeAction { NONE, OPEN_APP, OPEN_ASSIST_SETTINGS }
+/**
+ * OPEN_ASSIST_SETTINGS: the Digital assistant app page, where "Use text from screen" and "Use screenshot" are.
+ * OPEN_MODEL (0.4.3): Robot's Settings › Model, to choose a model that can do actions.
+ */
+enum class NoticeAction { NONE, OPEN_APP, OPEN_ASSIST_SETTINGS, OPEN_MODEL }
 
 data class Notice(val text: String, val action: NoticeAction = NoticeAction.NONE)
 
@@ -396,7 +401,15 @@ object PanelController {
     private fun init() {
         if (initialized) return
         initialized = true
-        scope.launch { BrainKeeper.state.collect { s -> _state.update { it.copy(brain = s) } } }
+        scope.launch {
+            // A new fallback (Robot is using Fast instead of the model you chose) shows once as a notice, with Open Robot.
+            var seenFallback = 0
+            BrainKeeper.state.collect { s ->
+                val tell = s.fallback != null && s.fallbackSeq != seenFallback
+                seenFallback = s.fallbackSeq
+                _state.update { it.copy(brain = s, notice = if (tell) Notice(s.fallback!!, NoticeAction.OPEN_APP) else it.notice) }
+            }
+        }
     }
 
     /** From VoiceHub (which owns the voice's listener since 0.2.3): Robot's voice started or stopped. */
@@ -737,6 +750,13 @@ object PanelController {
     }
 
     fun notify(text: String) = _state.update { it.copy(notice = Notice(text)) }
+
+    /** "Open Model" under a chat-only model's answer to an action: Settings › Model, where you choose (0.4.3). */
+    fun openModelSettings() {
+        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the Robot app › Model.")
+        val h = host ?: return
+        leaveForRobot(h, HandOffApps.robotPage(VoiceHub.app, AppPages.MODEL))
+    }
 
     /** "Allow" on a card that needs a permission: the main app's permission screen (it asks; the panel never does). */
     fun openPermissions() {
@@ -1225,9 +1245,22 @@ object PanelController {
             return failReply(replyId, b.problem ?: "Robot's model isn't ready.", if (b.readiness == BrainKeeper.Readiness.NO_MODEL) NoticeAction.OPEN_APP else NoticeAction.NONE)
         }
         client = c
-        // The TPU build loaded without its vision encoder: a screen question still has the screen's text.
-        val vision = BrainKeeper.state.value.vision
-        if (image != null && !vision && attachment == Attachment.PHOTO) return failReply(replyId, BrainError.NO_VISION.text())
+        val loaded = BrainKeeper.state.value
+        // 0.4.3, a short-context model (chat only): a request clearly worded as an action gets Robot's own answer, and an
+        // offer to open Settings › Model, never a switch made for you. (Texting and Ask Claude's phrases went their own way
+        // before the model was ever asked, as always.)
+        val chatOnly = loaded.chatOnly
+        if (chatOnly) ChatOnly.actionAsked(question)?.let { asked ->
+            RLog.i("chat_only_action", "tool" to RLog.Code(asked.id))
+            localReply(replyId, ChatOnly.REPLY, spoken = ChatOnly.SPOKEN)
+            _state.update { it.copy(notice = Notice(ChatOnly.NOTICE, NoticeAction.OPEN_MODEL)) }
+            return
+        }
+        // The model loaded without its vision encoder: a screen question still has the screen's text.
+        val vision = loaded.vision
+        if (image != null && !vision && attachment == Attachment.PHOTO) {
+            return failReply(replyId, if (loaded.fileVision) BrainError.NO_VISION.text() else NO_VISION_IN_FILE)
+        }
         val img = if (vision) image else null
         val convId = _state.value.convId
         val now = ZonedDateTime.now()
@@ -1245,17 +1278,21 @@ object PanelController {
         var cutSaid = false
         // What you asked for in your own words this turn (never the screen's text or a photo): Safety cards' "asked for".
         val askedNow = ToolRouter.asked(question)
+        // The loaded model's context: every budget below is made from it (4,096, or a short-context file's own).
+        val maxTokens = loaded.contextTokens
         // One run of the model on this question into the reply, with or without ask_claude (the second one, without it,
         // is Robot's own answer after the model handed over: afterLocal).
         suspend fun gemma(askClaude: Boolean): TurnResult {
-            // Only the groups this conversation needs, and nothing turned off in settings, is described to the model.
-            val tools = ToolRouter.tools(groups, s, askClaude)
-            val system = Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools,
+            // Only the groups this conversation needs, and nothing turned off in settings, is described to the model; to a
+            // chat-only model nothing at all, with its compact prompt (Settings › "Direct answers" as you set it).
+            val tools = if (chatOnly) emptyList() else ToolRouter.tools(groups, s, askClaude)
+            val system = if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers)
+            else Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools,
                 weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers, lockedTools = s.lockedTools)
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
             val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
             // The new turn always fits the model's context: cut (and say so) rather than overflow.
-            val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools), clock)
+            val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools), clock, maxTokens)
             if (fitted.shortened && !cutSaid) {
                 cutSaid = true
                 notify(if (fitted.questionCut) "Your message was too long, so Robot read only its first part." else "The screen had a lot of text, so Robot read only the first part.")
@@ -1272,12 +1309,15 @@ object PanelController {
             // About what the context has left for a tool's answer beside the reply (as :brain will fit the history): the
             // weather gives fewer days when it is short.
             val fixedTokens = Prompt.fixedTokens(system, tools)
-            val budget = ContextWindow.historyBudget(fixedTokens, TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, img != null)))
+            val budget = ContextWindow.historyBudget(fixedTokens, TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, img != null)), maxTokens)
             toolRoom = budget - ContextWindow.fit(gen.history, budget).sumOf(TokenEstimate::turn) - TOOL_CALL_TOKENS
-            return TurnRunner(BrainTurn(c, convId, replyId, gen, img), PanelActions, PanelView(replyId), slot.confirmations, untrusted,
+            // Chat only: whatever the model emits, no call reaches the approval gate (core ChatOnlyTurn; :brain drops them too).
+            val model = BrainTurn(c, convId, replyId, gen, img).let { if (chatOnly) ChatOnlyTurn(it) else it }
+            return TurnRunner(model, PanelActions, PanelView(replyId), slot.confirmations, untrusted,
                 asked = askedNow, newId = ::newId).run()
         }
-        val result = gemma(askClaude = leftOut == null)
+        // ask_claude is a tool: a chat-only model gets none (the escalation triggers outside the model still apply).
+        val result = gemma(askClaude = leftOut == null && !chatOnly)
         result.failure?.let { return failReply(replyId, it) }
         // Escalation trigger b: Gemma called ask_claude. Its turn ended there; Claude answers (or is offered).
         if (result.escalate) {
@@ -1822,11 +1862,14 @@ object PanelController {
         if (host?.launch(i) == true) leaveForApp()
     }
 
-    /** Robot's own words as the reply (no model): spoken in Robot's voice ([claude] false) when replies are spoken. */
-    private fun localReply(replyId: String, text: String, claude: Boolean = false) {
+    /**
+     * Robot's own words as the reply (no model): spoken in Robot's voice ([claude] false) when replies are spoken;
+     * [spoken] is the same as the voice says it, when it differs (no "›").
+     */
+    private fun localReply(replyId: String, text: String, claude: Boolean = false, spoken: String = text) {
         _state.update { st -> st.copy(claudeStatus = null, turns = st.turns.map { if (it.id == replyId) it.copy(claude = claude) else it }) }
         setText(replyId, text)
-        voice.feed(replyId, text, _state.value.speak).forEach { speakSentence(it, claude) }
+        voice.feed(replyId, spoken, _state.value.speak).forEach { speakSentence(it, claude) }
         finishReply(replyId, DoneReason.END)
     }
 
@@ -2068,6 +2111,9 @@ object PanelController {
 
     /** The model's tool call itself, about. */
     private const val TOOL_CALL_TOKENS = 40
+
+    /** A photo question to a model whose file has no vision encoder (your own file, as its check found). */
+    private const val NO_VISION_IN_FILE = "This model can't look at photos: its file has no vision part. Settings › Model says which ones can."
 
     /** What the turn shows: the reply bubble [replyId], its cards and the panel's phase. */
     private class PanelView(private val replyId: String) : TurnView {
