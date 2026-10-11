@@ -37,17 +37,23 @@ internal object ClaudeRequests {
 
     private val EPHEMERAL: BetaCacheControlEphemeral = BetaCacheControlEphemeral.builder().build()
 
-    private val SYSTEM: List<BetaTextBlockParam> = listOf(BetaTextBlockParam.builder().text(ClaudePrompt.SYSTEM).cacheControl(EPHEMERAL).build())
+    private val SYSTEM: List<BetaTextBlockParam> = system(ClaudePrompt.SYSTEM)
+    /** 0.5.0: the transcript summary's own fixed prompt (docs/conversation-mode.md 7.2), cached the same way. */
+    private val TRANSCRIPT: List<BetaTextBlockParam> = system(ClaudePrompt.TRANSCRIPT_SYSTEM)
+
+    private fun system(text: String): List<BetaTextBlockParam> = listOf(BetaTextBlockParam.builder().text(text).cacheControl(EPHEMERAL).build())
 
     /**
      * Thinking is never sent (on Claude Opus 5.5 it is always on, and `disabled` is a 400); effort is always explicit
      * (the API's default differs by model). Forced tool_choice is a 400 on these models: auto.
      */
-    fun params(model: ClaudeModel, plan: ClaudePlan, tools: List<ToolSpec>, search: Boolean, cacheLast: Boolean, messages: List<BetaMessageParam>): MessageCreateParams {
+    fun params(model: ClaudeModel, plan: ClaudePlan, tools: List<ToolSpec>, search: Boolean, cacheLast: Boolean, messages: List<BetaMessageParam>,
+        system: String = ClaudePrompt.SYSTEM): MessageCreateParams {
         val b = MessageCreateParams.builder()
             .model(model.id)
             .maxTokens(plan.maxTokens)
-            .systemOfBetaTextBlockParams(SYSTEM)
+            // Only Robot's two fixed prompts: the spoken-answer one, or the transcript summary's.
+            .systemOfBetaTextBlockParams(if (system == ClaudePrompt.TRANSCRIPT_SYSTEM) TRANSCRIPT else SYSTEM)
             .outputConfig(BetaOutputConfig.builder().effort(effort(plan.effort)).build())
             .messages(messages)
         for (t in tools) b.addTool(tool(t))
