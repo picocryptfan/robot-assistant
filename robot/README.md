@@ -535,7 +535,11 @@ Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
    Windows-1252. It keeps names (`FN`, else `N`), nicknames (`NICKNAME`, and the Contacts app's own export of them; kept as nicknames),
    numbers (`TEL`, `tel:` URIs too), emails and XMPP addresses (`IMPP:xmpp:`, `X-JABBER`), and skips everything else
    (postal addresses, birthdays, notes, photos, categories). A preview gives the counts, how many are new and how many
-   people already there (the same number, email or XMPP address) get something new. From Proton Mail: on the web,
+   people already there get something new. An entry merges with someone already in People only when they share a
+   number, an email or an XMPP address and either the names agree (a nickname or an alias counts) or every number and
+   address in the file's entry is already theirs; a shared landline or family email alone never merges two people.
+   The merge the preview worked out is written as it is (the file lock is held only for the write), unless the list
+   changed meanwhile. From Proton Mail: on the web,
    Contacts › select all › Export selection as .VCF.
 4. **Learn names from Cheogram notifications** (Settings › People, off by default). With notification access, a
    `NotificationListenerService` in the main process (no model, no voice process) keeps who messages you in Cheogram

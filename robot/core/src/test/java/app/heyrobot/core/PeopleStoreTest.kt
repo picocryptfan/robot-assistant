@@ -169,11 +169,12 @@ class PeopleStoreTest {
 
     // ------------------------------------------------------------------ importing
 
-    @Test fun importsMergeByNumberEmailAndAddress() {
+    @Test fun importsMergeOnlyTheSamePerson() {
         val incoming = listOf(
-            // Bob again, with a new number: merged, his name kept and the file's name an alias.
-            Person("i1", "Robert Tremblay", phones = listOf(ContactPhone("514-555-0199", PhoneKind.MOBILE, "Mobile"), ContactPhone("514 555 0177", PhoneKind.WORK, "Work"))),
-            // Mom's number at the gateway is the number in the file.
+            // Bob again: the same name in another form, and a number already his: merged, the file's name a nickname.
+            Person("i1", "Bob Tremblay", nicknames = listOf("Robert"), phones = listOf(ContactPhone("514-555-0199", PhoneKind.MOBILE, "Mobile"),
+                ContactPhone("514 555 0177", PhoneKind.WORK, "Work"))),
+            // Mom's number at the gateway is the number in the file, and it is all the file has: merged.
             Person("i2", "Maman", phones = listOf(ContactPhone("(514) 555-0101", PhoneKind.MOBILE, "Mobile"))),
             // Someone new.
             Person("i3", "Zoé Lefèvre", emails = listOf("zoe@example.org")),
@@ -187,7 +188,7 @@ class PeopleStoreTest {
         assertEquals(listOf("p2", "p1", "i3", null), m.landed)
         val b = m.people.first { it.id == "p2" }
         assertEquals("Bob Tremblay", b.name)
-        assertEquals(listOf("Robert Tremblay"), b.nicknames)
+        assertEquals(listOf("Robert"), b.nicknames)
         assertEquals(emptyList<String>(), b.aliases)
         assertEquals(2, b.phones.size)
         val mm = m.people.first { it.id == "p1" }
@@ -204,6 +205,55 @@ class PeopleStoreTest {
         val m2 = PeopleEdit.merge(listOf(learned), listOf(Person("i", "Zoé Lefèvre", xmpp = listOf(XmppAddress("ZOE@example.org", "me@example.org")))), 52)
         assertEquals("Zoé Lefèvre", m2.people.single().name)
         assertTrue(m2.people.single().confirmed)
+    }
+
+    @Test fun aSharedLandlineOrEmailNeverMergesTwoPeople() {
+        // Review 0.4.0 #3: Mom has the home number; the file's Dad has it too, with his own mobile and email.
+        val home = Person("m", "Mom", phones = listOf(ContactPhone("514 555 0100", PhoneKind.HOME, "Home")), emails = listOf("family@example.org"))
+        val dad = Person("d", "Dad", phones = listOf(ContactPhone("514 555 0100", PhoneKind.HOME, "Home"), ContactPhone("514 555 0177", PhoneKind.MOBILE, "Mobile")),
+            emails = listOf("dad@example.org", "family@example.org"))
+        val m = PeopleEdit.merge(listOf(home), listOf(dad), 1)
+        assertEquals(1, m.added)
+        assertEquals(0, m.updated)
+        assertEquals(home, m.people.first { it.id == "m" })
+        assertEquals(listOf("514 555 0100", "514 555 0177"), m.people.first { it.id == "d" }.phones.map { it.number })
+        // "email mom" still has one address, and "text dad" finds Dad (not Mom under another name).
+        assertEquals(listOf("family@example.org"), m.people.first { it.id == "m" }.emails)
+        assertEquals(listOf(ContactIds.people("d")), AddressBook(emptyList(), m.people).best("dad").map { it.id })
+        // A name that is a nickname of someone already there is theirs.
+        val m2 = PeopleEdit.merge(listOf(home.copy(nicknames = listOf("Maman"))), listOf(Person("x", "maman", phones = listOf(ContactPhone("514 555 0188", PhoneKind.MOBILE, "Mobile")),
+            emails = listOf("family@example.org"))), 2)
+        assertEquals(1, m2.updated)
+        assertEquals(1, m2.people.size)
+    }
+
+    @Test fun aBigFileMergesInOnePass() {
+        val base = (0 until 2500).map { Person("b$it", "Person $it", phones = listOf(ContactPhone("+1 514 55${"%05d".format(it)}", PhoneKind.MOBILE, "Mobile"))) }
+        val file = (0 until 2500).map { Person("f$it", "Person ${it + 1250}", emails = listOf("p$it@example.org"),
+            phones = listOf(ContactPhone("+1 514 55${"%05d".format(it + 1250)}", PhoneKind.MOBILE, "Mobile"))) }
+        val m = PeopleEdit.merge(base, file, 1)
+        assertEquals(1250, m.updated)
+        assertEquals(1250, m.added)
+        assertEquals(3750, m.people.size)
+    }
+
+    @Test fun anImportIsWrittenAsMergedUnlessTheListChanged() {
+        val s = PeopleStore(tmp())
+        s.save(mom)
+        val before = s.list()
+        val incoming = listOf(Person("z", "Zoé", emails = listOf("zoe@example.org")))
+        val merged = PeopleEdit.merge(before, incoming, 1)
+        var again = 0
+        s.commit(before, merged.people) { again++; PeopleEdit.merge(it, incoming, 2).people }
+        assertEquals(0, again)
+        assertEquals(2, s.list().size)
+        // Something changed meanwhile (the assistant remembered someone): merged again with it, nothing lost.
+        val before2 = s.list()
+        val merged2 = PeopleEdit.merge(before2, listOf(Person("y", "Yves", emails = listOf("yves@example.org"))), 3)
+        s.save(bob)
+        s.commit(before2, merged2.people) { again++; PeopleEdit.merge(it, listOf(Person("y", "Yves", emails = listOf("yves@example.org"))), 4).people }
+        assertEquals(1, again)
+        assertEquals(setOf("p1", "z", "p2", "y"), s.list().map { it.id }.toSet())
     }
 
     // ------------------------------------------------------------------ the address book

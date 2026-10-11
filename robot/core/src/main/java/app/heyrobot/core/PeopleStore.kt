@@ -4,7 +4,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.nio.channels.FileChannel
+import java.nio.file.Files
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.Locale
 import java.util.UUID
 
@@ -133,7 +135,26 @@ object PeopleCodec {
 class PeopleStore(private val dir: File) {
     private val file get() = File(dir, "people.json")
 
-    fun list(): List<Person> = PeopleCodec.fromJson(readOrNull(file))
+    /**
+     * Everyone, as the file holds them now. Kept in this process until the file changes (a write replaces it: a new file,
+     * time and size), so a text doesn't parse thousands of people again.
+     */
+    fun list(): List<Person> {
+        val f = file
+        val stamp = stamp(f) ?: return read()
+        synchronized(CACHE) { CACHE[f.path]?.let { (s, l) -> if (s == stamp) return l } }
+        val l = read()
+        if (stamp(f) == stamp) synchronized(CACHE) { CACHE[f.path] = stamp to l }
+        return l
+    }
+
+    private fun read(): List<Person> = PeopleCodec.fromJson(readOrNull(file))
+
+    /** The file's identity (its inode where the system has one), time and size; null when it can't be told. */
+    private fun stamp(f: File): String? = try {
+        val a = Files.readAttributes(f.toPath(), BasicFileAttributes::class.java)
+        a.fileKey()?.let { "$it:${a.lastModifiedTime().toMillis()}:${a.size()}" }
+    } catch (_: Exception) { null }
 
     fun get(id: String): Person? = list().firstOrNull { it.id == id }
 
@@ -143,7 +164,8 @@ class PeopleStore(private val dir: File) {
      */
     fun update(change: (List<Person>) -> List<Person>): List<Person>? = try {
         locked {
-            val now = list()
+            // Under the lock always from the file itself.
+            val now = read()
             val next = change(now)
             if (next !== now) writeAtomic(file, PeopleCodec.toJson(next.map(People::clean).take(People.MAX_PEOPLE)))
             next
@@ -151,6 +173,13 @@ class PeopleStore(private val dir: File) {
     } catch (_: Exception) {
         null
     }
+
+    /**
+     * Writes [after], worked out from [before] outside the lock (an import's merge), if the file still holds [before];
+     * otherwise [again] of what it holds now. The lock is held only for that check and the write.
+     */
+    fun commit(before: List<Person>, after: List<Person>, again: (List<Person>) -> List<Person>): List<Person>? =
+        update { now -> if (now == before) after else again(now) }
 
     /** Adds [p], or replaces the person with its id. */
     fun save(p: Person): Boolean = update { PeopleEdit.upsert(it, p) } != null
@@ -169,6 +198,7 @@ class PeopleStore(private val dir: File) {
 
     companion object {
         private val LOCK = Any()
+        private val CACHE = HashMap<String, Pair<String, List<Person>>>()
         private val ID = Regex("^[A-Za-z0-9-]{1,64}$")
         fun validId(id: String?): Boolean = id != null && ID.matches(id)
         fun newId(): String = UUID.randomUUID().toString()
@@ -345,6 +375,9 @@ object PeopleEdit {
      */
     data class Merged(val people: List<Person>, val added: Int, val updated: Int, val skipped: Int, val landed: List<String?> = emptyList())
 
+    /** A number's address at the SMS gateway ("+15145550101@cheogram.com"): its local part. */
+    private val GATEWAY_LOCAL = Regex("""^\+\d{7,15}$""")
+
     /** Keys two entries share when they are the same person: a number (last 10 digits), an email or an XMPP address. */
     private fun keys(p: Person): Set<String> = buildSet {
         p.phones.forEach { PhoneNumbers.digits(it.number).takeIf { d -> d.length >= 7 }?.let { d -> add("n:" + d.takeLast(10)) } }
@@ -353,33 +386,48 @@ object PeopleEdit {
             add("x:" + x.jid.trim().lowercase(Locale.ROOT))
             // A number's address at the SMS gateway is that number.
             val local = x.jid.substringBeforeLast('@')
-            if (Regex("""^\+\d{7,15}$""").matches(local)) add("n:" + PhoneNumbers.digits(local).takeLast(10))
+            if (GATEWAY_LOCAL.matches(local)) add("n:" + PhoneNumbers.digits(local).takeLast(10))
         }
     }
 
+    /** The same name, or one's name is a nickname or an alias of the other (case and accents aside). */
+    private fun sameNames(a: Person, b: Person): Boolean =
+        (listOf(a.name) + a.aliases + a.nicknames).any { People.sameName(it, b.name) } || (b.aliases + b.nicknames).any { People.sameName(it, a.name) }
+
     /**
-     * Imported people ([incoming]: a contacts file, the phone's contact picker) merged in: one who shares a number, an
-     * email or an XMPP address with someone already there adds what's new to them (their name stays, unless they were
-     * only learned from a notification); anyone else is added. Entries with nothing to reach them by are skipped.
+     * Imported people ([incoming]: a contacts file, the phone's contact picker) merged in. Someone already there is the
+     * same person only when they share a number, an email or an XMPP address and either their names agree (a nickname
+     * or an alias counts) or every number and address of the incoming entry is already theirs: a shared landline or a
+     * family email alone never merges two people (Mom's home number doesn't make Dad's mobile hers). The same person
+     * gets what's new (their name stays, unless they were only learned from a notification; the file's other name
+     * becomes a nickname); anyone else is added. Entries with nothing to reach them by are skipped. Indexed by those
+     * keys, so a file of thousands merges in one pass.
      */
     fun merge(list: List<Person>, incoming: List<Person>, now: Long): Merged {
-        var out = list
+        val out = ArrayList(list)
+        val index = HashMap<String, MutableList<Int>>()
+        fun indexAt(i: Int) {
+            for (k in keys(out[i])) index.getOrPut(k) { ArrayList(1) }.let { if (i !in it) it += i }
+        }
+        out.indices.forEach(::indexAt)
         var added = 0
         var updated = 0
         var skipped = 0
-        val landed = ArrayList<String?>()
+        val landed = ArrayList<String?>(incoming.size)
         for (raw in incoming) {
             val inc = People.clean(raw)
             if (!inc.reachable || inc.name.isEmpty()) { skipped++; landed += null; continue }
             val k = keys(inc)
-            val old = out.firstOrNull { p -> keys(p).any { it in k } }
-            if (old == null) {
+            val at = k.flatMap { index[it].orEmpty() }.distinct().firstOrNull { i -> sameNames(out[i], inc) || keys(out[i]).containsAll(k) }
+            if (at == null) {
                 if (out.size >= People.MAX_PEOPLE) { skipped++; landed += null; continue }
-                out = out + inc.copy(updatedAt = now)
+                out += inc.copy(updatedAt = now)
+                indexAt(out.lastIndex)
                 added++
                 landed += inc.id
                 continue
             }
+            val old = out[at]
             landed += old.id
             val merged = People.clean(old.copy(
                 name = if (old.confirmed) old.name else inc.name,
@@ -391,7 +439,8 @@ object PeopleEdit {
                 confirmed = true,
             ))
             if (merged != old) {
-                out = upsert(out, merged.copy(updatedAt = now))
+                out[at] = merged.copy(updatedAt = now)
+                indexAt(at)
                 updated++
             }
         }

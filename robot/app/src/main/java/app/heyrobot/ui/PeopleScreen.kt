@@ -118,8 +118,8 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     var people by remember { mutableStateOf<List<Person>>(emptyList()) }
     var tick by remember { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
-    /** A contacts file read and waiting for "Import": what it holds, and what importing would do. */
-    var preview by remember { mutableStateOf<Pair<VCardFile, PeopleEdit.Merged>?>(null) }
+    /** A contacts file read and waiting for "Import": what it holds, and what importing it into the list as it was would do. */
+    var preview by remember { mutableStateOf<Preview?>(null) }
     var askLegacy by remember { mutableStateOf(false) }
     var confirmDeleteAll by remember { mutableStateOf(false) }
 
@@ -142,12 +142,13 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                 try { ctx.contentResolver.openInputStream(uri)?.use { readAtMost(it, MAX_VCF_BYTES) } } catch (t: Exception) { RLog.w("people_import", t); null }
             }
             if (bytes == null) return@launch a.say("That file couldn't be read, or it is over 8 MB.")
-            val (file, merged) = withContext(Dispatchers.Default) {
+            val p = withContext(Dispatchers.Default) {
                 val f = VCard.parse(VCard.decode(bytes))
                 val incoming = f.entries.map { VCard.person(it, PeopleStore.newId(), now()) }
-                f to PeopleEdit.merge(store.list(), incoming, now())
+                val before = store.list()
+                Preview(f, incoming, before, PeopleEdit.merge(before, incoming, now()))
             }
-            if (file.entries.isEmpty()) a.say("No one in that file has a number, an email or an XMPP address.") else preview = file to merged
+            if (p.file.entries.isEmpty()) a.say("No one in that file has a number, an email or an XMPP address.") else preview = p
         }
     }
     val exporter = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/vcard")) { uri: Uri? ->
@@ -291,7 +292,9 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
             }
         }
     }
-    preview?.let { (file, merged) ->
+    preview?.let { pv ->
+        val file = pv.file
+        val merged = pv.merged
         AlertDialog(
             onDismissRequest = { preview = null },
             title = { Text("Import ${plural(file.entries.size, "person", "people")}?") },
@@ -310,9 +313,11 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
                 TextButton(onClick = {
                     preview = null
                     scope.launch {
-                        val incoming = file.entries.map { VCard.person(it, PeopleStore.newId(), now()) }
-                        var done: PeopleEdit.Merged? = null
-                        val ok = withContext(Dispatchers.IO) { store.update { l -> PeopleEdit.merge(l, incoming, now()).also { done = it }.people } } != null
+                        // The merge the preview worked out is written as it is, unless the list changed meanwhile.
+                        var done: PeopleEdit.Merged? = merged
+                        val ok = withContext(Dispatchers.IO) {
+                            store.commit(pv.before, merged.people) { l -> PeopleEdit.merge(l, pv.incoming, now()).also { done = it }.people }
+                        } != null
                         tick++
                         val d = done
                         a.say(if (!ok || d == null) "The import couldn't be saved." else "Imported: ${d.added} new, ${d.updated} updated.")
@@ -354,6 +359,9 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
         )
     }
 }
+
+/** A contacts file read for import: its cards as people, the list they were merged into, and the result. */
+private class Preview(val file: VCardFile, val incoming: List<Person>, val before: List<Person>, val merged: PeopleEdit.Merged)
 
 internal fun plural(n: Int, one: String, many: String): String = if (n == 1) "1 $one" else "$n $many"
 
