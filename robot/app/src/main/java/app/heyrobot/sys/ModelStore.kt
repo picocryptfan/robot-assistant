@@ -76,7 +76,10 @@ object ModelStore {
             val r = own(ctx)
             val a = r?.availability(fp) ?: if (fp == null) ModelAvailability.NOT_DOWNLOADED else ModelAvailability.NOT_CHECKED
             val b = r?.backend
-            return if (a == ModelAvailability.READY && b != null && fp != null) a to LoadPlan(m, f.absolutePath, b, m.contextTokens, fp) else a to null
+            // Its context is the file's own when shorter than 4,096 (0.4.3, chat only); :brain checks the header again.
+            return if (a == ModelAvailability.READY && r != null && b != null && fp != null) {
+                a to LoadPlan(m, f.absolutePath, b, r.report.contextTokens, fp, r.report.vision)
+            } else a to null
         }
         val path = verifiedPath(ctx, m) ?: return (if (f.isFile && f.length() == m.bytes) ModelAvailability.NOT_CHECKED else ModelAvailability.NOT_DOWNLOADED) to null
         return ModelAvailability.READY to LoadPlan(m, path, m.backend, m.contextTokens, fingerprint(f))

@@ -114,7 +114,7 @@ class MainActivity : ComponentActivity() {
     private fun routeOf(i: Intent?): String? = when {
         i == null -> null
         i.component?.className == AppPages.NOTES_ALIAS -> AppPages.NOTES
-        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS }
+        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.MODEL }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -317,6 +317,7 @@ fun RobotAppUi(activity: MainActivity) {
         when (route) {
             AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
             AppPages.PERMISSIONS -> page = Page.Setup(people = true)
+            AppPages.MODEL -> { tab = Tab.MODEL; page = null }
         }
         activity.route.value = null
     }
