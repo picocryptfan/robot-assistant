@@ -174,6 +174,8 @@ class PeopleStore(private val dir: File) {
 object People {
     /** Everyone at most (an imported file is cut there). */
     const val MAX_PEOPLE = 5_000
+    /** People learned from notifications kept at most: the oldest go first, so a flood of senders can't fill the file. */
+    const val MAX_LEARNED = 200
     const val MAX_NAME = 100
     const val MAX_EACH = 20
 
@@ -267,6 +269,31 @@ object PeopleEdit {
         }
         val named = People.clean(withAlias(p, spoken))
         return upsert(takeAlias(list, spoken, named.id), named) to named
+    }
+
+    /**
+     * Someone who messaged you in Cheogram (the notification listener): [name] as Cheogram showed it, their address and
+     * the account it came in on. Someone already known by that address keeps their name if you confirmed them (only a
+     * missing account is added); a learned one takes the newest name. New people are learned, unconfirmed, and at most
+     * [People.MAX_LEARNED] are kept (the oldest go). Unchanged (the same list) when there is nothing new.
+     */
+    fun learn(list: List<Person>, name: String, jid: String, account: String, now: Long, newId: () -> String = PeopleStore::newId): List<Person> {
+        val n = name.replace(Regex("\\s+"), " ").trim()
+        if (n.isEmpty() || !Addresses.isJid(jid)) return list
+        val old = list.firstOrNull { p -> p.xmpp.any { sameJid(it.jid, jid) } }
+        if (old != null) {
+            val needsAccount = old.xmpp.any { sameJid(it.jid, jid) && it.account == null }
+            val rename = !old.confirmed && old.name != People.clean(old.copy(name = n)).name
+            if (!needsAccount && !rename) return list
+            val xmpp = old.xmpp.map { if (sameJid(it.jid, jid) && it.account == null) it.copy(account = account) else it }
+            return upsert(list, People.clean(old.copy(name = if (rename) n else old.name, xmpp = xmpp, updatedAt = now)))
+        }
+        val added = list + People.clean(Person(newId(), n, xmpp = listOf(XmppAddress(jid, account)), source = PersonSource.NOTIFICATION, confirmed = false,
+            updatedAt = now))
+        val learned = added.filter { !it.confirmed }
+        if (learned.size <= People.MAX_LEARNED) return added
+        val drop = learned.sortedBy { it.updatedAt }.take(learned.size - People.MAX_LEARNED).map { it.id }.toSet()
+        return added.filter { it.id !in drop }
     }
 
     /**

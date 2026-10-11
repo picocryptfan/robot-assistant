@@ -67,6 +67,8 @@ data class AssistantFacts(
     /** 0.3.1: "Use text from screen" and "Use screenshot" for the assistant (null: Android wouldn't say). */
     val screenTextOn: Boolean? = null,
     val screenshotOn: Boolean? = null,
+    /** 0.4.0: notification access, for "Learn names from Cheogram notifications". */
+    val notificationAccess: Boolean = false,
 )
 
 object Assistant {
@@ -108,6 +110,7 @@ object Assistant {
             secureSettingsGranted = RecognizerKeeper.canWrite(ctx),
             screenTextOn = screenText,
             screenshotOn = screenshot,
+            notificationAccess = NotificationAccess.granted(ctx),
         )
     }
 

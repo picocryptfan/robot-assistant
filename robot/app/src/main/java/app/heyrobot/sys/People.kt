@@ -1,6 +1,7 @@
 package app.heyrobot.sys
 
 import android.Manifest
+import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Context
@@ -13,6 +14,8 @@ import android.provider.ContactsContract.CommonDataKinds.Im
 import android.provider.ContactsContract.CommonDataKinds.Nickname
 import android.provider.ContactsContract.CommonDataKinds.Phone
 import android.provider.ContactsContract.Data
+import android.provider.Settings
+import android.service.notification.NotificationListenerService
 import android.provider.Telephony
 import android.telephony.PhoneNumberUtils
 import android.telephony.TelephonyManager
@@ -291,6 +294,35 @@ object PhoneContacts {
         return Intent(Intent.ACTION_INSERT, ContactsContract.Contacts.CONTENT_URI)
             .putExtra(ContactsContract.Intents.Insert.NAME, p.name)
             .putParcelableArrayListExtra(ContactsContract.Intents.Insert.DATA, rows)
+    }
+}
+
+/**
+ * Robot's notification access, for "Learn names from Cheogram notifications" (the listener runs in the main process;
+ * its class is named here as a string). Apps installed from a file need "Allow restricted settings" (App info › ⋮)
+ * before Android lets you turn the access on.
+ */
+object NotificationAccess {
+    const val LISTENER = "app.heyrobot.people.CheogramListener"
+
+    fun component(ctx: Context): ComponentName = ComponentName(ctx.packageName, LISTENER)
+
+    fun granted(ctx: Context): Boolean = try {
+        ctx.getSystemService(NotificationManager::class.java).isNotificationListenerAccessGranted(component(ctx))
+    } catch (_: Throwable) { false }
+
+    /** Android's page for Robot's notification access, else the list of apps that have it. */
+    fun settings(ctx: Context): List<Intent> = listOf(
+        Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, component(ctx).flattenToString()),
+        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS),
+    )
+
+    /** Robot's App info, where ⋮ › Allow restricted settings is. */
+    fun appInfo(ctx: Context): Intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", ctx.packageName, null))
+
+    /** The switch was turned on: Android binds the listener again (it unbinds itself while the switch is off). */
+    fun rebind(ctx: Context) {
+        try { NotificationListenerService.requestRebind(component(ctx)) } catch (_: Throwable) {}
     }
 }
 

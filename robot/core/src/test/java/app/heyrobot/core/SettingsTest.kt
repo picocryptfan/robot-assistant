@@ -125,11 +125,14 @@ class SettingsTest {
     }
 
     @Test fun peopleSettingsDefaultsAndRoundTrip() {
-        // 0.4.0: Robot offers to remember who you pick until you turn that off.
+        // 0.4.0: Robot offers to remember who you pick until you turn that off; it learns from Cheogram's notifications
+        // only once you turn that on.
         val d = RobotSettings()
         assertEquals(true, d.rememberPicks)
-        val s = d.copy(rememberPicks = false)
+        assertEquals(false, d.learnFromCheogram)
+        val s = d.copy(rememberPicks = false, learnFromCheogram = true)
         assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
         assertEquals(true, RobotSettings.fromJson("""{"schema":4}""").rememberPicks)
+        assertEquals(false, RobotSettings.fromJson("""{"schema":4}""").learnFromCheogram)
     }
 }

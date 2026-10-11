@@ -80,6 +80,11 @@ data class RobotSettings(
     val eventMinutes: Int = 60,
     /** Settings › People › "Remember who I pick": Robot offers to remember who you pick in Cheogram or on a card. */
     val rememberPicks: Boolean = true,
+    /**
+     * Settings › People › "Learn names from Cheogram notifications" (off): with notification access, Robot keeps who
+     * messages you in Cheogram (name, address, account), never the messages.
+     */
+    val learnFromCheogram: Boolean = false,
     /** The wake phrases (Settings › Voice › Wake words); "hey robot" at Medium until the user changes it. */
     val wakePhrases: List<WakePhrase> = WakePhrases.DEFAULT,
     /** Settings › Voice › "Hear me while Robot talks". */
@@ -140,6 +145,7 @@ data class RobotSettings(
         put("eventCalendar", eventCalendar)
         put("eventMinutes", eventMinutes)
         put("rememberPicks", rememberPicks)
+        put("learnFromCheogram", learnFromCheogram)
         put("wakePhrases", org.json.JSONArray().apply {
             for (p in wakePhrases) put(JSONObject().put("id", p.id).put("text", p.text).put("sensitivity", p.sensitivity.name).put("enabled", p.enabled))
         })
@@ -233,6 +239,7 @@ data class RobotSettings(
                 eventCalendar = o.optLong("eventCalendar", d.eventCalendar),
                 eventMinutes = clampEventMinutes(o.optInt("eventMinutes", d.eventMinutes)),
                 rememberPicks = o.optBoolean("rememberPicks", d.rememberPicks),
+                learnFromCheogram = o.optBoolean("learnFromCheogram", d.learnFromCheogram),
                 wakePhrases = o.optJSONArray("wakePhrases")?.let(::phrases) ?: d.wakePhrases,
                 bargeIn = enumOr(o.optString("bargeIn"), d.bargeIn),
                 playback = enumOr(o.optString("playback"), d.playback),

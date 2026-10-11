@@ -409,7 +409,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.WakeTest -> WakeTestScreen(settings, snap, onBack = { page = null })
         Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = { page = null })
         Page.AdbFixes -> AdbFixesScreen(snackbar, onBack = { page = null })
-        Page.People -> PeopleScreen(settings, ::updateSettings, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
+        Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = { page = null })
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = { page = Page.People })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },

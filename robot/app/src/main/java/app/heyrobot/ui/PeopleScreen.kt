@@ -75,7 +75,9 @@ import app.heyrobot.core.VCard
 import app.heyrobot.core.VCardFile
 import app.heyrobot.core.XmppAddress
 import app.heyrobot.sys.CheogramIntents
+import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.HandOffApps
+import app.heyrobot.sys.NotificationAccess
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.PhoneContacts
 import app.heyrobot.ui.common.RIcons
@@ -108,8 +110,8 @@ private fun readAtMost(input: InputStream, max: Int): ByteArray? {
 }
 
 @Composable
-fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActions, snackbar: SnackbarHostState, onOpen: (String?) -> Unit,
-    onBack: () -> Unit) {
+fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState,
+    onOpen: (String?) -> Unit, onBack: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val store = remember { PeopleFiles.store(ctx) }
@@ -225,6 +227,50 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
                 }
             }
             item {
+                val learned = people.filter { !it.confirmed }
+                SectionCard("Learn from Cheogram") {
+                    SwitchRow("Learn names from Cheogram notifications",
+                        "When someone messages you in Cheogram, Robot keeps their name, their address and your account, never the message. " +
+                            "A name learned this way always shows the card before a text, since whoever sends a message chooses it.",
+                        s.learnFromCheogram) { on ->
+                        update(s.copy(learnFromCheogram = on))
+                        if (on) NotificationAccess.rebind(ctx)
+                    }
+                    val granted = facts?.notificationAccess == true
+                    when {
+                        s.learnFromCheogram && !granted -> NotificationAccessSteps()
+                        s.learnFromCheogram -> StatusRow(Mark.OK, "Notification access allowed",
+                            "Robot looks at Cheogram's notifications only, and of those only the sender of a 1:1 chat.")
+                        granted -> StatusRow(Mark.TODO, "Notification access is still allowed",
+                            "Robot ignores notifications while this is off. You can take the access back in Android's settings.") {
+                            TextButton(onClick = { openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text("Open") }
+                        }
+                    }
+                    if (learned.isNotEmpty()) {
+                        Text("Learned from Cheogram (${learned.size})", style = MaterialTheme.typography.titleSmall)
+                        for (p in learned.take(MAX_LEARNED_SHOWN)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f).clickable { onOpen(p.id) }) {
+                                    Text(p.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(People.summary(p), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                TextButton(onClick = { scope.launch {
+                                    withContext(Dispatchers.IO) { store.update { PeopleEdit.confirm(it, p.id, now()) } }
+                                    tick++
+                                } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Keep") }
+                                TextButton(onClick = { scope.launch {
+                                    withContext(Dispatchers.IO) { store.delete(p.id) }
+                                    tick++
+                                } }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Remove") }
+                            }
+                        }
+                        if (learned.size > MAX_LEARNED_SHOWN) Text("…and ${learned.size - MAX_LEARNED_SHOWN} more in the list below.",
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            item {
                 Text(if (people.isEmpty()) "No one yet" else "Your people (${people.size})", style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 4.dp))
             }
@@ -310,6 +356,44 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
 }
 
 internal fun plural(n: Int, one: String, many: String): String = if (n == 1) "1 $one" else "$n $many"
+
+/** Learned people listed with Keep and Remove at most; the rest are in the list. */
+private const val MAX_LEARNED_SHOWN = 20
+
+/** The first of [intents] that opens (Android's page for Robot, else the general one). */
+internal fun openFirst(ctx: android.content.Context, intents: List<android.content.Intent>, a: AppActions) {
+    for (i in intents) {
+        try { ctx.startActivity(i); return } catch (_: Exception) {}
+    }
+    a.say("Open Settings › Notifications › Device & app notifications, or Settings › Apps › Special app access › Notification access.")
+}
+
+/**
+ * Notification access, step by step. Android blocks it for apps installed from a file (Robot, from its release page)
+ * until "Allow restricted settings" is on in the app's App info, and that menu item only appears once Android has
+ * refused the access, hence the order.
+ */
+@Composable
+internal fun NotificationAccessSteps() {
+    val ctx = LocalContext.current
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Allow notification access", style = MaterialTheme.typography.titleSmall)
+        Text("1. Tap Notification access and turn Robot on. If Android says it's a restricted setting, tap OK.", style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text("2. Tap App info, then ⋮ (top right) › Allow restricted settings, and confirm. No such item? Android isn't blocking Robot: skip this.",
+            style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text("3. Tap Notification access again and turn Robot on.", style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text("Notification access lets Robot see every app's notifications; it looks at Cheogram's only, and keeps names and addresses, never text.",
+            style = MaterialTheme.typography.bodyMedium, color = muted)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalButton(onClick = {
+                for (i in NotificationAccess.settings(ctx)) { try { ctx.startActivity(i); return@FilledTonalButton } catch (_: Exception) {} }
+            }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Notification access") }
+            OutlinedButton(onClick = { try { ctx.startActivity(NotificationAccess.appInfo(ctx)) } catch (_: Exception) {} },
+                modifier = Modifier.heightIn(min = 48.dp)) { Text("App info") }
+        }
+    }
+}
 
 @Composable
 private fun PersonRow(p: Person, onClick: () -> Unit) {

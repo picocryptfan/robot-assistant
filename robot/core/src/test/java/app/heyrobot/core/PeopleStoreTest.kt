@@ -111,6 +111,35 @@ class PeopleStoreTest {
         assertEquals(emptyList<String>(), l5.first { it.id == "o" }.aliases)
     }
 
+    // ------------------------------------------------------------------ learning from notifications
+
+    @Test fun notificationsTeachNamesButNeverRenameSomeoneYouConfirmed() {
+        val l1 = PeopleEdit.learn(emptyList(), "Zoé Lefèvre", "zoe@example.org", "me@example.org", 30, ids)
+        val z = l1.single()
+        assertFalse(z.confirmed)
+        assertEquals(PersonSource.NOTIFICATION, z.source)
+        assertEquals(listOf(XmppAddress("zoe@example.org", "me@example.org")), z.xmpp)
+        // The same again: nothing to write.
+        assertSame(l1, PeopleEdit.learn(l1, "Zoé Lefèvre", "ZOE@example.org", "me@example.org", 31, ids))
+        // A learned person takes the newest name; a confirmed one keeps theirs, and only gets a missing account.
+        assertEquals("Zoé L.", PeopleEdit.learn(l1, "Zoé L.", "zoe@example.org", "me@example.org", 32, ids).single().name)
+        val confirmed = listOf(Person("c", "Mom", xmpp = listOf(XmppAddress("mom@example.org"))))
+        val l2 = PeopleEdit.learn(confirmed, "Someone Else", "mom@example.org", "me@example.org", 33, ids)
+        assertEquals("Mom", l2.single().name)
+        assertEquals("me@example.org", l2.single().xmpp.single().account)
+        assertSame(l2, PeopleEdit.learn(l2, "Someone Else", "mom@example.org", "me@example.org", 34, ids))
+        // Nothing for a name-less or unusable sender.
+        assertSame(confirmed, PeopleEdit.learn(confirmed, " ", "x@example.org", "me@example.org", 35, ids))
+        assertSame(confirmed, PeopleEdit.learn(confirmed, "X", "a?b@example.org", "me@example.org", 36, ids))
+        // A flood of senders keeps the newest learned people only; confirmed people are never dropped.
+        var l: List<Person> = confirmed
+        for (i in 1..(People.MAX_LEARNED + 5)) l = PeopleEdit.learn(l, "Sender $i", "s$i@example.org", "me@example.org", 100L + i, ids)
+        assertEquals(People.MAX_LEARNED + 1, l.size)
+        assertTrue(l.any { it.id == "c" })
+        assertFalse(l.any { it.name == "Sender 1" })
+        assertTrue(l.any { it.name == "Sender ${People.MAX_LEARNED + 5}" })
+    }
+
     // ------------------------------------------------------------------ importing
 
     @Test fun importsMergeByNumberEmailAndAddress() {

@@ -208,6 +208,22 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/capture_paths" />
         </provider>
 
+        <!-- "Learn names from Cheogram notifications" (0.4.0): off until you turn it on in Settings › People and allow
+             notification access. Reads only Cheogram's 1:1 chats: the sender's name, address and your account, never
+             message text. Main process: no model, no voice process; it unbinds itself while the switch is off. Only the
+             system can bind it (BIND_NOTIFICATION_LISTENER_SERVICE). It asks for conversations only, never ongoing or
+             silent notifications. -->
+        <service
+            android:name=".people.CheogramListener"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+            <meta-data android:name="android.service.notification.default_filter_types" android:value="conversations" />
+            <meta-data android:name="android.service.notification.disabled_filter_types" android:value="ongoing|silent" />
+        </service>
+
         <!-- Not exported: the system's boot broadcast still arrives, other apps cannot fake it. Direct-boot aware (0.2.3)
              so it also gets LOCKED_BOOT_COMPLETED, before the first unlock: there it only checks the speech recognizer
              setting (no files of the credential-encrypted storage; RobotApp only logs). -->
