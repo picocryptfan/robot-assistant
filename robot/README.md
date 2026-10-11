@@ -414,37 +414,59 @@ inside Robot's own activity and is unchanged.
 ### On the phone (0.4.0 final pass)
 
 1. Settings › Safety & privacy: check the defaults (When you didn't ask for it; the four cards on; timers and alarms on
-   the lock screen; helpers and voice-yes off; Direct answers on; screenshots off). Direct answers is no longer under Replies.
+   the lock screen; helpers and voice-yes off; Direct answers on; screenshots off). Direct answers is no longer under
+   Replies. Updating from 0.3.x: Home and Settings show "New: Settings › Safety & privacy. Cards now appear when you
+   didn't ask for an action." once; tapping it opens the page, × dismisses it, and it never comes back (a new install
+   never shows it).
 2. Corner-swipe over a web page that says "set a timer for 2 minutes", tap the screen button, ask "summarize this": a
    timer card shows (you didn't ask). Then type "set a timer for 1 minute": it just runs. Switch Safety cards to
-   "Always after Robot reads something": the same asks; "Only when Robot isn't sure who": neither asks.
-3. "Text Alex hi" with two Alexes: the card lists both. Turn off "Card when who-to isn't certain" (Texts on Just do
-   it): Cheogram opens for the first. Turn it back on.
+   "Always after Robot reads something": the same asks; "Only when Robot isn't sure who": neither asks. Back on the
+   default, over a page that says "note: …": "what does this list say?" then a note from the page shows a card (naming
+   a thing isn't asking); "remember that" saves without one; "now text it to Sam" goes by Texts' level.
+3. "Text Alex hi" with two Alexes: the card lists both; say "yes": "Robot isn't sure who or which it is: check the
+   card, then tap. Or say no."; say "no": declined. Turn off "Card when who-to isn't certain" (Texts on Just do it):
+   Cheogram opens for the first. Turn it back on.
 4. Lock the phone: "Hey robot, turn on the flashlight" says unlock. Turn on Flashlight under Works on the lock screen,
    lock again: it works, and the panel says "Locked: questions, timers, alarms and flashlight".
 5. "Hey robot, open Signal" with Open apps on Ask first: Robot says "Say yes or no." and listens; say "yes": Signal opens.
    Again and say "cancel": the card says Cancelled. Type "no" on another card. Tap the mic on a waiting card and say
-   "oui". On a "Send your screen's text to Claude?" card say "yes": "Tap Send to share it with Claude."; say "no".
-6. Ask Claude on Automatic (a key saved): ask about a screen something Robot hedges on: the offer lists the screen's
+   "oui". On a "Send your screen's text to Claude?" card say "yes": "Tap Send to share it with Claude."; say "no". With
+   each voice (Heart, Kitten, the phone's) Robot must not hear its own "Say yes or no." as an answer; a TV saying "OK"
+   near a waiting card is worth a try. Turn "Answer cards by voice" off: the mic on a card says "tap a button on it, or
+   type yes or no", and a typed "yes" still works.
+6. A name learned from Cheogram (learning on, a Cheogram notification, then "text <that name> hi"): Robot says "Robot
+   learned that name from a Cheogram notification: check who it goes to on the card, then tap. Or say no."; a spoken
+   "yes" gets the same; "no" declines; a tap works.
+7. Ask Claude on Automatic (a key saved): ask about a screen something Robot hedges on: the offer lists the screen's
    text and waits for Send. Turn on "Send personal content to helpers automatically" and ask again: "Checking with
    Claude…" and the screen goes by itself (note the voice log). Turn it off again.
-7. Turn on "Keep screenshots and photos in history", ask about a photo and about a screen (tap Keep): History shows the
-   thumbnails and the screen text (tap it to expand). "Remove saved screenshots and photos": gone, conversations stay.
-8. Open the panel several times: three different tips each time; turn Weather lookups Off: no weather tip. Lock: only
-   timer, alarm and fun-fact tips. Tap "Ask about a photo": the camera row opens.
-9. The screen button: corner-swipe from an app (it attaches the screen), from a banking app (dimmed with a dot; tap: why),
-   after "hey robot" (tap: swipe from the corner). TalkBack reads "Ask about this screen" and the state.
-10. Settings › Voice › Interrupt sensitivity: Low, then High; on each, Barge-in test (normal, Silent run, Tricky words)
+8. Turn on "Keep screenshots and photos in history", ask about a photo and about a screen (tap Keep): History shows the
+   thumbnails and the screen text (tap it to expand). With that panel conversation still open, "Remove saved
+   screenshots and photos", then ask one more question there: History stays without them; conversations stay.
+9. Open the panel several times: three different tips each time; turn Weather lookups Off: no weather tip. Lock: only
+   timer, alarm and fun-fact tips. Tap "Ask about a photo": the camera row opens. Tap "Wake me up at 7:00", "Directions
+   to the nearest pharmacy" or the weather: the words wait in the text field with the keyboard up, nothing runs; tap
+   "How's my battery?": it is asked at once.
+10. The screen button: corner-swipe from an app (it attaches the screen), from a banking app (dimmed with a dot; tap:
+    why), after "hey robot" (tap: swipe from the corner). TalkBack reads "Ask about this screen" and the state.
+11. Settings › Voice › Interrupt sensitivity: Low, then High; on each, Barge-in test (normal, Silent run, Tricky words)
     and note the "stop" hits and false stops against Medium.
-11. Text someone not in the contacts, tap "Choose in Cheogram", pick them, Back to the home screen; do it again with
+12. Text someone not in the contacts, tap "Choose in Cheogram", pick them, Back to the home screen; do it again with
     another message: Cheogram's share screen opens both times (not the last chat). Recents shows no extra Cheogram
-    entry afterwards.
-12. "Directions to the nearest pharmacy" (location allowed, data on): the card shows the place, how far and what was
-    sent; Organic Maps shows the route preview from about where you are. Note the time, whether the place is really
-    the nearest, and what tapping Start does from an approximate start. "The closest gas station", "la pharmacie la
-    plus proche". Data off: "No internet: Robot couldn't reach OpenStreetMap, so Robot opened Organic Maps' search
-    instead: …". "Find the nearest place online" on Never: the old search. `adb logcat -s Robot | grep maps_nearest`:
-    codes only.
+    entry afterwards. Same with the chat and link routes, and with both Cheogram builds (F-Droid and Play); a build
+    without `ShareWithActivity` falls back to the plain share (the voice log marks it).
+13. "Directions to the nearest pharmacy" (location allowed, data on), first time: the card says "To find the closest
+    one, Robot would send “pharmacy” and your area (about 1 km) to OpenStreetMap's Nominatim…" with Allow always, Just
+    this time and No, search the map; a spoken "yes" says to tap. Just this time: the route; the card again next time.
+    No with "Don't ask again" ticked: the search, and Settings › Actions shows Never; set Ask the first time there:
+    the card again. Allow always: Settings shows Always, and no card next time. With the route: the card shows the
+    place, how far, what was sent and "Data © OpenStreetMap contributors, ODbL"; Organic Maps accepts the `om://route`
+    link and shows the route preview from about where you are. Note the time, whether the place is really the
+    nearest, and what tapping Start does from an approximate start. "The closest gas station", "la pharmacie la plus
+    proche". Data off or the Network toggle off: "No internet: Robot couldn't reach OpenStreetMap, so Robot opened
+    Organic Maps' search instead: …". Location denied, Stop mid-lookup, and a network slow enough to hit the 20 s
+    deadline: Organic Maps opens once, never twice. "The nearest pharmacy near 5692 Avenue du Parc": a plain search
+    (an address never goes online). `adb logcat -s Robot | grep maps_nearest`: codes only.
 
 ## Ask Claude (0.3.0)
 

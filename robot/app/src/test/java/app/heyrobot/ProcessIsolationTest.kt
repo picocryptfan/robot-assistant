@@ -12,9 +12,9 @@ import javax.xml.parsers.DocumentBuilderFactory
  * GemmaEngine.kt and runs only in the :brain process; sherpa-onnx lives only in the :voice module and runs
  * only in the :voice process; nothing the main (UI) process runs refers to either. Also: the components
  * sit in their processes, the recognizer stays discoverable (the restart finding), exported components
- * are guarded, the permissions are the expected few, nothing but DownloadManager, the Claude SDK and the one
- * Open-Meteo client goes online, audio is never written to disk and nothing logs except through RLog (which drops
- * content).
+ * are guarded, the permissions are the expected few, nothing but DownloadManager, the Claude SDK, the Open-Meteo client
+ * (the weather) and the Nominatim client (the nearest place, 0.4.0) goes online, and those two only from the :voice
+ * process's tools, audio is never written to disk and nothing logs except through RLog (which drops content).
  */
 class ProcessIsolationTest {
     private val root: File = System.getProperty("robot.rootDir")?.let(::File) ?: File(System.getProperty("user.dir") ?: ".").absoluteFile.parentFile
