@@ -167,6 +167,32 @@ class TranscriptStoreTest {
         assertNull(TranscriptWriter.resume(s, "20261011-1402-ffff", t0))
     }
 
+    /**
+     * A save that fails while the folder is there is an I/O error, not a delete (the session would stop as if you had
+     * deleted it, and leave the file unclosed), and its line's index is never given to another line.
+     */
+    @Test fun aFailedSaveIsNotADeleteAndItsIndexIsNotReused() {
+        val s = store()
+        val w = TranscriptWriter.start(s, "20261011-1402-0009", t0, ConvMode.TRANSCRIBE, LangPair.FR_EN)!!
+        w.line(t0) { i -> line(i, 1.0) }!!
+        val log = File(s.dir(w.id), TranscriptFiles.LOG)
+        // For a moment the log can't be opened (here: something else in its place).
+        val saved = log.readText()
+        assertTrue(log.delete() && log.mkdir())
+        assertNull(w.line(t0 + 1_000) { i -> line(i, 3.0) })
+        assertEquals(IoCode.WRITE, w.failed)
+        assertTrue(log.delete())
+        log.writeText(saved)
+        assertEquals(2, w.line(t0 + 2_000) { i -> line(i, 5.0) }!!.i)
+        assertNull(w.failed)
+        assertEquals(listOf(0, 2), s.load(w.id)!!.lines.map { it.i })
+        // The writer's count of records is still the file's, so the snapshot and the log agree.
+        assertNull(w.close(t0 + 3_000))
+        assertEquals(TranscriptCodec.records(log.readText()).first.size,
+            TranscriptCodec.fromSnapshot(File(s.dir(w.id), TranscriptFiles.SNAPSHOT).readText())!!.records)
+        assertEquals(SessionStatus.ENDED, s.meta(w.id)!!.status)
+    }
+
     @Test fun badIdsAreRefused() {
         val s = store()
         assertNull(s.dir("../x"))

@@ -1,7 +1,6 @@
 package app.heyrobot.core
 
 import java.io.File
-import java.io.FileNotFoundException
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.RandomAccessFile
@@ -53,8 +52,16 @@ class TranscriptStore(val root: File) {
             // A crash that cut the last line off: a line break first, so the torn line stays alone (and is skipped).
             val torn = log.isFile && log.length() > 0 && RandomAccessFile(log, "r").use { it.seek(it.length() - 1); it.read() != '\n'.code }
             FileOutputStream(log, true).use { out ->
-                out.write(((if (torn) "\n" else "") + record + "\n").toByteArray(Charsets.UTF_8))
-                out.fd.sync()
+                val before = out.channel.size()
+                try {
+                    out.write(((if (torn) "\n" else "") + record + "\n").toByteArray(Charsets.UTF_8))
+                    out.fd.sync()
+                } catch (x: Exception) {
+                    // Not saved (a full disk, an I/O error): what got in is taken back out, so the log holds no half
+                    // record and no line the session believes lost, and the session's count of records stays the file's.
+                    try { out.channel.truncate(before); out.fd.sync() } catch (_: Exception) {}
+                    throw x
+                }
             }
             null
         } catch (x: Exception) { code(x, d) }
@@ -213,9 +220,10 @@ class TranscriptStore(val root: File) {
         }
     }
 
+    // MISSING only when the folder is gone (deleted): the session then stops as if you deleted it and never closes the
+    // file. A file that can't be opened in a folder that is there (no space to create it, too many open files) is not that.
     private fun code(x: Exception, d: File): IoCode = when {
         !d.isDirectory -> IoCode.MISSING
-        x is FileNotFoundException -> IoCode.MISSING
         (x.message ?: "").contains("ENOSPC") || (x.message ?: "").contains("No space", ignoreCase = true) -> IoCode.NO_SPACE
         x is IOException -> IoCode.WRITE
         else -> IoCode.OTHER
@@ -251,11 +259,14 @@ class TranscriptWriter private constructor(val store: TranscriptStore, meta: Tra
     /** The transcript so far (this writer's fold). */
     fun current(): Transcript = fold.result()
 
-    /** Saves the line made with the next index; returns it, or null when it couldn't be saved ([failed] says why). */
+    /**
+     * Saves the line made with the next index; returns it, or null when it couldn't be saved ([failed] says why). The
+     * index is used up either way: should a failed write have reached the file after all, the next line can't share it.
+     */
     fun line(now: Long, make: (Int) -> TranscriptEvent.Line): TranscriptEvent.Line? {
         val l = make(next)
-        if (event(l) != null) return null
         next = l.i + 1
+        if (event(l) != null) return null
         lines++
         lastLineAt = now
         return l
