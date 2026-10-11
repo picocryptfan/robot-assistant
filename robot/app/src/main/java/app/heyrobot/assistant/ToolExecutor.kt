@@ -244,7 +244,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             RLog.i("maps_nearest", "found" to false, "why" to why, "requests" to requests, "ms" to (SystemClock.elapsedRealtime() - started))
             if (abort.cancelled) return Executed(ActionStatus.DECLINED, NearbyFail.STOPPED.text + ".")
             val r = maps(what, searchDone)
-            return if (r.status.succeeded) r.copy(detail = "${why.text}, so Robot opened a search instead. ${r.detail}") else r
+            return if (r.status.succeeded) r.copy(detail = Nearby.instead(why, navigate = searchDone == NAVIGATE_DONE)) else r
         }
         if (!CoarseLocation.granted(ctx)) return instead(NearbyFail.NOT_ALLOWED)
         val found = CoarseLocation.find(ctx, Nearby.FIX_MS, abort)

@@ -95,6 +95,10 @@ class NearbyTest {
         assertTrue(RobotSettings().nearestOnline)
         assertFalse(RobotSettings.fromJson(RobotSettings(nearestOnline = false).toJson().toString()).nearestOnline)
         assertTrue(RobotSettings.fromJson("""{"schema":5}""").nearestOnline)
+        // Anything in the way: Organic Maps' search, and the card says why.
+        assertEquals("No internet: Robot couldn't reach OpenStreetMap, so Robot opened Organic Maps' search instead: pick the place, then tap Route.",
+            Nearby.instead(NearbyFail.NO_INTERNET, navigate = true))
+        assertEquals("OpenStreetMap knows no such place near you, so Robot opened Organic Maps' search instead.", Nearby.instead(NearbyFail.NOTHING, navigate = false))
         // Every failure has its own words and log code.
         assertEquals(NearbyFail.entries.size, NearbyFail.entries.map { it.id }.distinct().size)
     }

@@ -1937,7 +1937,7 @@ object PanelController {
                     // The nearest place took too long to find: Organic Maps' search instead, as with it turned off.
                     RLog.i("maps_nearest", "found" to false, "why" to NearbyFail.TIMEOUT)
                     withContext(Dispatchers.IO) { executor().run(Nearby.plain(action)) }.let { r ->
-                        if (r.status.succeeded) r.copy(detail = "${NearbyFail.TIMEOUT.text}, so Robot opened a search instead. ${r.detail}") else r
+                        if (r.status.succeeded) r.copy(detail = Nearby.instead(NearbyFail.TIMEOUT, navigate = action.tool == ToolName.MAPS_NAVIGATE)) else r
                     }
                 }
             } catch (e: CancellationException) {

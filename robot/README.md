@@ -360,7 +360,8 @@ straight line." and its body (shown, never saved) "Familiprix · about 450 m", t
 “pharmacy” near 45.53, -73.60". Like the weather, it makes the conversation personal ("your location") and is content
 for Safety cards. "Nearest" counts from the model's words or from your own this turn (if the model dropped it). No
 location permission, no fix, no internet, nothing found, or 20 seconds gone: Organic Maps' search as before, and the card
-says why ("OpenStreetMap knows no such place near you, so Robot opened a search instead."). Stop ends the lookup at
+says why ("OpenStreetMap knows no such place near you, so Robot opened Organic Maps' search instead: pick the place, then
+tap Route."). Stop ends the lookup at
 once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Off: today's search.
 "Nearest" is as near as the approximate location allows (Android's coarse location can be a kilometre or two off).
 
@@ -405,7 +406,8 @@ inside Robot's own activity and is unchanged.
 12. "Directions to the nearest pharmacy" (location allowed, data on): the card shows the place, how far and what was
     sent; Organic Maps shows the route preview from about where you are. Note the time, whether the place is really
     the nearest, and what tapping Start does from an approximate start. "The closest gas station", "la pharmacie la
-    plus proche". Data off: "No internet: Robot couldn't reach OpenStreetMap, so Robot opened a search instead." Turn
+    plus proche". Data off: "No internet: Robot couldn't reach OpenStreetMap, so Robot opened Organic Maps' search
+    instead: …". Turn
     "Find the nearest place online" off: the old search. `adb logcat -s Robot | grep maps_nearest`: codes only.
 
 ## Ask Claude (0.3.0)

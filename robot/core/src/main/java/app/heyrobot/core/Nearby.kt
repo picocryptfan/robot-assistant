@@ -59,6 +59,10 @@ object Nearby {
         else -> a
     }
 
+    /** The card's line when the nearest place couldn't be found and Organic Maps' search opened instead ([navigate]: directions). */
+    fun instead(why: NearbyFail, navigate: Boolean): String =
+        "${why.text}, so Robot opened Organic Maps' search instead" + if (navigate) ": pick the place, then tap Route." else "."
+
     /** The card while it waits or runs: no place yet, and the words it was asked for. */
     fun describe(what: String) = "Find the nearest “$what” online (OpenStreetMap) and open the route in Organic Maps"
 
