@@ -122,13 +122,19 @@ object ContactMatcher {
      * The contacts a request means: only the best kind of match there is (a remembered alias wins over every name, one
      * exact name over every prefix, and a fuzzy match counts only when nothing better exists), at most [max]. Several
      * left: the card asks which. A name learned from a Cheogram notification was chosen by whoever sent the message, so
-     * it never stands beside a confirmed person who matches as well: it is left out then.
+     * it never displaces a confirmed person: when anyone confirmed matches at all, the confirmed ones of their best kind
+     * come first, and learned ones that match at least as well follow only as more choices on the card. Learned names
+     * stand alone only when no one confirmed matches.
      */
     fun best(query: String, contacts: List<ContactName>, max: Int = 5): List<ContactMatch> {
         val all = rank(query, contacts)
-        val top = all.firstOrNull()?.kind ?: return emptyList()
-        val same = all.filter { it.kind == top }
-        return same.filter { !it.learned }.ifEmpty { same }.take(max)
+        val confirmed = all.filter { !it.learned }
+        if (confirmed.isEmpty()) {
+            val top = all.firstOrNull()?.kind ?: return emptyList()
+            return all.filter { it.kind == top }.take(max)
+        }
+        val top = confirmed.first().kind
+        return (confirmed.filter { it.kind == top } + all.filter { it.learned && it.kind <= top }).take(max)
     }
 
     /**
@@ -190,16 +196,33 @@ object Recipients {
     data class Option(val name: String, val kind: String?, val shown: String, val action: Action, val learned: Boolean = false, val remember: Action? = null)
 
     /**
+     * The places a card may offer: all of them, except that a person learned from a notification is never the only one
+     * offered while someone confirmed matched the name (that person just can't be reached this way): then none.
+     */
+    fun trusted(matches: List<ContactMatch>, options: List<Option>): List<Option> =
+        if (matches.any { !it.learned } && options.isNotEmpty() && options.all { it.learned }) emptyList() else options
+
+    /** The card's line when its one choice is someone learned from a notification. */
+    const val LEARNED_NOTE = "This name was seen in a Cheogram notification, and whoever sent it chose it. Robot treats them as someone " +
+        "you know only once you tick the box, or tap Keep in Settings › People."
+
+    /**
      * The card for a text or an email to the people [matches] named, given every place they can be reached
      * ([options], in order; never empty). One place: that one, and the card shows it unless the name was surely
-     * meant (ContactMatcher.sure) by a person you confirmed. Several: the card lists them (at most [MAX_CHOICES],
-     * [hiddenPeople] and the rest counted as "more"), with [remember] ("Always use this for “mom”") when the options
-     * can be remembered; [named] renames the waiting action after the one person they all belong to.
+     * meant (ContactMatcher.sure) by a person you confirmed; a learned person's one place is a choice to tap, never a
+     * button that is already filled in. Several: the card lists them (at most [MAX_CHOICES], [hiddenPeople] and the rest
+     * counted as "more"), with [remember] ("Always use this for “mom”") when the options can be remembered; [named]
+     * renames the waiting action after the one person they all belong to.
      */
     fun prepare(asked: Action, matches: List<ContactMatch>, options: List<Option>, hiddenPeople: Int, remember: String? = null,
         named: (String) -> Action): Prepared {
+        if (options.size == 1 && !options[0].learned) {
+            return Prepared.Ready(options[0].action, mustAsk = hiddenPeople > 0 || !ContactMatcher.sure(matches, 1))
+        }
         if (options.size == 1) {
-            return Prepared.Ready(options[0].action, mustAsk = hiddenPeople > 0 || options[0].learned || !ContactMatcher.sure(matches, 1))
+            val o = options[0]
+            return Prepared.Ready(o.action, mustAsk = true, choices = listOf(Choice(listOfNotNull(o.kind, o.shown).joinToString(" · "), o.action, o.remember)),
+                more = hiddenPeople, note = LEARNED_NOTE, remember = remember?.takeIf { o.remember != null })
         }
         val oneName = options.map { it.name }.distinct().singleOrNull()
         val choices = options.take(MAX_CHOICES).map { o ->

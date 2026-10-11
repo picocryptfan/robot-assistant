@@ -31,8 +31,8 @@ enum class PersonSource(val title: String) {
 /**
  * One person. [aliases]: what you call them ("mom", "maman"), each said exactly beating any other match.
  * [preferredText], [preferredEmail]: the place chosen on a card ("Always use this"). [confirmed]: false only for
- * someone learned from a notification you haven't used or edited yet: whoever sent the message chose that name, so a
- * text or an email to them always shows the card first. [systemLookupKey]: set when this entry only adds names or a
+ * someone learned from a notification you haven't kept, edited or remembered yet: whoever sent the message chose that
+ * name, so it never displaces anyone confirmed and a text or an email to them always shows the card first. [systemLookupKey]: set when this entry only adds names or a
  * choice to one of the phone's contacts (its ContactsContract lookup key); its places are kept too, for when that
  * contact can't be read.
  */
@@ -228,7 +228,7 @@ object PeopleEdit {
     fun upsert(list: List<Person>, p: Person): List<Person> =
         if (list.any { it.id == p.id }) list.map { if (it.id == p.id) p else it } else list + p
 
-    /** Using or editing a learned person confirms them. Unchanged (the same list) if there was nothing to confirm. */
+    /** Keep (Settings › People) confirms a learned person. Unchanged (the same list) if there was nothing to confirm. */
     fun confirm(list: List<Person>, id: String?, now: Long): List<Person> {
         val p = list.firstOrNull { it.id == id } ?: return list
         if (p.confirmed) return list

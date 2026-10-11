@@ -503,8 +503,11 @@ Android's backups like the rest of Robot's files. Spec: `../docs/people.md`.
   it is still theirs; then one exact name and one place can go without a card under "Just do it". Settings shows it
   and can forget it.
 - **Learned names.** Someone learned from a Cheogram notification is unconfirmed, because whoever sends a message chooses
-  their own display name: such a name never stands beside a confirmed person who matches as well, a text or email to
-  them always shows the card ("· name seen in Cheogram"), and texting them, editing them or Keep confirms them.
+  their own display name. Such a name never displaces anyone confirmed: when a confirmed person matches the name at
+  all, they come first, and learned people who match at least as well are only offered after them as more choices
+  (never alone, never already filled in). Only when no one confirmed matches does a learned person stand alone, and
+  then as a choice to tap ("· name seen in Cheogram"), always on a card. Opening a draft to them doesn't confirm them;
+  only Keep or an edit in Settings › People, "Remember" after a pick, or the ticked "Always use this" box does.
 - The same number or address in both lists is offered once (a card still shows, since two entries matched).
 
 ### Ways in

@@ -102,8 +102,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 // A search, not a route (om://route needs coordinates): say what to tap next.
                 is Action.MapsNavigate -> maps(action.destination, "Opened an Organic Maps search for it: pick the place, then tap Route for directions")
                 is Action.Flashlight -> torch(action.on)
-                is Action.SendText -> text(action).also { if (it.status.succeeded) used(action.to, action.target?.from, action.target?.remember == true, email = false) }
-                is Action.DraftEmail -> email(action).also { if (it.status.succeeded) used(action.to, action.target?.from, action.target?.remember == true, email = true) }
+                is Action.SendText -> text(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = false) }
+                is Action.DraftEmail -> email(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = true) }
                 is Action.LookupContact -> lookup(action)
                 is Action.AddNote -> addNote(action)
                 is Action.FindNotes -> findNotes(action)
@@ -209,17 +209,14 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun kind(r: Reach): String? = listOfNotNull(r.label, if (r.learned) "seen in Cheogram" else null).joinToString(" · ").ifEmpty { null }
 
     /**
-     * After a text or an email opened: a person learned from a Cheogram notification is confirmed (you used them, after a
-     * card, always), and a place tapped with "Always use this for …" is remembered for the name asked ([asked]).
+     * After a text or an email opened from a place tapped with "Always use this for …": it is remembered for the name
+     * asked ([asked]), which also confirms a person learned from a notification. Nothing else confirms them: opening a
+     * draft (even after the card) doesn't, so one tap on a stranger's name never makes them someone you know.
      */
-    private fun used(asked: String, r: Reach?, remember: Boolean, email: Boolean) {
-        if (r == null || (!r.learned && !remember)) return
-        val key = if (remember) ContactIds.systemId(r.contactId)?.let { Contacts.lookupKey(ctx, it) } else null
-        val now = System.currentTimeMillis()
-        PeopleFiles.store(ctx).update { list ->
-            val confirmed = if (r.learned) PeopleEdit.confirm(list, ContactIds.peopleId(r.contactId), now) else list
-            if (remember) PeopleEdit.rememberChoice(confirmed, asked, r, email, key, now) else confirmed
-        } ?: RLog.w("people_save")
+    private fun remember(asked: String, r: Reach?, email: Boolean) {
+        r ?: return
+        val key = ContactIds.systemId(r.contactId)?.let { Contacts.lookupKey(ctx, it) }
+        PeopleFiles.store(ctx).update { PeopleEdit.rememberChoice(it, asked, r, email, key, System.currentTimeMillis()) } ?: RLog.w("people_save")
     }
 
     private fun prepareText(a: Action.SendText): Prepared {
@@ -261,7 +258,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 Recipients.Option(r.name, kind(r), it.display, a.copy(target = it), learned = r.learned,
                     remember = if (settings.rememberPicks) a.copy(target = it.copy(remember = true)) else null)
             }
-        }.distinctBy { (it.action as Action.SendText).target?.address }
+        }.distinctBy { (it.action as Action.SendText).target?.address }.let { Recipients.trusted(matches, it) }
         // Fixed wording: the contacts' names are not sent to the model here.
         if (options.isEmpty()) {
             return Recipients.notFound(a, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.", via, pick = canPick(cheogram))
@@ -284,7 +281,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             val t = MailTarget(r.name, r.address, appName, from = r)
             Recipients.Option(r.name, kind(r), r.address, a.copy(target = t), learned = r.learned,
                 remember = if (settings.rememberPicks) a.copy(target = t.copy(remember = true)) else null)
-        }
+        }.let { Recipients.trusted(matches, it) }
         if (options.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No matching contact has an email address.")
         return Recipients.prepare(a, matches, options, all.size - matches.size, Recipients.rememberLabel(to)) { name -> a.copy(to = name) }
     }

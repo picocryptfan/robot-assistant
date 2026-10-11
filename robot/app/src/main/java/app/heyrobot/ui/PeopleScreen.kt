@@ -540,7 +540,7 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                     shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Seen in a Cheogram notification", style = MaterialTheme.typography.titleSmall)
-                        Text("Whoever sent the message chose this name. Until you keep, edit or text them, Robot always shows a card first.",
+                        Text("Whoever sent the message chose this name. Until you keep or edit them, Robot always shows a card first, and never offers them in place of someone you know.",
                             style = MaterialTheme.typography.bodyMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilledTonalButton(onClick = { save { a.say("Kept.") } }) { Text("Keep") }
