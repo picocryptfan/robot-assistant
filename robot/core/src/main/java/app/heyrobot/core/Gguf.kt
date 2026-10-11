@@ -59,6 +59,12 @@ data class GgufReport(
     val thinks: Boolean get() = templateThinking || templateThinkTags || GgufCheck.qwen3(architecture)
 
     /**
+     * Robot can tell it whether to think first (core Thinking.gguf): its template takes enable_thinking, or it is a Qwen3
+     * model (/no_think). A template that only writes <think> blocks has no such switch: the model thinks or not on its own.
+     */
+    val thinkSwitch: Boolean get() = templateThinking || GgufCheck.qwen3(architecture)
+
+    /**
      * The context llama.cpp is given (n_ctx), as for a LiteRT-LM file (ContextWindow.forFile): 4,096 when it was trained
      * for at least that, its own when it was trained for 2,048 to 4,095 tokens (chat only: never a cache larger than the
      * model was trained for); 0 when it states none or less (it can't run).
@@ -122,7 +128,9 @@ data class GgufReport(
         add("Runs on the CPU with llama.cpp: slower than Fast on the TPU, and more battery.")
         add("Can see photos: no. It reads text only: a photo question won't work, and a screen question uses only the screen's text.")
         if (!shortContext) add("Actions (timers, texts, notes…) use Robot's text format: they may not work with every model.")
-        if (thinks) add("It can think before it answers: Settings › Model › “Let the model think first” (off: it answers directly).")
+        if (thinkSwitch) add("It can think before it answers: Settings › Model › “Let the model think first” (off: it answers directly).")
+        else if (thinks) add("It may think before it answers, whatever “Let the model think first” says (its template has no switch " +
+            "for it): answers can take longer. The thinking is never shown or read out.")
         licence?.let { add("Licence the file names: “$it”. Check its terms where you got it.") }
     }
 

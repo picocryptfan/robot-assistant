@@ -59,6 +59,13 @@ class GgufTest {
         assertEquals(28L * 8 * 256 * 2, r.kvBytesPerToken)
         assertTrue(r.templateThinking && r.templateThinkTags && r.thinks)
         assertTrue(r.lines().any { it.contains("Let the model think first") })
+        assertTrue(r.thinkSwitch)
+        // A template that writes <think> blocks but takes no enable_thinking (a reasoning model of another family): Robot
+        // can't tell it to answer directly, and says so instead of offering the switch.
+        val always = check(FakeGguf.medgemma(arch = "llama", template = "{{ messages[0]['content'] }}<think>"))
+        assertTrue(always.thinks && !always.thinkSwitch)
+        assertTrue(always.lines().any { it.startsWith("It may think before it answers, whatever “Let the model think first” says") })
+        assertFalse(always.lines().any { it.contains("off: it answers directly") })
         // A Qwen3 file whose template doesn't take enable_thinking still thinks (and takes /no_think).
         val plain = check(FakeGguf.qwen3(template = FakeGguf.GEMMA3_TEMPLATE))
         assertFalse(plain.templateThinking)

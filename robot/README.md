@@ -191,7 +191,9 @@ Settings › Model › **Thinking** › "Let the model think first", **off** by 
 reads as off). Some models can reason before they answer. Off, Robot asks them to answer directly: your own LiteRT-LM file
 of type `qwen3` gets "/no_think" at the end of the system prompt, one of type `minicpm5` gets `enable_thinking=false`
 (LiteRT-LM 0.18's `ThinkingConfig` and its template's extra context), and a GGUF file whose template takes
-`enable_thinking` gets it false (a Qwen3 GGUF file without that gets "/no_think"). On, they may think: answers take longer.
+`enable_thinking` gets it false (a Qwen3 GGUF file without that gets "/no_think"); a GGUF file whose template writes
+`<think>` blocks with no switch for them (a reasoning model of another family) can't be told, so its check says it may
+think whatever the switch says. On, they may think: answers take longer.
 Either way the thinking is never shown or spoken: a `<think>…</think>` block is removed from the reply as it streams
 (`core/Thinking.kt`, `ThinkFilter`), and the panel shows "Thinking…" meanwhile. Robot's built-in Gemma 4 models are the
 same either way.
