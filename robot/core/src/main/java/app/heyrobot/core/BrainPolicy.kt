@@ -210,18 +210,20 @@ object EngineTeardown {
 
 /**
  * The order :brain serves requests in once conversation mode shares the model (docs/conversation-mode.md 4.2). Pure, so
- * every rule is tested (BrainQueueTest); GemmaEngine acts on its steps when REQ_ONE_SHOT is wired. Today's rule for the
+ * every rule is tested (BrainQueueTest); GemmaEngine acts on its steps through [BrainScheduler]. Today's rule for the
  * panel stays: a new panel question cancels the panel reply still running, and only the newest waiting one is kept. An
  * interpreter turn (about a second) is never cancelled by the panel: the question waits for it. Interpreter and
- * transcript requests run first in, first out. A summary step gives way to anything else: it is cancelled and queued
- * again (map steps start over cleanly).
+ * transcript requests run first in, first out. Background work gives way ([yields]): a summary step to anything else,
+ * a transcript line's better translation to the panel and the interpreter; it is cancelled and queued again, ahead of
+ * its own kind (it starts over cleanly). While the panel's conversation waits for its tool results ([hold]), only panel
+ * requests start: the next one is its own tool round.
  */
 class BrainQueue {
     data class Job(val id: Int, val priority: Priority)
 
     /**
      * What :brain does now: cancel the running request ([cancelRunning]), end the [dropped] waiting ones as cancelled,
-     * start [start]. [requeued]: a summary step that gave way is waiting again.
+     * start [start]. [requeued]: background work that gave way is waiting again.
      */
     data class Step(val cancelRunning: Boolean = false, val dropped: List<Job> = emptyList(), val start: Job? = null, val requeued: Job? = null)
 
@@ -231,6 +233,9 @@ class BrainQueue {
     /** Running jobs cancelled to give way, to be queued again when they end. */
     private val yielding = HashSet<Int>()
     private var cancelling = false
+    /** The panel's conversation waits for its tool results: nothing but a panel request starts. */
+    var held = false
+        private set
 
     /** The waiting requests, next first. */
     val queue: List<Job> get() = waiting.toList()
@@ -239,12 +244,16 @@ class BrainQueue {
         val dropped = if (job.priority == Priority.PANEL) waiting.filter { it.priority == Priority.PANEL }.also { waiting.removeAll(it.toSet()) } else emptyList()
         val r = running
         if (r == null) {
+            if (!mayStart(job)) {
+                enqueue(job, front = false)
+                return Step(dropped = dropped)
+            }
             running = job
             return Step(dropped = dropped, start = job)
         }
         val cancel = !cancelling && when {
             job.priority == Priority.PANEL && r.priority == Priority.PANEL -> true
-            r.priority == Priority.SUMMARY && job.priority != Priority.SUMMARY -> true.also { yielding += r.id }
+            yields(r.priority, job.priority) -> true.also { yielding += r.id }
             else -> false
         }
         if (cancel) cancelling = true
@@ -258,9 +267,7 @@ class BrainQueue {
         running = null
         cancelling = false
         val again = if (yielding.remove(r.id)) r.also { enqueue(it, front = true) } else null
-        val next = if (waiting.isEmpty()) null else waiting.removeAt(0)
-        running = next
-        return Step(start = next, requeued = again)
+        return Step(start = next(), requeued = again)
     }
 
     /** The client cancelled request [id] (REQ_CANCEL): dropped if it waits, stopped if it runs (and not queued again). */
@@ -276,12 +283,47 @@ class BrainQueue {
         return Step(cancelRunning = true)
     }
 
+    /**
+     * The panel's conversation waits for its tool results ([on]), or no longer does: while it waits only panel requests
+     * start; when it stops, the next waiting request starts (if nothing runs).
+     */
+    fun hold(on: Boolean): Step {
+        if (held == on) return Step()
+        held = on
+        return if (on || running != null) Step() else Step(start = next())
+    }
+
+    /** The model went away (unloaded): every waiting request ends. The running one ends through [done]. */
+    fun dropWaiting(): List<Job> = waiting.toList().also { waiting.clear() }
+
     /** 0 while it runs, its place in line from 1 (EV_QUEUED), -1 when unknown. */
     fun position(id: Int): Int = if (running?.id == id) 0 else waiting.indexOfFirst { it.id == id }.let { if (it < 0) -1 else it + 1 }
+
+    /** The running request [id] is being cancelled to give way (it will be queued again when it ends). */
+    fun givingWay(id: Int): Boolean = id in yielding
+
+    private fun mayStart(job: Job): Boolean = !held || job.priority == Priority.PANEL
+
+    /** The first waiting request that may start now (under [hold], the first panel one), taken off the queue and running. */
+    private fun next(): Job? {
+        val i = waiting.indexOfFirst(::mayStart)
+        if (i < 0) return null
+        return waiting.removeAt(i).also { running = it }
+    }
 
     /** In priority order; first in, first out within a priority ([front]: ahead of its priority, for a job queued again). */
     private fun enqueue(job: Job, front: Boolean) {
         val at = if (front) waiting.indexOfFirst { it.priority >= job.priority } else waiting.indexOfFirst { it.priority > job.priority }
         if (at < 0) waiting += job else waiting.add(at, job)
+    }
+
+    companion object {
+        /**
+         * Background work running at [running] gives way to [incoming]: a summary step to anything else, a transcript
+         * line's better translation (already shown by the fast engine, or still to come) to the panel and the interpreter.
+         * The panel never cancels an interpreter turn (about a second, and someone is waiting for it).
+         */
+        fun yields(running: Priority, incoming: Priority): Boolean =
+            running >= Priority.TRANSCRIPT && incoming < running
     }
 }

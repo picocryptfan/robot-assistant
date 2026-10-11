@@ -25,8 +25,10 @@ object BrainProtocol {
     const val REQ_CLOSE_CONV = 7
     /**
      * 0.5.0 (docs/conversation-mode.md 4.2): one message to a fresh conversation with no tools and constrained decoding
-     * off, streamed, then closed: a translation or a summary step ([BrainMsg.OneShot]). Defined here, not in [REQUESTS]
-     * yet: until :brain's priority queue ([BrainQueue]) handles it, :brain answers it as a bad request.
+     * off, streamed, then closed: a translation or a summary step ([BrainMsg.OneShot]), at its own priority in :brain's
+     * queue ([BrainScheduler]). Its events: EV_QUEUED while it waits (and 0 as it starts), EV_CHUNK, then EV_DONE or
+     * EV_ERROR. EV_QUEUED after chunks means it gave way to a request with a higher priority and will start over: the
+     * client drops what came so far.
      */
     const val REQ_ONE_SHOT = 8
 
@@ -38,11 +40,14 @@ object BrainProtocol {
     const val EV_DONE = 105
     const val EV_ERROR = 106
     const val EV_UNLOADED = 107
-    /** 0.5.0: the request waits behind others, at [BrainMsg.Queued.position] (the client may cancel it, REQ_CANCEL). */
+    /**
+     * 0.5.0: the request waits behind others, at [BrainMsg.Queued.position] (the client may cancel it, REQ_CANCEL), or
+     * starts after waiting (position 0). Not terminal.
+     */
     const val EV_QUEUED = 108
 
     /** The requests :brain answers (anything else gets EV_ERROR BAD_REQUEST). */
-    val REQUESTS = setOf(REQ_STATUS, REQ_LOAD, REQ_UNLOAD, REQ_GENERATE, REQ_TOOL_RESULT, REQ_CANCEL, REQ_CLOSE_CONV)
+    val REQUESTS = setOf(REQ_STATUS, REQ_LOAD, REQ_UNLOAD, REQ_GENERATE, REQ_TOOL_RESULT, REQ_CANCEL, REQ_CLOSE_CONV, REQ_ONE_SHOT)
     val EVENTS = setOf(EV_STATUS, EV_LOADED, EV_CHUNK, EV_TOOL_CALLS, EV_DONE, EV_ERROR, EV_UNLOADED, EV_QUEUED)
     /** Events that end a request: the client stops listening for its id. */
     val TERMINAL = setOf(EV_STATUS, EV_LOADED, EV_DONE, EV_ERROR, EV_UNLOADED)

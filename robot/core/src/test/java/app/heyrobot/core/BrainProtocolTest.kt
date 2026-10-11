@@ -105,10 +105,10 @@ class BrainProtocolTest {
     }
 
     @Test fun conversationModeMessagesRoundTrip() {
-        // 0.5.0: defined for conversation mode; :brain answers REQ_ONE_SHOT once its queue is in (until then: a bad request).
+        // 0.5.0: conversation mode's one-shot requests, served by :brain's queue (phase 5.4).
         assertEquals(8, BrainProtocol.REQ_ONE_SHOT)
         assertEquals(108, BrainProtocol.EV_QUEUED)
-        assertTrue(BrainProtocol.REQ_ONE_SHOT !in BrainProtocol.REQUESTS)
+        assertTrue(BrainProtocol.REQ_ONE_SHOT in BrainProtocol.REQUESTS)
         assertTrue(BrainProtocol.EV_QUEUED in BrainProtocol.EVENTS && BrainProtocol.EV_QUEUED !in BrainProtocol.TERMINAL)
         val one = BrainMsg.OneShot(OneShotKind.TRANSLATE, Priority.INTERPRETER, Prompt.TRANSLATE_FR_EN, "On se reprend-tu demain?", 120)
         assertEquals(one, roundTrip(BrainProtocol.REQ_ONE_SHOT, one))

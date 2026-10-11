@@ -12,6 +12,7 @@ import android.os.RemoteException
 import app.heyrobot.core.BrainError
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
+import app.heyrobot.core.BrainScheduler
 import app.heyrobot.core.BrainWire
 import app.heyrobot.core.EngineTeardown
 import app.heyrobot.core.RLog
@@ -59,14 +60,17 @@ class BrainService : Service() {
             return
         }
         val sink = GemmaEngine.Sink { what, m -> send(reply, what, reqId, m) }
+        // A request is known by its client (the reply binder) and the client's own number: two clients' numbers never mix.
+        val key = BrainScheduler.Key(reply.binder, reqId)
         try {
             when (msg.what) {
                 BrainProtocol.REQ_STATUS -> sink.emit(BrainProtocol.EV_STATUS, engine.status())
                 BrainProtocol.REQ_LOAD -> sink.emit(BrainProtocol.EV_LOADED, engine.load(payload as BrainMsg.Load))
                 BrainProtocol.REQ_UNLOAD -> { engine.unload("asked"); sink.emit(BrainProtocol.EV_UNLOADED, BrainMsg.Empty) }
-                BrainProtocol.REQ_GENERATE -> engine.generate(reqId, payload as BrainMsg.Generate, BrainWire.takeImage(msg), sink)
-                BrainProtocol.REQ_TOOL_RESULT -> engine.toolResult(reqId, payload as BrainMsg.ToolResult, sink)
-                BrainProtocol.REQ_CANCEL -> engine.cancel((payload as BrainMsg.Cancel).target)
+                BrainProtocol.REQ_GENERATE -> engine.generate(key, payload as BrainMsg.Generate, BrainWire.takeImage(msg), sink)
+                BrainProtocol.REQ_TOOL_RESULT -> engine.toolResult(key, payload as BrainMsg.ToolResult, sink)
+                BrainProtocol.REQ_ONE_SHOT -> engine.oneShot(key, payload as BrainMsg.OneShot, sink)
+                BrainProtocol.REQ_CANCEL -> engine.cancel(BrainScheduler.Key(reply.binder, (payload as BrainMsg.Cancel).target))
                 BrainProtocol.REQ_CLOSE_CONV -> engine.closeConv((payload as BrainMsg.CloseConv).convId)
             }
         } catch (t: Throwable) {
