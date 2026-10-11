@@ -18,6 +18,11 @@ class PageSaverTest {
         }
     }
 
+    @Test fun aSettingsPageIsSavedByItsRoute() {
+        assertEquals("settings:display", save(Page.Settings("display")))
+        for (p in listOf(Page.Settings("display"), Page.Settings("voice/wake"))) assertEquals(p, Page.Saver.restore(save(p)))
+    }
+
     @Test fun anOpenNoteIsSavedByItsId() {
         assertEquals("note:", save(Page.NoteEdit(null)))
         assertEquals("note:abc", save(Page.NoteEdit("abc")))

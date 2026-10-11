@@ -65,7 +65,7 @@ every other source sherpa-onnx's Android build compiles in, each checked against
 | Kotlin standard library and kotlin-reflect | 2.4.0 | Apache-2.0 | in the APK |
 | kotlinx.coroutines | 1.11.0 | Apache-2.0 | in the APK |
 | Jetpack Compose and AndroidX | Compose BOM 2025.06.01 (1.8.3), Material 3 1.3.2 | Apache-2.0 | in the APK |
-| Material Icons | path data | Apache-2.0 | in the APK |
+| Material Symbols | google/material-design-icons at 49d4db35 | Apache-2.0 | in the APK |
 | Annotation libraries | as resolved | Apache-2.0 | in the APK |
 | Gemma 4 E2B (Tensor G5) | litert-community, b3ca0d2f | Apache-2.0 | downloaded when you ask |
 | Gemma 4 E4B | litert-community, 2eee7ac3 | Apache-2.0 | downloaded when you ask |
@@ -82,10 +82,15 @@ every other source sherpa-onnx's Android build compiles in, each checked against
 | JUnit | 4.13.2 | EPL-1.0 | build and tests only |
 | org.json (JSON-java) | 20180813 | JSON | build and tests only |
 | OkHttp MockWebServer | 4.12.0 | Apache-2.0 | build and tests only |
+| Robolectric | 4.16.1 | MIT | build and tests only |
+| Robolectric's Android runtime (android-all-instrumented) | 15-robolectric-13954326-i7 | Apache-2.0 | build and tests only |
+| Compose UI test and AndroidX Test | 1.8.3 (Compose BOM 2025.06.01) | Apache-2.0 | build and tests only |
+| Roborazzi | 1.49.0 | Apache-2.0 | build and tests only |
 | sherpa-onnx Python package | 1.13.8 | Apache-2.0 | build and tests only |
 | NumPy | as installed | BSD-3-Clause | build and tests only |
 | SentencePiece (Python) | as installed | Apache-2.0 | build and tests only |
 | pypinyin | as installed | MIT | build and tests only |
+| Material Color Utilities | 0.3.0 | Apache-2.0 | build and tests only |
 
 ## In the `:voice` process only
 
@@ -332,15 +337,27 @@ Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-
 | `org.jetbrains.kotlinx:kotlinx-coroutines-android` | 1.11.0 |
 | `com.google.errorprone:error_prone_annotations`, `com.google.guava:listenablefuture`, `org.jetbrains:annotations`, `org.jspecify:jspecify` | annotations only |
 
-The icons in `app/src/main/java/app/heyrobot/ui/common/Icons.kt` are path data from Google's Material
-Icons (Apache-2.0).
+The icons in `app/src/main/java/app/heyrobot/ui/common/Icons.kt` are path data from Google's **Material Symbols
+Outlined** (Apache-2.0; weight 400, grade 0, unfilled, 24 px), from the `google/material-design-icons` repository at
+commit `49d4db35df873165d6bd6ba09b063c7dafbac2f4` (`symbols/web/<name>/materialsymbolsoutlined/<name>_24px.svg`),
+written into the source by `tools/symbols.py` on a computer (since the 0.4.x UI redesign; before it, Material Icons,
+also Apache-2.0). Licence text: https://github.com/google/material-design-icons/blob/master/LICENSE. The robot glyph
+(`RIcons.Robot`, the Classic look's panel orb) is Robot's own.
+
+Robot's own colour scheme (`ui/theme/RobotColors.kt`, used when Settings › Display › "Use wallpaper colours" is off) is
+values computed from Robot's blue with Google's `@material/material-color-utilities` 0.3.0 (Apache-2.0) on a computer;
+no code of it is in the app.
 
 Phase 2 adds no dependency. Robot hands drafts to apps you install (Cheogram, Proton Mail, an SMS app, a
 calendar app) through Android intents only; nothing of them is bundled. Their source (Cheogram: GPL-3.0; Proton Mail
 for Android: GPL-3.0) was read to match what they accept (`../docs/phase-2.md`); no code was copied.
 
 Build and test only (not in the APK): Android Gradle Plugin 8.8.2, Kotlin and its Compose compiler plugin
-2.4.0, JUnit 4.13.2 (EPL-1.0), org.json 20180813 (JSON licence, tests only). The tools in `tools/` use the
+2.4.0, JUnit 4.13.2 (EPL-1.0), org.json 20180813 (JSON licence, tests only). The UI tests (debug unit tests, 0.4.x
+redesign): Robolectric 4.16.1 (MIT) with its Android runtime `android-all-instrumented` 15-robolectric-13954326-i7
+(Android 15, Apache-2.0), Compose `ui-test-junit4` 1.8.3 from the same BOM (Apache-2.0) with AndroidX Test (Apache-2.0),
+Roborazzi 1.49.0 (`roborazzi`, `roborazzi-compose`, `roborazzi-junit-rule`; Apache-2.0); Compose `ui-test-manifest`
+1.8.3 (Apache-2.0) is in the debug build only, its test activity not exported. The tools in `tools/` use the
 `sherpa-onnx==1.13.8` Python wheel (Apache-2.0), numpy (BSD-3-Clause), sentencepiece (Apache-2.0) and pypinyin (MIT)
 on the build machine only.
 

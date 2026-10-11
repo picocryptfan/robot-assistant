@@ -90,7 +90,8 @@ fun LicencesScreen(onOpen: (Page) -> Unit, onBack: () -> Unit) {
                 val list = book.section(w)
                 if (list.isEmpty()) continue
                 item(key = "h-${w.id}") {
-                    Text(w.title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary,
+                    // A small category header, as SectionCard's and Settings' groups have (0.4.x look).
+                    Text(w.title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(top = 8.dp).semantics { heading() })
                 }
                 items(list, key = { it.id }) { c -> ComponentRow(book, c) { onOpen(Page.Licence(c.id)) } }

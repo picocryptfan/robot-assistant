@@ -74,6 +74,7 @@ import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.settings.SettingsNav
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -147,6 +148,8 @@ sealed class Page {
     /** Settings › About › Licences (1.0), and one part's licence ([file]: one of its notices instead). */
     data object Licences : Page()
     data class Licence(val id: String, val file: String? = null) : Page()
+    /** A Settings page by route (ui/settings/SettingsNav.kt; 0.4.x: "display"). */
+    data class Settings(val route: String) : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -166,6 +169,7 @@ sealed class Page {
                     Safety -> "safety"
                     Licences -> "licences"
                     is Licence -> "licence:${p.id}|${p.file.orEmpty()}"
+                    is Settings -> "settings:${p.route}"
                 }
             },
             restore = { v ->
@@ -182,6 +186,7 @@ sealed class Page {
                     v == "safety" -> Safety
                     v == "licences" -> Licences
                     v.startsWith("licence:") -> v.removePrefix("licence:").split('|', limit = 2).let { Licence(it[0], it.getOrNull(1)?.ifEmpty { null }) }
+                    v.startsWith("settings:") -> Settings(v.removePrefix("settings:"))
                     else -> null
                 }
             },
@@ -515,6 +520,7 @@ fun RobotAppUi(activity: MainActivity) {
         // Back from a notice goes to its part's licence, from a licence to the list.
         is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it },
             onBack = { page = if (p.file != null && p.id != ROBOT_LICENCE) Page.Licence(p.id) else Page.Licences })
+        is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {

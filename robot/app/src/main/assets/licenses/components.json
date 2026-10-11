@@ -483,14 +483,14 @@
    "note": "Compose, Material 3, activity, core, lifecycle, savedstate and the AndroidX libraries they bring."
   },
   {
-   "id": "material-icons",
-   "name": "Material Icons",
-   "version": "path data",
+   "id": "material-symbols",
+   "name": "Material Symbols",
+   "version": "google/material-design-icons at 49d4db35",
    "licence": "Apache-2.0",
    "copyright": "Copyright Google LLC",
    "url": "https://github.com/google/material-design-icons",
    "where": "app",
-   "note": "The icons' path data in Robot's Icons.kt."
+   "note": "The icons' path data in Robot's Icons.kt: Material Symbols Outlined (weight 400, grade 0, unfilled, 24 px), written into the source by tools/symbols.py. The robot glyph of the Classic look is Robot's own."
   },
   {
    "id": "annotations",
@@ -660,6 +660,46 @@
    "note": "The Claude client's tests only."
   },
   {
+   "id": "robolectric",
+   "name": "Robolectric",
+   "version": "4.16.1",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2010 Xtreme Labs and Pivotal Labs",
+   "url": "https://robolectric.org",
+   "where": "build",
+   "note": "Runs the Compose UI tests and screenshots on the computer (debug unit tests only)."
+  },
+  {
+   "id": "robolectric-android-all",
+   "name": "Robolectric's Android runtime (android-all-instrumented)",
+   "version": "15-robolectric-13954326-i7",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright The Android Open Source Project",
+   "url": "https://source.android.com",
+   "where": "build",
+   "note": "Android 15, for Robolectric; UI tests only."
+  },
+  {
+   "id": "compose-ui-test",
+   "name": "Compose UI test and AndroidX Test",
+   "version": "1.8.3 (Compose BOM 2025.06.01)",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright The Android Open Source Project",
+   "url": "https://developer.android.com/develop/ui/compose/testing",
+   "where": "build",
+   "note": "UI tests only, with AndroidX Test (core, ext-junit, espresso, runner) as resolved. Compose ui-test-manifest is in the debug build only, its test activity not exported; none of it is in the app."
+  },
+  {
+   "id": "roborazzi",
+   "name": "Roborazzi",
+   "version": "1.49.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright takahirom",
+   "url": "https://github.com/takahirom/roborazzi",
+   "where": "build",
+   "note": "Screenshot tests only (roborazzi, roborazzi-compose, roborazzi-junit-rule)."
+  },
+  {
    "id": "sherpa-onnx-python",
    "name": "sherpa-onnx Python package",
    "version": "1.13.8",
@@ -698,6 +738,16 @@
    "url": "https://github.com/mozillazg/python-pinyin",
    "where": "build",
    "note": "tools/ only."
+  },
+  {
+   "id": "material-color-utilities",
+   "name": "Material Color Utilities",
+   "version": "0.3.0",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://github.com/material-foundation/material-color-utilities",
+   "where": "build",
+   "note": "Computed Robot's own colour scheme (RobotColors.kt) from Robot's blue on a computer; no code of it is in the app."
   }
  ]
 }
