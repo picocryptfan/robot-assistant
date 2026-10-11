@@ -103,6 +103,8 @@ import app.heyrobot.core.ClaudeWords
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
+import app.heyrobot.core.Tip
+import app.heyrobot.core.TipKind
 import app.heyrobot.core.TurnRole
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.AssistantBubble
@@ -188,7 +190,13 @@ fun AssistantPanel(onClose: () -> Unit) {
                 // Listening for a question, or for the waiting card's "yes" or "no".
                 val hearing = st.phase == Phase.LISTENING || st.phase == Phase.TRANSCRIBING || st.cardHearing != null
                 if (st.turns.isEmpty() && !hearing) {
-                    Suggestions(st.locked) { input = it; send() }
+                    Suggestions(st.tips) { tip ->
+                        when (tip.kind) {
+                            TipKind.ASK -> { input = tip.text; send() }
+                            TipKind.SCREEN -> PanelController.askAboutScreen(tip.text)
+                            TipKind.PHOTO -> attachOpen = true
+                        }
+                    }
                 }
                 if (hearing) ListeningRow(st.partial, transcribing = st.phase == Phase.TRANSCRIBING || st.cardHearing == Phase.TRANSCRIBING, card = st.cardHearing != null)
                 ContextRow(st)
@@ -413,12 +421,12 @@ private fun Messages(st: PanelState, modifier: Modifier) {
     }
 }
 
+/** Three tips that show what Robot can do (core Tips: only what is on and can work now, a new three each open). */
 @Composable
-private fun Suggestions(locked: Boolean, onPick: (String) -> Unit) {
-    val items = if (locked) listOf("Set a timer for 5 minutes", "Set an alarm for 7:00", "Tell me a fun fact")
-    else listOf("Set a timer for 10 minutes", "What's on my calendar today?", "What can you do?")
+private fun Suggestions(tips: List<Tip>, onPick: (Tip) -> Unit) {
+    if (tips.isEmpty()) return
     Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (s in items) SuggestionChip(onClick = { onPick(s) }, label = { Text(s, maxLines = 2) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
+        for (t in tips) SuggestionChip(onClick = { onPick(t) }, label = { Text(t.text, maxLines = 2) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp))
     }
 }
 

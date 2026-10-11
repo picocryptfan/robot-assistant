@@ -82,6 +82,8 @@ import app.heyrobot.core.SpeechText
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.TextCommand
 import app.heyrobot.core.TextRequest
+import app.heyrobot.core.Tip
+import app.heyrobot.core.Tips
 import app.heyrobot.core.ToolCalls
 import app.heyrobot.core.ToolGroup
 import app.heyrobot.core.ToolRouter
@@ -248,6 +250,8 @@ data class PanelState(
     val lockedTools: Set<ToolName> = LockScreen.DEFAULT,
     /** Listening for "yes" or "no" to the waiting card (LISTENING, then TRANSCRIBING); null: not. The phase stays CONFIRMING. */
     val cardHearing: Phase? = null,
+    /** The empty panel's three tips (core Tips), a different three each time it opens. */
+    val tips: List<Tip> = emptyList(),
 ) {
     /** A turn is under way, a confirmation card included: no new question, no mic, no camera until it ends. */
     val busy: Boolean get() = phase == Phase.THINKING || phase == Phase.ANSWERING || phase == Phase.CONFIRMING
@@ -315,6 +319,8 @@ object PanelController {
     private var cardRetry = 0
     /** askToShare said its own words about the card: no "Say yes or no." on top. */
     private var cardPromptSaid = false
+    /** Which three tips the next panel shows: counts panel opens, from a random start so a new process doesn't repeat itself. */
+    private var tipRound = kotlin.random.Random.nextInt(0, 1_000)
 
     // Ask Claude (docs/ask-claude.md). Claude mode's conversation (API route), and when it last had a turn.
     private var claudeSession: ClaudeSession? = null
@@ -435,7 +441,7 @@ object PanelController {
         if (locked && !s.claudeLocked) endClaudeMode()
         _state.update {
             it.copy(locked = locked, screenChip = ScreenChip.HIDDEN, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint, partial = "",
-                showId = it.showId + 1, claudeScreen = false, lockedTools = s.lockedTools)
+                showId = it.showId + 1, claudeScreen = false, lockedTools = s.lockedTools, tips = if (returning) it.tips else tips(s, locked))
         }
         BrainKeeper.prewarm(VoiceHub.app)
         ClaudeLink.warm(VoiceHub.app, s)
@@ -561,8 +567,22 @@ object PanelController {
         _state.update { st ->
             // The screen came after a tap said it hadn't ("still sending", "didn't share"): that notice no longer holds.
             val stale = chip == ScreenChip.READY && st.notice != null && st.notice === screenNotice
-            st.copy(screenChip = chip, notice = if (stale) null else st.notice)
+            st.copy(screenChip = chip, notice = if (stale) null else st.notice, tips = if (chip == ScreenChip.READY) Tips.withScreen(st.tips) else st.tips)
         }
+    }
+
+    /** The next three tips for an empty panel: only what is on and can work now (core Tips). */
+    private fun tips(s: RobotSettings, locked: Boolean): List<Tip> {
+        val keySaved = ClaudeLink.keySaved(VoiceHub.app)
+        val api = keySaved && ClaudeSettings.route(s, keySaved) == ClaudeRoute.API
+        val claude = ClaudeSettings.enabled(s, keySaved) && (if (locked) api && s.claudeLocked else api || ClaudeAppIntents.installed(VoiceHub.app))
+        return Tips.pick(Tips.Can(s, locked, claude = claude), tipRound++)
+    }
+
+    /** A tip that asks about the screen: the screen goes with it (or the panel says why it can't). */
+    fun askAboutScreen(question: String) {
+        attachScreen()
+        if (_state.value.draft?.kind == Attachment.SCREEN) send(question)
     }
 
     /**
@@ -596,7 +616,7 @@ object PanelController {
         lastActivity = System.currentTimeMillis()
         _state.update {
             PanelState(newId(), locked = locked, speak = it.speak, sttAvailable = it.sttAvailable, micHint = it.micHint, screenChip = it.screenChip,
-                showId = it.showId, brain = it.brain)
+                showId = it.showId, brain = it.brain, lockedTools = it.lockedTools, tips = it.tips)
         }
     }
 
@@ -620,7 +640,7 @@ object PanelController {
         lastActivity = System.currentTimeMillis()
         _state.update {
             PanelState(c.id, turns = c.turns.map { t -> t.toUi() }, keep = true, sttAvailable = it.sttAvailable, micHint = it.micHint,
-                showId = it.showId, brain = it.brain)
+                showId = it.showId, brain = it.brain, lockedTools = it.lockedTools, tips = it.tips)
         }
     }
 
