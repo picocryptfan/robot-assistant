@@ -1,0 +1,7 @@
+{
+    global:
+        JNI_OnLoad;
+        Java_app_heyrobot_brain_LlamaNative_*;
+    local:
+        *;
+};
