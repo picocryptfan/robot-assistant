@@ -24,7 +24,9 @@ import app.heyrobot.core.ConversationSettings
 import app.heyrobot.core.IoCode
 import app.heyrobot.core.LangLabel
 import app.heyrobot.core.MicEvent
+import app.heyrobot.core.Pcm
 import app.heyrobot.core.RLog
+import app.heyrobot.core.Segment
 import app.heyrobot.core.SessionRecovery
 import app.heyrobot.core.ThermalStep
 import app.heyrobot.core.TranscriptEvent
@@ -520,6 +522,17 @@ object ConversationSession {
 
         override fun partial(text: String) {
             _state.update { if (it.status == Status.RUNNING) it.copy(partial = text) else it }
+        }
+
+        /** Decoding fell too far behind and a segment was let go: the transcript says so where it was ("[not transcribed …]"). */
+        override fun dropped(seg: Segment, offsetS: Double) {
+            RLog.i("conv_dropped", "waiting" to ConversationEngine.MAX_WAITING)
+            ctl.post {
+                val w = writer ?: return@post
+                val t0 = offsetS + seg.speechStart.toDouble() / Pcm.RATE
+                val t1 = offsetS + seg.speechEnd.toDouble() / Pcm.RATE
+                synchronized(writerLock) { if (!discarded) w.event(TranscriptEvent.Gap(t0, t1, TranscriptEvent.GAP_BEHIND)) }
+            }
         }
     }
 

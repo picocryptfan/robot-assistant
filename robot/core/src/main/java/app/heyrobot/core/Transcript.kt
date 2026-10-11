@@ -93,7 +93,10 @@ sealed class TranscriptEvent {
 
     data class Delete(val i: Int) : TranscriptEvent()
 
-    /** Nothing was heard from [t0] to [t1] (seconds): [why] is [GAP_MIC], [GAP_PAUSE], [GAP_CALL] or [GAP_CRASH]. */
+    /**
+     * Nothing was heard from [t0] to [t1] (seconds): [why] is [GAP_MIC], [GAP_PAUSE], [GAP_CALL], [GAP_CRASH] or
+     * [GAP_BEHIND] (another value, from a newer Robot, reads as "nothing recorded").
+     */
     data class Gap(val t0: Double, val t1: Double, val why: String) : TranscriptEvent()
 
     /** An event this version doesn't know (a newer Robot wrote it): kept in the file, skipped by the fold. */
@@ -106,6 +109,8 @@ sealed class TranscriptEvent {
         const val GAP_PAUSE = "pause"
         const val GAP_CALL = "call"
         const val GAP_CRASH = "crash"
+        /** Speech heard but let go undecoded: decoding had fallen too far behind (the queue's bound, 0.5.0). */
+        const val GAP_BEHIND = "behind"
     }
 }
 

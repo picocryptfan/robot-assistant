@@ -238,5 +238,8 @@ class TranscriptStoreTest {
         val txt = TranscriptExport.text(shown, s.load(w.id)!!, ExportOptions(times = false), utc)
         assertTrue(txt.contains("\nS1 (FR): On se reprend-tu demain?\n"))
         assertTrue(txt.contains("[paused 14:02–14:03]"))
+        // Speech let go when decoding fell too far behind says so; a kind from a newer Robot reads as nothing recorded.
+        assertEquals("[not transcribed 14:02–14:03]", TranscriptExport.gapText(meta, TranscriptGap(10.0, 70.0, TranscriptEvent.GAP_BEHIND), utc))
+        assertEquals("[nothing recorded 14:02–14:03]", TranscriptExport.gapText(meta, TranscriptGap(10.0, 70.0, "later"), utc))
     }
 }

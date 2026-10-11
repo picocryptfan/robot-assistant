@@ -38,6 +38,7 @@ object TranscriptExport {
             TranscriptEvent.GAP_PAUSE -> "paused"
             TranscriptEvent.GAP_CALL -> "phone call"
             TranscriptEvent.GAP_CRASH -> "stopped unexpectedly"
+            TranscriptEvent.GAP_BEHIND -> "not transcribed"
             else -> "nothing recorded"
         }
         return "[$why ${at(meta, g.t0, zone, HM)}–${at(meta, g.t1, zone, HM)}]"

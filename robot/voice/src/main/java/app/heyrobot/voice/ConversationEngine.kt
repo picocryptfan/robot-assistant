@@ -34,7 +34,8 @@ import java.util.concurrent.atomic.AtomicInteger
 // from the session's own audio ring) → a queue → one worker that decodes each segment with the same Parakeet as
 // questions (in turn with them), hears it again in two halves when too few words came back for the speech (event 119),
 // and labels its language. Audio lives in the ring (20 s) and in the queued segments only, in memory, and is dropped
-// once decoded; nothing is written anywhere.
+// once decoded; nothing is written anywhere. The queue holds at most [ConversationEngine.MAX_WAITING] segments (about
+// 60 MB of audio at worst): should decoding fall that far behind, a new segment is let go and the session marks the gap.
 
 /** Conversation mode's decoder: Parakeet v3, shared with questions (VoiceEngines.segmentDecoder). */
 interface SegmentDecoder {
@@ -65,6 +66,11 @@ class ConversationEngine(
         fun segment(r: SegmentHeard)
         /** The open segment's words so far, for the screen (worker thread). */
         fun partial(text: String) {}
+        /**
+         * Decoding is [MAX_WAITING] segments behind (or stuck): [seg], from the run that began [offsetS] seconds into the
+         * session, was let go unheard so memory stays bounded (the listener's thread; must not block).
+         */
+        fun dropped(seg: Segment, offsetS: Double) {}
     }
 
     private class Job(val seg: Segment?, val offsetS: Double, val audio: FloatArray, val run: Int)
@@ -128,8 +134,9 @@ class ConversationEngine(
         maybePartial()
     }
 
-    /** Under vadLock: a closed segment and its audio (sliced as it closed) on the queue. */
+    /** Under vadLock: a closed segment and its audio (sliced as it closed) on the queue, unless the queue is full. */
     private fun enqueue(c: Cut) {
+        if (waiting.get() >= MAX_WAITING) return out.dropped(c.seg, offsetS)
         waiting.incrementAndGet()
         queue.offer(Job(c.seg, offsetS, c.audio, run))
     }
@@ -260,6 +267,12 @@ class ConversationEngine(
     }
 
     companion object {
+        /**
+         * Segments waiting to be decoded, at most: 15.2 s of audio each at worst (about 60 MB in all), where a decode
+         * takes well under a second. Reached only if decoding stalls; memory stays bounded meanwhile.
+         */
+        const val MAX_WAITING = 64
+
         @Volatile private var lid: LangId? = null
 
         /** The language table (core's asset), read once per process. */
