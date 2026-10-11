@@ -48,12 +48,25 @@ object MemoryReplies {
     const val PIN_FULL = " Six things are pinned already, so this one isn't used in every answer."
     const val PIN_FULL_FR = " Six choses sont déjà épinglées : celle-ci ne l'est pas."
 
+    private val CALL_ME = Regex("""^(?:please )?call me (.+?)[.!]?$""", RegexOption.IGNORE_CASE)
+    private val OWN = Regex("""^(?:i|i'm|i've|i'd|my|we|our)\b""")
+
+    /**
+     * What Robot says back: MemoryCommands.saidBack, except that a preference telling Robot what to do is never turned to
+     * "you" ("Call me Sam" is "I'll call you Sam.", "Always answer briefly" is quoted).
+     */
+    fun sayBack(c: MemoryCommand.Remember): String {
+        val t = c.text.trim()
+        if (c.secret || c.language == "fr" || c.kind != MemoryKind.PREFERENCE || OWN.containsMatchIn(MemoryCommands.foldAligned(t))) return MemoryCommands.saidBack(c)
+        return CALL_ME.find(t)?.let { "Got it: I'll call you ${it.groupValues[1]}." } ?: "Got it: “${t.trimEnd('.')}”."
+    }
+
     /** After saving [c] (its outcome [o]). */
     fun saved(c: MemoryCommand.Remember, o: AddOutcome): String {
         val fr = c.language == "fr"
         return when (o) {
-            AddOutcome.SAVED -> MemoryCommands.saidBack(c)
-            AddOutcome.SAVED_PIN_FULL -> MemoryCommands.saidBack(c) + if (fr) PIN_FULL_FR else PIN_FULL
+            AddOutcome.SAVED -> sayBack(c)
+            AddOutcome.SAVED_PIN_FULL -> sayBack(c) + if (fr) PIN_FULL_FR else PIN_FULL
             AddOutcome.ALREADY_KEPT -> if (fr) "Je m'en souviens déjà." else "I already remember that."
             AddOutcome.FULL -> if (fr) "Ma mémoire est pleine. Efface des choses dans Réglages › Mémoire d'abord." else
                 "My memory is full. Delete some things in Settings › Memory first."

@@ -100,6 +100,10 @@ class MemoryWiringTest {
         assertEquals("C'est noté : « La fête de ma sœur est le 3 mai ».", MemoryReplies.saved(fr, AddOutcome.SAVED))
         assertEquals("Forgotten.", MemoryReplies.forgotten(1, false))
         assertEquals("C'est oublié : 2 choses.", MemoryReplies.forgotten(2, true))
+        // A preference that tells Robot what to do isn't turned to "you".
+        assertEquals("Got it: I'll call you Sam.", MemoryReplies.saved(MemoryCommands.parse("Remember: call me Sam") as MemoryCommand.Remember, AddOutcome.SAVED))
+        assertEquals("Got it: “Always answer briefly”.", MemoryReplies.saved(MemoryCommands.parse("Remember: always answer briefly") as MemoryCommand.Remember, AddOutcome.SAVED))
+        assertEquals("Got it: you prefer Celsius.", MemoryReplies.saved(MemoryCommands.parse("Remember that I prefer Celsius") as MemoryCommand.Remember, AddOutcome.SAVED))
         assertEquals("Unlock first, then ask me again to remember it: my memory stays locked.", MemoryReplies.unlock(false, saving = true))
         assertEquals(MemoryAccess.UNLOCK_FIRST, MemoryReplies.unlock(false))
         assertTrue(MemoryReplies.off(false).contains("under Memory"))
