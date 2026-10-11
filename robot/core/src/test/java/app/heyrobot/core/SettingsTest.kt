@@ -125,8 +125,9 @@ class SettingsTest {
             bargeIn = BargeIn.ALWAYS, playback = Playback.CALL, stopKey = StopKey.EITHER,
         )
         assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
-        // Settings from 0.2.2 (no such keys) get the defaults; an emptied list stays empty.
-        assertEquals(d, RobotSettings.fromJson("{}"))
+        // Settings from 0.2.2 (no such keys) get the defaults (and, as an update, the one-time line about Safety & privacy);
+        // an emptied list stays empty.
+        assertEquals(d.copy(safetyNotice = true), RobotSettings.fromJson("{}"))
         assertEquals(emptyList<WakePhrase>(), RobotSettings.fromJson(d.copy(wakePhrases = emptyList()).toJson().toString()).wakePhrases)
         // A damaged or invalid entry is dropped, never fatal.
         val j = """{"wakePhrases":[{"id":1,"text":"hey robot"},{"id":2,"text":"stop"},"x",{"id":5,"text":"jarvis","sensitivity":"NOPE"}],"bargeIn":"NOPE"}"""
@@ -178,6 +179,15 @@ class SettingsTest {
         assertEquals(6, s.toJson().getInt("schema"))
         // Emptied stays empty (only questions on the lock screen); unknown or internal tools are dropped; a bad mode is the default.
         assertEquals(emptySet<ToolName>(), RobotSettings.fromJson(d.copy(lockedTools = emptySet()).toJson().toString()).lockedTools)
+        // The one-time line about Safety & privacy: for an update (a file from before schema 6), never a new install.
+        assertEquals(false, d.safetyNotice)
+        for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", """{"schema":1}""")) assertEquals(old, true, RobotSettings.fromJson(old).safetyNotice)
+        assertEquals(false, RobotSettings.fromJson(null).safetyNotice)
+        assertEquals(false, RobotSettings.fromJson("""{"schema":6}""").safetyNotice)
+        val updated = RobotSettings.fromJson("""{"schema":5}""")
+        assertEquals(true, RobotSettings.fromJson(updated.toJson().toString()).safetyNotice)
+        assertEquals(false, RobotSettings.fromJson(updated.copy(safetyNotice = false).toJson().toString()).safetyNotice)
+        assertEquals("New: Settings › Safety & privacy. Cards now appear when you didn't ask for an action.", SafetyNotice.TEXT)
         // "Find the nearest place online": Ask the first time for new installs and older files; an early 0.4.0 switch that
         // was on (or absent) asks the first time too, one turned off is Never; the three choices round-trip.
         assertEquals(NearestOnline.ASK, d.nearestOnline)

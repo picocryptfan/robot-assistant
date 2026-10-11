@@ -301,7 +301,10 @@ Claude.
 | Keep screenshots and photos in history | off | With history on, a question's picture (a 320-pixel JPEG thumbnail, Base64 in the conversation file) and the screen's text (up to 8,000 characters) are saved with it, for History only: never replayed to the model, never in what Claude receives, never logged. A screen conversation is still saved only after Keep. **Remove saved screenshots and photos** takes them out of every conversation (the conversations stay). Robot's files are excluded from backups, as before. |
 
 The settings file is schema 6. An older file reads every switch at its default, which is the old behaviour, except
-Safety cards, which takes the new default "When you didn't ask for it" (as asked).
+Safety cards, which takes the new default "When you didn't ask for it" (as asked). After such an update the app shows,
+once, at the top of Home and Settings: "New: Settings › Safety & privacy. Cards now appear when you didn't ask for an
+action." Tapping it opens the page and the × dismisses it; either way it never shows again (`safetyNotice` in the
+settings file; a new install never sees it).
 
 **What you asked for** (`ToolRouter.asked`, tested) is read from what you typed or said this turn, never from the
 screen's text, a photo or a tool's results: timers ("timer", "minuteur"), alarms ("alarm", "wake me", "réveil"), the

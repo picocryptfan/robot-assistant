@@ -177,6 +177,11 @@ data class RobotSettings(
     val nearestOnline: NearestOnline = NearestOnline.ASK,
     /** When [nearestOnline] was last chosen in Settings (wall clock ms); 0: never. */
     val nearestOnlineAt: Long = 0,
+    /**
+     * Show [SafetyNotice.TEXT] once in the app (0.4.0): set for a settings file from before Safety & privacy (an update,
+     * never a new install), cleared when it is tapped or dismissed.
+     */
+    val safetyNotice: Boolean = false,
 ) {
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
@@ -241,6 +246,7 @@ data class RobotSettings(
         put("voiceCards", voiceCards)
         put("nearestPlace", nearestOnline.name)
         if (nearestOnlineAt > 0) put("nearestPlaceAt", nearestOnlineAt)
+        if (safetyNotice) put("safetyNotice", true)
     }
 
     companion object {
@@ -364,6 +370,8 @@ data class RobotSettings(
                 nearestOnline = if (o.has("nearestPlace")) enumOr(o.optString("nearestPlace"), d.nearestOnline)
                     else if (!o.optBoolean("nearestOnline", true)) NearestOnline.NEVER else NearestOnline.ASK,
                 nearestOnlineAt = o.optLong("nearestPlaceAt", 0).coerceAtLeast(0),
+                // A file from before schema 6 (0.3.x, early 0.4.0): an update, so the one-time line about Safety & privacy shows.
+                safetyNotice = if (o.optInt("schema", 1) < 6) true else o.optBoolean("safetyNotice", false),
             )
         }
 

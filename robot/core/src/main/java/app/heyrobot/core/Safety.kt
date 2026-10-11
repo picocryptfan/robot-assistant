@@ -41,6 +41,11 @@ enum class AskWhy {
     ONLINE,
 }
 
+/** The one-time line after updating to 0.4.0 ([RobotSettings.safetyNotice]); tapping it opens Settings › Safety & privacy. */
+object SafetyNotice {
+    const val TEXT = "New: Settings › Safety & privacy. Cards now appear when you didn't ask for an action."
+}
+
 /** What Robot may do while the phone is locked, as the panel and the model are told. */
 object LockScreen {
     /** Questions always; actions only those in Settings › Safety & privacy › "Works on the lock screen". */

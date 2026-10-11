@@ -11,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -464,13 +465,22 @@ fun RobotAppUi(activity: MainActivity) {
                 }
             },
         ) { pad ->
-            val m = Modifier.padding(pad)
-            when (tab) {
-                Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
-                Tab.NOTES -> NotesScreen(notes, actions, m)
-                Tab.HISTORY -> HistoryScreen(history, actions, m)
-                Tab.MODEL -> ModelScreen(snap, busy, actions, m)
-                Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
+            Column(Modifier.padding(pad)) {
+                // Once, after updating to 0.4.0: what changed about cards, and where to choose (core SafetyNotice).
+                if (settings.safetyNotice && (tab == Tab.HOME || tab == Tab.SETTINGS)) {
+                    SafetyNoticeLine(
+                        onOpen = { updateSettings(settings.copy(safetyNotice = false)); page = Page.Safety },
+                        onDismiss = { updateSettings(settings.copy(safetyNotice = false)) },
+                    )
+                }
+                val m = Modifier.weight(1f)
+                when (tab) {
+                    Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
+                    Tab.NOTES -> NotesScreen(notes, actions, m)
+                    Tab.HISTORY -> HistoryScreen(history, actions, m)
+                    Tab.MODEL -> ModelScreen(snap, busy, actions, m)
+                    Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
+                }
             }
         }
     }

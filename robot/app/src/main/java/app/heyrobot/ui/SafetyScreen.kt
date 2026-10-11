@@ -1,5 +1,6 @@
 package app.heyrobot.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,16 +10,20 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -33,7 +38,9 @@ import androidx.compose.ui.unit.dp
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.SafetyCards
+import app.heyrobot.core.SafetyNotice
 import app.heyrobot.core.ToolName
+import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.toolIcon
 
 // MAIN PROCESS. Settings › Safety & privacy (0.4.0): every rule about when Robot asks first, what works on the lock
@@ -109,6 +116,26 @@ fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
             confirmButton = { TextButton(onClick = { confirmRemove = false; a.removeSavedMedia() }) { Text("Remove") } },
             dismissButton = { TextButton(onClick = { confirmRemove = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/**
+ * The one-time line after updating to 0.4.0 (core RobotSettings.safetyNotice, SafetyNotice.TEXT), on Home and Settings:
+ * tapping it opens Safety & privacy, the close button dismisses it; either way it never shows again. Nothing is logged.
+ */
+@Composable
+fun SafetyNoticeLine(onOpen: () -> Unit, onDismiss: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.tertiaryContainer, contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).clickable(onClickLabel = "Open Safety & privacy", onClick = onOpen),
+    ) {
+        Row(Modifier.padding(start = 16.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(RIcons.Lock, null)
+            Spacer(Modifier.width(12.dp))
+            Text(SafetyNotice.TEXT, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(vertical = 8.dp))
+            IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Dismiss") }
+        }
     }
 }
 
