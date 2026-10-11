@@ -76,4 +76,25 @@ class BrainProtocolTest {
         assertTrue(BrainProtocol.EV_TOOL_CALLS !in BrainProtocol.TERMINAL)
         assertEquals("app.heyrobot.brain.BrainService", BrainProtocol.SERVICE_CLASS)
     }
+
+    @Test fun conversationModeMessagesRoundTrip() {
+        // 0.5.0: defined for conversation mode; :brain answers REQ_ONE_SHOT once its queue is in (until then: a bad request).
+        assertEquals(8, BrainProtocol.REQ_ONE_SHOT)
+        assertEquals(108, BrainProtocol.EV_QUEUED)
+        assertTrue(BrainProtocol.REQ_ONE_SHOT !in BrainProtocol.REQUESTS)
+        assertTrue(BrainProtocol.EV_QUEUED in BrainProtocol.EVENTS && BrainProtocol.EV_QUEUED !in BrainProtocol.TERMINAL)
+        val one = BrainMsg.OneShot(OneShotKind.TRANSLATE, Priority.INTERPRETER, Prompt.TRANSLATE_FR_EN, "On se reprend-tu demain?", 120)
+        assertEquals(one, roundTrip(BrainProtocol.REQ_ONE_SHOT, one))
+        val map = BrainMsg.OneShot(OneShotKind.SUMMARY_MAP, Priority.SUMMARY, Prompt.SUMMARY_MAP, "Part 1 of 2 (14:02–14:10):\n[14:02] Owner (en): hi", 250)
+        assertEquals(map, roundTrip(BrainProtocol.REQ_ONE_SHOT, map))
+        assertEquals(BrainMsg.Queued(2), roundTrip(BrainProtocol.EV_QUEUED, BrainMsg.Queued(2)))
+        // A cap past the reply limit is held to it; an unknown kind or priority is not a request.
+        val big = BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"TRANSLATE","priority":"PANEL","system":"s","text":"t","maxChunks":99999}""") as BrainMsg.OneShot
+        assertEquals(Limits.MAX_REPLY_CHUNKS, big.maxChunks)
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"POEM","priority":"PANEL","system":"s","text":"t"}"""))
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_ONE_SHOT, """{"kind":"TRANSLATE","priority":"URGENT","system":"s","text":"t"}"""))
+        // Panel first, summaries last.
+        assertEquals(listOf(Priority.PANEL, Priority.INTERPRETER, Priority.TRANSCRIPT, Priority.SUMMARY), Priority.entries.sorted())
+    }
 }
+

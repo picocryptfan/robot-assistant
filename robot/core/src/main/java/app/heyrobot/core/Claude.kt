@@ -415,6 +415,11 @@ enum class Personal(val label: String) {
     CLAUDE_APP("text from the Claude app"),
     /** Another read tool's findings (none today besides the three above). */
     READ("what Robot read on your phone"),
+    /**
+     * 0.5.0: a transcript from conversation mode, other people's words included. It reaches Claude only through the
+     * "Summarize with a stronger AI" card, never through an escalation, Claude mode or "include the conversation".
+     */
+    CONVERSATION("a recorded conversation"),
     ;
 
     companion object {

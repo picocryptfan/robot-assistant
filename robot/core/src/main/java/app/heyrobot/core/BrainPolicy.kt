@@ -152,3 +152,81 @@ object EngineTeardown {
         else -> Step.END_PROCESS
     }
 }
+
+/**
+ * The order :brain serves requests in once conversation mode shares the model (docs/conversation-mode.md 4.2). Pure, so
+ * every rule is tested (BrainQueueTest); GemmaEngine acts on its steps when REQ_ONE_SHOT is wired. Today's rule for the
+ * panel stays: a new panel question cancels the panel reply still running, and only the newest waiting one is kept. An
+ * interpreter turn (about a second) is never cancelled by the panel: the question waits for it. Interpreter and
+ * transcript requests run first in, first out. A summary step gives way to anything else: it is cancelled and queued
+ * again (map steps start over cleanly).
+ */
+class BrainQueue {
+    data class Job(val id: Int, val priority: Priority)
+
+    /**
+     * What :brain does now: cancel the running request ([cancelRunning]), end the [dropped] waiting ones as cancelled,
+     * start [start]. [requeued]: a summary step that gave way is waiting again.
+     */
+    data class Step(val cancelRunning: Boolean = false, val dropped: List<Job> = emptyList(), val start: Job? = null, val requeued: Job? = null)
+
+    var running: Job? = null
+        private set
+    private val waiting = ArrayList<Job>()
+    /** Running jobs cancelled to give way, to be queued again when they end. */
+    private val yielding = HashSet<Int>()
+    private var cancelling = false
+
+    /** The waiting requests, next first. */
+    val queue: List<Job> get() = waiting.toList()
+
+    fun submit(job: Job): Step {
+        val dropped = if (job.priority == Priority.PANEL) waiting.filter { it.priority == Priority.PANEL }.also { waiting.removeAll(it.toSet()) } else emptyList()
+        val r = running
+        if (r == null) {
+            running = job
+            return Step(dropped = dropped, start = job)
+        }
+        val cancel = !cancelling && when {
+            job.priority == Priority.PANEL && r.priority == Priority.PANEL -> true
+            r.priority == Priority.SUMMARY && job.priority != Priority.SUMMARY -> true.also { yielding += r.id }
+            else -> false
+        }
+        if (cancel) cancelling = true
+        enqueue(job, front = false)
+        return Step(cancelRunning = cancel, dropped = dropped)
+    }
+
+    /** The running request ended (done, failed, or cancelled): the next one starts. */
+    fun done(id: Int): Step {
+        val r = running?.takeIf { it.id == id } ?: return Step()
+        running = null
+        cancelling = false
+        val again = if (yielding.remove(r.id)) r.also { enqueue(it, front = true) } else null
+        val next = if (waiting.isEmpty()) null else waiting.removeAt(0)
+        running = next
+        return Step(start = next, requeued = again)
+    }
+
+    /** The client cancelled request [id] (REQ_CANCEL): dropped if it waits, stopped if it runs (and not queued again). */
+    fun cancel(id: Int): Step {
+        waiting.firstOrNull { it.id == id }?.let {
+            waiting.remove(it)
+            return Step(dropped = listOf(it))
+        }
+        if (running?.id != id) return Step()
+        yielding.remove(id)
+        if (cancelling) return Step()
+        cancelling = true
+        return Step(cancelRunning = true)
+    }
+
+    /** 0 while it runs, its place in line from 1 (EV_QUEUED), -1 when unknown. */
+    fun position(id: Int): Int = if (running?.id == id) 0 else waiting.indexOfFirst { it.id == id }.let { if (it < 0) -1 else it + 1 }
+
+    /** In priority order; first in, first out within a priority ([front]: ahead of its priority, for a job queued again). */
+    private fun enqueue(job: Job, front: Boolean) {
+        val at = if (front) waiting.indexOfFirst { it.priority >= job.priority } else waiting.indexOfFirst { it.priority > job.priority }
+        if (at < 0) waiting += job else waiting.add(at, job)
+    }
+}
