@@ -138,6 +138,43 @@ data class RobotSettings(
      * where it is (or isn't allowed to). Null: none.
      */
     val weatherHome: WeatherPlace? = null,
+    // Conversation mode (0.5.0, docs/conversation-mode.md 9.3).
+    /** The languages a conversation translates between, a [LangPair] id. */
+    val convPair: String = LangPair.DEFAULT.id,
+    /** "Translate" in the transcript (off by default); the Interpreter always translates ([ConversationSettings.translate]). */
+    val convTranslate: Boolean = false,
+    /** "Speak translations"; null: on in the Interpreter, off in the transcript ([ConversationSettings.speak]). */
+    val convSpeak: Boolean? = null,
+    /** The words of the open segment while people talk, screen on only (about every 1.5 s; off saves battery). */
+    val convPartials: Boolean = true,
+    /** The most speakers a transcript tells apart, 2 to 6 (the Interpreter: always 2). */
+    val convMaxSpeakers: Int = 6,
+    /**
+     * Settings › Conversation › "Tell speakers apart" (0.5.0, phase 5.3): label each line S1, S2… by its voice. Null: on
+     * once the speaker model is downloaded ([ConversationSettings.speakers]); false: off, and the download isn't offered.
+     */
+    val convSpeakers: Boolean? = null,
+    /** "Hey robot works during a conversation" (off: the wake word sleeps for the whole session; "stop" still works while Robot talks). */
+    val convWakeDuring: Boolean = false,
+    /** "Start from the lock screen": a new recording shows nothing older. */
+    val convStartLocked: Boolean = true,
+    /** "Keep audio": the recording of everyone in the conversation, about 7 MB an hour (off). */
+    val convKeepAudio: Boolean = false,
+    /** The language of Robot's summaries ("fr" or "en"); null: yours ([ConversationSettings.summaryLang]). */
+    val convSummaryLang: String? = null,
+    /** Offer "Summarize with a stronger AI" first for a long or important conversation, or one the number check flagged. */
+    val convAutoOfferHelper: Boolean = true,
+    /**
+     * A "me" voiceprint is enrolled (Settings › Conversation › Your voice). Only that it exists, kept in step with the
+     * file by the main app: the voiceprint itself is in its own encrypted file, written and read by the :voice process
+     * only (VoiceprintCodec), never in settings.
+     */
+    val meVoiceprint: Boolean = false,
+    /**
+     * Settings › Conversation › "Show the reminder again" (wall clock ms; 0: never): the consent reminder shows before
+     * the next session unless you ticked "I'll tell people" after this ([ConsentRecord], kept by the voice process).
+     */
+    val convReminderAt: Long = 0,
     // Settings › Safety & privacy (0.4.0, schema 6): each rule that makes an action ask first is a switch.
     /** "Safety cards": when content Robot read makes an action ask first (older files: the new default too). */
     val safetyCards: SafetyCards = SafetyCards.UNASKED,
@@ -214,6 +251,8 @@ data class RobotSettings(
 
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
+    val convPairChoice: LangPair get() = LangPair.of(convPair)
+
     fun approval(t: ToolName): Approval = approvals[t] ?: DEFAULT_APPROVALS.getValue(t)
 
     fun textAppFor(cheogramInstalled: Boolean): TextApp = textApp ?: if (cheogramInstalled) TextApp.CHEOGRAM else TextApp.SMS
@@ -263,6 +302,19 @@ data class RobotSettings(
         claudeHelp?.let { put("claudeHelp", it.name) }
         put("claudeBudgetCents", claudeBudgetCents)
         weatherHome?.let { put("weatherHome", JSONObject().put("name", it.name).put("lat", it.lat).put("lon", it.lon)) }
+        put("convPair", convPair)
+        put("convTranslate", convTranslate)
+        convSpeak?.let { put("convSpeak", it) }
+        put("convPartials", convPartials)
+        put("convMaxSpeakers", convMaxSpeakers)
+        convSpeakers?.let { put("convSpeakers", it) }
+        put("convWakeDuring", convWakeDuring)
+        put("convStartLocked", convStartLocked)
+        put("convKeepAudio", convKeepAudio)
+        convSummaryLang?.let { put("convSummaryLang", it) }
+        put("convAutoOfferHelper", convAutoOfferHelper)
+        put("meVoiceprint", meVoiceprint)
+        if (convReminderAt > 0) put("convReminderAt", convReminderAt)
         put("safetyCards", safetyCards.name)
         put("claudeActionCards", claudeActionCards)
         put("whoCards", whoCards)
@@ -294,14 +346,17 @@ data class RobotSettings(
          * behaviour, the lock screen still timers and alarms) except "Safety cards", which takes the new default, "When
          * you didn't ask for it", as the person asked.
          * 7 (0.4.1): Settings › Model. Older files had one model, the TPU's Gemma 4 E2B: they read as Fast, the same model.
-         * 8 and 9 are other branches' layouts (conversation mode, helpers) and 11 is kept for another; a file of any of them
-         * reads here as what this branch knows of it.
+         * 8 and 9 were conversation mode's and the helpers' layouts before either was released, and 11 is kept for another
+         * branch; no released Robot wrote any of them. 13 takes over what 8 brought (below).
          * 10 (0.4.5): "Let the model think first", off unless a file of this schema or later says on (older files never had it).
          * 12 (0.4.5, the compliance work): the nearest place's search server and the model terms you confirmed. Absent from
          * older files, which read as OpenStreetMap's server (the only one before) and nothing confirmed (a model downloaded
          * before keeps working; only a new download or import asks).
+         * 13 (0.6.0): conversation mode's settings (0.5.0's schema 8, never released on its own). Absent from every older
+         * file, 0.4.5's included, so they read as the defaults, except that live words in a conversation start off when
+         * you had turned live words off for questions (to save battery).
          */
-        const val SCHEMA = 12
+        const val SCHEMA = 13
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -346,6 +401,9 @@ data class RobotSettings(
         fun clampRate(v: Float): Float = if (v.isNaN()) 1.0f else v.coerceIn(0.5f, 2.0f)
         fun clampKeep(v: Int): Int = if (v == KEEP_ALWAYS) v else v.coerceIn(0, 120)
         fun clampEventMinutes(v: Int): Int = v.coerceIn(5, ToolCalls.MAX_EVENT_MINUTES)
+        fun clampSpeakers(v: Int): Int = v.coerceIn(ConversationSettings.SPEAKER_CHOICES.first, ConversationSettings.SPEAKER_CHOICES.last)
+        /** Robot summarizes in French or English; anything else means yours. */
+        fun summaryLang(v: String?): String? = v?.takeIf { it == "fr" || it == "en" }
 
         fun fromJson(text: String?): RobotSettings {
             val o = try { JSONObject(text ?: return RobotSettings()) } catch (_: Exception) { return RobotSettings() }
@@ -393,6 +451,22 @@ data class RobotSettings(
                 claudeHelp = enumValues<Escalation>().firstOrNull { it.name == o.optString("claudeHelp") },
                 claudeBudgetCents = o.optInt("claudeBudgetCents", d.claudeBudgetCents).coerceIn(0, 100_000),
                 weatherHome = o.optJSONObject("weatherHome")?.let(::place),
+                convPair = LangPair.of(o.optString("convPair", d.convPair)).id,
+                convTranslate = o.optBoolean("convTranslate", d.convTranslate),
+                convSpeak = if (o.has("convSpeak")) o.optBoolean("convSpeak") else null,
+                // Before schema 13 there was no such setting: it follows "Show the words while you speak".
+                convPartials = o.optBoolean("convPartials", if (o.optInt("schema", 1) < 13) o.optBoolean("livePartials", d.livePartials) else d.convPartials),
+                convMaxSpeakers = clampSpeakers(o.optInt("convMaxSpeakers", d.convMaxSpeakers)),
+                // Schema 13 (0.5.0, phase 5.3): absent means "on once the speaker model is downloaded".
+                convSpeakers = if (o.has("convSpeakers")) o.optBoolean("convSpeakers") else null,
+                convWakeDuring = o.optBoolean("convWakeDuring", d.convWakeDuring),
+                convStartLocked = o.optBoolean("convStartLocked", d.convStartLocked),
+                convKeepAudio = o.optBoolean("convKeepAudio", d.convKeepAudio),
+                convSummaryLang = summaryLang(o.optString("convSummaryLang").takeIf { o.has("convSummaryLang") }),
+                convAutoOfferHelper = o.optBoolean("convAutoOfferHelper", d.convAutoOfferHelper),
+                meVoiceprint = o.optBoolean("meVoiceprint", d.meVoiceprint),
+                // Schema 13 (0.5.0): absent means the reminder was never asked for again.
+                convReminderAt = o.optLong("convReminderAt", 0).coerceAtLeast(0),
                 // Schema 6: absent from older files, which read as the defaults (the new "When you didn't ask for it" included).
                 safetyCards = enumOr(o.optString("safetyCards"), d.safetyCards),
                 claudeActionCards = o.optBoolean("claudeActionCards", d.claudeActionCards),

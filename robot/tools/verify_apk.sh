@@ -5,7 +5,9 @@
 # and the three runtime permissions; that the main-process entries stay in the main process, that nothing beyond an
 # allowlist is exported, and that no main-process class in the dex refers to an engine. 0.4.5: the native libraries are
 # exactly an allowlist of names, and Robot's llama.cpp library (when this build has it) exports only its JNI bridge, is
-# reached only from :brain's classes and can't go online or start a process. Usage: tools/verify_apk.sh <apk>
+# reached only from :brain's classes and can't go online or start a process. Since 0.5.0, the fast translation engine's :mt
+# process and its library, allowed by exact name and loaded only by the :mt module's class (0.6.0: required).
+# Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
 BT="${ANDROID_HOME:-/opt/android-sdk}/build-tools/36.0.0"
@@ -14,8 +16,11 @@ EXPECT_CERT=402557a46a491750688a3dff714100fe1d20b2f61193a912358c2edd341a6b6a
 fails=0
 pass() { echo "PASS  $*"; }
 fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
-has() { echo "$2" | grep -qF -- "$1" && pass "$3" || fail "$3"; }
-hasnt() { echo "$2" | grep -qF -- "$1" && fail "$3" || pass "$3"; }
+# A here-string, not a pipe: with pipefail, grep -q leaving early made a long echo fail with SIGPIPE, so a string near the
+# start of the manifest dump could read as missing, and (in a "must not contain" check) a match as absent. Every
+# "grep -q" below reads a here-string or a file for the same reason, never a pipe.
+has() { grep -qF -- "$1" <<<"$2" && pass "$3" || fail "$3"; }
+hasnt() { grep -qF -- "$1" <<<"$2" && fail "$3" || pass "$3"; }
 # A component's xmltree lines from its android:name on, children included, up to the next component.
 subtree() { echo "$mf" | awk -v n="\"$1\"" '/^ *E: (service|receiver|activity|provider) /{ on=0 } index($0, n){ on=1 } on'; }
 # The element's own attribute lines (before its first child element).
@@ -24,7 +29,8 @@ elem() { echo "$mf" | awk -v n="\"$1\"" '/^ *E: /{ if (index(b, n)) print b; b="
 cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
 [ "$cert" = "$EXPECT_CERT" ] && pass "signer $cert (Robot release key)" || fail "signer '$cert'"
 # minSdk 34: AGP signs with v3 (API 28+) and may skip v2; either covers every phone Robot installs on.
-"$BT/apksigner" verify -v "$APK" 2>/dev/null | grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
+sigv=$("$BT/apksigner" verify -v "$APK" 2>/dev/null)
+grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" <<<"$sigv" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
 has "package: name='app.heyrobot' versionCode='45' versionName='0.4.5'" "$badging" "package app.heyrobot 0.4.5 (45)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
@@ -33,7 +39,7 @@ has "application-label:'Robot'" "$badging" "label Robot"
 has "native-code: 'arm64-v8a'" "$badging" "arm64-v8a only"
 hasnt "application-debuggable" "$badging" "not debuggable"
 mf=$("$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" 2>/dev/null)
-for c in assistant.RobotVoiceService assistant.RobotSessionService assistant.RobotRecognitionService assistant.CaptureActivity brain.BrainService boot.BootReceiver boot.BootCheckReceiver ui.MainActivity; do
+for c in assistant.RobotVoiceService assistant.RobotSessionService assistant.RobotRecognitionService assistant.CaptureActivity brain.BrainService mt.MtService boot.BootReceiver boot.BootCheckReceiver ui.MainActivity; do
   has "\"app.heyrobot.$c\"" "$mf" "manifest has $c"
 done
 has '"android.service.voice.VoiceInteractionService"' "$mf" "VIS intent filter"
@@ -46,6 +52,12 @@ has ':voice' "$(elem app.heyrobot.assistant.RobotVoiceService)" "assistant in :v
 has ':brain' "$(elem app.heyrobot.brain.BrainService)" "BrainService in :brain"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.brain.BrainService)" "BrainService not exported"
 has '"app.heyrobot.permission.INTERNAL"' "$(elem app.heyrobot.brain.BrainService)" "BrainService guarded by the signature permission"
+# 0.5.0: the fast translation engine runs in a process of its own (an abort in slimt ends only that one), bound only by
+# Robot's own processes. It never goes online (ProcessIsolationTest checks its module's code).
+mtsvc=$(elem app.heyrobot.mt.MtService)
+has ':mt' "$mtsvc" "MtService in :mt (the fast translation engine)"
+has 'exported(0x01010010)=false' "$mtsvc" "MtService not exported"
+has '"app.heyrobot.permission.INTERNAL"' "$mtsvc" "MtService guarded by the signature permission"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver not exported"
 # Ask Claude needs nothing new: INTERNET stays the only network permission, and nothing reads other apps' screens.
 for p in ACCESS_NETWORK_STATE ACCESS_WIFI_STATE CHANGE_NETWORK_STATE CHANGE_WIFI_STATE BIND_ACCESSIBILITY_SERVICE; do
@@ -98,14 +110,15 @@ for c in app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher; do
   hasnt 'process(0x01010011)' "$(elem $c)" "$c in the main process"
 done
 # Exported components: exactly this allowlist (the app, its Notes entry, the three assistant services the system
-# binds, the Cheogram notification listener (0.4.0, also only the system binds it) and AndroidX's profile installer receiver).
+# binds, the Cheogram notification listener (0.4.0, also only the system binds it), the "Transcribe" Quick Settings tile
+# (0.5.0, only the system binds it) and AndroidX's profile installer receiver).
 exported=$(echo "$mf" | awk '
   /^ *E: (activity|activity-alias|service|receiver|provider) / { if (n != "" && ex) print n; n = ""; ex = 0; own = 1; next }
   /^ *E: / { own = 0 }
   own && /:name\(0x01010003\)="/ { v = $0; sub(/^.*:name\(0x01010003\)="/, "", v); sub(/".*$/, "", v); n = v }
   own && /exported\(0x01010010\)=true/ { ex = 1 }
   END { if (n != "" && ex) print n }' | sort | tr '\n' ' ')
-allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.people.CheogramListener app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
+allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.assistant.conversation.ConversationTileService app.heyrobot.people.CheogramListener app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
 [ "$exported" = "$allow" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
 # People (0.4.0): the notification listener stays in the main process, behind the system-only bind permission.
 hasnt 'process(0x01010011)' "$(elem app.heyrobot.people.CheogramListener)" "CheogramListener in the main process"
@@ -114,6 +127,24 @@ has '"android.service.notification.NotificationListenerService"' "$(subtree app.
 # "Pick in Cheogram" runs in :voice and isn't exported (only the panel's card starts it).
 has ':voice' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity not exported"
+# 0.5.0, conversation mode: the session is a microphone foreground service in :voice, not exported; its screens and the
+# Transcription check run there too; the tile is guarded by the system-only bind permission; the export provider (main
+# process) isn't exported. Nothing new goes online.
+for p in FOREGROUND_SERVICE FOREGROUND_SERVICE_MICROPHONE WAKE_LOCK; do
+  has "\"android.permission.$p\"" "$mf" "declares $p (conversation mode)"
+done
+conv=$(elem app.heyrobot.assistant.conversation.ConversationService)
+has ':voice' "$conv" "ConversationService in :voice"
+has 'exported(0x01010010)=false' "$conv" "ConversationService not exported"
+has 'foregroundServiceType' "$conv" "ConversationService declares its foreground service type (microphone)"
+for c in ConversationActivity TranscriptionCheckActivity VoiceprintActivity SummaryActivity; do
+  has ':voice' "$(elem app.heyrobot.assistant.conversation.$c)" "$c in :voice"
+  has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.conversation.$c)" "$c not exported"
+done
+has ':voice' "$(elem app.heyrobot.assistant.conversation.ConversationTileService)" "ConversationTileService in :voice"
+has '"android.permission.BIND_QUICK_SETTINGS_TILE"' "$(elem app.heyrobot.assistant.conversation.ConversationTileService)" "tile guarded by BIND_QUICK_SETTINGS_TILE"
+hasnt 'process(0x01010011)' "$(elem app.heyrobot.sys.ExportProvider)" "ExportProvider in the main process"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.sys.ExportProvider)" "ExportProvider not exported"
 # Ask Claude: the key window runs in :voice and isn't exported (the main app never sees the key).
 has ':voice' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.ClaudeKeyActivity)" "ClaudeKeyActivity not exported"
@@ -133,17 +164,16 @@ has 'supportsAssist(0x010104f0)=true' "$vi" "supportsAssist"
 has 'supportsLaunchVoiceAssistFromKeyguard(0x010104f1)=true' "$vi" "supportsLaunchVoiceAssistFromKeyguard"
 libs=$(unzip -Z1 "$APK" 'lib/*')
 for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
-echo "$libs" | grep -v '^lib/arm64-v8a/' | grep -q . && fail "non-arm64 libraries" || pass "no other ABIs"
-# Exactly these native libraries, by name. librobot_llama.so (0.4.5): Robot's llama.cpp for your own GGUF file, built by
-# tools/build_llama.sh and loaded by :brain only; a build without it is fine (Settings › Model then says GGUF files can't run).
-for l in $(echo "$libs" | sed -n 's#^lib/arm64-v8a/##p'); do
-  case "$l" in
-    libsherpa-onnx-jni.so|libonnxruntime.so|liblitertlm_jni.so|libLiteRtDispatch_GoogleTensor.so|libandroidx.graphics.path.so|librobot_llama.so) ;;
-    *) fail "unexpected native library $l" ;;
-  esac
-done
+other_abis=$(grep -v '^lib/arm64-v8a/' <<<"$libs")
+[ -z "$other_abis" ] && pass "no other ABIs" || fail "non-arm64 libraries: $other_abis"
+# Every packaged library by its exact name: sherpa-onnx's two (:voice), LiteRT-LM's and the TPU dispatch library (:brain),
+# Compose's graphics-path helper (androidx.graphics:graphics-path, every process), librobot_llama.so (0.4.5: Robot's
+# llama.cpp for your own GGUF file, built by tools/build_llama.sh and loaded by :brain only; a build without it is fine,
+# Settings › Model then says GGUF files can't run) and librobotmt.so (0.5.0: the fast translation engine, :mt only).
+extra=$(sed 's|^lib/arm64-v8a/||' <<<"$libs" | grep -vxE 'libsherpa-onnx-jni\.so|libonnxruntime\.so|liblitertlm_jni\.so|libLiteRtDispatch_GoogleTensor\.so|libandroidx\.graphics\.path\.so|librobot_llama\.so|librobotmt\.so' | tr '\n' ' ')
+[ -z "$extra" ] && pass "native libraries are the allowlist" || fail "native libraries not on the allowlist: $extra"
 llama=0
-if echo "$libs" | grep -qx 'lib/arm64-v8a/librobot_llama.so'; then
+if grep -qx 'lib/arm64-v8a/librobot_llama.so' <<<"$libs"; then
   llama=1
   pass "packages librobot_llama.so (GGUF files can run)"
   if [ -x "$NDK_BIN/llvm-nm" ]; then
@@ -163,7 +193,24 @@ if echo "$libs" | grep -qx 'lib/arm64-v8a/librobot_llama.so'; then
 else
   pass "no librobot_llama.so (this build can't run GGUF files; Settings › Model says so)"
 fi
-echo "$libs" | grep -q CompilerPlugin && fail "compiler plugin packaged" || pass "no compiler plugin"
+# 0.6.0 ships the fast translation engine: a build without librobotmt.so (tools/build_robotmt.sh) is not this release.
+if grep -qx 'lib/arm64-v8a/librobotmt.so' <<<"$libs"; then
+  pass "packages librobotmt.so (the fast translation engine)"
+  RE="$NDK_BIN/llvm-readelf"
+  [ -x "$RE" ] || RE=$(ls "${ANDROID_HOME:-/opt/android-sdk}"/ndk/*/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf 2>/dev/null | head -1)
+  [ -n "$RE" ] || RE=readelf
+  mtdir=$(mktemp -d)
+  unzip -q -o "$APK" lib/arm64-v8a/librobotmt.so -d "$mtdir"
+  needed=$("$RE" -d "$mtdir/lib/arm64-v8a/librobotmt.so" 2>/dev/null | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort | tr '\n' ' ')
+  [ "$needed" = "libc.so libdl.so liblog.so libm.so " ] && pass "librobotmt.so needs only libc, libdl, liblog and libm" || fail "librobotmt.so needs: $needed"
+  exports=$("$RE" --dyn-syms "$mtdir/lib/arm64-v8a/librobotmt.so" 2>/dev/null | awk '$5 == "GLOBAL" && $7 != "UND" { print $8 }' | sort | tr '\n' ' ')
+  [ "$exports" = "Java_app_heyrobot_mt_Slimt_nativeClose Java_app_heyrobot_mt_Slimt_nativeOpen Java_app_heyrobot_mt_Slimt_nativeTranslate " ] \
+    && pass "librobotmt.so exports only its three JNI functions" || fail "librobotmt.so exports: $exports"
+  rm -rf "$mtdir"
+else
+  fail "no librobotmt.so: 0.6.0 ships the fast translation engine (tools/build_robotmt.sh builds it before the APK)"
+fi
+grep -q CompilerPlugin <<<"$libs" && fail "compiler plugin packaged" || pass "no compiler plugin"
 # sherpa-onnx's JNI calls the TTS callback through GetMethodID(cls, "invoke", "([F)Ljava/lang/Integer;")
 # (v1.13.8 jni/offline-tts.cc). A Kotlin lambda has no such method and every voice is silent (0.1.2), so the
 # callback class must really declare it, public and not as a bridge, in the dex code that ships.
@@ -177,13 +224,17 @@ cbclass=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null; do
 # sources; this checks the dex).
 engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|people|core)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
-  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude)/')
+  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude|mt)/')
 [ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine or the Anthropic SDK (dex)" || fail "main-process classes refer to engines or the SDK: $engine_refs"
 # 0.4.5: llama.cpp's bridge is :brain's alone: no class outside app/heyrobot/brain refers to it or to its engine.
 llama_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } /Class descriptor  : .L/{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/brain\//) } on' |
   grep -cE 'Lapp/heyrobot/brain/(LlamaNative|LlamaEngine)')
 [ "$llama_refs" = "0" ] && pass "only :brain's classes refer to LlamaNative and LlamaEngine (dex)" || fail "classes outside :brain refer to llama.cpp's bridge: $llama_refs"
+# Only the :mt module's JNI class loads the fast translation engine (its library name appears in no other class's code).
+mt_loaders=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/Class descriptor  :/{ c = $4 } /const-string/ && /"robotmt"/ { print c }' | sort -u | tr '\n' ' ')
+[ "$mt_loaders" = "'Lapp/heyrobot/mt/Slimt;' " ] && pass "only app.heyrobot.mt.Slimt loads librobotmt (dex)" || fail "classes that name librobotmt: $mt_loaders"
 # The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load.
 sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession);'"; done | wc -l)
 [ "$sdk_classes" = "2" ] && pass "Anthropic SDK client and ClaudeSession in the dex" || fail "Anthropic SDK classes in the dex: $sdk_classes"
@@ -204,7 +255,7 @@ rm -rf "$dexdir"
 cbmembers=$(echo "$cbclass" | awk '/^ *#[0-9]+ *: \(in /{ if (n != "") print n, t, a; n = t = a = "" }
   /^ *name *: /{ n=$3 } /^ *type *: /{ t=$3 } /^ *access *: /{ a=$3 } END { if (n != "") print n, t, a }')
 has "'Lkotlin/jvm/functions/Function1;'" "$cbclass" "TtsCallback (sherpa TTS callback) implements kotlin Function1"
-echo "$cbmembers" | grep -qxF "'invoke' '([F)Ljava/lang/Integer;' 0x0001" \
+grep -qxF "'invoke' '([F)Ljava/lang/Integer;' 0x0001" <<<"$cbmembers" \
   && pass "TtsCallback declares public invoke([F)Ljava/lang/Integer; (what sherpa's JNI looks up)" \
   || fail "TtsCallback lacks public invoke([F)Ljava/lang/Integer;: downloaded voices would be silent"
 assets=$(unzip -Z1 "$APK" 'assets/*')
@@ -223,10 +274,13 @@ n=$(echo "$assets" | grep -c '^assets/espeak-ng-data/')
 has "assets/espeak-ng-data/phontab" "$assets" "asset espeak-ng-data/phontab"
 has "assets/espeak-ng-data/lang/gmw/en-US" "$assets" "asset espeak-ng-data/lang/gmw/en-US"
 # The speech recognition and voice models are downloaded by the app, never packaged.
-echo "$assets" | grep -qE '(encoder|decoder|joiner)\.int8\.onnx|/model(\.fp32|\.int8)?\.onnx|voices\.bin' && fail "a downloadable voice model is packaged" || pass "no downloadable voice model packaged"
+grep -qE '(encoder|decoder|joiner)\.int8\.onnx|/model(\.fp32|\.int8)?\.onnx|voices\.bin' <<<"$assets" && fail "a downloadable voice model is packaged" || pass "no downloadable voice model packaged"
 clip=$(unzip -l "$APK" assets/bench/test-clip.s16 | awk 'NR==4{print $1}')
 [ -n "$clip" ] && [ "$clip" -le 200000 ] && pass "benchmark clip ${clip} bytes (<= 200 KB)" || fail "benchmark clip size '$clip'"
-unzip -Z1 "$APK" | grep -qiE '\.(p12|jks|keystore|pass|litertlm|gguf)$' && fail "key or model file inside the APK" || pass "no key or model file inside the APK"
+# (0.5.0: the fast translation engine's Bergamot files too, which the app downloads.)
+entries=$(unzip -Z1 "$APK")
+[ -n "$entries" ] && ! grep -qiE '\.(p12|jks|keystore|pass|litertlm|gguf|spm)$|intgemm|\.s2t\.bin$' <<<"$entries" && pass "no key or model file inside the APK" \
+  || fail "key or model file inside the APK (or no entries)"
 # 0.4.5: Settings › About › Licences. The list, the licence texts and the notices ship (LiteRT's copied from its AARs by
 # :brain's aarNotices task), and Robot's GPL is the repository's LICENSE.
 for a in licenses/components.json licenses/GPL-3.0.txt licenses/Apache-2.0.txt licenses/MPL-2.0.txt licenses/CC-BY-4.0.txt \
@@ -239,15 +293,22 @@ lic=$(unzip -p "$APK" assets/licenses/GPL-3.0.txt | sha256sum | cut -d' ' -f1)
 [ "$lic" = "$(sha256sum "$(dirname "$0")/../../LICENSE" | cut -d' ' -f1)" ] && pass "licenses/GPL-3.0.txt is Robot's LICENSE" || fail "licenses/GPL-3.0.txt differs from LICENSE"
 notice=$(unzip -l "$APK" assets/licenses/notices/litertlm-android-THIRD_PARTY_NOTICE.txt | awk 'NR==4{print $1}')
 [ -n "$notice" ] && [ "$notice" -ge 1000000 ] && pass "LiteRT-LM's notices ${notice} bytes" || fail "LiteRT-LM's notices size '$notice'"
+list=$(unzip -p "$APK" assets/licenses/components.json)
 # 0.4.5: with Robot's llama.cpp library, the Licences list names its parts and their texts ship.
 if [ "$llama" = 1 ]; then
   for a in licenses/MIT-llama.cpp.txt licenses/MIT-nlohmann-json.txt licenses/LLVM-libcxx-LICENSE.txt; do
     has "assets/$a" "$assets" "asset $a (librobot_llama.so)"
   done
-  list=$(unzip -p "$APK" assets/licenses/components.json)
   for id in llama-cpp kleidiai llvm-libcxx nlohmann-json; do
     grep -qF "\"id\": \"$id\"" <<<"$list" && pass "the Licences list names $id (librobot_llama.so)" || fail "the Licences list lacks $id"
   done
 fi
+# 0.6.0: the fast translation engine's parts (librobotmt.so) and the language ID table's data are on the list, with their texts.
+for a in licenses/GPL-2.0-or-later-slimt.txt licenses/BSD-2-Clause-cpuinfo.txt licenses/sentencepiece-LICENSE.txt licenses/CC0-1.0.txt; do
+  has "assets/$a" "$assets" "asset $a"
+done
+for id in slimt ruy cpuinfo sentencepiece-browsermt tatoeba-cc0; do
+  grep -qF "\"id\": \"$id\"" <<<"$list" && pass "the Licences list names $id" || fail "the Licences list lacks $id"
+done
 echo; [ "$fails" -eq 0 ] && echo "ALL CHECKS PASSED" || echo "$fails CHECK(S) FAILED"
 exit $((fails > 0))

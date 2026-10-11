@@ -444,7 +444,11 @@ private fun VoiceModelsCard(snap: Snapshot, a: AppActions) {
         AlertDialog(
             onDismissRequest = { confirmDelete = null },
             title = { Text("Delete “${b.title}”?") },
-            text = { Text("Robot falls back to the stand-in (${if (b == VoiceBundle.STT) "typing only" else "the phone's voice"}) until you download it again (${VoiceModelLogic.size(b.bytes)}).") },
+            text = {
+                Text(if (b == VoiceBundle.SPEAKERS) "Transcripts stop telling speakers apart (every line is “Speaker”) until you download it again " +
+                    "(${VoiceModelLogic.size(b.bytes)}). A voiceprint of yours, if you made one, stays until you delete it in Settings › Conversation."
+                else "Robot falls back to the stand-in (${if (b == VoiceBundle.STT) "typing only" else "the phone's voice"}) until you download it again (${VoiceModelLogic.size(b.bytes)}).")
+            },
             confirmButton = { TextButton(onClick = { confirmDelete = null; a.voiceDelete(b) }) { Text("Delete") } },
             dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
         )
@@ -495,6 +499,8 @@ private fun VoiceSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotSe
             }
             if (stuck.isNotEmpty()) OutlinedButton(onClick = a.voiceReset, modifier = Modifier.heightIn(min = 48.dp)) { Text("Try again") }
         }
+        NavRow(RIcons.Search, "Transcription check", "How well Robot writes down Québec French and English: read sentences, or say anything " +
+            "and fix it; scored as conversations are decoded") { a.openTranscriptionCheck() }
         Text("Test voice speed", style = MaterialTheme.typography.titleSmall)
         Text("Loads the downloaded models and times them on a built-in recording and two fixed sentences (nothing is played or saved).",
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -740,6 +746,11 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
             }
             Text(if (s.claudeActionCards) "Anything Claude asks Robot to do shows a card first." else "Claude's requests follow the levels above and Safety cards.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        SectionCard("Conversation") {
+            NavRow(RIcons.Message, "Conversation", "Transcribing: live words (${if (s.convPartials) "on" else "off"}), the wake word during it, " +
+                "the lock screen, telling people") { a.openPage(Page.ConversationSettings) }
+            NavRow(RIcons.History, "Transcripts", "Read, search, export, share and delete") { a.openPage(Page.Transcripts) }
         }
         PeopleSettingsCard(s, snap, calendars, update, a)
         WeatherSettingsCard(s, snap, update, a)

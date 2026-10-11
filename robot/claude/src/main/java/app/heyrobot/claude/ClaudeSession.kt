@@ -11,6 +11,7 @@ import app.heyrobot.core.ClaudeFailure
 import app.heyrobot.core.ClaudeModel
 import app.heyrobot.core.ClaudeModelCode
 import app.heyrobot.core.ClaudePlan
+import app.heyrobot.core.ClaudePrompt
 import app.heyrobot.core.ClaudeStage
 import app.heyrobot.core.ClaudeUsage
 import app.heyrobot.core.DoneReason
@@ -103,6 +104,11 @@ class ClaudeSession(
     /** 60 s without any stream event (docs/ask-claude.md "Errors"); a thinking block in progress counts as one. */
     private val idleMs: Long = IDLE_MS,
     private val retryDelayMs: Long = 1_000,
+    /**
+     * The system prompt: ClaudePrompt.SYSTEM (spoken answers), or ClaudePrompt.TRANSCRIPT_SYSTEM for a transcript's
+     * summary (0.5.0, docs/conversation-mode.md 7.2: one question, no tools, no search).
+     */
+    private val system: String = ClaudePrompt.SYSTEM,
 ) {
     private val messages = mutableListOf<BetaMessageParam>()
     /** Each message's thinking blocks as they came ([ClaudeHistory.seal]); empty for the user's. */
@@ -334,7 +340,7 @@ class ClaudeSession(
      */
     private suspend fun stream(listener: ClaudeListener): Streamed {
         val params = try {
-            ClaudeRequests.params(model, plan, tools, search, conversation, messages.toList())
+            ClaudeRequests.params(model, plan, tools, search, conversation, messages.toList(), system)
         } catch (t: Exception) {
             RLog.w("claude_request", t, "stage" to ClaudeStage.REQUEST)
             return Streamed.Failure(ClaudeFailure.UNKNOWN, false, ClaudeStage.REQUEST, 0, ClaudeClient.kind(t)).also(::logFailure)

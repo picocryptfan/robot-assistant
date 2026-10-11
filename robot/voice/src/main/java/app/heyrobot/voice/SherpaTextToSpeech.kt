@@ -360,7 +360,7 @@ class SherpaTextToSpeech internal constructor(
                 kitten = OfflineTtsKittenModelConfig(model = "$p/model.fp32.onnx", voices = "$p/voices.bin", tokens = "$p/tokens.txt", dataDir = data),
                 numThreads = THREADS, debug = false, provider = "cpu",
             )
-            VoiceBundle.STT -> throw IllegalArgumentException("not a voice")
+            VoiceBundle.STT, VoiceBundle.SPEAKERS -> throw IllegalArgumentException("not a voice")
         }
         // debug = false above: with it on, sherpa logs the text being spoken.
         return OfflineTts(null, OfflineTtsConfig(model = model, maxNumSentences = 1, silenceScale = 0.2f))

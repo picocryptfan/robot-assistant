@@ -45,6 +45,14 @@ class FilesTest {
         assertFalse(File(dir, "x").exists())
     }
 
+    @Test fun bytesAreWrittenWholeOrNotAtAll() {
+        val f = File(dir, "robot/me.voiceprint")
+        writeAtomicBytes(f, byteArrayOf(1, 2, 3))
+        writeAtomicBytes(f, byteArrayOf(4, 5))
+        assertTrue(f.readBytes().contentEquals(byteArrayOf(4, 5)))
+        assertTrue(f.parentFile!!.listFiles()!!.none { it.name.endsWith(".tmp") })
+    }
+
     @Test fun hexIsLowerCase() {
         assertEquals("00ff10", hex(byteArrayOf(0, -1, 16)))
     }

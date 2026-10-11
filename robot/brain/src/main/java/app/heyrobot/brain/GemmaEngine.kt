@@ -10,6 +10,7 @@ import app.heyrobot.core.BrainModel
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainPolicy
 import app.heyrobot.core.BrainProtocol
+import app.heyrobot.core.BrainScheduler
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.EngineErrors
@@ -24,6 +25,8 @@ import app.heyrobot.core.LoadFailure
 import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelFiles
 import app.heyrobot.core.ModelFormat
+import app.heyrobot.core.OneShotRules
+import app.heyrobot.core.Priority
 import app.heyrobot.core.Prompt
 import app.heyrobot.core.PromptRole
 import app.heyrobot.core.PromptTurn
@@ -73,6 +76,13 @@ import java.util.concurrent.CancellationException
 // alternating, every budget from its context. 0.4.5: one of :brain's two engines (Engine.kt); the process's one slot is
 // EngineSlot, shared with LlamaEngine. Your own Qwen3 or MiniCPM 5 file is told what Settings › Model › "Let the model
 // think first" says (core Thinking), and its thinking is kept out of the reply.
+//
+// 0.5.0 (docs/conversation-mode.md 4.2): requests wait their turn in a priority queue (core BrainScheduler: the panel,
+// then the interpreter, then transcript translations, then summaries; the panel's newest question still wins over its
+// older ones), and REQ_ONE_SHOT runs one message in a conversation of its own (core OneShotRules: its own system prompt,
+// no history, no tools, constrained decoding off, thinking off), streamed, then closed. Still one LiteRT conversation at
+// a time: a one-shot closes the assistant's, which is rebuilt from the app's history at its next question; a one-shot
+// never touches the tool level, is never sent again, and a call it writes is dropped.
 
 class GemmaEngine(private val ctx: Context, private val handler: Handler) : BrainEngine, SlotHolder {
     private var engine: Engine? = null
@@ -83,8 +93,14 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
     private var toolMode = ToolMode.TOOLS_CONSTRAINED
     private val convs = HashMap<String, Live>()
     private var running: Run? = null
-    /** A request that arrived while another was being cancelled: it starts when that one ends. */
-    private var queued: (() -> Unit)? = null
+    /** Every request waits its turn here (0.5.0): one runs at a time, in priority order. */
+    private val scheduler = BrainScheduler({ SystemClock.elapsedRealtime() })
+    /** The lapse of a hold for tool results, posted on the work thread. */
+    private var holdCheck: Runnable? = null
+    /** Conversations a one-shot closed while they waited for tool results (after the hold lapsed): their results end that reply. */
+    private val evicted = HashSet<String>()
+    /** An unload is under way: nothing starts meanwhile (a request that would is refused as not loaded). */
+    private var unloading = false
     /**
      * An engine unloaded while LiteRT was still decoding into one of its conversations: never closed under it.
      * Closed when that run's native callback arrives (or left to the process's end).
@@ -117,7 +133,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
     private class Attempt(val sends: Int, val historyBudget: Int?, val historyTurns: Int)
 
     private inner class Run(
-        val reqId: Int,
+        /** The scheduler's id for the request this run serves (a step down or a shorter rebuild keeps it). */
+        val job: Int,
         val convId: String,
         val live: Live,
         val sink: BrainEngine.Sink,
@@ -127,6 +144,10 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val attempt: Attempt,
         /** Takes the thinking out of the reply (your own Qwen3 or MiniCPM file); null: the text passes as it is. */
         val filter: ThinkFilter? = null,
+        /** A one-shot request: its own conversation (never in [convs]), closed when it ends. */
+        val oneShot: Boolean = false,
+        /** The reply's cap in chunks. */
+        val maxChunks: Int = Limits.MAX_REPLY_CHUNKS,
     ) {
         val tSend = SystemClock.elapsedRealtime()
         var tFirst = -1L
@@ -136,6 +157,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         var stopReason: DoneReason? = null
         var thoughtSent = false
         var ended = false
+        /** Stopped to give way to a request with a higher priority: no terminal event, it starts over later. */
+        var giveWay = false
         /** Set from LiteRT's own thread when it called onDone/onError: the native side is finished with the conversation. */
         @Volatile var nativeEnded = false
     }
@@ -155,7 +178,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         cacheDir = cacheDir?.path,
     )
 
-    override fun status() = BrainMsg.Status(loaded = engine != null, vision = vision, constrained = mode() == ToolMode.TOOLS_CONSTRAINED, busy = running != null,
+    override fun status() = BrainMsg.Status(loaded = engine != null, vision = vision, constrained = mode() == ToolMode.TOOLS_CONSTRAINED,
+        busy = running != null || scheduler.running != null,
         model = loaded?.model?.takeIf { engine != null }, backend = loaded?.backend?.takeIf { engine != null },
         maxTokens = loaded?.maxTokens?.takeIf { engine != null } ?: 0, format = ModelFormat.LITERT_LM.takeIf { engine != null })
 
@@ -323,19 +347,30 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
 
     override fun unload(why: String) {
         val e = engine ?: return
-        queued = null
+        unloading = true
         val r = running
-        if (r != null) {
-            if (r.stopReason == null) r.stopReason = DoneReason.CANCELLED
-            try { r.live.conv.cancelProcess() } catch (_: Exception) {}
-            // Never close a conversation LiteRT is still decoding into: wait (bounded) for its callback.
-            var waited = 0
-            while (!r.nativeEnded && waited < UNLOAD_WAIT_MS) { Thread.sleep(50); waited += 50 }
-            finish(r, DoneReason.CANCELLED)
+        try {
+            // Requests waiting for the model end now (not loaded); the running one ends as cancelled, never queued again.
+            scheduler.dropWaiting()
+            if (r != null) {
+                r.giveWay = false
+                if (r.stopReason == null) r.stopReason = DoneReason.CANCELLED
+                try { r.live.conv.cancelProcess() } catch (_: Exception) {}
+                // Never close a conversation LiteRT is still decoding into: wait (bounded) for its callback.
+                var waited = 0
+                while (!r.nativeEnded && waited < UNLOAD_WAIT_MS) { Thread.sleep(50); waited += 50 }
+                finish(r, DoneReason.CANCELLED)
+            }
+            scheduler.dropWaiting()
+        } finally {
+            unloading = false
         }
-        val all = convs.values.map { it.conv }
+        // A one-shot's conversation is in no map: it goes (or is parked) with the others.
+        val all = convs.values.map { it.conv } + listOfNotNull(r?.takeIf { it.oneShot && it.live.conv.isAlive }?.live?.conv)
         convs.clear()
+        evicted.clear()
         engine = null
+        syncHold()
         // Parked or closed, it no longer answers; the marker goes once its memory does (closeParked), so the app still
         // keeps its file meanwhile.
         if (r != null && !r.nativeEnded) {
@@ -439,27 +474,109 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
     }
 
     override fun closeConv(convId: String) {
+        evicted.remove(convId)
         val r = running
-        if (r != null && r.convId == convId) {
+        if (r != null && !r.oneShot && r.convId == convId) {
             try { r.live.conv.cancelProcess() } catch (_: Exception) {}
             r.live.dirty = true
+            r.giveWay = false
             r.stopReason = DoneReason.CANCELLED
             return
         }
         convs.remove(convId)?.let { closeQuietly(it.conv) }
+        syncHold()
     }
+
+    // ------------------------------------------------------------------ the queue
+
+    /** One request in the scheduler: [begin] sends it (with its id), the rest tells its client. */
+    private inner class Work(override val priority: Priority, private val sink: BrainEngine.Sink, private val begin: (Int) -> Unit) : BrainScheduler.Work {
+        /** The scheduler's id for it, once it starts. */
+        private var id = -1
+
+        override fun start(id: Int) {
+            this.id = id
+            try {
+                begin(id)
+            } catch (t: Throwable) {
+                // A failure before the send: the request ends here, the next one starts.
+                RLog.w("brain_request_start", t)
+                if (running?.job == id) running = null
+                fail(id, sink, BrainError.ENGINE, t.javaClass.simpleName)
+            }
+        }
+
+        override fun stop(giveWay: Boolean) {
+            val r = running?.takeIf { it.job == id } ?: return
+            // LiteRT already ended this reply by itself (its callback is on its way to this thread): it ends as it is, with
+            // its terminal event, and is never run again (the scheduler's ended with terminalSent). Stopping it here would
+            // throw a whole reply (or an error) away and start it over.
+            if (giveWay && r.nativeEnded && r.stopReason == null) return
+            if (r.stopReason == null) {
+                r.stopReason = DoneReason.CANCELLED
+                r.giveWay = giveWay
+                try { r.live.conv.cancelProcess() } catch (_: Exception) {}
+            } else if (!giveWay) {
+                // Giving way already, and now cancelled by its client: it ends as cancelled.
+                r.giveWay = false
+            }
+        }
+
+        override fun queued(position: Int) = sink.emit(BrainProtocol.EV_QUEUED, BrainMsg.Queued(position))
+
+        override fun dropped(unloaded: Boolean) {
+            if (unloaded) sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NOT_LOADED, null))
+            else sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(DoneReason.CANCELLED, -1, -1, -1.0, false, false))
+        }
+    }
+
+    private fun submit(key: BrainScheduler.Key, priority: Priority, sink: BrainEngine.Sink, begin: (Int) -> Unit) {
+        scheduler.submit(key, Work(priority, sink, begin))
+    }
+
+    /** Request [job] ends with an error before (or instead of) a reply; the next one starts. */
+    private fun fail(job: Int, sink: BrainEngine.Sink, code: BrainError, detail: String? = null) {
+        sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(code, detail))
+        syncHold()
+        scheduler.ended(job)
+    }
+
+    /** Not loaded, or being unloaded: nothing may start on it. */
+    private fun usable(): Boolean = engine != null && !unloading
+
+    /**
+     * The panel's conversation waits for its tool results: only panel requests start, until it stops waiting or the
+     * hold lapses (BrainScheduler.TOOL_HOLD_MS), checked by a timer on this thread.
+     */
+    private fun syncHold() {
+        scheduler.holdForTools(convs.values.any { it.awaitingTool && !it.dirty })
+        holdCheck?.let(handler::removeCallbacks)
+        holdCheck = null
+        val at = scheduler.holdEndsAt() ?: return
+        val r = Runnable {
+            holdCheck = null
+            scheduler.expire()
+        }
+        holdCheck = r
+        handler.postDelayed(r, (at - SystemClock.elapsedRealtime()).coerceAtLeast(0) + 50)
+    }
+
+    override fun cancel(key: BrainScheduler.Key) = scheduler.cancel(key)
 
     // ------------------------------------------------------------------ generate
 
-    override fun generate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink) {
+    /** The panel's question: it waits its turn (the panel's newest question cancels its older ones). */
+    override fun generate(key: BrainScheduler.Key, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink) {
         if (engine == null) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NOT_LOADED, null))
         if (req.hasImage && image == null) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.BAD_REQUEST, "image missing"))
         if (image != null && !vision) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NO_VISION, null))
-        if (afterRunning { generate(reqId, req, image, sink) }) return
-        startGenerate(reqId, req, image, sink, Attempt(sends = 1, historyBudget = null, historyTurns = 0))
+        submit(key, Priority.PANEL, sink) { job -> startGenerate(job, req, image, sink, Attempt(sends = 1, historyBudget = null, historyTurns = 0)) }
     }
 
-    private fun startGenerate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink, attempt: Attempt) {
+    private fun startGenerate(job: Int, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink, attempt: Attempt) {
+        if (!usable()) return fail(job, sink, BrainError.NOT_LOADED)
+        if (image != null && !vision) return fail(job, sink, BrainError.NO_VISION)
+        evicted.remove(req.convId)
         val max = maxTokens()
         // Chat only (a short-context model): no tools, whatever the request lists.
         val tools = BrainPolicy.toolsFor(mode(), req.toolNames)
@@ -472,7 +589,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // The app cuts the new turn to fit (Prompt.fitTurn); a turn that still can't fit is never sent anyway.
         if (newTurn > ContextWindow.newTurnLimit(fixed, max)) {
             RLog.i("brain_too_long", "newTurn" to newTurn, "fixed" to fixed, "maxTokens" to max)
-            return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.TOO_LONG, null))
+            return fail(job, sink, BrainError.TOO_LONG)
         }
         var live = convs[req.convId]
         val reuse = attempt.historyBudget == null && BrainPolicy.canReuse(
@@ -488,6 +605,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             // running reply to end) are closed before a new one is built.
             convs.values.forEach { closeQuietly(it.conv) }
             convs.clear()
+            syncHold()
             var tries = 0
             var rebuilds = 0
             while (true) {
@@ -505,9 +623,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
                         is BrainPolicy.Next.Shorten -> budget = next.historyBudget
                         is BrainPolicy.Next.Fail -> {
                             RLog.w("brain_conversation", ex, "code" to next.code)
-                            return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(next.code, ex.javaClass.simpleName))
+                            return fail(job, sink, next.code, ex.javaClass.simpleName)
                         }
-                        is BrainPolicy.Next.Stop -> return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.ENGINE, ex.javaClass.simpleName))
+                        is BrainPolicy.Next.Stop -> return fail(job, sink, BrainError.ENGINE, ex.javaClass.simpleName)
                     }
                     continue
                 }
@@ -536,9 +654,9 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val resend: (BrainPolicy.Next) -> Unit = { next ->
             l.dirty = true
             val nextBudget = (next as? BrainPolicy.Next.Shorten)?.historyBudget ?: attempt.historyBudget
-            startGenerate(reqId, req, image, sink, Attempt(attempt.sends + 1, nextBudget, turns))
+            startGenerate(job, req, image, sink, Attempt(attempt.sends + 1, nextBudget, turns))
         }
-        val run = Run(reqId, req.convId, l, sink, rebuilt, resend, Attempt(attempt.sends, budget, turns), if (plan.stripThinking) ThinkFilter() else null)
+        val run = Run(job, req.convId, l, sink, rebuilt, resend, Attempt(attempt.sends, budget, turns), if (plan.stripThinking) ThinkFilter() else null)
         val parts = buildList {
             image?.let { add(Content.ImageBytes(it)) }
             add(Content.Text(req.text))
@@ -546,12 +664,26 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         send(run) { cb -> l.conv.sendMessageAsync(Message.user(Contents.of(parts)), cb) }
     }
 
-    override fun toolResult(reqId: Int, req: BrainMsg.ToolResult, sink: BrainEngine.Sink) {
+    /** The panel's tool results: a panel request too (it may start while the hold for them keeps one-shots waiting). */
+    override fun toolResult(key: BrainScheduler.Key, req: BrainMsg.ToolResult, sink: BrainEngine.Sink) {
         if (engine == null) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NOT_LOADED, null))
-        if (afterRunning { toolResult(reqId, req, sink) }) return
+        submit(key, Priority.PANEL, sink) { job -> startToolResult(job, req, sink) }
+    }
+
+    private fun startToolResult(job: Int, req: BrainMsg.ToolResult, sink: BrainEngine.Sink) {
+        if (!usable()) return fail(job, sink, BrainError.NOT_LOADED)
+        if (evicted.remove(req.convId)) {
+            // A one-shot closed this conversation after the hold lapsed: the actions stand and the reply ends here, as
+            // when the results leave no room; the conversation is rebuilt from the history next time.
+            RLog.i("brain_tool_round_evicted")
+            sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(DoneReason.CONTEXT_FULL, -1, -1, -1.0, false, false))
+            syncHold()
+            return scheduler.ended(job)
+        }
         val l = convs[req.convId]
-        if (l == null || !l.awaitingTool || l.dirty) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.BAD_REQUEST, "no tool call pending"))
+        if (l == null || !l.awaitingTool || l.dirty) return fail(job, sink, BrainError.BAD_REQUEST, "no tool call pending")
         l.awaitingTool = false
+        syncHold()
         // Room for the results and a reply after them? If not, the actions stand and the reply ends here; the
         // conversation is rebuilt (shorter) from the history next time.
         val responses = req.results.sumOf { (n, r) -> TokenEstimate.text(n) + TokenEstimate.text(Json.obj(r).toString()) } + TokenEstimate.TURN_OVERHEAD
@@ -560,30 +692,64 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             convs.remove(req.convId)
             closeQuietly(l.conv)
             RLog.i("brain_tool_round_full", "tokens" to live, "responses" to responses)
-            return sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(DoneReason.CONTEXT_FULL, live, -1, -1.0, false, l.mode == ToolMode.TEXT_CALLS))
+            sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(DoneReason.CONTEXT_FULL, live, -1, -1.0, false, l.mode == ToolMode.TEXT_CALLS))
+            syncHold()
+            return scheduler.ended(job)
         }
-        val run = Run(reqId, req.convId, l, sink, rebuilt = false, resend = null, attempt = Attempt(1, null, 0),
+        val run = Run(job, req.convId, l, sink, rebuilt = false, resend = null, attempt = Attempt(1, null, 0),
             filter = if (thinking(false).stripThinking) ThinkFilter() else null)
         val parts = req.results.map { (name, response) -> Content.ToolResponse(name, response) }
         send(run) { cb -> l.conv.sendMessageAsync(Message.tool(Contents.of(parts)), cb) }
     }
 
-    /** If a reply is running, cancels it and queues [next] for when it ends (the newest request wins). */
-    private fun afterRunning(next: () -> Unit): Boolean {
-        val r = running ?: return false
-        if (r.stopReason == null) {
-            r.stopReason = DoneReason.CANCELLED
-            try { r.live.conv.cancelProcess() } catch (_: Exception) {}
-        }
-        queued = next
-        return true
+    // ------------------------------------------------------------------ one-shot
+
+    /**
+     * REQ_ONE_SHOT (0.5.0): a translation or a summary step at its [BrainMsg.OneShot.priority]. Any model may serve it,
+     * a short-context one too (it is chat only by nature); its budget is the loaded model's context.
+     */
+    override fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, sink: BrainEngine.Sink) {
+        if (engine == null) return sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(BrainError.NOT_LOADED, null))
+        submit(key, req.priority, sink) { job -> startOneShot(job, req, sink) }
     }
 
-    override fun cancel(target: Int) {
-        val r = running ?: return
-        if (r.reqId != target || r.stopReason != null) return
-        r.stopReason = DoneReason.CANCELLED
-        try { r.live.conv.cancelProcess() } catch (_: Exception) {}
+    private fun startOneShot(job: Int, req: BrainMsg.OneShot, sink: BrainEngine.Sink) {
+        if (!usable()) return fail(job, sink, BrainError.NOT_LOADED)
+        val max = maxTokens()
+        if (!OneShotRules.fits(req, max)) {
+            RLog.i("brain_one_shot_too_long", "kind" to req.kind, "tokens" to OneShotRules.tokens(req), "maxTokens" to max)
+            return fail(job, sink, BrainError.TOO_LONG)
+        }
+        // One LiteRT conversation at a time: the assistant's (idle: this request waited for its reply to end) is closed
+        // and rebuilt from the app's own history at its next question. One that still waited for tool results (the hold
+        // lapsed) is remembered, so its results end that reply instead of failing.
+        for ((id, l) in convs) {
+            if (l.awaitingTool && !l.dirty) evicted += id
+            closeQuietly(l.conv)
+        }
+        convs.clear()
+        syncHold()
+        val spec = OneShotRules.conversation(req)
+        // Thinking off (your own Qwen3 or MiniCPM file is told so), and a <think> block it writes anyway is never the answer.
+        val plan = thinking(false)
+        val conv = try {
+            newConversation(spec.system, spec.history, spec.mode, spec.tools, plan)
+        } catch (ex: Exception) {
+            val code = (OneShotRules.afterError(ex.message, hadOutput = false) as? BrainPolicy.Next.Fail)?.code ?: BrainError.ENGINE
+            RLog.w("brain_one_shot", ex, "kind" to req.kind, "code" to code)
+            return fail(job, sink, code, ex.javaClass.simpleName)
+        }
+        // Never put in [convs]: no panel request can reuse it, and it is closed when this run ends.
+        val live = Live(conv, 0, spec.mode, spec.system, emptyList())
+        val run = Run(job, ONE_SHOT_CONV, live, sink, rebuilt = true, resend = null, attempt = Attempt(1, null, 0),
+            filter = if (plan.stripThinking) ThinkFilter() else null, oneShot = true, maxChunks = OneShotRules.maxChunks(req, max))
+        RLog.i("brain_one_shot", "kind" to req.kind, "priority" to req.priority, "tokens" to OneShotRules.tokens(req), "maxChunks" to run.maxChunks)
+        send(run) { cb -> conv.sendMessageAsync(Message.user(Contents.of(listOf(Content.Text(req.text)))), cb) }
+    }
+
+    /** A one-shot's conversation goes once LiteRT is done with it (an unload parks it otherwise). */
+    private fun closeOneShot(run: Run) {
+        if (run.oneShot && run.nativeEnded) closeQuietly(run.live.conv)
     }
 
     private fun tokenCount(c: Conversation, unknown: Int = Int.MAX_VALUE / 2): Int = try { c.getTokenCount() } catch (_: Exception) { unknown }
@@ -622,7 +788,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val raw = m.contents.contents.filterIsInstance<Content.Text>().joinToString("") { it.text }
         // Your own file's <think> block, when LiteRT-LM leaves it in the text: never shown, never spoken.
         val text = run.filter?.feed(raw) ?: raw
-        if (!run.thoughtSent && (!m.channels["thought"].isNullOrEmpty() || run.filter?.thought == true)) {
+        // A one-shot's thinking (it is asked not to) is never a sign to its client: only its text counts.
+        if (!run.oneShot && !run.thoughtSent && (!m.channels["thought"].isNullOrEmpty() || run.filter?.thought == true)) {
             run.thoughtSent = true
             run.sink.emit(BrainProtocol.EV_CHUNK, BrainMsg.Chunk("", thought = true))
         }
@@ -633,7 +800,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         run.sink.emit(BrainProtocol.EV_CHUNK, BrainMsg.Chunk(text))
         val stop = when {
             garbage(text, run.reply) -> DoneReason.GARBAGE
-            run.chunks >= Limits.MAX_REPLY_CHUNKS -> DoneReason.LENGTH
+            run.chunks >= run.maxChunks -> DoneReason.LENGTH
             else -> null
         }
         if (stop != null) {
@@ -645,7 +812,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
     private fun onEnd(run: Run, error: Throwable?) {
         if (run.ended) return
         // What the thinking filter still held back (the end of a reply shorter than a tag).
-        if (run.stopReason == null && run.chunks < Limits.MAX_REPLY_CHUNKS) run.filter?.flush()?.takeIf { it.isNotEmpty() }?.let { rest ->
+        if (run.stopReason == null && run.chunks < run.maxChunks) run.filter?.flush()?.takeIf { it.isNotEmpty() }?.let { rest ->
             run.reply.append(rest)
             run.sink.emit(BrainProtocol.EV_CHUNK, BrainMsg.Chunk(rest))
         }
@@ -665,6 +832,19 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         run.live.dirty = true
         val msg = error.message
         val hadOutput = run.chunks > 0 || run.calls.isNotEmpty()
+        if (run.oneShot) {
+            // Never sent again, never a step down: what streamed is kept when a full context cut it, else an error.
+            when (val next = OneShotRules.afterError(msg, hadOutput)) {
+                is BrainPolicy.Next.Stop -> finish(run, next.reason)
+                else -> {
+                    RLog.w("brain_one_shot_send", error, "chunks" to run.chunks)
+                    running = null
+                    closeOneShot(run)
+                    fail(run.job, run.sink, (next as? BrainPolicy.Next.Fail)?.code ?: BrainError.ENGINE, error.javaClass.simpleName)
+                }
+            }
+            return
+        }
         val next = if (run.resend != null) {
             BrainPolicy.afterSendError(msg, run.live.mode, hadOutput, run.attempt.historyTurns, run.attempt.historyBudget ?: 0, run.attempt.sends)
         } else {
@@ -694,8 +874,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
                     RLog.i("brain_tool_mode_down", "to" to toolMode, "at" to RLog.Code("reply"))
                 }
                 running = null
-                run.sink.emit(BrainProtocol.EV_ERROR, BrainMsg.Error(next.code, error.javaClass.simpleName))
-                runQueued()
+                fail(run.job, run.sink, next.code, error.javaClass.simpleName)
             }
         }
     }
@@ -708,16 +887,19 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         val bench = if (idle) try { run.live.conv.getBenchmarkInfo() } catch (_: Throwable) { null } else null
         val tokens = if (idle && run.live.conv.isAlive) tokenCount(run.live.conv) else -1
         val ttft = if (run.tFirst >= 0) run.tFirst - run.tSend else -1
-        run.sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(reason, tokens, ttft, bench?.lastDecodeTokensPerSecond ?: -1.0, run.rebuilt, run.live.mode == ToolMode.TEXT_CALLS))
+        closeOneShot(run)
         RLog.i("brain_reply", "reason" to reason, "chunks" to run.chunks, "ttftMs" to ttft, "tokens" to tokens,
-            "tps" to (bench?.lastDecodeTokensPerSecond ?: -1.0), "rebuilt" to run.rebuilt, "calls" to run.calls.size, "mode" to run.live.mode)
-        runQueued()
-    }
-
-    private fun runQueued() {
-        val q = queued ?: return
-        queued = null
-        q()
+            "tps" to (bench?.lastDecodeTokensPerSecond ?: -1.0), "rebuilt" to run.rebuilt, "calls" to run.calls.size, "mode" to run.live.mode,
+            "oneShot" to run.oneShot, "gaveWay" to (run.giveWay && reason == DoneReason.CANCELLED))
+        if (run.giveWay && reason == DoneReason.CANCELLED) {
+            // It gave way: no terminal event; the scheduler queues it again (EV_QUEUED) and it starts over later.
+            syncHold()
+            return scheduler.ended(run.job, terminalSent = false)
+        }
+        run.sink.emit(BrainProtocol.EV_DONE, BrainMsg.Done(reason, tokens, ttft, bench?.lastDecodeTokensPerSecond ?: -1.0, run.rebuilt, run.live.mode == ToolMode.TEXT_CALLS))
+        // A reply that ended asking for tools holds one-shots back until its results come (or the hold lapses).
+        syncHold()
+        scheduler.ended(run.job)
     }
 
     /**
@@ -760,6 +942,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         private const val STOPPING = "The model is still stopping. Try again in a moment."
         /** Marks a conversation made with thinking on through the template (no system prompt change shows it). */
         private const val THINK_KEY = "\u0000think"
+        /** A one-shot's run has no conversation id of the app's. */
+        private const val ONE_SHOT_CONV = ""
     }
 
     /** Broken output (as the lab detects it): pad/unused tokens, or one character 32+ times in a row. */

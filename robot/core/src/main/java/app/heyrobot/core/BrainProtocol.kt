@@ -23,6 +23,14 @@ object BrainProtocol {
     const val REQ_TOOL_RESULT = 5
     const val REQ_CANCEL = 6
     const val REQ_CLOSE_CONV = 7
+    /**
+     * 0.5.0 (docs/conversation-mode.md 4.2): one message to a fresh conversation with no tools and constrained decoding
+     * off, streamed, then closed: a translation or a summary step ([BrainMsg.OneShot]), at its own priority in :brain's
+     * queue ([BrainScheduler]). Its events: EV_QUEUED while it waits (and 0 as it starts), EV_CHUNK, then EV_DONE or
+     * EV_ERROR. EV_QUEUED after chunks means it gave way to a request with a higher priority and will start over: the
+     * client drops what came so far.
+     */
+    const val REQ_ONE_SHOT = 8
 
     // Events (brain -> client).
     const val EV_STATUS = 101
@@ -32,9 +40,15 @@ object BrainProtocol {
     const val EV_DONE = 105
     const val EV_ERROR = 106
     const val EV_UNLOADED = 107
+    /**
+     * 0.5.0: the request waits behind others, at [BrainMsg.Queued.position] (the client may cancel it, REQ_CANCEL), or
+     * starts after waiting (position 0). Not terminal.
+     */
+    const val EV_QUEUED = 108
 
-    val REQUESTS = setOf(REQ_STATUS, REQ_LOAD, REQ_UNLOAD, REQ_GENERATE, REQ_TOOL_RESULT, REQ_CANCEL, REQ_CLOSE_CONV)
-    val EVENTS = setOf(EV_STATUS, EV_LOADED, EV_CHUNK, EV_TOOL_CALLS, EV_DONE, EV_ERROR, EV_UNLOADED)
+    /** The requests :brain answers (anything else gets EV_ERROR BAD_REQUEST). */
+    val REQUESTS = setOf(REQ_STATUS, REQ_LOAD, REQ_UNLOAD, REQ_GENERATE, REQ_TOOL_RESULT, REQ_CANCEL, REQ_CLOSE_CONV, REQ_ONE_SHOT)
+    val EVENTS = setOf(EV_STATUS, EV_LOADED, EV_CHUNK, EV_TOOL_CALLS, EV_DONE, EV_ERROR, EV_UNLOADED, EV_QUEUED)
     /** Events that end a request: the client stops listening for its id. */
     val TERMINAL = setOf(EV_STATUS, EV_LOADED, EV_DONE, EV_ERROR, EV_UNLOADED)
 }
@@ -56,6 +70,15 @@ enum class DoneReason {
      */
     CONTEXT_FULL,
 }
+
+/**
+ * Who is waiting on a request to the model, first served first (docs/conversation-mode.md 4.2): the panel, then the
+ * interpreter's turn, then a transcript line's better translation, then a summary step.
+ */
+enum class Priority { PANEL, INTERPRETER, TRANSCRIPT, SUMMARY }
+
+/** What a one-shot request is for. */
+enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE }
 
 enum class BrainError {
     NOT_LOADED, NO_VISION, BAD_REQUEST, ENGINE, BUSY,
@@ -132,6 +155,15 @@ sealed class BrainMsg {
         override fun toJson() = JSONObject().put("convId", convId)
     }
 
+    /**
+     * One message, no tools, no history (REQ_ONE_SHOT): [system] one of Prompt's fixed conversation-mode prompts, [text]
+     * the line or the part to work on, [maxChunks] the reply's cap.
+     */
+    data class OneShot(val kind: OneShotKind, val priority: Priority, val system: String, val text: String, val maxChunks: Int) : BrainMsg() {
+        override fun toJson() = JSONObject().put("kind", kind.name).put("priority", priority.name).put("system", system).put("text", text)
+            .put("maxChunks", maxChunks)
+    }
+
     data object Empty : BrainMsg() {
         override fun toJson() = JSONObject()
     }
@@ -189,6 +221,11 @@ sealed class BrainMsg {
         override fun toJson() = JSONObject().apply { put("code", code.name); detail?.let { put("detail", it) } }
     }
 
+    /** EV_QUEUED: the request waits, [position] 1 when it is next. */
+    data class Queued(val position: Int) : BrainMsg() {
+        override fun toJson() = JSONObject().put("position", position)
+    }
+
     companion object {
         /** Decodes the payload of a message with code [what]; null when the code or the JSON is not understood. */
         fun decode(what: Int, json: String?): BrainMsg? = try {
@@ -226,6 +263,8 @@ sealed class BrainMsg {
                 }
                 BrainProtocol.REQ_CANCEL -> Cancel(o.getInt("target"))
                 BrainProtocol.REQ_CLOSE_CONV -> CloseConv(o.getString("convId"))
+                BrainProtocol.REQ_ONE_SHOT -> OneShot(enumValueOf(o.getString("kind")), enumValueOf(o.getString("priority")), o.getString("system"),
+                    o.getString("text"), o.optInt("maxChunks", Limits.MAX_REPLY_CHUNKS).coerceIn(1, Limits.MAX_REPLY_CHUNKS))
                 BrainProtocol.REQ_STATUS, BrainProtocol.REQ_UNLOAD, BrainProtocol.EV_UNLOADED -> Empty
                 BrainProtocol.EV_STATUS -> Status(o.optBoolean("loaded"), o.optBoolean("vision"), o.optBoolean("constrained"), o.optBoolean("busy"),
                     BrainModel.byId(o.optString("model")), ModelBackend.of(o.optString("backend")), o.optInt("maxTokens", 0).coerceAtLeast(0),
@@ -244,6 +283,7 @@ sealed class BrainMsg {
                 BrainProtocol.EV_DONE -> Done(enumValueOf(o.getString("reason")), o.optInt("tokens"), o.optLong("ttftMs", -1), o.optDouble("decodeTps", -1.0),
                     o.optBoolean("rebuilt"), o.optBoolean("textCalls", false))
                 BrainProtocol.EV_ERROR -> Error(enumOr(o.optString("code"), BrainError.ENGINE), o.optString("detail").takeIf { o.has("detail") })
+                BrainProtocol.EV_QUEUED -> Queued(o.getInt("position"))
                 else -> null
             }
         } catch (_: Exception) { null }

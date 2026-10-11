@@ -73,7 +73,12 @@ import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
+import app.heyrobot.sys.Transcripts
+import app.heyrobot.sys.VoiceprintFiles
+import app.heyrobot.core.ConvEntry
 import app.heyrobot.sys.VoiceModelStore
+import app.heyrobot.sys.MtModelStore
+import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.settings.SettingsNav
 import app.heyrobot.ui.theme.RobotTheme
@@ -117,7 +122,19 @@ class MainActivity : ComponentActivity() {
     private fun routeOf(i: Intent?): String? = when {
         i == null -> null
         i.component?.className == AppPages.NOTES_ALIAS -> AppPages.NOTES
-        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.MODEL }
+        // 0.5.0: a long press on the "Transcribe" tile.
+        i.action == "android.service.quicksettings.action.QS_TILE_PREFERENCES" -> AppPages.CONVERSATION_SETTINGS
+        // 0.5.0: the Transcripts library, or one transcript (the transcript screen's "Open", the "Transcripts" shortcut).
+        i.getStringExtra(AppPages.EXTRA) == AppPages.TRANSCRIPTS ->
+            i.getStringExtra(AppPages.EXTRA_TRANSCRIPT)?.takeIf { app.heyrobot.core.TranscriptIds.valid(it) }?.let { id ->
+                // A summary's [14:03] link: that line in view (phase 5.6).
+                val line = i.getIntExtra(AppPages.EXTRA_LINE, -1)
+                "${AppPages.TRANSCRIPTS}:$id" + if (line >= 0) ":$line" else ""
+            } ?: AppPages.TRANSCRIPTS
+        // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
+        // Model from a chat-only model's answer to an action (0.4.3).
+        else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
+            it == AppPages.MODEL }
     }
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
@@ -151,6 +168,10 @@ sealed class Page {
     data class Licence(val id: String, val file: String? = null) : Page()
     /** A Settings page by route (ui/settings/SettingsNav.kt; 0.4.x: "display"). */
     data class Settings(val route: String) : Page()
+    /** 0.5.0: the Transcripts library, one transcript (and the line a search found), Settings › Conversation. */
+    data object Transcripts : Page()
+    data class Transcript(val id: String, val line: Int? = null) : Page()
+    data object ConversationSettings : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -171,6 +192,9 @@ sealed class Page {
                     Licences -> "licences"
                     is Licence -> "licence:${p.id}|${p.file.orEmpty()}"
                     is Settings -> "settings:${p.route}"
+                    Transcripts -> "transcripts"
+                    is Transcript -> "transcript:${p.id}:${p.line ?: -1}"
+                    ConversationSettings -> "convsettings"
                 }
             },
             restore = { v ->
@@ -188,6 +212,9 @@ sealed class Page {
                     v == "licences" -> Licences
                     v.startsWith("licence:") -> v.removePrefix("licence:").split('|', limit = 2).let { Licence(it[0], it.getOrNull(1)?.ifEmpty { null }) }
                     v.startsWith("settings:") -> Settings(v.removePrefix("settings:"))
+                    v == "transcripts" -> Transcripts
+                    v.startsWith("transcript:") -> v.split(':').let { Transcript(it[1], it.getOrNull(2)?.toIntOrNull()?.takeIf { n -> n >= 0 }) }
+                    v == "convsettings" -> ConversationSettings
                     else -> null
                 }
             },
@@ -219,6 +246,10 @@ data class Snapshot(
     val bargeTest: BargeTestResult? = null,
     /** The panel's answer to the nearest place's first-use card (Settings › Actions shows it when newer than its own). */
     val nearestAnswer: NearestAnswer? = null,
+    /** 0.5.0: the fast translation engine's files (Settings › Conversation). */
+    val mt: MtModelStore.Snap? = null,
+    /** 0.5.0: a "me" voiceprint is saved (only that: it is encrypted, and read by the voice process only). */
+    val voiceprint: Boolean = false,
 ) {
     fun voice(b: VoiceBundle): VoiceModelStore.Snap? = voice.firstOrNull { it.bundle == b }
 
@@ -247,6 +278,7 @@ fun RobotAppUi(activity: MainActivity) {
     var historyTick by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf<String?>(null) }
     var voiceInstalling by remember { mutableStateOf<VoiceBundle?>(null) }
+    var mtInstalling by remember { mutableStateOf(false) }
     /** The model the file picker is choosing a file for. */
     var importTarget by rememberSaveable { mutableStateOf(BrainModel.FAST.id) }
     var notes by remember { mutableStateOf<List<Note>>(emptyList()) }
@@ -282,7 +314,14 @@ fun RobotAppUi(activity: MainActivity) {
                     bench = VoiceBench.fromJson(readOrNull(Paths.voiceBench(ctx))),
                     bargeTest = readBargeTest(ctx),
                     nearestAnswer = NearestAnswers.load(ctx),
+                    mt = MtModelStore.snapshot(ctx, MtBundle.FR_EN),
+                    voiceprint = VoiceprintFiles.saved(ctx),
                 )
+            }
+            // The meVoiceprint setting is only a flag, kept in step with the file (made or deleted in the voice process).
+            if (snap.voiceprint != settings.meVoiceprint) {
+                settings = settings.copy(meVoiceprint = snap.voiceprint)
+                SettingsStore.save(ctx, settings)
             }
             // A finished voice download is checked and installed right away, one bundle at a time.
             snap.voice.firstOrNull { it.status == ModelStatus.UNVERIFIED }?.let { v ->
@@ -297,6 +336,18 @@ fun RobotAppUi(activity: MainActivity) {
                         }
                     }, "robot-voice-install").start()
                 }
+            }
+            // The fast translation engine's files too, the same way.
+            if (snap.mt?.status == ModelStatus.UNVERIFIED && !mtInstalling) {
+                mtInstalling = true
+                val app = ctx.applicationContext
+                Thread({
+                    val ok = MtModelStore.install(app, MtBundle.FR_EN)
+                    scope.launch {
+                        mtInstalling = false
+                        say(if (ok) "The fast translation engine is ready." else "The fast translation engine couldn't be installed. See Settings › Conversation.")
+                    }
+                }, "robot-mt-install").start()
             }
             // A finished download (or import) is checked right away: a model is never loaded unchecked.
             snap.models.firstOrNull { it.status == ModelStatus.UNVERIFIED }?.let { u ->
@@ -332,10 +383,14 @@ fun RobotAppUi(activity: MainActivity) {
     val route by activity.route
     // An open note editor saves when it closes (its onDispose), so switching pages here never loses text.
     LaunchedEffect(route) {
-        when (route) {
-            AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
-            AppPages.PERMISSIONS -> page = Page.Setup(people = true)
-            AppPages.MODEL -> { tab = Tab.MODEL; page = null }
+        val r = route
+        when {
+            r == AppPages.NOTES -> { tab = Tab.NOTES; page = null; fromNotesIcon = true }
+            r == AppPages.PERMISSIONS -> page = Page.Setup(people = true)
+            r == AppPages.TRANSCRIPTS -> page = Page.Transcripts
+            r != null && r.startsWith(AppPages.TRANSCRIPTS + ":") -> r.split(':').let { p -> page = Page.Transcript(p[1], p.getOrNull(2)?.toIntOrNull()) }
+            r == AppPages.CONVERSATION_SETTINGS -> page = Page.ConversationSettings
+            r == AppPages.MODEL -> { tab = Tab.MODEL; page = null }
         }
         activity.route.value = null
     }
@@ -487,6 +542,35 @@ fun RobotAppUi(activity: MainActivity) {
             mediaPermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
         },
+        transcribe = {
+            // By name: the screen runs in the voice process, which starts the session.
+            try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name)) } catch (_: Exception) { say("Couldn't open the transcript screen.") }
+        },
+        interpret = {
+            try { ctx.startActivity(Transcripts.startIntent(ctx, ConvEntry.APP.name, app.heyrobot.core.ConvMode.INTERPRET.name)) } catch (_: Exception) {
+                say("Couldn't open the interpreter.")
+            }
+        },
+        openTranscriptionCheck = {
+            try { ctx.startActivity(Transcripts.checkIntent(ctx)) } catch (_: Exception) { say("Couldn't open the Transcription check.") }
+        },
+        mtDownload = { MtModelStore.startDownload(ctx, MtBundle.FR_EN)?.let(::say) },
+        mtCancel = { MtModelStore.cancelDownload(ctx, MtBundle.FR_EN) },
+        mtDelete = { MtModelStore.delete(ctx, MtBundle.FR_EN); say("The fast translation engine's files were deleted.") },
+        openVoiceprint = {
+            // By name: the screen runs in the voice process, which alone holds the speaker model and the voiceprint's key.
+            try {
+                ctx.startActivity(Intent().setClassName(ctx.packageName, "app.heyrobot.assistant.conversation.VoiceprintActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: Exception) { say("Couldn't open Your voice.") }
+        },
+        deleteVoiceprint = {
+            // Off the main thread (the file and the Keystore); a running session stops comparing with it at once.
+            scope.launch(Dispatchers.IO) {
+                VoiceprintFiles.delete(ctx)
+                Cmd.send(ctx, Cmd.VOICEPRINT_DELETED)
+                withContext(Dispatchers.Main) { update(settings.copy(meVoiceprint = false)); say("Your voiceprint was deleted.") }
+            }
+        },
         openUsageAccess = {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
             if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
@@ -526,6 +610,9 @@ fun RobotAppUi(activity: MainActivity) {
         is Page.Licence -> LicenceScreen(p.id, p.file, onOpen = { page = it },
             onBack = { page = if (p.file != null && p.id != ROBOT_LICENCE) Page.Licence(p.id) else Page.Licences })
         is Page.Settings -> SettingsNav(p.route, settings, snap, calendars, ::updateSettings, actions, snackbar, onBack = { page = null })
+        Page.Transcripts -> TranscriptsScreen(snackbar, onOpen = { id, line -> page = Page.Transcript(id, line) }, onBack = { page = null })
+        is Page.Transcript -> TranscriptScreen(p.id, p.line, snackbar, onBack = { page = Page.Transcripts })
+        Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = { page = null })
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
@@ -609,4 +696,16 @@ class AppActions(
     val openUsageAccess: () -> Unit = {},
     /** 0.4.0: photos and videos (Android offers all of them or the ones you pick). */
     val askMedia: () -> Unit = {},
+    /** 0.5.0: the transcript screen (voice process), to start transcribing; Settings › Voice › Transcription check. */
+    val transcribe: () -> Unit = {},
+    /** 0.5.0: the interpreter (face to face, spoken translations). */
+    val interpret: () -> Unit = {},
+    val openTranscriptionCheck: () -> Unit = {},
+    /** 0.5.0: the fast translation engine's files (Settings › Conversation › Fast translation). */
+    val mtDownload: () -> Unit = {},
+    val mtCancel: () -> Unit = {},
+    val mtDelete: () -> Unit = {},
+    /** 0.5.0, phase 5.3: "Your voice" (voice process), and deleting the voiceprint (file and key). */
+    val openVoiceprint: () -> Unit = {},
+    val deleteVoiceprint: () -> Unit = {},
 )

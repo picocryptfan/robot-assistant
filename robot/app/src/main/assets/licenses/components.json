@@ -20,6 +20,10 @@
    "text": "licenses/GPL-3.0.txt",
    "url": "https://www.gnu.org/licenses/gpl-3.0.html"
   },
+  "GPL-2.0-or-later": {
+   "name": "GNU General Public License v2.0 or later",
+   "url": "https://www.gnu.org/licenses/old-licenses/gpl-2.0.html"
+  },
   "Apache-2.0": {
    "name": "Apache License 2.0",
    "text": "licenses/Apache-2.0.txt",
@@ -46,6 +50,11 @@
    "name": "Creative Commons Attribution 4.0 International",
    "text": "licenses/CC-BY-4.0.txt",
    "url": "https://creativecommons.org/licenses/by/4.0/"
+  },
+  "CC0-1.0": {
+   "name": "Creative Commons Zero v1.0 Universal",
+   "text": "licenses/CC0-1.0.txt",
+   "url": "https://creativecommons.org/publicdomain/zero/1.0/"
   },
   "ODbL-1.0": {
    "name": "Open Data Commons Open Database License 1.0",
@@ -256,7 +265,7 @@
    "maven": [
     "com.squareup.okhttp3:*"
    ],
-   "note": "The Anthropic SDK's HTTP client."
+   "note": "The HTTP client of the Anthropic SDK and, 0.6.0, of the helpers (any company's chat API, or your own server)."
   },
   {
    "id": "okio",
@@ -477,7 +486,86 @@
    "match": [
     "libc++"
    ],
-   "note": "The C++ standard library (libc++ and libc++abi), linked statically into Robot's llama.cpp library (librobot_llama.so) by the Android NDK. Its text: libc++'s and libc++abi's licences as the NDK states them."
+   "note": "The C++ standard library (libc++ and libc++abi), linked statically into Robot's llama.cpp library (librobot_llama.so) and its fast translation engine (librobotmt.so) by the Android NDK. Its text: libc++'s and libc++abi's licences as the NDK states them."
+  },
+  {
+   "id": "slimt",
+   "name": "slimt",
+   "version": "DavidVentura/slimt at 2beb403a",
+   "licence": "GPL-2.0-or-later",
+   "copyright": "Copyright (C) 2023 slimt Authors",
+   "url": "https://github.com/DavidVentura/slimt",
+   "where": "app",
+   "text": "licenses/GPL-2.0-or-later-slimt.txt",
+   "match": [
+    "Bergamot",
+    "librobotmt"
+   ],
+   "note": "Runs Mozilla's Bergamot translation models: Robot's fast translation engine (librobotmt.so, in the :mt process only), built by tools/build_robotmt.sh from the pinned commit with Robot's own wrapper. GPL-2.0 or later, used here under GPL-3.0; it holds MPL-2.0 code derived from browsermt/bergamot-translator and browsermt/marian-dev and Apache-2.0 code from browsermt/ssplit. Its source: the commit above, which tools/build_robotmt.sh fetches and checks, and Robot's mt/src/main/cpp."
+  },
+  {
+   "id": "ruy",
+   "name": "ruy",
+   "version": "google/ruy at c04e5e52",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2019 Google LLC",
+   "url": "https://github.com/google/ruy",
+   "where": "app",
+   "note": "The matrix multiplication library slimt uses, compiled into the fast translation engine (librobotmt.so); it picks its NEON kernels at run time."
+  },
+  {
+   "id": "cpuinfo",
+   "name": "cpuinfo",
+   "version": "pytorch/cpuinfo at 082deffc",
+   "licence": "BSD-2-Clause",
+   "copyright": "Copyright (c) 2019 Google LLC; Copyright (c) 2017-2018 Facebook Inc.; Copyright (C) 2012-2017 Georgia Institute of Technology",
+   "url": "https://github.com/pytorch/cpuinfo",
+   "where": "app",
+   "text": "licenses/BSD-2-Clause-cpuinfo.txt",
+   "note": "Tells ruy what the processor can do; compiled into the fast translation engine (librobotmt.so)."
+  },
+  {
+   "id": "sentencepiece-browsermt",
+   "name": "SentencePiece (in the fast translation engine)",
+   "version": "browsermt/sentencepiece at 8cbdf137",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright Google LLC",
+   "url": "https://github.com/browsermt/sentencepiece",
+   "where": "app",
+   "text": "licenses/sentencepiece-LICENSE.txt",
+   "note": "Splits text into the translation models' word pieces; compiled into the fast translation engine (librobotmt.so). Its text holds the licences of the parts it bundles: protobuf-lite, Abseil and Darts-clone (each its own entry here) and esaxx (MIT), which is only for training models and isn't built into Robot."
+  },
+  {
+   "id": "protobuf-lite",
+   "name": "Protocol Buffers lite (in SentencePiece)",
+   "version": "as bundled in browsermt/sentencepiece at 8cbdf137",
+   "licence": "BSD-3-Clause",
+   "copyright": "Copyright 2008 Google Inc.",
+   "url": "https://github.com/protocolbuffers/protobuf",
+   "where": "app",
+   "text": "licenses/BSD-3-Clause-protobuf-lite.txt",
+   "note": "Reads SentencePiece's model files; compiled into the fast translation engine (librobotmt.so)."
+  },
+  {
+   "id": "abseil-in-sentencepiece",
+   "name": "Abseil (in SentencePiece)",
+   "version": "as bundled in browsermt/sentencepiece at 8cbdf137",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2017 The Abseil Authors",
+   "url": "https://github.com/abseil/abseil-cpp",
+   "where": "app",
+   "note": "The small part of Abseil SentencePiece bundles (strings and flags); compiled into the fast translation engine (librobotmt.so)."
+  },
+  {
+   "id": "darts-clone",
+   "name": "Darts-clone (in SentencePiece)",
+   "version": "as bundled in browsermt/sentencepiece at 8cbdf137",
+   "licence": "BSD-3-Clause",
+   "copyright": "Copyright (c) 2008-2011, Susumu Yata",
+   "url": "https://github.com/s-yata/darts-clone",
+   "where": "app",
+   "text": "licenses/BSD-3-Clause-darts-clone.txt",
+   "note": "A compact dictionary SentencePiece's text normalizer uses; compiled into the fast translation engine (librobotmt.so)."
   },
   {
    "id": "gson",
@@ -537,6 +625,20 @@
    "url": "https://github.com/google/material-design-icons",
    "where": "app",
    "note": "The icons' path data in Robot's Icons.kt: Material Symbols Outlined (weight 400, grade 0, unfilled, 24 px), written into the source by tools/symbols.py. The robot glyph of the Classic look is Robot's own."
+  },
+  {
+   "id": "tatoeba-cc0",
+   "name": "Tatoeba sentences (CC0 export)",
+   "version": "sentences_CC0, downloaded 2026-10-11",
+   "licence": "CC0-1.0",
+   "copyright": "Tatoeba's contributors, released under CC0 1.0",
+   "url": "https://tatoeba.org/en/downloads",
+   "where": "app",
+   "match": [
+    "Language ID table",
+    "Tatoeba"
+   ],
+   "note": "Conversation mode's language ID table (core assets, langid/fr-en.tsv) is word and letter statistics made by tools/make_langid.py from the French and English sentences of Tatoeba's CC0 export only (no sentence is in Robot). Its contributors dedicated those sentences to the public domain (CC0 1.0); Tatoeba's other exports, mostly CC BY 2.0 FR, were not used."
   },
   {
    "id": "annotations",
@@ -636,6 +738,32 @@
    "url": "https://huggingface.co/KittenML/kitten-tts-nano-0.8",
    "where": "download",
    "note": "The small, fast voice."
+  },
+  {
+   "id": "titanet-small",
+   "name": "TitaNet-S speaker model",
+   "version": "nemo_en_titanet_small (csukuangfj, 0743f301)",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright NVIDIA Corporation",
+   "url": "https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/titanet_small",
+   "where": "download",
+   "match": [
+    "TitaNet"
+   ],
+   "note": "Settings › Conversation › Tell speakers apart: labels a transcript's lines by voice, and your own voice (Your voice). “TitaNet-S” by NVIDIA, under the NeMo toolkit's licence (Apache-2.0), as its model card says. Changed: exported to ONNX by the sherpa-onnx project; Robot uses that export unchanged."
+  },
+  {
+   "id": "bergamot-fr-en",
+   "name": "Bergamot French–English models",
+   "version": "Mozilla base-memory fr-en and en-fr, models.json of 2026-10-10",
+   "licence": "MPL-2.0",
+   "copyright": "Mozilla (Firefox Translations)",
+   "url": "https://github.com/mozilla/firefox-translations-models",
+   "where": "download",
+   "match": [
+    "Bergamot fr-en"
+   ],
+   "note": "Settings › Conversation › Fast translation: the models the fast translation engine runs, downloaded from Mozilla's Firefox Translations storage and checked file by file. MPL-2.0 is the licence of Mozilla's translation model repositories; no notice in the storage itself says so of these files."
   },
   {
    "id": "openstreetmap",

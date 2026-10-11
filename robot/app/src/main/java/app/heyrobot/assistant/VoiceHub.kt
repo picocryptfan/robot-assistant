@@ -36,6 +36,7 @@ import app.heyrobot.core.WakeDrop
 import app.heyrobot.core.WakePhrases
 import app.heyrobot.core.enumOr
 import app.heyrobot.core.writeAtomic
+import app.heyrobot.assistant.conversation.ConversationSession
 import app.heyrobot.sys.ClaudeSpendStore
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Cmd
@@ -145,8 +146,23 @@ object VoiceHub {
             it.setWakeWords(WakePhrases.echoWords(settings.wakePhrases))
             it.setListener(::onSpeakingChanged)
         }
-        stt = VoiceEngines.speechToText(app) { listener }.also { it.configure(settings.livePartials) }
+        // With no listener of its own running, a question during a conversation takes the session's capture.
+        stt = VoiceEngines.speechToText(app) { listener ?: ConversationSession.frames() }.also { it.configure(settings.livePartials) }
         worker.post { buildWakeLines() }
+        // 0.5.0: a conversation this process died under is closed, and Resume offered (never resumed by itself).
+        ConversationSession.recoverOnce(app)
+    }
+
+    /** Robot's voice is playing: conversation mode counts it as silence (and 300 ms after). */
+    val robotSpeaking: Boolean get() = speaking
+
+    /**
+     * A conversation runs ([off] true) without "Hey robot works during a conversation": the wake phrases sleep, "stop"
+     * while Robot talks still works. False when it ends: the wake word is back.
+     */
+    fun conversationWake(off: Boolean) {
+        inputs.wakeOff = off
+        RLog.i("conv_wake", "off" to off)
     }
 
     // ------------------------------------------------------------------ Robot's voice
@@ -215,7 +231,8 @@ object VoiceHub {
             level != ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL) return
         val s = stt.trim()
         val t = tts.trim()
-        RLog.i("voice_trim", "level" to level, "stt" to s, "tts" to t)
+        val k = VoiceEngines.trimSpeakers()
+        RLog.i("voice_trim", "level" to level, "stt" to s, "tts" to t, "spk" to k)
     }
 
     /** The assistant service is ready (from boot, after the first unlock, or after being chosen). */
@@ -311,6 +328,8 @@ object VoiceHub {
         val ok = l.start(why)
         if (!ok) shortRuns++
         listener = if (ok) l else null
+        // A conversation takes its audio from this listener now.
+        if (ok) ConversationSession.audioChanged()
         updateCapture()
         writeStatus(ok, if (ok) null else "The microphone couldn't be opened (another app may be using it).")
         RLog.i("listen_apply", "ok" to ok)
@@ -318,8 +337,11 @@ object VoiceHub {
 
     @Synchronized
     fun stopListening(why: ListenWhy) {
+        val had = listener != null
         listener?.stop(why)
         listener = null
+        // A conversation that used it opens a capture of its own.
+        if (had) ConversationSession.audioChanged()
     }
 
     /**
@@ -447,6 +469,8 @@ object VoiceHub {
                 stt.configure(settings.livePartials)
                 // New wake phrases (or interrupt sensitivity) go to the running listener: no restart.
                 if (old.wakePhrases != settings.wakePhrases || old.interrupt != settings.interrupt) worker.post { buildWakeLines() }
+                // "Hey robot works during a conversation" changed while one runs.
+                if (ConversationSession.running) conversationWake(!settings.convWakeDuring)
                 applyListening(ListenWhy.SETTINGS)
                 updateCapture()
                 // Settings › Model (0.4.1): a new choice lets go of the model in memory now; any save retries a failed one.
@@ -461,6 +485,9 @@ object VoiceHub {
             }, "robot-claude-key").apply { isDaemon = true; start() }
             Cmd.MEDIA_REMOVED -> PanelController.forgetKeptMedia()
             Cmd.CONVERSATIONS_DELETED -> PanelController.forgetDeleted(i.getStringExtra(Cmd.EXTRA_ID))
+            // 0.5.0: a session recording a deleted transcript stops without writing it back; a Resume offer for one goes.
+            Cmd.TRANSCRIPTS_DELETED -> ConversationSession.transcriptsDeleted(app, i.getStringExtra(Cmd.EXTRA_ID))
+            Cmd.VOICEPRINT_DELETED -> ConversationSession.voiceprintDeleted()
             Cmd.SPEAK_TEST -> {
                 stopVoice(TtsStop.TEST)
                 tts.speak("Hi, I'm Robot. This is how I sound.")

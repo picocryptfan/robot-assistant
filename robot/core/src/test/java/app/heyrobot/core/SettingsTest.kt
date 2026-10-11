@@ -1,6 +1,7 @@
 package app.heyrobot.core
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsTest {
@@ -148,6 +149,122 @@ class SettingsTest {
         assertEquals(false, RobotSettings.fromJson("""{"schema":4}""").learnFromCheogram)
     }
 
+    @Test fun conversationDefaultsMatchThePlan() {
+        val d = RobotSettings()
+        assertEquals(LangPair.FR_EN, d.convPairChoice)
+        assertEquals(false, d.convTranslate)
+        assertEquals(null, d.convSpeak)
+        assertEquals(true, d.convPartials)
+        assertEquals(6, d.convMaxSpeakers)
+        assertEquals(false, d.convWakeDuring)
+        assertEquals(true, d.convStartLocked)
+        assertEquals(false, d.convKeepAudio)
+        assertEquals(null, d.convSummaryLang)
+        assertEquals(true, d.convAutoOfferHelper)
+        assertEquals(false, d.meVoiceprint)
+        // Each face's defaults: the Interpreter translates, speaks and tells two people apart.
+        assertEquals(true, ConversationSettings.translate(d, ConvMode.INTERPRET))
+        assertEquals(false, ConversationSettings.translate(d, ConvMode.TRANSCRIBE))
+        assertEquals(true, ConversationSettings.speak(d, ConvMode.INTERPRET))
+        assertEquals(false, ConversationSettings.speak(d, ConvMode.TRANSCRIBE))
+        assertEquals(false, ConversationSettings.speak(d.copy(convSpeak = false), ConvMode.INTERPRET))
+        assertEquals(2, ConversationSettings.maxSpeakers(d, ConvMode.INTERPRET))
+        assertEquals(6, ConversationSettings.maxSpeakers(d, ConvMode.TRANSCRIBE))
+        assertEquals("fr", ConversationSettings.summaryLang(d, java.util.Locale.CANADA_FRENCH))
+        assertEquals("en", ConversationSettings.summaryLang(d.copy(convSummaryLang = "en"), java.util.Locale.CANADA_FRENCH))
+        assertEquals(false, ConversationSettings.partials(d, screenOn = false, warm = false))
+        assertEquals(false, ConversationSettings.partials(d, screenOn = true, warm = true))
+    }
+
+    @Test fun conversationSettingsRoundTripAndMigrate() {
+        val s = RobotSettings(convTranslate = true, convSpeak = false, convPartials = false, convMaxSpeakers = 3, convWakeDuring = true,
+            convStartLocked = false, convKeepAudio = true, convSummaryLang = "fr", convAutoOfferHelper = false, meVoiceprint = true)
+        assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        assertEquals(13, RobotSettings.SCHEMA)
+        assertEquals(13, s.toJson().getInt("schema"))
+        // A 0.4.0-era file (schema 5) gets the defaults, except that live words in a conversation follow live words for questions.
+        val old = RobotSettings.fromJson("""{"schema":5,"livePartials":false,"speechRate":1.2}""")
+        assertEquals(false, old.convPartials)
+        assertEquals(RobotSettings().copy(livePartials = false, speechRate = 1.2f, convPartials = false, safetyNotice = true), old)
+        assertEquals(true, RobotSettings.fromJson("""{"schema":5}""").convPartials)
+        // A 0.4.0 file (schema 6) too, and 0.4.4's (7) and 0.4.5's (12); from schema 13 on, the two are separate choices.
+        for (n in listOf(6, 7, 12)) assertEquals("$n", false, RobotSettings.fromJson("""{"schema":$n,"livePartials":false}""").convPartials)
+        assertEquals(true, RobotSettings.fromJson("""{"schema":13,"livePartials":false}""").convPartials)
+        // Out of range or unknown values fall back.
+        val bad = RobotSettings.fromJson("""{"schema":6,"convPair":"fr-xx","convMaxSpeakers":40,"convSummaryLang":"de"}""")
+        assertEquals(LangPair.FR_EN.id, bad.convPair)
+        assertEquals(6, bad.convMaxSpeakers)
+        assertEquals(null, bad.convSummaryLang)
+        assertEquals(2, RobotSettings.fromJson("""{"convMaxSpeakers":1}""").convMaxSpeakers)
+    }
+
+    /** 5.2 adds "Show the reminder again" without a schema of its own (conversation mode's, 13): absent reads as never. */
+    @Test fun theConsentReminderSettingNeedsNoSchemaOfItsOwn() {
+        assertEquals(0L, RobotSettings().convReminderAt)
+        val s = RobotSettings(convReminderAt = 1_760_000_000_000L)
+        assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        assertEquals(13, s.toJson().getInt("schema"))
+        // Not written while unset, so a file from 5.1 and one from today read the same.
+        assertTrue(!RobotSettings().toJson().has("convReminderAt"))
+        assertEquals(0L, RobotSettings.fromJson("""{"schema":13,"convWakeDuring":true}""").convReminderAt)
+        assertEquals(0L, RobotSettings.fromJson("""{"schema":5}""").convReminderAt)
+        assertEquals(0L, RobotSettings.fromJson("""{"schema":13,"convReminderAt":-5}""").convReminderAt)
+        assertEquals(RobotSettings().copy(convWakeDuring = true), RobotSettings.fromJson("""{"schema":13,"convWakeDuring":true}"""))
+    }
+
+    /**
+     * 5.3 adds "Tell speakers apart" without a schema of its own: absent reads as "on once the speaker model is
+     * downloaded"; the voiceprint setting stays a flag.
+     */
+    @Test fun speakerLabelsNeedNoSchemaOfTheirOwn() {
+        assertEquals(null, RobotSettings().convSpeakers)
+        for (v in listOf(true, false)) {
+            val s = RobotSettings(convSpeakers = v)
+            assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+            assertEquals(13, s.toJson().getInt("schema"))
+        }
+        // Not written while unset, so a file from 5.2 and one from today read the same.
+        assertTrue(!RobotSettings().toJson().has("convSpeakers"))
+        assertEquals(null, RobotSettings.fromJson("""{"schema":13,"convMaxSpeakers":4}""").convSpeakers)
+        assertEquals(null, RobotSettings.fromJson("""{"schema":5}""").convSpeakers)
+        assertEquals(RobotSettings().copy(convMaxSpeakers = 4), RobotSettings.fromJson("""{"schema":13,"convMaxSpeakers":4}"""))
+        assertEquals(false, RobotSettings.fromJson("""{"schema":13,"convSpeakers":false}""").convSpeakers)
+        // On once downloaded unless you turned it off; the download is offered unless you did.
+        val d = RobotSettings()
+        assertEquals(true, ConversationSettings.speakers(d, modelReady = true))
+        assertEquals(false, ConversationSettings.speakers(d, modelReady = false))
+        assertEquals(false, ConversationSettings.speakers(d.copy(convSpeakers = false), modelReady = true))
+        assertEquals(true, ConversationSettings.offerSpeakerModel(d, modelReady = false))
+        assertEquals(true, ConversationSettings.offerSpeakerModel(d.copy(convSpeakers = true), modelReady = false))
+        assertEquals(false, ConversationSettings.offerSpeakerModel(d.copy(convSpeakers = false), modelReady = false))
+        assertEquals(false, ConversationSettings.offerSpeakerModel(d, modelReady = true))
+        // The voiceprint is never in settings: only whether there is one.
+        val withMe = RobotSettings(meVoiceprint = true).toJson()
+        assertEquals(true, withMe.getBoolean("meVoiceprint"))
+        assertTrue(withMe.keys().asSequence().none { it.contains("voiceprint", ignoreCase = true) && it != "meVoiceprint" })
+        // The Interpreter tells two people apart; the transcript up to the setting.
+        assertEquals(2, ConversationSettings.maxSpeakers(d.copy(convMaxSpeakers = 6), ConvMode.INTERPRET))
+        assertEquals(4, ConversationSettings.maxSpeakers(d.copy(convMaxSpeakers = 4), ConvMode.TRANSCRIBE))
+    }
+
+    @Test fun theConsentReminderShowsUntilTickedAfterItWasAskedFor() {
+        val d = RobotSettings()
+        assertTrue(ConsentRecord.needed(null, d))
+        assertTrue(!ConsentRecord.needed(ConsentRecord(5_000), d))
+        // "Show the reminder again" after the tick: needed; a newer tick: not.
+        assertTrue(ConsentRecord.needed(ConsentRecord(5_000), d.copy(convReminderAt = 6_000)))
+        assertTrue(!ConsentRecord.needed(ConsentRecord(7_000), d.copy(convReminderAt = 6_000)))
+        assertEquals(ConsentRecord(7_000), ConsentRecord.fromJson(ConsentRecord(7_000).toJson()))
+        assertEquals(null, ConsentRecord.fromJson("""{"at":0}"""))
+        assertEquals(null, ConsentRecord.fromJson("nope"))
+        assertTrue(ConsentRecord.TEXT.startsWith("Before you transcribe or translate a conversation, tell the people you're talking with."))
+        // The lock screen: start only when allowed; a locked screen shows nothing older.
+        assertTrue(ConversationLock.mayStart(locked = true, d))
+        assertTrue(!ConversationLock.mayStart(locked = true, d.copy(convStartLocked = false)))
+        assertTrue(ConversationLock.mayStart(locked = false, d.copy(convStartLocked = false)))
+        assertTrue(!ConversationLock.showsEarlier(locked = true))
+    }
+
     /**
      * Settings › Safety & privacy (schema 6): the switches default to today's behaviour, except "Safety cards", whose new
      * default ("When you didn't ask for it") the person asked for, older files included.
@@ -164,7 +281,7 @@ class SettingsTest {
         assertEquals(false, d.voiceYesPersonal)
         assertEquals(true, d.voiceCards)
         assertEquals(false, RobotSettings.fromJson(d.copy(voiceCards = false).toJson().toString()).voiceCards)
-        assertEquals(12, RobotSettings.SCHEMA)
+        assertEquals(13, RobotSettings.SCHEMA)
         // A 0.3 or early 0.4 file: every rule as it was, and the new Safety cards default.
         for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", "{}")) {
             val o = RobotSettings.fromJson(old)
@@ -232,12 +349,11 @@ class SettingsTest {
     }
 
     /**
-     * Schema 12 (0.4.5, the compliance work; 8, 9 and 11 belong to other branches): the nearest place's search server. Older files read as
-     * OpenStreetMap's server, the only one they knew; a server you chose round-trips in its checked form; anything
-     * unusable in a file reads as OpenStreetMap's rather than failing.
+     * Schema 12 (0.4.5, the compliance work): the nearest place's search server. Older files read as OpenStreetMap's
+     * server, the only one they knew; a server you chose round-trips in its checked form; anything unusable in a file reads
+     * as OpenStreetMap's rather than failing.
      */
     @Test fun searchServerSchema12MigrationAndRoundTrip() {
-        assertEquals(12, RobotSettings.SCHEMA)
         assertEquals("", RobotSettings().nearestServer)
         assertEquals(NearbyServer.DEFAULT, RobotSettings().nearbyServer)
         // The default isn't written, so a later default (should OpenStreetMap ask) follows for everyone who didn't choose.
@@ -245,7 +361,7 @@ class SettingsTest {
         for (old in listOf("""{"schema":7,"brainModel":"e4b_cpu","nearestPlace":"ALWAYS"}""", """{"schema":6}""", """{"schema":3}""", "{}")) {
             val o = RobotSettings.fromJson(old)
             assertEquals(old, NearbyServer.DEFAULT, o.nearbyServer)
-            assertEquals(old, 12, o.toJson().getInt("schema"))
+            assertEquals(old, 13, o.toJson().getInt("schema"))
         }
         // A schema 7 file keeps its other choices through the migration.
         val seven = RobotSettings.fromJson("""{"schema":7,"brainModel":"e4b_cpu","nearestPlace":"ALWAYS","nearestPlaceAt":5}""")
@@ -285,7 +401,7 @@ class SettingsTest {
 
     /**
      * Settings › Model › "Let the model think first" (schema 10, 0.4.5): off by default and for every older file (0.4.1's
-     * schema 7, and 8 and 9 of the other branches, which never had it, even if one said so); a file of schema 10 keeps
+     * schema 7, and the unreleased 8 and 9, which never had it, even if one said so); a file of schema 10 or later keeps
      * what it says, and the rest of an older file is kept.
      */
     @Test fun thinkingSwitchDefaultsMigrationAndRoundTrip() {
@@ -304,77 +420,166 @@ class SettingsTest {
         assertEquals(false, RobotSettings.fromJson("""{"schema":10,"modelThinks":false}""").modelThinks)
         assertEquals(false, RobotSettings.fromJson("""{"schema":10,"modelThinks":"maybe"}""").modelThinks)
         assertEquals(true, RobotSettings.fromJson("""{"schema":12,"modelThinks":true}""").modelThinks)
+        assertEquals(true, RobotSettings.fromJson("""{"schema":13,"modelThinks":true}""").modelThinks)
         val on = v041.copy(modelThinks = true)
         assertEquals(on, RobotSettings.fromJson(on.toJson().toString()))
         assertEquals(true, RobotSettings.fromJson(on.toJson().toString()).modelThinks)
     }
 
+    // ------------------------------------------------------------------ released files, migrated to 13 (0.6.0)
+
+    /** Every choice 0.4.4 and 0.4.5 could save, each away from its default (the 0.4.0 file has all but the model). */
+    private val chosen044 = RobotSettings(
+        wakeWord = false, wakeOnlyWhileCharging = true, speakReplies = SpeakReplies.ALWAYS, speechRate = 1.25f,
+        voice = VoiceChoice.KITTEN.id, livePartials = false, directAnswers = false, keepModelMinutes = 15, saveHistory = false,
+        approvals = RobotSettings.DEFAULT_APPROVALS + (ToolName.SEND_TEXT to Approval.AUTO) + (ToolName.MAPS_SEARCH to Approval.OFF) +
+            (ToolName.FREE_MEMORY to Approval.OFF),
+        textApp = TextApp.CHEOGRAM, smsGateway = "sms.example.org", phoneRegion = "FR", emailApp = EmailApp.PROTON,
+        eventCalendar = 7, eventMinutes = 30, rememberPicks = false, learnFromCheogram = true,
+        wakePhrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(3, "robot", WakeSensitivity.LOW, enabled = false)),
+        bargeIn = BargeIn.ALWAYS, interrupt = InterruptSensitivity.HIGH, playback = Playback.CALL, stopKey = StopKey.EITHER,
+        claudeEnabled = false, claudeRoute = ClaudeRoute.API, claudeModel = ClaudeModel.SONNET.id, claudeEffort = ClaudeEffortSetting.HIGH,
+        claudeSearch = false, claudeLocked = true, claudeVoice = "bf_emma", claudeShowCost = false, claudeHelp = Escalation.AUTO,
+        claudeBudgetCents = 200, weatherHome = WeatherPlace("Lyon", 45.76, 4.84),
+        safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
+        lockedTools = setOf(ToolName.SET_TIMER, ToolName.FLASHLIGHT), personalToHelpers = true, voiceYesPersonal = true,
+        keepMedia = true, voiceCards = false, nearestOnline = NearestOnline.ALWAYS, nearestOnlineAt = 1_760_000_000_000,
+        safetyNotice = true, brainModel = BrainModel.OWN.id,
+        // Conversation mode (schema 13) is new to these files: its defaults, but live words in a conversation follow
+        // live words for questions, which these files turned off.
+        convPartials = false,
+    )
+
+    /** Every field 0.4.0's RobotSettings had (schema 6), as its toJson wrote them (the approvals of every tool, Ask Claude's too). */
+    private val v040 = """{"schema":6,"wakeWord":false,"wakeOnlyWhileCharging":true,"speakReplies":"ALWAYS","speechRate":1.25,""" +
+        """"voice":"kitten_expr_voice_5_f","livePartials":false,"directAnswers":false,"keepModelMinutes":15,"saveHistory":false,""" +
+        """"approvals":{"set_timer":"AUTO","set_alarm":"AUTO","open_app":"AUTO","maps_search":"OFF","maps_navigate":"AUTO",""" +
+        """"flashlight":"AUTO","send_text":"AUTO","draft_email":"ASK","lookup_contact":"AUTO","add_note":"AUTO","find_notes":"AUTO",""" +
+        """"add_event":"ASK","read_calendar":"AUTO","weather":"AUTO","phone_status":"AUTO","free_memory":"OFF","free_storage":"ASK",""" +
+        """"ask_claude":"ASK"},"textApp":"CHEOGRAM","smsGateway":"sms.example.org","phoneRegion":"FR","emailApp":"PROTON",""" +
+        """"eventCalendar":7,"eventMinutes":30,"rememberPicks":false,"learnFromCheogram":true,""" +
+        """"wakePhrases":[{"id":1,"text":"hey robot","sensitivity":"MEDIUM","enabled":true},""" +
+        """{"id":3,"text":"robot","sensitivity":"LOW","enabled":false}],"bargeIn":"ALWAYS","interrupt":"HIGH","playback":"CALL",""" +
+        """"stopKey":"EITHER","claudeEnabled":false,"claudeRoute":"API","claudeModel":"claude-sonnet-5-5","claudeEffort":"HIGH",""" +
+        """"claudeSearch":false,"claudeLocked":true,"claudeVoice":"bf_emma","claudeShowCost":false,"claudeHelp":"AUTO",""" +
+        """"claudeBudgetCents":200,"weatherHome":{"name":"Lyon","lat":45.76,"lon":4.84},"safetyCards":"AFTER_READING",""" +
+        """"claudeActionCards":false,"whoCards":false,"learnedCards":false,"deleteCards":false,"lockedTools":["set_timer","flashlight"],""" +
+        """"personalToHelpers":true,"voiceYesPersonal":true,"keepMedia":true,"voiceCards":false,"nearestPlace":"ALWAYS",""" +
+        """"nearestPlaceAt":1760000000000,"safetyNotice":true}"""
+
+    /** Every field 0.4.1 to 0.4.4 wrote (schema 7): 0.4.0's and the model you chose. */
+    private val v044 = v040.replace(""""schema":6""", """"schema":7""").removeSuffix("}") + ""","brainModel":"own"}"""
+
+    /** Every field 0.4.5 writes (schema 12): 0.4.4's, the thinking switch, the search server and the terms you confirmed. */
+    private val v045 = v044.replace(""""schema":7""", """"schema":12""").removeSuffix("}") +
+        ""","modelThinks":true,"nearestServer":"https://nominatim.example.org","confirmedTerms":{"${ModelTerms.UNCENSORED.id}":1760000000001}}"""
+
+    /** The conversation mode keys schema 13 adds (the ones written while unset: the rest only once chosen). */
+    private val conversationKeys = setOf("convPair", "convTranslate", "convPartials", "convMaxSpeakers", "convWakeDuring", "convStartLocked",
+        "convKeepAudio", "convAutoOfferHelper", "meVoiceprint")
+
     /**
-     * Updating to 0.4.5: a settings file as 0.4.4 wrote it (schema 7), every choice away from its default, reads with every
-     * choice kept, the thinking switch off (schema 10) and no search server or terms of its own (schema 12), and the next
-     * save writes schema 12. A file of the unreleased GGUF branch (schema 10) keeps its thinking switch as well.
+     * Updating 0.4.4 to 0.6.0: a settings file as 0.4.4 wrote it (schema 7), every choice away from its default, reads with
+     * every choice kept, the thinking switch off (schema 10), no search server or terms of its own (schema 12) and conversation
+     * mode's defaults (schema 13), live words in a conversation off like live words for questions; the next save writes 13.
      */
-    @Test fun aFileFrom044AndOneOfTheGgufBranchMigrateToSchema12() {
-        val chosen = RobotSettings(
-            wakeWord = false, wakeOnlyWhileCharging = true, speakReplies = SpeakReplies.ALWAYS, speechRate = 1.25f,
-            voice = VoiceChoice.KITTEN.id, livePartials = false, directAnswers = false, keepModelMinutes = 15, saveHistory = false,
-            approvals = RobotSettings.DEFAULT_APPROVALS + (ToolName.SEND_TEXT to Approval.AUTO) + (ToolName.MAPS_SEARCH to Approval.OFF) +
-                (ToolName.FREE_MEMORY to Approval.OFF),
-            textApp = TextApp.CHEOGRAM, smsGateway = "sms.example.org", phoneRegion = "FR", emailApp = EmailApp.PROTON,
-            eventCalendar = 7, eventMinutes = 30, rememberPicks = false, learnFromCheogram = true,
-            wakePhrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(3, "robot", WakeSensitivity.LOW, enabled = false)),
-            bargeIn = BargeIn.ALWAYS, interrupt = InterruptSensitivity.HIGH, playback = Playback.CALL, stopKey = StopKey.EITHER,
-            claudeEnabled = false, claudeRoute = ClaudeRoute.API, claudeModel = ClaudeModel.SONNET.id, claudeEffort = ClaudeEffortSetting.HIGH,
-            claudeSearch = false, claudeLocked = true, claudeVoice = "bf_emma", claudeShowCost = false, claudeHelp = Escalation.AUTO,
-            claudeBudgetCents = 200, weatherHome = WeatherPlace("Lyon", 45.76, 4.84),
-            safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
-            lockedTools = setOf(ToolName.SET_TIMER, ToolName.FLASHLIGHT), personalToHelpers = true, voiceYesPersonal = true,
-            keepMedia = true, voiceCards = false, nearestOnline = NearestOnline.ALWAYS, nearestOnlineAt = 1_760_000_000_000,
-            safetyNotice = true, brainModel = BrainModel.OWN.id,
-        )
-        // Every field 0.4.4's RobotSettings had, as its toJson wrote them (the approvals of every tool, Ask Claude's too).
-        val v044 = """{"schema":7,"wakeWord":false,"wakeOnlyWhileCharging":true,"speakReplies":"ALWAYS","speechRate":1.25,""" +
-            """"voice":"kitten_expr_voice_5_f","livePartials":false,"directAnswers":false,"keepModelMinutes":15,"saveHistory":false,""" +
-            """"approvals":{"set_timer":"AUTO","set_alarm":"AUTO","open_app":"AUTO","maps_search":"OFF","maps_navigate":"AUTO",""" +
-            """"flashlight":"AUTO","send_text":"AUTO","draft_email":"ASK","lookup_contact":"AUTO","add_note":"AUTO","find_notes":"AUTO",""" +
-            """"add_event":"ASK","read_calendar":"AUTO","weather":"AUTO","phone_status":"AUTO","free_memory":"OFF","free_storage":"ASK",""" +
-            """"ask_claude":"ASK"},"textApp":"CHEOGRAM","smsGateway":"sms.example.org","phoneRegion":"FR","emailApp":"PROTON",""" +
-            """"eventCalendar":7,"eventMinutes":30,"rememberPicks":false,"learnFromCheogram":true,""" +
-            """"wakePhrases":[{"id":1,"text":"hey robot","sensitivity":"MEDIUM","enabled":true},""" +
-            """{"id":3,"text":"robot","sensitivity":"LOW","enabled":false}],"bargeIn":"ALWAYS","interrupt":"HIGH","playback":"CALL",""" +
-            """"stopKey":"EITHER","claudeEnabled":false,"claudeRoute":"API","claudeModel":"claude-sonnet-5-5","claudeEffort":"HIGH",""" +
-            """"claudeSearch":false,"claudeLocked":true,"claudeVoice":"bf_emma","claudeShowCost":false,"claudeHelp":"AUTO",""" +
-            """"claudeBudgetCents":200,"weatherHome":{"name":"Lyon","lat":45.76,"lon":4.84},"safetyCards":"AFTER_READING",""" +
-            """"claudeActionCards":false,"whoCards":false,"learnedCards":false,"deleteCards":false,"lockedTools":["set_timer","flashlight"],""" +
-            """"personalToHelpers":true,"voiceYesPersonal":true,"keepMedia":true,"voiceCards":false,"nearestPlace":"ALWAYS",""" +
-            """"nearestPlaceAt":1760000000000,"safetyNotice":true,"brainModel":"own"}"""
+    @Test fun aFileFrom044MigratesToSchema13() {
         val read = RobotSettings.fromJson(v044)
-        assertEquals(chosen, read)
+        assertEquals(chosen044, read)
         assertEquals(false, read.modelThinks)
         assertEquals("", read.nearestServer)
         assertEquals(NearbyServer.DEFAULT, read.nearbyServer)
         assertEquals(emptyMap<String, Long>(), read.confirmedTerms)
+        assertEquals(RobotSettings().copy(livePartials = false, convPartials = false).let { d ->
+            listOf(d.convPair, d.convTranslate, d.convSpeak, d.convPartials, d.convMaxSpeakers, d.convSpeakers, d.convWakeDuring, d.convStartLocked,
+                d.convKeepAudio, d.convSummaryLang, d.convAutoOfferHelper, d.meVoiceprint, d.convReminderAt)
+        }, listOf(read.convPair, read.convTranslate, read.convSpeak, read.convPartials, read.convMaxSpeakers, read.convSpeakers, read.convWakeDuring,
+            read.convStartLocked, read.convKeepAudio, read.convSummaryLang, read.convAutoOfferHelper, read.meVoiceprint, read.convReminderAt))
         val saved = read.toJson()
-        assertEquals(12, saved.getInt("schema"))
+        assertEquals(13, saved.getInt("schema"))
         assertEquals(false, saved.getBoolean("modelThinks"))
+        assertEquals(false, saved.getBoolean("convPartials"))
         assertEquals(false, saved.has("nearestServer") || saved.has("confirmedTerms"))
         assertEquals(read, RobotSettings.fromJson(saved.toString()))
-        // The 0.4.4 file has every key today's file can have but the three added since, and none it doesn't.
+        // The 0.4.4 file has every key today's file can have but those added since, and none it doesn't.
         val keys044 = org.json.JSONObject(v044).keys().asSequence().toSet()
-        val everything = chosen.copy(modelThinks = true, nearestServer = "https://nominatim.example.org",
-            confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1L)).toJson().keys().asSequence().toSet()
-        assertEquals(setOf("modelThinks", "nearestServer", "confirmedTerms"), everything - keys044)
+        val everything = chosen044.copy(modelThinks = true, nearestServer = "https://nominatim.example.org",
+            confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1L), convSpeak = true, convSpeakers = true, convSummaryLang = "fr",
+            convReminderAt = 5).toJson().keys().asSequence().toSet()
+        assertEquals(setOf("modelThinks", "nearestServer", "confirmedTerms", "convSpeak", "convSpeakers", "convSummaryLang", "convReminderAt") +
+            conversationKeys, everything - keys044)
         assertEquals(emptySet<String>(), keys044 - everything)
 
-        // The GGUF branch's file (schema 10, never released): the same choices and the switch on, kept on through 12.
+        // The GGUF branch's file (schema 10, never released): the same choices and the switch on, kept on through 13.
         val v10 = v044.replace(""""schema":7""", """"schema":10""").removeSuffix("}") + ""","modelThinks":true}"""
         val ggufRead = RobotSettings.fromJson(v10)
-        assertEquals(chosen.copy(modelThinks = true), ggufRead)
-        assertEquals("", ggufRead.nearestServer)
-        assertEquals(emptyMap<String, Long>(), ggufRead.confirmedTerms)
+        assertEquals(chosen044.copy(modelThinks = true), ggufRead)
         val ggufSaved = ggufRead.toJson()
-        assertEquals(12, ggufSaved.getInt("schema"))
+        assertEquals(13, ggufSaved.getInt("schema"))
         assertEquals(true, ggufSaved.getBoolean("modelThinks"))
         assertEquals(ggufRead, RobotSettings.fromJson(ggufSaved.toString()))
+    }
+
+    /**
+     * Updating 0.4.5 to 0.6.0: a file as 0.4.5 wrote it (schema 12), every field away from its default, keeps every choice,
+     * its thinking switch, search server and confirmed terms included, and gets conversation mode's defaults (schema 13), live
+     * words in a conversation following live words for questions as for any file from before conversation mode.
+     */
+    @Test fun aFileFrom045MigratesToSchema13() {
+        val read = RobotSettings.fromJson(v045)
+        val expected = chosen044.copy(modelThinks = true, nearestServer = "https://nominatim.example.org",
+            confirmedTerms = mapOf(ModelTerms.UNCENSORED.id to 1_760_000_000_001))
+        assertEquals(expected, read)
+        assertEquals(false, read.convPartials)
+        assertEquals("nominatim.example.org", read.nearbyServer.name)
+        val saved = read.toJson()
+        assertEquals(13, saved.getInt("schema"))
+        assertEquals(read, RobotSettings.fromJson(saved.toString()))
+        // Everything 0.4.5 wrote is still written, and only conversation mode's keys are new.
+        val keys045 = org.json.JSONObject(v045).keys().asSequence().toSet()
+        val keysNow = saved.keys().asSequence().toSet()
+        assertEquals(emptySet<String>(), keys045 - keysNow)
+        assertEquals(conversationKeys, keysNow - keys045)
+        // Live words for questions on (0.4.5's default): live words in a conversation on too, as for a new install.
+        val withWords = RobotSettings.fromJson(v045.replace(""""livePartials":false""", """"livePartials":true"""))
+        assertEquals(true, withWords.convPartials)
+        assertEquals(RobotSettings().convPartials, withWords.convPartials)
+        // From 13 on, the two are separate choices.
+        assertEquals(true, RobotSettings.fromJson(saved.toString().replace(""""convPartials":false""", """"convPartials":true""")).convPartials)
+    }
+
+    /**
+     * Updating 0.4.0 to 0.6.0: a 0.4.0 file (schema 6) gets both later migrations: Fast as the model (schema 7), the thinking
+     * switch off, no server or terms, and conversation mode's defaults with live words following live words for questions.
+     */
+    @Test fun aFileFrom040MigratesToSchema13() {
+        val read = RobotSettings.fromJson(v040)
+        assertEquals(chosen044.copy(brainModel = BrainModel.FAST.id), read)
+        assertEquals(BrainModel.FAST, read.brainModelChoice)
+        assertEquals(false, read.modelThinks)
+        assertEquals(false, read.convPartials)
+        // An update from before Safety & privacy still shows its one-time line; this 0.4.0 file had it already.
+        assertEquals(true, read.safetyNotice)
+        val saved = read.toJson()
+        assertEquals(13, saved.getInt("schema"))
+        assertEquals("e2b_tpu", saved.getString("brainModel"))
+        assertEquals(read, RobotSettings.fromJson(saved.toString()))
+        // A 0.4.0 file whose model id came from elsewhere still reads as Fast (only schema 7 or later chose one).
+        assertEquals(BrainModel.FAST, RobotSettings.fromJson(v040.removeSuffix("}") + ""","brainModel":"e4b_cpu"}""").brainModelChoice)
+    }
+
+    /**
+     * Conversation mode with the model choice: a file of the unreleased conversation branch (schema 8) keeps its
+     * conversation choices (it wrote every key it had), and reads as Fast when it had no model; both kinds of choices
+     * round-trip together in schema 13.
+     */
+    @Test fun schemaThirteenKeepsTheModelChoiceAndConversationSettings() {
+        val from050 = RobotSettings.fromJson("""{"schema":8,"convTranslate":true,"convPartials":true,"livePartials":false}""")
+        assertEquals(BrainModel.FAST, from050.brainModelChoice)
+        assertEquals(true, from050.convTranslate)
+        assertEquals(true, from050.convPartials)
+        val both = RobotSettings(brainModel = BrainModel.UNCENSORED.id, convTranslate = true, convSpeakers = false, convReminderAt = 5L)
+        assertEquals(both, RobotSettings.fromJson(both.toJson().toString()))
+        assertEquals(13, both.toJson().getInt("schema"))
     }
 }

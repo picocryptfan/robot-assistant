@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.SystemClock
 import app.heyrobot.core.BrainLoaded
 import app.heyrobot.core.BrainMsg
+import app.heyrobot.core.BrainScheduler
 import app.heyrobot.core.EngineKind
 import app.heyrobot.core.EngineSwitch
 import app.heyrobot.core.EngineTeardown
@@ -16,18 +17,25 @@ import java.util.concurrent.atomic.AtomicInteger
 
 // :BRAIN PROCESS ONLY. 0.4.5: two engines behind one interface, LiteRT-LM (GemmaEngine: Robot's models and your own
 // .litertlm) and llama.cpp (LlamaEngine: your own .gguf), and still one engine in the process: the 0.4.1 slot rule, now
-// shared by both, and the other engine unloads before one loads (core EngineSwitch).
+// shared by both, and the other engine unloads before one loads (core EngineSwitch). 0.6.0: each engine serves its
+// requests through conversation mode's priority queue (core BrainScheduler), REQ_ONE_SHOT included, so the panel, the
+// interpreter, transcript translations and summaries take their turns the same way whichever kind of file is loaded.
 
-/** What BrainService asks of an engine; every call on its work thread. */
+/**
+ * What BrainService asks of an engine; every call on its work thread. A request is known by its [BrainScheduler.Key]
+ * (its client and the client's own number), and waits its turn in the engine's queue.
+ */
 interface BrainEngine {
     fun interface Sink { fun emit(what: Int, msg: BrainMsg) }
 
     fun status(): BrainMsg.Status
     fun load(req: BrainMsg.Load): BrainMsg.Loaded
     fun unload(why: String)
-    fun generate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: Sink)
-    fun toolResult(reqId: Int, req: BrainMsg.ToolResult, sink: Sink)
-    fun cancel(target: Int)
+    fun generate(key: BrainScheduler.Key, req: BrainMsg.Generate, image: ByteArray?, sink: Sink)
+    fun toolResult(key: BrainScheduler.Key, req: BrainMsg.ToolResult, sink: Sink)
+    /** REQ_ONE_SHOT (0.5.0): one message in a conversation of its own, at its priority (core OneShotRules). */
+    fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, sink: Sink)
+    fun cancel(key: BrainScheduler.Key)
     fun closeConv(convId: String)
     /** BrainService.onDestroy (main thread), before the work thread gets to [shutdown]. */
     fun destroyed()
@@ -112,9 +120,10 @@ class Engines(private val ctx: Context, private val handler: Handler) : BrainEng
         llama?.unload(why)
     }
 
-    override fun generate(reqId: Int, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink) = active.generate(reqId, req, image, sink)
-    override fun toolResult(reqId: Int, req: BrainMsg.ToolResult, sink: BrainEngine.Sink) = active.toolResult(reqId, req, sink)
-    override fun cancel(target: Int) = active.cancel(target)
+    override fun generate(key: BrainScheduler.Key, req: BrainMsg.Generate, image: ByteArray?, sink: BrainEngine.Sink) = active.generate(key, req, image, sink)
+    override fun toolResult(key: BrainScheduler.Key, req: BrainMsg.ToolResult, sink: BrainEngine.Sink) = active.toolResult(key, req, sink)
+    override fun oneShot(key: BrainScheduler.Key, req: BrainMsg.OneShot, sink: BrainEngine.Sink) = active.oneShot(key, req, sink)
+    override fun cancel(key: BrainScheduler.Key) = active.cancel(key)
     override fun closeConv(convId: String) = active.closeConv(convId)
 
     override fun destroyed() {

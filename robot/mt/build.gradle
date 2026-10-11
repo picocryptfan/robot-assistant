@@ -1,0 +1,19 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+repositories { google(); mavenCentral() }
+android {
+    namespace 'app.heyrobot.mt'
+    compileSdk rootProject.ext.robotCompileSdk
+    defaultConfig { minSdk rootProject.ext.robotMinSdk }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    kotlinOptions { jvmTarget = '17' }
+}
+// The :mt process (0.5.0, docs/conversation-mode.md 4.5): Robot's fast translation engine, the only module with
+// librobotmt.so (slimt). tools/build_robotmt.sh builds the library from src/main/cpp and pinned sources into
+// src/main/jniLibs (not in git), where the build packages it; without it this module still builds, and MtService answers
+// that the engine isn't in this build. Gradle never runs the native build. The models are downloaded by the app.
+dependencies {
+    implementation project(':core')
+}

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- ":mt" (0.5.0): the fast translation engine, librobotmt.so (slimt, Bergamot models). A process of its own, so an
+             abort() in slimt ends only this one (not :voice's session, not Gemma in :brain). It never goes online and
+             reads only the model files the main app verified. Not exported, and bound only with Robot's signature
+             permission (declared by the app), by the main app (Test translation speed) and the voice process. -->
+        <service
+            android:name="app.heyrobot.mt.MtService"
+            android:process=":mt"
+            android:exported="false"
+            android:permission="app.heyrobot.permission.INTERNAL" />
+    </application>
+</manifest>

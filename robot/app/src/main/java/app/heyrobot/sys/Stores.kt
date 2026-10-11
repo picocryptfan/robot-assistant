@@ -34,6 +34,8 @@ object Paths {
     /** The main process's own few voice-log events (the recognizer repair): one writer per file. */
     fun voiceLogMain(ctx: Context) = File(dir(ctx), VoiceFiles.LOG_MAIN)
     fun bargeTest(ctx: Context) = File(dir(ctx), VoiceFiles.BARGE)
+    /** The last Test translation speed (core MtSpeedReport): the main app writes it. */
+    fun mtSpeed(ctx: Context) = File(dir(ctx), "mt_speed.json")
     /** The panel's lasting answer to the nearest place's first-use card (core NearestAnswer): the voice process writes it. */
     fun nearestAnswer(ctx: Context) = File(dir(ctx), "nearest_answer.json")
 
@@ -143,6 +145,14 @@ object Cmd {
      */
     const val CONVERSATIONS_DELETED = "conversations_deleted"
     const val EXTRA_ID = "id"
+    /**
+     * Transcripts were deleted in the app (0.5.0; extra [EXTRA_ID]: the one deleted; none: all of them): a session
+     * recording one of them stops without writing another line, and a Resume offer for one is taken down, so nothing
+     * writes a deleted transcript back.
+     */
+    const val TRANSCRIPTS_DELETED = "transcripts_deleted"
+    /** Your "me" voiceprint was deleted (0.5.0, phase 5.3): a running session stops comparing lines with it. */
+    const val VOICEPRINT_DELETED = "voiceprint_deleted"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"

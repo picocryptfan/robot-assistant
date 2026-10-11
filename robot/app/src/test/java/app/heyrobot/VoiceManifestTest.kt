@@ -36,6 +36,11 @@ class VoiceManifestTest {
             for (f in b.files) assertTrue("${b.id}/${f.name}", tp.contains(f.sha256))
         }
         for (f in EspeakData.FILES) assertTrue(f.name, tp.contains(f.sha256))
+        // The sherpa-onnx Kotlin files added for speaker labels (0.5.0) are the v1.13.8 ones, byte for byte.
+        for (f in listOf("Speaker.kt", "SpeakerEmbeddingExtractorConfig.kt")) {
+            val sha = MessageDigest.getInstance("SHA-256").digest(File(root, "voice/src/main/java/com/k2fsa/sherpa/onnx/$f").readBytes()).joinToString("") { "%02x".format(it) }
+            assertTrue(f, tp.contains("`$f`") && tp.contains(sha))
+        }
         assertTrue(tp.contains("CC-BY-4.0") && tp.contains("GPL-3.0-or-later"))
     }
 

@@ -1,8 +1,9 @@
 # Third-party components in Robot
 
 Robot itself is GPL-3.0-only (see `../LICENSE`; Copyright (C) 2026 the Robot authors). Everything below keeps its own
-licence; all of them (Apache-2.0, MIT, BSD-2-Clause, MPL-2.0, CC-BY-4.0 for model weights and data, GPL-3.0-or-later for
-espeak-ng) are compatible with GPL-3.0. Native libraries, models and the espeak-ng data are not stored in git:
+licence; all of them (Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, MPL-2.0, CC-BY-4.0 for model weights and data, CC0 for
+the language ID data, GPL-3.0-or-later for espeak-ng, GPL-2.0-or-later with MPL-2.0 parts for slimt, MPL-2.0 for the
+translation models) are compatible with GPL-3.0. Native libraries, models and the espeak-ng data are not stored in git:
 `tools/fetch_third_party.sh` downloads the exact files below and checks every SHA-256 (same sources and hashes as the
 phase 0 probe, see `../probe/THIRD_PARTY.md`). The speech recognition and voice models are not in the APK at all: the app
 downloads them on request (see "Downloaded by the app" below); `tools/fetch_voice_models.sh` fetches the same files on a
@@ -12,8 +13,9 @@ computer and checks them.
 
 The app shows every component below, with its version, licence, copyright line, notes and the full licence text, from
 one data file, `app/src/main/assets/licenses/components.json`, next to the texts it names (`app/src/main/assets/licenses/`:
-the GPL-3.0, Apache-2.0, MPL-2.0 and CC BY 4.0 texts, each MIT and BSD text with its own copyright line, libc++'s licence
-as the NDK states it, ONNX Runtime's `ThirdPartyNotices.txt` and the Java libraries' NOTICE files). LiteRT-LM's and the
+the GPL-3.0, Apache-2.0, MPL-2.0, CC BY 4.0 and CC0 1.0 texts, each MIT and BSD text with its own copyright line, slimt's
+GPL-2.0 text with its copyright file, SentencePiece's licence with those of the parts it bundles, libc++'s licence as the
+NDK states it, ONNX Runtime's `ThirdPartyNotices.txt` and the Java libraries' NOTICE files). LiteRT-LM's and the
 NPU runtime's `LICENSE` and `THIRD_PARTY_NOTICE.txt` (2.2 MB and 148 KB) ship inside their AARs and would not reach the
 APK by themselves: `:brain`'s `aarNotices` task copies them from those very AARs into its assets at build time
 (`licenses/notices/`). The screen also carries Robot's own notice (free software, no warranty, the GPL a tap away), the
@@ -31,6 +33,10 @@ each release attaches `robot-<version>-third-party-sources.tar.gz` (and its `.sh
 `tools/make_source_bundle.sh`: sherpa-onnx at the commit of v1.13.8, the exact espeak-ng archive (fork at `ed530aa1`) and
 every other source sherpa-onnx's Android build compiles in, each checked against the SHA-256 sherpa-onnx's CMake files pin
 (or, where only git could reach it, against its commit), and ONNX Runtime 1.28.2's source. See the README's "Releasing".
+slimt (GPL-2.0-or-later, used under GPL-3.0; in `librobotmt.so` since 0.6.0) is built by Robot itself from its
+`mt/src/main/cpp/` and the four trees `tools/build_robotmt.sh` fetches at pinned commits and checks (below, "In the `:mt`
+process only"). `make_source_bundle.sh` doesn't add those four trees yet: until it does, attach their `git archive` tars
+(the SHA-256 the table there gives) to the release with the bundle.
 
 | Component | Version | Licence | Where |
 |---|---|---|---|
@@ -64,11 +70,19 @@ every other source sherpa-onnx's Android build compiles in, each checked against
 | llama.cpp (with ggml) | b11200 (81bc6b83) | MIT | in the APK |
 | KleidiAI | 1.24.0 | Apache-2.0 | in the APK |
 | LLVM libc++ | Android NDK 27.1.12297006 | Apache-2.0 WITH LLVM-exception | in the APK |
+| slimt | DavidVentura/slimt at 2beb403a | GPL-2.0-or-later | in the APK |
+| ruy | google/ruy at c04e5e52 | Apache-2.0 | in the APK |
+| cpuinfo | pytorch/cpuinfo at 082deffc | BSD-2-Clause | in the APK |
+| SentencePiece (in the fast translation engine) | browsermt/sentencepiece at 8cbdf137 | Apache-2.0 | in the APK |
+| Protocol Buffers lite (in SentencePiece) | as bundled in browsermt/sentencepiece at 8cbdf137 | BSD-3-Clause | in the APK |
+| Abseil (in SentencePiece) | as bundled in browsermt/sentencepiece at 8cbdf137 | Apache-2.0 | in the APK |
+| Darts-clone (in SentencePiece) | as bundled in browsermt/sentencepiece at 8cbdf137 | BSD-3-Clause | in the APK |
 | Gson | 2.14.0 | Apache-2.0 | in the APK |
 | Kotlin standard library and kotlin-reflect | 2.4.0 | Apache-2.0 | in the APK |
 | kotlinx.coroutines | 1.11.0 | Apache-2.0 | in the APK |
 | Jetpack Compose and AndroidX | Compose BOM 2025.06.01 (1.8.3), Material 3 1.3.2 | Apache-2.0 | in the APK |
 | Material Symbols | google/material-design-icons at 49d4db35 | Apache-2.0 | in the APK |
+| Tatoeba sentences (CC0 export) | sentences_CC0, downloaded 2026-10-11 | CC0-1.0 | in the APK |
 | Annotation libraries | as resolved | Apache-2.0 | in the APK |
 | Gemma 4 E2B (Tensor G5) | litert-community, b3ca0d2f | Apache-2.0 | downloaded when you ask |
 | Gemma 4 E4B | litert-community, 2eee7ac3 | Apache-2.0 | downloaded when you ask |
@@ -78,6 +92,8 @@ every other source sherpa-onnx's Android build compiles in, each checked against
 | Kokoro-82M | 1.0 (csukuangfj, f7b96bb6) | Apache-2.0 | downloaded when you ask |
 | SIWIS French Speech Synthesis Database | training data of Kokoro's ff_siwis voice | CC-BY-4.0 | downloaded when you ask |
 | Kitten TTS nano | 0.8 (csukuangfj2, eb4fe4f7) | Apache-2.0 | downloaded when you ask |
+| TitaNet-S speaker model | nemo_en_titanet_small (csukuangfj, 0743f301) | Apache-2.0 | downloaded when you ask |
+| Bergamot French–English models | Mozilla base-memory fr-en and en-fr, models.json of 2026-10-10 | MPL-2.0 | downloaded when you ask |
 | OpenStreetMap data, through Nominatim | service | ODbL-1.0 | online service |
 | Open-Meteo | service | CC-BY-4.0 | online service |
 | Android Gradle Plugin | 8.8.2 | Apache-2.0 | build and tests only |
@@ -117,6 +133,8 @@ every other source sherpa-onnx's Android build compiles in, each checked against
 | `OfflineRecognizer.kt` | `85054fa9722913bce96c94c5c7eaaa7fd99606b79fbfbeac6cfb60040eae2164` |
 | `OfflineStream.kt` | `5c90b7c060cdd0a2222cc935b54f69465a4a7544de29240bafe4d3a8d86dbb6e` |
 | `Tts.kt` | `1a2a19e247553f774c5abdfda8319ce9e1a44e21279b16dc2c63e963a82ea9b1` |
+| `Speaker.kt` (0.5.0, speaker labels) | `4dcc84f4cf0682e0e4da837ba00130d66ad7aec4f803af4c021de3434246e871` |
+| `SpeakerEmbeddingExtractorConfig.kt` (0.5.0) | `d90c0ce88dce309813e720ff46abba737401e7e562f9635ee13fd5b32ce106c6` |
 
 - Licence text: `third_party/LICENSE-sherpa-onnx.txt`.
 - Statically linked into `libsherpa-onnx-jni.so` (nothing extra is packaged for them; the versions are the ones
@@ -283,6 +301,76 @@ KittenML (https://huggingface.co/KittenML), Apache-2.0. Voice used: `expr-voice-
 | voices.bin | 3,276,800 | `d520519c4a3519d44fcfcd943ed0b1e3c5da5cee0eea501d922fac1a93cd24dc` |
 | tokens.txt | 1,064 | `934a4188addc7665dd3410256bb622169242357fbb99d840d9351209b486dabb` |
 
+### Speaker labels: NVIDIA TitaNet-S (Apache-2.0, the NeMo toolkit licence)
+
+> "TitaNet-S" (`titanet_small`) by NVIDIA, https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/titanet_small.
+> Its card: "License to use this model is covered by the license of the NeMo Toolkit", which is Apache-2.0
+> (https://github.com/NVIDIA/NeMo/blob/main/LICENSE; both re-read on 2026-10-11). Changed: exported to ONNX by the
+> sherpa-onnx project; Robot uses it unchanged from that export.
+
+Downloaded only when you turn on speaker labels (Settings › Conversation › Tell speakers apart), for conversation mode's
+transcripts (docs/conversation-mode.md 3). Repo `csukuangfj/speaker-embedding-models` @
+`0743f301363dec56491a490f6d6cbc9d67f9a3bf` (bundle `spk-titanet-small`, 40,257,283 bytes; size and hash re-checked on
+the build machine on 2026-10-11, equal to Hugging Face's LFS record).
+
+| file | bytes | sha256 |
+|---|---|---|
+| nemo_en_titanet_small.onnx | 40,257,283 | `ad4a1802485d8b34c722d2a9d04249662f2ece5d28a7a039063ca22f515a789e` |
+
+## In the `:mt` process only (0.5.0): the fast translation engine
+
+`librobotmt.so` (arm64-v8a) is Mozilla Bergamot translation run by slimt, built by `tools/build_robotmt.sh` from Robot's
+own sources in `mt/src/main/cpp/` (`robotmt.cpp`: a wrapper over slimt's synchronous C++ API with a sentence splitter;
+`robotmt_jni.cpp`: three JNI functions) and the four pinned trees below, all statically linked into one library. It is
+not stored in git; Gradle packages it when the script has built it (`mt/src/main/jniLibs/`), and only the `:mt` process
+loads it (`ProcessIsolationTest`, `tools/verify_apk.sh`). slimt-sys's C wrapper is not used (it logs input text when a
+translation fails).
+
+- Toolchain: Android NDK 27.1.12297006 (clang 18.0.2), CMake 3.22.1, `ANDROID_PLATFORM=android-34`, `c++_static`,
+  `-O3 -ffp-contract=off`, slimt's own NEON float code off (`ROBOTMT_NEON=OFF`, so the arm64 build's outputs equal the
+  x86 build's); ruy's NEON and dot-product int8 kernels are in (chosen at run time). Needs only Android's `libc.so`,
+  `libm.so`, `libdl.so` and `liblog.so` (cpuinfo's own error lines about the processor); exports the three JNI functions
+  only; 16 KB page aligned.
+- The build of 2026-10-11 on the build machine, after the review's wrapper changes: 1,277,296 bytes, sha256
+  `aa18c9c03e2df98fa9dcf35259fdc18767fa25b68a84409d1c18342064fd2ba0` (the build is reproducible: the same sources gave the
+  same bytes from another directory).
+- Corresponding source: Robot's `mt/src/main/cpp/` plus the trees below, which the script fetches. Each is fetched with git
+  at its commit, written out with `git archive --format=tar <commit>` (git 2.43.0), and that tar's SHA-256 is checked
+  before anything is unpacked:
+
+| part | repository @ commit | sha256 of the `git archive` tar | licence |
+|---|---|---|---|
+| slimt (DavidVentura's fork; the commit translation-plan.md 1.4 named) | https://github.com/DavidVentura/slimt @ `2beb403abfff5b2f4c165a6d51362c973d037e97` | `7cc3027038b1553eca66523bb758abcb12527002bd20c94d459ed1ac3d55f6f9` | **GPL-2.0-or-later** (its COPYRIGHT file), used here under GPL-3.0; contains MPL-2.0 code derived from browsermt/bergamot-translator and browsermt/marian-dev, and Apache-2.0 code from browsermt/ssplit. No "Incompatible With Secondary Licenses" notice in the tree. `third_party/LICENSE-slimt.txt` |
+| ruy (slimt's submodule) | https://github.com/google/ruy @ `c04e5e52ae6b144f74ac032652e3c538bda15c9b` | `76c5f5b732a853ab2abbd08bea17d29e03a7b1bca6f6631f231bccdc74005e10` | Apache-2.0, `third_party/LICENSE-ruy.txt` |
+| cpuinfo (ruy's submodule) | https://github.com/pytorch/cpuinfo @ `082deffc80ce517f81dc2f3aebe6ba671fcd09c9` | `8b169d6e14c83c6ee14f3f5f39db254ad60916417d4d88c3dcb7ff2458d92747` | BSD-2-Clause, `third_party/LICENSE-cpuinfo.txt` |
+| SentencePiece (slimt's submodule) | https://github.com/browsermt/sentencepiece @ `8cbdf13794284c30877936f91c6f31e2c1d5aef7` | `0e18f5be9f6e0cd6aee3ce9364c6c3ff9c97dee1c02b1c137232c0c3830228ff` | Apache-2.0; bundles protobuf-lite (BSD-3-Clause), absl (Apache-2.0), darts_clone (BSD-3-Clause) and esaxx (MIT; only the model trainer uses it, which isn't built), all in `third_party/LICENSE-sentencepiece.txt` |
+
+The sentence splitter in `robotmt.cpp` is Robot's own, drawn the way ssplit-cpp's fallback (no prefix file) and Offline
+Translator's translator-rs (`DavidVentura/translator-rs`, MIT) draw sentences; no code was copied.
+
+### Bergamot fr-en and en-fr models (MPL-2.0; downloaded by the app, not in the APK)
+
+Mozilla's `base-memory` models from the Firefox Translations bucket
+(`https://storage.googleapis.com/moz-fx-translations-data--303e-prod-translations-data/models/…`, the training run's id in
+each path; `models.json` generated 2026-10-10), downloaded only when you tap Download in Settings › Conversation (core
+`MtBundle.kt`): each `.gz` is checked against its size and SHA-256, unpacked as a stream, and the result checked again
+(`uncompressedHash` for the models) before the `:mt` process may load it. Stored in Robot's private storage,
+`files/models/mt-fr-en/` (73,135,034 bytes; 51,577,481 to download). The two vocabularies are byte-identical, so only
+fr-en's is downloaded. Re-checked on the build machine on 2026-10-11 with `tools/build_robotmt.sh --check`. Licence:
+MPL-2.0, the licence of `mozilla/firefox-translations-models` and `mozilla/translations`; that it covers the bucket's
+current files is still UNVERIFIED (no per-file notice in the bucket, docs/translation-plan.md 1.4).
+
+| file (as installed) | .gz bytes | .gz sha256 | bytes | sha256 |
+|---|---|---|---|---|
+| model.fren.intgemm.alphas.bin | 23,175,075 | `06b1eeedd3944260d00a393d12ec7192490c5b7c930b97212faf4d5f5c90a2ee` | 31,561,787 | `15f997bc0d13808b0b0fbd0786e684a3c8a52adcd8071844b76123fdacbf2b90` |
+| lex.50.50.fren.s2t.bin | 2,649,934 | `395aa7767220e1bcfc085f2b2787ff98005d0075e55451f1e0832885e3d9642a` | 4,824,120 | `87c6752ea908f5f0347c10ac0cf7d80d9c2f4f20c81c90168f3e8230b56d4440` |
+| vocab.fren.spm (both directions) | 409,706 | `8d15b219ffd32327b4cabf0d94a05a4fecb8923a4f386badbcbe5e86ede453a7` | 814,404 | `783abf3abe075afdf8d85d233994bef2c3a064e935ab1bed946820aff6ac002a` |
+| model.enfr.intgemm.alphas.bin | 23,045,432 | `22cdaf3dc9a1da6e5818b5576737182467f3cd97e6fd6f94e4273eb7b56d1e3f` | 31,561,787 | `6322e296d4fecfe395a8d5723da4ec37ecbe6d7613bb1dfcf4b28e2a47498b68` |
+| lex.50.50.enfr.s2t.bin | 2,297,334 | `055987f0b585b61c4914fb4469e2392fda0b25d3f7784275974f920e7b631997` | 4,372,936 | `2585ed98d3af0bc949865aedeb390493d591f56870814376e73e4144c41ed059` |
+
+The test set the speed test runs (`core/src/main/assets/mt/fr-CA-test.tsv`, a copy of `tools/lang/fr-CA/mt-test.tsv`)
+was written for Robot.
+
 ## In the `:brain` process only
 
 - `com.google.ai.edge.litertlm:litertlm-android:0.18.0` (Apache-2.0), Google Maven; `liblitertlm_jni.so` arm64-v8a. It runs
@@ -363,6 +451,24 @@ Gemma 4 licence page is the Apache-2.0 text; the repositories below say `apache-
 - Not offered: no Gemma 4 E4B build for the Tensor TPU exists. `safecircleai/horizon-edge-4b` (a renamed CPU export of a
   child-safety classifier fine-tune, under the non-commercial "SafeCircle Research License") is never offered.
 
+## Language ID table (in the APK, from :core; 0.5.0 conversation mode)
+
+`core/src/main/assets/langid/fr-en.tsv` (in git, generated; 172,247 bytes, sha256
+`e58cc22e749e8b6479e17e2c2c22958194f64c7cc42551d629a17355fc1a38d4`) is the French/English word and character n-gram
+table core `LangId.kt` uses to tag each transcript line with its language (`../docs/conversation-mode.md` 2.3). It holds
+rounded log-probabilities only, no sentence. `tools/make_langid.py` builds it from **Tatoeba's CC0 export only**:
+
+- https://downloads.tatoeba.org/exports/sentences_CC0.tar.bz2, downloaded 2026-10-11, sha256
+  `74a1577f35d9f11134b281be3125cf17e5531b8a29054f68b3e858418387e17f` (newest sentence 2026-10-04 22:57:13): the
+  sentences their contributors released under the Creative Commons CC0 1.0 Universal public domain dedication
+  (https://creativecommons.org/publicdomain/zero/1.0/).
+- Used: the French (`fra`) and English (`eng`) sentences, after duplicates and the held-out lines were removed:
+  14,027 French and 41,292 English.
+- Not used, for the table or its tests: Tatoeba's per-language and full exports, which are mostly CC-BY 2.0 FR.
+
+The test resource `core/src/test/resources/langid/heldout-fr-en.tsv` holds 369 more sentences of the same CC0 export,
+with their Tatoeba ids, that the table never saw. `langid/colloquial.tsv` (62 short lines) was written for Robot.
+
 ## Every process (Apache-2.0)
 
 | dependency | version |
@@ -401,7 +507,7 @@ redesign): Robolectric 4.16.1 (MIT) with its Android runtime `android-all-instru
 Roborazzi 1.49.0 (`roborazzi`, `roborazzi-compose`, `roborazzi-junit-rule`; Apache-2.0); Compose `ui-test-manifest`
 1.8.3 (Apache-2.0) is in the debug build only, its test activity not exported. The tools in `tools/` use the
 `sherpa-onnx==1.13.8` Python wheel (Apache-2.0), numpy (BSD-3-Clause), sentencepiece (Apache-2.0) and pypinyin (MIT)
-on the build machine only.
+on the build machine only; `tools/make_langid.py` uses Python's standard library only.
 
 ## Online services the app asks (0.4.0; nothing bundled)
 
