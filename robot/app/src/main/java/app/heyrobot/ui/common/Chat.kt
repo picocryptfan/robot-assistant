@@ -62,7 +62,8 @@ import app.heyrobot.core.Attachment
 import app.heyrobot.core.Markdown
 import app.heyrobot.core.ToolName
 
-// Main and voice processes: the chat bubbles shared by the assistant panel and the history screen.
+// Main and voice processes: what the assistant panel and the history screen show of a conversation (the cards' data,
+// their symbols, Markdown). The Classic look's bubbles are in ui/classic/ClassicPanel.kt.
 
 /**
  * [icon]: the launcher icon of the app an open_app card will open (shown instead of the tool's symbol). [body]: the
@@ -105,6 +106,14 @@ class CardActions(
     val openApp: (String) -> Unit = {},
 )
 
+/**
+ * "Ask Claude?" under a reply (any helper, by its [name]): what Send would send ([sends], with the start of the screen's
+ * text in [preview]), or, without an API key ([api] false), the Claude app opened with [text]. [asWell]: under Robot's
+ * own answer, after the local model first handed the question over.
+ */
+data class OfferView(val api: Boolean, val text: String, val sends: List<String>, val preview: String? = null, val asWell: Boolean = false,
+    val name: String = "Claude")
+
 fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.SET_TIMER -> RIcons.Timer
     ToolName.SET_ALARM -> RIcons.Alarm
@@ -124,44 +133,6 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     null -> RIcons.Warning
 }
 
-@Composable
-fun UserBubble(text: String, attachment: Attachment, thumb: Bitmap?, modifier: Modifier = Modifier, screenText: String? = null) {
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-        if (thumb != null) {
-            Image(
-                bitmap = thumb.asImageBitmap(), contentDescription = if (attachment == Attachment.SCREEN) "Screen" else "Photo",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.padding(bottom = 4.dp).size(132.dp).clip(RoundedCornerShape(18.dp)),
-            )
-        } else if (attachment != Attachment.NONE) {
-            AttachmentTag(attachment)
-        }
-        // "Keep screenshots and photos in history": the screen's text kept with the question, a few lines until tapped.
-        if (!screenText.isNullOrBlank()) {
-            var open by remember { mutableStateOf(false) }
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.padding(bottom = 4.dp).widthIn(max = 320.dp)
-                    .clickable(onClickLabel = if (open) "Show less" else "Show all") { open = !open },
-            ) {
-                Text(screenText, style = MaterialTheme.typography.bodySmall, maxLines = if (open) Int.MAX_VALUE else 4,
-                    overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
-            }
-        }
-        if (text.isNotBlank()) {
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                shape = RoundedCornerShape(22.dp, 22.dp, 6.dp, 22.dp),
-                modifier = Modifier.widthIn(max = 320.dp),
-            ) {
-                Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp))
-            }
-        }
-    }
-}
-
 /** A thumbnail kept with a question ([app.heyrobot.core.ChatTurn.picture], Base64 JPEG), or null if it can't be read. */
 fun keptPicture(b64: String?): Bitmap? = try {
     b64?.let { java.util.Base64.getDecoder().decode(it) }?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
@@ -169,195 +140,11 @@ fun keptPicture(b64: String?): Bitmap? = try {
     null
 }
 
-@Composable
-private fun AttachmentTag(a: Attachment) {
-    Row(
-        Modifier.padding(bottom = 4.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.secondaryContainer).padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(if (a == Attachment.SCREEN) RIcons.Phone else RIcons.Image, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
-        Spacer(Modifier.width(6.dp))
-        Text(if (a == Attachment.SCREEN) "Screen" else "Photo", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSecondaryContainer)
-    }
-}
-
-/**
- * A reply. [claude]: a helper wrote it: a small label with its name ([by], "Claude" when it isn't known; "Claude, from
- * the app" when [readBack]; a house for a server on your network, [home]) and the dynamic colour's tertiary tone, so a
- * helper's turn is never mistaken for Robot's. [footer]: "Claude searched the web · nasa.gov" and the cost line, under
- * the bubble.
- */
-@Composable
-fun AssistantBubble(
-    text: String,
-    streaming: Boolean,
-    stopped: Boolean,
-    error: Boolean,
-    actions: List<ActionView>,
-    modifier: Modifier = Modifier,
-    onConfirm: ((String, Boolean) -> Unit)? = null,
-    cardActions: CardActions? = null,
-    claude: Boolean = false,
-    readBack: Boolean = false,
-    footer: List<String> = emptyList(),
-    by: String? = null,
-    home: Boolean = false,
-) {
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-        if (claude && !error) {
-            Row(Modifier.padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (home) RIcons.Home else RIcons.Cloud, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
-                Spacer(Modifier.width(5.dp))
-                Text(if (readBack) "Claude, from the Claude app" else by ?: "Claude", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
-            }
-        }
-        for (a in actions) {
-            ActionCard(a, onConfirm, cardActions)
-            Spacer(Modifier.size(6.dp))
-        }
-        if (text.isNotBlank() || (streaming && actions.isEmpty())) {
-            Surface(
-                color = when {
-                    error -> MaterialTheme.colorScheme.errorContainer
-                    claude -> MaterialTheme.colorScheme.tertiaryContainer
-                    else -> MaterialTheme.colorScheme.surfaceContainerHigh
-                },
-                contentColor = when {
-                    error -> MaterialTheme.colorScheme.onErrorContainer
-                    claude -> MaterialTheme.colorScheme.onTertiaryContainer
-                    else -> MaterialTheme.colorScheme.onSurface
-                },
-                shape = RoundedCornerShape(22.dp, 22.dp, 22.dp, 6.dp),
-                modifier = Modifier.widthIn(max = 340.dp),
-            ) {
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
-                    if (text.isBlank()) TypingDots() else MarkdownText(text, streaming)
-                }
-            }
-        }
-        if (stopped) {
-            Text("Stopped", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 12.dp, top = 4.dp))
-        }
-        for (line in footer) {
-            Text(line, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 12.dp, top = 4.dp))
-        }
-    }
-}
-
 /** The lines under a helper's reply ([by]: its name): the search and its domains, then the cost. */
 fun claudeFooter(sources: List<String>, cost: String?, by: String? = null): List<String> = listOfNotNull(
     if (sources.isNotEmpty()) "${by ?: "Claude"} searched the web · " + sources.joinToString(", ") else null,
     cost,
 )
-
-/**
- * One action: what it does (light Markdown: the person or title in bold), its state, and right under it the buttons
- * while it waits: "Do it" (or its own words, "Open in Cheogram for Mom") or the people and numbers to pick from. The
- * full text it carries comes last, at most about 8 lines tall and scrolling inside the card, so a long message never
- * pushes who it goes to and the buttons apart. The panel passes [onConfirm] and [more]; the history shows no buttons.
- */
-@Composable
-fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: CardActions? = null) {
-    val bad = a.status in setOf(ActionStatus.FAILED, ActionStatus.INVALID, ActionStatus.NEEDS_UNLOCK, ActionStatus.DISABLED, ActionStatus.SKIPPED,
-        ActionStatus.NEEDS_PERMISSION, ActionStatus.NOT_FOUND, ActionStatus.NO_APP)
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        modifier = Modifier.widthIn(max = 340.dp).fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (a.icon != null) {
-                    Image(a.icon.asImageBitmap(), null, Modifier.size(40.dp))
-                } else {
-                    Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                        Icon(toolIcon(a.tool), null, Modifier.size(22.dp))
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(spans(Markdown.inline(a.summary), Color.Unspecified, caret = false), style = MaterialTheme.typography.titleSmall)
-                    val line = when (a.status) {
-                        ActionStatus.PENDING -> a.detail ?: if (a.choices.isNotEmpty()) "Which one?" else "Do you want Robot to do this?"
-                        ActionStatus.DONE, ActionStatus.DRAFT_OPENED -> a.detail ?: a.status.label
-                        else -> listOfNotNull(a.status.label, a.detail).joinToString(". ")
-                    }
-                    Text(line, style = MaterialTheme.typography.bodyMedium,
-                        color = if (bad) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
-                }
-                if (a.status.succeeded) Icon(RIcons.Check, a.status.label, Modifier.size(22.dp))
-                if (a.status == ActionStatus.NEEDS_UNLOCK) Icon(RIcons.Lock, "Locked", Modifier.size(22.dp))
-            }
-            a.picture?.let {
-                Image(it.asImageBitmap(), "The picture that would be sent", Modifier.padding(top = 10.dp).heightIn(max = 160.dp).clip(RoundedCornerShape(12.dp)))
-            }
-            if (a.status == ActionStatus.PENDING && onConfirm != null) {
-                if (a.choices.isNotEmpty() && more != null) {
-                    var keep by remember(a.id) { mutableStateOf(false) }
-                    Column(Modifier.fillMaxWidth().padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        a.remember?.let { words ->
-                            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(value = keep, role = Role.Checkbox) { keep = it },
-                                verticalAlignment = Alignment.CenterVertically) {
-                                Checkbox(checked = keep, onCheckedChange = null)
-                                Spacer(Modifier.width(8.dp))
-                                Text(words, style = MaterialTheme.typography.bodyMedium)
-                            }
-                        }
-                        a.choices.forEachIndexed { i, label ->
-                            FilledTonalButton(onClick = { more.choose(a.id, i, keep) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(label) }
-                        }
-                        if (a.more > 0) {
-                            Text("…and ${a.more} more. Say the full name to pick one of those.", style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
-                        }
-                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("Cancel") }
-                    }
-                } else {
-                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
-                        verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedButton(onClick = { onConfirm(a.id, false) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(a.cancel ?: "Cancel") }
-                        Button(onClick = { onConfirm(a.id, true) }, modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp)) { Text(a.confirm ?: "Do it") }
-                    }
-                }
-            }
-            val allowContacts = a.allowContacts && a.status == ActionStatus.PENDING
-            if (more != null && (a.undo || a.status == ActionStatus.NEEDS_PERMISSION || a.openApp != null || allowContacts)) {
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                    if (a.undo) TextButton(onClick = { more.undo(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Undo") }
-                    a.openApp?.let { label -> FilledTonalButton(onClick = { more.openApp(a.id) }, modifier = Modifier.heightIn(min = 48.dp)) { Text(label) } }
-                    if (a.status == ActionStatus.NEEDS_PERMISSION) FilledTonalButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow") }
-                    if (allowContacts) TextButton(onClick = more.allow, modifier = Modifier.heightIn(min = 48.dp)) { Text("Allow contacts") }
-                }
-            }
-            if (!a.body.isNullOrBlank()) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f), shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                ) {
-                    Text(a.body, style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.heightIn(max = BODY_MAX).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 8.dp))
-                }
-            }
-        }
-    }
-}
-
-/** About 8 lines of body text on a card; more scrolls inside it. */
-private val BODY_MAX = 176.dp
-
-@Composable
-fun TypingDots(color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
-    val t = rememberInfiniteTransition(label = "dots")
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 6.dp)) {
-        for (i in 0 until 3) {
-            val a by t.animateFloat(0.25f, 1f, infiniteRepeatable(tween(600, delayMillis = i * 180), RepeatMode.Reverse), label = "dot$i")
-            Box(Modifier.size(8.dp).alpha(a).clip(CircleShape).background(color))
-        }
-    }
-}
 
 /** Light Markdown (core's parser) with a caret while the reply streams. */
 @Composable

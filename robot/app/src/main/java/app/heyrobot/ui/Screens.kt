@@ -53,10 +53,10 @@ import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.TurnRole
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceModelLogic
+import app.heyrobot.ui.classic.AssistantBubble
+import app.heyrobot.ui.classic.UserBubble
 import app.heyrobot.ui.common.ActionView
-import app.heyrobot.ui.common.AssistantBubble
 import app.heyrobot.ui.common.RIcons
-import app.heyrobot.ui.common.UserBubble
 import app.heyrobot.ui.common.keptPicture
 import app.heyrobot.ui.common.claudeFooter
 
