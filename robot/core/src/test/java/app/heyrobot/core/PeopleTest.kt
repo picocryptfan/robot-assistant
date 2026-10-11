@@ -238,6 +238,21 @@ class PeopleTest {
         assertEquals(ActionStatus.NOT_FOUND, (Recipients.notFound(asked, "x", TextVia.SMS, pick = true) as Prepared.Refused).status)
     }
 
+    @Test fun severalChoicesCanBeRemembered() {
+        val asked = Action.SendText("mom", "hi")
+        fun opt(n: String, remember: Boolean) = Recipients.Option("Mom", "Mobile", n, asked.copy(target = TextTarget("Mom", n, n, "Messages", TextVia.SMS)),
+            remember = if (remember) asked.copy(target = TextTarget("Mom", n, n, "Messages", TextVia.SMS, remember = true)) else null)
+        val exact = listOf(ContactMatch("s:1", "Mom", NameMatch.EXACT))
+        val p = Recipients.prepare(asked, exact, listOf(opt("+1", true), opt("+2", true)), 0, Recipients.rememberLabel(" mom ")) { asked.copy(to = it) } as Prepared.Ready
+        assertEquals("Always use this for “mom”", p.remember)
+        assertTrue(p.choices.all { (it.remember as Action.SendText).target!!.remember })
+        // Nothing to remember (a number given, or the setting off): no tick box.
+        val q = Recipients.prepare(asked, exact, listOf(opt("+1", false), opt("+2", false)), 0, Recipients.rememberLabel("mom")) { asked } as Prepared.Ready
+        assertNull(q.remember)
+        // One place: no card about choices at all.
+        assertNull((Recipients.prepare(asked, exact, listOf(opt("+1", true)), 0, Recipients.rememberLabel("mom")) { asked } as Prepared.Ready).remember)
+    }
+
     @Test fun mobileNumbersComeFirstForTexts() {
         val r = Recipients.forText(listOf(mom), xmppOk = true)
         assertEquals(listOf("+1 514-555-0101", "514 555 0199"), r.map { it.address })

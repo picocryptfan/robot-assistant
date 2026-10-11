@@ -110,6 +110,12 @@ object Contacts {
         }
     }
 
+    /** A contact's lookup key (what a remembered choice for it is kept under), or null. */
+    fun lookupKey(ctx: Context, id: Long): String? = try {
+        ctx.contentResolver.query(ContactsContract.Contacts.CONTENT_URI, arrayOf(ContactsContract.Contacts.LOOKUP_KEY),
+            "${ContactsContract.Contacts._ID} = ?", arrayOf(id.toString()), null)?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    } catch (_: Exception) { null }
+
     internal fun kind(type: Int): PhoneKind = when (type) {
         Phone.TYPE_MOBILE, Phone.TYPE_WORK_MOBILE -> PhoneKind.MOBILE
         Phone.TYPE_HOME -> PhoneKind.HOME

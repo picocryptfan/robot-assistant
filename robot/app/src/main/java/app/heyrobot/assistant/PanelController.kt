@@ -156,6 +156,8 @@ data class UiAction(
     val handOff: String? = null,
     /** The picture a share card would send. */
     val picture: Bitmap? = null,
+    /** The tick box next to the choices that remembers the one tapped ("Always use this for “mom”"). */
+    val remember: String? = null,
 )
 
 /**
@@ -1606,7 +1608,7 @@ object PanelController {
             // What a read tool finds goes to Claude only after this tap: the button says so.
             val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) "Share with Claude" else c.action?.confirmLabel
             upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo, c.content, c.more,
-                c.cancel, c.handOff))
+                c.cancel, c.handOff, remember = c.remember))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()
@@ -1722,9 +1724,9 @@ object PanelController {
         slot.confirmations.answer(actionId, yes)
     }
 
-    /** The person tapped one of the people or numbers a card listed. */
-    fun choose(actionId: String, index: Int) {
-        slot.confirmations.choose(actionId, index)
+    /** The person tapped one of the people or numbers a card listed; [remember]: with "Always use this for …" ticked. */
+    fun choose(actionId: String, index: Int, remember: Boolean = false) {
+        slot.confirmations.choose(actionId, index, remember)
     }
 
     /** Undo on a note Robot just saved: it leaves Robot Notes, the card says so, the history keeps it as undone. */

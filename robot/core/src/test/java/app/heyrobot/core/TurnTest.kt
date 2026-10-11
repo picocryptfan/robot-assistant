@@ -327,6 +327,35 @@ class TurnTest {
         assertTrue(model.answers.isEmpty())
     }
 
+    @Test fun aTickedChoiceRunsItsRememberingActionAndTheCardSaysWhatItsButtonsDo() = runBlocking {
+        val model = FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "mom", "message" to "Late"))))
+        val actions = FakeActions()
+        fun target(n: String, remember: Boolean = false) = TextTarget("Mom", "$n@cheogram.com", n, "Cheogram", TextVia.CHEOGRAM, remember = remember)
+        val a = Action.SendText("mom", "Late")
+        val choices = listOf(Choice("Mobile", a.copy(target = target("+1")), a.copy(target = target("+1", true))),
+            Choice("Home", a.copy(target = target("+2")), a.copy(target = target("+2", true))))
+        actions.prepare = { Prepared.Ready(it, choices = choices, note = "Pick one.", remember = "Always use this for “mom”") }
+        actions.result = { Executed(ActionStatus.DRAFT_OPENED, "Opened.", launchedApp = true) }
+        val view = FakeView()
+        val conf = Confirmations()
+        val turn = async { runner(model, actions, view, conf).run() }
+        val id = withTimeout(5_000) { view.pending.receive() }
+        assertEquals("Pick one.", view.cards[id]!!.detail)
+        assertEquals("Always use this for “mom”", view.cards[id]!!.remember)
+        assertTrue(conf.choose(id, 1, remember = true))
+        turn.await()
+        assertEquals(listOf<Action>(a.copy(target = target("+2", true))), actions.ran)
+        // Without the tick: the plain choice.
+        val actions2 = FakeActions().apply { prepare = actions.prepare; result = actions.result }
+        val view2 = FakeView()
+        val conf2 = Confirmations()
+        val turn2 = async { runner(FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "mom", "message" to "Late")))), actions2, view2, conf2).run() }
+        val id2 = withTimeout(5_000) { view2.pending.receive() }
+        assertTrue(conf2.choose(id2, 0))
+        turn2.await()
+        assertEquals(listOf<Action>(a.copy(target = target("+1"))), actions2.ran)
+    }
+
     @Test fun chooseInCheogramStaysBehindTheGate() = runBlocking {
         fun model() = FakeModel(ModelOutcome.Calls(listOf(call("send_text", "to" to "Bob", "message" to "See you at 8"))))
         val auto = RobotSettings().let { it.copy(approvals = it.approvals + (ToolName.SEND_TEXT to Approval.AUTO)) }

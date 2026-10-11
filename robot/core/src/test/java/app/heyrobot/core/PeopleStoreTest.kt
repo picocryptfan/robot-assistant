@@ -111,6 +111,33 @@ class PeopleStoreTest {
         assertEquals(emptyList<String>(), l5.first { it.id == "o" }.aliases)
     }
 
+    // ------------------------------------------------------------------ "Always use this for mom"
+
+    @Test fun aRememberedChoiceSetsTheAddressAndTheAlias() {
+        // A person in People.
+        val r = Reach(ContactIds.people("p2"), "Bob Tremblay", "bob@work.example.com", null)
+        val l = PeopleEdit.rememberChoice(listOf(mom, bob), "bobby", r, email = true, lookupKey = null, now = 20, newId = ids)
+        val b = l.first { it.id == "p2" }
+        assertEquals("bob@work.example.com", b.preferredEmail)
+        assertNull(b.preferredText)
+        assertEquals(listOf("bobby"), b.aliases)
+        // One of the phone's contacts: an entry that adds to it, keeping the number for when the contact can't be read.
+        val sys = Reach(ContactIds.system(42), "Hélène Côté", "(514) 555-0123", "Work")
+        val l2 = PeopleEdit.rememberChoice(l, "maman", sys, email = false, lookupKey = "0r42", now = 21, newId = ids)
+        val h = l2.first { it.systemLookupKey == "0r42" }
+        assertEquals(PersonSource.REMEMBERED, h.source)
+        assertEquals("(514) 555-0123", h.preferredText)
+        assertEquals(listOf(ContactPhone("(514) 555-0123", PhoneKind.OTHER, "Work")), h.phones)
+        assertEquals(listOf("maman"), h.aliases)
+        // Again for the same contact, another number: the same entry changes.
+        val l3 = PeopleEdit.rememberChoice(l2, "maman", sys.copy(address = "+1 514 555 0124", label = "Mobile"), email = false, lookupKey = "0r42", now = 22, newId = ids)
+        assertEquals(l2.size, l3.size)
+        assertEquals("+1 514 555 0124", l3.first { it.systemLookupKey == "0r42" }.preferredText)
+        // A person gone meanwhile: nothing changes.
+        val gone = Reach(ContactIds.people("nobody"), "X", "x@example.org", null)
+        assertSame(l3, PeopleEdit.rememberChoice(l3, "x", gone, email = true, lookupKey = null, now = 23, newId = ids))
+    }
+
     // ------------------------------------------------------------------ learning from notifications
 
     @Test fun notificationsTeachNamesButNeverRenameSomeoneYouConfirmed() {

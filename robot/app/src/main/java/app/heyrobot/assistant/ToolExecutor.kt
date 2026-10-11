@@ -102,8 +102,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 // A search, not a route (om://route needs coordinates): say what to tap next.
                 is Action.MapsNavigate -> maps(action.destination, "Opened an Organic Maps search for it: pick the place, then tap Route for directions")
                 is Action.Flashlight -> torch(action.on)
-                is Action.SendText -> text(action).also { if (it.status.succeeded) used(action.target?.from) }
-                is Action.DraftEmail -> email(action).also { if (it.status.succeeded) used(action.target?.from) }
+                is Action.SendText -> text(action).also { if (it.status.succeeded) used(action.to, action.target?.from, action.target?.remember == true, email = false) }
+                is Action.DraftEmail -> email(action).also { if (it.status.succeeded) used(action.to, action.target?.from, action.target?.remember == true, email = true) }
                 is Action.LookupContact -> lookup(action)
                 is Action.AddNote -> addNote(action)
                 is Action.FindNotes -> findNotes(action)
@@ -208,11 +208,18 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     /** A choice's kind on the card ("Mobile"), and where a learned name came from. */
     private fun kind(r: Reach): String? = listOfNotNull(r.label, if (r.learned) "seen in Cheogram" else null).joinToString(" · ").ifEmpty { null }
 
-    /** A person learned from a Cheogram notification is confirmed once you text or email them (after a card, always). */
-    private fun used(r: Reach?) {
-        if (r?.learned != true) return
-        val id = ContactIds.peopleId(r.contactId) ?: return
-        PeopleFiles.store(ctx).update { PeopleEdit.confirm(it, id, System.currentTimeMillis()) }
+    /**
+     * After a text or an email opened: a person learned from a Cheogram notification is confirmed (you used them, after a
+     * card, always), and a place tapped with "Always use this for …" is remembered for the name asked ([asked]).
+     */
+    private fun used(asked: String, r: Reach?, remember: Boolean, email: Boolean) {
+        if (r == null || (!r.learned && !remember)) return
+        val key = if (remember) ContactIds.systemId(r.contactId)?.let { Contacts.lookupKey(ctx, it) } else null
+        val now = System.currentTimeMillis()
+        PeopleFiles.store(ctx).update { list ->
+            val confirmed = if (r.learned) PeopleEdit.confirm(list, ContactIds.peopleId(r.contactId), now) else list
+            if (remember) PeopleEdit.rememberChoice(confirmed, asked, r, email, key, now) else confirmed
+        } ?: RLog.w("people_save")
     }
 
     private fun prepareText(a: Action.SendText): Prepared {
@@ -250,13 +257,16 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val options = Recipients.forText(book.cards(matches) { Contacts.cards(ctx, it) }, xmppOk = via == TextVia.CHEOGRAM).mapNotNull { r ->
             val t = if (r.xmpp) TextTarget(r.name, r.address, r.address, appName, via, from = r)
             else Phones.e164(r.address, region)?.let { numberTarget(r.name, it, via, appName, r) }
-            t?.let { Recipients.Option(r.name, kind(r), it.display, a.copy(target = it), learned = r.learned) }
+            t?.let {
+                Recipients.Option(r.name, kind(r), it.display, a.copy(target = it), learned = r.learned,
+                    remember = if (settings.rememberPicks) a.copy(target = it.copy(remember = true)) else null)
+            }
         }.distinctBy { (it.action as Action.SendText).target?.address }
         // Fixed wording: the contacts' names are not sent to the model here.
         if (options.isEmpty()) {
             return Recipients.notFound(a, "No matching contact has a phone number${if (via == TextVia.CHEOGRAM) " or XMPP address" else ""}.", via, pick = canPick(cheogram))
         }
-        return Recipients.prepare(a, matches, options, all.size - matches.size) { name -> a.copy(to = name) }
+        return Recipients.prepare(a, matches, options, all.size - matches.size, Recipients.rememberLabel(to)) { name -> a.copy(to = name) }
     }
 
     private fun prepareEmail(a: Action.DraftEmail): Prepared {
@@ -271,10 +281,12 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         if (all.isEmpty()) return if (Contacts.granted(ctx)) Prepared.Refused(ActionStatus.NOT_FOUND, "No contact matches “$to”.") else needContacts()
         val matches = all.take(Recipients.MAX_PEOPLE)
         val options = Recipients.forEmail(book.cards(matches) { Contacts.cards(ctx, it) }).map { r ->
-            Recipients.Option(r.name, kind(r), r.address, a.copy(target = MailTarget(r.name, r.address, appName, from = r)), learned = r.learned)
+            val t = MailTarget(r.name, r.address, appName, from = r)
+            Recipients.Option(r.name, kind(r), r.address, a.copy(target = t), learned = r.learned,
+                remember = if (settings.rememberPicks) a.copy(target = t.copy(remember = true)) else null)
         }
         if (options.isEmpty()) return Prepared.Refused(ActionStatus.NOT_FOUND, "No matching contact has an email address.")
-        return Recipients.prepare(a, matches, options, all.size - matches.size) { name -> a.copy(to = name) }
+        return Recipients.prepare(a, matches, options, all.size - matches.size, Recipients.rememberLabel(to)) { name -> a.copy(to = name) }
     }
 
     /**

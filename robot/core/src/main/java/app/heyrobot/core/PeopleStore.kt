@@ -272,6 +272,29 @@ object PeopleEdit {
     }
 
     /**
+     * "Always use this for “mom”" on a card: the place [r] becomes the person's choice for texts ([email] false) or
+     * emails, and [spoken] (the name asked) one of their aliases, taken from anyone else who had it. A person in People
+     * is changed; for one of the phone's contacts ([lookupKey]) the entry that adds to it is made or changed, keeping
+     * the place too (for when the contact can't be read).
+     */
+    fun rememberChoice(list: List<Person>, spoken: String, r: Reach, email: Boolean, lookupKey: String?, now: Long,
+        newId: () -> String = PeopleStore::newId): List<Person> {
+        val pid = ContactIds.peopleId(r.contactId)
+        val old = if (pid != null) list.firstOrNull { it.id == pid } else lookupKey?.let { k -> list.firstOrNull { it.systemLookupKey == k } }
+        if (pid != null && old == null) return list
+        val base = old ?: Person(newId(), r.name, source = PersonSource.REMEMBERED, systemLookupKey = lookupKey, updatedAt = now)
+        val kept = when {
+            email -> if (base.emails.any { it.equals(r.address, ignoreCase = true) }) base else base.copy(emails = base.emails + r.address)
+            r.xmpp -> if (base.xmpp.any { sameJid(it.jid, r.address) }) base else base.copy(xmpp = base.xmpp + XmppAddress(r.address, r.account))
+            base.phones.any { Preferred.same(it.number, r.address) } -> base
+            else -> base.copy(phones = base.phones + ContactPhone(r.address, PhoneKind.OTHER, r.label ?: People.label(PhoneKind.OTHER)))
+        }
+        val chosen = (if (email) kept.copy(preferredEmail = r.address) else kept.copy(preferredText = r.address)).copy(confirmed = true, updatedAt = now)
+        val p = People.clean(withAlias(chosen, spoken))
+        return upsert(takeAlias(list, spoken, p.id), p)
+    }
+
+    /**
      * Someone who messaged you in Cheogram (the notification listener): [name] as Cheogram showed it, their address and
      * the account it came in on. Someone already known by that address keeps their name if you confirmed them (only a
      * missing account is added); a learned one takes the newest name. New people are learned, unconfirmed, and at most

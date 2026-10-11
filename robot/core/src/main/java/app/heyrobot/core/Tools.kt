@@ -277,6 +277,8 @@ data class TextTarget(
      * the name was learned from a notification); null for a number or address given directly.
      */
     val from: Reach? = null,
+    /** Tapped with "Always use this for …": Robot remembers this place for the name asked (Action.SendText.to). */
+    val remember: Boolean = false,
 ) {
     /** The Cheogram account to open the chat in: Cheogram then needs no search (several accounts with that contact). */
     val account: String? get() = from?.account
@@ -298,8 +300,11 @@ enum class TextVia {
     CHEOGRAM_LIST,
 }
 
-/** Where an email draft goes. [appName] null: the system chooser asks which app. [from]: the contact's place it came from. */
-data class MailTarget(val name: String?, val address: String, val appName: String?, val from: Reach? = null)
+/**
+ * Where an email draft goes. [appName] null: the system chooser asks which app. [from]: the contact's place it came
+ * from; [remember]: tapped with "Always use this for …".
+ */
+data class MailTarget(val name: String?, val address: String, val appName: String?, val from: Reach? = null, val remember: Boolean = false)
 
 /** A resolved add_event: when, and the calendar it goes into ([calendarId] null: the calendar app's editor). */
 data class EventPlan(

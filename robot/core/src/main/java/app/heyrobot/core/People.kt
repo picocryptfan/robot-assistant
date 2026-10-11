@@ -184,27 +184,33 @@ object Recipients {
 
     /**
      * One place a text or an email can go, ready: the person, the kind ("Mobile"), what the card shows, the action.
-     * [learned]: the person's name was seen in a Cheogram notification (always a card).
+     * [learned]: the person's name was seen in a Cheogram notification (always a card). [remember]: the same action
+     * that also remembers this choice for the name asked ("Always use this for mom"), offered on a card with several.
      */
-    data class Option(val name: String, val kind: String?, val shown: String, val action: Action, val learned: Boolean = false)
+    data class Option(val name: String, val kind: String?, val shown: String, val action: Action, val learned: Boolean = false, val remember: Action? = null)
 
     /**
      * The card for a text or an email to the people [matches] named, given every place they can be reached
      * ([options], in order; never empty). One place: that one, and the card shows it unless the name was surely
      * meant (ContactMatcher.sure) by a person you confirmed. Several: the card lists them (at most [MAX_CHOICES],
-     * [hiddenPeople] and the rest counted as "more"); [named] renames the waiting action after the one person they all
-     * belong to.
+     * [hiddenPeople] and the rest counted as "more"), with [remember] ("Always use this for “mom”") when the options
+     * can be remembered; [named] renames the waiting action after the one person they all belong to.
      */
-    fun prepare(asked: Action, matches: List<ContactMatch>, options: List<Option>, hiddenPeople: Int, named: (String) -> Action): Prepared {
+    fun prepare(asked: Action, matches: List<ContactMatch>, options: List<Option>, hiddenPeople: Int, remember: String? = null,
+        named: (String) -> Action): Prepared {
         if (options.size == 1) {
             return Prepared.Ready(options[0].action, mustAsk = hiddenPeople > 0 || options[0].learned || !ContactMatcher.sure(matches, 1))
         }
         val oneName = options.map { it.name }.distinct().singleOrNull()
         val choices = options.take(MAX_CHOICES).map { o ->
-            Choice(listOfNotNull(if (oneName == null) o.name else null, o.kind, o.shown).joinToString(" · "), o.action)
+            Choice(listOfNotNull(if (oneName == null) o.name else null, o.kind, o.shown).joinToString(" · "), o.action, o.remember)
         }
-        return Prepared.Ready(oneName?.let(named) ?: asked, choices = choices, more = options.size - choices.size + hiddenPeople)
+        return Prepared.Ready(oneName?.let(named) ?: asked, choices = choices, more = options.size - choices.size + hiddenPeople,
+            remember = remember?.takeIf { choices.any { it.remember != null } })
     }
+
+    /** "Always use this for “mom”": the line next to a card's choices (the name as asked). */
+    fun rememberLabel(asked: String): String = "Always use this for “${asked.trim()}”"
 
     /** The card's line under "Pick in Cheogram" and "Choose in Cheogram". */
     const val PICK_NOTE = "“Pick in Cheogram” opens Cheogram's contact list, titled “Create shortcut”: nothing goes on your home screen, " +
