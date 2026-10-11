@@ -75,7 +75,7 @@ screens follow after their branches are merged.
   release or two.
 - **Storage**: the two switches are in `files/robot/look.json` (`core/Look.kt`, `sys/LookStore.kt`), not in
   `settings.json`: the main app writes it, and the panel's process reads it again each time the panel opens.
-- **The old UI is kept**: the tag `ui-classic-0.4.2` (commit `8e5a5ac`, Robot 0.4.2, before any of this) and the
+- **The old UI is kept**: the branch `backup/ui-classic-0.4.2` on GitHub (commit `8e5a5ac`, Robot 0.4.2, before any of this) and the
   `Robot-0.4.2.apk` and `Robot-0.4.3.apk` builds on the `builds` branch. Installing one over a newer Robot needs the
   newer one uninstalled first (Android refuses a lower version), which deletes Robot's data.
 - **Tests** (debug unit tests, offline): Compose UI tests on Robolectric, a check that every tappable thing has a label,
