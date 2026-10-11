@@ -13,6 +13,7 @@ import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.core.helpers.HelperTrust
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
+import app.heyrobot.core.memory.MemoryRoute
 import app.heyrobot.core.helpers.Pricing
 import android.os.PowerManager
 import android.os.SystemClock
@@ -553,6 +554,8 @@ object PanelController {
 
     fun onHide() {
         shown = false
+        // 0.7: what was decrypted of memory goes with the panel.
+        MemoryPanel.drop()
         ConversationSession.panel(false)
         val st0 = _state.value
         if (st0.phase == Phase.LISTENING) VoiceLog.add(VoiceEvent.NO_QUESTION, NoQuestion.CLOSED)
@@ -697,6 +700,7 @@ object PanelController {
         lastImage = null
         lastThumb = null
         chat.clear()
+        MemoryPanel.newConversation()
         groups = setOf(ToolGroup.CORE)
         closeConvAfterTurn = false
         startedLocked = locked
@@ -717,6 +721,7 @@ object PanelController {
         lastImage = null
         lastThumb = null
         chat.clear()
+        MemoryPanel.newConversation()
         chat += c.turns
         // The groups its questions and actions used: continuing it describes the same tools.
         groups = ToolRouter.used(c.turns)
@@ -1148,13 +1153,16 @@ object PanelController {
         // Conversation mode's commands first (0.5.0, docs/conversation-mode.md 5.4): "transcribe this conversation",
         // and while one runs "stop transcribing", "pause", "resume". Never the model's to decide.
         val convCmd = if (q.isNotEmpty() && st.draft == null) ConversationRouter.route(q, ConversationSession.running) else null
+        // 0.7: memory's commands next ("remember that …", "forget that", "what do you know about me?"), Robot's own even in a
+        // helper's conversation: what you ask Robot to remember never goes to a helper (core MemoryRouting).
+        val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null) MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null
         // The helpers' phrases next ("ask Claude …", "go get Jarvis"), then texting without the model, then the model (FastPath).
-        var cmd = if (q.isNotEmpty() && convCmd == null) ClaudeRouter.route(q, names) else null
+        var cmd = if (q.isNotEmpty() && convCmd == null && memRoute == null) ClaudeRouter.route(q, names) else null
         // "Thanks Claude" outside a helper's conversation is ordinary talk.
         if (cmd == ClaudeCommand.Leave && !_state.value.claudeMode) cmd = null
         // "Not Claude", "you tell me": Robot answers, now and for the rest of the conversation (a helper's conversation ends too).
         // Only an explicit "ask …" or "go get …" brings a helper back.
-        if (q.isNotEmpty() && ClaudeRouter.declines(q, names)) {
+        if (q.isNotEmpty() && memRoute == null && ClaudeRouter.declines(q, names)) {
             if (cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join) cmd = null
             if (!claudeDeclined) RLog.i("claude_declined", "claudeMode" to _state.value.claudeMode)
             claudeDeclined = true
@@ -1185,14 +1193,14 @@ object PanelController {
         // "Keep screenshots and photos in history" (off by default): the thumbnail and the screen's text go into the saved
         // conversation, for History only (never replayed to the model, never sent to Claude).
         val kept = VoiceHub.settings.let { it.keepMedia && it.saveHistory } && attachment != Attachment.NONE
-        val user = ChatTurn(newId(), TurnRole.USER, q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, marked,
+        val user = ChatTurn(newId(), TurnRole.USER, memRoute?.let { MemoryPanel.question(it, q) } ?: q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, marked,
             picture = if (kept) st.draft?.thumb?.let { b -> java.util.Base64.getEncoder().encodeToString(Images.jpeg(b, Images.THUMB_EDGE, 70)) } else null,
             screenText = if (kept) sText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }?.let { ToolCalls.safeTake(it, ConversationCodec.MAX_SCREEN_TEXT) } else null)
         chat += user
-        val way = FastPath.of(cmd, _state.value.claudeMode, attachment)
+        val way = if (memRoute != null) FastPath.Way.MODEL else FastPath.of(cmd, _state.value.claudeMode, attachment)
         val toClaude = way == FastPath.Way.CLAUDE
         // Groups are only ever added: a question that needs a new one rebuilds the conversation once (:brain).
-        if (cmd == null && !toClaude && convCmd == null) groups = groups + ToolRouter.route(q)
+        if (cmd == null && !toClaude && convCmd == null && memRoute == null) groups = groups + ToolRouter.route(q)
         val replyId = newId()
         // Decided per turn: a screen turn stops saving until the person taps Keep.
         val keep = if (marked == Attachment.SCREEN && !keptByUser) false else st.keep
@@ -1220,6 +1228,7 @@ object PanelController {
         startTurn(replyId) {
             when {
                 convCmd != null -> conversationCommand(replyId, convCmd)
+                memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)
                 cmd == ClaudeCommand.Leave -> {
                     endHelperMode()
                     localReply(replyId, ClaudeWords.LEFT)
@@ -1294,7 +1303,7 @@ object PanelController {
                     guard.take(fromClaude = false)
                     val personal = personalNow(null)
                     val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personal,
-                        includePersonal = HelperTrust.conversation(s, target, personal))
+                        includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
                     // A helper that can't be reached (a server that's off, no connection): Robot answers itself instead.
                     if (!escalateNow(replyId, question, blocks, voiceAsked, reuseBubble = true, h = target, fallBack = true)) return
                     RLog.i("helper_fallback", "kind" to target.kind)
@@ -1356,20 +1365,39 @@ object PanelController {
         val askedNow = ToolRouter.asked(question)
         // The loaded model's context: every budget below is made from it (4,096, or a short-context file's own).
         val maxTokens = loaded.contextTokens
+        // 0.7: what Robot remembers goes with this panel chat question (pinned preferences, found items), within that context;
+        // the question keeps their ids for History, never their words. An answer with a secret in it is shown, not spoken.
+        val locked0 = Assistant.locked(VoiceHub.app)
+        val given = chat.filter { it.role == TurnRole.USER }.flatMap { it.memoryIds }.toSet()
+        val mem = withContext(Dispatchers.IO) { MemoryPanel.forTurn(question, locked0, given, maxTokens) }
+        if (mem.packed.retrievedIds.isNotEmpty()) chat.indexOfLast { it.role == TurnRole.USER }.takeIf { it >= 0 }?.let { i ->
+            chat[i] = chat[i].copy(memoryIds = mem.packed.retrievedIds)
+        }
+        MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)
+        if (mem.quiet) {
+            voice.mute()
+            notify("Not read aloud: the answer holds something private from your memory.")
+        }
         // One run of the model on this question into the reply, with or without ask_claude (the second one, without it,
         // is Robot's own answer after the model handed over: afterLocal).
         suspend fun gemma(askClaude: Boolean): TurnResult {
             // Only the groups this conversation needs, and nothing turned off in settings, is described to the model; to a
             // chat-only model nothing at all, with its compact prompt (Settings › "Direct answers" as you set it).
-            val tools = if (chatOnly) emptyList() else ToolRouter.tools(groups, s, askClaude)
-            val system = if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers)
+            val tools = if (chatOnly) emptyList() else ToolRouter.tools(groups, s, askClaude, memory = mem.tools)
+            val system = app.heyrobot.core.memory.MemoryPrompt.system(if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers)
             else Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools,
                 weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers, lockedTools = s.lockedTools,
-                helper = target?.name, helperSearches = target?.searching ?: true, helperHome = target?.home == true)
+                helper = target?.name, helperSearches = target?.searching ?: true, helperHome = target?.home == true),
+                tools = ToolName.REMEMBER in tools, pinned = mem.packed.systemLine)
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
             val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
-            // The new turn always fits the model's context: cut (and say so) rather than overflow.
-            val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools), clock, maxTokens)
+            // The new turn always fits the model's context: cut (and say so) rather than overflow. Memory's notes go before it only
+            // when the question still fits whole with them.
+            val notes = mem.packed.notesBlock?.takeIf {
+                !Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools) + mem.packed.notesTokens, clock, maxTokens).shortened
+            }
+            val fitted = Prompt.fitTurn(question, screen, attachment, img != null, Prompt.fixedTokens(system, tools) + (if (notes != null) mem.packed.notesTokens else 0),
+                clock, maxTokens).let { if (notes != null) it.copy(text = notes + it.text) else it }
             if (fitted.shortened && !cutSaid) {
                 cutSaid = true
                 notify(if (fitted.questionCut) "Your message was too long, so Robot read only its first part." else "The screen had a lot of text, so Robot read only the first part.")
@@ -1377,7 +1405,7 @@ object PanelController {
             val gen = BrainMsg.Generate(
                 convId = convId,
                 system = system,
-                history = history.toPromptTurns(),
+                history = history.toPromptTurns(mem.notes),
                 historyCount = history.size,
                 text = fitted.text,
                 hasImage = img != null,
@@ -1397,6 +1425,7 @@ object PanelController {
         }
         // ask_claude is a tool: a chat-only model gets none (the escalation triggers outside the model still apply).
         val result = gemma(askClaude = leftOut == null && !chatOnly)
+        if (mem.packed.retrievedIds.isNotEmpty()) scope.launch(Dispatchers.IO) { MemoryPanel.used(mem.packed.retrievedIds) }
         result.failure?.let { return failReply(replyId, it) }
         // Escalation trigger b: Gemma called ask_claude. Its turn ended there; Claude answers (or is offered).
         if (result.escalate) {
@@ -1495,7 +1524,7 @@ object PanelController {
                 // A screen or photo question gets here only with personal content allowed to go by itself: it goes along.
                 val shared = if (attachment != Attachment.NONE && HelperTrust.attachments(s)) Shared(screenText = screen, image = image) else Shared()
                 val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, shared, personal = personal,
-                    includePersonal = HelperTrust.conversation(s, target, personal))
+                    includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
                 finishOrDrop(replyId)
                 escalateNow(null, question, blocks, voiceAsked, reuseBubble = false, h = target)
             }
@@ -1515,7 +1544,7 @@ object PanelController {
                 }
                 // What the tap sends is fixed now: this question's screen or picture, never one that arrives later.
                 val payload = if (!api) null else ClaudeContext.payload(question, history, ZonedDateTime.now(), userRegion, personal, attachment,
-                    Shared(screenText = screen, image = image), includePersonal = HelperTrust.conversation(s, target, personal))
+                    Shared(screenText = screen, image = image), includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
                 offer(replyId, PendingOffer(api, question, payload, voiceAsked, asWell, target.id))
             }
             EscalationDecision.NEEDS_UNLOCK -> {
@@ -1804,7 +1833,7 @@ object PanelController {
                     val before = history.take(helperJoinedAt.coerceIn(0, history.size))
                     val personal = ClaudeContext.personal(before)
                     // A conversation from a word that only sounded like the name asks too, personal or not.
-                    val include = HelperTrust.joinWithoutCard(h, personal, helperMisheard) ||
+                    val include = HelperTrust.joinWithoutCard(h, personal, helperMisheard, MemoryPanel.toTrusted()) ||
                         ClaudeContext.includeQuestion(before, helperMisheard)?.let { q ->
                             askToShare(replyId, q, null, "Include", "Start fresh", detail = "Start fresh: ${h.name} sees only what you ask from now on.",
                                 personal = personal.isNotEmpty(), name = h.name)
@@ -2050,6 +2079,42 @@ object PanelController {
         }
     }
 
+    /**
+     * 0.7, a memory command (core MemoryRouting), before the model and never a helper's: the vault changes, the card under
+     * the reply (Remembered or Forgotten with Undo, Open Memory), and Robot's own words, said back; several items that fit
+     * "forget …" make a pick card first. On the lock screen it only says to unlock, unless memory is allowed there.
+     */
+    private suspend fun memoryCommand(replyId: String, route: MemoryRoute, spoken: Boolean) {
+        var a = withContext(Dispatchers.IO) { MemoryPanel.command(route, Assistant.locked(VoiceHub.app), spoken) }
+        if (a.pick.isNotEmpty()) {
+            val id = newId()
+            upsertAction(replyId, UiAction(id, ToolName.FORGET, app.heyrobot.core.memory.MemoryReplies.CARD_WHICH, ActionStatus.PENDING, null,
+                choices = MemoryPanel.pickLabels(a.pick)))
+            sayInto(replyId, a.text)
+            _state.update { it.copy(phase = Phase.CONFIRMING) }
+            cardWaiting()
+            val pick = try {
+                slot.confirmations.ask(id)
+            } finally {
+                stopCardListening()
+                _state.value.turns.firstOrNull { it.id == replyId }?.actions?.firstOrNull { it.id == id }?.let { upsertAction(replyId, it.copy(status = ActionStatus.DECLINED)) }
+            }
+            _state.update { it.copy(phase = Phase.THINKING) }
+            val chosen = a.pick.getOrNull(if (pick >= app.heyrobot.core.Confirmations.REMEMBER) pick - app.heyrobot.core.Confirmations.REMEMBER else pick)
+            _state.update { st -> st.copy(turns = st.turns.map { t -> if (t.id != replyId) t else t.copy(text = "", actions = t.actions.filter { it.id != id }) }) }
+            a = withContext(Dispatchers.IO) { MemoryPanel.forgetPicked(chosen, a.fr) }
+        }
+        a.card?.let { upsertAction(replyId, it.copy(id = newId())) }
+        MemoryPanel.mark(replyId, a.ids)
+        localReply(replyId, a.text)
+    }
+
+    /** Settings › Memory changed something (Cmd.MEMORY_CHANGED): what the panel holds goes, and the live conversation starts again. */
+    fun memoryChanged() {
+        MemoryPanel.drop()
+        if (slot.running) closeConvAfterTurn = true else closeLiveConversation()
+    }
+
     private enum class ConversationEntry { START, OPEN }
 
     /** The transcript screen (voice process), then the panel goes so nothing more is said to it. */
@@ -2283,8 +2348,12 @@ object PanelController {
     private object PanelActions : TurnActions {
         override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
         override val settings: RobotSettings get() = VoiceHub.settings
-        override suspend fun prepare(action: Action): Prepared = withContext(Dispatchers.IO) { executor().prepare(action) }
+        override suspend fun prepare(action: Action): Prepared = withContext(Dispatchers.IO) { MemoryPanel.prepare(action, locked) ?: executor().prepare(action) }
         override suspend fun run(action: Action): Executed {
+            // 0.7: remember and forget (core memory/); what the conversation holds decides where a remembered item came from.
+            if (action.tool.group == ToolGroup.MEMORY) return withContext(Dispatchers.IO) {
+                MemoryPanel.run(action, spokenTurn, TurnRules.untrusted(chat) || _state.value.turns.lastOrNull()?.actions?.any { it.content } == true)
+            } ?: Executed(ActionStatus.FAILED, "Something went wrong.")
             if (!action.online) return withContext(Dispatchers.IO) { executor().run(action) }
             val weather = action.tool == ToolName.WEATHER
             val deadline = if (weather) WeatherAsk.DEADLINE_MS else Nearby.DEADLINE_MS
@@ -2473,8 +2542,17 @@ object PanelController {
         val turn = st.turns.firstOrNull { t -> t.actions.any { it.id == actionId } } ?: return
         val a = turn.actions.first { it.id == actionId }
         val key = a.undo ?: return
-        upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = "Removed from Robot Notes.", undo = null))
-        scope.launch(Dispatchers.IO) { NotesFiles.store(VoiceHub.app).delete(key) }
+        if (MemoryPanel.isUndo(key)) {
+            // 0.7: a memory card's Undo (an item saved, or items forgotten); the card says what it did.
+            upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = null, undo = null))
+            scope.launch {
+                val line = withContext(Dispatchers.IO) { MemoryPanel.undo(key) }
+                _state.value.turns.firstOrNull { it.id == turn.id }?.actions?.firstOrNull { it.id == actionId }?.let { upsertAction(turn.id, it.copy(detail = line)) }
+            }
+        } else {
+            upsertAction(turn.id, a.copy(status = ActionStatus.UNDONE, detail = "Removed from Robot Notes.", undo = null))
+            scope.launch(Dispatchers.IO) { NotesFiles.store(VoiceHub.app).delete(key) }
+        }
         // The live conversation still believes the note was saved: it is rebuilt from the history ("undone") next time.
         if (slot.running) closeConvAfterTurn = true else closeLiveConversation()
         // A finished reply's record changes with it (a reply still running records its cards when it ends).
@@ -2559,9 +2637,9 @@ object PanelController {
             VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.EMPTY)
             if (spokenTurn) cue(Cue.SORRY_NO_ANSWER)
         }
-        chat += ChatTurn(replyId, TurnRole.ASSISTANT, text, System.currentTimeMillis(), actions = records(actions), stopped = stopped,
+        chat += MemoryPanel.forHistory(ChatTurn(replyId, TurnRole.ASSISTANT, text, System.currentTimeMillis(), actions = records(actions), stopped = stopped,
             claude = claude, sources = ui?.sources.orEmpty(), costMicros = costMicros,
-            helper = ui?.helper.takeIf { claude }, by = ui?.by.takeIf { claude }, home = claude && ui?.home == true)
+            helper = ui?.helper.takeIf { claude }, by = ui?.by.takeIf { claude }, home = claude && ui?.home == true))
         _state.update { st ->
             st.copy(
                 // Only the turn's phases end here: "hey robot" during the answer is already listening.
