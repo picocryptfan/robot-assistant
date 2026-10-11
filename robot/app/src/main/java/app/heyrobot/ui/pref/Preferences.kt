@@ -442,7 +442,8 @@ fun MainSwitchBar(title: String, checked: Boolean, enabled: Boolean = true, modi
 
 /**
  * A single choice (Settings' ListPreference): the row shows the current value under the title and opens a radio dialog
- * that closes on a pick. For TalkBack the row is a button whose state is the value. Replaces segmented buttons.
+ * that closes on a pick. For TalkBack the row is a button whose state is the value. Replaces segmented buttons. A
+ * [summary] shows (and is read) in place of the value when the row says more.
  */
 @Composable
 fun <T> ListPreference(
@@ -454,14 +455,16 @@ fun <T> ListPreference(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
+    summary: String? = null,
     onPick: (T) -> Unit,
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
     val now = label(value)
+    // [summary] says more than the value ("Ask first · works locked"); TalkBack still states the value, then the rest.
     PrefFrame(
-        Modifier.clickable(enabled = enabled, role = Role.Button) { open = true }.semantics { stateDescription = now },
+        Modifier.clickable(enabled = enabled, role = Role.Button) { open = true }.semantics { stateDescription = summary ?: now },
         modifier,
-    ) { PrefTexts(title, now, icon, enabled, summaryInSemantics = false) }
+    ) { PrefTexts(title, summary ?: now, icon, enabled, summaryInSemantics = false) }
     if (open) {
         RadioDialog(title, value, entries, label, detail, onDismiss = { open = false }, onPick = { open = false; onPick(it) })
     }

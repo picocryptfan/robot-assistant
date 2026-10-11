@@ -18,6 +18,7 @@ import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.LookStore
 import app.heyrobot.ui.AdbFixScreen
 import app.heyrobot.ui.AppActions
+import app.heyrobot.ui.BargeTestScreen
 import app.heyrobot.ui.NotificationAccessScreen
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.ROBOT_LICENCE
@@ -48,7 +49,6 @@ object SettingsRoutes {
 }
 
 /** The page for [route]; an unknown one (from a newer version's saved state) goes back to Settings. */
-@Suppress("UNUSED_PARAMETER")
 @Composable
 fun SettingsNav(
     route: String,
@@ -65,7 +65,14 @@ fun SettingsNav(
             val ctx = LocalContext.current
             DisplaySettingsScreen(LookStore.current(ctx), onChange = { LookStore.save(ctx, it) }, onBack = onBack)
         }
+        SettingsRoutes.VOICE -> VoiceSettingsScreen(s, snap, update, a, snackbar, onBack)
+        SettingsRoutes.BARGE_IN -> BargeTestScreen(s, snap, a, snackbar, onBack)
+        SettingsRoutes.ACTIONS -> ActionsSettingsScreen(s, snap, update, a, snackbar, onBack)
+        SettingsRoutes.PEOPLE_NOTES_CALENDAR -> PeopleNotesCalendarScreen(s, snap, calendars, update, a, snackbar, onBack)
         SettingsRoutes.WEATHER -> WeatherSettingsScreen(s, snap, update, a, snackbar, onBack)
+        SettingsRoutes.HISTORY -> HistorySettingsScreen(s, update, a, snackbar, onBack)
+        SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)
+        SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)

@@ -128,6 +128,8 @@ class PageSaverTest {
 
     companion object {
         /** Every route ui/settings/SettingsNav.kt opens. */
-        val SETTINGS_ROUTES = listOf(SettingsRoutes.DISPLAY, SettingsRoutes.WEATHER, SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer"))
+        val SETTINGS_ROUTES = listOf(SettingsRoutes.VOICE, SettingsRoutes.BARGE_IN, SettingsRoutes.ACTIONS, SettingsRoutes.PEOPLE_NOTES_CALENDAR,
+            SettingsRoutes.WEATHER, SettingsRoutes.HISTORY, SettingsRoutes.DISPLAY, SettingsRoutes.ADVANCED, SettingsRoutes.ABOUT,
+            SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer"))
     }
 }

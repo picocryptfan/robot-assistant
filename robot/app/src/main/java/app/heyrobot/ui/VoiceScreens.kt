@@ -119,66 +119,6 @@ import kotlinx.coroutines.withContext
 // (KwsAssets): this process never loads sherpa-onnx. The tests run in the voice process (Cmd broadcasts) and report
 // through files, as the voice speed test does.
 
-/** The part of Settings › Voice about wake words, hearing you over Robot, and the log. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun VoiceListeningSection(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions) {
-    Text("Wake words", style = MaterialTheme.typography.titleSmall)
-    val on = s.wakePhrases.filter { it.enabled }
-    NavRow(RIcons.Mic, "Wake words", if (on.isEmpty()) "None on: only the corner swipe opens Robot" else on.joinToString(" · ") { "“${it.text}”" }) {
-        a.openPage(Page.WakePhrases)
-    }
-    NavRow(RIcons.Search, "Test wake words", "See which phrase Robot hears, as you say it") { a.openPage(Page.WakeTest) }
-
-    Text("Hear me while Robot talks", style = MaterialTheme.typography.titleSmall)
-    for (v in BargeIn.entries) {
-        ChoiceRow(v.title + if (v == BargeIn.ECHO_CANCEL) " (default)" else "", v.detail, s.bargeIn == v) { update(s.copy(bargeIn = v)) }
-    }
-    Text("Interrupt sensitivity", style = MaterialTheme.typography.titleSmall)
-    InterruptSlider(s.interrupt) { if (it != s.interrupt) update(s.copy(interrupt = it)) }
-    Text("Robot's voice plays as", style = MaterialTheme.typography.titleSmall)
-    for (p in Playback.entries) {
-        ChoiceRow(p.title + if (p == Playback.ASSISTANT) " (default)" else "", p.detail, s.playback == p) { update(s.copy(playback = p)) }
-    }
-    Text("Volume key stops Robot", style = MaterialTheme.typography.titleSmall)
-    SegmentedChoice(StopKey.entries, s.stopKey, { it.title }) { update(s.copy(stopKey = it)) }
-    Text("While Robot talks and her panel is on screen, the key stops her and doesn't change the volume. With the screen off or the panel closed it works as always.",
-        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-    Text("Barge-in test", style = MaterialTheme.typography.titleSmall)
-    Text("Robot reads a paragraph of about 20 seconds. Run the test: say “stop” or one wake phrase, once; she stops when she hears it, and the " +
-        "result says what she heard and how fast she went quiet. Count run: she reads to the end while you say “stop” and your wake phrases as often " +
-        "as you like, a few seconds apart; the result lists each one she heard. Silent run: stay quiet; it counts anything she hears anyway. " +
-        "Tricky words: stay quiet while she reads words like “stop” (step, steep, stamp, bus stop); it shows how often her own words fire, and " +
-        "how many of those are set aside. Try each mode and each interrupt sensitivity above: the result says which it ran with.",
-        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    // What the test will run with (the phone's voice stands in while the chosen model isn't installed); the result says
-    // what it ran with.
-    val model = s.voiceChoice.bundle
-    val missing = model != null && snap.voice.firstOrNull { it.bundle == model }?.let { it.status != ModelStatus.VERIFIED } == true
-    val modelName = when (model) {
-        VoiceBundle.KOKORO -> "Kokoro"
-        VoiceBundle.KITTEN -> "Kitten"
-        else -> null
-    }
-    Text(BargeTestLogic.setup(s.bargeIn, s.playback, s.voiceChoice == VoiceChoice.SYSTEM || missing, if (missing) modelName else null, s.interrupt),
-        style = MaterialTheme.typography.bodyMedium)
-    val r = snap.bargeTest
-    val running = r?.state == BenchState.RUNNING && System.currentTimeMillis() - r.started < BargeTestLogic.TIMEOUT_MS + 10_000
-    // Four buttons don't fit side by side on a phone: they wrap.
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { a.bargeTest(BargeRun.FIRST) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (running) "Testing…" else "Run the test") }
-        OutlinedButton(onClick = { a.bargeTest(BargeRun.COUNT) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text("Count run") }
-        OutlinedButton(onClick = { a.bargeTest(BargeRun.SILENT) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text("Silent run") }
-        OutlinedButton(onClick = { a.bargeTest(BargeRun.TRICKY) }, enabled = !running, modifier = Modifier.heightIn(min = 48.dp)) { Text("Tricky words") }
-    }
-    val names = s.wakePhrases.associate { it.id to it.text }
-    if (r != null) for (line in BargeTestLogic.lines(r) { names[it] }) {
-        Text(line, style = MaterialTheme.typography.bodyMedium, color = if (r.state == BenchState.FAILED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
-    }
-    NavRow(RIcons.History, "Voice log", "What the voice side did, for when Robot didn't respond") { a.openPage(Page.VoiceLog) }
-}
-
 /**
  * Settings › Voice › "Interrupt sensitivity": three steps, Low, Medium (as before 0.4.0) and High. Only while Robot talks;
  * the wake phrases' own sensitivity stays. [onChange] gets the level where the slider was let go.
@@ -204,16 +144,6 @@ internal fun InterruptSlider(value: InterruptSensitivity, enabled: Boolean = tru
         }
         Text("How readily Robot hears “stop” and your wake phrases while it talks. ${shown.detail}." +
             if (shown == InterruptSensitivity.MEDIUM) " (default)" else "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun <T> SegmentedChoice(items: List<T>, selected: T, label: (T) -> String, onPick: (T) -> Unit) {
-    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-        items.forEachIndexed { i, v ->
-            SegmentedButton(selected = selected == v, onClick = { onPick(v) }, shape = SegmentedButtonDefaults.itemShape(i, items.size)) { Text(label(v)) }
-        }
     }
 }
 

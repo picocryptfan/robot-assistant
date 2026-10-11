@@ -84,6 +84,7 @@ import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.settings.AppRoutes
 import app.heyrobot.ui.settings.SettingsNav
+import app.heyrobot.ui.settings.SettingsRoot
 import app.heyrobot.ui.settings.rememberPageStack
 import app.heyrobot.ui.theme.RobotTheme
 import kotlinx.coroutines.Dispatchers
@@ -673,7 +674,7 @@ fun RobotAppUi(activity: MainActivity) {
                     Tab.NOTES -> NotesScreen(notes, actions, m)
                     Tab.HISTORY -> HistoryScreen(history, actions, m)
                     Tab.MODEL -> ModelScreen(settings, ::updateSettings, snap, busy, actions, m)
-                    Tab.SETTINGS -> SettingsScreen(settings, snap, calendars, ::updateSettings, actions, m)
+                    Tab.SETTINGS -> SettingsRoot(settings, snap, actions, m)
                 }
             }
         }

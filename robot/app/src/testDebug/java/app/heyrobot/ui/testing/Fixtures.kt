@@ -4,7 +4,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollToNodeAction
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.performScrollToNode
@@ -77,3 +81,10 @@ fun facts(
     recognizerIsRobot = recognizerIsRobot, recognizersFound = 1, micGranted = micGranted, notificationsGranted = notificationsGranted,
     listening = listening, listeningNote = null,
 )
+
+/** The row (anything tappable) whose texts include [title]: not the page's title of the same name. */
+fun ComposeContentTestRule.onRow(title: String): SemanticsNodeInteraction = onNode(hasText(title) and hasClickAction())
+
+/** The node with [text] inside the dialog showing (a radio dialog's choice, its buttons). */
+fun ComposeContentTestRule.inDialog(text: String, substring: Boolean = false): SemanticsNodeInteraction =
+    onNode(hasText(text, substring = substring) and hasAnyAncestor(isDialog()))
