@@ -12,6 +12,7 @@ import app.heyrobot.core.update.UpdateSettings
 import app.heyrobot.core.update.UpdateState
 import app.heyrobot.ui.settings.updatesSummary
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -78,5 +79,38 @@ class UpdaterTest {
         assertTrue(updatesSummary(UpdateSettings(autoCheck = false), null, now, now).endsWith(" · automatic checks off"))
         // A skipped version isn't announced there either.
         assertEquals("Checks once a day", updatesSummary(UpdateSettings(skipped = "9.0.0"), found, 0, now))
+    }
+}
+
+/**
+ * The jobs' service runs the daily check and the download on Wi-Fi, sometimes at once: Android stopping one stops that one's
+ * work only, and a job's work that ends forgets only its own stop signal.
+ */
+class JobAbortsTest {
+    @Test fun stoppingOneJobLeavesTheOtherRunning() {
+        val jobs = JobAborts()
+        val check = jobs.start(UpdateJobs.CHECK)
+        val download = jobs.start(UpdateJobs.DOWNLOAD)
+        jobs.stop(UpdateJobs.CHECK)
+        assertTrue(check.cancelled)
+        assertFalse(download.cancelled)
+        // The check's thread ends; the download is still stopped by its own id, not by a stale one.
+        jobs.done(UpdateJobs.CHECK, check)
+        jobs.stop(UpdateJobs.DOWNLOAD)
+        assertTrue(download.cancelled)
+    }
+
+    @Test fun aJobStartedAgainReplacesItsOldSignal() {
+        val jobs = JobAborts()
+        val first = jobs.start(UpdateJobs.DOWNLOAD)
+        val second = jobs.start(UpdateJobs.DOWNLOAD)
+        // The old run is told to stop; the old thread ending doesn't forget the new run's signal.
+        assertTrue(first.cancelled)
+        jobs.done(UpdateJobs.DOWNLOAD, first)
+        assertFalse(second.cancelled)
+        jobs.stop(UpdateJobs.DOWNLOAD)
+        assertTrue(second.cancelled)
+        // Stopping a job that isn't running does nothing.
+        jobs.stop(12345)
     }
 }

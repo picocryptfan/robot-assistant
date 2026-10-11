@@ -68,20 +68,39 @@ object UpdateJobs {
 }
 
 /**
+ * Each running job's stop signal, by its id. The daily check and the download on Wi-Fi can run at once in the one service:
+ * Android stopping one stops that one's work only, and a run that ends forgets its own signal, never a newer run's.
+ */
+internal class JobAborts {
+    private val running = java.util.concurrent.ConcurrentHashMap<Int, Abort>()
+
+    /** A new run of job [id]; a run of it still going is told to stop. */
+    fun start(id: Int): Abort = Abort().also { running.put(id, it)?.cancel() }
+
+    fun stop(id: Int) {
+        running[id]?.cancel()
+    }
+
+    fun done(id: Int, a: Abort) {
+        running.remove(id, a)
+    }
+}
+
+/**
  * The jobs' service (MAIN PROCESS). Not exported; only the system binds it (BIND_JOB_SERVICE). The work runs on its own
- * thread; when Android stops a job, Stop disconnects it and a download keeps what it has for the next run.
+ * thread; when Android stops a job, Stop disconnects that job's work and a download keeps what it has for the next run.
  */
 class UpdateJobService : JobService() {
-    @Volatile private var abort: Abort? = null
+    private val aborts = JobAborts()
 
     override fun onStartJob(params: JobParameters): Boolean {
-        val a = Abort()
-        abort = a
+        val id = params.jobId
+        val a = aborts.start(id)
         val app = applicationContext
         Thread({
             var again = false
             try {
-                again = when (params.jobId) {
+                again = when (id) {
                     UpdateJobs.CHECK -> { Updater.autoCheck(app, a, params.network); false }
                     UpdateJobs.DOWNLOAD -> Updater.autoDownload(app, a, params.network)
                     else -> false
@@ -89,6 +108,7 @@ class UpdateJobService : JobService() {
             } catch (t: Throwable) {
                 RLog.w("update_job_run", t)
             } finally {
+                aborts.done(id, a)
                 try { jobFinished(params, again && !a.cancelled) } catch (_: Throwable) {}
             }
         }, "robot-update-job").start()
@@ -97,7 +117,7 @@ class UpdateJobService : JobService() {
 
     /** Android stops the job (the network went, or its time is up): a download continues at the next run. */
     override fun onStopJob(params: JobParameters): Boolean {
-        abort?.cancel()
+        aborts.stop(params.jobId)
         return params.jobId == UpdateJobs.DOWNLOAD
     }
 }
