@@ -4,7 +4,7 @@ import java.util.Locale
 
 // Pure. Translation in conversation mode (docs/conversation-mode.md 4): the language pair, the engines' common
 // interface, and the guards every translation passes before it is shown or spoken (MtGuard). Gemma (through :brain's
-// one-shot request) and Bergamot (the :mt process, a later phase) both implement Translator; neither is here.
+// one-shot request, phase 5.4) and Bergamot ([BergamotTranslator], over the :mt process) both implement Translator.
 
 /** The languages a conversation translates between. 0.5.0 has one pair; more follow the same shape. */
 enum class LangPair(val id: String, val first: String, val second: String, val title: String) {
@@ -49,6 +49,54 @@ interface Translator {
     val engine: MtEngine
 
     suspend fun translate(text: String, from: String, to: String): String
+}
+
+/**
+ * How a client reaches the :mt process (the app's MtLink: a Messenger binding). Throws [MtException] when the service
+ * answers with an error or goes away.
+ */
+interface MtTransport {
+    suspend fun translate(direction: String, lines: List<String>, deadlineMs: Long, priority: MtPriority): MtMsg.Translated
+}
+
+/**
+ * Bergamot, the fast engine, over the :mt process (docs/conversation-mode.md 4.1, 4.5). It takes off a short line's full
+ * stop before the engine sees it and puts it back after ([MtGuard.prepare]); the caller then runs [MtGuard.check], as for
+ * Gemma. [translate] is one line someone waits for (the interpreter's fallback): interactive, [lineDeadlineMs].
+ * [translateAll] is a backlog (a transcript's lines): batch priority, so an interactive line goes first.
+ */
+class BergamotTranslator(private val transport: MtTransport, private val lineDeadlineMs: Long = MtPolicy.LINE_DEADLINE_MS) : Translator {
+    override val engine: MtEngine get() = MtEngine.BERGAMOT
+
+    override suspend fun translate(text: String, from: String, to: String): String {
+        val d = direction(from, to)
+        val p = MtGuard.prepare(text, engine)
+        if (p.text.isBlank()) return ""
+        val r = transport.translate(d.id, listOf(p.text), lineDeadlineMs, MtPriority.INTERACTIVE)
+        val out = r.out.firstOrNull() ?: throw MtException(if (r.failed > 0) MtError.FAILED else MtError.TIMEOUT)
+        return MtGuard.restore(out, p)
+    }
+
+    /**
+     * Each line's translation, in order; null for a line the engine didn't reach before [deadlineMs] (from when :mt gets
+     * the request) or failed on. A blank line stays blank without asking the engine. At most [MtPolicy.MAX_LINES] lines.
+     */
+    suspend fun translateAll(lines: List<String>, from: String, to: String, deadlineMs: Long, priority: MtPriority = MtPriority.BATCH): List<String?> {
+        val d = direction(from, to)
+        if (lines.size > MtPolicy.MAX_LINES) throw MtException(MtError.BAD_REQUEST)
+        val prepared = lines.map { MtGuard.prepare(it, engine) }
+        val asked = prepared.withIndex().filter { it.value.text.isNotBlank() }
+        val out = arrayOfNulls<String>(lines.size)
+        prepared.forEachIndexed { i, p -> if (p.text.isBlank()) out[i] = "" }
+        if (asked.isNotEmpty()) {
+            val r = transport.translate(d.id, asked.map { it.value.text }, deadlineMs, priority)
+            asked.forEachIndexed { k, (i, p) -> out[i] = r.out.getOrNull(k)?.let { MtGuard.restore(it, p) } }
+        }
+        return out.toList()
+    }
+
+    private fun direction(from: String, to: String): MtDirection =
+        MtBundle.entries.firstNotNullOfOrNull { it.direction(from, to) } ?: throw MtException(MtError.BAD_REQUEST)
 }
 
 /**

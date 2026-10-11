@@ -212,7 +212,7 @@ enum class VoiceEvent(val id: Int) {
     CONV_DELETE(116),
     /** Settings › Voice › Transcription check: a = word error rate in %, b = lines, c = [LangCode]. */
     CONV_CHECK(117),
-    /** The fast translation engine loaded: a = ms, b = 1 if it worked, c = directions. */
+    /** The fast translation engine loaded: a = ms, b = 1 if it worked, c = directions loaded (or the [MtError] when it didn't). */
     MT_LOAD(118),
     /** A segment was decoded again in two halves (too few words for its speech): a = speech ms, b = words before, c = words after. */
     CONV_REHEARD(119),
@@ -727,7 +727,7 @@ object VoiceLogText {
             VoiceEvent.CONV_EXPORT -> "Transcript exported: " + code(ExportKind.entries, a)
             VoiceEvent.CONV_DELETE -> (if (b == 1) "Recordings deleted, transcripts kept: " else "Transcripts deleted: ") + a
             VoiceEvent.CONV_CHECK -> "Transcription check (" + code(LangCode.entries, c) + "): $a% of words wrong over $b lines"
-            VoiceEvent.MT_LOAD -> if (b == 1) "Fast translation loaded in $a ms ($c directions)" else "Fast translation didn't load ($a ms)"
+            VoiceEvent.MT_LOAD -> if (b == 1) "Fast translation loaded in $a ms ($c directions)" else "Fast translation didn't load ($a ms): " + code(MtError.entries, c)
             VoiceEvent.CONV_REHEARD -> "Segment heard again in two halves (" + secs(a) + " of speech): $b words, then $c"
         }
     }

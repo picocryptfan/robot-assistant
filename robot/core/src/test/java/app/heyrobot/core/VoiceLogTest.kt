@@ -55,7 +55,7 @@ class VoiceLogTest {
             EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries, ClaudeLeftOut.entries,
             PickOutcome.entries, CheogramRoute.entries, ConvMode.entries, ConvEntry.entries, ConvStop.entries, ConvPause.entries, MtEngine.entries,
             MtVerdict.entries, LangCode.entries, IoCode.entries, MicEvent.entries, ThermalStep.entries, HelperCode.entries, AppShareCode.entries,
-            ExportKind.entries, ClaudeStage.entries, ClaudeErrorKind.entries)
+            ExportKind.entries, ClaudeStage.entries, ClaudeErrorKind.entries, MtError.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -222,6 +222,9 @@ class VoiceLogTest {
         assertEquals("Conversation resumed after a phone call (95 s)", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_RESUME, ConvPause.CALL.id, 95)))
         assertEquals("Line translated by the fast engine in 41 ms: kept, a repeat removed",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_TRANSLATE, MtEngine.BERGAMOT.id, 41, MtVerdict.REPEAT.id)))
+        assertEquals("Fast translation loaded in 380 ms (2 directions)", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MT_LOAD, 380, 1, 2)))
+        assertEquals("Fast translation didn't load (12 ms): the fast engine isn't in this build",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MT_LOAD, 12, 0, MtError.NO_ENGINE.id)))
         assertEquals("Phone heat severe: fast translation only", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_THERMAL, 3, ThermalStep.FAST_ONLY.id)))
         assertEquals("Summary with the Claude app: about 6100 words · copied for you to paste",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_APP.id, 61, AppShareCode.CLIPBOARD.id)))

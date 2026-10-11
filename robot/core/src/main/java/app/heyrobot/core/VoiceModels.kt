@@ -85,8 +85,11 @@ object VoiceMark {
      * The files of [b] the mark vouches for: listed with the manifest's size and SHA-256, and still on disk with
      * that size and modification time ([onDisk] gives a file's size and mtime, or null when it is missing).
      */
-    fun vouched(b: VoiceBundle, mark: List<InstalledFile>, onDisk: (String) -> Pair<Long, Long>?): Set<String> =
-        b.files.filter { f ->
+    fun vouched(b: VoiceBundle, mark: List<InstalledFile>, onDisk: (String) -> Pair<Long, Long>?): Set<String> = vouched(b.files, mark, onDisk)
+
+    /** [vouched] for any list of files (the fast translation engine's too, core MtBundle.kt). */
+    fun vouched(files: List<VoiceFile>, mark: List<InstalledFile>, onDisk: (String) -> Pair<Long, Long>?): Set<String> =
+        files.filter { f ->
             val m = mark.lastOrNull { it.name == f.name } ?: return@filter false
             m.bytes == f.bytes && m.sha256 == f.sha256 && onDisk(f.name) == (f.bytes to m.modified)
         }.map { it.name }.toSet()
@@ -125,9 +128,12 @@ object VoiceModelLogic {
     /** Kept free beyond the download and its installed copy. */
     const val HEADROOM = 300_000_000L
 
-    fun status(b: VoiceBundle, f: VoiceFacts): ModelStatus = when {
+    fun status(b: VoiceBundle, f: VoiceFacts): ModelStatus = status(b.files.size, f)
+
+    /** The status of a bundle of [files] files (a voice bundle, or the fast translation engine's). */
+    fun status(files: Int, f: VoiceFacts): ModelStatus = when {
         f.installing -> ModelStatus.VERIFYING
-        f.vouched >= b.files.size -> ModelStatus.VERIFIED
+        f.vouched >= files -> ModelStatus.VERIFIED
         f.downloading -> ModelStatus.DOWNLOADING
         // UNVERIFIED installs by itself (the app checks every second): never after an install that failed to write.
         f.downloaded && !f.installFailed -> ModelStatus.UNVERIFIED
@@ -162,24 +168,30 @@ object VoiceModelLogic {
      * what other downloads under way (Gemma, other voice models) will still take, since DownloadManager does not
      * reserve their space up front.
      */
-    fun spaceProblem(b: VoiceBundle, remaining: List<VoiceFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0): String? {
+    fun spaceProblem(b: VoiceBundle, remaining: List<VoiceFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0): String? =
+        spaceProblem(b.title, needBytes(remaining, staged), freeBytes, pendingBytes)
+
+    /** Null when [need] bytes fit in [freeBytes] (< 0: unknown, allowed) beside [pendingBytes], else why not, naming [title]. */
+    fun spaceProblem(title: String, need: Long, freeBytes: Long, pendingBytes: Long): String? {
         if (freeBytes < 0) return null
-        val need = needBytes(remaining, staged)
         val pending = pendingBytes.coerceAtLeast(0)
         if (freeBytes - pending >= need) return null
         val left = if (pending > 0) "only ${size((freeBytes - pending).coerceAtLeast(0))} will be left once the downloads already under way finish"
         else "${size(freeBytes)} is free"
-        return "Not enough free space: “${b.title}” needs ${size(need)} while it downloads and installs, and $left."
+        return "Not enough free space: “$title” needs ${size(need)} while it downloads and installs, and $left."
     }
 
     fun refuseDownload(
         b: VoiceBundle, status: ModelStatus, remaining: List<VoiceFile>, freeBytes: Long, staged: Set<String> = emptySet(), pendingBytes: Long = 0,
-    ): String? = when (status) {
+    ): String? = refuseDownload(status) { spaceProblem(b, remaining, freeBytes, staged, pendingBytes) }
+
+    /** Why a download can't start in [status], or [space]'s answer when nothing is there yet. */
+    fun refuseDownload(status: ModelStatus, space: () -> String?): String? = when (status) {
         ModelStatus.DOWNLOADING -> "The download is already running."
         ModelStatus.VERIFYING, ModelStatus.UNVERIFIED -> "The files are being checked and installed."
         ModelStatus.VERIFIED -> "Already on this phone."
         ModelStatus.IMPORTING -> "An import is running."
-        ModelStatus.MISSING, ModelStatus.BAD -> spaceProblem(b, remaining, freeBytes, staged, pendingBytes)
+        ModelStatus.MISSING, ModelStatus.BAD -> space()
     }
 
     fun headline(status: ModelStatus): String = when (status) {
@@ -196,15 +208,18 @@ object VoiceModelLogic {
      * The download line and percent (-1 = unknown) from the rows of the files still downloading, with
      * [doneBytes] already installed or downloaded. A failed file is reported first: the rest cannot finish the bundle.
      */
-    fun downloadText(b: VoiceBundle, doneBytes: Long, rows: List<FileDownload>): Pair<String, Int> {
-        val soFar = (doneBytes + rows.sumOf { it.soFar.coerceAtLeast(0) }).coerceIn(0, b.bytes)
-        val pct = (soFar * 100 / b.bytes).toInt()
+    fun downloadText(b: VoiceBundle, doneBytes: Long, rows: List<FileDownload>): Pair<String, Int> = downloadText(b.bytes, doneBytes, rows)
+
+    /** [downloadText] for a download of [total] bytes in all. */
+    fun downloadText(total: Long, doneBytes: Long, rows: List<FileDownload>): Pair<String, Int> {
+        val soFar = (doneBytes + rows.sumOf { it.soFar.coerceAtLeast(0) }).coerceIn(0, total)
+        val pct = (soFar * 100 / total).toInt()
         val failed = rows.firstOrNull { it.status == Download.STATUS_FAILED }
         val paused = rows.firstOrNull { it.status == Download.STATUS_PAUSED }
         return when {
             failed != null -> "The download failed: ${Download.reasonText(failed.status, failed.reason)}. Tap Download to try again." to -1
             rows.isNotEmpty() && rows.all { it.status == Download.STATUS_SUCCESSFUL } -> "Downloaded. Checking the files next." to 100
-            rows.any { it.status == Download.STATUS_RUNNING } -> String.format(Locale.US, "%s of %s (%d%%)", size(soFar), size(b.bytes), pct) to pct
+            rows.any { it.status == Download.STATUS_RUNNING } -> String.format(Locale.US, "%s of %s (%d%%)", size(soFar), size(total), pct) to pct
             paused != null -> "Paused at ${size(soFar)}: ${Download.reasonText(paused.status, paused.reason)}" to -1
             else -> "Waiting to start" to -1
         }
