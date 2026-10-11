@@ -22,6 +22,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import app.heyrobot.core.RLog
 import app.heyrobot.sys.Assistant
+import app.heyrobot.sys.LookStore
 import app.heyrobot.ui.theme.RobotTheme
 
 // VOICE PROCESS. The panel the system shows for the assistant: the corner swipe, the lock-screen
@@ -85,6 +86,8 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
 
     override fun onShow(args: Bundle?, showFlags: Int) {
         super.onShow(args, showFlags)
+        // Settings › Display, as the main app last saved it (a small file): each panel opens in the current look.
+        LookStore.reload(context)
         registry.currentState = Lifecycle.State.RESUMED
         PanelController.attach(this)
         PanelController.onShow(args, Assistant.locked(context), showFlags)
