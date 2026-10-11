@@ -380,7 +380,15 @@ object PanelController {
     private fun init() {
         if (initialized) return
         initialized = true
-        scope.launch { BrainKeeper.state.collect { s -> _state.update { it.copy(brain = s) } } }
+        scope.launch {
+            // A new fallback (Robot is using Fast instead of the model you chose) shows once as a notice, with Open Robot.
+            var seenFallback = 0
+            BrainKeeper.state.collect { s ->
+                val tell = s.fallback != null && s.fallbackSeq != seenFallback
+                seenFallback = s.fallbackSeq
+                _state.update { it.copy(brain = s, notice = if (tell) Notice(s.fallback!!, NoticeAction.OPEN_APP) else it.notice) }
+            }
+        }
     }
 
     /** From VoiceHub (which owns the voice's listener since 0.2.3): Robot's voice started or stopped. */
@@ -1175,7 +1183,7 @@ object PanelController {
             return failReply(replyId, b.problem ?: "Robot's model isn't ready.", if (b.readiness == BrainKeeper.Readiness.NO_MODEL) NoticeAction.OPEN_APP else NoticeAction.NONE)
         }
         client = c
-        // The TPU build loaded without its vision encoder: a screen question still has the screen's text.
+        // The model loaded without its vision encoder: a screen question still has the screen's text.
         val vision = BrainKeeper.state.value.vision
         if (image != null && !vision && attachment == Attachment.PHOTO) return failReply(replyId, BrainError.NO_VISION.text())
         val img = if (vision) image else null

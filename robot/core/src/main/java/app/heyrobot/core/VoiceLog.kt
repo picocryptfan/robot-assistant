@@ -175,10 +175,43 @@ enum class VoiceEvent(val id: Int) {
      * gave it (100 foreground, 125 foreground service, 200 visible, 300+ background), c = ms spent. Never the position.
      */
     WEATHER_LOCATION(82),
+    /** Settings › Model (0.4.1; events 130 to 139): you chose a model. a = [ModelCode] now, b = [ModelCode] before. */
+    MODEL_CHOSEN(130),
+    /** A model loaded: a = [ModelCode], b = [BackendCode], c = ms the load took. */
+    MODEL_LOADED(131),
+    /** A model didn't load: a = [ModelCode], b = [LoadFailure]. */
+    MODEL_LOAD_FAILED(132),
+    /** Robot used Fast instead of the model you chose: a = the [ModelCode] you chose, b = [FallbackWhy], c = [ModelCode] used (0: none). */
+    MODEL_FALLBACK(133),
+    /** Another model was loaded, so Robot unloaded it first (never two at once): a = [ModelCode] unloaded, b = [ModelCode] to load. */
+    MODEL_SWITCH(134),
     ;
 
     companion object {
         fun of(id: Int): VoiceEvent? = entries.firstOrNull { it.id == id }
+    }
+}
+
+/** A model of the catalogue (BrainModel), as the voice log stores it. */
+enum class ModelCode(override val id: Int, override val title: String) : LogCode {
+    FAST(1, "Fast (Gemma 4 E2B, TPU)"), SMARTER(2, "Smarter (Gemma 4 E4B, CPU)"), UNCENSORED(3, "Uncensored (Gemma 4 E4B abliterated, CPU)"),
+    OWN(4, "your own model file");
+
+    companion object {
+        fun of(m: BrainModel): ModelCode = when (m) {
+            BrainModel.FAST -> FAST
+            BrainModel.SMARTER -> SMARTER
+            BrainModel.UNCENSORED -> UNCENSORED
+            BrainModel.OWN -> OWN
+        }
+    }
+}
+
+enum class BackendCode(override val id: Int, override val title: String) : LogCode {
+    TPU(1, "TPU"), CPU(2, "CPU");
+
+    companion object {
+        fun of(b: ModelBackend): BackendCode = if (b == ModelBackend.TPU) TPU else CPU
     }
 }
 
@@ -598,6 +631,12 @@ object VoiceLogText {
                 (if (c == 1) " · remembered" else "")
             VoiceEvent.CHEOGRAM_HANDOFF -> "Text handed to Cheogram: " + code(CheogramRoute.entries, a) + (if (b == 1) " (the first way didn't open)" else "")
             VoiceEvent.WEATHER_LOCATION -> "Position for the weather: " + code(LocationCode.entries, a) + " · process importance $b · $c ms"
+            VoiceEvent.MODEL_CHOSEN -> "Model chosen: " + code(ModelCode.entries, a) + (if (b > 0 && b != a) " (was " + code(ModelCode.entries, b) + ")" else "")
+            VoiceEvent.MODEL_LOADED -> "Model loaded: " + code(ModelCode.entries, a) + " on the " + code(BackendCode.entries, b) + " in " + secs(c)
+            VoiceEvent.MODEL_LOAD_FAILED -> "Model didn't load: " + code(ModelCode.entries, a) + " (" + code(LoadFailure.entries, b) + ")"
+            VoiceEvent.MODEL_FALLBACK -> "Used " + (if (c > 0) code(ModelCode.entries, c) else "no model") + " instead of " + code(ModelCode.entries, a) +
+                ": " + code(FallbackWhy.entries, b)
+            VoiceEvent.MODEL_SWITCH -> "Unloaded " + code(ModelCode.entries, a) + " to load " + code(ModelCode.entries, b)
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
         }

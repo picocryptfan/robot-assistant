@@ -21,6 +21,7 @@ import app.heyrobot.core.KwsThresholds
 import app.heyrobot.core.WakePhrase
 import app.heyrobot.core.InterruptSensitivity
 import app.heyrobot.core.ListenWhy
+import app.heyrobot.core.ModelCode
 import app.heyrobot.core.MicKind
 import app.heyrobot.core.PlaybackCode
 import app.heyrobot.core.Playback
@@ -448,6 +449,10 @@ object VoiceHub {
                 if (old.wakePhrases != settings.wakePhrases || old.interrupt != settings.interrupt) worker.post { buildWakeLines() }
                 applyListening(ListenWhy.SETTINGS)
                 updateCapture()
+                // Settings › Model (0.4.1): a new choice lets go of the model in memory now; any save retries a failed one.
+                val modelChanged = old.brainModelChoice != settings.brainModelChoice
+                if (modelChanged) VoiceLog.add(VoiceEvent.MODEL_CHOSEN, ModelCode.of(settings.brainModelChoice), ModelCode.of(old.brainModelChoice))
+                BrainKeeper.settingsChanged(app, modelChanged)
                 PanelController.settingsChanged()
             }
             Cmd.CLAUDE_KEY -> Thread({

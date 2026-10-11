@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import app.heyrobot.BuildConfig
 import app.heyrobot.core.Approval
 import app.heyrobot.core.BenchState
+import app.heyrobot.core.BrainModel
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.CalendarPick
 import app.heyrobot.core.ClaudeCost
@@ -65,9 +66,11 @@ import app.heyrobot.core.LockScreen
 import app.heyrobot.core.PhoneNumbers
 import app.heyrobot.core.TextApp
 import app.heyrobot.core.EngineState
+import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelLogic
-import app.heyrobot.core.ModelSpec
 import app.heyrobot.core.ModelStatus
+import app.heyrobot.core.OwnModel
+import app.heyrobot.core.PhoneStatus
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.SpeakReplies
@@ -83,73 +86,213 @@ import app.heyrobot.ui.common.toolIcon
 
 // MAIN PROCESS. The model manager, settings and the assistant setup check.
 
+/**
+ * Settings › Model (the Model tab, 0.4.1): which model Robot uses, one card per built-in model (download, check,
+ * delete, where it comes from), your own model file (import, what the check found, the TPU's warning card), and the
+ * voice models.
+ */
 @Composable
-fun ModelScreen(snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier) {
-    var confirmDelete by remember { mutableStateOf(false) }
-    val st = snap.model
+fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier) {
+    var confirmDelete by remember { mutableStateOf<BrainModel?>(null) }
+    val chosen = s.brainModelChoice
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        ScreenTitle("Model", "Gemma 4 E2B runs on the phone's TPU. It never goes online.")
-        SectionCard {
-            StatusRow(
-                when (st) { ModelStatus.VERIFIED -> Mark.OK; ModelStatus.BAD -> Mark.WARN; else -> Mark.TODO },
-                ModelSpec.NAME,
-                ModelLogic.headline(st),
-            )
-            val p = snap.progress
-            if (p != null) {
-                Text(p, style = MaterialTheme.typography.bodyMedium)
-                if (snap.percent >= 0) LinearProgressIndicator(progress = { snap.percent / 100f }, modifier = Modifier.fillMaxWidth())
-                else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
-            if (st == ModelStatus.MISSING && snap.failure != null) Text(snap.failure, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
-            if (st == ModelStatus.BAD) Text("The file's checksum is wrong, so Robot won't load it. Delete it and download it again.", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "Size ${ModelLogic.gb(ModelSpec.BYTES)}. Free on this phone: ${if (snap.freeBytes >= 0) ModelLogic.gb(snap.freeBytes) else "unknown"}.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            when (st) {
-                ModelStatus.MISSING, ModelStatus.BAD -> {
-                    Button(onClick = a.download, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
-                        Icon(RIcons.Download, null); Spacer(Modifier.width(8.dp)); Text("Download (${ModelLogic.gb(ModelSpec.BYTES)})")
-                    }
-                    OutlinedButton(onClick = a.import, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
-                        Icon(RIcons.Folder, null); Spacer(Modifier.width(8.dp)); Text("Import a downloaded file")
-                    }
-                }
-                ModelStatus.DOWNLOADING -> OutlinedButton(onClick = a.cancelDownload, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Cancel download") }
-                ModelStatus.UNVERIFIED -> Button(onClick = a.verify, enabled = busy == null, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Check the file") }
-                ModelStatus.VERIFIED -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = a.verify, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Icon(RIcons.Refresh, null); Spacer(Modifier.width(6.dp)); Text("Check again") }
-                    OutlinedButton(onClick = { confirmDelete = true }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Icon(RIcons.Delete, null); Spacer(Modifier.width(6.dp)); Text("Delete") }
-                }
-                ModelStatus.IMPORTING, ModelStatus.VERIFYING -> {}
-            }
-            if (st == ModelStatus.BAD || st == ModelStatus.UNVERIFIED) {
-                TextButton(onClick = { confirmDelete = true }) { Text("Delete the file") }
-            }
-        }
-        SectionCard("About the download") {
-            Text("The file comes from Hugging Face (litert-community). Robot checks its SHA-256 before it is ever loaded. " +
-                "The download resumes by itself if the connection drops. You can also download the file on a computer and import it here.",
+        ScreenTitle("Model", "Robot's AI runs on this phone. It goes online only to download a model you pick.")
+        ModelChoiceCard(s, update, snap)
+        for (m in BrainModel.entries.filter { it.builtIn }) ModelCard(m, snap, busy, a, onDelete = { confirmDelete = m })
+        OwnModelCard(snap, busy, a, onDelete = { confirmDelete = BrainModel.OWN })
+        SectionCard("About the downloads") {
+            Text("Each model downloads from Hugging Face only when you tap Download, pinned to one commit of its repository; " +
+                "Robot checks the file's SHA-256 before it is ever loaded, and the download resumes by itself if the connection drops. " +
+                "You can also download a file on a computer and import it. Nothing you say or type goes to Hugging Face.",
                 style = MaterialTheme.typography.bodyMedium)
-            Text("${ModelSpec.FILE}\nSHA-256 ${ModelSpec.SHA256}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         VoiceModelsCard(snap, a)
         Spacer(Modifier.height(12.dp))
     }
-    if (confirmDelete) {
+    confirmDelete?.let { m ->
+        val ms = snap.model(m)
+        val others = BrainModel.entries.any { it != m && snap.ready(it) }
         AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete the model?") },
-            text = { Text("Robot can't answer until you download or import it again (3.1 GB).") },
-            confirmButton = { TextButton(onClick = { confirmDelete = false; a.deleteModel() }) { Text("Delete") } },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("Delete “${m.title}”?") },
+            text = {
+                Text("Removes its file (${ModelLogic.gb(ms?.fileBytes ?: 0)})" + (if ((ms?.cacheBytes ?: 0) > 0) " and its cache (${ModelLogic.gb(ms!!.cacheBytes)})" else "") +
+                    " from this phone." + (if (m == chosen && m != BrainModel.FAST) " Robot goes back to Fast." else "") +
+                    (if (!others) " Robot can't answer until you download or import a model again." else ""))
+            },
+            confirmButton = { TextButton(onClick = { confirmDelete = null; a.deleteModel(m) }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
         )
     }
 }
+
+/** "Robot uses": a model can be chosen once it is on the phone and checked; until then Robot uses Fast. */
+@Composable
+private fun ModelChoiceCard(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot) {
+    val chosen = s.brainModelChoice
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    SectionCard("Robot uses") {
+        for (m in BrainModel.entries) {
+            val ready = snap.ready(m)
+            val st = snap.model(m)?.status
+            val note = when {
+                ready -> null
+                m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.report?.tensorG5Build == true -> "Allow the TPU for it below first."
+                st == ModelStatus.DOWNLOADING || st == ModelStatus.IMPORTING || st == ModelStatus.VERIFYING -> "Getting it ready below…"
+                st == ModelStatus.BAD -> "Its file can't be used: see below."
+                m.builtIn -> "Download it below first."
+                else -> "Import a file below first."
+            }
+            ChoiceRow(m.title, m.speed + (note?.let { " $it" } ?: ""), chosen == m, enabled = ready || chosen == m) {
+                // Tapping the chosen one again saves too: Robot then retries a model that didn't load.
+                update(s.copy(brainModel = m.id))
+            }
+        }
+        if (!snap.ready(chosen) && chosen != BrainModel.FAST) {
+            Text("Until “${chosen.title}” is ready, Robot uses Fast.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        }
+        Text("Whichever model answers, actions that send, delete or go online ask first as Settings › Safety & privacy says, " +
+            "and nothing leaves the phone unless you ask. Questions in a new conversation take longer with the slower models.",
+            style = MaterialTheme.typography.bodyMedium, color = muted)
+        snap.loaded?.let { Text("In memory now: ${it.title} (${it.modelName}).", style = MaterialTheme.typography.bodySmall, color = muted) }
+    }
+}
+
+/** One built-in model: status, what it is, size and cache, Download / Check / Delete, and where it comes from. */
+@Composable
+private fun ModelCard(m: BrainModel, snap: Snapshot, busy: String?, a: AppActions, onDelete: () -> Unit) {
+    val ms = snap.model(m) ?: return
+    val st = ms.status
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    SectionCard(m.title) {
+        StatusRow(when (st) { ModelStatus.VERIFIED -> Mark.OK; ModelStatus.BAD -> Mark.WARN; else -> Mark.TODO }, m.modelName, ModelLogic.headline(st, m))
+        Text(m.about, style = MaterialTheme.typography.bodyMedium, color = muted)
+        Progress(ms)
+        if (st == ModelStatus.MISSING && ms.failure != null) Text(ms.failure, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+        if (st == ModelStatus.BAD) Text("The file's checksum is wrong, so Robot won't load it. Delete it and download it again.", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            "Download ${ModelLogic.gb(m.bytes)}" + (if (m.cacheBytes > 0) ", plus about ${ModelLogic.gb(m.cacheBytes)} of cache the CPU writes on its first load" else "") +
+                ". " + (if (ms.cacheBytes > 0) "Its cache holds ${ModelLogic.gb(ms.cacheBytes)} now. " else "") +
+                "Free on this phone: ${if (snap.freeBytes >= 0) ModelLogic.gb(snap.freeBytes) else "unknown"}.",
+            style = MaterialTheme.typography.bodyMedium, color = muted,
+        )
+        when (st) {
+            ModelStatus.MISSING, ModelStatus.BAD -> {
+                Button(onClick = { a.download(m) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
+                    Icon(RIcons.Download, null); Spacer(Modifier.width(8.dp)); Text("Download (${ModelLogic.gb(m.bytes)})")
+                }
+                OutlinedButton(onClick = { a.import(m) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp), enabled = busy == null) {
+                    Icon(RIcons.Folder, null); Spacer(Modifier.width(8.dp)); Text("Import a downloaded file")
+                }
+            }
+            ModelStatus.DOWNLOADING -> OutlinedButton(onClick = { a.cancelDownload(m) }, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Cancel download") }
+            ModelStatus.UNVERIFIED -> Button(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Check the file") }
+            ModelStatus.VERIFIED -> Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Icon(RIcons.Refresh, null); Spacer(Modifier.width(6.dp)); Text("Check again") }
+                OutlinedButton(onClick = onDelete, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Icon(RIcons.Delete, null); Spacer(Modifier.width(6.dp)); Text("Delete this model") }
+            }
+            ModelStatus.IMPORTING, ModelStatus.VERIFYING -> {}
+        }
+        if (st == ModelStatus.BAD || st == ModelStatus.UNVERIFIED) TextButton(onClick = onDelete) { Text("Delete the file") }
+        Text("${m.publisher} · licence ${m.licence}\n${m.repo} at commit ${m.commit?.take(12)}\n${m.file}\nSHA-256 ${m.sha256}",
+            style = MaterialTheme.typography.bodySmall, color = muted)
+    }
+}
+
+@Composable
+private fun Progress(ms: app.heyrobot.sys.ModelStore.Snap) {
+    val p = ms.progress ?: return
+    Text(p, style = MaterialTheme.typography.bodyMedium)
+    if (ms.percent >= 0) LinearProgressIndicator(progress = { ms.percent / 100f }, modifier = Modifier.fillMaxWidth())
+    else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+}
+
+/**
+ * Your own model file: imported through Android's file picker (no storage permission), copied into Robot's storage,
+ * its size and SHA-256 shown, and what Robot's check found in it. The TPU only for a proven Tensor G5 build, and only
+ * once you have read its warning card; any other file runs on the CPU. Never by the file's name.
+ */
+@Composable
+private fun OwnModelCard(snap: Snapshot, busy: String?, a: AppActions, onDelete: () -> Unit) {
+    val m = BrainModel.OWN
+    val ms = snap.model(m) ?: return
+    val st = ms.status
+    val own = snap.own.takeIf { st == ModelStatus.VERIFIED || st == ModelStatus.BAD }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    SectionCard(m.title) {
+        StatusRow(when (st) { ModelStatus.VERIFIED -> Mark.OK; ModelStatus.BAD -> Mark.WARN; else -> Mark.TODO }, own?.name ?: "A .litertlm file", ModelLogic.headline(st, m))
+        Text(m.about, style = MaterialTheme.typography.bodyMedium, color = muted)
+        Progress(ms)
+        if (own != null) {
+            Text("${ModelLogic.gb(own.bytes)} (${String.format(java.util.Locale.US, "%,d", own.bytes)} bytes)\nSHA-256 ${own.sha256}",
+                style = MaterialTheme.typography.bodySmall, color = muted)
+            Text("What Robot found inside", style = MaterialTheme.typography.titleSmall)
+            for (line in own.report.lines()) Text("• $line", style = MaterialTheme.typography.bodyMedium)
+            Text(when {
+                own.backend == ModelBackend.TPU -> "Runs on the TPU: you allowed it."
+                own.backend == ModelBackend.CPU -> "Runs on the CPU: about as slow as the E4B models or slower, depending on its size. " +
+                    if (ms.cacheBytes > 0) "Its cache holds ${ModelLogic.gb(ms.cacheBytes)} now." else "Its first load writes a cache next to it."
+                own.report.tensorG5Build -> "Waits for you to allow the TPU (below)."
+                else -> "Robot can't run it on this phone. Delete it to free the space."
+            }, style = MaterialTheme.typography.bodyMedium)
+            if (own.report.tensorG5Build && !own.tpuAllowed && st == ModelStatus.VERIFIED) TpuWarning(own, a)
+            if (own.tpuAllowed) TextButton(onClick = { a.allowOwnTpu(false) }) { Text("Stop running it on the TPU") }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = { a.import(m) }, enabled = busy == null && st != ModelStatus.IMPORTING && st != ModelStatus.VERIFYING,
+                modifier = Modifier.heightIn(min = 48.dp)) {
+                Icon(RIcons.Folder, null); Spacer(Modifier.width(6.dp)); Text(if (ms.fileBytes > 0) "Import another file" else "Import a .litertlm file")
+            }
+            if (st == ModelStatus.VERIFIED) OutlinedButton(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Check again") }
+        }
+        if (st == ModelStatus.UNVERIFIED) Button(onClick = { a.verify(m) }, enabled = busy == null, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp)) { Text("Check the file") }
+        if (ms.fileBytes > 0 && st != ModelStatus.IMPORTING && st != ModelStatus.VERIFYING) {
+            OutlinedButton(onClick = onDelete, enabled = busy == null, modifier = Modifier.heightIn(min = 48.dp)) {
+                Icon(RIcons.Delete, null); Spacer(Modifier.width(6.dp)); Text("Delete this model")
+            }
+        }
+        Text("Robot copies the file; it needs the file's size again in free space, plus room for a cache when it runs on the CPU.",
+            style = MaterialTheme.typography.bodySmall, color = muted)
+    }
+}
+
+/** The warning card before your own Tensor G5 build may run on the TPU: the risks the 0.4.1 research names, and the file. */
+@Composable
+private fun TpuWarning(own: OwnModel, a: AppActions) {
+    androidx.compose.material3.Surface(
+        color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(RIcons.Warning, null)
+                Spacer(Modifier.width(10.dp))
+                Text("Run this file on the TPU?", style = MaterialTheme.typography.titleSmall)
+            }
+            Text("Robot's check says this file was compiled for this phone's TPU (Tensor G5). It isn't Robot's pinned Fast model, so " +
+                "Robot can't vouch for it:", style = MaterialTheme.typography.bodyMedium)
+            for (risk in TPU_RISKS) Text("• $risk", style = MaterialTheme.typography.bodyMedium)
+            Text("${own.name} · ${ModelLogic.gb(own.bytes)} (${String.format(java.util.Locale.US, "%,d", own.bytes)} bytes)\nSHA-256 ${own.sha256}",
+                style = MaterialTheme.typography.bodySmall)
+            Text("A TPU build can't run on the CPU: without the TPU, Robot doesn't use it.", style = MaterialTheme.typography.bodyMedium)
+            Button(onClick = { a.allowOwnTpu(true) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("I understand: run it on the TPU") }
+        }
+    }
+}
+
+/** The risks of a TPU build Robot didn't pin (research 4, "Security and legal"). */
+private val TPU_RISKS = listOf(
+    "Most of it is compiled TPU code that nobody can review. It runs through the phone's own TPU driver and Google's vendor libraries, " +
+        "outside what Robot's separate model process can contain.",
+    "A bad or mismatched build can crash Robot's model, hang the TPU until the phone restarts, or, rarely, restart the phone.",
+    "Its SHA-256 only proves the file is the one you picked, not that it is safe.",
+    "Google's Tensor compiler is a closed beta whose terms forbid sharing what it builds without Google's permission: a TPU build " +
+        "not published by Google may have been shared against them.",
+    "Robot's cards and switches still apply: actions that send, delete or go online ask you first as before.",
+)
 
 /** Model › Voice models: speech recognition, the voice and the fast fallback voice, each downloaded on its own. */
 @Composable
@@ -411,15 +554,15 @@ private fun ClaudeSettingsCard(s: RobotSettings, snap: Snapshot, update: (RobotS
 }
 
 @Composable
-internal fun ChoiceRow(title: String, detail: String?, selected: Boolean, onClick: () -> Unit) {
+internal fun ChoiceRow(title: String, detail: String?, selected: Boolean, enabled: Boolean = true, onClick: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected = selected, role = Role.RadioButton, onClick = onClick),
+        Modifier.fillMaxWidth().heightIn(min = 56.dp).selectable(selected = selected, enabled = enabled, role = Role.RadioButton, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(selected = selected, onClick = null)
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
             if (detail != null) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -496,8 +639,12 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
         PeopleSettingsCard(s, snap, calendars, update, a)
         WeatherSettingsCard(s, snap, update, a)
         ClaudeSettingsCard(s, snap, update, a)
-        SectionCard("Model memory") {
-            Text("Keep Gemma loaded after the panel closes (about 2 GB of memory; it loads again in about 2 seconds).",
+        SectionCard("Model") {
+            val model = s.brainModelChoice
+            NavRow(RIcons.Chip, "Robot's model", "${model.title}: ${model.modelName}. Download, choose or import a model") { a.openTab(Tab.MODEL) }
+            val memory = if (model.memoryBytes > 0) "about ${PhoneStatus.size(model.memoryBytes)} of memory" else "about its file's size in memory"
+            Text("Keep the model loaded after the panel closes ($memory; " +
+                (if (model.backend == ModelBackend.TPU) "it loads again in about 2 seconds)." else "it loads again in a few seconds once its cache is written)."),
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (m in RobotSettings.KEEP_CHOICES) {
@@ -521,7 +668,8 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
             Text("Robot ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleSmall)
             Text("Free software under the GNU GPL version 3. Third-party parts: LiteRT-LM and the Tensor NPU runtime (Apache-2.0), " +
                 "sherpa-onnx (Apache-2.0) with espeak-ng (GPL-3.0-or-later), ONNX Runtime (MIT), Silero VAD (MIT), Jetpack Compose and AndroidX (Apache-2.0), " +
-                "Gemma 4 (Apache-2.0), Kokoro and Kitten TTS (Apache-2.0), the Anthropic Java SDK (MIT) with OkHttp, Okio and Jackson (Apache-2.0). " +
+                "Gemma 4 E2B and E4B by Google (Apache-2.0), the Uncensored model by olekk (Gemma 4 E4B abliterated, Apache-2.0), " +
+                "your own model file under its own licence, Kokoro and Kitten TTS (Apache-2.0), the Anthropic Java SDK (MIT) with OkHttp, Okio and Jackson (Apache-2.0). " +
                 "Speech recognition: NVIDIA Parakeet TDT 0.6B v3 by NVIDIA, " +
                 "CC-BY-4.0, converted to ONNX by sherpa-onnx (huggingface.co/nvidia/parakeet-tdt-0.6b-v3).",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

@@ -57,8 +57,10 @@ data class PhoneFacts(
     val apps: List<AppSize>? = null,
     val media: MediaFacts? = null,
     val usageAccess: Boolean = false,
-    /** Robot's own model is loaded in memory now (about [ROBOT_MODEL_BYTES]); null: not known. */
+    /** Robot's own model is loaded in memory now (about [robotModelBytes]); null: not known. */
     val robotModelLoaded: Boolean? = null,
+    /** What the loaded model holds, about (0.4.1: 2 GB for Fast, 4 GB for the E4B models). */
+    val robotModelBytes: Long = PhoneStatus.ROBOT_MODEL_BYTES,
 )
 
 /** The pages of Android's settings a card can open (Executed.handOff), with the card button's words. */
@@ -82,7 +84,7 @@ object SettingsPage {
 object PhoneStatus {
     /** Apps listed at most (about 10 tokens each). */
     const val TOP_APPS = 5
-    /** Gemma 4 E2B in memory, about. */
+    /** Gemma 4 E2B in memory, about (BrainModel.FAST.memoryBytes; the default when the loaded model isn't known). */
     const val ROBOT_MODEL_BYTES = 2_000_000_000L
 
     /** Decimal units, as Android's own storage settings: "57 GB", "1.2 GB", "340 MB", "12 KB". */
@@ -106,7 +108,7 @@ object PhoneStatus {
         val storage = part == PhonePart.STORAGE || part == PhonePart.ALL
         if (storage) f.storage?.let { m["storage"] = storageLine(it) }
         if (part == PhonePart.BATTERY || part == PhonePart.ALL) f.battery?.let { m["battery"] = batteryLine(it, units) }
-        if (part == PhonePart.MEMORY || part == PhonePart.ALL) f.memory?.let { m["memory"] = memoryLine(it, f.robotModelLoaded) }
+        if (part == PhonePart.MEMORY || part == PhonePart.ALL) f.memory?.let { m["memory"] = memoryLine(it, f.robotModelLoaded, f.robotModelBytes) }
         if (storage) {
             if (f.usageAccess) {
                 f.apps?.takeIf { it.isNotEmpty() }?.let { m["largest_apps"] = appsLine(it) }
@@ -136,11 +138,11 @@ object PhoneStatus {
         b.tempC?.let { add(if (units == WeatherUnits.IMPERIAL) "${(it * 9 / 5 + 32).roundToInt()}°F" else "${it.roundToInt()}°C") }
     }.joinToString(", ")
 
-    /** "3.1 GB available of 16 GB", ", low", and whether Robot's own model holds about 2 GB of it. */
-    fun memoryLine(m: MemoryFacts, robotModel: Boolean?): String =
+    /** "3.1 GB available of 16 GB", ", low", and whether Robot's own model holds about [modelBytes] (2 GB for Fast) of it. */
+    fun memoryLine(m: MemoryFacts, robotModel: Boolean?, modelBytes: Long = ROBOT_MODEL_BYTES): String =
         "${size(m.available)} available of ${size(m.total)}" + (if (m.low) " (Android says memory is low)" else "") +
             when (robotModel) {
-                true -> "; Robot's own model holds about ${size(ROBOT_MODEL_BYTES)} while loaded"
+                true -> "; Robot's own model holds about ${size(modelBytes)} while loaded"
                 else -> ""
             }
 

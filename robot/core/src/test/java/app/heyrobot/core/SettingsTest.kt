@@ -163,7 +163,7 @@ class SettingsTest {
         assertEquals(false, d.voiceYesPersonal)
         assertEquals(true, d.voiceCards)
         assertEquals(false, RobotSettings.fromJson(d.copy(voiceCards = false).toJson().toString()).voiceCards)
-        assertEquals(6, RobotSettings.SCHEMA)
+        assertEquals(7, RobotSettings.SCHEMA)
         // A 0.3 or early 0.4 file: every rule as it was, and the new Safety cards default.
         for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", "{}")) {
             val o = RobotSettings.fromJson(old)
@@ -175,11 +175,39 @@ class SettingsTest {
         val s = d.copy(safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
             lockedTools = setOf(ToolName.FLASHLIGHT, ToolName.SET_TIMER), personalToHelpers = true, voiceYesPersonal = true)
         assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
-        assertEquals(6, s.toJson().getInt("schema"))
+        assertEquals(RobotSettings.SCHEMA, s.toJson().getInt("schema"))
         // Emptied stays empty (only questions on the lock screen); unknown or internal tools are dropped; a bad mode is the default.
         assertEquals(emptySet<ToolName>(), RobotSettings.fromJson(d.copy(lockedTools = emptySet()).toJson().toString()).lockedTools)
         val bad = RobotSettings.fromJson("""{"schema":6,"lockedTools":["flashlight","ask_claude","teleport"],"safetyCards":"NEVER"}""")
         assertEquals(setOf(ToolName.FLASHLIGHT), bad.lockedTools)
         assertEquals(SafetyCards.UNASKED, bad.safetyCards)
+    }
+
+    /**
+     * Settings › Model (schema 7, 0.4.1): Fast by default; a file from 0.4.0 or earlier (one model, the TPU's E2B) reads
+     * as Fast; a choice saved with 0.4.1 is kept; an unknown one is Fast.
+     */
+    @Test fun modelChoiceDefaultsMigrationAndRoundTrip() {
+        assertEquals(BrainModel.FAST, RobotSettings().brainModelChoice)
+        assertEquals("e2b_tpu", RobotSettings().toJson().getString("brainModel"))
+        for (old in listOf("""{"schema":6,"speechRate":1.5}""", """{"schema":5}""", """{"schema":3}""", "{}", """{"schema":6,"brainModel":"e4b_cpu"}""")) {
+            assertEquals(old, BrainModel.FAST, RobotSettings.fromJson(old).brainModelChoice)
+        }
+        // An old file keeps everything else, and the next save writes schema 7 with Fast.
+        val migrated = RobotSettings.fromJson("""{"schema":6,"speechRate":1.5,"keepModelMinutes":15}""")
+        assertEquals(1.5f, migrated.speechRate)
+        assertEquals(15, migrated.keepModelMinutes)
+        assertEquals(7, migrated.toJson().getInt("schema"))
+        assertEquals("e2b_tpu", migrated.toJson().getString("brainModel"))
+        for (m in BrainModel.entries) {
+            val s = RobotSettings(brainModel = m.id)
+            assertEquals(m, RobotSettings.fromJson(s.toJson().toString()).brainModelChoice)
+            assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        }
+        assertEquals(BrainModel.FAST, RobotSettings.fromJson("""{"schema":7,"brainModel":"horizon-edge-4b"}""").brainModelChoice)
+        assertEquals(BrainModel.FAST, RobotSettings.fromJson("""{"schema":7}""").brainModelChoice)
+        assertEquals(BrainModel.UNCENSORED, RobotSettings.fromJson("""{"schema":7,"brainModel":"e4b_cpu_uncensored"}""").brainModelChoice)
+        // An unknown id is saved back as Fast's.
+        assertEquals("e2b_tpu", RobotSettings(brainModel = "nope").toJson().getString("brainModel"))
     }
 }

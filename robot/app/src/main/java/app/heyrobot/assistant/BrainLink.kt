@@ -10,10 +10,19 @@ import android.os.IBinder
 import android.os.Message
 import android.os.Messenger
 import android.os.RemoteException
+import app.heyrobot.core.BackendCode
 import app.heyrobot.core.BrainError
+import app.heyrobot.core.BrainModel
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.BrainWire
+import app.heyrobot.core.FallbackWhy
+import app.heyrobot.core.LoadFailure
+import app.heyrobot.core.LoadPlan
+import app.heyrobot.core.ModelAvailability
+import app.heyrobot.core.ModelBackend
+import app.heyrobot.core.ModelChoice
+import app.heyrobot.core.ModelCode
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
@@ -193,30 +202,67 @@ class BrainClient(private val ctx: Context, private val onDeath: () -> Unit) {
 }
 
 /**
- * VOICE PROCESS. Keeps the binding to :brain: loads Gemma when the panel opens (so it is warm by the
- * time the question is asked), and unloads it a few minutes after the panel closes (setting).
+ * VOICE PROCESS. Keeps the binding to :brain: loads the model when the panel opens (so it is warm by the time the
+ * question is asked), and unloads it a few minutes after the panel closes (setting). 0.4.1: the model is the one chosen
+ * in Settings › Model when it is ready, else Fast with a message that says why (core ModelChoice); another model in
+ * memory is unloaded first, so two never coexist; a chosen model that fails to load is skipped (Fast instead) until you
+ * choose it again or its file changes.
  */
 object BrainKeeper {
     enum class Readiness { UNKNOWN, NO_MODEL, LOADING, READY, FAILED }
 
-    data class State(val readiness: Readiness = Readiness.UNKNOWN, val vision: Boolean = false, val problem: String? = null)
+    data class State(
+        val readiness: Readiness = Readiness.UNKNOWN,
+        val vision: Boolean = false,
+        val problem: String? = null,
+        /** The model loaded (READY) or loading, and where it runs. */
+        val model: BrainModel? = null,
+        val backend: ModelBackend? = null,
+        /** Robot is using Fast instead of the model you chose, and why (the panel shows it once per [fallbackSeq]). */
+        val fallback: String? = null,
+        val fallbackSeq: Int = 0,
+    )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val mutex = Mutex()
     private var client: BrainClient? = null
     private var unloadJob: Job? = null
     private val deaths = ArrayDeque<Long>()
+    /** Models that failed to load in this process, by id, with their file's fingerprint then. */
+    private val failed = HashMap<String, String>()
+    /** The fallback in force, and which one it is (the panel shows a new one once, not the same one at every question). */
+    private var lastFallback: String? = null
+    private var lastFallbackKey: String? = null
+    private var fallbackSeq = 0
     private val _state = MutableStateFlow(State())
     val state: StateFlow<State> = _state
 
-    /** The connected client with Gemma loaded, or null (then [state] says why). */
+    private fun planOf(ctx: Context, m: BrainModel) = try { ModelStore.plan(ctx, m) } catch (t: Throwable) {
+        RLog.w("brain_plan", t)
+        ModelAvailability.NOT_CHECKED to null
+    }
+
+    private fun failedBefore(p: LoadPlan?): Boolean = p != null && failed[p.model.id] == p.fingerprint
+
+    /** The model to load now and why (pure core ModelChoice on what the files say). */
+    private fun decide(ctx: Context): Pair<ModelChoice.Decision, LoadPlan?> {
+        val chosen = VoiceHub.settings.brainModelChoice
+        val (chosenState, chosenPlan) = planOf(ctx, chosen)
+        val (fastState, fastPlan) = if (chosen == BrainModel.FAST) chosenState to chosenPlan else planOf(ctx, BrainModel.FAST)
+        val d = ModelChoice.decide(chosen, chosenState, fastState, failedBefore(chosenPlan))
+        return d to if (d is ModelChoice.Decision.Load && d.model == chosen) chosenPlan else fastPlan
+    }
+
+    /** The connected client with a model loaded, or null (then [state] says why). */
     suspend fun ensureLoaded(ctx: Context): BrainClient? = mutex.withLock {
         touch()
-        val path = ModelStore.verifiedPath(ctx)
-        if (path == null) {
-            _state.value = State(Readiness.NO_MODEL, problem = "Robot's model isn't on this phone yet. Open the Robot app to download it.")
+        val (decision, plan) = decide(ctx)
+        if (decision is ModelChoice.Decision.NoLoad) {
+            noteFallback(null, null, null)
+            _state.value = State(if (decision.openApp) Readiness.NO_MODEL else Readiness.FAILED, problem = decision.problem)
             return@withLock null
         }
+        val load = decision as ModelChoice.Decision.Load
         synchronized(deaths) {
             val now = System.currentTimeMillis()
             while (deaths.isNotEmpty() && now - deaths.first() > 3_600_000) deaths.removeFirst()
@@ -230,25 +276,92 @@ object BrainKeeper {
             _state.value = State(Readiness.FAILED, problem = "Robot couldn't start its model process.")
             return@withLock null
         }
-        val st = c.call(BrainProtocol.REQ_STATUS, BrainMsg.Empty, 10_000) as? BrainMsg.Status
-        if (st?.loaded == true) {
-            _state.value = State(Readiness.READY, vision = st.vision)
-            return@withLock c
-        }
-        _state.value = State(Readiness.LOADING)
-        val r = c.call(BrainProtocol.REQ_LOAD, BrainMsg.Load(path), 300_000) as? BrainMsg.Loaded
-        if (r?.ok == true) {
-            _state.value = State(Readiness.READY, vision = r.vision)
-            RLog.i("brain_ready", "loadMs" to r.loadMs, "vision" to r.vision)
-            c
-        } else {
-            _state.value = State(Readiness.FAILED, problem = r?.error ?: "The model didn't load in time.")
-            null
-        }
+        loadInto(ctx, c, plan!!, load)
     }
+
+    /**
+     * Loads [plan] (unloading another model first); on failure, Fast instead when that makes sense. [detail]: why the
+     * model you chose didn't load, for the fallback's message.
+     */
+    private suspend fun loadInto(ctx: Context, c: BrainClient, plan: LoadPlan, load: ModelChoice.Decision.Load, detail: String? = null): BrainClient? {
+        val m = plan.model
+        val st = c.call(BrainProtocol.REQ_STATUS, BrainMsg.Empty, 10_000) as? BrainMsg.Status
+        if (st?.loaded == true && st.model == m && st.backend == plan.backend) {
+            noteFallback(load.instead, load.why, detail)
+            _state.value = State(Readiness.READY, vision = st.vision, model = m, backend = plan.backend).withFallback()
+            return c
+        }
+        if (st?.loaded == true) {
+            // Another model is in memory: it goes first (GemmaEngine does the same if asked to load beside it).
+            st.model?.let { VoiceLog.add(VoiceEvent.MODEL_SWITCH, ModelCode.of(it), ModelCode.of(m)) }
+            c.call(BrainProtocol.REQ_UNLOAD, BrainMsg.Empty, 30_000)
+        }
+        noteFallback(load.instead, load.why, detail)
+        _state.value = State(Readiness.LOADING, model = m, backend = plan.backend).withFallback()
+        val r = c.call(BrainProtocol.REQ_LOAD, BrainMsg.Load(plan.path, m, plan.backend, plan.contextTokens), 300_000) as? BrainMsg.Loaded
+        if (r?.ok == true) {
+            if (m != BrainModel.FAST) failed.remove(m.id)
+            _state.value = State(Readiness.READY, vision = r.vision, model = m, backend = plan.backend).withFallback()
+            VoiceLog.add(VoiceEvent.MODEL_LOADED, ModelCode.of(m).id, BackendCode.of(plan.backend).id, r.loadMs.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
+            RLog.i("brain_ready", "loadMs" to r.loadMs, "vision" to r.vision, "model" to RLog.Code(m.id), "backend" to RLog.Code(plan.backend.id))
+            return c
+        }
+        val failure = r?.failure ?: if (r == null) (if (c.isConnected) LoadFailure.TIMEOUT else LoadFailure.PROCESS) else LoadFailure.ENGINE
+        VoiceLog.add(VoiceEvent.MODEL_LOAD_FAILED, ModelCode.of(m), failure)
+        if (m != BrainModel.FAST && ModelChoice.remember(failure)) failed[m.id] = plan.fingerprint
+        val (fastState, fastPlan) = planOf(ctx, BrainModel.FAST)
+        val next = ModelChoice.afterFailure(m, failure, fastState, r?.error ?: "The model didn't load in time.")
+        if (next is ModelChoice.Decision.Load && fastPlan != null && m != BrainModel.FAST) {
+            // :brain may have died with the model: it comes back (or is bound again) for Fast.
+            if (!c.isConnected && !c.connect()) {
+                _state.value = State(Readiness.FAILED, problem = "Robot couldn't start its model process.")
+                return null
+            }
+            // Fast's own failure ends there (m is Fast in that call): once only.
+            val why = when (failure) {
+                LoadFailure.ENGINE, LoadFailure.TIMEOUT, LoadFailure.PROCESS -> failure.title
+                else -> r?.error?.removeSuffix(".")?.replaceFirstChar { it.lowercase() }
+            }
+            return loadInto(ctx, c, fastPlan, next, why)
+        }
+        val problem = (next as? ModelChoice.Decision.NoLoad)?.problem ?: r?.error ?: "The model didn't load in time."
+        _state.value = State(if ((next as? ModelChoice.Decision.NoLoad)?.openApp == true) Readiness.NO_MODEL else Readiness.FAILED, problem = problem)
+        return null
+    }
+
+    /**
+     * Remembers the fallback in force ([wanted] null: none) and counts and logs a new one. A model that didn't load
+     * and is then skipped for having failed earlier is the same fallback: its words change, the panel isn't told again.
+     */
+    private fun noteFallback(wanted: BrainModel?, why: FallbackWhy?, detail: String?) {
+        val key = if (wanted != null && why != null) wanted.id + "/" + (if (why == FallbackWhy.FAILED_EARLIER) FallbackWhy.LOAD_FAILED else why).name else null
+        if (key != null && key != lastFallbackKey) {
+            fallbackSeq++
+            VoiceLog.add(VoiceEvent.MODEL_FALLBACK, ModelCode.of(wanted!!), why!!, ModelCode.FAST.id)
+            RLog.i("brain_fallback", "wanted" to RLog.Code(wanted.id), "why" to why)
+        }
+        lastFallbackKey = key
+        lastFallback = if (wanted != null && why != null) ModelChoice.fallbackText(wanted, why, detail) else null
+    }
+
+    private fun State.withFallback() = copy(fallback = lastFallback, fallbackSeq = fallbackSeq)
 
     fun prewarm(ctx: Context) {
         scope.launch { ensureLoaded(ctx) }
+    }
+
+    /**
+     * Settings changed (any save, so tapping the chosen model again retries it): forget load failures, and when the
+     * model in memory is no longer the one to use, let it go now (its memory, and so the app may delete it).
+     */
+    fun settingsChanged(ctx: Context, modelChanged: Boolean) {
+        scope.launch {
+            mutex.withLock { failed.clear() }
+            if (!modelChanged) return@launch
+            val inMemory = _state.value.model ?: return@launch
+            val (decision, _) = mutex.withLock { decide(ctx) }
+            if ((decision as? ModelChoice.Decision.Load)?.model != inMemory) release("model_changed")
+        }
     }
 
     fun touch() {

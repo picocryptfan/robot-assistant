@@ -23,6 +23,12 @@ class BrainProtocolTest {
         val old = BrainMsg.decode(BrainProtocol.REQ_GENERATE, """{"convId":"c","system":"s","text":"t"}""") as BrainMsg.Generate
         assertEquals(Prompt.CORE_TOOLS, old.toolNames)
         assertEquals(BrainMsg.Load("/data/x.litertlm"), roundTrip(BrainProtocol.REQ_LOAD, BrainMsg.Load("/data/x.litertlm")))
+        // 0.4.1: the model, where it runs and its context travel with the load.
+        val e4b = BrainMsg.Load("/data/e4b.litertlm", BrainModel.SMARTER, ModelBackend.CPU, 4096)
+        assertEquals(e4b, roundTrip(BrainProtocol.REQ_LOAD, e4b))
+        assertEquals(e4b, BrainMsg.Load("/data/e4b.litertlm", BrainModel.SMARTER))
+        val own = BrainMsg.Load("/data/own_model.litertlm", BrainModel.OWN, ModelBackend.TPU, 4096)
+        assertEquals(own, roundTrip(BrainProtocol.REQ_LOAD, own))
         assertEquals(BrainMsg.Cancel(42), roundTrip(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(42)))
         assertEquals(BrainMsg.CloseConv("c-1"), roundTrip(BrainProtocol.REQ_CLOSE_CONV, BrainMsg.CloseConv("c-1")))
         assertEquals(BrainMsg.Empty, roundTrip(BrainProtocol.REQ_STATUS, BrainMsg.Empty))
@@ -30,11 +36,27 @@ class BrainProtocolTest {
         assertEquals(tr, roundTrip(BrainProtocol.REQ_TOOL_RESULT, tr))
     }
 
+    /** A load without the model (0.4.0's) is Fast's on the TPU; an unknown model or backend isn't understood at all. */
+    @Test fun loadDefaultsAndRefusals() {
+        val old = BrainMsg.decode(BrainProtocol.REQ_LOAD, """{"path":"/data/x.litertlm"}""") as BrainMsg.Load
+        assertEquals(BrainModel.FAST, old.model)
+        assertEquals(ModelBackend.TPU, old.backend)
+        assertEquals(4096, old.maxTokens)
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_LOAD, """{"path":"/x","model":"e4b_tpu"}"""))
+        assertNull(BrainMsg.decode(BrainProtocol.REQ_LOAD, """{"path":"/x","model":"e4b_cpu","backend":"gpu"}"""))
+        val j = BrainMsg.Load("/x", BrainModel.SMARTER).toJson()
+        assertEquals(listOf("e4b_cpu", "cpu", "4096"), listOf(j.getString("model"), j.getString("backend"), j.getInt("maxTokens").toString()))
+    }
+
     @Test fun eventsRoundTrip() {
         val events = listOf(
             BrainProtocol.EV_STATUS to BrainMsg.Status(loaded = true, vision = false, constrained = true, busy = false),
             BrainProtocol.EV_LOADED to BrainMsg.Loaded(true, true, 1800, null),
             BrainProtocol.EV_LOADED to BrainMsg.Loaded(false, false, 12, "The model file is missing."),
+            BrainProtocol.EV_STATUS to BrainMsg.Status(true, true, true, false, BrainModel.UNCENSORED, ModelBackend.CPU),
+            BrainProtocol.EV_STATUS to BrainMsg.Status(false, false, true, false, null, null),
+            BrainProtocol.EV_LOADED to BrainMsg.Loaded(true, true, 8900, null, BrainModel.SMARTER, ModelBackend.CPU),
+            BrainProtocol.EV_LOADED to BrainMsg.Loaded(false, false, 3, "Not enough free space for its cache.", BrainModel.OWN, ModelBackend.CPU, LoadFailure.NO_SPACE),
             BrainProtocol.EV_CHUNK to BrainMsg.Chunk("Hello, "),
             BrainProtocol.EV_CHUNK to BrainMsg.Chunk("", thought = true),
             BrainProtocol.EV_DONE to BrainMsg.Done(DoneReason.TOOL_CALLS, 812, 260, 17.4, true),

@@ -53,7 +53,8 @@ class VoiceLogTest {
         val codes: List<List<LogCode>> = listOf(WakeAction.entries, WakeDrop.entries, ListenWhy.entries, MicKind.entries, AecState.entries, SttEnd.entries,
             ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries,
             EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries, ClaudeLeftOut.entries,
-            PickOutcome.entries, CheogramRoute.entries, ClaudeStage.entries, ClaudeErrorKind.entries)
+            PickOutcome.entries, CheogramRoute.entries, ClaudeStage.entries, ClaudeErrorKind.entries, ModelCode.entries, BackendCode.entries,
+            FallbackWhy.entries, LoadFailure.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -66,6 +67,13 @@ class VoiceLogTest {
         for (e in listOf(VoiceEvent.CLAUDE_LEFT_OUT, VoiceEvent.OWN_ANSWER, VoiceEvent.CLAUDE_UNKNOWN, VoiceEvent.CLAUDE_READ)) assertTrue(e.name, e.id in 120..129)
         // 0.4.0's People events use 61 to 79 (80 and up are taken by other 0.4.0 work).
         for (e in listOf(VoiceEvent.CHEOGRAM_PICK, VoiceEvent.CHEOGRAM_HANDOFF)) assertTrue(e.name, e.id in 61..79)
+        // 0.4.1's model choice events use 130 to 139 (100 to 123 are taken by other work).
+        val model = listOf(VoiceEvent.MODEL_CHOSEN, VoiceEvent.MODEL_LOADED, VoiceEvent.MODEL_LOAD_FAILED, VoiceEvent.MODEL_FALLBACK, VoiceEvent.MODEL_SWITCH)
+        for (e in model) assertTrue(e.name, e.id in 130..139)
+        assertEquals(model, VoiceEvent.entries.filter { it.id in 130..139 })
+        // Every model and backend has a code of its own.
+        assertEquals(BrainModel.entries.size, BrainModel.entries.map { ModelCode.of(it) }.toSet().size)
+        assertEquals(ModelBackend.entries.size, ModelBackend.entries.map { BackendCode.of(it) }.toSet().size)
         assertEquals(4, VoiceEvent.STOP_SUPPRESSED.id)
         assertEquals(31, VoiceEvent.BARGE_TEST.id)
         // MicKind and AecState share KWS_HIT's third number as mic × 10 + aec: both must stay below 10.
@@ -160,6 +168,17 @@ class VoiceLogTest {
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SCREEN_SHARED, 3, ScreenData.SHARED.id, ScreenData.SHARED.id)))
         // Every event has words.
         for (e in VoiceEvent.entries) assertFalse(e.name, VoiceLogText.describe(VoiceLogEntry(0, e)).isBlank())
+        // 0.4.1, Settings › Model: which model, where, why; ids only.
+        assertEquals("Model chosen: Smarter (Gemma 4 E4B, CPU) (was Fast (Gemma 4 E2B, TPU))",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_CHOSEN, ModelCode.SMARTER.id, ModelCode.FAST.id)))
+        assertEquals("Model loaded: Smarter (Gemma 4 E4B, CPU) on the CPU in 8.9 s",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_LOADED, ModelCode.SMARTER.id, BackendCode.CPU.id, 8900)))
+        assertEquals("Model didn't load: your own model file (refused by the content check)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_LOAD_FAILED, ModelCode.OWN.id, LoadFailure.NOT_ALLOWED.id)))
+        assertEquals("Used Fast (Gemma 4 E2B, TPU) instead of Uncensored (Gemma 4 E4B abliterated, CPU): not downloaded",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_FALLBACK, ModelCode.UNCENSORED.id, FallbackWhy.NOT_DOWNLOADED.id, ModelCode.FAST.id)))
+        assertEquals("Unloaded Fast (Gemma 4 E2B, TPU) to load Smarter (Gemma 4 E4B, CPU)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MODEL_SWITCH, ModelCode.FAST.id, ModelCode.SMARTER.id)))
         // 0.3.1: what the spotter heard before any check, and what came of it.
         val names = { id: Int -> if (id == 2) "hey robot" else null }
         assertEquals("Spotter: “stop” while Robot talked · mic: call (echo cancellation) · echo cancellation on",

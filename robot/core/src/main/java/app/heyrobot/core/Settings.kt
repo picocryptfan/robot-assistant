@@ -161,7 +161,15 @@ data class RobotSettings(
      * pharmacy" finds the closest one with OpenStreetMap and opens Organic Maps' route to it. Off: Organic Maps' search.
      */
     val nearestOnline: Boolean = true,
+    /**
+     * Settings › Model (0.4.1, schema 7): a [BrainModel] id, the model Robot loads; Fast (Gemma 4 E2B on the TPU) by
+     * default. Unknown or absent (older files) means Fast. A choice that isn't on the phone or doesn't load falls back to
+     * Fast, and the panel says so (ModelChoice).
+     */
+    val brainModel: String = BrainModel.DEFAULT.id,
 ) {
+    val brainModelChoice: BrainModel get() = BrainModel.of(brainModel)
+
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
 
     fun approval(t: ToolName): Approval = approvals[t] ?: DEFAULT_APPROVALS.getValue(t)
@@ -224,6 +232,7 @@ data class RobotSettings(
         put("keepMedia", keepMedia)
         put("voiceCards", voiceCards)
         put("nearestOnline", nearestOnline)
+        put("brainModel", brainModelChoice.id)
     }
 
     companion object {
@@ -237,8 +246,9 @@ data class RobotSettings(
          * 6 (0.4.0): Settings › Safety & privacy. Older files keep every rule as it was (the switches' defaults are today's
          * behaviour, the lock screen still timers and alarms) except "Safety cards", which takes the new default, "When
          * you didn't ask for it", as the person asked.
+         * 7 (0.4.1): Settings › Model. Older files had one model, the TPU's Gemma 4 E2B: they read as Fast, the same model.
          */
-        const val SCHEMA = 6
+        const val SCHEMA = 7
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -344,6 +354,8 @@ data class RobotSettings(
                 keepMedia = o.optBoolean("keepMedia", d.keepMedia),
                 voiceCards = o.optBoolean("voiceCards", d.voiceCards),
                 nearestOnline = o.optBoolean("nearestOnline", d.nearestOnline),
+                // Schema 7: before it there was only the model Fast is (and no key); an unknown id is Fast too.
+                brainModel = if (o.optInt("schema", 1) < 7) BrainModel.FAST.id else BrainModel.of(o.optString("brainModel")).id,
             )
         }
 
