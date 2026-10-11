@@ -456,7 +456,8 @@ object VoiceHub {
                 // Settings › Model (0.4.1): a new choice lets go of the model in memory now; any save retries a failed one.
                 val modelChanged = old.brainModelChoice != settings.brainModelChoice
                 if (modelChanged) VoiceLog.add(VoiceEvent.MODEL_CHOSEN, ModelCode.of(settings.brainModelChoice), ModelCode.of(old.brainModelChoice))
-                BrainKeeper.settingsChanged(app, modelChanged)
+                // 0.4.7: "Use the GPU" switched moves the model in memory to the CPU or the GPU now.
+                BrainKeeper.settingsChanged(app, modelChanged || old.modelGpu != settings.modelGpu)
                 PanelController.settingsChanged()
             }
             Cmd.CLAUDE_KEY -> Thread({

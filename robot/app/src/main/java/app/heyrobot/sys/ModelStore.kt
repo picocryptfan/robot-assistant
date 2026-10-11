@@ -19,7 +19,9 @@ import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.OwnModel
+import app.heyrobot.core.Phone
 import app.heyrobot.core.RLog
+import app.heyrobot.core.TpuSupport
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
 import java.io.File
@@ -66,6 +68,17 @@ object ModelStore {
      */
     fun ggufEngine(ctx: Context): Boolean = try { File(ctx.applicationInfo.nativeLibraryDir, "librobot_llama.so").isFile } catch (_: Exception) { false }
 
+    @Volatile private var phoneHere: Phone? = null
+
+    /**
+     * This phone (0.4.7, core Phone): Android's Build fields and its memory, read once per process. Which Fast it gets, and
+     * whether Robot uses its TPU or its GPU, follow from it (core ModelCatalogue). Any process.
+     */
+    fun phone(ctx: Context): Phone = phoneHere ?: Phone(
+        android.os.Build.MANUFACTURER.orEmpty(), android.os.Build.MODEL.orEmpty(), android.os.Build.SOC_MANUFACTURER.orEmpty(),
+        android.os.Build.SOC_MODEL.orEmpty(), totalRam(ctx),
+    ).also { phoneHere = it }
+
     /** The phone's memory (for a GGUF file's memory check), 0 when unknown. */
     fun totalRam(ctx: Context): Long = try {
         ActivityManager.MemoryInfo().also { ctx.getSystemService(ActivityManager::class.java).getMemoryInfo(it) }.totalMem
@@ -100,6 +113,8 @@ object ModelStore {
             // A GGUF file can run only with this build's llama.cpp library; a record of the other kind of file is checked again.
             val a = when {
                 r != null && fp != null && f.name != ModelFiles.ownFile(r.format) -> ModelAvailability.NOT_CHECKED
+                // 0.4.7: a Tensor G5 build on a phone without that TPU (a Pixel 9a) can run nowhere here.
+                r != null && r.tensorG5Build && phone(ctx).tpu != TpuSupport.SUPPORTED -> ModelAvailability.UNUSABLE
                 else -> r?.availability(fp, ggufEngine(ctx)) ?: if (fp == null) ModelAvailability.NOT_DOWNLOADED else ModelAvailability.NOT_CHECKED
             }
             val b = r?.backend
