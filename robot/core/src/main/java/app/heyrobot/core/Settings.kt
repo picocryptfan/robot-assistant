@@ -118,8 +118,36 @@ data class RobotSettings(
      * where it is (or isn't allowed to). Null: none.
      */
     val weatherHome: WeatherPlace? = null,
+    // Conversation mode (0.5.0, docs/conversation-mode.md 9.3).
+    /** The languages a conversation translates between, a [LangPair] id. */
+    val convPair: String = LangPair.DEFAULT.id,
+    /** "Translate" in the transcript (off by default); the Interpreter always translates ([ConversationSettings.translate]). */
+    val convTranslate: Boolean = false,
+    /** "Speak translations"; null: on in the Interpreter, off in the transcript ([ConversationSettings.speak]). */
+    val convSpeak: Boolean? = null,
+    /** The words of the open segment while people talk, screen on only (about every 1.5 s; off saves battery). */
+    val convPartials: Boolean = true,
+    /** The most speakers a transcript tells apart, 2 to 6 (the Interpreter: always 2). */
+    val convMaxSpeakers: Int = 6,
+    /** "Hey robot works during a conversation" (off: the wake word sleeps for the whole session; "stop" still works while Robot talks). */
+    val convWakeDuring: Boolean = false,
+    /** "Start from the lock screen": a new recording shows nothing older. */
+    val convStartLocked: Boolean = true,
+    /** "Keep audio": the recording of everyone in the conversation, about 7 MB an hour (off). */
+    val convKeepAudio: Boolean = false,
+    /** The language of Robot's summaries ("fr" or "en"); null: yours ([ConversationSettings.summaryLang]). */
+    val convSummaryLang: String? = null,
+    /** Offer "Summarize with a stronger AI" first for a long or important conversation, or one the number check flagged. */
+    val convAutoOfferHelper: Boolean = true,
+    /**
+     * A "me" voiceprint is enrolled (Settings › Voice). Only that it exists: the voiceprint itself is in its own
+     * encrypted file in the :voice process, never in settings.
+     */
+    val meVoiceprint: Boolean = false,
 ) {
     val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claudeModel)
+
+    val convPairChoice: LangPair get() = LangPair.of(convPair)
 
     fun approval(t: ToolName): Approval = approvals[t] ?: DEFAULT_APPROVALS.getValue(t)
 
@@ -168,6 +196,17 @@ data class RobotSettings(
         claudeHelp?.let { put("claudeHelp", it.name) }
         put("claudeBudgetCents", claudeBudgetCents)
         weatherHome?.let { put("weatherHome", JSONObject().put("name", it.name).put("lat", it.lat).put("lon", it.lon)) }
+        put("convPair", convPair)
+        put("convTranslate", convTranslate)
+        convSpeak?.let { put("convSpeak", it) }
+        put("convPartials", convPartials)
+        put("convMaxSpeakers", convMaxSpeakers)
+        put("convWakeDuring", convWakeDuring)
+        put("convStartLocked", convStartLocked)
+        put("convKeepAudio", convKeepAudio)
+        convSummaryLang?.let { put("convSummaryLang", it) }
+        put("convAutoOfferHelper", convAutoOfferHelper)
+        put("meVoiceprint", meVoiceprint)
     }
 
     companion object {
@@ -178,8 +217,10 @@ data class RobotSettings(
          * 4 (0.3.1): opening apps and Organic Maps just happen by default. Older files saved "Ask first" for them
          * whether chosen or not, so there it reads as the new default; "Off" stays off.
          * 5 (0.4.0): the Home for weather (absent from older files: none) and the new actions' levels (their defaults).
+         * 6 (0.5.0): conversation mode's settings. Absent from older files, so they read as the defaults, except that live
+         * words in a conversation start off when you had turned live words off for questions (to save battery).
          */
-        const val SCHEMA = 5
+        const val SCHEMA = 6
         const val KEEP_ALWAYS = -1
         val KEEP_CHOICES = listOf(1, 5, 15, KEEP_ALWAYS)
 
@@ -224,6 +265,9 @@ data class RobotSettings(
         fun clampRate(v: Float): Float = if (v.isNaN()) 1.0f else v.coerceIn(0.5f, 2.0f)
         fun clampKeep(v: Int): Int = if (v == KEEP_ALWAYS) v else v.coerceIn(0, 120)
         fun clampEventMinutes(v: Int): Int = v.coerceIn(5, ToolCalls.MAX_EVENT_MINUTES)
+        fun clampSpeakers(v: Int): Int = v.coerceIn(ConversationSettings.SPEAKER_CHOICES.first, ConversationSettings.SPEAKER_CHOICES.last)
+        /** Robot summarizes in French or English; anything else means yours. */
+        fun summaryLang(v: String?): String? = v?.takeIf { it == "fr" || it == "en" }
 
         fun fromJson(text: String?): RobotSettings {
             val o = try { JSONObject(text ?: return RobotSettings()) } catch (_: Exception) { return RobotSettings() }
@@ -268,6 +312,18 @@ data class RobotSettings(
                 claudeHelp = enumValues<Escalation>().firstOrNull { it.name == o.optString("claudeHelp") },
                 claudeBudgetCents = o.optInt("claudeBudgetCents", d.claudeBudgetCents).coerceIn(0, 100_000),
                 weatherHome = o.optJSONObject("weatherHome")?.let(::place),
+                convPair = LangPair.of(o.optString("convPair", d.convPair)).id,
+                convTranslate = o.optBoolean("convTranslate", d.convTranslate),
+                convSpeak = if (o.has("convSpeak")) o.optBoolean("convSpeak") else null,
+                // Before schema 6 there was no such setting: it follows "Show the words while you speak".
+                convPartials = o.optBoolean("convPartials", if (o.optInt("schema", 1) < 6) o.optBoolean("livePartials", d.livePartials) else d.convPartials),
+                convMaxSpeakers = clampSpeakers(o.optInt("convMaxSpeakers", d.convMaxSpeakers)),
+                convWakeDuring = o.optBoolean("convWakeDuring", d.convWakeDuring),
+                convStartLocked = o.optBoolean("convStartLocked", d.convStartLocked),
+                convKeepAudio = o.optBoolean("convKeepAudio", d.convKeepAudio),
+                convSummaryLang = summaryLang(o.optString("convSummaryLang").takeIf { o.has("convSummaryLang") }),
+                convAutoOfferHelper = o.optBoolean("convAutoOfferHelper", d.convAutoOfferHelper),
+                meVoiceprint = o.optBoolean("meVoiceprint", d.meVoiceprint),
             )
         }
 

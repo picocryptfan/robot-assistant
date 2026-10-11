@@ -106,7 +106,9 @@ class WeatherToolTest {
         val home = WeatherPlace("Montreal, Quebec, Canada", 45.50884, -73.58781)
         val s = RobotSettings(weatherHome = home)
         val json = s.toJson()
-        assertEquals(5, json.getInt("schema"))
+        // Saved at the current layout (5 brought the Home for weather; 0.5.0 is at 6).
+        assertEquals(RobotSettings.SCHEMA, json.getInt("schema"))
+        assertTrue(RobotSettings.SCHEMA >= 5)
         assertEquals(s, RobotSettings.fromJson(json.toString()))
         assertNull(RobotSettings().weatherHome)
         assertFalse(RobotSettings().toJson().has("weatherHome"))

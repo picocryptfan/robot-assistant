@@ -135,4 +135,52 @@ class SettingsTest {
         assertEquals(true, RobotSettings.fromJson("""{"schema":4}""").rememberPicks)
         assertEquals(false, RobotSettings.fromJson("""{"schema":4}""").learnFromCheogram)
     }
+
+    @Test fun conversationDefaultsMatchThePlan() {
+        val d = RobotSettings()
+        assertEquals(LangPair.FR_EN, d.convPairChoice)
+        assertEquals(false, d.convTranslate)
+        assertEquals(null, d.convSpeak)
+        assertEquals(true, d.convPartials)
+        assertEquals(6, d.convMaxSpeakers)
+        assertEquals(false, d.convWakeDuring)
+        assertEquals(true, d.convStartLocked)
+        assertEquals(false, d.convKeepAudio)
+        assertEquals(null, d.convSummaryLang)
+        assertEquals(true, d.convAutoOfferHelper)
+        assertEquals(false, d.meVoiceprint)
+        // Each face's defaults: the Interpreter translates, speaks and tells two people apart.
+        assertEquals(true, ConversationSettings.translate(d, ConvMode.INTERPRET))
+        assertEquals(false, ConversationSettings.translate(d, ConvMode.TRANSCRIBE))
+        assertEquals(true, ConversationSettings.speak(d, ConvMode.INTERPRET))
+        assertEquals(false, ConversationSettings.speak(d, ConvMode.TRANSCRIBE))
+        assertEquals(false, ConversationSettings.speak(d.copy(convSpeak = false), ConvMode.INTERPRET))
+        assertEquals(2, ConversationSettings.maxSpeakers(d, ConvMode.INTERPRET))
+        assertEquals(6, ConversationSettings.maxSpeakers(d, ConvMode.TRANSCRIBE))
+        assertEquals("fr", ConversationSettings.summaryLang(d, java.util.Locale.CANADA_FRENCH))
+        assertEquals("en", ConversationSettings.summaryLang(d.copy(convSummaryLang = "en"), java.util.Locale.CANADA_FRENCH))
+        assertEquals(false, ConversationSettings.partials(d, screenOn = false, warm = false))
+        assertEquals(false, ConversationSettings.partials(d, screenOn = true, warm = true))
+    }
+
+    @Test fun conversationSettingsRoundTripAndMigrate() {
+        val s = RobotSettings(convTranslate = true, convSpeak = false, convPartials = false, convMaxSpeakers = 3, convWakeDuring = true,
+            convStartLocked = false, convKeepAudio = true, convSummaryLang = "fr", convAutoOfferHelper = false, meVoiceprint = true)
+        assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
+        assertEquals(6, RobotSettings.SCHEMA)
+        assertEquals(6, s.toJson().getInt("schema"))
+        // A 0.4.0 file (schema 5) gets the defaults, except that live words in a conversation follow live words for questions.
+        val old = RobotSettings.fromJson("""{"schema":5,"livePartials":false,"speechRate":1.2}""")
+        assertEquals(false, old.convPartials)
+        assertEquals(RobotSettings().copy(livePartials = false, speechRate = 1.2f, convPartials = false), old)
+        assertEquals(true, RobotSettings.fromJson("""{"schema":5}""").convPartials)
+        // From schema 6 on, the two are separate choices.
+        assertEquals(true, RobotSettings.fromJson("""{"schema":6,"livePartials":false}""").convPartials)
+        // Out of range or unknown values fall back.
+        val bad = RobotSettings.fromJson("""{"schema":6,"convPair":"fr-xx","convMaxSpeakers":40,"convSummaryLang":"de"}""")
+        assertEquals(LangPair.FR_EN.id, bad.convPair)
+        assertEquals(6, bad.convMaxSpeakers)
+        assertEquals(null, bad.convSummaryLang)
+        assertEquals(2, RobotSettings.fromJson("""{"convMaxSpeakers":1}""").convMaxSpeakers)
+    }
 }
