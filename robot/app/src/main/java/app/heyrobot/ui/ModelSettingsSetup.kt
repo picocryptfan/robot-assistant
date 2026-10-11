@@ -671,7 +671,10 @@ fun SettingsScreen(s: RobotSettings, snap: Snapshot, calendars: List<CalendarInf
             NavRow(RIcons.History, "Transcripts", "Read, search, export, share and delete") { a.openPage(Page.Transcripts) }
         }
         PeopleSettingsCard(s, snap, calendars, update, a)
-        WeatherSettingsCard(s, snap, update, a)
+        SectionCard("Weather") {
+            NavRow(RIcons.Sunny, "Weather", s.weatherHome?.let { "Home: ${it.name}" } ?: "No home set") { a.openPage(Page.Settings(app.heyrobot.ui.settings.SettingsRoutes.WEATHER)) }
+        }
+        app.heyrobot.ui.settings.DisplaySettingsEntry(a)
         HelpersCard(s, snap, a)
         SectionCard("Model") {
             val model = s.brainModelChoice
@@ -900,7 +903,7 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
             }
             // Opened from a card's "Allow": the permissions first.
             if (peopleFirst) PeopleSetupCard(f, a)
-            if (peopleFirst) ToolsSetupCard(f, a)
+            if (peopleFirst) SectionCard("Weather and phone status") { ToolsSetupRows(f, a) }
             SectionCard("Right now") {
                 StatusRow(if (f.roleHeld) Mark.OK else Mark.TODO, "Robot is the digital assistant",
                     if (f.roleHeld) "Android lists Robot as your assistant." else "Pick Robot in Settings › Apps › Default apps › Digital assistant app.")
@@ -949,7 +952,7 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                 }
             }
             if (!peopleFirst) PeopleSetupCard(f, a)
-            if (!peopleFirst) ToolsSetupCard(f, a)
+            if (!peopleFirst) SectionCard("Weather and phone status") { ToolsSetupRows(f, a) }
             HelpersSetupCard(f, helpers, a)
             SectionCard("After a restart") {
                 Text(

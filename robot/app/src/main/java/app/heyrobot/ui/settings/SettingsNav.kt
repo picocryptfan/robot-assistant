@@ -9,6 +9,7 @@ import app.heyrobot.core.RobotSettings
 import app.heyrobot.sys.LookStore
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.NotificationAccessScreen
+import app.heyrobot.ui.WeatherSettingsScreen
 import app.heyrobot.ui.Snapshot
 
 // MAIN PROCESS. Settings' sub-pages by route (Page.Settings, which survives a recreation as "settings:<route>"). New
@@ -16,6 +17,7 @@ import app.heyrobot.ui.Snapshot
 
 object SettingsRoutes {
     const val DISPLAY = "display"
+    const val WEATHER = "weather"
     /** Settings › People › Notification access: the three steps. */
     const val NOTIFICATION_ACCESS = "people/notification-access"
 }
@@ -38,6 +40,7 @@ fun SettingsNav(
             val ctx = LocalContext.current
             DisplaySettingsScreen(LookStore.current(ctx), onChange = { LookStore.save(ctx, it) }, onBack = onBack)
         }
+        SettingsRoutes.WEATHER -> WeatherSettingsScreen(s, snap, update, a, snackbar, onBack)
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
         else -> LaunchedEffect(route) { onBack() }
     }

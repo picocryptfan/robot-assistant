@@ -63,3 +63,17 @@ fun ComposeContentTestRule.scrollToText(text: String, substring: Boolean = false
     onNode(hasScrollToNodeAction()).performScrollToNode(hasText(text, substring = substring))
     waitForIdle()
 }
+
+/** What the app knows about the phone, everything allowed and set up unless a test says otherwise. */
+fun facts(
+    roleHeld: Boolean = true,
+    active: Boolean? = true,
+    recognizerIsRobot: Boolean = true,
+    micGranted: Boolean = true,
+    notificationsGranted: Boolean = true,
+    listening: Boolean? = true,
+): app.heyrobot.sys.AssistantFacts = app.heyrobot.sys.AssistantFacts(
+    roleHeld = roleHeld, active = active, recognizer = if (recognizerIsRobot) "app.heyrobot/.assistant.RobotRecognitionService" else "unset",
+    recognizerIsRobot = recognizerIsRobot, recognizersFound = 1, micGranted = micGranted, notificationsGranted = notificationsGranted,
+    listening = listening, listeningNote = null,
+)
