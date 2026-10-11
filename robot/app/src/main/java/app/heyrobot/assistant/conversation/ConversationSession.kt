@@ -119,7 +119,8 @@ object ConversationSession {
     private var recovered = false
 
     // Owned by the control thread.
-    private var writer: TranscriptWriter? = null
+    /** Read by the engine's worker too (a line belongs to the session whose writer this still is). */
+    @Volatile private var writer: TranscriptWriter? = null
     private var engine: ConversationEngine? = null
     /** The session's speakers (memory only; the engine's worker labels lines with them, this thread applies your changes). */
     @Volatile private var speakers: ConversationSpeakers? = null
@@ -258,7 +259,7 @@ object ConversationSession {
         val sp = ConversationSpeakers(on, ConversationSettings.maxSpeakers(s, mode),
             if (resumeId != null) SpeakerLabels.resumeMark(so.speakers + so.merges.keys) else "", mine?.vector)
         mine?.vector?.fill(0f)
-        val e = ConversationEngine(app, decoder, LangLabel.owner(), output, speakers = sp, embedder = embedder)
+        val e = ConversationEngine(app, decoder, LangLabel.owner(), Output(w, sp), speakers = sp, embedder = embedder)
         if (!e.start()) {
             // A new transcript with nothing in it goes again (not left as "Stopped unexpectedly"); a resumed one is closed.
             if (resumeId == null) store.delete(w.id) else w.close(System.currentTimeMillis(), SessionStatus.INTERRUPTED)
@@ -546,11 +547,17 @@ object ConversationSession {
 
     // ------------------------------------------------------------------ lines
 
-    private val output = object : ConversationEngine.Output {
+    /**
+     * One session's lines, from its engine's worker. Tied to the session's writer [w] and speakers [sp]: should an engine
+     * outlive its session (a native decode still running after the stop gave up waiting for it), what it hears is never
+     * written into the next session's transcript, nor taught to its speakers.
+     */
+    private class Output(private val w: TranscriptWriter, private val sp: ConversationSpeakers) : ConversationEngine.Output {
         /** Segments in a row the speech model couldn't decode (it failed to load, or went away). */
         private var unusable = 0
 
         override fun segment(r: SegmentHeard) {
+            if (writer !== w) return
             if (r.decodeMs < 0) {
                 if (++unusable >= 3 && running) {
                     _state.update { it.copy(notice = "Speech recognition stopped working. What was heard before is saved.") }
@@ -565,8 +572,7 @@ object ConversationSession {
             }
             val now = System.currentTimeMillis()
             val saved = synchronized(writerLock) {
-                val w = writer ?: return
-                if (discarded) return
+                if (writer !== w || discarded) return
                 // Labelled just before you merged that speaker: it lands as the merged one (the file would read it so too).
                 val label = resolve(r.speaker?.label ?: ConversationRules.SPEAKER)
                 val l = w.line(now) { i -> ConversationLine.make(i, r.offsetS, r.seg, r.heard, r.guess, r.lang, r.reheard, speaker = label) }
@@ -574,7 +580,7 @@ object ConversationSession {
                 l
             } ?: return
             engine?.stats?.line(r.lang)
-            speakers?.heard(saved.i, saved.speaker, r.lang, r.voice)
+            sp.heard(saved.i, saved.speaker, r.lang, r.voice)
             val line = TranscriptLine(saved.i, saved.t0, saved.t1, saved.speaker, saved.lang, saved.text, saved.lid, saved.prior, saved.words, saved.reheard)
             _state.update {
                 it.copy(lines = (it.lines + line).takeLast(ConversationRules.LIVE_LINES), total = it.total + 1, partial = "",
@@ -583,6 +589,7 @@ object ConversationSession {
         }
 
         override fun partial(text: String) {
+            if (writer !== w) return
             _state.update { if (it.status == Status.RUNNING) it.copy(partial = text) else it }
         }
 
@@ -590,7 +597,7 @@ object ConversationSession {
         override fun dropped(seg: Segment, offsetS: Double) {
             RLog.i("conv_dropped", "waiting" to ConversationEngine.MAX_WAITING)
             ctl.post {
-                val w = writer ?: return@post
+                if (writer !== w) return@post
                 val t0 = offsetS + seg.speechStart.toDouble() / Pcm.RATE
                 val t1 = offsetS + seg.speechEnd.toDouble() / Pcm.RATE
                 synchronized(writerLock) { if (!discarded) w.event(TranscriptEvent.Gap(t0, t1, TranscriptEvent.GAP_BEHIND)) }

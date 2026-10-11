@@ -191,17 +191,19 @@ class VoiceprintActivity : ComponentActivity() {
         work.execute {
             val speech = try { ConversationEngine.speechOnly(this, audio) } catch (t: Throwable) { RLog.w("voiceprint_vad", t); null }
             audio.fill(0f)
-            val e = if (speech != null && speech.size >= Pcm.RATE * 2) VoiceEngines.speakerEmbedder()?.embed(speech) else null
+            val enough = speech != null && speech.size >= Pcm.RATE * 2
+            val e = if (enough) VoiceEngines.speakerEmbedder()?.embed(speech!!) else null
             speech?.fill(0f)
+            // Kept here, on this thread, so leaving the screen (which forgets them on this thread too) never misses one.
+            val n = if (e != null) synchronized(voices) { voices += e; voices.size } else -1
             runOnUiThread {
                 busy.value = null
                 when {
-                    speech == null || e == null && speech.size >= Pcm.RATE * 2 -> problem.value = "Robot couldn't use the speaker model. Try again in a moment."
+                    speech == null || e == null && enough -> problem.value = "Robot couldn't use the speaker model. Try again in a moment."
                     e == null -> problem.value = "Robot heard too little speech. Read the sentence again, a little closer to the phone."
                     else -> {
-                        synchronized(voices) { voices += e }
-                        done.intValue = voices.size
-                        if (voices.size >= Enrolment.CLIPS) makeVoiceprint()
+                        done.intValue = n
+                        if (n >= Enrolment.CLIPS) makeVoiceprint()
                     }
                 }
             }
