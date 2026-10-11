@@ -766,12 +766,33 @@ object Hedge {
         """\b(je nai|jai) pas acces (a|aux|au) (internet|linternet|web|nouvelles|actualites|informations)\b""",
     ).joinToString("|"))
 
+    /** Words in a hedge about going online or about today's events ([needsSearch]): "the internet", "current events". */
+    private val ONLINE = Regex(listOf(
+        """\b(internet|linternet|web|online|en ligne)\b""",
+        """\b(current|recent|up to date|latest|live|todays) (events|affairs|information|info|news|data|details)\b""",
+        """\b(informations?|nouvelles|donnees|evenements) (actuelles|actuels|recentes|recents|a jour|du jour)\b""", """\bl?actualites?\b""",
+    ).joinToString("|"))
+
+    private fun words(reply: String): String = ClaudeRouter.plain(reply).replace(Regex("[^a-z0-9]+"), " ").trim()
+
     fun detect(reply: String): Boolean {
-        val t = ClaudeRouter.plain(reply).replace(Regex("[^a-z0-9]+"), " ").trim()
+        val t = words(reply)
         if (t.isEmpty()) return true
         if (STALE.containsMatchIn(t)) return true
         val short = t.split(' ').size <= 60
         val m = PHRASES.find(t) ?: return false
         return short || m.range.first < 120
+    }
+
+    /**
+     * A reply [detect] found to hedge says the answer needs today's sources: its facts may be out of date, it can't go
+     * online, it has no current information (0.6.0, with 0.4.6's hedges). Like the pre-router's current information, the
+     * question then goes to a helper by itself only if that helper can search the web (EscalationPolicy's needsSearch);
+     * otherwise Robot offers. Claude, which searches, is asked as in 0.4.6. An empty reply or a plain refusal ("I can't
+     * help with that") needs no search.
+     */
+    fun needsSearch(reply: String): Boolean {
+        val t = words(reply)
+        return t.isNotEmpty() && (STALE.containsMatchIn(t) || ONLINE.containsMatchIn(t))
     }
 }

@@ -1177,7 +1177,9 @@ a spoken yes never sends personal content; your screen and photos go only after 
 
 Off / Ask me first / Automatic as before, plus **Ask:** (which helper). Automatic needs the API route (a key, or a
 server), a price Robot knows (or Free), and today's spend under the budget for all helpers and the helper's own cap;
-otherwise Robot offers. A question about current events goes by itself only to a helper that can search the web.
+otherwise Robot offers. A question about current events goes by itself only to a helper that can search the web, and
+so does one Robot's model answered by saying it has no current information or can't go online (0.4.6's hedges,
+`Hedge.needsSearch`); a helper that can't search gets the offer, also after Robot's answer to a current-events question.
 When Robot asked a helper by itself before its own model ran and the helper can't be reached (your server is off, no
 connection, a timeout), Robot answers itself instead, with a short notice why. Gemma's `ask_claude` tool keeps its name
 (`:brain` reads it); Robot's prompt names the helper when it isn't Claude.
@@ -1299,6 +1301,12 @@ connection window's process, the compiled network security config, the client cl
     question: Robot checks with the helper by itself with only your question (the server's log shows no earlier turns).
 25. **Numeric addresses:** typing `3232235777` or `10.1` as a server's address is refused in the dialog.
 26. **Network toggle off:** Test connection says Robot isn't allowed to use the network.
+27. **Current events with a helper that can't search:** My server (no web search) as the helper Robot asks, Automatic.
+    "What's the latest news on the Artemis program?" and « Quelles sont les dernières nouvelles sur Artemis? »: Robot
+    answers, then "Want me to check with My server?" under it (never "Checking with My server…"). A question Robot's
+    model answers with "I don't have access to real-time information": the offer too. "I can't help with that" on
+    another question: "Checking with My server…". With Claude as the helper Robot asks: "Checking with Claude…" for each,
+    as in 0.4.6.
 
 ## Short-context models (0.4.3)
 

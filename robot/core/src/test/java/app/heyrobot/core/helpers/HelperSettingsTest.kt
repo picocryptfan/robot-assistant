@@ -9,6 +9,7 @@ import app.heyrobot.core.ClaudeWords
 import app.heyrobot.core.Escalation
 import app.heyrobot.core.EscalationDecision
 import app.heyrobot.core.EscalationPolicy
+import app.heyrobot.core.Hedge
 import app.heyrobot.core.Personal
 import app.heyrobot.core.RobotSettings
 import org.json.JSONObject
@@ -165,6 +166,39 @@ class HelperSettingsTest {
         assertEquals(EscalationDecision.NONE, d(h.copy(enabled = false)))
         assertEquals(EscalationDecision.NONE, d(null))
         assertEquals(EscalationDecision.OFFER, d(h, s2 = s.copy(help = Escalation.ASK)))
+    }
+
+    /**
+     * 0.4.6's hedges with helpers: a reply that says its facts may be out of date, or that it can't go online, needs a
+     * helper that searches, as current information does; Claude, which searches, is asked by itself as in 0.4.6, a server
+     * that can't search is offered. A plain refusal or an empty reply goes to either.
+     */
+    @Test fun aHedgeAboutTodaysFactsGoesByItselfOnlyToAHelperThatSearches() {
+        for (r in listOf(
+            "I don't have access to real-time information, so I can't tell you the latest news about the Artemis program.",
+            "I'm unable to browse the internet, but I can tell you about the weather in general.",
+            "As a large language model, I don't have access to current events.",
+            "My knowledge cutoff is in 2024, so I may not have the latest information.",
+            "Je n'ai pas accès à Internet.",
+            "J'ai pas accès aux nouvelles en temps réel.",
+            "Je ne peux pas vérifier l'actualité.",
+        )) {
+            assertTrue(r, Hedge.detect(r))
+            assertTrue(r, Hedge.needsSearch(r))
+        }
+        for (r in listOf("I'm sorry, but I can't provide information about political figures.", "I can't help with that.",
+            "Je ne peux pas faire ça.", "Je sais pas.", "")) {
+            assertTrue(r, Hedge.detect(r))
+            assertFalse(r, Hedge.needsSearch(r))
+        }
+        val s = RobotSettings().withHelper(home())
+        val claude = s.claude!!
+        assertTrue(claude.searching)
+        val stale = Hedge.needsSearch("I don't have access to real-time information.")
+        assertEquals(EscalationDecision.AUTO, EscalationPolicy.decide(s, claude, true, false, false, false, needsSearch = stale))
+        assertEquals(EscalationDecision.OFFER, EscalationPolicy.decide(s, home(), false, false, false, false, needsSearch = stale))
+        val refusal = Hedge.needsSearch("I can't help with that.")
+        assertEquals(EscalationDecision.AUTO, EscalationPolicy.decide(s, home(), false, false, false, false, needsSearch = refusal))
     }
 
     @Test fun trustAndThePersonalSwitchFitTogether() {
