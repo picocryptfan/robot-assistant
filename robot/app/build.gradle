@@ -77,6 +77,8 @@ dependencies {
     implementation project(':core')
     implementation project(':voice')
     implementation project(':brain')
+    // 0.5.0: the fast translation engine's :mt process (MtService, librobotmt.so when tools/build_robotmt.sh built it).
+    implementation project(':mt')
     // Ask Claude: the Anthropic SDK, used only by the assistant package (the :voice process).
     implementation project(':claude')
 
