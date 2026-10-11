@@ -1,0 +1,93 @@
+# The design's bilingual set (memory-messages-design.md §A6.2): 40 items (14 French, 26 English), 50 questions.
+# item<TAB>id<TAB>text, then question<TAB>kind<TAB>gold ids (comma-separated, empty: no answer)<TAB>text.
+# kind: kw shares a key word, para a paraphrase, xl the other language, none no answer.
+item	m01	My sister Julie's birthday is May 3.
+item	m02	Mom is allergic to peanuts.
+item	m03	Ma blonde Marie adore les orchidées.
+item	m04	I prefer temperatures in Celsius and distances in kilometres.
+item	m05	Mon dentiste, c'est la Dre Tremblay sur la rue Saint-Denis.
+item	m06	The car is a grey 2019 Honda Civic.
+item	m07	Je prends mon café sans sucre avec un peu de lait.
+item	m08	My son Léo plays hockey on Tuesday and Thursday evenings.
+item	m09	Le recyclage passe le mercredi matin.
+item	m10	I parked on level P3 at the Complexe Desjardins.
+item	m11	My doctor is Dr. Nguyen at the CLSC Plateau.
+item	m12	Notre anniversaire de mariage est le 14 août.
+item	m13	Bob from work is vegetarian.
+item	m14	I take my blood pressure pill every morning at 8.
+item	m15	Le chat s'appelle Pistache et mange deux fois par jour.
+item	m16	My passport expires in March 2028.
+item	m17	Grand-maman habite à Trois-Rivières.
+item	m18	I don't like being called before 9 a.m. on weekends.
+item	m19	The Wi-Fi at the cottage is on the router in the basement.
+item	m20	Je suis abonné au gym Énergie Cardio sur Mont-Royal.
+item	m21	Alice's kids are named Emma and Noah.
+item	m22	My landlord is Mr. Gagnon; rent is due on the first.
+item	m23	Mon père aime le jazz et les vieux films.
+item	m24	I'm learning Spanish on Duolingo.
+item	m25	The kids' school is École Saint-Louis.
+item	m26	Ma voisine Sophie garde nos clés de secours.
+item	m27	I'm training for the Montreal half-marathon in September.
+item	m28	My shoe size is 10.5.
+item	m29	Le garage pour les pneus d'hiver, c'est Pneus Lacroix.
+item	m30	When I say 'the office' I mean the coworking on Rue Bernard.
+item	m31	Reply to texts in French unless the person writes in English.
+item	m32	Mon frère Marc est allergique aux chats.
+item	m33	I like short answers in the morning.
+item	m34	The plumber is Plomberie Roy, they were good last time.
+item	m35	Julie est enceinte, le bébé est prévu en janvier.
+item	m36	I bought the new TV at Best Buy; the warranty is 2 years.
+item	m37	My favourite restaurant is Le Petit Alep.
+item	m38	Notre fille Chloé commence la garderie le 2 septembre.
+item	m39	I'm lactose intolerant.
+item	m40	The spare key for the shed is under the blue pot.
+question	kw	m01	When is my sister's birthday?
+question	xl	m01	Quand est la fête de ma sœur?
+question	para	m02	What can't Mom eat?
+question	xl	m02	Est-ce que maman a des allergies?
+question	xl	m03	What flowers does Marie like?
+question	para	m03	gift idea for my girlfriend
+question	para	m04	Which units do I like?
+question	xl	m05	Who is my dentist?
+question	kw	m05	c'est qui mon dentiste
+question	kw	m06	What car do I drive?
+question	xl	m06	Quelle est mon auto?
+question	xl	m07	How do I take my coffee?
+question	kw	m08	When is Léo's hockey?
+question	xl	m08	c'est quand le hockey de Léo
+question	xl	m09	Which day is recycling pickup?
+question	kw	m10	Where did I park?
+question	xl	m10	où est-ce que j'ai stationné
+question	kw	m11	Who's my family doctor?
+question	xl	m12	When is our wedding anniversary?
+question	kw	m13	Is Bob vegetarian?
+question	para	m13	What should I cook for Bob?
+question	para	m14	When do I take my medication?
+question	xl	m15	What's the cat's name?
+question	kw	m16	When does my passport expire?
+question	xl	m17	Where does grandma live?
+question	para	m18	Can people call me early on Saturday?
+question	kw	m19	Where is the cottage router?
+question	xl	m20	What gym am I a member of?
+question	para	m21	What are the names of Alice's children?
+question	kw	m22	When is rent due?
+question	kw	m23	Qu'est-ce que mon père aime?
+question	para	m23	cadeau pour papa
+question	para	m24	What language am I learning?
+question	xl	m25	Quelle école pour les enfants?
+question	xl	m26	Who has our spare keys?
+question	para	m27	What race am I training for?
+question	kw	m28	What size shoes do I wear?
+question	xl	m29	Where do I get my winter tires done?
+question	kw	m30	Where is the office?
+question	xl	m31	Dans quelle langue je réponds aux textos?
+question	xl	m32	Is my brother allergic to anything?
+question	para	m34	Who should I call for a leaking pipe?
+question	xl	m35	When is Julie's baby due?
+question	kw	m36	TV warranty
+question	para	m37	Where should we go for dinner?
+question	xl	m38	When does Chloé start daycare?
+question	para	m39	Can I have milk?
+question	kw	m40	Where is the shed key?
+question	none		Is there anything about the dog?
+question	none		What's my bank PIN?
