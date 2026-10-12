@@ -33,6 +33,78 @@ and how they are used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
+## The app ID: ai.robot_app (1.0)
+
+1.0's application ID is `ai.robot_app` (robot-app.ai reversed: a package name can't hold the hyphen); 0.9 and every test
+build before it were `app.heyrobot`. The namespace, the Kotlin packages and every class name stay `app.heyrobot`: no
+source moved. Android sees 1.0 as another app, so testers install it beside 0.9 (same signing key), move their data and
+uninstall 0.9, as the public README's "Moving from 0.9 to 1.0" says.
+
+- **Named after the ID, so 0.9 and 1.0 never clash or reach each other**: the signature permission
+  (`ai.robot_app.permission.INTERNAL`, still `protectionLevel="signature"`; it guards `:brain`, `:mt`, `MessagesBridge`
+  and the `Cmd` broadcasts), Robot's two providers' authorities (`ai.robot_app.exports`, `ai.robot_app.capture`: Android
+  won't install a second app with the same authority; AndroidX Startup's library names its own after the ID too) and the
+  nine explicit task affinities (`ai.robot_app.capture` … `ai.robot_app.voiceprint`, so 1.0's windows never join 0.9's
+  tasks), all `${applicationId}…` in the manifests, `:brain`'s and `:mt`'s too. In code, `Cmd.PERMISSION`,
+  `Exports.AUTHORITY` and `CaptureActivity.AUTHORITY` are `BuildConfig.APPLICATION_ID` and the suffix. The launcher
+  shortcuts' `targetPackage` is `ai.robot_app` (a resource can't take the placeholder). Car mode's Do Not Disturb rule
+  names its condition after `packageName`. The processes are `ai.robot_app`, `ai.robot_app:voice`, `:brain`, `:llama`
+  and `:mt`; Robot's files are under `/data/data/ai.robot_app` and its model files under
+  `/sdcard/Android/data/ai.robot_app/files/`.
+- **Core** has no Context, so core `AppId.PACKAGE` holds the ID for what core writes: the ADB fixes' commands (`pm grant
+  ai.robot_app …`, and the recognizer `ai.robot_app/app.heyrobot.assistant.RobotRecognitionService`, written in full:
+  the short form `ai.robot_app/.assistant.…` would name a class in the package `ai.robot_app`, which doesn't exist), the
+  same commands for rish, the updater's expected package (`ArchiveCheck`) and the User-Agent the search APIs, Wikipedia,
+  Open Library and Nominatim get ("Robot/<version> (ai.robot_app; Android voice assistant…"). `ProcessIsolationTest`
+  holds it to the build's `applicationId`.
+- **What keeps `app.heyrobot`**: class names wherever they are (the manifest's components, `voice_interaction.xml`, the
+  shortcuts' `targetClass`, `setClassName(packageName, "app.heyrobot.…")`), the binder descriptors, the JNI symbols, and
+  Robot's own intent actions and extras (`app.heyrobot.CMD`, `app.heyrobot.action.*`, `.routines.*`, `.car.*`,
+  `.conv.*`, `app.heyrobot.update.INSTALL_STATUS`): each goes only to an explicit component of Robot's own package
+  (`setPackage(packageName)` to a receiver that isn't exported, `setClassName(packageName, …)`, `Intent(ctx, X::class)`,
+  the shortcuts' `targetPackage`), so 0.9's never reach 1.0 or the other way round.
+- **Updates**: 1.0's updater installs only an `ai.robot_app` APK. 0.9's installs only `app.heyrobot`, and 0.9 can't be
+  changed now: it offers 1.0 (with its release notes), downloads it, refuses it ("The downloaded app isn't Robot, so it
+  won't be installed.") and bars that file, so it doesn't offer 1.0 again; with "Download updates on Wi-Fi" it does all
+  that by itself and you may see nothing. So 1.0's release notes start with the move (0.9's Settings › Updates shows
+  their first 40 lines before it downloads), for example: "Robot 1.0 is a new app (ai.robot_app), so this Robot can't
+  update to it. Install Robot-1.0.0.apk from the release page beside this one, move your People and Memory, then
+  uninstall this one: README, Moving from 0.9 to 1.0."
+- **A phone with both**: for 1.0, 0.9's recognizer (`app.heyrobot/.assistant.RobotRecognitionService`) is another
+  installed app's, left alone (`OTHER_RECOGNIZER`) until 0.9 is uninstalled; the `WRITE_SECURE_SETTINGS` grant is per
+  app, so the ADB fixes are done again for 1.0. Settings, History, notes, transcripts, keys, routines, the Termux trust
+  and the voiceprint stay in 0.9's private storage; People has an export and an import, Memory an export only (no import
+  yet).
+- Unchanged: the version (rc1 sets it), the signing key, settings schema 13. No new permission, component or string.
+
+**Code and tests.** `app/build.gradle`, the three manifests, `res/xml/shortcuts.xml`; core `AppId.kt`, `AdbFixes.kt`,
+`update/UpdateLogic.kt` (`ArchiveCheck.PACKAGE`), `web/WebSettings.kt` and `Nearby.kt`; the app's `sys/Stores.kt`
+(`Cmd.PERMISSION`), `sys/Transcripts.kt` (`Exports.AUTHORITY`), `assistant/Capture.kt`,
+`assistant/car/CarModeController.kt` and `ui/ConversationSettings.kt` (its `dumpsys meminfo` hint). Tests:
+`ProcessIsolationTest` (the merged manifest's package, `BuildConfig.APPLICATION_ID` and `AppId`, the permission, both
+authorities, the nine affinities, the recognizer the ADB fixes set, the shortcuts), `AdbFixesTest`, `ShizukuFixesTest`,
+`UpdateDecisionTest` (0.9's package refused either way), `AppCrashTest`, the User-Agent tests; `tools/verify_apk.sh`
+checks `package: name='ai.robot_app'`, the permission, the authorities, the affinities and the shortcuts.
+
+**On the phone (app ID):**
+
+1. **Beside 0.9.** With 0.9 installed, install 1.0 (`adb install Robot-1.0.0.apk`, or tap it): *done when* it installs
+   as a second Robot (no conflicting-provider or duplicate-permission error) and `adb shell pm list packages | grep -e
+   heyrobot -e robot_app` lists both.
+2. **Apart.** Open each, and in 1.0 ask a question with a photo and start a transcript from its Transcribe shortcut
+   (long press its icon): *done when* `adb shell ps -A | grep robot_app` lists `ai.robot_app:voice` and
+   `ai.robot_app:brain`, the shortcut opened 1.0's transcript screen, and 0.9 still works as before.
+3. **0.9's updater.** With 1.0 published, in 0.9: Settings › About › Updates › Check now: *done when* it shows 1.0 with
+   its release notes, the move first, and Download ends with "The downloaded app isn't Robot, so it won't be installed."
+4. **The move.** Follow the public README's "Moving from 0.9 to 1.0": *done when* 1.0's People lists the people exported
+   from 0.9, Robot's model copied out with `adb shell cp` imports ("… is ready.") without a download, Assistant setup
+   says "Android lists Robot as your assistant" and, after 0.9 is uninstalled and the ADB fixes are done again, both
+   show Done and Robot is still the assistant after a restart.
+5. **The commands.** *done when* Settings › Advanced › ADB fixes shows `adb shell settings put secure
+   voice_recognition_service ai.robot_app/app.heyrobot.assistant.RobotRecognitionService` and `adb shell pm grant
+   ai.robot_app android.permission.WRITE_SECURE_SETTINGS` (and the same for rish), and after the first one `adb shell
+   settings get secure voice_recognition_service` prints that component.
+
 ## The 1.0 hardening (on top of 0.9.0)
 
 The release-readiness work for 1.0, on 0.9.0's code (the version number is still 0.9.0). Nothing here changes what Robot
@@ -72,7 +144,7 @@ does with your words.
    at once.
 2. **User-Agent.** Download any model through a proxy you control (or check the server log): *done when* it says
    `Robot/0.9.0`.
-3. **Crash notice.** With a debug build, crash the main app once (`adb shell am crash app.heyrobot`), open Robot: *done
+3. **Crash notice.** With a debug build, crash the main app once (`adb shell am crash ai.robot_app`), open Robot: *done
    when* the window shows once; Send feedback opens a bug report whose "Crash report" preview names the crash.
 4. **TalkBack.** Spoken replies off, ask a question: *done when* TalkBack reads the answer once, when it is complete.
 
@@ -571,7 +643,7 @@ helpers, the engine hardening and the built-in updater; each has its section bel
   client and the Nominatim client for the nearest place, the coarse location reader and what phone_status reads. With
   the updater's `update/GitHubClient` (main process only) they are the only HTTP code outside the Claude SDK.
 - `:brain` is bound from the assistant with `BIND_AUTO_CREATE | BIND_IMPORTANT | BIND_INCLUDE_CAPABILITIES`;
-  it is not exported and requires Robot's signature permission `app.heyrobot.permission.INTERNAL`.
+  it is not exported and requires Robot's signature permission `ai.robot_app.permission.INTERNAL`.
 - `:llama` (0.4.5) is an `android:isolatedProcess` service that only `:brain` binds (`BIND_AUTO_CREATE | BIND_IMPORTANT`),
   for one GGUF model at a time: not exported, no permissions, no network, none of Robot's files ("llama.cpp in its own
   isolated process" below).
@@ -748,9 +820,10 @@ a new release, downloads it, checks it, and hands it to Android, whose own windo
    is refused whole if any line is malformed, a name has a path or an invisible character, or one name has two sums.
 2. The downloaded file's SHA-256 is the one in that line (a wrong one is deleted).
 3. Android reads the APK (`getPackageArchiveInfo` with its signing certificates, which verifies its signature): package
-   `app.heyrobot`, `versionName` the release's version, `versionCode` higher than the installed one (never the same again,
-   never a downgrade), and signed by the key the installed Robot is signed with now, or by a newer key whose APK
-   Signature Scheme v3 lineage contains it. Android refuses another signer anyway; Robot says why first.
+   `ai.robot_app` (`app.heyrobot` before 1.0: "The app ID" above), `versionName` the release's version, `versionCode`
+   higher than the installed one (never the same again, never a downgrade), and signed by the key the installed Robot is
+   signed with now, or by a newer key whose APK Signature Scheme v3 lineage contains it. Android refuses another signer
+   anyway; Robot says why first.
 4. Just before installing, all of it again on the file as it is then, and its SHA-256 a third time while Robot writes it
    into the install session: the session is committed only if it matches.
 
@@ -851,8 +924,8 @@ it is private. Watch Settings › Voice › Voice log and `adb logcat -s Robot` 
    <next>-rc1" with its date, size and notes (plain text; a link shows only its words); See it on GitHub opens the
    release page.
 5. **Download on Wi-Fi.** On mobile data with automatic checks and Download updates on Wi-Fi on, wait for the daily
-   check (or `adb shell cmd jobscheduler run -f app.heyrobot 4801`): no notification yet. Join Wi-Fi: the download job
-   (`… run -f app.heyrobot 4802`) downloads and checks it, and the notification says "Robot <next>-rc1 is ready to
+   check (or `adb shell cmd jobscheduler run -f ai.robot_app 4801`): no notification yet. Join Wi-Fi: the download job
+   (`… run -f ai.robot_app 4802`) downloads and checks it, and the notification says "Robot <next>-rc1 is ready to
    install"; tapping it opens Settings › Updates with **Install**. Airplane mode during a download, then back: it continues.
 6. **Checksum refused.** Publish a release whose `SHA256SUMS` line for the APK is wrong (edit one hex digit): Download says
    "The downloaded file doesn't match its SHA-256 in SHA256SUMS, so Robot deleted it and won't install it", and
@@ -866,14 +939,14 @@ it is private. Watch Settings › Voice › Voice log and `adb logcat -s Robot` 
    `adb logcat -s Robot` shows `updated` and `recognizer_check why=UPDATE` (with the adb grant, a write it had to make is in
    the voice log as "after an update"); 3 minutes later no "Turn Robot back on" notification.
    Settings › About shows the new version and Updates "You're up to date"; `files/updates/` is empty. Then a question to
-   your GGUF file if you use one (a new `app.heyrobot:llama`), Settings › Conversation › Fast translation › Test
+   your GGUF file if you use one (a new `ai.robot_app:llama`), Settings › Conversation › Fast translation › Test
    translation speed (`:mt`), "hey robot, transcribe this conversation", and a question to a helper with a saved key: each
    works as after a restart, with nothing to do first.
 9. **Install without asking.** Turn it on, publish the next test build, Install: no Android window, Robot restarts
    updated. If Robot was installed by another app store that keeps its updates, the switch is greyed out and says why.
 10. **Skip.** With a release on offer, **Skip this version**: the page says you skipped it, no notification for it, the
     About row doesn't announce it; a newer release is offered again. **Don't skip** brings it back.
-11. **Switches off.** Turn Check for updates automatically off: `adb shell dumpsys jobscheduler | grep app.heyrobot`
+11. **Switches off.** Turn Check for updates automatically off: `adb shell dumpsys jobscheduler | grep ai.robot_app`
     shows no job 4801 (or 4802), and nothing is asked of GitHub for days. Turn it on: the job is back.
 12. **Rate limit.** Without a token, Check now about 60 times in an hour (or from a network that used the limit): "GitHub's
     limit on checks from your network was reached (60 an hour without a token). Try again after …".
@@ -1062,7 +1135,7 @@ Not yet checked. A debug build for steps 14 and 15 (`run-as`); watch Settings �
 8. **Idea and Other.** Idea: the field asks "What would you like Robot to do?", no Steps, nothing ticked; Other: "What
    would you like to tell the developer?".
 9. **The draft stays.** Write a bug with steps, tick and untick, rotate the phone, switch apps, then
-   `adb shell am kill app.heyrobot` while Robot is in the background and come back: the same kind, words, ticks and
+   `adb shell am kill ai.robot_app` while Robot is in the background and come back: the same kind, words, ticks and
    reference. Done clears it and closes the page.
 10. **Voice, English.** "Hey robot, report a bug": the panel says "Opening Send feedback…" and closes; Send feedback opens
     with Bug. "Hey robot, I have an idea: read my calendar in the brief": Idea, the text "Read my calendar in the brief".
@@ -1074,12 +1147,12 @@ Not yet checked. A debug build for steps 14 and 15 (`run-as`); watch Settings �
 13. **Entry points.** The Model tab's problem: Send as bug report opens a bug with its report ticked (Back returns to the
     Model tab); Settings › Voice › Voice log: Send as bug report (Back to the log); Settings › About › Updates after a
     failed check (Airplane mode, Check now): Report this, with Updater ticked ("error=NO_INTERNET").
-14. **Problem list and a Java crash.** With Fast loaded: `adb shell am crash $(adb shell pidof app.heyrobot:brain)`. The
+14. **Problem list and a Java crash.** With Fast loaded: `adb shell am crash $(adb shell pidof ai.robot_app:brain)`. The
     Model tab shows the problem; dismiss it: "Last model problems" at the end of the tab with its row (date, ":brain",
     the stage). Tap it: Show reads "reason CRASH" with no native crash lines; Share opens the share sheet; Send as bug
     report opens Send feedback with that report; Delete removes the row (and the open problem if it was that one). After
     11 problems, 10 rows.
-15. **A native crash's tombstone.** `adb shell run-as app.heyrobot kill -SEGV $(adb shell pidof app.heyrobot:brain)`
+15. **A native crash's tombstone.** `adb shell run-as ai.robot_app kill -SEGV $(adb shell pidof ai.robot_app:brain)`
     during an answer. Its report's exit line says "reason CRASH_NATIVE (5) · status 11", followed by "Native crash:
     SIGSEGV (11), code SI_USER (0)", "Abort message: none" and "Backtrace, the crashing thread's first 16 of N frames:"
     with lines like "#00 libc.so +0x… (…)": library names only, no `/data/app/…` path, no register, no memory, no file of
@@ -1170,7 +1243,7 @@ numbers only.
    "stop": it stops.
 10. **Memory beside the voice**: with Kokoro and Parakeet installed, keep the model loaded Always, use the phone for an
     hour with a few questions: no "stopped unexpectedly". Settings › Voice › Voice log has no "The model's process
-    stopped" lines. `adb shell dumpsys meminfo app.heyrobot:brain` while loaded on the GPU: write down TOTAL PSS and the
+    stopped" lines. `adb shell dumpsys meminfo ai.robot_app:brain` while loaded on the GPU: write down TOTAL PSS and the
     Graphics line.
 11. Five or more turns in one conversation, one with a photo: no "The model ran into a problem" (Tensor G4 Mali GPUs have
     shown OpenCL queue errors after a few turns elsewhere; if one comes, the next step's fallback should follow by itself).
@@ -1179,14 +1252,14 @@ numbers only.
 
 12. **A crash while loading**: make the next GPU load a long first one (Settings › Model › Fast › Delete this model, then
     Download again: the cache goes with it). Open the panel, ask something, and while it loads (the first ~20 s) run
-    `adb shell am crash $(adb shell pidof app.heyrobot:brain)`. The answer comes from the CPU instead (its first CPU load
+    `adb shell am crash $(adb shell pidof ai.robot_app:brain)`. The answer comes from the CPU instead (its first CPU load
     takes longer); the panel says "Fast didn't load on the GPU, so Robot switched to the CPU. The Robot app › Model has a
     report you can copy or share." once; a "Robot's model had a problem" notification opens the Model tab. Voice log: "The
     GPU failed for Fast … while loading (the model process stopped): the CPU from now on".
 13. **A crash while answering**: Try the GPU again (step 14), ask for a long story on the GPU and, while it writes, run the
     same `am crash` command. The answer ends; the next question is answered on the CPU, with "Fast stopped on the GPU, so
     Robot switched to the CPU. …" once and a notification. (If `am crash` is refused: a debug build and
-    `adb shell run-as app.heyrobot kill -9 <pid>`. A force stop of Robot during a GPU load counts as a failed load at the
+    `adb shell run-as ai.robot_app kill -9 <pid>`. A force stop of Robot during a GPU load counts as a failed load at the
     next start too.)
 14. After either: Settings › Model › Where Fast runs says "The GPU didn't load (…)" or "The GPU stopped while writing the
     answer" with the date, "so Robot runs Fast on the CPU.", and **Try the GPU again**; Use the GPU is still on. Close and
@@ -1221,14 +1294,14 @@ LiteRT-LM in :brain")
     The interpreter: the fast engine's translation is read first (on the GPU, as on the CPU, it leads). Summarize the
     transcript on the phone: it finishes (a part may take a minute); the summary's record names `e2b`.
 21. **A GPU failure under a one-shot.** Try the GPU again if it failed earlier. While the model improves a transcript's
-    lines (or makes a summary), run `adb shell am crash $(adb shell pidof app.heyrobot:brain)`. That line keeps its fast
+    lines (or makes a summary), run `adb shell am crash $(adb shell pidof ai.robot_app:brain)`. That line keeps its fast
     translation (a summary stops, and goes on from its saved notes when you ask again); the notification "Robot's model had
     a problem" comes once, Settings › Model › Where Fast runs says the GPU stopped while reading the prompt or writing the
     answer, and the next lines' better translations come from the CPU (`backend=cpu`). Voice log: "The GPU failed for Fast
     while … (its process stopped): the CPU from now on". The panel's next question says "Fast stopped on the GPU, so
     Robot switched to the CPU." once.
 22. **A GGUF file's crash is :llama's.** With your own GGUF file chosen ("GGUF models" below), ask for a long story and,
-    while it writes, end llama.cpp's process (`adb shell am crash $(adb shell pidof app.heyrobot:llama)`, or the ways
+    while it writes, end llama.cpp's process (`adb shell am crash $(adb shell pidof ai.robot_app:llama)`, or the ways
     "On the phone (0.4.5)" lists). The problem card says "Your own model file stopped on the CPU, so Robot is using Fast.";
     Show the report: "Ran on: CPU · llama.cpp in :llama, an isolated process (your GGUF file, never Fast)", "failure: the
     model process stopped (:llama)", and Android's records of :llama (or "none found": write down which). Where Fast
@@ -1621,8 +1694,8 @@ installed, the two files above on the phone (Downloads), about 6 GB free. Note e
    follow-ups: `brain_reply` `ttftMs`, `tps`, `promptMs`; `brain_prompt` `reused` grows with each follow-up.
 4. **Speed and threads.** Fill in the table above (writes, reads a prompt, first word). Then build once with
    `DECODE_THREADS = 6` and once with `PROMPT_THREADS = 8` (`LlamaEngine.kt`) and keep whichever is faster.
-5. **Memory beside voice.** While it answers with Kokoro speaking: `adb shell dumpsys meminfo app.heyrobot:llama` (TOTAL
-   RSS near the estimate; `app.heyrobot:brain` now holds no model, a few tens of MB) and `app.heyrobot:voice`;
+5. **Memory beside voice.** While it answers with Kokoro speaking: `adb shell dumpsys meminfo ai.robot_app:llama` (TOTAL
+   RSS near the estimate; `ai.robot_app:brain` now holds no model, a few tens of MB) and `ai.robot_app:voice`;
    `adb logcat -b events | grep am_kill` shows no low-memory kills.
 6. **Thinking.** Off (the default): "Why is the sky blue?" answers directly; nothing in `<think>` shows or is spoken. On:
    the panel shows "Thinking…" longer, the answer comes later, and still no thinking is shown or read out. Off again: direct.
@@ -1636,17 +1709,17 @@ installed, the two files above on the phone (Downloads), about 6 GB free. Note e
    3 and 5; "set a timer for 2 minutes" gives the timer card (or words), never "This model can only chat".
 10. **Switching engines.** Fast → your GGUF file → Smarter → Fast without restarting, a question after each: `brain_engine_switch`
     each time the kind changes, never two models in memory: leaving the GGUF file, `adb shell ps -A | grep heyrobot` no
-    longer lists `app.heyrobot:llama` (`brain_unload … parked=false`) before Smarter loads, and `dumpsys meminfo
-    app.heyrobot:brain` falls to one model's size.
+    longer lists `ai.robot_app:llama` (`brain_unload … parked=false`) before Smarter loads, and `dumpsys meminfo
+    ai.robot_app:brain` falls to one model's size.
 11. **Stop.** Say "stop" while it reads a long prompt and while it writes: it stops within a second or two, and the next
     question answers normally.
-12. **A file that stops the process.** With the GGUF file answering, `adb shell kill -9 $(adb shell pidof app.heyrobot:brain)`:
+12. **A file that stops the process.** With the GGUF file answering, `adb shell kill -9 $(adb shell pidof ai.robot_app:brain)`:
     the next question answers with Fast and the one-time notice; tap the file again in Settings › Model and it loads. (For
     llama.cpp's own process, see 22.)
 13. **Refusals.** Import `mmproj-F16.gguf` from the MedGemma repository: refused ("It's a “clip” model…"). Import a file cut
     short (`head -c 100000000` of a GGUF file): unreadable. A 27B Q4_K_M (about 16 GB, if you have one and the room to copy
     it): refused for memory once copied.
-14. **A file changed after its check.** `adb shell touch` `own_model.gguf` in `/sdcard/Android/data/app.heyrobot/files/`, then
+14. **A file changed after its check.** `adb shell touch` `own_model.gguf` in `/sdcard/Android/data/ai.robot_app/files/`, then
     ask: Fast answers ("hasn't been checked yet"); open the Robot app: it checks the file again.
 15. **Screen off.** A long answer by "hey robot" with the screen turned off: `tps` stays near the screen-on number.
 16. **The load, by the open file.** At every GGUF load, `adb logcat -s Robot | grep brain_load` shows `ok=true … format=GGUF
@@ -1672,27 +1745,27 @@ installed, the two files above on the phone (Downloads), about 6 GB free. Note e
     ask "what's on my calendar today?": Robot reads the title out as a title and starts no text. A question with a timer
     ("set a timer for 2 minutes") still gives the timer card, as before.
 22. **The isolated process.** With the GGUF file loaded, `adb shell ps -A -o USER,PID,NAME | grep heyrobot` lists
-    `app.heyrobot:llama` under an isolated user (`u0_i…`, not Robot's `u0_a…`), beside `app.heyrobot:brain` and
-    `app.heyrobot:voice` under `u0_a…`; `adb shell cat /proc/$(adb shell pidof app.heyrobot:llama)/status | grep -E
+    `ai.robot_app:llama` under an isolated user (`u0_i…`, not Robot's `u0_a…`), beside `ai.robot_app:brain` and
+    `ai.robot_app:voice` under `u0_a…`; `adb shell cat /proc/$(adb shell pidof ai.robot_app:llama)/status | grep -E
     'Uid|Groups'` shows a uid of 99000 to 99999 and no `inet` group (3003). `adb logcat -s Robot | grep brain_load` names the
     same pid with `isolated=true`.
 23. **Kill it while it answers.** Ask a long question and, while it writes, end `:llama`: `adb shell am crash $(adb shell
-    pidof app.heyrobot:llama)` (on a user build the shell can't `kill` another uid's process; with root, `kill -9` does the
+    pidof ai.robot_app:llama)` (on a user build the shell can't `kill` another uid's process; with root, `kill -9` does the
     same): the bubble ends with "The model stopped unexpectedly",
     `brain_llama_gone asked=false busy=true`, `:brain` keeps its pid, the next question answers with Fast and the one-time
-    notice ("… stopped unexpectedly, so Robot is using Fast …"), and `ps` no longer lists `app.heyrobot:llama`. Tap the file
+    notice ("… stopped unexpectedly, so Robot is using Fast …"), and `ps` no longer lists `ai.robot_app:llama`. Tap the file
     again in Settings › Model: it loads in a new `:llama` (another `u0_i…`). Killed while idle instead, the next question
     loads the file again, without a notice.
 24. **The watchdogs end only `:llama`.** (If you have a GGUF file whose chat template never finishes, or one that takes over
     3 minutes to load.) `brain_stuck in=prepare` (or `in=load`), then `brain_llama_end why=stuck_prepare` and
     `brain_llama_gone`: the question ends with "The model stopped unexpectedly" (the load with "llama.cpp didn't finish
-    loading the file"), Fast answers next, and `adb shell pidof app.heyrobot:brain` is unchanged.
+    loading the file"), Fast answers next, and `adb shell pidof ai.robot_app:brain` is unchanged.
 25. **Stop, and a question while it writes.** Say "stop" while it reads a long prompt and while it writes: it stops within
     a second or two (`brain_reply reason=CANCELLED`), `:llama` keeps its pid, and the next question answers normally and
     reuses what it read (`brain_prompt reused=…` above 0). A new question asked while it writes stops the first one and
     answers the second.
 26. **Freeing memory.** With the GGUF file loaded, close the panel and wait for the unload (Settings › "Keep the model in
-    memory"), or choose Fast: `app.heyrobot:llama` disappears from `ps` within a second, `brain_unload format=GGUF
+    memory"), or choose Fast: `ai.robot_app:llama` disappears from `ps` within a second, `brain_unload format=GGUF
     parked=false`, and `adb shell dumpsys meminfo | grep -i heyrobot` no longer counts its memory.
 
 ## Look (0.4.5: the UI redesign's first step)
@@ -2396,11 +2469,11 @@ installed, the wake word is on.
 5. **Wake word.** During a session, "hey robot, what time is it?": nothing opens (the voice log has no wake line). Stop
    the session: "hey robot" works again. Turn on "Hey robot works during a conversation": "hey robot" opens the panel and
    the transcript shows "[paused …]" for that moment; "stop transcribing" ends it.
-6. **Crash.** During a session, `adb shell am kill app.heyrobot` (if the foreground service keeps `:voice` alive, as it
-   may, use `adb shell am crash $(adb shell pidof app.heyrobot:voice)`). The notification goes; within a few seconds
+6. **Crash.** During a session, `adb shell am kill ai.robot_app` (if the foreground service keeps `:voice` alive, as it
+   may, use `adb shell am crash $(adb shell pidof ai.robot_app:voice)`). The notification goes; within a few seconds
    (when Android restarts the assistant) "Transcription stopped unexpectedly. Saved up to …" appears. Every line shown before the kill is in the transcript (at most the line being spoken is lost).
    Resume: the same transcript goes on with "[stopped unexpectedly …]". Then Stop Robot from Settings › Active apps
-   during a session (or `adb shell am force-stop app.heyrobot`): no Resume offer, the transcript is closed as ended.
+   during a session (or `adb shell am force-stop ai.robot_app`): no Resume offer, the transcript is closed as ended.
 7. **A call** during a session: "[phone call …]" or "[microphone unavailable …]", and it goes on after the call. Another
    app recording: the same.
 8. **Lock screen.** Locked, tap the tile: the reminder or the screen over the lock screen, with nothing older; Open in
@@ -2413,7 +2486,7 @@ installed, the wake word is on.
 10. **Library.** Search a word from the session (with and without its accent); rename; Share: pick another app (Files,
     a Markdown reader, a mail draft): the Markdown file opens there correctly (title, header, times, FR/EN). Save as
     Markdown into Downloads and open it with another app. Copy and paste in a note.
-11. **Delete.** Delete one transcript: `adb shell run-as app.heyrobot ls files/transcripts` no longer lists its folder.
+11. **Delete.** Delete one transcript: `adb shell run-as ai.robot_app ls files/transcripts` no longer lists its folder.
     Delete the one being recorded: the session stops and the folder doesn't come back. Delete all.
 12. **Tile and shortcut.** Add "Transcribe" in Quick Settings: tap to start (the screen opens), tap to stop; long press:
     Settings › Conversation. Long-press Robot's icon: "Transcribe" and "Transcripts" work (if "Transcribe" doesn't open,
@@ -2429,13 +2502,13 @@ installed, the wake word is on.
 Phase 5.3 is done when step 4 passes: that is gate 5.0(d) in the app (design §9.1). Robot is the assistant, the voice
 models are installed, nothing is recording.
 1. **Download.** Settings › Conversation › Speakers: "Download (40 MB)", the progress line, then (with Robot's app in
-   front) "Ready"; Model › Voice models lists "Speaker labels · 40 MB" too. `adb shell run-as app.heyrobot ls -l
+   front) "Ready"; Model › Voice models lists "Speaker labels · 40 MB" too. `adb shell run-as ai.robot_app ls -l
    files/models/spk-titanet-small` shows `nemo_en_titanet_small.onnx` at 40,257,283 bytes and `.verified`. Nothing of it
    is in the APK (`unzip -l` the APK: no `.onnx` but the wake word's and the VAD's).
 2. **The offer.** Delete the speaker model (Settings › Conversation), open Transcribe: the card "Tell speakers apart?"
    says 40 MB; Download opens Settings › Conversation; "Not now" hides it and it doesn't come back. Download it again.
 3. **Your voice.** Settings › Conversation › Set up your voice: read the three sentences (Record, Stop): "Saved". `adb
-   shell run-as app.heyrobot ls -l files/robot/me.voiceprint`: under a kilobyte; `adb shell run-as app.heyrobot xxd
+   shell run-as ai.robot_app ls -l files/robot/me.voiceprint`: under a kilobyte; `adb shell run-as ai.robot_app xxd
    files/robot/me.voiceprint | head -2` starts with `RVE` and nothing readable follows; `settings.json` has
    `"meVoiceprint": true` and no numbers of yours. Set it up again with another person reading one sentence: "don't
    sound like one voice", and the saved one stays.
@@ -2443,7 +2516,7 @@ models are installed, nothing is recording.
    talking normally (mixed French and English is fine) for 10 minutes, short replies included; then Stop. Your lines
    should say "You", the other's S1 (or S2). In Robot › Transcripts › that transcript, make at most one merge (the
    "sounds like" card or a chip's "Same person as…"). Then count, line by line, the time of the lines with the right
-   label (`adb shell run-as app.heyrobot cat files/transcripts/<id>/snapshot.json` has each line's `t0`, `t1`, `spk`; the
+   label (`adb shell run-as ai.robot_app cat files/transcripts/<id>/snapshot.json` has each line's `t0`, `t1`, `spk`; the
    screen shows who each line is): **pass at 90 % or more of the speaking time**. Note the result, how many speakers and
    proposals the voice log's 106 line shows ("Speakers: 2 · … · started from your voice"), and the mean embedding time
    (`adb logcat -s Robot | grep conv_speakers`: `embedMs`). Repeat once with your
@@ -2469,21 +2542,21 @@ Phase 5.0(b) is done when steps 2 to 4 pass (design §9.1).
    then shows "packages librobotmt.so (the fast translation engine)", "librobotmt.so exports only its three JNI
    functions" and "only app.heyrobot.mt.Slimt loads librobotmt (dex)". (Without the script it prints a NOTE instead.)
 2. **Download.** Settings › Conversation › Fast translation › Download (52 MB): progress, then "Checking and installing", then
-   "Ready" and "The fast translation engine is ready." `adb shell run-as app.heyrobot ls -l files/models/mt-fr-en` lists the
+   "Ready" and "The fast translation engine is ready." `adb shell run-as ai.robot_app ls -l files/models/mt-fr-en` lists the
    five files and `.verified` (73,135,034 bytes of files).
 3. **Test translation speed.** Tap it and note the four lines: the median (the mark is ≤ 60 ms) and the slowest line;
    the memory, at most and now (≤ 450 MB); "23 of 23 the same"; the load times. Tap Copy the result and keep the text.
    Tap again: "The engine was loaded already", and the times without the first-load cost.
-4. **Memory.** With the result on screen: `adb shell dumpsys meminfo app.heyrobot:mt`. Note TOTAL PSS and TOTAL RSS (the
+4. **Memory.** With the result on screen: `adb shell dumpsys meminfo ai.robot_app:mt`. Note TOTAL PSS and TOTAL RSS (the
    mark is 450 MB with both directions loaded) and the native heap.
 5. **Lines that differ.** If fewer than 23 are the same, the copied result lists each line with what was expected and
    what came: note them. The engine is meant to give the build machine's exact words; a difference is a finding for
    docs/conversation-mode.md 9.6, not a reason to change the reference.
 6. **A crash stays in `:mt`.** Start a transcript (Home › Transcribe), then open Settings › Conversation, start the test
-   and at once `adb shell am crash $(adb shell pidof app.heyrobot:mt)`: the test says the fast engine stopped; the
+   and at once `adb shell am crash $(adb shell pidof ai.robot_app:mt)`: the test says the fast engine stopped; the
    transcript goes on (its notification stays, new lines arrive). Test again: it works (Android started `:mt` again).
 7. **Letting go.** Leave Settings › Conversation (no session translating); after a few seconds `adb shell dumpsys
-   meminfo app.heyrobot:mt` shows no process, or one without the engine's memory.
+   meminfo ai.robot_app:mt` shows no process, or one without the engine's memory.
 8. **Delete.** Fast translation › Delete: `files/models/mt-fr-en` is gone and Test translation speed is greyed out.
    Download again works.
 9. **No network.** With the files there, turn on airplane mode and run the test: it works the same.
@@ -2534,7 +2607,7 @@ a build without it; the next list checks what changes with it.
 8. **The Claude app.** With the app installed: Summarize › "Share it with the Claude app instead" › Send: the app opens
    with the text (or "It's copied: paste it…"); note which way worked on the installed version (design T11).
 9. **Library.** The transcript's page lists the summaries, newest first, with their labels; a [14:03] scrolls to the
-   line; Delete removes one (`adb shell run-as app.heyrobot ls files/transcripts/<id>` no longer lists that
+   line; Delete removes one (`adb shell run-as ai.robot_app ls files/transcripts/<id>` no longer lists that
    `summary-<n>.json`); exports and Share still carry the translations ("> EN: …"), not the summaries.
 10. **Voice.** "Hey robot, summarize this conversation" during a session: the session stops and the summary screen opens
     (locked: "Unlock your phone, then …").
@@ -2552,22 +2625,22 @@ translation engine's checks), its files downloaded, Robot as the assistant, Fast
 2. **Transcript translations.** Start a transcript with Translate on; talk French and English: each line gets its
    translation in italics marked "fast" at once (well under a second after the line shows), then Robot's model's in its
    place within a few seconds (the mark goes). The voice log has "Line translated by the fast engine in … ms: kept", then
-   "Line translated by Gemma in … ms: kept", for the same lines; `adb shell run-as app.heyrobot cat
+   "Line translated by Gemma in … ms: kept", for the same lines; `adb shell run-as ai.robot_app cat
    files/transcripts/<id>/lines.jsonl | grep '"e":"tr"'` shows each line's `"by":"bergamot"` event, then its
    `"by":"gemma"` one. Turn the screen off for a minute and on again: the lines said meanwhile have their "fast"
    translation at once, and Robot's model's come once the screen is on (newest on screen first). Turn Translate off:
-   nothing more is translated, and `adb shell dumpsys meminfo app.heyrobot:mt` soon shows no process, or one without the
+   nothing more is translated, and `adb shell dumpsys meminfo ai.robot_app:mt` soon shows no process, or one without the
    engine's memory.
 3. **The interpreter with the fast engine, 10 turns.** As step 2 of the list above, with its pass marks: no "Translated
    by Robot's model on this phone" line, and most turns are Robot's model's (no "fast" badge). A turn Robot's model can't
    start within 1.5 s comes "fast" instead of waiting: say a turn as soon as the interpreter opens while Robot's model is
    still loading (it was unloaded: the panel closed longer ago than Settings › Model's minutes), or open the panel and
    ask a question just as a turn ends. Note how many turns came "fast". The voice log has "Fast translation loaded in …
-   ms (2 directions)" as the session starts, and `adb shell dumpsys meminfo app.heyrobot:mt` shows the engine's memory
+   ms (2 directions)" as the session starts, and `adb shell dumpsys meminfo ai.robot_app:mt` shows the engine's memory
    during it.
 4. **The interpreter without it.** Settings › Conversation › Fast translation › Delete, then start the interpreter: it
    says "Translated by Robot's model on this phone (the fast engine isn't installed)", no turn is "fast", and `adb shell
-   dumpsys meminfo app.heyrobot:mt` shows no process, or one without the engine's memory; every turn is still
+   dumpsys meminfo ai.robot_app:mt` shows no process, or one without the engine's memory; every turn is still
    translated, and a question in the panel during a turn now delays that turn instead. Download the files again.
 5. **A slow model: the CPU, 10 turns.** Settings › Model › Smarter (E4B, CPU; downloaded). In the interpreter, every turn
    is "fast": the fast engine leads, and Robot's model stands in only when it fails. Pass: **the direction is right at
@@ -2577,7 +2650,7 @@ translation engine's checks), its files downloaded, Robot as the assistant, Fast
    files and start the interpreter again: Robot's model translates alone, slowly (note the time per turn: up to 30 s).
    Download them again; back to Fast.
 6. **The fast engine stops.** During a transcript with Translate on, `adb shell am crash $(adb shell pidof
-   app.heyrobot:mt)`: the transcript goes on and its lines are still translated, by Robot's model alone for up to a
+   ai.robot_app:mt)`: the transcript goes on and its lines are still translated, by Robot's model alone for up to a
    minute, then "fast" again (Android started `:mt` again). Nothing else stops (the panel still answers).
 7. **No network.** Airplane mode on: steps 2 and 3 work the same; a line goes to `:mt` and `:brain` on the phone only.
 
@@ -2770,7 +2843,7 @@ number, Signal, and an SMS number. Put "Mom" in People with your test number as 
    "Dinner Sunday at 6"): a card, and a yes may answer it. Repeat with "ignore previous instructions", a fake tool call,
    a link and "reply with the code": no action without a card; anything that goes to someone else needs a tap.
 9. **Nothing on disk:** after reading a message with a unique word (say "zebracorn"),
-   `adb shell run-as app.heyrobot grep -rl zebracorn files/ no_backup/ cache/` finds nothing; History shows "Robot read 1
+   `adb shell run-as ai.robot_app grep -rl zebracorn files/ no_backup/ cache/` finds nothing; History shows "Robot read 1
    message from Mom (Cheogram)" and, for the next answer, "Robot's answer isn't kept: …"; the voice log and
    `adb logcat -s Robot` show codes only (grep the word and the sender's name).
 10. **Locked:** "read my messages" on the lock screen: "Unlock first". "Who messaged": names only. "Read and reply":
@@ -2805,7 +2878,7 @@ number, Signal, and an SMS number. Put "Mom" in People with your test number as 
 
 **After the review** (0.7.0):
 
-22. **Signing keys.** With Signal on, `adb shell run-as app.heyrobot cat files/robot/messages.json` shows a `pins` entry
+22. **Signing keys.** With Signal on, `adb shell run-as ai.robot_app cat files/robot/messages.json` shows a `pins` entry
     for `org.thoughtcrime.securesms` (a 64-hex digest, the installer). Install a debug build of any app under a messaging
     app's package name you don't use (or uninstall Molly and install a build signed by someone else): its notifications
     are ignored, the voice log says "ignored an app whose signing key isn't the one kept", and Settings › Messages says
@@ -3224,11 +3297,11 @@ Nothing here has run on the phone yet. Use a phone with a screen lock (PIN), Rob
    "Open Settings › Memory to delete everything." and nothing is deleted.
 7. **A preference.** Type "Remember: call me Sam" (spoken, the comma after "remember" is what counts): "Got it: I'll call you Sam." New
    conversation, "what's my name?": Sam. Settings › Memory shows it under Pinned.
-8. **No plain text on disk.** `adb shell run-as app.heyrobot ls files/memory` lists `memory.enc` and `memory.lock`.
-   `adb shell run-as app.heyrobot cat files/memory/memory.enc | strings | grep -i -e sister -e birthday -e julie -e items`
+8. **No plain text on disk.** `adb shell run-as ai.robot_app ls files/memory` lists `memory.enc` and `memory.lock`.
+   `adb shell run-as ai.robot_app cat files/memory/memory.enc | strings | grep -i -e sister -e birthday -e julie -e items`
    prints nothing.
-9. **History holds ids, not notes.** After step 1's question: `adb shell run-as app.heyrobot sh -c 'grep -c "Notes the user" files/conversations/*.json'`
-   counts 0 in every file, and `adb shell run-as app.heyrobot sh -c 'grep -o "m_[0-9a-z]*" files/conversations/*.json'`
+9. **History holds ids, not notes.** After step 1's question: `adb shell run-as ai.robot_app sh -c 'grep -c "Notes the user" files/conversations/*.json'`
+   counts 0 in every file, and `adb shell run-as ai.robot_app sh -c 'grep -o "m_[0-9a-z]*" files/conversations/*.json'`
    lists the item's id. Continue that conversation from History and ask "what date was that again?": May 3 (its notes
    come again from memory).
 10. **Locked.** Lock the phone, "hey robot, do you remember my sister's birthday?": "Unlock first: what you asked me to
@@ -3437,7 +3510,7 @@ Before: 0.4.3 installed over 0.4.2 with Fast chosen, both MedGemma files on the 
    uses", the row says "Chat only (short context): no actions." and can be chosen.
 2. **Choose it and the first load.** Choose it, open the panel, ask "hi": `adb logcat -s Robot | grep brain_load` shows
    `model=own backend=cpu maxTokens=2048 chatOnly=true vision=false visionError=NoVisionEncoder` (one load, no failed
-   vision load first); note the load time, the cache size on its card and `adb shell dumpsys meminfo app.heyrobot:brain`.
+   vision load first); note the load time, the cache size on its card and `adb shell dumpsys meminfo ai.robot_app:brain`.
 3. **Medical questions by voice and by text.** Five of each ("what does a high white blood cell count mean?", "is
    ibuprofen safe with high blood pressure?", "what are the signs of a migraine?"…): short answers in Robot's voice, no
    warning added by Robot to each answer, no error. Note `brain_fixed_tokens` (groups `none`: the compact prompt's real
@@ -3467,7 +3540,7 @@ Before: 0.4.3 installed over 0.4.2 with Fast chosen, both MedGemma files on the 
 11. **Back to Fast.** Settings › Model › Fast: `brain_release why=model_changed`; the next question loads Fast
     (`brain_load model=e2b_tpu backend=npu maxTokens=4096 chatOnly=false`), "set a timer for 1 minute" sets it, and the
     Voice log shows the switch.
-12. **Fallback as before.** Choose MedGemma again, `adb shell touch` its file in `/sdcard/Android/data/app.heyrobot/files/`
+12. **Fallback as before.** Choose MedGemma again, `adb shell touch` its file in `/sdcard/Android/data/ai.robot_app/files/`
     and ask: Fast answers with "“Your own model file” hasn't been checked yet, so Robot is using Fast…"; check it again in
     the app and it is chosen again. Delete it: its file and cache go.
 
@@ -3623,7 +3696,7 @@ on battery, Wi-Fi on. Note every time.
    `brain_fixed_tokens` and each `brain_reply` (`ttftMs`, `tps`): cold first token at most 25 s, warm at most 3 s, writing
    about 8 tokens a second. Panel: "Waking up the model…" then "Thinking…" while it reads.
 4. **Memory beside voice.** With the panel open and Kokoro speaking a long answer: `adb shell dumpsys meminfo
-   app.heyrobot:brain` (TOTAL RSS about 4.1 GB) and `adb shell dumpsys meminfo app.heyrobot:voice`; `adb logcat -b events
+   ai.robot_app:brain` (TOTAL RSS about 4.1 GB) and `adb shell dumpsys meminfo ai.robot_app:voice`; `adb logcat -b events
    | grep am_kill` shows no low-memory kills. Then "how much memory is free?": "Robot's own model holds about 4.1 GB".
 5. **Photos on the CPU.** Two photo questions (camera button), and one "ask about this screen": correct answers; note the
    first-token time (about 10 s expected). `brain_load` says `vision=true`.
@@ -3639,7 +3712,7 @@ on battery, Wi-Fi on. Note every time.
     (Cancel downloads nothing; the card then says you ticked them, and a second download doesn't ask again). Download it and choose it: the same checks as 2, 3 and 6, plus 20 prompts Fast refuses and 20 normal
     ones (refusals gone? answers sane?). Cards still show for texts, emails, events and deleting.
 11. **Switching.** Fast → Smarter → Uncensored → Fast without restarting, a question after each: Voice log "Unloaded … to
-    load …" each time, never two models (`dumpsys meminfo app.heyrobot:brain` falls back to about 2 GB on Fast), and the
+    load …" each time, never two models (`dumpsys meminfo ai.robot_app:brain` falls back to about 2 GB on Fast), and the
     TPU model answers again at its usual speed.
 12. **Delete while in use, and the clean-up.** With Smarter chosen and just used, Delete this model is refused ("Robot
     has “Smarter, slower” loaded right now…"). Choose Fast (`adb logcat -s Robot | grep brain_release` says
@@ -3659,15 +3732,15 @@ on battery, Wi-Fi on. Note every time.
     your own model file: can't be used".
 16. **Delete everything but Fast** and check the free space matches what was there before step 2.
 17. **A model that stops the process.** With Smarter chosen and loaded, `adb shell kill -9 $(adb shell pidof
-    app.heyrobot:brain)`, then ask a question: it answers with Fast and the panel says once "“Smarter, slower” stopped
+    ai.robot_app:brain)`, then ask a question: it answers with Fast and the panel says once "“Smarter, slower” stopped
     unexpectedly, so Robot is using Fast…"; a second question says nothing more. Tap Smarter again in Settings › Model: the
     next question loads it again.
 18. **One engine, also across a restart of the model service.** With Smarter answering a long question, choose Fast in
     Settings › Model, then ask again at once: either "The model is still stopping. Try again in a moment." or the answer
-    with Fast, never both models at once (`adb shell dumpsys meminfo app.heyrobot:brain` stays near one model's size;
+    with Fast, never both models at once (`adb shell dumpsys meminfo ai.robot_app:brain` stays near one model's size;
     `adb logcat -s Robot | grep brain_teardown` shows no `END_PROCESS`).
 19. **A file changed after its check.** With Smarter chosen and checked, `adb shell touch` its file in
-    `/sdcard/Android/data/app.heyrobot/files/`, then ask: Fast answers ("hasn't been checked yet"); open the Robot app and
+    `/sdcard/Android/data/ai.robot_app/files/`, then ask: Fast answers ("hasn't been checked yet"); open the Robot app and
     it checks the file again. With your own TPU build allowed (14), import another Tensor G5 file: its card asks again.
 
 ## Weather, phone status and freeing space (0.4.0)
@@ -3850,7 +3923,7 @@ All files access, READ_EXTERNAL_STORAGE or KILL_BACKGROUND_PROCESSES; INTERNET i
    and no location used for over 30 minutes (no other app either), open the panel with the corner swipe, then with "hey
    robot", and ask "weather here" each time. Note the voice log's "Position for the weather" line (a new fix, or
    "refused: Android counted Robot as in the background", and the process importance), `adb shell cmd appops get
-   app.heyrobot COARSE_LOCATION` (any reject time) and `adb shell dumpsys activity processes | grep -A3 "app.heyrobot:voice"`.
+   ai.robot_app COARSE_LOCATION` (any reject time) and `adb shell dumpsys activity processes | grep -A3 "ai.robot_app:voice"`.
    If it is refused, reading the position needs a short location-type foreground service or an assistant activity.
 4. Turn Location off in quick settings: "what's the weather here?" says location is off. Settings › Weather › Home for
    weather: "Montreal", Look up: it shows "Montreal, Quebec, Canada" and its coordinates. Ask again: "Robot couldn't tell
@@ -3988,7 +4061,7 @@ it may go online, Robot
    another under **Search server**, below; HTTPS, jsonv2) for the words ("pharmacy")
    in a box of ±0.02° around the position rounded to two decimals (about 1 km), and in one of ±0.1° if nothing is
    that close; at most 40 places each, at most one request a second, answers kept 10 minutes, User-Agent
-   "Robot/<version> (app.heyrobot; Android voice assistant, GPL-3.0)", nothing else (no language, no address details).
+   "Robot/<version> (ai.robot_app; Android voice assistant, GPL-3.0)", nothing else (no language, no address details).
    Only a kind of place or a name goes (at most 6 words, no run of 3 digits, no "@": never an address, a phone number
    or an email; anything else is Organic Maps' search). `sys/NominatimClient.kt` is the only other HTTP code
    (`ProcessIsolationTest`); `core/Nearby.kt` builds the URL, paces and caches the searches (`NearbySearch`) and reads
@@ -4567,8 +4640,8 @@ the Shizuku path (1.0)" above). With a computer (Settings › About phone, tap B
 debugging on):
 
 ```
-adb shell settings put secure voice_recognition_service app.heyrobot/.assistant.RobotRecognitionService
-adb shell pm grant app.heyrobot android.permission.WRITE_SECURE_SETTINGS
+adb shell settings put secure voice_recognition_service ai.robot_app/app.heyrobot.assistant.RobotRecognitionService
+adb shell pm grant ai.robot_app android.permission.WRITE_SECURE_SETTINGS
 ```
 
 Turn USB debugging off afterwards. With the second one, Robot keeps that key set itself (only that key: the assistant
@@ -5147,7 +5220,7 @@ voice log (Settings › Advanced › Voice log) shows each step as codes ("Routi
    force-idle`. *Done when* it speaks within 1 minute of its time (the log: "Routine trigger: a time").
 3. **Speaking with nobody opening Robot (Android 17).** With the brief at a time 2 minutes ahead, four ways: screen on
    and unlocked; screen off and locked; after `adb shell cmd audio set-enable-hardening enable`; and once with the
-   service refused (`adb shell cmd appops set app.heyrobot START_FOREGROUND deny`, then `allow` after). Note `adb shell
+   service refused (`adb shell cmd appops set ai.robot_app START_FOREGROUND deny`, then `allow` after). Note `adb shell
    dumpsys audio | grep -i hardening`. *Done when* the first three are heard, with "Robot is reading your morning brief"
    in the shade, and the fourth posts "Morning brief ready · Play", whose Play speaks it. If the screen-off case is
    silent although the service started, note it: that decides whether the panel path is needed (design §1.2).
@@ -5625,7 +5698,7 @@ Watch `adb logcat -s Robot` and Settings › Advanced › Voice log throughout.
 4. **Wikipedia (1.0).** Settings › Web search › Encyclopedia lookups is on, and Set up lists "Wikipedia only". "Qui est la
    mairesse de Montréal ?": "Je cherche sur le web…", the card says the words go to your service and Wikipedia, the
    answer in French; a wikipedia.org result on the card carries "From Wikipedia's article “…”, CC BY-SA 4.0 (licence)";
-   tapping a source opens it in Vanadium. Wikipedia's request carries the User-Agent "Robot/1.0.0 (app.heyrobot; Android
+   tapping a source opens it in Vanadium. Wikipedia's request carries the User-Agent "Robot/1.0.0 (ai.robot_app; Android
    voice assistant; hey@robot-app.ai)" and nothing else about you.
 5. **Lock and network.** Lock the phone, ask a web question: "Unlock your phone, then ask again." Turn off GrapheneOS's
    Network toggle for Robot, unlocked: "Robot isn't allowed to use the network". Toggle back. Wi-Fi off, mobile data
@@ -5966,7 +6039,7 @@ Pixel 10 Pro, GrapheneOS, Android 17. Nothing of the Termux agent has run on a p
    is left; the same with `yes | head -c 1G > /dev/null`.
 9. **Big output (T-9).** `seq 1 500000`: the card shows the start and the end with "Long output: only its start and end are
    kept"; no crash; the voice log shows the size bucket.
-10. **Process death (T-10).** `adb shell am crash $(adb shell pidof app.heyrobot:voice)` during a 20 s run: no crash loop;
+10. **Process death (T-10).** `adb shell am crash $(adb shell pidof ai.robot_app:voice)` during a 20 s run: no crash loop;
     the result that comes back after is logged `TERMUX_LATE`.
 11. **Logs (T-11).** A run whose command holds `zq9marker`: `adb logcat -d | grep -c zq9marker` is 0 after it succeeds;
     the voice log holds codes only. With allow-external-apps off, Termux's own notification may show the command

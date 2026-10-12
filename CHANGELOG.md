@@ -4,8 +4,20 @@ What changed in each version of Robot, newest first. Each version's full notes, 
 [`robot/README.md`](robot/README.md) ("What's new in …" and the feature sections). Versions before 1.0 were test
 builds.
 
+## Moving from 0.9 to 1.0
+
+The full steps are in the [README](README.md#moving-from-09-to-10). In short: install 1.0 beside 0.9 (0.9's updater
+refuses it: "The downloaded app isn't Robot, so it won't be installed."); in 0.9 export People (Settings › People, notes
+and calendar › People › More options › Export (.vcf)) and import that file in 1.0 (Import contacts file (.vcf)); export
+Memory too (Settings › Memory › Export), though 1.0 can't import it yet, so tell 1.0 again what to remember; let 1.0
+download its models again, or import Robot's model file (the model › Import a file); make 1.0 your digital assistant;
+uninstall 0.9; then do the ADB fixes again in 1.0. Settings, History, notes, transcripts, keys and routines don't move:
+share or save what you want to keep first.
+
 ## Unreleased (1.0 hardening)
 
+- **New app ID, `ai.robot_app`** (after Robot's domain, robot-app.ai; it was `app.heyrobot`): 1.0 installs as a new app
+  beside 0.9, which can't update to it. The ADB fixes and Robot's web requests name the new ID.
 - Downloads name Robot and its version (`User-Agent: Robot/<version>`) instead of Android's default, which names the
   phone model; a download over 200 MB asks first whether to wait for Wi-Fi or download anyway, since Robot can't see
   whether you're on mobile data.
