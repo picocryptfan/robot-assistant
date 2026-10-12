@@ -2503,6 +2503,8 @@ object PanelController {
 
     /** A turn whose one action is already known: no model asked, nothing to answer after the action. */
     private class DirectCall(private val call: RawToolCall) : TurnModel {
+        /** The panel's own call from your words (never a model's): it may be the call tool, which no model is told about. */
+        override val appCalls: Boolean get() = true
         override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(call))
         override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = ModelOutcome.Done(DoneReason.END)
         override fun close() {}

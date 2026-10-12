@@ -72,6 +72,13 @@ interface TurnModel {
 
     /** The turn was stopped during a round: [results] of the calls that ran before the stop. Nothing by default. */
     fun stopped(results: List<Pair<String, Map<String, Any?>>>) {}
+
+    /**
+     * 0.8: the calls are the app's own, made from your words before any model (a phrase the panel recognised, a routine's
+     * step), so they may name a tool that is never described to the model ([ToolName.forModel] false: the call tool).
+     * False for a model: its call to such a tool is refused as unknown, whatever its words or the screen's asked for.
+     */
+    val appCalls: Boolean get() = false
 }
 
 /**
@@ -383,6 +390,8 @@ class TurnRunner(
 
     /** Claude's call checked first: one of the tools offered to it, its input fitting the schema; then the usual reading. */
     private fun parse(raw: RawToolCall): ParsedCall {
+        // A tool the model is never told about stays out of its reach (0.8's call tool: "call Mom" is the panel's, not the model's).
+        if (!model.appCalls && ToolName.of(raw.name)?.forModel == false) return ParsedCall.Invalid(raw.name.take(40), "unknown tool")
         if (!remote) return ToolCalls.parse(raw)
         val tool = ToolName.of(raw.name)?.takeIf { it in ClaudeTools.OFFERED } ?: return ParsedCall.Invalid(raw.name.take(40), "unknown tool")
         if (tool !in offered) return ParsedCall.Invalid(tool.id, "this tool wasn't offered")

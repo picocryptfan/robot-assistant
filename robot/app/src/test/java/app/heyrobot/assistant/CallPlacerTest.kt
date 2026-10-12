@@ -54,5 +54,14 @@ class CallPlacerTest {
         assertTrue(call.indexOf("personalPlays(s0)") < call.indexOf("CallTarget.plan("))
         assertTrue(call, call.contains("CallTarget.plan(c.who, candidates, rules, phone.locked, inCar && CarModeController.trusted"))
         assertEquals(1, Regex("CallPlacer\\.rules\\(").findAll(panel).count())
+        // The model can't reach the call tool (core TurnRunner refuses a tool it isn't told about): only the panel's own
+        // DirectCall, made from your words, says its calls are the app's.
+        val apps = root.walkTopDown().filter { it.isFile && it.extension == "kt" }.filter { it.readText().contains("override val appCalls") }.map { it.name }.toList()
+        assertEquals(listOf("PanelController.kt"), apps)
+        val pc = File(root, "assistant/PanelController.kt").readText()
+        assertTrue(pc.contains("private class DirectCall(private val call: RawToolCall) : TurnModel {\n" +
+            "        /** The panel's own call from your words (never a model's): it may be the call tool, which no model is told about. */\n" +
+            "        override val appCalls: Boolean get() = true"))
+        assertEquals(1, Regex("override val appCalls").findAll(pc).count())
     }
 }
