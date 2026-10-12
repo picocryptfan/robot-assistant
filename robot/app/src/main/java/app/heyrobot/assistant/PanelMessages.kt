@@ -89,6 +89,8 @@ import java.time.ZoneId
 // or after a 3-second stop for a person you chose. A message's words never become an action: one heard back while Robot
 // read it is refused, and once one is in the conversation every action asks (core MessageQuarantine, through
 // [taint]). Nothing here writes a message anywhere: History keeps [kept]'s placeholders, the logs codes and counts.
+// Nothing here keeps a message's words for long either: when the panel hides, or after 2 minutes without a question,
+// they go from this process ([dropText]): the conversation's turns show their placeholders, as History does.
 
 object PanelMessages {
     private val scope = MainScope()
@@ -112,9 +114,54 @@ object PanelMessages {
     /** What History keeps of a reply instead of its words, by reply id. */
     private val kept = HashMap<String, String>()
 
-    /** For the router (not a turn): People and the conversations, read when the panel opens and after each command. */
+    /**
+     * For the router (not a turn): People and the conversations, read when the panel opens and after each command. The
+     * conversations' names and keys only: their messages' words are left out ([withoutText]).
+     */
     @Volatile private var people: List<Person> = emptyList()
     @Volatile private var threads: List<MessageThread> = emptyList()
+
+    /** Drops what this process holds of your messages' words after [IDLE_DROP_MS] without a question or a tap. */
+    private var idle: Job? = null
+
+    /** [t] with its messages' words left out: who, which app, when, never what. */
+    private fun withoutText(t: MessageThread): MessageThread = t.copy(messages = t.messages.map { it.copy(text = "") })
+
+    /** Something happened in the panel: the 2 minutes start again. */
+    private fun touch() {
+        idle?.cancel()
+        idle = scope.launch {
+            delay(IDLE_DROP_MS)
+            // A summary or a draft still being made: wait for it.
+            while (PanelController.state.value.busy) delay(1_000)
+            dropText()
+        }
+    }
+
+    /**
+     * Every message's words this process holds go now (the panel hid, or 2 minutes passed without a question): the
+     * conversation read last as it was read, what was read aloud (the echo check), the words on a reply card's "wrote
+     * again" line, and the conversation's turns, which keep their placeholders as History does. A reply card still waits
+     * with your words; who it goes to is the notification's conversation, as always.
+     */
+    internal fun dropText() {
+        idle?.cancel()
+        idle = null
+        lastThread = null
+        threads = threads.map(::withoutText)
+        readAloud.clear()
+        card?.let { p ->
+            p.thread = withoutText(p.thread)
+            p.choices = p.choices.map(::withoutText)
+            // Only while that line still shows (the card waits on it): any later line ("Sending…", "Sent") holds no message.
+            if (p.lineHasMessage && p.state == ReplyCardState.WAITING) {
+                p.line = waitingLine(p)
+                update(p)
+            }
+            p.lineHasMessage = false
+        }
+        PanelController.messagesDropText()
+    }
 
     private var link: MessagesLink? = null
     private fun link(): MessagesLink = link ?: MessagesLink(ctx).also { link = it }
@@ -153,9 +200,10 @@ object PanelMessages {
         scope.launch { refresh() }
     }
 
-    /** The panel closed: a reply in its 3 seconds is not sent, and the bridge is let go. */
+    /** The panel closed: a reply in its 3 seconds is not sent, your messages' words go from this process, and the bridge is let go. */
     fun onHide() {
         stopWindow(CardEnd.CLOSED)
+        dropText()
         // Not while a reply is on its way: its answer says whether it went.
         if (link?.busy == true) return
         link?.close()
@@ -197,13 +245,16 @@ object PanelMessages {
     /** [q] as a messages command, or a message's words heard back; null: not about messages. */
     fun route(q: String, fromVoice: Boolean): Routed? {
         sync()
+        touch()
         val now = System.currentTimeMillis()
         if (fromVoice && readAloud.isNotEmpty()) {
             if (MessageQuarantine.originOf(q, heard(now), now) == ActionOrigin.INCOMING_TEXT) return Routed.Echo(if (SpeechLang.french(q)) Lang.FR else Lang.EN)
         }
         val cmd = MessagesRouter.route(q, reading) ?: return null
         // Messages off: "reply in one word: …" or "clear it" is an ordinary question (only "read my messages" hears it's off).
-        if (!MessagesRouter.applies(cmd, MessagesStore.current(ctx).settings.on, readHere = lastRead != null || reading)) return null
+        // On, a reply is about messages only after one was read here, or to someone a conversation or People knows.
+        if (!MessagesRouter.applies(cmd, MessagesStore.current(ctx).settings.on, readHere = lastRead != null || reading,
+                knows = { MessagePeople.known(it, threads, people) })) return null
         // "What did Einstein say?" stays a question: only someone in People or in a conversation.
         if (cmd is MessageCommand.FromWho && !MessagePeople.known(cmd.who, threads, people)) return null
         return Routed.Command(cmd)
@@ -245,8 +296,10 @@ object PanelMessages {
         val p = withContext(Dispatchers.IO) { try { PeopleFiles.store(ctx).list() } catch (_: Throwable) { emptyList() } }
         people = p
         val r = link().list() ?: return null
-        threads = r.second.map { MessagePeople.named(it, p) }
-        return r.first to threads
+        val all = r.second.map { MessagePeople.named(it, p) }
+        threads = all.map(::withoutText)
+        touch()
+        return r.first to all
     }
 
     private fun refused(why: MsgRefusal) = VoiceLog.add(VoiceEvent.MSG_REFUSED, why)
@@ -508,6 +561,8 @@ object PanelMessages {
         var plan: ReplyPlan.Send? = null
         /** Robot took the newest conversation for a "reply …" that named none, with none read here: never sent without a tap or a yes. */
         var guessed = false
+        /** [line] quotes a message ("Mom wrote again: «…»"): it goes with the rest of the message's words ([dropText]). */
+        var lineHasMessage = false
         var state = ReplyCardState.WAITING
         var line: String? = null
 
@@ -775,6 +830,7 @@ object PanelMessages {
                 p.state = ReplyCardState.WAITING
                 val said = newest?.let { MessageReading.line(it, fresh, lang) } ?: ""
                 p.line = if (fr(lang)) "$name a écrit de nouveau : « $said ». L'envoyer quand même ?" else "$name wrote again: «$said». Still send?"
+                p.lineHasMessage = true
                 update(p)
                 speak(listOf(Spoken(if (fr(lang)) "$name a écrit de nouveau :" else "$name wrote again:", fr(lang)),
                     Spoken(said, MessageLanguage.frenchLine(langId)(said)), Spoken(if (fr(lang)) "Touche Envoyer pour l'envoyer quand même." else "Tap Send to send it anyway.", fr(lang))))
@@ -838,13 +894,14 @@ object PanelMessages {
         update(p)
         VoiceLog.add(VoiceEvent.MSG_REPLY, MsgAppCode.of(p.thread.app).id, ReplyRouteCode.HAND_OFF.id, app.heyrobot.core.messages.ReplyEnd.OPENED.id)
         VoiceLog.add(VoiceEvent.MSG_REPLY_CARD, CardEnd.OPEN_CHAT, if (p.translate) 1 else 0, if (p.thread.isGroup) 1 else 0)
-        PanelController.messagesKept(p.replyId, if (fr(lang)) "Brouillon pour ${p.thread.name} ouvert (${p.thread.app.title})" else "Opened a draft to ${p.thread.name} (${p.thread.app.title})")
+        PanelController.messagesKept(p.replyId, MessageReading.replyKept(ReplyKept.OPENED, p.thread.name, p.thread.app, lang))
         if (card === p) card = null
     }
 
     /** A tap on the card under [replyId]. Only the card waiting answers; an old one does nothing. */
     fun onCard(replyId: String, op: ReplyOp) {
         val p = card?.takeIf { it.replyId == replyId } ?: return
+        touch()
         when (op) {
             ReplyOp.Send -> if (p.state == ReplyCardState.WAITING) scope.launch { fire(p, CardEnd.TAP) }
             ReplyOp.Cancel -> cancel(p)
@@ -940,6 +997,9 @@ object PanelMessages {
             if (p.french && frVoice != null) VoiceHub.tts.speakOther(clean, frVoice.first, frVoice.second) else VoiceHub.tts.speak(clean)
         }
     }
+
+    /** Your messages' words leave this process after this long without a question or a tap (and when the panel hides). */
+    const val IDLE_DROP_MS = 120_000L
 
     /** A summary's or a draft's one-shot may wait for the model to load. */
     private const val ONE_SHOT_MS = 120_000L

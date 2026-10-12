@@ -2214,6 +2214,26 @@ object PanelController {
         persist()
     }
 
+    /**
+     * Your messages' words leave this process (PanelMessages.dropText: the panel hid, or 2 minutes without a question):
+     * every turn that held some (a conversation read, a summary, a translation, an answer after them, words heard back)
+     * shows and keeps its placeholder, as a conversation continued from History does, and the model gets that, framed.
+     */
+    internal fun messagesDropText() {
+        val dropped = HashMap<String, String>()
+        for (i in chat.indices) {
+            val t = chat[i]
+            if (!t.messages) continue
+            val k = t.kept ?: app.heyrobot.core.messages.MessageReading.NOT_KEPT
+            if (t.text != k) {
+                chat[i] = t.copy(text = k)
+                dropped[t.id] = k
+            }
+        }
+        if (dropped.isEmpty()) return
+        _state.update { st -> st.copy(turns = st.turns.map { u -> dropped[u.id]?.let { u.copy(text = it) } ?: u }) }
+    }
+
     /** "Open chat": the app opens over the panel with your reply as a draft. */
     internal fun messagesLaunch(i: Intent): Boolean {
         val ok = host?.launch(i) == true

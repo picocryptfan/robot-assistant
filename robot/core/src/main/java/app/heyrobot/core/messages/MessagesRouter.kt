@@ -65,11 +65,27 @@ object MessagesRouter {
      * messages") is answered, by saying it's off: "reply in one word: …", "respond in French", "translate Pierre's message"
      * or "clear it" are ordinary questions for the model. "Clear it", "remove that", « efface-la » are about a conversation
      * only once Robot read one here; "mark it as read" is about messages either way.
+     *
+     * A reply ("reply …", "respond …", « réponds … ») is about messages only where it can apply: a conversation was read
+     * here, or it names someone a conversation or People knows ([knows]: "reply to Mom …", « réponds à maman … »).
+     * Otherwise "reply in one word: …", "respond in French: …", "answer her for me" are ordinary questions for the model.
      */
-    fun applies(cmd: MessageCommand, on: Boolean, readHere: Boolean): Boolean = when (cmd) {
+    fun applies(cmd: MessageCommand, on: Boolean, readHere: Boolean, knows: (String) -> Boolean = { false }): Boolean = when (cmd) {
         is MessageCommand.Read, is MessageCommand.Summarize -> true
         is MessageCommand.Mark -> on && (readHere || cmd.kind == MarkKind.READ)
+        is MessageCommand.Reply -> on && (readHere || names(cmd, knows))
         else -> on
+    }
+
+    /**
+     * [cmd] names someone [knows] knows: its name as said, or, for "reply to Mom I'll be late" (no separator), the name it
+     * starts with (one to three words).
+     */
+    fun names(cmd: MessageCommand.Reply, knows: (String) -> Boolean): Boolean {
+        val to = cmd.to?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        if (!cmd.split) return knows(to)
+        val words = to.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        return (1..minOf(3, words.size)).any { n -> knows(cleanWho(words.take(n).joinToString(" "))) }
     }
 
     /**

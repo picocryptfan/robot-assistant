@@ -918,6 +918,13 @@ class ProcessIsolationTest {
         assertTrue(panel.indexOf("p.state = ReplyCardState.SENDING") < panel.indexOf("link().reply(ReplyRequest("))
         // A "reply …" that named no one, with nothing read here, went to the newest conversation: never without a tap or a yes.
         assertTrue(panel.contains("p.guessed = to == null && lastRead == null") && panel.contains("noCard, sure = !p.guessed)"))
+        // A reply is about messages only after one was read here, or to someone a conversation or People knows (core MessagesRouter.applies).
+        assertTrue(panel.contains("knows = { MessagePeople.known(it, threads, people) }"))
+        // A spoken yes on a card waits 3 seconds after Robot said a message's words; a tap doesn't.
+        assertTrue(panel.contains("if (fromVoice && !MessageQuarantine.voiceYesNow(heard(System.currentTimeMillis()), System.currentTimeMillis()))"))
+        // Your messages' words leave this process when the panel hides and after 2 minutes idle; the router keeps names only.
+        assertTrue(panel.contains("stopWindow(CardEnd.CLOSED)\n        dropText()") && panel.contains("const val IDLE_DROP_MS = 120_000L"))
+        assertTrue(panel.contains("threads = all.map(::withoutText)") && panel.contains("PanelController.messagesDropText()"))
         // In a reply's 3 seconds, anything said but a yes stops it (core ReplyWindow).
         assertTrue(panel.contains("return when (app.heyrobot.core.messages.ReplyWindow.answer(q, wakes))"))
         // Robot's model sees messages only through one-shot requests (no tools); every turn of the panel carries the quarantine.
