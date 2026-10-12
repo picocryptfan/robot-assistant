@@ -14,13 +14,14 @@ memories" for your own file), then delete the file; let 1.0 download its models 
 model › Import a file); make 1.0 your digital assistant; uninstall 0.9; then do the ADB fixes again in 1.0. Settings,
 History, notes, transcripts, keys and routines don't move: share or save what you want to keep first.
 
-## Unreleased (1.0 hardening)
+## 1.0.0 (unreleased)
 
 - **New app ID, `ai.robot_app`** (after Robot's domain, robot-app.ai; it was `app.heyrobot`): 1.0 installs as a new app
   beside 0.9, which can't update to it. The ADB fixes and Robot's web requests name the new ID.
 - Downloads name Robot and its version (`User-Agent: Robot/<version>`) instead of Android's default, which names the
-  phone model; a download over 200 MB asks first whether to wait for Wi-Fi or download anyway, since Robot can't see
-  whether you're on mobile data.
+  phone model, and every other request that names Robot gives the same version (`Robot/1.0.0-rc1`, not `1.0.0rc1`); a
+  download over 200 MB asks first whether to wait for Wi-Fi or download anyway, since Robot can't see whether you're on
+  mobile data.
 - "Robot closed unexpectedly": after the app or the assistant panel crashes or stops responding, Robot says so the next
   time you open it and offers Send feedback with a report of codes only. Debug builds run with StrictMode.
 - Accessibility: larger touch targets on transcript chips, the consent tick box as one TalkBack stop, the "More" menu
@@ -35,12 +36,45 @@ History, notes, transcripts, keys and routines don't move: share or save what yo
   setting chosen and where to find it later in Settings. It starts with what Robot can do (ten examples), checks this
   phone and offers its downloads, and ends with what's on and off now. Skip this step keeps the default; Finish later
   resumes from Home ("Continue the setup guide"); Settings › About › Setup guide and Home run it again. Nothing is turned
-  on unless you choose it, and Android asks for a permission only when you tap Allow.
+  on unless you choose it, and Android asks for a permission only when you tap Allow. Turning Messages on there asks
+  which apps first, as Settings › Messages does, and never turns it on with no app.
 
 - **Memory import**: Settings › Memory › Import reads a memory export from 0.9 or 1.0 and shows what it would add before
   anything is written. Items you already have, and any that hold a password, a PIN, a code or a card number, are
   skipped; private items stay private; and imported items count as something Robot read (actions they lead to ask first)
   until you say they are yours, on the preview or item by item ("This is mine").
+
+- **Termux**: a weekly check for Termux updates (Termux's GitHub releases and F-Droid's entry; Robot never downloads or
+  installs it); after an update Termux is paused until you trust that version; the GitHub build, signed with a public
+  test key, runs nothing unless you choose "Run anyway", and Settings › Termux shows how to switch to F-Droid as soon as
+  it sees that build; a command or argument holding one of Robot's own keys is refused; the ADB fixes can be done
+  without a computer, with Shizuku's `rish` in Termux.
+
+- **The lock screen's turns**: a conversation begun on the lock screen never comes back locked once you used it
+  unlocked, and never steers your unlocked one: the next unlocked "hey robot" starts afresh, unless Robot asked you to
+  unlock and you come back within 2 minutes, when the locked turns stay as quoted information, never as your words.
+
+- **Fixes from the 1.0 security audit**:
+  - Another app on screen can no longer open Robot's panel with instructions of its own.
+  - Unlocking the phone now reaches Robot (first-unlock routines, the brief finished at the unlock, car mode).
+  - Fake Clock alarms can no longer flood the voice log.
+  - Termux's safety rules now apply to every call, and `git` left the list of commands that may skip the card.
+  - Your calendar read out in the brief and a note's text count as content Robot didn't write, so actions and searches
+    they lead to ask first.
+  - Memory kept from something Robot read stays content when it comes back.
+  - A message sender's name is never taken as your words.
+  - A "remember that …" Robot refused isn't kept in History.
+  - The brief's, Ready cards', routine summaries' and From your drive's notifications are hidden on the lock screen.
+  - Settings › Memory and a private answer can't be captured, and Memory's fields don't teach your keyboard.
+  - A web search names Wikipedia and Open Library on its card, its answer's "Sent to" line and History when they get
+    your words; "search the web for who is …" counts as a who question for Wikipedia.
+  - Your own `.litertlm` file is checked strictly before it is read, and importing one warns you first.
+  - The model process's replies have a size cap.
+  - On the locked phone nothing makes, deletes or lists a routine or adds a brief reminder (said in French, Robot
+    answers in French).
+  - A contact's number keeps its "+" when dialled, and the locked car session calls only People and contacts.
+  - A search in your browser for "that dentist" or « ce resto » lets the model write the words and shows them on a card
+    first.
 
 - **Search engines with their privacy levels**: "search DuckDuckGo for …", « cherche sur Startpage … » open the engine
   in your browser (Startpage by default; also Brave Search, Mojeek, Qwant, Ecosia, Google, Bing), with nothing to set
