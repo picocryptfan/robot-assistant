@@ -101,7 +101,7 @@ class WebGateTest {
         assertEquals("Don't ask again", p.remember)
         assertTrue(AskWhy.ONLINE in p.why)
         assertEquals(AskWhy.ONLINE, CardAnswer.tapFor(p.reasons))
-        assertEquals("Robot would send these words to your SearXNG. It may also open up to 3 result pages from this phone.", p.note)
+        assertEquals("Robot would send these words to your SearXNG and Wikipedia. It may also open up to 3 result pages from this phone.", p.note)
         // Allow always and Just this time search; No doesn't; ticked, Allow always and No, don't ask again last.
         assertEquals(WebConsentChoice.ALWAYS, (p.choices[0].action as Action.WebSearch).consent)
         assertEquals(WebConsentChoice.ONCE, (p.choices[1].action as Action.WebSearch).consent)
@@ -131,7 +131,8 @@ class WebGateTest {
         assertEquals(0, WebGate.pagesFromPhone(searxng.copy(readPages = ReadPages.NEVER)))
         assertEquals(0, WebGate.pagesFromPhone(searxng.copy(service = SearchService.BRAVE, readThrough = ReadThrough.SERVICE)))
         assertEquals(3, WebGate.pagesFromPhone(searxng.copy(readThrough = ReadThrough.SERVICE)))
-        assertEquals("Robot would send these words to Brave.",
+        // 1.0: a who/what/where question also asks Wikipedia (Encyclopedia lookups, on by default), and the card says so.
+        assertEquals("Robot would send these words to Brave and Wikipedia.",
             ready(WebGate.prepare(search(), WebSettings(on = true, service = SearchService.BRAVE, readPages = ReadPages.NEVER), null, mine, 0)).note)
     }
 

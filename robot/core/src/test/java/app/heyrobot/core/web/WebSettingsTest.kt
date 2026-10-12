@@ -15,7 +15,8 @@ class WebSettingsTest {
         assertNull(d.service)
         assertFalse(d.ready)
         assertEquals(WebAsk.FIRST_TIME, d.ask)
-        assertFalse(d.encyclopedia)
+        // 1.0: Encyclopedia lookups on by default, now that Robot publishes a contact for Wikipedia's rules.
+        assertTrue(d.encyclopedia)
         assertFalse(d.books)
         assertEquals(ReadPages.WHEN_NEEDED, d.readPages)
         assertEquals(ReadThrough.PHONE, d.readThrough)
@@ -116,10 +117,11 @@ class WebSettingsTest {
     }
 
     @Test fun userAgents() {
-        assertEquals("Robot/0.7.0 (app.heyrobot; Android voice assistant)", WebUserAgent.api("0.7.0"))
+        assertEquals("Robot/0.7.0 (app.heyrobot; Android voice assistant; hey@robot-app.ai)", WebUserAgent.api("0.7.0"))
+        assertEquals("Robot/0.7.0 (app.heyrobot; Android voice assistant)", WebUserAgent.api("0.7.0", null))
         assertEquals("Robot/0.7.0 (app.heyrobot; Android voice assistant; robot@example.org)", WebUserAgent.api("0.7.0", " robot@example.org "))
-        assertEquals("Robot/0.7.0betax (app.heyrobot; Android voice assistant)", WebUserAgent.api("0.7.0-beta (x)"))
-        assertEquals("Robot/0 (app.heyrobot; Android voice assistant)", WebUserAgent.api(""))
+        assertEquals("Robot/0.7.0betax (app.heyrobot; Android voice assistant)", WebUserAgent.api("0.7.0-beta (x)", null))
+        assertEquals("Robot/0 (app.heyrobot; Android voice assistant)", WebUserAgent.api("", null))
         assertEquals("Mozilla/5.0 (Linux; Android 17) Robot", WebUserAgent.PAGE)
         val h = WebUserAgent.pageHeaders("fr")
         assertEquals(listOf("User-Agent", "Accept", "Accept-Language"), h.map { it.first })
