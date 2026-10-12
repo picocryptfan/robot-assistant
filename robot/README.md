@@ -313,7 +313,11 @@ helpers, the engine hardening and the built-in updater; each has its section bel
 
 ## Building
 
-Needs JDK 17+, the Android SDK (platform 36, build-tools 36) and Gradle 8.x.
+Needs JDK 17+ (21 used for the releases), the Android SDK (platform 36, build-tools 35.0.0, pinned in `build.gradle`
+since 1.0; NDK 27.1.12297006 and CMake 3.22.1 for the native scripts) and Gradle 8.14.3. There is no Gradle wrapper yet:
+the build machine has no copy of Gradle's distribution to pin its checksum from offline (add one with
+`gradle wrapper --gradle-version 8.14.3 --gradle-distribution-sha256-sum <sha256 from gradle.org>` on a machine with the
+network). Dependency verification metadata (`gradle/verification-metadata.xml`) is not generated for the same reason.
 
 ```
 cd robot
@@ -326,7 +330,13 @@ gradle :app:testDebugUnitTest                  # also the Compose UI tests and s
 gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                             -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk
+tools/repro_check.sh                           # 1.0: builds the unsigned APK twice (here and in a clean copy) and compares
 ```
+
+`tools/repro_check.sh` (1.0) builds the release APK unsigned in this checkout, then again in a fresh `git archive` copy of
+the committed tree in another folder (the git-ignored native libraries and models hard-linked in), and compares the two
+byte for byte, listing the entries that differ; `--signed Robot-x.y.z.apk` also runs `apksigcopier compare` against a
+published APK, as F-Droid checks. It needs a clean tree (commit first) and two release builds' time.
 
 `tools/build_llama.sh` needs the Android NDK (27.1.12297006; `ANDROID_NDK_HOME`), CMake 3.22+ and Ninja; it takes about two
 minutes on four cores and needs about 0.8 GB for the sources and the build (`--clean` removes the build afterwards). Gradle

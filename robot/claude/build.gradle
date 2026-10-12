@@ -6,6 +6,7 @@ repositories { google(); mavenCentral() }
 android {
     namespace 'app.heyrobot.claude'
     compileSdk rootProject.ext.robotCompileSdk
+    buildToolsVersion rootProject.ext.robotBuildTools
     defaultConfig {
         minSdk rootProject.ext.robotMinSdk
         // Applies only if the app is ever minified (it isn't today): keeps the SDK's Jackson-bound models intact.

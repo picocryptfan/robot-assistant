@@ -16,6 +16,7 @@ def ksPassFile = project.findProperty('robot.keystorePassFile') ?: System.getenv
 android {
     namespace 'app.heyrobot'
     compileSdk rootProject.ext.robotCompileSdk
+    buildToolsVersion rootProject.ext.robotBuildTools
     defaultConfig {
         applicationId 'app.heyrobot'
         minSdk rootProject.ext.robotMinSdk

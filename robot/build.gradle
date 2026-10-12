@@ -6,9 +6,11 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose' version '2.4.0' apply false
 }
 
-// Shared Android settings for every module.
+// Shared Android settings for every module. 1.0: build-tools pinned to what AGP 8.8.2 picks by default (35.0.0), so a
+// machine with other build-tools installed builds the same APK (tools/repro_check.sh).
 ext {
     robotCompileSdk = 36
+    robotBuildTools = '35.0.0'
     robotMinSdk = 34
     robotTargetSdk = 36
 }

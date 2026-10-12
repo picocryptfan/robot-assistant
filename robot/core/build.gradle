@@ -8,6 +8,7 @@ repositories { google(); mavenCentral() }
 android {
     namespace 'app.heyrobot.core'
     compileSdk rootProject.ext.robotCompileSdk
+    buildToolsVersion rootProject.ext.robotBuildTools
     defaultConfig { minSdk rootProject.ext.robotMinSdk }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = '17' }
