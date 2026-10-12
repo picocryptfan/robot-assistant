@@ -95,6 +95,7 @@ fun prefTitleStyle(): TextStyle = MaterialTheme.typography.bodyLarge.merge(Robot
 /**
  * A settings page: a large top app bar with Back (when [onBack]) that collapses as the list scrolls, and [content] as a
  * lazy list 16 dp in from the sides. Build the list with [preferenceGroup], [preferenceFooter] and plain items.
+ * [bottomBar]: buttons that stay under the list (1.0, Memory's import preview).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -104,6 +105,7 @@ fun PreferenceScreen(
     modifier: Modifier = Modifier,
     snackbar: SnackbarHostState? = null,
     actions: @Composable RowScope.() -> Unit = {},
+    bottomBar: @Composable () -> Unit = {},
     content: LazyListScope.() -> Unit,
 ) {
     val bg = settingsBackground()
@@ -120,6 +122,7 @@ fun PreferenceScreen(
                 scrollBehavior = scroll,
             )
         },
+        bottomBar = bottomBar,
         snackbarHost = { if (snackbar != null) SnackbarHost(snackbar) },
     ) { pad ->
         val dir = LocalLayoutDirection.current

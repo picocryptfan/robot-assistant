@@ -1403,9 +1403,10 @@ class ProcessIsolationTest {
         // Memory's classes stay in the app's two processes: never :brain, :mt, :voice's engines or the helpers' clients.
         val memory = Regex("""\bapp\.heyrobot\.core\.memory\b|\bMemory(Panel|Files|SettingsStore|Turn|Answer)\b|\bFileMemoryVault\b""")
         assertEquals(emptyList<String>(), usersOf(memory, ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("voice/") || it.startsWith("claude/") }))
-        // 1.0: the setup guide's Memory page writes memory.json's two switches (the key changed first, through PhoneMemoryStore).
+        // 1.0: the setup guide's Memory page writes memory.json's two switches (the key changed first, through PhoneMemoryStore);
+        // Settings › Memory › Import's preview shows a file's items (MemoryImportScreen.kt), written by Settings › Memory's store.
         assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/assistant/PanelController.kt", "app/sys/MemoryVault.kt", "app/ui/guide/GuideStores.kt",
-            "app/ui/settings/MemorySettings.kt", "app/ui/settings/SettingsRoot.kt"), usersOf(memory, appFiles))
+            "app/ui/settings/MemoryImportScreen.kt", "app/ui/settings/MemorySettings.kt", "app/ui/settings/SettingsRoot.kt"), usersOf(memory, appFiles))
         // Into a model's prompt only from the panel's chat turn: once, in PanelController; never the one-shot client, conversation
         // mode (translations, summaries) or a helper's request.
         assertEquals(listOf("app/assistant/PanelController.kt"), usersOf(Regex("""\bMemoryPanel\.forTurn\(""")))
@@ -1421,7 +1422,8 @@ class ProcessIsolationTest {
         assertEquals(4, Regex("""HelperTrust\.(conversation|joinWithoutCard)\([^)]*MemoryPanel\.toTrusted\(\)\)""").findAll(panel).count())
         assertTrue(app.heyrobot.core.ToolName.REMEMBER !in app.heyrobot.core.ClaudeTools.OFFERED && app.heyrobot.core.ToolName.FORGET !in app.heyrobot.core.ClaudeTools.OFFERED)
         // No network, and the logs get codes and counts: no item, text, query or question in an RLog call.
-        val mem = ours.filterKeys { it.startsWith("core/core/memory/") || it in setOf("app/assistant/MemoryPanel.kt", "app/sys/MemoryVault.kt", "app/ui/settings/MemorySettings.kt") }
+        val mem = ours.filterKeys { it.startsWith("core/core/memory/") || it in setOf("app/assistant/MemoryPanel.kt", "app/sys/MemoryVault.kt",
+            "app/ui/settings/MemorySettings.kt", "app/ui/settings/MemoryImportScreen.kt", "core/core/StrictJson.kt") }
         assertTrue(mem.size >= 15)
         assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|okhttp|\bINTERNET\b|DownloadManager"""), mem))
         assertEquals(emptyList<String>(), usersOf(Regex("""RLog\.[iw]\([^\n]*\b(text|item|items|query|note|notes|words|said|question|about|file)\b"""), mem))
@@ -1434,6 +1436,35 @@ class ProcessIsolationTest {
         // Its settings are memory.json's, never settings.json's (whose schema stays 13 for the other 0.7 branch).
         assertEquals(13, app.heyrobot.core.RobotSettings.SCHEMA)
         assertTrue(!code(File(java("core"), "app/heyrobot/core/Settings.kt")).contains("memory"))
+    }
+
+    /**
+     * 1.0, Settings › Memory › Import: a file someone else may have made. It is read by core MemoryImport (strict JSON, 5 MB
+     * and 5,000 items at most, its ids never used), shown on a FLAG_SECURE preview, refused on the lock screen before the
+     * picker and again before the write, and written only by a tap, through the vault's update (its lock, its key). Its items
+     * are content until you tick "These are my own memories" (MemoryImported.CONTENT counts as tainted). Android's picker
+     * needs no permission, and the manifest has no new one.
+     */
+    @Test fun memoryImportIsLockedSecureAndContentByDefault() {
+        val settings = code(File(java("app"), "app/heyrobot/ui/settings/MemorySettings.kt"))
+        val start = settings.substringAfter("fun startImport() {").substringBefore("\n    }\n")
+        assertTrue(start, start.indexOf("store.locked() ->") in 0 until start.indexOf("else -> pickImport()"))
+        assertTrue(settings.contains("ActivityResultContracts.OpenDocument()") && settings.contains("importer.launch(IMPORT_TYPES)"))
+        assertEquals(listOf("application/json", "*" + "/" + "*"), app.heyrobot.ui.settings.IMPORT_TYPES.toList())
+        val run = settings.substringAfter("fun runImport(pv: ImportPreview, uri: Uri) {").substringBefore("\n    }\n")
+        assertTrue(run, run.indexOf("if (store.locked()) {") in 0 until run.indexOf("store.update {"))
+        assertTrue(run.contains("store.update { f -> MemoryImport.plan(pv.read, f, mine, now())"))
+        // The preview: secure first, and the only way to it is runImport's tap.
+        val screen = code(File(java("app"), "app/heyrobot/ui/settings/MemoryImportScreen.kt"))
+        assertTrue(screen.substringAfter("fun MemoryImportScreen(").substringAfter(") {").trimStart().startsWith("SecureWindow()"))
+        // runImport: its definition and the preview's Import button, nothing else.
+        assertEquals(2, Regex("""\brunImport\(""").findAll(settings).count())
+        assertEquals(listOf("app/ui/settings/MemorySettings.kt"), usersOf(Regex("""\bMemoryImport\.(read|plan)\(""")))
+        // Content until you say otherwise, and the import's mark is taint.
+        val item = app.heyrobot.core.memory.MemoryItem("m_aaaaaaaaaaaa", "x", source = app.heyrobot.core.memory.MemorySource.SAID, createdAt = 1,
+            imported = app.heyrobot.core.memory.MemoryImported.CONTENT)
+        assertTrue(item.tainted)
+        assertTrue(!item.copy(imported = app.heyrobot.core.memory.MemoryImported.YOURS).tainted)
     }
 
     /**

@@ -452,4 +452,57 @@
     <!-- /Setup guide -->
     <!-- The panel (1.0): the turns of a conversation begun on the lock screen, continued unlocked -->
     <string name="panel_said_locked">Said while the phone was locked</string>
+    <!-- Settings › Memory › Import (1.0): a memory export from 0.9 or 1.0, previewed before anything is written. -->
+    <string name="memory_import">Import</string>
+    <string name="memory_import_detail">From a Robot memory export (robot-memory.json)</string>
+    <string name="memory_import_unlock">Unlock first: memory is imported only on an unlocked phone.</string>
+    <string name="memory_import_off_title">Memory is off</string>
+    <string name="memory_import_off_text">While Memory is off, Robot keeps nothing and uses nothing it remembers. Turn it on to import your memories?</string>
+    <string name="memory_import_off_confirm">Turn on</string>
+    <string name="memory_import_cancel">Cancel</string>
+    <string name="memory_import_no_picker">No app on this phone opens files.</string>
+    <string name="memory_import_unreadable">That file couldn\'t be read.</string>
+    <string name="memory_import_not_export">This isn\'t a Robot memory export.</string>
+    <string name="memory_import_too_big">This file is over 5 MB, so it isn\'t a Robot memory export.</string>
+    <string name="memory_import_too_many">This file holds more than 5,000 memories, so it isn\'t a Robot memory export.</string>
+    <string name="memory_import_too_new">A newer version of Robot made this export. Update Robot, then import it.</string>
+    <string name="memory_import_empty">This export holds no memories.</string>
+    <string name="memory_import_title">Import memories</string>
+    <string name="memory_import_in_file">In this file</string>
+    <string name="memory_import_duplicates">Already in Memory, skipped</string>
+    <string name="memory_import_secrets">Hold a password, a PIN, a code or a card number, skipped</string>
+    <string name="memory_import_secrets_detail">Robot doesn\'t import these and never shows them. To keep one, add it yourself in Settings › Memory › Add something: it stays private.</string>
+    <string name="memory_import_ended">Had ended, skipped</string>
+    <string name="memory_import_damaged">Couldn\'t be read, skipped</string>
+    <string name="memory_import_no_room">No room, skipped</string>
+    <string name="memory_import_no_room_detail">Memory holds 2,000 things at most.</string>
+    <string name="memory_import_to_add">To add</string>
+    <string name="memory_import_private">%1$d private: hidden in the list until you tap one</string>
+    <string name="memory_import_nothing">Nothing to add.</string>
+    <string name="memory_import_mine">These are my own memories, from my own export</string>
+    <string name="memory_import_mine_detail">Off, Robot treats them as something it read: actions they lead to ask first, as Safety cards says.</string>
+    <string name="memory_import_list">What Robot will remember</string>
+    <string name="memory_import_masked">Private: tap to show</string>
+    <string name="memory_import_show">Show</string>
+    <string name="memory_import_hide">Hide</string>
+    <string name="memory_import_from_content">From something Robot read: stays so</string>
+    <string name="memory_import_button">Import</string>
+    <plurals name="memory_import_added">
+        <item quantity="one">Added %1$d memory.</item>
+        <item quantity="other">Added %1$d memories.</item>
+    </plurals>
+    <string name="memory_import_added_none">Nothing was added.</string>
+    <string name="memory_import_delete_text">The file you imported isn\'t encrypted: anyone who opens it can read everything in it. Delete it now?</string>
+    <string name="memory_import_delete">Delete the file</string>
+    <string name="memory_import_keep">Not now</string>
+    <string name="memory_import_deleted">The file is deleted.</string>
+    <string name="memory_import_not_deleted">Robot couldn\'t delete it: delete it in your Files app.</string>
+    <string name="memory_import_not_saved">Robot couldn\'t change its memory.</string>
+    <string name="memory_imported">Imported</string>
+    <string name="memory_imported_content">Imported: counts as something Robot read until you say it\'s yours</string>
+    <string name="memory_this_is_mine">This is mine</string>
+    <string name="memory_this_is_mine_detail">Robot treats it as your own words</string>
+    <string name="memory_this_is_mine_content_detail">Clears Imported; it still counts as something Robot read</string>
+    <string name="memory_marked_mine">Marked as yours.</string>
+    <!-- /Memory import -->
 </resources>

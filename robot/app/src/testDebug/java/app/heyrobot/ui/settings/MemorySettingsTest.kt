@@ -85,6 +85,9 @@ class MemorySettingsTest {
         override fun export(uri: Uri, text: String) = true
         override fun changed() { events += "changed" }
         override fun log(e: VoiceEvent, a: Int, b: Int, c: Int) { events += "log ${e.name} $a $b $c" }
+        override fun locked() = false
+        override fun readImport(uri: Uri): ByteArray? = null
+        override fun deleteImport(uri: Uri) = false
         fun items(): List<MemoryItem> = (vault.load() as? MemoryLoad.Loaded)?.file?.items.orEmpty()
     }
 
