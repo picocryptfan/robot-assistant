@@ -1243,6 +1243,7 @@ object PanelController {
         }
         // A question asked unlocked: this conversation is never shown on the lock screen again (core PanelContinuity).
         startedLocked = PanelContinuity.stillLocked(startedLocked, Assistant.locked(VoiceHub.app))
+        turnMemContent = false
         val names = names()
         // An offer under the last reply waits for a tap or a short yes (a yes never sends anything personal).
         if (st.draft == null && ClaudeRouter.isYes(q, names)) offers.keys.lastOrNull { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.let {
@@ -1518,8 +1519,10 @@ object PanelController {
         // 0.7: what Robot remembers goes with this panel chat question (pinned preferences, found items), within that context;
         // the question keeps their ids for History, never their words. An answer with a secret in it is shown, not spoken.
         val locked0 = Assistant.locked(VoiceHub.app)
-        val given = chat.filter { it.role == TurnRole.USER }.flatMap { it.memoryIds }.toSet()
+        // 1.0 (injection-memory-recall-taint): every turn's items, a recall answer's too (core MemoryTaint).
+        val given = app.heyrobot.core.memory.MemoryTaint.given(chat)
         val mem = withContext(Dispatchers.IO) { MemoryPanel.forTurn(question, locked0, given, maxTokens) }
+        turnMemContent = mem.content
         if (mem.packed.retrievedIds.isNotEmpty()) chat.indexOfLast { it.role == TurnRole.USER }.takeIf { it >= 0 }?.let { i ->
             chat[i] = chat[i].copy(memoryIds = mem.packed.retrievedIds)
         }
@@ -2795,8 +2798,8 @@ object PanelController {
             // 0.7: remember and forget (core memory/); what the conversation holds decides where a remembered item came from.
             if (action.tool.group == ToolGroup.MEMORY) return withContext(Dispatchers.IO) {
                 // (The last: a message is in the conversation, so only your own "remember that …" got here, after its tap.)
-                MemoryPanel.run(action, spokenTurn, TurnRules.untrusted(chat) || _state.value.turns.lastOrNull()?.actions?.any { it.content } == true,
-                    PanelMessages.taint(chat).active)
+                MemoryPanel.run(action, spokenTurn, app.heyrobot.core.memory.MemoryTaint.fromContent(TurnRules.untrusted(chat),
+                    _state.value.turns.lastOrNull()?.actions?.any { it.content } == true, turnMemContent), PanelMessages.taint(chat).active)
             } ?: Executed(ActionStatus.FAILED, "Something went wrong.")
             // 0.9: a Termux run waits for its result (Stop ends its process tree), off the main thread.
             if (action.tool.termux) return withContext(Dispatchers.IO) { TermuxTool.run(VoiceHub.app, action) { i -> host?.launch(i) ?: false } }
@@ -2846,6 +2849,9 @@ object PanelController {
 
     /** What you typed or said this turn (never screen text): "the nearest" in your own words counts for the maps tools. */
     @Volatile private var turnSaid: String? = null
+
+    /** This turn went with a memory item from content (MemoryPanel.forTurn's content): what it remembers is content too. */
+    @Volatile private var turnMemContent = false
 
     /** The room for a tool's answer in the turn under way (runTurn's estimate); no limit outside one. */
     @Volatile private var toolRoom = Int.MAX_VALUE

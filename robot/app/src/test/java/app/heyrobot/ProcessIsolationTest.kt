@@ -1451,7 +1451,7 @@ class ProcessIsolationTest {
         assertEquals(1, Regex("""origin = ActionOrigin\.""").findAll(pc).count())
         // Notes kept from content make the chat turn content; a remembered item in a conversation with a message is content.
         assertTrue(pc.contains("untrusted || mem.content,"))
-        assertTrue(pc.contains("== true,\n                    PanelMessages.taint(chat).active)"))
+        assertTrue(pc.contains("== true, turnMemContent), PanelMessages.taint(chat).active)"))
         // The turn runner refuses what the quarantine forbids before anything is prepared or asked.
         val turn = code(File(java("core"), "app/heyrobot/core/Turn.kt"))
         assertTrue(turn.indexOf("MessageQuarantine.verdict(asked.tool, origin, messages) == QuarantineVerdict.FORBIDDEN") in 0 until turn.indexOf("actions.prepare(asked, untrusted, remote)"))

@@ -1,5 +1,6 @@
 package app.heyrobot.core.memory
 
+import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.ContextWindow
 import java.time.ZoneId
 
@@ -101,4 +102,23 @@ object ForgetLast {
         savedLast != null -> listOf(savedLast)
         else -> emptyList()
     }
+}
+
+/**
+ * 1.0 audit (injection-memory-recall-taint): memory items from content stay content wherever they show up in a conversation.
+ */
+object MemoryTaint {
+    /**
+     * The items already in this conversation: every turn's, the answers' too. "What do you remember about …" puts an item's
+     * words in Robot's reply, not in your question: a later question that doesn't find it again still goes with it, and a
+     * content item makes the conversation content (MemoryPanel.forTurn).
+     */
+    fun given(turns: List<ChatTurn>): Set<String> = turns.flatMapTo(LinkedHashSet()) { it.memoryIds }
+
+    /**
+     * Whether something remembered now came from content: the conversation holds content ([conversation]:
+     * TurnRules.untrusted), the last turn's actions brought some, or this turn went with a content memory item ([memory]: its
+     * MemoryTurn.content). Remembered from a content item, it stays content, never your own words.
+     */
+    fun fromContent(conversation: Boolean, lastTurn: Boolean, memory: Boolean): Boolean = conversation || lastTurn || memory
 }
