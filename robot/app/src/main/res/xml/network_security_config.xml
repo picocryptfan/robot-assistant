@@ -30,5 +30,11 @@
         <domain includeSubdomains="true">openstreetmap.org</domain>
         <domain includeSubdomains="true">github.com</domain>
         <domain includeSubdomains="true">githubusercontent.com</domain>
+        <!-- 0.9 web search: the search services' and lookups' own domains (your SearXNG is decided by LanRule, as a helper). -->
+        <domain includeSubdomains="true">search.brave.com</domain>
+        <domain includeSubdomains="true">kagi.com</domain>
+        <domain includeSubdomains="true">mojeek.com</domain>
+        <domain includeSubdomains="true">wikipedia.org</domain>
+        <domain includeSubdomains="true">openlibrary.org</domain>
     </domain-config>
 </network-security-config>

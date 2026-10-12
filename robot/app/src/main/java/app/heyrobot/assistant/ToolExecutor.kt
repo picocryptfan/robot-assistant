@@ -74,6 +74,8 @@ import app.heyrobot.core.WeatherUnits
 import app.heyrobot.core.WeatherWhere
 import app.heyrobot.core.WhenParser
 import app.heyrobot.core.XmppLink
+import app.heyrobot.core.web.QueryContext
+import app.heyrobot.helpers.web.WebStep
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Calendars
 import app.heyrobot.sys.CheogramIntents
@@ -108,7 +110,13 @@ import java.util.Locale
  * what is left of the model's context for a tool's answer (PanelController's estimate): the weather gives fewer days.
  */
 class ToolExecutor(private val ctx: Context, private val settings: RobotSettings, private val abort: Abort = Abort(),
-    private val roomTokens: Int = Int.MAX_VALUE, private val said: String? = null, private val launch: (Intent) -> Boolean) {
+    private val roomTokens: Int = Int.MAX_VALUE, private val said: String? = null,
+    /** 0.9 web search: where the conversation's words came from (QueryCheck), and what a search is doing (the panel's status). */
+    private val webContext: () -> QueryContext = { QueryContext(said = listOfNotNull(said)) },
+    private val webStep: (WebStep, String) -> Unit = { _, _ -> },
+    private val launch: (Intent) -> Boolean) {
+    private val web by lazy { WebTool(ctx, settings, abort, said, webContext, webStep) }
+
     /**
      * Before the gate and the card: what the action will really do. open_app becomes the installed app it will open
      * (its real label and launcher activity); send_text and draft_email the person, number or address it goes to
@@ -136,6 +144,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.MapsNavigate -> Nearby.prepare(action, action.destination, nearestWanted(action.destination, action.nearest), nearestMode(), settings.nearbyServer)
             // The Claude app: installed or "Install Claude" before any card.
             is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
+            is Action.WebSearch -> web.prepare(action)
             else -> Prepared.Ready(action)
         }
     } catch (t: Throwable) {
@@ -171,6 +180,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.PhoneCheck -> phoneCheck(action)
                 is Action.FreeMemory -> freeMemory(action)
                 is Action.FreeStorage -> freeStorage(action)
+                is Action.WebSearch -> web.run(action)
             }
         } catch (t: Throwable) {
             RLog.w("tool_run", t, "tool" to action.tool)

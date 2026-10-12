@@ -208,7 +208,9 @@ class ProcessIsolationTest {
             // 0.5.0, phase 5.3: "Your voice" uses the speaker model and the voiceprint's key, both only in :voice.
             "app.heyrobot.assistant.conversation.VoiceprintActivity",
             // 0.5.0, phase 5.6: summaries reach Robot's model and the Claude key, both only from :voice.
-            "app.heyrobot.assistant.conversation.SummaryActivity")
+            "app.heyrobot.assistant.conversation.SummaryActivity",
+            // 0.9: web search's set-up window, where a search key is pasted and Test runs.
+            "app.heyrobot.assistant.WebSearchActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         // 0.4.5: llama.cpp's own process, isolated: Android runs it under a uid of its own with no permissions, no network
@@ -250,7 +252,8 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
             "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
             "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider",
-            "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver"))
+            "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver",
+            "app.heyrobot.assistant.WebSearchActivity"))
             assertEquals(n, "false", exported(n))
         // 0.5.0: the session is a microphone foreground service; the tile only the system binds.
         assertEquals("microphone", c("app.heyrobot.assistant.conversation.ConversationService").getAttributeNS(ns, "foregroundServiceType"))
@@ -557,8 +560,8 @@ class ProcessIsolationTest {
         // Only GitHubClient sets an Authorization header with the token, once, on a request GitHubHosts.mayAuthorize allows,
         // and never lets the platform follow a redirect with it. (0.6.0: the only other Authorization header is a helper's
         // own key, set by the :claude module's HelperHttp in the :voice process, which never refers to the updater: above;
-        // and web search's request builder in core, SearchWire, names Kagi's key header for a request it never sends itself,
-        // not wired yet.)
+        // and web search's request builder in core, SearchWire, names Kagi's key header, for the :claude module's
+        // WebTransport to send as it is, in the :voice process, 0.9.)
         assertEquals(listOf("app/update/GitHubClient.kt", "claude/helpers/http/HelperHttp.kt", "core/core/web/SearchWire.kt"),
             ours.filter { codeWithStrings(it.value).contains("\"Authorization\"") }.keys.sorted())
         val client = codeWithStrings(File(java("app"), "app/heyrobot/update/GitHubClient.kt"))
@@ -582,7 +585,8 @@ class ProcessIsolationTest {
         assertTrue(store.contains("KeystoreSecret(ALIAS, \"github_token\", \"update_token\")") && store.contains("const val ALIAS = \"robot_github_token\""))
         // The same class keeps every helper's key (sys/HelperFiles.kt, read only by the :voice process's HelperKeys, above);
         // the token's alias and files are named in UpdateStore.kt alone, and no helper's can be them.
-        assertEquals(listOf("app/sys/HelperFiles.kt", "app/sys/KeystoreSecret.kt", "app/update/UpdateStore.kt"), usersOf(Regex("""\bKeystoreSecret\(""")))
+        // 0.9: and the web search services' keys (sys/WebFiles.kt, read only by the :voice process's WebKeys: webSearch… below).
+        assertEquals(listOf("app/sys/HelperFiles.kt", "app/sys/KeystoreSecret.kt", "app/sys/WebFiles.kt", "app/update/UpdateStore.kt"), usersOf(Regex("""\bKeystoreSecret\(""")))
         assertEquals(listOf("app/update/UpdateStore.kt"), ours.filter { codeWithStrings(it.value).contains("robot_github_token") || codeWithStrings(it.value).contains("\"github_token\"") }.keys.sorted())
         assertTrue(listOf("claude", "github_token", "x").none { app.heyrobot.sys.HelperKeyFiles.alias(it) == "robot_github_token" })
         assertTrue(store.contains("GitHubRepo.fromSourceLink(LicenceBook.parse(json).robot.source)"))
@@ -625,7 +629,7 @@ class ProcessIsolationTest {
      * accessibility service (Ask Claude must not drive the Claude app).
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
-        // java.net.IDN only spells a host name in ASCII, like URLEncoder and URI (core web WebUrl, not wired yet).
+        // java.net.IDN only spells a host name in ASCII, like URLEncoder and URI (core web WebUrl).
         assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
             usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b|IDN\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b|\bopenConnection\("""),
             ours.filterKeys { !it.startsWith("claude/") }))
@@ -657,11 +661,12 @@ class ProcessIsolationTest {
         // the :voice process, with your key, when you ask), and the example addresses Settings › Helpers shows when you type
         // your server's (text only, never fetched). Licences.kt (0.4.5) fetches none: it only checks that the licence list's
         // links (assets/licenses/components.json) are https. The updater's (GitHub's API, a release's page) are built in
-        // core's GitHub.kt alone, from the repository and ids. Web search's request builders (core web SearchWire and
-        // Wikipedia: Brave, Kagi, Mojeek and Wikipedia's API addresses) are built in core but not wired yet: nothing fetches them.
-        assertEquals(listOf("app/ui/HelpersScreens.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt", "core/core/ModelState.kt", "core/core/MtBundle.kt",
-            "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt", "core/core/helpers/Helpers.kt", "core/core/update/GitHub.kt",
-            "core/core/web/SearchWire.kt", "core/core/web/Wikipedia.kt"),
+        // core's GitHub.kt alone, from the repository and ids. Web search's request builders (0.9, core web SearchWire,
+        // Wikipedia and OpenLibrary: Brave, Kagi, Mojeek, Wikipedia's and Open Library's API addresses) are sent by the
+        // :claude module's WebTransport in the :voice process; Settings › Web search shows an example address (text only).
+        assertEquals(listOf("app/ui/HelpersScreens.kt", "app/ui/settings/WebSearchSettings.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt",
+            "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt",
+            "core/core/helpers/Helpers.kt", "core/core/update/GitHub.kt", "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt", "core/core/web/Wikipedia.kt"),
             ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
@@ -671,6 +676,45 @@ class ProcessIsolationTest {
         // All logging goes through RLog, which keeps numbers, booleans and codes only.
         assertEquals(listOf("core/core/Log.kt"), usersOf(Regex("""\bandroid\.util\.Log\b|\bLog\.[diwev]\(""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""\bprintln\(|printStackTrace\(""")))
+    }
+
+    /**
+     * 0.9 web search (docs/plans/websearch-termux-design.md A6.1, A12): the HTTP clients, the page fetcher, jsoup and the
+     * copy of Readability4J live only in the :claude module (app.heyrobot.helpers.web), which only the assistant (the :voice
+     * process) uses; the main process never refers to them (mainProcessCodeNeverReachesEngines) and its Settings page
+     * opens the set-up window by class name. A search key is read only by WebKeys, for a search (WebTool) or Test (the
+     * set-up window). Pages are fetched only through PageFetcher's checks (no redirect followed by OkHttp, the public-only
+     * DNS filter and socket check, no proxy, no cookies), and nothing in a reply loads a remote image.
+     */
+    @Test fun webSearchStaysInTheVoiceProcessBehindItsChecks() {
+        val jsoup = usersOf(Regex("""\borg\.jsoup\b"""))
+        assertTrue(jsoup.toString(), jsoup.isNotEmpty() && jsoup.all { it.startsWith("claude/helpers/web/") })
+        val webUsers = usersOf(Regex("""\bapp\.heyrobot\.helpers\.web\b"""), ours.filterKeys { !it.startsWith("claude/") })
+        assertEquals(listOf("app/assistant/PanelController.kt", "app/assistant/ToolExecutor.kt", "app/assistant/WebSearchActivity.kt", "app/assistant/WebTool.kt"), webUsers)
+        fun deps(m: String) = File(root, "$m/build.gradle").readText()
+        assertTrue(deps("claude").contains("org.jsoup:jsoup:1.15.1"))
+        for (m in listOf("core", "brain", "voice", "mt", "app")) assertTrue(m, !deps(m).contains("org.jsoup"))
+        // Its readability copy logs nothing (no slf4j, no Log).
+        val readability = ours.filterKeys { it.startsWith("claude/helpers/web/readability/") }
+        assertTrue(readability.size >= 10)
+        assertEquals(emptyList<String>(), usersOf(Regex("""slf4j|LoggerFactory|\bRLog\b|\bprintln\("""), readability))
+        // Keys: only WebKeys reads or saves one, only WebTool and the set-up window ask it, and the main process only deletes.
+        assertEquals(listOf("app/assistant/WebSearchActivity.kt", "app/assistant/WebTool.kt"), usersOf(Regex("""\bWebKeys\.read\(""")))
+        assertEquals(listOf("app/assistant/WebTool.kt"), usersOf(Regex("""\bWebKeyFiles\.store\(""")))
+        val webFiles = code(File(java("app"), "app/heyrobot/sys/WebFiles.kt"))
+        assertTrue(!Regex("""\.(read|save)\(ctx""").containsMatchIn(webFiles))
+        assertTrue(code(File(java("app"), "app/heyrobot/ui/settings/WebSearchSettings.kt")).contains("setClassName(ctx.packageName, WebWindow.CLASS)"))
+        // The page fetcher's rules: OkHttp follows no redirect (each hop is checked here), the DNS filter and the socket check
+        // are on, never a proxy; the search transport follows none either.
+        val fetcher = File(java("claude"), "app/heyrobot/helpers/web/PageFetcher.kt").readText()
+        for (rule in listOf(".followRedirects(false)", ".followSslRedirects(false)", ".dns(PublicOnlyDns(dns, rules.isPublic))",
+            ".addNetworkInterceptor(PublicGuard(rules.isPublic))", ".proxy(Proxy.NO_PROXY)", "rules.redirect(url, r.header(\"Location\"), hops)")) assertTrue(rule, fetcher.contains(rule))
+        val fetcherCode = codeWithStrings(File(java("claude"), "app/heyrobot/helpers/web/PageFetcher.kt"))
+        assertTrue(!fetcherCode.contains("cookieJar") && !fetcherCode.contains("Referer") && !fetcherCode.contains(".cache("))
+        val transport = File(java("claude"), "app/heyrobot/helpers/web/WebTransport.kt").readText()
+        assertTrue(transport.contains(".followRedirects(false)") && transport.contains("LanDns(dns)") && transport.contains("addNetworkInterceptor(LanGuard)"))
+        // No remote image in a reply: nothing loads an image from an address.
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bAsyncImage\b|\bcoil\b|\bGlide\b|\bPicasso\b|BitmapFactory\.decodeStream\(.*openStream""")))
     }
 
     /**

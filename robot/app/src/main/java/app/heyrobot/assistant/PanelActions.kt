@@ -40,6 +40,8 @@ interface PanelActions {
     fun acceptOffer(replyId: String)
     fun dismissOffer(replyId: String)
     fun endHelperMode()
+    /** 0.9: a web answer's source tapped: [url] opens in the browser (an app open, as Open apps). */
+    fun openSource(replyId: String, url: String) {}
 
     /** What the panel does on screen: each action through PanelController. */
     companion object Default : PanelActions {
@@ -68,5 +70,6 @@ interface PanelActions {
         override fun acceptOffer(replyId: String) { PanelController.acceptOffer(replyId) }
         override fun dismissOffer(replyId: String) { PanelController.dismissOffer(replyId) }
         override fun endHelperMode() { PanelController.endHelperMode() }
+        override fun openSource(replyId: String, url: String) { PanelController.openSource(replyId, url) }
     }
 }
