@@ -1870,6 +1870,11 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
   also reported apart. Per line: words wrong, accents, the language Robot heard and the decode time; per language: the
   total against the pass mark, **15 % for Québec French over at least 20 lines from at least 2 readers** (pick Reader
   1–4), **8 % for English**.
+- **Microphone: Phone / Headset** (0.8): shown while a headset with a microphone (or, in car mode, the car) is connected.
+  Headset records through it as a headset or car session listens: the call route (`setCommunicationDevice`) and the
+  capture pinned to its microphone, recording only once its input is the one capturing (3 s at most, else "The
+  headset's microphone didn't connect"), let go when you tap Stop. Not while a headset or car session or a call is on.
+  Its lines say "headset mic" and are totalled apart from the phone's.
 - Recordings stay in memory and are dropped once scored; the voice log gets the numbers (117: % wrong, lines, language);
   **Copy report** copies numbers only unless "Include sentences" is ticked.
 - **If Québec French fails the gate**, before building more on it (`../docs/translation-plan.md`, `../docs/languages.md`
@@ -4874,8 +4879,8 @@ up: …", "Message in the headset: …").
    wired or USB long-press … · locked").
 4. *Note* each device's name and types in Settings › Headset › Your headphones after its first use (the name only ever
    stays on the phone).
-5. The microphone: *note* "Headset route up: … in N ms" for each headset, and run Settings › Advanced › Transcription
-   check through the headset and through the phone for the same sentences.
+5. The microphone: *note* "Headset route up: … in N ms" for each headset, and run Settings › Voice › Transcription
+   check with Microphone: Headset and with Microphone: Phone for the same sentences (the report keeps the two apart).
 
 **H1, the session.** *Done when:*
 - The earbuds' button to the chime in at most 2 s, 10 of 10.
@@ -4969,8 +4974,9 @@ Nothing of this has run in a car. Install the debug build with Robot as the digi
 1. Add your car: *note* the name shown and whether Settings › Car mode lists it once connected.
 2. The steering-wheel voice button: *note* whether Robot opens (the log: "Headset button: Bluetooth voice button · car
    mode"), whether the car shows "voice recognition" or a call screen, and what happens after 5 s.
-3. The car's microphone: *note* "Headset route up: … in N ms", and run the Transcription check in the car parked, at 50
-   and at 100 km/h (a passenger reads).
+3. The car's microphone: *note* "Headset route up: … in N ms", and run Settings › Voice › Transcription check with
+   Microphone: Headset (the car's call route while car mode runs) in the car parked, at 50 and at 100 km/h (a passenger
+   reads).
 4. Organic Maps: "navigate home" from a rough start, then Start: *note* whether it re-plans from the GPS position.
 5. Calls: the dialer and a direct call with the SIM, then with Cheogram's phone account as default: *note* whether the
    call is hands-free through the car.

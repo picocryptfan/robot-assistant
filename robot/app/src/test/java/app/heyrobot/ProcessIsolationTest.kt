@@ -887,6 +887,29 @@ class ProcessIsolationTest {
     }
 
     /**
+     * 0.8, Settings › Voice › Transcription check › Microphone: Headset records through the headset as a session listens
+     * (its call route and pinned input, core CheckMics), only once its input is the one capturing, never over a session's
+     * or a call's audio, and lets the route go whenever the recording stops.
+     */
+    @Test fun theTranscriptionCheckRecordsTheHeadsetAsASessionWould() {
+        val check = code(File(java("app"), "app/heyrobot/assistant/conversation/TranscriptionCheckActivity.kt"))
+        val take = check.substringAfter("private fun takeHeadset(").substringBefore("\n    }\n")
+        assertTrue(take, take.indexOf("if (HandsFreeHub.session != null)") in 0 until take.indexOf("SessionRoute.take(this, routeOwner, out)"))
+        assertTrue(take, take.indexOf("if (HandsFreeHub.callActive())") in 0 until take.indexOf("SessionRoute.take(this, routeOwner, out)"))
+        assertTrue(take, take.contains("CaptureRoute.set(plan.capture == CaptureSource.VOICE_COMMUNICATION, headsetInput(plan))"))
+        val release = check.substringAfter("private fun releaseHeadset(").substringBefore("\n    }\n")
+        assertTrue(release, release.contains("SessionRoute.release(this, routeOwner)") && release.contains("CaptureRoute.clear()"))
+        assertTrue(check.substringAfter("private fun stopRecording(").substringBefore("\n    }\n").contains("releaseHeadset()"))
+        assertTrue(check.contains("CheckMics.route(AudioDevices.all(this), HandsFreeFiles.store(this).devices(), CarModeController.carSeen())"))
+        // The headset's frames only once its input captures: the sink is added after the route check, never before it.
+        val start = check.substringAfter("private fun startRecording(").substringBefore("\n    }\n")
+        assertTrue(start, start.contains("if (plan == null) source?.addSink(sink) else waitForHeadset(plan)"))
+        val wait = check.substringAfter("private fun waitForHeadset(").substringBefore("\n    }\n")
+        assertTrue(wait, wait.indexOf("if (routedTo(plan)) {") in 0 until wait.indexOf("source?.addSink(sink)"))
+        assertEquals(1, Regex("SessionRoute\\.take\\(").findAll(check).count())
+    }
+
+    /**
      * A routine or the brief asked for in a headset or car session speaks through OutputGuard like any answer: the brief's
      * parts in the panel (RoutineVoice's panel surface) line by line with the part's own personal mark, and a routine's
      * own sentences and your brief reminders as personal (never on headphones Robot doesn't know are private).
