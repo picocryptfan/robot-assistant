@@ -55,6 +55,8 @@ import app.heyrobot.core.ConversationCommand
 import app.heyrobot.core.ConversationLock
 import app.heyrobot.core.ConversationRouter
 import app.heyrobot.assistant.conversation.ConversationService
+import app.heyrobot.assistant.routines.PanelRoutines
+import app.heyrobot.assistant.routines.RoutineVoice
 import app.heyrobot.assistant.conversation.ConversationSession
 import app.heyrobot.sys.Transcripts
 import app.heyrobot.core.ClaudeSettings
@@ -95,6 +97,8 @@ import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.RoutineCodec
+import app.heyrobot.core.RoutineStep
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.ScreenData
@@ -539,6 +543,8 @@ object PanelController {
         startScreen(showSource(source), showFlags)
         // The question first: once it is attached, the capture mode can't switch under it ("Always echo cancellation").
         if (source == RobotVoiceService.SRC_WAKE) startListening()
+        // 0.8: opened by Settings' Run now or a Ready card's tap.
+        PanelRoutines.onShow(args)?.let { (label, work) -> routineTurn(label, work) }
         VoiceHub.updateCapture()
     }
 
@@ -1092,6 +1098,14 @@ object PanelController {
     private fun answerCard(text: String, spoken: Boolean): Boolean {
         val card = pendingCard() ?: return false
         val s = VoiceHub.settings
+        // 0.8: a routine from the screen's text, or deleting one: only a tap (a "no" still declines).
+        routineTapOnly?.takeIf { it.first == card.id }?.let { (_, words) ->
+            if (CardAnswer.of(text, s.wakePhrases.filter { it.enabled }.map { it.text }) == CardAnswer.Kind.YES) {
+                notify(words)
+                if (_state.value.speak) VoiceHub.tts.speak(words)
+                return true
+            }
+        }
         val r = CardAnswer.reply(text, card.waiting, s.voiceCards, s.voiceYesPersonal, spoken, s.wakePhrases.filter { it.enabled }.map { it.text })
             ?: return false
         RLog.i("card_answer", "yes" to (r.does != CardAnswer.Does.DECLINE), "spoken" to spoken)
@@ -1122,6 +1136,8 @@ object PanelController {
         if (q.isEmpty() && st.draft == null) return false
         // A card waits: a typed or spoken "yes" or "no" answers it (Settings › Safety & privacy).
         if (st.phase == Phase.CONFIRMING && st.draft == null && answerCard(q, fromVoice)) return true
+        // 0.8: "next", "skip", "repeat" or "stop" while a routine or the brief speaks (or just paused for "hey robot").
+        if (q.isNotEmpty() && st.draft == null && RoutineVoice.control(q)) return true
         if (st.busy || slot.running) {
             if (st.phase == Phase.CONFIRMING) {
                 notify(if (fromVoice && !VoiceHub.settings.voiceCards) CARD_TYPE_HINT else CARD_HINT)
@@ -1163,6 +1179,10 @@ object PanelController {
             claudeDeclined = false
         }
         if (cmd != null) RLog.i("claude_command", "kind" to RLog.Code(cmd.javaClass.simpleName))
+        // 0.8: routines' phrases next, before the model ("every weekday at 7, tell me the weather", "brief me", "remind me in the
+        // morning to …"); outside a helper's conversation. A routine said in a conversation holding screen text needs a tap.
+        val routineCmd = if (q.isNotEmpty() && convCmd == null && cmd == null && st.draft == null && !_state.value.claudeMode)
+            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null
         dropOffers()
         val attachment = st.draft?.kind ?: Attachment.NONE
         val image = when (attachment) {
@@ -1220,6 +1240,7 @@ object PanelController {
         startTurn(replyId) {
             when {
                 convCmd != null -> conversationCommand(replyId, convCmd)
+                routineCmd != null -> PanelRoutines.handle(replyId, routineCmd, routineHost)
                 cmd == ClaudeCommand.Leave -> {
                     endHelperMode()
                     localReply(replyId, ClaudeWords.LEFT)
@@ -2621,6 +2642,62 @@ object PanelController {
     private fun settled(actions: List<UiAction>) = actions.map { if (it.status == ActionStatus.PENDING) it.copy(status = ActionStatus.DECLINED) else it }
 
     private fun records(actions: List<UiAction>) = actions.mapNotNull { a -> a.tool?.let { ActionRecord(it, a.summary, a.status, a.detail, a.content) } }
+
+    // ------------------------------------------------------------------ routines (0.8)
+
+    /** The routine card waiting that only a tap answers, and what Robot says to a spoken yes. */
+    private var routineTapOnly: Pair<String, String>? = null
+
+    /** What a routine turn does in the panel (assistant/routines PanelRoutines): this turn's bubble, voice and cards. */
+    private val routineHost = object : PanelRoutines.Host {
+        override val speak: Boolean get() = _state.value.speak
+        override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
+        override fun text(replyId: String, text: String) = setText(replyId, text)
+        override fun append(replyId: String, text: String) {
+            paragraphBreak(replyId)
+            appendText(replyId, text)
+        }
+        override fun say(sentence: String) { if (_state.value.speak) speakSentence(sentence) }
+        override suspend fun ask(replyId: String, card: Card, tapOnly: String?): Boolean {
+            val view = PanelView(replyId)
+            routineTapOnly = tapOnly?.let { card.id to it }
+            view.card(card)
+            view.phase(TurnPhase.CONFIRMING)
+            val pick = try { slot.confirmations.ask(card.id) } finally { routineTapOnly = null }
+            view.phase(TurnPhase.THINKING)
+            return pick >= 0
+        }
+        override fun show(replyId: String, card: Card) = PanelView(replyId).card(card)
+        override suspend fun tool(replyId: String, step: RoutineStep.Tool): Executed? {
+            // As a typed command: asked for, never "from content", a card where the gate wants one; what ran comes back to be said.
+            var ran: Executed? = null
+            val actions = object : TurnActions by PanelActions {
+                override suspend fun run(action: Action): Executed = PanelActions.run(action).also { ran = it }
+            }
+            val raw = RawToolCall(step.action.tool.id, RoutineCodec.args(step.action))
+            val r = TurnRunner(DirectCall(raw), actions, PanelView(replyId), slot.confirmations, false, asked = setOf(step.action.tool), newId = ::newId).run()
+            r.failure?.let { appendText(replyId, it) }
+            return ran
+        }
+        override fun finish(replyId: String) = finishReply(replyId, DoneReason.END)
+        override suspend fun leave() = leaveForApp()
+    }
+
+    /** Settings' Run now or a Ready card's tap: a turn of its own, as if you had asked. */
+    private fun routineTurn(label: String, work: suspend (String, PanelRoutines.Host) -> Unit) {
+        if (_state.value.busy || slot.running) return notify("Robot is still on the last question.")
+        VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
+        val user = ChatTurn(newId(), TurnRole.USER, label, System.currentTimeMillis())
+        chat += user
+        val replyId = newId()
+        _state.update {
+            it.copy(turns = it.turns + UiTurn(user.id, TurnRole.USER, user.text) + UiTurn(replyId, TurnRole.ASSISTANT, "", streaming = true),
+                phase = Phase.THINKING, notice = null, locked = Assistant.locked(VoiceHub.app))
+        }
+        lastActivity = System.currentTimeMillis()
+        voice.start(replyId)
+        startTurn(replyId) { work(replyId, routineHost) }
+    }
 
     /** Nothing from the model this long, before its first word or between two: it is given up (a first word takes about 0.3 s). */
     private const val EVENT_GAP_MS = 60_000L

@@ -631,6 +631,37 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         }
     }
 
+    /**
+     * 0.8, the morning brief (core BriefComposer): today's forecast where the phone is, else your Home for weather, as the
+     * weather tool finds it, in the units of your region. The place's name only for your Home (where the phone is has no
+     * name offline); the brief says it only unlocked. Null: no place, or Open-Meteo didn't answer (the brief says the
+     * weather isn't available). Blocking; [abort]'s deadline ends it.
+     */
+    fun briefWeather(): app.heyrobot.core.BriefWeather? {
+        val now = ZonedDateTime.now()
+        val units = WeatherUnits.of(region)
+        val home = settings.weatherHome
+        return try {
+            val found = if (CoarseLocation.granted(ctx)) CoarseLocation.find(ctx, if (home != null) WeatherAsk.FIX_WITH_HOME_MS else WeatherAsk.FIX_MS, abort) else null
+            val fix = found?.fix
+            val place = when {
+                fix != null -> WeatherPlace(HERE, fix.lat, fix.lon)
+                home != null -> home
+                else -> return null
+            }
+            val f = OpenMeteoClient.forecast(ctx, place, 1, units, abort)
+            val today = f.days.firstOrNull { it.date == now.withZoneSameInstant(f.zone ?: now.zone).toLocalDate() } ?: f.days.firstOrNull()
+            VoiceLog.add(VoiceEvent.WEATHER, if (fix != null) WeatherSource.FIX else WeatherSource.HOME, 0, 0)
+            app.heyrobot.core.BriefWeather(f.now, today, units, place = if (fix == null) home?.name else null)
+        } catch (e: OpenMeteoClient.Failure) {
+            if (!abort.cancelled) VoiceLog.add(VoiceEvent.WEATHER_FAILED, e.why, e.http)
+            null
+        } catch (t: Throwable) {
+            RLog.w("brief_weather", t)
+            null
+        }
+    }
+
     // ------------------------------------------------------------------ the phone itself
 
     /**

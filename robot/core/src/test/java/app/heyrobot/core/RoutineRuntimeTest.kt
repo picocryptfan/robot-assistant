@@ -139,6 +139,9 @@ class RoutineRuntimeTest {
         val week = RoutineCatchUp.late(listOf(weekday), at(2026, 10, 2, 0, 0), at(2026, 10, 12, 6, 0), RunLedger())
         assertEquals(listOf(LocalDateTime.of(2026, 10, 9, 7, 0)), week.map { it.slot })
         assertEquals(MissedRun.DROP, week.single().what)
+        // A routine saved after its time today isn't "missed" today.
+        val saved = weekday.copy(created = at(2026, 10, 12, 7, 2).toInstant().toEpochMilli(), edited = at(2026, 10, 12, 7, 2).toInstant().toEpochMilli())
+        assertEquals(emptyList<LateRun>(), RoutineCatchUp.late(listOf(saved), since, at(2026, 10, 12, 7, 5), RunLedger()))
         // The exact alarm that came late, as the receiver sees it.
         val due = at(2026, 10, 12, 7, 0).toInstant().toEpochMilli()
         assertEquals(MissedRun.RUN, RoutineCatchUp.fired(due, at(2026, 10, 12, 7, 9)))

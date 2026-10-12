@@ -52,6 +52,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 0.8, routines: speaks a routine with the screen off. Android 17 lets audio play in the background only from a visible
+         activity or a foreground service that isn't short (RoutineSpeakingService, mediaPlayback, alive only while a routine
+         speaks). Normal permission, no prompt. Exact alarms are USE_EXACT_ALARM, above. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <queries>
         <!-- open_app: every app with a launcher icon (no QUERY_ALL_PACKAGES). -->
@@ -292,6 +296,28 @@
             </intent-filter>
             <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true" />
         </service>
+        <!-- 0.8, routines (docs/plans/routines-headset-car-design.md 2): in :voice, where the voice is. The receiver gets the one
+             exact alarm for the next time routine (Robot's own PendingIntent), a Ready notification's tap, and the system's
+             BOOT_COMPLETED, TIME_SET, TIMEZONE_CHANGED and MY_PACKAGE_REPLACED to set that alarm again; not exported, so no
+             other app can send it anything. GrapheneOS Clock's ALARM_ALERT and ALARM_DONE are heard by a runtime receiver
+             (RoutineHub) only while a routine waits for them. The service speaks a routine nobody opened Robot for, with
+             its notification (Next, Repeat, Stop); never sticky, never at boot. -->
+        <receiver
+            android:name=".assistant.routines.RoutineAlarmReceiver"
+            android:process=":voice"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name=".assistant.routines.RoutineSpeakingService"
+            android:process=":voice"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <!-- The camera app writes the photo here (app cache, deleted right after it is read). -->
         <provider
             android:name="androidx.core.content.FileProvider"

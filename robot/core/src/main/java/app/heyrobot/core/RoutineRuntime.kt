@@ -213,13 +213,14 @@ data class LateRun(val routine: Routine, val slot: LocalDateTime, val due: Zoned
 object RoutineCatchUp {
     /**
      * The time routines due in (since, now] that didn't run: the latest occurrence of each only (never one run per missed
-     * day), and not one the ledger shows as run. [LateRun.what]: run now (≤ 10 min late), a Ready card (≤ 3 h, the same
-     * day), or nothing.
+     * day), not one the ledger shows as run, and never one from before the routine was last saved. [LateRun.what]: run now
+     * (≤ 10 min late), a Ready card (≤ 3 h, the same day), or nothing.
      */
     fun late(routines: List<Routine>, since: ZonedDateTime, now: ZonedDateTime, ledger: RunLedger): List<LateRun> =
         routines.filter { it.enabled }.mapNotNull { r ->
             val t = r.trigger as? RoutineTrigger.At ?: return@mapNotNull null
-            val due = RoutineSchedule.lastMissed(t, since, now) ?: return@mapNotNull null
+            val from = maxOf(since, Instant.ofEpochMilli(r.edited).atZone(now.zone))
+            val due = RoutineSchedule.lastMissed(t, from, now) ?: return@mapNotNull null
             val slot = RoutineSchedule.slot(t, due)
             if (ledger.last[r.id]?.key == RoutineTriggers.timeKey(slot)) null else LateRun(r, slot, due, RoutineSchedule.missed(due, now))
         }

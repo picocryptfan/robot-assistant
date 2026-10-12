@@ -201,7 +201,9 @@ class ProcessIsolationTest {
             // 0.5.0, phase 5.3: "Your voice" uses the speaker model and the voiceprint's key, both only in :voice.
             "app.heyrobot.assistant.conversation.VoiceprintActivity",
             // 0.5.0, phase 5.6: summaries reach Robot's model and the Claude key, both only from :voice.
-            "app.heyrobot.assistant.conversation.SummaryActivity")
+            "app.heyrobot.assistant.conversation.SummaryActivity",
+            // 0.8, routines: the exact alarm's receiver and the speaking service, where the voice and the trigger hub are.
+            "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         // 0.4.5: llama.cpp's own process, isolated: Android runs it under a uid of its own with no permissions, no network
@@ -241,8 +243,18 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.HelperConnectionActivity", "app.heyrobot.assistant.MediaDeleteActivity",
             "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
             "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
-            "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider"))
+            "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider",
+            "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService"))
             assertEquals(n, "false", exported(n))
+        // 0.8: routines speak from a mediaPlayback foreground service (Android 17's background audio), never a short one;
+        // the receiver hears only the system's broadcasts that make the exact alarm wrong, after the first unlock.
+        assertEquals("mediaPlayback", c("app.heyrobot.assistant.routines.RoutineSpeakingService").getAttributeNS(ns, "foregroundServiceType"))
+        assertEquals("", perm("app.heyrobot.assistant.routines.RoutineSpeakingService"))
+        val routineActions = c("app.heyrobot.assistant.routines.RoutineAlarmReceiver").getElementsByTagName("action").let { nl ->
+            (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
+        assertEquals(setOf("android.intent.action.BOOT_COMPLETED", "android.intent.action.TIME_SET", "android.intent.action.TIMEZONE_CHANGED",
+            "android.intent.action.MY_PACKAGE_REPLACED"), routineActions)
+        assertEquals("", c("app.heyrobot.assistant.routines.RoutineAlarmReceiver").getAttributeNS(ns, "directBootAware"))
         // 0.5.0: the session is a microphone foreground service; the tile only the system binds.
         assertEquals("microphone", c("app.heyrobot.assistant.conversation.ConversationService").getAttributeNS(ns, "foregroundServiceType"))
         assertEquals("true", exported("app.heyrobot.assistant.conversation.ConversationTileService"))
@@ -301,7 +313,13 @@ class ProcessIsolationTest {
             "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
             // 0.5.0: conversation mode's microphone foreground service, and its wake lock while a session runs.
             "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MICROPHONE", "android.permission.WAKE_LOCK",
+            // 0.8: a routine speaking with the screen off (RoutineSpeakingService). Normal, no prompt.
+            "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         ), used)
+        // 0.8: routines need nothing else: USE_EXACT_ALARM (above) rather than SCHEDULE_EXACT_ALARM, no phone, Bluetooth or
+        // Do Not Disturb access (those come with car and headset mode, asked only from their own rows).
+        assertTrue(listOf("SCHEDULE_EXACT_ALARM", "CALL_PHONE", "BLUETOOTH_CONNECT", "ACCESS_NOTIFICATION_POLICY", "FOREGROUND_SERVICE_SHORT_SERVICE")
+            .none { "android.permission.$it" in used })
         // Never all files, never stopping other apps (Android 14 and later wouldn't let it anyway).
         assertTrue(listOf("MANAGE_EXTERNAL_STORAGE", "READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE", "KILL_BACKGROUND_PROCESSES").none { "android.permission.$it" in used })
         assertTrue("android.permission.ACCESS_FINE_LOCATION" !in used && "android.permission.ACCESS_BACKGROUND_LOCATION" !in used)
@@ -581,6 +599,47 @@ class ProcessIsolationTest {
         val ui = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.assistant\b"""), ui))
         assertTrue(File(java("app"), "app/heyrobot/sys/Transcripts.kt").readText().contains("\"app.heyrobot.assistant.conversation.ConversationActivity\""))
+    }
+
+    /**
+     * 0.8, routines and the morning brief (design §2.5, §2.8): nothing a routine holds or says goes online except the
+     * weather to Open-Meteo through the weather tool's own code, nothing reaches a model or a helper, no routine's words
+     * reach a log line, the one runtime receiver another app may reach is Clock's two alarm broadcasts, the alarm is never
+     * Android's "next alarm", and the main app names :voice's receiver by its class only.
+     */
+    @Test fun routinesStayOnThePhone() {
+        val routines = ours.filterKeys { it.startsWith("app/assistant/routines/") || it == "app/sys/Routines.kt" || it.startsWith("app/ui/settings/Routine") ||
+            it in setOf("core/core/Routine.kt", "core/core/RoutineGate.kt", "core/core/RoutineRouter.kt", "core/core/RoutineSchedule.kt", "core/core/RoutineStore.kt",
+                "core/core/RoutineRuntime.kt", "core/core/Brief.kt", "core/core/AlarmWatch.kt") }
+        assertTrue(routines.keys.toString(), routines.size >= 15)
+        // No network of their own, no model, no helper; the weather goes through ToolExecutor (Open-Meteo's only client).
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bOpenMeteoClient\b|\bNominatimClient\b|\bBrain(Client|Keeper|Link|OneShots)\b|""" +
+            """\bHelper(Link|Session|Http)\b|\bClaude(Session|Client)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b"""), routines))
+        assertEquals(listOf("app/assistant/routines/RoutineRunner.kt"), usersOf(Regex("""\.briefWeather\(\)"""), routines))
+        // Logs: codes and numbers only; never a routine's name, steps, words or a reminder.
+        val leaky = Regex("""RLog\.[iw]\([^\n]*\b(name|text|lines|describe|reminder|title|said)\b""")
+        assertEquals(emptyList<String>(), usersOf(leaky, routines))
+        // The only receiver another app can reach: Clock's ALARM_ALERT and ALARM_DONE, in the trigger hub.
+        assertEquals(listOf("app/assistant/routines/RoutineHub.kt"), usersOf(Regex("""\bRECEIVER_EXPORTED\b""")))
+        val hub = withoutComments(File(java("app"), "app/heyrobot/assistant/routines/RoutineHub.kt"))
+        assertEquals(1, Regex("""RECEIVER_EXPORTED""").findAll(hub).count())
+        assertTrue(hub.contains("\"com.android.deskclock.ALARM_ALERT\"") && hub.contains("\"com.android.deskclock.ALARM_DONE\""))
+        // One exact allow-while-idle alarm, never setAlarmClock (it would become Android's "next alarm").
+        assertEquals(emptyList<String>(), usersOf(Regex("""\.setAlarmClock\(""")))
+        assertEquals(listOf("app/sys/Assistant.kt", "app/sys/Routines.kt"), usersOf(Regex("""\.setExactAndAllowWhileIdle\(""")))
+        // The main app reaches :voice's receiver by its class name, which must be the real one.
+        assertTrue(File(java("app"), "app/heyrobot/sys/Routines.kt").readText().contains("\"app.heyrobot.assistant.routines.RoutineAlarmReceiver\""))
+        assertTrue(File(java("app"), "app/heyrobot/assistant/routines/RoutineAlarmReceiver.kt").isFile)
+        // The speaking service is never sticky and never started at boot.
+        val svc = code(File(java("app"), "app/heyrobot/assistant/routines/RoutineSpeakingService.kt"))
+        assertTrue(svc.contains("START_NOT_STICKY") && !Regex("""return START_STICKY\b""").containsMatchIn(svc))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bRoutineSpeakingService\b"""), ours.filterKeys { it.startsWith("app/boot/") }))
+        // Saving a routine by voice goes through its card (RoutineDraft.save after the card's answer), never straight to the file;
+        // a routine from the screen's text needs the tap.
+        val panel = code(File(java("app"), "app/heyrobot/assistant/routines/PanelRoutines.kt"))
+        assertEquals(1, Regex("""\bdraft\.save\(""").findAll(panel).count())
+        assertTrue(Regex("""val yes = host\.ask\([^\n]*\n[^\n]*tapOnly = if \(draft\.fromContent\)""").containsMatchIn(panel))
+        assertTrue(panel.indexOf("val yes = host.ask(") < panel.indexOf("draft.save("))
     }
 
     /**

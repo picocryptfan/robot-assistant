@@ -168,6 +168,8 @@ object Cmd {
      */
     const val WAKE_TEST = "wake_test"
     const val EXTRA_ON = "on"
+    /** 0.8: Settings › Routines changed routines.json or routine_settings.json: the voice process reloads its triggers. */
+    const val ROUTINES = "routines"
 
     fun send(ctx: Context, op: String, extras: Bundle = Bundle()) {
         try {

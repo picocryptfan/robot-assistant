@@ -37,6 +37,8 @@ import app.heyrobot.core.WakePhrases
 import app.heyrobot.core.enumOr
 import app.heyrobot.core.writeAtomic
 import app.heyrobot.assistant.conversation.ConversationSession
+import app.heyrobot.assistant.routines.RoutineHub
+import app.heyrobot.assistant.routines.RoutineVoice
 import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.Cmd
@@ -199,12 +201,15 @@ object VoiceHub {
         updateCapture()
         PanelController.onSpeakingChanged(on)
         BargeTest.onSpeaking(on)
+        RoutineVoice.onSpeakingChanged(on)
     }
 
     private fun BargeIn.wantsCommunication() = this != BargeIn.OFF
 
     /** Stops Robot's voice and logs why (only if she was speaking). Every stop of the voice goes through here. */
     fun stopVoice(why: TtsStop) {
+        // A routine speaking (0.8) ends, or waits for "next" or "repeat" after "hey robot".
+        RoutineVoice.onVoiceStopped(why)
         if (tts.isSpeaking && !stopLogged) {
             stopLogged = true
             VoiceLog.add(VoiceEvent.TTS_STOP, why, (SystemClock.elapsedRealtime() - speakStartE).toInt())
@@ -266,6 +271,8 @@ object VoiceHub {
         worker.postDelayed(retry, 60_000)
         // Robot is the running assistant: keep the speech recognizer setting that keeps it so after a restart.
         worker.post { try { RecognizerKeeper.check(app, RepairWhen.ASSISTANT_READY) } catch (t: Throwable) { RLog.w("recognizer", t) } }
+        // 0.8: routines' triggers, and what a reboot made them miss.
+        RoutineHub.start(app)
     }
 
     private fun register(r: BroadcastReceiver, f: IntentFilter, permission: String?) {
@@ -283,6 +290,7 @@ object VoiceHub {
         if (::app.isInitialized) writeStatus(false, "Robot isn't the active assistant right now.")
         unregisterAll()
         BrainKeeper.release("shutdown")
+        RoutineHub.stop()
     }
 
     private fun unregisterAll() {
@@ -504,6 +512,7 @@ object VoiceHub {
             Cmd.VOICE_BENCH -> VoiceEngines.benchmark()
             Cmd.BARGE_TEST -> BargeTest.start(enumOr(i.getStringExtra(Cmd.EXTRA_RUN), BargeRun.FIRST))
             Cmd.WAKE_TEST -> wakeTestUntil = if (i.getBooleanExtra(Cmd.EXTRA_ON, false)) SystemClock.elapsedRealtime() + WAKE_TEST_MS else 0L
+            Cmd.ROUTINES -> RoutineHub.reload()
         }
     }
 }
