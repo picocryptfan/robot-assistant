@@ -23,6 +23,8 @@ enum class SearchProvider(val title: String, val credit: String?) {
     WIKIPEDIA("Wikipedia", "Wikipedia text: CC BY-SA 4.0"),
     /** 0.9, Book lookups (off by default): "From Open Library" with its link. */
     OPEN_LIBRARY("Open Library", "From Open Library"),
+    /** 1.0, DuckDuckGo's Instant Answers: its API asks to credit DuckDuckGo, and the source of each answer (the card's numbered source). */
+    DUCKDUCKGO("DuckDuckGo", "Results from DuckDuckGo"),
 }
 
 /**

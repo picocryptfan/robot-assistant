@@ -9,6 +9,9 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 
 class PromptTest {
+    /** 1.0: browser_search and its line, in estimated tokens: no more than web_search and its line (0.9). */
+    private val BROWSER_MAX = 200
+
     private val now = ZonedDateTime.of(2026, 10, 10, 9, 5, 0, 0, ZoneId.of("Europe/Berlin"))
 
     @Test fun systemPromptIsShortAndDatedButHasNoClock() {
@@ -209,13 +212,13 @@ class PromptTest {
         // are left for the new turn: screen text is cut to fit (fitTurn) and older turns are dropped first.
         // (0.9: the Termux group, only while Settings › Termux is on, is measured with it in TermuxToolsTest.)
         val beforeMemory = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true),
-            ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY && it != ToolName.WEB_SEARCH && !it.termux })
+            ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY && it.group != ToolGroup.WEB && !it.termux })
         assertTrue("worst before memory $beforeMemory", beforeMemory < 2_850)
         assertTrue(ContextWindow.newTurnLimit(beforeMemory) > 450)
         // 0.7: memory's two tools (only in a conversation whose words called for them, with Memory on) are kept to one
         // argument each and its line short: about 200 more estimated tokens (a third fewer real ones), still over 300 left.
         val worst = Prompt.fixedTokens(app.heyrobot.core.memory.MemoryPrompt.system(Prompt.system(now, locked = false, askClaude = true, texting = true,
-            weather = true, phone = true), tools = true, pinned = null), ToolName.entries.filter { it.forModel && it != ToolName.WEB_SEARCH && !it.termux })
+            weather = true, phone = true), tools = true, pinned = null), ToolName.entries.filter { it.forModel && it.group != ToolGroup.WEB && !it.termux })
         assertTrue("worst ${worst - beforeMemory}", worst - beforeMemory < 260)
         assertTrue("worst $worst", ContextWindow.newTurnLimit(worst) > 280)
         // 0.9, web search on and its words used: web_search (about 140 estimated tokens, two parameters) and its line. The
@@ -226,9 +229,21 @@ class PromptTest {
         val allWeb = Prompt.fixedTokens(Prompt.system(now, locked = false, web = true), ToolName.entries.filter { !it.internal && it.forModel })
         assertTrue("all with web $allWeb", allWeb < 2_800)
         val worstWeb = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true, web = true),
-            ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY && !it.termux })
+            ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY && !it.termux && it != ToolName.BROWSER_SEARCH })
         assertTrue("worst with web $worstWeb", worstWeb < 3_050)
         assertTrue("${ContextWindow.newTurnLimit(worstWeb)}", ContextWindow.newTurnLimit(worstWeb) > 270)
+        // 1.0, a question that names an engine or the browser ("look it up on Google"): browser_search (two short parameters)
+        // and its line, with web search on or off. In the worst case, every group at once, ToolBudget lets groups give way.
+        val browser = Prompt.fixedTokens(Prompt.system(now, locked = false, browser = true), Prompt.CORE_TOOLS + ToolName.BROWSER_SEARCH)
+        assertTrue("browser_search ${browser - core}", browser - core in 1..BROWSER_MAX)
+        val worstBrowser = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true, web = true,
+            browser = true), ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY && !it.termux })
+        assertTrue("worst with the browser $worstBrowser", worstBrowser - worstWeb in 1..BROWSER_MAX)
+        val fitted = ToolBudget.fit(ToolGroup.entries.toSet() - ToolGroup.TERMUX, ToolRouter.route("look it up on Google"), 4_096) { g ->
+            val t = ToolRouter.tools(g, RobotSettings(), askClaude = true, memory = true, web = true, browser = true)
+            Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true, web = true, browser = true), t)
+        }
+        assertTrue(fitted.toString(), ToolGroup.WEB in fitted)
         for (g in listOf(ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR)) {
             val tools = ToolRouter.tools(setOf(ToolGroup.CORE, g), RobotSettings())
             assertTrue(g.name, Prompt.fixedTokens(system, tools) in (core + 1) until all)
@@ -243,13 +258,13 @@ class PromptTest {
         val cost = Prompt.fixedTokens(car) - Prompt.fixedTokens(plain)
         assertTrue("car line $cost", cost in 1..40)
         val beforeMemory = Prompt.fixedTokens(Prompt.system(now, locked = true, askClaude = true, texting = true, weather = true, phone = true,
-            driving = true), ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY && it != ToolName.WEB_SEARCH && !it.termux })
+            driving = true), ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY && it.group != ToolGroup.WEB && !it.termux })
         assertTrue("worst before memory $beforeMemory", beforeMemory < 2_900)
         assertTrue(ContextWindow.newTurnLimit(beforeMemory) > 450)
         // With 0.7's memory tools and line too (a conversation whose words called for them; unlocked, as Memory stays off the
         // lock screen by default): the car line's tokens come out of the 0.7 worst case's, still about 250 left.
         val worst = Prompt.fixedTokens(app.heyrobot.core.memory.MemoryPrompt.system(Prompt.system(now, locked = false, askClaude = true, texting = true,
-            weather = true, phone = true, driving = true), tools = true, pinned = null), ToolName.entries.filter { it.forModel && it != ToolName.WEB_SEARCH && !it.termux })
+            weather = true, phone = true, driving = true), tools = true, pinned = null), ToolName.entries.filter { it.forModel && it.group != ToolGroup.WEB && !it.termux })
         assertTrue("worst ${worst - beforeMemory}", worst - beforeMemory < 260)
         assertTrue("worst $worst ${ContextWindow.newTurnLimit(worst)}", ContextWindow.newTurnLimit(worst) >= 240)
     }

@@ -66,12 +66,13 @@ class WebSettingsTest {
     @Test fun setUpSuggestsKagiFirstWithoutAHomeServer() {
         assertEquals(SearchService.KAGI, WebSetup.suggested(hasHomeServer = false))
         assertEquals(SearchService.SEARXNG_HOME, WebSetup.suggested(hasHomeServer = true))
-        assertEquals(listOf(SearchService.KAGI, SearchService.BRAVE, SearchService.MOJEEK, SearchService.SEARXNG_HOME, SearchService.SEARXNG_PUBLIC,
-            SearchService.WIKIPEDIA_ONLY), WebSetup.order(false))
+        // 1.0: DuckDuckGo's free Instant Answers with the free ones, after the paid services and your own SearXNG.
+        assertEquals(listOf(SearchService.KAGI, SearchService.BRAVE, SearchService.MOJEEK, SearchService.SEARXNG_HOME, SearchService.DDG_INSTANT,
+            SearchService.SEARXNG_PUBLIC, SearchService.WIKIPEDIA_ONLY), WebSetup.order(false))
         assertEquals(SearchService.entries.toSet(), WebSetup.order(true).toSet())
         // A public SearXNG is offered, never suggested.
         assertTrue(WebSetup.order(false).indexOf(SearchService.SEARXNG_PUBLIC) > 0)
-        assertEquals("DuckDuckGo, Google and Bing have no search API that Robot can use.", WebSetup.NOT_OFFERED)
+        assertEquals("Google, Bing, Startpage and DuckDuckGo have no full search API that Robot can use: they open in your browser instead.", WebSetup.NOT_OFFERED)
         assertEquals("When you ask, Robot sends your search words to Kagi. To answer, it may open up to 3 of the result pages from this phone, " +
             "like a browser without cookies: those sites see your IP address. Nothing else leaves the phone.", WebSetup.consent(SearchService.KAGI))
         assertTrue(SearchService.BRAVE.needsKey && SearchService.KAGI.needsKey && SearchService.MOJEEK.needsKey)
@@ -140,7 +141,10 @@ class WebSettingsTest {
         assertEquals(listOf("web_search svc=1 n=8 ms=950", "web_pages ok=2 skipped=1 ms=4200 why=4", "web_answer in=2430 out=61 first_ms=3100", "web_failed why=7"),
             lines.map { it.logcat() })
         for (l in lines) assertTrue(l.logcat(), l.logcat().matches(Regex("web_[a-z]+( [a-z_]+=\\d+)+")))
-        assertEquals(listOf(160, 161, 162, 163), WebLogEvent.entries.map { it.reservedId })
+        assertEquals(listOf(160, 161, 162, 163, 164), WebLogEvent.entries.map { it.reservedId })
+        // 1.0: a search in your browser, by the engine's code and whose words, never the words.
+        assertEquals("browser_search engine=1 by=1 fallback=1", WebLogLine.browser(BrowserEngine.STARTPAGE, own = true, fallback = true).logcat())
+        assertEquals("browser_search engine=7 by=2 fallback=0", WebLogLine.browser(BrowserEngine.GOOGLE, own = false, fallback = false).logcat())
         assertTrue(WebLogEvent.entries.all { it.reservedId in 160..169 })
         assertEquals(WebFail.entries.size, WebFail.entries.map { it.id }.toSet().size)
     }

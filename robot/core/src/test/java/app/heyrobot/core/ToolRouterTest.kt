@@ -71,14 +71,20 @@ class ToolRouterTest {
             ToolRouter.tools(route("text Mom I'm late"), d))
         // 0.9: the Termux tools only when Settings › Termux turned them on (TermuxTool.tools), never by the groups alone.
         val termux = setOf(ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND)
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux,
+        // 1.0: browser_search only when the question names an engine or the browser (BrowserRouter.named).
+        val browser = ToolName.BROWSER_SEARCH
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser,
             ToolRouter.tools(ToolGroup.entries.toSet(), d))
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.WEB_SEARCH - termux, ToolRouter.tools(ToolGroup.entries.toSet(), d, memory = true))
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.WEB_SEARCH - termux - browser,
+            ToolRouter.tools(ToolGroup.entries.toSet(), d, memory = true))
         // 0.9: web_search only with Settings › Web search on (and its group: the words called for it).
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - termux,
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - termux - browser,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, web = true))
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH,
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - browser,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, termux = termux))
+        assertEquals(Prompt.CORE_TOOLS + browser, ToolRouter.tools(route("look it up on Google"), d, browser = true))
+        assertEquals(Prompt.CORE_TOOLS + ToolName.WEB_SEARCH + browser, ToolRouter.tools(route("look it up on DuckDuckGo"), d, web = true, browser = true))
+        assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, browser = true))
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, termux = termux))
         assertEquals(Prompt.CORE_TOOLS + ToolName.TERMUX_COMMAND, ToolRouter.tools(core + ToolGroup.TERMUX, d, termux = setOf(ToolName.TERMUX_COMMAND)))
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, web = true))

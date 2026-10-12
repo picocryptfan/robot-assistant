@@ -397,6 +397,8 @@ enum class VoiceEvent(val id: Int) {
     WEB_ANSWER(162),
     /** A search failed: a = core web WebFail, b = the service (0: none chosen). */
     WEB_FAILED(163),
+    /** 1.0: a search opened in your browser: a = core web BrowserEngine.code, b = 1 your words or 2 the model's, c = 1 when Robot's own was off. */
+    BROWSER_SEARCH(164),
     /** 0.9, the Termux agent (events 170 to 179, core termux TermuxLog): a run sent. a = [TermuxRunKind], b = its time limit in s. */
     TERMUX_SENT(170),
     /** A run ended: a = [TermuxExitBucket], b = ms, c = TermuxLog.doneC (the output's size bucket in KB × 2, + 1 when it was cut). */
@@ -1069,6 +1071,8 @@ object VoiceLogText {
             VoiceEvent.WEB_PAGES -> "Pages read for the answer: $a" + (if (b % 10 > 0) " · ${b % 10} skipped (" + WebLogNumbers.skip(b / 10) + ")" else "") + " · $c ms"
             VoiceEvent.WEB_ANSWER -> "Answer from the web: about ${a * 10} tokens in, $b out · first words after $c ms"
             VoiceEvent.WEB_FAILED -> "Web search failed: " + WebLogNumbers.fail(a) + (if (b > 0) " (" + WebLogNumbers.service(b) + ")" else "")
+            VoiceEvent.BROWSER_SEARCH -> "Search opened in your browser: " + WebLogNumbers.engine(a) + (if (b == 2) " · the model's words" else " · your words") +
+                if (c == 1) " · web search off" else ""
         }
     }
 

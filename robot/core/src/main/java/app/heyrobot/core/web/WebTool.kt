@@ -76,6 +76,8 @@ object WebGate {
     /** Pages a search may open from this phone with [s] (0 when it never reads pages, or reads them through the service). */
     fun pagesFromPhone(s: WebSettings): Int = when {
         s.readPages == ReadPages.NEVER -> 0
+        // 1.0: DuckDuckGo's Instant Answers are short answers with their source; no page is read.
+        s.service != null && !WebSetup.readsPages(s.service) -> 0
         s.readThrough == ReadThrough.SERVICE && (s.service == SearchService.BRAVE || s.service == SearchService.KAGI) -> 0
         else -> s.pages
     }
@@ -258,6 +260,8 @@ object WebLogNumbers {
     fun skip(code: Int): String = PageSkip.entries.firstOrNull { it.code == code }?.text ?: "#$code"
 
     fun fail(id: Int): String = WebFail.entries.firstOrNull { it.id == id }?.title ?: "#$id"
+
+    fun engine(code: Int): String = BrowserEngine.entries.firstOrNull { it.code == code }?.title ?: "#$code"
 
 }
 

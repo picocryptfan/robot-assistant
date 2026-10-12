@@ -130,9 +130,9 @@ object MessageQuarantine {
     /** A spoken yes may answer a reply card [now]: Robot isn't saying a message's words, and finished them [YES_AFTER_MS] ago or more. */
     fun voiceYesNow(readAloud: List<ReadAloud>, now: Long): Boolean = readAloud.none { now - it.endedAt < YES_AFTER_MS }
 
-    /** Actions whose effect reaches someone else: a text, an email, a helper, or anything that goes online. */
+    /** Actions whose effect reaches someone else: a text, an email, a helper, a search in your browser (1.0), or anything that goes online. */
     fun leavesForOthers(tool: ToolName): Boolean =
-        tool == ToolName.SEND_TEXT || tool == ToolName.DRAFT_EMAIL || tool == ToolName.ASK_CLAUDE || tool.online
+        tool == ToolName.SEND_TEXT || tool == ToolName.DRAFT_EMAIL || tool == ToolName.ASK_CLAUDE || tool == ToolName.BROWSER_SEARCH || tool.online
 
     /**
      * The quarantine's verdict for [tool] asked for by [origin] in a conversation marked [taint]. [toSender]: the action

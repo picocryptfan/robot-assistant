@@ -207,12 +207,13 @@ object ToolRouter {
      * send_text when the texting app is Off. ask_claude only with [askClaude] (Ask Claude on, escalation not Off:
      * ClaudeSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch); web_search only
      * with [web] (0.9: Settings › Web search on and set up); a Termux tool only when in [termux] (0.9: Settings › Termux on,
-     * set up, and that tool on).
+     * set up, and that tool on); browser_search only with [browser] (1.0: the question names a search engine or the browser).
      */
     fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, memory: Boolean = false, web: Boolean = false,
-        termux: Set<ToolName> = emptySet()): List<ToolName> = ToolName.entries.filter { t ->
+        termux: Set<ToolName> = emptySet(), browser: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
         t.group in groups && t.forModel && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
-            (t != ToolName.ASK_CLAUDE || askClaude) && (t.group != ToolGroup.MEMORY || memory) && (t != ToolName.WEB_SEARCH || web) && (!t.termux || t in termux)
+            (t != ToolName.ASK_CLAUDE || askClaude) && (t.group != ToolGroup.MEMORY || memory) && (t != ToolName.WEB_SEARCH || web) && (!t.termux || t in termux) &&
+            (t != ToolName.BROWSER_SEARCH || browser)
     }
 
     /** "core.people" for the logs (a fixed identifier, never the question). */

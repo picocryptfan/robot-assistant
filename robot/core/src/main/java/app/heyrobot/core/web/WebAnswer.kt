@@ -359,13 +359,15 @@ data class AnswerCard(
         /**
          * The card for an answer: [cited] as [Citations.finish] gave them; Wikipedia's licence credited once per
          * article shown (from Wikipedia itself, or a wikipedia.org result any service found: its snippet and page are
-         * CC BY-SA text too), Brave's line when [poweredByBrave].
+         * CC BY-SA text too), Brave's line when [poweredByBrave], and DuckDuckGo's for its Instant Answers (1.0).
          */
         fun of(service: SearchService, query: String, cited: Cited, pagesRead: Int = 0, throughService: Boolean = false,
             skipped: List<Pair<String, PageSkip>> = emptyList(), showCost: Boolean = false, poweredByBrave: Boolean = true): AnswerCard {
             fun card(s: WebSource) = CardSource(s.n, s.title, s.domain, s.url)
             val all = cited.cited + cited.alsoFound
             val credits = buildList {
+                // 1.0: DuckDuckGo's Instant Answer API asks for credit wherever its answers show, with each answer's source.
+                if (all.any { it.provider == SearchProvider.DUCKDUCKGO }) add(SearchProvider.DUCKDUCKGO.credit!!)
                 all.filter { it.provider == SearchProvider.WIKIPEDIA || it.domain == "wikipedia.org" || it.domain.endsWith(".wikipedia.org") }
                     .forEach { add(WikipediaWire.credit(it.title.removeSuffix(" - Wikipedia").removeSuffix(" — Wikipédia").trim())) }
                 if (poweredByBrave && all.any { it.provider == SearchProvider.BRAVE }) add(SearchProvider.BRAVE.credit!!)

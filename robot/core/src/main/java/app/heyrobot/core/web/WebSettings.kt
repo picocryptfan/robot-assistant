@@ -22,6 +22,9 @@ enum class SearchService(val code: Int, val title: String, val label: String, va
         "Run by someone you don't know: they can see and keep your searches. Many public servers refuse apps."),
     WIKIPEDIA_ONLY(6, "Wikipedia only", "Wikipedia", SearchProvider.WIKIPEDIA, null,
         "No account. Answers facts from Wikipedia; no general web search."),
+    /** 1.0: DuckDuckGo's official, free, keyless Instant Answer API: short answers only, never a list of results (DuckDuckGoWire). */
+    DDG_INSTANT(7, "DuckDuckGo Instant Answers", "DuckDuckGo", SearchProvider.DUCKDUCKGO, null,
+        "No account. DuckDuckGo's short answers, often from Wikipedia; not a list of results."),
     ;
 
     /** Needs an API key (kept by 0.6.0's HelperKeys under [keyId], read only in the voice process). */
@@ -47,21 +50,28 @@ object WebSetup {
     /**
      * The services in the order set-up lists them: your own SearXNG first when you have a home server (0.6.0's Home
      * helper, or one you typed); otherwise Kagi first (pricier than Brave, but it stores no API queries against your
-     * account), then Brave, Mojeek, your own SearXNG for later, a public SearXNG (never suggested), Wikipedia only.
+     * account), then Brave, Mojeek, your own SearXNG for later, then the free ones: DuckDuckGo Instant Answers (1.0), a public
+     * SearXNG (never suggested), Wikipedia only.
      */
     fun order(hasHomeServer: Boolean): List<SearchService> =
-        if (hasHomeServer) listOf(SearchService.SEARXNG_HOME, SearchService.KAGI, SearchService.BRAVE, SearchService.MOJEEK, SearchService.SEARXNG_PUBLIC, SearchService.WIKIPEDIA_ONLY)
-        else listOf(SearchService.KAGI, SearchService.BRAVE, SearchService.MOJEEK, SearchService.SEARXNG_HOME, SearchService.SEARXNG_PUBLIC, SearchService.WIKIPEDIA_ONLY)
+        if (hasHomeServer) listOf(SearchService.SEARXNG_HOME, SearchService.KAGI, SearchService.BRAVE, SearchService.MOJEEK, SearchService.DDG_INSTANT,
+            SearchService.SEARXNG_PUBLIC, SearchService.WIKIPEDIA_ONLY)
+        else listOf(SearchService.KAGI, SearchService.BRAVE, SearchService.MOJEEK, SearchService.SEARXNG_HOME, SearchService.DDG_INSTANT, SearchService.SEARXNG_PUBLIC,
+            SearchService.WIKIPEDIA_ONLY)
+
+    /** 1.0: DuckDuckGo's Instant Answers are short answers with their source: no result pages are read. */
+    fun readsPages(service: SearchService): Boolean = service != SearchService.DDG_INSTANT
 
     /** The one set-up marks as suggested. */
     fun suggested(hasHomeServer: Boolean): SearchService = order(hasHomeServer).first()
 
-    /** The line under the list. */
-    const val NOT_OFFERED = "DuckDuckGo, Google and Bing have no search API that Robot can use."
+    /** The line under the list (1.0: they open in your browser instead, Settings › Web search's other list). */
+    const val NOT_OFFERED = "Google, Bing, Startpage and DuckDuckGo have no full search API that Robot can use: they open in your browser instead."
 
     /** The consent screen, shown once at set-up and then in Settings. */
     fun consent(service: SearchService): String =
-        "When you ask, Robot sends your search words to ${service.label}. To answer, it may open up to 3 of the result pages from " +
+        if (!readsPages(service)) "When you ask, Robot sends your search words to ${service.label}. Nothing else leaves the phone."
+        else "When you ask, Robot sends your search words to ${service.label}. To answer, it may open up to 3 of the result pages from " +
             "this phone, like a browser without cookies: those sites see your IP address. Nothing else leaves the phone."
 }
 
@@ -101,7 +111,7 @@ data class WebSettings(
     val service: SearchService? = null,
     /** Your own SearXNG's address as typed at set-up (SearxngWire.base checks it). */
     val searxng: String? = null,
-    /** A public SearXNG's address, typed by you (Robot ships no list). */
+    /** A public SearXNG's address: one of set-up's short list (1.0, PublicSearxng) or one you typed. */
     val publicSearxng: String? = null,
     val ask: WebAsk = WebAsk.FIRST_TIME,
     val askAt: Long = 0,
@@ -130,6 +140,11 @@ data class WebSettings(
     val lockScreen: Boolean = false,
     /** The optional "Powered by Brave" line on Brave's answers. */
     val poweredByBrave: Boolean = true,
+    /**
+     * 1.0: the engine a search in your browser uses when you name none ("search in my browser for …", and "search the web for
+     * …" while Robot's own web search is off). Startpage by default ([BrowserEngine.DEFAULT] says why). Needs no set-up.
+     */
+    val browserEngine: BrowserEngine = BrowserEngine.DEFAULT,
 ) {
     /** Searches can happen: on, a service chosen, its address typed when it needs one. */
     val ready: Boolean get() = on && service != null && when (service) {
@@ -162,6 +177,7 @@ data class WebSettings(
         put("dailySearches", dailySearches)
         put("lockScreen", lockScreen)
         put("poweredByBrave", poweredByBrave)
+        put("browserEngine", browserEngine.id)
     }
 
     companion object {
@@ -195,6 +211,7 @@ data class WebSettings(
                 dailySearches = o.optInt("dailySearches", d.dailySearches).coerceIn(1, MAX_DAILY),
                 lockScreen = o.optBoolean("lockScreen", d.lockScreen),
                 poweredByBrave = o.optBoolean("poweredByBrave", d.poweredByBrave),
+                browserEngine = BrowserEngine.entries.firstOrNull { it.id == o.optString("browserEngine") } ?: d.browserEngine,
             ).let { if (it.service == null) it.copy(on = false) else it }
         }
 
@@ -342,7 +359,8 @@ object WebLimits {
 }
 
 /**
- * The voice log's web search events (A10.5): VoiceEvent's WEB_SEARCH to WEB_FAILED, 160–163 of web search's 160–169.
+ * The voice log's web search events (A10.5): VoiceEvent's WEB_SEARCH to WEB_FAILED, 160–163 of web search's 160–169, and
+ * 1.0's BROWSER_SEARCH, 164.
  * Codes and numbers only: never the query, a URL, a domain, a title or page text.
  */
 enum class WebLogEvent(val reservedId: Int) {
@@ -354,6 +372,8 @@ enum class WebLogEvent(val reservedId: Int) {
     WEB_ANSWER(162),
     /** a = [WebFail.id]. */
     WEB_FAILED(163),
+    /** 1.0: a = [BrowserEngine.code], b = 1 your words or 2 the model's, c = 1 when Robot's own web search was off. Never the words. */
+    BROWSER_SEARCH(164),
 }
 
 /** One web search log line: numbers only, by construction. */
@@ -364,6 +384,7 @@ data class WebLogLine(val event: WebLogEvent, val a: Int, val b: Int = 0, val c:
         WebLogEvent.WEB_PAGES -> "web_pages ok=$a skipped=$b ms=$c why=$spare"
         WebLogEvent.WEB_ANSWER -> "web_answer in=${a * 10} out=$b first_ms=$c"
         WebLogEvent.WEB_FAILED -> "web_failed why=$a"
+        WebLogEvent.BROWSER_SEARCH -> "browser_search engine=$a by=$b fallback=$c"
     }
 
     companion object {
@@ -373,6 +394,7 @@ data class WebLogLine(val event: WebLogEvent, val a: Int, val b: Int = 0, val c:
         fun answer(inputTokens: Int, outputTokens: Int, firstTokenMs: Long) =
             WebLogLine(WebLogEvent.WEB_ANSWER, inputTokens / 10, outputTokens, firstTokenMs.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
         fun failed(why: WebFail) = WebLogLine(WebLogEvent.WEB_FAILED, why.id)
+        fun browser(engine: BrowserEngine, own: Boolean, fallback: Boolean) = WebLogLine(WebLogEvent.BROWSER_SEARCH, engine.code, if (own) 1 else 2, if (fallback) 1 else 0)
     }
 }
 
@@ -412,7 +434,7 @@ enum class WebFail(override val id: Int, override val title: String) : LogCode {
             BUSY -> "$cap is busy just now"
             SERVICE -> "$cap didn't answer properly"
             TIMEOUT -> "The search took too long"
-            NO_RESULTS -> "No results"
+            NO_RESULTS -> if (service == SearchService.DDG_INSTANT) "DuckDuckGo has no short answer for that" else "No results"
             STOPPED -> "Stopped"
             DAILY_CAP -> "That's today's limit of web searches"
             QUERY_REFUSED -> "That search looked like it contained personal details, so Robot didn't send it."

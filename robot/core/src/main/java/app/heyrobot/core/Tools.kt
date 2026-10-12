@@ -56,6 +56,8 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
      * answered by a tool-free one-shot. Described only with Settings › Web search on; goes online like the weather.
      */
     WEB_SEARCH("web_search", "Web searches", ToolGroup.WEB, reads = true, online = true),
+    /** 1.0: a search in your browser (BrowserActions.kt): Robot sends nothing itself, never sees the results, never on the lock screen. */
+    BROWSER_SEARCH("browser_search", "Searches in your browser", ToolGroup.WEB, internal = true),
     /**
      * Ask Claude (docs/ask-claude.md "When Robot needs help"): described to Gemma only with Ask Claude on and escalation
      * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
@@ -188,7 +190,7 @@ object ToolSpecs {
         ToolSpec(ToolName.FORGET, "Forget a remembered fact.", listOf(
             ToolParam("query", "string", "Its words", true),
         )),
-    ) + TermuxCalls.SPECS
+    ) + BrowserCalls.SPEC + TermuxCalls.SPECS
 
     fun of(tool: ToolName): ToolSpec = ALL.first { it.tool == tool }
 }
@@ -687,6 +689,7 @@ object ToolCalls {
             ToolName.FREE_STORAGE -> ParsedCall.Ok(Action.FreeStorage(StorageWay.of(textArg(a, MAX_NAME, "what", "way", "kind", "target", "how"))))
             // 0.9: a command's spaces and quotes are kept as written (TermuxActions.kt).
             ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> TermuxCalls.parse(tool, a)
+            ToolName.BROWSER_SEARCH -> BrowserCalls.parse(a) { m, max, names -> textArg(m, max, *names) }
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
                 val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }

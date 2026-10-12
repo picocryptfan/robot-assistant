@@ -16,7 +16,12 @@ object WebRouter {
         "the web", "internet", "latest", "news", "headline", "headlines", "today s", "todays", "current", "currently", "who won", "price of",
         "prices of", "score of", "results of", "cherche", "chercher", "recherche", "rechercher", "regarde sur internet", "en ligne", "sur le web",
         "sur internet", "dernieres nouvelles", "nouvelles", "actualite", "actualites", "actu", "qui a gagne", "prix de", "prix du", "prix des",
+        // 1.0: an engine or your browser named (a search in your browser, BrowserRouter).
+        "duckduckgo", "duck duck go", "startpage", "start page", "brave search", "mojeek", "qwant", "ecosia", "bing", "browser", "navigateur",
     )
+
+    /** The words that stand for something said before ("google it"): the model writes the query, never "it". */
+    private val PRONOUN = setOf("it", "that", "this", "them", "ca", "cela", "ceci", "le", "la", "les")
 
     /** "search …", "look up …" when what follows is one of your own things: notes, contacts, calendar, messages, photos. */
     private val OWN = Regex(
@@ -34,7 +39,8 @@ object WebRouter {
      * "search (the web|online|the internet) for X", "search for X (online|on the web|on the internet)", "look up X
      * (online|on the web|on the internet)", "look X up online", "google X", "web search X"; French "cherche (sur le
      * web|sur internet|en ligne) X", "cherche X (sur le web|sur internet|en ligne)", "recherche X", "fais une recherche
-     * (sur|pour) X". Null when it isn't one, or X is one of your own things ("search my notes for…").
+     * (sur|pour) X". Null when it isn't one, X is one of your own things ("search my notes for…"), or X stands for something
+     * said before ("google it"). 1.0: « … sur Google » names an engine, so it opens in your browser (BrowserRouter).
      */
     fun explicit(question: String): String? {
         val q = question.trim().replace(Regex("\\s+"), " ")
@@ -46,15 +52,15 @@ object WebRouter {
             Regex("^look (.+?) up (?:online|on the web|on the internet)$", RegexOption.IGNORE_CASE),
             Regex("^(?:look up|lookup) (.+?) (?:online|on the web|on the internet)$", RegexOption.IGNORE_CASE),
             Regex("^google(?: for)? (.+)$", RegexOption.IGNORE_CASE),
-            Regex("^(?:cherche|recherche|trouve)(?:-moi| moi)? (?:sur le web|sur internet|sur le net|en ligne|sur google)(?: pour)? (.+)$", RegexOption.IGNORE_CASE),
-            Regex("^(?:cherche|recherche|trouve)(?:-moi| moi)? (.+?) (?:sur le web|sur internet|sur le net|en ligne|sur google)$", RegexOption.IGNORE_CASE),
+            Regex("^(?:cherche|recherche|trouve)(?:-moi| moi)? (?:sur le web|sur internet|sur le net|en ligne)(?: pour)? (.+)$", RegexOption.IGNORE_CASE),
+            Regex("^(?:cherche|recherche|trouve)(?:-moi| moi)? (.+?) (?:sur le web|sur internet|sur le net|en ligne)$", RegexOption.IGNORE_CASE),
             Regex("^fais (?:une )?recherche (?:sur le web |sur internet |en ligne )?(?:sur|pour|a propos de|à propos de) (.+)$", RegexOption.IGNORE_CASE),
             Regex("^recherche (.+)$", RegexOption.IGNORE_CASE),
         )
         for (p in patterns) {
             val m = p.find(body) ?: continue
             val x = TAIL.replace(m.groupValues[1], "").trim().trim('"', '“', '”', '«', '»', '\'').trim()
-            if (x.isEmpty()) return null
+            if (x.isEmpty() || WebWords.fold(x) in PRONOUN) return null
             if (OWN.containsMatchIn(WebWords.fold(x))) return null
             return x
         }
