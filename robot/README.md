@@ -4656,9 +4656,13 @@ Asked ("run my…", Run now) or tapped (a Ready card), every step goes through t
 
 **The lock screen.** At "Time and weather" (the default), the brief says the greeting, the time and the weather without
 your town, then "Unlock to hear your day"; if you unlock within 15 minutes, the rest follows (Finish when I unlock).
-Every part goes through OutputGuard before it plays: nothing personal is said locked, nothing talks over a call, and
-"Headset only" says nothing on the speaker (and personal parts only in a headset Robot knows is private: wired, USB and
-hearing aids; a Bluetooth headset once you told headset mode it is private).
+Every part goes through OutputGuard before it plays, by where its sound goes now: nothing personal is said locked,
+nothing talks over a call, and "Headset only" says nothing on the speaker or in the car (and personal parts only in a
+headset Robot knows is private: wired, USB and hearing aids; a Bluetooth headset once you told headset mode it is
+private). With "Headset, else the phone speaker", a personal part waits as on the lock screen (said after an unlock within
+15 minutes) when the sound goes somewhere others may hear: a Bluetooth device you haven't confirmed private, a speaker,
+line out, or in car mode the car, unless Settings › Car mode › "Read message text aloud when others may hear" is Always
+(a run nobody started never asks).
 
 **Late or missed times.** One exact alarm is set for the soonest routine (never Android's "next alarm"). Within 10
 minutes of its time a routine runs; up to 3 hours late the same day (Doze, a reboot) it waits on a Ready card ("Your

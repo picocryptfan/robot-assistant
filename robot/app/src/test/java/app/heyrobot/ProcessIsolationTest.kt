@@ -887,6 +887,18 @@ class ProcessIsolationTest {
     }
 
     /**
+     * 0.8 review: an unattended routine's parts are decided by where Robot's voice goes now (getAudioDevicesForAttributes)
+     * and car mode's car with its "Read aloud when others may hear" (core RoutineOutputs).
+     */
+    @Test fun anUnattendedRoutineSpeaksByItsActualRoute() {
+        val voice = code(File(java("app"), "app/heyrobot/assistant/routines/RoutineVoice.kt"))
+        assertTrue(voice.contains("RoutineOutputs.decide(part, s.routine.output, phone(), route(), s.everything)"))
+        val route = voice.substringAfter("private fun route(): RoutineRoute {").substringBefore("\n    }\n")
+        assertTrue(route, route.contains("am.getAudioDevicesForAttributes(attrs)") && route.contains("CarModeController.carSeen()") &&
+            route.contains("HandsFreeHub.car.settings.readAloud"))
+    }
+
+    /**
      * 0.8, Settings › Voice › Transcription check › Microphone: Headset records through the headset as a session listens
      * (its call route and pinned input, core CheckMics), only once its input is the one capturing, never over a session's
      * or a call's audio, and lets the route go whenever the recording stops.

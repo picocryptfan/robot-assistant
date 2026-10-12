@@ -4,6 +4,7 @@ import app.heyrobot.core.output.HoldWhy
 import app.heyrobot.core.output.Keep
 import app.heyrobot.core.output.OutputDecision
 import app.heyrobot.core.output.PhoneState
+import app.heyrobot.core.output.ReadAloud as ReadAloudChoice
 import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
 import app.heyrobot.core.output.Trust
@@ -190,7 +191,7 @@ class RoutineRuntimeTest {
         val unlocked = PhoneState(locked = false)
         val locked = PhoneState(locked = true)
         fun d(p: SpokenPart, o: RoutineOutput = RoutineOutput.HEADSET_OR_SPEAKER, phone: PhoneState = unlocked, headset: SeenDevice? = null,
-            trust: Trust = Trust.NOT_PRIVATE, everything: Boolean = false) = RoutineOutputs.decide(p, o, phone, headset, trust, everything)
+            trust: Trust = Trust.NOT_PRIVATE, everything: Boolean = false) = RoutineOutputs.decide(p, o, phone, RoutineRoute(headset, trust), everything)
         assertTrue(d(public) is OutputDecision.Speak)
         assertTrue(d(personal) is OutputDecision.Speak)
         // Locked: the personal part waits for the unlock, "Unlock to hear it." said instead; at "Everything" it plays.
@@ -209,6 +210,55 @@ class RoutineRuntimeTest {
         assertTrue(d(personal, RoutineOutput.HEADSET_ONLY, headset = wired, trust = Trust.PRIVATE) is OutputDecision.Speak)
         assertEquals(HoldWhy.NOT_PRIVATE, RoutineOutputs.why(d(personal, RoutineOutput.HEADSET_ONLY, headset = wired, trust = Trust.NOT_PRIVATE)))
         assertTrue(d(personal, RoutineOutput.HEADSET_ONLY, headset = wired, trust = Trust.ASK) is OutputDecision.Ask)
+        // A speaker is no headset, and neither is the phone.
+        assertEquals(HoldWhy.DEVICE_GONE, RoutineOutputs.why(d(public, RoutineOutput.HEADSET_ONLY, headset = SeenDevice(RouteType.BLE_SPEAKER, "Box"))))
+        assertEquals(HoldWhy.DEVICE_GONE, RoutineOutputs.why(d(public, RoutineOutput.HEADSET_ONLY, headset = SeenDevice(RouteType.SPEAKER))))
+    }
+
+    /**
+     * An unattended run decides by where its sound goes now: the phone itself as before; a Bluetooth device you haven't
+     * confirmed private (or a speaker) hears the public parts only, the personal ones waiting as the lock screen's do; car
+     * mode with its car follows "Read aloud when others may hear" (never asked during a run nobody started) and the
+     * trusted session; "Headset only" never counts the car.
+     */
+    @Test fun anUnattendedRunDecidesByWhereItsSoundGoes() {
+        val public = SpokenPart(listOf("It's 7:02."), false, StepCode.BRIEF)
+        val personal = SpokenPart(listOf("You have 3 events today."), true, StepCode.BRIEF)
+        val unlocked = PhoneState(locked = false)
+        val buds = SeenDevice(RouteType.BT_A2DP, "Buds", "XX:XX:XX:XX:12:34")
+        val box = SeenDevice(RouteType.BT_A2DP, "Kitchen", "XX:XX:XX:XX:56:78")
+        fun d(p: SpokenPart, route: RoutineRoute, o: RoutineOutput = RoutineOutput.HEADSET_OR_SPEAKER, phone: PhoneState = unlocked) =
+            RoutineOutputs.decide(p, o, phone, route, everything = false)
+        // The phone itself (its speaker): as before.
+        assertTrue(d(personal, RoutineRoute(SeenDevice(RouteType.SPEAKER))) is OutputDecision.Speak)
+        // A Bluetooth device not confirmed private: the public part plays, the personal one waits.
+        for (t in listOf(Trust.ASK, Trust.NOT_PRIVATE)) {
+            assertTrue(d(public, RoutineRoute(box, t)) is OutputDecision.Speak)
+            val p = d(personal, RoutineRoute(box, t))
+            assertFalse(p.toString(), p is OutputDecision.Speak)
+            assertTrue(p.toString(), RoutineOutputs.waitsForUnlock(p))
+        }
+        // Headphones you confirmed private: all of it.
+        assertTrue(d(personal, RoutineRoute(buds, Trust.PRIVATE)) is OutputDecision.Speak)
+        // Line out or a speaker by its type: never private.
+        assertTrue(RoutineOutputs.waitsForUnlock(d(personal, RoutineRoute(SeenDevice(RouteType.LINE, "TV"), Trust.NOT_PRIVATE))))
+        // Car mode with its car: "Ask each time" and "Never" keep the personal part; "Always" reads it; public parts play.
+        val car = SeenDevice(RouteType.BT_SCO, "MyCar", "XX:XX:XX:XX:9A:BC")
+        for (r in listOf(ReadAloudChoice.ASK, ReadAloudChoice.NEVER)) {
+            val p = d(personal, RoutineRoute(car, Trust.NOT_PRIVATE, car = car, readAloud = r))
+            assertFalse(p.toString(), p is OutputDecision.Speak)
+            assertTrue(p.toString(), RoutineOutputs.waitsForUnlock(p))
+        }
+        assertTrue(d(personal, RoutineRoute(car, Trust.NOT_PRIVATE, car = car, readAloud = ReadAloudChoice.ALWAYS)) is OutputDecision.Speak)
+        assertTrue(d(public, RoutineRoute(car, Trust.NOT_PRIVATE, car = car)) is OutputDecision.Speak)
+        // Locked in the car: only in its trusted session (and "Always").
+        val lockedPhone = PhoneState(locked = true)
+        assertEquals(HoldWhy.LOCKED, RoutineOutputs.why(d(personal, RoutineRoute(car, car = car, readAloud = ReadAloudChoice.ALWAYS), phone = lockedPhone)))
+        assertTrue(d(personal, RoutineRoute(car, car = car, carTrusted = true, readAloud = ReadAloudChoice.ALWAYS), phone = lockedPhone) is OutputDecision.Speak)
+        // "Headset only" in the car: the car is no headset.
+        assertEquals(HoldWhy.DEVICE_GONE, RoutineOutputs.why(d(public, RoutineRoute(car, car = car), RoutineOutput.HEADSET_ONLY)))
+        // What was dropped stays dropped: a part held for nothing to come back to (a headset gone, unlocked) isn't kept.
+        assertFalse(RoutineOutputs.waitsForUnlock(OutputDecision.Hold(HoldWhy.DEVICE_GONE, Keep.SCREEN)))
     }
 
     @Test fun theEditorsStepsBuildFromOneArgument() {

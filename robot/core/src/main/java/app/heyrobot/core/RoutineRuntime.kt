@@ -7,6 +7,7 @@ import app.heyrobot.core.output.GuardSettings
 import app.heyrobot.core.output.HoldWhy
 import app.heyrobot.core.output.Keep
 import app.heyrobot.core.output.PhoneState
+import app.heyrobot.core.output.RouteType
 import app.heyrobot.core.output.SeenDevice
 import app.heyrobot.core.output.SessionKind
 import app.heyrobot.core.output.SpeechClass
@@ -255,26 +256,70 @@ object TriggerNeeds {
 
 // ---------------------------------------------------------------------------------------------- where it may be said
 
+/**
+ * Where an unattended run's sound goes now (0.8 review), as the voice process reads it: [routed] the output Robot's voice
+ * would play on (AudioManager.getAudioDevicesForAttributes; null: the phone itself), [trust] DeviceMemory's word on it, and
+ * [car] the car when car mode runs with it connected ([carTrusted]: its trusted session, [readAloud]: Settings › Car
+ * mode › "Read aloud when others may hear").
+ */
+data class RoutineRoute(
+    val routed: app.heyrobot.core.output.SeenDevice? = null,
+    val trust: Trust = Trust.NOT_PRIVATE,
+    val car: app.heyrobot.core.output.SeenDevice? = null,
+    val carTrusted: Boolean = false,
+    val readAloud: app.heyrobot.core.output.ReadAloud = app.heyrobot.core.output.ReadAloud.ASK,
+) {
+    /** Robot's voice plays on the phone itself (its speaker or earpiece). */
+    val onPhone: Boolean get() = routed == null || routed.type.family == app.heyrobot.core.output.DeviceFamily.BUILTIN
+}
+
 object RoutineOutputs {
+    /** What "Headset only" counts as a headset: worn, never a speaker, line out or the phone. */
+    private val HEADSETS = setOf(RouteType.WIRED_HEADSET, RouteType.WIRED_HEADPHONES, RouteType.USB_HEADSET, RouteType.BT_A2DP, RouteType.BT_SCO,
+        RouteType.BLE_HEADSET, RouteType.HEARING_AID)
+
     /**
-     * OutputGuard's decision for [part] of an unattended run: on the phone (the routine speaks "Headset, else the phone
-     * speaker"), or in a headset session for "Headset only" ([headset]: the headset sound goes to now, null when none is
-     * connected; [trust] from DeviceMemory, or by its type until headset mode remembers devices). [everything]: the brief's
-     * lock level is "Everything" (RoutineGate let a personal part run locked). Null: "Don't speak".
+     * OutputGuard's decision for [part] of an unattended run, by where its sound goes now ([route]):
+     * - car mode with its car: the car's context, so a personal part follows "Read aloud when others may hear" (never
+     *   without "Always": nobody is asked during an unattended run) and the trusted session on the lock screen;
+     * - "Headset, else the phone speaker" on the phone itself: as on the phone (personal parts unlocked, or at
+     *   "Everything");
+     * - anywhere else (a Bluetooth device not confirmed private, a speaker, line out): personal parts only where it is
+     *   private, public parts play;
+     * - "Headset only": only on a headset (never the car, a speaker or the phone), personal parts only on a private one.
+     * [everything]: the brief's lock level is "Everything" (RoutineGate let a personal part run locked). Null: "Don't
+     * speak". A personal part kept from a device others may hear waits as the lock screen's does ([waitsForUnlock]).
      */
-    fun decide(part: SpokenPart, output: RoutineOutput, phone: PhoneState, headset: SeenDevice?, trust: Trust, everything: Boolean): OutputDecision? {
+    fun decide(part: SpokenPart, output: RoutineOutput, phone: PhoneState, route: RoutineRoute, everything: Boolean): OutputDecision? {
         val u = Utterance(if (part.personal) SpeechClass.PERSONAL else SpeechClass.PUBLIC, SpeechSource.ROUTINE, part.chars)
+        val guard = GuardSettings(readAloud = route.readAloud)
         val ctx = when (output) {
             RoutineOutput.SILENT -> return null
-            RoutineOutput.HEADSET_ONLY -> OutputContext(SessionKind.HEADSET, headset, if (headset == null) Trust.NOT_PRIVATE else trust, phone, headset,
-                lockAllowsPersonal = everything)
-            RoutineOutput.HEADSET_OR_SPEAKER -> OutputContext(SessionKind.PHONE, null, Trust.NOT_PRIVATE, phone, lockAllowsPersonal = everything)
+            RoutineOutput.HEADSET_ONLY -> {
+                val headset = route.routed?.takeIf { route.car == null && it.type in HEADSETS }
+                OutputContext(SessionKind.HEADSET, headset, if (headset == null) Trust.NOT_PRIVATE else route.trust, phone, headset,
+                    lockAllowsPersonal = everything)
+            }
+            RoutineOutput.HEADSET_OR_SPEAKER -> when {
+                route.car != null -> OutputContext(SessionKind.CAR, route.car, Trust.NOT_PRIVATE, phone, route.car, carTrusted = route.carTrusted,
+                    lockAllowsPersonal = everything)
+                route.onPhone -> OutputContext(SessionKind.PHONE, null, Trust.NOT_PRIVATE, phone, lockAllowsPersonal = everything)
+                else -> OutputContext(SessionKind.HEADSET, route.routed, route.trust, phone, route.routed, lockAllowsPersonal = everything)
+            }
         }
-        return OutputGuard.decide(u, ctx, GuardSettings())
+        return OutputGuard.decide(u, ctx, guard)
     }
 
-    /** A decision that waits for the unlock (the part is kept, "Finish when I unlock"), rather than dropped. */
-    fun waitsForUnlock(d: OutputDecision?): Boolean = d is OutputDecision.Hold && d.keep == Keep.UNLOCK
+    /**
+     * A decision that keeps the part for later ("Finish when I unlock") rather than dropping it: held for the lock screen
+     * or for parking, or kept from a device others may hear (asked about, or not private), to say once it is back on the
+     * phone or in private headphones.
+     */
+    fun waitsForUnlock(d: OutputDecision?): Boolean = when (d) {
+        is OutputDecision.Ask -> true
+        is OutputDecision.Hold -> d.keep == Keep.UNLOCK || d.keep == Keep.PARK || d.why == HoldWhy.NOT_PRIVATE
+        else -> false
+    }
 
     /** Why a part wasn't said, for the voice log (OUTPUT_HELD comes with headset mode; routines log the run's held count). */
     fun why(d: OutputDecision?): HoldWhy? = (d as? OutputDecision.Hold)?.why
