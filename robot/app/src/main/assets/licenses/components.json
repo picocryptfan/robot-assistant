@@ -82,6 +82,10 @@
   "LicenseRef-brave-search-terms": {
    "name": "Brave Search API Terms of Service",
    "url": "https://api-dashboard.search.brave.com/terms-of-service"
+  },
+  "LicenseRef-duckduckgo-api": {
+   "name": "DuckDuckGo Instant Answer API terms",
+   "url": "https://duckduckgo.com/api"
   }
  },
  "components": [
@@ -873,6 +877,16 @@
    "url": "https://brave.com/search/api/",
    "where": "service",
    "note": "Web search with your own Brave key (0.9): results are used for one answer and never stored; the card says “Powered by Brave” unless you turn that line off (optional in Brave's terms)."
+  },
+  {
+   "id": "duckduckgo-instant-answers",
+   "name": "DuckDuckGo Instant Answer API",
+   "version": "service",
+   "licence": "LicenseRef-duckduckgo-api",
+   "copyright": "Results from DuckDuckGo",
+   "url": "https://duckduckgo.com/api",
+   "where": "service",
+   "note": "Web search's free DuckDuckGo Instant Answers (1.0), when you choose them: short answers only, never a full list of results. The card credits DuckDuckGo (“Results from DuckDuckGo”) and each answer's source with its link, as the API asks; Wikipedia's text keeps its CC BY-SA 4.0 credit. Robot names itself in the API's t parameter (the same for every Robot) and is free and non-commercial."
   },
   {
    "id": "agp",

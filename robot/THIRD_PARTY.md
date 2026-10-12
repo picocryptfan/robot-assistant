@@ -106,6 +106,7 @@ the archive always matches what they build. See the README's "Releasing".
 | Open-Meteo | service | CC-BY-4.0 | online service |
 | Wikipedia text | service | CC-BY-SA-4.0 | online service |
 | Brave Search API | service | LicenseRef-brave-search-terms | online service |
+| DuckDuckGo Instant Answer API | service | LicenseRef-duckduckgo-api | online service |
 | Android Gradle Plugin | 8.8.2 | Apache-2.0 | build and tests only |
 | Kotlin compiler and its Compose plugin | 2.4.0 | Apache-2.0 | build and tests only |
 | JUnit | 4.13.2 | EPL-1.0 | build and tests only |
@@ -578,13 +579,20 @@ on the build machine only; `tools/make_langid.py` uses Python's standard library
   Creative Commons Attribution-ShareAlike 4.0 (https://creativecommons.org/licenses/by-sa/4.0/); the answer card credits
   each article used ("From Wikipedia's article “X”, CC BY-SA 4.0", with links to the article and the licence), the form
   the reuse page asks for (https://en.wikipedia.org/wiki/Wikipedia:Reusing_Wikipedia_content). Robot asks Wikipedia only
-  once it publishes a contact for Wikimedia's User-Agent policy; not in this version. **Brave Search API**
+  because it publishes a contact (hey@robot-app.ai) for Wikimedia's User-Agent policy (1.0). **Brave Search API**
   (`api.search.brave.com`, your own key): used under Brave's API terms (https://api-dashboard.search.brave.com/terms-of-service):
   results are kept in memory for one answer only, History keeps the source domains, and the card shows the optional
   "Powered by Brave" line unless you turn it off. **Kagi** and **Mojeek** (your own key) and **Open Library**
   (`openlibrary.org`, Book lookups, off by default) are used under their own API terms; **your own or a public SearXNG**
-  is server software Robot only talks to. Up to 3 result pages may be read from the phone (the sites see its IP
-  address); their text is used for one answer and never stored.
+  is server software Robot only talks to. **DuckDuckGo Instant Answer API** (`api.duckduckgo.com`, 1.0, free and
+  keyless, when you choose it): DuckDuckGo's page says it "is not a full search results API"; it asks that DuckDuckGo
+  and each answer's source be credited where the answers show, so the card says "Results from DuckDuckGo" and lists each
+  source with its link (Wikipedia's text keeps its CC BY-SA 4.0 credit); Robot names itself in its `t` parameter and is
+  free and non-commercial (https://duckduckgo.com/api, read through an archived copy: the page doesn't open from the
+  build machine). Up to 3 result pages may be read from the phone (the sites see its IP address; never with DuckDuckGo's
+  short answers); their text is used for one answer and never stored. A search in your browser (1.0: Startpage,
+  DuckDuckGo, Brave Search, Mojeek, Qwant, Ecosia, Google, Bing) is your browser's: Robot only opens the engine's search
+  address and uses none of its results.
 
 ## Code adapted from the phase 0 probe and the GPU lab (same author, GPL-3.0)
 
