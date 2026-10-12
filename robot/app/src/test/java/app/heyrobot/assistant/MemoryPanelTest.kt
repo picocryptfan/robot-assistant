@@ -227,6 +227,24 @@ class MemoryPanelTest {
         assertTrue(MemoryPanel.forTurn("When is Julie's birthday?", false, julie.toSet(), 4096).packed.retrievedIds.isEmpty())
     }
 
+    /**
+     * Settings › Memory › Delete all, while a "Forgotten" card's Undo still waits in the panel: the voice process hears it
+     * (Cmd.MEMORY_CHANGED) and that Undo can't put the forgotten item back into the emptied memory.
+     */
+    @Test fun deleteAllLeavesNothingAnUndoCouldPutBack() {
+        say("Remember that Julie likes tulips")
+        val saved = say("Remember that Bob plays chess")
+        val forgot = say("Forget about tulips")
+        assertEquals("Forgotten.", forgot.text)
+        assertTrue(vault.deleteAll())
+        MemoryPanel.changedElsewhere()
+        assertEquals("Nothing to undo.", MemoryPanel.undo(forgot.card!!.undo!!))
+        assertTrue(items().isEmpty())
+        // The Undo of what was saved only forgets it: nothing comes back either.
+        MemoryPanel.undo(saved.card!!.undo!!)
+        assertTrue(items().isEmpty())
+    }
+
     @Test fun theToolsAreCardsAndRefuseASecret() {
         // The model proposing a code: refused, with the reason.
         val p = MemoryPanel.prepare(Action.Remember("The alarm code is 4512"), locked = false)

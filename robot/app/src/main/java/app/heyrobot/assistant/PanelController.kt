@@ -2159,7 +2159,7 @@ object PanelController {
 
     /** Settings › Memory changed something (Cmd.MEMORY_CHANGED): what the panel holds goes, and the live conversation starts again. */
     fun memoryChanged() {
-        MemoryPanel.drop()
+        MemoryPanel.changedElsewhere()
         if (slot.running) closeConvAfterTurn = true else closeLiveConversation()
     }
 

@@ -135,6 +135,17 @@ object MemoryPanel {
         vaultRef = null
     }
 
+    /**
+     * Settings › Memory changed what Robot remembers (Delete all, Start over, an edit, a switch): what was decrypted goes,
+     * and no card's Undo here puts back what was forgotten any more (it may have been deleted there since). An Undo that
+     * forgets what was just saved still works.
+     */
+    @Synchronized
+    fun changedElsewhere() {
+        drop()
+        undos.entries.removeAll { (key, items) -> items.singleOrNull()?.id != key.removePrefix(UNDO) }
+    }
+
     // ------------------------------------------------------------------ this conversation
 
     private var savedLast: String? = null
