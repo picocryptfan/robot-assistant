@@ -241,6 +241,9 @@ private fun LazyListScope.opening(g: GuideCtx) {
         StatusPreference(stringResource(R.string.guide_open_mic), stringResource(if (allowed) R.string.guide_allowed else R.string.guide_open_mic_todo),
             if (allowed) Mark.OK else Mark.TODO,
             action = if (allowed) null else ({ RowButton(R.string.guide_allow, R.string.guide_open_mic_label, g.a.askPermissions) }))
+        // 1.0: the recognizer fix, with a computer or (Shizuku) without one.
+        PreferenceItem(stringResource(R.string.guide_open_fix), stringResource(R.string.guide_open_fix_detail), RIcons.Settings,
+            onClick = { g.a.openPage(Page.AdbFixes) })
     }
     group(R.string.guide_open_ways) {
         PreferenceItem(stringResource(R.string.guide_open_swipe), stringResource(R.string.guide_open_swipe_detail), RIcons.TouchApp)

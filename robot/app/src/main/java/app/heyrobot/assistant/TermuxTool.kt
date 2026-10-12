@@ -4,10 +4,17 @@ import android.content.Context
 import android.content.Intent
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
+import app.heyrobot.core.AdbCheck
+import app.heyrobot.core.AdbFixes
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.Executed
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RLog
+import app.heyrobot.core.RepairWhen
+import app.heyrobot.core.ShizukuOutcome
+import app.heyrobot.core.ShizukuPath
+import app.heyrobot.core.ShizukuResult
+import app.heyrobot.core.ShizukuRun
 import app.heyrobot.core.TermuxCalls
 import app.heyrobot.core.TermuxCommandAction
 import app.heyrobot.core.TermuxScriptAction
@@ -42,6 +49,7 @@ import app.heyrobot.core.termux.TermuxStatus
 import app.heyrobot.core.termux.TermuxTap
 import app.heyrobot.core.termux.TermuxVerdict
 import app.heyrobot.sys.Assistant
+import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.TermuxFacts
 import app.heyrobot.sys.TermuxStore
 import app.heyrobot.sys.TermuxWords
@@ -60,7 +68,8 @@ import java.util.UUID
 // 1.0: the update lock (a Termux updated or installed again since you trusted it pauses every call until you Trust this
 // version), another signer (refused until set-up is redone) and the GitHub build's public test key (refused unless you
 // chose "Run anyway") are checked before each call is prepared and again before it runs; Robot's own keys by exact value
-// (TermuxSecrets) are passed to TermuxPolicy.
+// (TermuxSecrets) are passed to TermuxPolicy; and Settings › Advanced › ADB fixes' "Run with Shizuku through Termux"
+// runs here: only a fixed AdbFixes command, by its id, after a tap there.
 
 object TermuxTool {
     @Volatile private var held: TermuxRunner? = null
@@ -335,14 +344,17 @@ object TermuxTool {
     const val TEST = "test"
     const val LIST = "list"
     const val FOLDER = "folder"
+    /** 1.0: Settings › Advanced › ADB fixes' "Run with Shizuku through Termux" (with the fix's id). */
+    const val SHIZUKU = ShizukuPath.RUN
 
     /**
      * Settings › Termux asked (Cmd.TERMUX): the Test, creating ~/robot, or listing your scripts. Fixed commands only (the
-     * page showed them first); what they found goes to termux_status.json.
+     * page showed them first); what they found goes to termux_status.json. 1.0: or an ADB fix through Shizuku ([SHIZUKU],
+     * [id]: the fix's id; only its fixed AdbFixes command is sent, never on the lock screen).
      */
-    fun setup(ctx: Context, what: String?) {
+    fun setup(ctx: Context, what: String?, id: String? = null) {
         val app = ctx.applicationContext
-        if (what !in setOf(TEST, LIST, FOLDER)) return
+        if (what !in setOf(TEST, LIST, FOLDER, SHIZUKU)) return
         TermuxStore.saveStatus(app, TermuxStore.status(app).copy(running = what, runningAt = System.currentTimeMillis()))
         scope.launch {
             val before = TermuxStore.status(app)
@@ -350,6 +362,7 @@ object TermuxTool {
                 when (what) {
                     TEST -> test(app, before)
                     FOLDER -> list(app, before, makeFolder = true)
+                    SHIZUKU -> shizuku(app, before, id)
                     else -> list(app, before, makeFolder = false)
                 }
             } catch (t: Throwable) {
@@ -399,4 +412,46 @@ object TermuxTool {
     }
 
     private const val SETUP_LIMIT_S = 15
+
+    /** Shizuku's rish starts a process through Android's shell: a little longer than a set-up run. */
+    private const val SHIZUKU_LIMIT_S = 30
+
+    /**
+     * 1.0, "Run with Shizuku through Termux" (Settings › Advanced › ADB fixes, after a tap on its card there): exactly fix
+     * [fixId]'s AdbFixes command as `rish -c '…'`, only to a set-up, trusted Termux that isn't the test-key build, never
+     * while the phone is locked; then the fix is checked again (Robot repairs its recognizer setting itself once it may).
+     * The result, as codes, goes to termux_status.json for the page.
+     */
+    private suspend fun shizuku(ctx: Context, st: TermuxSetupStatus, fixId: String?): TermuxSetupStatus {
+        val s = TermuxStore.load(ctx)
+        val check = TermuxFacts.check(ctx, s)
+        val now = System.currentTimeMillis()
+        val n = ShizukuPath.number(fixId)
+        val ready = TermuxSetup.ready(check, TermuxFacts.granted(ctx), st, s.trustedSigner)
+        ShizukuRun.refusal(fixId, check, ready, Assistant.locked(ctx))?.let { why ->
+            VoiceLog.add(VoiceEvent.TERMUX_ADB_FIX, n, ShizukuOutcome.REFUSED.id, why.id)
+            return if (fixId == null || n == 0) st else st.copy(shizuku = ShizukuResult(fixId, now, ShizukuOutcome.REFUSED, refusal = why))
+        }
+        val fix = AdbFixes.ALL.first { it.id == fixId }
+        val command = ShizukuPath.command(fix.id) ?: return st
+        val runner = runner(ctx)
+        return when (val r = runner.run(TermuxRun.command(runner.newId(), command, SHIZUKU_LIMIT_S, TermuxRunKind.SHIZUKU))) {
+            is TermuxReply.Failed -> {
+                VoiceLog.add(VoiceEvent.TERMUX_ADB_FIX, n, ShizukuOutcome.TERMUX_FAILED.id, r.failure.id)
+                st.copy(shizuku = ShizukuResult(fix.id, now, ShizukuOutcome.TERMUX_FAILED))
+            }
+            is TermuxReply.Answered -> {
+                val exit = r.result.exitCode ?: -1
+                // Checked again: with WRITE_SECURE_SETTINGS granted, Robot sets its recognizer itself now.
+                try { RecognizerKeeper.check(ctx, RepairWhen.SETUP) } catch (t: Throwable) { RLog.w("termux_shizuku_check", t) }
+                val applied = when (fix.check) {
+                    AdbCheck.RECOGNIZER_IS_ROBOT -> RecognizerKeeper.isRobot(ctx)
+                    AdbCheck.SECURE_SETTINGS_GRANTED -> RecognizerKeeper.canWrite(ctx)
+                }
+                val outcome = ShizukuRun.outcome(exit, applied)
+                VoiceLog.add(VoiceEvent.TERMUX_ADB_FIX, n, outcome.id)
+                st.copy(shizuku = ShizukuResult(fix.id, now, outcome, exit))
+            }
+        }
+    }
 }

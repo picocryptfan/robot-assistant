@@ -102,9 +102,31 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxTool\.facts\b|internal var facts\b""")))
         assertTrue(code(File(java("core"), "app/heyrobot/core/Turn.kt")).contains("if (a.action.tool.termux && !TermuxCalls.prepared(a.action)) return done("))
         // Settings › Termux only asks the voice process for its fixed set-up runs (Cmd.TERMUX), never a command.
-        assertTrue(code(File(java("app"), "app/heyrobot/assistant/VoiceHub.kt")).contains("Cmd.TERMUX -> TermuxTool.setup(app, i.getStringExtra(Cmd.EXTRA_RUN))"))
-        val setup = File(java("app"), "app/heyrobot/assistant/TermuxTool.kt").readText().substringAfter("fun setup(").substringBefore("\n    private suspend fun test(")
-        assertTrue(setup.contains("if (what !in setOf(TEST, LIST, FOLDER)) return"))
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/VoiceHub.kt")).contains("Cmd.TERMUX -> TermuxTool.setup(app, i.getStringExtra(Cmd.EXTRA_RUN), i.getStringExtra(Cmd.EXTRA_ID))"))
+        val toolText = File(java("app"), "app/heyrobot/assistant/TermuxTool.kt").readText()
+        val setup = toolText.substringAfter("fun setup(").substringBefore("\n    private suspend fun test(")
+        assertTrue(setup.contains("if (what !in setOf(TEST, LIST, FOLDER, SHIZUKU)) return"))
+        // 1.0, ADB fixes through Shizuku: only a fix's fixed command (core ShizukuPath, by the fix's id), refused first on
+        // the lock screen, to a Termux not set up and trusted, the test-key build or one changed since you trusted it; the
+        // command is never taken from the intent, the panel or the model.
+        val shizuku = toolText.substringAfter("private suspend fun shizuku(").substringBefore("\n    }\n")
+        assertTrue(shizuku, shizuku.indexOf("ShizukuRun.refusal(fixId, check, ready, Assistant.locked(ctx))") in 0 until shizuku.indexOf("runner.run(") &&
+            shizuku.contains("val command = ShizukuPath.command(fix.id) ?: return st") && shizuku.contains("TermuxRun.command(runner.newId(), command, SHIZUKU_LIMIT_S, TermuxRunKind.SHIZUKU)"))
+        assertEquals(listOf("app/assistant/TermuxTool.kt", "app/ui/AdbFixesScreen.kt", "core/core/ShizukuFixes.kt", "core/core/termux/TermuxSetup.kt"),
+            usersOf(Regex("""\bShizukuPath\b""")))
+        assertEquals(listOf("app/ui/AdbFixesScreen.kt"), usersOf(Regex("""\bShizukuPath\.RUN\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
+        // 1.0: the update lock, another signer and the test key are checked as each call is prepared and again as it runs;
+        // Robot's own keys by value reach TermuxPolicy (helpers', web search's and the updater's token, read in :voice for
+        // that alone, never logged).
+        val prepare = tool.substringAfter("fun prepare(ctx: Context, action: Action").substringBefore("\n    }\n")
+        assertTrue(prepare, prepare.indexOf("check.lock?.let { return lockRefusal(") in 0 until prepare.indexOf("TermuxPolicy.command(") &&
+            prepare.contains("TermuxPolicy.command(analysis, source, s, locked, untrusted, own)") && prepare.contains("val own = f.ownSecrets(ctx)") &&
+            prepare.contains("named && action.args.isBlank(), own,"))
+        val run = tool.substringAfter("suspend fun run(ctx: Context, action: Action").substringBefore("\n    }\n")
+        assertTrue(run, run.indexOf("check.lock?.let {") in 0 until run.indexOf("runner.run(plan)"))
+        assertEquals(listOf("app/assistant/TermuxSecrets.kt", "app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxSecrets\b""")))
+        assertEquals(listOf("app/assistant/TermuxSecrets.kt", "app/sys/OwnKeys.kt"), usersOf(Regex("""\bOwnKeys\b""")))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bRLog\.|\bVoiceLog\."""), ours.filterKeys { it == "app/assistant/TermuxSecrets.kt" || it == "app/sys/OwnKeys.kt" }))
         // Content-free logs: no RLog field named for a command's parts, and the label Termux logs is "Robot".
         val termux = ours.filterKeys { it.contains("/termux/") || Regex("""/Termux[A-Za-z]*\.kt$""").containsMatchIn(it) }
         assertTrue(termux.keys.toString(), termux.size >= 15)
@@ -202,7 +224,8 @@ class ProcessIsolationTest {
         assertTrue(!deps("claude").contains("litert") && !deps("claude").contains("project(':voice')") && !deps("claude").contains("project(':brain')"))
         // A helper's API key is decrypted in the :voice process only, and handed only to its client: for questions
         // (HelperLink) and for Test connection (the connection window).
-        assertEquals(listOf("app/assistant/HelperConnectionActivity.kt", "app/assistant/HelperLink.kt"), usersOf(Regex("""\bHelperKeys\.read\(""")))
+        // (1.0: and TermuxSecrets, in :voice too, compares a Termux command with it, so one holding it is refused.)
+        assertEquals(listOf("app/assistant/HelperConnectionActivity.kt", "app/assistant/HelperLink.kt", "app/assistant/TermuxSecrets.kt"), usersOf(Regex("""\bHelperKeys\.read\(""")))
         assertTrue(usersOf(Regex("""\bHelperKeys\b""")).all { it.startsWith("app/assistant/") })
         // Every helper's key is a KeystoreSecret (sys/HelperFiles.kt, shared with the main app for Settings), but only
         // HelperKeys reaches one to read or save it; HelperFiles.kt itself never reads one.
@@ -456,7 +479,7 @@ class ProcessIsolationTest {
         val nsc = File(main("app"), "res/xml/network_security_config.xml").readText()
         assertTrue(Regex("""<domain-config cleartextTrafficPermitted="false">""").containsMatchIn(nsc))
         for (d in listOf("anthropic.com", "openai.com", "googleapis.com", "mistral.ai", "x.ai", "deepseek.com", "groq.com", "openrouter.ai", "huggingface.co",
-            "open-meteo.com", "openstreetmap.org", "github.com", "githubusercontent.com"))
+            "open-meteo.com", "openstreetmap.org", "github.com", "githubusercontent.com", "f-droid.org"))
             assertTrue(d, nsc.contains("<domain includeSubdomains=\"true\">$d</domain>"))
         assertTrue(!nsc.contains("src=\"user\"") && nsc.contains("<certificates src=\"system\" />"))
     }
@@ -859,8 +882,11 @@ class ProcessIsolationTest {
         assertEquals(emptyList<String>(), usersOf(updater, ours.filterKeys { it.startsWith("voice/") || it.startsWith("brain/") || it.startsWith("claude/") ||
             it.startsWith("mt/") || it.startsWith("app/assistant/") }))
         // Who uses what.
-        assertEquals(listOf("app/update/GitHubClient.kt", "app/update/Updater.kt"), usersOf(Regex("""\bGitHubClient\b""")))
-        assertEquals(listOf("app/update/GitHubClient.kt"), usersOf(Regex("""\bUpdateToken\.read\(""")))
+        // (1.0: and Termux's weekly update check, through publicJson, below.)
+        assertEquals(listOf("app/update/GitHubClient.kt", "app/update/TermuxUpdateCheck.kt", "app/update/Updater.kt"), usersOf(Regex("""\bGitHubClient\b""")))
+        // 1.0: the token is also read, by value, by sys/OwnKeys for the :voice process's TermuxSecrets (a Termux command
+        // holding it is refused); it is put in a request by GitHubClient alone (below).
+        assertEquals(listOf("app/sys/OwnKeys.kt", "app/update/GitHubClient.kt"), usersOf(Regex("""\bUpdateToken\.read\(""")))
         assertEquals(listOf("app/update/UpdateInstaller.kt", "app/update/Updater.kt"), usersOf(Regex("""\bUpdateInstaller\.install\(|\bPackageInstaller\b""")))
         assertEquals(listOf("app/update/UpdateInstaller.kt"), usersOf(Regex("""\bPackageInstaller\b""")))
         assertEquals(listOf("app/update/UpdateInstaller.kt"), usersOf(Regex("""\bcanRequestPackageInstalls\b|getPackageArchiveInfo""")))
@@ -879,6 +905,21 @@ class ProcessIsolationTest {
             client.contains("GitHubHosts.redirect(url, c.getHeaderField(\"Location\"), ++hop)") && client.contains("as? HttpsURLConnection"))
         // It opens only the URLs core builds from the repository and ids.
         assertTrue(client.contains("repo.releasesUrl()") && client.contains("repo.assetUrl(file.id)"))
+        // 1.0, Termux's update check: only core TermuxUpdates' two fixed addresses, without the token, following no redirect;
+        // and the check itself reads two answers and keeps them: no download, no install, no intent, no other request.
+        val public = client.substringAfter("fun publicJson(").substringBefore("\n    }\n")
+        assertTrue(public, public.contains("if (!TermuxUpdates.allowed(url)) throw Failure(UpdateFail.REDIRECT_REFUSED)") &&
+            public.contains("SecretRead.Absent, 0, abort, network, public = true"))
+        assertTrue(client.contains("val token = if (public) null else (saved as? SecretRead.Present)?.value") &&
+            client.contains("if (public) { if (!TermuxUpdates.allowed(url)) throw Failure(UpdateFail.REDIRECT_REFUSED) }") &&
+            client.contains("if (public) throw Failure(UpdateFail.REDIRECT_REFUSED, code)"))
+        val termuxCheck = codeWithStrings(File(java("app"), "app/heyrobot/update/TermuxUpdateCheck.kt"))
+        assertEquals(listOf("TermuxUpdates.FDROID_URL", "TermuxUpdates.GITHUB_URL"),
+            Regex("""GitHubClient\.publicJson\(ctx, ([A-Za-z_.]+),""").findAll(termuxCheck).map { it.groupValues[1] }.toList().sorted())
+        assertEquals(listOf("app/update/TermuxUpdateCheck.kt"), usersOf(Regex("""\bGitHubClient\.publicJson\(""")))
+        assertTrue(listOf("DownloadManager", "PackageInstaller", "download(", "Intent", "startActivity", "openConnection", "UpdateToken").none { termuxCheck.contains(it) })
+        // No cookies: nothing installs a cookie handler for java.net's connections.
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bCookieHandler\b|\bjava\.net\.CookieManager\b""")))
         assertEquals(2, Regex("""repo\.assetUrl\(file\.id\)""").findAll(client).count())
         // GitHub's URLs are written in one place, core's GitHub.kt (the Licences list's source link is data, not code).
         assertEquals(listOf("core/core/update/GitHub.kt"), ours.filter { Regex("""https://[^"\s]*github""").containsMatchIn(codeWithStrings(it.value)) }.keys.sorted())
@@ -972,9 +1013,11 @@ class ProcessIsolationTest {
         // Wikipedia and OpenLibrary: Brave, Kagi, Mojeek, Wikipedia's and Open Library's API addresses) are sent by the
         // :claude module's WebTransport in the :voice process; Settings › Web search shows an example address (text only).
         // 0.9: Termux's F-Droid page (core termux TermuxSetup.kt), which Settings › Termux opens in the browser; Robot fetches nothing.
+        // 1.0: F-Droid's API entry for Termux (core termux TermuxUpdates.kt), which the weekly update check asks.
         assertEquals(listOf("app/ui/HelpersScreens.kt", "app/ui/settings/WebSearchSettings.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt",
             "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt",
-            "core/core/helpers/Helpers.kt", "core/core/termux/TermuxSetup.kt", "core/core/update/GitHub.kt", "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt",
+            "core/core/helpers/Helpers.kt", "core/core/termux/TermuxSetup.kt", "core/core/termux/TermuxUpdates.kt", "core/core/update/GitHub.kt",
+            "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt",
             "core/core/web/Wikipedia.kt"),
             ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
@@ -1008,7 +1051,8 @@ class ProcessIsolationTest {
         assertTrue(readability.size >= 10)
         assertEquals(emptyList<String>(), usersOf(Regex("""slf4j|LoggerFactory|\bRLog\b|\bprintln\("""), readability))
         // Keys: only WebKeys reads or saves one, only WebTool and the set-up window ask it, and the main process only deletes.
-        assertEquals(listOf("app/assistant/WebSearchActivity.kt", "app/assistant/WebTool.kt"), usersOf(Regex("""\bWebKeys\.read\(""")))
+        // (1.0: and TermuxSecrets, to refuse a Termux command holding one.)
+        assertEquals(listOf("app/assistant/TermuxSecrets.kt", "app/assistant/WebSearchActivity.kt", "app/assistant/WebTool.kt"), usersOf(Regex("""\bWebKeys\.read\(""")))
         assertEquals(listOf("app/assistant/WebTool.kt"), usersOf(Regex("""\bWebKeyFiles\.store\(""")))
         val webFiles = code(File(java("app"), "app/heyrobot/sys/WebFiles.kt"))
         assertTrue(!Regex("""\.(read|save)\(ctx""").containsMatchIn(webFiles))
