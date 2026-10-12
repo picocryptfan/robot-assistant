@@ -107,7 +107,9 @@ object PromptPacking {
 
     /**
      * The pinned line, "About the user (…): “Call me Sam.” “I prefer metric units.”", and the items in it. Only
-     * pinned, non-secret, unexpired items, in the order given; it changes only when that list does (byte-stable).
+     * pinned, non-secret, unexpired items, in the order given; it changes only when that list does (byte-stable). One
+     * kept from content (a preference from a screen, or said in a conversation that held a message) says where it came
+     * from, as a note does: the line's head says the rest are the user's own words.
      */
     fun pinnedLine(items: List<MemoryItem>, now: Long, budget: PackBudget = PackBudget()): Pair<String?, List<MemoryItem>> {
         val sb = StringBuilder(PINNED_HEAD)
@@ -117,7 +119,7 @@ object PromptPacking {
             if (kept.size >= budget.maxPinned) break
             val said = sentence(item.text).replace('“', '"').replace('”', '"')
             if (said.isEmpty()) continue
-            val add = " “$said”"
+            val add = " “$said”" + (from(item)?.let { " ($it)" } ?: "")
             if (TokenEstimate.text(sb.toString() + add) > budget.pinnedTokens) continue
             sb.append(add)
             kept += item
@@ -139,11 +141,15 @@ object PromptPacking {
     /** "• My sister Julie's birthday is May 3. (saved Mar 12)"; an item from content says where from. */
     fun noteLine(item: MemoryItem, zone: ZoneId, dates: Boolean = true): String {
         val text = sentence(item.text)
-        val from = if (item.tainted) item.sourceLabel?.let { "from ${ScreenText.sanitize(it).replace(Regex("\\s+"), " ").trim()}" } ?: "not from the user's own words" else null
+        val from = from(item)
         val saved = if (dates) "saved ${DATE.format(Instant.ofEpochMilli(item.createdAt).atZone(zone))}" else null
         val tail = listOfNotNull(from, saved).joinToString(", ")
         return if (tail.isEmpty()) "• $text" else "• $text ($tail)"
     }
+
+    /** Where an item kept from content came from ("from a message from Mom"); null for your own words. */
+    private fun from(item: MemoryItem): String? =
+        if (item.tainted) item.sourceLabel?.let { "from ${ScreenText.sanitize(it).replace(Regex("\\s+"), " ").trim()}" } ?: "not from the user's own words" else null
 
     /**
      * The question names a secret item: it shares two search terms with it ("what's my door code?" and "The door code
