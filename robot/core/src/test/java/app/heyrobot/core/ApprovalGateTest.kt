@@ -203,8 +203,9 @@ class ApprovalGateTest {
     }
 
     @Test fun allSevenPhaseTwoToolsNeedUnlockOnTheLockScreen() {
+        // 0.8's call joins them: People's tools never run locked (car mode's trusted session is CarGate's, on top).
         val seven = listOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.LOOKUP_CONTACT, ToolName.ADD_NOTE, ToolName.FIND_NOTES,
-            ToolName.ADD_EVENT, ToolName.READ_CALENDAR)
+            ToolName.ADD_EVENT, ToolName.READ_CALENDAR, ToolName.CALL)
         assertEquals(seven.toSet(), ToolName.entries.filter { it.group in setOf(ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR) }.toSet())
         for (t in seven) {
             for (s in listOf(defaults, allAuto)) {

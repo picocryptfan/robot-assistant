@@ -59,7 +59,14 @@ class VoiceLogTest {
             FallbackWhy.entries, LoadFailure.entries, ClaudeEnd.entries, ClaudeFail.entries, ClaudeModelCode.entries, LocationCode.entries,
             NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries,
             ProblemStage.entries, TriggerKind.entries, AlarmEnd.entries, SkipWhy.entries, StepCode.entries, StepGo.entries, MissedRun.entries,
-            SpeechWay.entries, RoutineCommandCode.entries)
+            SpeechWay.entries, RoutineCommandCode.entries,
+            // 0.8, headset and car mode.
+            app.heyrobot.core.headset.EntryKind.entries, app.heyrobot.core.headset.MicRoute.entries, app.heyrobot.core.headset.RouteFail.entries,
+            app.heyrobot.core.output.HoldWhy.entries, app.heyrobot.core.output.SessionKind.entries, app.heyrobot.core.headset.Gesture.entries,
+            app.heyrobot.core.headset.ButtonAction.entries, app.heyrobot.core.headset.RobotPhase.entries, app.heyrobot.core.headset.AnnounceCode.entries,
+            app.heyrobot.core.output.CardVoiceCode.entries, app.heyrobot.core.output.AnswerCode.entries, app.heyrobot.core.car.CarWhy.entries,
+            app.heyrobot.core.car.TrustEnd.entries, app.heyrobot.core.car.ParkCode.entries, app.heyrobot.core.car.CallWay.entries,
+            app.heyrobot.core.car.ReplyEnd.entries, app.heyrobot.core.car.NavKind.entries, app.heyrobot.core.headset.EndWhy.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -96,6 +103,15 @@ class VoiceLogTest {
             VoiceEvent.ROUTINE_MISSED, VoiceEvent.ROUTINE_COMMAND, VoiceEvent.BRIEF_CONTROL)
         assertEquals((140..151).toList(), routines.map { it.id })
         assertEquals(routines, VoiceEvent.entries.filter { it.id in 140..159 })
+        // 0.8's headset mode uses 200 to 209 and car mode 210 to 219 (the design's 150 to 169 went to routines and web search),
+        // in the order core output's HandsFree.kt reserved them; 219 is spare.
+        val headset = listOf(VoiceEvent.HEADSET_ENTRY, VoiceEvent.HEADSET_ROUTE, VoiceEvent.HEADSET_ROUTE_FAILED, VoiceEvent.OUTPUT_HELD, VoiceEvent.BVRA_ACK,
+            VoiceEvent.DEVICE_PRESENCE, VoiceEvent.PRIVATE_ASKED, VoiceEvent.BUTTON, VoiceEvent.ANNOUNCE, VoiceEvent.SPOKEN_CARD)
+        assertEquals((200..209).toList(), headset.map { it.id })
+        val car = listOf(VoiceEvent.CAR_MODE, VoiceEvent.CAR_TRUSTED, VoiceEvent.CAR_PARKED, VoiceEvent.CAR_CALL, VoiceEvent.CAR_REPLY, VoiceEvent.CAR_DND,
+            VoiceEvent.CAR_NAV, VoiceEvent.CAR_MUSIC, VoiceEvent.HEADSET_END)
+        assertEquals((210..218).toList(), car.map { it.id })
+        assertEquals(headset + car, VoiceEvent.entries.filter { it.id in 200..219 })
         // Every model and backend has a code of its own.
         assertEquals(BrainModel.entries.size, BrainModel.entries.map { ModelCode.of(it) }.toSet().size)
         assertEquals(ModelBackend.entries.size, ModelBackend.entries.map { BackendCode.of(it) }.toSet().size)

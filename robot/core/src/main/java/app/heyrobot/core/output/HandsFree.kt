@@ -8,9 +8,9 @@ import java.util.Locale
 // in, the kind of session a sentence belongs to, and the Safety & privacy rows of §1.5 that are theirs.
 //
 // Voice log ids 200–219 are reserved for headset and car mode (the design proposed 150–169, which routines (140–159) and
-// web (160–169) took; Termux has 170–179, memory 180–189, messages 190–199). VoiceLog.kt is left alone on this branch;
-// the entries are added when :voice is wired, codes and numbers only (never a device name, address, place, contact or
-// message text: a device is its RememberedDevice.number):
+// web (160–169) took; Termux has 170–179, memory 180–189, messages 190–199). Since 0.8 they are VoiceEvent entries,
+// codes and numbers only (never a device name, address, place, contact or message text: a device is its
+// RememberedDevice.number):
 // 200 HEADSET_ENTRY (a = headset EntryKind, b = 1 if locked or EXTRA_SECURE, c = 1 if car mode was on),
 // 201 HEADSET_ROUTE (a = headset MicRoute, b = ms until the route was up, c = codec, 0 while unknown),
 // 202 HEADSET_ROUTE_FAILED (a = headset RouteFail, b = 1 if it fell back to the phone microphone),
@@ -24,7 +24,8 @@ import java.util.Locale
 // 210 CAR_MODE (a = 1 on, 0 off, b = car CarWhy), 211 CAR_TRUSTED (a = 1 on, 0 off, b = car TrustEnd),
 // 212 CAR_PARKED (a = car ParkCode), 213 CAR_CALL (a = car CallWay, b = 1 for an emergency number),
 // 214 CAR_REPLY (a = 1 handed over, 0 not, b = car ReplyEnd), 215 CAR_DND (a = 1 set, 0 cleared, b = 1 if Android took it),
-// 216 CAR_NAV (a = car NavKind), 217 CAR_MUSIC (a = car MediaKeyAction ordinal + 1), 218–219 spare.
+// 216 CAR_NAV (a = car NavKind), 217 CAR_MUSIC (a = MusicAction ordinal + 1), 218 HEADSET_END (a = headset EndWhy, b = seconds,
+// c = [SessionKind] id), 219 spare.
 
 /** The language a hands-free line is spoken in: English, or Québec French (tu, as Robot's French elsewhere). */
 enum class SpokenLang {
@@ -78,3 +79,16 @@ data class HandsFreeSafety(
 /** A JSON helper for the settings fragments: an enum by its name, else [default]. */
 inline fun <reified T : Enum<T>> JSONObject.enumOr(key: String, default: T): T =
     enumValues<T>().firstOrNull { it.name == optString(key) } ?: default
+
+/**
+ * The one-time line after updating to 0.8, on Home and Settings (the 0.4.0 pattern; headset.json keeps that it was
+ * closed): what is new, that nothing runs until you turn it on, and that the headset's button opens Robot from now on (it
+ * only answers a press, so it needs no switch first).
+ */
+object HandsFreeNotice {
+    const val TEXT = "New: routines, the morning brief, the headset button and car mode. Nothing runs until you turn it on; " +
+        "your headset's voice button opens Robot from now on."
+
+    /** Shown to someone who had Robot before 0.8 ([hadSettings]: settings.json was there) until they close it. */
+    fun shows(hadSettings: Boolean, seen: Boolean): Boolean = hadSettings && !seen
+}

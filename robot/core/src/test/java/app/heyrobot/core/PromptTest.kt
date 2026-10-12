@@ -194,7 +194,7 @@ class PromptTest {
     @Test fun eachToolGroupCostsTokensOnlyWhenUsed() {
         val system = Prompt.system(now, locked = false)
         val core = Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
-        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal })
+        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal && it.forModel })
         assertEquals(core, Prompt.fixedTokens(system))
         // ask_claude (Ask Claude on): one short tool and one line of the system prompt.
         val withClaude = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true), Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE)
@@ -202,18 +202,31 @@ class PromptTest {
         assertTrue("core $core all $all", all > core + 300)
         // Every group at once (estimated on the high side: JSON punctuation counts a token per mark) still leaves about
         // 750 tokens for the new turn and some history beside the reply (0.4.0 added the weather and phone groups:
-        // under 2,100 before). :brain logs the real count per group set.
+        // under 2,100 before). :brain logs the real count per group set. (0.8's call tool is never described: forModel.)
         assertTrue("all $all", all < 2_600)
         // The worst case: every group, Ask Claude on (its tool and line) and every optional system line. About 500 tokens
         // are left for the new turn: screen text is cut to fit (fitTurn) and older turns are dropped first.
         val worst = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true),
-            ToolName.entries.toList())
+            ToolName.entries.filter { it.forModel })
         assertTrue("worst $worst", worst < 2_850)
         assertTrue(ContextWindow.newTurnLimit(worst) > 450)
         for (g in listOf(ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR)) {
             val tools = ToolRouter.tools(setOf(ToolGroup.CORE, g), RobotSettings())
             assertTrue(g.name, Prompt.fixedTokens(system, tools) in (core + 1) until all)
         }
+    }
+
+    @Test fun carModeAddsOneShortLine() {
+        // 0.8: the car-mode line is the design's ~25 tokens, and only while car mode is on.
+        val plain = Prompt.system(now, locked = false)
+        val car = Prompt.system(now, locked = false, driving = true)
+        assertTrue(car.startsWith(plain) && car.endsWith(app.heyrobot.core.car.CarSpeech.PROMPT_LINE))
+        val cost = Prompt.fixedTokens(car) - Prompt.fixedTokens(plain)
+        assertTrue("car line $cost", cost in 1..40)
+        val worst = Prompt.fixedTokens(Prompt.system(now, locked = true, askClaude = true, texting = true, weather = true, phone = true, driving = true),
+            ToolName.entries.filter { it.forModel })
+        assertTrue("worst $worst", worst < 2_900)
+        assertTrue(ContextWindow.newTurnLimit(worst) > 450)
     }
 
     @Test fun lockedPromptStatesTheLimits() {

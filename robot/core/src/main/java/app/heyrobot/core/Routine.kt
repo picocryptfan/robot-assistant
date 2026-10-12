@@ -206,7 +206,7 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
     MAPS_NAVIGATE(14, "maps directions"), FLASHLIGHT(15, "flashlight"), SEND_TEXT(16, "text"), DRAFT_EMAIL(17, "email"),
     LOOKUP_CONTACT(18, "contact lookup"), ADD_NOTE(19, "new note"), FIND_NOTES(20, "note search"), ADD_EVENT(21, "new event"),
     READ_CALENDAR(22, "calendar"), WEATHER(23, "weather"), PHONE_STATUS(24, "phone status"), FREE_MEMORY(25, "free memory"),
-    FREE_STORAGE(26, "free storage"), ASK_CLAUDE(27, "Ask Claude");
+    FREE_STORAGE(26, "free storage"), ASK_CLAUDE(27, "Ask Claude"), CALL(28, "call");
 
     companion object {
         fun of(t: ToolName): StepCode = when (t) {
@@ -228,6 +228,7 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
             ToolName.FREE_MEMORY -> FREE_MEMORY
             ToolName.FREE_STORAGE -> FREE_STORAGE
             ToolName.ASK_CLAUDE -> ASK_CLAUDE
+            ToolName.CALL -> CALL
         }
     }
 }
@@ -452,6 +453,7 @@ object RoutineCodec {
         is Action.SendText -> mapOf("to" to a.to, "message" to a.message)
         is Action.DraftEmail -> mapOf("to" to a.to, "subject" to a.subject, "body" to a.text)
         is Action.LookupContact -> mapOf("name" to a.name)
+        is Action.Call -> mapOf("to" to a.to)
         is Action.AddNote -> buildMap { put("text", a.text); a.title?.let { put("title", it) } }
         is Action.FindNotes -> mapOf("query" to a.query)
         is Action.AddEvent -> buildMap { put("title", a.title); put("when", a.whenText); a.minutes?.let { put("duration_minutes", it) } }

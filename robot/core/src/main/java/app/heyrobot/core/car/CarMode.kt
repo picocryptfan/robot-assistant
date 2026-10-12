@@ -265,8 +265,8 @@ object CarDetect {
 
 /** Car mode's own functions: what a trusted session allows on the lock screen (§4.6). */
 enum class CarFunction(val tools: Set<ToolName>) {
-    /** Calls to People and contacts (the call flow; no tool yet). */
-    CALL(emptySet()),
+    /** Calls to People and contacts (the call flow, and the call tool). */
+    CALL(setOf(ToolName.CALL)),
     /** Messages (0.7: announce, read, reply). */
     MESSAGES(emptySet()),
     /** "What's next": today's next event only. */

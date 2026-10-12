@@ -402,6 +402,8 @@ data class RobotSettings(
             ToolName.SEND_TEXT to Approval.ASK,
             ToolName.DRAFT_EMAIL to Approval.ASK,
             ToolName.LOOKUP_CONTACT to Approval.AUTO,
+            // 0.8: the dialer opens with the number; a card first, as for texts.
+            ToolName.CALL to Approval.ASK,
             ToolName.ADD_NOTE to Approval.AUTO,
             ToolName.FIND_NOTES to Approval.AUTO,
             ToolName.ADD_EVENT to Approval.ASK,

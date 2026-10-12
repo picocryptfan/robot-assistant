@@ -68,7 +68,7 @@ class ToolRouterTest {
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d))
         assertEquals(Prompt.CORE_TOOLS + listOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.LOOKUP_CONTACT),
             ToolRouter.tools(route("text Mom I'm late"), d))
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE, ToolRouter.tools(ToolGroup.entries.toSet(), d))
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL, ToolRouter.tools(ToolGroup.entries.toSet(), d))
         // ask_claude only with Ask Claude on and escalation not Off (ClaudeSettings.localTool).
         assertEquals(Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE, ToolRouter.tools(core, d, askClaude = true))
         // Turned off in settings: never described. Texting app off: no send_text.

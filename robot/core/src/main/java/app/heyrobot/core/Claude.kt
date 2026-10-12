@@ -509,7 +509,7 @@ enum class Personal(val label: String) {
         fun of(tool: ToolName): Personal = when (tool) {
             ToolName.READ_CALENDAR -> CALENDAR
             ToolName.FIND_NOTES -> NOTES
-            ToolName.LOOKUP_CONTACT -> CONTACTS
+            ToolName.LOOKUP_CONTACT, ToolName.CALL -> CONTACTS
             // The weather, and (0.4.0) the nearest place found online: both say where you are.
             ToolName.WEATHER, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE -> LOCATION
             ToolName.PHONE_STATUS, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE -> PHONE

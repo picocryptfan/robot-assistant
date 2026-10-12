@@ -18,7 +18,7 @@ import kotlin.math.roundToLong
  * [online]: it goes to the internet itself (Settings › Actions says so).
  */
 enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false, val internal: Boolean = false,
-    val online: Boolean = false) {
+    val online: Boolean = false, val forModel: Boolean = true) {
     SET_TIMER("set_timer", "Timers", ToolGroup.CORE),
     SET_ALARM("set_alarm", "Alarms", ToolGroup.CORE),
     OPEN_APP("open_app", "Open apps", ToolGroup.CORE),
@@ -28,6 +28,12 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
     SEND_TEXT("send_text", "Texts", ToolGroup.PEOPLE),
     DRAFT_EMAIL("draft_email", "Email drafts", ToolGroup.PEOPLE),
     LOOKUP_CONTACT("lookup_contact", "Contact lookups", ToolGroup.PEOPLE, reads = true),
+    /**
+     * 0.8: a phone call. The dialer opens with the number (you tap Call); car mode alone calls after a spoken yes. Never
+     * described to the model ([forModel]): "call Mom", "appelle maman" is recognised before it (HandsFreeRouter), so the
+     * prompt doesn't grow.
+     */
+    CALL("call", "Calls", ToolGroup.PEOPLE, forModel = false),
     ADD_NOTE("add_note", "New notes", ToolGroup.NOTES),
     FIND_NOTES("find_notes", "Note searches", ToolGroup.NOTES, reads = true),
     ADD_EVENT("add_event", "New events", ToolGroup.CALENDAR),
@@ -110,6 +116,10 @@ object ToolSpecs {
         )),
         ToolSpec(ToolName.LOOKUP_CONTACT, "Find someone's numbers and emails in the contacts.", listOf(
             ToolParam("name", "string", "Their name", true),
+        )),
+        // 0.8: one short line, as the others in the group.
+        ToolSpec(ToolName.CALL, "Phone someone; the person taps Call.", listOf(
+            ToolParam("to", "string", "Name or number", true),
         )),
         ToolSpec(ToolName.ADD_NOTE, "Save a note in Robot Notes.", listOf(
             ToolParam("text", "string", "What to note", true),
@@ -251,6 +261,24 @@ sealed class Action {
     data class LookupContact(val name: String) : Action() {
         override val tool get() = ToolName.LOOKUP_CONTACT
         override fun describe() = "Look up **$name** in your contacts"
+    }
+
+    /**
+     * 0.8: a call to [to] (a name or a number, as said). Once the app found it ([number], People and contacts, numbers
+     * only): [who], its [label] ("Mobile") and whether the name was [learned] from a Cheogram notification. [emergency]:
+     * an emergency number, which only ever opens the dialer. [direct]: car mode's spoken read-back and yes, with the
+     * Phone permission and "Call directly after a spoken yes", places the call (ACTION_CALL); otherwise the dialer opens
+     * with the number and you tap Call (ACTION_DIAL).
+     */
+    data class Call(val to: String, val number: String? = null, val who: String? = null, val label: String? = null, val learned: Boolean = false,
+        val emergency: Boolean = false, val direct: Boolean = false) : Action() {
+        override val tool get() = ToolName.CALL
+        override fun describe(): String {
+            val n = number ?: return "Call **$to**"
+            val name = who?.takeIf { it.isNotBlank() }
+            return (if (name == null) "Call **$n**" else "Call **$name**" + (label?.let { " ($it, $n)" } ?: " ($n)")) + if (learned) LEARNED else ""
+        }
+        override val confirmLabel get() = if (direct && !emergency) "Call" else "Open the dialer"
     }
 
     data class AddNote(val text: String, val title: String? = null) : Action() {
@@ -523,6 +551,8 @@ object ToolCalls {
             }
             ToolName.LOOKUP_CONTACT -> textArg(a, MAX_NAME, "name", "query", "contact", "who")?.let { ParsedCall.Ok(Action.LookupContact(it)) }
                 ?: bad("name is required")
+            ToolName.CALL -> textArg(a, MAX_NAME, "to", "name", "who", "number", "contact", "recipient")?.let { ParsedCall.Ok(Action.Call(it)) }
+                ?: bad("to is required")
             ToolName.ADD_NOTE -> {
                 val text = longArg(a, MAX_LONG, "text", "note", "content", "body") ?: return bad("text is required")
                 ParsedCall.Ok(Action.AddNote(text, textArg(a, MAX_TITLE, "title")))

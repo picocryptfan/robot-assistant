@@ -75,7 +75,7 @@ object Prompt {
      */
     fun system(now: ZonedDateTime, locked: Boolean, askClaude: Boolean = false, texting: Boolean = false, weather: Boolean = false,
         phone: Boolean = false, direct: Boolean = false, lockedTools: Set<ToolName> = LockScreen.DEFAULT, helper: String? = null,
-        helperSearches: Boolean = true, helperHome: Boolean = false): String {
+        helperSearches: Boolean = true, helperHome: Boolean = false, driving: Boolean = false): String {
         val day = now.dayOfWeek.getDisplayName(TextStyle.FULL, Locale.US)
         val date = now.format(DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US))
         return buildString {
@@ -100,6 +100,8 @@ object Prompt {
             append("Today is $day, $date (${now.zone.id}). ")
             append("When a message gives the current time, use it for times and dates, and don't mention it unless asked.")
             if (locked) append(LockScreen.promptLine(lockedTools))
+            // 0.8, car mode: one or two short spoken sentences, nothing to read or tap.
+            if (driving) append(app.heyrobot.core.car.CarSpeech.PROMPT_LINE)
         }
     }
 
@@ -163,6 +165,7 @@ object Prompt {
         ToolName.SEND_TEXT -> "call:send_text{to:Mom,message:<escape>On my way<escape>}"
         ToolName.DRAFT_EMAIL -> "call:draft_email{to:Alex,subject:<escape>Friday<escape>,body:<escape>Hi Alex<escape>}"
         ToolName.LOOKUP_CONTACT -> "call:lookup_contact{name:Alex}"
+        ToolName.CALL -> "call:call{to:Mom}"
         ToolName.ADD_NOTE -> "call:add_note{text:<escape>Buy coffee filters<escape>}"
         ToolName.FIND_NOTES -> "call:find_notes{query:coffee}"
         ToolName.ADD_EVENT -> "call:add_event{title:Dentist,when:<escape>Tuesday 3pm<escape>}"
