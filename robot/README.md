@@ -22,11 +22,68 @@ remembers what you ask it to, on the phone and encrypted (see "Memory (0.7)" bel
 and answers your messages from their notifications, in memory only, and sends a reply only after you tap Send on its card
 (see "Messages (0.7)" below); nothing from a message becomes memory by itself ("Memory and messages together (0.7)"
 below); and Settings › About › Send feedback writes a bug report or an idea for you to send ("Feedback and bug reports
-(0.7)" below). The build specs are
+(0.7)" below). Since 0.8.0 it runs routines and a morning brief ("Routines and the morning brief (0.8)" below), answers
+through your headset's voice button and in your car ("Headset mode (0.8)", "Car mode (0.8)" below), announces new messages
+there when you turn that on, and runs on the Pixel 11's TPU in beta ("What's new in 0.8.0" below). The build specs are
 `../docs/phase-1.md`, `../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models
 and how they are used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
+
+## What's new in 0.8.0
+
+Robot 0.8.0 is 0.7.0 with routines and the morning brief, headset mode and car mode built beside it, 0.7's messages
+announced and answered hands-free, and the Pixel 11's TPU in beta; each has its section below, with its phone checks.
+Settings file schema 13, as 0.7.0: the new parts keep their own files in `files/robot/` (`routines.json`,
+`routine_settings.json`, `headset.json`, `car.json`, `places.json`, `devices.json`), and messages' new choices go in
+`messages.json`.
+
+- **Routines and the morning brief** ([Routines and the morning brief (0.8)](#routines-and-the-morning-brief-08)):
+  routines that start by themselves (a time, Clock's alarm turned off, the first unlock, a headset or car connecting,
+  charging, or only when you ask), made by voice and always shown on a card first, or in Settings › Routines; the
+  morning brief (the time, the weather, today's calendar, brief reminders and, new here, how many unread messages, by
+  app, from Settings › Messages: counts only, never who or what, so the same on the lock screen). Off until you set one
+  up. Voice log events 140 to 151.
+- **Headset mode** ([Headset mode (0.8)](#headset-mode-08)): your headset's voice button opens Robot, which listens
+  through the headset and answers in your ears; personal answers play only in headphones only you can hear; the headset
+  going stops speech at once. The button is Robot's by default (Settings › Headset turns it off). Voice log events 200 to
+  209 and 218.
+- **Car mode** ([Car mode (0.8)](#car-mode-08)): when your car connects (once you added it in Settings › Car mode, off by
+  default), Robot talks through the car with short answers, a car screen of big buttons, calls read back before the
+  dialer opens, Organic Maps' preview home or to work, "what's next", music keys, and a list of what waits for when you
+  park; after one unlock in the car, car functions work locked until it goes. Voice log events 210 to 217.
+- **New messages, announced** (in both sections): with Settings › Messages › **Announce new messages** on (off by
+  default), a new message from someone you chose (People › a person) is announced in private headphones ("Message from
+  Marie. Read it?": "yes" reads it, "no" is quiet), never on the speaker or while locked by default; in car mode it is
+  announced in the car, read after "yes", and a reply you dictate is read back word for word and sent after "send", only
+  where 0.7's rules let a spoken yes send it: otherwise it waits for when you park, with your words. A message's words
+  still never act (0.7's quarantine and echo check), and "read my messages" in a headset or the car passes OutputGuard.
+- **Tensor G6 (Pixel 11) in beta**: Fast on a Pixel 11 is Google's Tensor G6 build of Gemma 4 E2B on the TPU
+  (`gemma-4-E2B-it_Google_Tensor_G6.litertlm`, pinned at Fast's commit by size and SHA-256), marked beta, its speed an
+  estimate from the Tensor G5's (not measured). A TPU build runs only on the chip its stamp names: a Tensor G5 build
+  never on a Tensor G6, nor the reverse, your own file included. If the Tensor G6 build doesn't load on the TPU, Fast is
+  the general build on the CPU from then on (download it too, to have it ready), until Settings › Model › Try the TPU
+  again. Voice log event 136.
+- **A smaller APK**: its dex files are compressed now, as its native libraries always were (Android unpacks the
+  libraries at install, where every process loads them); the debug build went from 121.4 MB to 68.5 MB. Nothing is
+  minified (JNI looks classes and fields up by name). `tools/verify_apk.sh` checks every library and dex file is
+  compressed and the APK is under GitHub's 100 MB per file.
+- **Where the merge decided**: the panel hears the messages router and its echo check, conversation mode, feedback,
+  routines, headset and car phrases, memory, the helpers, then the model; routine steps and calls carry the messages
+  quarantine like every other turn; the call step's voice log code is 30 (0.7.0's remember and forget keep 28 and 29).
+- **Not in 0.8.0:** "hey robot" through the headset's microphone; the media-button switch ("Headset buttons control
+  Robot while she talks"); place search in car mode (Home and Work are coordinates you type or paste, or "Here"); a
+  Messages button on the car screen; the drive brief and Android's own car mode; the brief in Robot's own words and news
+  through a helper; web search and Termux (core only); memory's search model (7.4) and suggestions (7.5); messages to
+  trusted helpers without a card. Nothing of 0.8.0 has run on the phone yet: every section's "On the phone" list is
+  still to do (R0 to R4, H0 to H3, C0 to C3), with these too:
+  1. **Pixel 11, Fast (beta).** Download Fast (beta) on a Pixel 11 and ask something: *done when* it answers on the TPU
+     (Settings › Model › In memory now: Fast (beta)); note its load time and speed in the voice log ("Model loaded"), a
+     1k-token prompt and a 256-token answer, MTP on and off. Then make the TPU fail once (or wait for a real failure): Fast
+     is the general build on the CPU with "The TPU didn't load" and Try the TPU again in Settings › Model.
+  2. **Pixel 10.** Fast is still the Tensor G5 build on the TPU, and an own Tensor G6 build says it can't run here.
+  3. **The APK.** Install the release APK over 0.7.0 and run it: *done when* every process starts (the panel, a
+     question on the TPU, a GGUF file in :llama, the fast translation in :mt, the voice) and `tools/verify_apk.sh` passes.
 
 ## What's new in 0.7.0
 
