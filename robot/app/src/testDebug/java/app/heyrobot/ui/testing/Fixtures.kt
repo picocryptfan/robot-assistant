@@ -41,7 +41,7 @@ class ActionLog : ArrayList<String>() {
         runRoutine = { add("runRoutine $it") }, openReady = { add("openReady $it") }, askPermission = { add("askPermission $it") },
         tryGpuAgain = { add("tryGpuAgain") }, tryTpuAgain = { add("tryTpuAgain") }, reportText = { "REPORT for ${it.model.id}" }, copyReport = { add("copyReport $it") },
         shareReport = { add("shareReport $it") }, dismissProblem = { add("dismissProblem ${it.time}") },
-        deleteProblem = { add("deleteProblem ${it.time}") },
+        deleteProblem = { add("deleteProblem ${it.time}") }, openGuide = { add("openGuide") },
     )
 }
 

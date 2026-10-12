@@ -77,7 +77,7 @@ fun WeatherSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettin
  * Clear when one is set. A found place is saved onto the settings as they are when the lookup ends.
  */
 @Composable
-private fun HomeDialog(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActions, onClose: () -> Unit) {
+internal fun HomeDialog(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppActions, onClose: () -> Unit) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val current by rememberUpdatedState(s)

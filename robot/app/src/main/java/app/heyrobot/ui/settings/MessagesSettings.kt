@@ -202,6 +202,27 @@ fun MessagesSettingsScreen(
     }
 }
 
+/**
+ * 1.0, the setup guide's "Read my messages": on as the set-up window above turns it on when you tap Turn on without
+ * changing its ticks (your texting app, Cheogram, when it is installed, pinned to its signing key now); off, or on again
+ * with the apps you had, as the main switch does.
+ */
+internal fun turnMessagesOn(ctx: android.content.Context, on: Boolean) {
+    val now = MessagesStore.current(ctx).settings
+    if (on && now.allowlist.apps.isEmpty()) {
+        val texting = MessageApp.CHEOGRAM.takeIf { c -> c.packages.any { HandOffApps.installed(ctx, it) } }
+        val apps = MessageAllowlist.atSetup(texting).apps
+        val pins = apps.flatMap { MessageAppSigners.pinsNow(ctx, it).entries }.associate { it.toPair() }
+        MessagesStore.update(ctx) { it.turnedOn(apps, pins) }
+    } else {
+        MessagesStore.update(ctx) { it.copy(settings = it.settings.copy(on = on)) }
+    }
+    if (on) NotificationAccess.rebind(ctx)
+}
+
+/** 1.0, the setup guide: "Announce new messages", as this page's switch. */
+internal fun announceMessages(ctx: android.content.Context, on: Boolean) = MessagesStore.update(ctx) { it.copy(settings = it.settings.copy(announce = on)) }
+
 /** What Android says of an app's packages now (their signing keys and installer), for turning it on. */
 @Composable
 private fun rememberPinsNow(): (MessageApp) -> Map<String, AppPin> {

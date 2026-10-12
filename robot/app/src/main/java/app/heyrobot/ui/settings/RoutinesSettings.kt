@@ -293,7 +293,7 @@ fun RoutinesScreen(d: RoutinesData, s: RobotSettings, facts: AssistantFacts?, ac
 
 /** The brief's card, as a routine's: when it runs, what it says, what goes online. Turning it on is the consent. */
 @Composable
-private fun BriefCardDialog(rs: RoutineSettings, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+internal fun BriefCardDialog(rs: RoutineSettings, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     val r = BriefRoutine.of(rs.copy(briefEnabled = true, briefOnline = true))
     val card = RoutineCards.card(RoutineDraft(r, BriefLang.EN))
     AlertDialog(

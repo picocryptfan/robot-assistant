@@ -18,6 +18,12 @@ builds.
   sources; `tools/repro_check.sh` builds the APK twice and compares; build-tools are pinned to 35.0.0.
 - The Home screen's corner-swipe tip no longer says Robot sees the screen on the lock screen.
 - Public README, CONTRIBUTING, CHANGELOG, issue templates; PRIVACY and SECURITY brought up to date.
+- **Setup guide**: on first launch (and once more whenever a new version of the guide comes), a guide walks through
+  each feature: what it does, what stays on the phone and what goes online, and whether you want it, with the current
+  setting chosen and where to find it later in Settings. It starts with what Robot can do (ten examples), checks this
+  phone and offers its downloads, and ends with what's on and off now. Skip this step keeps the default; Finish later
+  resumes from Home ("Continue the setup guide"); Settings › About › Setup guide and Home run it again. Nothing is turned
+  on unless you choose it, and Android asks for a permission only when you tap Allow.
 
 ## 0.9.0
 
