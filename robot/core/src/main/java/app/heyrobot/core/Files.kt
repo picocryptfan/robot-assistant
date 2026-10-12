@@ -28,6 +28,25 @@ fun writeAtomicBytes(f: File, bytes: ByteArray) {
     }
 }
 
+/** One monitor per lock file, so this process's threads take turns before the OS lock (which is per process). */
+private val FILE_LOCKS = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+/**
+ * Runs [block] holding [lock], a small file beside the data it guards: this process's threads one at a time, and other
+ * processes through the OS file lock (as People's .lock and memory.lock). For a read-modify-write that must not lose
+ * another writer's change.
+ */
+fun <T> withFileLock(lock: File, block: () -> T): T {
+    lock.parentFile?.mkdirs()
+    val monitor = FILE_LOCKS.getOrPut(lock.absolutePath) { Any() }
+    return synchronized(monitor) {
+        java.nio.channels.FileChannel.open(lock.toPath(), java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE).use { ch ->
+            val l = ch.lock()
+            try { block() } finally { l.release() }
+        }
+    }
+}
+
 fun readOrNull(f: File): String? = try { if (f.isFile) f.readText(Charsets.UTF_8) else null } catch (_: Exception) { null }
 
 inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =

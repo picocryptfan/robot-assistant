@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.Person
+import app.heyrobot.core.messages.AppPin
 import app.heyrobot.core.messages.AfterReading
 import app.heyrobot.core.messages.KeepMessages
 import app.heyrobot.core.messages.MessageAllowlist
@@ -34,6 +35,7 @@ import app.heyrobot.core.messages.MessageSettings
 import app.heyrobot.core.messages.MessagesFile
 import app.heyrobot.core.messages.MessagesLocked
 import app.heyrobot.core.messages.ReplyRoute
+import app.heyrobot.people.MessageAppSigners
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.MessagesStore
@@ -57,21 +59,30 @@ import app.heyrobot.ui.pref.preferenceGroup
 // switches for later. Kept in messages.json (MessagesStore), not settings.json. Turning it on says once what Robot will
 // do and what stays on the phone, pre-ticks your texting app (Cheogram), then the notification access steps People has.
 
-/** The page; [file] and [onChange] are MessagesStore's (a test passes its own); [installed] says which apps are on the phone. */
+/**
+ * The page; [file] and [onEdit] are MessagesStore's (a test passes its own): each edit is a change to the file as it is
+ * when written (MessagesStore.update), so the bridge's "Always for …" and People's switch are never lost. [installed]
+ * says which apps are on the phone; [pinsNow] what Android says of an app's packages now, kept when you turn it on;
+ * [problems] the lines for apps whose signing key changed or that were installed after you turned them on.
+ */
 @Composable
 fun MessagesSettingsScreen(
     file: MessagesFile,
     facts: AssistantFacts?,
-    onChange: (MessagesFile) -> Unit,
+    onEdit: ((MessagesFile) -> MessagesFile) -> Unit,
     a: AppActions,
     onBack: () -> Unit,
     installed: (MessageApp) -> Boolean = rememberInstalled(),
+    pinsNow: (MessageApp) -> Map<String, AppPin> = rememberPinsNow(),
+    problems: (MessagesFile) -> List<String> = rememberProblems(),
 ) {
     val ctx = LocalContext.current
     val s = file.settings
     var setup by rememberSaveable { mutableStateOf(false) }
-    fun set(n: MessageSettings) = onChange(file.copy(settings = n))
+    fun set(change: (MessageSettings) -> MessageSettings) = onEdit { it.copy(settings = change(it.settings)) }
+    fun turn(app: MessageApp, on: Boolean) = onEdit { it.withApp(app, on, if (on) pinsNow(app) else emptyMap()) }
     val granted = facts?.notificationAccess == true
+    val untrusted = remember(file) { if (s.on) problems(file) else emptyList() }
     PreferenceScreen("Messages", onBack) {
         item(key = "intro") {
             IntroPreference("Robot reads, summarizes, translates and answers your messages from their notifications, on this phone only. " +
@@ -81,7 +92,7 @@ fun MessagesSettingsScreen(
             MainSwitchBar("Read my messages", s.on) { on ->
                 if (on && s.allowlist.apps.isEmpty()) setup = true
                 else {
-                    set(s.copy(on = on))
+                    set { it.copy(on = on) }
                     if (on) NotificationAccess.rebind(ctx)
                 }
             }
@@ -103,39 +114,41 @@ fun MessagesSettingsScreen(
             }
         }
         preferenceGroup("Apps", "apps") {
+            // An app Robot no longer reads: its signing key changed, or this build came after you turned it on.
+            for (line in untrusted) StatusPreference(line, "Robot ignores its notifications until then", Mark.WARN)
             for (app in MessageApp.entries) {
                 val on = app in s.allowlist.apps
                 val here = installed(app)
-                SwitchPreference(app.title, appSummary(app, here), on, enabled = s.on) { set(s.copy(allowlist = s.allowlist.with(app, it))) }
+                SwitchPreference(app.title, appSummary(app, here), on, enabled = s.on) { turn(app, it) }
             }
-            SwitchPreference("Include group chats", "Replies to a group always need a tap", s.allowlist.groups, enabled = s.on) {
-                set(s.copy(allowlist = s.allowlist.copy(groups = it)))
+            SwitchPreference("Include group chats", "Replies to a group always need a tap", s.allowlist.groups, enabled = s.on) { g ->
+                set { it.copy(allowlist = it.allowlist.copy(groups = g)) }
             }
         }
         preferenceGroup("Replies", "replies") {
-            ListPreference("How replies go", s.replyRoute, ReplyRoute.entries, { it.title }, detail = { routeDetail(it) }, enabled = s.on) {
-                set(s.copy(replyRoute = it))
+            ListPreference("How replies go", s.replyRoute, ReplyRoute.entries, { it.title }, detail = { routeDetail(it) }, enabled = s.on) { r ->
+                set { it.copy(replyRoute = r) }
             }
             SwitchPreference("Card before sending a reply", if (s.replyCard) "Robot shows what goes where; you tap Send"
-                else "Your own words to one person go after a 3-second stop", s.replyCard, enabled = s.on && s.replyRoute == ReplyRoute.SEND_AFTER_CARD) {
-                set(s.copy(replyCard = it))
+                else "Your own words to one person go after a 3-second stop", s.replyCard, enabled = s.on && s.replyRoute == ReplyRoute.SEND_AFTER_CARD) { c ->
+                set { it.copy(replyCard = c) }
             }
             SwitchPreference("Answer reply cards by voice", "A spoken yes sends your words to one person; a group, a draft or a translation always needs a tap",
-                s.voiceYesSends, enabled = s.on && s.replyRoute == ReplyRoute.SEND_AFTER_CARD) { set(s.copy(voiceYesSends = it)) }
-            SwitchPreference("Offer to send my reply in their language", "A tick box on the card, unticked", s.offerTheirLanguage, enabled = s.on) {
-                set(s.copy(offerTheirLanguage = it))
+                s.voiceYesSends, enabled = s.on && s.replyRoute == ReplyRoute.SEND_AFTER_CARD) { v -> set { it.copy(voiceYesSends = v) } }
+            SwitchPreference("Offer to send my reply in their language", "A tick box on the card, unticked", s.offerTheirLanguage, enabled = s.on) { o ->
+                set { it.copy(offerTheirLanguage = o) }
             }
         }
         preferenceGroup("Reading", "reading") {
-            ListPreference("Keep messages for", s.keep, KeepMessages.entries, { it.title }, detail = { keepDetail(it) }, enabled = s.on) { set(s.copy(keep = it)) }
-            ListPreference("After Robot reads a message", s.afterReading, AfterReading.entries, { it.title }, detail = { afterDetail(it) }, enabled = s.on) {
-                set(s.copy(afterReading = it))
+            ListPreference("Keep messages for", s.keep, KeepMessages.entries, { it.title }, detail = { keepDetail(it) }, enabled = s.on) { k -> set { it.copy(keep = k) } }
+            ListPreference("After Robot reads a message", s.afterReading, AfterReading.entries, { it.title }, detail = { afterDetail(it) }, enabled = s.on) { r ->
+                set { it.copy(afterReading = r) }
             }
-            SwitchPreference("Translate messages not in my languages", "English and French are read as written", s.translate, enabled = s.on) {
-                set(s.copy(translate = it))
+            SwitchPreference("Translate messages not in my languages", "English and French are read as written", s.translate, enabled = s.on) { t ->
+                set { it.copy(translate = t) }
             }
-            ListPreference("Messages on the lock screen", s.locked, MessagesLocked.entries, { it.title }, detail = { lockedDetail(it) }, enabled = s.on) {
-                set(s.copy(locked = it))
+            ListPreference("Messages on the lock screen", s.locked, MessagesLocked.entries, { it.title }, detail = { lockedDetail(it) }, enabled = s.on) { l ->
+                set { it.copy(locked = l) }
             }
         }
         preferenceGroup("Later", "later") {
@@ -171,13 +184,29 @@ fun MessagesSettingsScreen(
             confirmButton = {
                 TextButton(onClick = {
                     setup = false
-                    set(s.copy(on = true, allowlist = s.allowlist.copy(apps = apps)))
+                    // Each ticked app's packages installed now are pinned to their signing keys (MessageSigners).
+                    val pins = apps.flatMap { pinsNow(it).entries }.associate { it.toPair() }
+                    onEdit { it.turnedOn(apps, pins) }
                     NotificationAccess.rebind(ctx)
                 }) { Text("Turn on") }
             },
             dismissButton = { TextButton(onClick = { setup = false }) { Text("Cancel") } },
         )
     }
+}
+
+/** What Android says of an app's packages now (their signing keys and installer), for turning it on. */
+@Composable
+private fun rememberPinsNow(): (MessageApp) -> Map<String, AppPin> {
+    val ctx = LocalContext.current
+    return remember { { app -> MessageAppSigners.pinsNow(ctx, app) } }
+}
+
+/** The apps turned on whose packages Robot doesn't trust now (MessageAppSigners.problems). */
+@Composable
+private fun rememberProblems(): (MessagesFile) -> List<String> {
+    val ctx = LocalContext.current
+    return remember { { f -> MessageAppSigners.problems(ctx, f) } }
 }
 
 /** Which of the apps are on this phone (by their package names, <queries> in the manifest). */
@@ -255,7 +284,7 @@ fun NoCardSwitch(p: Person, modifier: Modifier = Modifier) {
     val who = MessagePeople.callName(p)
     Row(
         modifier.fillMaxWidth().heightIn(min = 56.dp)
-            .toggleable(on, role = Role.Switch) { v -> MessagesStore.save(ctx, f.copy(noCard = if (v) f.noCard + p.id else f.noCard - p.id)) }
+            .toggleable(on, role = Role.Switch) { v -> MessagesStore.update(ctx) { it.copy(noCard = if (v) it.noCard + p.id else it.noCard - p.id) } }
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

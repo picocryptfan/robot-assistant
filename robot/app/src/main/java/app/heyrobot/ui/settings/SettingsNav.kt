@@ -88,7 +88,7 @@ fun SettingsNav(
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
         SettingsRoutes.MESSAGES -> {
             val ctx = LocalContext.current
-            MessagesSettingsScreen(messagesFile(), snap.facts, onChange = { app.heyrobot.sys.MessagesStore.save(ctx, it) }, a, onBack)
+            MessagesSettingsScreen(messagesFile(), snap.facts, onEdit = { app.heyrobot.sys.MessagesStore.update(ctx, it) }, a, onBack)
         }
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)

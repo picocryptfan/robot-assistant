@@ -22,6 +22,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.messages.AfterReading
+import app.heyrobot.core.messages.AppPin
 import app.heyrobot.core.messages.MessageAllowlist
 import app.heyrobot.core.messages.MessageApp
 import app.heyrobot.core.messages.MessageSettings
@@ -74,10 +75,16 @@ class MessagesSettingsTest {
         MessagesStore.reload(ctx)
     }
 
-    private fun open(start: MessagesFile = MessagesFile(), access: Boolean = false, installed: (MessageApp) -> Boolean = cheogramOnly) {
+    /** What "Android" says of Cheogram now: its F-Droid build, with its signer. */
+    private val cheogramPin = AppPin(setOf("c".repeat(64)), "org.fdroid.fdroid")
+    private val pinsNow: (MessageApp) -> Map<String, AppPin> = { if (it == MessageApp.CHEOGRAM) mapOf("com.cheogram.android" to cheogramPin) else emptyMap() }
+
+    private fun open(start: MessagesFile = MessagesFile(), access: Boolean = false, installed: (MessageApp) -> Boolean = cheogramOnly,
+        problems: (MessagesFile) -> List<String> = { emptyList() }) {
         rule.show {
             var f by remember { mutableStateOf(start) }
-            MessagesSettingsScreen(f, facts().copy(notificationAccess = access), onChange = { f = it; saved += it }, log.actions, onBack = {}, installed = installed)
+            MessagesSettingsScreen(f, facts().copy(notificationAccess = access), onEdit = { e -> f = e(f); saved += f }, log.actions, onBack = {},
+                installed = installed, pinsNow = pinsNow, problems = problems)
         }
     }
 
@@ -99,7 +106,22 @@ class MessagesSettingsTest {
         assertTrue(saved.isEmpty())
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.inDialog("Turn on").performClick()
-        assertEquals(MessagesFile(MessageSettings(on = true, allowlist = MessageAllowlist(setOf(MessageApp.CHEOGRAM)))), saved.single())
+        // Cheogram pinned to the key it is signed with now.
+        assertEquals(MessagesFile(MessageSettings(on = true, allowlist = MessageAllowlist(setOf(MessageApp.CHEOGRAM))),
+            pins = mapOf("com.cheogram.android" to cheogramPin)), saved.single())
+    }
+
+    /** 0.7 after the review: an app whose signing key changed is named, with what to do; turning it off and on pins it again. */
+    @Test fun anAppWhoseKeyChangedIsNamed() {
+        val line = "Cheogram changed its signing key: turn it on again to trust it"
+        open(on, access = true, problems = { f -> if (f.pins.isEmpty() && MessageApp.CHEOGRAM in f.settings.allowlist.apps) listOf(line) else emptyList() })
+        rule.onNodeWithText(line).assertExists()
+        rule.scrollToText("Cheogram", substring = false)
+        rule.onRow("Cheogram").performClick()
+        assertTrue(saved.last().pins.isEmpty())
+        rule.onRow("Cheogram").performClick()
+        assertEquals(mapOf("com.cheogram.android" to cheogramPin), saved.last().pins)
+        rule.onNodeWithText(line).assertDoesNotExist()
     }
 
     @Test fun cancellingTheSetupChangesNothing() {

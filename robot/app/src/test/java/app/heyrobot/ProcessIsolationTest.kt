@@ -862,25 +862,38 @@ class ProcessIsolationTest {
         assertEquals("ongoing", meta["android.service.notification.disabled_filter_types"])
         // Main process only: the tap, the buffer and the bridge; the bridge checks each sender's uid.
         assertEquals(listOf("app/people/CheogramListener.kt", "app/people/MessageTap.kt", "app/people/MessagesBridge.kt"), usersOf(Regex("""\bMessageTap\b""")))
+        // A package is read only while signed as when you turned its app on (core MessageSigners): every notification the
+        // tap reads goes through its check, and the signers are read in the main process only (Settings, the tap).
+        val tap = code(File(java("app"), "app/heyrobot/people/MessageTap.kt"))
+        assertTrue(tap.contains("if (allow.allows(sbn.packageName) == null || !trusted(ctx, sbn.packageName)) null"))
+        assertEquals(listOf("app/people/MessageAppSigners.kt", "app/people/MessageTap.kt", "app/ui/settings/MessagesSettings.kt"),
+            usersOf(Regex("""\bMessageAppSigners\b""")))
         assertTrue(code(File(java("app"), "app/heyrobot/people/MessagesBridge.kt")).contains("m.sendingUid != Process.myUid()"))
         assertEquals(listOf("app/assistant/MessagesLink.kt"), usersOf(Regex("""\bMessagesProtocol\.SERVICE_CLASS\b""")))
         assertEquals("app.heyrobot.people.MessagesBridge", Regex("""const val SERVICE_CLASS = "([^"]+)"""").find(File(java("core"), "app/heyrobot/core/messages/MessageWire.kt").readText())!!.groupValues[1])
         assertEquals(listOf("app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt"), usersOf(Regex("""\bMessagesLink\b""")))
         val ui = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""\bPanelMessages\b|\bMessagesLink\b"""), ui))
-        // The messages code: no file written, nothing online, no helper, no raw log, no engine.
+        // The messages code: no file written, nothing online, no helper, no raw log, no engine. (messages.json, Settings ›
+        // Messages, is written by MessagesFile.update alone: switches, People ids and the apps' signing keys, never a message.)
         val msg = ours.filterKeys { it.startsWith("core/core/messages/") || it in setOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt",
-            "app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt", "app/ui/common/ReplyCard.kt") }
+            "app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt", "app/ui/common/ReplyCard.kt", "app/people/MessageAppSigners.kt") }
         assertTrue(msg.keys.toString(), msg.size >= 15)
-        assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)|writeText|writeBytes|openFileOutput|writeAtomic"""), msg))
+        val writes = Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)|writeText|writeBytes|openFileOutput|writeAtomic""")
+        assertEquals(listOf("core/core/messages/MessagesFile.kt"), usersOf(writes, msg))
+        val mf = code(File(java("core"), "app/heyrobot/core/messages/MessagesFile.kt"))
+        assertEquals(1, Regex("""\bwriteAtomic\(""").findAll(mf).count())
+        assertTrue(mf.contains("withFileLock(File(file.parentFile, LOCK))") && mf.contains("if (next != now) writeAtomic(file, next.toJson())"))
         assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bSocket\b|okhttp|\bWebView\b|\bHelper(Session|Link|Http)\b|\bClaude(Session|Client)\b|\bapp\.heyrobot\.(claude|helpers)\b"""), msg))
         assertEquals(emptyList<String>(), usersOf(Regex("""\bLlama|\bBrainClient\b|BrainMsg\.Generate|\blitert"""), msg))
         // Logging: a fixed tag, no other argument (no name, no text, no address); the voice log takes codes and counts.
         assertEquals(emptyList<String>(), usersOf(Regex("""RLog\.[iwe]\([^)\n]*,"""), msg))
-        // messages.json: settings and People ids only, written by the main process (Settings, People's switch, the bridge for "Always for …").
-        assertEquals(listOf("app/people/MessagesBridge.kt", "app/ui/settings/MessagesSettings.kt", "app/ui/settings/SettingsNav.kt"),
-            usersOf(Regex("""\bMessagesStore\.save\(""")))
-        assertTrue(code(File(java("app"), "app/heyrobot/sys/MessagesStore.kt")).contains("writeAtomic(f, m.toJson())"))
+        // messages.json: settings, People ids and signing keys only, written by the main process (Settings, People's switch, the
+        // bridge for "Always for …", the tap's first-use pin), each one change under messages.lock, read from the file.
+        assertEquals(listOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt", "app/ui/settings/MessagesSettings.kt", "app/ui/settings/SettingsNav.kt"),
+            usersOf(Regex("""\bMessagesStore\.update\(""")))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bMessagesStore\.save\(""")))
+        assertTrue(code(File(java("app"), "app/heyrobot/sys/MessagesStore.kt")).contains("MessagesFile.update(file, change)"))
         // History: a turn with messages in it is saved as its placeholder, never its words (core ConversationCodec).
         assertTrue(File(java("core"), "app/heyrobot/core/Conversation.kt").readText().contains("put(\"text\", if (t.messages) t.kept ?: app.heyrobot.core.messages.MessageReading.NOT_KEPT else t.text)"))
         assertTrue(code(File(java("app"), "app/heyrobot/assistant/PanelController.kt")).contains("messages = kept != null, kept = kept)"))

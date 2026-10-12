@@ -80,13 +80,7 @@ class MessagesBridge : Service() {
 
     private fun locked(): Boolean = Assistant.locked(applicationContext)
 
-    /** "Always for Mom" on a reply card: the main process stays messages.json's only writer. A People id and a language, nothing else. */
-    private fun replyLang(person: String, lang: app.heyrobot.core.messages.Lang?) {
-        val ctx = applicationContext
-        val f = MessagesStore.current(ctx)
-        val map = if (lang == null) f.replyLang - person else f.replyLang + (person to lang)
-        if (map != f.replyLang) MessagesStore.save(ctx, f.copy(replyLang = map))
-    }
+    private fun replyLang(person: String, lang: app.heyrobot.core.messages.Lang?) = setReplyLang(applicationContext, person, lang)
 
     /** On, and either unlocked or "Read and reply" on the lock screen. */
     private fun allowedNow(): Boolean {
@@ -99,7 +93,10 @@ class MessagesBridge : Service() {
         val ctx = applicationContext
         val s = MessagesStore.current(ctx).settings
         val locked = locked()
-        val status = MessagesStatus(on = s.on, access = NotificationAccess.granted(ctx), connected = MessageTap.connected, locked = locked,
+        val access = NotificationAccess.granted(ctx)
+        // Access taken back while the listener was still bound: nothing it read stays.
+        if (!access) MessageTap.drop(ctx)
+        val status = MessagesStatus(on = s.on, access = access, connected = MessageTap.connected, locked = locked,
             apps = s.allowlist.apps.size)
         val all = if (s.on) MessageTap.buffer.threads(System.currentTimeMillis()) else emptyList()
         val shown: List<MessageThread> = when {
@@ -123,6 +120,15 @@ class MessagesBridge : Service() {
         }
         held?.let { h -> answer.outcome.end?.let { log(VoiceEvent.MSG_REPLY, MsgAppCode.of(h.app).id, ReplyRouteCode.REMOTE_INPUT.id, it.id) } }
         return answer
+    }
+
+    companion object {
+        /**
+         * "Always for Mom" on a reply card: the main process stays messages.json's only writer, through the same locked
+         * change as Settings (MessagesStore.update), so neither loses the other's. A People id and a language, nothing else.
+         */
+        fun setReplyLang(ctx: android.content.Context, person: String, lang: app.heyrobot.core.messages.Lang?) =
+            MessagesStore.update(ctx) { f -> f.copy(replyLang = if (lang == null) f.replyLang - person else f.replyLang + (person to lang)) }
     }
 
     private fun log(e: VoiceEvent, a: Int, b: Int, c: Int) {

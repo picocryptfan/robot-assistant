@@ -16,7 +16,9 @@ import app.heyrobot.core.messages.ActionSnapshot
 import app.heyrobot.core.messages.HiddenCode
 import app.heyrobot.core.messages.ListenerEvent
 import app.heyrobot.core.messages.MarkKind
+import app.heyrobot.core.messages.MessageApp
 import app.heyrobot.core.messages.MessageBuffer
+import app.heyrobot.core.messages.MessageSigners
 import app.heyrobot.core.messages.MessageSnapshot
 import app.heyrobot.core.messages.MessageThread
 import app.heyrobot.core.messages.MessagesFile
@@ -24,6 +26,7 @@ import app.heyrobot.core.messages.MsgAppCode
 import app.heyrobot.core.messages.NotificationParsing
 import app.heyrobot.core.messages.NotificationSnapshot
 import app.heyrobot.core.messages.Parsed
+import app.heyrobot.core.messages.PinVerdict
 import app.heyrobot.core.messages.PersonSnapshot
 import app.heyrobot.core.messages.RemoteInputSnapshot
 import app.heyrobot.core.messages.ReplyOutcome
@@ -38,6 +41,9 @@ import app.heyrobot.sys.Paths
 // (NotificationParsing decides everything else) and kept in a RAM buffer only, until its notification goes (or "Keep
 // messages for" says): never a file, a log line or a crash report (codes and counts only). The PendingIntents stay
 // here: a reply or a mark fires only from this process, after core ReplySend re-read the notification (MessagesBridge).
+// A package is read only while it is signed as when you turned its app on (core MessageSigners, MessageAppSigners): a
+// look-alike app under the same package name, or a build installed later, is ignored. What it holds goes at once when
+// "Read my messages" is turned off or notification access is taken back.
 
 object MessageTap {
     /** The conversations held now (RAM only; process death or a reboot empties it, the listener's connection rebuilds it). */
@@ -65,7 +71,7 @@ object MessageTap {
         under = f.settings
         buffer.keep = f.settings.keep
         if (!f.settings.on) {
-            buffer.clear()
+            drop(ctx)
             listener?.checkIdle()
             return
         }
@@ -74,23 +80,45 @@ object MessageTap {
         listener?.let { rebuild(ctx, it) }
     }
 
+    /** Settings › Messages changes reach [changed] from the first time the tap is used in this process. */
+    private fun listen(ctx: Context) {
+        if (listening) return
+        listening = true
+        val app = ctx.applicationContext
+        MessagesStore.listen { f -> app.mainExecutor.execute { changed(app, f) } }
+    }
+
     /** [MAIN] The listener connected: read the shade (getActiveNotifications) into the buffer. */
     fun connected(l: CheogramListener) {
         listener = l
         val ctx = l.applicationContext
-        if (!listening) {
-            listening = true
-            MessagesStore.listen { f -> l.applicationContext.mainExecutor.execute { changed(ctx, f) } }
-        }
+        listen(ctx)
         buffer.keep = file(ctx).settings.keep
         under = file(ctx).settings
+        // An app on before the pins (messages.json version 1) is pinned at its first notification: only its builds
+        // installed now may be (one installed later waits for you to turn the app on again).
+        if (file(ctx).firstUse.isNotEmpty()) {
+            val src = MessageAppSigners.source(ctx)
+            MessagesStore.update(ctx) { it.firstUseInstalled { pkg -> src.now(pkg) != null } }
+        }
         if (on(ctx)) rebuild(ctx, l) else buffer.clear()
         log(ctx, VoiceEvent.MSG_LISTENER, ListenerEvent.CONNECTED.id, buffer.size)
     }
 
     fun disconnected(l: CheogramListener) {
         if (listener === l) listener = null
-        log(l.applicationContext, VoiceEvent.MSG_LISTENER, ListenerEvent.DISCONNECTED.id, buffer.size)
+        val ctx = l.applicationContext
+        log(ctx, VoiceEvent.MSG_LISTENER, ListenerEvent.DISCONNECTED.id, buffer.size)
+        // Notification access taken back: nothing Robot read stays in memory.
+        if (!app.heyrobot.sys.NotificationAccess.granted(ctx)) drop(ctx)
+    }
+
+    /** Every message held goes now ("Read my messages" off, notification access taken back). */
+    fun drop(ctx: Context) {
+        val n = buffer.size
+        buffer.clear()
+        trust.clear()
+        if (n > 0) log(ctx, VoiceEvent.MSG_LISTENER, ListenerEvent.DROPPED.id, n)
     }
 
     private fun rebuild(ctx: Context, l: CheogramListener) {
@@ -102,6 +130,7 @@ object MessageTap {
 
     /** [MAIN] onNotificationPosted, on the main thread: an allowed app's conversation goes into RAM; anything else, nothing. */
     fun posted(ctx: Context, sbn: StatusBarNotification) {
+        listen(ctx)
         val s = file(ctx).settings
         if (!s.on || s.allowlist.allows(sbn.packageName) == null) return
         val t = parse(ctx, sbn) ?: return
@@ -114,8 +143,41 @@ object MessageTap {
         buffer.removed(sbn.key ?: return, System.currentTimeMillis())
     }
 
+    /** The last verdict per package, for the package as installed then and the pin kept then (MessageSigners). */
+    private val trust = java.util.concurrent.ConcurrentHashMap<String, Pair<String, Boolean>>()
+
+    /**
+     * [pkg] is signed as when you turned its app on, or, for an app on before the pins, is pinned now (its first
+     * notification). Worked out again only when the package is updated or reinstalled, or its pin changes.
+     */
+    private fun trusted(ctx: Context, pkg: String): Boolean {
+        val f = file(ctx)
+        val src = MessageAppSigners.source(ctx)
+        val key = "${src.version(pkg)}:${f.pins[pkg]?.hashCode()}:${pkg in f.firstUse}"
+        trust[pkg]?.let { (k, ok) -> if (k == key) return ok }
+        val appCode = MsgAppCode.idOf(listOfNotNull(MessageApp.of(pkg)))
+        val ok = when (MessageAppSigners.verdict(ctx, pkg, f)) {
+            PinVerdict.TRUST -> true
+            PinVerdict.PIN_NOW -> {
+                val pin = MessageSigners.pinOf(src.now(pkg))
+                if (pin != null) {
+                    MessagesStore.update(ctx) { it.pinnedAtFirstUse(pkg, pin) }
+                    log(ctx, VoiceEvent.MSG_LISTENER, ListenerEvent.PINNED_FIRST_USE.id, appCode)
+                }
+                pin != null
+            }
+            PinVerdict.CHANGED -> { log(ctx, VoiceEvent.MSG_LISTENER, ListenerEvent.SIGNER_CHANGED.id, appCode); false }
+            PinVerdict.NOT_PINNED, null -> { log(ctx, VoiceEvent.MSG_LISTENER, ListenerEvent.NOT_PINNED.id, appCode); false }
+        }
+        // A pin kept just now changes the key: the next notification works it out once more, then this holds.
+        trust[pkg] = key to ok
+        return ok
+    }
+
     private fun parse(ctx: Context, sbn: StatusBarNotification): MessageThread? = try {
-        (NotificationParsing.parse(snapshot(sbn), file(ctx).settings.allowlist) as? Parsed.Thread)?.thread
+        val allow = file(ctx).settings.allowlist
+        if (allow.allows(sbn.packageName) == null || !trusted(ctx, sbn.packageName)) null
+        else (NotificationParsing.parse(snapshot(sbn), allow) as? Parsed.Thread)?.thread
     } catch (_: Throwable) {
         // Never the notification in a log: only that one couldn't be read.
         RLog.w("message_parse")

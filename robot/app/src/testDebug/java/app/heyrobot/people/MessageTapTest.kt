@@ -9,6 +9,10 @@ import android.content.Intent
 import android.os.Process
 import android.service.notification.StatusBarNotification
 import androidx.test.core.app.ApplicationProvider
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
+import app.heyrobot.core.messages.AppPin
+import app.heyrobot.core.messages.ListenerEvent
 import app.heyrobot.core.messages.MessageAllowlist
 import app.heyrobot.core.messages.MessageApp
 import app.heyrobot.core.messages.MessageSettings
@@ -19,11 +23,13 @@ import app.heyrobot.core.messages.ReplyCheck
 import app.heyrobot.core.messages.ReplyOutcome
 import app.heyrobot.core.messages.ReplyRequest
 import app.heyrobot.core.messages.ReplySend
+import app.heyrobot.core.messages.SignerNow
 import app.heyrobot.sys.MessagesStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,14 +49,35 @@ class MessageTapTest {
     private val ctx: Context = ApplicationProvider.getApplicationContext()
     private val t0 = 1_760_191_320_000L
 
+    /** What "Android" says of each package: its signer, and its last update time. */
+    private val signers = HashMap<String, String>()
+    private val updated = HashMap<String, Long>()
+    private val fdroid = "c".repeat(64)
+    private val lookalike = "e".repeat(64)
+
+    private val fake = object : SignerSource {
+        override fun now(pkg: String) = signers[pkg]?.let { SignerNow(setOf(it), "org.fdroid.fdroid") }
+        override fun stillSigns(pkg: String, pin: AppPin) = false
+        override fun version(pkg: String) = updated[pkg] ?: signers[pkg]?.let { 1L }
+    }
+
     @Before fun fresh() {
         MessageTap.buffer.clear()
         MessagesStore.file(ctx).delete()
         MessagesStore.reload(ctx)
+        signers.clear()
+        updated.clear()
+        signers["com.cheogram.android"] = fdroid
+        MessageAppSigners.source = { fake }
     }
 
+    @After fun phone() {
+        MessageAppSigners.source = { AndroidSigners(it.applicationContext) }
+    }
+
+    /** As Settings › Messages turns them on: each app's installed packages pinned to their signers now. */
     private fun turnOn(apps: Set<MessageApp> = setOf(MessageApp.CHEOGRAM)) =
-        MessagesStore.save(ctx, MessagesFile(MessageSettings(on = true, allowlist = MessageAllowlist(apps))))
+        MessagesStore.save(ctx, MessagesFile().turnedOn(apps, apps.flatMap { MessageAppSigners.pinsNow(ctx, it).entries }.associate { it.toPair() }))
 
     private fun replyIntent(): PendingIntent = PendingIntent.getService(ctx, 1, Intent("eu.siacs.conversations.action.REPLY_TO_CONVERSATION")
         .setClassName(ctx.packageName, "example.CheogramService"), PendingIntent.FLAG_MUTABLE)
@@ -125,5 +152,76 @@ class MessageTapTest {
         assertEquals(ReplyOutcome.GONE, MessageTap.fire(ctx, sbn, fire.target.copy(action = fire.target.action.copy(index = 5)), "x"))
         assertNull(shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>()).nextStartedService)
         assertTrue(MessageTap.buffer.size == 1)
+    }
+
+    /**
+     * 0.7 after the review: a package is read only while it is signed as when you turned its app on. A look-alike under
+     * Cheogram's package name, signed by someone else, leaves nothing in RAM; so does a build installed after you turned
+     * the app on (Cheogram's Play build here) until you turn it on again.
+     */
+    @Test fun onlyThePackageSignedAsWhenYouTurnedItOn() {
+        turnOn()
+        assertEquals(setOf("com.cheogram.android"), MessagesStore.current(ctx).pins.keys)
+        MessageTap.posted(ctx, cheogram())
+        assertEquals(1, MessageTap.buffer.size)
+        MessageTap.removed(cheogram())
+        // Uninstalled, and something else installed under the same name: another key.
+        signers["com.cheogram.android"] = lookalike
+        updated["com.cheogram.android"] = 2L
+        MessageTap.posted(ctx, cheogram())
+        assertEquals(0, MessageTap.buffer.size)
+        assertTrue(MessageAppSigners.problems(ctx, MessagesStore.current(ctx)).single().startsWith("Cheogram changed its signing key"))
+        // The Play build, installed after Cheogram was turned on: not pinned, not read.
+        signers["com.cheogram.android.playstore"] = fdroid
+        MessageTap.posted(ctx, cheogram("com.cheogram.android.playstore"))
+        assertEquals(0, MessageTap.buffer.size)
+        // Turned off and on again: what is installed now is trusted, each build pinned apart.
+        MessagesStore.update(ctx) { it.withApp(MessageApp.CHEOGRAM, false) }
+        turnOn()
+        assertEquals(setOf("com.cheogram.android", "com.cheogram.android.playstore"), MessagesStore.current(ctx).pins.keys)
+        MessageTap.posted(ctx, cheogram())
+        assertEquals(1, MessageTap.buffer.size)
+        MessageTap.removed(cheogram())
+        MessageTap.posted(ctx, cheogram("com.cheogram.android.playstore"))
+        assertTrue(MessageTap.buffer.threads(System.currentTimeMillis()).single().notificationKey.contains("com.cheogram.android.playstore"))
+        assertTrue(MessageAppSigners.problems(ctx, MessagesStore.current(ctx)).isEmpty())
+    }
+
+    /** A messages.json from before the pins: an app that was on is pinned at its first notification, with a code in the voice log. */
+    @Test fun anAppOnBeforeThePinsIsPinnedAtFirstUse() {
+        MessagesStore.file(ctx).apply { parentFile?.mkdirs(); writeText("""{"v":1,"on":true,"apps":["CHEOGRAM"]}""") }
+        MessagesStore.reload(ctx)
+        val before = VoiceLog.total
+        MessageTap.posted(ctx, cheogram())
+        assertEquals(1, MessageTap.buffer.size)
+        val f = MessagesStore.current(ctx)
+        assertEquals(setOf(fdroid), f.pins["com.cheogram.android"]?.digests)
+        assertFalse("com.cheogram.android" in f.firstUse)
+        assertTrue(VoiceLog.entries().take((VoiceLog.total - before).toInt()).any { it.event == VoiceEvent.MSG_LISTENER && it.a == ListenerEvent.PINNED_FIRST_USE.id })
+        MessagesStore.awaitWrites()
+        assertEquals(f.pins, MessagesFile.fromJson(MessagesStore.file(ctx).readText()).pins)
+        // From then on, another key is refused.
+        MessageTap.removed(cheogram())
+        signers["com.cheogram.android"] = lookalike
+        updated["com.cheogram.android"] = 2L
+        MessageTap.posted(ctx, cheogram())
+        assertEquals(0, MessageTap.buffer.size)
+    }
+
+    /** Turned off, or notification access taken back: nothing held stays in the main process. */
+    @Test fun turningItOffOrLosingAccessDropsEverything() {
+        turnOn()
+        MessageTap.posted(ctx, cheogram())
+        assertEquals(1, MessageTap.buffer.size)
+        MessagesStore.update(ctx) { it.copy(settings = it.settings.copy(on = false)) }
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        assertEquals(0, MessageTap.buffer.size)
+        turnOn()
+        MessageTap.posted(ctx, cheogram())
+        assertEquals(1, MessageTap.buffer.size)
+        // The listener unbound with access gone (Robolectric's NotificationManager grants none).
+        val l = org.robolectric.Robolectric.buildService(CheogramListener::class.java).get()
+        MessageTap.disconnected(l)
+        assertEquals(0, MessageTap.buffer.size)
     }
 }

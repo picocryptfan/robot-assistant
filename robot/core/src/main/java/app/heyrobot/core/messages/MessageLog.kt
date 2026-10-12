@@ -70,6 +70,14 @@ enum class HiddenCode(override val id: Int, override val title: String) : LogCod
 
 enum class ListenerEvent(override val id: Int, override val title: String) : LogCode {
     CONNECTED(1, "connected"), DISCONNECTED(2, "disconnected"), REBIND(3, "asked to bind again"), UNBIND(4, "unbound: messages and name learning are off"),
+    /** MessageSigners PIN_NOW: an app that was on before the pins (messages.json version 1), trusted at its first notification. */
+    PINNED_FIRST_USE(5, "kept an app's signing key at its first notification (it was on before Robot checked keys)"),
+    /** MessageSigners CHANGED: ignored until you turn the app on again. */
+    SIGNER_CHANGED(6, "ignored an app whose signing key isn't the one kept"),
+    /** MessageSigners NOT_PINNED: a package installed after its app was turned on. */
+    NOT_PINNED(7, "ignored a build of an app installed after you turned it on"),
+    /** Notification access taken back, or Read my messages turned off: every message held is dropped. */
+    DROPPED(8, "dropped every message held"),
 }
 
 /** What the quarantine did (design §B10). */
@@ -107,7 +115,11 @@ object MessageLog {
             VoiceEvent.MSG_REPLY_CARD -> "Reply card: " + code(CardEnd.entries, a) + (if (b == 1) " · translated" else "") + (if (c == 1) " · group" else "")
             VoiceEvent.MSG_MARK -> "After reading, " + app(b) + ": " + code(MarkKind.entries, a)
             VoiceEvent.MSG_HIDDEN -> "Message hidden from Robot in " + app(a) + ": " + code(HiddenCode.entries, b)
-            VoiceEvent.MSG_LISTENER -> "Notification listener " + code(ListenerEvent.entries, a) + " · $b conversations held"
+            VoiceEvent.MSG_LISTENER -> when (a) {
+                ListenerEvent.PINNED_FIRST_USE.id, ListenerEvent.SIGNER_CHANGED.id, ListenerEvent.NOT_PINNED.id ->
+                    "Notification listener " + code(ListenerEvent.entries, a) + ": " + app(b)
+                else -> "Notification listener " + code(ListenerEvent.entries, a) + " · $b conversations held"
+            }
             VoiceEvent.MSG_GUARD -> "Messages guard: " + code(GuardCode.entries, a)
             VoiceEvent.MSG_REFUSED -> "Messages not read: " + code(MsgRefusal.entries, a)
             else -> "#${e.event.id}"
