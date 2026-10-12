@@ -177,7 +177,7 @@ class MemoryAndMessagesTest {
             assertEquals(listOf<Action>(Action.Remember("Mom's flight lands at 6 tonight", MemoryKind.FACT)), tapped.ran)
         }
         // An end you said goes with it.
-        val parked = MessageQuarantine.rememberAfterMessages(MemoryRouting.route("Remember I parked on P3 until tonight", memory, false)!!, taint)
+        val parked = MessageQuarantine.rememberAfterMessages(MemoryRouting.route("Remember that I parked on P3 until tonight", memory, false)!!, taint)
             as MessageQuarantine.AfterMessages.Card
         assertEquals(app.heyrobot.core.memory.Until.TONIGHT, ((ToolCalls.parse(parked.call) as ParsedCall.Ok).action as Action.Remember).until)
         // French, and a preference, keep their words and kind.

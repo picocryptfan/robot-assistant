@@ -28,9 +28,42 @@ class MemoryCommandsTest {
         assertEquals("Léo has hockey on Tuesdays and Thursdays", remember("Keep in mind that Léo has hockey on Tuesdays and Thursdays").text)
         assertEquals("Marc is allergic to peanuts", remember("Don't forget that Marc is allergic to peanuts").text)
         assertEquals("Marc is allergic to peanuts", remember("Don’t forget that Marc is allergic to peanuts").text)
-        // A statement right after "remember".
-        assertEquals("Julie's birthday is May 3", remember("Remember Julie's birthday is May 3").text)
+        // "Remember my …" is an explicit form too.
         assertEquals("My locker is number 12", remember("remember my locker is number 12").text)
+        assertEquals("Our cottage is on Lac Brome", remember("Remember our cottage is on Lac Brome").text)
+        assertEquals("Call me Sam", remember("Remember, call me Sam").text)
+    }
+
+    /**
+     * 0.7 after the review: only an explicit form saves ("remember that …", "remember: …", "remember my …", "n'oublie pas
+     * que …", « souviens-toi que … »; "remember to …" stays a note). "Remember the movie where …", "do you remember …",
+     * "remember when …" are questions, never saves, in English and Québec French.
+     */
+    @Test fun questionsAboutRememberingAreNeverSaves() {
+        for (s in listOf("Remember the movie where Tom Hanks is stranded on an island", "remember the movie where a guy loses his memory?",
+            "Do you remember my sister's birthday?", "Do you remember when we went to Paris", "Remember when Julie was a baby", "remember when the store opens",
+            "Remember I told you about Bob?", "Remember Julie's birthday is May 3", "remember the name of that song", "Remember my name?",
+            "Can you remember the movie where the dog talks?", "Hey Robot, remember the time Marc fell in the lake", "Remember, the one with the dog?",
+            "Tu te souviens du film où il y a un naufragé?", "Rappelle-toi quand on est allés au chalet", "Souviens-toi du film avec Tom Hanks",
+            "Te rappelles-tu le nom de cette chanson?", "Souviens-toi mon nom?", "Retiens quand on est allés à Québec")) {
+            assertFalse(s, MemoryCommands.parse(s) is MemoryCommand.Remember)
+        }
+        // On the lock screen such a question isn't a save either: never "unlock first to save".
+        val on = MemorySettings()
+        for (s in listOf("Remember the movie where Tom Hanks is stranded on an island", "Do you remember my sister's birthday?")) {
+            val r = MemoryRouting.route(s, on, locked = true)
+            assertFalse(s, r is MemoryRoute.Unlock && r.saving)
+            assertFalse(s, (r as? MemoryRoute.Run)?.command is MemoryCommand.Remember)
+        }
+        // The explicit forms still save, in both languages.
+        assertEquals("I parked on P3", remember("Remember that I parked on P3").text)
+        assertEquals("My sister's birthday is May 3", remember("remember my sister's birthday is May 3").text)
+        assertEquals("The code for the gym is 1234", remember("Remember: the code for the gym is 1234").text)
+        assertEquals("Marc vient samedi", remember("N'oublie pas que Marc vient samedi").text)
+        assertEquals("Marc vient samedi", remember("Souviens-toi que Marc vient samedi").text)
+        assertEquals("Mon casier est le 12", remember("Retiens mon casier est le 12").text)
+        assertNull(MemoryCommands.parse("Remember to buy milk"))
+        assertTrue(MemoryCommands.staysNote("Remember to buy milk"))
     }
 
     @Test fun rememberThatInQuebecFrench() {
@@ -87,7 +120,7 @@ class MemoryCommandsTest {
     }
 
     @Test fun untilWordsSetAnEnd() {
-        val tonight = remember("Remember I parked on P3 until tonight")
+        val tonight = remember("Remember that I parked on P3 until tonight")
         assertEquals("I parked on P3", tonight.text)
         assertEquals(Until.TONIGHT, tonight.until)
         assertEquals(Until.TONIGHT, remember("Remember that the guest Wi-Fi is on, just for today").until)
@@ -127,7 +160,7 @@ class MemoryCommandsTest {
 
     @Test fun saidBackSpeaksToYou() {
         assertEquals("Got it: your sister Julie's birthday is May 3.", MemoryCommands.saidBack(remember("Remember that my sister Julie's birthday is May 3")))
-        assertEquals("Got it: you parked on P3 until tonight.", MemoryCommands.saidBack(remember("Remember I parked on P3 until tonight")))
+        assertEquals("Got it: you parked on P3 until tonight.", MemoryCommands.saidBack(remember("Remember that I parked on P3 until tonight")))
         assertEquals("Got it: the cottage is on Lac Brome.", MemoryCommands.saidBack(remember("Remember that the cottage is on Lac Brome")))
         assertEquals("Got it: Léo has hockey on Tuesdays.", MemoryCommands.saidBack(remember("Remember that Léo has hockey on Tuesdays")))
         assertEquals("C'est noté : « La fête de ma sœur est le 3 mai ».", MemoryCommands.saidBack(remember("Souviens-toi que la fête de ma sœur est le 3 mai")))

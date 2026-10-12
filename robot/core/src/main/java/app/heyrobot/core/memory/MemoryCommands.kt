@@ -11,8 +11,10 @@ import java.util.Locale
 // Pure. What your words mean for memory, decided by code before anything reaches the model (design §A3.1, the router
 // part of "MemoryRouter"). Anchored at the start of what you said, with only filler in front ("hey robot", "please",
 // "okay", "can you", "s'il te plaît", "peux-tu"), so "my sister said remember that…" or a sentence about forgetting is
-// never a command. English and Québec French: "remember that …", "souviens-toi que …", "retiens que …", "n'oublie pas
-// que …" and the spoken "oublie pas que …" save; "forget that" and "oublie ça" remove the item of this conversation;
+// never a command. Only an explicit form saves: English and Québec French "remember that …", "remember: …", "remember
+// my …", "keep in mind that …", "don't forget that …", "souviens-toi que …", "retiens que …", "n'oublie pas que …" and
+// the spoken "oublie pas que …"; "remember the movie where …", "do you remember …", "remember when …" are questions
+// (the model's, with what memory finds), never saves; "forget that" and "oublie ça" remove the item of this conversation;
 // "forget my sister's birthday", "oublie la fête de ma sœur" search; "what do you remember about Julie?", "qu'est-ce
 // tu sais sur moi?" list. "Remember to buy milk", "n'oublie pas d'acheter du lait" stay notes: [parse] gives null and
 // today's route (the model's add_note) runs as before. "Forget it" and "oublie ça, c'est pas grave" mean never mind.
@@ -91,10 +93,11 @@ sealed class MemoryCommand {
 }
 
 object MemoryCommands {
-    private class P(val re: Regex, val fr: Boolean)
+    /** [statement]: the form saves only when it isn't asked as a question ("remember my name?" asks). */
+    private class P(val re: Regex, val fr: Boolean, val statement: Boolean = false)
 
-    private fun en(p: String) = P(Regex(p), false)
-    private fun fr(p: String) = P(Regex(p), true)
+    private fun en(p: String, statement: Boolean = false) = P(Regex(p), false, statement)
+    private fun fr(p: String, statement: Boolean = false) = P(Regex(p), true, statement)
 
     private val LEAD = Regex("""^(?:(?:hey|hi|ok|okay|robot|please|so|alors|bon|euh|um+|uh+|eh|ecoute|s'il te plait|s'il vous plait|stp|can you|could you|would you|will you|est-ce que tu peux|est-ce que tu pourrais|peux-tu|pourrais-tu|tu peux|tu pourrais)(?=[\s,.!:;-]|$)[\s,.!:;-]*)+""")
     private val TRAIL = Regex("""(?:[\s,]+(?:please|s'il te plait|s'il vous plait|stp|merci|thanks|thank you|ok|okay))*[\s.!?…]*$""")
@@ -103,16 +106,19 @@ object MemoryCommands {
     private val NOTE = Regex("""^(?:(?:remember|don't forget|do not forget|dont forget) to\b|remind me\b|(?:make|take) a note\b|note (?:down|that)\b|(?:jot|write) (?:it |this |that )?down\b|(?:n'oublie pas|oublie pas|souviens[- ]toi|rappelle[- ]toi|retiens)(?: bien)? (?:de |d')|pense (?:a |aux? )|rappelle[- ]moi\b|prends (?:en )?note\b)""")
 
     private val REMEMBER = listOf(
-        en("""^(?:remember|memori[sz]e)(?: this| the following)?\s*[:,]\s*(?<rest>.+)$"""),
+        en("""^(?:remember|memori[sz]e)(?: this| the following)?\s*:\s*(?<rest>.+)$"""),
+        // Spoken, the colon is a comma: "remember, call me Sam" (but "remember, the one with the dog?" asks).
+        en("""^(?:remember|memori[sz]e)(?: this| the following)?\s*,\s*(?<rest>.+)$""", statement = true),
         en("""^(?:remember|memori[sz]e) that (?<rest>.+)$"""),
         en("""^(?:keep|bear) (?:this )?in mind(?: that)?\s*[:,]?\s*(?<rest>.+)$"""),
         en("""^(?:don't|do not|dont) forget that (?<rest>.+)$"""),
         fr("""^(?:souviens[- ]toi|rappelle[- ]toi|retiens|memorise|garde en memoire|n'oublie pas|oublie pas)(?: bien)? (?:que |qu')(?<rest>.+)$"""),
         fr("""^(?:souviens[- ]toi|rappelle[- ]toi|retiens|memorise|garde en memoire)(?: (?:ceci|ca|cela|bien))?\s*[:,]\s*(?<rest>.+)$"""),
-        // "Remember I parked on P3 until tonight": a statement right after the verb (who it is about, or a verb in it).
-        en("""^(?:remember|memori[sz]e) (?<rest>(?:i|i'm|i've|i'd|i'll|my|our|we|we're|we've|it's|there's|his|her|their)\b.+)$"""),
-        en("""^(?:remember|memori[sz]e) (?<rest>(?!(?:to|when|where|what|who|how|why|if|whether|which|me|this|that|the following)\b)[^?]+\b(?:is|are|was|were|has|have|had|lives|works|likes|loves|hates|prefers|goes|takes|plays)\b[^?]*)$"""),
-        fr("""^(?:souviens[- ]toi|rappelle[- ]toi|retiens) (?<rest>(?:je|j'|mon|ma|mes|notre|nos|on|nous)\b.+)$"""),
+        // "Remember my locker is number 12": "remember my …" is a save too, unless it asks ("remember my name?").
+        en("""^(?:remember|memori[sz]e) (?<rest>(?:my|our)\b.+)$""", statement = true),
+        fr("""^(?:souviens[- ]toi|rappelle[- ]toi|retiens) (?<rest>(?:mon|ma|mes|notre|nos)\b.+)$""", statement = true),
+        // Nothing else saves: "remember the movie where …", "remember when …", "remember I told you …" are questions about
+        // what Robot remembers (or the model's), never something to keep.
     )
 
     private val FORGET_ALL = listOf(
@@ -199,7 +205,9 @@ object MemoryCommands {
     fun parse(text: String): MemoryCommand? {
         val s = said(text)
         if (s.key.isEmpty() || NOTE.containsMatchIn(s.key)) return null
+        val question = text.trimEnd(' ', '"', '”', '»', ')').endsWith('?')
         for (p in REMEMBER) {
+            if (p.statement && question) continue
             val m = p.re.find(s.key) ?: continue
             return remember(s.cut(m.groups["rest"]!!.range.first), p.fr) ?: continue
         }
