@@ -39,6 +39,16 @@ data class TermuxScriptAction(val name: String, val args: String = "", val sourc
 }
 
 object TermuxCalls {
+    /** What a Termux call nobody prepared says (it never runs). */
+    const val UNPREPARED = "Termux isn't ready: open Settings › Termux."
+
+    /** TermuxPolicy prepared [a]: it has its card's contents and the key its live state is found by. */
+    fun prepared(a: Action): Boolean = when (a) {
+        is TermuxCommandAction -> a.key.isNotBlank() && a.card != null
+        is TermuxScriptAction -> a.key.isNotBlank() && a.card != null
+        else -> false
+    }
+
     /** At most 3 parameters each, about 150 tokens for both (B8.4). */
     val SPECS: List<ToolSpec> = listOf(
         ToolSpec(ToolName.TERMUX_SCRIPT, "Run the user's Termux script.", listOf(

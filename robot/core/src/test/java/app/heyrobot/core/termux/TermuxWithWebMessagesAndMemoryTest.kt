@@ -14,6 +14,8 @@ import app.heyrobot.core.ModelOutcome
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.RobotSettings
+import app.heyrobot.core.TermuxCommandAction
+import app.heyrobot.core.TermuxScriptAction
 import app.heyrobot.core.RoutineGate
 import app.heyrobot.core.SafetyCards
 import app.heyrobot.core.StepClass
@@ -72,6 +74,12 @@ class TermuxWithWebMessagesAndMemoryTest {
         val ran = mutableListOf<Action>()
         override val locked = false
         override suspend fun prepare(action: Action): Prepared = Prepared.Ready(action)
+        /** A Termux call comes out of :voice's TermuxTool.prepare with its key and card (1.0: TurnRunner never runs one without). */
+        override suspend fun prepare(action: Action, untrusted: Boolean, remote: Boolean): Prepared = Prepared.Ready(when (action) {
+            is TermuxCommandAction -> action.copy(key = "k", card = TermuxCardInfo(action.command))
+            is TermuxScriptAction -> action.copy(key = "k", card = TermuxCardInfo("~/robot/${action.name}"))
+            else -> action
+        })
         override suspend fun run(action: Action): Executed { ran += action; return Executed(ActionStatus.DONE, "Ran.") }
     }
 

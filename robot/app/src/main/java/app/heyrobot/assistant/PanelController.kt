@@ -2778,6 +2778,10 @@ object PanelController {
         override val locked: Boolean get() = Assistant.locked(VoiceHub.app)
         override val settings: RobotSettings get() = VoiceHub.settings
         override suspend fun prepare(action: Action): Prepared = withContext(Dispatchers.IO) { MemoryPanel.prepare(action, locked) ?: executor().prepare(action) }
+        // 1.0 (injection-termux-policy-unwired): a Termux call is prepared by TermuxTool (TermuxPolicy, the lock, the signer, the
+        // permission), into its card or a refusal; everything else as above.
+        override suspend fun prepare(action: Action, untrusted: Boolean, remote: Boolean): Prepared =
+            TermuxTool.prepareTurn(VoiceHub.app, action, untrusted, remote, turnSaid) { prepare(it) }
         override suspend fun run(action: Action): Executed {
             // 0.7: remember and forget (core memory/); what the conversation holds decides where a remembered item came from.
             if (action.tool.group == ToolGroup.MEMORY) return withContext(Dispatchers.IO) {

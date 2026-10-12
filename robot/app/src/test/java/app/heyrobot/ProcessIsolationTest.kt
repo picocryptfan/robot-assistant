@@ -91,6 +91,16 @@ class ProcessIsolationTest {
             ours.filter { it.value.readText().contains("PERMISSION_RUN_COMMAND") }.keys.sorted())
         assertEquals(listOf("app/assistant/TermuxPanel.kt", "app/assistant/TermuxTool.kt", "app/assistant/VoiceHub.kt", "app/assistant/PanelActions.kt",
             "app/assistant/PanelController.kt").sorted(), usersOf(Regex("""\bTermux(Tool|Panel)\b""")).filter { !it.endsWith("TermuxResultReceiver.kt") && !it.endsWith("TermuxRunner.kt") })
+        // 1.0 (injection-termux-policy-unwired): the panel's actions prepare every Termux call through TermuxTool (TermuxPolicy,
+        // the lock, the signer, the permission), and TurnRunner never runs one that wasn't (no card, no key).
+        val panel = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        val actions = panel.substringAfter("private object PanelActions : TurnActions {").substringBefore("override suspend fun run(")
+        assertTrue(actions, actions.contains("override suspend fun prepare(action: Action, untrusted: Boolean, remote: Boolean): Prepared =\n" +
+            "            TermuxTool.prepareTurn(VoiceHub.app, action, untrusted, remote, turnSaid) { prepare(it) }"))
+        val tool = code(File(java("app"), "app/heyrobot/assistant/TermuxTool.kt"))
+        assertTrue(tool.contains("if (!action.tool.termux) other(action) else withContext(Dispatchers.IO) { prepare(ctx, action, untrusted, remote, said) }"))
+        assertEquals(listOf("app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxTool\.facts\b|internal var facts\b""")))
+        assertTrue(code(File(java("core"), "app/heyrobot/core/Turn.kt")).contains("if (a.action.tool.termux && !TermuxCalls.prepared(a.action)) return done("))
         // Settings › Termux only asks the voice process for its fixed set-up runs (Cmd.TERMUX), never a command.
         assertTrue(code(File(java("app"), "app/heyrobot/assistant/VoiceHub.kt")).contains("Cmd.TERMUX -> TermuxTool.setup(app, i.getStringExtra(Cmd.EXTRA_RUN))"))
         val setup = File(java("app"), "app/heyrobot/assistant/TermuxTool.kt").readText().substringAfter("fun setup(").substringBefore("\n    private suspend fun test(")

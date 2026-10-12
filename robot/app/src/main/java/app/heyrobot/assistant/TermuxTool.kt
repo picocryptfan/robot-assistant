@@ -45,6 +45,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 // VOICE PROCESS. The Termux agent's tools (0.9, docs/plans/websearch-termux-design.md B5, B7, B8): which ones Gemma is told
@@ -106,14 +107,16 @@ object TermuxTool {
      * content Robot didn't write; [remote]: a helper asked; [said]: your own words this turn (never screen text).
      */
     fun prepare(ctx: Context, action: Action, untrusted: Boolean, remote: Boolean, said: String?): Prepared {
-        val s = TermuxStore.load(ctx)
+        val f = facts
+        val s = f.settings(ctx)
         if (!s.enabled) return Prepared.Refused(ActionStatus.DISABLED, TermuxReason.OFF.en)
-        val check = TermuxFacts.check(ctx, s)
+        val check = f.check(ctx, s)
         if (check.status == TermuxStatus.CHANGED) return Prepared.Refused(ActionStatus.FAILED, TermuxFailure.NOT_TRUSTED.en)
-        val granted = TermuxFacts.granted(ctx)
+        val granted = f.granted(ctx)
         if (!granted) return Prepared.Refused(ActionStatus.NEEDS_PERMISSION, TermuxFailure.NO_PERMISSION.en)
-        if (!TermuxSetup.ready(check, granted, TermuxStore.status(ctx), s.trustedSigner)) return Prepared.Refused(ActionStatus.FAILED, TermuxFailure.NOT_READY.en)
-        val locked = Assistant.locked(ctx)
+        val status = f.status(ctx)
+        if (!TermuxSetup.ready(check, granted, status, s.trustedSigner)) return Prepared.Refused(ActionStatus.FAILED, TermuxFailure.NOT_READY.en)
+        val locked = f.locked(ctx)
         val key = UUID.randomUUID().toString()
         return when (action) {
             is TermuxCommandAction -> {
@@ -124,7 +127,7 @@ object TermuxTool {
                     card = TermuxCards.command(analysis, d, action.why, s.limitSeconds, written = source == CommandSource.MODEL || source == CommandSource.HELPER)), d)
             }
             is TermuxScriptAction -> {
-                val scripts = TermuxStore.status(ctx).scripts
+                val scripts = status.scripts
                 val source = if (remote) CommandSource.HELPER else action.source
                 val named = said?.let { ScriptRegistry.match(it, scripts, typed = true) }?.let { it.name == action.name && it.args.isBlank() } == true
                 val d = TermuxPolicy.script(action.name, action.args, source, s, locked, untrusted, named && action.args.isBlank(), known = scripts.map { it.name }.toSet())
@@ -138,6 +141,34 @@ object TermuxTool {
             else -> Prepared.Refused(ActionStatus.INVALID, "Not a Termux call.")
         }
     }
+
+    /**
+     * 1.0 audit (injection-termux-policy-unwired): the panel's three-argument prepare (TurnRunner's), so every Termux call
+     * is prepared here, through TermuxPolicy, the lock, the signer and the permission, into its card or a refusal; [other]
+     * prepares everything else. Without it a Termux call reached the gate with no reason and no card.
+     */
+    suspend fun prepareTurn(ctx: Context, action: Action, untrusted: Boolean, remote: Boolean, said: String?, other: suspend (Action) -> Prepared): Prepared =
+        if (!action.tool.termux) other(action) else withContext(Dispatchers.IO) { prepare(ctx, action, untrusted, remote, said) }
+
+    /** What [prepare] reads of the phone: Settings › Termux, the installed Termux against your signer, the permission, the set-up, the lock. */
+    interface Facts {
+        fun settings(ctx: Context): TermuxSettings
+        fun check(ctx: Context, s: TermuxSettings): app.heyrobot.core.termux.TermuxCheck
+        fun granted(ctx: Context): Boolean
+        fun status(ctx: Context): TermuxSetupStatus
+        fun locked(ctx: Context): Boolean
+    }
+
+    object PhoneFacts : Facts {
+        override fun settings(ctx: Context) = TermuxStore.load(ctx)
+        override fun check(ctx: Context, s: TermuxSettings) = TermuxFacts.check(ctx, s)
+        override fun granted(ctx: Context) = TermuxFacts.granted(ctx)
+        override fun status(ctx: Context) = TermuxStore.status(ctx)
+        override fun locked(ctx: Context) = Assistant.locked(ctx)
+    }
+
+    /** The phone's own; a test's end-to-end run swaps in its own (nothing else sets it). */
+    @Volatile internal var facts: Facts = PhoneFacts
 
     private fun refused(d: TermuxDecision): Prepared.Refused? {
         if (d.verdict != TermuxVerdict.REFUSE) return null

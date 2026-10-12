@@ -488,6 +488,9 @@ class TurnRunner(
             is Prepared.Refused -> return done(asked, p.status, p.detail)
             is Prepared.Ready -> p
         }
+        // 1.0 (injection-termux-policy-unwired): a Termux call TermuxPolicy didn't prepare (no card, no key) never runs, and
+        // never runs without its card: fail closed rather than trust the gate's Termux branch with no reasons.
+        if (a.action.tool.termux && !TermuxCalls.prepared(a.action)) return done(a.action, ActionStatus.FAILED, TermuxCalls.UNPREPARED)
         // A message in the conversation: a tap for anything that leaves for someone else (the card says why).
         val fromMessage = MessageQuarantine.why(a.action, messages, origin)
         val reasons = a.reasons + fromMessage
