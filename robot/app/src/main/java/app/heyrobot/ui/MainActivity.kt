@@ -63,6 +63,7 @@ import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.VoiceBench
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceEngineStatus
+import app.heyrobot.core.feedback.FeedbackEntry
 import app.heyrobot.core.readOrNull
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
@@ -78,6 +79,7 @@ import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.update.Updater
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
+import app.heyrobot.sys.FeedbackClipboard
 import app.heyrobot.sys.Problems
 import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
@@ -92,6 +94,7 @@ import app.heyrobot.ui.model.ModelScreen
 import app.heyrobot.ui.settings.AppRoutes
 import app.heyrobot.ui.settings.SettingsNav
 import app.heyrobot.ui.settings.SettingsRoot
+import app.heyrobot.ui.settings.SettingsRoutes
 import app.heyrobot.ui.settings.SetupScreen
 import app.heyrobot.ui.settings.rememberPageStack
 import app.heyrobot.ui.theme.RobotTheme
@@ -126,6 +129,12 @@ class MainActivity : ComponentActivity() {
             // The updater's daily check, scheduled if Settings › Updates has it on.
             try { Updater.onAppOpen(app) } catch (_: Throwable) {}
         }, "robot-recognizer").start()
+    }
+
+    /** 0.7: Send feedback's Copy is cleared 60 s on if unchanged; the clipboard can be read only while Robot has the focus. */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) FeedbackClipboard.check(this)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -243,6 +252,8 @@ data class Snapshot(
     val gpuFailure: GpuFailure? = null,
     /** The last model problem you haven't dismissed, with a report to copy or share, or null. */
     val problem: ModelProblem? = null,
+    /** 0.7: the last 10 model problems you haven't deleted, newest first (the Model tab's list). */
+    val problems: List<ModelProblem> = emptyList(),
     val progress: String? = null,
     val percent: Int = -1,
     val failure: String? = null,
@@ -328,6 +339,7 @@ fun RobotAppUi(activity: MainActivity) {
                     phone = phone,
                     gpuFailure = Problems.gpuFailure(ctx),
                     problem = Problems.open(ctx),
+                    problems = Problems.list(ctx),
                     progress = use.progress,
                     percent = use.percent,
                     failure = use.failure,
@@ -610,6 +622,7 @@ fun RobotAppUi(activity: MainActivity) {
         copyReport = { text -> Problems.copy(ctx, text); say("The report is on the clipboard.") },
         shareReport = { text -> try { Problems.share(ctx, text) } catch (_: Exception) { say("Couldn't open the share sheet.") } },
         dismissProblem = { p -> Problems.dismiss(ctx, p) },
+        deleteProblem = { p -> Problems.delete(ctx, p) },
         askMedia = {
             mediaPermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
@@ -673,7 +686,7 @@ fun RobotAppUi(activity: MainActivity) {
             onCreated = { id -> if (page == Page.NoteEdit(null)) nav.replace(Page.NoteEdit(id)) }, onBack = { nav.back(); notesTick++ })
         Page.WakePhrases -> WakePhrasesScreen(settings, ::updateSettings, actions, snackbar, onBack = nav::back)
         Page.WakeTest -> WakeTestScreen(settings, snap, onBack = nav::back)
-        Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = nav::back)
+        Page.VoiceLog -> VoiceLogScreen(settings, snackbar, onBack = nav::back, onReport = { page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.VOICE_LOG)) })
         Page.AdbFixes -> AdbFixesScreen(actions, snackbar, onBack = nav::back)
         Page.People -> PeopleScreen(settings, ::updateSettings, snap.facts, actions, snackbar, onOpen = { page = Page.PersonEdit(it) }, onBack = nav::back)
         is Page.PersonEdit -> PersonScreen(p.id, actions, snackbar, onBack = nav::back)
@@ -796,4 +809,6 @@ class AppActions(
     val copyReport: (String) -> Unit = {},
     val shareReport: (String) -> Unit = {},
     val dismissProblem: (ModelProblem) -> Unit = {},
+    /** 0.7: "Delete" on a problem in the Model tab's list. */
+    val deleteProblem: (ModelProblem) -> Unit = {},
 )

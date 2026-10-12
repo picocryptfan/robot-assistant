@@ -3,9 +3,12 @@ package app.heyrobot.ui
 import androidx.compose.runtime.saveable.SaverScope
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.VoiceBundle
+import app.heyrobot.core.feedback.FeedbackEntry
+import app.heyrobot.core.feedback.FeedbackKind
 import app.heyrobot.sys.AppPages
 import app.heyrobot.ui.model.ModelRoutes
 import app.heyrobot.ui.settings.AppRoutes
+import app.heyrobot.ui.settings.FeedbackArgs
 import app.heyrobot.ui.settings.PageStack
 import app.heyrobot.ui.settings.SettingsRoutes
 import app.heyrobot.ui.settings.parentOf
@@ -107,6 +110,10 @@ class PageSaverTest {
             // The updater's notifications open Updates alone: Back goes to About, where its row is.
             Page.Settings(SettingsRoutes.UPDATES) to Page.Settings(SettingsRoutes.ABOUT),
             Page.Settings("voice/barge-in") to Page.Settings("voice"),
+            // 0.7: Send feedback goes back to About when it was opened there, else to the tabs (the Model tab, the panel).
+            Page.Settings(SettingsRoutes.feedback(FeedbackEntry.ABOUT)) to Page.Settings(SettingsRoutes.ABOUT),
+            Page.Settings(SettingsRoutes.feedback(FeedbackEntry.MODEL_PROBLEM, FeedbackKind.BUG, 1_760_000_000_000L)) to null,
+            Page.Settings(SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.IDEA)) to null,
             Page.Settings("display") to null,
             // A model's page sits under the Model tab.
             Page.Settings(ModelRoutes.model(BrainModel.SMARTER)) to null,
@@ -137,11 +144,26 @@ class PageSaverTest {
         assertNull(AppRoutes.target("settings"))
     }
 
+    /** 0.7: Send feedback's route says where it was opened from, its kind and a problem's time, and reads back the same. */
+    @Test fun sendFeedbacksRouteHoldsItsArguments() {
+        assertEquals("about/feedback?e=about", SettingsRoutes.feedback(FeedbackEntry.ABOUT))
+        assertEquals("about/feedback?e=problem&k=bug&p=1760000000000", SettingsRoutes.feedback(FeedbackEntry.MODEL_PROBLEM, FeedbackKind.BUG, 1_760_000_000_000L))
+        for (e in FeedbackEntry.entries) for (k in FeedbackKind.entries + listOf(null)) for (p in listOf(null, 1_760_000_000_000L)) {
+            assertEquals(FeedbackArgs(e, k, p), FeedbackArgs.of(SettingsRoutes.feedback(e, k, p)))
+        }
+        // Damaged or unknown parts read as About, a bug, no problem.
+        assertEquals(FeedbackArgs(FeedbackEntry.ABOUT, null, null), FeedbackArgs.of("about/feedback?e=x&k=y&p=z"))
+        assertEquals(FeedbackKind.BUG, FeedbackArgs.of("about/feedback").startKind)
+    }
+
     companion object {
         /** Every route ui/settings/SettingsNav.kt opens. */
         val SETTINGS_ROUTES = listOf(SettingsRoutes.VOICE, SettingsRoutes.BARGE_IN, SettingsRoutes.ACTIONS, SettingsRoutes.PEOPLE_NOTES_CALENDAR,
             SettingsRoutes.WEATHER, SettingsRoutes.HISTORY, SettingsRoutes.DISPLAY, SettingsRoutes.ADVANCED, SettingsRoutes.ABOUT,
-            SettingsRoutes.UPDATES, SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer")) +
+            SettingsRoutes.UPDATES, SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer"),
+            // 0.7: Send feedback, from About, a model problem and the panel.
+            SettingsRoutes.feedback(FeedbackEntry.ABOUT), SettingsRoutes.feedback(FeedbackEntry.MODEL_PROBLEM, FeedbackKind.BUG, 1_760_000_000_000L),
+            SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.IDEA)) +
             BrainModel.entries.map(ModelRoutes::model) + VoiceBundle.entries.map(ModelRoutes::voice)
     }
 }

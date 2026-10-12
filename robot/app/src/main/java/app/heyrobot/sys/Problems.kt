@@ -19,9 +19,12 @@ import app.heyrobot.core.ExitFacts
 import app.heyrobot.core.GpuFailure
 import app.heyrobot.core.GpuTrying
 import app.heyrobot.core.ModelProblem
+import app.heyrobot.core.NativeCrash
+import app.heyrobot.core.ProblemList
 import app.heyrobot.core.ProblemReport
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ReportFacts
+import app.heyrobot.core.Tombstone
 import app.heyrobot.core.VoiceLogCodec
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
@@ -31,17 +34,21 @@ import java.io.File
 // process, which loads the model; the main app deletes the failure when you try the GPU again), the last model problem
 // (written by the voice process: codes and numbers only, core ModelProblem) with its notification, and the problem
 // report the main app builds from it when you open it: plain text you read, then copy or share yourself. Nothing is
-// ever sent by Robot.
+// ever sent by Robot. 0.7: the last 10 problems too (core ProblemList, the Model tab's list; one you delete is hidden by
+// the main app, which never writes the voice process's file), and a native crash's tombstone read into its report as
+// codes, library names and offsets (core Tombstone).
 
 object Problems {
     private const val CHANNEL = "model_problems"
     private const val NOTICE_ID = 47
     private const val PREFS = "robot_problems"
     private const val DISMISSED = "dismissed"
+    private const val DELETED = "deleted"
 
     private fun gpuFile(ctx: Context) = File(Paths.dir(ctx), GpuFailure.FILE)
     private fun tryingFile(ctx: Context) = File(Paths.dir(ctx), GpuTrying.FILE)
     private fun noteFile(ctx: Context) = File(Paths.dir(ctx), ModelProblem.FILE)
+    private fun listFile(ctx: Context) = File(Paths.dir(ctx), ProblemList.FILE)
 
     /** The GPU failure Robot remembers, or null. Any process. */
     fun gpuFailure(ctx: Context): GpuFailure? = GpuFailure.decode(readOrNull(gpuFile(ctx)))
@@ -63,10 +70,36 @@ object Problems {
     /** A GPU load another voice process started and never saw answered (the phone or Robot restarted during it), or null. */
     fun staleGpuTry(ctx: Context): GpuTrying? = GpuTrying.decode(readOrNull(tryingFile(ctx)))?.takeIf { it.voicePid != android.os.Process.myPid() }
 
-    /** [VOICE] Keeps [p] as the last problem and tells you once, with a notification that opens Settings › Model. */
+    /**
+     * [VOICE] Keeps [p] as the last problem, adds it to the last 10 (the Model tab's list), and tells you once, with a
+     * notification that opens Settings › Model.
+     */
     fun note(ctx: Context, p: ModelProblem) {
         try { writeAtomic(noteFile(ctx), p.encode()) } catch (t: Throwable) { RLog.w("problem_save", t) }
+        try {
+            synchronized(this) { writeAtomic(listFile(ctx), ProblemList.add(readOrNull(listFile(ctx)), p)) }
+        } catch (t: Throwable) { RLog.w("problem_list_save", t) }
         notify(ctx, p)
+    }
+
+    /**
+     * [MAIN] The last 10 problems, newest first, without the ones you deleted. A 0.4.7 or 0.6.0 phone's last problem, from
+     * before the list, is in it too.
+     */
+    fun list(ctx: Context): List<ModelProblem> {
+        val deleted = prefs(ctx).getStringSet(DELETED, emptySet()).orEmpty()
+        val all = ProblemList.decode(readOrNull(listFile(ctx))) + listOfNotNull(last(ctx))
+        return all.distinctBy { it.time }.sortedByDescending { it.time }.take(ProblemList.KEEP).filter { it.time.toString() !in deleted }
+    }
+
+    /** [MAIN] "Delete" in the Model tab's list: hidden for good (and dismissed, when it is the open one). */
+    fun delete(ctx: Context, p: ModelProblem) {
+        val p0 = prefs(ctx)
+        val kept = list(ctx).map { it.time.toString() }.toSet()
+        // Only the times still listed are remembered, so the set never grows past the list.
+        val deleted = (p0.getStringSet(DELETED, emptySet()).orEmpty().filter { it in kept || it == p.time.toString() } + p.time.toString()).toSet()
+        p0.edit().putStringSet(DELETED, deleted).apply()
+        if (open(ctx)?.time == p.time) dismiss(ctx, p)
     }
 
     /** The last problem, or null. Any process. */
@@ -133,7 +166,9 @@ object Problems {
     /**
      * Android's records of how the problem's process ended (ApplicationExitInfo: :brain's, or 0.6.0 :llama's for a GGUF
      * file, which Android keeps under Robot's package too), the one with the problem's process id first, then the others
-     * within 10 minutes of it: its reason, status, description, importance and memory. Never the trace.
+     * within 10 minutes of it: its reason, status, description, importance and memory. 0.7: a native crash's trace (its
+     * tombstone) is read by core Tombstone alone, which keeps the signal, the abort message when safe and the crashing
+     * thread's frames as library names and offsets; nothing else of it is kept or shown.
      */
     private fun exits(ctx: Context, p: ModelProblem): List<ExitFacts> = try {
         val suffix = p.process.suffix
@@ -141,11 +176,17 @@ object Problems {
             .filter { e -> e.processName?.let { it.endsWith(suffix) || it.contains("$suffix:") } == true }
         val near = all.filter { (p.brainPid > 0 && it.pid == p.brainPid) || kotlin.math.abs(it.timestamp - p.time) < 10 * 60_000L }
         near.sortedWith(compareBy<ApplicationExitInfo>({ it.pid != p.brainPid }, { kotlin.math.abs(it.timestamp - p.time) })).take(3).map {
-            ExitFacts(it.timestamp, it.pid, it.reason, reasonName(it.reason), it.status, it.description, it.importance, it.pss, it.rss)
+            ExitFacts(it.timestamp, it.pid, it.reason, reasonName(it.reason), it.status, it.description, it.importance, it.pss, it.rss, nativeCrash(it))
         }
     } catch (t: Throwable) {
         RLog.w("problem_exits", t)
         emptyList()
+    }
+
+    /** A native crash's tombstone (Android 12 and later keep it for REASON_CRASH_NATIVE), as core Tombstone reads it; else null. */
+    private fun nativeCrash(e: ApplicationExitInfo): NativeCrash? {
+        if (e.reason != ApplicationExitInfo.REASON_CRASH_NATIVE) return null
+        return try { e.traceInputStream?.use(Tombstone::read) } catch (t: Throwable) { RLog.w("problem_tombstone", t); null }
     }
 
     private fun reasonName(r: Int): String = when (r) {

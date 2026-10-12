@@ -40,6 +40,7 @@ class ActionLog : ArrayList<String>() {
         mtDelete = { add("mtDelete") }, openVoiceprint = { add("openVoiceprint") }, deleteVoiceprint = { add("deleteVoiceprint") },
         tryGpuAgain = { add("tryGpuAgain") }, reportText = { "REPORT for ${it.model.id}" }, copyReport = { add("copyReport $it") },
         shareReport = { add("shareReport $it") }, dismissProblem = { add("dismissProblem ${it.time}") },
+        deleteProblem = { add("deleteProblem ${it.time}") },
     )
 }
 

@@ -14,6 +14,8 @@ import androidx.compose.ui.platform.LocalContext
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.TranscriptIds
+import app.heyrobot.core.feedback.FeedbackEntry
+import app.heyrobot.core.feedback.FeedbackKind
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.LookStore
 import app.heyrobot.ui.AdbFixScreen
@@ -49,6 +51,10 @@ object SettingsRoutes {
     fun adbFix(id: String) = "adb/$id"
     /** Settings › People › Notification access: the three steps. */
     const val NOTIFICATION_ACCESS = "people/notification-access"
+    /** 0.7: Settings › About › Send feedback ([feedback] gives where it was opened from, the kind and a problem to report). */
+    const val FEEDBACK = "about/feedback"
+    fun feedback(entry: FeedbackEntry, kind: FeedbackKind? = null, problem: Long? = null): String =
+        FEEDBACK + "?e=" + entry.key + (kind?.let { "&k=" + it.name.lowercase() } ?: "") + (problem?.let { "&p=$it" } ?: "")
 }
 
 /** The page for [route]; an unknown one (from a newer version's saved state) goes back to Settings. */
@@ -79,10 +85,12 @@ fun SettingsNav(
         SettingsRoutes.HISTORY -> HistorySettingsScreen(s, update, a, snackbar, onBack)
         SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)
         SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
-        SettingsRoutes.UPDATES -> UpdatesRoute(snackbar, onBack)
+        SettingsRoutes.UPDATES -> UpdatesRoute(snackbar, onBack,
+            onReport = { a.openPage(Page.Settings(SettingsRoutes.feedback(FeedbackEntry.UPDATER, FeedbackKind.BUG))) })
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)
+            route.startsWith(SettingsRoutes.FEEDBACK) -> FeedbackRoute(route, snap, snackbar, onBack)
             else -> LaunchedEffect(route) { onBack() }
         }
     }
@@ -97,6 +105,8 @@ fun parentOf(p: Page): Page? = when (p) {
         p.route == SettingsRoutes.NOTIFICATION_ACCESS -> Page.People
         // Settings › About › Updates, which the updater's notifications open alone.
         p.route == SettingsRoutes.UPDATES -> Page.Settings(SettingsRoutes.ABOUT)
+        // Send feedback: About when it was opened there, else the tabs (the Model tab, the panel).
+        p.route.startsWith(SettingsRoutes.FEEDBACK) -> if (FeedbackArgs.of(p.route).entry == FeedbackEntry.ABOUT) Page.Settings(SettingsRoutes.ABOUT) else null
         p.route.startsWith("adb/") -> Page.AdbFixes
         // A model's page sits under the Model tab.
         p.route.startsWith("model/") -> null

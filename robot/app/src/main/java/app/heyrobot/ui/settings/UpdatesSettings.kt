@@ -47,6 +47,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.SecureFlagPolicy
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import app.heyrobot.core.feedback.FeedbackDiagnostics
 import app.heyrobot.core.update.FoundRelease
 import app.heyrobot.core.update.GitHubRepo
 import app.heyrobot.core.update.GitHubToken
@@ -104,6 +105,8 @@ data class UpdatesUi(
     /** The access token, masked ("github_pat_…AB12"), if one is saved. */
     val token: String? = null,
     val tokenUnreadable: Boolean = false,
+    /** 0.7: the last check, a download's file or an install went wrong: "Report this" (Send feedback with the updater's codes). */
+    val failed: Boolean = false,
 )
 
 /** What the page's taps do. */
@@ -119,6 +122,7 @@ class UpdatesActions(
     val change: (UpdateSettings) -> Unit = {},
     val saveToken: (String) -> Unit = {},
     val removeToken: () -> Unit = {},
+    val report: () -> Unit = {},
 )
 
 const val UPDATES_SENT = "To check, Robot asks GitHub (api.github.com) for the repository's newest releases, and it downloads an update " +
@@ -145,6 +149,10 @@ fun UpdatesScreen(ui: UpdatesUi, a: UpdatesActions, onBack: () -> Unit) {
                 onClick = a.check,
             )
             ui.message?.let { StatusPreference("Update", it, Mark.WARN) }
+            if (ui.failed || ui.message != null || ui.refused != null) {
+                PreferenceItem("Report this", "Send the developer a bug report with the updater's codes: you choose the app it goes with", RIcons.Message,
+                    onClick = a.report)
+            }
         }
         ui.offer?.let { offer ->
             preferenceGroup(if (offer.testBuild) "Test build ${offer.version}" else "Robot ${offer.version}", "release") {
@@ -309,7 +317,7 @@ private fun TokenDialog(onDismiss: () -> Unit, onSave: (String) -> Unit) {
 
 /** The page, wired to the updater (SettingsNav's "updates" route). */
 @Composable
-internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit) {
+internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit, onReport: () -> Unit = {}) {
     val ctx = LocalContext.current
     val app = ctx.applicationContext
     val scope = rememberCoroutineScope()
@@ -348,6 +356,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit) {
         otherOwner = facts.otherOwner,
         token = facts.token,
         tokenUnreadable = facts.tokenUnreadable,
+        failed = FeedbackDiagnostics.updaterFailed(state),
     )
     fun say(t: String) { scope.launch { snackbar.showSnackbar(t) } }
     UpdatesScreen(ui, UpdatesActions(
@@ -386,6 +395,7 @@ internal fun UpdatesRoute(snackbar: SnackbarHostState, onBack: () -> Unit) {
                 say("The token was removed.")
             }
         },
+        report = onReport,
     ), onBack)
 }
 

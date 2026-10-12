@@ -320,6 +320,7 @@ class ProcessIsolationTest {
             // ... and, only for "Install updates without asking" (off by default), asking Android to skip its confirmation for
             // Robot's own update: without it Android ignores USER_ACTION_NOT_REQUIRED. A normal permission.
             "android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION",
+            // (0.7, Send feedback, needs none: the share sheet, the clipboard, your SMS app and your browser take what you send.)
         ), used)
         // Never installing or deleting other apps, never asking to update apps it didn't install, and no user-initiated job or
         // foreground service type for the updater's downloads (FOREGROUND_SERVICE itself is conversation mode's, above).
@@ -453,19 +454,27 @@ class ProcessIsolationTest {
      * 0.4.7, the problem report: only the assistant (BrainKeeper, in the :voice process) notes a model problem, as codes and
      * numbers (core ModelProblem); only the main app builds the report from it (core ProblemReport, whose test checks that
      * nothing personal gets in) and only when you open Settings › Model; and the report's code reads none of your
-     * conversations, notes, people or the crash trace (no tombstone in 0.4.7). Nothing sends it: copy and share are yours.
+     * conversations, notes or people. Nothing sends it: copy and share are yours.
      * 0.6.0: nor a helper's name, address or key, a transcript, a voiceprint or the updater's token.
+     * 0.7: Send feedback builds the report too, when you add it to a message; a native crash's trace (its tombstone) is read
+     * in Problems.kt alone, straight into core Tombstone, which keeps the signal, a safe abort message and library frames.
      */
     @Test fun problemReportsHoldCodesAndAreNeverSent() {
         assertEquals(listOf("app/assistant/BrainLink.kt"), usersOf(Regex("""\bProblems\.(note|gpuFailed|gpuTrying)\(""")))
         // (The raw text: MainActivity's "*/*" file type reads as a comment's start to code().)
         assertEquals(listOf("app/ui/MainActivity.kt"),
-            ours.filter { Regex("""\bProblems\.(report|copy|share|forgetGpuFailure|dismiss)\(""").containsMatchIn(it.value.readText()) }.keys.sorted())
+            ours.filter { Regex("""\bProblems\.(copy|share|forgetGpuFailure|dismiss|delete)\(""").containsMatchIn(it.value.readText()) }.keys.sorted())
+        assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/settings/FeedbackSettings.kt"),
+            ours.filter { Regex("""\bProblems\.report\(""").containsMatchIn(it.value.readText()) }.keys.sorted())
         assertEquals(listOf("app/sys/Problems.kt"), usersOf(Regex("""\bProblemReport\.text\(""")))
         val problems = code(File(java("app"), "app/heyrobot/sys/Problems.kt"))
-        for (bad in listOf("ConversationStore", "NotesFiles", "PeopleFiles", "getTraceInputStream", "VoiceLogText.describe(e, ", "HttpURLConnection")) {
+        for (bad in listOf("ConversationStore", "NotesFiles", "PeopleFiles", "VoiceLogText.describe(e, ", "HttpURLConnection")) {
             assertTrue(bad, !problems.contains(bad))
         }
+        // The tombstone: read once, by Problems.kt, into core Tombstone and nothing else.
+        assertEquals(listOf("app/sys/Problems.kt"), usersOf(Regex("""\b(traceInputStream|getTraceInputStream)\b""")))
+        assertEquals(1, Regex("""traceInputStream""").findAll(problems).count())
+        assertTrue(problems.contains("e.traceInputStream?.use(Tombstone::read)"))
         // The voice log goes in through core ProblemReport, which describes wake phrases by number only.
         assertTrue(problems.contains("VoiceLogCodec.decode(readOrNull(Paths.voiceLog(ctx)))"))
         val report = code(File(java("core"), "app/heyrobot/core/ModelProblems.kt"))
@@ -482,6 +491,32 @@ class ProcessIsolationTest {
         val keeper = code(File(java("app"), "app/heyrobot/assistant/BrainLink.kt"))
         val note = keeper.substringAfter("private fun noteProblem(").substringBefore("\n    }\n")
         assertTrue(note, note.contains("Problems.note(ctx, p)") && !secrets.containsMatchIn(note))
+    }
+
+    /**
+     * 0.7, Send feedback: Robot sends nothing itself. Its code (core's feedback package, the page, sys/Feedback.kt) has no
+     * network code and no log but RLog's events without the message; the message leaves only through what you tap on the page
+     * (the share sheet, the clipboard, your SMS app, your browser), never from the panel, which only opens the page; and the
+     * panel's words reach it through Robot's own file, read only by the page. No permission is added for it (the identity
+     * test's list is unchanged), and its GitHub link is built in core's GitHub.kt with every other GitHub address.
+     */
+    @Test fun feedbackSendsNothingItself() {
+        val feedback = ours.filterKeys { it.startsWith("core/core/feedback/") || it == "app/sys/Feedback.kt" || it == "app/ui/settings/FeedbackSettings.kt" }
+        assertEquals(5, feedback.size)
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\.(URL\b|HttpURLConnection|Socket)|HttpsURLConnection|openConnection|\bokhttp3\b|DownloadManager|""" +
+            """\bWebView\b|ConnectivityManager|\bURL\("""), feedback))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bandroid\.util\.Log\b|\bLog\.[a-z]\(|\bprintln\(|System\.(out|err)"""), feedback))
+        // Every RLog line names a fixed event and at most the exception's class: never the message.
+        for ((k, f) in feedback) for (m in Regex("""RLog\.[iw]\(([^)]*)\)""").findAll(code(f))) {
+            assertTrue("$k: ${m.value}", Regex("""^"[a-z_]*"(, t)?$""").matches(m.groupValues[1].trim()))
+        }
+        // The ways out are the page's, one tap each.
+        assertEquals(listOf("app/sys/Feedback.kt", "app/ui/settings/FeedbackSettings.kt"), usersOf(Regex("""\bFeedback(Send|Clipboard)\b""")) - "app/ui/MainActivity.kt")
+        assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/settings/FeedbackSettings.kt"),
+            usersOf(Regex("""\bFeedbackClipboard\b""")).filter { it != "app/sys/Feedback.kt" })
+        // The prefill file is named in core only; the intent carries the kind alone.
+        val sys = code(File(java("app"), "app/heyrobot/sys/Feedback.kt"))
+        assertTrue(sys.contains("putExtra(AppPages.EXTRA_FEEDBACK_KIND, kind.name)") && !sys.contains("putExtra(Intent.EXTRA_SUBJECT"))
     }
 
     /** Contacts and the calendar are asked for by the main app only: nothing in the voice process requests a permission. */

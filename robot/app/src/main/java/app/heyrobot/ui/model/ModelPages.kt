@@ -35,6 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.BrainModel
@@ -42,6 +44,9 @@ import app.heyrobot.core.ModelBackend
 import app.heyrobot.core.ModelCatalogue
 import app.heyrobot.core.ModelFiles
 import app.heyrobot.core.ModelProblem
+import app.heyrobot.core.ProblemList
+import app.heyrobot.core.feedback.FeedbackEntry
+import app.heyrobot.core.feedback.FeedbackKind
 import app.heyrobot.core.ModelFormat
 import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelNotes
@@ -72,6 +77,7 @@ import app.heyrobot.ui.pref.SwitchPreference
 import app.heyrobot.ui.pref.TwoTargetPreference
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
+import app.heyrobot.ui.settings.SettingsRoutes
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -147,6 +153,9 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
     val chosen = ModelCatalogue.resolve(s.brainModelChoice, phone)
     PreferenceScreen("Model", onBack = null, modifier = modifier) {
         snap.problem?.let { p -> preferenceGroup("Model problem", "problem") { ProblemRows(p, a) } }
+        // 0.7: the last 10 problems, under the open one, or at the end of the tab once it is dismissed.
+        val earlier = snap.problems.filter { it.time != snap.problem?.time }
+        if (snap.problem != null && earlier.isNotEmpty()) preferenceGroup("Last model problems", "problems") { ProblemListRows(earlier, a) }
         preferenceGroup("Robot uses", "uses") {
             for (m in ModelCatalogue.models(phone)) {
                 val ready = snap.ready(m)
@@ -176,6 +185,7 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
                 { if (it == 5) "The default" else null }, RIcons.Timer,
                 summary = keepLabel(s.keepModelMinutes) + " after the panel closes") { update(s.copy(keepModelMinutes = it)) }
         }
+        if (snap.problem == null && earlier.isNotEmpty()) preferenceGroup("Last model problems", "problems") { ProblemListRows(earlier, a) }
         preferenceGroup("Voice models", "voice") {
             for (b in VoiceBundle.entries) {
                 val v = snap.voice(b) ?: continue
@@ -261,8 +271,49 @@ private fun ProblemRows(p: ModelProblem, a: AppActions) {
         Buttons {
             Button(onClick = { text?.let(a.copyReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Copy report") }
             OutlinedButton(onClick = { text?.let(a.shareReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Share report") }
+            // 0.7: Send feedback as a bug report, this report ticked (you read and send it there).
+            OutlinedButton(onClick = { a.openPage(bugReport(p)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send as bug report") }
             TextButton(onClick = { shown = !shown }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (shown) "Hide the report" else "Show the report") }
             TextButton(onClick = { a.dismissProblem(p) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Dismiss") }
+        }
+        if (shown) SelectionContainer {
+            Text(text ?: "Making the report…", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+/** Settings › About › Send feedback as a bug report about [p], its report ticked. */
+private fun bugReport(p: ModelProblem): Page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.MODEL_PROBLEM, FeedbackKind.BUG, p.time))
+
+/**
+ * 0.7: the last model problems (core ProblemList: codes and numbers only), each a row with its date, the process and the
+ * stage; a tap opens its report's Show, Share, Send as bug report and Delete.
+ */
+@Composable
+private fun ProblemListRows(list: List<ModelProblem>, a: AppActions) {
+    for (q in list) {
+        var open by rememberSaveable(q.time) { mutableStateOf(false) }
+        PreferenceItem(dateTime(q.time), ProblemList.row(q), leading = { StatusIcon(Mark.WARN) },
+            modifier = Modifier.semantics { stateDescription = if (open) "Expanded" else "Collapsed" }, onClick = { open = !open })
+        if (open) ProblemActions(q, a)
+    }
+}
+
+/** One listed problem's report: Show, Share, Send as bug report, Delete. */
+@Composable
+private fun ProblemActions(q: ModelProblem, a: AppActions) {
+    var text by remember(q.time) { mutableStateOf<String?>(null) }
+    var shown by rememberSaveable(q.time) { mutableStateOf(false) }
+    LaunchedEffect(q.time) {
+        text = withContext(Dispatchers.IO) { try { a.reportText(q) } catch (_: Exception) { null } }
+    }
+    PreferenceBlock {
+        Text(q.headline(), style = MaterialTheme.typography.bodyMedium)
+        Buttons {
+            TextButton(onClick = { shown = !shown }, modifier = Modifier.heightIn(min = 48.dp)) { Text(if (shown) "Hide" else "Show") }
+            OutlinedButton(onClick = { text?.let(a.shareReport) }, enabled = text != null, modifier = Modifier.heightIn(min = 48.dp)) { Text("Share") }
+            OutlinedButton(onClick = { a.openPage(bugReport(q)) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send as bug report") }
+            TextButton(onClick = { a.deleteProblem(q) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Delete") }
         }
         if (shown) SelectionContainer {
             Text(text ?: "Making the report…", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)

@@ -395,9 +395,12 @@ fun WakeTestScreen(s: RobotSettings, snap: Snapshot, onBack: () -> Unit) {
     }
 }
 
-/** Settings › Voice › Voice log: newest first, with relative times, and Copy (plain text: codes and numbers in words). */
+/**
+ * Settings › Voice › Voice log: newest first, with relative times, and Copy (plain text: codes and numbers in words, wake
+ * phrases by number). 0.7: "Send as bug report" opens Send feedback with the voice log ticked ([onReport]).
+ */
 @Composable
-fun VoiceLogScreen(s: RobotSettings, snackbar: SnackbarHostState, onBack: () -> Unit) {
+fun VoiceLogScreen(s: RobotSettings, snackbar: SnackbarHostState, onBack: () -> Unit, onReport: () -> Unit = {}) {
     val ctx = LocalContext.current
     var entries by remember { mutableStateOf<List<VoiceLogEntry>>(emptyList()) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -434,6 +437,7 @@ fun VoiceLogScreen(s: RobotSettings, snackbar: SnackbarHostState, onBack: () -> 
                 Text("The last ${entries.size} things the voice side did, newest first: no words, no audio, only what happened and how long it took. " +
                     "When Robot didn't respond, take a screenshot or tap Copy log right away.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 8.dp))
+                OutlinedButton(onClick = onReport, modifier = Modifier.heightIn(min = 48.dp)) { Text("Send as bug report") }
             }
             if (entries.isEmpty()) item { Text("Nothing yet. Robot's voice side writes here once it runs as the assistant.") }
             items(entries) { e ->

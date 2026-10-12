@@ -244,6 +244,46 @@ class ModelPagesTest {
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
+    /** 0.7: the open problem goes to Send feedback as a bug report, its report ticked. */
+    @Test fun theLastModelProblemSendsAsABugReport() {
+        tab(snap = nineA.copy(problem = problem, problems = listOf(problem)))
+        rule.onRow("Send as bug report").performClick()
+        assertEquals(listOf("openPage ${Page.Settings("about/feedback?e=problem&k=bug&p=${problem.time}")}"), log)
+        // The open problem isn't listed again under it.
+        rule.onNodeWithText("Last model problems").assertDoesNotExist()
+    }
+
+    /**
+     * 0.7: the last 10 problems as rows (date, process and stage, codes only), each opening Show, Share, Send as bug report
+     * and Delete; with no open problem the list sits at the end of the tab.
+     */
+    @Test fun theLastProblemsAreAListToShowShareSendOrDelete() {
+        val older = ModelProblem(problem.time - 86_400_000L, BrainModel.OWN, ModelBackend.CPU, ProblemStage.LOADING, null, BrainModel.GENERAL, ModelBackend.GPU,
+            format = app.heyrobot.core.ModelFormat.GGUF)
+        tab(snap = nineA.copy(problem = problem, problems = listOf(problem, older)))
+        rule.onNodeWithText("Last model problems").assertExists()
+        rule.onRow(":llama · loading · Your own model file on the CPU").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Collapsed"))
+            .performClick()
+        rule.onRow(":llama · loading · Your own model file on the CPU").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Expanded"))
+        rule.scrollToText("Delete")
+        rule.onNodeWithText("REPORT for own").assertDoesNotExist()
+        rule.onRow("Show").performClick()
+        rule.onNodeWithText("REPORT for own").assertExists()
+        rule.onRow("Share").performClick()
+        rule.onAllNodes(hasText("Send as bug report") and hasClickAction())[1].performClick()
+        rule.onRow("Delete").performClick()
+        assertEquals(listOf("shareReport REPORT for own", "openPage ${Page.Settings("about/feedback?e=problem&k=bug&p=${older.time}")}",
+            "deleteProblem ${older.time}"), log)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
+
+    @Test fun aDismissedProblemStaysInTheListAtTheEnd() {
+        tab(snap = nineA.copy(problem = null, problems = listOf(problem)))
+        rule.onNodeWithText("Model problem").assertDoesNotExist()
+        rule.scrollToText("Last model problems")
+        rule.onRow(":brain · writing the answer · Fast on the GPU").assertExists()
+    }
+
     @Test fun theModelTabIsTheSameInTheClassicLook() {
         // The Classic look changes the panel only (ui-stock-design 4): the Model tab, its problem and the GPU rows work alike.
         tab(snap = nineA.copy(problem = problem), classic = true)

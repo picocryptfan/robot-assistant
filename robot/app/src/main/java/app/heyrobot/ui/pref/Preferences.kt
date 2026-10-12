@@ -29,6 +29,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -411,6 +412,40 @@ fun TwoTargetPreference(
             verticalAlignment = Alignment.CenterVertically,
         ) { PrefTexts(title, summary, icon, enabled, leading = leading) }
         Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically, content = trailing)
+    }
+}
+
+/**
+ * A tick box (0.7, Send feedback's diagnostics): the box and the text toggle it (one TalkBack node, role Checkbox), and
+ * [trailing] holds a target of its own (Preview), with its own label.
+ */
+@Composable
+fun CheckboxPreference(
+    title: String,
+    summary: String?,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    trailing: (@Composable RowScope.() -> Unit)? = null,
+) {
+    val grouped = RobotTokens.groupedSettings && LocalInGroup.current
+    Row(
+        modifier.fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .heightIn(min = RobotTokens.prefMinHeight)
+            .clip(if (grouped) RoundedCornerShape(RobotTokens.itemCorner) else RectangleShape)
+            .background(if (grouped) MaterialTheme.colorScheme.surfaceBright else Color.Transparent),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            Modifier.weight(1f).fillMaxHeight()
+                .toggleable(value = checked, enabled = enabled, role = Role.Checkbox, onValueChange = onCheckedChange)
+                .semantics(mergeDescendants = true) {}
+                .padding(start = RobotTokens.prefPaddingH, end = 8.dp, top = RobotTokens.prefPaddingV, bottom = RobotTokens.prefPaddingV),
+            verticalAlignment = Alignment.CenterVertically,
+        ) { PrefTexts(title, summary, null, enabled, leading = { Checkbox(checked = checked, onCheckedChange = null, enabled = enabled) }) }
+        if (trailing != null) Row(Modifier.padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically, content = trailing)
     }
 }
 

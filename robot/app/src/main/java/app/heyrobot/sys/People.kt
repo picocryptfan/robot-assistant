@@ -381,6 +381,9 @@ object AppPages {
     const val MODEL = "model"
     /** Settings › Updates (the updater's notifications). */
     const val UPDATES = "updates"
+    /** 0.7: Settings › About › Send feedback, from a feedback phrase in the panel, with its kind ([EXTRA_FEEDBACK_KIND]). */
+    const val FEEDBACK = "feedback"
+    const val EXTRA_FEEDBACK_KIND = "robot_feedback_kind"
     /** The Robot Notes launcher entry (an activity-alias of MainActivity). */
     const val NOTES_ALIAS = "app.heyrobot.ui.NotesLauncher"
 }

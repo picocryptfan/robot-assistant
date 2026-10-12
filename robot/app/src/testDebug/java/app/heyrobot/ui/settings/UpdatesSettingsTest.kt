@@ -236,6 +236,25 @@ class UpdatesSettingsTest {
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
+    /** 0.7: only an update error offers "Report this", which opens Send feedback with the updater's codes. */
+    @Test fun upToDateHasNoReportThis() {
+        var reports = 0
+        rule.show { UpdatesScreen(upToDate, UpdatesActions(report = { reports++ }), onBack = {}) }
+        rule.onNodeWithText("Report this").assertDoesNotExist()
+        assertEquals(0, reports)
+    }
+
+    @Test fun aFailedCheckOffersReportThis() {
+        var reports = 0
+        rule.show {
+            UpdatesScreen(upToDate.copy(lastCheck = "Last checked today at 14:05. GitHub didn't find the repository.", failed = true),
+                UpdatesActions(report = { reports++ }), onBack = {})
+        }
+        rule.onRow("Report this").assert(hasText("Send the developer a bug report with the updater's codes", substring = true)).performClick()
+        assertEquals(1, reports)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+    }
+
     @Test fun theUpdatesPageIsTheSameInTheClassicLook() {
         // The Classic look changes the panel only (ui-stock-design 4): the Updates page and its taps work alike.
         val taps = ArrayList<String>()
