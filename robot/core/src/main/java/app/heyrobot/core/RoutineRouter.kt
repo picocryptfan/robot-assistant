@@ -299,7 +299,10 @@ object RoutineRouter {
 
     private val REMIND_LEAD = listOf("remind me", "rappelle moi")
     private val MORNING = mapOf("in the morning" to false, "tomorrow morning" to true, "first thing tomorrow" to true,
-        "first thing in the morning" to false, "demain matin" to true, "le matin" to false, "au matin" to false, "demain au matin" to true)
+        "first thing in the morning" to false, "demain matin" to true, "le matin" to false, "au matin" to false, "demain au matin" to true,
+        // "remind me in my brief to …", "rappelle-moi dans mon résumé de …": the next morning's brief.
+        "in my brief" to false, "in my morning brief" to false, "in the brief" to false, "in the morning brief" to false,
+        "dans mon resume" to false, "dans mon resume du matin" to false)
     private val ADD_BRIEF = listOf("add to my brief", "add to my morning brief", "add to the brief", "put in my brief", "ajoute a mon resume",
         "ajoute a mon resume du matin", "mets dans mon resume")
     private val TO_MY_BRIEF = listOf("to my brief", "to my morning brief", "in my brief", "a mon resume", "a mon resume du matin", "dans mon resume")

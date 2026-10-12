@@ -101,7 +101,7 @@ object PanelRoutines {
      * level (locked: the time and the weather without the town, "Unlock to hear your day"; the rest after the unlock).
      * Spoken part by part, so "hey robot, next" and "repeat" work.
      */
-    private suspend fun brief(replyId: String, host: Host, origin: RunOrigin, routine: Routine? = null): Boolean {
+    private suspend fun brief(replyId: String, host: Host, origin: RunOrigin, routine: Routine? = null, append: Boolean = false): Boolean {
         val s = VoiceHub.settings
         val rs = store().settings()
         val r = routine ?: BriefRoutine.of(rs)
@@ -113,13 +113,16 @@ object PanelRoutines {
         val (spoken, held) = withContext(Dispatchers.IO) {
             RoutineRunner.brief(app, s, rs, r, locked, { parts ->
                 if (session != null) RoutineVoice.add(session, parts)
-                VoiceHub.main.post {
+                if (!append) VoiceHub.main.post {
                     parts.forEach { p -> shown.append(if (shown.isEmpty()) "" else " ").append(p.text) }
                     host.text(replyId, shown.toString())
                 }
             }, origin)
         }
         session?.let(RoutineVoice::close)
+        // The whole of what was said, in the bubble and the saved conversation (the parts above came while it was read).
+        val said = spoken.joinToString(" ") { it.text }
+        if (append) host.append(replyId, said) else host.text(replyId, said)
         // Shown but not spoken: the reminders count as read now.
         if (session == null && spoken.any { it.item == BriefItem.REMINDERS }) withContext(Dispatchers.IO) { BriefSource.remindersSaid(app) }
         if (held.isNotEmpty()) RoutineHub.waitForUnlock(RoutineRunner.Waiting(r, TriggerKind.ASKED, emptyList(), held, ZonedDateTime.now()))
@@ -195,7 +198,7 @@ object PanelRoutines {
                 StepGo.DISABLED -> host.append(replyId, "Off in Settings › Actions: ${step.describe()}.")
                 StepGo.WAIT_UNLOCK -> host.append(replyId, "Unlock your phone for: ${step.describe()}.")
                 else -> when (step) {
-                    RoutineStep.Brief -> brief(replyId, host, origin, r)
+                    RoutineStep.Brief -> brief(replyId, host, origin, r, append = r.steps.size > 1)
                     is RoutineStep.Say -> { host.append(replyId, step.text); host.say(step.text) }
                     RoutineStep.Reminders -> {
                         val now = ZonedDateTime.now()

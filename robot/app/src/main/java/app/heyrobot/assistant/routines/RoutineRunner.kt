@@ -171,7 +171,8 @@ object RoutineRunner {
         say(RoutinePlan.closing(ready, waiting.size, lang).map { part(it, false, StepCode.SAY) })
         if (session != null) RoutineVoice.close(session) else RoutineNotices.silent(ctx, r, silent.toString().trim())
         if (waiting.isNotEmpty() || heldParts.isNotEmpty()) RoutineHub.waitForUnlock(Waiting(r, kind, waiting, heldParts, ZonedDateTime.now()))
-        store.editState { st ->
+        // The rest after the unlock isn't a run of its own: the last run stays the one that started it.
+        if (!resumed) store.editState { st ->
             st.copy(runs = st.runs + (r.id to RunRecord(System.currentTimeMillis(), kind, steps.size, ready, waiting.size + if (heldParts.isEmpty()) 0 else 1)))
                 .let { if (key != null) it.copy(ledger = it.ledger.record(r.id, key, ZonedDateTime.now())) else it }
         }

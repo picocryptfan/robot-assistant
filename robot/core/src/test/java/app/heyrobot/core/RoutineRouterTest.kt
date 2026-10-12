@@ -209,6 +209,10 @@ class RoutineRouterTest {
         assertEquals(RoutineCommand.Remind("call the garage", false), route("add call the garage to my brief"))
         assertEquals(RoutineCommand.Remind("apporter le passeport", true), route("Rappelle-moi demain matin d'apporter le passeport"))
         assertEquals(RoutineCommand.Remind("acheter du lait", false), route("ajoute à mon résumé : acheter du lait"))
+        // 0.8: "in my brief" names the brief itself.
+        assertEquals(RoutineCommand.Remind("water the plants", false), route("remind me in my brief to water the plants"))
+        assertEquals(RoutineCommand.Remind("water the plants", false), route("Remind me in my morning brief to water the plants"))
+        assertEquals(RoutineCommand.Remind("arroser les plantes", false), route("rappelle-moi dans mon résumé d'arroser les plantes"))
     }
 
     @Test fun runListDelete() {

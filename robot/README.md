@@ -82,6 +82,9 @@ that were built beside it; each has its section below, with its phone tests.
 - `:llama` (0.4.5) is an `android:isolatedProcess` service that only `:brain` binds (`BIND_AUTO_CREATE | BIND_IMPORTANT`),
   for one GGUF model at a time: not exported, no permissions, no network, none of Robot's files ("llama.cpp in its own
   isolated process" below).
+- Routines (0.8) run in `:voice` (`assistant/routines/`: the trigger hub, the runner, the speaking service and its manifest
+  receiver), their files are `app/sys/Routines.kt`'s (both processes, under one lock), Settings › Routines is the main
+  app's; see [Routines and the morning brief](#routines-and-the-morning-brief-08).
 - `:mt` (0.5.0) is bound by class name (`app/sys/MtLink.kt`, `BIND_AUTO_CREATE`), from the main app for Test translation
   speed and from the voice process while a conversation translates (`assistant/conversation/FastTranslation.kt`); not
   exported, the same signature permission. Its module has no network code and writes no file (`ProcessIsolationTest`).
@@ -3318,13 +3321,232 @@ Tools: `tools/fetch_voice_models.sh <dir>` (the same files and hashes as the app
 Keep sherpa-onnx inside `:voice` (the isolation test enforces it) and list new models in `THIRD_PARTY.md`
 (`VoiceManifestTest` checks the manifest against it and the tools).
 
+## Routines and the morning brief (0.8)
+
+Routines are fixed lists of steps that start by themselves: at a time, when you turn off a Clock alarm, at the first
+unlock after a time, when a remembered headset or car connects or disconnects, when charging starts or stops, or only
+when you ask. The morning brief is a built-in routine: the time, the weather, today's calendar and your brief reminders,
+in fixed sentences in English or Québec French. Design: `../docs/plans/routines-headset-car-design.md` §1 and §2; the
+pure logic is in `:core` (`Routine.kt`, `RoutineGate.kt`, `Brief.kt`, `AlarmWatch.kt`, `RoutineSchedule.kt`,
+`RoutineRouter.kt`, `RoutineStore.kt`, `RoutineRuntime.kt`) with JVM tests, the wiring in `assistant/routines/` (the
+`:voice` process), `sys/Routines.kt` (both processes) and `ui/settings/RoutinesSettings.kt` (the main app).
+
+**Nothing runs until you set something up.** The brief is off, and there are no routines until you save one.
+
+### What you can do
+
+- **By voice, before the model** (English and Québec French, anchored at the start of what you say):
+  - "morning brief", "brief me", "what's my day", "mon résumé du matin", "c'est quoi ma journée?", "bon matin": the brief
+    now, in the panel, its words in the bubble and spoken part by part.
+  - "every weekday at 7, tell me the weather and my calendar", "quand je ferme mon cadran, lis-moi mon résumé", "when I
+    plug in at night, set an alarm for 6:30", "when I connect my car, tell me my next event": a routine shown on its card
+    (what starts it, every step with "runs by itself" or "waits for you", where it speaks, what goes online). **It is
+    never saved by itself**: a spoken "yes" or Save saves it; if the conversation holds screen text or a photo, only the
+    tap does ("Tap Save: this routine came from the screen"). Words Robot didn't understand are named on the card,
+    never guessed.
+  - "run my evening routine", "lance ma routine du soir": runs it with you there. Each step goes through the approval
+    gate exactly as a typed command would, with its card where your settings want one.
+  - "list my routines", "delete my evening routine" (deleting needs a tap on its card, always).
+  - "remind me in the morning to bring the passport", "add to my brief: …", "rappelle-moi demain matin d'apporter le
+    passeport": a brief reminder, said in the next morning's brief (it stays until the end of that day once said).
+  - While a routine or the brief speaks: "hey robot, next", "skip", "repeat", "stop" ("suivant", "passe", "répète");
+    "stop" alone works too (the stop spotter). "Hey robot" pauses it for a minute while you say which; anything else
+    ends it and is answered as usual.
+- **Settings › Routines** (a row under Safety & privacy):
+  - The morning brief with its switch, when it runs and its last run; turning it on shows its card first ("Online by
+    itself: Open-Meteo (the weather). Nothing about you is sent.").
+  - Your routines, each with its switch, trigger, step count and last run ("Last run: today 06:47 · an alarm turned off
+    · 1 step, 1 ready").
+  - Ready (n): steps that waited for you; a tap opens the panel and does it.
+  - Add a routine, and each routine's page: Name, Starts (ten kinds), its time, days, alarm hours or device, "Only on
+    these days" and "At most once a day" for triggers that aren't a time, the steps (Add a step from a list, Move up,
+    Remove), Speak, Locked phone, Last run, Run now, Delete. Save shows the same card as by voice.
+  - The brief's page: Runs (when I turn off my alarm, at a time, at the first unlock, only when I ask), its time or the
+    alarm's hours, "Clock silences after", what it says (each item with a switch), On the lock screen, Finish when I
+    unlock, Speak, Language, Get ready while the alarm rings, Hear it now, and the brief reminders waiting.
+  - When routines run: "Routines can run while the phone is locked", "Routines may go online by themselves".
+  - What routines need, as status rows: Robot as the assistant, exact alarms, notifications, Clock's alarms, the
+    calendar, where for the weather (each with Allow where the app can ask).
+- **Notifications:** "Robot is reading your morning brief" while it speaks (Next, Repeat, Stop; on the lock screen only
+  "Robot is speaking"); "Robot has 1 thing ready for you" (the cards' words only unlocked); "Ran “Leaving work” · 2 done,
+  1 ready", silent, only when something waited or didn't work; "Morning brief ready · Play" when Android refused to let
+  Robot speak by itself; "Your morning brief is ready · Open Robot" when Robot isn't the assistant.
+
+### What runs without you (RoutineGate)
+
+| A step that… | Unattended | Locked |
+|---|---|---|
+| speaks (the brief, a sentence you wrote) | runs | the brief at its lock level; a sentence of yours waits for the unlock unless the level is "Everything" |
+| reads (calendar, notes, phone status, brief reminders) | runs | waits for the unlock unless "Everything" |
+| goes online (the weather) | only with "Routines may go online by themselves" on and Open-Meteo on its card | the weather without the town |
+| acts on the phone (timer, alarm, flashlight, a fixed note) | runs | only what Safety & privacy allows locked (timers and alarms by default), else it waits |
+| opens an app, a draft, maps, a new event | a Ready card you tap | a Ready card |
+| frees memory or storage, asks a helper | never offered | never |
+
+A step whose action is at "Ask first" in Settings › Actions becomes a Ready card too (nobody is there to answer a card).
+Asked ("run my…", Run now) or tapped (a Ready card), every step goes through the approval gate as a typed command.
+
+**The lock screen.** At "Time and weather" (the default), the brief says the greeting, the time and the weather without
+your town, then "Unlock to hear your day"; if you unlock within 15 minutes, the rest follows (Finish when I unlock).
+Every part goes through OutputGuard before it plays: nothing personal is said locked, nothing talks over a call, and
+"Headset only" says nothing on the speaker (and personal parts only in a headset Robot knows is private: wired, USB and
+hearing aids; a Bluetooth headset once headset mode can ask about it).
+
+**Late or missed times.** One exact alarm is set for the soonest routine (never Android's "next alarm"). Within 10
+minutes of its time a routine runs; up to 3 hours late the same day (Doze, a reboot) it waits on a Ready card ("Your
+“Morning” routine didn't run at 07:00. Tap to run it now."); older, nothing, and never one run per missed day. Each
+trigger runs a routine once (the ledger in `state.json`), and "At most once a day" is on by default for the others.
+
+**"When I turn off my alarm"** hears GrapheneOS Clock's `ALARM_ALERT` and `ALARM_DONE` and reads Android's next alarm 2
+seconds after: a dismissal runs the routine (alarms between 4:00 and 12:00 by default), a snooze doesn't (the later
+dismissal does), an alarm that rang until Clock silenced it runs nothing until your first unlock that day. While it
+rings, Robot loads its voice and fetches the weather ("Get ready while the alarm rings", kept 15 minutes).
+
+### Defaults
+
+- Morning brief: **off**. Once on: after your alarm (04:00 to 12:00), greeting, weather, calendar, brief reminders and
+  closing (unread messages come with 0.7), On the lock screen: Time and weather, Finish when I unlock: on, Language:
+  the phone's, Get ready while the alarm rings: on, Speak: Headset, else the phone speaker, Clock silences after: 10 min.
+- Routines can run while the phone is locked: **on**. Routines may go online by themselves: **on** (only the services
+  each routine's card listed: Open-Meteo for the weather).
+- A new routine in the editor: at 07:00 every weekday, Headset, else the phone speaker, Locked phone: follow Settings ›
+  Routines; other triggers: at most once a day.
+
+### Permissions and the manifest
+
+- **New:** `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (normal, no prompt), for `RoutineSpeakingService`.
+- **Exact alarms: `USE_EXACT_ALARM`**, declared since 0.2.3 for the restart check, not `SCHEDULE_EXACT_ALARM`: it is
+  granted at install and can't be revoked, while `SCHEDULE_EXACT_ALARM` isn't pre-granted to apps targeting Android 13
+  or later and would need you to allow it in Settings › Apps › Special app access › Alarms & reminders (Play's policy
+  that limits `USE_EXACT_ALARM` to clocks and calendars doesn't bind a sideloaded app). If Android ever refuses exact
+  alarms, an inexact allow-while-idle alarm is set and the status row says routines may come late.
+- **Components, both in `:voice`, neither exported:** `RoutineAlarmReceiver` (the exact alarm, a Ready notification's tap,
+  and the system's `BOOT_COMPLETED`, `TIME_SET`, `TIMEZONE_CHANGED`, `MY_PACKAGE_REPLACED`) and `RoutineSpeakingService`
+  (`foregroundServiceType="mediaPlayback"`, never sticky, never at boot).
+- **The one exported receiver:** Clock's two broadcasts come from another app with no permission, so the trigger hub
+  registers them at run time with `RECEIVER_EXPORTED`, only while a routine waits for an alarm. A fake `ALARM_DONE`
+  needs an `ALARM_ALERT` first and can only start your own routines under their gates, at most once a day by default.
+- Nothing else: no phone, Bluetooth, Do Not Disturb or location beyond what Robot already had. `ProcessIsolationTest`
+  and `tools/verify_apk.sh` check all of this.
+
+### Where it is kept
+
+`files/robot/` next to `settings.json` (which stays schema 13): `routines.json` (the routines), `routine_settings.json`
+(Settings › Routines and the brief), `ready.json`, `reminders.json`, `state.json` (the run ledger, Clock's alarm state
+across a restart, each routine's last run). Each change is written whole under a lock both processes take
+(`routines.lock`). A routines file Robot can't read is never written over: nothing runs, and Settings › Routines offers
+Start over, which keeps it as `routines.json.bad`; a file from a newer Robot is left alone. Excluded from backups like
+the rest of `files/`. Routines and reminders are never logged (the voice log has codes and counts only, events 140 to
+151) and never sent anywhere; the only thing a routine sends is the weather request to Open-Meteo (your area, rounded,
+as the weather tool does), and only when its card listed it.
+
+### How it's built
+
+- **`:voice` trigger hub** (`RoutineHub`): started with the assistant, it registers only what some enabled routine needs
+  (Clock's broadcasts, `USER_PRESENT`, power, the audio device callback), reconciled after every change; no polling.
+  It catches up on missed times when the assistant starts and after a reboot, a time or time zone change, or an update.
+- **Unattended runs** (`RoutineRunner`): each step through `RoutineGate`, the tools' own code for timers, alarms, the
+  calendar and the weather (no model), what waits for you on Ready cards, what waits for the unlock kept in memory.
+- **Speech** (`RoutineVoice`, `RoutineSpeakingService`): parts said one at a time with Robot's voice (Kokoro's French voice
+  for French lines), each checked by OutputGuard, with a partial wake lock while it speaks. A run nobody asked for
+  speaks from the mediaPlayback foreground service, which Android 17 requires for background audio; asked in the panel,
+  the panel is the surface.
+- **The panel** (`PanelRoutines`): the router's commands before the model, outside a helper's conversation; the cards
+  through the panel's own card and voice-answer path.
+- **The main app** (`RoutinesSettings`): reads the files, writes through the store, then tells `:voice` (`Cmd.ROUTINES`)
+  and sets the next alarm itself, so a change counts even while `:voice` isn't running.
+
+### Where it differs from the design
+
+- **Storage:** `files/robot/` and its own `routine_settings.json`, not `files/routines/` and settings schema 9.
+- **Speaking unattended:** the foreground service is the path, not the panel first (the design's Path 1); if Android
+  refuses to start it in the background, the run waits on "… ready · Play" (the design's Path 2 fallback). Whether
+  the panel path would also work with the screen off is R0.3 below.
+- **Device triggers** start only for headsets and cars Robot remembers (`devices.json`, written by headset mode, not
+  built yet). A routine made by voice ("when I connect my car") waits for any remembered device of that kind; until
+  headset mode exists, none is remembered, so such routines don't start (Settings says so on the routine's page).
+- **What waits for the unlock** is kept in the `:voice` process's memory: a restart of it in between forgets it.
+- **Not built:** the brief in Robot's own words (Gemma), news through a helper (R4), the unread messages count (0.7: the
+  `UnreadSource` seam only), the "New: routines" line on Home, the editor's one-off dates and "only between two times"
+  (both kept when a routine made by voice has them), and texts, emails and new events as editor steps (a routine made by
+  voice may have them; they always wait for you).
+
+### On the phone (0.8 routines)
+
+Nothing of this has run on the phone. Install the debug build with Robot as the digital assistant, the voice models
+installed, notifications and the calendar allowed, a Home for weather set, then work through these in order; the
+voice log (Settings › Advanced › Voice log) shows each step as codes ("Routine trigger: …", "Clock alarm ended: …",
+"Routine speech: …").
+
+**R0, platform checks (the biggest is R0.3).**
+1. **Clock's broadcasts reach Robot.** Make a routine "when I turn off my alarm, say good morning" (or turn the brief on).
+   Set a Clock alarm 2 minutes ahead. Dismiss it; then set another and snooze it, then dismiss the snoozed one; then
+   one you let ring until Clock silences it (10 minutes). *Done when* the voice log shows "Clock alarm ended: dismissed",
+   "snoozed", "missed (silenced by Clock)" for the three, in 10 of 10 tries; the dismissal speaks, the snooze doesn't, the
+   missed one says nothing until you unlock.
+2. **The exact alarm in Doze.** A routine at a time 5 minutes ahead; screen off, then `adb shell dumpsys deviceidle
+   force-idle`. *Done when* it speaks within 1 minute of its time (the log: "Routine trigger: a time").
+3. **Speaking with nobody opening Robot (Android 17).** With the brief at a time 2 minutes ahead, four ways: screen on
+   and unlocked; screen off and locked; after `adb shell cmd audio set-enable-hardening enable`; and once with the
+   service refused (`adb shell cmd appops set app.heyrobot START_FOREGROUND deny`, then `allow` after). Note `adb shell
+   dumpsys audio | grep -i hardening`. *Done when* the first three are heard, with "Robot is reading your morning brief"
+   in the shade, and the fourth posts "Morning brief ready · Play", whose Play speaks it. If the screen-off case is
+   silent although the service started, note it: that decides whether the panel path is needed (design §1.2).
+4. **The unlock and the devices.** A routine "at the first unlock after" a time a minute ahead; lock, wait, unlock.
+   *Done when* it runs once that day, not at the second unlock. (Device triggers wait for headset mode.)
+5. **Weather in Doze.** The R0.2 routine with the brief, forced idle. *Done when* the weather is said, or "The weather
+   isn't available right now." within 15 seconds, and the brief goes on.
+
+**R1, the brief on demand.**
+- "Hey robot, morning brief": *done when* the first words come within 2 seconds, then the weather, today's calendar and
+  the reminders, the whole in the bubble.
+- "Mon résumé du matin" with Language: Français: *done when* it is the same in French, in Kokoro's French voice.
+- While it speaks: "hey robot, next" skips to the next part, "hey robot, repeat" says the part again, "stop" ends it;
+  the notification's Next, Repeat and Stop do the same for a brief that started by itself.
+- Locked (from the lock screen's "hey robot"): *done when* only the greeting, the time, the weather without your town
+  and "Unlock to hear your day" are said; unlocking within 15 minutes says the rest; after 15 minutes, nothing more.
+- "Remind me in the morning to bring the passport" at night: *done when* tomorrow's brief says "Reminder: bring the
+  passport." and it shows in Settings › Routines › Morning brief until then.
+
+**R2, triggers and unattended runs.**
+- Turn the brief on (its card names Open-Meteo), set a Clock alarm: *done when* dismissing it speaks the brief within
+  2 seconds (prepared while it rang), a snooze doesn't, the later dismissal does, and a missed alarm stays silent until
+  the first unlock.
+- A weekday 7:30 routine: *done when* it fires at 7:30 ± 1 minute five days running, one of them with the phone idle all
+  night, and only on weekdays.
+- Restart the phone at 7:25, unlock at 7:35: *done when* the 7:30 routine runs after the unlock; unlock at 8:30 instead:
+  a Ready card "didn't run at 07:30 · Tap to run it now"; at 11:00: nothing.
+- Change the time zone: *done when* the routine still fires at 7:30 local time.
+- A routine "every day at <in 2 minutes>, open Signal": *done when* nothing opens, "Robot has 1 thing ready for you"
+  appears (no details on the lock screen), and its tap opens the panel and Signal.
+- "Routines may go online by themselves" off: *done when* the brief says "Weather skipped: routines may not go online."
+- "Routines can run while the phone is locked" off: *done when* a locked brief waits and plays at the unlock.
+- A charging routine "when I plug in, set an alarm for 6:30": *done when* plugging in sets the alarm in Clock without
+  showing it, once a day only.
+- *Done when* the voice log shows codes and counts only (no routine name, step or word anywhere).
+
+**R3, building routines.**
+- Say each: "every weekday at 7, tell me the weather and my calendar", "chaque matin de semaine à 7 h, dis-moi la météo
+  pis mon agenda", "when I turn off my alarm, read my morning brief", "quand je ferme mon cadran, lis-moi mon résumé",
+  "when I plug in at night, set an alarm for 6:30", "when I connect my headphones, tell me my next meeting", "run my
+  evening routine", "remind me in the morning to bring the passport". *Done when* each gives the right card or answer.
+- "Yes" saves a routine (it appears in Settings › Routines and its time is set); "no" doesn't. With a screenshot
+  attached earlier in the conversation, "yes" is refused with "Tap Save: this routine came from the screen."
+- Edit a routine in Settings: *done when* Save shows its card again, and the change applies (the next time is set).
+- "Delete my evening routine": *done when* only the card's Delete tap deletes it.
+
+**Not checkable yet:** a device trigger ("when the car connects") needs headset mode's remembered devices; R4 (news,
+unread messages) needs helpers' news and 0.7's messages.
+
 ## Built in core, not wired yet
 
 The pure logic of later work, in `:core` and tested on the JVM, merged on 0.6.0 so it builds and tests against 0.6.0's
-types. Nothing in the app calls it yet: no screen, setting, permission, receiver or service is new, and Robot does
-nothing new on the phone. Each section says what exists and what is left to wire. The voice log ids they reserve, in
-comments and not yet in `VoiceEvent`, are past the ones 0.6.0 uses (1 to 134): routines 140–159, web search 160–169,
-Termux 170–179, memory 180–189, messages 190–199, headset 200–209 and car mode 210–219.
+types. Nothing in the app calls it yet: no screen, setting, permission, receiver or service is new for it, and it does
+nothing new on the phone. (Routines and the morning brief, which started here, are wired since 0.8: see
+[Routines and the morning brief](#routines-and-the-morning-brief-08).) Each section says what exists and what is left to
+wire. The voice log ids they reserve, in comments and not yet in `VoiceEvent`, are past the ones 0.6.0 uses (1 to 134):
+web search 160–169, Termux 170–179, memory 180–189, messages 190–199, headset 200–209 and car mode 210–219 (routines use
+140–151 of their 140–159).
 
 Where they meet: a remembered headset or car becomes the routines' `TriggerEvent.Device` through `DeviceTriggers.event`,
 and `DeviceTriggers.matches` takes a routine's `RoutineTrigger.Device` (`DeviceRole` and `DeviceKind` are one by their
@@ -3334,52 +3556,6 @@ to settle when wiring: in the car or a headset a reply is sent after a spoken ye
 `ReplyPlanner` sends only after a tap unless "Answer reply cards by voice" is on; `ReplyResult` has no outcome for a
 message that came after the read-back (`ReplyGuard`'s `NewMessages`); and messages' `Lang` is the hands-free side's
 `SpokenLang` and the brief's `BriefLang` by name only.
-
-### Routines and the morning brief (core only)
-
-The pure logic of routines and the morning brief (`../docs/plans/routines-headset-car-design.md`, §2) is in `:core`
-and tested on the JVM. Nothing in the app uses it yet: no screen, receiver, alarm, setting or permission is new, and
-nothing runs by itself.
-
-What exists:
-- **Routines** (`Routine.kt`): a trigger (a time on chosen days or one date; you turning off a Clock alarm between
-  4:00 and 12:00; the first unlock after a time; a headset or car connecting or disconnecting; charging starting or
-  stopping; only when you ask) and up to 8 steps, each one of Robot's tools with arguments fixed when you save it, or
-  the brief, a fixed sentence, the brief reminders, the unread count (0.7). `routines.json` schema 1: a routine with
-  anything unreadable is dropped whole, and tool steps are read back through the tools' own checks.
-- **What runs without you** (`RoutineGate.kt`): reads, timers, alarms, the flashlight and a fixed note run by
-  themselves; the weather only with "Routines may go online by themselves" and the service listed on the save card;
-  opening an app or a draft, maps and new events become a Ready card you tap; freeing memory or storage, deleting and
-  Ask Claude are never offered. Locked, the brief says only the time and the weather without the town, then "Unlock
-  to hear your day"; the rest continues if you unlock within 15 minutes. Asked or tapped, steps go through the
-  existing approval gate as a typed command would.
-- **The brief** (`Brief.kt`): fixed sentences in English and Québec French ("Il est 7 h 02, lundi 12 octobre"), no
-  model: greeting and time, weather from the weather tool's data, today's events (the count and the first five),
-  brief reminders, the unread count once 0.7 exists, about a minute at most.
-- **Alarms and times** (`AlarmWatch.kt`, `RoutineSchedule.kt`): dismissed, snoozed or missed from Clock's broadcasts
-  and the next alarm read after them; the next time a routine fires across America/Toronto's DST changes (a 1:30
-  routine fires once on the night 1:30 happens twice, a 2:30 one at 3:00 when 2:30 doesn't exist); what a late alarm
-  does after Doze or a reboot (within 10 minutes it runs; up to 3 hours late the same day it waits on a Ready card;
-  older, nothing); one run per trigger.
-- **By voice** (`RoutineRouter.kt`): "every weekday at 7, tell me the weather and my calendar", "quand je ferme mon
-  cadran, lis-moi mon résumé", "run my evening routine", "morning brief", "remind me in the morning to …" and their
-  French forms become a draft routine on its card. It is never saved by itself: a yes saves it, or only a tap when the
-  words came from the screen. A bare "at 7" reads as 07:00 and the card says so; words not understood are named on
-  the card, never guessed.
-
-What remains to wire:
-- In `:voice`, one exact `AlarmManager.setExactAndAllowWhileIdle` alarm (`USE_EXACT_ALARM`, already declared) for
-  the soonest routine, to a receiver that isn't exported, set again after boot (once unlocked), a time or time zone
-  change and every edit; never `setAlarmClock`.
-- A runtime receiver in `:voice` for GrapheneOS Clock's `com.android.deskclock.ALARM_ALERT` and `ALARM_DONE`, with
-  `getNextAlarmClock()` read 2 s after DONE; and the unlock, power and audio device callbacks.
-- **Speaking with the screen off**, the design's biggest open phone check (R0.3): Android 17's background audio rules
-  may silence the panel. Then a `mediaPlayback` foreground service is needed, and if it can't start in the
-  background, the brief waits for a tap on its notification. Also unchecked on the phone: that Clock's broadcasts
-  reach Robot (R0.1) and the network in Doze (R0.5).
-- The routines store and its files, the next settings schema (`RoutineSettings` holds the defaults until then),
-  voice log ids 140–159 (reserved in a comment in `Routine.kt`), the Routines screen and editor, Ready cards and
-  notifications, and routing spoken requests to `RoutineRouter` before Gemma.
 
 ### Headset and car mode (core only)
 
