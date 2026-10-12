@@ -76,4 +76,23 @@ class CallToolTest {
         // Any other number keeps the read-back and the yes.
         assertTrue(CallTarget.plan("555 0100", emptyList(), rules, false, false, SpokenLang.EN, fake) is CallPlan.Confirm)
     }
+
+    /**
+     * "Call directly after a spoken yes" is Settings › Car mode's: in a headset session (the headset's button, car mode
+     * off) the call is read back and the yes opens the dialer, whatever the car's setting and the Phone permission say.
+     */
+    @Test fun aDirectCallIsCarModesAlone() {
+        val rules = CallRules(CallSetting.CALL_AFTER_YES, hasCallPermission = true)
+        assertEquals(CallWay.CALL, rules.forSession(car = true).way)
+        assertEquals(CallWay.DIAL, rules.forSession(car = false).way)
+        assertEquals(CallWay.DIAL, CallRules().forSession(car = true).way)
+        val mom = listOf(PhoneCandidate("Mom", "+15145550101", PhoneLabel.MOBILE))
+        val headset = CallTarget.plan("Mom", mom, rules.forSession(car = false), locked = false, trusted = false, SpokenLang.EN) { false }
+        assertTrue(headset.toString(), headset is CallPlan.Confirm && headset.way == CallWay.DIAL)
+        val (st, _) = CallFlow.start(headset, "Mom", SpokenLang.EN)
+        val (_, fx) = CallFlow.on(st, "yes", SpokenLang.EN)
+        assertEquals(listOf(CallWay.DIAL), fx.filterIsInstance<FlowEffect.Place>().map { it.way })
+        val car = CallTarget.plan("Mom", mom, rules.forSession(car = true), locked = false, trusted = false, SpokenLang.EN) { false }
+        assertTrue(car is CallPlan.Confirm && car.way == CallWay.CALL)
+    }
 }

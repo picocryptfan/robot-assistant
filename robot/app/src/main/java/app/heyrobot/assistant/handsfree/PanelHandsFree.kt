@@ -369,7 +369,9 @@ object PanelHandsFree {
             all.filter { label == null || it.label == label }.ifEmpty { all }
         }
         val phone = HandsFreeHub.phone()
-        val plan = CallTarget.plan(c.who, candidates, CallPlacer.rules(app), phone.locked, CarModeController.trusted, lang) { CallPlacer.isEmergency(app, it, region) }
+        // A direct call after the spoken yes is car mode's alone: a headset session's call opens the dialer.
+        val rules = CallPlacer.rules(app).forSession(car = inCar)
+        val plan = CallTarget.plan(c.who, candidates, rules, phone.locked, inCar && CarModeController.trusted, lang) { CallPlacer.isEmergency(app, it, region) }
         callAsked = c.who
         val (st, fx) = CallFlow.start(plan, c.who, lang)
         callFlow = st.takeUnless { it.done }

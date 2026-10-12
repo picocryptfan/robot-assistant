@@ -44,10 +44,15 @@ class CallPlacerTest {
         // The car's spoken flow marks the number for the placer, which checks Android's list (or the region's) again.
         val panel = File(root, "assistant/handsfree/PanelHandsFree.kt").readText()
         assertTrue(panel.contains("emergency = CallPlacer.isEmergency(app, e.number, region)"))
+        // A direct call is car mode's alone: a headset session's spoken call opens the dialer, and only the car's trusted
+        // session calls from the lock screen.
         val call = panel.substringAfter("private suspend fun call(").substringBefore("private suspend fun callAnswer(")
+        assertTrue(call, call.contains("CallPlacer.rules(app).forSession(car = inCar)"))
         // The spoken read-back names who and their number: in a headset session only where a personal answer may play,
         // else the call tool's card on the screen.
         assertTrue(call, call.contains("if (s0 == null || (!inCar && !personalPlays(s0))) {\n            host.tool(replyId, RoutineStep.Tool(Action.Call(asked)))"))
         assertTrue(call.indexOf("personalPlays(s0)") < call.indexOf("CallTarget.plan("))
+        assertTrue(call, call.contains("CallTarget.plan(c.who, candidates, rules, phone.locked, inCar && CarModeController.trusted"))
+        assertEquals(1, Regex("CallPlacer\\.rules\\(").findAll(panel).count())
     }
 }
