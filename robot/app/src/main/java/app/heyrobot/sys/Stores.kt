@@ -159,6 +159,11 @@ object Cmd {
     const val TRANSCRIPTS_DELETED = "transcripts_deleted"
     /** Your "me" voiceprint was deleted (0.5.0, phase 5.3): a running session stops comparing lines with it. */
     const val VOICEPRINT_DELETED = "voiceprint_deleted"
+    /**
+     * 0.7: Settings › Memory changed what Robot remembers or how (an item, Delete all, a switch): the voice process drops
+     * what it holds of memory and starts the live conversation again, so a deleted item can't come back in an answer.
+     */
+    const val MEMORY_CHANGED = "memory_changed"
     /** "Barge-in test" (extra [EXTRA_RUN], a core BargeRun's name): results come back in Paths.bargeTest. */
     const val BARGE_TEST = "barge_test"
     const val EXTRA_RUN = "run"

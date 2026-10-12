@@ -239,6 +239,8 @@ object SettingsIntents {
             Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
         // Android's own "Free up space" (whichever app handles it on this phone), else the storage settings.
         SettingsPage.FREE_UP -> listOf(Intent(StorageManager.ACTION_MANAGE_STORAGE), Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+        // 0.7: Robot's own Settings › Memory, in the main app (AppPages).
+        SettingsPage.MEMORY -> listOf(HandOffApps.robotPage(ctx, AppPages.MEMORY))
         else -> emptyList()
     }.map { it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
 

@@ -41,6 +41,8 @@ object SettingsRoutes {
     const val WEATHER = "weather"
     const val HISTORY = "history"
     const val DISPLAY = "display"
+    /** 0.7: Settings › Memory. */
+    const val MEMORY = "memory"
     const val ADVANCED = "advanced"
     const val ABOUT = "about"
     /** Settings › About › Updates (the built-in updater); its notifications open it too. */
@@ -77,6 +79,7 @@ fun SettingsNav(
         SettingsRoutes.PEOPLE_NOTES_CALENDAR -> PeopleNotesCalendarScreen(s, snap, calendars, update, a, snackbar, onBack)
         SettingsRoutes.WEATHER -> WeatherSettingsScreen(s, snap, update, a, snackbar, onBack)
         SettingsRoutes.HISTORY -> HistorySettingsScreen(s, update, a, snackbar, onBack)
+        SettingsRoutes.MEMORY -> MemorySettingsRoute(a, snackbar, onBack)
         SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)
         SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
         SettingsRoutes.UPDATES -> UpdatesRoute(snackbar, onBack)
@@ -180,9 +183,11 @@ object AppRoutes {
                 "${AppPages.TRANSCRIPTS}:$id" + if (line >= 0) ":$line" else ""
             } ?: AppPages.TRANSCRIPTS
         // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
-        // Model from a chat-only model's answer to an action (0.4.3); Settings › About › Updates from the updater's notifications.
+        // Model from a chat-only model's answer to an action (0.4.3); Settings › About › Updates from the updater's notifications;
+        // Settings › Memory from a memory card's "Open Memory" (0.7).
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.UPDATES }
+            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.UPDATES ||
+            it == AppPages.MEMORY }
     }
 
     /** What a route opens: a [tab] (every page closed), or a [page] over the one showing; [notesIcon]: from Robot Notes' icon. */
@@ -197,6 +202,7 @@ object AppRoutes {
         r == AppPages.HELPERS -> Target(page = Page.Helpers)
         r == AppPages.MODEL -> Target(tab = Tab.MODEL)
         r == AppPages.UPDATES -> Target(page = Page.Settings(SettingsRoutes.UPDATES))
+        r == AppPages.MEMORY -> Target(page = Page.Settings(SettingsRoutes.MEMORY))
         else -> null
     }
 }

@@ -180,6 +180,23 @@ enum class VoiceEvent(val id: Int) {
      * gave it (100 foreground, 125 foreground service, 200 visible, 300+ background), c = ms spent. Never the position.
      */
     WEATHER_LOCATION(82),
+    // 0.7 memory (core memory/, MemoryLog.kt's codes): 180 to 189. Codes and counts only, never an item's words.
+    /** An item saved: a = [app.heyrobot.core.memory.MemOrigin], b = [app.heyrobot.core.memory.MemKindCode], c = 1 if it ends ("until tonight"). */
+    MEM_SAVE(180),
+    /** Items forgotten: a = how many, b = [app.heyrobot.core.memory.MemForget]. */
+    MEM_FORGET(181),
+    /** Remembered items went with a question: a = items before it, b = 1 words, 2 the search model, 3 both, c = ms to find them. */
+    MEM_RECALL(182),
+    // 183 (the search model's load, phase 7.4) stays reserved.
+    /** Suggestions answered in Settings › Memory: a = made (0 there), b = kept, c = dismissed. */
+    MEM_SUGGEST(184),
+    /** Memory couldn't be opened: a = [app.heyrobot.core.memory.MemLock]. */
+    MEM_LOCKED(185),
+    // 186 and 187 (searching transcripts and their index, phase 7.5) stay reserved.
+    /** A memory command, before the model: a = [app.heyrobot.core.memory.MemCommandCode], b = [LangCode], c = items it found or changed. */
+    MEM_COMMAND(188),
+    /** "Use memory on the lock screen" changed memory's key: a = 1 the lock screen's key, 0 the unlock-only one; b = 1 if it worked. */
+    MEM_KEY(189),
     // Conversation mode (0.5.0, docs/conversation-mode.md 8): 100 to 119. Counts and codes only, never a word said.
     /** A conversation session started: a = [ConvMode], b = [ConvEntry], c = 1 if the phone was locked. */
     CONV_START(100),
@@ -766,6 +783,15 @@ object VoiceLogText {
                 (if (c == 1) " · remembered" else "")
             VoiceEvent.CHEOGRAM_HANDOFF -> "Text handed to Cheogram: " + code(CheogramRoute.entries, a) + (if (b == 1) " (the first way didn't open)" else "")
             VoiceEvent.WEATHER_LOCATION -> "Position for the weather: " + code(LocationCode.entries, a) + " · process importance $b · $c ms"
+            VoiceEvent.MEM_SAVE -> "Memory: saved " + code(app.heyrobot.core.memory.MemKindCode.entries, b) + " (" +
+                code(app.heyrobot.core.memory.MemOrigin.entries, a) + ")" + (if (c == 1) ", until a set time" else "")
+            VoiceEvent.MEM_FORGET -> "Memory: forgot " + count(a, "item") + " (" + code(app.heyrobot.core.memory.MemForget.entries, b) + ")"
+            VoiceEvent.MEM_RECALL -> "Memory: " + count(a, "item") + " went with a question (" + (when (b) { 2 -> "search model"; 3 -> "words and search model"; else -> "words" }) + ", $c ms)"
+            VoiceEvent.MEM_SUGGEST -> "Memory suggestions: $a made, $b kept, $c dismissed"
+            VoiceEvent.MEM_LOCKED -> "Memory couldn't be opened: " + code(app.heyrobot.core.memory.MemLock.entries, a)
+            VoiceEvent.MEM_COMMAND -> "Memory command: " + code(app.heyrobot.core.memory.MemCommandCode.entries, a) + " (" + code(LangCode.entries, b) + ")" +
+                (if (c > 0) " · " + count(c, "item") else "")
+            VoiceEvent.MEM_KEY -> (if (b == 1) "Memory now uses " else "Memory couldn't switch to ") + (if (a == 1) "the lock screen's key" else "the key that needs unlocking")
             VoiceEvent.MODEL_CHOSEN -> "Model chosen: " + code(ModelCode.entries, a) + (if (b > 0 && b != a) " (was " + code(ModelCode.entries, b) + ")" else "")
             VoiceEvent.MODEL_LOADED -> "Model loaded: " + code(ModelCode.entries, a) + " on the " + code(BackendCode.entries, b) + " in " + secs(c)
             VoiceEvent.MODEL_LOAD_FAILED -> "Model didn't load: " + code(ModelCode.entries, a) + " (" + code(LoadFailure.entries, b) + ")"

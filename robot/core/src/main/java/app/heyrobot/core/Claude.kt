@@ -496,6 +496,11 @@ enum class Personal(val label: String) {
      * "Summarize with a stronger AI" card, never through an escalation, Claude mode or "include the conversation".
      */
     CONVERSATION("a recorded conversation"),
+    /**
+     * 0.7: what Robot remembers about you (core memory/), given to the local model with a turn or saved in it. It reaches a
+     * helper only through a card, even a trusted one (HelperTrust), and a secret item never does.
+     */
+    MEMORY("what Robot remembers about you"),
     ;
 
     companion object {

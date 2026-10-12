@@ -1,0 +1,246 @@
+package app.heyrobot.assistant
+
+import app.heyrobot.core.Action
+import app.heyrobot.core.ActionStatus
+import app.heyrobot.core.ChatTurn
+import app.heyrobot.core.ConversationCodec
+import app.heyrobot.core.Prepared
+import app.heyrobot.core.SettingsPage
+import app.heyrobot.core.StoredConversation
+import app.heyrobot.core.ToolName
+import app.heyrobot.core.TurnRole
+import app.heyrobot.core.memory.MemoryCommand
+import app.heyrobot.core.memory.MemoryHygiene
+import app.heyrobot.core.memory.MemoryItem
+import app.heyrobot.core.memory.MemoryKind
+import app.heyrobot.core.memory.MemoryLoad
+import app.heyrobot.core.memory.MemoryRoute
+import app.heyrobot.core.memory.MemorySettings
+import app.heyrobot.core.memory.MemorySource
+import app.heyrobot.core.memory.PromptPacking
+import app.heyrobot.sys.FileMemoryVault
+import app.heyrobot.sys.SoftMemoryKeys
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import java.io.File
+import java.nio.file.Files
+import java.time.LocalDate
+import java.time.ZoneOffset
+
+/**
+ * The panel's memory (0.7, phase 7.1) on a real vault with a software key: the router's commands and what they say, the
+ * cards and their Undo, "forget that", a pick card when several fit, the remember and forget tools (a secret refused
+ * with its reason), what goes with a chat question, and what History keeps.
+ */
+class MemoryPanelTest {
+    private val dir: File = Files.createTempDirectory("memory-panel").toFile()
+    private val keys = SoftMemoryKeys()
+    private val vault = FileMemoryVault(dir, keys)
+    private var settings = MemorySettings()
+    private val now = LocalDate.of(2026, 10, 11).atTime(12, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
+
+    @Before fun setUp() {
+        MemoryPanel.vaultFor = { vault }
+        MemoryPanel.settingsFor = { settings }
+        MemoryPanel.clock = { now }
+        MemoryPanel.zone = { ZoneOffset.UTC }
+        MemoryPanel.drop()
+        MemoryPanel.newConversation()
+    }
+
+    @After fun tearDown() {
+        MemoryPanel.drop()
+        MemoryPanel.newConversation()
+    }
+
+    private fun say(q: String, locked: Boolean = false, spoken: Boolean = true): MemoryAnswer {
+        val r = MemoryPanel.route(q, locked) ?: throw AssertionError("not a memory command: $q")
+        return MemoryPanel.command(r, locked, spoken)
+    }
+
+    private fun items(): List<MemoryItem> = (vault.load() as? MemoryLoad.Loaded)?.file?.items.orEmpty()
+
+    @Test fun rememberSavesSaysItBackAndUndoes() {
+        val a = say("Remember that my sister's birthday is May 3")
+        assertEquals("Got it: your sister's birthday is May 3.", a.text)
+        val saved = items().single()
+        assertEquals("My sister's birthday is May 3", saved.text)
+        assertEquals(MemorySource.SAID, saved.source)
+        assertEquals(listOf(saved.id), a.ids)
+        // Its card: no words in the summary (History keeps it), the words in the body, Undo and Open Memory.
+        val card = a.card!!
+        assertEquals(ToolName.REMEMBER, card.tool)
+        assertEquals("Remembered", card.summary)
+        assertEquals("My sister's birthday is May 3", card.body)
+        assertEquals(SettingsPage.MEMORY, card.handOff)
+        assertTrue(MemoryPanel.isUndo(card.undo))
+        assertFalse(MemoryPanel.isUndo("8f0c2a3e-note-id"))
+        assertEquals("Removed from memory.", MemoryPanel.undo(card.undo!!))
+        assertTrue(items().isEmpty())
+        assertEquals("Nothing to undo.", MemoryPanel.undo(card.undo!!))
+        // Typed, it is "You typed it"; said again, Robot already remembers it.
+        say("Remember that my sister's birthday is May 3", spoken = false)
+        assertEquals(MemorySource.TYPED, items().single().source)
+        assertEquals("I already remember that.", say("Remember that my sister's birthday is May 3").text)
+    }
+
+    @Test fun aPreferenceIsPinnedAndASecretStaysPrivate() {
+        say("Remember that I prefer Celsius")
+        val pref = items().single()
+        assertEquals(MemoryKind.PREFERENCE, pref.kind)
+        assertTrue(pref.pinned)
+        val a = say("Remember that the door code is 4512")
+        assertEquals("Got it: a code, kept in Memory.", a.text)
+        assertEquals("[a code, kept in Memory]", a.card!!.body)
+        assertTrue(items().single { it.id != pref.id }.secret)
+        // History keeps the question without the code.
+        val r = MemoryPanel.route("Remember that the door code is 4512", false)!!
+        assertEquals("Remember: [a code, kept in Memory]", MemoryPanel.question(r, "Remember that the door code is 4512"))
+        assertEquals("Remember that I prefer Celsius", MemoryPanel.question(MemoryPanel.route("Remember that I prefer Celsius", false)!!, "Remember that I prefer Celsius"))
+    }
+
+    @Test fun forgetThatTakesTheLastOneWithUndo() {
+        assertEquals("There's nothing from this conversation to forget.", say("Forget that").text)
+        say("Remember that Julie likes tulips")
+        say("Remember that Léo has hockey on Tuesdays")
+        val a = say("Forget that")
+        assertEquals("Forgotten.", a.text)
+        assertEquals(listOf("Julie likes tulips"), items().map { it.text })
+        assertEquals("Forgotten", a.card!!.summary)
+        assertEquals("• Léo has hockey on Tuesdays", a.card!!.body)
+        assertEquals("Put back in memory.", MemoryPanel.undo(a.card!!.undo!!))
+        assertEquals(2, items().size)
+        assertEquals("C'est oublié.", say("Oublie ça").text)
+    }
+
+    @Test fun forgetSomethingSearchesAndAsksWhichWhenSeveralFit() {
+        say("Remember that Julie likes tulips")
+        say("Remember that Julie is vegetarian")
+        say("Remember that Bob plays chess")
+        assertEquals("I don't remember anything about that.", say("Forget the cottage").text)
+        val one = say("Forget about chess")
+        assertEquals("Forgotten.", one.text)
+        assertEquals(2, items().size)
+        val many = say("Forget Julie")
+        assertEquals("Which one should I forget?", many.text)
+        assertEquals(2, many.pick.size)
+        assertEquals(listOf("Julie is vegetarian", "Julie likes tulips").sorted(), MemoryPanel.pickLabels(many.pick).sorted())
+        assertEquals("Okay, I'll keep them.", MemoryPanel.forgetPicked(null, false).text)
+        assertEquals(2, items().size)
+        assertEquals("Forgotten.", MemoryPanel.forgetPicked(many.pick.first { it.text.contains("tulips") }, false).text)
+        assertEquals(listOf("Julie is vegetarian"), items().map { it.text })
+    }
+
+    @Test fun recallAndAboutMeNeverSayASecret() {
+        say("Remember that my sister Julie's birthday is May 3")
+        say("Remember that Julie's door code is 4512")
+        val r = say("What do you remember about Julie?")
+        assertEquals("Here's what I remember about Julie: your sister Julie's birthday is May 3. And 1 private item, in Settings › Memory.", r.text)
+        assertFalse(r.text.contains("4512"))
+        val me = say("What do you know about me?")
+        assertTrue(me.text, me.text.startsWith("I remember 2 things. For example: your sister Julie's birthday is May 3"))
+        assertFalse(me.text.contains("4512"))
+        assertEquals(SettingsPage.MEMORY, me.card!!.handOff)
+        assertTrue(say("Qu'est-ce que tu sais sur moi?").text.startsWith("Je retiens 2 choses."))
+        // "Forget everything": never by voice, a card to Settings › Memory.
+        val all = say("Forget everything")
+        assertEquals("Open Settings › Memory to delete everything.", all.text)
+        assertEquals(ActionStatus.SKIPPED, all.card!!.status)
+        assertEquals(2, items().size)
+    }
+
+    @Test fun lockedAndOff() {
+        say("Remember that Julie likes tulips")
+        keys.locked = true
+        MemoryPanel.drop()
+        assertEquals(MemoryRoute.Unlock("en"), MemoryPanel.route("What do you know about me?", locked = true))
+        assertEquals("Unlock first: what you asked me to remember stays locked.", say("What do you know about me?", locked = true).text)
+        assertEquals("Unlock first, then ask me again to remember it: my memory stays locked.", say("Remember that Bob plays chess", locked = true).text)
+        assertEquals(1, keys.keys.size)
+        // A chat question on the locked phone gets no memory, and the file isn't even opened.
+        assertEquals(MemoryTurn.NONE.packed, MemoryPanel.forTurn("When is Julie's birthday?", locked = true, given = emptySet(), maxTokens = 4096).packed)
+        keys.locked = false
+        settings = settings.copy(on = false)
+        assertEquals("Memory is off. Turn it on in Robot's settings, under Memory.", say("Remember that Bob plays chess").text)
+        assertFalse(MemoryPanel.forTurn("Julie?", false, emptySet(), 4096).tools)
+        assertEquals(1, items().size)
+    }
+
+    @Test fun aChatQuestionGetsItsNotesAndHistoryKeepsTheIds() {
+        say("Remember that my sister Julie's birthday is May 3")
+        say("Remember that you should call me Sam")
+        say("Remember that the cottage door code is 4512")
+        MemoryPanel.newConversation()
+        val t = MemoryPanel.forTurn("When is Julie's birthday?", locked = false, given = emptySet(), maxTokens = 4096)
+        assertTrue(t.tools)
+        val julie = items().first { it.text.contains("Julie") }
+        assertEquals(listOf(julie.id), t.packed.retrievedIds)
+        assertTrue(t.packed.notesBlock!!.startsWith(PromptPacking.NOTES_HEAD))
+        assertFalse(t.quiet)
+        // Rebuilt from History, a past question gets its notes again; a deleted item's are gone.
+        assertTrue(t.notes(listOf(julie.id))!!.contains("birthday is May 3"))
+        // "Forget that" now means the item that answer used.
+        assertEquals("Forgotten.", say("Forget that").text)
+        assertTrue(items().none { it.id == julie.id })
+        // A question naming the secret gets it, shown but never spoken; History keeps a line instead of the answer.
+        val code = MemoryPanel.forTurn("What's the cottage door code?", false, emptySet(), 4096)
+        assertTrue(code.recall.secret && code.quiet)
+        MemoryPanel.mark("r1", code.packed.retrievedIds, secret = true)
+        val reply = MemoryPanel.forHistory(ChatTurn("r1", TurnRole.ASSISTANT, "The code is 4512.", 1))
+        assertEquals(MemoryHygiene.SECRET_ANSWER, reply.text)
+        assertEquals(code.packed.retrievedIds, reply.memoryIds)
+        // Only once: a later reply with the same id is left alone.
+        assertEquals("ok", MemoryPanel.forHistory(ChatTurn("r1", TurnRole.ASSISTANT, "ok", 2)).text)
+        // With "Say private items aloud" on, named and unlocked, it may be spoken.
+        settings = settings.copy(speakSecrets = true)
+        assertFalse(MemoryPanel.forTurn("What's the cottage door code?", false, emptySet(), 4096).quiet)
+        // The saved conversation holds ids, never the notes or the code.
+        val q = ChatTurn("u1", TurnRole.USER, "What's the cottage door code?", 1, memoryIds = code.packed.retrievedIds)
+        val json = ConversationCodec.toJson(StoredConversation("c", 1, 2, listOf(q, reply)))
+        assertFalse(json.contains("4512"))
+        assertTrue(json.contains(code.packed.retrievedIds.single()))
+    }
+
+    @Test fun theToolsAreCardsAndRefuseASecret() {
+        // The model proposing a code: refused, with the reason.
+        val p = MemoryPanel.prepare(Action.Remember("The alarm code is 4512"), locked = false)
+        assertTrue(p is Prepared.Refused && p.detail.contains("passwords, PINs, codes"))
+        assertTrue(MemoryPanel.prepare(Action.Remember("Julie likes tulips"), false) is Prepared.Ready)
+        assertTrue(MemoryPanel.prepare(Action.Remember("Julie likes tulips"), locked = true) is Prepared.Refused)
+        assertNull(MemoryPanel.prepare(Action.SetTimer(60), false))
+        // Run from a conversation with content: kept as content, where it came from said.
+        val r = MemoryPanel.run(Action.Remember("Pick up Marc at 5"), spoken = true, content = true)!!
+        assertEquals(ActionStatus.DONE, r.status)
+        assertTrue(MemoryPanel.isUndo(r.undo))
+        val kept = items().single()
+        assertEquals(MemorySource.CONTENT, kept.source)
+        assertTrue(kept.sourceLabel!!.isNotBlank())
+        // forget: one match is ready (its card always shows: the gate), several are choices.
+        MemoryPanel.run(Action.Remember("Julie likes tulips"), spoken = false, content = false)
+        MemoryPanel.run(Action.Remember("Julie is vegetarian"), spoken = false, content = false)
+        val one = MemoryPanel.prepare(Action.Forget("Marc"), false) as Prepared.Ready
+        assertEquals(listOf(kept.id), (one.action as Action.Forget).ids)
+        assertEquals("• Pick up Marc at 5", one.action.body())
+        val two = MemoryPanel.prepare(Action.Forget("Julie"), false) as Prepared.Ready
+        assertEquals(2, two.choices.size)
+        assertTrue(MemoryPanel.prepare(Action.Forget("cottage"), false) is Prepared.Refused)
+        val done = MemoryPanel.run(two.choices.first().action, spoken = false, content = false)!!
+        assertEquals("Forgotten.", done.detail)
+        assertEquals(2, items().size)
+        assertEquals("Put back in memory.", MemoryPanel.undo(done.undo!!))
+        assertEquals(3, items().size)
+        assertNull(MemoryPanel.run(Action.SetTimer(60), false, false))
+    }
+
+    @Test fun theCommandsAreTheRoutersOnly() {
+        assertNull(MemoryPanel.route("Remember to buy milk", false))
+        assertNull(MemoryPanel.route("When is Julie's birthday?", false))
+        assertTrue((MemoryPanel.route("Souviens-toi que Julie aime les tulipes", false) as MemoryRoute.Run).command is MemoryCommand.Remember)
+        assertEquals("C'est noté : « Julie aime les tulipes ».", say("Souviens-toi que Julie aime les tulipes").text)
+    }
+}

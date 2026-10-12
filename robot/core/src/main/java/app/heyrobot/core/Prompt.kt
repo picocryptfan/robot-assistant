@@ -172,6 +172,8 @@ object Prompt {
         ToolName.FREE_MEMORY -> "call:free_memory{}"
         ToolName.FREE_STORAGE -> "call:free_storage{what:files}"
         ToolName.ASK_CLAUDE -> "call:ask_claude{question:<escape>Why is the sky blue?<escape>}"
+        ToolName.REMEMBER -> "call:remember{text:<escape>My sister's birthday is May 3<escape>}"
+        ToolName.FORGET -> "call:forget{query:<escape>sister's birthday<escape>}"
     }
 
     /** The phase 1 tools: what a conversation that hasn't needed any other group is told about. */

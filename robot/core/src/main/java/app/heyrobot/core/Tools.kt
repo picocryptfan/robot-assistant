@@ -1,5 +1,9 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.memory.MemoryCommands
+import app.heyrobot.core.memory.MemoryKind
+import app.heyrobot.core.memory.MemoryLimits
+import app.heyrobot.core.memory.Until
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.ZonedDateTime
@@ -45,7 +49,13 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
      * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
      * the Claude app it is the hand-off, always behind a card.
      */
-    ASK_CLAUDE("ask_claude", "Ask Claude", ToolGroup.CORE, internal = true);
+    ASK_CLAUDE("ask_claude", "Ask Claude", ToolGroup.CORE, internal = true),
+    /**
+     * 0.7 memory (core memory/): keep something about you for later conversations, or drop it. Robot's own, under
+     * Settings › Memory rather than Settings › Actions, described only with Memory on and words that call for them.
+     */
+    REMEMBER("remember", "Memory", ToolGroup.MEMORY, internal = true),
+    FORGET("forget", "Memory", ToolGroup.MEMORY, internal = true);
 
     companion object {
         fun of(id: String?): ToolName? = entries.firstOrNull { it.id == id?.trim()?.lowercase(Locale.ROOT) }
@@ -142,6 +152,14 @@ object ToolSpecs {
         )),
         ToolSpec(ToolName.ASK_CLAUDE, "Ask Claude, a stronger AI online, instead of guessing.", listOf(
             ToolParam("question", "string", "The person's question", true),
+        )),
+        // 0.7: what the person asks Robot to keep about them, as small as a tool can be (the router answers "remember that …"
+        // and "forget …" itself; a preference is told by its words, MemoryCommands.prefers).
+        ToolSpec(ToolName.REMEMBER, "Remember a fact about the person.", listOf(
+            ToolParam("text", "string", "The fact, in their words", true),
+        )),
+        ToolSpec(ToolName.FORGET, "Forget a remembered fact.", listOf(
+            ToolParam("query", "string", "Its words", true),
         )),
     )
 
@@ -307,6 +325,31 @@ sealed class Action {
             val on = range?.let { " for ${EventText.range(it)}" } ?: day?.let { " for $it" } ?: ""
             return "Check the weather$at$on"
         }
+    }
+
+    /**
+     * remember (0.7): [text] to keep, a [kind], an end ([until]). The card shows the text in its body only: its summary,
+     * which History keeps, never holds it ([MemoryHygiene]).
+     */
+    data class Remember(val text: String, val kind: MemoryKind = MemoryKind.FACT,
+        val until: Until? = null) : Action() {
+        override val tool get() = ToolName.REMEMBER
+        override fun describe() = if (kind == MemoryKind.PREFERENCE) "Remember a preference" else "Remember this"
+        override fun body() = text
+        override val confirmLabel get() = "Remember"
+        override fun toString(): String = "Remember(kind=$kind, until=$until, chars=${text.length})"
+    }
+
+    /**
+     * forget (0.7): [query] as the model gave it, until the app finds the items it means ([ids], with their words in
+     * [shown] for the card's body only).
+     */
+    data class Forget(val query: String, val ids: List<String> = emptyList(), val shown: String? = null) : Action() {
+        override val tool get() = ToolName.FORGET
+        override fun describe() = if (ids.size > 1) "Forget ${ids.size} things from memory" else "Forget from memory"
+        override fun body() = shown
+        override val confirmLabel get() = "Forget"
+        override fun toString(): String = "Forget(ids=${ids.size}, chars=${query.length})"
     }
 
     /** phone_status: what was asked about; the app process reads it. */
@@ -547,6 +590,17 @@ object ToolCalls {
             // Both optional: no place is where you are, no day is today.
             ToolName.WEATHER -> ParsedCall.Ok(Action.Weather(textArg(a, MAX_NAME, "place", "location", "city", "where", "town"),
                 textArg(a, MAX_NAME, "day", "date", "when", "time", "days")))
+            ToolName.REMEMBER -> {
+                val text = longArg(a, MemoryLimits.MAX_CHARS, "text", "fact", "memory", "what", "content", "note")
+                    ?.replace(Regex("\\s+"), " ")?.trim() ?: return bad("text is required")
+                val kind = when (textArg(a, MAX_NAME, "kind", "type")?.lowercase(Locale.ROOT)) {
+                    "preference", "pref", "preferences" -> MemoryKind.PREFERENCE
+                    else -> if (MemoryCommands.prefers(text)) MemoryKind.PREFERENCE else MemoryKind.FACT
+                }
+                ParsedCall.Ok(Action.Remember(text, kind, Until.of(textArg(a, MAX_NAME, "until", "expires", "end"))))
+            }
+            ToolName.FORGET -> textArg(a, MAX_NAME, "query", "text", "what", "q", "about")?.let { ParsedCall.Ok(Action.Forget(it)) }
+                ?: bad("query is required")
             // Anything it doesn't name (or nothing) is all of it.
             ToolName.PHONE_STATUS -> ParsedCall.Ok(Action.PhoneCheck(PhonePart.of(textArg(a, MAX_NAME, "about", "part", "what", "topic", "kind"))))
             // Robot's own model when no app (or Robot itself) is named.

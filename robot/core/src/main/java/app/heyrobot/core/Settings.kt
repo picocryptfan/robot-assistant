@@ -414,6 +414,10 @@ data class RobotSettings(
             ToolName.FREE_STORAGE to Approval.ASK,
             // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
             ToolName.ASK_CLAUDE to Approval.ASK,
+            // 0.7, not levels you set either (Settings › Memory): remember runs when you asked for it (a card otherwise,
+            // ApprovalGate), forget always shows its card.
+            ToolName.REMEMBER to Approval.AUTO,
+            ToolName.FORGET to Approval.ASK,
         )
 
         /** The actions whose default became "Just do it" in schema 4. */

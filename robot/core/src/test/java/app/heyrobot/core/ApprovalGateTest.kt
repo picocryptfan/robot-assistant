@@ -114,7 +114,8 @@ class ApprovalGateTest {
     /** "Only when Robot isn't sure who": content never forces a card; a reason the action gives still does. */
     @Test fun unsureOnlyIgnoresContent() {
         val s = allAuto.copy(safetyCards = SafetyCards.UNSURE_ONLY)
-        for (t in ToolName.entries - ToolName.ASK_CLAUDE) {
+        // 0.7: remember with content, or not asked for, is always a card (below and in everyCombination).
+        for (t in ToolName.entries - ToolName.ASK_CLAUDE - ToolName.REMEMBER) {
             assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, s, content = true))
             assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, why = setOf(AskWhy.WHO), content = true))
         }
@@ -188,6 +189,7 @@ class ApprovalGateTest {
                         AskWhy.LEARNED in why && learned,
                         AskWhy.DELETE in why && delete,
                         content && (!t.reads || t.online) && (mode == SafetyCards.AFTER_READING || (mode == SafetyCards.UNASKED && !asked)),
+                        t == ToolName.REMEMBER && (!asked || content),
                     )
                     val want = when {
                         level == Approval.OFF -> GateDecision.DISABLED

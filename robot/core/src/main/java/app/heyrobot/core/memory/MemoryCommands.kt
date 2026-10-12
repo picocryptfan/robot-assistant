@@ -39,6 +39,23 @@ enum class Until {
         }
         return day.atTime(LocalTime.MAX).atZone(zone).toInstant().toEpochMilli()
     }
+
+    companion object {
+        /**
+         * The end the remember tool's "until" names ("tonight", "for today", "tomorrow", "this week", "ce soir", "demain",
+         * "cette semaine"), or null for none or anything else (an item without an end).
+         */
+        fun of(text: String?): Until? {
+            val t = MemoryCommands.foldAligned(text?.trim().orEmpty()).replace(Regex("[^a-z' ]"), " ").replace(Regex("\\s+"), " ").trim()
+            return when {
+                t.isEmpty() -> null
+                Regex("""\b(tonight|today|this evening|end of (the )?day|ce soir|aujourd'hui|aujourdhui|soir)\b""").containsMatchIn(t) -> TONIGHT
+                Regex("""\b(tomorrow|demain)\b""").containsMatchIn(t) -> TOMORROW
+                Regex("""\b(week|weekend|sunday|semaine|week-end|dimanche)\b""").containsMatchIn(t) -> END_OF_WEEK
+                else -> null
+            }
+        }
+    }
 }
 
 /** A memory command; [language] ("en", "fr") picks the words Robot answers with. */
@@ -251,7 +268,23 @@ object MemoryCommands {
             return if (c.language == "fr") "C'est noté : $k." else "Got it: $k."
         }
         if (c.language == "fr") return "C'est noté : « ${c.text} »."
-        val words = c.text.split(' ').mapIndexed { i, w ->
+        val body = toYou(c.text)
+        val end = when (c.until) {
+            Until.TONIGHT -> " until tonight"
+            Until.TOMORROW -> " until tomorrow"
+            Until.END_OF_WEEK -> " until the end of the week"
+            null -> ""
+        }
+        return "Got it: $body$end."
+    }
+
+    /**
+     * Your English words turned to Robot's ("My sister's birthday is May 3." → "your sister's birthday is May 3"): "I" and
+     * "my" become "you" and "your", a first word written with a capital only because it starts the sentence goes lower
+     * case, closing punctuation goes.
+     */
+    fun toYou(text: String): String {
+        val words = text.trim().trimEnd('.', '!', '?', ';', ':', ' ').split(' ').mapIndexed { i, w ->
             val core = w.trimEnd('.', ',', '!', '?', ';', ':')
             val f = FLIP[foldAligned(core)]
             when {
@@ -260,13 +293,6 @@ object MemoryCommands {
                 else -> w
             }
         }
-        val body = words.joinToString(" ")
-        val end = when (c.until) {
-            Until.TONIGHT -> " until tonight"
-            Until.TOMORROW -> " until tomorrow"
-            Until.END_OF_WEEK -> " until the end of the week"
-            null -> ""
-        }
-        return "Got it: $body$end."
+        return words.joinToString(" ")
     }
 }

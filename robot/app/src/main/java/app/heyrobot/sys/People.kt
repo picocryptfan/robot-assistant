@@ -381,6 +381,8 @@ object AppPages {
     const val MODEL = "model"
     /** Settings › Updates (the updater's notifications). */
     const val UPDATES = "updates"
+    /** 0.7: Settings › Memory (a memory card's "Open Memory" in the panel). */
+    const val MEMORY = "memory"
     /** The Robot Notes launcher entry (an activity-alias of MainActivity). */
     const val NOTES_ALIAS = "app.heyrobot.ui.NotesLauncher"
 }

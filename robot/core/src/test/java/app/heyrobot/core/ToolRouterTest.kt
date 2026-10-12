@@ -31,7 +31,8 @@ class ToolRouterTest {
     @Test fun notesAndCalendarWords() {
         assertEquals(setOf(ToolGroup.CORE, ToolGroup.NOTES), route("note: buy coffee filters"))
         assertEquals(setOf(ToolGroup.CORE, ToolGroup.NOTES), route("what did I note about coffee"))
-        assertEquals(setOf(ToolGroup.CORE, ToolGroup.NOTES), route("Remember that the code is 4521"))
+        // 0.7: "remember" also calls memory's tools (Settings › Memory decides whether they are described).
+        assertEquals(setOf(ToolGroup.CORE, ToolGroup.NOTES, ToolGroup.MEMORY), route("Remember that the code is 4521"))
         assertEquals(setOf(ToolGroup.CORE, ToolGroup.NOTES), route("jot this down"))
         assertEquals(setOf(ToolGroup.CORE, ToolGroup.CALENDAR), route("what's on my calendar tomorrow"))
         assertEquals(setOf(ToolGroup.CORE, ToolGroup.CALENDAR), route("add dentist Tuesday at 3"))
@@ -68,7 +69,8 @@ class ToolRouterTest {
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d))
         assertEquals(Prompt.CORE_TOOLS + listOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.LOOKUP_CONTACT),
             ToolRouter.tools(route("text Mom I'm late"), d))
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE, ToolRouter.tools(ToolGroup.entries.toSet(), d))
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.REMEMBER - ToolName.FORGET, ToolRouter.tools(ToolGroup.entries.toSet(), d))
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE, ToolRouter.tools(ToolGroup.entries.toSet(), d, memory = true))
         // ask_claude only with Ask Claude on and escalation not Off (ClaudeSettings.localTool).
         assertEquals(Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE, ToolRouter.tools(core, d, askClaude = true))
         // Turned off in settings: never described. Texting app off: no send_text.

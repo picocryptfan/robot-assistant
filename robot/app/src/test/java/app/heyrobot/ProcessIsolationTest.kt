@@ -748,10 +748,12 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/assistant/conversation/Voiceprints.kt"), usersOf(Regex("""\bVoiceprintCodec\.(open|seal)\(""")))
         val main = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""\bVoiceprints\b|\bVoiceprintCodec\.(open|seal|decode)\b"""), main))
-        // The only cipher in those files is KeystoreSecret's (the updater's token in the main process, the helpers' keys in
-        // :voice), which never sees a voiceprint.
-        assertEquals(listOf("app/sys/KeystoreSecret.kt"), usersOf(Regex("""\bCipher\b"""), main))
-        assertTrue(!Regex("""\bVoiceprint""").containsMatchIn(code(File(java("app"), "app/heyrobot/sys/KeystoreSecret.kt"))))
+        // The only ciphers in those files are KeystoreSecret's (the updater's token in the main process, the helpers' keys in
+        // :voice) and 0.7 memory's vault (app/sys/MemoryVault.kt, memoryStaysOnThePhone), neither of which sees a voiceprint.
+        assertEquals(listOf("app/sys/KeystoreSecret.kt", "app/sys/MemoryVault.kt"), usersOf(Regex("""\bCipher\b"""), main))
+        for (f in listOf("KeystoreSecret.kt", "MemoryVault.kt")) {
+            assertTrue(f, !Regex("""\bVoiceprint""").containsMatchIn(code(File(java("app"), "app/heyrobot/sys/$f"))))
+        }
         // Its Keystore key is its own, never a helper's (0.6.0: Claude's key is a helper's key, under its old alias).
         val keys = code(File(java("app"), "app/heyrobot/assistant/conversation/Voiceprints.kt"))
         assertTrue(keys.contains("VoiceprintCodec.KEY_ALIAS") && !Regex("""\bHelperKey(s|Files)\b|\bClaudeKey""").containsMatchIn(keys))
@@ -771,5 +773,62 @@ class ProcessIsolationTest {
         assertEquals(emptyList<String>(), usersOf(leaky, spk))
         // The speaker model loads with sherpa's debug output off, like every model.
         assertTrue(code(File(java("voice"), "app/heyrobot/voice/SpeakerEmbedder.kt")).contains("debug = false"))
+    }
+
+    /**
+     * 0.7 memory (design §A8 to §A10): the vault (a Keystore AES-GCM key that needs the phone unlocked) lives in app/sys for
+     * both app processes, in files/memory, never backed up; it is opened only by the panel (MemoryPanel, :voice) and
+     * Settings › Memory (main). What Robot remembers reaches a model only inside the panel's chat prompt (PanelController's
+     * runTurn, through :brain, and llama.cpp's :llama for your own file), never a one-shot, a translation, a summary, :mt,
+     * the network or a log; a helper only through its card (core HelperTrust), and memory's tools are never a helper's.
+     */
+    @Test fun memoryStaysOnThePhone() {
+        val appFiles = ours.filterKeys { it.startsWith("app/") }
+        // The vault: the Keystore's AES-GCM key, files/memory; Delete all and Start over are the only ways its file goes. Beside
+        // it, the main app's only other Cipher is 0.6.0's KeystoreSecret (helpers' keys and the updater's token), which never
+        // sees memory.
+        assertEquals(listOf("app/sys/KeystoreSecret.kt", "app/sys/MemoryVault.kt"), usersOf(Regex("""\bCipher\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
+        assertTrue(!Regex("""\bMemory""").containsMatchIn(code(File(java("app"), "app/heyrobot/sys/KeystoreSecret.kt"))))
+        val vault = File(java("app"), "app/heyrobot/sys/MemoryVault.kt").readText()
+        for (w in listOf("\"AndroidKeyStore\"", "\"AES/GCM/NoPadding\"", ".setUnlockedDeviceRequired(alias == MemoryKeyAliases.UNLOCKED)", "File(ctx.filesDir, \"memory\")",
+            "writeAtomicBytes(file, out)", "if (load != MemoryLoad.Unreadable && load != MemoryLoad.KeyGone) return@locked false")) assertTrue(w, vault.contains(w))
+        // Two deletes only: Delete all's, and Start over's older memory.enc.bad (the file itself is renamed, never deleted there).
+        val vaultCode = code(File(java("app"), "app/heyrobot/sys/MemoryVault.kt"))
+        assertEquals(2, Regex("""\.delete\(\)""").findAll(vaultCode).count())
+        assertTrue(vaultCode.contains("listOf(MemoryEnvelope.FILE, BAD, INDEX).map { File(dir, it) }.all { !it.exists() || it.delete() }") &&
+            vaultCode.contains("bad.delete()\n        file.renameTo(bad)"))
+        // Opened by the panel and Settings › Memory only.
+        assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/ui/settings/MemorySettings.kt"), usersOf(Regex("""\bMemoryFiles\.vault\(""")))
+        // Memory's classes stay in the app's two processes: never :brain, :mt, :voice's engines or the helpers' clients.
+        val memory = Regex("""\bapp\.heyrobot\.core\.memory\b|\bMemory(Panel|Files|SettingsStore|Turn|Answer)\b|\bFileMemoryVault\b""")
+        assertEquals(emptyList<String>(), usersOf(memory, ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("voice/") || it.startsWith("claude/") }))
+        assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/assistant/PanelController.kt", "app/sys/MemoryVault.kt", "app/ui/settings/MemorySettings.kt",
+            "app/ui/settings/SettingsRoot.kt"), usersOf(memory, appFiles))
+        // Into a model's prompt only from the panel's chat turn: once, in PanelController; never the one-shot client, conversation
+        // mode (translations, summaries) or a helper's request.
+        assertEquals(listOf("app/assistant/PanelController.kt"), usersOf(Regex("""\bMemoryPanel\.forTurn\(""")))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bMemoryPanel\b|\bPromptPacking\b|\bMemoryRecall\b"""),
+            ours.filterKeys { it.startsWith("app/assistant/conversation/") || it in setOf("app/assistant/OneShots.kt", "app/assistant/HelperLink.kt", "app/assistant/BrainLink.kt") }))
+        val panel = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        assertTrue(panel.contains("history = history.toPromptTurns(mem.notes)") && panel.contains("pinned = mem.packed.systemLine"))
+        // History keeps the reply through MemoryPanel.forHistory (ids, a secret answer's line), and the question's ids only.
+        assertTrue(panel.contains("chat += MemoryPanel.forHistory(ChatTurn("))
+        // A helper: memory only through its card (trusted helpers too, unless Settings › Memory says otherwise), never its tools.
+        assertEquals(4, Regex("""HelperTrust\.(conversation|joinWithoutCard)\([^)]*MemoryPanel\.toTrusted\(\)\)""").findAll(panel).count())
+        assertTrue(app.heyrobot.core.ToolName.REMEMBER !in app.heyrobot.core.ClaudeTools.OFFERED && app.heyrobot.core.ToolName.FORGET !in app.heyrobot.core.ClaudeTools.OFFERED)
+        // No network, and the logs get codes and counts: no item, text, query or question in an RLog call.
+        val mem = ours.filterKeys { it.startsWith("core/core/memory/") || it in setOf("app/assistant/MemoryPanel.kt", "app/sys/MemoryVault.kt", "app/ui/settings/MemorySettings.kt") }
+        assertTrue(mem.size >= 15)
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|okhttp|\bINTERNET\b|DownloadManager"""), mem))
+        assertEquals(emptyList<String>(), usersOf(Regex("""RLog\.[iw]\([^\n]*\b(text|item|items|query|note|notes|words|said|question|about|file)\b"""), mem))
+        assertEquals(emptyList<String>(), usersOf(Regex("""VoiceLog\.add\([^\n]*\.(text|query|about)\b"""), mem))
+        // Never backed up or carried to another phone.
+        val manifest = File(main("app"), "AndroidManifest.xml").readText()
+        assertTrue(manifest.contains("android:allowBackup=\"false\"") && manifest.contains("android:dataExtractionRules=\"@xml/data_extraction_rules\""))
+        val rules = File(main("app"), "res/xml/data_extraction_rules.xml").readText()
+        assertEquals(2, Regex("""<exclude domain="file" />""").findAll(rules).count())
+        // Its settings are memory.json's, never settings.json's (whose schema stays 13 for the other 0.7 branch).
+        assertEquals(13, app.heyrobot.core.RobotSettings.SCHEMA)
+        assertTrue(!code(File(java("core"), "app/heyrobot/core/Settings.kt")).contains("memory"))
     }
 }
