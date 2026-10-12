@@ -122,6 +122,7 @@ import app.heyrobot.core.Tip
 import app.heyrobot.core.Tips
 import app.heyrobot.core.ToolCalls
 import app.heyrobot.core.ToolGroup
+import app.heyrobot.core.ToolBudget
 import app.heyrobot.core.ToolRouter
 import app.heyrobot.core.TurnActions
 import app.heyrobot.core.TurnPhase
@@ -138,6 +139,21 @@ import app.heyrobot.core.VolumeKeyStop
 import app.heyrobot.core.WeatherAsk
 import app.heyrobot.core.WeatherFail
 import app.heyrobot.core.toPromptTurns
+import app.heyrobot.core.web.AnswerCard
+import app.heyrobot.core.web.Citations
+import app.heyrobot.core.web.CurrentInfo
+import app.heyrobot.core.web.QueryContext
+import app.heyrobot.core.web.WebConsent
+import app.heyrobot.core.web.WebFail
+import app.heyrobot.core.web.WebOutcome
+import app.heyrobot.core.web.WebQueryContext
+import app.heyrobot.core.web.WebRouter
+import app.heyrobot.core.web.WebStatus
+import app.heyrobot.core.web.WikipediaWire
+import app.heyrobot.helpers.web.WebSearch
+import app.heyrobot.helpers.web.WebStep
+import app.heyrobot.sys.WebAnswers
+import app.heyrobot.sys.WebStore
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Assistant
@@ -271,6 +287,8 @@ data class UiTurn(
     val home: Boolean = false,
     /** 0.7: the reply card under it (PanelMessages). */
     val reply: app.heyrobot.ui.common.ReplyCardView? = null,
+    /** 0.9: a web answer's card (WebAnswerCard): shown, never saved (History keeps its saved line). */
+    val web: AnswerCard? = null,
 )
 
 data class Draft(val kind: Attachment, val thumb: Bitmap?)
@@ -1232,22 +1250,28 @@ object PanelController {
         val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&
             !_state.value.claudeMode) PanelHandsFree.route(q) else null
         val routineOrHandsFree = routineCmd != null || handsFreeCmd != null
+        // 0.9: "search the web for …" next: web_search with exactly your words, without the model (WebRouter); outside a
+        // helper's conversation and without an attachment.
+        val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&
+            !_state.value.claudeMode) WebRouter.explicit(q) else null
         // 0.7: memory's commands next ("remember that …", "forget that", "what do you know about me?"), Robot's own even in a
         // helper's conversation: what you ask Robot to remember never goes to a helper (core MemoryRouting).
-        val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree)
+        val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null)
             MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null
         // 0.7.0: "free up memory", "close apps", « libère de la mémoire »: Robot's own answer (what Android reports, what
         // unloading its model gives, the apps used lately) and a card to pick from (core FreeUp), not the model's guess.
-        val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && memRoute == null)
+        val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&
+            memRoute == null)
             FreeUp.asked(q) else null
         // The helpers' phrases next ("ask Claude …", "go get Jarvis"), then texting without the model, then the model (FastPath).
-        var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && memRoute == null && freeAsk == null)
+        var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null && memRoute == null &&
+            freeAsk == null)
             ClaudeRouter.route(q, names) else null
         // "Thanks Claude" outside a helper's conversation is ordinary talk.
         if (cmd == ClaudeCommand.Leave && !_state.value.claudeMode) cmd = null
         // "Not Claude", "you tell me": Robot answers, now and for the rest of the conversation (a helper's conversation ends too).
         // Only an explicit "ask …" or "go get …" brings a helper back.
-        if (q.isNotEmpty() && memRoute == null && fbCmd == null && !routineOrHandsFree && freeAsk == null && ClaudeRouter.declines(q, names)) {
+        if (q.isNotEmpty() && memRoute == null && fbCmd == null && !routineOrHandsFree && webQuery == null && freeAsk == null && ClaudeRouter.declines(q, names)) {
             if (cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join) cmd = null
             if (!claudeDeclined) RLog.i("claude_declined", "claudeMode" to _state.value.claudeMode)
             claudeDeclined = true
@@ -1321,6 +1345,7 @@ object PanelController {
                 fbCmd != null -> feedbackCommand(replyId, fbCmd)
                 routineCmd != null -> PanelRoutines.handle(replyId, routineCmd, routineHost)
                 handsFreeCmd != null -> PanelHandsFree.handle(replyId, handsFreeCmd, routineHost)
+                webQuery != null -> directWeb(replyId, webQuery, user.text, history, untrusted)
                 memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)
                 freeAsk != null -> freeMemoryCommand(replyId, freeAsk)
                 cmd == ClaudeCommand.Leave -> {
@@ -1390,7 +1415,12 @@ object PanelController {
         // Robot's to answer (0.4.0). Locked, the tool can't run: as before, the question may go to the helper when it is
         // allowed on the lock screen. Current information goes by itself only to a helper that can search (0.6.0).
         val localWeather = s.approval(ToolName.WEATHER) != Approval.OFF && (!Assistant.locked(VoiceHub.app) || ToolName.WEATHER in s.lockedTools)
-        if (attachment == Attachment.NONE && !claudeDeclined && target != null) PreRouter.signal(question, localWeather)?.let { signal ->
+        // 0.9: with web search on (and "Robot searches first"), current information is Robot's to look up, as the weather.
+        val web = withContext(Dispatchers.IO) { WebStore.load(VoiceHub.app) to WebAnswers.load(VoiceHub.app) }
+        val webOn = WebConsent.on(web.first, web.second)
+        val localWeb = webOn && web.first.currentInfo == CurrentInfo.ROBOT_FIRST && s.approval(ToolName.WEB_SEARCH) != Approval.OFF &&
+            (!Assistant.locked(VoiceHub.app) || ToolName.WEB_SEARCH in s.lockedTools)
+        if (attachment == Attachment.NONE && !claudeDeclined && target != null) PreRouter.signal(question, localWeather, localWeb)?.let { signal ->
             RLog.i("claude_trigger", "kind" to EscalationTrigger.PRE_ROUTER, "signal" to signal)
             when (decide(attachment, guardFree = !guard.used, needsSearch = signal == PreRouter.Signal.CURRENT_INFO)) {
                 EscalationDecision.AUTO -> {
@@ -1480,12 +1510,23 @@ object PanelController {
         suspend fun gemma(askClaude: Boolean): TurnResult {
             // Only the groups this conversation needs, and nothing turned off in settings, is described to the model; to a
             // chat-only model nothing at all, with its compact prompt (Settings › "Direct answers" as you set it).
-            val tools = if (chatOnly) emptyList() else ToolRouter.tools(groups, s, askClaude, memory = mem.tools)
-            val system = app.heyrobot.core.memory.MemoryPrompt.system(if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers)
-            else Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools,
+            val locked = Assistant.locked(VoiceHub.app)
+            val driving = CarModeController.on
+            fun toolsFor(g: Set<ToolGroup>): List<ToolName> = if (chatOnly) emptyList() else ToolRouter.tools(g, s, askClaude, memory = mem.tools, web = webOn)
+            fun systemFor(tools: List<ToolName>): String = app.heyrobot.core.memory.MemoryPrompt.system(if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers)
+            else Prompt.system(now, locked, askClaude, texting = ToolName.SEND_TEXT in tools,
                 weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers, lockedTools = s.lockedTools,
-                helper = target?.name, helperSearches = target?.searching ?: true, helperHome = target?.home == true, driving = CarModeController.on),
+                helper = target?.name, helperSearches = target?.searching ?: true, helperHome = target?.home == true, driving = driving,
+                web = ToolName.WEB_SEARCH in tools),
                 tools = ToolName.REMEMBER in tools, pinned = mem.packed.systemLine)
+            // 0.9: with every group this conversation called for, the new turn may not fit: the groups this question doesn't call
+            // for give way first, then the others, until it keeps its room (core ToolBudget).
+            val described = if (chatOnly) groups else ToolBudget.fit(groups, ToolRouter.route(question), maxTokens) { g ->
+                toolsFor(g).let { Prompt.fixedTokens(systemFor(it), it) }
+            }
+            if (described != groups) RLog.i("tool_budget", "dropped" to (groups - described).size, "kept" to described.size)
+            val tools = toolsFor(described)
+            val system = systemFor(tools)
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
             val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
             // The new turn always fits the model's context: cut (and say so) rather than overflow. Memory's notes go before it only
@@ -1525,6 +1566,8 @@ object PanelController {
         val result = gemma(askClaude = leftOut == null && !chatOnly)
         if (mem.packed.retrievedIds.isNotEmpty()) scope.launch(Dispatchers.IO) { MemoryPanel.used(mem.packed.retrievedIds) }
         result.failure?.let { return failReply(replyId, it) }
+        // 0.9: Gemma called web_search and it ran: its turn ended there, and a one-shot answers from what was found.
+        result.web?.let { return webAnswer(replyId, question, history, it) }
         // Escalation trigger b: Gemma called ask_claude. Its turn ended there; Claude answers (or is offered).
         if (result.escalate) {
             RLog.i("claude_trigger", "kind" to EscalationTrigger.LOCAL_TOOL)
@@ -2501,6 +2544,111 @@ object PanelController {
         return true
     }
 
+    // ------------------------------------------------------------------ web search (0.9, core web; design Part A)
+
+    /** "Search the web for …": web_search with your words as they are, gated and carded as Gemma's call would be. */
+    private suspend fun directWeb(replyId: String, query: String, question: String, history: List<ChatTurn>, untrusted: Boolean) {
+        RLog.i("web_direct")
+        val call = RawToolCall(ToolName.WEB_SEARCH.id, mapOf("query" to query))
+        // 0.7's quarantine: after a message, even your own search is a card only a tap answers (core MessageQuarantine).
+        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.WEB_SEARCH),
+            messages = PanelMessages.taint(chat), newId = ::newId).run()
+        result.failure?.let { return failReply(replyId, it) }
+        result.web?.let { return webAnswer(replyId, question, history, it) }
+        finishReply(replyId, result.reason ?: DoneReason.END)
+    }
+
+    /** web_search's run: on its own thread with one deadline (the request, then the pages); Stop disconnects it. */
+    private suspend fun webRun(action: Action.WebSearch): Executed {
+        val abort = Abort(WebSearch.DEADLINE_MS)
+        return try {
+            OnlineRun.run(abort, WebSearch.DEADLINE_MS) { a -> executor(a).run(action) } ?: WebOutcome.Failed(null, WebFail.TIMEOUT).let { o ->
+                VoiceLog.add(VoiceEvent.WEB_FAILED, WebFail.TIMEOUT.id)
+                Executed(ActionStatus.FAILED, o.text, web = o)
+            }
+        } finally {
+            _state.update { it.copy(helperStatus = null) }
+        }
+    }
+
+    /** What the search is doing ("Searching the web…", "Reading 3 pages…"): the panel's status, and said once each. */
+    private fun webStep(step: WebStep, lang: String) {
+        VoiceHub.main.post {
+            val shown = when (step) {
+                WebStep.Searching -> WebStatus.searching(lang)
+                is WebStep.Reading -> WebStatus.reading(step.pages, lang, step.done.takeIf { it > 0 })
+            }
+            _state.update { if (it.busy) it.copy(helperStatus = shown) else it }
+            val say = when (step) {
+                WebStep.Searching -> WebStatus.searching(lang)
+                is WebStep.Reading -> if (step.done == 0) WebStatus.reading(step.pages, lang) else null
+            }
+            val id = _state.value.turns.lastOrNull { it.streaming }?.id ?: return@post
+            if (say != null) voice.say(id, say, _state.value.speak)?.let(::speakSentence)
+        }
+    }
+
+    /**
+     * Where this conversation's words came from, for QueryCheck (core web WebQueryContext): your words, content Robot
+     * didn't write, and personal content (with what read tools' cards showed).
+     */
+    private fun webContext(): QueryContext {
+        val bodies = _state.value.turns.flatMap { t -> t.actions.filter { it.content && it.tool != ToolName.WEB_SEARCH }.mapNotNull { it.body } }
+        val screen = screenText?.takeIf { chat.any { it.attachment == Attachment.SCREEN } }
+        // 0.7's memory: what the model was given from it never goes to a search service (QueryCheck refuses it).
+        val memory = MemoryPanel.forWebCheck(chat.flatMap { it.memoryIds })
+        return WebQueryContext.of(chat.toList(), turnSaid.orEmpty(), screen, bodies, memory)
+    }
+
+    /** The search ran: the answer from what it found (WebReply), streamed and spoken without its [n] marks, then its card. */
+    private suspend fun webAnswer(replyId: String, question: String, history: List<ChatTurn>, outcome: WebOutcome) {
+        _state.update { it.copy(helperStatus = null) }
+        val found = when (outcome) {
+            is WebOutcome.Failed -> {
+                if (outcome.why == WebFail.STOPPED) return finishReply(replyId, DoneReason.CANCELLED)
+                sayInto(replyId, outcome.text)
+                return finishReply(replyId, DoneReason.END)
+            }
+            is WebOutcome.Found -> outcome
+        }
+        val r = WebReply.answer(VoiceHub.app, question, history, found, _state.value.speak, VoiceHub.settings.helperShowCost, onRestart = { setText(replyId, "") }) { delta ->
+            appendText(replyId, delta)
+            voice.feed(replyId, delta, _state.value.speak).forEach { speakSentence(Citations.forSpeech(it)) }
+        }
+        val a = when (r) {
+            is WebReply.Result.Answered -> r
+            WebReply.Result.Cancelled -> return finishReply(replyId, DoneReason.CANCELLED)
+            WebReply.Result.Failed -> return failReply(replyId, WebReply.NO_ANSWER)
+        }
+        // The last words, without their marks; the search's card becomes its saved line.
+        voice.finish(replyId, cancelled = !a.complete, speak = _state.value.speak)?.let { speakSentence(Citations.forSpeech(it)) }
+        _state.update { st ->
+            st.copy(turns = st.turns.map { t ->
+                if (t.id != replyId) t else t.copy(text = a.text, web = a.card, actions = t.actions.map { x ->
+                    if (x.tool == ToolName.WEB_SEARCH && x.status == ActionStatus.DONE) x.copy(summary = a.saved, detail = a.card.readLine, body = null, content = true) else x
+                })
+            })
+        }
+        finishReply(replyId, if (a.complete) DoneReason.END else DoneReason.LENGTH)
+    }
+
+    /**
+     * A web answer's source tapped: it opens in the browser (only the card's own links, or Wikipedia's licence), as an app
+     * opens; on the lock screen, unlock first.
+     */
+    fun openSource(replyId: String, url: String) {
+        val card = _state.value.turns.firstOrNull { it.id == replyId }?.web ?: return
+        if (url !in (card.cited + card.alsoFound).map { it.url } + WikipediaWire.LICENCE_URL) return
+        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the page.")
+        val h = host ?: return
+        VoiceHub.stopVoice(TtsStop.OTHER)
+        val i = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (h.launch(i)) {
+            hidingFor = "action"
+            h.hidePanel()
+        } else notify("No browser opened the page.")
+    }
+
     /** A turn whose one action is already known: no model asked, nothing to answer after the action. */
     private class DirectCall(private val call: RawToolCall) : TurnModel {
         override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(call))
@@ -2576,6 +2724,7 @@ object PanelController {
                     PanelMessages.taint(chat).active)
             } ?: Executed(ActionStatus.FAILED, "Something went wrong.")
             if (!action.online) return withContext(Dispatchers.IO) { executor().run(action) }
+            if (action is Action.WebSearch) return webRun(action)
             val weather = action.tool == ToolName.WEATHER
             val deadline = if (weather) WeatherAsk.DEADLINE_MS else Nearby.DEADLINE_MS
             val abort = Abort(deadline)
@@ -2599,7 +2748,7 @@ object PanelController {
         }
     }
 
-    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom, turnSaid) { i -> host?.launch(i) ?: false }
+    private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom, turnSaid, ::webContext, ::webStep) { i -> host?.launch(i) ?: false }
 
     /** What you typed or said this turn (never screen text): "the nearest" in your own words counts for the maps tools. */
     @Volatile private var turnSaid: String? = null

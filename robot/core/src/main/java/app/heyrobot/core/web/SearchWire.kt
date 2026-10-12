@@ -21,6 +21,8 @@ enum class SearchProvider(val title: String, val credit: String?) {
     MOJEEK("Mojeek", null),
     /** Text under CC BY-SA 4.0: the card credits the article with a link and the licence (WikipediaWire.credit). */
     WIKIPEDIA("Wikipedia", "Wikipedia text: CC BY-SA 4.0"),
+    /** 0.9, Book lookups (off by default): "From Open Library" with its link. */
+    OPEN_LIBRARY("Open Library", "From Open Library"),
 }
 
 /**

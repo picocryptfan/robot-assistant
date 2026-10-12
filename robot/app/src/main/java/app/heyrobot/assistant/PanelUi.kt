@@ -356,6 +356,7 @@ internal fun UiTurn.toTurnUi() = TurnUi(
     footer = if (role == TurnRole.USER) emptyList() else claudeFooter(sources, cost, by),
     offer = offer?.let { OfferView(it.api, it.text, it.sends, it.preview, it.asWell, it.name) },
     reply = reply,
+    web = web,
 )
 
 @Composable
@@ -374,6 +375,7 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
             acceptOffer = actions::acceptOffer,
             dismissOffer = actions::dismissOffer,
             reply = actions::reply,
+            openSource = actions::openSource,
         )
     }
     val reversed = remember(st.turns) { st.turns.asReversed() }

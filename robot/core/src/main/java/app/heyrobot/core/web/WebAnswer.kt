@@ -369,6 +369,7 @@ data class AnswerCard(
                 all.filter { it.provider == SearchProvider.WIKIPEDIA || it.domain == "wikipedia.org" || it.domain.endsWith(".wikipedia.org") }
                     .forEach { add(WikipediaWire.credit(it.title.removeSuffix(" - Wikipedia").removeSuffix(" — Wikipédia").trim())) }
                 if (poweredByBrave && all.any { it.provider == SearchProvider.BRAVE }) add(SearchProvider.BRAVE.credit!!)
+                if (all.any { it.provider == SearchProvider.OPEN_LIBRARY }) add(SearchProvider.OPEN_LIBRARY.credit!!)
             }.distinct()
             return AnswerCard(service, query, cited.cited.map(::card), cited.alsoFound.map(::card), pagesRead, throughService, skipped,
                 if (showCost) service.cost else null, credits)

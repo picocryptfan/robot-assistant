@@ -1,0 +1,13 @@
+{
+ "numFound": 3,
+ "start": 0,
+ "numFoundExact": true,
+ "docs": [
+  {"key": "/works/OL59863W", "title": "A Wizard of Earthsea", "author_name": ["Ursula K. Le Guin"], "first_publish_year": 1968},
+  {"key": "/works/OL59864W", "title": "The Left Hand of Darkness", "author_name": ["Ursula K. Le Guin"], "first_publish_year": 1969},
+  {"key": "/authors/OL31353A", "title": "not a work"},
+  {"key": "/works/OL59865W", "title": "The Dispossessed <b>&amp;</b> more", "author_name": ["Ursula K. Le Guin", "Someone Else"]}
+ ],
+ "q": "ursula le guin",
+ "offset": null
+}

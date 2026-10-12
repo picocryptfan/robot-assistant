@@ -467,10 +467,11 @@ fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modi
     if (t.user) UserBubble(t.text, t.attachment, t.thumb, modifier, screenText = t.screenText)
     else Column(modifier) {
         AssistantBubble(
-            text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error, actions = t.actions,
+            text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error, actions = t.cards,
             onConfirm = actions.confirm, cardActions = actions.card,
             claude = t.helper, readBack = t.readBack, footer = t.footer, by = t.by, home = t.home,
         )
+        t.web?.let { app.heyrobot.ui.common.WebAnswerCard(it, onOpen = { url -> actions.openSource(t.id, url) }, modifier = Modifier.padding(top = 6.dp)) }
         t.offer?.let { ClassicOfferCard(it, onDismiss = { actions.dismissOffer(t.id) }, onAccept = { actions.acceptOffer(t.id) }) }
         // 0.7: the reply card, the same card in Classic's colours.
         t.reply?.let { r -> app.heyrobot.ui.common.ReplyCard(r, actions.reply?.let { f -> { op: app.heyrobot.ui.common.ReplyOp -> f(t.id, op) } },

@@ -15,6 +15,9 @@ package app.heyrobot.core.web
 //   that isn't yours shows the card too.
 // - Otherwise it goes: words the model added that came from nowhere in the conversation ("latest", "2026", "review")
 //   carry nothing of yours.
+// - 0.9 with 0.7's memory: a word from what Robot remembers about you (Settings › Memory) that you didn't say yourself
+//   never goes, tapped or not: memory is never sent to a search service. A message's words (0.7) are personal content:
+//   a card a tap answers.
 
 /**
  * Where the conversation's words came from, for one check. Each list holds whole texts as the conversation has them.
@@ -33,7 +36,15 @@ data class QueryContext(
     val content: Boolean = untrusted.isNotEmpty(),
     /** The conversation is personal (ClaudeContext.personal), even when [personal] no longer holds its text. */
     val isPersonal: Boolean = personal.isNotEmpty(),
-)
+    /**
+     * 0.7's memory: the items the model was given in this conversation (pinned and found ones). Their words never go to a
+     * search service unless you said them yourself.
+     */
+    val memory: List<String> = emptyList(),
+) {
+    override fun toString(): String =
+        "QueryContext(said=${said.size}, untrusted=${untrusted.size}, personal=${personal.size}, content=$content, isPersonal=$isPersonal, memory=${memory.size})"
+}
 
 /** What happens to a query. */
 sealed class QueryVerdict {
@@ -56,12 +67,15 @@ enum class QueryCard(val note: String, val tapOnly: Boolean) {
 
 /** Why a query never goes; [code] for the log. */
 enum class QueryRefusal(val code: Int) {
-    EMPTY(1), TOO_LONG(2), TOO_MANY_WORDS(3), EMAIL(4), DIGITS(5), LINK(6), CODE(7), HIDDEN(8), ADDRESS(9);
+    EMPTY(1), TOO_LONG(2), TOO_MANY_WORDS(3), EMAIL(4), DIGITS(5), LINK(6), CODE(7), HIDDEN(8), ADDRESS(9),
+    /** 0.9: a word from what Robot remembers about you, not from what you said. */
+    MEMORY(10);
 
     /** What Robot says. */
     val text: String get() = when (this) {
         EMPTY -> "There was nothing to search for."
         TOO_LONG, TOO_MANY_WORDS -> "That search was too long to send."
+        MEMORY -> "That search used something Robot remembers about you, and what Robot remembers never goes to a search service, so Robot didn't send it."
         else -> WebFail.QUERY_REFUSED.text(null)
     }
 }
@@ -117,14 +131,17 @@ object QueryCheck {
         val mine = stems(ctx.said)
         val personal = stems(ctx.personal)
         val untrusted = stems(ctx.untrusted)
+        val memory = stems(ctx.memory)
         // A street address whose number or name came from the conversation's content, not from you, never goes.
         STREET.findAll(folded).forEach { m ->
-            val fromContent = WebWords.words(m.value).map(WebWords::stem).any { it !in mine && (it in personal || it in untrusted) }
+            val fromContent = WebWords.words(m.value).map(WebWords::stem).any { it !in mine && (it in personal || it in untrusted || it in memory) }
             if (fromContent) return QueryVerdict.Refuse(QueryRefusal.ADDRESS)
         }
 
         val notMine = WebWords.spans(q).filter { (_, w) -> significant(w) && WebWords.stem(w) !in mine }
         if (notMine.isEmpty()) return QueryVerdict.Send(q)
+        // 0.7's memory never goes to a search service: no card can send it.
+        if (notMine.any { WebWords.stem(it.second) in memory }) return QueryVerdict.Refuse(QueryRefusal.MEMORY)
         val fromPersonal = notMine.filter { WebWords.stem(it.second) in personal }
         val fromContent = notMine.filter { WebWords.stem(it.second) in untrusted }
         fun words(l: List<Pair<String, String>>) = l.map { it.first }.distinct()

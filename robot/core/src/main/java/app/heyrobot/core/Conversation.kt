@@ -114,6 +114,9 @@ fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): L
                 // ("Robot read 2 messages from Mom (Cheogram)"), never Robot's own words. Robot's later answers aren't.
                 t.messages && t.text.isNotBlank() && t.kept != MessageReading.ANSWER_NOT_KEPT ->
                     MessageReading.FRAME + " " + if (t.text == t.kept) MessageReading.cleanKept(t.text) else ClockEcho.strip(t.text)
+                // 0.9: a web answer joins as Claude's do, cut to about 600 tokens, without its [n] marks or links.
+                t.actions.any { it.tool == ToolName.WEB_SEARCH && it.content } && t.text.isNotBlank() ->
+                    ClaudeContext.forLocal(app.heyrobot.core.web.Citations.forSpeech(t.text))
                 else -> ClockEcho.strip(t.text)
             }
             val text = listOf(acts, said).filter { it.isNotBlank() }.joinToString(" ").trim()

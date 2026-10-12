@@ -51,6 +51,11 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
     /** 0.4.0: Android's Free up space screen, an app's cache, a large photo or video, Robot's cache. */
     FREE_STORAGE("free_storage", "Storage clean-ups", ToolGroup.PHONE),
     /**
+     * 0.9: private web search (core web, docs/plans/websearch-termux-design.md Part A): your search service's results,
+     * answered by a tool-free one-shot. Described only with Settings › Web search on; goes online like the weather.
+     */
+    WEB_SEARCH("web_search", "Web searches", ToolGroup.WEB, reads = true, online = true),
+    /**
      * Ask Claude (docs/ask-claude.md "When Robot needs help"): described to Gemma only with Ask Claude on and escalation
      * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
      * the Claude app it is the hand-off, always behind a card.
@@ -159,6 +164,11 @@ object ToolSpecs {
         )),
         ToolSpec(ToolName.FREE_STORAGE, "Help free storage.", listOf(
             ToolParam("what", "string", "android (its Free up space), apps (an app's cache), files (big photos, videos) or robot (Robot's cache)", false),
+        )),
+        // 0.9, the design's two parameters: Gemma's turn ends at the call and a one-shot answers from the results.
+        ToolSpec(ToolName.WEB_SEARCH, "Search the web (online).", listOf(
+            ToolParam("query", "string", "Short search words", true),
+            ToolParam("depth", "string", "quick, or read to open pages", false),
         )),
         ToolSpec(ToolName.ASK_CLAUDE, "Ask Claude, a stronger AI online, instead of guessing.", listOf(
             ToolParam("question", "string", "The person's question", true),
@@ -431,6 +441,17 @@ sealed class Action {
         }
     }
 
+    /**
+     * web_search (0.9): [query] as the model wrote it (or your own words, "search the web for …"), [depth] "read" to open
+     * result pages. [consent]: the first search's card answer it carries (core web WebConsent), kept when it runs; [query]
+     * may be changed on the card's way (your Home for weather town for "near me").
+     */
+    data class WebSearch(val query: String, val depth: String? = null, val consent: app.heyrobot.core.web.WebConsentChoice? = null) : Action() {
+        override val tool get() = ToolName.WEB_SEARCH
+        override fun describe() = "Search the web for “$query”"
+        override val confirmLabel get() = "Search"
+    }
+
     /** [day] in the person's words until the app reads it into a [range]. */
     data class ReadCalendar(val day: String, val range: DayRange? = null) : Action() {
         override val tool get() = ToolName.READ_CALENDAR
@@ -644,6 +665,9 @@ object ToolCalls {
             }
             ToolName.FORGET -> textArg(a, MAX_NAME, "query", "text", "what", "q", "about")?.let { ParsedCall.Ok(Action.Forget(it)) }
                 ?: bad("query is required")
+            // The query as written (QueryCheck decides later whether it may go), and the depth if it gave one.
+            ToolName.WEB_SEARCH -> textArg(a, MAX_TEXT, "query", "q", "search", "text", "question")
+                ?.let { ParsedCall.Ok(Action.WebSearch(it, textArg(a, 20, "depth", "mode"))) } ?: bad("query is required")
             // Anything it doesn't name (or nothing) is all of it.
             ToolName.PHONE_STATUS -> ParsedCall.Ok(Action.PhoneCheck(PhonePart.of(textArg(a, MAX_NAME, "about", "part", "what", "topic", "kind"))))
             // Robot's own model when no app (or Robot itself) is named.

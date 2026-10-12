@@ -194,7 +194,8 @@ class PromptTest {
     @Test fun eachToolGroupCostsTokensOnlyWhenUsed() {
         val system = Prompt.system(now, locked = false)
         val core = Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
-        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal && it.forModel })
+        // Without web search (0.9: off until you set it up), as before; with it, below.
+        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal && it.forModel && it != ToolName.WEB_SEARCH })
         assertEquals(core, Prompt.fixedTokens(system))
         // ask_claude (Ask Claude on): one short tool and one line of the system prompt.
         val withClaude = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true), Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE)
@@ -207,15 +208,26 @@ class PromptTest {
         // The worst case: every group, Ask Claude on (its tool and line) and every optional system line. About 500 tokens
         // are left for the new turn: screen text is cut to fit (fitTurn) and older turns are dropped first.
         val beforeMemory = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true),
-            ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY })
+            ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY && it != ToolName.WEB_SEARCH })
         assertTrue("worst before memory $beforeMemory", beforeMemory < 2_850)
         assertTrue(ContextWindow.newTurnLimit(beforeMemory) > 450)
         // 0.7: memory's two tools (only in a conversation whose words called for them, with Memory on) are kept to one
         // argument each and its line short: about 200 more estimated tokens (a third fewer real ones), still over 300 left.
         val worst = Prompt.fixedTokens(app.heyrobot.core.memory.MemoryPrompt.system(Prompt.system(now, locked = false, askClaude = true, texting = true,
-            weather = true, phone = true), tools = true, pinned = null), ToolName.entries.filter { it.forModel })
+            weather = true, phone = true), tools = true, pinned = null), ToolName.entries.filter { it.forModel && it != ToolName.WEB_SEARCH })
         assertTrue("worst ${worst - beforeMemory}", worst - beforeMemory < 260)
         assertTrue("worst $worst", ContextWindow.newTurnLimit(worst) > 280)
+        // 0.9, web search on and its words used: web_search (about 140 estimated tokens, two parameters) and its line. The
+        // results and pages never come into this context (a one-shot of their own answers from them), so the room
+        // left for the new turn shrinks only by the tool: about 330 tokens in this worst case, every group at once.
+        val web = Prompt.fixedTokens(Prompt.system(now, locked = false, web = true), Prompt.CORE_TOOLS + ToolName.WEB_SEARCH)
+        assertTrue("web_search ${web - core}", web - core in 1..200)
+        val allWeb = Prompt.fixedTokens(Prompt.system(now, locked = false, web = true), ToolName.entries.filter { !it.internal && it.forModel })
+        assertTrue("all with web $allWeb", allWeb < 2_800)
+        val worstWeb = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true, web = true),
+            ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY })
+        assertTrue("worst with web $worstWeb", worstWeb < 3_050)
+        assertTrue("${ContextWindow.newTurnLimit(worstWeb)}", ContextWindow.newTurnLimit(worstWeb) > 270)
         for (g in listOf(ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR)) {
             val tools = ToolRouter.tools(setOf(ToolGroup.CORE, g), RobotSettings())
             assertTrue(g.name, Prompt.fixedTokens(system, tools) in (core + 1) until all)
@@ -230,15 +242,65 @@ class PromptTest {
         val cost = Prompt.fixedTokens(car) - Prompt.fixedTokens(plain)
         assertTrue("car line $cost", cost in 1..40)
         val beforeMemory = Prompt.fixedTokens(Prompt.system(now, locked = true, askClaude = true, texting = true, weather = true, phone = true,
-            driving = true), ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY })
+            driving = true), ToolName.entries.filter { it.forModel && it.group != ToolGroup.MEMORY && it != ToolName.WEB_SEARCH })
         assertTrue("worst before memory $beforeMemory", beforeMemory < 2_900)
         assertTrue(ContextWindow.newTurnLimit(beforeMemory) > 450)
         // With 0.7's memory tools and line too (a conversation whose words called for them; unlocked, as Memory stays off the
         // lock screen by default): the car line's tokens come out of the 0.7 worst case's, still about 250 left.
         val worst = Prompt.fixedTokens(app.heyrobot.core.memory.MemoryPrompt.system(Prompt.system(now, locked = false, askClaude = true, texting = true,
-            weather = true, phone = true, driving = true), tools = true, pinned = null), ToolName.entries.filter { it.forModel })
+            weather = true, phone = true, driving = true), tools = true, pinned = null), ToolName.entries.filter { it.forModel && it != ToolName.WEB_SEARCH })
         assertTrue("worst ${worst - beforeMemory}", worst - beforeMemory < 260)
         assertTrue("worst $worst ${ContextWindow.newTurnLimit(worst)}", ContextWindow.newTurnLimit(worst) >= 240)
+    }
+
+    /**
+     * 0.9: the worst case of all: a conversation that called for every group (memory's tools, web search, car mode, a helper
+     * named on your own computer), every optional system line, memory's pinned line at its fullest, locked or not, with
+     * every tool allowed on the lock screen. The groups give way (ToolBudget) so that a new turn always keeps at least 240
+     * estimated tokens beside the reply's reserve, whichever of them were called for and when.
+     */
+    @Test fun aNewTurnAlwaysKeepsItsRoom() {
+        val items = (1..20).map { i ->
+            app.heyrobot.core.memory.MemoryItem("m_%014x".format(i), "The user prefers detailed answers about subject number $i, read slowly in the evening",
+                pinned = true, createdAt = 1)
+        }
+        val pinned = app.heyrobot.core.memory.PromptPacking.pinnedLine(items, 2).first!!
+        assertTrue("pinned ${TokenEstimate.text(pinned)}", TokenEstimate.text(pinned) in 80..100)
+        val all = ToolGroup.entries.toSet()
+        // The big optional groups, called for or not; every other group always called for (the worst).
+        val big = listOf(ToolGroup.WEB, ToolGroup.MEMORY)
+        val subsets = (0 until (1 shl big.size)).map { m -> big.filterIndexed { i, _ -> m and (1 shl i) != 0 }.toSet() }
+        val report = StringBuilder()
+        for (locked in listOf(false, true)) for (lockedTools in listOf(LockScreen.DEFAULT, ToolName.entries.toSet())) {
+            fun fixed(g: Set<ToolGroup>): Int {
+                val tools = ToolRouter.tools(g, RobotSettings(), askClaude = true, memory = true, web = true)
+                val system = app.heyrobot.core.memory.MemoryPrompt.system(Prompt.system(now, locked, askClaude = true, texting = ToolName.SEND_TEXT in tools,
+                    weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = true, lockedTools = lockedTools,
+                    helper = "Jarvis", helperSearches = true, helperHome = true, driving = true, web = ToolName.WEB_SEARCH in tools),
+                    tools = ToolName.REMEMBER in tools, pinned = pinned)
+                return Prompt.fixedTokens(system, tools)
+            }
+            val everything = ContextWindow.newTurnLimit(fixed(all))
+            val withoutBig = ContextWindow.newTurnLimit(fixed(all - big.toSet()))
+            val core = ContextWindow.newTurnLimit(fixed(setOf(ToolGroup.CORE)))
+            report.append("locked=$locked, ${lockedTools.size} tools locked: everything $everything, without web and memory $withoutBig, core $core; ")
+            // What always stays leaves far more than the new turn's room.
+            assertTrue(report.toString(), core >= ToolBudget.MIN_TURN_TOKENS + 400)
+            for (called in subsets) for (now in subsets + setOf(all)) {
+                val groups = all - big.toSet() + called
+                val kept = ToolBudget.fit(groups, now, fixed = ::fixed)
+                val left = ContextWindow.newTurnLimit(fixed(kept))
+                assertTrue("$called $now: $left", left >= ToolBudget.MIN_TURN_TOKENS)
+                // Only groups give way (never the core tools), only when they must, those this question calls for last.
+                assertTrue(ToolGroup.CORE in kept && groups.containsAll(kept))
+                if (ToolBudget.room(fixed(groups))) assertEquals(groups, kept)
+                if ((groups - kept).any { it in now }) assertTrue("$called $now $kept", kept.all { it == ToolGroup.CORE || it in now })
+                // And the new turn really gets that room: a long question is cut to it, never below it.
+                val fitted = Prompt.fitTurn("why ".repeat(600), null, Attachment.NONE, false, fixed(kept))
+                assertTrue(TokenEstimate.turn(PromptTurn(PromptRole.USER, fitted.text, false)) in (ToolBudget.MIN_TURN_TOKENS - 20)..left)
+            }
+        }
+        println("PromptTest worst case: $report")
     }
 
     @Test fun lockedPromptStatesTheLimits() {

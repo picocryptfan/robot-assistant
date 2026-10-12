@@ -369,6 +369,18 @@ object MemoryPanel {
         return MemoryTurn(r, { ids -> PromptPacking.notesFor(ids, f.items, now, z) }, tools = true, quiet = quiet, content = content)
     }
 
+    /**
+     * 0.9: what the model may know from memory in a conversation that was given [given] (core web QueryContext.memory): those
+     * items and, with Memory on, the pinned ones (in every system prompt). Their words never go to a search service.
+     * Background thread; nothing when Memory is off or the file isn't open.
+     */
+    fun forWebCheck(given: Collection<String>): List<String> {
+        if (!settings().on && given.isEmpty()) return emptyList()
+        val f = (load() as? MemoryLoad.Loaded)?.file ?: return emptyList()
+        val ids = given.toSet()
+        return f.items.filter { it.id in ids || it.pinned }.map { it.text }
+    }
+
     /** One more answer used [ids] (a counter and a time, no text): background thread, after the answer. Not counted on a locked phone (nothing is written there). */
     fun used(ids: List<String>) {
         if (ids.isEmpty() || !MemoryAccess.writes(lockedNow())) return

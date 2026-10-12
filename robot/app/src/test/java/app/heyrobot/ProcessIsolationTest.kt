@@ -231,7 +231,9 @@ class ProcessIsolationTest {
             // 0.8, routines: the exact alarm's receiver and the speaking service, where the voice and the trigger hub are.
             "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService",
             // 0.8, headset and car mode: the headset button's trampoline and the car screen, where the sessions are.
-            "app.heyrobot.assistant.headset.HeadsetEntryActivity", "app.heyrobot.assistant.car.CarModeActivity")
+            "app.heyrobot.assistant.headset.HeadsetEntryActivity", "app.heyrobot.assistant.car.CarModeActivity",
+            // 0.9: web search's set-up window, where a search key is pasted and Test runs.
+            "app.heyrobot.assistant.WebSearchActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         // 0.4.5: llama.cpp's own process, isolated: Android runs it under a uid of its own with no permissions, no network
@@ -277,7 +279,7 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider",
             "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService",
             "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver",
-            "app.heyrobot.assistant.car.CarModeActivity"))
+            "app.heyrobot.assistant.car.CarModeActivity", "app.heyrobot.assistant.WebSearchActivity"))
             assertEquals(n, "false", exported(n))
         // 0.8: the headset button's trampoline is exported (Android starts it for a headset's button) with exactly the three
         // actions core HeadsetEntry lists and no other filter, no history, not in Recents, shown over the lock screen only to
@@ -670,8 +672,8 @@ class ProcessIsolationTest {
         // Only GitHubClient sets an Authorization header with the token, once, on a request GitHubHosts.mayAuthorize allows,
         // and never lets the platform follow a redirect with it. (0.6.0: the only other Authorization header is a helper's
         // own key, set by the :claude module's HelperHttp in the :voice process, which never refers to the updater: above;
-        // and web search's request builder in core, SearchWire, names Kagi's key header for a request it never sends itself,
-        // not wired yet.)
+        // and web search's request builder in core, SearchWire, names Kagi's key header, for the :claude module's
+        // WebTransport to send as it is, in the :voice process, 0.9.)
         assertEquals(listOf("app/update/GitHubClient.kt", "claude/helpers/http/HelperHttp.kt", "core/core/web/SearchWire.kt"),
             ours.filter { codeWithStrings(it.value).contains("\"Authorization\"") }.keys.sorted())
         val client = codeWithStrings(File(java("app"), "app/heyrobot/update/GitHubClient.kt"))
@@ -695,7 +697,8 @@ class ProcessIsolationTest {
         assertTrue(store.contains("KeystoreSecret(ALIAS, \"github_token\", \"update_token\")") && store.contains("const val ALIAS = \"robot_github_token\""))
         // The same class keeps every helper's key (sys/HelperFiles.kt, read only by the :voice process's HelperKeys, above);
         // the token's alias and files are named in UpdateStore.kt alone, and no helper's can be them.
-        assertEquals(listOf("app/sys/HelperFiles.kt", "app/sys/KeystoreSecret.kt", "app/update/UpdateStore.kt"), usersOf(Regex("""\bKeystoreSecret\(""")))
+        // 0.9: and the web search services' keys (sys/WebFiles.kt, read only by the :voice process's WebKeys: webSearch… below).
+        assertEquals(listOf("app/sys/HelperFiles.kt", "app/sys/KeystoreSecret.kt", "app/sys/WebFiles.kt", "app/update/UpdateStore.kt"), usersOf(Regex("""\bKeystoreSecret\(""")))
         assertEquals(listOf("app/update/UpdateStore.kt"), ours.filter { codeWithStrings(it.value).contains("robot_github_token") || codeWithStrings(it.value).contains("\"github_token\"") }.keys.sorted())
         assertTrue(listOf("claude", "github_token", "x").none { app.heyrobot.sys.HelperKeyFiles.alias(it) == "robot_github_token" })
         assertTrue(store.contains("GitHubRepo.fromSourceLink(LicenceBook.parse(json).robot.source)"))
@@ -738,7 +741,7 @@ class ProcessIsolationTest {
      * accessibility service (Ask Claude must not drive the Claude app).
      */
     @Test fun noNetworkNoAudioFilesNoRawLogs() {
-        // java.net.IDN only spells a host name in ASCII, like URLEncoder and URI (core web WebUrl, not wired yet).
+        // java.net.IDN only spells a host name in ASCII, like URLEncoder and URI (core web WebUrl).
         assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
             usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b|IDN\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b|\bopenConnection\("""),
             ours.filterKeys { !it.startsWith("claude/") }))
@@ -770,11 +773,12 @@ class ProcessIsolationTest {
         // the :voice process, with your key, when you ask), and the example addresses Settings › Helpers shows when you type
         // your server's (text only, never fetched). Licences.kt (0.4.5) fetches none: it only checks that the licence list's
         // links (assets/licenses/components.json) are https. The updater's (GitHub's API, a release's page) are built in
-        // core's GitHub.kt alone, from the repository and ids. Web search's request builders (core web SearchWire and
-        // Wikipedia: Brave, Kagi, Mojeek and Wikipedia's API addresses) are built in core but not wired yet: nothing fetches them.
-        assertEquals(listOf("app/ui/HelpersScreens.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt", "core/core/ModelState.kt", "core/core/MtBundle.kt",
-            "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt", "core/core/helpers/Helpers.kt", "core/core/update/GitHub.kt",
-            "core/core/web/SearchWire.kt", "core/core/web/Wikipedia.kt"),
+        // core's GitHub.kt alone, from the repository and ids. Web search's request builders (0.9, core web SearchWire,
+        // Wikipedia and OpenLibrary: Brave, Kagi, Mojeek, Wikipedia's and Open Library's API addresses) are sent by the
+        // :claude module's WebTransport in the :voice process; Settings › Web search shows an example address (text only).
+        assertEquals(listOf("app/ui/HelpersScreens.kt", "app/ui/settings/WebSearchSettings.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt",
+            "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt",
+            "core/core/helpers/Helpers.kt", "core/core/update/GitHub.kt", "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt", "core/core/web/Wikipedia.kt"),
             ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
@@ -784,6 +788,45 @@ class ProcessIsolationTest {
         // All logging goes through RLog, which keeps numbers, booleans and codes only.
         assertEquals(listOf("core/core/Log.kt"), usersOf(Regex("""\bandroid\.util\.Log\b|\bLog\.[diwev]\(""")))
         assertEquals(emptyList<String>(), usersOf(Regex("""\bprintln\(|printStackTrace\(""")))
+    }
+
+    /**
+     * 0.9 web search (docs/plans/websearch-termux-design.md A6.1, A12): the HTTP clients, the page fetcher, jsoup and the
+     * copy of Readability4J live only in the :claude module (app.heyrobot.helpers.web), which only the assistant (the :voice
+     * process) uses; the main process never refers to them (mainProcessCodeNeverReachesEngines) and its Settings page
+     * opens the set-up window by class name. A search key is read only by WebKeys, for a search (WebTool) or Test (the
+     * set-up window). Pages are fetched only through PageFetcher's checks (no redirect followed by OkHttp, the public-only
+     * DNS filter and socket check, no proxy, no cookies), and nothing in a reply loads a remote image.
+     */
+    @Test fun webSearchStaysInTheVoiceProcessBehindItsChecks() {
+        val jsoup = usersOf(Regex("""\borg\.jsoup\b"""))
+        assertTrue(jsoup.toString(), jsoup.isNotEmpty() && jsoup.all { it.startsWith("claude/helpers/web/") })
+        val webUsers = usersOf(Regex("""\bapp\.heyrobot\.helpers\.web\b"""), ours.filterKeys { !it.startsWith("claude/") })
+        assertEquals(listOf("app/assistant/PanelController.kt", "app/assistant/ToolExecutor.kt", "app/assistant/WebSearchActivity.kt", "app/assistant/WebTool.kt"), webUsers)
+        fun deps(m: String) = File(root, "$m/build.gradle").readText()
+        assertTrue(deps("claude").contains("org.jsoup:jsoup:1.15.1"))
+        for (m in listOf("core", "brain", "voice", "mt", "app")) assertTrue(m, !deps(m).contains("org.jsoup"))
+        // Its readability copy logs nothing (no slf4j, no Log).
+        val readability = ours.filterKeys { it.startsWith("claude/helpers/web/readability/") }
+        assertTrue(readability.size >= 10)
+        assertEquals(emptyList<String>(), usersOf(Regex("""slf4j|LoggerFactory|\bRLog\b|\bprintln\("""), readability))
+        // Keys: only WebKeys reads or saves one, only WebTool and the set-up window ask it, and the main process only deletes.
+        assertEquals(listOf("app/assistant/WebSearchActivity.kt", "app/assistant/WebTool.kt"), usersOf(Regex("""\bWebKeys\.read\(""")))
+        assertEquals(listOf("app/assistant/WebTool.kt"), usersOf(Regex("""\bWebKeyFiles\.store\(""")))
+        val webFiles = code(File(java("app"), "app/heyrobot/sys/WebFiles.kt"))
+        assertTrue(!Regex("""\.(read|save)\(ctx""").containsMatchIn(webFiles))
+        assertTrue(code(File(java("app"), "app/heyrobot/ui/settings/WebSearchSettings.kt")).contains("setClassName(ctx.packageName, WebWindow.CLASS)"))
+        // The page fetcher's rules: OkHttp follows no redirect (each hop is checked here), the DNS filter and the socket check
+        // are on, never a proxy; the search transport follows none either.
+        val fetcher = File(java("claude"), "app/heyrobot/helpers/web/PageFetcher.kt").readText()
+        for (rule in listOf(".followRedirects(false)", ".followSslRedirects(false)", ".dns(PublicOnlyDns(dns, rules.isPublic))",
+            ".addNetworkInterceptor(PublicGuard(rules.isPublic))", ".proxy(Proxy.NO_PROXY)", "rules.redirect(url, r.header(\"Location\"), hops)")) assertTrue(rule, fetcher.contains(rule))
+        val fetcherCode = codeWithStrings(File(java("claude"), "app/heyrobot/helpers/web/PageFetcher.kt"))
+        assertTrue(!fetcherCode.contains("cookieJar") && !fetcherCode.contains("Referer") && !fetcherCode.contains(".cache("))
+        val transport = File(java("claude"), "app/heyrobot/helpers/web/WebTransport.kt").readText()
+        assertTrue(transport.contains(".followRedirects(false)") && transport.contains("LanDns(dns)") && transport.contains("addNetworkInterceptor(LanGuard)"))
+        // No remote image in a reply: nothing loads an image from an address.
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bAsyncImage\b|\bcoil\b|\bGlide\b|\bPicasso\b|BitmapFactory\.decodeStream\(.*openStream""")))
     }
 
     /**
@@ -1089,8 +1132,9 @@ class ProcessIsolationTest {
             "if (p.sendSource == ReplySource.MODEL_DRAFT) saidAloud(p.sendText)")) assertTrue(w, panel.contains(w))
         val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
         // (Seven: the chat turn, a helper's, the Claude app's hand-off, texting without the model, 0.7 memory's "remember
-        // that …" in a conversation that holds a message, 0.7.0's "free up memory" card, and 0.8's routine steps and calls.)
-        assertEquals(7, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
+        // that …" in a conversation that holds a message, 0.7.0's "free up memory" card, 0.8's routine steps and calls, and 0.9's
+        // "search the web for …".)
+        assertEquals(8, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         assertEquals(Regex("""TurnRunner\(""").findAll(pc).count(), Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         // Nothing of messages in :brain or :llama's code.
         assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.core\.messages\b"""), ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("claude/") }))
@@ -1159,22 +1203,25 @@ class ProcessIsolationTest {
         val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
         // A message's words heard back (PanelMessages.route) come first, before memory's router.
         val msgRoute = pc.indexOf("val msgCmd = if (q.isNotEmpty() && st.draft == null) PanelMessages.route(q, fromVoice) else null")
-        val memRoute = pc.indexOf("val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree)\n            MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null")
+        val memRoute = pc.indexOf("val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null)\n            MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null")
         assertTrue(msgRoute in 0 until memRoute)
         // Send feedback's phrases after the messages router and its echo check (a message read aloud saying "report a bug: …" is
         // the message's), before memory, the helpers and the model.
         val fbRoute = pc.indexOf("val fbCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null) FeedbackRouter.route(q) else null")
-        val freeUp = pc.indexOf("val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && memRoute == null)\n            FreeUp.asked(q) else null")
-        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && memRoute == null && freeAsk == null)\n            ClaudeRouter.route(q, names) else null")
-        // 0.8: routines' phrases, then headset and car mode's, after feedback's and before memory's: the panel's order is the
-        // messages router and its echo check, conversation mode, feedback, routines, headset and car, memory, the helpers, the model.
+        val freeUp = pc.indexOf("val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            memRoute == null)\n            FreeUp.asked(q) else null")
+        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null && memRoute == null &&\n            freeAsk == null)\n            ClaudeRouter.route(q, names) else null")
+        // 0.8: routines' phrases, then headset and car mode's, after feedback's and before memory's; 0.9: web search's "search the
+        // web for …" next, before memory's: the panel's order is the messages router and its echo check, conversation mode,
+        // feedback, routines, headset and car, web search, memory, the helpers, the model.
         val conv = pc.indexOf("val convCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null) ConversationRouter.route(q, ConversationSession.running) else null")
         val routines = pc.indexOf("val routineCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.claudeMode)\n            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null")
         val handsFree = pc.indexOf("val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&\n            !_state.value.claudeMode) PanelHandsFree.route(q) else null")
-        assertTrue(msgRoute in 0 until conv && conv < fbRoute && fbRoute < routines && routines < handsFree && handsFree < memRoute && memRoute < freeUp &&
-            freeUp < helpers)
+        val web = pc.indexOf("val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&\n            !_state.value.claudeMode) WebRouter.explicit(q) else null")
+        assertTrue(msgRoute in 0 until conv && conv < fbRoute && fbRoute < routines && routines < handsFree && handsFree < web && web < memRoute &&
+            memRoute < freeUp && freeUp < helpers)
         val runs = listOf("msgCmd != null -> PanelMessages.run(", "convCmd != null -> conversationCommand(", "fbCmd != null -> feedbackCommand(",
-            "routineCmd != null -> PanelRoutines.handle(", "handsFreeCmd != null -> PanelHandsFree.handle(", "memRoute != null -> memoryCommand(",
+            "routineCmd != null -> PanelRoutines.handle(", "handsFreeCmd != null -> PanelHandsFree.handle(", "webQuery != null -> directWeb(",
+            "memRoute != null -> memoryCommand(",
             "freeAsk != null -> freeMemoryCommand(").map { pc.indexOf(it) }
         assertTrue(runs.toString(), runs.first() >= 0 && runs.zipWithNext().all { (a, b) -> a < b })
         val run = pc.indexOf("msgCmd != null -> PanelMessages.run(replyId, msgCmd)")

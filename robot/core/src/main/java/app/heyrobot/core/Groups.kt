@@ -20,6 +20,8 @@ enum class ToolGroup {
     PHONE,
     /** 0.7: remember and forget, described only with Memory on (Settings › Memory) and words that call for them. */
     MEMORY,
+    /** Web search (0.9): described only when the words call for it (core web WebRouter) and web search is on. */
+    WEB,
 }
 
 object ToolRouter {
@@ -95,6 +97,7 @@ object ToolRouter {
             if (has(PHONE) || stopsAnApp(words)) add(ToolGroup.PHONE)
             // "Remember to buy milk" stays a note (MemoryCommands.staysNote): memory's tools aren't described for it.
             if (has(MEMORY) && !app.heyrobot.core.memory.MemoryCommands.staysNote(question)) add(ToolGroup.MEMORY)
+            if (app.heyrobot.core.web.WebRouter.wants(question)) add(ToolGroup.WEB)
         }
     }
 
@@ -199,11 +202,12 @@ object ToolRouter {
     /**
      * The tools described for [groups], in a fixed order. Tools turned Off in settings are never described, nor
      * send_text when the texting app is Off. ask_claude only with [askClaude] (Ask Claude on, escalation not Off:
-     * ClaudeSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch).
+     * ClaudeSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch); web_search only
+     * with [web] (0.9: Settings › Web search on and set up).
      */
-    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, memory: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
+    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, memory: Boolean = false, web: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
         t.group in groups && t.forModel && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
-            (t != ToolName.ASK_CLAUDE || askClaude) && (t.group != ToolGroup.MEMORY || memory)
+            (t != ToolName.ASK_CLAUDE || askClaude) && (t.group != ToolGroup.MEMORY || memory) && (t != ToolName.WEB_SEARCH || web)
     }
 
     /** "core.people" for the logs (a fixed identifier, never the question). */

@@ -21,6 +21,7 @@ import app.heyrobot.core.output.AnswerCode
 import app.heyrobot.core.output.CardVoiceCode
 import app.heyrobot.core.output.HoldWhy
 import app.heyrobot.core.output.SessionKind
+import app.heyrobot.core.web.WebLogNumbers
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -384,6 +385,15 @@ enum class VoiceEvent(val id: Int) {
     FEEDBACK_TEXTED(224),
     /** The panel heard a feedback phrase: a = [FeedbackKind], b = 1 when words came after it, c = 1 when the phone was locked (nothing opened). */
     FEEDBACK_ASKED(225),
+    // Web search (0.9, docs/plans/websearch-termux-design.md A10.5): 160 to 169. Never the query, a URL, a domain or a title.
+    /** A search answered: a = the service (core web SearchService.code), b = results, c = ms. */
+    WEB_SEARCH(160),
+    /** Pages read for an answer: a = read, b = skipped (the units; the first skip's PageSkip.code in the tens), c = ms. */
+    WEB_PAGES(161),
+    /** The answer from the results: a = input tokens ÷ 10, b = output tokens (estimated), c = ms to its first words. */
+    WEB_ANSWER(162),
+    /** A search failed: a = core web WebFail, b = the service (0: none chosen). */
+    WEB_FAILED(163),
     ;
 
     companion object {
@@ -1003,6 +1013,10 @@ object VoiceLogText {
             VoiceEvent.CAR_NAV -> "Car navigation: " + code(NavKind.entries, a)
             VoiceEvent.CAR_MUSIC -> "Car music: " + (listOf("play", "pause", "next", "previous").getOrNull(a - 1) ?: "#$a")
             VoiceEvent.HEADSET_END -> code(SessionKind.entries, c).replaceFirstChar { it.uppercase() } + " session ended: " + code(EndWhy.entries, a) + " after $b s"
+            VoiceEvent.WEB_SEARCH -> "Web search with " + WebLogNumbers.service(a) + ": $b results in $c ms"
+            VoiceEvent.WEB_PAGES -> "Pages read for the answer: $a" + (if (b % 10 > 0) " · ${b % 10} skipped (" + WebLogNumbers.skip(b / 10) + ")" else "") + " · $c ms"
+            VoiceEvent.WEB_ANSWER -> "Answer from the web: about ${a * 10} tokens in, $b out · first words after $c ms"
+            VoiceEvent.WEB_FAILED -> "Web search failed: " + WebLogNumbers.fail(a) + (if (b > 0) " (" + WebLogNumbers.service(b) + ")" else "")
         }
     }
 

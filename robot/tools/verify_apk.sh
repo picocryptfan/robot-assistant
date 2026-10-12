@@ -112,6 +112,8 @@ for p in READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_VISUAL_USER_SELECTED; do
   has "\"android.permission.$p\"" "$mf" "declares $p"
 done
 has ':voice' "$(elem app.heyrobot.assistant.MediaDeleteActivity)" "MediaDeleteActivity in :voice"
+has ':voice' "$(elem app.heyrobot.assistant.WebSearchActivity)" "WebSearchActivity (web search's key and Test) in :voice"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.WebSearchActivity)" "WebSearchActivity not exported"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.MediaDeleteActivity)" "MediaDeleteActivity not exported"
 # Phase 2: contacts and the calendar, asked for at runtime by the main app only; 0.4.0: approximate location for the
 # weather "here" (never fine or background location).
@@ -268,7 +270,9 @@ nsc=$(echo "$vi" | awk '/E: network-security-config/{ on=1 } on')
 has 'E: domain-config' "$nsc" "network security config has a domain-config"
 nscdomain=$(grep -A3 'E: domain-config' <<<"$nsc")
 grep -qE 'cleartextTrafficPermitted.*false' <<<"$nscdomain" && pass "domain-config denies cleartext" || fail "domain-config doesn't deny cleartext"
-for d in anthropic.com openai.com googleapis.com mistral.ai x.ai deepseek.com groq.com openrouter.ai huggingface.co open-meteo.com openstreetmap.org github.com githubusercontent.com; do
+# 0.9: and the web search services' and lookups' domains (your own SearXNG is decided by LanRule in code, as a helper).
+for d in anthropic.com openai.com googleapis.com mistral.ai x.ai deepseek.com groq.com openrouter.ai huggingface.co open-meteo.com openstreetmap.org github.com githubusercontent.com \
+  search.brave.com kagi.com mojeek.com wikipedia.org openlibrary.org; do
   has "'$d'" "$nsc" "no cleartext to $d"
 done
 has '"system"' "$nsc" "trusts the system's CAs"
@@ -339,11 +343,15 @@ cbclass=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null; do
   awk '/^Class #/{ on=0 } index($0, "Class descriptor  : '\''Lapp/heyrobot/voice/TtsCallback;'\''"){ on=1 } on')
 # The main process never reaches an engine: no class of ui/, sys/, boot/, people/, core/ (pure, loaded everywhere) or RobotApp
 # refers to sherpa-onnx, LiteRT or the assistant, voice and brain packages in its code (ProcessIsolationTest checks the
-# sources; this checks the dex).
+# sources; this checks the dex). 0.9: nor to jsoup or web search's clients and page reader (app.heyrobot.helpers.web).
 engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|people|core|update)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
-  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lapp/heyrobot/(assistant|voice|brain|claude|helpers|mt)/')
-[ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine or the Anthropic SDK (dex)" || fail "main-process classes refer to engines or the SDK: $engine_refs"
+  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lorg/jsoup/|Lapp/heyrobot/(assistant|voice|brain|claude|helpers|mt)/')
+[ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine, the Anthropic SDK or jsoup (dex)" || fail "main-process classes refer to engines, the SDK or jsoup: $engine_refs"
+# 0.9 web search: jsoup and the copy of Readability4J are packaged (for the :voice process), and its set-up window, where a
+# search key is pasted, runs in :voice and isn't exported.
+web_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(org/jsoup/Jsoup|app/heyrobot/helpers/web/readability/Readability4J|app/heyrobot/helpers/web/PageFetcher);'"; done | wc -l)
+[ "$web_classes" = "3" ] && pass "jsoup, Readability4J's copy and the page fetcher in the dex" || fail "web search classes in the dex: $web_classes"
 # 0.4.5: llama.cpp's bridge is :brain's alone: no class outside app/heyrobot/brain refers to it or to its engine.
 llama_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } /Class descriptor  : .L/{ on = ($0 !~ /Class descriptor  : .Lapp\/heyrobot\/brain\//) } on' |

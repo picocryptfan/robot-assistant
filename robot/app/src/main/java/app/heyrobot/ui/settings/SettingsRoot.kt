@@ -19,6 +19,8 @@ import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.sys.LookStore
 import app.heyrobot.sys.MemorySettingsStore
+import app.heyrobot.sys.WebStore
+import app.heyrobot.core.web.WebSettings
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.Snapshot
@@ -36,7 +38,8 @@ import app.heyrobot.ui.pref.preferenceGroup
 @Composable
 fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current),
     memory: MemorySettings = MemorySettingsStore.current(LocalContext.current), routines: String = routinesSummary(LocalContext.current),
-    headset: String = headsetSummary(LocalContext.current), car: String = carSummary(LocalContext.current)) {
+    headset: String = headsetSummary(LocalContext.current), car: String = carSummary(LocalContext.current),
+    web: WebSettings = WebStore.current(LocalContext.current)) {
     fun go(route: String) = a.openPage(Page.Settings(route))
     PreferenceScreen("Settings", onBack = null, modifier = modifier) {
         preferenceGroup(null, "voice") {
@@ -55,6 +58,7 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
             // 0.7: messages.json (MessagesStore), not settings.json.
             PreferenceItem("Messages", messagesSummary(messagesFile()), RIcons.Message, onClick = { go(SettingsRoutes.MESSAGES) })
             PreferenceItem("Weather", s.weatherHome?.let { "Home: ${it.name}" } ?: "No home set", RIcons.Sunny, onClick = { go(SettingsRoutes.WEATHER) })
+            PreferenceItem("Web search", webSummary(web, null), RIcons.Search, onClick = { go(SettingsRoutes.WEB_SEARCH) })
             PreferenceItem("Helpers", helpersSummary(s, snap.facts), RIcons.Cloud, onClick = { a.openPage(Page.Helpers) })
             PreferenceItem("Conversation", conversationSummary(s), RIcons.Transcribe, onClick = { a.openPage(Page.ConversationSettings) })
         }

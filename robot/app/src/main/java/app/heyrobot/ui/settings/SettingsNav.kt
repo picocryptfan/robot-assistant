@@ -41,6 +41,8 @@ object SettingsRoutes {
     const val ACTIONS = "actions"
     const val PEOPLE_NOTES_CALENDAR = "people-notes-calendar"
     const val WEATHER = "weather"
+    /** 0.9: Settings › Web search (its own file, web.json). */
+    const val WEB_SEARCH = "web-search"
     const val HISTORY = "history"
     const val DISPLAY = "display"
     /** 0.7: Settings › Memory. */
@@ -95,6 +97,7 @@ fun SettingsNav(
         SettingsRoutes.ACTIONS -> ActionsSettingsScreen(s, snap, update, a, snackbar, onBack)
         SettingsRoutes.PEOPLE_NOTES_CALENDAR -> PeopleNotesCalendarScreen(s, snap, calendars, update, a, snackbar, onBack)
         SettingsRoutes.WEATHER -> WeatherSettingsScreen(s, snap, update, a, snackbar, onBack)
+        SettingsRoutes.WEB_SEARCH -> WebSearchRoute(s, a, snackbar, onBack)
         SettingsRoutes.HISTORY -> HistorySettingsScreen(s, update, a, snackbar, onBack)
         SettingsRoutes.MEMORY -> MemorySettingsRoute(a, snackbar, onBack)
         SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)

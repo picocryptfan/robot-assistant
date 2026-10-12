@@ -74,6 +74,14 @@
   "Apache-2.0 WITH LLVM-exception": {
    "name": "Apache License 2.0 with LLVM Exceptions",
    "url": "https://llvm.org/LICENSE.txt"
+  },
+  "CC-BY-SA-4.0": {
+   "name": "Creative Commons Attribution-ShareAlike 4.0 International",
+   "url": "https://creativecommons.org/licenses/by-sa/4.0/"
+  },
+  "LicenseRef-brave-search-terms": {
+   "name": "Brave Search API Terms of Service",
+   "url": "https://api-dashboard.search.brave.com/terms-of-service"
   }
  },
  "components": [
@@ -266,6 +274,36 @@
     "com.squareup.okhttp3:*"
    ],
    "note": "The HTTP client of the Anthropic SDK and, 0.6.0, of the helpers (any company's chat API, or your own server)."
+  },
+  {
+   "id": "jsoup",
+   "name": "jsoup",
+   "version": "1.15.1",
+   "licence": "MIT",
+   "copyright": "Copyright (c) 2009-2022 Jonathan Hedley <https://jsoup.org/>",
+   "url": "https://jsoup.org/",
+   "where": "app",
+   "text": "licenses/MIT-jsoup.txt",
+   "maven": [
+    "org.jsoup:*"
+   ],
+   "note": "0.9 web search: the HTML parser for result pages read from the phone (no JavaScript, nothing loaded), in the :voice process only."
+  },
+  {
+   "id": "readability4j",
+   "name": "Readability4J (Robot's copy)",
+   "version": "1.0.8 (dankito, 170d052e)",
+   "licence": "Apache-2.0",
+   "copyright": "Copyright 2017 dankito; Readability.js Copyright (c) 2010 Arc90 Inc",
+   "url": "https://github.com/dankito/Readability4J",
+   "where": "app",
+   "notices": [
+    {
+     "title": "NOTICE (Readability4J and Mozilla's Readability.js; Robot's changes)",
+     "file": "licenses/notices/readability4j-NOTICE.txt"
+    }
+   ],
+   "note": "0.9 web search: finds a result page's article, as Firefox's Reader View does. A Kotlin port of Mozilla's Readability.js, copied into Robot (app.heyrobot.helpers.web.readability) with its logging removed and built against jsoup 1.15.1."
   },
   {
    "id": "okio",
@@ -804,6 +842,26 @@
    "url": "https://open-meteo.com/",
    "where": "service",
    "note": "The weather, when you ask: Open-Meteo's data is under CC BY 4.0; Robot shortens the forecast into its own words."
+  },
+  {
+   "id": "wikipedia",
+   "name": "Wikipedia text",
+   "version": "service",
+   "licence": "CC-BY-SA-4.0",
+   "copyright": "Wikipedia contributors",
+   "url": "https://en.wikipedia.org/wiki/Wikipedia:Reusing_Wikipedia_content",
+   "where": "service",
+   "note": "Web search's encyclopedia lookups (0.9), when Robot may ask Wikipedia: the answer card credits the article it used, with links to the article and to CC BY-SA 4.0."
+  },
+  {
+   "id": "brave-search",
+   "name": "Brave Search API",
+   "version": "service",
+   "licence": "LicenseRef-brave-search-terms",
+   "copyright": "Search results by Brave Search",
+   "url": "https://brave.com/search/api/",
+   "where": "service",
+   "note": "Web search with your own Brave key (0.9): results are used for one answer and never stored; the card says “Powered by Brave” unless you turn that line off (optional in Brave's terms)."
   },
   {
    "id": "agp",

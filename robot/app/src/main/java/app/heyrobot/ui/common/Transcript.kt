@@ -32,7 +32,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.Attachment
+import app.heyrobot.core.ToolName
+import app.heyrobot.core.web.AnswerCard
 import app.heyrobot.ui.classic.ClassicBubbleTurn
 import app.heyrobot.ui.theme.LocalLook
 import app.heyrobot.ui.theme.LookStyle
@@ -68,7 +71,12 @@ data class TurnUi(
     val offer: OfferView? = null,
     /** 0.7: the reply card under a reply (ui/common ReplyCard). */
     val reply: ReplyCardView? = null,
-)
+    /** 0.9: a web answer's card (sources, what was sent, credits), in the panel only. */
+    val web: AnswerCard? = null,
+) {
+    /** The cards to draw: a web answer's own card stands in for its search's action card. */
+    val cards: List<ActionView> get() = if (web == null) actions else actions.filter { it.tool != ToolName.WEB_SEARCH || it.status != ActionStatus.DONE }
+}
 
 /** What a turn's buttons do. History passes [None]: its cards have no buttons. */
 class TurnActions(
@@ -80,6 +88,8 @@ class TurnActions(
     val dismissOffer: (String) -> Unit = {},
     /** 0.7: a reply card's taps, by the reply's id; null (History): no buttons. */
     val reply: ((String, ReplyOp) -> Unit)? = null,
+    /** A web answer's source (or a licence) tapped: the reply's id and the URL, to open in the browser. */
+    val openSource: (String, String) -> Unit = { _, _ -> },
 ) {
     companion object {
         val None = TurnActions()
@@ -156,7 +166,7 @@ private fun ReplyText(t: TurnUi, actions: TurnActions, modifier: Modifier) {
                 Text(if (t.readBack) "Claude, from the Claude app" else t.by ?: "Claude", style = MaterialTheme.typography.labelLarge, color = c.tertiary)
             }
         }
-        for (a in t.actions) ActionCard(a, actions.confirm, actions.card, Modifier.padding(bottom = 8.dp))
+        for (a in t.cards) ActionCard(a, actions.confirm, actions.card, Modifier.padding(bottom = 8.dp))
         if (t.text.isNotBlank()) {
             if (t.error) {
                 Row(verticalAlignment = Alignment.Top) {
@@ -174,6 +184,7 @@ private fun ReplyText(t: TurnUi, actions: TurnActions, modifier: Modifier) {
         for (line in t.footer) {
             Text(line, style = MaterialTheme.typography.labelMedium, color = c.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         }
+        t.web?.let { WebAnswerCard(it, onOpen = { url -> actions.openSource(t.id, url) }, modifier = Modifier.padding(top = 8.dp)) }
         t.offer?.let { OfferCard(it, onAccept = { actions.acceptOffer(t.id) }, onDismiss = { actions.dismissOffer(t.id) }, modifier = Modifier.padding(top = 8.dp)) }
         t.reply?.let { r -> ReplyCard(r, actions.reply?.let { f -> { op: ReplyOp -> f(t.id, op) } }, Modifier.padding(top = 8.dp)) }
     }

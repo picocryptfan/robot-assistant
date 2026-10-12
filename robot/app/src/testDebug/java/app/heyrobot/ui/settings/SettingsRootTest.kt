@@ -40,7 +40,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The Settings tab: nineteen rows (0.7 added Memory and Messages, 0.8 Routines, Headset and Car mode), each with its state under the title, each opening its page. */
+/** The Settings tab: twenty rows (0.7 added Memory and Messages, 0.8 Routines, Headset and Car mode, 0.9 Web search), each with its state under the title, each opening its page. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
@@ -67,6 +67,7 @@ class SettingsRootTest {
             "People, notes and calendar" to "openPage ${Page.Settings(SettingsRoutes.PEOPLE_NOTES_CALENDAR)}",
             "Messages" to "openPage ${Page.Settings(SettingsRoutes.MESSAGES)}",
             "Weather" to "openPage ${Page.Settings(SettingsRoutes.WEATHER)}",
+            "Web search" to "openPage ${Page.Settings(SettingsRoutes.WEB_SEARCH)}",
             "Helpers" to "openPage ${Page.Helpers}",
             "Conversation" to "openPage ${Page.ConversationSettings}",
             "Model" to "openTab ${Tab.MODEL}",
@@ -131,7 +132,7 @@ class SettingsRootTest {
      */
     @Test fun theRootIsCategoriesOnly() {
         open()
-        val rows = listOf("Wake word", "Voice", "Actions", "Safety & privacy", "People, notes and calendar", "Messages", "Weather", "Helpers",
+        val rows = listOf("Wake word", "Voice", "Actions", "Safety & privacy", "People, notes and calendar", "Messages", "Weather", "Web search", "Helpers",
             "Conversation", "Model", "Memory", "History", "Display", "Assistant setup", "Advanced", "About")
         assertTrue(rows.size <= 18)
         for (title in rows) {

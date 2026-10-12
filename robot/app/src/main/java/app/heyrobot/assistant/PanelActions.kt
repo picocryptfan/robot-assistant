@@ -42,6 +42,8 @@ interface PanelActions {
     fun acceptOffer(replyId: String)
     fun dismissOffer(replyId: String)
     fun endHelperMode()
+    /** 0.9: a web answer's source tapped: [url] opens in the browser (an app open, as Open apps). */
+    fun openSource(replyId: String, url: String) {}
 
     /** 0.7: a tap on the reply card under [replyId] (Send, Edit, Open chat, Cancel, the tick boxes, Stop). */
     fun reply(replyId: String, op: app.heyrobot.ui.common.ReplyOp) {}
@@ -75,5 +77,6 @@ interface PanelActions {
         override fun dismissOffer(replyId: String) { PanelController.dismissOffer(replyId) }
         override fun endHelperMode() { PanelController.endHelperMode() }
         override fun reply(replyId: String, op: app.heyrobot.ui.common.ReplyOp) { PanelController.reply(replyId, op) }
+        override fun openSource(replyId: String, url: String) { PanelController.openSource(replyId, url) }
     }
 }

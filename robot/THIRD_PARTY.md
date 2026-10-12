@@ -56,6 +56,8 @@ process only"). `make_source_bundle.sh` doesn't add those four trees yet: until 
 | Wake word model (zipformer, GigaSpeech, 3.3M) | 2024-01-01 | Apache-2.0 | in the APK |
 | Anthropic Java SDK | 2.71.0 | MIT | in the APK |
 | OkHttp | 4.12.0 | Apache-2.0 | in the APK |
+| jsoup | 1.15.1 | MIT | in the APK |
+| Readability4J (Robot's copy) | 1.0.8 (dankito, 170d052e) | Apache-2.0 | in the APK |
 | Okio | 3.6.0 | Apache-2.0 | in the APK |
 | Public Suffix List (in OkHttp) | as in OkHttp 4.12.0 | MPL-2.0 | in the APK |
 | Jackson | 2.19.4 | Apache-2.0 | in the APK |
@@ -98,6 +100,8 @@ process only"). `make_source_bundle.sh` doesn't add those four trees yet: until 
 | Bergamot French–English models | Mozilla base-memory fr-en and en-fr, models.json of 2026-10-10 | MPL-2.0 | downloaded when you ask |
 | OpenStreetMap data, through Nominatim | service | ODbL-1.0 | online service |
 | Open-Meteo | service | CC-BY-4.0 | online service |
+| Wikipedia text | service | CC-BY-SA-4.0 | online service |
+| Brave Search API | service | LicenseRef-brave-search-terms | online service |
 | Android Gradle Plugin | 8.8.2 | Apache-2.0 | build and tests only |
 | Kotlin compiler and its Compose plugin | 2.4.0 | Apache-2.0 | build and tests only |
 | JUnit | 4.13.2 | EPL-1.0 | build and tests only |
@@ -253,7 +257,25 @@ helpers' clients (OpenAI Chat Completions and Responses, `app.heyrobot.helpers`,
 SDK is added.
 
 Tests only (not in the APK): `com.squareup.okhttp3:mockwebserver:4.12.0` (Apache-2.0), the local mock server the
-network tests talk to through the SDK's base-URL override (and, 0.6.0, the helpers' clients).
+network tests talk to through the SDK's base-URL override (and, 0.6.0, the helpers' clients; 0.9, web search's search
+transport and page fetcher).
+
+### jsoup 1.15.1 (MIT) and Robot's copy of Readability4J 1.0.8 (Apache-2.0): reading result pages (0.9 web search)
+
+When web search reads a result page from the phone (`:claude` module, `app.heyrobot.helpers.web`, the `:voice` process
+only), jsoup parses it (an HTML parser with no JavaScript engine; nothing on the page is loaded) and Robot's copy of
+Readability4J finds the article in it, as Firefox's Reader View does.
+
+| artifact | licence | sha256 of the jar |
+|---|---|---|
+| `org.jsoup:jsoup:1.15.1` | MIT (Copyright (c) 2009-2022 Jonathan Hedley; its LICENSE in the APK) | `246947b4fa5fb5fcd446c7dae46ab1ff1779b31f6af7a33e1e0aabfbdb6d8749` |
+
+Readability4J 1.0.8 (https://github.com/dankito/Readability4J, commit `170d052e99db58ecac85a77cdaa63ac8253be1fd`,
+Copyright 2017 dankito, Apache-2.0) is a Kotlin port of Mozilla's Readability.js (Copyright (c) 2010 Arc90 Inc,
+Apache-2.0). It is not a dependency: its source is copied into `claude/src/main/java/app/heyrobot/helpers/web/readability/`
+with its LICENSE and a NOTICE that says what Robot changed (the package name; every slf4j logging call removed, so no
+logging library sees page text; built against jsoup 1.15.1 instead of 1.11.2; its "extended" variant and tests not
+copied). The NOTICE is in the APK (`licenses/notices/readability4j-NOTICE.txt`) and on the Licences screen.
 
 ## Downloaded by the app (not in the APK; Model › Voice models)
 
@@ -531,7 +553,7 @@ Roborazzi 1.49.0 (`roborazzi`, `roborazzi-compose`, `roborazzi-junit-rule`; Apac
 `sherpa-onnx==1.13.8` Python wheel (Apache-2.0), numpy (BSD-3-Clause), sentencepiece (Apache-2.0) and pypinyin (MIT)
 on the build machine only; `tools/make_langid.py` uses Python's standard library only.
 
-## Online services the app asks (0.4.0; nothing bundled)
+## Online services the app asks (0.4.0, 0.9; nothing bundled)
 
 - **OpenStreetMap's Nominatim** (`nominatim.openstreetmap.org`, operated by the OpenStreetMap Foundation, or the Nominatim
   server you choose in Settings › Actions › Search server): "directions to the nearest …" when Settings › Actions › Find
@@ -546,6 +568,19 @@ on the build machine only; `tools/make_langid.py` uses Python's standard library
   4.0"), and Robot shortens the forecast into its own lines. The free API is for non-commercial use, with limits of
   10,000 calls a day, 5,000 an hour and 600 a minute (Open-Meteo's terms, https://open-meteo.com/en/terms); Robot is a
   free, non-commercial app and asks only when you ask about the weather. See the README's "Weather".
+
+- **Web search** (0.9, when you set it up and ask; Settings › Web search): only the service you chose gets your search
+  words. **Wikipedia** (`en.wikipedia.org`, `fr.wikipedia.org`; MediaWiki's REST and Action APIs): article text under
+  Creative Commons Attribution-ShareAlike 4.0 (https://creativecommons.org/licenses/by-sa/4.0/); the answer card credits
+  each article used ("From Wikipedia's article “X”, CC BY-SA 4.0", with links to the article and the licence), the form
+  the reuse page asks for (https://en.wikipedia.org/wiki/Wikipedia:Reusing_Wikipedia_content). Robot asks Wikipedia only
+  once it publishes a contact for Wikimedia's User-Agent policy; not in this version. **Brave Search API**
+  (`api.search.brave.com`, your own key): used under Brave's API terms (https://api-dashboard.search.brave.com/terms-of-service):
+  results are kept in memory for one answer only, History keeps the source domains, and the card shows the optional
+  "Powered by Brave" line unless you turn it off. **Kagi** and **Mojeek** (your own key) and **Open Library**
+  (`openlibrary.org`, Book lookups, off by default) are used under their own API terms; **your own or a public SearXNG**
+  is server software Robot only talks to. Up to 3 result pages may be read from the phone (the sites see its IP
+  address); their text is used for one answer and never stored.
 
 ## Code adapted from the phase 0 probe and the GPU lab (same author, GPL-3.0)
 

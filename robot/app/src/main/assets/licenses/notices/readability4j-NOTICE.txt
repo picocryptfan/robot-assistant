@@ -1,0 +1,14 @@
+Robot's copy of Readability4J (app.heyrobot.helpers.web.readability)
+
+Readability4J 1.0.8
+Copyright 2017 dankito
+Licensed under the Apache License, Version 2.0 (LICENSE in this folder).
+https://github.com/dankito/Readability4J (commit 170d052e99db58ecac85a77cdaa63ac8253be1fd)
+
+Readability4J is a Kotlin port of Mozilla's Readability.js (Firefox's Reader View),
+Copyright (c) 2010 Arc90 Inc, licensed under the Apache License, Version 2.0.
+https://github.com/mozilla/readability
+
+Changes made for Robot (2026): the package name; every slf4j logging call removed, so no
+logging library ever sees page text; built against jsoup 1.15.1 instead of 1.11.2. The
+"extended" variant and the tests are not copied; Robot's tests use a few of Mozilla's test pages.

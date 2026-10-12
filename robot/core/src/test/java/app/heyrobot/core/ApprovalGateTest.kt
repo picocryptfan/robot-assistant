@@ -82,11 +82,13 @@ class ApprovalGateTest {
             }
         }
         val after = defaults.copy(safetyCards = SafetyCards.AFTER_READING)
-        assertEquals(setOf(ToolName.LOOKUP_CONTACT, ToolName.FIND_NOTES, ToolName.READ_CALENDAR, ToolName.WEATHER, ToolName.PHONE_STATUS),
+        assertEquals(setOf(ToolName.LOOKUP_CONTACT, ToolName.FIND_NOTES, ToolName.READ_CALENDAR, ToolName.WEATHER, ToolName.PHONE_STATUS, ToolName.WEB_SEARCH),
             ToolName.entries.filter { it.reads }.toSet())
         for (t in ToolName.entries.filter { it.reads && !it.online }) assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, after, content = true))
         // A read that goes online (the weather) asks: screen text could otherwise send a word, or where you are, to Open-Meteo.
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.WEATHER, false, after, content = true, asked = true))
+        // 0.9: so does a web search: an injected page could otherwise send words of yours to the search service.
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.WEB_SEARCH, false, after, content = true, asked = true))
         // Never looser than without it: off stays off, the lock screen still says unlock.
         val off = after.copy(approvals = after.approvals + (ToolName.SET_TIMER to Approval.OFF))
         assertEquals(GateDecision.DISABLED, ApprovalGate.decide(ToolName.SET_TIMER, false, off, content = true))
@@ -186,6 +188,8 @@ class ApprovalGateTest {
                         AskWhy.PICK in why,
                         AskWhy.ONLINE in why,
                         AskWhy.MESSAGE in why,
+                        AskWhy.SEARCH in why,
+                        AskWhy.SEARCH_PERSONAL in why,
                         AskWhy.WHO in why && who,
                         AskWhy.LEARNED in why && learned,
                         AskWhy.DELETE in why && delete,

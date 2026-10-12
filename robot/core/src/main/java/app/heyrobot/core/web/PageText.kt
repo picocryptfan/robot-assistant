@@ -3,10 +3,10 @@ package app.heyrobot.core.web
 import java.nio.charset.Charset
 import java.util.Locale
 
-// Pure. A result page's readable text (design A7 "Extraction"), in plain Kotlin: :core takes no HTML library (the
-// design puts jsoup and a vendored Readability4J in the voice-process helpers module; neither is in this build), so this
-// is a small tokenizer that follows the HTML parsing rules where they decide what is hidden, plus a light main-content
-// pick. No JavaScript, no CSS files, no images, no links followed.
+// Pure. A result page's readable text (design A7 "Extraction"), in plain Kotlin: :core takes no HTML library (0.9: the
+// voice process's helpers module parses a page with jsoup, drops what [hidden] says, and runs its copy of Readability4J;
+// the article it finds comes back here as HTML), so this is a small tokenizer that follows the HTML parsing rules where
+// they decide what is hidden, plus a light main-content pick. No JavaScript, no CSS files, no images, no links followed.
 //
 // Dropped with everything inside: script, style, noscript, template, iframe, svg, math, form and its controls, nav,
 // aside, footer, head, object, canvas, media, a dialog that isn't open, comments; any element with `hidden`,
@@ -489,6 +489,16 @@ object PageText {
                 if (o.link) linkDepth--
             }
         }
+    }
+
+    /**
+     * The element [name] with [attrs] is dropped with everything inside it, by the same rules as this file's walker: for
+     * a parser that builds the tree itself (0.9: the voice process's jsoup, before Readability runs). [attrs] by
+     * lower-case name.
+     */
+    fun hidden(name: String, attrs: Map<String, String>): Boolean {
+        val n = name.lowercase(Locale.ROOT)
+        return (n in DROP && !(n == "dialog" && "open" in attrs)) || n in RAW && n != "title" || hides(attrs)
     }
 
     /** The attributes hide the element (see the file's header). */

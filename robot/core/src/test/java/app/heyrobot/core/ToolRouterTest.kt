@@ -69,8 +69,12 @@ class ToolRouterTest {
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d))
         assertEquals(Prompt.CORE_TOOLS + listOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.LOOKUP_CONTACT),
             ToolRouter.tools(route("text Mom I'm late"), d))
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET, ToolRouter.tools(ToolGroup.entries.toSet(), d))
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL, ToolRouter.tools(ToolGroup.entries.toSet(), d, memory = true))
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH, ToolRouter.tools(ToolGroup.entries.toSet(), d))
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.WEB_SEARCH, ToolRouter.tools(ToolGroup.entries.toSet(), d, memory = true))
+        // 0.9: web_search only with Settings › Web search on (and its group: the words called for it).
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET, ToolRouter.tools(ToolGroup.entries.toSet(), d, web = true))
+        assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, web = true))
+        assertEquals(Prompt.CORE_TOOLS + ToolName.WEB_SEARCH, ToolRouter.tools(route("search the web for the Stanley Cup winner"), d, web = true))
         // ask_claude only with Ask Claude on and escalation not Off (ClaudeSettings.localTool).
         assertEquals(Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE, ToolRouter.tools(core, d, askClaude = true))
         // Turned off in settings: never described. Texting app off: no send_text.

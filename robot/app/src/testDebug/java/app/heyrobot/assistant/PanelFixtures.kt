@@ -43,6 +43,7 @@ class RecordingActions : PanelActions {
     override fun acceptOffer(replyId: String) { calls += "acceptOffer $replyId" }
     override fun dismissOffer(replyId: String) { calls += "dismissOffer $replyId" }
     override fun endHelperMode() { calls += "endHelperMode" }
+    override fun openSource(replyId: String, url: String) { calls += "openSource $replyId $url" }
 }
 
 /** Panel states for the tests: "Hello" / "Hi." and a text waiting for "Do it", and the phases around them. */

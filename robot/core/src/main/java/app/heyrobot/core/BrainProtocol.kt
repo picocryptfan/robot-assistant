@@ -77,8 +77,8 @@ enum class DoneReason {
  */
 enum class Priority { PANEL, INTERPRETER, TRANSCRIPT, SUMMARY }
 
-/** What a one-shot request is for. */
-enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE }
+/** What a one-shot request is for: 0.9's WEB_ANSWER is a web search's answer (core web WebPrompt), at the panel's priority. */
+enum class OneShotKind { TRANSLATE, SUMMARY_MAP, SUMMARY_REDUCE, WEB_ANSWER }
 
 enum class BrainError {
     NOT_LOADED, NO_VISION, BAD_REQUEST, ENGINE, BUSY,

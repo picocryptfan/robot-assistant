@@ -8,13 +8,15 @@
         android:protectionLevel="signature" />
     <uses-permission android:name="app.heyrobot.permission.INTERNAL" />
 
-    <!-- Five uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
+    <!-- Six uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
          engine's files from Mozilla's storage.googleapis.com bucket); when you ask, a helper (the :voice process: Claude at
          api.anthropic.com, or the company you added, 0.6.0); your own AI server, if you add one (0.6.0, the :voice process,
          only addresses on your own network or https); when you ask for the weather or the nearest place (0.4.0),
          Open-Meteo and a Nominatim server (the :voice process, and the main app once to look up your Home for weather);
-         and Settings › Updates (the main app, GitHub: api.github.com and its download servers). Everything else runs on
-         the phone; the :mt process never goes online. The only network permission. -->
+         Settings › Updates (the main app, GitHub: api.github.com and its download servers); and, 0.9, when you set up web
+         search and ask, the search service you chose (your own SearXNG, Brave, Kagi, Mojeek, a public SearXNG, Wikipedia,
+         Open Library) and up to 3 of its result pages (the :voice process). Everything else runs on the phone; the :mt
+         process never goes online. The only network permission. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 0.2.3, "Call audio" playback only (Settings › Voice): the phone in communication mode with the loudspeaker as the
@@ -269,6 +271,15 @@
              connection runs here. -->
         <activity
             android:name=".assistant.HelperConnectionActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Robot.Translucent" />
+        <!-- 0.9: Settings › Web search's set-up window: a search service's key is pasted here, in the :voice process, and Test
+             runs here (the main app opens it by class name and never reads a key or loads the HTTP client). -->
+        <activity
+            android:name=".assistant.WebSearchActivity"
             android:process=":voice"
             android:exported="false"
             android:excludeFromRecents="true"
