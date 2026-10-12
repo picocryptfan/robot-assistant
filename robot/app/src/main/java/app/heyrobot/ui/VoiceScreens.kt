@@ -420,7 +420,8 @@ fun VoiceLogScreen(s: RobotSettings, snackbar: SnackbarHostState, onBack: () -> 
         topBar = {
             BackBar("Voice log", onBack) {
                 IconButton(onClick = {
-                    val text = VoiceLogText.plain(entries, System.currentTimeMillis(), "Robot ${BuildConfig.VERSION_NAME} voice log") { names[it] }
+                    // Wake phrases by number only: what leaves the screen never holds a phrase's words (0.7).
+                    val text = VoiceLogText.plain(entries, System.currentTimeMillis(), "Robot ${BuildConfig.VERSION_NAME} voice log")
                     ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Robot voice log", text))
                     copied = true
                 }, enabled = entries.isNotEmpty()) { Icon(RIcons.Copy, "Copy log") }

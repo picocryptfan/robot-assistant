@@ -818,10 +818,13 @@ object VoiceLogText {
     fun clock(time: Long, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
         java.time.format.DateTimeFormatter.ofPattern("MMM d HH:mm:ss", Locale.US).format(java.time.Instant.ofEpochMilli(time).atZone(zone))
 
-    /** The Copy button's text: newest first, plain, with clock and relative times. */
-    fun plain(newestFirst: List<VoiceLogEntry>, now: Long, title: String, zone: java.time.ZoneId = java.time.ZoneId.systemDefault(), phrase: (Int) -> String? = { null }): String =
+    /**
+     * The Copy button's text: newest first, plain, with clock and relative times. Wake phrases by number only (0.7): what
+     * leaves the screen never holds a phrase's words, which the screen alone shows beside its number.
+     */
+    fun plain(newestFirst: List<VoiceLogEntry>, now: Long, title: String, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): String =
         buildString {
             append(title).append(" · ").append(newestFirst.size).append(" events, newest first · copied ").append(clock(now, zone)).append('\n')
-            for (e in newestFirst) append(clock(e.time, zone)).append("  (").append(ago(now - e.time)).append(")  ").append(describe(e, phrase)).append('\n')
+            for (e in newestFirst) append(clock(e.time, zone)).append("  (").append(ago(now - e.time)).append(")  ").append(describe(e)).append('\n')
         }
 }

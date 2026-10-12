@@ -267,4 +267,20 @@ class VoiceLogTest {
         val text = VoiceLogText.plain(listOf(VoiceLogEntry(now - 12_000, VoiceEvent.SCREEN, 1)), now, "Robot voice log", zone)
         assertEquals("Robot voice log · 1 events, newest first · copied Oct 9 08:54:20\nOct 9 08:54:08  (12 s ago)  Screen on\n", text)
     }
+
+    /**
+     * 0.7: the voice log's Copy never holds a wake phrase's words, only its number (the screen alone shows the words beside
+     * it): its text is made without any way to name a phrase.
+     */
+    @Test fun copyGivesWakePhrasesByNumberOnly() {
+        val now = 1_760_000_060_000L
+        val log = listOf(VoiceLogEntry(now - 2_000, VoiceEvent.WAKE, 2, -1, WakeAction.OPENED.id), VoiceLogEntry(now - 1_000, VoiceEvent.KWS_HIT, 2,
+            KwsSpotterCode.IDLE.id, MicKind.RECOGNITION.id * 10 + AecState.OFF.id), VoiceLogEntry(now, VoiceEvent.WAKE_IGNORED, WakeDrop.DEBOUNCE.id, 2))
+        val text = VoiceLogText.plain(log, now, "Robot voice log", ZoneOffset.UTC)
+        assertTrue(text, text.contains("Wake word #2: opened the panel") && text.contains("Spotter: wake word #2 ·") && text.contains("Wake word #2 ignored"))
+        assertFalse(text.contains("“"))
+        for (m in VoiceLogText::class.java.declaredMethods.filter { it.name == "plain" }) {
+            assertFalse(m.toGenericString(), m.parameterTypes.any { kotlin.jvm.functions.Function1::class.java.isAssignableFrom(it) })
+        }
+    }
 }
