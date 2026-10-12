@@ -1,6 +1,7 @@
 package app.heyrobot.assistant.handsfree
 
 import android.app.Activity
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothHeadset
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
@@ -141,7 +142,7 @@ object HandsFreeHub {
                 // During a call, the button does nothing to it (and Robot doesn't open over it).
                 if (callActive()) return
                 bvraAt = SystemClock.elapsedRealtime()
-                if (d.ackBvra) ackVoiceRecognition(ctx)
+                if (d.ackBvra) ackVoiceRecognition(ctx, buttonDevice(intent))
                 vis?.show(RobotVoiceService.SRC_HEADSET, Bundle().apply {
                     putString(ARG_ENTRY, d.kind.name)
                     putBoolean(ARG_LOCKED, d.locked)
@@ -150,18 +151,28 @@ object HandsFreeHub {
         }
     }
 
+    /** The headset whose voice button sent [intent] (BluetoothDevice.EXTRA_DEVICE), when the intent says. */
+    private fun buttonDevice(intent: Intent): BluetoothDevice? = try {
+        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
+    } catch (_: Throwable) { null }
+
     /**
-     * "Answer the headset's voice button properly" (with Nearby devices): BluetoothHeadset.startVoiceRecognition for the
-     * connected headset within HeadsetService's 5 s, so it gets OK instead of an error tone.
+     * "Answer the headset's voice button properly" (with Nearby devices): BluetoothHeadset.startVoiceRecognition within
+     * HeadsetService's 5 s, so it gets OK instead of an error tone, for the headset that sent the button ([from], when its
+     * intent named it and it is still connected), else the first connected one (H0 notes which with two headsets).
      */
     @Suppress("MissingPermission") // Only with BLUETOOTH_CONNECT granted (mayAck).
-    private fun ackVoiceRecognition(ctx: Context) {
+    private fun ackVoiceRecognition(ctx: Context, from: BluetoothDevice?) {
         try {
             val adapter = ctx.getSystemService(BluetoothManager::class.java)?.adapter ?: return
             adapter.getProfileProxy(ctx, object : BluetoothProfile.ServiceListener {
                 override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
                     val h = proxy as BluetoothHeadset
-                    val ok = try { h.connectedDevices.firstOrNull()?.let { h.startVoiceRecognition(it) } == true } catch (_: Throwable) { false }
+                    val ok = try {
+                        val connected = h.connectedDevices
+                        val target = from?.takeIf { f -> connected.any { it.address == f.address } } ?: connected.firstOrNull()
+                        target?.let { h.startVoiceRecognition(it) } == true
+                    } catch (_: Throwable) { false }
                     VoiceLog.add(VoiceEvent.BVRA_ACK, if (ok) 1 else 0, (SystemClock.elapsedRealtime() - bvraAt).toInt())
                     try { adapter.closeProfileProxy(BluetoothProfile.HEADSET, proxy) } catch (_: Throwable) {}
                 }

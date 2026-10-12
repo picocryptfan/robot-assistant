@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import app.heyrobot.assistant.RobotVoiceService
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.core.AlarmCheck
 import app.heyrobot.core.AlarmEnd
 import app.heyrobot.core.AlarmSignal
 import app.heyrobot.core.AlarmWatch
@@ -28,6 +29,7 @@ import app.heyrobot.core.RoutineCatchUp
 import app.heyrobot.core.RoutineGate
 import app.heyrobot.core.RoutineSettings
 import app.heyrobot.core.RoutineTriggers
+import app.heyrobot.core.SeenAlarm
 import app.heyrobot.core.TriggerEvent
 import app.heyrobot.core.TriggerKind
 import app.heyrobot.core.TriggerNeeds
@@ -136,6 +138,11 @@ object RoutineHub {
                 // receiver Robot registers exported. AlarmWatch needs ALERT then DONE, and a routine runs at most once a day
                 // by default, so a fake DONE can only start your own routines under their gates.
                 TriggerKind.ALARM -> receiver(::onClock).also {
+                    // Clock's next alarm, read now and whenever it changes (a system broadcast), vouches for its ALERT (AlarmCheck).
+                    seeNextAlarm()
+                    nextAlarmChanged = receiver { seeNextAlarm() }.also { r ->
+                        app.registerReceiver(r, IntentFilter(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED), null, worker, Context.RECEIVER_NOT_EXPORTED)
+                    }
                     app.registerReceiver(it, IntentFilter().apply { addAction(ALARM_ALERT); addAction(ALARM_DONE) }, null, worker, Context.RECEIVER_EXPORTED)
                 }
                 TriggerKind.UNLOCK -> receiver { onUnlock() }.also {
@@ -160,6 +167,10 @@ object RoutineHub {
 
     private fun unregister(k: TriggerKind) {
         val r = registered.remove(k) ?: return
+        if (k == TriggerKind.ALARM) {
+            nextAlarmChanged?.let { n -> try { app.unregisterReceiver(n) } catch (_: Throwable) {} }
+            nextAlarmChanged = null
+        }
         try {
             when (r) {
                 is BroadcastReceiver -> app.unregisterReceiver(r)
@@ -179,12 +190,35 @@ object RoutineHub {
     private const val ALARM_ALERT = "com.android.deskclock.ALARM_ALERT"
     private const val ALARM_DONE = "com.android.deskclock.ALARM_DONE"
 
+    /** Clock's next alarms as read before each ALERT (AlarmCheck): in memory, filled while an alarm routine waits. */
+    private var seenAlarms: List<SeenAlarm> = emptyList()
+    private var nextAlarmChanged: BroadcastReceiver? = null
+
+    private fun seeNextAlarm() {
+        seenAlarms = AlarmCheck.remember(seenAlarms, nextAlarm(), System.currentTimeMillis())
+    }
+
     private fun onClock(i: Intent) {
         val now = System.currentTimeMillis()
         when (i.action) {
-            ALARM_ALERT -> step(AlarmSignal.Alert(now))
+            ALARM_ALERT -> {
+                val signal = AlarmSignal.Alert(now)
+                // Any app can send it: only Clock's own alarm, seen due now before it came, counts; anything else is ignored
+                // (never a routine, never the weather, never the once-a-day run).
+                if (!AlarmCheck.admits(seenAlarms, signal)) {
+                    VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM)
+                    RLog.i("alarm_unverified")
+                    return
+                }
+                step(signal)
+            }
             // Clock publishes the snoozed instance as the next alarm first: read it 2 s later (AlarmWatch.READ_DELAY_MS).
-            ALARM_DONE -> worker.postDelayed({ step(AlarmSignal.Done(now, nextAlarm())) }, AlarmWatch.READ_DELAY_MS)
+            // A DONE counts only after a counted ALERT (AlarmWatch).
+            ALARM_DONE -> worker.postDelayed({
+                val next = nextAlarm()
+                seenAlarms = AlarmCheck.remember(seenAlarms, next, System.currentTimeMillis())
+                step(AlarmSignal.Done(now, next))
+            }, AlarmWatch.READ_DELAY_MS)
         }
     }
 

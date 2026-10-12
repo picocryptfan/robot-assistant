@@ -68,7 +68,18 @@ class PhonesTest {
         // A Tensor G5's TPU build is no beta: a failure there never moves it to the general build.
         assertEquals(BrainModel.FAST, ModelCatalogue.fast(pixel10Pro, tpuFailed = true))
         assertEquals(BrainModel.FAST_G6, ModelCatalogue.fast(pixel11))
-        assertEquals(listOf(BrainModel.FAST_G6, BrainModel.SMARTER, BrainModel.UNCENSORED, BrainModel.OWN), ModelCatalogue.models(pixel11))
+        // Its general build is listed too, as the fallback to download before the beta ever fails (Fast (beta)'s page asks you to).
+        assertEquals(listOf(BrainModel.FAST_G6, BrainModel.GENERAL, BrainModel.SMARTER, BrainModel.UNCENSORED, BrainModel.OWN), ModelCatalogue.models(pixel11))
+        assertEquals(BrainModel.GENERAL, ModelCatalogue.fallback(pixel11))
+        assertEquals("Fast (general build, fallback)", ModelCatalogue.title(BrainModel.GENERAL, pixel11))
+        assertEquals("Fast (beta)", ModelCatalogue.title(BrainModel.FAST_G6, pixel11))
+        // Once the TPU build failed, the general build is Fast itself; elsewhere there is no fallback.
+        assertNull(ModelCatalogue.fallback(pixel11, tpuFailed = true))
+        assertEquals("Fast", ModelCatalogue.title(BrainModel.GENERAL, pixel11, tpuFailed = true))
+        for (p in listOf(pixel10Pro, pixel9a)) {
+            assertNull(ModelCatalogue.fallback(p))
+            assertEquals("Fast", ModelCatalogue.title(ModelCatalogue.fast(p), p))
+        }
         assertEquals(BrainModel.GENERAL, ModelCatalogue.fast(pixel11, tpuFailed = true))
         assertEquals(listOf(BrainModel.GENERAL, BrainModel.SMARTER, BrainModel.UNCENSORED, BrainModel.OWN), ModelCatalogue.models(pixel11, tpuFailed = true))
         for (stored in listOf(BrainModel.FAST, BrainModel.FAST_G6, BrainModel.GENERAL)) {

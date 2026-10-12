@@ -62,6 +62,14 @@ class MessageHandsFreeTest {
         assertFalse(MessageArrival.isNew(null, one.copy(messages = one.messages.map { it.copy(historic = true) })))
     }
 
+    /** Do Not Disturb holds an announcement unless its ranking was read and lets it through: anything unread fails closed. */
+    @Test fun doNotDisturbFailsClosed() {
+        assertTrue(MessageDnd.allows(found = true, matches = true))
+        assertFalse(MessageDnd.allows(found = true, matches = false))
+        assertFalse(MessageDnd.allows(found = false, matches = true))
+        assertFalse(MessageDnd.allows(found = null, matches = true))
+    }
+
     @Test fun peopleYouChooseAreYourConfirmedPeople() {
         assertTrue(AnnounceSenders.chosen(momThread, listOf(mom), setOf("p1")))
         assertFalse(AnnounceSenders.chosen(momThread, listOf(mom), emptySet()))

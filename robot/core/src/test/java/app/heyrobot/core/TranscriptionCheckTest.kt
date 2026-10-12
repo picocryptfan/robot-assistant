@@ -75,6 +75,45 @@ class TranscriptionCheckTest {
         assertEquals("Robot transcription check · Robot 0.5.0 · Parakeet v3 with conversation settings\nNo lines yet.\n", CheckReport.text(emptyList(), true, "0.5.0"))
     }
 
+    /**
+     * 0.8: the headset's (or the car's) microphone, measured against the phone's (headset mode's H0.5, car mode's C0.3): its
+     * lines say so, and their totals are kept apart from the phone's, so the gate is never met with the two mixed.
+     */
+    @Test fun theHeadsetsMicrophoneIsScoredApart() {
+        val phone = (1..2).map { line("fr", "on se reprend tu demain", "on se reprend tu demain") }
+        val headset = listOf(line("fr", "on se reprend tu demain", "on se reprend demain").copy(mic = CheckMic.HEADSET))
+        val t = CheckReport.totals(headset + phone)
+        assertEquals(listOf(CheckMic.PHONE to 2, CheckMic.HEADSET to 1), t.map { it.mic to it.lines })
+        assertEquals(0, t[0].result.percent)
+        assertEquals(20, t[1].result.percent)
+        assertTrue(CheckReport.summary(t[1]), CheckReport.summary(t[1]).startsWith("French (Québec), headset mic: 20% of words wrong over 1 line"))
+        assertTrue(CheckReport.summary(t[0]).startsWith("French (Québec): 0% of words wrong"))
+        assertTrue(CheckReport.line(3, headset.single()).startsWith("3. FR read · reader 1 · headset mic · 1 of 5 words wrong (20%)"))
+        assertEquals(2, CheckReport.logEvents(headset + phone).size)
+    }
+
+    /** Which headset the check records through: the route a headset or car session would take, or none to offer. */
+    @Test fun theCheckRecordsThroughTheHeadsetAsASessionWould() {
+        val memory = app.heyrobot.core.output.DeviceMemory()
+        val sco = app.heyrobot.core.output.SeenDevice(app.heyrobot.core.output.RouteType.BT_SCO, "Buds", "XX:XX:XX:XX:12:34", id = 7)
+        val a2dp = sco.copy(type = app.heyrobot.core.output.RouteType.BT_A2DP, id = 8)
+        val bt = CheckMics.route(listOf(a2dp, sco), memory)!!
+        assertEquals(app.heyrobot.core.headset.MicRoute.SCO, bt.mic)
+        assertEquals(sco, bt.communication)
+        val usb = app.heyrobot.core.output.SeenDevice(app.heyrobot.core.output.RouteType.USB_HEADSET, "USB-C", id = 9)
+        val wired = CheckMics.route(listOf(usb), memory)!!
+        assertEquals(app.heyrobot.core.headset.MicRoute.USB, wired.mic)
+        assertEquals(null, wired.communication)
+        // Headphones without a microphone, a speaker, or nothing: no choice.
+        assertEquals(null, CheckMics.route(listOf(a2dp), memory))
+        assertEquals(null, CheckMics.route(listOf(app.heyrobot.core.output.SeenDevice(app.heyrobot.core.output.RouteType.SPEAKER, id = 1)), memory))
+        assertEquals(null, CheckMics.route(emptyList(), memory))
+        // In car mode, the car's call route.
+        val car = sco.copy(name = "MyCar", address = "XX:XX:XX:XX:56:78", id = 11)
+        val inCar = CheckMics.route(listOf(car), memory, car = car)!!
+        assertEquals(car, inCar.communication)
+    }
+
     @Test fun logEventsAreNumbersPerLanguage() {
         val ev = CheckReport.logEvents(listOf(line("en", "a b c d", "a b c"), line("fr", "un deux", "un deux")))
         assertEquals(listOf(Triple(0, 1, LangCode.FR), Triple(25, 1, LangCode.EN)), ev)

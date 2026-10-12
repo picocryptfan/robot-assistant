@@ -167,6 +167,22 @@ class TermuxWithWebMessagesAndMemoryTest {
         assertTrue("$m", m is QueryVerdict.Refuse)
     }
 
+    /**
+     * 0.8 review's rule (a tool never described to the model is refused as unknown) keeps the call tool out of the model's
+     * reach, not web search or the Termux tools: described, the model's calls to them reach their own gates.
+     */
+    @Test fun theModelsWebAndTermuxCallsReachTheirGatesWhileItsCallToolCallIsRefused() {
+        for (call in listOf(RawToolCall("termux_script", mapOf("name" to "backup")), RawToolCall("termux_command", mapOf("command" to "ls ~")),
+            RawToolCall("web_search", mapOf("query" to "stanley cup winner")))) {
+            val (card, ran) = turn(call, allAuto, MessageTaint.NONE)
+            assertEquals(call.name, null, card)
+            assertEquals(call.name, 1, ran.size)
+        }
+        val (card, ran) = turn(RawToolCall("call", mapOf("to" to "555 0199")), allAuto, MessageTaint.NONE)
+        assertEquals(null, card)
+        assertTrue(ran.isEmpty())
+    }
+
     // ------------------------------------------------------------------ 4. routines
 
     @Test fun aRoutineNeverRunsTermux() {

@@ -159,6 +159,14 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
         if (snap.problem != null && earlier.isNotEmpty()) preferenceGroup("Last model problems", "problems") { ProblemListRows(earlier, a) }
         preferenceGroup("Robot uses", "uses") {
             for (m in ModelCatalogue.models(phone, snap.tpuFailure != null)) {
+                // 0.8, a Tensor G6: the general build as Fast (beta)'s fallback, to download before the TPU build ever fails. Not a
+                // choice of its own (Robot switches to it by itself), so a row that opens its page, with Download there.
+                if (m == ModelCatalogue.fallback(phone, snap.tpuFailure != null)) {
+                    PreferenceItem(ModelCatalogue.FALLBACK_TITLE, "Used by itself if Fast (beta) doesn't load on the TPU · " + modelRowSummary(m, snap),
+                        leading = { StatusIcon(mark(snap.model(m)?.status)) }, onClick = { a.openPage(Page.Settings(ModelRoutes.model(m))) },
+                        trailing = { Icon(RIcons.Chevron, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) })
+                    continue
+                }
                 val ready = snap.ready(m)
                 TwoTargetPreference(m.title, modelRowSummary(m, snap),
                     // Tapping the chosen one again saves too: Robot then retries a model that didn't load.
@@ -380,7 +388,7 @@ private fun ModelPage(m: BrainModel, s: RobotSettings, update: (RobotSettings) -
     var askTerms by remember { mutableStateOf<Pair<ModelTerms, Boolean>?>(null) }
     fun download() { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to false else a.download(m) }
     fun import() { val t = ModelTerms.missing(s, m); if (t != null) askTerms = t to true else a.import(m) }
-    PreferenceScreen(m.title, onBack, snackbar = snackbar) {
+    PreferenceScreen(ModelCatalogue.title(m, snap.phone, snap.tpuFailure != null), onBack, snackbar = snackbar) {
         if (ms == null) return@PreferenceScreen
         val st = ms.status
         preferenceGroup(null, "state") {
@@ -488,7 +496,7 @@ private fun OwnModelPage(s: RobotSettings, snap: Snapshot, busy: String?, a: App
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var askTpu by rememberSaveable { mutableStateOf(false) }
     val ms = snap.model(m)
-    PreferenceScreen(m.title, onBack, snackbar = snackbar) {
+    PreferenceScreen(ModelCatalogue.title(m, snap.phone, snap.tpuFailure != null), onBack, snackbar = snackbar) {
         if (ms == null) return@PreferenceScreen
         val st = ms.status
         val own = snap.own.takeIf { st == ModelStatus.VERIFIED || st == ModelStatus.BAD }

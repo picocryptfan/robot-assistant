@@ -3,15 +3,20 @@ package app.heyrobot.assistant.routines
 import app.heyrobot.core.output.VolumePolicy
 import app.heyrobot.core.BriefItem
 import android.content.Context
-import android.media.AudioDeviceInfo
+import android.media.AudioAttributes
 import android.media.AudioManager
 import android.os.PowerManager
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.assistant.car.CarModeController
+import app.heyrobot.assistant.handsfree.HandsFreeHub
+import app.heyrobot.assistant.handsfree.PanelHandsFree
+import app.heyrobot.sys.AudioDevices
 import app.heyrobot.core.BriefControl
 import app.heyrobot.core.PlayState
 import app.heyrobot.core.RLog
 import app.heyrobot.core.Routine
 import app.heyrobot.core.RoutineOutputs
+import app.heyrobot.core.RoutineRoute
 import app.heyrobot.core.SpeechLang
 import app.heyrobot.core.SpeechText
 import app.heyrobot.core.SpeechWay
@@ -37,8 +42,10 @@ import java.io.File
 // "repeat" and "stop" move by them (core PlayState): said to the panel after "hey robot", the notification's buttons, or
 // the "stop" spotter. A run nobody asked for speaks from RoutineSpeakingService, a mediaPlayback foreground service (Android
 // 17 lets background audio play only from a visible activity or such a service, design §1.2); each part goes through
-// OutputGuard first (core RoutineOutputs): on the lock screen a personal part waits for the unlock, nothing talks over a
-// call, "Headset only" says nothing on the speaker. Asked in the panel, the panel is the surface. One run speaks at a time;
+// OutputGuard first (core RoutineOutputs), by where its sound goes now: on the lock screen a personal part waits for the
+// unlock, nothing talks over a call, "Headset only" says nothing on the speaker, a personal part waits too when the sound
+// goes to a device others may hear (a Bluetooth device not confirmed private, a speaker; in car mode, the car unless "Read
+// aloud when others may hear" is Always). Asked in the panel, the panel is the surface. One run speaks at a time;
 // the next waits its turn. Main thread only. Nothing here logs words: counts and codes.
 
 object RoutineVoice {
@@ -203,17 +210,25 @@ object RoutineVoice {
         // The panel's own reply is still being said: this part comes after it.
         if (VoiceHub.tts.isSpeaking) { main.postDelayed({ playCurrent() }, 400); return }
         val d: OutputDecision? = if (s.surface == Surface.PANEL) OutputDecision.Speak(VolumePolicy.NORMAL)
-            else RoutineOutputs.decide(part, s.routine.output, phone(), headset(), trust(), s.everything)
+            else RoutineOutputs.decide(part, s.routine.output, phone(), route(), s.everything)
         if (d !is OutputDecision.Speak) {
             if (RoutineOutputs.waitsForUnlock(d)) s.held += part else s.notSaid++
             s.play = s.play.played()
             return playCurrent()
         }
+        // Asked in the panel during a headset or car session: each line through OutputGuard as the panel's own sentences are
+        // (a personal part only in private headphones, the car's two sentences); outside a session every line plays.
+        val lines = if (s.surface == Surface.PANEL) part.lines.filter { l -> PanelHandsFree.allow(SpeechText.clean(l)) { part.personal } } else part.lines
+        if (lines.isEmpty()) {
+            s.notSaid++
+            s.play = s.play.played()
+            return playCurrent()
+        }
         s.play = s.play.started()
-        s.said += part.lines.size
+        s.said += lines.size
         part.item?.let { s.saidItems += it }
         s.chars += part.chars
-        part.lines.forEach(::say)
+        lines.forEach(::say)
         val g = ++gen
         main.removeCallbacks(watchdog)
         watchFor = g
@@ -324,24 +339,24 @@ object RoutineVoice {
         )
     }
 
-    private val HEADSETS = setOf(RouteType.WIRED_HEADSET, RouteType.WIRED_HEADPHONES, RouteType.USB_HEADSET, RouteType.BT_A2DP, RouteType.BLE_HEADSET,
-        RouteType.HEARING_AID)
-
-    /** A headset Android lists as an output now ("Headset only"), or null. */
-    private fun headset(): SeenDevice? = try {
-        app.getSystemService(AudioManager::class.java).getDevices(AudioManager.GET_DEVICES_OUTPUTS).map { d: AudioDeviceInfo ->
-            SeenDevice(RouteType.of(d.type), d.productName?.toString().orEmpty(), d.address.orEmpty(), sink = true, id = d.id)
-        }.firstOrNull { it.type in HEADSETS }
-    } catch (_: Throwable) { null }
-
     /**
-     * Whether the headset is private: what headset mode remembers in devices.json once it exists, else by its type (wired,
-     * USB and hearing aids are; a Bluetooth headset is asked about, so a personal part waits).
+     * Where Robot's voice would play now (0.8 review): the output Android routes assistant speech to, as a SeenDevice with
+     * its name (so DeviceMemory knows a remembered headset), and car mode's car while it runs with it connected.
      */
-    private fun trust(): Trust {
-        val h = headset() ?: return Trust.NOT_PRIVATE
+    private fun route(): RoutineRoute {
         val memory = (DeviceMemory.decode(readOrNull(File(Paths.dir(app), "devices.json"))) as? DeviceFile.Ok)?.memory ?: DeviceMemory()
-        return memory.trust(h)
+        val routed = try {
+            val am = app.getSystemService(AudioManager::class.java)
+            val attrs = AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
+            am.getAudioDevicesForAttributes(attrs).firstOrNull()?.let { AudioDevices.seen(app, it) }
+        } catch (t: Throwable) {
+            RLog.w("routine_route", t)
+            // Can't say where it goes: as somewhere others may hear, never as private.
+            SeenDevice(RouteType.OTHER)
+        }
+        val car = CarModeController.carSeen()
+        return RoutineRoute(routed, routed?.let(memory::trust) ?: Trust.NOT_PRIVATE, car, car != null && CarModeController.trusted,
+            HandsFreeHub.car.settings.readAloud)
     }
 
     // ------------------------------------------------------------------ the CPU while it speaks

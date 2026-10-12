@@ -102,8 +102,8 @@ Settings file schema 13, as 0.7.0: the new parts keep their own files in `files/
   routines that start by themselves (a time, Clock's alarm turned off, the first unlock, a headset or car connecting,
   charging, or only when you ask), made by voice and always shown on a card first, or in Settings › Routines; the
   morning brief (the time, the weather, today's calendar, brief reminders and, new here, how many unread messages, by
-  app, from Settings › Messages: counts only, never who or what, so the same on the lock screen). Off until you set one
-  up. Voice log events 140 to 151.
+  app, from Settings › Messages: counts only, never who or what; on the lock screen it waits for the unlock with your
+  calendar, as the brief's other personal parts do). Off until you set one up. Voice log events 140 to 151.
 - **Headset mode** ([Headset mode (0.8)](#headset-mode-08)): your headset's voice button opens Robot, which listens
   through the headset and answers in your ears; personal answers play only in headphones only you can hear; the headset
   going stops speech at once. The button is Robot's by default (Settings › Headset turns it off). Voice log events 200 to
@@ -122,8 +122,9 @@ Settings file schema 13, as 0.7.0: the new parts keep their own files in `files/
   (`gemma-4-E2B-it_Google_Tensor_G6.litertlm`, pinned at Fast's commit by size and SHA-256), marked beta, its speed an
   estimate from the Tensor G5's (not measured). A TPU build runs only on the chip its stamp names: a Tensor G5 build
   never on a Tensor G6, nor the reverse, your own file included. If the Tensor G6 build doesn't load on the TPU, Fast is
-  the general build on the CPU from then on (download it too, to have it ready), until Settings › Model › Try the TPU
-  again. Voice log event 136.
+  the general build on the CPU from then on (download it too, to have it ready: Settings › Model lists it on a Tensor G6
+  as "Fast (general build, fallback)", with its Download), until Settings › Model › Try the TPU again. Voice log event
+  136.
 - **A smaller APK**: its dex files are compressed now, as its native libraries always were (Android unpacks the
   libraries at install, where every process loads them); the debug build went from 121.4 MB to 68.5 MB. Nothing is
   minified (JNI looks classes and fields up by name). `tools/verify_apk.sh` checks every library and dex file is
@@ -139,8 +140,11 @@ Settings file schema 13, as 0.7.0: the new parts keep their own files in `files/
   still to do (R0 to R4, H0 to H3, C0 to C3), with these too:
   1. **Pixel 11, Fast (beta).** Download Fast (beta) on a Pixel 11 and ask something: *done when* it answers on the TPU
      (Settings › Model › In memory now: Fast (beta)); note its load time and speed in the voice log ("Model loaded"), a
-     1k-token prompt and a 256-token answer, MTP on and off. Then make the TPU fail once (or wait for a real failure): Fast
-     is the general build on the CPU with "The TPU didn't load" and Try the TPU again in Settings › Model.
+     1k-token prompt and a 256-token answer. MTP on the TPU is optional: it is off there by a build constant (LiteRT-LM's
+     default, set in `GemmaEngine.kt` for the TPU backend, not a setting), so "MTP on" needs a special build. Download the
+     general build too (Settings › Model lists it on a Pixel 11 as "Fast (general build, fallback)", with its Download).
+     Then make the TPU fail once (or wait for a real failure): Fast is the general build on the CPU with "The TPU didn't
+     load" and Try the TPU again in Settings › Model.
   2. **Pixel 10.** Fast is still the Tensor G5 build on the TPU, and an own Tensor G6 build says it can't run here.
   3. **The APK.** Install the release APK over 0.7.0 and run it: *done when* every process starts (the panel, a
      question on the TPU, a GGUF file in :llama, the fast translation in :mt, the voice) and `tools/verify_apk.sh` passes.
@@ -1930,6 +1934,11 @@ The gate for Québec French (phase 5.0(a)), in the `:voice` process because it u
   also reported apart. Per line: words wrong, accents, the language Robot heard and the decode time; per language: the
   total against the pass mark, **15 % for Québec French over at least 20 lines from at least 2 readers** (pick Reader
   1–4), **8 % for English**.
+- **Microphone: Phone / Headset** (0.8): shown while a headset with a microphone (or, in car mode, the car) is connected.
+  Headset records through it as a headset or car session listens: the call route (`setCommunicationDevice`) and the
+  capture pinned to its microphone, recording only once its input is the one capturing (3 s at most, else "The
+  headset's microphone didn't connect"), let go when you tap Stop. Not while a headset or car session or a call is on.
+  Its lines say "headset mic" and are totalled apart from the phone's.
 - Recordings stay in memory and are dropped once scored; the voice log gets the numbers (117: % wrong, lines, language);
   **Copy report** copies numbers only unless "Include sentences" is ticked.
 - **If Québec French fails the gate**, before building more on it (`../docs/translation-plan.md`, `../docs/languages.md`
@@ -4707,9 +4716,13 @@ Asked ("run my…", Run now) or tapped (a Ready card), every step goes through t
 
 **The lock screen.** At "Time and weather" (the default), the brief says the greeting, the time and the weather without
 your town, then "Unlock to hear your day"; if you unlock within 15 minutes, the rest follows (Finish when I unlock).
-Every part goes through OutputGuard before it plays: nothing personal is said locked, nothing talks over a call, and
-"Headset only" says nothing on the speaker (and personal parts only in a headset Robot knows is private: wired, USB and
-hearing aids; a Bluetooth headset once you told headset mode it is private).
+Every part goes through OutputGuard before it plays, by where its sound goes now: nothing personal is said locked,
+nothing talks over a call, and "Headset only" says nothing on the speaker or in the car (and personal parts only in a
+headset Robot knows is private: wired, USB and hearing aids; a Bluetooth headset once you told headset mode it is
+private). With "Headset, else the phone speaker", a personal part waits as on the lock screen (said after an unlock within
+15 minutes) when the sound goes somewhere others may hear: a Bluetooth device you haven't confirmed private, a speaker,
+line out, or in car mode the car, unless Settings › Car mode › "Read message text aloud when others may hear" is Always
+(a run nobody started never asks).
 
 **Late or missed times.** One exact alarm is set for the soonest routine (never Android's "next alarm"). Within 10
 minutes of its time a routine runs; up to 3 hours late the same day (Doze, a reboot) it waits on a Ready card ("Your
@@ -4724,8 +4737,8 @@ rings, Robot loads its voice and fetches the weather ("Get ready while the alarm
 ### Defaults
 
 - Morning brief: **off**. Once on: after your alarm (04:00 to 12:00), greeting, weather, calendar, brief reminders and
-  closing, and since 0.8 how many unread messages, by app, when Settings › Messages is on (never who or what, so the
-  same on the lock screen), On the lock screen: Time and weather, Finish when I unlock: on, Language:
+  closing, and since 0.8 how many unread messages, by app, when Settings › Messages is on (never who or what; held on the
+  lock screen with the calendar), On the lock screen: Time and weather, Finish when I unlock: on, Language:
   the phone's, Get ready while the alarm rings: on, Speak: Headset, else the phone speaker, Clock silences after: 10 min.
 - Routines can run while the phone is locked: **on**. Routines may go online by themselves: **on** (only the services
   each routine's card listed: Open-Meteo for the weather).
@@ -4744,8 +4757,12 @@ rings, Robot loads its voice and fetches the weather ("Get ready while the alarm
   and the system's `BOOT_COMPLETED`, `TIME_SET`, `TIMEZONE_CHANGED`, `MY_PACKAGE_REPLACED`) and `RoutineSpeakingService`
   (`foregroundServiceType="mediaPlayback"`, never sticky, never at boot).
 - **The one exported receiver:** Clock's two broadcasts come from another app with no permission, so the trigger hub
-  registers them at run time with `RECEIVER_EXPORTED`, only while a routine waits for an alarm. A fake `ALARM_DONE`
-  needs an `ALARM_ALERT` first and can only start your own routines under their gates, at most once a day by default.
+  registers them at run time with `RECEIVER_EXPORTED`, only while a routine waits for an alarm. An `ALARM_ALERT` counts
+  only when Clock's own next alarm (`AlarmManager.getNextAlarmClock()`, its show intent from Clock), read before the alert
+  and kept, was due within 2 minutes of it; any other is logged ("Routine not run after an alarm turned off: not Clock's own
+  alarm, ignored") and ignored, so it neither runs a routine nor uses up its once-a-day run. An `ALARM_DONE` counts only
+  after a counted `ALARM_ALERT`, and then can only start your own routines under their gates, at most once a day by
+  default.
 - Nothing else: no phone, Bluetooth, Do Not Disturb or location beyond what Robot already had. `ProcessIsolationTest`
   and `tools/verify_apk.sh` check all of this.
 
@@ -4857,8 +4874,9 @@ voice log (Settings › Advanced › Voice log) shows each step as codes ("Routi
 - "Delete my evening routine": *done when* only the card's Delete tap deletes it.
 
 **The unread count (0.8):** with Settings › Messages on and two unread messages in Cheogram and one in Signal, "brief
-me" *done when* it says "You have 3 unread messages: 2 in Cheogram and 1 in Signal." unlocked and locked alike (no
-name, no text); with Settings › Messages off it says nothing about messages.
+me" *done when* it says "You have 3 unread messages: 2 in Cheogram and 1 in Signal." unlocked (no name, no text); locked
+at "Time and weather" it waits with the calendar ("Unlock to hear your day") and is said after an unlock within 15
+minutes; with Settings › Messages off it says nothing about messages.
 
 **Not checkable yet:** R4 (news) needs helpers' news.
 
@@ -4892,7 +4910,8 @@ car mode share, and `core/headset`) with JVM tests, the wiring in `assistant/hea
   "Yes" reads it as "read my messages" does (translated if it isn't in your languages); "no" is quiet and the session
   ends. "Read the text: Always" reads it at once. Never on the speaker, a car or a Bluetooth speaker, never during a
   call, never while locked unless "Announce while locked" is on **and** Settings › Messages › Messages on the lock
-  screen is "Read and reply"; Do Not Disturb holds it as it holds the notification. After it is read, "reply …" is 0.7's
+  screen is "Read and reply"; Do Not Disturb holds it as it holds the notification (and when Robot can't read whether Do
+  Not Disturb lets it through, it isn't announced). After it is read, "reply …" is 0.7's
   reply card. A message that comes while Robot is busy is announced when she is free (within 2 minutes).
 - **The message's words never act** (0.7's quarantine): the main process tells `:voice` only which conversation has a
   new message and whether Do Not Disturb lets it through (`Cmd.MESSAGE_NEW`: its key and a yes or no, never who or
@@ -4930,12 +4949,14 @@ up: …", "Message in the headset: …").
 2. Two earbuds (one HFP-only, one LE Audio): `adb logcat -s HeadsetService MediaSessionService` while long-pressing.
    *Note* whether `VOICE_COMMAND` starts, what each headset does after 5 s without `startVoiceRecognition` (an error
    tone?), and what changes with "Answer the headset's voice button properly" on (the log: "Headset told Robot listens").
+   Robot answers the headset the button's intent names (`BluetoothDevice.EXTRA_DEVICE`), else the first connected one:
+   with both connected, *note* whether `VOICE_COMMAND` carries `EXTRA_DEVICE` and which earbud hears the OK.
 3. A USB-C headset's long press, unlocked and locked: *note* which intent and `EXTRA_SECURE` (the log: "Headset button:
    wired or USB long-press … · locked").
 4. *Note* each device's name and types in Settings › Headset › Your headphones after its first use (the name only ever
    stays on the phone).
-5. The microphone: *note* "Headset route up: … in N ms" for each headset, and run Settings › Advanced › Transcription
-   check through the headset and through the phone for the same sentences.
+5. The microphone: *note* "Headset route up: … in N ms" for each headset, and run Settings › Voice › Transcription
+   check with Microphone: Headset and with Microphone: Phone for the same sentences (the report keeps the two apart).
 
 **H1, the session.** *Done when:*
 - The earbuds' button to the chime in at most 2 s, 10 of 10.
@@ -4982,8 +5003,10 @@ you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; th
   trusted session; the notification and screen say "unlocked features"); without it, "Unlock once to use car features".
 - **Calls** ("call Mom", "appelle maman", the screen's Call): spoken choices ("Mom: mobile, or work?"), the number read
   back, then the dialer opens with it; "Call directly after a spoken yes" (with the Phone permission) places it.
-  Emergency numbers always open the dialer and are never called by Robot. Outside car mode, "call Mom" is the call tool's
-  card (never described to the model).
+  Emergency numbers always open the dialer and are never called by Robot. A call placed after a spoken yes is car mode's
+  alone. Outside car mode, "call Mom" is the call tool's card (never described to the model, which can't call it); in a
+  headset session on headphones you confirmed private, unlocked, the choices and the read-back are spoken instead and
+  the yes opens the dialer with the number, where you tap Call (anywhere else in a headset session, the card).
 - **Navigation** ("navigate home", "take me to work", "le poste d'essence le plus proche"): Organic Maps' route preview
   to your saved Home or Work (tap Start when stopped), the nearest place's 0.4.0 flow, or a search.
 - **What's next** (your calendar), **music** (play, pause, next, previous: a media key to the current player), "repeat",
@@ -5029,8 +5052,9 @@ Nothing of this has run in a car. Install the debug build with Robot as the digi
 1. Add your car: *note* the name shown and whether Settings › Car mode lists it once connected.
 2. The steering-wheel voice button: *note* whether Robot opens (the log: "Headset button: Bluetooth voice button · car
    mode"), whether the car shows "voice recognition" or a call screen, and what happens after 5 s.
-3. The car's microphone: *note* "Headset route up: … in N ms", and run the Transcription check in the car parked, at 50
-   and at 100 km/h (a passenger reads).
+3. The car's microphone: *note* "Headset route up: … in N ms", and run Settings › Voice › Transcription check with
+   Microphone: Headset (the car's call route while car mode runs) in the car parked, at 50 and at 100 km/h (a passenger
+   reads).
 4. Organic Maps: "navigate home" from a rough start, then Start: *note* whether it re-plans from the GPS position.
 5. Calls: the dialer and a direct call with the SIM, then with Cheogram's phone account as default: *note* whether the
    call is hands-free through the car.

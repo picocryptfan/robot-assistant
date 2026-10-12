@@ -57,6 +57,12 @@ data class PhoneCandidate(val name: String, val number: String, val label: Phone
 data class CallRules(val setting: CallSetting = CallSetting.OPEN_DIALER, val hasCallPermission: Boolean = false, val callAfterSpokenYes: Boolean = true) {
     /** A direct call (ACTION_CALL) after the spoken yes, or the dialer. */
     val way: CallWay get() = if (setting == CallSetting.CALL_AFTER_YES && hasCallPermission && callAfterSpokenYes) CallWay.CALL else CallWay.DIAL
+
+    /**
+     * What a session's spoken call may do: "Call directly after a spoken yes" is car mode's (Settings › Car mode › Calls);
+     * a headset session reads the call back too, then opens the dialer for you to tap Call.
+     */
+    fun forSession(car: Boolean): CallRules = if (car) this else copy(setting = CallSetting.OPEN_DIALER)
 }
 
 enum class CallRefuse { NOT_FOUND, XMPP_ONLY, LOCKED }

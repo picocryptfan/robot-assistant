@@ -54,6 +54,8 @@ import app.heyrobot.core.output.SpeechSource
 import app.heyrobot.core.output.SpokenLang
 import app.heyrobot.core.output.Trust
 import app.heyrobot.core.output.Utterance
+import app.heyrobot.core.output.AskWhat
+import app.heyrobot.core.output.SessionKind
 import app.heyrobot.core.output.handsFree
 import app.heyrobot.core.output.notice
 import app.heyrobot.sys.MessagesStore
@@ -138,7 +140,9 @@ object HandsFreeMessages {
         val s = f.settings
         if (!s.on || !s.announce) return
         if (RobotVoiceService.instance == null) return
-        val car = CarModeController.on
+        // In the car only while it is there: car mode started without a car, or the car gone (its last 30 s), is not
+        // the car, and an announcement then needs private headphones like anywhere else.
+        val car = CarModeController.on && CarModeController.carSeen() != null
         val headphones = if (car) null else privateHeadphones()
         if (!car && headphones == null) return log(AnnounceCode.NOT_PRIVATE)
         val phone = HandsFreeHub.phone()
@@ -216,8 +220,9 @@ object HandsFreeMessages {
         val guard = HandsFreeHub.headset.settings.guard(HandsFreeHub.headset.safety, HandsFreeHub.car.settings.readAloud)
         val ok = when (val d = OutputGuard.decide(u, ctx, guard)) {
             is OutputDecision.Speak -> true
-            // The car's "Others may hear it. Read it aloud?" is what the announcement asks.
-            is OutputDecision.Ask -> f.car && !f.readNow
+            // The car's "Others may hear it. Read it aloud?" is what the announcement asks: in the car's session only, never
+            // a headset's "Is it headphones only you can hear?".
+            is OutputDecision.Ask -> f.car && !f.readNow && s.kind == SessionKind.CAR && d.what == AskWhat.READ_ALOUD
             is OutputDecision.Hold -> { VoiceLog.add(VoiceEvent.OUTPUT_HELD, d.why, s.kind.id, s.headsetNumber()); false }
         }
         if (!ok) {

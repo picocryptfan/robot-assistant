@@ -229,6 +229,22 @@ class RoutineGateTest {
         assertEquals("Ran “Morning” · 1 done, 2 waiting for unlock, 1 didn't work", ReadyCards.runSummary("Morning", 1, 0, 2, 1))
     }
 
+    /**
+     * A Ready notification's tap needs no unlock: on the lock screen a card whose step needs the unlock stays for after it
+     * (nobody, you or someone holding the phone, uses it up by a tap that can't do it). Unlocked it is done and goes.
+     */
+    @Test fun aReadyCardTappedOnTheLockScreenStaysForTheUnlock() {
+        val today = LocalDate.of(2026, 10, 12)
+        val card = ReadyCard("r", "Leaving work", steps.getValue("open_app"), 1_000L, today)
+        val locked = go("open_app", RunOrigin.READY_TAP, locked = true)
+        assertEquals(StepGo.WAIT_UNLOCK, locked)
+        assertTrue(ReadyCards.keptOnTap(card, locked))
+        assertFalse(ReadyCards.keptOnTap(card, go("open_app", RunOrigin.READY_TAP, locked = false)))
+        assertFalse(ReadyCards.keptOnTap(card.copy(step = steps.getValue("send_text")), go("send_text", RunOrigin.READY_TAP, locked = false)))
+        // A missed run (the whole routine) runs what it can and says what needs the unlock.
+        assertFalse(ReadyCards.keptOnTap(card.copy(missed = LocalTime.of(7, 0)), locked))
+    }
+
     @Test fun routineSettingsDefaultsFollowTheDesign() {
         assertTrue(rs.runLocked)
         assertTrue(rs.online)

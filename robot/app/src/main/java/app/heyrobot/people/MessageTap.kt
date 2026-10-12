@@ -151,12 +151,16 @@ object MessageTap {
         }
     }
 
-    /** Do Not Disturb lets [sbn] through now (Ranking.matchesInterruptionFilter); true when the listener can't say. */
+    /**
+     * Do Not Disturb lets [sbn] through now (Ranking.matchesInterruptionFilter). Fails closed (core MessageDnd): when the
+     * listener can't say, the message isn't announced (it stays in its app, as Do Not Disturb would keep it).
+     */
     private fun dndAllows(sbn: StatusBarNotification): Boolean = try {
         val r = android.service.notification.NotificationListenerService.Ranking()
-        listener?.currentRanking?.getRanking(sbn.key, r)?.let { found -> !found || r.matchesInterruptionFilter() } ?: true
+        val found = listener?.currentRanking?.getRanking(sbn.key, r)
+        app.heyrobot.core.messages.MessageDnd.allows(found, found == true && r.matchesInterruptionFilter())
     } catch (_: Throwable) {
-        true
+        false
     }
 
     /** [MAIN] onNotificationRemoved: its conversation goes (or is kept for "Keep messages for"). */

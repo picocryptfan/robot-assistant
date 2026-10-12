@@ -8,6 +8,36 @@ import java.util.Locale
 // Parakeet v3) and counts the words it got wrong (Wer). The audio stays in memory; what is kept is numbers only (voice
 // log event 117), and "Copy report" copies numbers unless you tick "Include sentences".
 
+/**
+ * 0.8: the microphone a line was recorded with: the phone's, or a headset's or the car's (Settings › Voice ›
+ * Transcription check › Microphone, offered while one with a microphone is connected), routed as a headset or car session
+ * routes it ([CheckMics.route]), so the headset's microphone can be measured against the phone's (headset mode's H0.5,
+ * car mode's C0.3).
+ */
+enum class CheckMic(val title: String) {
+    PHONE("phone mic"),
+    HEADSET("headset mic"),
+}
+
+object CheckMics {
+    /**
+     * The route the check records through for [CheckMic.HEADSET], as a headset or car session would take it
+     * ([RoutePlanner]: the call route and the capture pinned to the headset's microphone, the car's call route for car
+     * mode's [car]): a Bluetooth headset with a microphone first, else a wired or USB one. Null when none is connected
+     * (or none has a microphone): the choice isn't offered then.
+     */
+    fun route(devices: List<app.heyrobot.core.output.SeenDevice>, memory: app.heyrobot.core.output.DeviceMemory,
+        car: app.heyrobot.core.output.SeenDevice? = null): app.heyrobot.core.headset.RoutePlan? {
+        for (entry in listOf(app.heyrobot.core.headset.EntryKind.BVRA, app.heyrobot.core.headset.EntryKind.HOOK)) {
+            val d = app.heyrobot.core.headset.RoutePlanner.plan(entry, devices, memory, app.heyrobot.core.headset.HeadsetSettings(),
+                callActive = false, car = car, wakeInCar = false)
+            val plan = (d as? app.heyrobot.core.headset.RouteDecision.Plan)?.plan ?: continue
+            if (plan.mic != app.heyrobot.core.headset.MicRoute.PHONE) return plan
+        }
+        return null
+    }
+}
+
 /** How a line of the check was made. */
 enum class CheckMode(val title: String) {
     /** One of [CheckSentences], read aloud. */
@@ -78,12 +108,14 @@ data class CheckLine(
     val decodeMs: Long,
     val audioMs: Long,
     val reader: Int = 1,
+    /** 0.8: the microphone it was recorded with. */
+    val mic: CheckMic = CheckMic.PHONE,
 ) {
     val wer: WerResult by lazy { Wer.score(reference, heard) }
 }
 
-/** One language's lines together. [readers]: different readers among them. */
-data class CheckTotal(val lang: String, val lines: Int, val readers: Int, val result: WerResult) {
+/** One language's lines together, recorded with [mic] (0.8). [readers]: different readers among them. */
+data class CheckTotal(val lang: String, val lines: Int, val readers: Int, val result: WerResult, val mic: CheckMic = CheckMic.PHONE) {
     val mark: Double get() = if (lang == "fr") Wer.PASS_FR else Wer.PASS_EN
 
     val passes: Boolean get() = Wer.passes(result, lang)
@@ -116,10 +148,13 @@ object CheckReport {
         else -> lang.uppercase(Locale.ROOT)
     }
 
-    /** Per language, French first; languages with no line are left out. */
-    fun totals(lines: List<CheckLine>): List<CheckTotal> = lines.groupBy { it.lang }.entries
-        .sortedBy { (lang, _) -> if (lang == "fr") 0 else if (lang == "en") 1 else 2 }
-        .map { (lang, ls) -> CheckTotal(lang, ls.size, ls.map { it.reader }.distinct().size, Wer.total(ls.map { it.wer })) }
+    /**
+     * Per language, French first; languages with no line are left out. 0.8: per microphone too (the phone's first), so
+     * the headset's lines are never counted with the phone's.
+     */
+    fun totals(lines: List<CheckLine>): List<CheckTotal> = lines.groupBy { it.lang to it.mic }.entries
+        .sortedWith(compareBy({ (k, _) -> if (k.first == "fr") 0 else if (k.first == "en") 1 else 2 }, { (k, _) -> k.second.ordinal }))
+        .map { (k, ls) -> CheckTotal(k.first, ls.size, ls.map { it.reader }.distinct().size, Wer.total(ls.map { it.wer }), k.second) }
 
     /** "12% of words wrong (9% with accents not counted) over 20 lines, 2 readers. Pass mark 15%: passes." */
     fun summary(t: CheckTotal): String {
@@ -127,7 +162,8 @@ object CheckReport {
         val accents = if (t.result.accents > 0) " ($noAccents% with accents not counted)" else ""
         val readers = if (t.readers == 1) "1 reader" else "${t.readers} readers"
         val need = if (t.lang == "fr" && !t.enough) " The gate needs $GATE_LINES lines from $GATE_READERS readers." else ""
-        return "${langName(t.lang)}: ${t.result.percent}% of words wrong$accents over ${t.lines} line${if (t.lines == 1) "" else "s"}, $readers. " +
+        val mic = if (t.mic == CheckMic.PHONE) "" else ", ${t.mic.title}"
+        return "${langName(t.lang)}$mic: ${t.result.percent}% of words wrong$accents over ${t.lines} line${if (t.lines == 1) "" else "s"}, $readers. " +
             "Pass mark ${Math.round(t.mark * 100)}%: ${t.verdict.title}.$need"
     }
 
@@ -136,7 +172,8 @@ object CheckReport {
         val w = l.wer
         val acc = if (w.accents > 0) " · ${w.accents} accent${if (w.accents == 1) "" else "s"}" else ""
         val heardAs = l.detected?.uppercase(Locale.ROOT) ?: "?"
-        return "$n. ${l.lang.uppercase(Locale.ROOT)} ${l.mode.title} · reader ${l.reader} · ${w.errors} of ${w.words} words wrong (${w.percent}%)$acc · " +
+        val mic = if (l.mic == CheckMic.PHONE) "" else " · ${l.mic.title}"
+        return "$n. ${l.lang.uppercase(Locale.ROOT)} ${l.mode.title} · reader ${l.reader}$mic · ${w.errors} of ${w.words} words wrong (${w.percent}%)$acc · " +
             "heard as $heardAs · decoded in ${l.decodeMs} ms · " + String.format(Locale.US, "%.1f s", l.audioMs / 1000.0)
     }
 

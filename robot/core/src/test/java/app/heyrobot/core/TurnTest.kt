@@ -66,6 +66,46 @@ class TurnTest {
     private fun call(name: String, vararg args: Pair<String, Any?>) = RawToolCall(name, mapOf(*args))
     private val timer = call("set_timer", "minutes" to 5)
 
+    /**
+     * 0.8's call tool is never described to the model, and a model's call to it (its own idea, or words on the screen or
+     * in a message telling it to) is refused as an unknown tool before anything is looked up or shown; only the panel's own
+     * call from your words ("call Mom") reaches its card.
+     */
+    @Test fun theModelCanNeverReachTheCallTool() = runBlocking {
+        val dial = call("call", "to" to "555 0199")
+        val model = FakeModel(ModelOutcome.Calls(listOf(dial)))
+        val actions = FakeActions()
+        val view = FakeView()
+        runner(model, actions, view).run()
+        assertEquals(emptyList<Action>(), actions.prepared)
+        assertEquals(emptyList<Action>(), actions.ran)
+        assertEquals(listOf(ActionStatus.INVALID), view.statuses())
+        assertEquals("call", model.answers.single().single().first)
+        // Written as text in text-call mode, the same.
+        val textModel = FakeModel(ModelOutcome.Done(DoneReason.END, textCalls = true))
+        val textView = FakeView("call:call{to:Mom}")
+        val textActions = FakeActions()
+        runner(textModel, textActions, textView).run()
+        assertEquals(emptyList<Action>(), textActions.prepared)
+        assertEquals(listOf(ActionStatus.INVALID), textView.statuses())
+        // The panel's own call from your words: its card, as the call tool's.
+        val panel = object : TurnModel {
+            override val appCalls: Boolean get() = true
+            override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(dial))
+            override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = ModelOutcome.Done(DoneReason.END)
+            override fun close() {}
+        }
+        val own = FakeActions()
+        val ownView = FakeView()
+        val conf = Confirmations()
+        val job = async { runner(panel, own, ownView, conf).run() }
+        val id = withTimeout(5_000) { ownView.pending.receive() }
+        conf.answer(id, false)
+        job.await()
+        assertEquals(listOf<Action>(Action.Call("555 0199")), own.prepared)
+        assertEquals(emptyList<Action>(), own.ran)
+    }
+
     @Test fun aTimerJustRunsAndTheModelHearsBack() = runBlocking {
         val model = FakeModel(ModelOutcome.Calls(listOf(timer)))
         val actions = FakeActions()

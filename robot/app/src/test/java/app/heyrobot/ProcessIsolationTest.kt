@@ -970,6 +970,96 @@ class ProcessIsolationTest {
     }
 
     /**
+     * 0.8 review: an unattended routine's parts are decided by where Robot's voice goes now (getAudioDevicesForAttributes)
+     * and car mode's car with its "Read aloud when others may hear" (core RoutineOutputs).
+     */
+    @Test fun anUnattendedRoutineSpeaksByItsActualRoute() {
+        val voice = code(File(java("app"), "app/heyrobot/assistant/routines/RoutineVoice.kt"))
+        assertTrue(voice.contains("RoutineOutputs.decide(part, s.routine.output, phone(), route(), s.everything)"))
+        val route = voice.substringAfter("private fun route(): RoutineRoute {").substringBefore("\n    }\n")
+        assertTrue(route, route.contains("am.getAudioDevicesForAttributes(attrs)") && route.contains("CarModeController.carSeen()") &&
+            route.contains("HandsFreeHub.car.settings.readAloud"))
+    }
+
+    /**
+     * 0.8 review: Clock's ALARM_ALERT counts only when Clock's own next alarm, read before it (now and at each
+     * ACTION_NEXT_ALARM_CLOCK_CHANGED), vouches for it (core AlarmCheck), checked before AlarmWatch sees it.
+     */
+    @Test fun onlyClocksOwnAlarmReachesTheRoutines() {
+        val hub = code(File(java("app"), "app/heyrobot/assistant/routines/RoutineHub.kt"))
+        val onClock = hub.substringAfter("private fun onClock(").substringBefore("\n    }\n")
+        assertTrue(onClock, onClock.indexOf("if (!AlarmCheck.admits(seenAlarms, signal)) {") in 0 until onClock.indexOf("step(signal)"))
+        assertEquals(1, Regex("\\bstep\\(AlarmSignal\\.Alert\\(").findAll(hub).count() + Regex("\\bstep\\(signal\\)").findAll(hub).count())
+        assertTrue(hub.contains("IntentFilter(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)"))
+        assertTrue(hub.contains("VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM)"))
+    }
+
+    /** 0.8 review: a new message is announced only when Do Not Disturb's answer was read and lets it through (fails closed). */
+    @Test fun doNotDisturbFailsClosedForAnnouncements() {
+        val tap = code(File(java("app"), "app/heyrobot/people/MessageTap.kt"))
+        val dnd = tap.substringAfter("private fun dndAllows(").substringBefore("\n    }\n")
+        assertTrue(dnd, dnd.contains("app.heyrobot.core.messages.MessageDnd.allows(found, found == true && r.matchesInterruptionFilter())"))
+        assertTrue(dnd, dnd.contains("catch (_: Throwable) {\n        false"))
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/VoiceHub.kt")).contains("i.getBooleanExtra(Cmd.EXTRA_DND, false)"))
+    }
+
+    /** 0.8 review: the headset whose button sent VOICE_COMMAND (EXTRA_DEVICE) is the one told Robot listens, else the first. */
+    @Test fun theHeadsetThatPressedIsTheOneAnswered() {
+        val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/HandsFreeHub.kt"))
+        assertTrue(hf.contains("if (d.ackBvra) ackVoiceRecognition(ctx, buttonDevice(intent))"))
+        assertTrue(hf.contains("intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)"))
+        assertTrue(hf.contains("val target = from?.takeIf { f -> connected.any { it.address == f.address } } ?: connected.firstOrNull()"))
+    }
+
+    /**
+     * 0.8, Settings › Voice › Transcription check › Microphone: Headset records through the headset as a session listens
+     * (its call route and pinned input, core CheckMics), only once its input is the one capturing, never over a session's
+     * or a call's audio, and lets the route go whenever the recording stops.
+     */
+    @Test fun theTranscriptionCheckRecordsTheHeadsetAsASessionWould() {
+        val check = code(File(java("app"), "app/heyrobot/assistant/conversation/TranscriptionCheckActivity.kt"))
+        val take = check.substringAfter("private fun takeHeadset(").substringBefore("\n    }\n")
+        assertTrue(take, take.indexOf("if (HandsFreeHub.session != null)") in 0 until take.indexOf("SessionRoute.take(this, routeOwner, out)"))
+        assertTrue(take, take.indexOf("if (HandsFreeHub.callActive())") in 0 until take.indexOf("SessionRoute.take(this, routeOwner, out)"))
+        assertTrue(take, take.contains("CaptureRoute.set(plan.capture == CaptureSource.VOICE_COMMUNICATION, headsetInput(plan))"))
+        val release = check.substringAfter("private fun releaseHeadset(").substringBefore("\n    }\n")
+        assertTrue(release, release.contains("SessionRoute.release(this, routeOwner)") && release.contains("CaptureRoute.clear()"))
+        assertTrue(check.substringAfter("private fun stopRecording(").substringBefore("\n    }\n").contains("releaseHeadset()"))
+        assertTrue(check.contains("CheckMics.route(AudioDevices.all(this), HandsFreeFiles.store(this).devices(), CarModeController.carSeen())"))
+        // The headset's frames only once its input captures: the sink is added after the route check, never before it.
+        val start = check.substringAfter("private fun startRecording(").substringBefore("\n    }\n")
+        assertTrue(start, start.contains("if (plan == null) source?.addSink(sink) else waitForHeadset(plan)"))
+        val wait = check.substringAfter("private fun waitForHeadset(").substringBefore("\n    }\n")
+        assertTrue(wait, wait.indexOf("if (routedTo(plan)) {") in 0 until wait.indexOf("source?.addSink(sink)"))
+        assertEquals(1, Regex("SessionRoute\\.take\\(").findAll(check).count())
+    }
+
+    /**
+     * A routine or the brief asked for in a headset or car session speaks through OutputGuard like any answer: the brief's
+     * parts in the panel (RoutineVoice's panel surface) line by line with the part's own personal mark, and a routine's
+     * own sentences and your brief reminders as personal (never on headphones Robot doesn't know are private).
+     */
+    @Test fun routineSpeechInASessionPassesOutputGuard() {
+        val voice = code(File(java("app"), "app/heyrobot/assistant/routines/RoutineVoice.kt"))
+        val play = voice.substringAfter("private fun playCurrent() {").substringBefore("\n    }\n")
+        assertTrue(play, play.contains("val lines = if (s.surface == Surface.PANEL) part.lines.filter { l -> PanelHandsFree.allow(SpeechText.clean(l)) { part.personal } } else part.lines"))
+        assertTrue(play, play.contains("lines.forEach(::say)") && !play.contains("part.lines.forEach(::say)"))
+        val panel = code(File(java("app"), "app/heyrobot/assistant/routines/PanelRoutines.kt"))
+        assertTrue(panel.contains("is RoutineStep.Say -> { host.append(replyId, step.text); host.say(step.text, personal = true) }"))
+        assertTrue(panel.contains("host.append(replyId, line)\n                        host.say(line, personal = true)"))
+        val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        assertTrue(pc.contains("override fun say(sentence: String, personal: Boolean) { if (_state.value.speak) speakSentence(sentence, personal = personal) }"))
+        assertTrue(pc.contains("if (!PanelHandsFree.allow(clean) { personal || personalNow(_state.value.turns.lastOrNull()?.id).isNotEmpty() }) return"))
+        // "What's next" says your calendar: personal too.
+        val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/PanelHandsFree.kt"))
+        assertTrue(hf.contains("val line = WhatsNext.line(events, now, lang)\n        host.text(replyId, line)\n        host.say(line, personal = true)"))
+        // A Ready card's tap on the lock screen keeps a card whose step needs the unlock (checked before it is used up).
+        val ready = panel.substringAfter("private suspend fun ready(").substringBefore("\n    }\n")
+        val kept = ready.indexOf("ReadyCards.keptOnTap(c, RoutineGate.decide(c.step, RunOrigin.READY_TAP, host.locked, routine, VoiceHub.settings, store().settings()))")
+        assertTrue(ready, kept >= 0 && kept < ready.indexOf("store().editReady { list -> list.filterNot { it.key == c.key } }"))
+    }
+
+    /**
      * 0.5.0, phase 5.3 (docs/conversation-mode.md 3, 8): the speaker model is downloaded by the main app only, like every
      * model; the voiceprint is decrypted in the :voice process only, seeds the session and nothing else; nothing about
      * speakers goes online or into a log but numbers.
@@ -1207,6 +1297,10 @@ class ProcessIsolationTest {
         assertTrue(hf.contains("if (!s.on || !s.announce) return"))
         assertTrue(hf.contains("if (phone.locked && s.locked != MessagesLocked.READ_AND_REPLY) return log(AnnounceCode.LOCKED)"))
         assertTrue(hf.contains("val ok = when (val d = OutputGuard.decide(u, ctx, guard))"))
+        // The car only while it is there (car mode for no car, or its last 30 s after the car went, needs private
+        // headphones); the car's "Read it aloud?" never stands in for a headset's "Is it headphones only you can hear?".
+        assertTrue(hf.contains("val car = CarModeController.on && CarModeController.carSeen() != null"))
+        assertTrue(hf.contains("is OutputDecision.Ask -> f.car && !f.readNow && s.kind == SessionKind.CAR && d.what == AskWhat.READ_ALOUD"))
         assertTrue(hf.contains("HandsFreeReplies.of(held, s, phone.locked, MessagePeople.withoutCard(held, people, f.noCard))"))
         assertTrue(hf.contains("if (st.step == MessageStep.READ_BACK && !PanelMessages.voiceYesNow())"))
         // The only reply it sends is the one MessageFlow read back and you confirmed, through the main process's bridge.

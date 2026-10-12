@@ -344,6 +344,9 @@ class VoiceLogTest {
         assertEquals("Clock alarm ended: snoozed after 2 min", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ALARM_END, AlarmEnd.SNOOZED.id, 2)))
         assertEquals("Routine not run after the first unlock: already ran today",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_SKIPPED, SkipWhy.ALREADY_RAN.id, TriggerKind.UNLOCK.id)))
+        // 0.8 review: an ALARM_ALERT Clock's next alarm didn't vouch for.
+        assertEquals("Routine not run after an alarm turned off: not Clock's own alarm, ignored",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM.id, TriggerKind.ALARM.id)))
         assertEquals("Routine ran: 3 steps · 1 left for you · 2.5 s", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_RUN, 3, 1, 2500)))
         assertEquals("Routine step: open app · ready card", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_STEP, StepCode.OPEN_APP.id, StepGo.READY.id)))
         assertEquals("Routine step: weather · ran · didn't work",
