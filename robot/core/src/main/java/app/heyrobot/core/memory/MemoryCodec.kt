@@ -39,6 +39,7 @@ object MemoryCodec {
             i.expiresAt?.let { put("expires", it) }
             if (i.uses > 0) put("uses", i.uses)
             i.usedAt?.let { put("used", it) }
+            i.imported?.let { put("imported", it.name) }
         })
     }).put("suggestions", JSONArray().apply {
         for (s in f.suggestions) put(JSONObject().put("id", s.id).put("text", s.text).put("kind", s.kind.name).put("created", s.createdAt))
@@ -47,7 +48,8 @@ object MemoryCodec {
     /**
      * The file in [text]. No text is an empty file. An entry with a bad id, no text or a repeated id is dropped and
      * counted; text past [MemoryLimits.MAX_CHARS] is cut. An unknown kind reads as a fact, and an unknown source as
-     * [MemorySource.CONTENT]: what Robot can't place is never taken for your own words.
+     * [MemorySource.CONTENT]: what Robot can't place is never taken for your own words (an unknown import mark, 1.0, as
+     * [MemoryImported.CONTENT] too).
      */
     fun read(text: String?): MemoryParse {
         if (text.isNullOrBlank()) return MemoryParse.Ok(MemoryFile())
@@ -97,6 +99,7 @@ object MemoryCodec {
             expiresAt = if (o.has("expires")) o.optLong("expires") else null,
             uses = o.optInt("uses", 0).coerceAtLeast(0),
             usedAt = if (o.has("used")) o.optLong("used") else null,
+            imported = if (o.has("imported")) enumOr(o.optString("imported"), MemoryImported.CONTENT) else null,
         )
     }
 

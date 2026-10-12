@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "exportedBy": "a field Robot doesn't know",
+  "items": [
+    {
+      "id": "m_00mfqe0w0ab12cd",
+      "text": "My sister Julie's birthday is May 3",
+      "kind": "FACT",
+      "source": "SAID",
+      "lang": "en",
+      "created": 1757160000000,
+      "updated": 1765800000000,
+      "uses": 4,
+      "used": 1791288000000,
+      "imported": "YOURS"
+    },
+    {
+      "id": "m_00mfqe0w0ef34gh",
+      "text": "Call me Sam",
+      "kind": "PREFERENCE",
+      "pinned": true,
+      "source": "TYPED",
+      "created": 1765800000000,
+      "updated": 1765800000000,
+      "colour": "blue"
+    },
+    {
+      "id": "m_00mfqe0w0kl90mn",
+      "text": "The spare key is under the blue pot",
+      "kind": "FACT",
+      "source": "SAID",
+      "created": 1786536000000,
+      "updated": 1786536000000,
+      "imported": "CONTENT"
+    },
+    {
+      "id": "m_00mfqe0w0op12qr",
+      "text": "Bob's flight lands Friday at six",
+      "kind": "FACT",
+      "source": "CONTENT",
+      "sourceLabel": "something Robot read in a conversation",
+      "created": 1789128000000,
+      "updated": 1789128000000
+    }
+  ],
+  "suggestions": [],
+  "negatives": []
+}

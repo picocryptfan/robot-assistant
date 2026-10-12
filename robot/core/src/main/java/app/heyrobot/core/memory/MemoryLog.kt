@@ -73,3 +73,22 @@ enum class MemCommandCode(override val id: Int, override val title: String) : Lo
         }
     }
 }
+
+/**
+ * 1.0, Settings › Memory › Import (VoiceEvent.MEM_IMPORT, b): how it ended. Memory's ids 180 to 189 are taken or kept for
+ * phases 7.4 and 7.5, so the event is 230.
+ */
+enum class MemImportCode(override val id: Int, override val title: String) : LogCode {
+    CONTENT(1, "imported as something Robot read"), YOURS(2, "imported as your own"), TOO_BIG(3, "the file is over 5 MB"),
+    NOT_EXPORT(4, "not a memory export"), TOO_NEW(5, "made by a newer Robot"), TOO_MANY(6, "more than 5,000 items"),
+    UNREADABLE(7, "the file couldn't be read"), LOCKED(8, "the phone was locked"), NOT_SAVED(9, "memory couldn't be changed");
+
+    companion object {
+        fun of(p: ImportProblem): MemImportCode = when (p) {
+            ImportProblem.TOO_BIG -> TOO_BIG
+            ImportProblem.NOT_EXPORT -> NOT_EXPORT
+            ImportProblem.TOO_NEW -> TOO_NEW
+            ImportProblem.TOO_MANY -> TOO_MANY
+        }
+    }
+}

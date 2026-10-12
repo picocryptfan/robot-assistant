@@ -147,9 +147,18 @@ object PromptPacking {
         return if (tail.isEmpty()) "• $text" else "• $text ($tail)"
     }
 
-    /** Where an item kept from content came from ("from a message from Mom"); null for your own words. */
-    private fun from(item: MemoryItem): String? =
-        if (item.tainted) item.sourceLabel?.let { "from ${ScreenText.sanitize(it).replace(Regex("\\s+"), " ").trim()}" } ?: "not from the user's own words" else null
+    /**
+     * Where an item kept from content came from ("from a message from Mom"); null for your own words. One that is content
+     * only because it was imported (1.0, not yet "This is mine") says so.
+     */
+    private fun from(item: MemoryItem): String? = when {
+        !item.tainted -> null
+        item.source.own -> IMPORTED
+        else -> item.sourceLabel?.let { "from ${ScreenText.sanitize(it).replace(Regex("\\s+"), " ").trim()}" } ?: "not from the user's own words"
+    }
+
+    /** An imported item the user hasn't confirmed as theirs: it may come from someone else's file. */
+    const val IMPORTED = "imported from a file, not confirmed as the user's own words"
 
     /**
      * The question names a secret item: it shares two search terms with it ("what's my door code?" and "The door code

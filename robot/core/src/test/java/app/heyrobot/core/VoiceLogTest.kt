@@ -71,7 +71,7 @@ class VoiceLogTest {
             app.heyrobot.core.car.ReplyEnd.entries, app.heyrobot.core.car.NavKind.entries, app.heyrobot.core.headset.EndWhy.entries,
             // 0.7, memory and feedback.
             app.heyrobot.core.memory.MemOrigin.entries, app.heyrobot.core.memory.MemKindCode.entries, app.heyrobot.core.memory.MemForget.entries,
-            app.heyrobot.core.memory.MemLock.entries, app.heyrobot.core.memory.MemCommandCode.entries,
+            app.heyrobot.core.memory.MemLock.entries, app.heyrobot.core.memory.MemCommandCode.entries, app.heyrobot.core.memory.MemImportCode.entries,
             FeedbackKind.entries, FeedbackEntry.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
@@ -125,7 +125,13 @@ class VoiceLogTest {
             VoiceEvent.MEM_COMMAND, VoiceEvent.MEM_KEY)
         assertEquals(listOf(180, 181, 182, 184, 185, 188, 189), memory.map { it.id })
         assertEquals(memory.toSet(), VoiceEvent.entries.filter { it.id in 180..189 }.toSet())
-        assertTrue(VoiceEvent.entries.none { it.name.startsWith("MEM_") && it.id !in 180..189 })
+        // 1.0's import has no free id there (183, 186 and 187 stay reserved): it is 230, after feedback's 220 to 229.
+        assertEquals(230, VoiceEvent.MEM_IMPORT.id)
+        assertTrue(VoiceEvent.entries.none { it.name.startsWith("MEM_") && it.id !in 180..189 && it != VoiceEvent.MEM_IMPORT })
+        assertEquals("Memory import: 3 items imported as something Robot read · 2 skipped",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MEM_IMPORT, 3, app.heyrobot.core.memory.MemImportCode.CONTENT.id, 2)))
+        assertEquals("Memory import: not a memory export",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MEM_IMPORT, 0, app.heyrobot.core.memory.MemImportCode.NOT_EXPORT.id, 0)))
         // Every source, load and command has a code of its own.
         assertEquals(app.heyrobot.core.memory.MemorySource.entries.size,
             app.heyrobot.core.memory.MemorySource.entries.map { app.heyrobot.core.memory.MemOrigin.of(it) }.toSet().size)

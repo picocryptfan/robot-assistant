@@ -222,6 +222,11 @@ enum class VoiceEvent(val id: Int) {
     MEM_COMMAND(188),
     /** "Use memory on the lock screen" changed memory's key: a = 1 the lock screen's key, 0 the unlock-only one; b = 1 if it worked. */
     MEM_KEY(189),
+    /**
+     * 1.0, Settings › Memory › Import (main process; 180 to 189 have no free id): a = items added, b =
+     * [app.heyrobot.core.memory.MemImportCode], c = items skipped. Counts only, never an item's words or the file's name.
+     */
+    MEM_IMPORT(230),
     // Conversation mode (0.5.0, docs/conversation-mode.md 8): 100 to 119. Counts and codes only, never a word said.
     /** A conversation session started: a = [ConvMode], b = [ConvEntry], c = 1 if the phone was locked. */
     CONV_START(100),
@@ -977,6 +982,8 @@ object VoiceLogText {
             VoiceEvent.MEM_COMMAND -> "Memory command: " + code(app.heyrobot.core.memory.MemCommandCode.entries, a) + " (" + code(LangCode.entries, b) + ")" +
                 (if (c > 0) " · " + count(c, "item") else "")
             VoiceEvent.MEM_KEY -> (if (b == 1) "Memory now uses " else "Memory couldn't switch to ") + (if (a == 1) "the lock screen's key" else "the key that needs unlocking")
+            VoiceEvent.MEM_IMPORT -> "Memory import: " + (if (b <= 2) count(a, "item") + " " + code(app.heyrobot.core.memory.MemImportCode.entries, b) +
+                " · $c skipped" else code(app.heyrobot.core.memory.MemImportCode.entries, b))
             VoiceEvent.MODEL_CHOSEN -> "Model chosen: " + code(ModelCode.entries, a) + (if (b > 0 && b != a) " (was " + code(ModelCode.entries, b) + ")" else "")
             VoiceEvent.MODEL_LOADED -> "Model loaded: " + code(ModelCode.entries, a) + " on the " + code(BackendCode.entries, b) + " in " + secs(c)
             VoiceEvent.MODEL_LOAD_FAILED -> "Model didn't load: " + code(ModelCode.entries, a) + " (" + code(LoadFailure.entries, b) + ")"

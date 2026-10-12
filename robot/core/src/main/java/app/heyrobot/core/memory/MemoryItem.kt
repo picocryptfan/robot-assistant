@@ -31,12 +31,27 @@ enum class MemorySource(val title: String) {
 }
 
 /**
+ * 1.0: an item that came from a memory export (Settings › Memory › Import). Settings › Memory labels it "Imported" until
+ * you tap "This is mine" ([MemoryEdits.mine]).
+ */
+enum class MemoryImported {
+    /**
+     * The default: a file can be made by someone else, so the item counts as content, as one kept from something Robot
+     * read does, until you say it is yours. Also an item the file itself marked as content, whatever you ticked.
+     */
+    CONTENT,
+    /** Imported with "These are my own memories, from my own export" ticked: your own words, as its source says. */
+    YOURS,
+}
+
+/**
  * One remembered thing. [text] is as said or edited (at most [MemoryLimits.MAX_CHARS]). [secret]: a PIN, a password, a
  * card or ID number ([SecretDetector], or marked by you): saved, but never pinned, never spoken unless you ask for it by
  * name, never put in a prompt unless the question names it, never sent to a helper. [sourceLabel]: for a [MemorySource.CONTENT]
  * item, where it came from in words ("a message from Mom"), shown and given to the model with it; never the message
  * itself. [about]: People ids it mentions. [language]: "en" or "fr". [expiresAt]: "until tonight" (hidden from then,
- * deleted a day later). [uses]: a counter only, no text of the answers.
+ * deleted a day later). [uses]: a counter only, no text of the answers. [imported]: it came from a memory export (1.0), and
+ * whether it counts as content for that.
  *
  * [toString] never prints the text: an item that reaches a log line or a crash report says only its id and size.
  */
@@ -55,14 +70,18 @@ data class MemoryItem(
     val expiresAt: Long? = null,
     val uses: Int = 0,
     val usedAt: Long? = null,
+    val imported: MemoryImported? = null,
 ) {
-    /** Retrieved into a conversation, it makes that conversation content (later actions follow Safety cards). */
-    val tainted: Boolean get() = !source.own
+    /**
+     * Retrieved into a conversation, it makes that conversation content (later actions follow Safety cards): kept from
+     * something Robot read, or imported and not yet confirmed as yours (1.0 audit, MemoryTaint).
+     */
+    val tainted: Boolean get() = !source.own || imported == MemoryImported.CONTENT
 
     /** Past its end ("until tonight"): never retrieved, deleted by [MemoryEdits.sweep] a day later. */
     fun expired(now: Long): Boolean = expiresAt != null && now >= expiresAt
 
-    override fun toString(): String = "MemoryItem(id=$id, kind=$kind, secret=$secret, pinned=$pinned, source=$source, chars=${text.length})"
+    override fun toString(): String = "MemoryItem(id=$id, kind=$kind, secret=$secret, pinned=$pinned, source=$source, imported=$imported, chars=${text.length})"
 }
 
 /** A suggestion waiting in Settings › Memory › Suggestions: never spoken, never saved without your tap. */
@@ -139,8 +158,12 @@ object MemoryEdits {
     fun clean(text: String): String = ToolCalls.safeTake(text.replace(Regex("\\s+"), " ").trim(), MemoryLimits.MAX_CHARS).trim()
 
     /** The same words, ignoring case, accents and punctuation (so "May 3." and "may 3" are one item). */
-    fun sameText(a: String, b: String): Boolean = MemoryText.fold(a).replace(Regex("[^\\p{L}\\p{N}]+"), "") ==
-        MemoryText.fold(b).replace(Regex("[^\\p{L}\\p{N}]+"), "")
+    fun sameText(a: String, b: String): Boolean = textKey(a) == textKey(b)
+
+    /** What [sameText] compares: folded, letters and digits only. Import keeps them in a set (thousands of items). */
+    fun textKey(text: String): String = MemoryText.fold(text).replace(NOT_WORD, "")
+
+    private val NOT_WORD = Regex("[^\\p{L}\\p{N}]+")
 
     /**
      * Adds [item] (its text cleaned, a secret marked by [SecretDetector] as well). A preference is pinned while fewer than
@@ -191,6 +214,16 @@ object MemoryEdits {
                 it.copy(text = t, secret = secret, pinned = it.pinned && !secret, updatedAt = now)
             }
         })
+    }
+
+    /**
+     * "This is mine" (1.0, an imported item's dialog in Settings › Memory): the Imported label goes, and with it the
+     * content mark the import gave it. Where the item came from stays as its source says (one kept from something Robot
+     * read is still content). Null when [id] is unknown.
+     */
+    fun mine(file: MemoryFile, id: String): MemoryFile? {
+        if (file.items.none { it.id == id }) return null
+        return file.copy(items = file.items.map { if (it.id == id) it.copy(imported = null) else it })
     }
 
     /** One more answer used these items (a counter and a time, no text). */
