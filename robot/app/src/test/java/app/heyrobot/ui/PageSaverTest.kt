@@ -142,6 +142,10 @@ class PageSaverTest {
         assertEquals(AppRoutes.Target(page = Page.Helpers), AppRoutes.target(AppPages.HELPERS))
         assertEquals(AppRoutes.Target(page = Page.Settings(SettingsRoutes.UPDATES)), AppRoutes.target(AppPages.UPDATES))
         assertNull(AppRoutes.target("settings"))
+        // 0.7: a feedback phrase in the panel opens Send feedback with its kind (or none: a bug, as from About).
+        assertEquals(AppRoutes.Target(page = Page.Settings("about/feedback?e=voice&k=idea")), AppRoutes.target("feedback:idea"))
+        assertEquals(AppRoutes.Target(page = Page.Settings("about/feedback?e=voice")), AppRoutes.target(AppPages.FEEDBACK))
+        assertEquals(AppRoutes.Target(page = Page.Settings("about/feedback?e=voice")), AppRoutes.target("feedback:nonsense"))
     }
 
     /** 0.7: Send feedback's route says where it was opened from, its kind and a problem's time, and reads back the same. */

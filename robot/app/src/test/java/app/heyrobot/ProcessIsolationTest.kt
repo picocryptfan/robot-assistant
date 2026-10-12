@@ -514,6 +514,13 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/sys/Feedback.kt", "app/ui/settings/FeedbackSettings.kt"), usersOf(Regex("""\bFeedback(Send|Clipboard)\b""")) - "app/ui/MainActivity.kt")
         assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/settings/FeedbackSettings.kt"),
             usersOf(Regex("""\bFeedbackClipboard\b""")).filter { it != "app/sys/Feedback.kt" })
+        // The panel only hands over your words and opens the page.
+        assertEquals(listOf("app/assistant/PanelController.kt"), usersOf(Regex("""\bFeedbackFiles\.(prefill|openIntent)\(""")))
+        assertEquals(listOf("app/ui/settings/FeedbackSettings.kt"), usersOf(Regex("""\bFeedbackFiles\.takePrefill\(""")))
+        val panel = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        val route = panel.substringAfter("private suspend fun feedbackCommand(").substringBefore("\n    }\n")
+        assertTrue(route, route.contains("host?.launch(FeedbackFiles.openIntent(ctx, c.kind))"))
+        for (bad in listOf("ACTION_SEND", "SENDTO", "Clipboard", "startActivity", "FeedbackSend", "Share")) assertTrue(bad, !route.contains(bad))
         // The prefill file is named in core only; the intent carries the kind alone.
         val sys = code(File(java("app"), "app/heyrobot/sys/Feedback.kt"))
         assertTrue(sys.contains("putExtra(AppPages.EXTRA_FEEDBACK_KIND, kind.name)") && !sys.contains("putExtra(Intent.EXTRA_SUBJECT"))

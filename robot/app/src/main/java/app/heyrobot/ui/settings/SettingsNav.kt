@@ -32,8 +32,8 @@ import kotlin.reflect.KProperty
 
 // MAIN PROCESS. Settings' sub-pages by route (Page.Settings, which survives a recreation as "settings:<route>"), the
 // pages open over the tabs (PageStack: Back goes up one page, as in Android's Settings), and where a link from outside
-// the app opens it (AppRoutes). New pages are added here, with what they need already passed in, so MainActivity never
-// changes for them.
+// the app opens it (AppRoutes; 0.7: Send feedback from the panel). New pages are added here, with what they need already
+// passed in, so MainActivity never changes for them.
 
 object SettingsRoutes {
     const val VOICE = "voice"
@@ -191,6 +191,9 @@ object AppRoutes {
             } ?: AppPages.TRANSCRIPTS
         // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
         // Model from a chat-only model's answer to an action (0.4.3); Settings › About › Updates from the updater's notifications.
+        // 0.7: Send feedback from a feedback phrase in the panel, with its kind only (the words come in a file of Robot's own).
+        i.getStringExtra(AppPages.EXTRA) == AppPages.FEEDBACK ->
+            AppPages.FEEDBACK + (FeedbackKind.of(i.getStringExtra(AppPages.EXTRA_FEEDBACK_KIND))?.let { ":" + it.name.lowercase() } ?: "")
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
             it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.UPDATES }
     }
@@ -207,6 +210,8 @@ object AppRoutes {
         r == AppPages.HELPERS -> Target(page = Page.Helpers)
         r == AppPages.MODEL -> Target(tab = Tab.MODEL)
         r == AppPages.UPDATES -> Target(page = Page.Settings(SettingsRoutes.UPDATES))
+        r == AppPages.FEEDBACK || r.startsWith(AppPages.FEEDBACK + ":") ->
+            Target(page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.of(r.substringAfter(':', "")))))
         else -> null
     }
 }
