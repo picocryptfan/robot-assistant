@@ -110,6 +110,16 @@ object ConversationStore {
     fun delete(ctx: Context, id: String) { file(ctx, id)?.delete() }
 
     /**
+     * 0.7.0: a number that changes when a conversation is saved, added or deleted, by either process (each save renames a
+     * new file into the folder, which changes the folder's time): the folder's time and how many files it holds. Cheap
+     * enough to read once a second while the app shows (ui HistoryWatch).
+     */
+    fun stamp(ctx: Context): Long {
+        val d = Paths.conversations(ctx)
+        return d.lastModified() * 31 + (d.list()?.size ?: 0)
+    }
+
+    /**
      * Settings › Safety & privacy › "Remove saved screenshots and photos": every saved conversation without the pictures
      * and screen text "Keep screenshots and photos in history" kept. Returns how many conversations changed.
      */

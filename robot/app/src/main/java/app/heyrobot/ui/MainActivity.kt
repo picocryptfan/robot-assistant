@@ -308,7 +308,6 @@ fun RobotAppUi(activity: MainActivity) {
     var fromNotesIcon by rememberSaveable { mutableStateOf(false) }
     var settings by remember { mutableStateOf(SettingsStore.load(ctx)) }
     var snap by remember { mutableStateOf(Snapshot()) }
-    var history by remember { mutableStateOf<List<StoredConversation>>(emptyList()) }
     var historyTick by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf<String?>(null) }
     var voiceInstalling by remember { mutableStateOf<VoiceBundle?>(null) }
@@ -404,9 +403,9 @@ fun RobotAppUi(activity: MainActivity) {
             delay(1_000)
         }
     }
-    LaunchedEffect(resumed, historyTick) {
-        if (resumed) history = withContext(Dispatchers.IO) { ConversationStore.list(ctx) }
-    }
+    // History follows the folder (0.7.0): the panel's saves while the app stays open behind it, a delete here, any page.
+    val historyChanges = remember { stampChanges({ ConversationStore.stamp(ctx) }) }
+    val history = rememberHistory(resumed, historyTick, historyChanges) { withContext(Dispatchers.IO) { ConversationStore.list(ctx) } }
     // The assistant adds (and undoes) notes from the panel, which opens over this window without pausing it: read the
     // folder again when the app comes back and whenever the window gets the focus back from the panel.
     LaunchedEffect(resumed, notesTick) {
