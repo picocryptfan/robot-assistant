@@ -187,9 +187,14 @@ fun TermuxSettingsScreen(ui: TermuxUi, act: TermuxPageActions, onBack: () -> Uni
                         Text(TermuxSetup.ALLOW_WARNING, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                SetupStep.TEST -> StatusPreference(l.step.title, l.text, mark(l.mark), action = if (!canRun) null else ({
-                    FilledTonalButton(onClick = { act.run("test") }, modifier = Modifier.semantics { contentDescription = "Test Termux" }) { Text(if (st.testAt > 0) "Again" else "Test") }
-                }))
+                SetupStep.TEST -> {
+                    // 1.0: while a lock holds Termux, the Test says why it can't run, instead of a line about what it would run.
+                    val lock = ui.check.lock
+                    if (lock != null) StatusPreference(l.step.title, testBlocked(lock), Mark.TODO)
+                    else StatusPreference(l.step.title, l.text, mark(l.mark), action = if (!canRun) null else ({
+                        FilledTonalButton(onClick = { act.run("test") }, modifier = Modifier.semantics { contentDescription = "Test Termux" }) { Text(if (st.testAt > 0) "Again" else "Test") }
+                    }))
+                }
                 SetupStep.FOLDER -> StatusPreference(l.step.title, l.text, mark(l.mark), action = if (!canRun || !st.testOk) null else ({
                     val make = st.folderMissing
                     FilledTonalButton(onClick = { confirm = if (make) "folder" else "list" },
@@ -324,6 +329,14 @@ fun TermuxSettingsScreen(ui: TermuxUi, act: TermuxPageActions, onBack: () -> Uni
     }
 }
 
+/** 1.0: why the Test can't run while [lock] holds Termux, and what to do. */
+@Composable
+private fun testBlocked(lock: TermuxLock): String = stringResource(when (lock) {
+    TermuxLock.TEST_KEY -> R.string.termux_test_blocked_test_key
+    TermuxLock.UPDATED -> R.string.termux_test_blocked_updated
+    TermuxLock.SIGNER -> R.string.termux_test_blocked_signer
+})
+
 @Composable
 private fun TrustVersionButton(onClick: () -> Unit) {
     val label = stringResource(R.string.termux_trust_version_label)
@@ -337,9 +350,10 @@ private fun SetUpAgainButton(onClick: () -> Unit) {
 }
 
 /**
- * 1.0, above the checklist: the update lock (Termux changed to …: Trust this version), another signer (Set up again), or
- * the GitHub build's public test key: how to switch to the F-Droid build, and "Run anyway, I understand the risk" (off; a
- * tap and a confirmation, for the trusted version only).
+ * 1.0, above the checklist: the update lock (Termux changed to …: Trust this version), another signer (Set up again), and
+ * the GitHub build's public test key as soon as that build is installed (set up or not, whatever else holds it): how to
+ * switch to the F-Droid build, and, for the build as trusted, "Run anyway, I understand the risk" (off; a tap and a
+ * confirmation, for the trusted version only).
  */
 private fun androidx.compose.foundation.lazy.LazyListScope.termuxLock(ui: TermuxUi, ctx: android.content.Context, onTrustVersion: () -> Unit,
     onSetUpAgain: () -> Unit, onRisk: (Boolean) -> Unit, openFdroid: () -> Unit) {
@@ -356,10 +370,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.termuxLock(ui: Termux
         }
         else -> {}
     }
-    if (c.status != TermuxStatus.TEST_KEY) return
+    if (c.source != TermuxSource.GITHUB) return
     preferenceGroup(null, "lock-test-key") {
         StatusPreference(stringResource(R.string.termux_lock_title_test_key), TermuxWords.lock(ctx, c, TermuxLock.TEST_KEY), if (c.testKeyRisk) Mark.WARN else Mark.TODO)
-        SwitchPreference(stringResource(R.string.termux_risk_title),
+        // Another signer or an update asks for Set up again or Trust this version first; then Run anyway is for this version.
+        if (c.status == TermuxStatus.TEST_KEY) SwitchPreference(stringResource(R.string.termux_risk_title),
             when {
                 s.trustedSigner == null -> stringResource(R.string.termux_risk_untrusted)
                 c.testKeyRisk -> stringResource(R.string.termux_risk_on, c.version ?: "?")

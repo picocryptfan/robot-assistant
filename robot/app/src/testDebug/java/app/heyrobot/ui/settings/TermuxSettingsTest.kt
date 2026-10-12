@@ -142,6 +142,52 @@ class TermuxSettingsTest {
         assertEquals(listOf("fdroid", "trust RISK_ON"), log)
     }
 
+    /**
+     * 1.0: the GitHub build says so as soon as it is installed (after Set up again, before any trust): the public test key
+     * sentence and the steps to the F-Droid build, Run anyway waiting for Trust, and the Test saying why it can't run
+     * instead of being hidden.
+     */
+    @Test fun theGitHubBuildSaysSoAsSoonAsItIsInstalled() {
+        val github = fdroid.copy(signers = listOf(TermuxIdentity.GITHUB))
+        open(TermuxUi(check = TermuxIdentity.check(github), granted = true))
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.onNodeWithText("This Termux is signed with a public test key", substring = true).assertExists()
+        rule.scrollToText("Install Termux from F-Droid, open it once", substring = true)
+        rule.scrollToText("Run anyway, I understand the risk")
+        rule.onNode(hasText("Run anyway, I understand the risk") and isToggleable()).assertIsOff().assertIsNotEnabled()
+        rule.onNodeWithText("Trust this Termux first").assertExists()
+        rule.scrollToText("Robot runs nothing in the GitHub build, not even the Test", substring = true)
+        rule.onNodeWithContentDescription("Test Termux").assertDoesNotExist()
+        rule.scrollToText("Trust this Termux")
+        rule.onNodeWithContentDescription("Trust this Termux").assertExists()
+    }
+
+    /** 1.0: another signer that is the GitHub build: Set up again first, with the test key's sentence and the way to F-Droid already. */
+    @Test fun anotherSignerThatIsTheGitHubBuildShowsTheTestKeyToo() {
+        val github = fdroid.copy(signers = listOf(TermuxIdentity.GITHUB))
+        open(ready.copy(check = TermuxIdentity.check(github, ready.settings.trustedSigner, trusted = ready.settings.trusted())))
+        rule.onNodeWithText("Termux is signed with another key than the one you trusted", substring = true).assertExists()
+        rule.onNodeWithText("This Termux is signed with a public test key", substring = true).assertExists()
+        rule.scrollToText("Install Termux from F-Droid, open it once", substring = true)
+        // Run anyway is for the build as trusted: not before Set up again.
+        rule.onNode(hasText("Run anyway, I understand the risk") and isToggleable()).assertDoesNotExist()
+        rule.scrollToText("Robot runs nothing, not even the Test, until you set Termux up again.")
+        rule.onNodeWithContentDescription("Test Termux").assertDoesNotExist()
+    }
+
+    /** 1.0: with Run anyway on for the trusted GitHub build, the Test runs as with F-Droid's. */
+    @Test fun withRunAnywayTheGitHubBuildIsTested() {
+        val github = fdroid.copy(signers = listOf(TermuxIdentity.GITHUB))
+        val s = TermuxSettings().trust(TermuxIdentity.check(github)).copy(testKeyRisk = true)
+        open(TermuxUi(settings = s, check = TermuxIdentity.check(github, s.trustedSigner, trusted = s.trusted()), granted = true))
+        rule.onNodeWithText("Robot runs nothing in the GitHub build, not even the Test", substring = true).assertDoesNotExist()
+        rule.scrollToText("Run anyway, I understand the risk")
+        rule.onNode(hasText("Run anyway, I understand the risk") and isToggleable()).assertIsOn()
+        rule.scrollToText("Robot runs: echo robot-ok; command -v timeout")
+        rule.onNodeWithContentDescription("Test Termux").performClick()
+        assertEquals(listOf("run test"), log)
+    }
+
     @Test fun termuxUpdatesSaysWhatIsNewerAndChecksOnATap() {
         val old = fdroid.copy(versionName = "0.118.2", versionCode = 1001)
         val s = TermuxSettings().trust(TermuxIdentity.check(old))

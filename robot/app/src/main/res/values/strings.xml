@@ -36,6 +36,9 @@
     <string name="termux_risk_off">Off: Robot runs nothing in this Termux</string>
     <string name="termux_risk_on">On for Termux %1$s only: a new version asks again</string>
     <string name="termux_risk_untrusted">Trust this Termux first</string>
+    <string name="termux_test_blocked_test_key">Robot runs nothing in the GitHub build, not even the Test: switch to the F-Droid build, or trust this one and turn on Run anyway above.</string>
+    <string name="termux_test_blocked_updated">Paused: Robot runs nothing, not even the Test, until you tap Trust this version.</string>
+    <string name="termux_test_blocked_signer">Robot runs nothing, not even the Test, until you set Termux up again.</string>
     <string name="termux_risk_dialog_title">Run commands in the GitHub build?</string>
     <string name="termux_risk_dialog_text">This Termux is signed with a public test key: anyone can make an “update” that installs over it, and Robot would then send your commands to it. Robot still pauses after any update and asks again. The F-Droid build doesn\'t have this problem.</string>
     <string name="termux_risk_confirm">Run anyway</string>
