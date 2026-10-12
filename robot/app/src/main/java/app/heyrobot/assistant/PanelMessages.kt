@@ -589,7 +589,8 @@ object PanelMessages {
     /** core ReplyPlanner's plan for the card as it is; false (and the reason said) when it can't be sent this way. */
     private suspend fun plan(p: Pending, f: MessagesFile = MessagesStore.current(ctx), locked: Boolean = Assistant.locked(ctx)): Boolean {
         val lang = p.lang
-        val noCard = p.person?.id?.let { it in f.noCard } == true
+        // Only to the person's own address: a name the sender chose never sends without a card (core MessagePeople).
+        val noCard = MessagePeople.withoutCard(p.thread, people, f.noCard)
         when (val r = ReplyPlanner.plan(p.thread, p.sendText, p.sendSource, f.settings, locked, noCard)) {
             is ReplyPlan.Send -> { p.plan = r; return true }
             is ReplyPlan.HandOff -> {

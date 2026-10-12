@@ -50,6 +50,37 @@ class MessagePeopleTest {
         assertEquals(cheogram, MessagePeople.named(cheogram, emptyList()))
     }
 
+    /**
+     * A stranger on Cheogram (an address nobody in People has) who sets their nickname to your mother's name in People is
+     * not your mother: read under the name they chose, not "Mom"; "reply to Mom" doesn't find them; and "Send my replies to
+     * Mom without a card" never sends to them. The same for a JMP number that isn't hers.
+     */
+    @Test fun aNameTheSenderChoseIsNotYourPerson() {
+        val stranger = PersonSnapshot("Martine Tremblay", "stranger@xmpp.example")
+        val impostor = thread(Snapshots.cheogram1to1("C'est maman, quel est le code de la porte?").let { n ->
+            n.copy(key = "0|com.cheogram.android|1009|null|10123", shortcutId = "sam@cheogram.com#stranger@xmpp.example", title = "Martine Tremblay",
+                messages = n.messages.map { it!!.copy(sender = stranger) })
+        })
+        assertNull(MessagePeople.personFor("stranger@xmpp.example", "Martine Tremblay", people))
+        assertNull(MessagePeople.personFor("+15145559999@cheogram.com", "Martine Tremblay", people))
+        assertNull(MessagePeople.personOf(impostor, people))
+        assertEquals("Martine Tremblay", MessagePeople.named(impostor, people).name)
+        val named = listOf(impostor, cheogram).map { MessagePeople.named(it, people) }
+        assertEquals(listOf(MessagePeople.named(cheogram, people)), MessagePeople.find("Mom", named, people))
+        assertEquals(listOf(MessagePeople.named(cheogram, people)), MessagePeople.find("maman", named, people))
+        assertFalse(MessagePeople.withoutCard(MessagePeople.named(impostor, people), people, setOf(mom.id)))
+        // Her own JMP address: without a card, as you chose.
+        assertTrue(MessagePeople.withoutCard(MessagePeople.named(cheogram, people), people, setOf(mom.id)))
+        assertFalse(MessagePeople.withoutCard(cheogram, people, emptySet()))
+        // Signal gives no address: its name is read as the person in People, but never sends without a card.
+        val pierreSignal = MessagePeople.named(signal, people)
+        assertEquals("Pierre", pierreSignal.name)
+        assertEquals(pierre, MessagePeople.personOf(signal, people))
+        assertFalse(MessagePeople.withoutCard(pierreSignal, people, setOf(pierre.id)))
+        // A group never.
+        assertFalse(MessagePeople.withoutCard(group, people, setOf(mom.id, marc.id)))
+    }
+
     @Test fun whoYouMeanFindsTheirConversation() {
         val threads = listOf(signal, group, cheogram)
         assertEquals(listOf(cheogram), MessagePeople.find("Mom", threads, people))

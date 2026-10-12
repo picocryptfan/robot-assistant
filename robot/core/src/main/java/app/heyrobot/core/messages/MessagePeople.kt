@@ -5,9 +5,10 @@ import java.util.Locale
 
 // Pure. Who wrote a message, in your words (design §B4.6): the name Robot reads aloud is your People alias when the
 // sender's address is one of that person's (Cheogram's JID, or the number of a JMP address against People's phones),
-// else the person's name in People when only the name matches, else the name the notification shows. Only people you
-// confirmed count: a name learned from a notification is whoever sent it's choice, read as given. "Reply to Mom" and
-// "what did Mom say?" find conversations the same way, so the recipient is always a notification's conversation.
+// else, for an app that gives no address (Signal), the person whose name in People the notification shows, else the
+// name the notification shows. Only people you confirmed count: a name learned from a notification is whoever sent it's
+// choice, read as given, and so is a name sent from an address nobody in People has. "Reply to Mom" and "what did Mom
+// say?" find conversations the same way, so the recipient is always a notification's conversation.
 
 object MessagePeople {
     /** [p] can write from [key] (a JID, a phone number, or a JMP address "+15145550101@cheogram.com"), case aside. */
@@ -18,12 +19,34 @@ object MessagePeople {
         return p.phones.any { ph -> phone(ph.number)?.let { it.takeLast(10) == d.takeLast(10) } == true }
     }
 
-    /** The confirmed person whose address is [key], or whose name is [name] (when no address matched anyone). */
+    /**
+     * The confirmed person whose address is [key], or whose name is [name] when the app gives no address Robot can check
+     * (Signal's keys are its own). A sender writing from an address (a JID, a phone number) that is nobody's in People is
+     * nobody in People, whatever name they chose for their app to show (design §B4.6: otherwise the notification's name).
+     */
     fun personFor(key: String?, name: String?, people: List<Person>): Person? {
         val confirmed = people.filter { it.confirmed }
         confirmed.firstOrNull { matchesKey(it, key) }?.let { return it }
+        if (address(key)) return null
         val n = name?.let(MessagesRouter::nameKey)?.takeIf { it.isNotEmpty() } ?: return null
         return confirmed.firstOrNull { MessagesRouter.nameKey(it.name) == n }
+    }
+
+    /**
+     * "Send my replies to … without a card" ([ids]: People ids it is on for) holds for [t]: a one-to-one conversation whose
+     * sender writes from an address of that confirmed person's (Cheogram's JID, a JMP number against their phones). A name
+     * match alone never sends without a card: the sender chose the name their app shows.
+     */
+    fun withoutCard(t: MessageThread, people: List<Person>, ids: Set<String>): Boolean {
+        if (t.isGroup || ids.isEmpty()) return false
+        val key = t.incoming.lastOrNull()?.senderKey ?: return false
+        return people.any { it.confirmed && it.id in ids && matchesKey(it, key) }
+    }
+
+    /** [key] is an address Robot can check against People: a JID or a phone number. */
+    private fun address(key: String?): Boolean {
+        val k = key?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+        return '@' in k || phone(k) != null
     }
 
     /** What you call [p]: the first alias ("mom" read as "Mom"), else their name. */
