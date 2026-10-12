@@ -141,7 +141,10 @@ class PageSaverTest {
         assertEquals(AppRoutes.Target(page = Page.ConversationSettings), AppRoutes.target(AppPages.CONVERSATION_SETTINGS))
         assertEquals(AppRoutes.Target(page = Page.Helpers), AppRoutes.target(AppPages.HELPERS))
         assertEquals(AppRoutes.Target(page = Page.Settings(SettingsRoutes.UPDATES)), AppRoutes.target(AppPages.UPDATES))
-        assertNull(AppRoutes.target("settings"))
+        // 0.7.0: the panel's Settings button opens the Settings tab; anything else unknown opens nothing.
+        assertEquals(AppRoutes.Target(tab = Tab.SETTINGS), AppRoutes.target(AppPages.SETTINGS))
+        assertNull(AppRoutes.target("settings:voice"))
+        assertNull(AppRoutes.target("nonsense"))
         // 0.7: a feedback phrase in the panel opens Send feedback with its kind (or none: a bug, as from About).
         assertEquals(AppRoutes.Target(page = Page.Settings("about/feedback?e=voice&k=idea")), AppRoutes.target("feedback:idea"))
         assertEquals(AppRoutes.Target(page = Page.Settings("about/feedback?e=voice")), AppRoutes.target(AppPages.FEEDBACK))
