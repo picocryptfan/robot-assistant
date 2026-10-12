@@ -33,7 +33,7 @@ class PageSaverTest {
         Page.WakeTest, Page.VoiceLog, Page.AdbFixes, Page.People, Page.PersonEdit("p1"), Page.PersonEdit(null), Page.Safety, Page.Licences,
         Page.Licence("onnxruntime"), Page.Licence("litert-lm", "licenses/notices/litertlm-android-THIRD_PARTY_NOTICE.txt"), Page.Licence(ROBOT_LICENCE),
         Page.Transcripts, Page.Transcript("20261011-1402-7f3a"), Page.Transcript("20261011-1402-7f3a", 12), Page.ConversationSettings,
-        Page.Helpers, Page.Helper("claude"), Page.Helper("h0a9z7k"), Page.AddHelper,
+        Page.Helpers, Page.Helper("claude"), Page.Helper("h0a9z7k"), Page.AddHelper, Page.Guide,
     ) + SETTINGS_ROUTES.map { Page.Settings(it) }
 
     @Test fun everyPageRoundTrips() {
