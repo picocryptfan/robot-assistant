@@ -168,6 +168,14 @@ hasnt 'intent-filter' "$(subtree app.heyrobot.update.InstallStatusReceiver)" "In
 hasnt 'process(0x01010011)' "$(elem app.heyrobot.people.CheogramListener)" "CheogramListener in the main process"
 has '"android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"' "$(elem app.heyrobot.people.CheogramListener)" "CheogramListener guarded by BIND_NOTIFICATION_LISTENER_SERVICE"
 has '"android.service.notification.NotificationListenerService"' "$(subtree app.heyrobot.people.CheogramListener)" "CheogramListener has the listener intent filter"
+# 0.7, messages: the panel's way to them (MessagesBridge) runs in the main process beside the listener that holds them, isn't
+# exported, has no intent filter, and needs Robot's signature permission (it also answers Robot's own uid only, in code).
+bridge=$(elem app.heyrobot.people.MessagesBridge)
+has '"app.heyrobot.people.MessagesBridge"' "$mf" "manifest has MessagesBridge"
+hasnt 'process(0x01010011)' "$bridge" "MessagesBridge in the main process"
+has 'exported(0x01010010)=false' "$bridge" "MessagesBridge not exported"
+has '"app.heyrobot.permission.INTERNAL"' "$bridge" "MessagesBridge guarded by the signature permission"
+hasnt 'intent-filter' "$(subtree app.heyrobot.people.MessagesBridge)" "MessagesBridge has no intent filter"
 # "Pick in Cheogram" runs in :voice and isn't exported (only the panel's card starts it).
 has ':voice' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity not exported"
