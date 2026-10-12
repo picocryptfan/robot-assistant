@@ -33,7 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -87,6 +87,7 @@ import app.heyrobot.ui.SpeakerEdit
 import app.heyrobot.ui.SpeakerEditDialog
 import app.heyrobot.ui.SpeakerView
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.common.TickRow
 import app.heyrobot.ui.theme.RobotTheme
 import java.time.Instant
 import java.time.ZoneId
@@ -318,7 +319,7 @@ class ConversationActivity : ComponentActivity() {
                             TextButton(onClick = { ConversationSession.stop(app.heyrobot.core.ConvStop.USER) }, enabled = ui.status != ConversationSession.Status.STOPPING) { Text("Stop") }
                         }
                         Box {
-                            IconButton(onClick = { menu = true }) { Icon(RIcons.Settings, "More") }
+                            IconButton(onClick = { menu = true }) { Icon(RIcons.MoreVert, "More options") }
                             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                                 if (ui.active) DropdownMenuItem(text = { Text(if (interpreter) "Transcript view" else "Interpreter (face to face)") },
                                     onClick = { menu = false; ConversationSession.setMode(if (interpreter) ConvMode.TRANSCRIBE else ConvMode.INTERPRET) })
@@ -447,7 +448,8 @@ class ConversationActivity : ComponentActivity() {
                 val tag = TranscriptExport.langTag(l)
                 val unsure = l.prior || l.lang == null
                 Surface(shape = RoundedCornerShape(8.dp), color = if (unsure) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    modifier = Modifier.heightIn(min = 24.dp).clip(RoundedCornerShape(8.dp)).then(if (unsure) Modifier.clickable(onClick = onFix) else Modifier)
+                    modifier = (if (unsure) Modifier.minimumInteractiveComponentSize() else Modifier)
+                        .heightIn(min = 24.dp).clip(RoundedCornerShape(8.dp)).then(if (unsure) Modifier.clickable(onClick = onFix) else Modifier)
                         .semantics { contentDescription = if (unsure) "Language: $tag, not sure. Tap to fix." else "Language: $tag" }) {
                     Text(tag, Modifier.padding(horizontal = 8.dp, vertical = 2.dp), style = MaterialTheme.typography.labelMedium)
                 }
@@ -497,10 +499,7 @@ class ConversationActivity : ComponentActivity() {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Before you start", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 Text(ConsentRecord.TEXT, style = MaterialTheme.typography.bodyLarge)
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { tick = !tick }, verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = tick, onCheckedChange = { tick = it })
-                    Text(ConsentRecord.TICK, style = MaterialTheme.typography.bodyLarge)
-                }
+                TickRow(ConsentRecord.TICK, tick, { tick = it })
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
                     TextButton(onClick = onCancel, modifier = Modifier.heightIn(min = 48.dp)) { Text("Cancel") }
                     Button(onClick = { onStart(tick) }, enabled = tick, modifier = Modifier.heightIn(min = 48.dp)) { Text("Start") }

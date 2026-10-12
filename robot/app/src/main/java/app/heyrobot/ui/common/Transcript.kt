@@ -59,6 +59,8 @@ data class TurnUi(
     val screenText: String? = null,
     val actions: List<ActionView> = emptyList(),
     val streaming: Boolean = false,
+    /** 1.0: TalkBack reads the answer once it is complete (the panel while replies aren't spoken; [answerSemantics]). */
+    val announce: Boolean = false,
     val stopped: Boolean = false,
     val error: Boolean = false,
     val helper: Boolean = false,
@@ -175,7 +177,7 @@ private fun ReplyText(t: TurnUi, actions: TurnActions, modifier: Modifier) {
                     Text(t.text, style = MaterialTheme.typography.bodyLarge, color = c.onSurface)
                 }
             } else {
-                SelectionContainer { MarkdownText(t.text) }
+                SelectionContainer(Modifier.answerSemantics(t.streaming, t.announce)) { MarkdownText(t.text) }
             }
         }
         if (t.stopped) {

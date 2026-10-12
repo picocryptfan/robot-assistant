@@ -411,7 +411,8 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         verticalArrangement = Arrangement.spacedBy(transcriptGap()),
     ) {
         items(reversed, key = { it.id }) { t ->
-            val turn = remember(t) { t.toTurnUi() }
+            // 1.0: with replies not spoken, TalkBack reads each answer once it is complete (ui/common answerSemantics).
+            val turn = remember(t, st.speak) { t.toTurnUi().copy(announce = !st.speak) }
             TurnView(turn, turnActions, startsExchange = turn.user && t.id != first)
         }
     }

@@ -325,7 +325,7 @@ fun TranscriptScreen(id: String, focusLine: Int?, snackbar: SnackbarHostState, o
                         }
                     }) { Icon(RIcons.Share, "Share") }
                     Box {
-                        IconButton(onClick = { menu = true }) { Icon(RIcons.Settings, "More") }
+                        IconButton(onClick = { menu = true }) { Icon(RIcons.MoreVert, "More options") }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                             DropdownMenuItem(text = { Text("Summarize") }, enabled = tr.lines.isNotEmpty(), onClick = {
                                 menu = false
