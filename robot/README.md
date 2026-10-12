@@ -80,7 +80,9 @@ Settings file schema 13, as 0.7.0: the new parts keep their own files in `files/
   still to do (R0 to R4, H0 to H3, C0 to C3), with these too:
   1. **Pixel 11, Fast (beta).** Download Fast (beta) on a Pixel 11 and ask something: *done when* it answers on the TPU
      (Settings › Model › In memory now: Fast (beta)); note its load time and speed in the voice log ("Model loaded"), a
-     1k-token prompt and a 256-token answer, MTP on and off. Download the general build too (Settings › Model lists it on a Pixel 11 as "Fast (general build, fallback)", with its Download).
+     1k-token prompt and a 256-token answer. MTP on the TPU is optional: it is off there by a build constant (LiteRT-LM's
+     default, set in `GemmaEngine.kt` for the TPU backend, not a setting), so "MTP on" needs a special build. Download the
+     general build too (Settings › Model lists it on a Pixel 11 as "Fast (general build, fallback)", with its Download).
      Then make the TPU fail once (or wait for a real failure): Fast is the general build on the CPU with "The TPU didn't
      load" and Try the TPU again in Settings › Model.
   2. **Pixel 10.** Fast is still the Tensor G5 build on the TPU, and an own Tensor G6 build says it can't run here.
