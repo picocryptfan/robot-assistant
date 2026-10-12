@@ -454,9 +454,15 @@ object WebAlso {
     const val WIKIPEDIA = "Wikipedia"
     const val OPEN_LIBRARY = "Open Library"
 
-    /** "Who is…", "what is…", "where is…", "qui est…": a question Wikipedia's intro answers. */
+    /**
+     * "Who is…", "what is…", "where is…", "qui est…": a question Wikipedia's intro answers. In an explicit search ("search
+     * the web for who is …", « cherche sur le web qui est … », WebRouter's forms) the words after the routing phrase.
+     */
     fun encyclopedic(question: String): Boolean =
-        Regex("^\\s*(?:who|what|where|qui|qu'est-ce|quel|quelle|ou|où)\\b", RegexOption.IGNORE_CASE).containsMatchIn(question)
+        ENCYCLOPEDIC.containsMatchIn(WebRouter.explicit(question) ?: question)
+
+    /** A letter or digit can't follow: a lookahead, not \b, which the JVM reads as ASCII-only (« où » never ended a word there). */
+    private val ENCYCLOPEDIC = Regex("^\\s*(?:who|what|where|qui|qu['’]est-ce|quel|quelle|ou|où)(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
 
     fun wikipedia(s: WebSettings, service: SearchService, question: String): Boolean =
         service != SearchService.WIKIPEDIA_ONLY && s.wikipedia() && encyclopedic(question)

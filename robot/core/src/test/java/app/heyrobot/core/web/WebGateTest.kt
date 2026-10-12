@@ -70,6 +70,27 @@ class WebGateTest {
         assertEquals("Brave, Wikipedia and Open Library", WebAlso.to(SearchService.BRAVE, listOf(WebAlso.WIKIPEDIA, WebAlso.OPEN_LIBRARY)))
     }
 
+    /**
+     * 1.0: "search the web for who is …" is a who question too: Encyclopedia lookups check the words after the routing
+     * phrase (WebRouter's explicit forms), in English and French, so its card and its "Sent to" line name Wikipedia.
+     */
+    @Test fun anExplicitSearchForWhoIsAsksWikipediaToo() {
+        val wiki = searxng.copy(ask = WebAsk.ALWAYS)
+        for (q in listOf("search the web for who is the mayor of Montreal", "Search online for what is a kilonova", "look up where is Tadoussac online",
+            "google who are the Montreal Canadiens", "Cherche sur le web qui est la mairesse de Montréal", "cherche qui est la mairesse de Montréal en ligne",
+            "recherche où est Tadoussac", "who is the mayor of Montreal")) {
+            assertTrue(q, WebAlso.encyclopedic(q))
+            assertEquals(q, listOf(WebAlso.WIKIPEDIA), WebAlso.names(wiki, SearchService.SEARXNG_HOME, q))
+        }
+        val q = "search the web for who is the mayor of Montreal"
+        val p = ready(WebGate.prepare(search("who is the mayor of Montreal"), wiki, null, QueryContext(said = listOf(q)), 0, question = q))
+        assertTrue(p.note, p.note!!.contains("Robot would send these words to your SearXNG and Wikipedia."))
+        // Not a who/what/where question after the phrase, or Encyclopedia lookups off: the service alone.
+        for (n in listOf("search the web for the mayor of Montreal", "cherche sur le web les horaires du traversier", "search the web for pizza near me"))
+            assertFalse(n, WebAlso.encyclopedic(n))
+        assertEquals(emptyList<String>(), WebAlso.names(wiki.copy(encyclopedia = false), SearchService.SEARXNG_HOME, q))
+    }
+
     @Test fun offOrNotSetUpNothingGoes() {
         val off = WebGate.prepare(search(), WebSettings(), null, mine, 0)
         assertEquals(ActionStatus.DISABLED, (off as Prepared.Refused).status)
