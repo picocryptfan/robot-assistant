@@ -282,10 +282,11 @@ class MemoryAndMessagesTest {
         assertEquals(json, ConversationCodec.toJson(back))
         val again = ConversationCodec.fromJson(ConversationCodec.toJson(back.copy(turns = back.turns + ChatTurn("u2", TurnRole.USER, "thanks", 3L))))!!
         assertEquals(placeholder, again.turns[1].text)
-        // Rebuilt for the model, a past question gets memory's notes again; a message turn stays its placeholder.
+        // Rebuilt for the model, a past question gets memory's notes again; a message turn stays its placeholder, framed as
+        // information (its sender's name is the sender's choice).
         val prompt = back.turns.toPromptTurns { ids -> "[notes ${ids.joinToString()}]\n" }
         assertEquals("[notes m_00000000aaaaab]\nread my messages", prompt[0].text)
-        assertEquals(placeholder, prompt[1].text)
+        assertEquals(MessageReading.FRAME + " " + placeholder, prompt[1].text)
         assertFalse(prompt.any { it.text.contains("Elm") })
         // The conversation is still content, and holds both kinds of personal content.
         assertTrue(TurnRules.untrusted(back.turns))

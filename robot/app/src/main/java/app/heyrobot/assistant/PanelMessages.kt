@@ -40,6 +40,7 @@ import app.heyrobot.core.messages.MessagePrompts
 import app.heyrobot.core.messages.MessageQuarantine
 import app.heyrobot.core.messages.MessageReader
 import app.heyrobot.core.messages.MessageReading
+import app.heyrobot.core.messages.ReplyKept
 import app.heyrobot.core.messages.MessageSummaries
 import app.heyrobot.core.messages.MessageSummaryText
 import app.heyrobot.core.messages.MessageTaint
@@ -542,7 +543,7 @@ object PanelMessages {
             cmd.inLang, if (found.size > 1) found else emptyList())
         p.guessed = to == null && lastRead == null
         card = p
-        kept[replyId] = if (fr(lang)) "Une réponse à ${p.thread.name}" else "A reply to ${p.thread.name}"
+        kept[replyId] = MessageReading.replyKept(ReplyKept.CARD, p.thread.name, p.thread.app, lang)
         if (p.choices.isNotEmpty()) {
             p.state = ReplyCardState.PICK
             p.line = if (fr(lang)) "Plusieurs conversations correspondent. Touche celle que tu veux." else "Several conversations fit. Tap the one you mean."
@@ -732,7 +733,7 @@ object PanelMessages {
         update(p)
         if (card === p) card = null
         VoiceLog.add(VoiceEvent.MSG_REPLY_CARD, CardEnd.CANCELLED, if (p.translate) 1 else 0, if (p.thread.isGroup) 1 else 0)
-        if (!quiet) PanelController.messagesKept(p.replyId, if (fr(p.lang)) "Réponse à ${p.thread.name} annulée" else "Reply to ${p.thread.name} cancelled")
+        if (!quiet) PanelController.messagesKept(p.replyId, MessageReading.replyKept(ReplyKept.CANCELLED, p.thread.name, p.thread.app, p.lang))
     }
 
     /** Sends the card's reply through the main process, which reads the notification again first (core ReplySend). */
@@ -761,7 +762,7 @@ object PanelMessages {
                 update(p)
                 speak(listOf(Spoken(if (fr(lang)) "Envoyé." else "Sent.", fr(lang))))
                 VoiceLog.add(VoiceEvent.MSG_REPLY_CARD, how, if (p.translate) 1 else 0, if (p.thread.isGroup) 1 else 0)
-                PanelController.messagesKept(p.replyId, if (fr(lang)) "Ta réponse à $name envoyée (${p.thread.app.title})" else "Sent your reply to $name (${p.thread.app.title})")
+                PanelController.messagesKept(p.replyId, MessageReading.replyKept(ReplyKept.SENT, name, p.thread.app, lang))
                 if (card === p) card = null
             }
             ReplyOutcome.NEW_MESSAGES -> {

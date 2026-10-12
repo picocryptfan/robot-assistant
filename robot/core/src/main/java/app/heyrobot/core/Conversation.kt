@@ -110,9 +110,10 @@ fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): L
                     ClaudeContext.forLocal(t.text)
                 t.claude && t.text.isNotBlank() -> "[${t.author} answered] " + ClaudeContext.forLocal(t.text)
                 // 0.7: a turn that read messages (or a summary of them, a reply card) is other people's words, framed as
-                // information; Robot's own later answers and a placeholder from History aren't.
-                t.messages && t.text.isNotBlank() && t.text != t.kept && t.kept != MessageReading.ANSWER_NOT_KEPT ->
-                    MessageReading.FRAME + " " + ClockEcho.strip(t.text)
+                // information; so is its placeholder from History, whose sender name or group title the sender chose
+                // ("Robot read 2 messages from Mom (Cheogram)"), never Robot's own words. Robot's later answers aren't.
+                t.messages && t.text.isNotBlank() && t.kept != MessageReading.ANSWER_NOT_KEPT ->
+                    MessageReading.FRAME + " " + if (t.text == t.kept) MessageReading.cleanKept(t.text) else ClockEcho.strip(t.text)
                 else -> ClockEcho.strip(t.text)
             }
             val text = listOf(acts, said).filter { it.isNotBlank() }.joinToString(" ").trim()
@@ -190,7 +191,7 @@ object ConversationCodec {
         return ChatTurn(
             id = o.optString("id"),
             role = role,
-            text = o.optString("text"),
+            text = o.optString("text").let { if (o.optBoolean("messages", false)) MessageReading.cleanKept(it) else it },
             time = o.optLong("time"),
             attachment = enumOr(o.optString("attachment"), Attachment.NONE),
             stopped = o.optBoolean("stopped", false),
@@ -204,8 +205,8 @@ object ConversationCodec {
             readBack = o.optBoolean("readBack", false),
             messages = o.optBoolean("messages", false),
             // What was saved in its place is what is saved again (a continued conversation keeps "Robot read 2 messages
-            // from Mom (Cheogram)", never a generic line, and never more).
-            kept = o.optString("text").takeIf { o.optBoolean("messages", false) },
+            // from Mom (Cheogram)", never a generic line, and never more), one line without hidden characters.
+            kept = o.optString("text").takeIf { o.optBoolean("messages", false) }?.let(MessageReading::cleanKept),
             sources = o.optJSONArray("sources")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotEmpty() } } }.orEmpty(),
             costMicros = o.optLong("costMicros", 0).coerceAtLeast(0),
             picture = o.optString("picture").takeIf { it.isNotEmpty() && it.length <= MAX_PICTURE && BASE64.matches(it) },
