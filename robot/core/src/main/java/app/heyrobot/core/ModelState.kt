@@ -32,7 +32,7 @@ enum class ModelFormat(val id: String, val title: String, val engine: String) {
 
 /** Where a model runs. [id] is what BrainMsg.Load carries to :brain. */
 enum class ModelBackend(val id: String, val title: String) {
-    /** The Tensor G5 TPU, through LiteRT-LM's NPU backend. */
+    /** A Tensor TPU through LiteRT-LM's NPU backend: the Tensor G5's, and (0.8, beta) the Tensor G6's, each with its own build. */
     TPU("npu", "TPU"),
     /** The CPU (XNNPACK), which writes a weight cache on the first load. */
     CPU("cpu", "CPU"),
@@ -76,7 +76,7 @@ enum class BrainModel(
     /** -1: not known in advance ([OWN]). */
     val bytes: Long,
     val sha256: String?,
-    /** Where it runs ([OWN]: the CPU unless the content check proves a Tensor G5 build and you allow it). */
+    /** Where it runs ([OWN]: the CPU unless the content check proves a TPU build for this phone's chip and you allow it). */
     val backend: ModelBackend,
     val contextTokens: Int,
     /** The weight cache the CPU writes on the first load, in the model's own folder (counted in the free-space check). */
@@ -96,6 +96,23 @@ enum class BrainModel(
         url = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/" +
             "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it_Google_Tensor_G5.litertlm",
         bytes = 3_113_545_589L, sha256 = "af1082986639ecde7db95d91be6fe54f8b6b458104734c5bafc204e69d6852dc",
+        backend = ModelBackend.TPU, contextTokens = 4096, cacheBytes = 0, memoryBytes = 2_000_000_000L,
+        publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm",
+        commit = "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1", licence = "Apache-2.0", fromGoogle = true,
+    ),
+    /**
+     * 0.8, beta: Gemma 4 E2B compiled by Google for the Tensor G6's TPU (the Pixel 11 series), from the same repository and
+     * commit as [FAST] (Google uploaded it there on 31 August 2026; ../docs/ops/research/tensor-g6.md). Fast on a Tensor
+     * G6. Its stamp, sections, metadata and 4,096-token KV cache match the Tensor G5 build's; it hasn't run on a Pixel 11
+     * yet, so it is a beta, its speed is the Tensor G5's estimate, and its memory the Tensor G5 build's. If it doesn't
+     * load on the TPU, Robot runs [GENERAL] instead and remembers that (TpuFailure) until you try the TPU again.
+     */
+    FAST_G6(
+        id = "e2b_tpu_g6", title = "Fast (beta)", modelName = "Gemma 4 E2B (Tensor G6)",
+        file = "gemma-4-E2B-it_Google_Tensor_G6.litertlm",
+        url = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/" +
+            "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it_Google_Tensor_G6.litertlm",
+        bytes = 3_313_938_293L, sha256 = "f86c7c19c736e9307267946edef58b0a45494a9127036d54d90dd6b7617c95b7",
         backend = ModelBackend.TPU, contextTokens = 4096, cacheBytes = 0, memoryBytes = 2_000_000_000L,
         publisher = "litert-community (Google)", repo = "litert-community/gemma-4-E2B-it-litert-lm",
         commit = "b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1", licence = "Apache-2.0", fromGoogle = true,
@@ -155,6 +172,19 @@ enum class BrainModel(
     /** 0.4.7: it may run on the GPU (only [GENERAL]: Google's general E2B file, which LiteRT-LM runs there). */
     val gpu: Boolean get() = this == GENERAL
 
+    /** 0.8: the chip whose TPU this build is compiled for ([FAST]: Tensor G5, [FAST_G6]: Tensor G6); null for the others. */
+    val tpuChip: Chip? get() = when (this) {
+        FAST -> Chip.TENSOR_G5
+        FAST_G6 -> Chip.TENSOR_G6
+        else -> null
+    }
+
+    /** 0.8: a beta (Settings › Model says so): [FAST_G6], not yet run by Robot on its phone. */
+    val beta: Boolean get() = this == FAST_G6
+
+    /** One of the builds of Fast ([FAST], [FAST_G6], [GENERAL]): ModelCatalogue shows a phone only its own. */
+    val isFast: Boolean get() = this == FAST || this == FAST_G6 || this == GENERAL
+
     /** Where it may run: its own backend, and the GPU for [gpu] (your own file: as its check found, LoadCheck). */
     fun runsOn(b: ModelBackend): Boolean = b == backend || (gpu && b == ModelBackend.GPU)
 
@@ -162,19 +192,24 @@ enum class BrainModel(
     val speed: String get() = when (this) {
         FAST -> "Writes about 17 tokens (word pieces) a second; a new conversation starts answering in about 3 s. " +
             "About 2 GB of memory, light on the battery. Sees photos."
+        FAST_G6 -> "Beta. Estimated from the Tensor G5 build (not measured on a Tensor G6): about 17 tokens (word pieces) a second, " +
+            "a new conversation starting to answer in about 3 s, about 2 GB of memory. Sees photos."
         GENERAL -> "The same model as the Pixel 10's Fast, built to run on the GPU or the CPU. About 2.6 GB of memory. Sees photos."
         SMARTER -> "Better answers, slower: about 8 tokens a second, and about 21 s before the first word of a new " +
             "conversation (later answers about 1 to 3 s). About 4 GB of memory and more battery (about 9 W while it writes, " +
             "against 3.5 W). Sees photos, more slowly."
         UNCENSORED -> "Like Smarter: about 8 tokens a second, about 21 s before the first word of a new conversation, " +
             "about 4 GB of memory and more battery."
-        OWN -> "Runs on the CPU (a .gguf with llama.cpp), unless Robot's check proves a .litertlm was compiled for the " +
-            "Tensor G5's TPU, the phone has one, and you allow that."
+        OWN -> "Runs on the CPU (a .gguf with llama.cpp), unless Robot's check proves a .litertlm was compiled for the TPU of " +
+            "the phone's own chip (a Tensor G5, or in beta a Tensor G6) and you allow that."
     }
 
     /** What it is, in plain words. */
     val about: String get() = when (this) {
         FAST -> "Gemma 4 E2B, compiled by Google for the Tensor G5's TPU (the Pixel 10 series). Robot's model since 0.1."
+        FAST_G6 -> "Gemma 4 E2B, compiled by Google for the Tensor G6's TPU (the Pixel 11 series). A beta: Robot hasn't run it on a " +
+            "Pixel 11 yet. If it doesn't load on the TPU, Robot switches to the general build by itself (download it too, to " +
+            "have it ready) and remembers that until you choose Try the TPU again."
         GENERAL -> "Gemma 4 E2B from Google, the general build of the model the Pixel 10 runs on its TPU: Google " +
             "publishes no TPU build for this phone's chip, so it runs on the GPU or the CPU. The first load writes a cache " +
             "next to it (about 0.8 GB on the GPU, up to 2 GB on the CPU)."
@@ -511,7 +546,11 @@ data class LoadPlan(
  */
 object LoadCheck {
     const val CHANGED = "The model file changed since Robot checked it. Open the Robot app › Model to check it again."
-    const val NO_TPU = "This phone has no TPU Robot can use: the TPU build runs on a Tensor G5 (Pixel 10) only."
+    const val NO_TPU = "This phone has no TPU Robot can use: the TPU builds run on a Tensor G5 (Pixel 10) and, in beta, a Tensor G6 (Pixel 11)."
+
+    /** 0.8: a TPU build for one chip on a phone with another (the phone's TPU library refuses another chip's code). */
+    fun otherChip(built: Chip, phone: Chip): String = "This file was compiled for the ${built.title}'s TPU, and this phone has a " +
+        (phone.title.ifEmpty { "chip without that TPU" }) + ": a TPU runs only the build made for its own chip."
     const val NO_GPU = "Robot doesn't use this phone's GPU."
 
     /** The context asked for isn't the one Robot's prompts are made for with this file. */
@@ -525,8 +564,10 @@ object LoadCheck {
     fun refuse(m: BrainModel, backend: ModelBackend, fingerprintNow: String, mark: String?, ownRecord: String?,
         maxTokens: Int = ContextWindow.MAX_TOKENS, format: ModelFormat = ModelFormat.LITERT_LM, phone: Phone? = null): String? {
         if (phone != null) {
-            if (backend == ModelBackend.TPU && phone.tpu != TpuSupport.SUPPORTED) return NO_TPU
+            if (backend == ModelBackend.TPU && phone.tpu == TpuSupport.NONE) return NO_TPU
             if (backend == ModelBackend.GPU && !ModelCatalogue.gpuOffered(phone)) return NO_GPU
+            // 0.8: a Tensor G5 build never runs on a Tensor G6, nor the reverse.
+            if (backend == ModelBackend.TPU) m.tpuChip?.let { c -> if (c != phone.chip) return otherChip(c, phone.chip) }
         }
         if (m.builtIn) {
             if (format != ModelFormat.LITERT_LM) return "“${m.title}” is a LiteRT-LM file."
@@ -539,9 +580,11 @@ object LoadCheck {
         // A record of the other kind of file: whatever is there now wasn't checked as what it is.
         if (own.format != format) return CHANGED
         val where = own.backend
+        // 0.8: your own TPU build runs only on the chip its stamp names.
+        if (backend == ModelBackend.TPU && phone != null) own.tensorBuild?.let { c -> if (c != phone.chip) return otherChip(c, phone.chip) }
         return when {
             where == backend -> if (maxTokens == own.contextTokens) null else wrongContext(own.contextTokens)
-            where == null && own.tensorG5Build -> "Your model file waits for you to allow the TPU in the Robot app › Model."
+            where == null && own.tensorBuild != null -> "Your model file waits for you to allow the TPU in the Robot app › Model."
             where == null -> own.unusable ?: "Robot can't run your model file on this phone."
             else -> "Your model file runs on the ${where.title}, not the ${backend.title}."
         }
@@ -600,7 +643,7 @@ object ModelChoice {
     fun decide(
         chosen: BrainModel, chosenState: ModelAvailability, fastState: ModelAvailability, chosenFailedBefore: Boolean,
         earlier: FallbackWhy = FallbackWhy.FAILED_EARLIER,
-        /** This phone's Fast (0.4.7, ModelCatalogue.fast): the TPU build on a Tensor G5, the general build elsewhere. */
+        /** This phone's Fast (0.4.7, ModelCatalogue.fast): its chip's TPU build on a Tensor G5 or G6, the general build elsewhere. */
         fast: BrainModel = BrainModel.FAST,
     ): Decision {
         if (chosen == fast) {

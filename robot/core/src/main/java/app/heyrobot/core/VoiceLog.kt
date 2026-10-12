@@ -298,6 +298,11 @@ enum class VoiceEvent(val id: Int) {
      * [ProblemStage], c = [LoadFailure] (0: its process stopped).
      */
     GPU_FALLBACK(135),
+    /**
+     * 0.8: the beta TPU build (the Tensor G6's) didn't load on the TPU, so Fast is the general build on the CPU until you
+     * try the TPU again: a = [ModelCode], b = [LoadFailure] (0: its process stopped).
+     */
+    TPU_FALLBACK(136),
     // Routines and the morning brief (0.8): 140 to 159. Codes and counts only, never a routine's name, steps or words.
     /** A trigger came: a = [TriggerKind], b = routines it started, c = routines it didn't start (ROUTINE_SKIPPED says why). */
     ROUTINE_TRIGGER(140),
@@ -389,11 +394,12 @@ enum class VoiceEvent(val id: Int) {
 /** A model of the catalogue (BrainModel), as the voice log stores it. */
 enum class ModelCode(override val id: Int, override val title: String) : LogCode {
     FAST(1, "Fast (Gemma 4 E2B, TPU)"), SMARTER(2, "Smarter (Gemma 4 E4B, CPU)"), UNCENSORED(3, "Uncensored (Gemma 4 E4B abliterated, CPU)"),
-    OWN(4, "your own model file"), GENERAL(5, "Fast (Gemma 4 E2B, general build)");
+    OWN(4, "your own model file"), GENERAL(5, "Fast (Gemma 4 E2B, general build)"), FAST_G6(6, "Fast beta (Gemma 4 E2B, Tensor G6 TPU)");
 
     companion object {
         fun of(m: BrainModel): ModelCode = when (m) {
             BrainModel.FAST -> FAST
+            BrainModel.FAST_G6 -> FAST_G6
             BrainModel.GENERAL -> GENERAL
             BrainModel.SMARTER -> SMARTER
             BrainModel.UNCENSORED -> UNCENSORED
@@ -928,6 +934,8 @@ object VoiceLogText {
             VoiceEvent.MODEL_SWITCH -> "Unloaded " + code(ModelCode.entries, a) + " to load " + code(ModelCode.entries, b)
             VoiceEvent.GPU_FALLBACK -> "The GPU failed for " + code(ModelCode.entries, a) + " while " + code(ProblemStage.entries, b) +
                 (if (c > 0) " (" + code(LoadFailure.entries, c) + ")" else " (its process stopped)") + ": the CPU from now on"
+            VoiceEvent.TPU_FALLBACK -> "The TPU didn't load " + code(ModelCode.entries, a) +
+                (if (b > 0) " (" + code(LoadFailure.entries, b) + ")" else " (its process stopped)") + ": the general build from now on"
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
             VoiceEvent.CONV_START -> "Conversation started: " + code(ConvMode.entries, a) + " (" + code(ConvEntry.entries, b) + ")" +

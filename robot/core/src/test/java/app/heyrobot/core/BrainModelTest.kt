@@ -58,6 +58,29 @@ class BrainModelTest {
         assertEquals(listOf(BrainModel.GENERAL), BrainModel.entries.filter { it.gpu })
     }
 
+    /** 0.8, beta: Google's Tensor G6 build, pinned at Fast's commit, by its size and SHA-256 (../docs/ops/research/tensor-g6.md). */
+    @Test fun theTensorG6BuildIsPinned() {
+        val g6 = BrainModel.FAST_G6
+        assertEquals("e2b_tpu_g6", g6.id)
+        assertEquals("gemma-4-E2B-it_Google_Tensor_G6.litertlm", g6.file)
+        assertEquals("https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/" +
+            "gemma-4-E2B-it_Google_Tensor_G6.litertlm", g6.url)
+        assertEquals(3_313_938_293L, g6.bytes)
+        assertEquals("f86c7c19c736e9307267946edef58b0a45494a9127036d54d90dd6b7617c95b7", g6.sha256)
+        assertEquals(BrainModel.FAST.repo, g6.repo)
+        assertEquals(BrainModel.FAST.commit, g6.commit)
+        assertEquals(ModelBackend.TPU, g6.backend)
+        assertEquals(4096, g6.contextTokens)
+        assertEquals(0L, g6.cacheBytes)
+        assertEquals("Apache-2.0", g6.licence)
+        assertTrue(g6.fromGoogle && g6.beta && g6.isFast && !g6.gpu)
+        assertFalse(BrainModel.FAST.beta)
+        assertTrue(g6.title.contains("beta") && g6.speed.startsWith("Beta") && g6.speed.contains("not measured"))
+        assertEquals("model_verified_e2b_tpu_g6.txt", ModelFiles.verifiedMark(g6))
+        assertNull(ModelFiles.cacheDir(g6))
+        assertEquals(BrainModel.FAST_G6, BrainModel.of("e2b_tpu_g6"))
+    }
+
     @Test fun theDefaultStaysFast() {
         assertEquals(BrainModel.FAST, BrainModel.DEFAULT)
         assertEquals(BrainModel.FAST, RobotSettings().brainModelChoice)
@@ -97,18 +120,23 @@ class BrainModelTest {
             assertTrue(m.name, sha.matches(m.sha256!!))
             assertTrue(m.name, m.bytes > 1_000_000_000L)
         }
-        assertEquals(listOf(BrainModel.FAST, BrainModel.GENERAL, BrainModel.SMARTER, BrainModel.UNCENSORED), BrainModel.entries.filter { it.builtIn })
+        assertEquals(listOf(BrainModel.FAST, BrainModel.FAST_G6, BrainModel.GENERAL, BrainModel.SMARTER, BrainModel.UNCENSORED), BrainModel.entries.filter { it.builtIn })
         val own = BrainModel.OWN
         assertNull(own.url)
         assertNull(own.sha256)
         assertEquals(-1L, own.bytes)
         assertEquals(BrainModel.entries.size, BrainModel.entries.map { it.id }.toSet().size)
-        assertEquals(listOf("e2b_tpu", "e2b", "e4b_cpu", "e4b_cpu_uncensored", "own"), BrainModel.entries.map { it.id })
+        assertEquals(listOf("e2b_tpu", "e2b_tpu_g6", "e2b", "e4b_cpu", "e4b_cpu_uncensored", "own"), BrainModel.entries.map { it.id })
     }
 
-    /** No Gemma 4 E4B build for the Tensor TPU exists: only Fast is on the TPU, and nothing from horizon-edge is offered. */
+    /**
+     * No Gemma 4 E4B build for the Tensor TPU exists: only Fast's E2B builds are on the TPU (the Tensor G5's, 0.8: the
+     * Tensor G6's), each for its own chip, and nothing from horizon-edge is offered.
+     */
     @Test fun noE4bOnTheTpuAndNoHorizonEdge() {
-        assertEquals(listOf(BrainModel.FAST), BrainModel.entries.filter { it.backend == ModelBackend.TPU })
+        assertEquals(listOf(BrainModel.FAST, BrainModel.FAST_G6), BrainModel.entries.filter { it.backend == ModelBackend.TPU })
+        assertEquals(listOf(Chip.TENSOR_G5, Chip.TENSOR_G6), BrainModel.entries.mapNotNull { it.tpuChip })
+        assertEquals(BrainModel.entries.filter { it.backend == ModelBackend.TPU }, BrainModel.entries.filter { it.tpuChip != null })
         for (m in BrainModel.entries) {
             val all = listOfNotNull(m.title, m.modelName, m.file, m.url, m.repo, m.publisher, m.about, m.speed).joinToString(" ").lowercase()
             assertFalse(m.name, all.contains("horizon") || all.contains("safecircle"))

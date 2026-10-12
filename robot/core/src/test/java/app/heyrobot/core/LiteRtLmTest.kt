@@ -55,10 +55,10 @@ class LiteRtLmTest {
 
     @Test fun googlesTensorG5BuildIsATpuBuild() {
         val r = check(e2bG5())
-        assertTrue(r.toString(), r.readable && r.decoder && r.aux && r.dispatchOp && r.tensorG5Stamp && r.gemma4 && r.toolTokens && r.vision)
+        assertTrue(r.toString(), r.readable && r.decoder && r.aux && r.dispatchOp && (r.tensorStamp == Chip.TENSOR_G5) && r.gemma4 && r.toolTokens && r.vision)
         assertEquals("1.5.0", r.format)
         assertEquals("Google Tensor_G5", r.stamp)
-        assertTrue(r.tensorG5Build)
+        assertEquals(Chip.TENSOR_G5, r.tensorBuild)
         assertEquals(ModelBackend.TPU, r.backend)
         assertNull(r.unusable)
         assertTrue(r.lines().any { it.startsWith("Compiled for the Tensor G5's TPU (Pixel 10): yes") })
@@ -69,7 +69,7 @@ class LiteRtLmTest {
     @Test fun googlesCpuFileRunsOnTheCpu() {
         val r = check(e4bCpu())
         assertTrue(r.readable && r.decoder && r.gemma4 && r.toolTokens && r.vision)
-        assertFalse(r.aux || r.dispatchOp || r.tensorG5Build)
+        assertFalse(r.aux || r.dispatchOp || (r.tensorBuild == Chip.TENSOR_G5))
         assertNull(r.stamp)
         assertEquals(ModelBackend.CPU, r.backend)
         assertTrue(r.lines().contains("Gemma 4, with its tool-calling metadata: actions should work."))
@@ -89,7 +89,7 @@ class LiteRtLmTest {
         ))
         val r = check(horizon)
         assertTrue(r.readable)
-        assertFalse(r.tensorG5Build)
+        assertNull(r.tensorBuild)
         assertEquals(ModelBackend.CPU, r.backend)
         assertEquals("generic_model", r.modelType)
         assertFalse(r.toolTokens || r.vision)
@@ -103,8 +103,8 @@ class LiteRtLmTest {
             tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps, g5Stamp)), meta(),
         ))
         val r = check(spoof)
-        assertTrue(r.tensorG5Stamp)
-        assertFalse(r.tensorG5Build)
+        assertEquals(Chip.TENSOR_G5, r.tensorStamp)
+        assertNull(r.tensorBuild)
         assertEquals(ModelBackend.CPU, r.backend)
     }
 
@@ -116,15 +116,51 @@ class LiteRtLmTest {
         val generic = check(e2bG5(metadata = FakeLiteRtLm.GENERIC))
         assertNull(generic.backend)
         assertTrue(generic.unusable!!.contains("Gemma 4 metadata"))
-        // assassinshadow's Snapdragon 8 Gen 1 build of E4B, and Google's own E2B build for the G6.
-        for (s in listOf(FakeLiteRtLm.stamp("Qualcomm", "SM8450"), FakeLiteRtLm.stamp("Google", "Tensor_G6"))) {
+        // assassinshadow's Snapdragon 8 Gen 1 build of E4B, and a Tensor Robot doesn't know (0.8 runs the G6's: below).
+        for (s in listOf(FakeLiteRtLm.stamp("Qualcomm", "SM8450"), FakeLiteRtLm.stamp("Google", "Tensor_G9"))) {
             val r = check(e2bG5(stamp = mapOf("LiteRtStamp" to s)))
-            assertFalse(r.tensorG5Stamp || r.tensorG5Build)
+            assertFalse((r.tensorStamp == Chip.TENSOR_G5) || (r.tensorBuild == Chip.TENSOR_G5))
             assertNull(r.backend)
             assertTrue(r.unusable!!, r.unusable!!.contains("another chip's NPU"))
         }
         // DISPATCH_OP without any stamp.
         assertNull(check(e2bG5(stamp = emptyMap())).backend)
+    }
+
+    /**
+     * 0.8: Google's Tensor G6 build (gemma-4-E2B-it_Google_Tensor_G6.litertlm, the research's parse: the same sections,
+     * aux, metadata and DISPATCH_OP as the G5's, stamped "Google" "Tensor_G6") is a TPU build for the Tensor G6, and runs
+     * only on a Tensor G6's TPU; the Tensor G5 build only on a Tensor G5's. The stamp decides, never the file's name.
+     */
+    @Test fun googlesTensorG6BuildRunsOnlyOnATensorG6() {
+        val g6 = check(e2bG5(stamp = mapOf("LiteRtStamp" to FakeLiteRtLm.stamp("Google", "Tensor_G6"), "min_runtime_version" to "2.21.0".toByteArray())))
+        assertEquals(Chip.TENSOR_G6, g6.tensorStamp)
+        assertEquals(Chip.TENSOR_G6, g6.tensorBuild)
+        assertEquals(ModelBackend.TPU, g6.backend)
+        assertNull(g6.unusable)
+        assertTrue(g6.lines().any { it.startsWith("Compiled for the Tensor G6's TPU (Pixel 11): yes") })
+        val g5 = check(e2bG5())
+        val pixel11 = Phone("Google", "Pixel 11", "Google", "Tensor G6")
+        val pixel10 = Phone("Google", "Pixel 10 Pro", "Google", "Tensor G5")
+        val pixel9a = Phone("Google", "Pixel 9a", "Google", "Tensor G4")
+        assertTrue(g6.runsOnTpuOf(pixel11))
+        assertFalse(g6.runsOnTpuOf(pixel10) || g6.runsOnTpuOf(pixel9a))
+        assertTrue(g5.runsOnTpuOf(pixel10))
+        assertFalse(g5.runsOnTpuOf(pixel11) || g5.runsOnTpuOf(pixel9a))
+        // Incomplete for the G6 too: named after its chip.
+        val noAux = check(e2bG5(stamp = mapOf("LiteRtStamp" to FakeLiteRtLm.stamp("Google", "Tensor_G6")), aux = false))
+        assertTrue(noAux.unusable!!, noAux.unusable!!.contains("stamped for the Tensor G6"))
+        // The stamp's own word, exactly.
+        assertEquals(Chip.TENSOR_G6, LiteRtLmCheck.chipOf("Google Tensor_G6"))
+        assertEquals(Chip.TENSOR_G5, LiteRtLmCheck.chipOf("Google Tensor_G5"))
+        assertNull(LiteRtLmCheck.chipOf("Google Tensor_G9"))
+        assertNull(LiteRtLmCheck.chipOf("Google Tensor_G6x"))
+        assertNull(LiteRtLmCheck.chipOf("Google Tensor G6"))
+        assertNull(LiteRtLmCheck.chipOf(null))
+        // A record keeps its chip through the stamp, and a 0.7 record (its "tensorG5Stamp" flag) reads the same.
+        assertEquals(Chip.TENSOR_G6, LiteRtLmReport.fromJson(g6.toJson())!!.tensorBuild)
+        val old = g5.toJson().apply { remove("tensorG5Stamp"); put("tensorG5Stamp", true) }
+        assertEquals(Chip.TENSOR_G5, LiteRtLmReport.fromJson(old)!!.tensorBuild)
     }
 
     @Test fun gemma4WithoutToolTokensWarnsAboutActions() {
@@ -196,7 +232,7 @@ class LiteRtLmTest {
             val r = check(medgemma(vision))
             assertTrue(r.readable && r.decoder && r.shortContext)
             assertEquals("gemma3n", r.modelType)
-            assertFalse(r.gemma4 || r.toolTokens || r.tensorG5Build)
+            assertFalse(r.gemma4 || r.toolTokens || (r.tensorBuild == Chip.TENSOR_G5))
             assertEquals(ModelBackend.CPU, r.backend)
             assertEquals(2048, r.contextTokens)
             assertEquals(vision, r.vision)
@@ -257,7 +293,7 @@ class LiteRtLmTest {
                 repeat(1 + rnd.nextInt(6)) { b[rnd.nextInt(minOf(b.size, 4096))] = rnd.nextInt(256).toByte() }
                 val r = check(b)
                 // Whatever it found, the TPU needs the whole proof.
-                if (r.backend == ModelBackend.TPU) assertTrue(r.tensorG5Build)
+                if (r.backend == ModelBackend.TPU) assertNotNull(r.tensorBuild)
             }
         }
     }
@@ -490,8 +526,8 @@ class LiteRtLmTest {
         ))
         val r = check(general)
         assertEquals(ModelBackend.CPU, r.backend)
-        assertTrue(r.toString(), r.vision && r.gemma4 && !r.tensorG5Build && !r.dispatchOp)
-        assertTrue(check(g5).tensorG5Build)
+        assertTrue(r.toString(), r.vision && r.gemma4 && !(r.tensorBuild == Chip.TENSOR_G5) && !r.dispatchOp)
+        assertEquals(Chip.TENSOR_G5, check(g5).tensorBuild)
         val mine = tokens(general)!!
         val tpus = tokens(g5)!!
         assertEquals(tpus.control, mine.control)

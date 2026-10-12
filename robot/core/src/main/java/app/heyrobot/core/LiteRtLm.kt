@@ -90,8 +90,6 @@ data class LiteRtLmReport(
     val dispatchOp: Boolean = false,
     /** The decoder's LiteRtStamp, printable ("Google Tensor_G5"); null: none. */
     val stamp: String? = null,
-    /** The stamp names the Tensor G5. */
-    val tensorG5Stamp: Boolean = false,
     /** LlmMetadata's model type ("gemma4", "generic_model", …); null: none found. */
     val modelType: String? = null,
     /** Gemma 4's tool-call tokens: "<|tool_call>" opens a call and "<|tool_response>" an answer. */
@@ -105,8 +103,18 @@ data class LiteRtLmReport(
 ) {
     val gemma4: Boolean get() = modelType == "gemma4"
 
-    /** Compiled for this phone's TPU, by every sign Robot checks (never by the file's name). */
-    val tensorG5Build: Boolean get() = readable && decoder && aux && dispatchOp && tensorG5Stamp && gemma4
+    /** 0.8: the Tensor chip the stamp names ("Tensor_G5", "Tensor_G6"), or null (none, or a chip Robot doesn't know). */
+    val tensorStamp: Chip? get() = LiteRtLmCheck.chipOf(stamp)
+
+    /**
+     * The chip whose TPU it was compiled for, by every sign Robot checks (never by the file's name): the aux section,
+     * DISPATCH_OP, Gemma 4 metadata and the stamp; null when it isn't a complete TPU build. 0.8: any Tensor the stamp
+     * names (the Tensor G5 or G6); whether it runs here is [runsOnTpuOf] (the phone's own chip, and a TPU Robot uses).
+     */
+    val tensorBuild: Chip? get() = if (readable && decoder && aux && dispatchOp && gemma4) tensorStamp else null
+
+    /** A complete TPU build for [p]'s chip, which Robot runs on that phone's TPU (Phones.tpu: supported, or in beta). */
+    fun runsOnTpuOf(p: Phone): Boolean = tensorBuild != null && tensorBuild == p.chip && p.tpu != TpuSupport.NONE
 
     /**
      * 0.4.3: built for 2,048 to 4,095 tokens of context. Robot runs it as chat only (no tools, no actions, a shorter
@@ -124,21 +132,21 @@ data class LiteRtLmReport(
     val unusable: String? get() = when {
         !readable -> problem ?: "It isn't a LiteRT-LM model file (.litertlm)."
         !decoder -> "It holds no language model (no prefill_decode section)."
-        dispatchOp && !tensorG5Build && tensorG5Stamp ->
-            "It holds TPU code stamped for the Tensor G5 but not everything a complete Tensor G5 build has (" +
+        dispatchOp && tensorBuild == null && tensorStamp != null ->
+            "It holds TPU code stamped for the ${tensorStamp!!.title} but not everything a complete ${tensorStamp!!.title} build has (" +
                 listOfNotNull(if (!aux) "the aux section" else null, if (!gemma4) "Gemma 4 metadata" else null).joinToString(" and ") +
                 "), so Robot won't run it on the TPU, and the CPU can't run TPU code."
-        dispatchOp && !tensorG5Build -> "It was compiled for another chip's NPU" + (stamp?.let { " ($it)" } ?: "") +
+        dispatchOp && tensorBuild == null -> "It was compiled for another chip's NPU" + (stamp?.let { " ($it)" } ?: "") +
             ", so this phone can run it on neither its TPU nor its CPU."
         maxTokens in 1 until ContextWindow.MIN_TOKENS -> "It was built for only $maxTokens tokens of context; Robot needs at least " +
             "${ContextWindow.MIN_TOKENS} to chat (${ContextWindow.MAX_TOKENS} for actions)."
         else -> null
     }
 
-    /** Where it can run: the TPU for a proven Tensor G5 build, else the CPU; null: nowhere here. */
+    /** Where it can run: the TPU for a proven TPU build (on its own chip only: [runsOnTpuOf]), else the CPU; null: nowhere. */
     val backend: ModelBackend? get() = when {
         unusable != null -> null
-        tensorG5Build -> ModelBackend.TPU
+        tensorBuild != null -> ModelBackend.TPU
         else -> ModelBackend.CPU
     }
 
@@ -150,8 +158,9 @@ data class LiteRtLmReport(
         }
         add("LiteRT-LM file, format $format, ${sections.size} sections.")
         add(when {
-            tensorG5Build -> "Compiled for the Tensor G5's TPU (Pixel 10): yes — aux section, DISPATCH_OP and the stamp “${stamp.orEmpty()}”."
-            dispatchOp -> "Compiled for an NPU" + (stamp?.let { " (stamp “$it”)" } ?: "") + ", but not as a complete Tensor G5 build."
+            tensorBuild != null -> "Compiled for the ${tensorBuild!!.title}'s TPU (${Phones.seriesOf(tensorBuild!!)}): yes — aux section, " +
+                "DISPATCH_OP and the stamp “${stamp.orEmpty()}”."
+            dispatchOp -> "Compiled for an NPU" + (stamp?.let { " (stamp “$it”)" } ?: "") + ", but not as a complete Tensor TPU build."
             else -> "Compiled for a TPU: no. It runs on the CPU."
         })
         // Chat only: no actions whatever the metadata, so the line about them would only confuse.
@@ -174,7 +183,8 @@ data class LiteRtLmReport(
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("readable", readable); put("format", format); put("sections", JSONArray(sections)); put("decoder", decoder); put("aux", aux)
-        put("dispatchOp", dispatchOp); stamp?.let { put("stamp", it) }; put("tensorG5Stamp", tensorG5Stamp); modelType?.let { put("modelType", it) }
+        // "tensorG5Stamp" for the records an older Robot reads (0.8 reads the chip from the stamp).
+        put("dispatchOp", dispatchOp); stamp?.let { put("stamp", it) }; put("tensorG5Stamp", tensorStamp == Chip.TENSOR_G5); modelType?.let { put("modelType", it) }
         put("toolTokens", toolTokens); put("maxTokens", maxTokens); put("vision", vision); problem?.let { put("problem", it) }
     }
 
@@ -186,7 +196,7 @@ data class LiteRtLmReport(
                     readable = o.getBoolean("readable"), format = o.optString("format", "").take(16),
                     sections = o.optJSONArray("sections")?.let { a -> (0 until minOf(a.length(), LiteRtLmCheck.MAX_SECTIONS)).map { a.optString(it).take(64) } } ?: emptyList(),
                     decoder = o.optBoolean("decoder"), aux = o.optBoolean("aux"), dispatchOp = o.optBoolean("dispatchOp"),
-                    stamp = if (o.has("stamp")) o.optString("stamp").take(LiteRtLmCheck.MAX_STAMP) else null, tensorG5Stamp = o.optBoolean("tensorG5Stamp"),
+                    stamp = if (o.has("stamp")) o.optString("stamp").take(LiteRtLmCheck.MAX_STAMP) else null,
                     modelType = if (o.has("modelType")) o.optString("modelType").take(32) else null, toolTokens = o.optBoolean("toolTokens"),
                     maxTokens = o.optInt("maxTokens"), vision = o.optBoolean("vision"), problem = if (o.has("problem")) o.optString("problem") else null,
                 )
@@ -197,6 +207,16 @@ data class LiteRtLmReport(
 
 object LiteRtLmCheck {
     const val MAGIC = "LITERTLM"
+
+    /**
+     * 0.8: the Tensor chip a LiteRtStamp names, one of its words exactly ("Google Tensor_G6" -> Tensor G6; Android's
+     * Build.SOC_MODEL says "Tensor G6"); null for none, or a chip Robot doesn't know.
+     */
+    fun chipOf(stamp: String?): Chip? {
+        val word = stamp?.split(' ')?.firstOrNull { Regex("Tensor_G[0-9]+").matches(it) } ?: return null
+        val title = word.replace('_', ' ')
+        return Chip.entries.firstOrNull { it.tensor && it.title == title }
+    }
     /** The header flatbuffer, sections, operator codes, metadata entries, strings and stamps are capped at these. */
     const val MAX_HEADER = 4 shl 20
     const val MAX_SECTIONS = 64
@@ -282,7 +302,6 @@ object LiteRtLmCheck {
             decoder = decoder != null,
             aux = sections.any { it.modelType == "tf_lite_aux" },
             dispatchOp = dispatch, stamp = stamp,
-            tensorG5Stamp = stamp?.split(' ')?.any { it == "Tensor_G5" } == true,
             modelType = meta?.type, toolTokens = meta?.tools == true, maxTokens = meta?.maxTokens ?: 0,
             vision = sections.any { it.modelType == "tf_lite_vision_encoder" },
         )
@@ -619,7 +638,7 @@ data class OwnModel(
     val sha256: String,
     val fingerprint: String,
     val report: LiteRtLmReport,
-    /** You allowed the TPU for this file (its warning card); only ever true for a proven Tensor G5 build. */
+    /** You allowed the TPU for this file (its warning card); only ever true for a proven TPU build (Tensor G5 or G6). */
     val tpuAllowed: Boolean = false,
     val checkedAt: Long = 0,
     /** 0.4.5: the GGUF check of a GGUF file (llama.cpp runs it); null for a LiteRT-LM file. */
@@ -627,8 +646,8 @@ data class OwnModel(
 ) {
     val format: ModelFormat get() = if (gguf != null) ModelFormat.GGUF else ModelFormat.LITERT_LM
 
-    /** A LiteRT-LM file compiled for this phone's TPU, by every sign Robot checks. */
-    val tensorG5Build: Boolean get() = gguf == null && report.tensorG5Build
+    /** 0.8: the chip a LiteRT-LM file was compiled for, by every sign Robot checks; null for any other file. */
+    val tensorBuild: Chip? get() = if (gguf == null) report.tensorBuild else null
 
     /** Why Robot can't run it here at all; null when it can. */
     val unusable: String? get() = if (gguf != null) gguf.unusable else report.unusable
@@ -636,7 +655,7 @@ data class OwnModel(
     /** Where its check says it can run, before your say about the TPU: a GGUF file on the CPU only; null: nowhere. */
     val runsOn: ModelBackend? get() = if (gguf != null) (if (gguf.unusable == null) ModelBackend.CPU else null) else report.backend
 
-    /** Where it runs: the TPU only for a proven Tensor G5 build you allowed, else the CPU; null: nowhere. */
+    /** Where it runs: the TPU only for a proven TPU build you allowed (on its own chip: LoadCheck), else the CPU; null: nowhere. */
     val backend: ModelBackend? get() = when (runsOn) {
         ModelBackend.TPU -> if (tpuAllowed) ModelBackend.TPU else null
         else -> runsOn
@@ -671,7 +690,7 @@ data class OwnModel(
     }
 
     fun toJson(): JSONObject = JSONObject().put("name", name).put("bytes", bytes).put("sha256", sha256).put("fingerprint", fingerprint)
-        .put("report", report.toJson()).put("tpuAllowed", tpuAllowed && tensorG5Build).put("checkedAt", checkedAt)
+        .put("report", report.toJson()).put("tpuAllowed", tpuAllowed && tensorBuild != null).put("checkedAt", checkedAt)
         .apply { gguf?.let { put("gguf", it.toJson()) } }
 
     companion object {
@@ -687,8 +706,8 @@ data class OwnModel(
             // A "gguf" entry that can't be read makes the whole record unreadable (checked again), never a LiteRT-LM one.
             val gguf = if (o.has("gguf")) GgufReport.fromJson(o.optJSONObject("gguf")) ?: return null else null
             OwnModel(o.optString("name", "").take(120), o.getLong("bytes"), sha, o.getString("fingerprint"), report,
-                // Never the TPU for a file that isn't a proven Tensor G5 build, whatever the file says.
-                o.optBoolean("tpuAllowed", false) && gguf == null && report.tensorG5Build, o.optLong("checkedAt", 0), gguf)
+                // Never the TPU for a file that isn't a proven TPU build, whatever the file says.
+                o.optBoolean("tpuAllowed", false) && gguf == null && report.tensorBuild != null, o.optLong("checkedAt", 0), gguf)
         } catch (_: Exception) { null }
     }
 }

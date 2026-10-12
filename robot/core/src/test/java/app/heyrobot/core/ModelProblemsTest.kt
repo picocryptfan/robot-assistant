@@ -23,6 +23,13 @@ class ModelProblemsTest {
         assertEquals("stopped while writing the answer", stopped.what)
         assertEquals("failed while reading the prompt (engine error)", GpuFailure(BrainModel.GENERAL, t, ProblemStage.READING, LoadFailure.ENGINE).what)
         for (bad in listOf(null, "", "e2b", "e2b x 1 0", "nope $t 1 0", "e2b $t 9 0", "e2b $t 1 99", "e2b 0 1 0")) assertNull(bad, GpuFailure.decode(bad))
+        // 0.8: the beta TPU build's failure, kept the same way; only a beta build is ever remembered so.
+        val tpu = TpuFailure(BrainModel.FAST_G6, t, LoadFailure.ENGINE)
+        assertEquals(tpu, TpuFailure.decode(tpu.encode()))
+        val tpuStopped = TpuFailure(BrainModel.FAST_G6, t, null)
+        assertEquals(tpuStopped, TpuFailure.decode(tpuStopped.encode()))
+        assertEquals("stopped while loading", tpuStopped.what)
+        for (bad in listOf(null, "", "e2b_tpu_g6", "e2b_tpu $t 4", "e2b $t 4", "e2b_tpu_g6 0 4", "e2b_tpu_g6 $t 99", "e2b_tpu_g6 $t 4 1")) assertNull(bad, TpuFailure.decode(bad))
         val trying = GpuTrying(BrainModel.GENERAL, t, 4242)
         assertEquals(trying, GpuTrying.decode(trying.encode()))
         assertNull(GpuTrying.decode("e2b $t 0"))

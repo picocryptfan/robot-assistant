@@ -326,7 +326,7 @@ class GgufTest {
         assertEquals(ModelFormat.GGUF, m.format)
         assertEquals(ModelBackend.CPU, m.runsOn)
         assertEquals(ModelBackend.CPU, m.backend)
-        assertFalse(m.tensorG5Build)
+        assertNull(m.tensorBuild)
         assertNull(m.unusable)
         assertEquals(ModelAvailability.READY, m.availability("2489894976|1"))
         assertEquals(ModelAvailability.UNUSABLE, m.availability("2489894976|1", ggufEngine = false))

@@ -90,6 +90,31 @@ data class GpuFailure(val model: BrainModel, val time: Long, val stage: ProblemS
 }
 
 /**
+ * 0.8: the beta TPU build ([BrainModel.beta], the Tensor G6's) didn't load on this phone's TPU at [time] ([failure];
+ * null: its process stopped). Kept in filesDir/robot/[FILE] by the voice process; while it is there Fast is the general
+ * build on the CPU (ModelCatalogue.fast), until you choose "Try the TPU again" in Settings › Model (the main app deletes it).
+ */
+data class TpuFailure(val model: BrainModel, val time: Long, val failure: LoadFailure?) {
+    fun encode(): String = "${model.id} $time ${failure?.id ?: 0}"
+
+    /** "didn't load (engine error)", "stopped while loading". */
+    val what: String get() = if (failure != null) "didn't load (${failure.title})" else "stopped while loading"
+
+    companion object {
+        const val FILE = "tpu_failed.txt"
+
+        fun decode(text: String?): TpuFailure? {
+            val p = text?.trim()?.split(' ') ?: return null
+            if (p.size != 3) return null
+            val m = BrainModel.byId(p[0])?.takeIf { it.beta } ?: return null
+            val t = p[1].toLongOrNull()?.takeIf { it > 0 } ?: return null
+            val f = p[2].toIntOrNull() ?: return null
+            return TpuFailure(m, t, if (f == 0) null else LoadFailure.entries.firstOrNull { it.id == f } ?: return null)
+        }
+    }
+}
+
+/**
  * A GPU load under way (filesDir/robot/[FILE]): written by the voice process before it asks :brain to load on the GPU,
  * deleted when the load answers. One left by another voice process ([voicePid] isn't this one) means the load never
  * answered: the phone or Robot restarted in the middle of it, so the GPU counts as failed (never a loop of GPU loads

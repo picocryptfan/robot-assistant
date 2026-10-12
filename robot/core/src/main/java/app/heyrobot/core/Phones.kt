@@ -29,8 +29,11 @@ enum class Chip(val title: String, val gpu: GpuKind) {
 enum class TpuSupport {
     /** Google publishes a TPU build of Gemma 4 E2B for it and Robot runs it: Fast is that build (the Tensor G5). */
     SUPPORTED,
-    /** Google publishes a TPU build for it, but this version of Robot doesn't run it yet (the Tensor G6). */
-    NOT_YET,
+    /**
+     * 0.8: Google publishes a TPU build for it and Robot runs it, but hasn't run it on that phone yet (the Tensor G6): Fast
+     * is that build, marked beta, its speed an estimate; if it doesn't load, Robot runs the general build instead.
+     */
+    BETA,
     /** No TPU build of Gemma exists for it. */
     NONE,
 }
@@ -99,15 +102,18 @@ object Phones {
     }
 
     /**
-     * The Tensor G5 alone runs Robot's TPU build (Fast, pinned since 0.1). Google also publishes a Tensor G6 build
-     * (gemma-4-E2B-it_Google_Tensor_G6.litertlm, at the same commit), but this version of Robot hasn't been run on a
-     * Pixel 11 and its content check knows the Tensor G5 stamp only, so the G6 is [TpuSupport.NOT_YET].
+     * The Tensor G5 runs Robot's TPU build (Fast, pinned since 0.1). 0.8: the Tensor G6 runs Google's Tensor G6 build
+     * (gemma-4-E2B-it_Google_Tensor_G6.litertlm, at the same commit), as a beta until Robot has run it on a Pixel 11
+     * (../docs/ops/research/tensor-g6.md): the content check takes a build for this phone's chip only.
      */
     fun tpu(chip: Chip): TpuSupport = when (chip) {
         Chip.TENSOR_G5 -> TpuSupport.SUPPORTED
-        Chip.TENSOR_G6 -> TpuSupport.NOT_YET
+        Chip.TENSOR_G6 -> TpuSupport.BETA
         else -> TpuSupport.NONE
     }
+
+    /** "Pixel 10": the first Pixel with [chip] (its series), or the chip's name. */
+    fun seriesOf(chip: Chip): String = PIXELS.firstOrNull { it.second == chip }?.first ?: chip.title
 
     /** "This phone: Pixel 9a (Tensor G4)". */
     fun line(p: Phone): String = "This phone: ${p.name}" + p.chip.title.takeIf { it.isNotEmpty() }?.let { " ($it)" }.orEmpty()
@@ -115,8 +121,8 @@ object Phones {
     /** Whether its TPU runs Robot's model, and what Fast is here, in a sentence. */
     fun tpuLine(p: Phone): String = when (p.tpu) {
         TpuSupport.SUPPORTED -> "Its TPU is supported: Fast is Google's Tensor G5 build of Gemma 4 E2B, on the TPU."
-        TpuSupport.NOT_YET -> "Google publishes a TPU build for the Tensor G6, but this version of Robot doesn't run it yet: " +
-            "Fast is Gemma 4 E2B's general build, " + (if (ModelCatalogue.gpuOffered(p)) "on the GPU." else "on the CPU.")
+        TpuSupport.BETA -> "Its TPU is supported in beta: Fast is Google's Tensor G6 build of Gemma 4 E2B, on the TPU. Robot hasn't run it " +
+            "on a Pixel 11 yet; if it doesn't load, Robot switches to the general build on the CPU by itself."
         TpuSupport.NONE -> (if (p.chip.tensor) "Google publishes no TPU build of Gemma for the ${p.chip.title}" else "Robot has no TPU build for this phone") +
             ": Fast is Gemma 4 E2B's general build, " + (if (ModelCatalogue.gpuOffered(p)) "on the GPU (recommended) or the CPU." else "on the CPU.")
     }
@@ -124,30 +130,38 @@ object Phones {
     /** Settings › Model's short list: which Pixels Robot's TPU build runs on. */
     val TPU_LIST: List<String> = listOf(
         "Tensor G5 (Pixel 10, Pixel 10 Pro, Pixel 10 Pro XL, Pixel 10 Pro Fold): TPU supported. Fast is Google's Tensor G5 build.",
-        "Tensor G6 (Pixel 11, Pixel 11 Pro, Pixel 11 Pro XL, Pixel 11 Pro Fold): Google publishes a TPU build; not supported by this version of " +
-            "Robot yet. Fast runs on the CPU.",
+        "Tensor G6 (Pixel 11, Pixel 11 Pro, Pixel 11 Pro XL, Pixel 11 Pro Fold): TPU supported in beta. Fast is Google's Tensor G6 build; " +
+            "if it doesn't load, the general build on the CPU.",
         "Tensor G1 to G4 (Pixel 6 to 9 and their a models, Pixel 10a, Fold, Tablet), and other phones: no TPU build exists. " +
             "Fast is the general build, on the GPU (recommended) or the CPU.",
     )
 }
 
 /**
- * Which models a phone gets (0.4.7, pure): Fast is [BrainModel.FAST] (the TPU build) on a Tensor G5 and [BrainModel.GENERAL]
- * everywhere else; the other is never shown. A settings file that names the other one (Fast chosen on another phone, or
- * the default) means this phone's Fast: [resolve] reads it so, and the file is left as it is.
+ * Which models a phone gets (0.4.7, pure): Fast is the TPU build for its chip ([BrainModel.FAST] on a Tensor G5, 0.8:
+ * [BrainModel.FAST_G6] on a Tensor G6, a beta) and [BrainModel.GENERAL] everywhere else; the others are never shown. A
+ * settings file that names another build of Fast (Fast chosen on another phone, or the default) means this phone's Fast:
+ * [resolve] reads it so, and the file is left as it is. [tpuFailed] (0.8, TpuFailure): the beta TPU build didn't load
+ * here, so Fast is the general build until you try the TPU again (as the GPU's failure keeps the CPU).
  */
 object ModelCatalogue {
-    fun fast(p: Phone): BrainModel = if (p.tpu == TpuSupport.SUPPORTED) BrainModel.FAST else BrainModel.GENERAL
-
-    /** Settings › Model's models, in order: this phone's Fast, the E4B models, your own file. */
-    fun models(p: Phone): List<BrainModel> {
-        val other = if (fast(p) == BrainModel.FAST) BrainModel.GENERAL else BrainModel.FAST
-        return BrainModel.entries.filter { it != other }
+    fun fast(p: Phone, tpuFailed: Boolean = false): BrainModel = when (p.tpu) {
+        TpuSupport.SUPPORTED -> tpuBuild(p.chip) ?: BrainModel.GENERAL
+        TpuSupport.BETA -> if (tpuFailed) BrainModel.GENERAL else tpuBuild(p.chip) ?: BrainModel.GENERAL
+        TpuSupport.NONE -> BrainModel.GENERAL
     }
 
-    /** The model [stored] means on [p]: either Fast is this phone's Fast. */
-    fun resolve(stored: BrainModel, p: Phone): BrainModel =
-        if (stored == BrainModel.FAST || stored == BrainModel.GENERAL) fast(p) else stored
+    /** The built-in TPU build for [chip], or null. */
+    fun tpuBuild(chip: Chip): BrainModel? = BrainModel.entries.firstOrNull { it.tpuChip == chip }
+
+    /** Settings › Model's models, in order: this phone's Fast, the E4B models, your own file. */
+    fun models(p: Phone, tpuFailed: Boolean = false): List<BrainModel> {
+        val fast = fast(p, tpuFailed)
+        return BrainModel.entries.filter { it == fast || !it.isFast }
+    }
+
+    /** The model [stored] means on [p]: any build of Fast is this phone's Fast. */
+    fun resolve(stored: BrainModel, p: Phone, tpuFailed: Boolean = false): BrainModel = if (stored.isFast) fast(p, tpuFailed) else stored
 
     /**
      * Robot may offer the GPU here: a Tensor's Mali GPU, or another phone's (Google measured its figures on a Galaxy S26
@@ -229,6 +243,10 @@ object Speeds {
         return when {
             m == BrainModel.FAST && backend == ModelBackend.TPU ->
                 of(TPU_PIXEL10, chip == Chip.TENSOR_G5, "Robot measured this on a Pixel 10 Pro's TPU: about 500 to 560 tokens a second read, 17 to 18 written.")
+            // 0.8, beta: no Tensor G6 figure exists anywhere yet; the Tensor G5 build's, never shown as measured.
+            m == BrainModel.FAST_G6 && backend == ModelBackend.TPU -> of(TPU_PIXEL10, false, "Estimate, not measured: Robot hasn't run the " +
+                "Tensor G6 build yet. This is its measurement of the Tensor G5 build on a Pixel 10 Pro's TPU (about 500 to 560 tokens a " +
+                "second read, 17 to 18 written); the Tensor G6 build has the same compiled shapes. Google publishes no figure for it.")
             m == BrainModel.GENERAL && backend == ModelBackend.GPU -> when {
                 chip.gpu == GpuKind.MALI -> of(GPU_MALI_G4, false, "Estimated for a Tensor G4's Mali GPU from Robot's run of this file on a " +
                     "Pixel 10 Pro's GPU (about 540 tokens a second read, 12 written). $GOOGLE_GPU; this phone's GPU is much smaller.$olderNote")

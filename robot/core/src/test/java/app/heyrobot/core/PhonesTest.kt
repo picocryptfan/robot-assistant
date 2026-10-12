@@ -39,7 +39,7 @@ class PhonesTest {
         assertEquals(Chip.TENSOR_G4, Phone("Google", "Pixel 10a").chip)
         assertEquals(TpuSupport.NONE, Phone("Google", "Pixel 10a").tpu)
         for (m in listOf("Pixel 10", "Pixel 10 Pro", "Pixel 10 Pro XL", "Pixel 10 Pro Fold")) assertEquals(m, TpuSupport.SUPPORTED, Phone("Google", m).tpu)
-        for (m in listOf("Pixel 11", "Pixel 11 Pro", "Pixel 11 Pro XL", "Pixel 11 Pro Fold")) assertEquals(m, TpuSupport.NOT_YET, Phone("Google", m).tpu)
+        for (m in listOf("Pixel 11", "Pixel 11 Pro", "Pixel 11 Pro XL", "Pixel 11 Pro Fold")) assertEquals(m, TpuSupport.BETA, Phone("Google", m).tpu)
         for (m in listOf("Pixel 6", "Pixel 6a", "Pixel 7a", "Pixel Fold", "Pixel Tablet", "Pixel 8a", "Pixel 9", "Pixel 9a")) {
             assertEquals(m, TpuSupport.NONE, Phone("Google", m).tpu)
         }
@@ -58,11 +58,28 @@ class PhonesTest {
         assertEquals("This phone: Samsung SM-S948B", Phones.line(Phone("samsung", "SM-S948B", "Qualcomm", "SM8850")))
     }
 
-    /** A Tensor G5 keeps its TPU Fast, unchanged; every other phone gets the general build, and sees only its own Fast. */
+    /**
+     * A Tensor G5 keeps its TPU Fast, unchanged; 0.8: a Tensor G6 gets its own TPU build (beta), and the general build once
+     * that failed here; every other phone gets the general build, and sees only its own Fast.
+     */
     @Test fun eachPhoneGetsItsFast() {
         assertEquals(BrainModel.FAST, ModelCatalogue.fast(pixel10Pro))
         assertEquals(listOf(BrainModel.FAST, BrainModel.SMARTER, BrainModel.UNCENSORED, BrainModel.OWN), ModelCatalogue.models(pixel10Pro))
-        for (p in listOf(pixel9a, pixel11, pixel("Pixel 6a", "Tensor"), Phone("samsung", "SM-S948B", "Qualcomm", "SM8850"))) {
+        // A Tensor G5's TPU build is no beta: a failure there never moves it to the general build.
+        assertEquals(BrainModel.FAST, ModelCatalogue.fast(pixel10Pro, tpuFailed = true))
+        assertEquals(BrainModel.FAST_G6, ModelCatalogue.fast(pixel11))
+        assertEquals(listOf(BrainModel.FAST_G6, BrainModel.SMARTER, BrainModel.UNCENSORED, BrainModel.OWN), ModelCatalogue.models(pixel11))
+        assertEquals(BrainModel.GENERAL, ModelCatalogue.fast(pixel11, tpuFailed = true))
+        assertEquals(listOf(BrainModel.GENERAL, BrainModel.SMARTER, BrainModel.UNCENSORED, BrainModel.OWN), ModelCatalogue.models(pixel11, tpuFailed = true))
+        for (stored in listOf(BrainModel.FAST, BrainModel.FAST_G6, BrainModel.GENERAL)) {
+            assertEquals(BrainModel.FAST_G6, ModelCatalogue.resolve(stored, pixel11))
+            assertEquals(BrainModel.GENERAL, ModelCatalogue.resolve(stored, pixel11, tpuFailed = true))
+            assertEquals(BrainModel.FAST, ModelCatalogue.resolve(stored, pixel10Pro))
+            assertEquals(BrainModel.GENERAL, ModelCatalogue.resolve(stored, pixel9a))
+        }
+        assertEquals(BrainModel.FAST_G6, ModelCatalogue.tpuBuild(Chip.TENSOR_G6))
+        assertNull(ModelCatalogue.tpuBuild(Chip.TENSOR_G4))
+        for (p in listOf(pixel9a, pixel("Pixel 6a", "Tensor"), Phone("samsung", "SM-S948B", "Qualcomm", "SM8850"))) {
             assertEquals(p.name, BrainModel.GENERAL, ModelCatalogue.fast(p))
             assertEquals(p.name, listOf(BrainModel.GENERAL, BrainModel.SMARTER, BrainModel.UNCENSORED, BrainModel.OWN), ModelCatalogue.models(p))
         }
@@ -106,6 +123,15 @@ class PhonesTest {
         val f = BrainModel.FAST
         assertEquals(LoadCheck.NO_TPU, LoadCheck.refuse(f, ModelBackend.TPU, "3113545589|1", "${f.sha256}|3113545589|1", null, phone = pixel9a))
         assertNull(LoadCheck.refuse(f, ModelBackend.TPU, "3113545589|1", "${f.sha256}|3113545589|1", null, phone = pixel10Pro))
+        // 0.8: each TPU build only on its own chip: never the Tensor G5's on a Tensor G6, nor the reverse.
+        val g6 = BrainModel.FAST_G6
+        val g6Mark = "${g6.sha256}|3313938293|1"
+        assertNull(LoadCheck.refuse(g6, ModelBackend.TPU, "3313938293|1", g6Mark, null, phone = pixel11))
+        assertEquals(LoadCheck.otherChip(Chip.TENSOR_G5, Chip.TENSOR_G6),
+            LoadCheck.refuse(f, ModelBackend.TPU, "3113545589|1", "${f.sha256}|3113545589|1", null, phone = pixel11))
+        assertEquals(LoadCheck.otherChip(Chip.TENSOR_G6, Chip.TENSOR_G5), LoadCheck.refuse(g6, ModelBackend.TPU, "3313938293|1", g6Mark, null, phone = pixel10Pro))
+        assertEquals(LoadCheck.NO_TPU, LoadCheck.refuse(g6, ModelBackend.TPU, "3313938293|1", g6Mark, null, phone = pixel9a))
+        assertTrue(LoadCheck.refuse(g6, ModelBackend.CPU, "3313938293|1", g6Mark, null, phone = pixel11)!!.contains("TPU only"))
         assertTrue(LoadCheck.refuse(BrainModel.SMARTER, ModelBackend.GPU, fp, mark, null, phone = pixel9a)!!.contains("CPU only"))
     }
 
@@ -162,12 +188,16 @@ class PhonesTest {
 
     @Test fun theTpuListNamesEveryPixelFamily() {
         val all = Phones.TPU_LIST.joinToString(" ")
-        for (w in listOf("Tensor G5", "Pixel 10 Pro Fold", "Tensor G6", "Pixel 11", "not supported by this version", "Pixel 10a", "GPU (recommended)")) {
+        for (w in listOf("Tensor G5", "Pixel 10 Pro Fold", "Tensor G6", "Pixel 11", "supported in beta", "Pixel 10a", "GPU (recommended)")) {
             assertTrue(w, all.contains(w))
         }
         assertTrue(Phones.tpuLine(pixel9a).contains("Tensor G4") && Phones.tpuLine(pixel9a).contains("GPU"))
         assertTrue(Phones.tpuLine(pixel10Pro).startsWith("Its TPU is supported"))
-        assertTrue(Phones.tpuLine(pixel11).contains("on the CPU"))
+        assertTrue(Phones.tpuLine(pixel11).contains("in beta") && Phones.tpuLine(pixel11).contains("Tensor G6 build"))
+        // 0.8: the Tensor G6 build's speed is the Tensor G5's, as an estimate, never as measured.
+        val g6 = Speeds.of(BrainModel.FAST_G6, ModelBackend.TPU, pixel11)!!
+        assertTrue(g6.text(), !g6.measured && g6.text().startsWith("Estimate") && g6.source.startsWith("Estimate, not measured"))
+        assertEquals(Speeds.of(BrainModel.FAST, ModelBackend.TPU, pixel10Pro)!!.firstWord, g6.firstWord)
         assertFalse(Phones.tpuLine(pixel9a).contains("this phone's TPU"))
     }
 }
