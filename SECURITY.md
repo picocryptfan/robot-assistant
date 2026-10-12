@@ -1,12 +1,12 @@
 # Security policy
 
-> **Draft for review.** Replace CONTACT with a real address, and turn on private vulnerability reporting for the public
-> repository (Settings › Advanced Security › Private vulnerability reporting) before publishing.
+> **Draft for review.** Turn on private vulnerability reporting for the public repository (Settings › Advanced Security ›
+> Private vulnerability reporting) before publishing.
 
 ## Reporting a security problem
 
 Please report it privately: use **Report a vulnerability** on this repository's Security tab (GitHub's private
-vulnerability reporting), or email CONTACT. Please don't open a public issue.
+vulnerability reporting), or email hey@robot-app.ai. Please don't open a public issue.
 
 Include:
 

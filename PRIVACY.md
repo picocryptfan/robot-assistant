@@ -1,8 +1,7 @@
 # Robot's privacy policy
 
 > **Draft for review.** Brought up to date with Robot 0.9.0 and the 1.0 hardening (conversation mode, helpers, memory,
-> messages, routines, headset and car mode, web search, Termux, the updater and feedback). Replace CONTACT with a real
-> address before publishing.
+> messages, routines, headset and car mode, web search, Termux, the updater and feedback).
 
 ## The short version
 
@@ -186,4 +185,4 @@ Robot is not made for children.
 
 ## Changes and contact
 
-Changes to this policy are listed in the release notes and in this file's history. Questions: CONTACT.
+Changes to this policy are listed in the release notes and in this file's history. Questions: hey@robot-app.ai.
