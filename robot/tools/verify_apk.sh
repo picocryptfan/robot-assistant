@@ -39,13 +39,26 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 sigv=$("$BT/apksigner" verify -v "$APK" 2>/dev/null)
 grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" <<<"$sigv" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='app.heyrobot' versionCode='90' versionName='0.9.0'" "$badging" "package app.heyrobot 0.9.0 (90)"
+has "package: name='ai.robot_app' versionCode='90' versionName='0.9.0'" "$badging" "package ai.robot_app 0.9.0 (90)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"
 has "native-code: 'arm64-v8a'" "$badging" "arm64-v8a only"
 hasnt "application-debuggable" "$badging" "not debuggable"
 mf=$("$BT/aapt2" dump xmltree --file AndroidManifest.xml "$APK" 2>/dev/null)
+# 1.0: the application ID is ai.robot_app (0.9 and earlier: app.heyrobot, still the classes' package), so 1.0 installs beside
+# 0.9: its signature permission, every provider's authority and every explicit task affinity are the new ID's, none 0.9's.
+internal=$(elem ai.robot_app.permission.INTERNAL)
+has 'E: permission ' "$internal" "declares ai.robot_app.permission.INTERNAL"
+has 'protectionLevel(0x01010009)=0x00000002' "$internal" "ai.robot_app.permission.INTERNAL is a signature permission"
+idattrs=$(grep -E 'android:(authorities|taskAffinity)\(' <<<"$mf")
+[ "$(grep -c 'authorities(' <<<"$idattrs")" = 3 ] && pass "three providers" || fail "providers: $(grep 'authorities(' <<<"$idattrs")"
+has '="ai.robot_app.exports"' "$idattrs" "export provider's authority ai.robot_app.exports"
+has '="ai.robot_app.capture"' "$idattrs" "capture provider's authority ai.robot_app.capture"
+has '="ai.robot_app.androidx-startup"' "$idattrs" "AndroidX Startup's provider named after the ID too (its library's own placeholder)"
+[ "$(grep -c 'taskAffinity(' <<<"$idattrs")" = 9 ] && pass "nine task affinities" || fail "task affinities: $(grep 'taskAffinity(' <<<"$idattrs")"
+[ -z "$(grep -v '="ai\.robot_app\.' <<<"$idattrs")" ] && pass "authorities and task affinities all ai.robot_app.*" || fail "not ai.robot_app: $(grep -v '="ai\.robot_app\.' <<<"$idattrs")"
+hasnt '"app.heyrobot.permission.' "$mf" "no app.heyrobot permission (0.9's)"
 for c in assistant.RobotVoiceService assistant.RobotSessionService assistant.RobotRecognitionService assistant.CaptureActivity brain.BrainService mt.MtService boot.BootReceiver boot.BootCheckReceiver ui.MainActivity \
     boot.UpdatedReceiver update.UpdateJobService update.InstallStatusReceiver; do
   has "\"app.heyrobot.$c\"" "$mf" "manifest has $c"
@@ -59,13 +72,13 @@ has '"android.speech"' "$rec" "recognizer has the android.speech meta-data"
 has ':voice' "$(elem app.heyrobot.assistant.RobotVoiceService)" "assistant in :voice"
 has ':brain' "$(elem app.heyrobot.brain.BrainService)" "BrainService in :brain"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.brain.BrainService)" "BrainService not exported"
-has '"app.heyrobot.permission.INTERNAL"' "$(elem app.heyrobot.brain.BrainService)" "BrainService guarded by the signature permission"
+has '"ai.robot_app.permission.INTERNAL"' "$(elem app.heyrobot.brain.BrainService)" "BrainService guarded by the signature permission"
 # 0.5.0: the fast translation engine runs in a process of its own (an abort in slimt ends only that one), bound only by
 # Robot's own processes. It never goes online (ProcessIsolationTest checks its module's code).
 mtsvc=$(elem app.heyrobot.mt.MtService)
 has ':mt' "$mtsvc" "MtService in :mt (the fast translation engine)"
 has 'exported(0x01010010)=false' "$mtsvc" "MtService not exported"
-has '"app.heyrobot.permission.INTERNAL"' "$mtsvc" "MtService guarded by the signature permission"
+has '"ai.robot_app.permission.INTERNAL"' "$mtsvc" "MtService guarded by the signature permission"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver not exported"
 # 0.4.5: llama.cpp runs in its own isolated process (a uid of its own: no permissions, no network, none of Robot's files),
 # which only :brain binds: not exported, no permission either way, no shared isolated process, not from the app zygote.
@@ -180,7 +193,7 @@ bridge=$(elem app.heyrobot.people.MessagesBridge)
 has '"app.heyrobot.people.MessagesBridge"' "$mf" "manifest has MessagesBridge"
 hasnt 'process(0x01010011)' "$bridge" "MessagesBridge in the main process"
 has 'exported(0x01010010)=false' "$bridge" "MessagesBridge not exported"
-has '"app.heyrobot.permission.INTERNAL"' "$bridge" "MessagesBridge guarded by the signature permission"
+has '"ai.robot_app.permission.INTERNAL"' "$bridge" "MessagesBridge guarded by the signature permission"
 hasnt 'intent-filter' "$(subtree app.heyrobot.people.MessagesBridge)" "MessagesBridge has no intent filter"
 # "Pick in Cheogram" runs in :voice and isn't exported (only the panel's card starts it).
 has ':voice' "$(elem app.heyrobot.assistant.CheogramPickActivity)" "CheogramPickActivity in :voice"
@@ -264,10 +277,13 @@ has '"com.termux.permission.RUN_COMMAND"' "$mf" "declares com.termux.permission.
 has '"com.termux"' "$queries" "<queries> has Termux's package"
 has ':voice' "$(elem app.heyrobot.assistant.TermuxResultReceiver)" "TermuxResultReceiver in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.TermuxResultReceiver)" "TermuxResultReceiver not exported"
-uperms=$(grep -A1 'E: uses-permission' <<<"$mf" | grep -o 'name(0x01010003)="[^"]*"' | sed 's/.*="//; s/"$//' | grep -v '^android\.permission\.\|^com\.android\.\|^app\.heyrobot\.' | sort -u | tr '\n' ' ')
+uperms=$(grep -A1 'E: uses-permission' <<<"$mf" | grep -o 'name(0x01010003)="[^"]*"' | sed 's/.*="//; s/"$//' | grep -v '^android\.permission\.\|^com\.android\.\|^ai\.robot_app\.' | sort -u | tr '\n' ' ')
 [ "$uperms" = "com.termux.permission.RUN_COMMAND " ] && pass "the only other app's permission is Termux's RUN_COMMAND" || fail "other apps' permissions: $uperms"
 vi=$(for f in $(unzip -Z1 "$APK" 'res/*.xml'); do "$BT/aapt2" dump xmltree --file "$f" "$APK" 2>/dev/null; done)
 has '"app.heyrobot.assistant.RobotSessionService"' "$vi" "voice-interaction sessionService"
+# Launcher shortcuts: the application ID as targetPackage (a resource can't take the placeholder), never 0.9's.
+shortcut_pkgs=$(grep -o 'targetPackage([^)]*)="[^"]*"' <<<"$vi" | sed 's/.*="//; s/"$//' | sort | uniq -c | awk '{ print $2 "x" $1 }' | tr '\n' ' ')
+[ "$shortcut_pkgs" = "ai.robot_appx2 " ] && pass "both shortcuts target ai.robot_app" || fail "shortcut targetPackage: $shortcut_pkgs"
 has '"app.heyrobot.assistant.RobotRecognitionService"' "$vi" "voice-interaction recognitionService"
 hasnt 'selectableAsDefault' "$vi" "recognizer selectableAsDefault left at its default (true)"
 has 'supportsAssist(0x010104f0)=true' "$vi" "supportsAssist"
