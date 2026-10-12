@@ -1,5 +1,7 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.feedback.FeedbackEntry
+import app.heyrobot.core.feedback.FeedbackKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -57,7 +59,8 @@ class VoiceLogTest {
             MtVerdict.entries, LangCode.entries, IoCode.entries, MicEvent.entries, ThermalStep.entries, HelperCode.entries, AppShareCode.entries,
             ExportKind.entries, ClaudeStage.entries, ClaudeErrorKind.entries, MtError.entries, ModelCode.entries, BackendCode.entries,
             FallbackWhy.entries, LoadFailure.entries, ClaudeEnd.entries, ClaudeFail.entries, ClaudeModelCode.entries, LocationCode.entries,
-            NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries, ProblemStage.entries)
+            NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries, ProblemStage.entries,
+            FeedbackKind.entries, FeedbackEntry.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -87,6 +90,11 @@ class VoiceLogTest {
         // 0.4.7's GPU fallback keeps the id it shipped with: 0.6.0 left 135 free.
         assertEquals(135, VoiceEvent.GPU_FALLBACK.id)
         assertEquals(model, VoiceEvent.entries.filter { it.id in 130..139 })
+        // 0.7's feedback events use 220 to 229 (225 the panel's, the others the main app's Send feedback page).
+        val feedback = listOf(VoiceEvent.FEEDBACK_OPENED, VoiceEvent.FEEDBACK_SHARED, VoiceEvent.FEEDBACK_COPIED, VoiceEvent.FEEDBACK_GITHUB,
+            VoiceEvent.FEEDBACK_TEXTED, VoiceEvent.FEEDBACK_ASKED)
+        assertEquals((220..225).toList(), feedback.map { it.id })
+        assertEquals(feedback, VoiceEvent.entries.filter { it.id in 220..229 })
         // Every model and backend has a code of its own.
         assertEquals(BrainModel.entries.size, BrainModel.entries.map { ModelCode.of(it) }.toSet().size)
         assertEquals(ModelBackend.entries.size, ModelBackend.entries.map { BackendCode.of(it) }.toSet().size)
@@ -266,6 +274,21 @@ class VoiceLogTest {
         val now = 1_760_000_060_000L
         val text = VoiceLogText.plain(listOf(VoiceLogEntry(now - 12_000, VoiceEvent.SCREEN, 1)), now, "Robot voice log", zone)
         assertEquals("Robot voice log · 1 events, newest first · copied Oct 9 08:54:20\nOct 9 08:54:08  (12 s ago)  Screen on\n", text)
+        // 0.7, Send feedback: codes and counts only, never the words.
+        assertEquals("Send feedback opened from the voice log: bug report",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_OPENED, FeedbackEntry.VOICE_LOG.id, FeedbackKind.BUG.id)))
+        assertEquals("Feedback (bug report) handed to the share sheet: about 3400 characters · with the problem report, the voice log, the settings summary",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_SHARED, FeedbackKind.BUG.id, 34, 7)))
+        assertEquals("Feedback (idea) copied: about 300 characters · with no diagnostics",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_COPIED, FeedbackKind.IDEA.id, 3, 0)))
+        assertEquals("Feedback (bug report) opened as a GitHub issue in the browser: about 6900 characters (cut to fit the link)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_GITHUB, FeedbackKind.BUG.id, 69, 1)))
+        assertEquals("Feedback (other) opened in the SMS app with your number: about 200 characters · with the settings summary",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_TEXTED, FeedbackKind.OTHER.id, 2, 4)))
+        assertEquals("Feedback asked for by voice: idea · with words after the phrase",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_ASKED, FeedbackKind.IDEA.id, 1, 0)))
+        assertEquals("Feedback asked for by voice: bug report · phone locked: nothing opened",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_ASKED, FeedbackKind.BUG.id, 0, 1)))
     }
 
     /**

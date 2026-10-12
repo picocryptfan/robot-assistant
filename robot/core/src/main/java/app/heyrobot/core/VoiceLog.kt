@@ -1,5 +1,8 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.feedback.Diagnostic
+import app.heyrobot.core.feedback.FeedbackEntry
+import app.heyrobot.core.feedback.FeedbackKind
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -236,6 +239,21 @@ enum class VoiceEvent(val id: Int) {
      * [ProblemStage], c = [LoadFailure] (0: its process stopped).
      */
     GPU_FALLBACK(135),
+    /** 0.7, Settings › About › Send feedback opened: a = [FeedbackEntry] (where from), b = [FeedbackKind]. */
+    FEEDBACK_OPENED(220),
+    /**
+     * Send feedback's Share: Android's share sheet opened with the message (it never says which app gets it): a =
+     * [FeedbackKind], b = the message's length in hundreds of characters, c = the diagnostics in it ([Diagnostic] bits).
+     */
+    FEEDBACK_SHARED(221),
+    /** Send feedback's Copy: the message on the clipboard; a, b, c as [FEEDBACK_SHARED]. */
+    FEEDBACK_COPIED(222),
+    /** "Open a GitHub issue": the browser opened; a = [FeedbackKind], b = hundreds of characters in the link's text, c = 1 when cut to fit. */
+    FEEDBACK_GITHUB(223),
+    /** "Text it": the SMS app opened with the number you set; a, b, c as [FEEDBACK_SHARED]. */
+    FEEDBACK_TEXTED(224),
+    /** The panel heard a feedback phrase: a = [FeedbackKind], b = 1 when words came after it, c = 1 when the phone was locked (nothing opened). */
+    FEEDBACK_ASKED(225),
     ;
 
     companion object {
@@ -798,8 +816,19 @@ object VoiceLogText {
             VoiceEvent.CONV_CHECK -> "Transcription check (" + code(LangCode.entries, c) + "): $a% of words wrong over $b lines"
             VoiceEvent.MT_LOAD -> if (b == 1) "Fast translation loaded in $a ms ($c directions)" else "Fast translation didn't load ($a ms): " + code(MtError.entries, c)
             VoiceEvent.CONV_REHEARD -> "Segment heard again in two halves (" + secs(a) + " of speech): $b words, then $c"
+            VoiceEvent.FEEDBACK_OPENED -> "Send feedback opened from " + code(FeedbackEntry.entries, a) + ": " + code(FeedbackKind.entries, b)
+            VoiceEvent.FEEDBACK_SHARED -> "Feedback (" + code(FeedbackKind.entries, a) + ") handed to the share sheet: " + sent(b, c)
+            VoiceEvent.FEEDBACK_COPIED -> "Feedback (" + code(FeedbackKind.entries, a) + ") copied: " + sent(b, c)
+            VoiceEvent.FEEDBACK_GITHUB -> "Feedback (" + code(FeedbackKind.entries, a) + ") opened as a GitHub issue in the browser: about ${b * 100} characters" +
+                (if (c == 1) " (cut to fit the link)" else "")
+            VoiceEvent.FEEDBACK_TEXTED -> "Feedback (" + code(FeedbackKind.entries, a) + ") opened in the SMS app with your number: " + sent(b, c)
+            VoiceEvent.FEEDBACK_ASKED -> "Feedback asked for by voice: " + code(FeedbackKind.entries, a) + (if (b == 1) " · with words after the phrase" else "") +
+                (if (c == 1) " · phone locked: nothing opened" else "")
         }
     }
+
+    /** "about 3400 characters · with the problem report, the voice log". */
+    private fun sent(hundreds: Int, bits: Int): String = "about ${hundreds * 100} characters · with " + Diagnostic.words(bits)
 
     private val THERMAL = listOf("none", "light", "moderate", "severe", "critical", "emergency", "shutdown")
 
