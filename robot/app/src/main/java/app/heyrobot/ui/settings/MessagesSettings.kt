@@ -22,8 +22,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import app.heyrobot.R
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.core.Person
 import app.heyrobot.core.messages.AppPin
@@ -164,61 +166,71 @@ fun MessagesSettingsScreen(
         preferenceFooter(FOOTER)
     }
     if (setup) {
-        val texting = if (installed(MessageApp.CHEOGRAM)) MessageApp.CHEOGRAM else null
-        var apps by remember { mutableStateOf(MessageAllowlist.atSetup(texting).apps) }
-        AlertDialog(
-            onDismissRequest = { setup = false },
-            title = { Text("Read your messages?") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(SETUP, style = MaterialTheme.typography.bodyMedium)
-                    for (app in MessageApp.entries.filter { installed(it) || it in apps }) {
-                        Row(
-                            Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(app in apps, role = Role.Checkbox) { on -> apps = if (on) apps + app else apps - app },
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            androidx.compose.material3.Checkbox(checked = app in apps, onCheckedChange = null)
-                            Spacer(Modifier.width(12.dp))
-                            Text(app.title, style = MaterialTheme.typography.bodyLarge)
-                        }
-                    }
-                    if (MessageApp.entries.none { installed(it) }) {
-                        Text("None of the apps Robot knows is installed. Turn one on below once it is.", style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    setup = false
-                    // Each ticked app's packages installed now are pinned to their signing keys (MessageSigners).
-                    val pins = apps.flatMap { pinsNow(it).entries }.associate { it.toPair() }
-                    onEdit { it.turnedOn(apps, pins) }
-                    NotificationAccess.rebind(ctx)
-                }) { Text("Turn on") }
-            },
-            dismissButton = { TextButton(onClick = { setup = false }) { Text("Cancel") } },
-        )
+        MessagesSetupDialog(installed, onDismiss = { setup = false }) { apps ->
+            setup = false
+            // Each ticked app's packages installed now are pinned to their signing keys (MessageSigners).
+            val pins = apps.flatMap { pinsNow(it).entries }.associate { it.toPair() }
+            onEdit { it.turnedOn(apps, pins) }
+            NotificationAccess.rebind(ctx)
+        }
     }
 }
 
 /**
- * 1.0, the setup guide's "Read my messages": on as the set-up window above turns it on when you tap Turn on without
- * changing its ticks (your texting app, Cheogram, when it is installed, pinned to its signing key now); off, or on again
- * with the apps you had, as the main switch does.
+ * The "Read your messages?" window: what Robot will do, then the apps it knows that are installed, your texting app
+ * (Cheogram) ticked; [onTurnOn] with the apps ticked. Settings › Messages' main switch opens it, and (1.0) so does the
+ * setup guide's, with [needsApp]: Turn on waits until an app is ticked.
  */
-internal fun turnMessagesOn(ctx: android.content.Context, on: Boolean) {
-    val now = MessagesStore.current(ctx).settings
-    if (on && now.allowlist.apps.isEmpty()) {
-        val texting = MessageApp.CHEOGRAM.takeIf { c -> c.packages.any { HandOffApps.installed(ctx, it) } }
-        val apps = MessageAllowlist.atSetup(texting).apps
-        val pins = apps.flatMap { MessageAppSigners.pinsNow(ctx, it).entries }.associate { it.toPair() }
-        MessagesStore.update(ctx) { it.turnedOn(apps, pins) }
-    } else {
-        MessagesStore.update(ctx) { it.copy(settings = it.settings.copy(on = on)) }
-    }
-    if (on) NotificationAccess.rebind(ctx)
+@Composable
+internal fun MessagesSetupDialog(installed: (MessageApp) -> Boolean, onDismiss: () -> Unit, needsApp: Boolean = false, onTurnOn: (Set<MessageApp>) -> Unit) {
+    val texting = if (installed(MessageApp.CHEOGRAM)) MessageApp.CHEOGRAM else null
+    var apps by remember { mutableStateOf(MessageAllowlist.atSetup(texting).apps) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.messages_setup_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.messages_setup_text), style = MaterialTheme.typography.bodyMedium)
+                for (app in MessageApp.entries.filter { installed(it) || it in apps }) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp).toggleable(app in apps, role = Role.Checkbox) { on -> apps = if (on) apps + app else apps - app },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        androidx.compose.material3.Checkbox(checked = app in apps, onCheckedChange = null)
+                        Spacer(Modifier.width(12.dp))
+                        Text(app.title, style = MaterialTheme.typography.bodyLarge)
+                    }
+                }
+                if (MessageApp.entries.none { installed(it) }) {
+                    Text(stringResource(R.string.messages_setup_none), style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onTurnOn(apps) }, enabled = !needsApp || apps.isNotEmpty()) { Text(stringResource(R.string.messages_setup_turn_on)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.messages_setup_cancel)) } },
+    )
 }
+
+/** 1.0, the setup guide's "Read my messages": off, or on again with the apps you had, as the main switch does; never on with no app. */
+internal fun turnMessagesOn(ctx: android.content.Context, on: Boolean) {
+    MessagesStore.update(ctx) { if (on && it.settings.allowlist.apps.isEmpty()) it else it.copy(settings = it.settings.copy(on = on)) }
+    if (on && MessagesStore.current(ctx).settings.on) NotificationAccess.rebind(ctx)
+}
+
+/** 1.0, the setup guide: the set-up window's Turn on with [apps] ticked, each pinned to its signing key now, as on this page. */
+internal fun turnMessagesOn(ctx: android.content.Context, apps: Set<MessageApp>) {
+    if (apps.isEmpty()) return
+    val pins = apps.flatMap { MessageAppSigners.pinsNow(ctx, it).entries }.associate { it.toPair() }
+    MessagesStore.update(ctx) { it.turnedOn(apps, pins) }
+    NotificationAccess.rebind(ctx)
+}
+
+/** 1.0, the setup guide: the apps Robot reads that are on this phone now (their package names, <queries> in the manifest). */
+internal fun installedMessageApps(ctx: android.content.Context): Set<MessageApp> =
+    MessageApp.entries.filter { app -> app.packages.any { HandOffApps.installed(ctx, it) } }.toSet()
 
 /** 1.0, the setup guide: "Announce new messages", as this page's switch. */
 internal fun announceMessages(ctx: android.content.Context, on: Boolean) = MessagesStore.update(ctx) { it.copy(settings = it.settings.copy(announce = on)) }
@@ -286,10 +298,6 @@ internal fun messagesSummary(f: MessagesFile): String {
     val apps = MessageApp.entries.filter { it in s.allowlist.apps }.map { it.title }
     return "On · " + if (apps.isEmpty()) "no app yet" else apps.joinToString(", ")
 }
-
-internal const val SETUP = "Robot will read the notifications of the apps you tick here, keep their messages in memory only while their " +
-    "notifications are there, and read, summarize, translate or answer them when you ask. Nothing is written to storage, and nothing " +
-    "leaves the phone unless you send it. A message can never make Robot do anything: after one is read, every action asks first."
 
 internal const val FOOTER = "Robot reads the shade, not a database: no SMS permission, no message history. A message's text stays in memory " +
     "until its notification goes; History keeps a line such as “Robot read 2 messages from Mom”, never the words, and the voice log keeps " +

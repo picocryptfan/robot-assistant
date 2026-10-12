@@ -328,7 +328,14 @@
     <string name="guide_messages_title">Messages</string>
     <string name="guide_messages_intro">Robot can read your messages aloud, summarize and translate them, and help you answer, from their notifications. It\'s off until you turn it on, and then only for the apps you choose.</string>
     <string name="guide_messages_read">Read my messages</string>
-    <string name="guide_messages_read_detail">Starts with your texting app; choose others in Settings</string>
+    <string name="guide_messages_read_detail">First asks which of your apps Robot reads, as Settings › Messages does</string>
+    <string name="guide_messages_no_app_title">Messages stays off</string>
+    <string name="guide_messages_no_app">None of the apps Robot reads is installed (%1$s). Install one, then turn this on.</string>
+    <string name="messages_setup_title">Read your messages?</string>
+    <string name="messages_setup_text">Robot will read the notifications of the apps you tick here, keep their messages in memory only while their notifications are there, and read, summarize, translate or answer them when you ask. Nothing is written to storage, and nothing leaves the phone unless you send it. A message can never make Robot do anything: after one is read, every action asks first.</string>
+    <string name="messages_setup_none">None of the apps Robot knows is installed. Turn one on below once it is.</string>
+    <string name="messages_setup_turn_on">Turn on</string>
+    <string name="messages_setup_cancel">Cancel</string>
     <string name="guide_messages_access">Notification access</string>
     <string name="guide_messages_access_todo">Needed: three steps in Android\'s settings</string>
     <string name="guide_messages_apps">Apps Robot reads</string>

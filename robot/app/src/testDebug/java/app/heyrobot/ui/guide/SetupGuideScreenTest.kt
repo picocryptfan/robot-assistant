@@ -7,7 +7,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.isDialog
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -33,6 +38,8 @@ import app.heyrobot.core.guide.GuideStep
 import app.heyrobot.core.guide.SetupGuide
 import app.heyrobot.core.headset.HeadsetSettings
 import app.heyrobot.core.memory.MemorySettings
+import app.heyrobot.core.messages.MessageAllowlist
+import app.heyrobot.core.messages.MessageApp
 import app.heyrobot.core.messages.MessageSettings
 import app.heyrobot.core.update.UpdateSettings
 import app.heyrobot.core.web.BrowserEngine
@@ -82,10 +89,20 @@ class SetupGuideScreenTest {
     private class Stores(start: GuideStep = GuideStep.WELCOME, var f: GuideFiles = GuideFiles()) : GuideStores {
         var state = SetupGuide.open(GuideState()).copy(at = start)
         val events = ArrayList<String>()
+        /** The texting apps on the phone (Cheogram by default). */
+        var installed: Set<MessageApp> = setOf(MessageApp.CHEOGRAM)
         override fun guide() = state
         override fun saveGuide(s: GuideState) { state = s }
         override fun files() = f
-        override fun messages(on: Boolean) { f = f.copy(messages = f.messages.copy(on = on)); events += "messages $on" }
+        override fun messages(on: Boolean) {
+            if (!(on && f.messages.allowlist.apps.isEmpty())) f = f.copy(messages = f.messages.copy(on = on))
+            events += "messages $on"
+        }
+        override fun messageApps() = installed
+        override fun turnMessagesOn(apps: Set<MessageApp>) {
+            f = f.copy(messages = f.messages.copy(on = true, allowlist = MessageAllowlist(apps)))
+            events += "messages on " + apps.joinToString { it.title }
+        }
         override fun announce(on: Boolean) { f = f.copy(messages = f.messages.copy(announce = on)); events += "announce $on" }
         override fun memory(s: MemorySettings) { f = f.copy(memory = s); events += "memory on=${s.on} locked=${s.onLockScreen}" }
         override fun rekeyMemory(lockScreen: Boolean): Boolean { events += "rekey $lockScreen"; return true }
@@ -260,11 +277,50 @@ class SetupGuideScreenTest {
         val stores = Stores(GuideStep.MESSAGES)
         guide(stores)
         rule.onRow("Announce new messages").assertIsNotEnabled()
-        rule.onRow("Read my messages").performClick()
+        rule.onRow("Read my messages").assert(hasText("First asks which of your apps Robot reads, as Settings › Messages does")).performClick()
+        // 1.0: Settings › Messages' own window first (what Robot will do, your texting app ticked); nothing is written before Turn on.
+        rule.inDialog("Read your messages?").assertExists()
+        rule.inDialog("Robot will read the notifications of the apps you tick here", substring = true).assertExists()
+        rule.inDialog("Cheogram").assertIsOn()
+        assertEquals(emptyList<String>(), stores.events)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.inDialog("Turn on").performClick()
         rule.onRow("Notification access").assert(hasText("Needed: three steps in Android's settings")).performClick()
         rule.onRow("Announce new messages").performClick()
-        assertEquals(listOf("messages true", "announce true"), stores.events)
+        assertEquals(listOf("messages on Cheogram", "announce true"), stores.events)
         assertEquals(listOf("openPage ${Page.Settings(SettingsRoutes.NOTIFICATION_ACCESS)}"), log)
+        // Off, and on again with the apps you had: no window.
+        rule.onRow("Read my messages").performClick()
+        rule.onRow("Read my messages").performClick()
+        rule.onNode(isDialog()).assertDoesNotExist()
+        assertEquals(listOf("messages false", "messages true"), stores.events.drop(2))
+    }
+
+    /** 1.0: another texting app only: nothing is ticked, and Turn on waits until you tick one; Cancel writes nothing. */
+    @Test fun messagesNeverTurnOnWithNoApp() {
+        val stores = Stores(GuideStep.MESSAGES).apply { installed = setOf(MessageApp.SIGNAL) }
+        guide(stores)
+        rule.onRow("Read my messages").performClick()
+        rule.inDialog("Cancel").performClick()
+        assertEquals(emptyList<String>(), stores.events)
+        rule.onRow("Read my messages").performClick()
+        rule.inDialog("Signal").assertIsOff()
+        rule.inDialog("Turn on").assertIsNotEnabled()
+        rule.inDialog("Signal").performClick()
+        rule.inDialog("Turn on").assertIsEnabled().performClick()
+        assertEquals(listOf("messages on Signal"), stores.events)
+    }
+
+    /** 1.0: none of the apps Robot reads is installed: no window, Messages stays off, and the page says so. */
+    @Test fun withNoTextingAppMessagesStaysOff() {
+        val stores = Stores(GuideStep.MESSAGES).apply { installed = emptySet() }
+        guide(stores)
+        rule.onRow("Read my messages").performClick()
+        rule.onNode(isDialog()).assertDoesNotExist()
+        rule.onNodeWithText("None of the apps Robot reads is installed", substring = true).assertExists()
+        rule.onRow("Read my messages").assertIsOff()
+        rule.onRow("Announce new messages").assertIsNotEnabled()
+        assertEquals(emptyList<String>(), stores.events)
     }
 
     @Test fun theMemoryPageChangesTheKeyBeforeTheLockScreenSwitch() {

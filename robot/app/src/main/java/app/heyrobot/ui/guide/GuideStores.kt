@@ -6,6 +6,7 @@ import app.heyrobot.core.guide.GuideState
 import app.heyrobot.core.headset.HeadsetSettings
 import app.heyrobot.core.memory.MemoryLoad
 import app.heyrobot.core.memory.MemorySettings
+import app.heyrobot.core.messages.MessageApp
 import app.heyrobot.core.messages.MessageSettings
 import app.heyrobot.core.update.UpdateSettings
 import app.heyrobot.core.web.BrowserEngine
@@ -19,6 +20,7 @@ import app.heyrobot.update.UpdateStore
 import app.heyrobot.sys.WebStore
 import app.heyrobot.ui.settings.PhoneMemoryStore
 import app.heyrobot.ui.settings.announceMessages
+import app.heyrobot.ui.settings.installedMessageApps
 import app.heyrobot.ui.settings.turnMessagesOn
 import app.heyrobot.update.Updater
 
@@ -46,8 +48,12 @@ interface GuideStores {
     fun guide(): GuideState
     fun saveGuide(s: GuideState)
     fun files(): GuideFiles
-    /** Settings › Messages' "Read my messages": on as its own set-up turns it on (your texting app ticked, pinned now), or off. */
+    /** Settings › Messages' "Read my messages": off, or on again with the apps you had (never on with no app). */
     fun messages(on: Boolean)
+    /** The apps Robot reads that are installed now, for Settings › Messages' set-up window. */
+    fun messageApps(): Set<MessageApp>
+    /** That window's Turn on: reading on with [apps] ticked, each pinned to its signing key now, as Settings › Messages does. */
+    fun turnMessagesOn(apps: Set<MessageApp>)
     /** Settings › Messages › "Announce new messages". */
     fun announce(on: Boolean)
     fun memory(s: MemorySettings)
@@ -82,6 +88,10 @@ class PhoneGuideStores(ctx: Context) : GuideStores {
     }
 
     override fun messages(on: Boolean) = turnMessagesOn(app, on)
+
+    override fun messageApps(): Set<MessageApp> = installedMessageApps(app)
+
+    override fun turnMessagesOn(apps: Set<MessageApp>) = turnMessagesOn(app, apps)
 
     override fun announce(on: Boolean) = announceMessages(app, on)
 

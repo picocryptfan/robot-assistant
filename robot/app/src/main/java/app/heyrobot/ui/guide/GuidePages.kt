@@ -12,6 +12,11 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -48,6 +53,7 @@ import app.heyrobot.core.guide.GuideStep
 import app.heyrobot.core.guide.GuideSummary
 import app.heyrobot.core.guide.SummaryLine
 import app.heyrobot.core.helpers.HelperSettings
+import app.heyrobot.core.messages.MessageApp
 import app.heyrobot.core.web.BrowserEngine
 import app.heyrobot.core.web.SearchService
 import app.heyrobot.core.web.level
@@ -61,6 +67,7 @@ import app.heyrobot.ui.pref.RadioPreference
 import app.heyrobot.ui.pref.SliderPreference
 import app.heyrobot.ui.pref.StatusPreference
 import app.heyrobot.ui.pref.SwitchPreference
+import app.heyrobot.ui.settings.MessagesSetupDialog
 import app.heyrobot.ui.settings.PrivacyChip
 import app.heyrobot.ui.settings.RoutineRoutes
 import app.heyrobot.ui.settings.engineLine
@@ -341,8 +348,23 @@ private fun LazyListScope.messages(g: GuideCtx) {
     title(R.string.guide_messages_title)
     para(R.string.guide_messages_intro)
     group(null) {
-        SwitchPreference(stringResource(R.string.guide_messages_read), stringResource(R.string.guide_messages_read_detail), m.on, icon = RIcons.Message) {
-            g.stores.messages(it); g.changed()
+        // Turned on with no app yet: Settings › Messages' own window first (what Robot will do, the apps to read); with none
+        // of them installed, Messages stays off and the page says so.
+        var choose by rememberSaveable { mutableStateOf(false) }
+        var noApp by rememberSaveable { mutableStateOf(false) }
+        val here = remember(choose) { if (choose) g.stores.messageApps() else emptySet() }
+        SwitchPreference(stringResource(R.string.guide_messages_read), stringResource(R.string.guide_messages_read_detail), m.on, icon = RIcons.Message) { on ->
+            when {
+                !on || m.allowlist.apps.isNotEmpty() -> { g.stores.messages(on); g.changed() }
+                g.stores.messageApps().isEmpty() -> noApp = true
+                else -> { noApp = false; choose = true }
+            }
+        }
+        if (noApp && !m.on) StatusPreference(stringResource(R.string.guide_messages_no_app_title),
+            stringResource(R.string.guide_messages_no_app, MessageApp.entries.joinToString(", ") { it.title }), Mark.WARN)
+        if (choose) MessagesSetupDialog({ it in here }, onDismiss = { choose = false }, needsApp = true) { apps ->
+            choose = false
+            g.stores.turnMessagesOn(apps); g.changed()
         }
         if (m.on) {
             StatusPreference(stringResource(R.string.guide_messages_access),
