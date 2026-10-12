@@ -360,6 +360,11 @@ interface PanelHost {
     fun launch(intent: Intent): Boolean
     /** Starts Robot's capture activity as an assistant activity; false if it could not. */
     fun startCapture(intent: Intent): Boolean
+    /**
+     * 1.0 (secrets-memory-private-items-not-secure): the panel shows something private from memory: its window is kept out
+     * of screenshots, recordings and casting ([on]) until the conversation changes.
+     */
+    fun secure(on: Boolean) {}
 }
 
 object PanelController {
@@ -770,6 +775,7 @@ object PanelController {
         lastThumb = null
         chat.clear()
         MemoryPanel.newConversation()
+        host?.secure(false)
         forgetReads(allKnown = true)
         groups = setOf(ToolGroup.CORE)
         closeConvAfterTurn = false
@@ -792,6 +798,7 @@ object PanelController {
         lastThumb = null
         chat.clear()
         MemoryPanel.newConversation()
+        host?.secure(false)
         // What its earlier read tools returned isn't saved: any word not yours may be from it (QueryCheck).
         forgetReads(allKnown = false)
         chat += c.turns
@@ -1529,7 +1536,10 @@ object PanelController {
         MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)
         // A private item went in: the live conversation goes after this answer, so no later answer can repeat it (spoken, or
         // kept in History); rebuilt, it holds History's line instead, and naming the item again gives it again.
-        if (mem.recall.secret) closeConvAfterTurn = true
+        if (mem.recall.secret) {
+            closeConvAfterTurn = true
+            host?.secure(true)
+        }
         if (mem.quiet) {
             voice.mute()
             notify("Not read aloud: the answer holds something private from your memory.")

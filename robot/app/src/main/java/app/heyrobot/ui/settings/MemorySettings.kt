@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import app.heyrobot.ui.common.NoImeLearning
+import app.heyrobot.ui.common.SecureDialog
+import app.heyrobot.ui.common.SecureWindow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -194,6 +197,10 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
     val pinnedCount = items.count { it.pinned }
     val shown = if (query.isBlank()) items else items.filter { MemoryText.fold(it.text).contains(MemoryText.fold(query.trim())) }
 
+    // 1.0 (secrets-memory-private-items-not-secure): private items are shown here in full: out of screenshots, recordings,
+    // casting and Recents, and no keyboard learns from the fields, the dialogs' included (ui/common Secure).
+    SecureWindow()
+    NoImeLearning {
     PreferenceScreen("Memory", onBack, snackbar = snackbar) {
         item(key = "main") { MainSwitchBar("Use memory", s.on) { saveSettings(s.copy(on = it)) } }
         when {
@@ -311,7 +318,7 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
     }
     if (adding) {
         EditDialog("Add something", "", "What to remember", "Your words, as you'd say them", canSave = { it.isNotBlank() },
-            maxLength = MemoryLimits.MAX_CHARS, onDismiss = { adding = false }) { text ->
+            maxLength = MemoryLimits.MAX_CHARS, secure = true, onDismiss = { adding = false }) { text ->
             adding = false
             val t = now()
             val kind = if (app.heyrobot.core.memory.MemoryCommands.prefers(text)) MemoryKind.PREFERENCE else MemoryKind.FACT
@@ -350,6 +357,7 @@ fun MemorySettingsScreen(store: MemoryStore, a: AppActions, snackbar: SnackbarHo
                 tick++
             }
         }
+    }
     }
 }
 
@@ -407,6 +415,7 @@ private fun ItemDialog(item: MemoryItem, pinFull: Boolean, now: Long, onDismiss:
     var secret by rememberSaveable(item.id) { mutableStateOf(item.secret) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = SecureDialog,
         title = { Text(if (item.kind == MemoryKind.PREFERENCE) "Preference" else "Remembered") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

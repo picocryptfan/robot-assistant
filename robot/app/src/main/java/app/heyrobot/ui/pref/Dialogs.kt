@@ -92,6 +92,8 @@ fun EditDialog(
     hint: ((String) -> String?)? = null,
     canSave: (String) -> Boolean = { true },
     maxLength: Int = Int.MAX_VALUE,
+    /** 1.0: what is typed may be private (a memory item): the dialog is secure whatever its screen is. */
+    secure: Boolean = false,
     onDismiss: () -> Unit,
     onSave: (String) -> Unit,
 ) {
@@ -100,6 +102,7 @@ fun EditDialog(
     val ok = error == null && canSave(text)
     AlertDialog(
         onDismissRequest = onDismiss,
+        properties = if (secure) app.heyrobot.ui.common.SecureDialog else androidx.compose.ui.window.DialogProperties(),
         title = { Text(title) },
         text = {
             OutlinedTextField(

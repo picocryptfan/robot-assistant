@@ -744,6 +744,32 @@ class ProcessIsolationTest {
         assertTrue(panel.contains("_state.value.turns.lastOrNull()?.actions?.any { it.content } == true, turnMemContent)"))
     }
 
+    /**
+     * 1.0 audit (secrets-history-refused-remember, secrets-lockscreen-notification-content, secrets-memory-private-items-not-
+     * secure): the panel saves a refused remember's placeholder; the notifications that hold words are secret on the lock
+     * screen; Settings › Memory and a panel showing a private answer are FLAG_SECURE, and Memory's fields don't teach the keyboard.
+     */
+    @Test fun privateWordsStayOffHistoryTheLockScreenAndScreenshots() {
+        val panel = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        assertTrue(panel.contains("memRoute?.let { MemoryPanel.question(it, q) }"))
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/MemoryPanel.kt")).contains("fun question(route: MemoryRoute, said: String): String = MemoryHygiene.question(route, said)"))
+        val notices = withoutComments(File(java("app"), "app/heyrobot/assistant/routines/RoutineSpeakingService.kt"))
+        for (f in listOf("fun ready(ctx: Context, cards: List<ReadyCard>)", "fun silent(ctx: Context, r: Routine, text: String)", "fun summary(ctx: Context, text: String?)")) {
+            val body = notices.substringAfter(f).substringBefore("\n    }\n")
+            assertTrue(f, body.contains(".setVisibility(Notification.VISIBILITY_SECRET)") && !body.contains("VISIBILITY_PRIVATE"))
+        }
+        val car = withoutComments(File(java("app"), "app/heyrobot/assistant/car/CarNotices.kt")).substringAfter("fun parked(ctx: Context) {").substringBefore("\n    }\n")
+        assertTrue(car, car.contains(".setVisibility(Notification.VISIBILITY_SECRET)"))
+        val memory = code(File(java("app"), "app/heyrobot/ui/settings/MemorySettings.kt"))
+        val screen = memory.substringAfter("fun MemorySettingsScreen(").substringBefore("\ninternal fun problem(")
+        assertTrue(screen.contains("SecureWindow()\n    NoImeLearning {\n    PreferenceScreen(\"\", onBack, snackbar = snackbar) {"))
+        assertTrue(memory.substringAfter("private fun ItemDialog(").contains("properties = SecureDialog,"))
+        assertTrue(screen.contains("secure = true, onDismiss = { adding = false }"))
+        assertTrue(panel.contains("closeConvAfterTurn = true\n            host?.secure(true)"))
+        assertEquals(2, Regex("""host\?\.secure\(false\)""").findAll(panel).count())
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/RobotSession.kt")).contains("if (on) w.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else w.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)"))
+    }
+
     @Test fun voiceInteractionMetadataNamesTheComponents() {
         val x = File(main("app"), "res/xml/voice_interaction.xml").readText()
         assertTrue(x.contains("android:sessionService=\"app.heyrobot.assistant.RobotSessionService\""))
@@ -1246,7 +1272,7 @@ class ProcessIsolationTest {
         // History keeps the reply through MemoryPanel.forHistory (ids, a secret answer's line), and the question's ids only.
         assertTrue(panel.contains("chat += MemoryPanel.forHistory(ChatTurn("))
         // A private item never stays in the live conversation: it closes after that answer (rebuilt with History's line).
-        assertTrue(panel.indexOf("if (mem.recall.secret) closeConvAfterTurn = true") > panel.indexOf("MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)"))
+        assertTrue(panel.indexOf("if (mem.recall.secret) {\n            closeConvAfterTurn = true") > panel.indexOf("MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)"))
         // A helper: memory only through its card (trusted helpers too, unless Settings › Memory says otherwise), never its tools.
         assertEquals(4, Regex("""HelperTrust\.(conversation|joinWithoutCard)\([^)]*MemoryPanel\.toTrusted\(\)\)""").findAll(panel).count())
         assertTrue(app.heyrobot.core.ToolName.REMEMBER !in app.heyrobot.core.ClaudeTools.OFFERED && app.heyrobot.core.ToolName.FORGET !in app.heyrobot.core.ClaudeTools.OFFERED)

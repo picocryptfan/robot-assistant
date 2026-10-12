@@ -165,6 +165,12 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
         false
     }
 
+    override fun secure(on: Boolean) {
+        window?.window?.let { w ->
+            if (on) w.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else w.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
     override fun startCapture(intent: Intent): Boolean = try {
         startAssistantActivity(intent)
         true
