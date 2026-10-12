@@ -549,3 +549,9 @@ session (probe `ProbeVoiceService.kt`, `ProbeSession.kt`), the brain binding and
 `BrainKeeper.kt`, `BrainClient.kt`, `BrainService.kt`, `Gemma.kt`, lab `Workload.kt` / `Configs.T`), the model
 store (probe `ModelStore.kt`), the restart check (probe `BootReceiver.kt`, `BootCheck.kt`), the fetch,
 keyword and APK check scripts, and the process isolation test.
+
+**Termux's constant strings (0.9).** The Termux agent (core `termux/TermuxIntents.kt` and `TermuxIdentity.kt`) copies
+about a dozen constant strings from Termux's `TermuxConstants.java` (termux/termux-app, `termux-shared`, at 8629e63): its
+package, service and permission names, the RUN_COMMAND extras and result keys, its folders and its known signers'
+SHA-256 digests. `termux-shared/LICENSE.md` releases that file under the MIT licence. Robot links no Termux code; Termux is
+a separate app you install yourself.
