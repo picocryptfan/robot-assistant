@@ -36,17 +36,10 @@ class ProcessIsolationTest {
     }
 
     /** Source (Kotlin or Java) without comments and string literals, so only real code references count. */
-    private fun code(f: File): String = f.readText()
-        .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
-        .replace(Regex("//[^\n]*"), "")
-        .replace(Regex("\"\"\".*?\"\"\"", RegexOption.DOT_MATCHES_ALL), "\"\"")
-        .replace(Regex("\"(\\\\.|[^\"\\\\\n])*\""), "\"\"")
+    private fun code(f: File): String = Source.strip(f.readText(), keepStrings = false, kotlin = f.name.endsWith(".kt"))
 
     /** Source without comments, string literals kept (a URL in a string is one the code may use). */
-    private fun withoutComments(f: File): String = f.readText()
-        .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
-        .replace(Regex("(?m)^\\s*//[^\n]*"), "")
-        .replace(Regex("\\s// [^\n]*"), "")
+    private fun withoutComments(f: File): String = Source.strip(f.readText(), keepStrings = true, kotlin = f.name.endsWith(".kt"))
 
     private fun usersOf(pattern: Regex, files: Map<String, File> = ours) = files.filter { pattern.containsMatchIn(code(it.value)) }.keys.sorted()
 
@@ -659,11 +652,9 @@ class ProcessIsolationTest {
      */
     @Test fun problemReportsHoldCodesAndAreNeverSent() {
         assertEquals(listOf("app/assistant/BrainLink.kt"), usersOf(Regex("""\bProblems\.(note|gpuFailed|gpuTrying)\(""")))
-        // (The raw text: MainActivity's "*/*" file type reads as a comment's start to code().)
-        assertEquals(listOf("app/ui/MainActivity.kt"),
-            ours.filter { Regex("""\bProblems\.(copy|share|forgetGpuFailure|dismiss|delete)\(""").containsMatchIn(it.value.readText()) }.keys.sorted())
-        assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/settings/FeedbackSettings.kt"),
-            ours.filter { Regex("""\bProblems\.report\(""").containsMatchIn(it.value.readText()) }.keys.sorted())
+        // (code() reads MainActivity whole since 1.0 rc1: its "any file" type in a string is no longer a comment's start, Source.)
+        assertEquals(listOf("app/ui/MainActivity.kt"), usersOf(Regex("""\bProblems\.(copy|share|forgetGpuFailure|dismiss|delete)\(""")))
+        assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/settings/FeedbackSettings.kt"), usersOf(Regex("""\bProblems\.report\(""")))
         assertEquals(listOf("app/sys/Problems.kt"), usersOf(Regex("""\bProblemReport\.text\(""")))
         val problems = code(File(java("app"), "app/heyrobot/sys/Problems.kt"))
         for (bad in listOf("ConversationStore", "NotesFiles", "PeopleFiles", "VoiceLogText.describe(e, ", "HttpURLConnection")) {
@@ -900,9 +891,7 @@ class ProcessIsolationTest {
     }
 
     /** Source without comments, string literals kept (host names live in them). */
-    private fun codeWithStrings(f: File): String = f.readText()
-        .replace(Regex("/\\*.*?\\*/", RegexOption.DOT_MATCHES_ALL), "")
-        .replace(Regex("(?m)^\\s*//[^\n]*"), "")
+    private fun codeWithStrings(f: File): String = withoutComments(f)
 
     /**
      * Settings › Updates. Main process only: nothing of the voice or model processes (or :claude) refers to the updater, and
