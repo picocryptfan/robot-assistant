@@ -308,4 +308,6 @@
     <string name="guide_about_row">Setup guide</string>
     <string name="guide_about_detail">What each feature does, what stays on the phone, and what to turn on</string>
     <!-- /Setup guide -->
+    <!-- The panel (1.0): the turns of a conversation begun on the lock screen, continued unlocked -->
+    <string name="panel_said_locked">Said while the phone was locked</string>
 </resources>

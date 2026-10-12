@@ -25,7 +25,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.ZeroCornerSize
@@ -82,6 +82,9 @@ import app.heyrobot.ui.classic.ClassicNoticeBar
 import app.heyrobot.ui.classic.ClassicSuggestions
 import app.heyrobot.ui.classic.OrbMood
 import app.heyrobot.ui.common.ActionView
+import app.heyrobot.ui.common.LockedDivider
+import app.heyrobot.ui.common.WithLockedDivider
+import app.heyrobot.ui.common.lockedDividerAbove
 import app.heyrobot.ui.common.CardActions
 import app.heyrobot.ui.common.OfferView
 import app.heyrobot.ui.common.TurnActions
@@ -381,6 +384,8 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
     }
     val reversed = remember(st.turns) { st.turns.asReversed() }
     val first = st.turns.first().id
+    // 1.0: what was said while the phone was locked, set apart (ui/common LockedTurns).
+    val saidLocked = remember(st.turns) { st.turns.map { it.locked } }
     val list = rememberLazyListState()
     // Follow the newest message. A LazyColumn keeps the item on screen in place when one is added below it, so a
     // new message would land out of sight; jump to it unless the person has scrolled up to read.
@@ -410,10 +415,11 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(transcriptGap()),
     ) {
-        items(reversed, key = { it.id }) { t ->
+        itemsIndexed(reversed, key = { _, t -> t.id }) { i, t ->
             // 1.0: with replies not spoken, TalkBack reads each answer once it is complete (ui/common answerSemantics).
             val turn = remember(t, st.speak) { t.toTurnUi().copy(announce = !st.speak) }
-            TurnView(turn, turnActions, startsExchange = turn.user && t.id != first)
+            val divider = lockedDividerAbove(saidLocked, reversed.size - 1 - i)
+            WithLockedDivider(divider) { TurnView(turn, turnActions, startsExchange = turn.user && t.id != first && divider != LockedDivider.LABEL) }
         }
     }
 }
