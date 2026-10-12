@@ -70,8 +70,12 @@ data class CarState(
 ) {
     val on: Boolean get() = phase == CarPhase.ACTIVE || phase == CarPhase.ENDING
 
-    /** Car functions may run on the lock screen now. */
-    fun trustedAt(now: Long): Boolean = on && trusted != null && now < trusted.until
+    /**
+     * Car functions may run on the lock screen now: while the car the session was unlocked in is connected. During the
+     * grace after it goes ([CarPhase.ENDING]) the phone has left the car, so the session waits: the car coming back
+     * within the grace brings it back, otherwise it ends with car mode.
+     */
+    fun trustedAt(now: Long): Boolean = phase == CarPhase.ACTIVE && trusted != null && now < trusted.until && trusted.car in present
 }
 
 sealed class CarInput {

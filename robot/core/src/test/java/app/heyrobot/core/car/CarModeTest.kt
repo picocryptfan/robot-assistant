@@ -85,6 +85,9 @@ class CarModeTest {
         val (ending, fx) = run(CarInput.CarGone(car, 10_000), start = st)
         assertEquals(CarPhase.ENDING, ending.phase)
         assertEquals(listOf(CarEffect.WakeAt(40_000)), fx[0])
+        // While the car is gone the phone has left it: car functions need the unlock again (the session waits).
+        assertFalse(ending.trustedAt(10_000))
+        assertFalse(ending.trustedAt(39_999))
         // Back after 20 s: still on, still trusted.
         val (back, fx2) = run(CarInput.CarSeen(car, 30_000), start = ending)
         assertEquals(CarPhase.ACTIVE, back.phase)
