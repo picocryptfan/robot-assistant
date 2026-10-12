@@ -437,7 +437,8 @@ object ModelStore {
                 val report = when {
                     gguf != null -> OwnModel.NOT_LITERT_LM
                     format == null -> NOT_A_MODEL
-                    else -> LiteRtLmCheck.check(f)
+                    // 1.0 (native-01): your own .litertlm's container is checked strictly before LiteRT-LM ever reads it.
+                    else -> LiteRtLmCheck.check(f, strict = true)
                 }
                 val before = own(ctx)
                 // A TPU allowed for this very file (same SHA-256) stays allowed; anything else asks again.

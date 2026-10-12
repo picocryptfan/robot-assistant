@@ -246,10 +246,86 @@ object LiteRtLmCheck {
     private val MODEL_TYPES = mapOf(1 to "generic_model", 2 to "gemma3n", 3 to "function_gemma", 4 to "gemma3", 5 to "qwen3", 7 to "qwen2p5",
         8 to "gemma4", 9 to "fast_vlm", 11 to "lfm2", 12 to "minicpm5", 13 to "minicpmv4")
 
-    fun check(file: File): LiteRtLmReport = try {
-        FileByteSource(file).use { check(it) }
+    fun check(file: File, strict: Boolean = false): LiteRtLmReport = try {
+        FileByteSource(file).use { check(it, strict) }
     } catch (_: Exception) {
         LiteRtLmReport(readable = false, problem = "Robot couldn't read the file.")
+    }
+
+    /**
+     * [strict] (your own imported file, 1.0): [strictProblem] first, and a file it refuses is unreadable, so neither the
+     * app's record nor :brain's load ever hands it to LiteRT-LM.
+     */
+    fun check(src: ByteSource, strict: Boolean): LiteRtLmReport {
+        if (strict) strictProblem(src)?.let { return LiteRtLmReport(readable = false, problem = "Robot won't open this file: $it.") }
+        return check(src)
+    }
+
+    /** Sections this far apart, or this much after the last one, mean the file isn't what its header says. */
+    const val MAX_GAP = 1L shl 20
+
+    /** Known section data types for a file Robot runs: AnySectionDataType without NONE (0) and Deprecated (2). */
+    private val STRICT_TYPES = setOf(1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+    private val MODEL_TYPE_NAME = Regex("[a-z0-9_]{1,64}")
+
+    /**
+     * 1.0 audit (native-01, ipc-5): your own .litertlm is parsed by LiteRT-LM's native code in :brain, which has Robot's
+     * permissions (it needs the GPU and the TPU, so it can't be isolated as a .gguf is). Before LiteRT-LM ever sees an
+     * imported file, its container is checked strictly here, and anything odd refuses it: the magic and a 1.x format; a
+     * header that fits the file; one to [MAX_SECTIONS] sections, each of a known data type, non-empty, after the header and
+     * inside the file, none overlapping another; TFLite sections named "tf_lite_…" and starting as TFLite flatbuffers do
+     * ("TFL3"); exactly one prefill_decode model; metadata and tokenizers within their caps; and no more than [MAX_GAP]
+     * unaccounted for between sections or after the last (the file's size matches what its header describes). Null: it
+     * passes; otherwise why not, in words. Never an exception, never a large read.
+     */
+    fun strictProblem(src: ByteSource): String? = try {
+        strictOrThrow(src)
+    } catch (e: LiteRtLmFormat) {
+        e.message ?: "it can't be read"
+    } catch (_: Exception) {
+        "it can't be read"
+    }
+
+    private fun strictOrThrow(src: ByteSource): String? {
+        if (src.size < 32) return "it is too short"
+        val head = src.read(0, 32)
+        if (String(head, 0, 8, Charsets.ISO_8859_1) != MAGIC) return "it isn't a LiteRT-LM file"
+        val le = Le(head)
+        if (le.u32(8) != 1L) return "its format version (${le.u32(8)}) isn't one Robot knows"
+        val headerEnd = le.u64(24)
+        if (headerEnd <= 32 || headerEnd > src.size || headerEnd - 32 > MAX_HEADER) return "its header doesn't fit the file"
+        val (_, sections) = sections(src) ?: return "it isn't a LiteRT-LM file"
+        if (sections.isEmpty()) return "it has no sections"
+        for (s in sections) {
+            if (s.dataType !in STRICT_TYPES) return "a section has an unknown type (${s.dataType})"
+            if (s.begin < headerEnd) return "a section overlaps the header"
+            if (s.end <= s.begin) return "a section is empty"
+            if (s.modelType != null && !MODEL_TYPE_NAME.matches(s.modelType)) return "a section's name isn't one Robot accepts"
+            val size = s.end - s.begin
+            when (s.dataType) {
+                TFLITE -> {
+                    if (s.modelType == null || !s.modelType.startsWith("tf_lite_")) return "a TFLite section isn't named as one"
+                    if (size < 8 || String(src.read(s.begin + 4, 4), Charsets.ISO_8859_1) != "TFL3") return "a TFLite section isn't a TFLite model"
+                }
+                LLM_METADATA -> if (size > MAX_LLM_METADATA) return "its metadata is too large"
+                SP_TOKENIZER -> if (size > MAX_TOKENIZER) return "its tokenizer is too large"
+                HF_TOKENIZER_ZLIB -> {
+                    if (size < 9 || size > MAX_TOKENIZER) return "its tokenizer's size is wrong"
+                    val inflated = Le(src.read(s.begin, 8)).u64(0)
+                    if (inflated < 1 || inflated > MAX_TOKENIZER_JSON) return "its tokenizer's size is wrong"
+                }
+            }
+        }
+        if (sections.count { it.modelType == "tf_lite_prefill_decode" && it.dataType == TFLITE } != 1) return "it doesn't have exactly one language model"
+        if (sections.count { it.dataType == LLM_METADATA } > 1) return "it has more than one metadata section"
+        val sorted = sections.sortedBy { it.begin }
+        if (sorted.first().begin - headerEnd > MAX_GAP) return "its sections don't follow its header"
+        for (i in 1 until sorted.size) {
+            if (sorted[i].begin < sorted[i - 1].end) return "two sections overlap"
+            if (sorted[i].begin - sorted[i - 1].end > MAX_GAP) return "its sections leave part of the file unaccounted for"
+        }
+        if (src.size - sorted.last().end > MAX_GAP) return "its size doesn't match its sections"
+        return null
     }
 
     fun check(src: ByteSource): LiteRtLmReport = try {

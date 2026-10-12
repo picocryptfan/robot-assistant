@@ -101,6 +101,11 @@ The full policy: [`PRIVACY.md`](PRIVACY.md).
 The uncensored model has had its refusals removed; it is a community build, and what you do with it is your
 responsibility. Robot is not a medical device.
 
+Known limitation: a `.litertlm` file you import yourself runs with Robot's own permissions (LiteRT-LM reads it inside
+Robot's model process, which needs the GPU and the TPU), unlike a `.gguf` file, which runs in an isolated process with
+none. Robot checks the file's layout strictly before LiteRT-LM reads it, but not the model inside, and warns you before
+you pick one: only import files you trust. See [`SECURITY.md`](SECURITY.md).
+
 Settings › About › Licences lists every part of Robot with its version, licence and full licence text, and
 [`robot/THIRD_PARTY.md`](robot/THIRD_PARTY.md) lists them with their pins and hashes. Each release also attaches the
 complete source of the native code Robot ships (sherpa-onnx with espeak-ng, ONNX Runtime, slimt and llama.cpp) as

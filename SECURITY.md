@@ -58,7 +58,10 @@ too, so Robot can update it; please also tell its maintainers.
   Termux are off until you set them up, and every Termux command shows its card first unless you chose otherwise for
   your own script.
 - Every downloaded file is pinned to a commit, a size and a SHA-256, checked before it is loaded. A model file you import
-  is untrusted input: Robot checks its header before loading it, and runs it on the TPU only after you allow it.
+  is untrusted input: Robot checks its header before loading it, and runs it on the TPU only after you allow it. A
+  `.gguf` file runs in llama.cpp inside an isolated process with no permissions; a `.litertlm` file's container (its
+  header, section table, section types, sizes and the file's size) is checked strictly in Kotlin first, and anything odd
+  is refused before LiteRT-LM reads it.
 - API keys (and the updater's access token) are encrypted with a non-exportable Android Keystore key. Backups and device
   transfer are off.
 - Updates come only from the repository's GitHub releases, over HTTPS to GitHub's hosts, and are installed only after the
@@ -70,7 +73,11 @@ too, so Robot can update it; please also tell its maintainers.
 
 Known limits: the TPU runs Google's proprietary vendor library on the phone; the prebuilt sherpa-onnx and ONNX Runtime
 libraries are trusted from their publishers' releases (pinned by SHA-256); whatever you send to an online helper is
-handled under that provider's terms.
+handled under that provider's terms. A `.litertlm` file you import yourself is read by LiteRT-LM inside the `:brain`
+process, which runs with Robot's own permissions (LiteRT-LM needs the GPU and the TPU, which an isolated process can't
+reach): Robot's strict check covers the file's container, not the TFLite models, weights and tokenizer inside it, so a
+file crafted against a bug in LiteRT-LM could act as Robot. Robot warns you before you pick one: only import files you
+trust. Robot's own models are pinned by SHA-256 and aren't affected.
 
 ## Dependencies
 

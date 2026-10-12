@@ -258,7 +258,8 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
         // than the file was built with, nor a short one for a file that isn't.
         var header: LiteRtLmReport? = null
         if (req.model.tpuChip == null || req.backend != ModelBackend.TPU) {
-            val r = LiteRtLmCheck.check(f)
+            // 1.0 (native-01): your own file's container checked strictly again, from the file about to load (core LiteRtLmCheck).
+            val r = LiteRtLmCheck.check(f, strict = req.model == BrainModel.OWN)
             val ok = when (req.backend) {
                 ModelBackend.TPU -> r.runsOnTpuOf(phone)
                 // The GPU runs a general (not NPU-compiled) file, as the CPU does; LoadCheck allowed the general E2B only.

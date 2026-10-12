@@ -3324,6 +3324,18 @@ what it found.
   run TPU code either), a file without a language model (no `prefill_decode`), or a context under 2,048 tokens
   (before 0.4.3: under 4,096; from 2,048 to 4,095 a file now runs as chat only, "Short-context models" above).
 - Since 0.4.5 the same card takes a GGUF file too, told apart by its first bytes ("GGUF models" above).
+- **1.0: checked strictly, and a known limitation.** Unlike a GGUF file (llama.cpp runs it in the isolated `:llama`
+  process), a `.litertlm` file is read by LiteRT-LM inside `:brain`, which runs with Robot's own uid and permissions:
+  LiteRT-LM needs the GPU and the TPU, which an isolated process can't reach, so it stays there (1.0 audit native-01 and
+  ipc-5). So before LiteRT-LM ever sees an imported file, its container is checked strictly in Kotlin
+  (`LiteRtLmCheck.strictProblem`, run by the app's check and again by `:brain` before the load), and anything odd refuses
+  it: the magic and a 1.x format; a header that fits the file; one to 64 sections, each of a known data type, non-empty,
+  after the header, inside the file and overlapping no other; TFLite sections named `tf_lite_…` that start as TFLite
+  flatbuffers do (`TFL3`); exactly one `prefill_decode`; metadata and tokenizers within their caps; and no more than
+  1 MiB of the file unaccounted for between sections or after the last. That covers the container, not the TFLite models,
+  weights and tokenizer inside it: a file crafted against a bug in LiteRT-LM could still act as Robot. "Import a model
+  file" therefore warns first ("A .litertlm file runs with Robot's own permissions … Only import files you trust"), and
+  SECURITY.md lists it among the known limits. Robot's own models are pinned by SHA-256 and checked as before.
 
 ### Loading, switching and falling back
 

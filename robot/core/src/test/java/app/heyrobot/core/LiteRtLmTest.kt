@@ -53,6 +53,42 @@ class LiteRtLmTest {
 
     private fun check(b: ByteArray) = LiteRtLmCheck.check(ArrayByteSource(b))
 
+    /**
+     * 1.0 audit (native-01, ipc-5): your own .litertlm is read by LiteRT-LM in :brain with Robot's permissions, so its
+     * container is checked strictly first, and anything odd is refused before LiteRT-LM sees it.
+     */
+    @Test fun anImportedFilesContainerIsCheckedStrictly() {
+        fun strict(b: ByteArray) = LiteRtLmCheck.strictProblem(ArrayByteSource(b))
+        // Google-shaped files pass, and read as before.
+        assertNull(strict(e2bG5()))
+        assertNull(strict(e4bCpu()))
+        assertEquals(check(e4bCpu()), LiteRtLmCheck.check(ArrayByteSource(e4bCpu()), strict = true))
+        // An unknown or deprecated section type.
+        assertEquals("a section has an unknown type (13)", strict(FakeLiteRtLm.litertlm(listOf(tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps)), Section(null, 13, ByteArray(16))))))
+        assertEquals("a section has an unknown type (2)", strict(FakeLiteRtLm.litertlm(listOf(tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps)), Section(null, 2, ByteArray(16))))))
+        // A "TFLite" section that isn't one, or isn't named as one.
+        assertEquals("a TFLite section isn't a TFLite model", strict(FakeLiteRtLm.litertlm(listOf(tfl("tf_lite_prefill_decode", ByteArray(64) { 7 })))))
+        assertEquals("a TFLite section isn't named as one", strict(FakeLiteRtLm.litertlm(listOf(tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps)),
+            Section("decoder", TFLITE, FakeLiteRtLm.tflite(cpuOps))))))
+        // Two language models, or none.
+        assertEquals("it doesn't have exactly one language model", strict(FakeLiteRtLm.litertlm(listOf(tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps)),
+            tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps))))))
+        assertEquals("it doesn't have exactly one language model", strict(FakeLiteRtLm.litertlm(listOf(small("tf_lite_embedder")))))
+        // An empty section.
+        assertEquals("a section is empty", strict(FakeLiteRtLm.litertlm(listOf(tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps)), Section(null, SP_TOKENIZER, ByteArray(0))))))
+        // More file than its sections describe (something appended), and another format version.
+        assertEquals("its size doesn't match its sections", strict(e4bCpu() + ByteArray((LiteRtLmCheck.MAX_GAP + 1).toInt())))
+        assertEquals("its format version (2) isn't one Robot knows", strict(e4bCpu().also { it[8] = 2 }))
+        assertEquals("it isn't a LiteRT-LM file", strict(e4bCpu().also { it[0] = 'X'.code.toByte() }))
+        // Refused: unreadable, so no backend and nothing for :brain to load.
+        val r = LiteRtLmCheck.check(ArrayByteSource(e4bCpu() + ByteArray((LiteRtLmCheck.MAX_GAP + 1).toInt())), strict = true)
+        assertFalse(r.readable)
+        assertNull(r.backend)
+        assertEquals("Robot won't open this file: its size doesn't match its sections.", r.unusable)
+        // Without strict (Robot's own SHA-pinned files), the same file reads as before.
+        assertTrue(LiteRtLmCheck.check(ArrayByteSource(e4bCpu() + ByteArray((LiteRtLmCheck.MAX_GAP + 1).toInt()))).readable)
+    }
+
     @Test fun googlesTensorG5BuildIsATpuBuild() {
         val r = check(e2bG5())
         assertTrue(r.toString(), r.readable && r.decoder && r.aux && r.dispatchOp && (r.tensorStamp == Chip.TENSOR_G5) && r.gemma4 && r.toolTokens && r.vision)

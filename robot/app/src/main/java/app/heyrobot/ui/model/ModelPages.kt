@@ -495,6 +495,7 @@ private fun OwnModelPage(s: RobotSettings, snap: Snapshot, busy: String?, a: App
     val m = BrainModel.OWN
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var askTpu by rememberSaveable { mutableStateOf(false) }
+    var warnImport by rememberSaveable { mutableStateOf(false) }
     val ms = snap.model(m)
     PreferenceScreen(ModelCatalogue.title(m, snap.phone, snap.tpuFailure != null), onBack, snackbar = snackbar) {
         if (ms == null) return@PreferenceScreen
@@ -508,7 +509,7 @@ private fun OwnModelPage(s: RobotSettings, snap: Snapshot, busy: String?, a: App
                 Text(m.speed, style = MaterialTheme.typography.bodyMedium)
                 Text(m.about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Buttons {
-                    OutlinedButton(onClick = { a.import(m) }, enabled = busy == null && st != ModelStatus.IMPORTING && st != ModelStatus.VERIFYING,
+                    OutlinedButton(onClick = { warnImport = true }, enabled = busy == null && st != ModelStatus.IMPORTING && st != ModelStatus.VERIFYING,
                         modifier = Modifier.heightIn(min = 48.dp)) {
                         Icon(RIcons.Folder, null); Spacer(Modifier.width(8.dp)); Text(if (ms.fileBytes > 0) "Import another file" else "Import a model file")
                     }
@@ -548,9 +549,24 @@ private fun OwnModelPage(s: RobotSettings, snap: Snapshot, busy: String?, a: App
         if (own != null) item(key = "sha") { ShaFooter(own.sha256) }
     }
     if (confirmDelete) DeleteModelDialog(m, s, snap, a) { confirmDelete = false }
+    // 1.0 audit (native-01, ipc-5): a .litertlm runs inside Robot's model process, with Robot's permissions.
+    if (warnImport) ConfirmDialog("Only import a file you trust", OWN_FILE_WARNING, "Choose a file", onDismiss = { warnImport = false }) {
+        warnImport = false
+        a.import(m)
+    }
     val own = snap.own
     if (askTpu && own != null) TpuDialog(own, onDismiss = { askTpu = false }) { askTpu = false; a.allowOwnTpu(true, own.sha256) }
 }
+
+/**
+ * The warning before your own file is picked (1.0 audit, native-01 and ipc-5): a .litertlm is read by LiteRT-LM inside
+ * Robot's model process, which LiteRT-LM needs for the GPU and the TPU, so it runs with Robot's own permissions; Robot
+ * checks its container strictly first, but not the model inside. A .gguf runs in an isolated process.
+ */
+internal const val OWN_FILE_WARNING = "A .litertlm file runs with Robot's own permissions: LiteRT-LM reads it inside Robot's model " +
+    "process, which can reach your contacts, calendar, messages, memory and the internet. Robot checks the file's layout first, " +
+    "not the model inside it, so a file made to attack LiteRT-LM could act as Robot. Only import files you trust, from their " +
+    "makers. (A .gguf file runs in a separate process with no permissions.)"
 
 /** Where your own file runs, and how fast. */
 private fun runsOn(own: OwnModel, snap: Snapshot, cacheBytes: Long): String = when {

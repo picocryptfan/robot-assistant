@@ -524,6 +524,20 @@ class ProcessIsolationTest {
         assertTrue(engine.indexOf("if (run.stop) return@generate false") in 0 until engine.indexOf("val text = String(bytes, Charsets.UTF_8)"))
     }
 
+    /**
+     * 1.0 audit (native-01, ipc-5): your own .litertlm's container is checked strictly before LiteRT-LM reads it, by the
+     * app's check and again by :brain before the load; the import warns first.
+     */
+    @Test fun anImportedLiteRtLmFileIsCheckedStrictlyBeforeLiteRtLmSeesIt() {
+        val engine = code(File(java("brain"), "app/heyrobot/brain/GemmaEngine.kt"))
+        assertTrue(engine.contains("val r = LiteRtLmCheck.check(f, strict = req.model == BrainModel.OWN)"))
+        assertTrue(engine.indexOf("LiteRtLmCheck.check(f, strict = req.model == BrainModel.OWN)") < engine.indexOf("e = Engine(config(req"))
+        assertTrue(code(File(java("app"), "app/heyrobot/sys/ModelStore.kt")).contains("else -> LiteRtLmCheck.check(f, strict = true)"))
+        val pages = withoutComments(File(java("app"), "app/heyrobot/ui/model/ModelPages.kt"))
+        assertTrue(pages.contains("OutlinedButton(onClick = { warnImport = true }"))
+        assertTrue(pages.contains("runs with Robot's own permissions"))
+    }
+
     @Test fun llamaCppOnlyInTheIsolatedProcess() {
         val native = File(java("brain"), "app/heyrobot/brain/LlamaNative.kt").readText()
         assertTrue(native.contains("System.loadLibrary(LIB)") && native.contains("const val LIB = \"robot_llama\""))

@@ -176,6 +176,22 @@ class ModelPagesTest {
         assertEquals(listOf("allowOwnTpu true $sha"), log)
     }
 
+    /**
+     * 1.0 audit (native-01, ipc-5): importing your own file warns first that a .litertlm runs with Robot's own
+     * permissions; Cancel picks nothing, Choose a file opens the picker.
+     */
+    @Test fun importingYourOwnFileWarnsFirst() {
+        page(ModelRoutes.model(BrainModel.OWN))
+        rule.onRow("Import another file").performClick()
+        rule.inDialog("runs with Robot's own permissions", substring = true).assertExists()
+        rule.inDialog("Only import files you trust", substring = true).assertExists()
+        rule.inDialog("Cancel").performClick()
+        assertTrue(log.isEmpty())
+        rule.onRow("Import another file").performClick()
+        rule.inDialog("Choose a file").performClick()
+        assertEquals(listOf("import ${BrainModel.OWN}"), log)
+    }
+
     @Test fun aVoiceModelPageDeletesAfterAsking() {
         page(ModelRoutes.voice(VoiceBundle.STT))
         rule.onRow("Delete").performClick()
