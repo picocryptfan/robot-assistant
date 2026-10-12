@@ -20,6 +20,7 @@ import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.BrainLoaded
 import app.heyrobot.core.FallbackWhy
 import app.heyrobot.core.GpuFailure
+import app.heyrobot.core.TpuFailure
 import app.heyrobot.core.GpuTrying
 import app.heyrobot.core.LoadFailure
 import app.heyrobot.core.LoadPlan
@@ -339,15 +340,19 @@ object BrainKeeper {
     /** What counts as the GPU failing a load (0.4.7). */
     private val GPU_FAILURES = setOf(LoadFailure.ENGINE, LoadFailure.TIMEOUT, LoadFailure.PROCESS, LoadFailure.NOT_ALLOWED)
 
-    /** This phone's Fast (0.4.7). */
-    private fun fastHere(ctx: Context): BrainModel = ModelCatalogue.fast(ModelStore.phone(ctx))
+    /** 0.8: the beta TPU build (a Tensor G6's) didn't load here: Fast is the general build until you try the TPU again. */
+    private fun tpuFailed(ctx: Context): Boolean = Problems.tpuFailure(ctx) != null
+
+    /** This phone's Fast (0.4.7; 0.8: the general build once the beta TPU build failed here). */
+    private fun fastHere(ctx: Context): BrainModel = ModelCatalogue.fast(ModelStore.phone(ctx), tpuFailed(ctx))
 
     /** The model to load now and why (pure core ModelChoice on what the files say), placed where it runs ([placed]). */
     private fun decide(ctx: Context): Pair<ModelChoice.Decision, LoadPlan?> {
         val phone = ModelStore.phone(ctx)
-        val fast = ModelCatalogue.fast(phone)
-        // Either Fast in the settings is this phone's (a Pixel 10's choice, or the default, on a Pixel 9a: the general build).
-        val chosen = ModelCatalogue.resolve(VoiceHub.settings.brainModelChoice, phone)
+        val tpuFailed = tpuFailed(ctx)
+        val fast = ModelCatalogue.fast(phone, tpuFailed)
+        // Any Fast in the settings is this phone's (a Pixel 10's choice, or the default, on a Pixel 9a: the general build).
+        val chosen = ModelCatalogue.resolve(VoiceHub.settings.brainModelChoice, phone, tpuFailed)
         val (chosenState, chosenPlan) = planOf(ctx, chosen)
         val (fastState, fastPlan) = if (chosen == fast) chosenState to chosenPlan else planOf(ctx, fast)
         val earlier = failedBefore(chosenPlan)
@@ -379,6 +384,10 @@ object BrainKeeper {
     }
 
     private fun gpuNotice(p: ModelProblem) = p.headline() + " The Robot app › Model has a report you can copy or share."
+
+    /** 0.8: the beta TPU build failed: what happened, then what Robot does now. */
+    private fun tpuNotice(p: ModelProblem) = p.headline() + " Robot uses the general build of Fast from now on; the Robot app › Model can try " +
+        "the TPU again, and has a report you can copy or share."
 
     /**
      * Keeps a problem note (codes and numbers, core ModelProblem) with the memory now and the process id of :brain when it
@@ -496,6 +505,35 @@ object BrainKeeper {
             }
             return loadInto(ctx, c, plan.copy(backend = ModelBackend.CPU), load, detail)
         }
+        // 0.8: the beta TPU build (a Tensor G6's) didn't load on the TPU (an error, a refusal, no answer, or its process
+        // stopped): Fast is the general build from now on, remembered across restarts until you try the TPU again, said once,
+        // with a report; the general build loads now when it is on the phone.
+        if (m.beta && plan.backend == ModelBackend.TPU && failure in GPU_FAILURES) {
+            Problems.tpuFailed(ctx, TpuFailure(m, System.currentTimeMillis(), failure))
+            VoiceLog.add(VoiceEvent.TPU_FALLBACK, ModelCode.of(m), failure)
+            RLog.i("brain_tpu_failed", "failure" to RLog.Code(failure.name))
+            val general = BrainModel.GENERAL
+            pendingNotice = tpuNotice(noteProblem(ctx, plan, ProblemStage.LOADING, failure, general, ModelBackend.CPU))
+            if (failure == LoadFailure.TIMEOUT) {
+                client = null
+                c.close()
+                _state.value = State(Readiness.FAILED, problem = "Fast (beta) didn't load on the TPU in time. Robot uses the general build from the next question.")
+                return null
+            }
+            val (generalState, generalFound) = planOf(ctx, general)
+            val generalPlan = placed(ctx, generalFound)
+            if (generalState != ModelAvailability.READY || generalPlan == null) {
+                noteFallback(null, null, null)
+                _state.value = State(Readiness.NO_MODEL, problem = "Fast (beta) didn't load on this phone's TPU. Download Fast (the general build) " +
+                    "in the Robot app › Model, or try the TPU again there.")
+                return null
+            }
+            if (!c.isConnected && !c.connect()) {
+                _state.value = State(Readiness.FAILED, problem = "Robot couldn't start its model process.")
+                return null
+            }
+            return loadInto(ctx, c, generalPlan, ModelChoice.Decision.Load(general), detail)
+        }
         if (m != fast && ModelChoice.remember(failure)) failed[m.id] = plan.fingerprint to FallbackWhy.FAILED_EARLIER
         val (fastState, fastPlanFound) = planOf(ctx, fast)
         val fastPlan = placed(ctx, fastPlanFound)
@@ -611,7 +649,7 @@ object BrainKeeper {
     val ready: Boolean get() = _state.value.readiness == Readiness.READY
 
     /** The model you chose as this phone reads it (0.4.7: either Fast is this phone's), before anything loads. */
-    fun modelHere(ctx: Context): BrainModel = ModelCatalogue.resolve(VoiceHub.settings.brainModelChoice, ModelStore.phone(ctx))
+    fun modelHere(ctx: Context): BrainModel = ModelCatalogue.resolve(VoiceHub.settings.brainModelChoice, ModelStore.phone(ctx), tpuFailed(ctx))
 
     /**
      * Where [modelHere] would run now (0.4.7: the general E2B on the GPU unless "Use the GPU" is off or the GPU failed), for

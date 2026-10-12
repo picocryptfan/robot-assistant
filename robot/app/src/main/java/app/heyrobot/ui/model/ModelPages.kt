@@ -110,10 +110,10 @@ internal fun notReady(m: BrainModel, snap: Snapshot): String? {
     if (snap.ready(m)) return null
     val st = snap.model(m)?.status
     return when {
-        // 0.4.7: a TPU build runs only where Robot has the TPU (a Tensor G5).
-        m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.tensorG5Build == true && snap.phone.tpu != TpuSupport.SUPPORTED ->
-            "Built for the Tensor G5's TPU, which this phone doesn't have"
-        m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.tensorG5Build == true -> "Allow the TPU for it first"
+        // 0.4.7: a TPU build runs only where Robot has the TPU; 0.8: the TPU of the chip its stamp names (Tensor G5 or G6).
+        m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.tensorBuild != null && snap.own?.report?.runsOnTpuOf(snap.phone) != true ->
+            "Built for the ${snap.own?.tensorBuild?.title}'s TPU, which this phone doesn't have"
+        m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.tensorBuild != null -> "Allow the TPU for it first"
         m == BrainModel.OWN && st == ModelStatus.VERIFIED && snap.own?.format == ModelFormat.GGUF && !snap.ggufEngine -> "This build of Robot can't run GGUF files"
         st == ModelStatus.DOWNLOADING || st == ModelStatus.IMPORTING || st == ModelStatus.VERIFYING -> "Getting it ready…"
         st == ModelStatus.BAD -> "Its file can't be used"
@@ -151,14 +151,14 @@ private fun keepLabel(m: Int): String = if (m == RobotSettings.KEEP_ALWAYS) "Alw
 fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapshot, busy: String?, a: AppActions, modifier: Modifier = Modifier) {
     val phone = snap.phone
     // 0.4.7: either Fast in the file is this phone's Fast.
-    val chosen = ModelCatalogue.resolve(s.brainModelChoice, phone)
+    val chosen = snap.resolve(s.brainModelChoice)
     PreferenceScreen("Model", onBack = null, modifier = modifier) {
         snap.problem?.let { p -> preferenceGroup("Model problem", "problem") { ProblemRows(p, a) } }
         // 0.7: the last 10 problems, under the open one, or at the end of the tab once it is dismissed.
         val earlier = snap.problems.filter { it.time != snap.problem?.time }
         if (snap.problem != null && earlier.isNotEmpty()) preferenceGroup("Last model problems", "problems") { ProblemListRows(earlier, a) }
         preferenceGroup("Robot uses", "uses") {
-            for (m in ModelCatalogue.models(phone)) {
+            for (m in ModelCatalogue.models(phone, snap.tpuFailure != null)) {
                 val ready = snap.ready(m)
                 TwoTargetPreference(m.title, modelRowSummary(m, snap),
                     // Tapping the chosen one again saves too: Robot then retries a model that didn't load.
@@ -175,7 +175,13 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
         }
         preferenceGroup("This phone", "phone") {
             StatusPreference(Phones.line(phone).removePrefix("This phone: "), Phones.tpuLine(phone),
-                if (phone.tpu == TpuSupport.SUPPORTED) Mark.OK else Mark.TODO)
+                if (phone.tpu != TpuSupport.NONE) Mark.OK else Mark.TODO)
+            // 0.8: the beta TPU build didn't load here: the general build until you try the TPU again.
+            snap.tpuFailure?.let { f ->
+                StatusPreference("The TPU ${f.what}", "${dateTime(f.time)}. Robot runs Fast's general build on the CPU.", Mark.WARN)
+                PreferenceItem("Try the TPU again", "At the next question. If it fails again, Robot goes back to the general build by itself",
+                    RIcons.Refresh, onClick = a.tryTpuAgain)
+            }
             if (snap.fast.gpu) WhereFastRuns(s, update, snap, a)
         }
         preferenceGroup("Thinking", "thinking") {
@@ -201,8 +207,12 @@ fun ModelScreen(s: RobotSettings, update: (RobotSettings) -> Unit, snap: Snapsho
                 "switches (Settings › Actions, Safety & privacy) decide what asks you first, and nothing leaves the phone unless you ask. " +
                 "Questions in a new conversation take longer with the slower models." +
                 // A Pixel 10's choice (or the default) on another phone: read as this phone's Fast, the file left as it is.
-                (if (s.brainModelChoice == BrainModel.FAST && snap.fast != BrainModel.FAST)
-                    " Fast on this phone is Gemma 4 E2B's general build: the Tensor G5 build needs a Pixel 10." else "") +
+                (if (s.brainModelChoice.isFast && s.brainModelChoice != snap.fast) when (snap.fast) {
+                    BrainModel.GENERAL -> " Fast on this phone is Gemma 4 E2B's general build" +
+                        (if (snap.tpuFailure != null) ": the TPU build didn't load here." else ": the Tensor G5 build needs a Pixel 10.")
+                    BrainModel.FAST_G6 -> " Fast on this phone is the Tensor G6 build (beta)."
+                    else -> ""
+                } else "") +
                 "\n\nTPU support in Robot:\n" + Phones.TPU_LIST.joinToString("\n") { "• $it" } +
                 "\nSpeeds on the models' pages are measured on a Pixel 10 Pro where they say so, otherwise estimates, each with where it comes from." +
                 (if (snap.fast.gpu && ModelCatalogue.gpuOffered(phone)) "\n\nUse the GPU: on the GPU, Fast starts answering sooner, uses less " +
@@ -381,6 +391,7 @@ private fun ModelPage(m: BrainModel, s: RobotSettings, update: (RobotSettings) -
                 Text(m.about, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 // 0.4.7: this phone's figures for it, measured or estimated, with where they come from (Fast on a Tensor G5
                 // says its measured figures itself).
+                // 0.8: the Tensor G6 build (beta) says "Estimate, not measured" with where its figure comes from.
                 if (m != BrainModel.FAST) Speeds.of(m, runsHere(m, s, snap), snap.phone)?.let { e ->
                     Text("On this phone, on the ${runsHere(m, s, snap).title}. ${e.text()}", style = MaterialTheme.typography.bodyMedium)
                     Text(e.source, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -453,7 +464,7 @@ private fun DeleteModelDialog(m: BrainModel, s: RobotSettings, snap: Snapshot, a
     val others = ModelCatalogue.models(snap.phone).any { it != m && snap.ready(it) }
     ConfirmDialog("Delete “${m.title}”?",
         "Removes its file (${ModelLogic.gb(ms?.fileBytes ?: 0)})" + (if ((ms?.cacheBytes ?: 0) > 0) " and its cache (${ModelLogic.gb(ms!!.cacheBytes)})" else "") +
-            " from this phone." + (if (m == ModelCatalogue.resolve(s.brainModelChoice, snap.phone) && m != snap.fast) " Robot goes back to Fast." else "") +
+            " from this phone." + (if (m == snap.resolve(s.brainModelChoice) && m != snap.fast) " Robot goes back to Fast." else "") +
             (if (!others) " Robot can't answer until you download or import a model again." else ""),
         "Delete", onDismiss = close) { close(); a.deleteModel(m) }
 }
@@ -468,7 +479,7 @@ private fun ShaFooter(sha: String) {
 /**
  * Your own model file: imported through Android's file picker (no storage permission), copied into Robot's storage, its
  * size and SHA-256 shown, and what Robot's check found in it. A .litertlm runs with LiteRT-LM: on the TPU only for a
- * proven Tensor G5 build, and only once you allowed it in its warning dialog, else on the CPU; a .gguf (0.4.5) with
+ * proven TPU build for this phone's own chip, and only once you allowed it in its warning dialog, else on the CPU; a .gguf (0.4.5) with
  * llama.cpp, on the CPU. Which one it is, by its contents: never by the file's name.
  */
 @Composable
@@ -513,9 +524,9 @@ private fun OwnModelPage(s: RobotSettings, snap: Snapshot, busy: String?, a: App
                         "(timers, texts, notes, the calendar…) and keeps less of the conversation. Ask for an action and Robot says so and " +
                         "offers this page, where you can choose Fast. " + (if (own.vision) "It can see photos." else "It can't see photos."), Mark.TODO)
                 }
-                // 0.4.7: only where Robot has the TPU (a Tensor G5).
-                if (own.tensorG5Build && !own.tpuAllowed && st == ModelStatus.VERIFIED && snap.phone.tpu == TpuSupport.SUPPORTED) {
-                    PreferenceItem("Run on the TPU", "A Tensor G5 build: read the risks first", RIcons.Warning, onClick = { askTpu = true })
+                // 0.4.7: only where Robot has the TPU; 0.8: the TPU of the chip its stamp names (a Tensor G5, or in beta a G6).
+                if (own.tensorBuild != null && !own.tpuAllowed && st == ModelStatus.VERIFIED && own.report.runsOnTpuOf(snap.phone)) {
+                    PreferenceItem("Run on the TPU", "A ${own.tensorBuild?.title} build: read the risks first", RIcons.Warning, onClick = { askTpu = true })
                 }
                 if (own.tpuAllowed) PreferenceItem("Stop running it on the TPU", "Robot won't use the TPU for it", onClick = { a.allowOwnTpu(false, null) })
             }
@@ -542,14 +553,15 @@ private fun runsOn(own: OwnModel, snap: Snapshot, cacheBytes: Long): String = wh
         "Expect it to be slower than Fast: about the speed of the E4B models for a 4B file, faster for a smaller one."
     own.backend == ModelBackend.CPU -> "Runs on the CPU: about as slow as the E4B models or slower, depending on its size. " +
         if (cacheBytes > 0) "Its cache holds ${ModelLogic.gb(cacheBytes)} now." else "Its first load writes a cache next to it."
-    own.tensorG5Build && snap.phone.tpu != TpuSupport.SUPPORTED -> "It was compiled for the Tensor G5's TPU (Pixel 10), which this " +
-        "phone doesn't have, and a TPU build can't run on the CPU: Robot can't use it here."
-    own.tensorG5Build -> "Waits for you to allow the TPU (Run on the TPU, above)."
+    own.tensorBuild != null && !own.report.runsOnTpuOf(snap.phone) -> "It was compiled for the ${own.tensorBuild?.title}'s TPU " +
+        "(${own.tensorBuild?.let { Phones.seriesOf(it) }}), which this phone doesn't have, and a TPU build can't run on the CPU nor on another " +
+        "chip's TPU: Robot can't use it here."
+    own.tensorBuild != null -> "Waits for you to allow the TPU (Run on the TPU, above)."
     else -> "Robot can't run it on this phone. Delete it to free the space."
 }
 
 /**
- * Before your own Tensor G5 build may run on the TPU: the risks the 0.4.1 research names, and the file. Bound to the
+ * Before your own TPU build (for this phone's Tensor G5, or in beta G6) may run on the TPU: the risks the 0.4.1 research names, and the file. Bound to the
  * file this dialog shows ([OwnModel.sha256]): a different file in the meantime is never allowed by this tap.
  */
 @Composable
@@ -560,7 +572,7 @@ private fun TpuDialog(own: OwnModel, onDismiss: () -> Unit, onAllow: () -> Unit)
         title = { Text("Run this file on the TPU?") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Robot's check says this file was compiled for the Tensor G5's TPU, which this phone has. It isn't Robot's pinned Fast model, so " +
+                Text("Robot's check says this file was compiled for the ${own.tensorBuild?.title ?: "Tensor"}'s TPU, which this phone has. It isn't Robot's pinned Fast model, so " +
                     "Robot can't vouch for it:", style = MaterialTheme.typography.bodyMedium)
                 for (risk in TPU_RISKS) Text("• $risk", style = MaterialTheme.typography.bodyMedium)
                 Text("${own.name} · ${bytes(own.bytes)}\nSHA-256 ${own.sha256}", style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)

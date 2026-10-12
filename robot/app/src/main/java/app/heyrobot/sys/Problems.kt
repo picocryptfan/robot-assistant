@@ -62,6 +62,19 @@ object Problems {
         tryingFile(ctx).delete()
     }
 
+    private fun tpuFile(ctx: Context) = File(Paths.dir(ctx), app.heyrobot.core.TpuFailure.FILE)
+
+    /** 0.8: the beta TPU build's failure Robot remembers (Fast is then the general build), or null. Any process. */
+    fun tpuFailure(ctx: Context): app.heyrobot.core.TpuFailure? = app.heyrobot.core.TpuFailure.decode(readOrNull(tpuFile(ctx)))
+
+    /** [VOICE] The beta TPU build didn't load: the general build from now on, until you try the TPU again. */
+    fun tpuFailed(ctx: Context, f: app.heyrobot.core.TpuFailure) = try { writeAtomic(tpuFile(ctx), f.encode()) } catch (t: Throwable) { RLog.w("tpu_failed_save", t) }
+
+    /** [MAIN] "Try the TPU again" in Settings › Model. */
+    fun forgetTpuFailure(ctx: Context) {
+        tpuFile(ctx).delete()
+    }
+
     /** [VOICE] A GPU load is about to start, or (null) has answered. */
     fun gpuTrying(ctx: Context, t: GpuTrying?) {
         try { if (t == null) tryingFile(ctx).delete() else writeAtomic(tryingFile(ctx), t.encode()) } catch (e: Throwable) { RLog.w("gpu_trying_save", e) }

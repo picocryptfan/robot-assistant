@@ -39,6 +39,7 @@ import app.heyrobot.ui.testing.ActionLog
 import app.heyrobot.ui.testing.PHONE
 import app.heyrobot.ui.testing.PIXEL_10_PRO
 import app.heyrobot.ui.testing.PIXEL_9A
+import app.heyrobot.ui.testing.PIXEL_11
 import app.heyrobot.ui.testing.SettingsHost
 import app.heyrobot.ui.testing.inDialog
 import app.heyrobot.ui.testing.onRow
@@ -70,7 +71,7 @@ class ModelPagesTest {
     private val log = ActionLog()
     private val sha = "a".repeat(64)
     private val tpuBuild = OwnModel("gemma-own.litertlm", 3_000_000_000L, sha, "fp",
-        LiteRtLmReport(readable = true, decoder = true, aux = true, dispatchOp = true, tensorG5Stamp = true, modelType = "gemma4"))
+        LiteRtLmReport(readable = true, decoder = true, aux = true, dispatchOp = true, stamp = "Google Tensor_G5", modelType = "gemma4"))
     /** A Pixel 10 Pro: Fast is the Tensor G5's TPU build, and your own TPU build may run there. */
     private val snap = Snapshot(
         phone = PIXEL_10_PRO,
@@ -303,6 +304,52 @@ class ModelPagesTest {
     @Test fun anE4bModelsPageWarnsAboutThisPhonesMemory() {
         page(ModelRoutes.model(BrainModel.SMARTER), snap = nineA)
         rule.onNodeWithText("This phone's memory").assert(hasText("Android may stop this model", substring = true))
+    }
+
+    /**
+     * 0.8: a Pixel 11 (Tensor G6): Fast is the Tensor G6 build, marked beta, its speed an estimate from the Tensor G5's;
+     * your own Tensor G5 build can't run on its TPU; once the beta failed, Fast is the general build and the TPU can be
+     * tried again.
+     */
+    private val eleven = snap.copy(
+        phone = PIXEL_11,
+        models = listOf(
+            ModelStore.Snap(BrainModel.FAST_G6, ModelStatus.MISSING),
+            ModelStore.Snap(BrainModel.SMARTER, ModelStatus.MISSING),
+            ModelStore.Snap(BrainModel.UNCENSORED, ModelStatus.MISSING),
+            ModelStore.Snap(BrainModel.OWN, ModelStatus.VERIFIED, fileBytes = tpuBuild.bytes),
+        ),
+    )
+
+    @Test fun aPixel11ListsItsTensorG6FastAsABeta() {
+        tab(snap = eleven)
+        rule.onRow("Fast (beta)").assertIsSelected().assert(hasText("Gemma 4 E2B (Tensor G6) · Not downloaded", substring = true))
+        rule.onAllNodes(hasText("Fast", substring = true) and hasClickAction()).assertCountEquals(1)
+        // Your own Tensor G5 build: not on a Tensor G6's TPU.
+        rule.onRow(BrainModel.OWN.title).assertIsNotEnabled().assert(hasText("Built for the Tensor G5's TPU, which this phone doesn't have", substring = true))
+        rule.scrollToText("Pixel 11 (Tensor G6)")
+        rule.onNodeWithText("Pixel 11 (Tensor G6)").assert(hasText("supported in beta", substring = true))
+        rule.onNodeWithText("Try the TPU again").assertDoesNotExist()
+    }
+
+    @Test fun theTensorG6PageSaysItsSpeedIsAnEstimate() {
+        page(ModelRoutes.model(BrainModel.FAST_G6), snap = eleven)
+        rule.onNodeWithText("Estimate:", substring = true).assertExists()
+        rule.onNodeWithText("Estimate, not measured", substring = true).assertExists()
+    }
+
+    @Test fun aTpuFailureRunsTheGeneralFastUntilYouTryTheTpuAgain() {
+        val failed = eleven.copy(tpuFailure = app.heyrobot.core.TpuFailure(BrainModel.FAST_G6, 1_760_000_000_000L, LoadFailure.ENGINE),
+            models = listOf(ModelStore.Snap(BrainModel.GENERAL, ModelStatus.VERIFIED, fileBytes = BrainModel.GENERAL.bytes)) + eleven.models.drop(1))
+        tab(snap = failed)
+        rule.onRow("Fast").assertIsSelected().assert(hasText("Gemma 4 E2B · Ready"))
+        rule.onNodeWithText("Fast (beta)").assertDoesNotExist()
+        rule.scrollToText("The TPU didn't load (engine error)")
+        rule.onNodeWithText("The TPU didn't load (engine error)").assert(hasText("general build on the CPU", substring = true))
+        rule.scrollToText("Try the TPU again")
+        rule.onRow("Try the TPU again").performClick()
+        assertEquals(listOf("tryTpuAgain"), log)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
     @Test fun yourOwnTpuBuildCantRunOnAPixel9a() {

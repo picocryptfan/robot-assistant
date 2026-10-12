@@ -133,7 +133,7 @@ internal fun conversationSummary(s: RobotSettings): String =
 
 /** "Fast · stays loaded 5 min"; 0.4.7, the general E2B (Fast without the Tensor G5's TPU): "Fast on the GPU · …". */
 internal fun modelSummary(s: RobotSettings, snap: Snapshot): String {
-    val m = ModelCatalogue.resolve(s.brainModelChoice, snap.phone)
+    val m = snap.resolve(s.brainModelChoice)
     val where = if (m.gpu) " on the " + ModelCatalogue.backend(m, snap.phone, s.modelGpu, snap.gpuFailure?.model == m).title else ""
     return m.title + where + " · " + if (s.keepModelMinutes == RobotSettings.KEEP_ALWAYS) "always loaded" else "stays loaded ${s.keepModelMinutes} min"
 }

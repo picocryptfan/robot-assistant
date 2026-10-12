@@ -84,7 +84,8 @@ import java.util.concurrent.CancellationException
 // liblitertlm_jni.so, with the phone's own libOpenCL.so, declared in this module's manifest), its vision encoder on the
 // CPU (the general file's vision runs only there), the model's cache folder for the GPU's program and weight caches, no
 // sampler and MTP off, as on the TPU. Backend.NPU, and with it the TPU dispatch library, only ever for a TPU load, and only
-// on a Tensor G5 (core LoadCheck, with this phone's Build fields). LiteRT-LM encodes the rendered
+// with the build for this phone's own chip (core LoadCheck, with this phone's Build fields; 0.8: the Tensor G5's, or in beta
+// the Tensor G6's: the phone's TPU library refuses another chip's code, and so does Robot first). LiteRT-LM encodes the rendered
 // conversation with the model's tokenizer, which reads Gemma 4's "<|turn>", "<|tool_call>"… (SentencePiece user-defined
 // pieces) wherever the text has them: your question, the history and the tools' results reach it with the file's special
 // tokens broken (core ControlText, from its tokenizer: LiteRtLmCheck.tokens); Robot's own system prompt as it is.
@@ -190,7 +191,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
     /** The general file's vision encoder runs on the CPU only (LiteRT-LM's ModelInfo: vision backends CPU), whatever the text does on the GPU. */
     private fun visionBackend(b: ModelBackend): Backend = if (b == ModelBackend.GPU) Backend.CPU() else backend(b)
 
-    /** This phone, as :brain checks it (core Phones): the TPU only on a Tensor G5, the GPU only where Robot offers it. */
+    /** This phone, as :brain checks it (core Phones): the TPU only with its own chip's build, the GPU only where Robot offers it. */
     private val phone: Phone by lazy {
         Phone(android.os.Build.MANUFACTURER.orEmpty(), android.os.Build.MODEL.orEmpty(), android.os.Build.SOC_MANUFACTURER.orEmpty(),
             android.os.Build.SOC_MODEL.orEmpty())
@@ -251,14 +252,15 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             ownRecord = if (req.model == BrainModel.OWN) readOrNull(File(records, ModelFiles.OWN_RECORD)) else null,
             maxTokens = req.maxTokens, format = ModelFormat.LITERT_LM, phone = phone,
         )?.let { return failed(req, LoadFailure.NOT_ALLOWED, it) }
-        // The TPU only for Fast's pinned file (its SHA-256 mark, just above) or a file whose contents prove a Tensor G5
-        // build and that you allowed there; and never TPU code on the CPU. Read here again, from the file about to load,
-        // with its context: never a KV cache larger than the file was built with, nor a short one for a file that isn't.
+        // The TPU only for a built-in TPU build's pinned file (its SHA-256 mark, just above; LoadCheck matched its chip to
+        // this phone's) or a file whose contents prove a TPU build for this phone's own chip and that you allowed there; and
+        // never TPU code on the CPU. Read here again, from the file about to load, with its context: never a KV cache larger
+        // than the file was built with, nor a short one for a file that isn't.
         var header: LiteRtLmReport? = null
-        if (req.model != BrainModel.FAST || req.backend != ModelBackend.TPU) {
+        if (req.model.tpuChip == null || req.backend != ModelBackend.TPU) {
             val r = LiteRtLmCheck.check(f)
             val ok = when (req.backend) {
-                ModelBackend.TPU -> r.tensorG5Build
+                ModelBackend.TPU -> r.runsOnTpuOf(phone)
                 // The GPU runs a general (not NPU-compiled) file, as the CPU does; LoadCheck allowed the general E2B only.
                 ModelBackend.CPU, ModelBackend.GPU -> r.backend == ModelBackend.CPU
             }
@@ -354,7 +356,7 @@ class GemmaEngine(private val ctx: Context, private val handler: Handler) : Brai
             estimated.clear()
             val ms = SystemClock.elapsedRealtime() - t0
             // Its tokenizer's special tokens, which no text from outside Robot's prompt may write, read from the file just
-            // loaded, whichever backend runs it: the Tensor G5 build's on the TPU, 0.4.7's general E2B's on the GPU or the CPU
+            // loaded, whichever backend runs it: a Tensor build's on the TPU, 0.4.7's general E2B's on the GPU or the CPU
             // (the same SentencePiece model), an E4B file's, your own. A built-in file (its SHA-256 checked above) is Gemma
             // 4's, whose tokenizer encodes the joiner as itself; your own file whose tokenizer can't be read gets the known
             // markers broken by a plain space, which every tokenizer reads as a space.

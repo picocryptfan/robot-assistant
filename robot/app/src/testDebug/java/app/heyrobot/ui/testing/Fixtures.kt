@@ -39,7 +39,7 @@ class ActionLog : ArrayList<String>() {
         openTranscriptionCheck = { add("openTranscriptionCheck") }, mtDownload = { add("mtDownload") }, mtCancel = { add("mtCancel") },
         mtDelete = { add("mtDelete") }, openVoiceprint = { add("openVoiceprint") }, deleteVoiceprint = { add("deleteVoiceprint") },
         runRoutine = { add("runRoutine $it") }, openReady = { add("openReady $it") }, askPermission = { add("askPermission $it") },
-        tryGpuAgain = { add("tryGpuAgain") }, reportText = { "REPORT for ${it.model.id}" }, copyReport = { add("copyReport $it") },
+        tryGpuAgain = { add("tryGpuAgain") }, tryTpuAgain = { add("tryTpuAgain") }, reportText = { "REPORT for ${it.model.id}" }, copyReport = { add("copyReport $it") },
         shareReport = { add("shareReport $it") }, dismissProblem = { add("dismissProblem ${it.time}") },
         deleteProblem = { add("deleteProblem ${it.time}") },
     )
@@ -48,6 +48,8 @@ class ActionLog : ArrayList<String>() {
 /** 0.4.7's phones, as Android's Build fields name them: a Tensor G5 (Fast is the TPU build) and a Pixel 9a (the general E2B, GPU or CPU). */
 val PIXEL_10_PRO = Phone("Google", "Pixel 10 Pro", "Google", "Tensor G5", 16_000_000_000L)
 val PIXEL_9A = Phone("Google", "Pixel 9a", "Google", "Tensor G4", 7_600_000_000L)
+/** 0.8: a Pixel 11 (Tensor G6): Fast is the Tensor G6's TPU build, in beta. */
+val PIXEL_11 = Phone("Google", "Pixel 11", "Google", "Tensor G6", 12_000_000_000L)
 
 /**
  * Settings as a page holds them: [start], then every copy the page's update wrote, in order ([saved]), the page shown

@@ -406,7 +406,8 @@ private fun load(app: android.content.Context, args: FeedbackArgs, snap: Snapsho
     val inputs = FeedbackSources.read(Paths.dir(app))
     val s = inputs.settings
     val phone = ModelStore.phone(app)
-    val chosen = ModelCatalogue.resolve(s.brainModelChoice, phone)
+    // 0.8: any build of Fast is this phone's (the general build once the beta TPU build failed here).
+    val chosen = ModelCatalogue.resolve(s.brainModelChoice, phone, Problems.tpuFailure(app) != null)
     val own = if (chosen == BrainModel.OWN) ModelStore.own(app) else null
     val backend = if (chosen == BrainModel.OWN) own?.backend ?: chosen.backend
         else ModelCatalogue.backend(chosen, phone, s.modelGpu, inputs.gpuFailure?.model == chosen)

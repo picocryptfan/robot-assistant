@@ -3138,8 +3138,9 @@ what it found.
   you allowed it.
 - **The CPU** for every other file it can run. Without Gemma 4's tool-call tokens (`<|tool_call>`, `<|tool_response>`)
   Robot says actions may not work; with another model type, that Robot is written for Gemma 4.
-- **Refused:** NPU code for another chip (a Snapdragon build, a Tensor G6 build) or an incomplete Tensor G5 build (the
-  CPU can't run TPU code either), a file without a language model (no `prefill_decode`), or a context under 2,048 tokens
+- **Refused:** NPU code for another chip (a Snapdragon build, or since 0.8 a Tensor build for a chip other than this
+  phone's: a Tensor G6 build on a Pixel 10, a Tensor G5 build on a Pixel 11) or an incomplete Tensor build (the CPU can't
+  run TPU code either), a file without a language model (no `prefill_decode`), or a context under 2,048 tokens
   (before 0.4.3: under 4,096; from 2,048 to 4,095 a file now runs as chat only, "Short-context models" above).
 - Since 0.4.5 the same card takes a GGUF file too, told apart by its first bytes ("GGUF models" above).
 

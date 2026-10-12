@@ -258,6 +258,8 @@ data class Snapshot(
     val phone: Phone = Phone("", ""),
     /** The GPU failure Robot remembers (it runs the general E2B on the CPU until you try the GPU again), or null. */
     val gpuFailure: GpuFailure? = null,
+    /** 0.8: the beta TPU build's failure Robot remembers (Fast is the general build until you try the TPU again), or null. */
+    val tpuFailure: app.heyrobot.core.TpuFailure? = null,
     /** The last model problem you haven't dismissed, with a report to copy or share, or null. */
     val problem: ModelProblem? = null,
     /** 0.7: the last 10 model problems you haven't deleted, newest first (the Model tab's list). */
@@ -290,14 +292,17 @@ data class Snapshot(
 
     fun model(m: BrainModel): ModelStore.Snap? = models.firstOrNull { it.model == m }
 
-    /** This phone's Fast (0.4.7): the TPU build on a Tensor G5, the general build elsewhere. */
-    val fast: BrainModel get() = ModelCatalogue.fast(phone)
+    /** This phone's Fast (0.4.7): its chip's TPU build on a Tensor G5 or (beta) G6, the general build elsewhere or once the beta failed. */
+    val fast: BrainModel get() = ModelCatalogue.fast(phone, tpuFailure != null)
+
+    /** The model [stored] (Settings' choice) means here: any build of Fast is this phone's [fast]. */
+    fun resolve(stored: BrainModel): BrainModel = ModelCatalogue.resolve(stored, phone, tpuFailure != null)
 
     /** [m] can be chosen: checked, and (your own file) runnable here, the TPU allowed if it needs it, llama.cpp in this build for a GGUF file. */
     fun ready(m: BrainModel): Boolean = model(m)?.status == ModelStatus.VERIFIED &&
         (m != BrainModel.OWN || own?.backend != null && (own.format != ModelFormat.GGUF || ggufEngine) &&
-            // 0.4.7: a TPU build runs only where Robot has the TPU (a Tensor G5).
-            (own.backend != app.heyrobot.core.ModelBackend.TPU || phone.tpu == app.heyrobot.core.TpuSupport.SUPPORTED))
+            // 0.4.7: a TPU build runs only where Robot has the TPU; 0.8: and only on the chip its stamp names.
+            (own.backend != app.heyrobot.core.ModelBackend.TPU || own.report.runsOnTpuOf(phone)))
 
     /** Speech recognition and the default voice are installed. */
     val voiceReady: Boolean get() = voice(VoiceBundle.STT)?.status == ModelStatus.VERIFIED && voice(VoiceBundle.KOKORO)?.status == ModelStatus.VERIFIED
@@ -337,14 +342,16 @@ fun RobotAppUi(activity: MainActivity) {
         while (resumed) {
             snap = withContext(Dispatchers.IO) {
                 val phone = ModelStore.phone(ctx)
-                val models = ModelCatalogue.models(phone).map { ModelStore.snapshot(ctx, it) }
-                val chosen = models.first { it.model == ModelCatalogue.resolve(settings.brainModelChoice, phone) }
-                val use = chosen.takeIf { it.status == ModelStatus.VERIFIED } ?: models.first { it.model == ModelCatalogue.fast(phone) }
+                val tpuFailure = Problems.tpuFailure(ctx)
+                val models = ModelCatalogue.models(phone, tpuFailure != null).map { ModelStore.snapshot(ctx, it) }
+                val chosen = models.first { it.model == ModelCatalogue.resolve(settings.brainModelChoice, phone, tpuFailure != null) }
+                val use = chosen.takeIf { it.status == ModelStatus.VERIFIED } ?: models.first { it.model == ModelCatalogue.fast(phone, tpuFailure != null) }
                 Snapshot(
                     facts = Assistant.facts(ctx),
                     model = use.status,
                     phone = phone,
                     gpuFailure = Problems.gpuFailure(ctx),
+                    tpuFailure = tpuFailure,
                     problem = Problems.open(ctx),
                     problems = Problems.list(ctx),
                     progress = use.progress,
@@ -530,7 +537,7 @@ fun RobotAppUi(activity: MainActivity) {
                 if (why != null) return@launch say(why)
                 // The choice goes back to Fast with its model.
                 val fast = snap.fast
-                val chosen = ModelCatalogue.resolve(settings.brainModelChoice, snap.phone) == m && m != fast
+                val chosen = snap.resolve(settings.brainModelChoice) == m && m != fast
                 if (chosen) update(settings.copy(brainModel = fast.id))
                 say("“${m.title}” was deleted." + if (chosen) " Robot uses Fast again." else "")
             }
@@ -625,6 +632,14 @@ fun RobotAppUi(activity: MainActivity) {
                 withContext(Dispatchers.IO) { Problems.forgetGpuFailure(ctx) }
                 update(settings)
                 say("Robot will try the GPU at the next question. If it fails again, Robot goes back to the CPU by itself.")
+            }
+        },
+        // 0.8: the beta TPU build again after it failed (the voice process reads the file at the next load).
+        tryTpuAgain = {
+            scope.launch {
+                withContext(Dispatchers.IO) { Problems.forgetTpuFailure(ctx) }
+                update(settings)
+                say("Robot will try the TPU at the next question. If it fails again, Robot goes back to the general build by itself.")
             }
         },
         reportText = { p -> Problems.report(ctx, p) },
@@ -828,6 +843,8 @@ class AppActions(
     val openReady: (String) -> Unit = {},
     /** 0.4.7: Settings › Model › "Try the GPU again" after it failed. */
     val tryGpuAgain: () -> Unit = {},
+    /** 0.8: Settings › Model › "Try the TPU again" after the beta TPU build failed. */
+    val tryTpuAgain: () -> Unit = {},
     /** 0.4.7: a model problem's report, as you see it before you copy or share it (blocking: call it off the main thread). */
     val reportText: (ModelProblem) -> String = { "" },
     val copyReport: (String) -> Unit = {},

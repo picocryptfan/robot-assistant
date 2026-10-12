@@ -21,7 +21,6 @@ import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.Phone
 import app.heyrobot.core.RLog
-import app.heyrobot.core.TpuSupport
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
 import java.io.File
@@ -113,8 +112,9 @@ object ModelStore {
             // A GGUF file can run only with this build's llama.cpp library; a record of the other kind of file is checked again.
             val a = when {
                 r != null && fp != null && f.name != ModelFiles.ownFile(r.format) -> ModelAvailability.NOT_CHECKED
-                // 0.4.7: a Tensor G5 build on a phone without that TPU (a Pixel 9a) can run nowhere here.
-                r != null && r.tensorG5Build && phone(ctx).tpu != TpuSupport.SUPPORTED -> ModelAvailability.UNUSABLE
+                // 0.4.7: a TPU build on a phone without that TPU (a Pixel 9a) can run nowhere here; 0.8: nor a Tensor G5
+                // build on a Tensor G6, or the reverse (its stamp must name this phone's chip).
+                r != null && r.tensorBuild != null && !r.report.runsOnTpuOf(phone(ctx)) -> ModelAvailability.UNUSABLE
                 else -> r?.availability(fp, ggufEngine(ctx)) ?: if (fp == null) ModelAvailability.NOT_DOWNLOADED else ModelAvailability.NOT_CHECKED
             }
             val b = r?.backend
@@ -434,12 +434,12 @@ object ModelStore {
                 }
                 val before = own(ctx)
                 // A TPU allowed for this very file (same SHA-256) stays allowed; anything else asks again.
-                val allowed = gguf == null && before != null && before.sha256 == sha && before.tpuAllowed && report.tensorG5Build
+                val allowed = gguf == null && before != null && before.sha256 == sha && before.tpuAllowed && report.tensorBuild != null
                 val name = prefs(ctx).getString(OWN_NAME, null) ?: before?.name ?: "your file"
                 val record = OwnModel(name, total, sha, fp, report, allowed, System.currentTimeMillis(), gguf)
                 writeAtomic(ownRecord(ctx), record.toJson().toString())
                 val ok = record.runsOn != null
-                RLog.i("model_verify", "ok" to ok, "model" to RLog.Code(m.id), "format" to record.format, "tpu" to record.tensorG5Build,
+                RLog.i("model_verify", "ok" to ok, "model" to RLog.Code(m.id), "format" to record.format, "tpu" to (record.tensorBuild != null),
                     "gemma4" to report.gemma4, "tools" to report.toolTokens, "readable" to (gguf?.readable ?: report.readable),
                     "fileType" to (gguf?.fileType ?: -1), "thinks" to (gguf?.thinks ?: false))
                 return ok
@@ -463,12 +463,12 @@ object ModelStore {
     }
 
     /**
-     * Your own file is a proven Tensor G5 build: you allowed the TPU for it (its warning card), or took that back. Allowed
+     * Your own file is a proven TPU build for this phone's chip: you allowed the TPU for it (its warning card), or took that back. Allowed
      * only for the very file whose card you read ([sha256], as the card showed it), unchanged since its check.
      */
     fun allowOwnTpu(ctx: Context, allow: Boolean, sha256: String? = null): Boolean {
         val r = own(ctx) ?: return false
-        if (allow && (!r.tensorG5Build || r.sha256 != sha256 || r.fingerprint != fingerprint(file(ctx, BrainModel.OWN)))) return false
+        if (allow && (!r.report.runsOnTpuOf(phone(ctx)) || r.sha256 != sha256 || r.fingerprint != fingerprint(file(ctx, BrainModel.OWN)))) return false
         writeAtomic(ownRecord(ctx), r.copy(tpuAllowed = allow).toJson().toString())
         RLog.i("model_own_tpu", "allowed" to allow)
         return true
