@@ -427,7 +427,7 @@ private fun load(app: android.content.Context, args: FeedbackArgs, snap: Snapsho
     val blocks = listOfNotNull(
         problem?.let { FeedbackDiagnostics.problem(Problems.report(app, it)) },
         FeedbackDiagnostics.voiceLog(inputs.voiceLog),
-        FeedbackDiagnostics.settings(s, inputs.look, inputs.updates),
+        FeedbackDiagnostics.settings(s, inputs.look, inputs.updates, inputs.memory, inputs.messages),
         if (args.entry == FeedbackEntry.UPDATER || FeedbackDiagnostics.updaterFailed(inputs.updateState)) FeedbackDiagnostics.updater(inputs.updateState) else null,
     )
     val prefs = FeedbackFiles.prefs(app)

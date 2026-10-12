@@ -424,7 +424,9 @@ is. No email, no server, nothing sent automatically: Robot sends nothing itself.
     (`10-11 14:05:03  WAKE 2 -1 0  Wake word #2: opened the panel`).
   - **Settings summary**: every switch and level by its code (`Voice: wakeWord=on · phrases=[#1 MEDIUM on, #2 HIGH off] …`);
     a wake phrase is its number and sensitivity, a helper its kind and switches, a place, a gateway or a server "set" or
-    "another", the updater's repository "Robot's own" or "another".
+    "another", the updater's repository "Robot's own" or "another"; in 0.7.0 also Settings › Memory's switches and
+    Settings › Messages' switches, apps and counts (`Messages: on=on · apps=CHEOGRAM,SIGNAL · … · keysKept=2 ·
+    withoutCard=1`), never an item, a message, a name, a People id or a key.
   - **Updater** (after an update error, or from one): the last check, its error code and HTTP status, a refused file and
     the last install, as codes.
   A bug ticks the problem report (if there is one), the voice log and the settings summary (and the updater's codes when
@@ -485,8 +487,8 @@ Copy is there too).
 Your conversations or History, transcripts, messages, memory, People or contacts, notes, the calendar, a wake phrase's
 words ("phrase #2"), a helper's name, address, model on your server or key, the updater's repository or access token, a
 Wi-Fi or Bluetooth name, or where you are. The diagnostics are built from codes, numbers and switches only (core
-`FeedbackDiagnostics`, from the six files `FeedbackSources` reads: the settings, the look, the updater's two files, the
-voice logs and the GPU failure), and a last pass (`FeedbackPrivacy`) replaces any personal text Robot knows of that still
+`FeedbackDiagnostics`, from the eight files `FeedbackSources` reads: the settings, the look, the updater's two files, the
+voice logs, the GPU failure, and Settings › Memory's and Settings › Messages' switches), and a last pass (`FeedbackPrivacy`) replaces any personal text Robot knows of that still
 turned up in a line Robot didn't write (Android's text in a problem report) with "[left out]". Your own words are never
 changed: what you type goes as you typed it.
 
@@ -534,7 +536,10 @@ with every other GitHub address, and the voice log's events 220 to 225 (page ope
 copied, GitHub issue opened, Text it, asked by voice: kinds, lengths in hundreds and which diagnostics, never words).
 Tests: `FeedbackReportTest` (the header, each kind, the defaults, the length and what is cut first, the GitHub link),
 `FeedbackPrivacyTest` (a phone with a marker in every store above, every diagnostic ticked as the app builds them: none
-reaches the message, a preview or the link), `FeedbackRouterTest` (English and French, the words after, questions),
+reaches the message, a preview or the link; since 0.7.0 also memory's items, a private one included, as if its file were
+never encrypted and as an export left in Robot's folder, History with a message's turn and memory's ids, messages.json's
+People ids and an app's key, memory's and messages' voice log events, and a conversation held in RAM as MessageTap and the
+panel hold it), `FeedbackRouterTest` (English and French, the words after, questions),
 `TombstoneTest` (a tombstone written by hand field by field, with paths, registers, memory, maps, logs and the command
 line in it), `ModelProblemsTest` and `VoiceLogTest`. App: `ui/settings/FeedbackSettings.kt` (the page and its route),
 `sys/Feedback.kt` (the files, the clipboard, the intents), `sys/Problems.kt`; `FeedbackScreenTest` (debug unit tests:
@@ -542,7 +547,8 @@ the kinds, Preview, Share, Copy, Text it, the GitHub issue, Done, the panel's wo
 screenshots `feedback_light`, `feedback_dark`, `feedback_font200`), `ModelPagesTest`, `UpdatesSettingsTest`,
 `AppRoutesTest` and `PageSaverTest`. `ProcessIsolationTest` checks that no feedback code has network code or a log but
 codeless RLog events, that only the page sends and only the panel hands over words, that the tombstone is read only into
-`Tombstone`, and that no permission was added; `tools/verify_apk.sh` checks the same in the dex.
+`Tombstone`, that no feedback code opens memory, reads History or touches the messages held in RAM (0.7.0), and that no
+permission was added; `tools/verify_apk.sh` checks the same in the dex.
 
 ### On the phone (0.7 feedback)
 
@@ -574,6 +580,9 @@ Not yet checked. A debug build for steps 14 and 15 (`run-as`); watch Settings �
    server address, a Home for weather, a note, a person in People, a transcript and a History conversation: tick
    everything, Preview the whole message and search it for each of those words, the server's address, the place and the
    updater's repository: none is there (phrases as "#2"). Copy from Settings › Voice › Voice log: wake phrases by number only.
+   0.7.0: also remember something ("remember that the zebracorn is blue") and have Robot read a message with a unique word
+   and its sender's name, then Send feedback with everything ticked: neither word nor the name is there; the settings
+   summary has "Memory: on=on …" and "Messages: on=on · apps=… · keysKept=…".
 8. **Idea and Other.** Idea: the field asks "What would you like Robot to do?", no Steps, nothing ticked; Other: "What
    would you like to tell the developer?".
 9. **The draft stays.** Write a bug with steps, tick and untick, rotate the phone, switch apps, then

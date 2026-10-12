@@ -513,6 +513,11 @@ class ProcessIsolationTest {
         for ((k, f) in feedback) for (m in Regex("""RLog\.[iw]\(([^)]*)\)""").findAll(code(f))) {
             assertTrue("$k: ${m.value}", Regex("""^"[a-z_]*"(, t)?$""").matches(m.groupValues[1].trim()))
         }
+        // 0.7.0: what you asked Robot to remember and your messages are out of its reach: no feedback code opens memory, reads
+        // History, or touches the messages the main process (MessageTap) or the panel (PanelMessages) hold in RAM. Only
+        // Settings › Memory's and Settings › Messages' switches go into the settings summary (core FeedbackSources).
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bMessageTap\b|\bMessageBuffer\b|\bMessageThread\b|\bPanelMessages\b|\bMessagesLink\b|""" +
+            """\bMessagesBridge\b|\bMemory(Panel|Files|Vault|Recall|Search|Edits|Codec|Envelope|File|Item)\b|\bFileMemoryVault\b|\bConversation(Store|Codec)\b"""), feedback))
         // The ways out are the page's, one tap each.
         assertEquals(listOf("app/sys/Feedback.kt", "app/ui/settings/FeedbackSettings.kt"), usersOf(Regex("""\bFeedback(Send|Clipboard)\b""")) - "app/ui/MainActivity.kt")
         assertEquals(listOf("app/ui/MainActivity.kt", "app/ui/settings/FeedbackSettings.kt"),

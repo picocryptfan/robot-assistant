@@ -33,6 +33,25 @@ import app.heyrobot.core.update.UpdateFail
 import app.heyrobot.core.update.UpdateSettings
 import app.heyrobot.core.update.UpdateState
 import app.heyrobot.core.writeAtomic
+import app.heyrobot.core.ChatTurn
+import app.heyrobot.core.ConversationCodec
+import app.heyrobot.core.StoredConversation
+import app.heyrobot.core.TurnRole
+import app.heyrobot.core.memory.HelperMemory
+import app.heyrobot.core.memory.MemoryCodec
+import app.heyrobot.core.memory.MemoryFile
+import app.heyrobot.core.memory.MemoryItem
+import app.heyrobot.core.memory.MemorySettings
+import app.heyrobot.core.messages.AppPin
+import app.heyrobot.core.messages.IncomingMessage
+import app.heyrobot.core.messages.Lang
+import app.heyrobot.core.messages.MessageAllowlist
+import app.heyrobot.core.messages.MessageApp
+import app.heyrobot.core.messages.MessageBuffer
+import app.heyrobot.core.messages.MessageReading
+import app.heyrobot.core.messages.MessageSettings
+import app.heyrobot.core.messages.MessageThread
+import app.heyrobot.core.messages.MessagesFile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -73,7 +92,17 @@ class FeedbackPrivacyTest {
         "wifi" to "ZQX-WIFI-HomeNet", "bluetooth" to "ZQX-BT-Headphones", "weather home" to "Rue Zorblax", "latitude" to "45.512345",
         "longitude" to "-73.554321", "sms gateway" to "zorblaxgate.example", "search server" to "nominatim.zorblax.example", "spoken prefill" to "ZQX-PREFILL",
         "send to" to "+15145550199", "own model file" to "zorblax-own-model.gguf", "user path" to "/storage/emulated/0",
+        // 0.7.0: memory's items (a private one too), messages' words and senders, People's ids in messages.json, an app's
+        // key, and what the main and voice processes hold in RAM (MessageTap's buffer, the panel's conversations).
+        "private memory item" to "ZQX-MEMORY-SECRET", "memory in History" to "m_0000000zqx001", "people id for replies" to "zqx-person-annabelle",
+        "app key" to "5a".repeat(32), "message in RAM" to "ZQX-RAM-MESSAGE", "sender in RAM" to "ZQX-RAM-SENDER", "sender address" to "annabelle@zqx.example",
+        "group title" to "ZQX-GROUP-Famille",
     )
+
+    /** A conversation as MessageTap and the panel hold it, in RAM only. */
+    private fun ramThread() = MessageThread(MessageApp.CHEOGRAM, "zqx#annabelle@zqx.example", "0|com.cheogram.android|7|null|1", "ZQX-GROUP-Famille", true,
+        listOf(IncomingMessage("m1", MessageApp.CHEOGRAM, "zqx#annabelle@zqx.example", "ZQX-RAM-SENDER", "annabelle@zqx.example", "ZQX-RAM-MESSAGE",
+            t, true, true)), null, null, null, t)
 
     private fun plant(files: File) {
         val robot = File(files, "robot").apply { mkdirs() }
@@ -96,7 +125,11 @@ class FeedbackPrivacyTest {
         writeAtomic(File(robot, "update_token.bin"), token)
         // The voice logs: numbers only; a damaged line with words is skipped when read.
         val log = listOf(VoiceLogEntry(t, VoiceEvent.WAKE, 2, 91, WakeAction.OPENED.id), VoiceLogEntry(t + 1_000, VoiceEvent.STT_DONE, 42, 3_000, 400),
-            VoiceLogEntry(t + 2_000, VoiceEvent.KWS_HIT, 2, 1, 11), VoiceLogEntry(t + 3_000, VoiceEvent.SUMMARY_HELPER, 2, 12, 1))
+            VoiceLogEntry(t + 2_000, VoiceEvent.KWS_HIT, 2, 1, 11), VoiceLogEntry(t + 3_000, VoiceEvent.SUMMARY_HELPER, 2, 12, 1),
+            // 0.7.0: memory's and messages' events, codes and counts only.
+            VoiceLogEntry(t + 3_100, VoiceEvent.MEM_SAVE, 1, 1, 0), VoiceLogEntry(t + 3_200, VoiceEvent.MEM_RECALL, 2, 1, 40),
+            VoiceLogEntry(t + 3_300, VoiceEvent.MSG_READ, 1, 3, 0), VoiceLogEntry(t + 3_400, VoiceEvent.MSG_REPLY, 2, 1, 1),
+            VoiceLogEntry(t + 3_500, VoiceEvent.MSG_LISTENER, 5, 2, 0), VoiceLogEntry(t + 3_600, VoiceEvent.MSG_GUARD, 3, 0, 0))
         writeAtomic(File(robot, VoiceFiles.LOG), VoiceLogCodec.encode(log) + "${t + 4_000} 1 $phrase 0 0\n${t + 5_000} 15 ZQX-CONVERSATION-TEXT 1 2\n")
         writeAtomic(File(robot, VoiceFiles.LOG_MAIN), VoiceLogCodec.encode(listOf(VoiceLogEntry(t + 6_000, VoiceEvent.FEEDBACK_OPENED, 1, 1))))
         writeAtomic(File(robot, GpuFailure.FILE), GpuFailure(BrainModel.GENERAL, t, ProblemStage.WRITING, null).encode())
@@ -111,6 +144,20 @@ class FeedbackPrivacyTest {
         writeAtomic(File(files, "transcripts/20261011-1402-7f3a/lines.jsonl"), """{"text":"ZQX-TRANSCRIPT-LINE"}""")
         writeAtomic(File(files, "messages/buffer.json"), """{"from":"ZQX-SENDER-Annabelle","text":"ZQX-MESSAGE-BODY"}""")
         writeAtomic(File(files, "memory/memory.json"), """{"items":[{"text":"ZQX-MEMORY-ITEM"}]}""")
+        // 0.7.0's own files: memory (as if its file were never encrypted, and an Export saved in Robot's folder by mistake),
+        // Settings › Memory and Settings › Messages, and History with a turn that read a message and one that used memory.
+        val mem = MemoryFile(listOf(MemoryItem("m_0000000zqx001", "ZQX-MEMORY-ITEM", createdAt = t),
+            MemoryItem("m_0000000zqx002", "ZQX-MEMORY-SECRET is 4512", secret = true, createdAt = t)))
+        writeAtomic(File(files, "memory/memory.enc"), MemoryCodec.toJson(mem))
+        writeAtomic(File(robot, "memory-export.json"), MemoryCodec.toJson(mem))
+        writeAtomic(File(robot, MemorySettings.FILE), MemorySettings(onLockScreen = true, helpers = HelperMemory.TRUSTED_HELPERS).toJson())
+        writeAtomic(File(robot, MessagesFile.FILE), MessagesFile(MessageSettings(on = true, allowlist = MessageAllowlist(setOf(MessageApp.CHEOGRAM, MessageApp.SIGNAL))),
+            noCard = setOf("zqx-person-annabelle"), replyLang = mapOf("zqx-person-annabelle" to Lang.FR),
+            pins = mapOf("org.thoughtcrime.securesms" to AppPin(setOf("5a".repeat(32)), "org.fdroid.fdroid"))).toJson())
+        val read = ChatTurn("r1", TurnRole.ASSISTANT, "ZQX-SENDER-Annabelle, in Cheogram, 1 message:\n- ZQX-MESSAGE-BODY", t, messages = true,
+            kept = MessageReading.historyLine(listOf(ramThread().copy(title = "ZQX-SENDER-Annabelle")), 1))
+        writeAtomic(File(files, "conversations/c2.json"), ConversationCodec.toJson(StoredConversation("c2", t, t, listOf(
+            ChatTurn("u1", TurnRole.USER, "read my messages", t, memoryIds = listOf("m_0000000zqx001")), read))))
         NoteStore(File(files, "notes").apply { mkdirs() }).add("ZQX-NOTE-TEXT and ZQX-CALENDAR-EVENT", "ZQX-NOTE-TEXT", t)
         PeopleStore(File(files, "people").apply { mkdirs() }).save(Person("p1", "ZQX-PERSON-Annabelle", phones = listOf(ContactPhone("+15145550177", app.heyrobot.core.PhoneKind.MOBILE, "ZQX-LABEL"))))
         writeAtomic(File(files, "helpers/h1/key.bin"), key)
@@ -120,6 +167,9 @@ class FeedbackPrivacyTest {
     /** The report the app makes from Robot's folder, every diagnostic ticked, with the facts and the problem report it adds. */
     private fun report(files: File): Triple<FeedbackReport.Composed, FeedbackReport.IssueLink, String> {
         val inputs = FeedbackSources.read(File(files, "robot"))
+        // What the main and voice processes hold in RAM meanwhile: a report is made of files and Android's facts only.
+        val held = MessageBuffer().apply { posted(ramThread()) }
+        assertEquals(1, held.size)
         val problem = ProblemList.decode(app.heyrobot.core.readOrNull(File(files, "robot/${ProblemList.FILE}"))).first()
         // Android's own text in a problem report may hold anything; Robot scrubs paths and the last pass takes out the rest.
         val exits = listOf(
@@ -133,7 +183,7 @@ class FeedbackPrivacyTest {
         val blocks = listOf(
             FeedbackDiagnostics.problem(reportText),
             FeedbackDiagnostics.voiceLog(inputs.voiceLog, utc),
-            FeedbackDiagnostics.settings(inputs.settings, inputs.look, inputs.updates),
+            FeedbackDiagnostics.settings(inputs.settings, inputs.look, inputs.updates, inputs.memory, inputs.messages),
             FeedbackDiagnostics.updater(inputs.updateState, utc),
         )
         val secrets = FeedbackPrivacy.secrets(inputs.settings, inputs.updates, "picocryptfan/robot-gos-assistant", listOf("+15145550199"))
@@ -161,11 +211,15 @@ class FeedbackPrivacyTest {
             for (w in listOf("Kind: Bug report", "Robot stopped mid-answer.", "Your own model file (.gguf) · CPU", "Look: classic",
                 "WAKE 2 91 0  Wake word #2: opened the panel", "phrases=[#1 MEDIUM on, #2 MEDIUM on]", "Helpers: count=2", "OTHER on",
                 "smsGateway=another", "home=set", "server=another", "repository=another", "error=TOKEN_REFUSED · http=401", "refusedFile=OTHER_SIGNER",
-                "found=0.7.1", "CRASH_NATIVE (6)", "“[left out] to [left out] crashed in …/liblitertlm_jni.so”", "“reading …”")) {
+                "found=0.7.1", "CRASH_NATIVE (6)", "“[left out] to [left out] crashed in …/liblitertlm_jni.so”", "“reading …”",
+                // 0.7.0: memory's and messages' switches and counts, and their events by code.
+                "Memory: on=on · inAnswers=on · lockScreen=on · sayPrivateAloud=off · helpers=TRUSTED_HELPERS",
+                "Messages: on=on · apps=CHEOGRAM,SIGNAL · groups=on", "keysKept=1 · firstUse=0 · withoutCard=1 · replyLanguages=1",
+                "MSG_READ 1 3 0  Read 3 messages from Cheogram", "MEM_SAVE 1 1 0", "MSG_LISTENER 5 2 0  Notification listener kept an app's signing key")) {
                 assertTrue(w, c.text.contains(w))
             }
             // The voice log's damaged lines with words were skipped, not shown.
-            assertEquals(5, c.blocks.getValue(Diagnostic.VOICE_LOG).lines().count { Regex("""^\d\d-\d\d \d\d:\d\d:\d\d  [A-Z_]+ """).containsMatchIn(it) })
+            assertEquals(11, c.blocks.getValue(Diagnostic.VOICE_LOG).lines().count { Regex("""^\d\d-\d\d \d\d:\d\d:\d\d  [A-Z_]+ """).containsMatchIn(it) })
         } finally {
             files.deleteRecursively()
         }

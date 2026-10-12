@@ -12,6 +12,8 @@ import app.heyrobot.core.VoiceLogCodec
 import app.heyrobot.core.VoiceLogEntry
 import app.heyrobot.core.VoiceLogText
 import app.heyrobot.core.helpers.HelperKind
+import app.heyrobot.core.memory.MemorySettings
+import app.heyrobot.core.messages.MessagesFile
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.update.CheckOutcome
 import app.heyrobot.core.update.InstallOutcome
@@ -27,7 +29,8 @@ import java.util.Locale
 // Pure (0.7). What Send feedback may add to your words, each only when you tick it: the model problem's report (0.4.7's,
 // as it is), the voice log (codes and numbers only), a summary of the settings (switches and levels only) and the
 // updater's last error (codes). Each is built here from the few files FeedbackSources reads (the settings, the look, the
-// updater's two files, the voice logs and the GPU failure Robot remembers) and nothing else: never the conversations,
+// updater's two files, the voice logs, the GPU failure Robot remembers, and 0.7.0's memory.json and messages.json for
+// their switches and counts) and nothing else: never the conversations,
 // History, transcripts, messages, memory, People or contacts, notes or calendar, nor a wake phrase's words (a phrase is
 // "#2"), a helper's name, address or key, the updater's repository or token, a Wi-Fi or Bluetooth name, or a place.
 
@@ -60,7 +63,8 @@ object FeedbackDiagnostics {
      * addresses, keys and places are never read: a phrase is its number and sensitivity, a helper its kind and switches, a
      * place or a server "set" or "default".
      */
-    fun settings(s: RobotSettings, look: LookSettings, updates: UpdateSettings): DiagnosticBlock {
+    fun settings(s: RobotSettings, look: LookSettings, updates: UpdateSettings, memory: MemorySettings = MemorySettings(),
+        messages: MessagesFile = MessagesFile()): DiagnosticBlock {
         val lines = mutableListOf<String>()
         fun add(area: String, vararg kv: Pair<String, Any>) {
             lines += "$area: " + kv.joinToString(" · ") { (k, v) -> "$k=" + (if (v is Boolean) on(v) else v.toString()) }
@@ -80,6 +84,15 @@ object FeedbackDiagnostics {
             "numberRegion" to (if (s.phoneRegion == null) "the phone's" else "set"))
         add("Calendar", "calendar" to (if (s.eventCalendar == CalendarPick.AUTO) "Robot picks" else "chosen"), "eventMinutes" to s.eventMinutes)
         add("People", "rememberPicks" to s.rememberPicks, "learnFromCheogram" to s.learnFromCheogram)
+        // 0.7: memory's and messages' switches, and how many apps' keys and people's choices are kept (never an item, a
+        // message, a name, a People id or a key).
+        add("Memory", "on" to memory.on, "inAnswers" to memory.useInAnswers, "lockScreen" to memory.onLockScreen, "sayPrivateAloud" to memory.speakSecrets,
+            "helpers" to memory.helpers.name, "suggestions" to memory.suggestions.name)
+        val m = messages.settings
+        add("Messages", "on" to m.on, "apps" to m.allowlist.apps.map { it.name }.sorted().joinToString(",").ifEmpty { "none" }, "groups" to m.allowlist.groups,
+            "replies" to m.replyRoute.name, "card" to m.replyCard, "voiceYes" to m.voiceYesSends, "afterReading" to m.afterReading.name, "keep" to m.keep.name,
+            "translate" to m.translate, "theirLanguage" to m.offerTheirLanguage, "lockScreen" to m.locked.name, "keysKept" to messages.pins.size,
+            "firstUse" to messages.firstUse.size, "withoutCard" to messages.noCard.size, "replyLanguages" to messages.replyLang.size)
         add("Safety", "safetyCards" to s.safetyCards.name, "helperActionCards" to s.claudeActionCards, "whoCards" to s.whoCards,
             "learnedNameCards" to s.learnedCards, "deleteCards" to s.deleteCards,
             "onLockScreen" to s.lockedTools.map { it.id }.sorted().joinToString(",").ifEmpty { "none" },
@@ -172,13 +185,16 @@ data class FeedbackInputs(
     /** Both voice logs (the voice process's and the main app's), newest first. */
     val voiceLog: List<VoiceLogEntry>,
     val gpuFailure: GpuFailure?,
+    /** 0.7: Settings › Memory's and Settings › Messages' switches (their files hold no item and no message). */
+    val memory: MemorySettings = MemorySettings(),
+    val messages: MessagesFile = MessagesFile(),
 )
 
 object FeedbackSources {
     /** settings.json (written by the main app, sys/SettingsStore). */
     const val SETTINGS = "settings.json"
 
-    /** The six files a report's diagnostics come from, each missing or damaged one read as its defaults. */
+    /** The eight files a report's diagnostics come from, each missing or damaged one read as its defaults. */
     fun read(robotDir: File): FeedbackInputs = FeedbackInputs(
         settings = RobotSettings.fromJson(readOrNull(File(robotDir, SETTINGS))),
         look = LookSettings.fromJson(readOrNull(File(robotDir, LookSettings.FILE))),
@@ -187,6 +203,8 @@ object FeedbackSources {
         voiceLog = (VoiceLogCodec.decode(readOrNull(File(robotDir, VoiceFiles.LOG))) + VoiceLogCodec.decode(readOrNull(File(robotDir, VoiceFiles.LOG_MAIN))))
             .sortedByDescending { it.time },
         gpuFailure = GpuFailure.decode(readOrNull(File(robotDir, GpuFailure.FILE))),
+        memory = MemorySettings.fromJson(readOrNull(File(robotDir, MemorySettings.FILE))),
+        messages = MessagesFile.fromJson(readOrNull(File(robotDir, MessagesFile.FILE))),
     )
 }
 
