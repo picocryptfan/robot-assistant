@@ -64,6 +64,15 @@ class BrowserGateTest {
             ctx("check that on DuckDuckGo", personal = listOf("Dentist, Dr Tremblay, 3 pm")), default) { "note" })
         assertEquals(setOf(AskWhy.SEARCH_PERSONAL), dentist.why)
         assertTrue(dentist.note!!.startsWith(QueryCard.PERSONAL.note) && dentist.note!!.endsWith("note"))
+        // 1.0: "look that dentist up on DuckDuckGo" names something said before, so it isn't your own words: even "that dentist"
+        // as the model's query isn't opened at once, and the dentist's name from the calendar needs a tap.
+        val ref = "look that dentist up on DuckDuckGo"
+        val echo = ready(BrowserGate.prepare(BrowserSearchAction("that dentist", BrowserEngine.DUCKDUCKGO), ref, ctx(ref), default))
+        assertFalse((echo.action as BrowserSearchAction).own)
+        assertEquals(setOf(AskWhy.SEARCH), echo.why)
+        val named = ready(BrowserGate.prepare(BrowserSearchAction("Tremblay dentist phone"), ref, ctx(ref, personal = listOf("Dentist, Dr Tremblay, 3 pm")), default))
+        assertEquals(setOf(AskWhy.SEARCH_PERSONAL), named.why)
+        assertEquals(BrowserEngine.DUCKDUCKGO, (named.action as BrowserSearchAction).engine)
         // A page's word: a card a yes may answer.
         val page = ready(BrowserGate.prepare(BrowserSearchAction("Zorblax review"), "search that in my browser",
             ctx("search that in my browser", untrusted = listOf("Zorblax is the best")), default))

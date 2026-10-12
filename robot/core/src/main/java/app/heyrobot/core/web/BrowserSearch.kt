@@ -8,7 +8,8 @@ import app.heyrobot.core.Prepared
 // Pure. 1.0: a search in your browser (Engines.kt). Your own words in a phrase that names an engine or your browser
 // ("search DuckDuckGo for …", "look up … on Google", « cherche sur Startpage … », « cherche … dans mon navigateur ») open
 // it at once, before the model, exactly as said (BrowserRouter, as WebRouter does for Robot's own search). "Look it up on
-// Google", « cherche-le sur Google » leave the words to the model, which calls browser_search: its query then passes
+// Google", "look that dentist up on DuckDuckGo", « cherche-le sur Google », « cherche ce resto sur Google » (1.0: a pronoun
+// or a demonstrative first) leave the words to the model, which calls browser_search: its query then passes
 // QueryCheck, and a card shows it in full before anything opens (BrowserGate). Robot sends nothing itself: the browser
 // opens the engine's own address with the words, and Robot never sees the results.
 
@@ -43,6 +44,24 @@ object BrowserRouter {
 
     /** The words that stand for something said before ("look it up on Google"): the model has to write the query. */
     private val PRONOUN = setOf("it", "that", "this", "them", "those", "one", "le", "la", "les", "ca", "cela", "ceci", "moi ca", "moi le", "moi la")
+
+    /**
+     * 1.0: words that begin with a pronoun, a possessive or a demonstrative ("that dentist", "this place", "their hours",
+     * « ce resto », « cette adresse », « ces horaires », « celui-là ») also stand for something said before, so they aren't
+     * your literal words either: the model writes the query (card first, QueryCheck). An article doesn't ("the Stanley
+     * Cup", « la mairesse de Montréal », « les horaires »), and « le », « la », « les » alone are [PRONOUN]'s.
+     */
+    private val REFERS = setOf("it", "its", "that", "this", "these", "those", "they", "them", "their", "he", "him", "his", "she", "her",
+        "ca", "cela", "ceci", "ce", "cet", "cette", "ces", "celui", "celle", "ceux", "celles", "lui", "eux", "son", "sa", "ses", "leur", "leurs")
+
+    /** [x] stands for something said before: a pronoun alone, or words that start with one ([REFERS]). */
+    private fun refers(x: String): Boolean {
+        val f = WebWords.fold(x)
+        if (f.replace('-', ' ') in PRONOUN) return true
+        // The first word, as said: "that's" is "that", « celui-là » is « celui » (an apostrophe or -là, -ci ends it).
+        val first = f.trim().split(Regex("[\\s'’]+")).firstOrNull()?.replace(Regex("-(?:la|ci)$"), "") ?: return false
+        return first in REFERS
+    }
 
     private val LEAD = Regex("^(?:(?:hey|hi|ok|okay|dis|salut) robot[,.!]?\\s+)?(?:(?:please|can you|could you|would you|will you|peux[- ]tu|pourrais[- ]tu|stp|s['’ ]il te pla[iî]t)[,]?\\s+)*",
         RegexOption.IGNORE_CASE)
@@ -100,13 +119,13 @@ object BrowserRouter {
 
     private fun ask(raw: String, engine: BrowserEngine?): BrowserAsk? {
         val x = words(raw) ?: return null
-        return if (WebWords.fold(x).replace('-', ' ') in PRONOUN) BrowserAsk.Resolve(engine) else BrowserAsk.Open(x, engine)
+        return if (refers(x)) BrowserAsk.Resolve(engine) else BrowserAsk.Open(x, engine)
     }
 
     /**
      * A phrase that names an engine or your browser, as written: [BrowserAsk.Open] with exactly your words, or
-     * [BrowserAsk.Resolve] when they stand for something said before. Null for anything else (Robot's own "search the web
-     * for …" is WebRouter's).
+     * [BrowserAsk.Resolve] when they stand for something said before ("it", "that dentist", « ce resto »). Null for
+     * anything else (Robot's own "search the web for …" is WebRouter's).
      */
     fun explicit(question: String?): BrowserAsk? {
         val b = body(question ?: return null) ?: return null

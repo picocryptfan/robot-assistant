@@ -63,6 +63,28 @@ class BrowserRouterTest {
             assertTrue(q, BrowserRouter.named(q))
             assertTrue(q, ToolGroup.WEB in ToolRouter.route(q))
         }
+        // 1.0: words that start with a pronoun, a possessive or a demonstrative are a reference too, in both languages: the model
+        // writes the query (browser_search, its card first, QueryCheck), as for a bare pronoun.
+        for ((q, engine) in listOf("look that dentist up on DuckDuckGo" to BrowserEngine.DUCKDUCKGO, "search Google for this place" to BrowserEngine.GOOGLE,
+            "look up their hours on Bing" to BrowserEngine.BING, "search for those on Startpage" to BrowserEngine.STARTPAGE,
+            "search DuckDuckGo for them" to BrowserEngine.DUCKDUCKGO, "look up his number on Google" to BrowserEngine.GOOGLE,
+            "cherche ce resto sur Google" to BrowserEngine.GOOGLE, "cherche cette adresse sur Startpage" to BrowserEngine.STARTPAGE,
+            "recherche ces horaires sur DuckDuckGo" to BrowserEngine.DUCKDUCKGO, "cherche celui-là sur Google" to BrowserEngine.GOOGLE,
+            "cherche ça sur Qwant" to BrowserEngine.QWANT, "cherche cet hôtel sur Google" to BrowserEngine.GOOGLE)) {
+            assertEquals(q, BrowserAsk.Resolve(engine), BrowserRouter.explicit(q))
+            assertNull(q, BrowserRouter.route(q))
+            assertNull(q, BrowserRouter.ownWords(q))
+            assertTrue(q, BrowserRouter.named(q))
+        }
+        assertEquals(BrowserAsk.Resolve(null), BrowserRouter.explicit("search for that restaurant in my browser"))
+        assertEquals(BrowserAsk.Resolve(null), BrowserRouter.explicit("cherche ce resto dans mon navigateur"))
+        // An article, a name or other words that only look alike stay your own words.
+        for ((q, words) in listOf("search Google for the Stanley Cup" to "the Stanley Cup", "cherche la mairesse de Montréal sur Google" to "la mairesse de Montréal",
+            "cherche les horaires sur Google" to "les horaires", "search DuckDuckGo for theatre listings" to "theatre listings",
+            "search Bing for He-Man toys" to "He-Man toys", "cherche c'est quoi un pouding chômeur sur Google" to "c'est quoi un pouding chômeur",
+            "search Google for Hermès bags" to "Hermès bags")) {
+            assertEquals(q, words, (BrowserRouter.explicit(q) as BrowserAsk.Open).query)
+        }
         // WebRouter no longer takes "it" or « ça » as the words to search for.
         assertNull(WebRouter.explicit("google it"))
         assertNull(WebRouter.explicit("cherche ça sur internet"))
