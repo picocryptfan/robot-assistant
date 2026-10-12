@@ -920,6 +920,14 @@ class ProcessIsolationTest {
         assertTrue(code(File(java("app"), "app/heyrobot/assistant/VoiceHub.kt")).contains("i.getBooleanExtra(Cmd.EXTRA_DND, false)"))
     }
 
+    /** 0.8 review: the headset whose button sent VOICE_COMMAND (EXTRA_DEVICE) is the one told Robot listens, else the first. */
+    @Test fun theHeadsetThatPressedIsTheOneAnswered() {
+        val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/HandsFreeHub.kt"))
+        assertTrue(hf.contains("if (d.ackBvra) ackVoiceRecognition(ctx, buttonDevice(intent))"))
+        assertTrue(hf.contains("intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)"))
+        assertTrue(hf.contains("val target = from?.takeIf { f -> connected.any { it.address == f.address } } ?: connected.firstOrNull()"))
+    }
+
     /**
      * 0.8, Settings › Voice › Transcription check › Microphone: Headset records through the headset as a session listens
      * (its call route and pinned input, core CheckMics), only once its input is the one capturing, never over a session's

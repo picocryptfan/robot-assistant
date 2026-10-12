@@ -4889,6 +4889,8 @@ up: …", "Message in the headset: …").
 2. Two earbuds (one HFP-only, one LE Audio): `adb logcat -s HeadsetService MediaSessionService` while long-pressing.
    *Note* whether `VOICE_COMMAND` starts, what each headset does after 5 s without `startVoiceRecognition` (an error
    tone?), and what changes with "Answer the headset's voice button properly" on (the log: "Headset told Robot listens").
+   Robot answers the headset the button's intent names (`BluetoothDevice.EXTRA_DEVICE`), else the first connected one:
+   with both connected, *note* whether `VOICE_COMMAND` carries `EXTRA_DEVICE` and which earbud hears the OK.
 3. A USB-C headset's long press, unlocked and locked: *note* which intent and `EXTRA_SECURE` (the log: "Headset button:
    wired or USB long-press … · locked").
 4. *Note* each device's name and types in Settings › Headset › Your headphones after its first use (the name only ever
