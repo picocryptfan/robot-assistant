@@ -4,6 +4,7 @@ import app.heyrobot.core.messages.MessageBuffer
 import app.heyrobot.core.messages.MessageReading
 import app.heyrobot.core.messages.MessageThread
 import app.heyrobot.core.messages.ReplyKind
+import app.heyrobot.core.messages.ReplyOutcome
 
 // Pure. Where 0.7's messages (core messages) meet the hooks in Messages.kt: a [MessageThread] as the [MessageNotice] the
 // headset and the car speak, and the RAM [MessageBuffer] as their [MessageFeed]. The notice's conversationKey is the
@@ -26,4 +27,14 @@ class BufferFeed(private val buffer: MessageBuffer, private val now: () -> Long,
     override fun unread(): List<MessageNotice> = buffer.unread(now()).mapNotNull { it.notice(dndAllows(it.key)) }
 
     override fun current(conversationKey: String): MessageNotice? = buffer.thread(conversationKey)?.notice(dndAllows(conversationKey))
+}
+
+/** What the main process's answer to a hands-free reply (0.7's MessagesBridge) means for what Robot says in the car. */
+fun ReplyOutcome.handsFree(): ReplyResult = when (this) {
+    ReplyOutcome.SENT -> ReplyResult.HANDED_OVER
+    ReplyOutcome.NEW_MESSAGES -> ReplyResult.NEW_MESSAGES
+    ReplyOutcome.GONE, ReplyOutcome.CHANGED, ReplyOutcome.CANCELED_PI -> ReplyResult.GONE
+    ReplyOutcome.LOCKED, ReplyOutcome.AUTH_REQUIRED -> ReplyResult.LOCKED
+    ReplyOutcome.OPEN_CHAT -> ReplyResult.NO_REPLY_ACTION
+    ReplyOutcome.OFF, ReplyOutcome.FAILED -> ReplyResult.FAILED
 }

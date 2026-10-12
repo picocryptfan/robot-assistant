@@ -1,5 +1,6 @@
 package app.heyrobot.core.car
 
+import app.heyrobot.core.messages.VoiceReply
 import app.heyrobot.core.output.AnswerCode
 import app.heyrobot.core.output.HandsFreeSafety
 import app.heyrobot.core.output.MessageNotice
@@ -24,8 +25,8 @@ sealed class FlowEffect {
     data class Place(val number: String, val way: CallWay) : FlowEffect()
     /** Hand exactly [text] to the conversation's Reply action (ReplyChannel); say CarMessages.result after. */
     data class Send(val conversationKey: String, val text: String) : FlowEffect()
-    /** Keep it for parking ([summary]: the card's words, personal, never logged). */
-    data class Park(val code: ParkCode, val summary: String) : FlowEffect()
+    /** Keep it for parking ([summary]: the card's words, personal, never logged; [ask]: what is asked again once you park). */
+    data class Park(val code: ParkCode, val summary: String, val ask: String? = null) : FlowEffect()
 }
 
 /** A call in progress: the current plan (choices or read-back), unusable answers so far, re-reads, and Robot's last line. */
@@ -83,8 +84,12 @@ data class MessageFlowState(
     val said: String = "",
 )
 
-/** What a message flow needs from settings and the moment. */
-data class MessageFlowContext(val settings: CarSettings, val safety: HandsFreeSafety, val locked: Boolean, val trusted: Boolean, val lang: SpokenLang)
+/**
+ * What a message flow needs from settings and the moment. [voice]: 0.7's reply rules for the conversation
+ * (core messages HandsFreeReplies): only [VoiceReply.BY_VOICE] is sent after the read-back; the rest waits for parking.
+ */
+data class MessageFlowContext(val settings: CarSettings, val safety: HandsFreeSafety, val locked: Boolean, val trusted: Boolean, val lang: SpokenLang,
+    val voice: VoiceReply = VoiceReply.TAP_ONLY)
 
 object MessageFlow {
     /** A new message ([senderAllowed]: "Announce from: people you choose"): announced, read at once, or nothing. */
@@ -111,13 +116,14 @@ object MessageFlow {
     }
 
     private fun startReply(st: MessageFlowState, dictated: String, c: MessageFlowContext): Pair<MessageFlowState, List<FlowEffect>> =
-        when (val r = CarMessages.startReply(st.notice, dictated, c.settings, c.safety, c.locked, c.trusted, c.lang)) {
+        when (val r = CarMessages.startReply(st.notice, dictated, c.settings, c.safety, c.locked, c.trusted, c.lang, c.voice)) {
             is ReplyStart.ReadBack -> st.copy(step = MessageStep.READ_BACK, draft = r.draft, said = r.say, tries = 0, rereads = 0) to listOf(FlowEffect.Say(r.say, true))
             is ReplyStart.AskText -> if (st.step == MessageStep.DICTATING && st.tries + 1 >= SpokenChoice.MAX_TRIES) {
                 st.copy(step = MessageStep.DONE) to listOf(FlowEffect.Say(OutputLines.KEEP_FOR_PARK.get(c.lang), false),
                     FlowEffect.Park(ParkCode.REPLY, replyTo(st.notice, c.lang)))
             } else st.copy(step = MessageStep.DICTATING, said = r.say, tries = if (st.step == MessageStep.DICTATING) st.tries + 1 else 0) to listOf(FlowEffect.Say(r.say, true))
-            is ReplyStart.Hold -> st.copy(step = MessageStep.DONE) to listOf(FlowEffect.Say(r.say, false), FlowEffect.Park(ParkCode.REPLY, replyTo(st.notice, c.lang)))
+            is ReplyStart.Hold -> st.copy(step = MessageStep.DONE) to listOf(FlowEffect.Say(r.say, false),
+                FlowEffect.Park(ParkCode.REPLY, replyTo(st.notice, c.lang), CarMessages.parkedAsk(st.notice, r.text, c.lang)))
         }
 
     private fun replyTo(n: MessageNotice, lang: SpokenLang) = (if (lang == SpokenLang.FR) "Répondre à " else "Reply to ") + n.sender
@@ -148,7 +154,7 @@ object MessageFlow {
                 when (val next = CarMessages.answer(d, a, st.tries, st.rereads, lang)) {
                     is ReplyNext.Send -> st.copy(step = MessageStep.DONE) to listOf(FlowEffect.Send(next.conversationKey, next.text))
                     is ReplyNext.Done -> st.copy(step = MessageStep.DONE) to listOfNotNull(FlowEffect.Say(next.say, false),
-                        if (next.why == ReplyEnd.SILENCE) FlowEffect.Park(ParkCode.REPLY, replyTo(st.notice, lang)) else null)
+                        if (next.why == ReplyEnd.SILENCE) FlowEffect.Park(ParkCode.REPLY, replyTo(st.notice, lang), CarMessages.parkedAsk(st.notice, d.text, lang)) else null)
                     ReplyNext.Reread -> st.copy(rereads = st.rereads + 1) to listOf(FlowEffect.Say(st.said, true))
                     is ReplyNext.AskAgain -> st.copy(tries = st.tries + 1) to listOf(FlowEffect.Say(next.say, true))
                 }

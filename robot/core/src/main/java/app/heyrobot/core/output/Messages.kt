@@ -69,6 +69,8 @@ enum class ReplyResult(override val id: Int, override val title: String) : LogCo
     GONE(3, "the notification went away"),
     LOCKED(4, "the app's reply needs an unlocked phone"),
     FAILED(5, "didn't work"),
+    /** 0.8: a newer message came after the read-back; nothing sent. */
+    NEW_MESSAGES(6, "a newer message came"),
 }
 
 /** The words of a reply without what introduces them ("tell her", "reply that", "dis-lui que", "réponds-lui que"). */

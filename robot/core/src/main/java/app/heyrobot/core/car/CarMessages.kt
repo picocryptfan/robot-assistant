@@ -2,6 +2,7 @@ package app.heyrobot.core.car
 
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.headset.AnnounceCode
+import app.heyrobot.core.messages.VoiceReply
 import app.heyrobot.core.output.HandsFreeSafety
 import app.heyrobot.core.output.Line
 import app.heyrobot.core.output.MessageNotice
@@ -22,13 +23,20 @@ import app.heyrobot.core.output.SpokenStep
 // Cheogram." The reply goes to the conversation the notification belongs to (no name resolution, so a learned name
 // can't redirect it), through its own Reply action (output ReplyChannel), and what that action receives is exactly the
 // text that was read back ([ReplyDraft.text]), never a model's draft. Apps without a Reply action, groups, "Replies by
-// voice" off or "Send a reply after a spoken yes" off: the reply is kept for parking. New texts ("Text Bob I'm late")
-// are kept for parking too, since Cheogram only takes a draft that needs Send ("New texts while driving").
+// voice" off or "Send a reply after a spoken yes" off: the reply is kept for parking. 0.7's reply rules hold too (core
+// messages HandsFreeReplies): a reply that only a tap may send (Settings › Messages' card, a locked phone) or that Robot
+// never sends itself ("Open the chat; I press Send") is kept for parking with your words, and asked again then. New texts
+// ("Text Bob I'm late") are kept for parking too, since Cheogram only takes a draft that needs Send ("New texts while
+// driving").
 
 /** How a hands-free reply ended. Also the voice log's CAR_REPLY b when nothing was handed over. */
 enum class ReplyEnd(override val id: Int, override val title: String) : LogCode {
     SENT(1, "handed to the app"), DECLINED(2, "you said no"), HELD(3, "kept for parking"), NOT_REPLYABLE(4, "no Reply action"), GROUP(5, "a group"),
     VOICE_OFF(6, "replies by voice off"), LOCKED(7, "locked"), SILENCE(8, "no answer"), TOO_LONG(9, "too long to read back"),
+    /** 0.7's rules: only a tap sends it, or Robot never sends it itself ("Open the chat; I press Send"). */
+    NEEDS_TAP(10, "needs a tap: kept for parking"),
+    /** A newer message came while you dictated: nothing sent. */
+    NEW_MESSAGES(11, "a newer message came"),
 }
 
 /** Whether a new message is announced in the car ([Skip.why]: the voice log's ANNOUNCE a). */
@@ -49,8 +57,8 @@ sealed class ReplyStart {
     data class ReadBack(val draft: ReplyDraft, val say: String) : ReplyStart()
     /** Ask what it should say ([say]). */
     data class AskText(val say: String) : ReplyStart()
-    /** Kept for parking ([say]). */
-    data class Hold(val say: String, val why: ReplyEnd) : ReplyStart()
+    /** Kept for parking ([say]); [text]: your words, asked again once you park ("" when there were none yet). */
+    data class Hold(val say: String, val why: ReplyEnd, val text: String = "") : ReplyStart()
 }
 
 sealed class ReplyNext {
@@ -108,16 +116,22 @@ object CarMessages {
     /**
      * A reply to [n] from what you said ([dictated]: "Tell her I'm 10 minutes away" or just "I'm 10 minutes away").
      * Locked without a trusted session: kept. Not replyable, a group, replies by voice off or "Send a reply after a
-     * spoken yes" off, or too long to read back: kept for parking. Empty: asks what it should say.
+     * spoken yes" off, or too long to read back: kept for parking. Empty: asks what it should say. [voice]: 0.7's rules for
+     * this conversation (core messages HandsFreeReplies); anything but [VoiceReply.BY_VOICE] is kept for parking with your
+     * words, which a tap sends once you park.
      */
-    fun startReply(n: MessageNotice, dictated: String, s: CarSettings, safety: HandsFreeSafety, locked: Boolean, trusted: Boolean, lang: SpokenLang): ReplyStart {
-        if (!n.replyable) return ReplyStart.Hold(CANT_REPLY.get(lang), ReplyEnd.NOT_REPLYABLE)
-        if (n.isGroup) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.GROUP)
-        if (!s.voiceReplies || !safety.replyAfterSpokenYes) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.VOICE_OFF)
-        if (locked && !trusted) return ReplyStart.Hold(CarGate.UNLOCK_ONCE.get(lang), ReplyEnd.LOCKED)
-        val text = ReplyWords.body(dictated)
+    fun startReply(n: MessageNotice, dictated: String, s: CarSettings, safety: HandsFreeSafety, locked: Boolean, trusted: Boolean, lang: SpokenLang,
+        voice: VoiceReply): ReplyStart {
+        val words = ReplyWords.body(dictated)
+        if (!n.replyable) return ReplyStart.Hold(CANT_REPLY.get(lang), ReplyEnd.NOT_REPLYABLE, words)
+        if (n.isGroup) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.GROUP, words)
+        if (!s.voiceReplies || !safety.replyAfterSpokenYes) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.VOICE_OFF, words)
+        if (locked && !trusted) return ReplyStart.Hold(CarGate.UNLOCK_ONCE.get(lang), ReplyEnd.LOCKED, words)
+        val text = words
         if (text.isEmpty()) return ReplyStart.AskText(WHAT_REPLY.get(lang))
-        if (text.length > MAX_REPLY) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.TOO_LONG)
+        if (text.length > MAX_REPLY) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.TOO_LONG, text)
+        if (voice != VoiceReply.BY_VOICE) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang),
+            if (voice == VoiceReply.REFUSED) ReplyEnd.LOCKED else ReplyEnd.NEEDS_TAP, text)
         val draft = ReplyDraft(n.conversationKey, n.sender, n.app, text)
         return ReplyStart.ReadBack(draft, readBack(draft, lang))
     }
@@ -140,12 +154,22 @@ object CarMessages {
             is SpokenStep.Choose -> ReplyNext.AskAgain(SpokenCards.hint(0, lang))
         }
 
+    /**
+     * What is asked again once you park, for a reply kept with your [text] ("reply to Marie: I'm 10 minutes away"): the
+     * panel's 0.7 card then, which a tap sends. Null without words (the summary alone is kept).
+     */
+    fun parkedAsk(n: MessageNotice, text: String, lang: SpokenLang): String? = text.trim().takeIf { it.isNotEmpty() }?.let {
+        if (lang == SpokenLang.FR) "réponds à ${n.sender} : $it" else "reply to ${n.sender}: $it"
+    }
+
     /** What Robot says after the main process answered: "Handed to Cheogram." (never "delivered"). */
     fun result(r: ReplyResult, app: String, lang: SpokenLang): String = when (r) {
         ReplyResult.HANDED_OVER -> if (lang == SpokenLang.FR) "Remis à $app." else "Handed to $app."
         ReplyResult.NO_REPLY_ACTION, ReplyResult.GONE -> CANT_REPLY.get(lang)
         ReplyResult.LOCKED -> CarGate.UNLOCK_ONCE.get(lang)
         ReplyResult.FAILED -> if (lang == SpokenLang.FR) "Ça n'a pas marché. Je le garde pour quand tu seras stationné." else "That didn't work. I'll keep it for when you park."
+        ReplyResult.NEW_MESSAGES -> if (lang == SpokenLang.FR) "Un nouveau message vient d'arriver. Je garde ta réponse pour quand tu seras stationné."
+            else "A new message just came. I'll keep your reply for when you park."
     }
 
     /** "Text Bob I'm late" while driving: kept for parking, or Cheogram opened now (unlocked only; it needs a tap there). */

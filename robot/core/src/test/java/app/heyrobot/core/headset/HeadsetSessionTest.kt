@@ -295,7 +295,7 @@ class HeadsetAnnounceTest {
         assertEquals(AnnounceDecision.ReadNow("Marie dit : I'm on my way"), d(s = on.copy(announceRead = AnnounceRead.ALWAYS), lang = SpokenLang.FR))
         assertEquals(AnnounceDecision.Announce("Message from Marie in Famille. Read it?", asks = true), d(n = marie.copy(group = "Famille")))
         assertEquals(AnnounceDecision.Announce("Message from Marie. The app doesn't show the text.", asks = false), d(n = marie.copy(hidden = true)))
-        assertEquals(AnnounceDecision.Skip(AnnounceCode.OFF), d(s = HeadsetSettings()))
+        assertEquals(AnnounceDecision.Skip(AnnounceCode.OFF), d(s = HeadsetSettings(announceMessages = false)))
         assertEquals(AnnounceDecision.Skip(AnnounceCode.NOT_PRIVATE), d(routed = false))
         assertEquals(AnnounceDecision.Skip(AnnounceCode.NOT_PRIVATE), d(trust = Trust.ASK))
         assertEquals(AnnounceDecision.Skip(AnnounceCode.NOT_PRIVATE), d(trust = Trust.NOT_PRIVATE))

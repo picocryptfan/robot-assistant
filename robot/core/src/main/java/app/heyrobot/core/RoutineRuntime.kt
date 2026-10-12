@@ -194,8 +194,9 @@ object BriefParts {
 }
 
 /**
- * 0.7's seam: how many unread messages the brief says (MessageSource.unread() once messages exist). Until then
- * [NONE]: the brief says nothing about messages.
+ * How many unread messages the brief says (0.8: the voice process asks the main process's MessagesBridge, which counts
+ * what 0.7's messages hold, by app, and nothing when Settings › Messages is off). [NONE]: the brief says nothing about
+ * messages.
  */
 fun interface UnreadSource {
     fun unread(): UnreadCount?

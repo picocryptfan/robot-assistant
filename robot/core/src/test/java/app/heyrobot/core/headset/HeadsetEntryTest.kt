@@ -58,7 +58,10 @@ class HeadsetEntryTest {
         assertEquals(ListenWith.HEADSET_MIC, s.listenWith)
         assertEquals(6, s.followUpSeconds)
         assertEquals(6_000L, s.followUpMs)
-        assertFalse(s.wakeThroughHeadset || s.announceMessages || s.announceLocked || s.answerVoiceButton || s.buttonsWhileTalking)
+        assertFalse(s.wakeThroughHeadset || s.announceLocked || s.answerVoiceButton || s.buttonsWhileTalking)
+        // 0.8: the headset's part of announcements is on; nothing is announced until Settings › Messages' switch (off) is on.
+        assertTrue(s.announceMessages)
+        assertFalse(app.heyrobot.core.messages.MessageSettings().announce)
         assertEquals(AnnounceFrom.CHOSEN_PEOPLE, s.announceFrom)
         assertEquals(AnnounceRead.ASK_FIRST, s.announceRead)
         // An older settings file (no fragment) and an empty one read as the defaults.

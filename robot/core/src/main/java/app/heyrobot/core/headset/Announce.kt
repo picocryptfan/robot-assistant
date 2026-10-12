@@ -1,14 +1,18 @@
 package app.heyrobot.core.headset
 
 import app.heyrobot.core.LogCode
+import app.heyrobot.core.output.AnswerCode
 import app.heyrobot.core.output.MessageNotice
 import app.heyrobot.core.output.PhoneState
+import app.heyrobot.core.output.SpokenCard
+import app.heyrobot.core.output.SpokenCards
+import app.heyrobot.core.output.SpokenChoice
 import app.heyrobot.core.output.SpokenLang
 import app.heyrobot.core.output.Trust
 
-// Pure. New messages announced in the headset (0.7, design §3.2 story 5, §3.6, §3.7 rule 5): opt-in, private headphones
-// only, never on the lock screen unless "Announce while locked" is on, only senders Do Not Disturb and "Announce from"
-// let through, the sender's name first and the text only after a yes (or at once with "Read the text: always"). Never on
+// Pure. New messages announced in the headset (0.7's messages, wired in 0.8; design §3.2 story 5, §3.6, §3.7 rule 5):
+// opt-in (Settings › Messages › Announce new messages, off), private headphones only, never on the lock screen unless
+// "Announce while locked" is on, only senders Do Not Disturb and "Announce from" let through, the sender's name first and the text only after a yes (or at once with "Read the text: always"). Never on
 // the speaker, a car or a Bluetooth speaker: the car has its own announcements (car mode). Each sentence still passes
 // OutputGuard as it plays.
 
@@ -66,5 +70,35 @@ object HeadsetAnnounce {
     fun read(n: MessageNotice, lang: SpokenLang): String = when (lang) {
         SpokenLang.EN -> "${n.sender} says: ${n.text.trim()}"
         SpokenLang.FR -> "${n.sender} dit : ${n.text.trim()}"
+    }
+}
+
+/** What the answer to "Message from Marie. Read it?" in the headset does. */
+sealed class AnnounceNext {
+    /** Read it ([HeadsetAnnounce.read], or 0.7's reading of the conversation). */
+    data object Read : AnnounceNext()
+
+    /** "No", or no usable answer: nothing more is said, and the message stays in its app. */
+    data object Quiet : AnnounceNext()
+
+    /** Say [say] (the question again, or how to answer) and listen once more. */
+    data class Ask(val say: String) : AnnounceNext()
+}
+
+object AnnounceAnswer {
+    /**
+     * [heard] ("" for silence) after Robot said [said]. A sure yes reads, a sure no is quiet; "repeat" says it again (at
+     * most SpokenChoice.MAX_REREADS times, [rereads] so far); anything else asks how to answer, until SpokenChoice.MAX_TRIES
+     * tries ([tries] so far), then nothing more. Robot's own question heard back is never an answer (SpokenChoice).
+     */
+    fun next(heard: String, said: String, tries: Int, rereads: Int, lang: SpokenLang, wakePhrases: List<String> = emptyList()): AnnounceNext {
+        val a = SpokenChoice.answer(heard, SpokenCard(said.removeSuffix("?")), said, wakePhrases)
+        return when {
+            a.sure && a.kind == AnswerCode.YES -> AnnounceNext.Read
+            a.sure && a.kind == AnswerCode.NO -> AnnounceNext.Quiet
+            a.kind == AnswerCode.REPEAT && rereads < SpokenChoice.MAX_REREADS -> AnnounceNext.Ask(said)
+            tries + 1 >= SpokenChoice.MAX_TRIES -> AnnounceNext.Quiet
+            else -> AnnounceNext.Ask(SpokenCards.hint(0, lang))
+        }
     }
 }

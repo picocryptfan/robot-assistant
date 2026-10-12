@@ -55,8 +55,11 @@ data class HeadsetSettings(
      * connected (worse music, headset battery). The only time Robot holds the headset microphone outside a question.
      */
     val wakeThroughHeadset: Boolean = false,
-    /** "Announce new messages in the headset" (0.7, off). */
-    val announceMessages: Boolean = false,
+    /**
+     * "Announce new messages in the headset" (0.8: on, as nothing is announced anywhere until Settings › Messages ›
+     * Announce new messages, off, is on; this turns the headset's part off).
+     */
+    val announceMessages: Boolean = true,
     val announceFrom: AnnounceFrom = AnnounceFrom.CHOSEN_PEOPLE,
     val announceRead: AnnounceRead = AnnounceRead.ASK_FIRST,
     /** "Announce while locked" (0.7, off, §3.7 rule 5). */

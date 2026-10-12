@@ -53,8 +53,14 @@ enum class BriefWeatherMissing { UNAVAILABLE, NOT_ONLINE }
 data class BriefWeather(val now: WeatherNow?, val today: WeatherDay?, val units: WeatherUnits, val place: String? = null,
     val wettest: DayPart? = null)
 
-/** 0.7 (MessageSource.unread): how many unread messages, and the sender with the most of them. */
-data class UnreadCount(val total: Int, val topSender: String? = null, val fromTop: Int = 0)
+/**
+ * 0.8, from 0.7's messages (core messages MessageUnread): how many messages Robot hasn't read to you, in all and by app
+ * ([apps], most first). Counts only: never who wrote or what, so the line is the same on the lock screen.
+ */
+data class UnreadCount(val total: Int, val apps: List<AppUnread> = emptyList())
+
+/** [count] unread messages in the app called [app] ("Signal"). */
+data class AppUnread(val app: String, val count: Int)
 
 data class BriefInput(
     val now: ZonedDateTime,
@@ -122,7 +128,7 @@ object BriefComposer {
         }
         BriefItem.CALENDAR -> listOf(BriefLine(item, calendar(input.events, input.now, input.lang), true))
         BriefItem.REMINDERS -> reminders(input.reminders, input.lang)?.let { listOf(BriefLine(item, it, true)) } ?: emptyList()
-        BriefItem.MESSAGES -> input.unread?.let { u -> listOf(BriefLine(item, messages(u, input.lang), u.topSender != null && u.fromTop > 0 && u.total > 0)) } ?: emptyList()
+        BriefItem.MESSAGES -> input.unread?.let { u -> listOf(BriefLine(item, messages(u, input.lang), false)) } ?: emptyList()
         BriefItem.CLOSING -> listOf(BriefLine(item, closing(input.now, input.lang), false))
     }
 
@@ -299,18 +305,31 @@ object BriefComposer {
         return head + shown.joinToString("; ") + tail + "."
     }
 
-    /** "You have 5 unread messages, 3 from Marie." / "Tu as 5 messages non lus, dont 3 de Marie." */
+    /**
+     * "You have 5 unread messages: 3 in Signal and 2 in Cheogram." / "Tu as 5 messages non lus : 3 dans Signal et 2 dans
+     * Cheogram." With one app: "You have 1 unread message in Signal." Counts and app names only, never a sender.
+     */
     fun messages(u: UnreadCount, lang: BriefLang): String {
         val en = lang == BriefLang.EN
-        val sender = u.topSender?.let { BriefText.clean(it, SENDER) }?.takeIf { it.isNotEmpty() && u.fromTop > 0 }
-        return when {
-            u.total <= 0 -> if (en) "No unread messages." else "Aucun message non lu."
-            u.total == 1 -> (if (en) "You have 1 unread message" else "Tu as 1 message non lu") +
-                (sender?.let { if (en) ", from $it" else ", de $it" } ?: "") + "."
-            else -> (if (en) "You have ${u.total} unread messages" else "Tu as ${u.total} messages non lus") +
-                (sender?.let { if (en) ", ${minOf(u.fromTop, u.total)} from $it" else ", dont ${minOf(u.fromTop, u.total)} de $it" } ?: "") + "."
+        val apps = u.apps.filter { it.count > 0 }.map { it.copy(app = BriefText.clean(it.app, SENDER)) }.filter { it.app.isNotEmpty() }
+        val head = when {
+            u.total <= 0 -> return if (en) "No unread messages." else "Aucun message non lu."
+            u.total == 1 -> if (en) "You have 1 unread message" else "Tu as 1 message non lu"
+            else -> if (en) "You have ${u.total} unread messages" else "Tu as ${u.total} messages non lus"
         }
+        val tail = when {
+            apps.isEmpty() -> ""
+            apps.size == 1 -> (if (en) " in " else " dans ") + apps[0].app
+            else -> {
+                val parts = apps.take(MAX_APPS).map { a -> "${a.count} " + (if (en) "in " else "dans ") + a.app }
+                (if (en) ": " else " : ") + parts.dropLast(1).joinToString(", ") + (if (en) " and " else " et ") + parts.last()
+            }
+        }
+        return "$head$tail."
     }
+
+    /** Apps named at most in the messages line (Robot reads five). */
+    private const val MAX_APPS = 5
 }
 
 /** Clock times and dates as the brief says them, without the phone's locale (the same words on every phone). */

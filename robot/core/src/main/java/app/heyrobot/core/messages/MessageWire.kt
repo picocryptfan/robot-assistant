@@ -26,6 +26,8 @@ object MessagesProtocol {
     const val REQ_CLEAR = 5
     /** "Always for Mom": a person's replies go in a language (or not any more); the main process writes messages.json. */
     const val REQ_REPLY_LANG = 6
+    /** 0.8, the brief: how many messages Robot hasn't read to you, by app (counts only, [MessageUnread]). */
+    const val REQ_UNREAD = 7
     /** Every answer. */
     const val ANSWER = 100
 

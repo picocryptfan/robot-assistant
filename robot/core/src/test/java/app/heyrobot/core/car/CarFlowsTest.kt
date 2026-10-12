@@ -1,6 +1,7 @@
 package app.heyrobot.core.car
 
 import app.heyrobot.core.headset.AnnounceCode
+import app.heyrobot.core.messages.VoiceReply
 import app.heyrobot.core.output.DeviceMemory
 import app.heyrobot.core.output.GuardSettings
 import app.heyrobot.core.output.HandsFreeSafety
@@ -139,7 +140,7 @@ class CarMessagesTest {
         for ((said, body) in listOf("Tell her I'm 10 minutes away" to "I'm 10 minutes away", "I'm 10 minutes away" to "I'm 10 minutes away",
                 "reply that I'll be late, sorry!" to "I'll be late, sorry!", "Dis-lui que j'arrive dans 10 minutes" to "j'arrive dans 10 minutes",
                 "Réponds-lui que c'est correct" to "c'est correct", "hey robot, tell her ok" to "ok", "Say: see you at 5." to "see you at 5.")) {
-            val start = CarMessages.startReply(marie, said, s, safety, false, false, EN) as ReplyStart.ReadBack
+            val start = CarMessages.startReply(marie, said, s, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.ReadBack
             assertEquals(said, body, start.draft.text)
             // The read-back says those exact words, and "send" sends those exact words.
             assertTrue(said, start.say.contains(body))
@@ -148,7 +149,7 @@ class CarMessagesTest {
                 assertEquals(yes, ReplyNext.Send("CHEOGRAM:me#marie", body), CarMessages.answer(start.draft, SpokenChoice.answer(yes, card), 0, 0, EN))
             }
         }
-        val d = (CarMessages.startReply(marie, "tell her I'm 10 minutes away", s, safety, false, false, EN) as ReplyStart.ReadBack)
+        val d = (CarMessages.startReply(marie, "tell her I'm 10 minutes away", s, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.ReadBack)
         assertEquals("Reply to Marie: I'm 10 minutes away. Send?", d.say)
         assertEquals("Réponse à Marie : I'm 10 minutes away. J'envoie?", CarMessages.readBack(d.draft, FR))
         assertEquals("Reply to Marie: See you at 5? Send?", CarMessages.readBack(d.draft.copy(text = "See you at 5?"), EN))
@@ -165,14 +166,14 @@ class CarMessagesTest {
     }
 
     @Test fun repliesThatWait() {
-        assertEquals(ReplyStart.Hold(CarMessages.CANT_REPLY.en, ReplyEnd.NOT_REPLYABLE), CarMessages.startReply(marie.copy(replyable = false), "ok", s, safety, false, false, EN))
-        assertEquals(ReplyEnd.GROUP, (CarMessages.startReply(marie.copy(group = "Famille"), "ok", s, safety, false, false, EN) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", s.copy(voiceReplies = false), safety, false, false, EN) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", s, safety.copy(replyAfterSpokenYes = false), false, false, EN) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.LOCKED, (CarMessages.startReply(marie, "ok", s, safety, true, false, EN) as ReplyStart.Hold).why)
-        assertTrue(CarMessages.startReply(marie, "ok", s, safety, true, true, EN) is ReplyStart.ReadBack)
-        assertEquals(ReplyStart.AskText("What should the reply say?"), CarMessages.startReply(marie, "tell her", s, safety, false, false, EN))
-        assertEquals(ReplyEnd.TOO_LONG, (CarMessages.startReply(marie, "x ".repeat(200), s, safety, false, false, EN) as ReplyStart.Hold).why)
+        assertEquals(ReplyStart.Hold(CarMessages.CANT_REPLY.en, ReplyEnd.NOT_REPLYABLE, "ok"), CarMessages.startReply(marie.copy(replyable = false), "ok", s, safety, false, false, EN, VoiceReply.BY_VOICE))
+        assertEquals(ReplyEnd.GROUP, (CarMessages.startReply(marie.copy(group = "Famille"), "ok", s, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
+        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", s.copy(voiceReplies = false), safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
+        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", s, safety.copy(replyAfterSpokenYes = false), false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
+        assertEquals(ReplyEnd.LOCKED, (CarMessages.startReply(marie, "ok", s, safety, true, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
+        assertTrue(CarMessages.startReply(marie, "ok", s, safety, true, true, EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
+        assertEquals(ReplyStart.AskText("What should the reply say?"), CarMessages.startReply(marie, "tell her", s, safety, false, false, EN, VoiceReply.BY_VOICE))
+        assertEquals(ReplyEnd.TOO_LONG, (CarMessages.startReply(marie, "x ".repeat(200), s, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
         // New texts wait for parking unless "Open Cheogram now" (and unlocked).
         assertEquals(NewTexts.KEEP_FOR_PARKING, CarMessages.newText(s, false))
         assertEquals(NewTexts.OPEN_CHEOGRAM, CarMessages.newText(s.copy(newTexts = NewTexts.OPEN_CHEOGRAM), false))
@@ -260,7 +261,7 @@ class DrivingTest {
 class CarFlowMachinesTest {
     private val mom = listOf(PhoneCandidate("Martine Martin", "5145550101", PhoneLabel.MOBILE), PhoneCandidate("Martine Martin", "5145550202", PhoneLabel.WORK))
     private val marie = MessageNotice("CHEOGRAM:me#marie", "Marie", "k1", "T'es où?", "Cheogram", replyable = true)
-    private val c = MessageFlowContext(CarSettings(), HandsFreeSafety(), locked = false, trusted = false, lang = EN)
+    private val c = MessageFlowContext(CarSettings(), HandsFreeSafety(), locked = false, trusted = false, lang = EN, voice = VoiceReply.BY_VOICE)
 
     private fun call(vararg heard: String, plan: CallPlan): Pair<CallFlowState, List<List<FlowEffect>>> {
         var (st, fx) = CallFlow.start(plan, "Mom", EN)
@@ -327,10 +328,10 @@ class CarFlowMachinesTest {
         assertEquals(listOf(FlowEffect.Say("Reply to Marie: j'arrive. Send?", true)), fx[2])
         assertEquals(listOf(FlowEffect.Say("Okay, not sent.", false)), fx[3])
         assertFalse(fx.flatten().any { it is FlowEffect.Send })
-        // Robot's read-back heard back is not a "send"; nothing heard twice keeps the reply for parking.
+        // Robot's read-back heard back is not a "send"; nothing heard twice keeps the reply for parking, with your words.
         val (st2, fx2) = msg(MessageFlow.start(marie, c, true), "yes", "tell her I'm late", "Reply to Marie I'm late send", "")
         assertFalse(fx2.flatten().any { it is FlowEffect.Send })
-        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie"), fx2.last().last())
+        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to Marie: I'm late"), fx2.last().last())
         assertEquals(MessageStep.DONE, st2!!.step)
     }
 
@@ -351,7 +352,7 @@ class CarFlowMachinesTest {
         assertEquals(listOf(FlowEffect.Say("Marie says: T'es où?", false), FlowEffect.Say("Reply?", true)), MessageFlow.start(marie, whole, true).second)
         // "Reply …" straight from the router, for an app without a Reply action: kept for parking.
         val (_, rfx) = MessageFlow.reply(marie.copy(replyable = false), "reply I'm late", c)
-        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie"), rfx.last())
+        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to Marie: I'm late"), rfx.last())
         // Dictation that says nothing twice: kept.
         val (dst, dfx) = msg(MessageFlow.start(marie, c, true), "yes", "yes", "", "")
         assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie"), dfx.last().last())

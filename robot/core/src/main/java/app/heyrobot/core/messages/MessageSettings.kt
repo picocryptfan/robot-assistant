@@ -62,7 +62,11 @@ data class MessageSettings(
     val locked: MessagesLocked = MessagesLocked.OFF,
     /** "Messages can go to trusted helpers without a card": off. */
     val helpersNoCard: Boolean = false,
-    /** "Announce new messages" (headphones only): a later phase. */
+    /**
+     * "Announce new messages" (0.8, off): a new message is announced in private headphones (Settings › Headset) and in
+     * the car while car mode runs (Settings › Car mode), never on the phone's speaker. Settings › Headset and Car mode say
+     * who and how; this is the one switch that turns announcements on.
+     */
     val announce: Boolean = false,
 )
 

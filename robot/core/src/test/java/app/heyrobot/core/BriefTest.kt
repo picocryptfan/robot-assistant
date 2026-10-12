@@ -30,21 +30,21 @@ class BriefTest {
             WeatherDay(today, code, high, 3.0, chance, rain, rain, 0.0, snow, 20.0, 35.0, 80), units, place, wettest)
 
     private fun input(lang: BriefLang = BriefLang.EN, events: List<CalendarEvent>? = day, w: BriefWeather? = weather(),
-        reminders: List<String> = listOf("bring the passport"), unread: UnreadCount? = UnreadCount(5, "Marie", 3), n: ZonedDateTime = now,
+        reminders: List<String> = listOf("bring the passport"), unread: UnreadCount? = UnreadCount(5, listOf(AppUnread("Signal", 3), AppUnread("Cheogram", 2))), n: ZonedDateTime = now,
         missing: BriefWeatherMissing? = null) =
         BriefInput(n, lang, weather = w, weatherMissing = missing, events = events, reminders = reminders, unread = unread)
 
     @Test fun goldenEnglish() {
         assertEquals("Good morning. It's 7:02, Monday October 12. Right now in Montreal it's 4 degrees and partly cloudy; high of 12, " +
             "30 percent chance of rain this afternoon. You have 3 events today: standup at 9:30, lunch with Marie at noon, dentist at 4. " +
-            "Reminder: bring the passport. You have 5 unread messages, 3 from Marie. Have a good day.", BriefComposer.full(input()))
+            "Reminder: bring the passport. You have 5 unread messages: 3 in Signal and 2 in Cheogram. Have a good day.", BriefComposer.full(input()))
     }
 
     @Test fun goldenQuebecFrench() {
         val fr = input(BriefLang.FR, dayFr, weather(place = "Montréal, Québec, Canada"), listOf("apporter le passeport"))
         assertEquals("Bon matin. Il est 7 h 02, lundi 12 octobre. En ce moment à Montréal, 4 degrés et partiellement nuageux; maximum de 12, " +
             "30 % de risque de pluie cet après-midi. Tu as 3 rendez-vous aujourd'hui : standup à 9 h 30, dîner avec Marie à midi, dentiste à 16 h. " +
-            "Rappel : apporter le passeport. Tu as 5 messages non lus, dont 3 de Marie. Bonne journée.", BriefComposer.full(fr))
+            "Rappel : apporter le passeport. Tu as 5 messages non lus : 3 dans Signal et 2 dans Cheogram. Bonne journée.", BriefComposer.full(fr))
     }
 
     /** Locked at "Time and weather": the time and the weather without the town, then "Unlock to hear your day". */
@@ -53,7 +53,7 @@ class BriefTest {
         assertEquals("Good morning. It's 7:02, Monday October 12. Right now it's 4 degrees and partly cloudy; high of 12, " +
             "30 percent chance of rain this afternoon. Unlock to hear your day.", b.text)
         assertEquals("You have 3 events today: standup at 9:30, lunch with Marie at noon, dentist at 4. Reminder: bring the passport. " +
-            "You have 5 unread messages, 3 from Marie. Have a good day.", b.heldText)
+            "You have 5 unread messages: 3 in Signal and 2 in Cheogram. Have a good day.", b.heldText)
         assertTrue(b.spoken.none { it.personal })
         assertFalse(b.text.contains("Montreal"))
         val fr = BriefComposer.compose(input(BriefLang.FR, dayFr, weather(place = "Montréal, Québec, Canada")), locked = true)
@@ -155,7 +155,10 @@ class BriefTest {
         assertEquals("Rappels : a; b; c; et 2 autres.", BriefComposer.reminders(listOf("a", "b", "c", "d", "e"), BriefLang.FR))
         assertEquals("No unread messages.", BriefComposer.messages(UnreadCount(0), BriefLang.EN))
         assertEquals("Aucun message non lu.", BriefComposer.messages(UnreadCount(0), BriefLang.FR))
-        assertEquals("You have 1 unread message, from Marie.", BriefComposer.messages(UnreadCount(1, "Marie", 1), BriefLang.EN))
+        assertEquals("You have 1 unread message in Signal.", BriefComposer.messages(UnreadCount(1, listOf(AppUnread("Signal", 1))), BriefLang.EN))
+        // Counts and app names only: never who wrote, so the line says the same on the lock screen.
+        assertEquals("Tu as 3 messages non lus : 2 dans Signal et 1 dans Molly.", BriefComposer.messages(UnreadCount(3, listOf(AppUnread("Signal", 2), AppUnread("Molly", 1))), BriefLang.FR))
+        assertFalse(BriefComposer.lines(BriefItem.MESSAGES, input(), place = true).single().personal)
         assertEquals("Tu as 1 message non lu.", BriefComposer.messages(UnreadCount(1), BriefLang.FR))
         assertEquals("You have 5 unread messages.", BriefComposer.messages(UnreadCount(5), BriefLang.EN))
         // Before 0.7 there is no count: nothing is said, and no reminders means no line.
@@ -178,7 +181,7 @@ class BriefTest {
 
     @Test fun theBriefStaysShortEnoughToSay() {
         val huge = (0 until 30).map { event("x".repeat(500) + " $it", 8 + it % 14, it % 60) }
-        val b = BriefComposer.compose(input(events = huge, reminders = List(20) { "y".repeat(400) }, unread = UnreadCount(999, "z".repeat(500), 500),
+        val b = BriefComposer.compose(input(events = huge, reminders = List(20) { "y".repeat(400) }, unread = UnreadCount(999, listOf(AppUnread("z".repeat(500), 999))),
             w = weather(place = "p".repeat(500))))
         assertTrue(b.text.length <= BriefComposer.MAX_CHARS)
         assertTrue(b.text.endsWith("Have a good day."))
@@ -186,7 +189,7 @@ class BriefTest {
         assertTrue(cal, cal.startsWith("You have 30 events today. The first 5: "))
         assertTrue(cal.length < 6 * (BriefComposer.TITLE + 12) + 40)
         // The same input gives the same words.
-        assertEquals(b, BriefComposer.compose(input(events = huge, reminders = List(20) { "y".repeat(400) }, unread = UnreadCount(999, "z".repeat(500), 500),
+        assertEquals(b, BriefComposer.compose(input(events = huge, reminders = List(20) { "y".repeat(400) }, unread = UnreadCount(999, listOf(AppUnread("z".repeat(500), 999))),
             w = weather(place = "p".repeat(500)))))
     }
 

@@ -19,7 +19,8 @@ import java.io.File
  * language a person's replies go in when the card's "Send in French" was ticked with "Always for …" (by People id).
  * [pins]: by package, what was kept of each installed package of an app when you turned it on (its signers' digests and
  * installer, MessageSigners); [firstUse]: packages of an app that was on before the pins, which are pinned at their
- * first notification (trust on first use; only after an upgrade from a version-1 file).
+ * first notification (trust on first use; only after an upgrade from a version-1 file). [announcePeople] (0.8): the People ids
+ * whose new messages are announced in your headphones or the car when "Announce from" is "People you choose".
  */
 data class MessagesFile(
     val settings: MessageSettings = MessageSettings(),
@@ -27,6 +28,7 @@ data class MessagesFile(
     val replyLang: Map<String, Lang> = emptyMap(),
     val pins: Map<String, AppPin> = emptyMap(),
     val firstUse: Set<String> = emptySet(),
+    val announcePeople: Set<String> = emptySet(),
 ) {
     /**
      * [app] turned on or off in Settings › Messages. On: each of its packages installed now is pinned to [pinsNow] (what
@@ -80,6 +82,7 @@ data class MessagesFile(
             }
         })
         put("firstUse", JSONArray(firstUse.sorted()))
+        put("announcePeople", JSONArray(announcePeople.sorted()))
     }.toString()
 
     companion object {
@@ -141,7 +144,7 @@ data class MessagesFile(
             val v = (o.opt("v") as? Int) ?: 1
             val firstUse = if (v < 2) settings.allowlist.apps.flatMap { it.packages }.toSet() - pins.keys else strings("firstUse").filter(ours).toSet() - pins.keys
             return MessagesFile(settings, strings("noCard").filter { it.isNotBlank() }.take(MAX_PEOPLE).toSet(), langs.entries.take(MAX_PEOPLE).associate { it.toPair() },
-                pins, firstUse)
+                pins, firstUse, strings("announcePeople").filter { it.isNotBlank() }.take(MAX_PEOPLE).toSet())
         }
     }
 }
