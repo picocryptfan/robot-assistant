@@ -797,6 +797,22 @@ class ProcessIsolationTest {
         assertTrue(code(File(java("app"), "app/heyrobot/assistant/RobotSession.kt")).contains("if (on) w.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else w.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)"))
     }
 
+    /**
+     * 1.0 audit (physical-routines-writable-locked): the panel refuses routine changes, reminders and the list on the locked
+     * phone before anything else, and checks again just before a store write (the phone may lock while a card waits).
+     */
+    @Test fun theLockedPhoneChangesNoRoutine() {
+        val panel = code(File(java("app"), "app/heyrobot/assistant/routines/PanelRoutines.kt"))
+        val handle = panel.substringAfter("suspend fun handle(").substringBefore("\n    }\n")
+        assertTrue(handle.indexOf("RoutineLockedPhone.refuse(cmd, host.locked") in 0 until handle.indexOf("val done = when (cmd)"))
+        val create = panel.substringAfter("private suspend fun create(").substringBefore("\n    }\n")
+        assertTrue(create.indexOf("if (host.locked) {") in 0 until create.indexOf("store().save(saved)"))
+        val delete = panel.substringAfter("private suspend fun delete(").substringBefore("\n    }\n")
+        assertTrue(delete.indexOf("if (host.locked) {") in 0 until delete.indexOf("store().delete(r.id)"))
+        val remind = panel.substringAfter("private suspend fun remind(").substringBefore("\n    }\n")
+        assertTrue(remind.indexOf("if (host.locked) return") in 0 until remind.indexOf("store().editReminders"))
+    }
+
     @Test fun voiceInteractionMetadataNamesTheComponents() {
         val x = File(main("app"), "res/xml/voice_interaction.xml").readText()
         assertTrue(x.contains("android:sessionService=\"app.heyrobot.assistant.RobotSessionService\""))

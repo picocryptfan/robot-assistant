@@ -944,3 +944,25 @@ object RoutineRouter {
         return tool("weather", "place" to place, "day" to day)
     }
 }
+
+/**
+ * 1.0 audit (physical-routines-writable-locked): routines and brief reminders are instructions that run later by
+ * themselves, in Robot's own voice, so the locked phone neither changes nor lists them ("Unlock first"), as memory's
+ * writes: someone holding it (or a TV in the room) can't plant a routine, delete yours, add a reminder your brief reads,
+ * or hear what your routines are. The brief and running a routine keep their own lock rules.
+ */
+object RoutineLockedPhone {
+    const val UNLOCK_CHANGE = "Unlock first: routines are only changed with the phone unlocked."
+    const val UNLOCK_LIST = "Unlock first: your routines are only listed with the phone unlocked."
+    const val UNLOCK_REMIND = "Unlock first: reminders for your brief are only added with the phone unlocked."
+    const val UNLOCK_CHANGE_FR = "Déverrouille d'abord : les routines ne se changent que téléphone déverrouillé."
+    const val UNLOCK_REMIND_FR = "Déverrouille d'abord : les rappels de ton résumé ne s'ajoutent que téléphone déverrouillé."
+
+    /** What Robot says instead of [cmd] on a [locked] phone; null when it may go on. */
+    fun refuse(cmd: RoutineCommand, locked: Boolean, fr: Boolean = false): String? = if (!locked) null else when (cmd) {
+        is RoutineCommand.Create, is RoutineCommand.Delete -> if (fr) UNLOCK_CHANGE_FR else UNLOCK_CHANGE
+        is RoutineCommand.Remind -> if (fr) UNLOCK_REMIND_FR else UNLOCK_REMIND
+        RoutineCommand.ListAll -> UNLOCK_LIST
+        RoutineCommand.BriefNow, is RoutineCommand.Run -> null
+    }
+}

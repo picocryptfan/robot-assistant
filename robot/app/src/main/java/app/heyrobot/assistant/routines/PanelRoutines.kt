@@ -16,6 +16,7 @@ import app.heyrobot.core.ReadyCards
 import app.heyrobot.core.Routine
 import app.heyrobot.core.RoutineCards
 import app.heyrobot.core.RoutineCommand
+import app.heyrobot.core.RoutineLockedPhone
 import app.heyrobot.core.RoutineCommandCode
 import app.heyrobot.core.RoutineDraft
 import app.heyrobot.core.RoutineGate
@@ -84,6 +85,13 @@ object PanelRoutines {
     }
 
     suspend fun handle(replyId: String, cmd: RoutineCommand, host: Host) {
+        // 1.0 (physical-routines-writable-locked): nothing is created, deleted, reminded or listed on the locked phone.
+        RoutineLockedPhone.refuse(cmd, host.locked, fr = (cmd as? RoutineCommand.Remind)?.let { SpeechLang.french(it.text) } == true)?.let { why ->
+            reply(replyId, host, why)
+            VoiceLog.add(VoiceEvent.ROUTINE_COMMAND, RoutineCommandCode.of(cmd), 0)
+            host.finish(replyId)
+            return
+        }
         val done = when (cmd) {
             RoutineCommand.BriefNow -> brief(replyId, host, RunOrigin.ASKED)
             is RoutineCommand.Create -> create(replyId, cmd.draft, host)
@@ -163,6 +171,11 @@ object PanelRoutines {
             host.show(replyId, Card(id, null, card.title, ActionStatus.DECLINED, "Not saved.", body = body))
             return false
         }
+        // The phone may have locked while the card waited.
+        if (host.locked) {
+            host.show(replyId, Card(id, null, card.title, ActionStatus.NEEDS_UNLOCK, RoutineLockedPhone.UNLOCK_CHANGE, body = body))
+            return false
+        }
         val saved = draft.save(System.currentTimeMillis())
         val ok = saved != null && withContext(Dispatchers.IO) { store().save(saved) }
         if (!ok) {
@@ -240,6 +253,10 @@ object PanelRoutines {
             host.show(replyId, Card(id, null, "Delete the routine “${r.name}”?", ActionStatus.DECLINED, "Kept."))
             return false
         }
+        if (host.locked) {
+            host.show(replyId, Card(id, null, "Delete the routine “${r.name}”?", ActionStatus.NEEDS_UNLOCK, RoutineLockedPhone.UNLOCK_CHANGE))
+            return false
+        }
         val ok = withContext(Dispatchers.IO) { store().delete(r.id) }
         RoutineHub.reload()
         host.show(replyId, Card(id, null, "Deleted “${r.name}”", if (ok) ActionStatus.DONE else ActionStatus.FAILED, if (ok) null else "Robot couldn't change the file."))
@@ -249,6 +266,7 @@ object PanelRoutines {
     private suspend fun remind(replyId: String, cmd: RoutineCommand.Remind, host: Host): Boolean {
         val now = ZonedDateTime.now()
         val day = BriefReminders.dayFor(now, cmd.tomorrow)
+        if (host.locked) return !reply(replyId, host, RoutineLockedPhone.UNLOCK_REMIND)
         val ok = withContext(Dispatchers.IO) { store().editReminders { BriefReminders.add(it, cmd.text, day) } } != null
         if (!ok) return !reply(replyId, host, "Robot couldn't keep that reminder.")
         val fr = SpeechLang.french(cmd.text)
