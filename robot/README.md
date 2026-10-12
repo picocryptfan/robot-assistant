@@ -4829,13 +4829,16 @@ rings, Robot loads its voice and fetches the weather ("Get ready while the alarm
 - **Components, both in `:voice`, neither exported:** `RoutineAlarmReceiver` (the exact alarm, a Ready notification's tap,
   and the system's `BOOT_COMPLETED`, `TIME_SET`, `TIMEZONE_CHANGED`, `MY_PACKAGE_REPLACED`) and `RoutineSpeakingService`
   (`foregroundServiceType="mediaPlayback"`, never sticky, never at boot).
-- **The one exported receiver:** Clock's two broadcasts come from another app with no permission, so the trigger hub
-  registers them at run time with `RECEIVER_EXPORTED`, only while a routine waits for an alarm. An `ALARM_ALERT` counts
+- **The one exported receiver another app can reach:** Clock's two broadcasts come from another app with no permission, so
+  the trigger hub registers them at run time with `RECEIVER_EXPORTED`, only while a routine waits for an alarm. (Since
+  1.0 the unlock's `USER_PRESENT` receivers are exported too, through `sys/ProtectedBroadcasts`: SystemUI sends it under an
+  ordinary app uid, so a non-exported receiver never got it, and as a protected broadcast nothing else can send it.) An `ALARM_ALERT` counts
   only when Clock's own next alarm (`AlarmManager.getNextAlarmClock()`, its show intent from Clock), read before the alert
   and kept, was due within 2 minutes of it; any other is logged ("Routine not run after an alarm turned off: not Clock's own
-  alarm, ignored") and ignored, so it neither runs a routine nor uses up its once-a-day run. An `ALARM_DONE` counts only
-  after a counted `ALARM_ALERT`, and then can only start your own routines under their gates, at most once a day by
-  default.
+  alarm, ignored") and ignored, so it neither runs a routine nor uses up its once-a-day run (1.0: logged once a minute with
+  their count, so a flood can't push the real events out of the voice log). An `ALARM_DONE` counts only after a counted
+  `ALARM_ALERT`, and then can only start your own routines under their gates, at most once a day by default; one with
+  nothing ringing is dropped at once (1.0), unlogged and with nothing scheduled.
 - Nothing else: no phone, Bluetooth, Do Not Disturb or location beyond what Robot already had. `ProcessIsolationTest`
   and `tools/verify_apk.sh` check all of this.
 
@@ -5439,7 +5442,8 @@ question (450 tokens, `TermuxCalls.MIN_TURN_TOKENS`): with web search and memory
 groups your question doesn't call for give way first, Termux before web search and memory (core `ToolBudget`, as in "Web
 search (0.9)" above). Every command shows its card first. The fixed rules, which no setting loosens: a command Gemma (or a
 helper) wrote never runs without its card unless it is on Robot's parsed read-only allowlist **and** "Read-only commands
-without a card" is on (off by default); in a conversation with content Robot didn't write (screen text, a photo, a read
+without a card" is on (off by default; since 1.0 git is never on the list, not even `git status` or `git log`: a
+repository's own config can name programs git runs, such as `core.fsmonitor`); in a conversation with content Robot didn't write (screen text, a photo, a read
 tool's findings, a helper's words, a web answer, a message Robot read, earlier Termux output) every command shows its card,
 answered by a tap; a command with
 a warning (deletes, overwrites, internet, packages, root, keeps running, sends a text…) or one Robot couldn't read fully
