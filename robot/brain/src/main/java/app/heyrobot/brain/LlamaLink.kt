@@ -11,6 +11,7 @@ import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import app.heyrobot.core.IsolatedUid
 import app.heyrobot.core.RLog
+import app.heyrobot.core.StreamBudget
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -38,6 +39,8 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
         private set
     /** Where the reply's pieces go while a GENERATE runs (false: stop). */
     @Volatile private var sink: ((ByteArray) -> Boolean)? = null
+    /** The running GENERATE's byte budget (core StreamBudget): past it no piece reaches [sink] and the request ends. */
+    @Volatile private var budget: StreamBudget? = null
 
     private val conn = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -78,7 +81,8 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
                 LlamaIpc.CB_PIECE -> {
                     val bytes = data.createByteArray()
                     val s = sink
-                    val more = from == uid && bytes != null && bytes.size <= LlamaIpc.MAX_PIECE && s != null && s(bytes)
+                    val b = budget
+                    val more = from == uid && bytes != null && b != null && b.take(bytes.size) && s != null && s(bytes)
                     reply?.writeInt(if (more) 1 else 0)
                 }
                 else -> return super.onTransact(code, data, reply, flags)
@@ -151,6 +155,8 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
     /** A GEN_* code; the pieces go to [piece] on this thread (false stops); [stats] (out) as LlamaIpc's STATS_* slots. */
     fun generate(handle: Long, run: Long, maxTokens: Int, piece: (ByteArray) -> Boolean, stats: LongArray): Int {
         sink = piece
+        val b = StreamBudget(LlamaIpc.MAX_PIECE, LlamaIpc.MAX_REPLY_BYTES)
+        budget = b
         try {
             return call(LlamaIpc.GENERATE, { d ->
                 d.writeLong(handle)
@@ -164,6 +170,8 @@ internal class LlamaLink(private val ctx: Context, private val onGone: (LlamaLin
             }
         } finally {
             sink = null
+            budget = null
+            if (b.over) RLog.i("brain_llama_overflow")
         }
     }
 

@@ -38,6 +38,11 @@ internal object LlamaIpc {
 
     /** Caps on what :brain reads back: a reply piece, and the special tokens' count and total size. */
     const val MAX_PIECE = 64 * 1024
+    /**
+     * 1.0 (native-03): a whole reply at most, per GENERATE (core StreamBudget): a real one is a few kilobytes (Robot's
+     * replies end at 700 chunks of a token or so each); past it the request ends.
+     */
+    const val MAX_REPLY_BYTES = 256L * 1024
     const val MAX_SPECIALS = 100_000
     const val MAX_SPECIAL_BYTES = 512 * 1024
 

@@ -493,6 +493,8 @@ class LlamaEngine(private val ctx: Context, private val handler: Handler) : Brai
                 // The pieces come back on this thread while the isolated process writes (LlamaLink's callback). It reuses
                 // whatever beginning of this prompt is still in llama.cpp's memory: after a one-shot, little or none.
                 l.generate(h, run.id, max, { bytes ->
+                    // Stopped: nothing more is decoded or posted (1.0, native-03).
+                    if (run.stop) return@generate false
                     val text = String(bytes, Charsets.UTF_8)
                     handler.post { onPiece(run, text) }
                     !run.stop

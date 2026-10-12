@@ -511,6 +511,19 @@ class ProcessIsolationTest {
      * (LlamaIpc) and binds it by name, so no :brain code refers to the service or the bridge. Nothing of the voice or main
      * process refers to any of it. Its JNI functions are exactly LlamaNative's external functions.
      */
+    /**
+     * 1.0 audit (native-03): what the isolated :llama streams back is capped per GENERATE in bytes (core StreamBudget), not
+     * only per piece; past it no piece reaches :brain's sink and the request ends; a stopped run decodes nothing more.
+     */
+    @Test fun llamaRepliesAreCappedInBytes() {
+        val link = code(File(java("brain"), "app/heyrobot/brain/LlamaLink.kt"))
+        assertTrue(link.contains("val more = from == uid && bytes != null && b != null && b.take(bytes.size) && s != null && s(bytes)"))
+        assertTrue(link.contains("val b = StreamBudget(LlamaIpc.MAX_PIECE, LlamaIpc.MAX_REPLY_BYTES)"))
+        assertTrue(code(File(java("brain"), "app/heyrobot/brain/LlamaIpc.kt")).contains("const val MAX_REPLY_BYTES = 256L * 1024"))
+        val engine = code(File(java("brain"), "app/heyrobot/brain/LlamaEngine.kt"))
+        assertTrue(engine.indexOf("if (run.stop) return@generate false") in 0 until engine.indexOf("val text = String(bytes, Charsets.UTF_8)"))
+    }
+
     @Test fun llamaCppOnlyInTheIsolatedProcess() {
         val native = File(java("brain"), "app/heyrobot/brain/LlamaNative.kt").readText()
         assertTrue(native.contains("System.loadLibrary(LIB)") && native.contains("const val LIB = \"robot_llama\""))
