@@ -3303,6 +3303,18 @@ straight to Android's own confirmation for the largest one (Android still asks).
   call). "Stop YouTube", "force stop", "kill" and "close <app>" (and "arrête", "ferme") reach this tool; "stop the
   timer" or "stop talking" don't. "Stop Robot" is refused. The model is told plainly that Android frees memory by itself when it needs it and that a stopped
   app may start again: it helps most when one app misbehaves.
+- **0.7.0: "free up memory" answered by Robot itself** (the tester's 0.6.0 report: no recommendations). "Free up
+  memory", "close apps", "my phone is slow", "what's using my memory?", « libère de la mémoire », « ferme les applis »,
+  « mon téléphone est lent » are decided by code before the model (core `FreeUp.asked`, after the messages, feedback and
+  memory routers). Robot says, in the language you asked in, how much memory Android reports free
+  (`ActivityManager.MemoryInfo`), what unloading its model gives (about 2 GB, 4 GB for an E4B, when it is loaded), and,
+  with Usage access, the apps used in the last 3 hours that are likely still in memory, most recent first (core
+  `FreeUp.likelyInMemory`, never the app you are in, Robot, the keyboard, the home screen, messaging, clock, VPN or
+  foreground-service apps); then a card to pick from: "Unload Robot's model · about 2 GB", one button per app ("YouTube ·
+  used 5 min ago · 40 min on screen today") that opens its App info, where you tap Force stop, and, without Usage
+  access, "Turn on Usage access, to see the apps you used lately". Robot never stops an app itself. On the lock screen it
+  says only what is free ("Unlock your phone to see what you can unload or stop."). The model's own free_memory call
+  makes the same card.
 - **Storage.** `free_storage` opens Android's own "Free up space" screen (`StorageManager.ACTION_MANAGE_STORAGE`, else
   storage settings) by default. "apps" (with Usage access) lists the five apps using the most space, Robot aside (its App
   info's Clear storage would delete its models), with their cache: tap one and its App info opens, to clear its cache.

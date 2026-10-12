@@ -132,7 +132,8 @@ network permissions are granted at install; GrapheneOS lets you turn the network
 - **Exact alarms** (at install): one alarm 3 minutes after the phone restarts (or Robot updates), to check that Robot is
   still your digital assistant and tell you if Android turned it off. The timers and alarms you ask for are set by your
   Clock app, which Robot only asks (the "set an alarm" permission); Robot keeps no alarm of its own for them.
-- **Usage access** (optional, in Android's settings): which apps use the most space.
+- **Usage access** (optional, in Android's settings): which apps use the most space, and, when you ask Robot to free up
+  memory, which apps you used in the last few hours (read on the phone, for that answer only).
 - **Notification access** (optional): learning names from Cheogram, and reading your messages from the apps you turn on in
   Settings › Messages (nothing from any other app is read).
 - **Network** (at install): the online features above.
