@@ -73,9 +73,12 @@ object ReplyPlanner {
 
     /**
      * The plan for replying [text] to [thread]. [locked]: the phone is locked. [noCard]: "Send my replies to … without
-     * a card" is on for this person (used only unlocked, for your own dictated words, in a 1:1 chat).
+     * a card" is on for this person (used only unlocked, for your own dictated words, in a 1:1 chat). [sure]: you chose
+     * this conversation (you named it, picked it, or Robot just read it to you); false when Robot took the newest one for a
+     * "reply …" that named no one, and then it never goes without a tap or a yes, whatever the switches say.
      */
-    fun plan(thread: MessageThread, text: String, source: ReplySource, s: MessageSettings, locked: Boolean, noCard: Boolean = false): ReplyPlan {
+    fun plan(thread: MessageThread, text: String, source: ReplySource, s: MessageSettings, locked: Boolean, noCard: Boolean = false,
+        sure: Boolean = true): ReplyPlan {
         if (!s.on) return ReplyPlan.Refused(RefuseWhy.OFF)
         val t = text.trim()
         if (t.isEmpty()) return ReplyPlan.Refused(RefuseWhy.EMPTY)
@@ -86,7 +89,7 @@ object ReplyPlanner {
         if (locked && action.authRequired) return ReplyPlan.Refused(RefuseWhy.AUTH_REQUIRED)
         val confirm = when {
             thread.isGroup || source != ReplySource.DICTATED || locked -> Confirm.TAP
-            noCard || !s.replyCard -> Confirm.STOP_WINDOW
+            (noCard || !s.replyCard) && sure -> Confirm.STOP_WINDOW
             s.voiceYesSends -> Confirm.VOICE_OR_TAP
             else -> Confirm.TAP
         }

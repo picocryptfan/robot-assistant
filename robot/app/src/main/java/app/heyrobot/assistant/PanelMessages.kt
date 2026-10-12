@@ -505,6 +505,8 @@ object PanelMessages {
         var translate = false
         var always = false
         var plan: ReplyPlan.Send? = null
+        /** Robot took the newest conversation for a "reply …" that named none, with none read here: never sent without a tap or a yes. */
+        var guessed = false
         var state = ReplyCardState.WAITING
         var line: String? = null
 
@@ -538,6 +540,7 @@ object PanelMessages {
         card?.let { old -> if (old.state == ReplyCardState.WAITING || old.state == ReplyCardState.PICK) cancel(old, quiet = true) }
         val p = Pending(replyId, lang, found.first(), words?.let(ReplyText::of).orEmpty(), if (words == null) ReplySource.MODEL_DRAFT else ReplySource.DICTATED,
             cmd.inLang, if (found.size > 1) found else emptyList())
+        p.guessed = to == null && lastRead == null
         card = p
         kept[replyId] = if (fr(lang)) "Une réponse à ${p.thread.name}" else "A reply to ${p.thread.name}"
         if (p.choices.isNotEmpty()) {
@@ -602,7 +605,7 @@ object PanelMessages {
         val lang = p.lang
         // Only to the person's own address: a name the sender chose never sends without a card (core MessagePeople).
         val noCard = MessagePeople.withoutCard(p.thread, people, f.noCard)
-        when (val r = ReplyPlanner.plan(p.thread, p.sendText, p.sendSource, f.settings, locked, noCard)) {
+        when (val r = ReplyPlanner.plan(p.thread, p.sendText, p.sendSource, f.settings, locked, noCard, sure = !p.guessed)) {
             is ReplyPlan.Send -> { p.plan = r; return true }
             is ReplyPlan.HandOff -> {
                 // "Open the chat; I press Send", or no reply action: the chat opens with your words. Nothing is sent by Robot.

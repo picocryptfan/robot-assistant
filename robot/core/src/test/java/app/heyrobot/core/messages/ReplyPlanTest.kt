@@ -53,6 +53,12 @@ class ReplyPlanTest {
         assertEquals(Confirm.TAP, send(ReplyPlanner.plan(mom, "x", ReplySource.DICTATED, lockedReply, locked = true, noCard = true)).confirm)
         // "Card before sending a reply" off works the same way for everyone.
         assertEquals(Confirm.STOP_WINDOW, send(ReplyPlanner.plan(mom, "x", ReplySource.DICTATED, on.copy(replyCard = false), false)).confirm)
+        // A conversation Robot took itself ("respond in French: how do you say hello?" with nothing read, so the newest one):
+        // never without a tap, or a yes where those count, whatever the switches say.
+        assertEquals(Confirm.TAP, send(ReplyPlanner.plan(mom, "In French: how do you say hello?", ReplySource.DICTATED, on, false, noCard = true, sure = false)).confirm)
+        assertEquals(Confirm.TAP, send(ReplyPlanner.plan(mom, "x", ReplySource.DICTATED, on.copy(replyCard = false), false, sure = false)).confirm)
+        assertEquals(Confirm.VOICE_OR_TAP, send(ReplyPlanner.plan(mom, "x", ReplySource.DICTATED, on.copy(replyCard = false, voiceYesSends = true), false,
+            noCard = true, sure = false)).confirm)
     }
 
     /**

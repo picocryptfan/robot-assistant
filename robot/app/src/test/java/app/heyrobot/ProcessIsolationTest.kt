@@ -903,6 +903,8 @@ class ProcessIsolationTest {
         val once = panel.indexOf("if (p.state != ReplyCardState.WAITING && p.state != ReplyCardState.STOP_WINDOW) return")
         assertTrue(once in panel.indexOf("private suspend fun fire(") until panel.indexOf("p.state = ReplyCardState.SENDING"))
         assertTrue(panel.indexOf("p.state = ReplyCardState.SENDING") < panel.indexOf("link().reply(ReplyRequest("))
+        // A "reply …" that named no one, with nothing read here, went to the newest conversation: never without a tap or a yes.
+        assertTrue(panel.contains("p.guessed = to == null && lastRead == null") && panel.contains("noCard, sure = !p.guessed)"))
         // In a reply's 3 seconds, anything said but a yes stops it (core ReplyWindow).
         assertTrue(panel.contains("return when (app.heyrobot.core.messages.ReplyWindow.answer(q, wakes))"))
         // Robot's model sees messages only through one-shot requests (no tools); every turn of the panel carries the quarantine.
