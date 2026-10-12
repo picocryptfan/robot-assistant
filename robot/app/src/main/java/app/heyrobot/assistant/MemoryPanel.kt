@@ -18,6 +18,7 @@ import app.heyrobot.core.memory.ForgetLast
 import app.heyrobot.core.memory.HelperMemory
 import app.heyrobot.core.memory.MemCommandCode
 import app.heyrobot.core.memory.MemForget
+import app.heyrobot.core.memory.MemoryAccess
 import app.heyrobot.core.memory.MemKindCode
 import app.heyrobot.core.memory.MemOrigin
 import app.heyrobot.core.memory.MemoryCommand
@@ -95,6 +96,9 @@ object MemoryPanel {
     internal var vaultFor: () -> MemoryVault = { app.heyrobot.sys.MemoryFiles.vault(VoiceHub.app) }
     internal var settingsFor: () -> MemorySettings = { app.heyrobot.sys.MemorySettingsStore.current(VoiceHub.app) }
     internal var clock: () -> Long = System::currentTimeMillis
+    /** The phone is locked now (tests give their own): memory is never changed then (core MemoryAccess.writes). */
+    internal var lockedNow: () -> Boolean = { app.heyrobot.sys.Assistant.locked(VoiceHub.app) }
+
     internal var zone: () -> ZoneId = ZoneId::systemDefault
 
     private fun vault(): MemoryVault = vaultRef ?: vaultFor().also { vaultRef = it }
@@ -205,12 +209,16 @@ object MemoryPanel {
             else -> MemCommandCode.OFF
         }
         val a = when (route) {
-            is MemoryRoute.Unlock -> MemoryAnswer(MemoryReplies.unlock(fr, route.saving), fr = fr)
+            is MemoryRoute.Unlock -> MemoryAnswer(MemoryReplies.unlock(fr, route.saving, route.changing), fr = fr)
             is MemoryRoute.Off -> MemoryAnswer(MemoryReplies.off(fr), fr = fr)
             is MemoryRoute.Run -> when (val cmd = route.command) {
                 is MemoryCommand.ForgetEverything -> MemoryAnswer(MemoryReplies.forgetAll(fr), card = openMemoryCard(
                     "Delete everything Robot remembers", ActionStatus.SKIPPED, "Only Settings › Memory deletes everything."), fr = fr)
-                is MemoryCommand.Remember -> remember(cmd, spoken, fr)
+                // The route already said so; the phone may have locked since.
+                is MemoryCommand.Remember -> if (!MemoryAccess.writes(locked || lockedNow())) MemoryAnswer(MemoryReplies.unlock(fr, saving = true), fr = fr)
+                    else remember(cmd, spoken, fr)
+                is MemoryCommand.Forget, is MemoryCommand.ForgetLast -> if (!MemoryAccess.writes(locked || lockedNow()))
+                    MemoryAnswer(MemoryReplies.unlock(fr, changing = true), fr = fr) else withFile(fr) { f -> run(cmd, f, locked, fr) }
                 else -> withFile(fr) { f -> run(cmd, f, locked, fr) }
             }
         }
@@ -295,8 +303,9 @@ object MemoryPanel {
         return MemoryAnswer(text, card = card, fr = fr, ids = listOf(saved.id))
     }
 
-    /** Forgets [items] now, with Undo ([how]: for the voice log). */
+    /** Forgets [items] now, with Undo ([how]: for the voice log). Never on a locked phone. */
     fun forget(items: List<MemoryItem>, how: MemForget, fr: Boolean): MemoryAnswer {
+        if (!MemoryAccess.writes(lockedNow())) return MemoryAnswer(MemoryReplies.unlock(fr, changing = true), fr = fr)
         val ids = items.map { it.id }.toSet()
         var gone: List<MemoryItem> = emptyList()
         val l = update { f -> MemoryEdits.forget(f, ids).also { gone = it.second }.first }
@@ -360,9 +369,9 @@ object MemoryPanel {
         return MemoryTurn(r, { ids -> PromptPacking.notesFor(ids, f.items, now, z) }, tools = true, quiet = quiet, content = content)
     }
 
-    /** One more answer used [ids] (a counter and a time, no text): background thread, after the answer. */
+    /** One more answer used [ids] (a counter and a time, no text): background thread, after the answer. Not counted on a locked phone (nothing is written there). */
     fun used(ids: List<String>) {
-        if (ids.isEmpty()) return
+        if (ids.isEmpty() || !MemoryAccess.writes(lockedNow())) return
         try { update { MemoryEdits.used(it, ids, clock()) } } catch (t: Throwable) { RLog.w("memory_used", t) }
     }
 
@@ -374,7 +383,8 @@ object MemoryPanel {
             val s = settings()
             when {
                 !s.on -> Prepared.Refused(ActionStatus.DISABLED, "Memory is off in Robot's settings.")
-                locked && !s.onLockScreen -> Prepared.Refused(ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
+                // Never saved on the lock screen, "Use memory on the lock screen" or not.
+                !MemoryAccess.writes(locked) -> Prepared.Refused(ActionStatus.NEEDS_UNLOCK, MemoryAccess.UNLOCK_TO_SAVE)
                 // A code, a password or a card number in what the model proposes: refused, with the reason.
                 SecretDetector.isSecret(action.text) -> Prepared.Refused(ActionStatus.FAILED, SECRET_REFUSAL)
                 MemoryEdits.clean(action.text).isEmpty() -> Prepared.Refused(ActionStatus.INVALID, "There was nothing to remember.")
@@ -389,7 +399,7 @@ object MemoryPanel {
     private fun prepareForget(a: Action.Forget, locked: Boolean): Prepared {
         val s = settings()
         if (!s.on) return Prepared.Refused(ActionStatus.DISABLED, "Memory is off in Robot's settings.")
-        if (locked && !s.onLockScreen) return Prepared.Refused(ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
+        if (!MemoryAccess.writes(locked)) return Prepared.Refused(ActionStatus.NEEDS_UNLOCK, MemoryAccess.UNLOCK_TO_CHANGE)
         val f = when (val l = load()) {
             is MemoryLoad.Loaded -> l.file
             MemoryLoad.Empty -> MemoryFile()
@@ -410,6 +420,13 @@ object MemoryPanel {
      * your own "remember that …", kept after its card's tap: MessageQuarantine).
      */
     fun run(action: Action, spoken: Boolean, content: Boolean, messages: Boolean = false): Executed? = when (action) {
+        // The phone locked while the card waited: nothing is changed there.
+        is Action.Remember, is Action.Forget -> if (!MemoryAccess.writes(lockedNow()))
+            Executed(ActionStatus.NEEDS_UNLOCK, if (action is Action.Remember) MemoryAccess.UNLOCK_TO_SAVE else MemoryAccess.UNLOCK_TO_CHANGE) else runWrite(action, spoken, content, messages)
+        else -> null
+    }
+
+    private fun runWrite(action: Action, spoken: Boolean, content: Boolean, messages: Boolean): Executed? = when (action) {
         is Action.Remember -> {
             val now = clock()
             val item = MemoryItem(MemoryIds.newId(now), action.text, action.kind, source = when {
@@ -472,6 +489,7 @@ object MemoryPanel {
 
     /** Undo on a memory card (background thread): a saved item forgotten again, forgotten ones put back. The card's new line. */
     fun undo(key: String): String {
+        if (!MemoryAccess.writes(lockedNow())) return MemoryAccess.UNLOCK_TO_CHANGE
         val items = synchronized(this) { undos.remove(key) } ?: return "Nothing to undo."
         val saved = key.removePrefix(UNDO).let { id -> items.singleOrNull()?.id == id }
         val l = if (saved) update { MemoryEdits.forget(it, items.map { i -> i.id }.toSet()).first } else update { MemoryEdits.restore(it, items) }

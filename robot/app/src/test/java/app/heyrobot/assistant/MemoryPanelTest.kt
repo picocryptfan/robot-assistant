@@ -42,6 +42,7 @@ class MemoryPanelTest {
     private val keys = SoftMemoryKeys()
     private val vault = FileMemoryVault(dir, keys)
     private var settings = MemorySettings()
+    private var lockedNow = false
     private val now = LocalDate.of(2026, 10, 11).atTime(12, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
 
     @Before fun setUp() {
@@ -49,6 +50,7 @@ class MemoryPanelTest {
         MemoryPanel.settingsFor = { settings }
         MemoryPanel.clock = { now }
         MemoryPanel.zone = { ZoneOffset.UTC }
+        MemoryPanel.lockedNow = { lockedNow }
         MemoryPanel.drop()
         MemoryPanel.newConversation()
     }
@@ -160,7 +162,7 @@ class MemoryPanelTest {
         MemoryPanel.drop()
         assertEquals(MemoryRoute.Unlock("en"), MemoryPanel.route("What do you know about me?", locked = true))
         assertEquals("Unlock first: what you asked me to remember stays locked.", say("What do you know about me?", locked = true).text)
-        assertEquals("Unlock first, then ask me again to remember it: my memory stays locked.", say("Remember that Bob plays chess", locked = true).text)
+        assertEquals("Unlock first to save to memory.", say("Remember that Bob plays chess", locked = true).text)
         assertEquals(1, keys.keys.size)
         // A chat question on the locked phone gets no memory, and the file isn't even opened.
         assertEquals(MemoryTurn.NONE.packed, MemoryPanel.forTurn("When is Julie's birthday?", locked = true, given = emptySet(), maxTokens = 4096).packed)
@@ -169,6 +171,40 @@ class MemoryPanelTest {
         assertEquals("Memory is off. Turn it on in Robot's settings, under Memory.", say("Remember that Bob plays chess").text)
         assertFalse(MemoryPanel.forTurn("Julie?", false, emptySet(), 4096).tools)
         assertEquals(1, items().size)
+    }
+
+    /**
+     * 0.7 after the review: nothing is saved to or removed from memory on the lock screen, even with "Use memory on the
+     * lock screen" on (which still lets it be read there): your "remember that …", the model's remember and forget, a
+     * card answered after the phone locked, Undo, and the use counter.
+     */
+    @Test fun noMemoryWritesOnTheLockScreen() {
+        settings = settings.copy(onLockScreen = true)
+        say("Remember that Julie likes tulips")
+        val before = items()
+        lockedNow = true
+        assertEquals(MemoryRoute.Unlock("en", saving = true), MemoryPanel.route("Remember that Bob plays chess", locked = true))
+        assertEquals("Unlock first to save to memory.", say("Remember that Bob plays chess", locked = true).text)
+        assertEquals("Déverrouille d'abord pour l'enregistrer en mémoire.", say("Souviens-toi que Bob joue aux échecs", locked = true).text)
+        assertEquals("Unlock first to change what I remember.", say("Forget Julie", locked = true).text)
+        assertEquals("Unlock first to change what I remember.", say("Forget that", locked = true).text)
+        // Reading still works there with "Use memory on the lock screen".
+        assertTrue(say("What do you remember about Julie?", locked = true).text.contains("tulips"))
+        // The model's tools: refused with memory's line.
+        val r = MemoryPanel.prepare(Action.Remember("Bob plays chess"), locked = true) as Prepared.Refused
+        assertEquals(ActionStatus.NEEDS_UNLOCK, r.status)
+        assertEquals("Unlock first to save to memory.", r.detail)
+        assertEquals("Unlock first to change what I remember.", (MemoryPanel.prepare(Action.Forget("Julie"), locked = true) as Prepared.Refused).detail)
+        // A card prepared unlocked and answered after the phone locked: nothing changes.
+        assertEquals(ActionStatus.NEEDS_UNLOCK, MemoryPanel.run(Action.Remember("Bob plays chess"), spoken = true, content = false)!!.status)
+        assertEquals(ActionStatus.NEEDS_UNLOCK, MemoryPanel.run(Action.Forget("Julie", before.map { it.id }), spoken = true, content = false)!!.status)
+        MemoryPanel.used(before.map { it.id })
+        assertEquals(before, items())
+        lockedNow = false
+        val saved = say("Remember that Bob plays chess")
+        lockedNow = true
+        assertEquals("Unlock first to change what I remember.", MemoryPanel.undo(saved.card!!.undo!!))
+        assertEquals(2, items().size)
     }
 
     @Test fun aChatQuestionGetsItsNotesAndHistoryKeepsTheIds() {

@@ -73,8 +73,21 @@ class MemoryWiringTest {
         assertEquals(MemoryRoute.Unlock("en"), MemoryRouting.route("Do you remember when Julie's birthday is?", on, locked = true))
         assertEquals(MemoryRoute.Unlock("fr"), MemoryRouting.route("Tu te souviens de la fête de Julie?", on, locked = true))
         assertNull(MemoryRouting.route("When is Julie's birthday?", on, locked = true))
-        // With "Use memory on the lock screen" they run.
-        assertTrue(MemoryRouting.route("Remember that I parked on P3", on.copy(onLockScreen = true), locked = true) is MemoryRoute.Run)
+        // With "Use memory on the lock screen" what reads runs; nothing is saved or removed there, ever.
+        assertTrue(MemoryRouting.route("What do you know about me?", on.copy(onLockScreen = true), locked = true) is MemoryRoute.Run)
+        assertEquals(MemoryRoute.Unlock("en", saving = true), MemoryRouting.route("Remember that I parked on P3", on.copy(onLockScreen = true), locked = true))
+        assertEquals(MemoryRoute.Unlock("fr", saving = true), MemoryRouting.route("N'oublie pas que Marc vient samedi", on.copy(onLockScreen = true), locked = true))
+        assertEquals(MemoryRoute.Unlock("en", changing = true), MemoryRouting.route("Forget my sister's birthday", on.copy(onLockScreen = true), locked = true))
+        assertEquals(MemoryRoute.Unlock("fr", changing = true), MemoryRouting.route("Oublie ça", on.copy(onLockScreen = true), locked = true))
+        assertEquals("Unlock first to save to memory.", MemoryReplies.unlock(false, saving = true))
+        assertEquals("Déverrouille d'abord pour changer ce que je retiens.", MemoryReplies.unlock(true, changing = true))
+        // The model's remember and forget: never on the lock screen, whatever "Works on the lock screen" holds.
+        val lockedAll = app.heyrobot.core.RobotSettings().let { it.copy(lockedTools = it.lockedTools + app.heyrobot.core.ToolName.REMEMBER + app.heyrobot.core.ToolName.FORGET) }
+        for (t in listOf(app.heyrobot.core.ToolName.REMEMBER, app.heyrobot.core.ToolName.FORGET)) {
+            assertEquals(app.heyrobot.core.GateDecision.NEEDS_UNLOCK, app.heyrobot.core.ApprovalGate.decide(t, locked = true, settings = lockedAll, asked = true))
+            assertTrue(app.heyrobot.core.ApprovalGate.lockedOut(t, true, lockedAll))
+        }
+        assertEquals("Unlock first to save to memory.", app.heyrobot.core.ApprovalGate.unlockLine(app.heyrobot.core.ToolName.REMEMBER))
         // Off: a command is answered, nothing kept, nothing to the model; anything else is ordinary talk.
         assertEquals(MemoryRoute.Off("en"), MemoryRouting.route("Remember that my sister's birthday is May 3", on.copy(on = false), false))
         assertNull(MemoryRouting.route("Do you remember the capital of Peru?", on.copy(on = false), true))
@@ -104,7 +117,7 @@ class MemoryWiringTest {
         assertEquals("Got it: I'll call you Sam.", MemoryReplies.saved(MemoryCommands.parse("Remember: call me Sam") as MemoryCommand.Remember, AddOutcome.SAVED))
         assertEquals("Got it: “Always answer briefly”.", MemoryReplies.saved(MemoryCommands.parse("Remember: always answer briefly") as MemoryCommand.Remember, AddOutcome.SAVED))
         assertEquals("Got it: you prefer Celsius.", MemoryReplies.saved(MemoryCommands.parse("Remember that I prefer Celsius") as MemoryCommand.Remember, AddOutcome.SAVED))
-        assertEquals("Unlock first, then ask me again to remember it: my memory stays locked.", MemoryReplies.unlock(false, saving = true))
+        assertEquals("Unlock first to save to memory.", MemoryReplies.unlock(false, saving = true))
         assertEquals(MemoryAccess.UNLOCK_FIRST, MemoryReplies.unlock(false))
         assertTrue(MemoryReplies.off(false).contains("under Memory"))
     }

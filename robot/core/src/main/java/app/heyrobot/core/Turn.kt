@@ -439,7 +439,7 @@ class TurnRunner(
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
         when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote,
             online = asked.online, trusted = trusted, messages = messages.active)) {
-            GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
+            GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, ApprovalGate.unlockLine(asked.tool))
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
             else -> {}
         }
@@ -459,12 +459,12 @@ class TurnRunner(
             GateDecision.RUN -> a.choices.firstOrNull()?.action ?: a.action
             GateDecision.CONFIRM -> confirm(id, a.action, a.choices, a.more, if (fromMessage.isNotEmpty()) MessageQuarantine.CARD_LINE else a.note,
                 a.remember, a.allowContacts, tapFor = CardAnswer.tapFor(reasons))
-            GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
+            GateDecision.NEEDS_UNLOCK -> return done(a.action, ActionStatus.NEEDS_UNLOCK, ApprovalGate.unlockLine(a.action.tool))
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
         // The phone may have locked while the card waited.
-        if (actions.locked && chosen.tool !in actions.settings.lockedTools) {
-            return done(chosen, ActionStatus.NEEDS_UNLOCK, "Unlock your phone, then ask again.")
+        if (ApprovalGate.lockedOut(chosen.tool, actions.locked, actions.settings)) {
+            return done(chosen, ActionStatus.NEEDS_UNLOCK, ApprovalGate.unlockLine(chosen.tool))
         }
         fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {
             // What a read tool found is content: from now on every action in this conversation asks first.

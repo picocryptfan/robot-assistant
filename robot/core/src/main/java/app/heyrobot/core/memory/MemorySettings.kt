@@ -96,8 +96,21 @@ enum class LockedMemory {
 object MemoryAccess {
     const val UNLOCK_FIRST = "Unlock first: what you asked me to remember stays locked."
     const val UNLOCK_FIRST_FR = "Déverrouille d'abord : ce que tu m'as demandé de retenir reste verrouillé."
+    /** 0.7 after the review: nothing is saved to memory on the lock screen, "Use memory on the lock screen" or not. */
+    const val UNLOCK_TO_SAVE = "Unlock first to save to memory."
+    const val UNLOCK_TO_SAVE_FR = "Déverrouille d'abord pour l'enregistrer en mémoire."
+    /** Nor removed from it ("forget …"): what you asked Robot to remember is changed only on an unlocked phone. */
+    const val UNLOCK_TO_CHANGE = "Unlock first to change what I remember."
+    const val UNLOCK_TO_CHANGE_FR = "Déverrouille d'abord pour changer ce que je retiens."
     const val FORGET_ALL_BY_VOICE = "Open Settings › Memory to delete everything."
     const val FORGET_ALL_BY_VOICE_FR = "Ouvre Réglages › Mémoire pour tout effacer."
+
+    /**
+     * Whether memory may be changed now (an item saved, forgotten, put back by Undo, or its use counted): only on an unlocked
+     * phone. Someone holding your locked phone can't plant or remove what Robot remembers; "Use memory on the lock screen"
+     * lets them hear it, never change it.
+     */
+    fun writes(locked: Boolean): Boolean = !locked
 
     /** Memory for [question] with the phone [locked]. Secret items never come up on the lock screen, even when allowed. */
     fun whenLocked(locked: Boolean, s: MemorySettings, question: String): LockedMemory = when {

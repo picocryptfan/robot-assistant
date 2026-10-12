@@ -43,6 +43,9 @@ object ApprovalGate {
         val level = settings.approval(tool)
         return when {
             level == Approval.OFF -> GateDecision.DISABLED
+            // 0.7: nothing is saved to or removed from memory on the lock screen, whatever "Works on the lock screen" says
+            // ("Use memory on the lock screen" lets it be read there, never changed).
+            locked && memoryWrite(tool) -> GateDecision.NEEDS_UNLOCK
             locked && tool !in settings.lockedTools -> GateDecision.NEEDS_UNLOCK
             tool == ToolName.ASK_CLAUDE -> GateDecision.CONFIRM
             // 0.7: a memory the model proposes without your asking, or in a conversation with content, is a card, never silent.
@@ -58,6 +61,19 @@ object ApprovalGate {
             content && !(tool.reads && !online) && contentAsks(settings.safetyCards, asked) -> GateDecision.CONFIRM
             else -> GateDecision.RUN
         }
+    }
+
+    /** remember and forget change memory: never on the lock screen. */
+    fun memoryWrite(tool: ToolName): Boolean = tool == ToolName.REMEMBER || tool == ToolName.FORGET
+
+    /** [tool] can't run with the phone [locked] under [settings] (checked again after a card, the phone may have locked). */
+    fun lockedOut(tool: ToolName, locked: Boolean, settings: RobotSettings): Boolean = locked && (memoryWrite(tool) || tool !in settings.lockedTools)
+
+    /** What an action refused for the lock says: memory's own line for remember and forget. */
+    fun unlockLine(tool: ToolName): String = when (tool) {
+        ToolName.REMEMBER -> app.heyrobot.core.memory.MemoryAccess.UNLOCK_TO_SAVE
+        ToolName.FORGET -> app.heyrobot.core.memory.MemoryAccess.UNLOCK_TO_CHANGE
+        else -> "Unlock your phone, then ask again."
     }
 
     /** One of [why] needs a card with these settings. */

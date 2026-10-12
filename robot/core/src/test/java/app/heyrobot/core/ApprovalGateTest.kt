@@ -194,6 +194,8 @@ class ApprovalGateTest {
                     )
                     val want = when {
                         level == Approval.OFF -> GateDecision.DISABLED
+                        // 0.7: memory is never changed on the lock screen, whatever "Works on the lock screen" holds.
+                        locked && (t == ToolName.REMEMBER || t == ToolName.FORGET) -> GateDecision.NEEDS_UNLOCK
                         locked && t !in lockSet -> GateDecision.NEEDS_UNLOCK
                         cardReasons.any { it } -> GateDecision.CONFIRM
                         else -> GateDecision.RUN

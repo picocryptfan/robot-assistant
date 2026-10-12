@@ -12,10 +12,10 @@ sealed class MemoryRoute {
     data class Run(val command: MemoryCommand) : MemoryRoute()
 
     /**
-     * Locked, memory not on the lock screen, and the words ask for memory: "Unlock first" (nothing is read or kept).
-     * [saving]: they asked to remember something.
+     * Locked, and the words ask for memory: "Unlock first" (nothing is read or kept). Reading needs "Use memory on the lock
+     * screen"; changing it is never done there. [saving]: they asked to remember something; [changing]: to forget something.
      */
-    data class Unlock(val language: String, val saving: Boolean = false) : MemoryRoute()
+    data class Unlock(val language: String, val saving: Boolean = false, val changing: Boolean = false) : MemoryRoute()
 
     /** Memory is off and the words are a memory command: Robot says so; nothing is kept and the model never sees it. */
     data class Off(val language: String) : MemoryRoute()
@@ -25,10 +25,11 @@ object MemoryRouting {
     private val FRENCH_ASK = Regex("""\b(?:tu te (?:souviens|rappelles)|te (?:souviens|rappelles)-tu|je t'ai dit|sais sur moi|tu sais de moi)\b""")
 
     /**
-     * The route for [text] with Settings › Memory [s] and the phone [locked]. A command runs when memory is on and usable
-     * (unlocked, or "Use memory on the lock screen"); "forget everything" always gets its answer (Settings, never by voice).
-     * A question that only asks for memory ("do you remember…") on a locked phone hears "Unlock first"; any other question
-     * goes to the model, without memory.
+     * The route for [text] with Settings › Memory [s] and the phone [locked]. A command that reads runs when memory is on
+     * and usable (unlocked, or "Use memory on the lock screen"); one that changes it ("remember that …", "forget …") only on
+     * an unlocked phone ("Unlock first to save to memory."); "forget everything" always gets its answer (Settings, never by
+     * voice). A question that only asks for memory ("do you remember…") on a locked phone hears "Unlock first"; any other
+     * question goes to the model, without memory.
      */
     fun route(text: String, s: MemorySettings, locked: Boolean): MemoryRoute? {
         val c = MemoryCommands.parse(text)
@@ -36,7 +37,9 @@ object MemoryRouting {
         val usable = !locked || s.onLockScreen
         return when {
             c is MemoryCommand.ForgetEverything -> MemoryRoute.Run(c)
-            c != null -> if (usable) MemoryRoute.Run(c) else MemoryRoute.Unlock(c.language, saving = c is MemoryCommand.Remember)
+            c is MemoryCommand.Remember && !MemoryAccess.writes(locked) -> MemoryRoute.Unlock(c.language, saving = true)
+            (c is MemoryCommand.Forget || c is MemoryCommand.ForgetLast) && !MemoryAccess.writes(locked) -> MemoryRoute.Unlock(c.language, changing = true)
+            c != null -> if (usable) MemoryRoute.Run(c) else MemoryRoute.Unlock(c.language)
             MemoryAccess.whenLocked(locked, s, text) == LockedMemory.SAY_UNLOCK -> MemoryRoute.Unlock(if (FRENCH_ASK.containsMatchIn(MemoryCommands.foldAligned(text))) "fr" else "en")
             else -> null
         }
@@ -128,9 +131,9 @@ object MemoryReplies {
 
     fun forgetAll(fr: Boolean): String = if (fr) MemoryAccess.FORGET_ALL_BY_VOICE_FR else MemoryAccess.FORGET_ALL_BY_VOICE
 
-    fun unlock(fr: Boolean, saving: Boolean = false): String = when {
-        saving -> if (fr) "Déverrouille d'abord, puis redemande-moi de le retenir : ma mémoire reste verrouillée." else
-            "Unlock first, then ask me again to remember it: my memory stays locked."
+    fun unlock(fr: Boolean, saving: Boolean = false, changing: Boolean = false): String = when {
+        saving -> if (fr) MemoryAccess.UNLOCK_TO_SAVE_FR else MemoryAccess.UNLOCK_TO_SAVE
+        changing -> if (fr) MemoryAccess.UNLOCK_TO_CHANGE_FR else MemoryAccess.UNLOCK_TO_CHANGE
         fr -> MemoryAccess.UNLOCK_FIRST_FR
         else -> MemoryAccess.UNLOCK_FIRST
     }
