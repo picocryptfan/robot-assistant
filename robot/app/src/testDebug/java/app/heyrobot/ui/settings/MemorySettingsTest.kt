@@ -69,9 +69,10 @@ class MemorySettingsTest {
     private val day = 86_400_000L
 
     /** The page's store over a real vault in a temporary folder; what it was asked, as words. */
-    private class TestStore(dir: File) : MemoryStore {
+    /** [now]: the test's clock (the vault's day-after sweep would otherwise end "I parked on P3" by the real date). */
+    private class TestStore(dir: File, now: () -> Long) : MemoryStore {
         val keys = SoftMemoryKeys()
-        val vault = FileMemoryVault(dir, keys)
+        val vault = FileMemoryVault(dir, keys, now = now)
         var settings = MemorySettings()
         val events = ArrayList<String>()
         override fun settings() = settings
@@ -87,7 +88,7 @@ class MemorySettingsTest {
         fun items(): List<MemoryItem> = (vault.load() as? MemoryLoad.Loaded)?.file?.items.orEmpty()
     }
 
-    private val store = TestStore(Files.createTempDirectory("memory-page").toFile())
+    private val store = TestStore(Files.createTempDirectory("memory-page").toFile()) { now }
 
     private fun item(id: String, text: String, kind: MemoryKind = MemoryKind.FACT, pinned: Boolean = false, secret: Boolean = false,
         uses: Int = 0, daysAgo: Int = 1, expires: Long? = null) =
