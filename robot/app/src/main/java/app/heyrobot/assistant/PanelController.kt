@@ -141,6 +141,7 @@ import app.heyrobot.sys.FeedbackFiles
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.PeopleFiles
+import app.heyrobot.sys.PhoneInfo
 import app.heyrobot.sys.Phones
 import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.ui.common.keptPicture
@@ -1182,13 +1183,16 @@ object PanelController {
         // helper's conversation: what you ask Robot to remember never goes to a helper (core MemoryRouting).
         val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null)
             MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null
+        // 0.7.0: "free up memory", "close apps", « libère de la mémoire »: Robot's own answer (what Android reports, what
+        // unloading its model gives, the apps used lately) and a card to pick from (core FreeUp), not the model's guess.
+        val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null) FreeUp.asked(q) else null
         // The helpers' phrases next ("ask Claude …", "go get Jarvis"), then texting without the model, then the model (FastPath).
-        var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null) ClaudeRouter.route(q, names) else null
+        var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null && freeAsk == null) ClaudeRouter.route(q, names) else null
         // "Thanks Claude" outside a helper's conversation is ordinary talk.
         if (cmd == ClaudeCommand.Leave && !_state.value.claudeMode) cmd = null
         // "Not Claude", "you tell me": Robot answers, now and for the rest of the conversation (a helper's conversation ends too).
         // Only an explicit "ask …" or "go get …" brings a helper back.
-        if (q.isNotEmpty() && memRoute == null && fbCmd == null && ClaudeRouter.declines(q, names)) {
+        if (q.isNotEmpty() && memRoute == null && fbCmd == null && freeAsk == null && ClaudeRouter.declines(q, names)) {
             if (cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join) cmd = null
             if (!claudeDeclined) RLog.i("claude_declined", "claudeMode" to _state.value.claudeMode)
             claudeDeclined = true
@@ -1227,10 +1231,10 @@ object PanelController {
             screenText = if (kept) sText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }?.let { ToolCalls.safeTake(it, ConversationCodec.MAX_SCREEN_TEXT) } else null,
             messages = heardBack, kept = if (heardBack) app.heyrobot.core.messages.MessageReading.HEARD_BACK else null)
         chat += user
-        val way = if (memRoute != null) FastPath.Way.MODEL else FastPath.of(cmd, _state.value.claudeMode && fbCmd == null, attachment)
+        val way = if (memRoute != null || freeAsk != null) FastPath.Way.MODEL else FastPath.of(cmd, _state.value.claudeMode && fbCmd == null, attachment)
         val toClaude = way == FastPath.Way.CLAUDE
         // Groups are only ever added: a question that needs a new one rebuilds the conversation once (:brain).
-        if (cmd == null && !toClaude && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null) groups = groups + ToolRouter.route(q)
+        if (cmd == null && !toClaude && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null && freeAsk == null) groups = groups + ToolRouter.route(q)
         val replyId = newId()
         // Decided per turn: a screen turn stops saving until the person taps Keep.
         val keep = if (marked == Attachment.SCREEN && !keptByUser) false else st.keep
@@ -1261,6 +1265,7 @@ object PanelController {
                 convCmd != null -> conversationCommand(replyId, convCmd)
                 fbCmd != null -> feedbackCommand(replyId, fbCmd)
                 memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)
+                freeAsk != null -> freeMemoryCommand(replyId, freeAsk)
                 cmd == ClaudeCommand.Leave -> {
                     endHelperMode()
                     localReply(replyId, ClaudeWords.LEFT)
@@ -2184,6 +2189,27 @@ object PanelController {
         withContext(Dispatchers.IO) { FeedbackFiles.prefill(ctx, c.kind, c.text) }
         localReply(replyId, "Opening Send feedback. Nothing is sent until you choose an app.")
         if (host?.launch(FeedbackFiles.openIntent(ctx, c.kind)) == true) leaveForApp()
+    }
+
+    /**
+     * 0.7.0, "free up memory" ([fr]: asked in French): what Android reports free, what unloading Robot's model gives, the
+     * apps used lately that are likely still in memory (Usage access), said; then free_memory's card to pick from, as the
+     * model's call would make it (ToolExecutor): unload the model, or open an app's info where you tap Force stop, or turn
+     * on Usage access. Robot never stops an app itself. On the lock screen only what is free, nothing about your apps.
+     */
+    private suspend fun freeMemoryCommand(replyId: String, fr: Boolean) {
+        val ctx = VoiceHub.app
+        val locked = Assistant.locked(ctx)
+        val brain = BrainKeeper.state.value
+        val loaded = brain.readiness == BrainKeeper.Readiness.READY || brain.readiness == BrainKeeper.Readiness.LOADING
+        val modelBytes = brain.model?.memoryBytes?.takeIf { it > 0 } ?: app.heyrobot.core.PhoneStatus.ROBOT_MODEL_BYTES
+        val (mem, recent) = withContext(Dispatchers.IO) { PhoneInfo.memory(ctx) to if (locked) emptyList() else PhoneInfo.recentInMemory(ctx) }
+        if (locked) return localReply(replyId, FreeUp.memoryNow(mem, fr) + " " + FreeUp.unlockToFree(fr))
+        sayInto(replyId, FreeUp.advice(mem, if (loaded) modelBytes else null, recent, System.currentTimeMillis(), fr))
+        val result = TurnRunner(DirectCall(RawToolCall(ToolName.FREE_MEMORY.id, emptyMap())), PanelActions, PanelView(replyId), slot.confirmations,
+            untrusted = TurnRules.untrusted(chat), asked = setOf(ToolName.FREE_MEMORY), messages = PanelMessages.taint(chat), newId = ::newId).run()
+        result.failure?.let { return failReply(replyId, it) }
+        finishReply(replyId, result.reason ?: DoneReason.END)
     }
 
     private enum class ConversationEntry { START, OPEN }

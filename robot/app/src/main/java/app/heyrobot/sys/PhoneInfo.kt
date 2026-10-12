@@ -27,6 +27,7 @@ import android.telecom.TelecomManager
 import app.heyrobot.core.AppSize
 import app.heyrobot.core.BatteryFacts
 import app.heyrobot.core.FreeUp
+import app.heyrobot.core.RecentApp
 import app.heyrobot.core.MediaFile
 import app.heyrobot.core.MediaFacts
 import app.heyrobot.core.MemoryFacts
@@ -129,8 +130,17 @@ object PhoneInfo {
      * you could stop: never the app you are in, Robot, the keyboard, the home screen, messaging apps or clock apps (stopping
      * one can cancel its alarms). Labels only. Needs Usage access; empty without it.
      */
-    fun recentApps(ctx: Context, withinMs: Long = 2 * 3_600_000L): List<String> {
-        if (!usageAccess(ctx)) return emptyList()
+    fun recentApps(ctx: Context, withinMs: Long = 2 * 3_600_000L): List<String> = recent(ctx, withinMs)?.map { it.label }.orEmpty()
+
+    /**
+     * 0.7.0, "free up memory": the apps of [recentApps] likely still in memory (core FreeUp.likelyInMemory: used in the
+     * last 3 hours, most recent first), each with its package for its App info, when it was used and its time on screen
+     * today; null without Usage access.
+     */
+    fun recentInMemory(ctx: Context): List<RecentApp>? = recent(ctx, FreeUp.RECENT_MS)?.let { FreeUp.likelyInMemory(it, System.currentTimeMillis()) }
+
+    private fun recent(ctx: Context, withinMs: Long): List<RecentApp>? {
+        if (!usageAccess(ctx)) return null
         val usm = ctx.getSystemService(UsageStatsManager::class.java) ?: return emptyList()
         val now = System.currentTimeMillis()
         val skip = buildSet {
@@ -150,8 +160,10 @@ object PhoneInfo {
         val launcher = launcherPackages(ctx)
         val used = safe { usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - withinMs, now) }.orEmpty()
             .filter { it.lastTimeUsed >= now - withinMs && it.packageName in launcher && it.packageName !in skip }
-            .groupBy { it.packageName }.mapValues { (_, v) -> v.maxOf { it.lastTimeUsed } }
-        return used.entries.sortedByDescending { it.value }.take(FreeUp.RECENT_APPS).mapNotNull { safe { label(ctx, it.key) } }
+            .groupBy { it.packageName }.mapValues { (_, v) -> v.maxOf { it.lastTimeUsed } to v.sumOf { it.totalTimeInForeground } }
+        return used.entries.sortedByDescending { it.value.first }.take(FreeUp.RECENT_APPS).mapNotNull { (pkg, v) ->
+            safe { RecentApp(label(ctx, pkg), pkg, v.first, v.second) }
+        }
     }
 
     /** Apps whose foreground service started in the last few hours and hasn't stopped (playing, navigating, recording). */

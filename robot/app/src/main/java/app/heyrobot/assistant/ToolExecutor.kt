@@ -33,6 +33,7 @@ import app.heyrobot.core.LocationCode
 import app.heyrobot.core.LookupFallback
 import app.heyrobot.core.Events
 import app.heyrobot.core.FreeUp
+import app.heyrobot.core.SpeechLang
 import app.heyrobot.core.StorageWay
 import app.heyrobot.core.Choice
 import app.heyrobot.core.Executed
@@ -662,7 +663,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
      * Robot itself is refused: its own memory is freed by unloading its model.
      */
     private fun prepareFreeMemory(a: Action.FreeMemory): Prepared {
-        val name = a.app ?: return Prepared.Ready(a)
+        val name = a.app ?: return prepareUnload(a)
         val m = AppMatcher.match(name, launcherApps()) ?: return Prepared.Refused(ActionStatus.FAILED, "No app called “$name” is installed.")
         val pkg = m.app.key.substringBefore('/')
         if (pkg == ctx.packageName) return Prepared.Refused(ActionStatus.FAILED, "Robot can't stop itself. Say “free up memory” to unload its model.")
@@ -670,12 +671,38 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     }
 
     /**
+     * 0.7.0, free_memory with no app ("free up memory", "close apps"): a card to pick from, in the language you asked in.
+     * Unloading Robot's model (about how much it holds), then the apps used lately that are likely still in memory (Usage
+     * access; core FreeUp.likelyInMemory), each opening its App info where you tap Force stop; without Usage access, a
+     * button to turn it on. Robot never stops an app itself (Android 14 and later let no app stop another).
+     */
+    private fun prepareUnload(a: Action.FreeMemory): Prepared {
+        val fr = said?.let(SpeechLang::french) == true
+        val now = System.currentTimeMillis()
+        val brain = BrainKeeper.state.value
+        val loaded = brain.readiness == BrainKeeper.Readiness.READY || brain.readiness == BrainKeeper.Readiness.LOADING
+        val recent = PhoneInfo.recentInMemory(ctx)
+        val choices = buildList {
+            add(Choice(FreeUp.unloadChoice(if (loaded) modelBytes(brain.model) else null, fr), Action.FreeMemory(null)))
+            recent?.forEach { add(Choice(FreeUp.appChoice(it, now, fr), Action.FreeMemory(it.label, it.pkg))) }
+            if (recent == null) add(Choice(FreeUp.usageAccessChoice(fr), Action.FreeMemory(Action.FreeMemory.USAGE_ACCESS_LABEL, SettingsPage.USAGE_ACCESS)))
+        }
+        return Prepared.Ready(a, choices = choices, note = FreeUp.pickNote(fr))
+    }
+
+    /**
      * Robot's own model is unloaded once this answer ends (PanelController, ModelUnload): the model is told so, with what
      * Android does by itself and the apps used lately (Usage access), which you may name to stop. Android 14 and later
-     * let no app stop another, so an app you name gets its info page, where you tap Force stop.
+     * let no app stop another, so an app you name gets its info page, where you tap Force stop. 0.7.0: the card's "Turn on
+     * Usage access" opens Android's page for it.
      */
     private fun freeMemory(a: Action.FreeMemory): Executed {
         val pkg = a.pkg
+        if (pkg == SettingsPage.USAGE_ACCESS) {
+            return if (page(SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS))) Executed(ActionStatus.DONE,
+                "Opened Usage access: turn it on for Robot, then ask again to see the apps you used lately.", launchedApp = true)
+            else Executed(ActionStatus.FAILED, "Android's Usage access page didn't open.")
+        }
         if (a.app == null || pkg == null) {
             ModelUnload.request(ModelUnload.available(ctx))
             val recent = PhoneInfo.recentApps(ctx)

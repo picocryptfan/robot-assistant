@@ -364,8 +364,21 @@ sealed class Action {
      */
     data class FreeMemory(val app: String?, val pkg: String? = null) : Action() {
         override val tool get() = ToolName.FREE_MEMORY
-        override fun describe() = if (app == null) "Unload Robot's model to free about 2 GB of memory (4 GB for an E4B model)" else "Open **$app**'s App info to force stop it"
-        override val confirmLabel get() = if (app == null) "Unload" else "Open App info"
+        override fun describe() = when {
+            pkg == SettingsPage.USAGE_ACCESS -> "Open Usage access, so Robot can list the apps you used lately"
+            app == null -> "Unload Robot's model to free about 2 GB of memory (4 GB for an E4B model)"
+            else -> "Open **$app**'s App info to force stop it"
+        }
+        override val confirmLabel get() = when {
+            pkg == SettingsPage.USAGE_ACCESS -> "Open"
+            app == null -> "Unload"
+            else -> "Open App info"
+        }
+
+        companion object {
+            /** 0.7.0: the "free up memory" card's button without Usage access ([pkg] = SettingsPage.USAGE_ACCESS) opens Android's page for it. */
+            const val USAGE_ACCESS_LABEL = "Usage access"
+        }
     }
 
     /**

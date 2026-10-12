@@ -981,9 +981,9 @@ class ProcessIsolationTest {
         for (w in listOf("saidAloud(page.heard.joinToString(\"\"))", "saidAloud(summary)", "saidAloud(said)",
             "if (p.sendSource == ReplySource.MODEL_DRAFT) saidAloud(p.sendText)")) assertTrue(w, panel.contains(w))
         val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
-        // (Five: the chat turn, a helper's, the Claude app's hand-off, texting without the model, and 0.7 memory's "remember
-        // that …" in a conversation that holds a message.)
-        assertEquals(5, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
+        // (Six: the chat turn, a helper's, the Claude app's hand-off, texting without the model, 0.7 memory's "remember
+        // that …" in a conversation that holds a message, and 0.7.0's "free up memory" card.)
+        assertEquals(6, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         assertEquals(Regex("""TurnRunner\(""").findAll(pc).count(), Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         // Nothing of messages in :brain or :llama's code.
         assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.core\.messages\b"""), ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("claude/") }))
@@ -1017,8 +1017,9 @@ class ProcessIsolationTest {
         // Send feedback's phrases after the messages router and its echo check (a message read aloud saying "report a bug: …" is
         // the message's), before memory, the helpers and the model.
         val fbRoute = pc.indexOf("val fbCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null) FeedbackRouter.route(q) else null")
-        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null) ClaudeRouter.route(q, names) else null")
-        assertTrue(msgRoute in 0 until fbRoute && fbRoute < memRoute && memRoute < helpers)
+        val freeUp = pc.indexOf("val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null) FreeUp.asked(q) else null")
+        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null && freeAsk == null) ClaudeRouter.route(q, names) else null")
+        assertTrue(msgRoute in 0 until fbRoute && fbRoute < memRoute && memRoute < freeUp && freeUp < helpers)
         val run = pc.indexOf("msgCmd != null -> PanelMessages.run(replyId, msgCmd)")
         assertTrue(run in 0 until pc.indexOf("fbCmd != null -> feedbackCommand(replyId, fbCmd)") &&
             pc.indexOf("fbCmd != null -> feedbackCommand(replyId, fbCmd)") < pc.indexOf("memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)"))
