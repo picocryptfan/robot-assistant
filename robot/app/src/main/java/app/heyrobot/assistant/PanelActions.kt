@@ -48,6 +48,9 @@ interface PanelActions {
     /** 0.7: a tap on the reply card under [replyId] (Send, Edit, Open chat, Cancel, the tick boxes, Stop). */
     fun reply(replyId: String, op: app.heyrobot.ui.common.ReplyOp) {}
 
+    /** 0.9: a Termux card's Edit, time limit, Open in Termux or Stop (Run and Cancel are [confirm]). */
+    fun termux(actionId: String, change: app.heyrobot.ui.common.TermuxCardChange) {}
+
     /** What the panel does on screen: each action through PanelController. */
     companion object Default : PanelActions {
         override fun send(text: String) = PanelController.send(text)
@@ -78,5 +81,6 @@ interface PanelActions {
         override fun endHelperMode() { PanelController.endHelperMode() }
         override fun reply(replyId: String, op: app.heyrobot.ui.common.ReplyOp) { PanelController.reply(replyId, op) }
         override fun openSource(replyId: String, url: String) { PanelController.openSource(replyId, url) }
+        override fun termux(actionId: String, change: app.heyrobot.ui.common.TermuxCardChange) { TermuxPanel.change(actionId, change) }
     }
 }

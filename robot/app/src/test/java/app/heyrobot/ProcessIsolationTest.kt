@@ -68,6 +68,41 @@ class ProcessIsolationTest {
             verify.contains("-lt 100000000"))
     }
 
+    /**
+     * 0.9, the Termux agent (docs/plans/websearch-termux-design.md B8.1): the RUN_COMMAND intent is built and sent only by the
+     * :voice process's TermuxSend (startForegroundService, nowhere else), its result receiver is :voice's and not exported,
+     * the permission is asked for by the main app only (MainActivity, for Settings › Termux), the runner and its cards
+     * stay in the assistant, and no Termux code logs a command, a path, an argument, a name or output.
+     */
+    @Test fun termuxRunsOnlyFromTheVoiceProcess() {
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt"), usersOf(Regex("""\bTermuxIntents\.ACTION_RUN_COMMAND\b""")))
+        // (0.8: routines' speaking service starts itself the same way.)
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/conversation/ConversationService.kt", "app/assistant/routines/RoutineSpeakingService.kt"),
+            usersOf(Regex("""\bstartForegroundService\(""")))
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxSend\b""")))
+        // The result PendingIntent: explicit to the receiver, one-shot and mutable (Termux fills the result in), made there only.
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt"), usersOf(Regex("""\bTermuxResultReceiver\b""")))
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/TermuxResultReceiver.kt")).contains("Intent(ctx, TermuxResultReceiver::class.java)") &&
+            File(java("app"), "app/heyrobot/assistant/TermuxResultReceiver.kt").readText().contains("PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_MUTABLE"))
+        assertEquals(listOf("app/assistant/TermuxRunner.kt", "app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxRunner\b""")))
+        // Asked for by MainActivity alone (Settings › Termux's Allow); the main process only checks that it is held.
+        assertTrue(File(java("app"), "app/heyrobot/ui/MainActivity.kt").readText().contains("launch(arrayOf(app.heyrobot.core.termux.TermuxIntents.PERMISSION_RUN_COMMAND))"))
+        assertEquals(listOf("app/sys/TermuxFiles.kt", "app/ui/MainActivity.kt", "core/core/termux/TermuxIntents.kt"),
+            ours.filter { it.value.readText().contains("PERMISSION_RUN_COMMAND") }.keys.sorted())
+        assertEquals(listOf("app/assistant/TermuxPanel.kt", "app/assistant/TermuxTool.kt", "app/assistant/VoiceHub.kt", "app/assistant/PanelActions.kt",
+            "app/assistant/PanelController.kt").sorted(), usersOf(Regex("""\bTermux(Tool|Panel)\b""")).filter { !it.endsWith("TermuxResultReceiver.kt") && !it.endsWith("TermuxRunner.kt") })
+        // Settings › Termux only asks the voice process for its fixed set-up runs (Cmd.TERMUX), never a command.
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/VoiceHub.kt")).contains("Cmd.TERMUX -> TermuxTool.setup(app, i.getStringExtra(Cmd.EXTRA_RUN))"))
+        val setup = File(java("app"), "app/heyrobot/assistant/TermuxTool.kt").readText().substringAfter("fun setup(").substringBefore("\n    private suspend fun test(")
+        assertTrue(setup.contains("if (what !in setOf(TEST, LIST, FOLDER)) return"))
+        // Content-free logs: no RLog field named for a command's parts, and the label Termux logs is "Robot".
+        val termux = ours.filterKeys { it.contains("/termux/") || Regex("""/Termux[A-Za-z]*\.kt$""").containsMatchIn(it) }
+        assertTrue(termux.keys.toString(), termux.size >= 15)
+        val leaky = Regex("""RLog\.[iw]\([^\n]*"(command|cmd|args|argv|arguments|name|script|path|output|stdout|stderr|errmsg|text)"\s+to""")
+        assertEquals(emptyList<String>(), termux.filter { leaky.containsMatchIn(withoutComments(it.value)) }.keys.toList())
+        assertTrue(File(java("core"), "app/heyrobot/core/termux/TermuxIntents.kt").readText().contains("const val LABEL = \"Robot\""))
+    }
+
     @Test fun liteRtOnlyInTheBrainEngineFile() {
         assertEquals(listOf("brain/brain/GemmaEngine.kt"), usersOf(Regex("""\bcom\.google\.ai\.edge\.litert""")))
     }
@@ -232,8 +267,9 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService",
             // 0.8, headset and car mode: the headset button's trampoline and the car screen, where the sessions are.
             "app.heyrobot.assistant.headset.HeadsetEntryActivity", "app.heyrobot.assistant.car.CarModeActivity",
-            // 0.9: web search's set-up window, where a search key is pasted and Test runs.
-            "app.heyrobot.assistant.WebSearchActivity")
+            // 0.9: web search's set-up window, where a search key is pasted and Test runs; Termux's results come back where its
+            // commands were sent from.
+            "app.heyrobot.assistant.WebSearchActivity", "app.heyrobot.assistant.TermuxResultReceiver")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         // 0.4.5: llama.cpp's own process, isolated: Android runs it under a uid of its own with no permissions, no network
@@ -279,7 +315,7 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider",
             "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService",
             "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver",
-            "app.heyrobot.assistant.car.CarModeActivity", "app.heyrobot.assistant.WebSearchActivity"))
+            "app.heyrobot.assistant.car.CarModeActivity", "app.heyrobot.assistant.WebSearchActivity", "app.heyrobot.assistant.TermuxResultReceiver"))
             assertEquals(n, "false", exported(n))
         // 0.8: the headset button's trampoline is exported (Android starts it for a headset's button) with exactly the three
         // actions core HeadsetEntry lists and no other filter, no history, not in Recents, shown over the lock screen only to
@@ -377,6 +413,8 @@ class ProcessIsolationTest {
             // listens, devices known exactly), the Phone permission ("Call directly after a spoken yes"), and Do Not Disturb
             // access (Robot's own "Driving (Robot)" rule; a normal permission plus the access you grant in Android's settings).
             "android.permission.BLUETOOTH_CONNECT", "android.permission.CALL_PHONE", "android.permission.ACCESS_NOTIFICATION_POLICY",
+            // 0.9: Termux's own dangerous permission, asked for from Settings › Termux by the main app only.
+            "com.termux.permission.RUN_COMMAND",
         ), used)
         // 0.8: routines need nothing else: USE_EXACT_ALARM (above) rather than SCHEDULE_EXACT_ALARM; car mode reads no phone
         // state, never scans for Bluetooth devices and never sends a text itself (no SEND_SMS, READ_PHONE_STATE, BLUETOOTH_SCAN).
@@ -425,7 +463,7 @@ class ProcessIsolationTest {
         assertTrue(File(java("app"), "app/heyrobot/sys/People.kt").readText().contains("\"app.heyrobot.ui.NotesLauncher\""))
         val queries = doc.getElementsByTagName("queries").item(0) as Element
         val packages = queries.getElementsByTagName("package").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
-        assertTrue(packages.containsAll(setOf("com.cheogram.android", "com.cheogram.android.playstore", "ch.protonmail.android", "com.anthropic.claude")))
+        assertTrue(packages.containsAll(setOf("com.cheogram.android", "com.cheogram.android.playstore", "ch.protonmail.android", "com.anthropic.claude", "com.termux")))
         val schemes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "scheme") } }.toSet()
         assertTrue(schemes.containsAll(setOf("xmpp", "mailto", "smsto", "claude", "https")))
         val hosts = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "host") } }.toSet()
@@ -776,9 +814,11 @@ class ProcessIsolationTest {
         // core's GitHub.kt alone, from the repository and ids. Web search's request builders (0.9, core web SearchWire,
         // Wikipedia and OpenLibrary: Brave, Kagi, Mojeek, Wikipedia's and Open Library's API addresses) are sent by the
         // :claude module's WebTransport in the :voice process; Settings › Web search shows an example address (text only).
+        // 0.9: Termux's F-Droid page (core termux TermuxSetup.kt), which Settings › Termux opens in the browser; Robot fetches nothing.
         assertEquals(listOf("app/ui/HelpersScreens.kt", "app/ui/settings/WebSearchSettings.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt",
             "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt",
-            "core/core/helpers/Helpers.kt", "core/core/update/GitHub.kt", "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt", "core/core/web/Wikipedia.kt"),
+            "core/core/helpers/Helpers.kt", "core/core/termux/TermuxSetup.kt", "core/core/update/GitHub.kt", "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt",
+            "core/core/web/Wikipedia.kt"),
             ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""MediaRecorder\(|\.wav\b|\.pcm\b|AudioRecord[^\n]*(FileOutputStream|write\()"""), audio))
@@ -1133,8 +1173,8 @@ class ProcessIsolationTest {
         val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
         // (Seven: the chat turn, a helper's, the Claude app's hand-off, texting without the model, 0.7 memory's "remember
         // that …" in a conversation that holds a message, 0.7.0's "free up memory" card, 0.8's routine steps and calls, and 0.9's
-        // "search the web for …".)
-        assertEquals(8, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
+        // "search the web for …" and "run <script>".)
+        assertEquals(9, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         assertEquals(Regex("""TurnRunner\(""").findAll(pc).count(), Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         // Nothing of messages in :brain or :llama's code.
         assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.core\.messages\b"""), ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("claude/") }))
@@ -1203,25 +1243,26 @@ class ProcessIsolationTest {
         val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
         // A message's words heard back (PanelMessages.route) come first, before memory's router.
         val msgRoute = pc.indexOf("val msgCmd = if (q.isNotEmpty() && st.draft == null) PanelMessages.route(q, fromVoice) else null")
-        val memRoute = pc.indexOf("val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null)\n            MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null")
+        val memRoute = pc.indexOf("val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            termux == null) MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null")
         assertTrue(msgRoute in 0 until memRoute)
         // Send feedback's phrases after the messages router and its echo check (a message read aloud saying "report a bug: …" is
         // the message's), before memory, the helpers and the model.
         val fbRoute = pc.indexOf("val fbCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null) FeedbackRouter.route(q) else null")
-        val freeUp = pc.indexOf("val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            memRoute == null)\n            FreeUp.asked(q) else null")
-        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null && memRoute == null &&\n            freeAsk == null)\n            ClaudeRouter.route(q, names) else null")
+        val freeUp = pc.indexOf("val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            termux == null && memRoute == null) FreeUp.asked(q) else null")
+        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            termux == null && memRoute == null && freeAsk == null) ClaudeRouter.route(q, names) else null")
         // 0.8: routines' phrases, then headset and car mode's, after feedback's and before memory's; 0.9: web search's "search the
-        // web for …" next, before memory's: the panel's order is the messages router and its echo check, conversation mode,
-        // feedback, routines, headset and car, web search, memory, the helpers, the model.
+        // web for …" and Termux's "run <script>" next, before memory's: the panel's order is the messages router and its echo
+        // check, conversation mode, feedback, routines, headset and car, web search, Termux, memory, the helpers, the model.
         val conv = pc.indexOf("val convCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null) ConversationRouter.route(q, ConversationSession.running) else null")
         val routines = pc.indexOf("val routineCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.claudeMode)\n            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null")
         val handsFree = pc.indexOf("val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&\n            !_state.value.claudeMode) PanelHandsFree.route(q) else null")
         val web = pc.indexOf("val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&\n            !_state.value.claudeMode) WebRouter.explicit(q) else null")
-        assertTrue(msgRoute in 0 until conv && conv < fbRoute && fbRoute < routines && routines < handsFree && handsFree < web && web < memRoute &&
-            memRoute < freeUp && freeUp < helpers)
+        val termux = pc.indexOf("val termux = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            !_state.value.claudeMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null")
+        assertTrue(msgRoute in 0 until conv && conv < fbRoute && fbRoute < routines && routines < handsFree && handsFree < web && web < termux &&
+            termux < memRoute && memRoute < freeUp && freeUp < helpers)
         val runs = listOf("msgCmd != null -> PanelMessages.run(", "convCmd != null -> conversationCommand(", "fbCmd != null -> feedbackCommand(",
             "routineCmd != null -> PanelRoutines.handle(", "handsFreeCmd != null -> PanelHandsFree.handle(", "webQuery != null -> directWeb(",
-            "memRoute != null -> memoryCommand(",
+            "termux != null -> termuxScript(", "memRoute != null -> memoryCommand(",
             "freeAsk != null -> freeMemoryCommand(").map { pc.indexOf(it) }
         assertTrue(runs.toString(), runs.first() >= 0 && runs.zipWithNext().all { (a, b) -> a < b })
         val run = pc.indexOf("msgCmd != null -> PanelMessages.run(replyId, msgCmd)")
@@ -1239,6 +1280,6 @@ class ProcessIsolationTest {
         assertTrue(pc.contains("== true,\n                    PanelMessages.taint(chat).active)"))
         // The turn runner refuses what the quarantine forbids before anything is prepared or asked.
         val turn = code(File(java("core"), "app/heyrobot/core/Turn.kt"))
-        assertTrue(turn.indexOf("MessageQuarantine.verdict(asked.tool, origin, messages) == QuarantineVerdict.FORBIDDEN") in 0 until turn.indexOf("actions.prepare(asked)"))
+        assertTrue(turn.indexOf("MessageQuarantine.verdict(asked.tool, origin, messages) == QuarantineVerdict.FORBIDDEN") in 0 until turn.indexOf("actions.prepare(asked, untrusted, remote)"))
     }
 }

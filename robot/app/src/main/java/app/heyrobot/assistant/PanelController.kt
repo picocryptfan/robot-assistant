@@ -121,6 +121,7 @@ import app.heyrobot.core.TextRequest
 import app.heyrobot.core.Tip
 import app.heyrobot.core.Tips
 import app.heyrobot.core.ToolCalls
+import app.heyrobot.core.TermuxCalls
 import app.heyrobot.core.ToolGroup
 import app.heyrobot.core.ToolBudget
 import app.heyrobot.core.ToolRouter
@@ -248,9 +249,11 @@ data class UiAction(
     val personal: Boolean = false,
     /** Only a tap answers it, for this reason (core Card.tapFor: a learned name, not sure who, online the first time); "no" still declines. */
     val tapFor: AskWhy? = null,
+    /** 0.9: a Termux command or script's card (TermuxPanel); its line ([detail]) says why only a tap runs it. */
+    val termux: app.heyrobot.ui.common.TermuxCardView? = null,
 ) {
     /** What a spoken or typed answer needs to know about it (core CardAnswer). */
-    val waiting: CardAnswer.Waiting get() = CardAnswer.Waiting(choices.size, tapFor, personal, confirm)
+    val waiting: CardAnswer.Waiting get() = CardAnswer.Waiting(choices.size, tapFor, personal, confirm, say = detail.takeIf { termux != null && tapFor != null })
 }
 
 /**
@@ -1254,24 +1257,26 @@ object PanelController {
         // helper's conversation and without an attachment.
         val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&
             !_state.value.claudeMode) WebRouter.explicit(q) else null
+        // 0.9: then "run backup", your own Termux script named in your own words (TermuxTool.direct), the same way.
+        val termux = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&
+            !_state.value.claudeMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null
         // 0.7: memory's commands next ("remember that …", "forget that", "what do you know about me?"), Robot's own even in a
         // helper's conversation: what you ask Robot to remember never goes to a helper (core MemoryRouting).
-        val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null)
-            MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null
+        val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&
+            termux == null) MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null
         // 0.7.0: "free up memory", "close apps", « libère de la mémoire »: Robot's own answer (what Android reports, what
         // unloading its model gives, the apps used lately) and a card to pick from (core FreeUp), not the model's guess.
         val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&
-            memRoute == null)
-            FreeUp.asked(q) else null
+            termux == null && memRoute == null) FreeUp.asked(q) else null
         // The helpers' phrases next ("ask Claude …", "go get Jarvis"), then texting without the model, then the model (FastPath).
-        var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null && memRoute == null &&
-            freeAsk == null)
-            ClaudeRouter.route(q, names) else null
+        var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&
+            termux == null && memRoute == null && freeAsk == null) ClaudeRouter.route(q, names) else null
         // "Thanks Claude" outside a helper's conversation is ordinary talk.
         if (cmd == ClaudeCommand.Leave && !_state.value.claudeMode) cmd = null
         // "Not Claude", "you tell me": Robot answers, now and for the rest of the conversation (a helper's conversation ends too).
         // Only an explicit "ask …" or "go get …" brings a helper back.
-        if (q.isNotEmpty() && memRoute == null && fbCmd == null && !routineOrHandsFree && webQuery == null && freeAsk == null && ClaudeRouter.declines(q, names)) {
+        if (q.isNotEmpty() && memRoute == null && fbCmd == null && !routineOrHandsFree && webQuery == null && termux == null && freeAsk == null &&
+            ClaudeRouter.declines(q, names)) {
             if (cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join) cmd = null
             if (!claudeDeclined) RLog.i("claude_declined", "claudeMode" to _state.value.claudeMode)
             claudeDeclined = true
@@ -1346,6 +1351,8 @@ object PanelController {
                 routineCmd != null -> PanelRoutines.handle(replyId, routineCmd, routineHost)
                 handsFreeCmd != null -> PanelHandsFree.handle(replyId, handsFreeCmd, routineHost)
                 webQuery != null -> directWeb(replyId, webQuery, user.text, history, untrusted)
+                // 0.9: "run backup", your own script named in your own words: termux_script without the model.
+                termux != null -> termuxScript(replyId, termux, untrusted)
                 memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)
                 freeAsk != null -> freeMemoryCommand(replyId, freeAsk)
                 cmd == ClaudeCommand.Leave -> {
@@ -1512,19 +1519,25 @@ object PanelController {
             // chat-only model nothing at all, with its compact prompt (Settings › "Direct answers" as you set it).
             val locked = Assistant.locked(VoiceHub.app)
             val driving = CarModeController.on
-            fun toolsFor(g: Set<ToolGroup>): List<ToolName> = if (chatOnly) emptyList() else ToolRouter.tools(g, s, askClaude, memory = mem.tools, web = webOn)
+            // 0.9: the Termux tools only while Settings › Termux is on and set up (and the words call for them), and only when
+            // they leave their own larger room for the new turn (TermuxCalls.MIN_TURN_TOKENS, in ToolBudget).
+            val termuxTools = if (chatOnly || ToolGroup.TERMUX !in groups) emptySet() else withContext(Dispatchers.IO) { TermuxTool.tools(VoiceHub.app, locked) }
+            val termuxLine = if (termuxTools.isEmpty()) null else withContext(Dispatchers.IO) { TermuxTool.promptLine(VoiceHub.app, termuxTools, locked) }
+            fun toolsFor(g: Set<ToolGroup>): List<ToolName> =
+                if (chatOnly) emptyList() else ToolRouter.tools(g, s, askClaude, memory = mem.tools, web = webOn, termux = termuxTools)
             fun systemFor(tools: List<ToolName>): String = app.heyrobot.core.memory.MemoryPrompt.system(if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers)
             else Prompt.system(now, locked, askClaude, texting = ToolName.SEND_TEXT in tools,
                 weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers, lockedTools = s.lockedTools,
                 helper = target?.name, helperSearches = target?.searching ?: true, helperHome = target?.home == true, driving = driving,
-                web = ToolName.WEB_SEARCH in tools),
+                web = ToolName.WEB_SEARCH in tools, termux = termuxLine?.takeIf { tools.any { it.termux } }),
                 tools = ToolName.REMEMBER in tools, pinned = mem.packed.systemLine)
             // 0.9: with every group this conversation called for, the new turn may not fit: the groups this question doesn't call
             // for give way first, then the others, until it keeps its room (core ToolBudget).
-            val described = if (chatOnly) groups else ToolBudget.fit(groups, ToolRouter.route(question), maxTokens) { g ->
+            val wanted = if (termuxTools.isEmpty()) groups - ToolGroup.TERMUX else groups
+            val described = if (chatOnly) wanted else ToolBudget.fit(wanted, ToolRouter.route(question), maxTokens) { g ->
                 toolsFor(g).let { Prompt.fixedTokens(systemFor(it), it) }
             }
-            if (described != groups) RLog.i("tool_budget", "dropped" to (groups - described).size, "kept" to described.size)
+            if (described != wanted) RLog.i("tool_budget", "dropped" to (wanted - described).size, "kept" to described.size)
             val tools = toolsFor(described)
             val system = systemFor(tools)
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
@@ -2649,6 +2662,38 @@ object PanelController {
         } else notify("No browser opened the page.")
     }
 
+    /**
+     * 0.9: your script named in your own words ("run backup"): termux_script prepared, gated and carded as Gemma's call
+     * would be, without the model; what it printed is said in a sentence (two short lines at most).
+     */
+    private suspend fun termuxScript(replyId: String, m: app.heyrobot.core.termux.ScriptMatch, untrusted: Boolean) {
+        setText(replyId, "Your script “${m.name}”.")
+        val call = RawToolCall(ToolName.TERMUX_SCRIPT.id, mapOf("name" to m.name, "args" to m.args))
+        val said = object : TurnModel {
+            override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(call))
+            override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome {
+                results.firstOrNull()?.second?.let(TermuxTool::spokenResult)?.let { streamText(replyId, it) }
+                return ModelOutcome.Done(DoneReason.END)
+            }
+            override fun close() {}
+        }
+        // 0.7's quarantine: after a message, even your own script is a card only a tap answers (core MessageQuarantine).
+        val result = TurnRunner(said, PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.TERMUX_SCRIPT),
+            messages = PanelMessages.taint(chat), newId = ::newId).run()
+        result.failure?.let { return failReply(replyId, it) }
+        finishReply(replyId, result.reason ?: DoneReason.END)
+        if (result.launchedApp) leaveForApp()
+    }
+
+    // 0.9, Termux cards (TermuxPanel): found by id, changed in place, drawn again when a run's state changes.
+    internal fun cardById(id: String): UiAction? = _state.value.turns.firstNotNullOfOrNull { t -> t.actions.firstOrNull { it.id == id } }
+
+    internal fun updateCard(id: String, change: (UiAction) -> UiAction) =
+        _state.update { st -> st.copy(turns = st.turns.map { t -> t.copy(actions = t.actions.map { if (it.id == id) change(it) else it }) }) }
+
+    internal fun termuxChanged(key: String) =
+        _state.update { st -> st.copy(turns = st.turns.map { t -> t.copy(actions = t.actions.map { if (it.termux?.key == key) TermuxPanel.redress(it) else it }) }) }
+
     /** A turn whose one action is already known: no model asked, nothing to answer after the action. */
     private class DirectCall(private val call: RawToolCall) : TurnModel {
         override suspend fun ask(): ModelOutcome = ModelOutcome.Calls(listOf(call))
@@ -2723,6 +2768,8 @@ object PanelController {
                 MemoryPanel.run(action, spokenTurn, TurnRules.untrusted(chat) || _state.value.turns.lastOrNull()?.actions?.any { it.content } == true,
                     PanelMessages.taint(chat).active)
             } ?: Executed(ActionStatus.FAILED, "Something went wrong.")
+            // 0.9: a Termux run waits for its result (Stop ends its process tree), off the main thread.
+            if (action.tool.termux) return withContext(Dispatchers.IO) { TermuxTool.run(VoiceHub.app, action) { i -> host?.launch(i) ?: false } }
             if (!action.online) return withContext(Dispatchers.IO) { executor().run(action) }
             if (action is Action.WebSearch) return webRun(action)
             val weather = action.tool == ToolName.WEATHER
@@ -2779,10 +2826,10 @@ object PanelController {
             val icon = (c.action as? Action.OpenApp)?.key?.let { key -> icons.getOrPut(key) { executor().appIcon(key) } }
             // What a read tool finds goes to the helper only after this tap: the button says so.
             val confirm = c.confirm ?: if (c.remote && c.tool?.reads == true) "Share with $helper" else c.action?.confirmLabel
-            upsertAction(replyId, UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo, c.content, c.more,
-                c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts,
+            upsertAction(replyId, TermuxPanel.dress(UiAction(c.id, c.tool, c.summary, c.status, c.detail, icon, c.body, c.choices.map { it.label }, confirm, c.undo,
+                c.content, c.more, c.cancel, c.handOff, remember = c.remember, allowContacts = c.allowContacts,
                 // What it finds goes to Claude: a read, or an online lookup around where you are (the nearest place).
-                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapFor = c.tapFor))
+                personal = c.remote && (c.tool?.reads == true || c.action?.online == true), tapFor = c.tapFor), c))
         }
 
         override val text: String get() = _state.value.turns.firstOrNull { it.id == replyId }?.text.orEmpty()

@@ -141,6 +141,11 @@ interface TurnActions {
     val settings: RobotSettings
     /** May read the contacts or the calendar: suspends, so the panel does that off its main thread. */
     suspend fun prepare(action: Action): Prepared
+    /**
+     * 0.9: the same, knowing whether the conversation holds content Robot didn't write ([untrusted]) and a helper asked
+     * ([remote]): a Termux command's card depends on both (TermuxPolicy's rule 3).
+     */
+    suspend fun prepare(action: Action, untrusted: Boolean, remote: Boolean): Prepared = prepare(action)
     suspend fun run(action: Action): Executed
 }
 
@@ -470,7 +475,7 @@ class TurnRunner(
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
             else -> {}
         }
-        val a = when (val p = actions.prepare(asked)) {
+        val a = when (val p = actions.prepare(asked, untrusted, remote)) {
             is Prepared.Refused -> return done(asked, p.status, p.detail)
             is Prepared.Ready -> p
         }
@@ -490,7 +495,7 @@ class TurnRunner(
             GateDecision.DISABLED -> return done(a.action, ActionStatus.DISABLED, "${a.action.tool.title} are turned off in Robot's settings.")
         } ?: return done(a.action, ActionStatus.DECLINED, null)
         // The phone may have locked while the card waited.
-        if (ApprovalGate.lockedOut(chosen.tool, actions.locked, actions.settings)) {
+        if (ApprovalGate.lockedOut(chosen, actions.locked, actions.settings)) {
             return done(chosen, ActionStatus.NEEDS_UNLOCK, ApprovalGate.unlockLine(chosen.tool))
         }
         fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {
@@ -503,8 +508,8 @@ class TurnRunner(
             return done(chosen, r.status, r.detail, launched, r)
         }
         // An online lookup (the weather, the nearest place for the maps, 0.4.0) changes nothing until it is found and may
-        // wait seconds on the network: Stop ends it at once, and its card says it was stopped.
-        if (chosen.online) {
+        // wait seconds on the network: Stop ends it at once, and its card says it was stopped. So does a Termux run (0.9).
+        if (chosen.online || chosen.stoppable) {
             val r = try {
                 actions.run(chosen)
             } catch (e: CancellationException) {

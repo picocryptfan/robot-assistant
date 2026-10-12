@@ -626,6 +626,7 @@ fun RobotAppUi(activity: MainActivity) {
         askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
         // 0.8: Nearby devices and the Phone permission, from their own rows in Settings › Headset and Car mode.
         askPermission = { p -> peoplePermissions.launch(arrayOf(p)) },
+        askTermux = { peoplePermissions.launch(arrayOf(app.heyrobot.core.termux.TermuxIntents.PERMISSION_RUN_COMMAND)) },
         // 0.4.7: the GPU again after it failed (the voice process reads the file at the next load), and the problem report.
         tryGpuAgain = {
             scope.launch {
@@ -852,4 +853,6 @@ class AppActions(
     val dismissProblem: (ModelProblem) -> Unit = {},
     /** 0.7: "Delete" on a problem in the Model tab's list. */
     val deleteProblem: (ModelProblem) -> Unit = {},
+    /** 0.9: Termux's RUN_COMMAND permission (Settings › Termux), asked for here only, as every permission is. */
+    val askTermux: () -> Unit = {},
 )

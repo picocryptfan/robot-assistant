@@ -124,9 +124,10 @@ object RoutineGate {
         ToolName.WEATHER -> StepClass.READ_ONLINE
         ToolName.SET_TIMER, ToolName.SET_ALARM, ToolName.FLASHLIGHT, ToolName.ADD_NOTE -> StepClass.LOCAL_ACTION
         ToolName.OPEN_APP, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE, ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT -> StepClass.NEEDS_YOU
-        // 0.8: a routine never phones anyone. 0.9: a web search answers a question you ask; a routine never sends one by itself.
+        // 0.8: a routine never phones anyone. 0.9: a web search answers a question you ask; a routine never sends one by itself,
+        // and never runs a Termux command or script (nobody is there to check its card).
         ToolName.FREE_MEMORY, ToolName.FREE_STORAGE, ToolName.ASK_CLAUDE, ToolName.REMEMBER, ToolName.FORGET, ToolName.CALL,
-        ToolName.WEB_SEARCH -> StepClass.NEVER
+        ToolName.WEB_SEARCH, ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> StepClass.NEVER
     }
 
     /** The steps the editor offers ("Do"): everything but [StepClass.NEVER]. */

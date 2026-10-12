@@ -143,6 +143,9 @@ object MessageQuarantine {
         // "remember that …" is a card a tap answers, showing the words kept.
         tool == ToolName.REMEMBER && origin != ActionOrigin.USER_WORDS -> QuarantineVerdict.FORBIDDEN
         tool == ToolName.REMEMBER -> QuarantineVerdict.TAP_ONLY
+        // 0.9: a Termux command or script runs code with your files: after a message only a tap runs it (a message's words
+        // never become a command by themselves).
+        tool.termux -> QuarantineVerdict.TAP_ONLY
         tool.reads && !tool.online -> QuarantineVerdict.NONE
         leavesForOthers(tool) && !(toSender && tool == ToolName.SEND_TEXT) -> QuarantineVerdict.TAP_ONLY
         else -> QuarantineVerdict.CARD

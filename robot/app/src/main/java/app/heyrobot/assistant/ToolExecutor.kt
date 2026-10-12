@@ -187,6 +187,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 // 0.7: memory's own (MemoryPanel), never here.
                 is Action.Remember, is Action.Forget -> Executed(ActionStatus.FAILED, "Something went wrong.")
                 is Action.WebSearch -> web.run(action)
+                // 0.9: a Termux run waits for its result and Stop ends it: TermuxTool.run (PanelController), never here.
+                is app.heyrobot.core.TermuxCommandAction, is app.heyrobot.core.TermuxScriptAction -> Executed(ActionStatus.FAILED, "Something went wrong.")
             }
         } catch (t: Throwable) {
             RLog.w("tool_run", t, "tool" to action.tool)

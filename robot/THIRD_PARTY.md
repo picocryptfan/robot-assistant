@@ -58,6 +58,7 @@ process only"). `make_source_bundle.sh` doesn't add those four trees yet: until 
 | OkHttp | 4.12.0 | Apache-2.0 | in the APK |
 | jsoup | 1.15.1 | MIT | in the APK |
 | Readability4J (Robot's copy) | 1.0.8 (dankito, 170d052e) | Apache-2.0 | in the APK |
+| Termux's constant strings (TermuxConstants.java) | termux-app 8629e63 | MIT | in the APK |
 | Okio | 3.6.0 | Apache-2.0 | in the APK |
 | Public Suffix List (in OkHttp) | as in OkHttp 4.12.0 | MPL-2.0 | in the APK |
 | Jackson | 2.19.4 | Apache-2.0 | in the APK |
@@ -589,3 +590,9 @@ session (probe `ProbeVoiceService.kt`, `ProbeSession.kt`), the brain binding and
 `BrainKeeper.kt`, `BrainClient.kt`, `BrainService.kt`, `Gemma.kt`, lab `Workload.kt` / `Configs.T`), the model
 store (probe `ModelStore.kt`), the restart check (probe `BootReceiver.kt`, `BootCheck.kt`), the fetch,
 keyword and APK check scripts, and the process isolation test.
+
+**Termux's constant strings (0.9).** The Termux agent (core `termux/TermuxIntents.kt` and `TermuxIdentity.kt`) copies
+about a dozen constant strings from Termux's `TermuxConstants.java` (termux/termux-app, `termux-shared`, at 8629e63): its
+package, service and permission names, the RUN_COMMAND extras and result keys, its folders and its known signers'
+SHA-256 digests. `termux-shared/LICENSE.md` releases that file under the MIT licence. Robot links no Termux code; Termux is
+a separate app you install yourself.

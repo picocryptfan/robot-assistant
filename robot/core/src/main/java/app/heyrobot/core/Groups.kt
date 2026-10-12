@@ -22,6 +22,8 @@ enum class ToolGroup {
     MEMORY,
     /** Web search (0.9): described only when the words call for it (core web WebRouter) and web search is on. */
     WEB,
+    /** 0.9: Termux (TermuxRouter's words), described only while Settings › Termux is on. */
+    TERMUX,
 }
 
 object ToolRouter {
@@ -98,6 +100,7 @@ object ToolRouter {
             // "Remember to buy milk" stays a note (MemoryCommands.staysNote): memory's tools aren't described for it.
             if (has(MEMORY) && !app.heyrobot.core.memory.MemoryCommands.staysNote(question)) add(ToolGroup.MEMORY)
             if (app.heyrobot.core.web.WebRouter.wants(question)) add(ToolGroup.WEB)
+            if (app.heyrobot.core.termux.TermuxRouter.calls(question)) add(ToolGroup.TERMUX)
         }
     }
 
@@ -203,11 +206,13 @@ object ToolRouter {
      * The tools described for [groups], in a fixed order. Tools turned Off in settings are never described, nor
      * send_text when the texting app is Off. ask_claude only with [askClaude] (Ask Claude on, escalation not Off:
      * ClaudeSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch); web_search only
-     * with [web] (0.9: Settings › Web search on and set up).
+     * with [web] (0.9: Settings › Web search on and set up); a Termux tool only when in [termux] (0.9: Settings › Termux on,
+     * set up, and that tool on).
      */
-    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, memory: Boolean = false, web: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
+    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, memory: Boolean = false, web: Boolean = false,
+        termux: Set<ToolName> = emptySet()): List<ToolName> = ToolName.entries.filter { t ->
         t.group in groups && t.forModel && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
-            (t != ToolName.ASK_CLAUDE || askClaude) && (t.group != ToolGroup.MEMORY || memory) && (t != ToolName.WEB_SEARCH || web)
+            (t != ToolName.ASK_CLAUDE || askClaude) && (t.group != ToolGroup.MEMORY || memory) && (t != ToolName.WEB_SEARCH || web) && (!t.termux || t in termux)
     }
 
     /** "core.people" for the logs (a fixed identifier, never the question). */

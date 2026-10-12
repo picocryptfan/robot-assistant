@@ -422,6 +422,9 @@ data class RobotSettings(
             // ApprovalGate), forget always shows its card.
             ToolName.REMEMBER to Approval.AUTO,
             ToolName.FORGET to Approval.ASK,
+            // 0.9: not a level you set either: Settings › Termux (termux.json) and TermuxPolicy decide.
+            ToolName.TERMUX_SCRIPT to Approval.ASK,
+            ToolName.TERMUX_COMMAND to Approval.ASK,
         )
 
         /** The actions whose default became "Just do it" in schema 4. */

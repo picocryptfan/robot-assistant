@@ -19,7 +19,8 @@ import kotlin.math.roundToLong
  * [group]: which tool group describes it (ToolRouter). [reads]: it brings content Robot didn't write into the
  * conversation (a note, a calendar invite, a contact): every later action in that conversation asks first.
  * [internal]: Robot's own, not an action on the phone with an approval level (not under Settings › Actions).
- * [online]: it goes to the internet itself (Settings › Actions says so).
+ * [online]: it goes to the internet itself (Settings › Actions says so). 0.9: the Termux tools are [internal] too: Settings ›
+ * Termux has their levels (TermuxPolicy decides), never Settings › Actions or the lock screen's list.
  */
 enum class ToolName(val id: String, val title: String, val group: ToolGroup, val reads: Boolean = false, val internal: Boolean = false,
     val online: Boolean = false, val forModel: Boolean = true) {
@@ -66,7 +67,13 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
      * Settings › Memory rather than Settings › Actions, described only with Memory on and words that call for them.
      */
     REMEMBER("remember", "Memory", ToolGroup.MEMORY, internal = true),
-    FORGET("forget", "Memory", ToolGroup.MEMORY, internal = true);
+    FORGET("forget", "Memory", ToolGroup.MEMORY, internal = true),
+    /** 0.9, the Termux agent (TermuxActions.kt): one of your scripts in ~/robot, and one short command. */
+    TERMUX_SCRIPT("termux_script", "Your Termux scripts", ToolGroup.TERMUX, internal = true),
+    TERMUX_COMMAND("termux_command", "Termux commands", ToolGroup.TERMUX, internal = true);
+
+    /** A Termux tool: Settings › Termux and TermuxPolicy decide about it (ApprovalGate's Termux branch). */
+    val termux: Boolean get() = group == ToolGroup.TERMUX
 
     companion object {
         fun of(id: String?): ToolName? = entries.firstOrNull { it.id == id?.trim()?.lowercase(Locale.ROOT) }
@@ -181,7 +188,7 @@ object ToolSpecs {
         ToolSpec(ToolName.FORGET, "Forget a remembered fact.", listOf(
             ToolParam("query", "string", "Its words", true),
         )),
-    )
+    ) + TermuxCalls.SPECS
 
     fun of(tool: ToolName): ToolSpec = ALL.first { it.tool == tool }
 }
@@ -208,6 +215,10 @@ sealed class Action {
      * once and it has a deadline (the panel's OnlineRun).
      */
     open val online: Boolean get() = tool.online
+    /** 0.9: it runs for a while and Stop ends it (a Termux run: Stop ends its whole process tree), like an online lookup. */
+    open val stoppable: Boolean get() = false
+    /** It may run on the lock screen ([lockedTools]: Settings › Safety & privacy › "Works on the lock screen"). */
+    open fun worksLocked(lockedTools: Set<ToolName>): Boolean = tool in lockedTools
 
     data class SetTimer(val seconds: Long) : Action() {
         override val tool get() = ToolName.SET_TIMER
@@ -674,6 +685,8 @@ object ToolCalls {
             ToolName.FREE_MEMORY -> ParsedCall.Ok(Action.FreeMemory(FreeUp.appOrNull(textArg(a, MAX_NAME, "app", "name", "application", "package"))))
             // Android's own screen unless it says apps, files or Robot.
             ToolName.FREE_STORAGE -> ParsedCall.Ok(Action.FreeStorage(StorageWay.of(textArg(a, MAX_NAME, "what", "way", "kind", "target", "how"))))
+            // 0.9: a command's spaces and quotes are kept as written (TermuxActions.kt).
+            ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> TermuxCalls.parse(tool, a)
             // No day said: today (the person asked "what's on my calendar").
             ToolName.READ_CALENDAR -> {
                 val present = listOf("day", "date", "when", "range").firstOrNull { a.containsKey(it) }

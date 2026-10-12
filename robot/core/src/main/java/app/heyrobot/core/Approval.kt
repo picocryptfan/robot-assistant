@@ -42,6 +42,10 @@ object ApprovalGate {
         asked: Boolean = false, remote: Boolean = false, online: Boolean = tool.online, trusted: Boolean = false, messages: Boolean = false): GateDecision {
         val level = settings.approval(tool)
         return when {
+            // 0.9: TermuxPolicy decided when the action was prepared (Settings › Termux, the lock, rules 2 to 5): only a
+            // Termux reason ([AskWhy.TERMUX], COMMAND, FROM_CONTENT) shows the card; none means it runs (your script set to
+            // Just do it, or an allowlisted read).
+            tool.termux -> if (asks(why, settings)) GateDecision.CONFIRM else GateDecision.RUN
             level == Approval.OFF -> GateDecision.DISABLED
             // 0.7: nothing is saved to or removed from memory on the lock screen, whatever "Works on the lock screen" says
             // ("Use memory on the lock screen" lets it be read there, never changed).
@@ -69,6 +73,9 @@ object ApprovalGate {
     /** [tool] can't run with the phone [locked] under [settings] (checked again after a card, the phone may have locked). */
     fun lockedOut(tool: ToolName, locked: Boolean, settings: RobotSettings): Boolean = locked && (memoryWrite(tool) || tool !in settings.lockedTools)
 
+    /** The same for an action that decides for itself what works locked (0.9: a Termux script you allowed there, never a command). */
+    fun lockedOut(a: Action, locked: Boolean, settings: RobotSettings): Boolean = locked && (memoryWrite(a.tool) || !a.worksLocked(settings.lockedTools))
+
     /** What an action refused for the lock says: memory's own line for remember and forget. */
     fun unlockLine(tool: ToolName): String = when (tool) {
         ToolName.REMEMBER -> app.heyrobot.core.memory.MemoryAccess.UNLOCK_TO_SAVE
@@ -78,7 +85,8 @@ object ApprovalGate {
 
     /** One of [why] needs a card with these settings. */
     fun asks(why: Set<AskWhy>, s: RobotSettings): Boolean =
-        AskWhy.PICK in why || AskWhy.ONLINE in why || AskWhy.MESSAGE in why || AskWhy.SEARCH in why || AskWhy.SEARCH_PERSONAL in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards)
+        AskWhy.PICK in why || AskWhy.ONLINE in why || AskWhy.MESSAGE in why || AskWhy.SEARCH in why || AskWhy.SEARCH_PERSONAL in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards) ||
+            AskWhy.TERMUX in why || AskWhy.COMMAND in why || AskWhy.FROM_CONTENT in why
 
     /** Content in the conversation makes this action ask first, under [mode] ([asked]: the person asked for it this turn). */
     fun contentAsks(mode: SafetyCards, asked: Boolean): Boolean = when (mode) {

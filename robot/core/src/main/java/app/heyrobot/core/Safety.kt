@@ -52,6 +52,12 @@ enum class AskWhy {
     SEARCH,
     /** 0.9: a web search with words from something Robot read on your phone (QueryCheck's personal words): a card answered by a tap. */
     SEARCH_PERSONAL,
+    /** 0.9: a Termux command or script shows its Run / Edit / Cancel card (TermuxPolicy's CARD): a yes may answer it. */
+    TERMUX,
+    /** 0.9: a Termux command with a warning, one Robot couldn't read fully, or "Never (tap only)": always a card, answered by a tap. */
+    COMMAND,
+    /** 0.9: a Termux command in a conversation with content Robot didn't write (rule 3): always a card, answered by a tap. */
+    FROM_CONTENT,
 }
 
 /** The one-time line after updating to 0.4.0 ([RobotSettings.safetyNotice]); tapping it opens Settings › Safety & privacy. */
@@ -103,7 +109,9 @@ object CardAnswer {
     enum class Kind { YES, NO }
 
     /** The waiting card, as far as a spoken or typed answer goes ([Card.tapFor], [Card.choices], what its tap sends). */
-    data class Waiting(val choices: Int = 0, val tapFor: AskWhy? = null, val personal: Boolean = false, val confirm: String? = null)
+    data class Waiting(val choices: Int = 0, val tapFor: AskWhy? = null, val personal: Boolean = false, val confirm: String? = null,
+        /** 0.9: the card's own words for why a tap is needed (a Termux command's: "This command deletes files…"). */
+        val say: String? = null)
 
     /** What an answer does: decline, confirm, take the card's only choice, or say why a tap is needed ([Reply.say]). */
     enum class Does { DECLINE, CONFIRM, CHOOSE_ONLY, TAP }
@@ -122,7 +130,8 @@ object CardAnswer {
      * it chose it), not being sure who or which (several people, a near match, a number or address the model wrote, a
      * loose app name), or going online for the first time. Null: a yes may answer it.
      */
-    fun tapFor(why: Set<AskWhy>): AskWhy? = listOf(AskWhy.MESSAGE, AskWhy.LEARNED, AskWhy.WHO, AskWhy.ONLINE, AskWhy.SEARCH_PERSONAL).firstOrNull { it in why }
+    fun tapFor(why: Set<AskWhy>): AskWhy? = listOf(AskWhy.MESSAGE, AskWhy.LEARNED, AskWhy.WHO, AskWhy.ONLINE, AskWhy.SEARCH_PERSONAL, AskWhy.FROM_CONTENT,
+        AskWhy.COMMAND).firstOrNull { it in why }
 
     /** What Robot says when a yes can't answer a card that needs a tap for [why]. */
     fun tapWords(why: AskWhy): String = when (why) {
@@ -131,12 +140,17 @@ object CardAnswer {
         AskWhy.ONLINE -> TAP_ONLINE
         AskWhy.MESSAGE -> TAP_MESSAGE
         AskWhy.SEARCH_PERSONAL -> TAP_SEARCH
+        AskWhy.FROM_CONTENT -> TAP_FROM_CONTENT
+        AskWhy.COMMAND -> TAP_COMMAND
         else -> TAP_ONE
     }
 
+    const val TAP_FROM_CONTENT = "Robot read this from content it didn't write: check the card, then tap Run."
+    const val TAP_COMMAND = "This command has warnings: check the card, then tap Run."
+
     /** What Robot says when [card] starts waiting and replies are spoken: how it may be answered ("no" always works). */
     fun prompt(card: Waiting): String = when {
-        card.tapFor != null -> tapWords(card.tapFor) + " Or say no."
+        card.tapFor != null -> (card.say ?: tapWords(card.tapFor)) + " Or say no."
         card.choices > 1 -> "Tap the one you mean on the card, or say no."
         else -> PROMPT
     }
@@ -152,7 +166,7 @@ object CardAnswer {
         val kind = of(text, wakePhrases) ?: return null
         return when {
             kind == Kind.NO -> Reply(Does.DECLINE)
-            card.tapFor != null -> Reply(Does.TAP, tapWords(card.tapFor))
+            card.tapFor != null -> Reply(Does.TAP, card.say ?: tapWords(card.tapFor))
             card.choices > 1 -> Reply(Does.TAP, TAP_ONE)
             card.personal && !voiceYesPersonal -> Reply(Does.TAP, "Tap ${card.confirm ?: "the button"} to share it with Claude.")
             card.choices == 1 -> Reply(Does.CHOOSE_ONLY)

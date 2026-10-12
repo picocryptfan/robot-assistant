@@ -115,6 +115,8 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
         }
         if (!peopleFirst) { people(); tools() }
         preferenceGroup("Helpers", "helpers") { HelperRows(f, helpers, a) }
+        // 0.9: the Termux agent, optional (its checklist is Settings › Termux's).
+        preferenceGroup("Termux", "termux") { TermuxSetupRow(a) }
         preferenceGroup(null, "adb") {
             PreferenceItem("ADB fixes", "Make Robot stay the assistant after a restart", RIcons.Terminal, onClick = { a.openPage(Page.AdbFixes) })
         }

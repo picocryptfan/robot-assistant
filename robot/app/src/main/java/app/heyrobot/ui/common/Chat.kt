@@ -82,6 +82,8 @@ data class ActionView(
     val remember: String? = null,
     /** While it waits, an "Allow contacts" button ([CardActions.allow]): the person asked for may be in the contacts. */
     val allowContacts: Boolean = false,
+    /** 0.9: a Termux command or script, drawn as its own card (TermuxCard). */
+    val termux: TermuxCardView? = null,
 )
 
 /** What a card can ask the panel for besides "Do it" and "Cancel". */
@@ -93,6 +95,8 @@ class CardActions(
     val allow: () -> Unit = {},
     /** Opens the app a card names ([ActionView.openApp]), by the card's id. */
     val openApp: (String) -> Unit = {},
+    /** 0.9: a Termux card's Edit, time limit, Open in Termux and Stop, by the card's id. */
+    val termux: (String, TermuxCardChange) -> Unit = { _, _ -> },
 )
 
 /**
@@ -122,6 +126,7 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.FREE_STORAGE -> RIcons.Folder
     ToolName.REMEMBER, ToolName.FORGET -> RIcons.BookmarkAdded
     ToolName.WEB_SEARCH -> RIcons.Search
+    ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> RIcons.Terminal
     null -> RIcons.Warning
 }
 
@@ -146,6 +151,7 @@ fun cardStatusLine(a: ActionView): String = when (a.status) {
  */
 @Composable
 fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: CardActions? = null, modifier: Modifier = Modifier) {
+    a.termux?.let { return TermuxCard(a, it, onConfirm, more?.termux, modifier) }
     val c = MaterialTheme.colorScheme
     PanelCard(modifier) {
         CardHeader(

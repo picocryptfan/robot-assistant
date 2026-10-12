@@ -306,6 +306,17 @@
    "note": "0.9 web search: finds a result page's article, as Firefox's Reader View does. A Kotlin port of Mozilla's Readability.js, copied into Robot (app.heyrobot.helpers.web.readability) with its logging removed and built against jsoup 1.15.1."
   },
   {
+   "id": "termux-constants",
+   "name": "Termux's constant strings (TermuxConstants.java)",
+   "version": "termux-app 8629e63",
+   "licence": "MIT",
+   "copyright": "Copyright Termux contributors (the file names no holder)",
+   "url": "https://github.com/termux/termux-app/blob/master/termux-shared/LICENSE.md",
+   "where": "app",
+   "text": "licenses/MIT-termux-constants.txt",
+   "note": "0.9 Termux agent: about a dozen constant strings copied into core termux TermuxIntents.kt and TermuxIdentity.kt (package, service and permission names, RUN_COMMAND's extras and result keys, folders, known signers' digests). No Termux code is linked; Termux is a separate app you install."
+  },
+  {
    "id": "okio",
    "name": "Okio",
    "version": "3.6.0",

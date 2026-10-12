@@ -12,7 +12,8 @@
 # code, no class of the voice or engine processes referring to it, and no GitHub token in the APK. 0.4.7: the phone's
 # OpenCL libraries (the GPU, for the general Gemma 4 E2B) and its TPU libraries declared optional, never packaged. 0.7:
 # Send feedback needs no permission (no SEND_SMS: "Text it" opens your SMS app), and its classes refer to no network class
-# and no Android log (Robot sends nothing itself; the message is never logged).
+# and no Android log (Robot sends nothing itself; the message is never logged). 0.9: the Termux agent's permission, <queries>
+# entry and result receiver (:voice, not exported).
 # Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
@@ -104,7 +105,7 @@ boot=$(subtree app.heyrobot.boot.BootReceiver)
 has '"android.intent.action.LOCKED_BOOT_COMPLETED"' "$boot" "BootReceiver gets LOCKED_BOOT_COMPLETED"
 has 'directBootAware(0x01010505)=true' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver direct-boot aware"
 # (0.7: Send feedback's "Text it" opens your SMS app, so still no SEND_SMS.)
-for p in CAMERA READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE MANAGE_EXTERNAL_STORAGE KILL_BACKGROUND_PROCESSES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION; do
+for p in CAMERA READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE MANAGE_EXTERNAL_STORAGE KILL_BACKGROUND_PROCESSES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION READ_PHONE_STATE; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
 # 0.4.0: photos and videos (all, or the ones you pick), asked for by the main app only, for free_storage's largest files.
@@ -257,6 +258,14 @@ for q in '"com.cheogram.android"' '"com.cheogram.android.playstore"' '"ch.proton
   'scheme(0x01010027)="smsto"' 'mimeType(0x01010026)="vnd.android.cursor.dir/event"' '"android.intent.action.INSERT"' '"android.intent.action.SENDTO"'; do
   has "$q" "$queries" "<queries> has $q"
 done
+# 0.9, the Termux agent: Termux's own RUN_COMMAND permission (asked for from Settings › Termux), <queries> for com.termux,
+# and the result receiver in :voice, not exported. Nothing else: no SMS, phone or location permission comes with it.
+has '"com.termux.permission.RUN_COMMAND"' "$mf" "declares com.termux.permission.RUN_COMMAND (the Termux agent)"
+has '"com.termux"' "$queries" "<queries> has Termux's package"
+has ':voice' "$(elem app.heyrobot.assistant.TermuxResultReceiver)" "TermuxResultReceiver in :voice"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.TermuxResultReceiver)" "TermuxResultReceiver not exported"
+uperms=$(grep -A1 'E: uses-permission' <<<"$mf" | grep -o 'name(0x01010003)="[^"]*"' | sed 's/.*="//; s/"$//' | grep -v '^android\.permission\.\|^com\.android\.\|^app\.heyrobot\.' | sort -u | tr '\n' ' ')
+[ "$uperms" = "com.termux.permission.RUN_COMMAND " ] && pass "the only other app's permission is Termux's RUN_COMMAND" || fail "other apps' permissions: $uperms"
 vi=$(for f in $(unzip -Z1 "$APK" 'res/*.xml'); do "$BT/aapt2" dump xmltree --file "$f" "$APK" 2>/dev/null; done)
 has '"app.heyrobot.assistant.RobotSessionService"' "$vi" "voice-interaction sessionService"
 has '"app.heyrobot.assistant.RobotRecognitionService"' "$vi" "voice-interaction recognitionService"

@@ -66,6 +66,8 @@ object SettingsRoutes {
     const val FEEDBACK = "about/feedback"
     fun feedback(entry: FeedbackEntry, kind: FeedbackKind? = null, problem: Long? = null): String =
         FEEDBACK + "?e=" + entry.key + (kind?.let { "&k=" + it.name.lowercase() } ?: "") + (problem?.let { "&p=$it" } ?: "")
+    /** 0.9: Settings › Termux, the Termux agent's set-up and settings. */
+    const val TERMUX = "termux"
 }
 
 /** The page for [route]; an unknown one (from a newer version's saved state) goes back to Settings. */
@@ -109,6 +111,7 @@ fun SettingsNav(
             val ctx = LocalContext.current
             MessagesSettingsScreen(messagesFile(), snap.facts, onEdit = { app.heyrobot.sys.MessagesStore.update(ctx, it) }, a, onBack)
         }
+        SettingsRoutes.TERMUX -> TermuxRoute(a, snackbar, onBack, snap.facts?.active)
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)
             route.startsWith(SettingsRoutes.FEEDBACK) -> FeedbackRoute(route, snap, snackbar, onBack)

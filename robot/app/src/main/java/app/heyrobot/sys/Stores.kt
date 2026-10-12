@@ -195,6 +195,11 @@ object Cmd {
     const val MESSAGE_NEW = "message_new"
     const val EXTRA_KEY = "key"
     const val EXTRA_DND = "dnd"
+    /**
+     * 0.9, Settings › Termux (extra [EXTRA_RUN]: "test", "folder" or "list"): the voice process runs that fixed set-up
+     * command in Termux; what it found comes back in files/robot/termux_status.json.
+     */
+    const val TERMUX = "termux"
 
     fun send(ctx: Context, op: String, extras: Bundle = Bundle()) {
         try {

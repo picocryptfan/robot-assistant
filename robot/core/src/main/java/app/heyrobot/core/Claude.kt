@@ -506,6 +506,8 @@ enum class Personal(val label: String) {
      * or by "Send personal content to helpers automatically": only through a card that lists them (core helpers HelperTrust).
      */
     MESSAGES("messages you received"),
+    /** 0.9: what a Termux command or script printed. */
+    TERMUX("your Termux output"),
     ;
 
     companion object {
@@ -524,6 +526,7 @@ enum class Personal(val label: String) {
             // The weather, and (0.4.0) the nearest place found online: both say where you are.
             ToolName.WEATHER, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE -> LOCATION
             ToolName.PHONE_STATUS, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE -> PHONE
+            ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> TERMUX
             else -> READ
         }
 

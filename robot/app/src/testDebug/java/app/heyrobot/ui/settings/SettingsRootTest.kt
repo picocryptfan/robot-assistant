@@ -40,7 +40,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The Settings tab: twenty rows (0.7 added Memory and Messages, 0.8 Routines, Headset and Car mode, 0.9 Web search), each with its state under the title, each opening its page. */
+/** The Settings tab: twenty-one rows (0.7 added Memory and Messages, 0.8 Routines, Headset and Car mode, 0.9 Web search and Termux), each with its state under the title, each opening its page. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
@@ -70,6 +70,7 @@ class SettingsRootTest {
             "Web search" to "openPage ${Page.Settings(SettingsRoutes.WEB_SEARCH)}",
             "Helpers" to "openPage ${Page.Helpers}",
             "Conversation" to "openPage ${Page.ConversationSettings}",
+            "Termux" to "openPage ${Page.Settings(SettingsRoutes.TERMUX)}",
             "Model" to "openTab ${Tab.MODEL}",
             "Memory" to "openPage ${Page.Settings(SettingsRoutes.MEMORY)}",
             "History" to "openPage ${Page.Settings(SettingsRoutes.HISTORY)}",
@@ -113,6 +114,11 @@ class SettingsRootTest {
         assertEquals("Button opens Robot · no headphones yet", headsetSummary(app.heyrobot.core.output.HeadsetFile(), app.heyrobot.core.output.DeviceMemory()))
         assertEquals("Off", app.heyrobot.core.car.CarSetup.summary(false, app.heyrobot.core.output.DeviceMemory()))
         assertEquals("Claude · Ask first", helpersSummary(s, facts()))
+        // 0.9: Settings › Termux (its own file), off by default.
+        val t = app.heyrobot.core.termux.TermuxSettings()
+        assertEquals("Off", termuxSummary(t, 2))
+        assertEquals("On · 2 scripts", termuxSummary(t.copy(enabled = true), 2))
+        assertEquals("On · commands ask first", termuxSummary(t.copy(enabled = true), 0))
         open(s)
         rule.onNodeWithText("Wake word").assert(hasText("On · “hey robot” and 2 others"))
         rule.onNodeWithText("Weather").assert(hasText("Home: Montreal"))
