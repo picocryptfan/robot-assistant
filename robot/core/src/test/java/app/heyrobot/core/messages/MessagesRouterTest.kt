@@ -96,6 +96,31 @@ class MessagesRouterTest {
         assertEquals(MessageCommand.Stop(Lang.FR), r("Arrête", reading = true))
     }
 
+    /**
+     * With "Read my messages" off (the default), ordinary questions that only look like a messages command go to the model
+     * as before 0.7, instead of "Reading messages is off"; "clear it" with nothing read here is ordinary talk too.
+     */
+    @Test fun ordinaryQuestionsStayTheModelsWhileMessagesAreOff() {
+        fun panel(s: String, on: Boolean, readHere: Boolean = false, reading: Boolean = false) =
+            r(s, reading)?.takeIf { MessagesRouter.applies(it, on, readHere || reading) }
+        for (s in listOf("Reply in one word: is a tomato a fruit?", "Respond in French", "reply with yes or no: is it raining?",
+            "Réponds en une phrase : c'est quoi la capitale du Pérou?", "Translate Pierre's message", "What did Mom say?", "Clear it", "remove that",
+            "Mark it as read", "efface-la", "Reply to Mom: I'll be late")) {
+            assertNull(s, panel(s, on = false))
+        }
+        // Said about messages, with them off: Robot says so.
+        assertEquals(MessageCommand.Read(Lang.EN), panel("Read my messages", on = false))
+        assertEquals(MessageCommand.Summarize(Lang.FR), panel("Résume mes messages", on = false))
+        // On: the commands, as before; "clear it" and "remove that" once a conversation was read here.
+        assertEquals(MessageCommand.Reply("Mom", "I'll be late", Lang.EN), panel("Reply to Mom: I'll be late", on = true))
+        assertNull(panel("Clear it", on = true))
+        assertNull(panel("remove that", on = true))
+        assertEquals(MessageCommand.Mark(MarkKind.CLEAR, Lang.EN), panel("Clear it", on = true, readHere = true))
+        assertEquals(MessageCommand.Mark(MarkKind.CLEAR, Lang.FR), panel("efface-la", on = true, reading = true))
+        assertEquals(MessageCommand.Mark(MarkKind.READ, Lang.EN), panel("Mark it as read", on = true))
+        assertEquals(MessageCommand.Next(Lang.EN), panel("next", on = true, reading = true))
+    }
+
     @Test fun theScreenAndEverythingElseStayOutside() {
         assertNull(r("What does this message say?"))
         assertNull(r("Qu'est-ce que dit ce message?"))

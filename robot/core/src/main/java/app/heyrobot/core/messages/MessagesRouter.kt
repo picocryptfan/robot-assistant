@@ -60,6 +60,19 @@ object MessagesRouter {
     }
 
     /**
+     * Whether [cmd] is the panel's to answer, with "Read my messages" [on] and a conversation read in this panel conversation
+     * ([readHere]). Off (the default), only an unmistakable ask about messages ("read my messages", "summarize my
+     * messages") is answered, by saying it's off: "reply in one word: …", "respond in French", "translate Pierre's message"
+     * or "clear it" are ordinary questions for the model. "Clear it", "remove that", « efface-la » are about a conversation
+     * only once Robot read one here; "mark it as read" is about messages either way.
+     */
+    fun applies(cmd: MessageCommand, on: Boolean, readHere: Boolean): Boolean = when (cmd) {
+        is MessageCommand.Read, is MessageCommand.Summarize -> true
+        is MessageCommand.Mark -> on && (readHere || cmd.kind == MarkKind.READ)
+        else -> on
+    }
+
+    /**
      * What was said: [f] folded and [o] as said (the same length), the command between [s] and [e] (no wake word, no
      * "please", no final punctuation). A reply's words run to the very end, punctuation kept ([rest]).
      */

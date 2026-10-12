@@ -201,8 +201,10 @@ object PanelMessages {
             if (MessageQuarantine.originOf(q, heard(now), now) == ActionOrigin.INCOMING_TEXT) return Routed.Echo(if (SpeechLang.french(q)) Lang.FR else Lang.EN)
         }
         val cmd = MessagesRouter.route(q, reading) ?: return null
+        // Messages off: "reply in one word: …" or "clear it" is an ordinary question (only "read my messages" hears it's off).
+        if (!MessagesRouter.applies(cmd, MessagesStore.current(ctx).settings.on, readHere = lastRead != null || reading)) return null
         // "What did Einstein say?" stays a question: only someone in People or in a conversation.
-        if (cmd is MessageCommand.FromWho && (!MessagesStore.current(ctx).settings.on || !MessagePeople.known(cmd.who, threads, people))) return null
+        if (cmd is MessageCommand.FromWho && !MessagePeople.known(cmd.who, threads, people)) return null
         return Routed.Command(cmd)
     }
 
