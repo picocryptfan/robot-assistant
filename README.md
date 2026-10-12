@@ -64,8 +64,12 @@ it. Both apps are called Robot; long-press an icon › App info shows which vers
    learned from Cheogram that you haven't confirmed, and which number or address Robot uses first for someone, don't
    come along.
 3. **Memory.** In 0.9: Settings › Memory › Export › Choose a file, and save `robot-memory.json` (it isn't encrypted).
-   1.0 can't import it yet: keep it to look up what 0.9 remembered, tell 1.0 again what you want it to keep ("remember
-   that …", or Settings › Memory › Add something), then delete the file.
+   In 1.0, unlocked: Settings › Memory › Import, pick that file, and check the preview: what it adds, what is already
+   there, and what it skips (a password, a PIN, a code or a card number is never imported: add those yourself with
+   Settings › Memory › Add something, where they stay private). Tick "These are my own memories, from my own export"
+   when it is your own file, then tap Import. Without the tick, Robot treats the imported items as something it read
+   (an action they lead to asks first) until you open one in Settings › Memory and tap This is mine. Then let Robot
+   delete the file (it offers to), or delete it yourself.
 4. **Models.** 1.0 downloads its models again, from its first screen (or the Model tab, Settings › Voice and Settings ›
    Conversation). Robot's model can come from a file you already have instead: the Model tab › the model › Import a file
    copies it and checks its SHA-256 as a download is. The copy 0.9 downloaded is in 0.9's own folder, which the file

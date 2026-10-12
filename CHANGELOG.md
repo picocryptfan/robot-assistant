@@ -9,10 +9,10 @@ builds.
 The full steps are in the [README](README.md#moving-from-09-to-10). In short: install 1.0 beside 0.9 (0.9's updater
 refuses it: "The downloaded app isn't Robot, so it won't be installed."); in 0.9 export People (Settings › People, notes
 and calendar › People › More options › Export (.vcf)) and import that file in 1.0 (Import contacts file (.vcf)); export
-Memory too (Settings › Memory › Export), though 1.0 can't import it yet, so tell 1.0 again what to remember; let 1.0
-download its models again, or import Robot's model file (the model › Import a file); make 1.0 your digital assistant;
-uninstall 0.9; then do the ADB fixes again in 1.0. Settings, History, notes, transcripts, keys and routines don't move:
-share or save what you want to keep first.
+Memory too (Settings › Memory › Export) and import it in 1.0 (Settings › Memory › Import, ticking "These are my own
+memories" for your own file), then delete the file; let 1.0 download its models again, or import Robot's model file (the
+model › Import a file); make 1.0 your digital assistant; uninstall 0.9; then do the ADB fixes again in 1.0. Settings,
+History, notes, transcripts, keys and routines don't move: share or save what you want to keep first.
 
 ## Unreleased (1.0 hardening)
 
@@ -36,6 +36,11 @@ share or save what you want to keep first.
   phone and offers its downloads, and ends with what's on and off now. Skip this step keeps the default; Finish later
   resumes from Home ("Continue the setup guide"); Settings › About › Setup guide and Home run it again. Nothing is turned
   on unless you choose it, and Android asks for a permission only when you tap Allow.
+
+- **Memory import**: Settings › Memory › Import reads a memory export from 0.9 or 1.0 and shows what it would add before
+  anything is written. Items you already have, and any that hold a password, a PIN, a code or a card number, are
+  skipped; private items stay private; and imported items count as something Robot read (actions they lead to ask first)
+  until you say they are yours, on the preview or item by item ("This is mine").
 
 - **Search engines with their privacy levels**: "search DuckDuckGo for …", « cherche sur Startpage … » open the engine
   in your browser (Startpage by default; also Brave Search, Mojeek, Qwant, Ecosia, Google, Bing), with nothing to set

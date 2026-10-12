@@ -73,8 +73,8 @@ uninstall 0.9, as the public README's "Moving from 0.9 to 1.0" says.
 - **A phone with both**: for 1.0, 0.9's recognizer (`app.heyrobot/.assistant.RobotRecognitionService`) is another
   installed app's, left alone (`OTHER_RECOGNIZER`) until 0.9 is uninstalled; the `WRITE_SECURE_SETTINGS` grant is per
   app, so the ADB fixes are done again for 1.0. Settings, History, notes, transcripts, keys, routines, the Termux trust
-  and the voiceprint stay in 0.9's private storage; People has an export and an import, Memory an export only (no import
-  yet).
+  and the voiceprint stay in 0.9's private storage; People and Memory each have an export and an import ("Import
+  (1.0)" under Memory).
 - Unchanged: the version (rc1 sets it), the signing key, settings schema 13. No new permission, component or string.
 
 **Code and tests.** `app/build.gradle`, the three manifests, `res/xml/shortcuts.xml`; core `AppId.kt`, `AdbFixes.kt`,
@@ -97,9 +97,9 @@ checks `package: name='ai.robot_app'`, the permission, the authorities, the affi
 3. **0.9's updater.** With 1.0 published, in 0.9: Settings › About › Updates › Check now: *done when* it shows 1.0 with
    its release notes, the move first, and Download ends with "The downloaded app isn't Robot, so it won't be installed."
 4. **The move.** Follow the public README's "Moving from 0.9 to 1.0": *done when* 1.0's People lists the people exported
-   from 0.9, Robot's model copied out with `adb shell cp` imports ("… is ready.") without a download, Assistant setup
-   says "Android lists Robot as your assistant" and, after 0.9 is uninstalled and the ADB fixes are done again, both
-   show Done and Robot is still the assistant after a restart.
+   from 0.9, 1.0's Memory lists what 0.9 remembered ("Imported"), Robot's model copied out with `adb shell cp` imports
+   ("… is ready.") without a download, Assistant setup says "Android lists Robot as your assistant" and, after 0.9 is
+   uninstalled and the ADB fixes are done again, both show Done and Robot is still the assistant after a restart.
 5. **The commands.** *done when* Settings › Advanced › ADB fixes shows `adb shell settings put secure
    voice_recognition_service ai.robot_app/app.heyrobot.assistant.RobotRecognitionService` and `adb shell pm grant
    ai.robot_app android.permission.WRITE_SECURE_SETTINGS` (and the same for rish), and after the first one `adb shell
@@ -3226,8 +3226,8 @@ A password, PIN, code, card, ID or account number (core `SecretDetector`) you as
 The items, pinned first then newest, each with its state ("Pinned · saved Oct 9 · used in 4 answers", "Private",
 "until Oct 11"); search; tap one to edit its words, pin it (six at most), make it private, or delete it. Suggestions
 wait in a list with Keep and Not this (none are made yet: phase 7.5). Add something, Export (to a file you pick: plain
-JSON, after a warning that it isn't encrypted) and Delete all (after a confirm). The switches, in `files/robot/memory.json`
-(not `settings.json`, which stays schema 13):
+JSON, after a warning that it isn't encrypted), Import (1.0, below) and Delete all (after a confirm). The switches, in
+`files/robot/memory.json` (not `settings.json`, which stays schema 13):
 
 | Setting | Default |
 | --- | --- |
@@ -3265,9 +3265,54 @@ JSON, after a warning that it isn't encrypted) and Delete all (after a confirm).
 - Excluded from backup and device transfer (`allowBackup="false"`, `data_extraction_rules.xml`); a copy of the file is
   useless without the key, which never leaves the phone's secure hardware.
 - Voice log events 180 to 189: an item saved (its origin and kind), forgotten (how many, how), items given with a
-  question (how many, how found, ms), memory that couldn't be opened, a command, the lock screen's key. Codes and counts
-  only; `ProcessIsolationTest` checks that memory reaches no log, no network, no `:mt`, no one-shot request and no
-  helper but through its card.
+  question (how many, how found, ms), memory that couldn't be opened, a command, the lock screen's key; 230 an import
+  (1.0). Codes and counts only; `ProcessIsolationTest` checks that memory reaches no log, no network, no `:mt`, no
+  one-shot request and no helper but through its card.
+
+### Import (1.0)
+
+Settings › Memory › Import, under Export, moves what 0.9 remembered to 1.0 (a new app beside 0.9: "The app ID" above).
+It reads the file Export writes, `robot-memory.json`: 0.9's and 1.0's are the same format (core `MemoryCodec`, version
+1, indented), and 1.0's items may also carry the import mark below.
+
+- **The file**: Android's file picker (`ACTION_OPEN_DOCUMENT`, `application/json` or any file), so no storage
+  permission. Never on the lock screen ("Unlock first: memory is imported only on an unlocked phone.", before the picker
+  and again before the write). With Memory off, a window says so and offers Turn on first.
+- **Read as data from outside** (core `MemoryImport`, `StrictJson`): 5 MB and 5,000 items at most; strict JSON (UTF-8;
+  no comments, single quotes, bare words, trailing commas, repeated keys or text after the end; 32 levels deep at most);
+  unknown fields ignored. A wrong or damaged file: "This isn't a Robot memory export." (over 5 MB, over 5,000 items and
+  a newer Robot's export each have their own sentence). Kept from each item: its words (cut at 300 characters, as Robot
+  keeps them), fact or preference, private, pinned (six at most, never a private item), where it came from (said, typed,
+  a suggestion, Settings, or something Robot read with its line), its language, its dates (saved, changed, ends, last
+  used; a missing or future one is the import's time) and its use counter. Never the file's ids (each item gets a new
+  one) or its People links. Suggestions and "don't suggest" examples aren't imported (none are made yet).
+- **The preview**, one screen, FLAG_SECURE as Memory is: how many items the file holds; how many are already in Memory
+  (the same words, ignoring case, accents and punctuation: skipped); how many hold a password, a PIN, a code or a card
+  number (`SecretDetector`, the rule that makes the model's remember refuse one: skipped, counted, never shown; add one
+  yourself with Add something, where it stays private); had ended, couldn't be read, or found no room (Memory holds
+  2,000), when there are any; how many will be added, and how many of those are private; and the list, a private item
+  masked ("Private: tap to show") until tapped. Import (a tap, never by voice) and Cancel.
+- **Content until you say otherwise** (the audit's `MemoryTaint`): a file can be made by someone else, so imported items
+  count as content, as memory kept from something Robot read does. A question they go with makes the conversation
+  content (what the model then asks for follows Safety cards), and the model is told they were "imported from a file,
+  not confirmed as the user's own words". The preview's "These are my own memories, from my own export" (off) imports
+  them as yours. An item the file marks as content (kept from something Robot read, a source Robot doesn't know, or
+  imported and never confirmed on the phone that exported it) stays content either way. In Settings › Memory an imported
+  item shows a small "Imported" label; its dialog's This is mine clears it and the import's mark (`MemoryEdits.mine`;
+  one kept from something Robot read stays content).
+- **Writing**: through the vault, under its lock, encrypted as every change; the plan is made again against memory as it
+  is then, so nothing saved meanwhile is doubled. Then "Added 3 memories." and, since the file isn't encrypted, Delete
+  the file (`DocumentsContract.deleteDocument`, where the file's app allows it) or Not now. The voice log gets event 230
+  (memory's 180 to 189 have no free id): items added, how it ended, items skipped; never an item's words or the file's
+  name. No new permission or component.
+
+**Code and tests.** Core `memory/MemoryImport.kt`, `StrictJson.kt`, `MemoryItem.imported`, `MemoryEdits.mine`; the
+app's `ui/settings/MemoryImportScreen.kt` and `MemorySettings.kt`. Tests: `MemoryImportTest` (0.9's and 1.0's exports,
+Export's own output, the caps, damaged and foreign files, secrets, duplicates, private items, new ids, content marks and
+the tick, a marker in no log), `StrictJsonTest`, `VoiceLogTest`, `MemoryImportScreenTest` (Robolectric: the preview's
+counts and masking, FLAG_SECURE, the lock screen, Memory off, content by default and the tick, This is mine, Added and
+Delete the file, a marker in no log; light, dark and 200 % font goldens), `ProcessIsolationTest`
+(`memoryImportIsLockedSecureAndContentByDefault`, `memoryStaysOnThePhone`).
 
 ### Not in this step
 
@@ -3340,6 +3385,31 @@ Nothing here has run on the phone yet. Use a phone with a screen lock (PIN), Rob
 19. **The key after the screen lock changes (gate 7.0d).** Remove the screen lock, then set it again: Settings › Memory
     opens as before, or says the key is gone with Start over; record which. After GrapheneOS's auto-reboot, before the
     first unlock, "do you remember …" says unlock; after it, memory opens.
+
+### On the phone (1.0 memory import)
+
+Nothing here has run on the phone yet. 0.9 and 1.0 installed side by side, a screen lock set.
+
+1. **From 0.9.** In 0.9, have a few items: one made private in its dialog ("My therapist is Dr. Martin"), one code
+   ("Remember that the garage code is 4512") and one kept from a screen (step 14 of 0.7's list). Settings › Memory ›
+   Export › Choose a file, save `robot-memory.json` in Download. In 1.0: Settings › Memory › Import, pick it: *done
+   when* the preview counts the items, says 1 holds a password, a PIN, a code or a card number, never shows 4512, lists
+   the rest with the private one as "Private: tap to show" (a tap shows it, another hides it), and a screenshot of the
+   preview is refused.
+2. **Content by default.** Import without ticking: *done when* "Added N memories." offers Delete the file, Settings ›
+   Memory lists the items with "Imported", and, with Settings › Safety & privacy › Safety cards at "Only when Robot
+   isn't sure who", a question one of them answers followed by "text Bob I'm on my way" brings a card first.
+3. **This is mine.** Open an imported item (not the one from a screen) › This is mine: *done when* "Imported" is gone
+   and step 2's question and text, in a new conversation, follow Safety cards as for your own words (no card).
+4. **The tick.** Settings › Memory › Delete all, then import the file again with "These are my own memories, from my own
+   export" ticked: *done when* step 2's text needs no card, the item 0.9 kept from a screen still says where it came
+   from, and importing the file a third time says "Nothing to add." with Import greyed out.
+5. **Delete the file.** After an import, tap Delete the file: *done when* "The file is deleted." and the Files app no
+   longer lists `robot-memory.json` (or Robot says to delete it there, for an app that doesn't allow it).
+6. **Memory off, a wrong file.** Turn Use memory off, tap Import: *done when* "Memory is off" offers Turn on, which
+   opens the picker. Pick a `.vcf` file: *done when* "This isn't a Robot memory export." and nothing changes.
+7. **Logs.** *done when* Settings › Voice › Voice log shows "Memory import: N items imported as something Robot read · M
+   skipped", and `adb logcat -d -s Robot | grep -i -e therapist -e garage -e 4512` prints nothing.
 
 ## Memory and messages together (0.7)
 

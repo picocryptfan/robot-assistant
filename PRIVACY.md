@@ -24,15 +24,18 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
 - **What Robot reads for you.** Your contacts and calendar (to text "Mom" or say what's on tomorrow), the screen when you
   ask about it, a photo you attach, your largest photos and videos when you ask it to free space: read on the phone, for
   the question you asked.
-- **What Robot remembers** (Settings › Memory, on by default): only what you ask it to remember ("remember that …"), or
-  what you keep from a card. It is kept in one file encrypted again, beyond Android's own storage encryption, with a key
-  in your phone's secure hardware (Android Keystore, AES-256-GCM) that works only while the phone is unlocked, so it can't
-  be read on a locked phone, not even after the first unlock, unless you turn on "Use memory on the lock screen" (which
-  lets it be read there, never changed: nothing is saved to or removed from memory on a locked phone). Something that
-  looks like a password, a PIN, a code or a card number is kept as a private item: never spoken unless you allow it,
-  never on the lock screen, never sent to a helper. You can see, edit, export and delete every item in Settings › Memory;
-  Export writes a plain, unencrypted file to the place you pick, after a warning. History keeps which items an answer
-  used (their ids), never their words. Nothing from a message becomes memory by itself.
+- **What Robot remembers** (Settings › Memory, on by default): only what you ask it to remember ("remember that …"),
+  what you keep from a card, or what you import from a memory export. It is kept in one file encrypted again, beyond
+  Android's own storage encryption, with a key in your phone's secure hardware (Android Keystore, AES-256-GCM) that
+  works only while the phone is unlocked, so it can't be read on a locked phone, not even after the first unlock, unless
+  you turn on "Use memory on the lock screen" (which lets it be read there, never changed: nothing is saved to or
+  removed from memory on a locked phone). Something that looks like a password, a PIN, a code or a card number is kept
+  as a private item: never spoken unless you allow it, never on the lock screen, never sent to a helper. You can see,
+  edit, export and delete every item in Settings › Memory; Export writes a plain, unencrypted file to the place you
+  pick, after a warning; Import reads only the export file you pick in Android's file picker, on an unlocked phone,
+  shows what it would add before anything is written, keeps nothing of the file but the memories you import (encrypted
+  as the rest), and then offers to delete it. History keeps which items an answer used (their ids), never their words.
+  Nothing from a message becomes memory by itself.
 - **Your messages** (off unless you turn on Settings › Messages, and then only for the apps you choose there): Robot
   reads the messages in those apps' notifications, through Android's notification access, to read them to you,
   summarize, translate or answer them. It needs no SMS permission and reads no message history. Their words stay in the
