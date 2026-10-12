@@ -268,7 +268,7 @@ object Nearby {
      * or the person.
      */
     fun userAgent(version: String): String =
-        "Robot/${version.filter { it.isLetterOrDigit() || it == '.' }.take(20).ifEmpty { "0" }} (${AppId.PACKAGE}; Android voice assistant, GPL-3.0)"
+        "${AppId.product(version)} (${AppId.PACKAGE}; Android voice assistant, GPL-3.0)"
 
     /**
      * [query] may go to Nominatim: a kind of place or a name ("pharmacy", "Tim Hortons", "7-Eleven"), at most 6 words and 60

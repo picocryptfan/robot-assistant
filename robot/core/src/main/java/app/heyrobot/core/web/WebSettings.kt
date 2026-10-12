@@ -322,11 +322,11 @@ object WebUserAgent {
 
     /**
      * The honest User-Agent for the search APIs and Wikipedia: "Robot/0.7.0 (ai.robot_app; Android voice assistant)",
-     * with "; <contact>" when there is one; Robot's app ID ([AppId], app.heyrobot before 1.0). Nothing about the phone or
-     * the person.
+     * with "; <contact>" when there is one; Robot's app ID ([AppId], app.heyrobot before 1.0). The version as the downloads
+     * send it ([AppId.product]: "Robot/1.0.0-rc1"). Nothing about the phone or the person.
      */
     fun api(version: String, contact: String? = CONTACT): String =
-        "Robot/${version.filter { it.isLetterOrDigit() || it == '.' }.take(20).ifEmpty { "0" }} (${AppId.PACKAGE}; Android voice assistant" +
+        "${AppId.product(version)} (${AppId.PACKAGE}; Android voice assistant" +
             (contact?.trim()?.takeIf { it.isNotEmpty() }?.let { "; $it" } ?: "") + ")"
 
     /** A generic mobile User-Agent for page fetches (the design's proposal for open question 2). */

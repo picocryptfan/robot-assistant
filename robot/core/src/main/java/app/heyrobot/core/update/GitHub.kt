@@ -1,5 +1,6 @@
 package app.heyrobot.core.update
 
+import app.heyrobot.core.AppId
 import java.net.URI
 import java.net.URLEncoder
 
@@ -111,8 +112,8 @@ object GitHubHosts {
     const val ACCEPT_JSON = "application/vnd.github+json"
     const val ACCEPT_FILE = "application/octet-stream"
 
-    /** GitHub requires a User-Agent; Robot's names the app and its version, nothing about the phone. */
-    fun userAgent(version: String): String = "Robot/" + version.filter { it in '0'..'9' || it in 'a'..'z' || it in 'A'..'Z' || it == '.' || it == '-' }.take(32)
+    /** GitHub requires a User-Agent; Robot's names the app and its version ([AppId.product]), nothing about the phone. */
+    fun userAgent(version: String): String = AppId.product(version)
 
     /** The host of an HTTPS URL Robot may open (lower case), or null: another scheme or host, a user name or a port in it. */
     fun hostOf(url: String): String? {

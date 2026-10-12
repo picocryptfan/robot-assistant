@@ -1,5 +1,9 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.update.GitHubHosts
+import app.heyrobot.core.web.OpenLibraryWire
+import app.heyrobot.core.web.WebUserAgent
+import app.heyrobot.core.web.WikipediaWire
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -11,6 +15,23 @@ class DownloadPolicyTest {
         assertEquals("Robot/1.0.0", DownloadPolicy.userAgent("1.0.0"))
         assertEquals("Robot/0.9.0-rc1", DownloadPolicy.userAgent("0.9.0-rc1"))
         assertEquals("Robot/1.0evil", DownloadPolicy.userAgent("1.0 (evil)\r\nX: y".take(12)))
+    }
+
+    /** 1.0 rc1: one version string in every User-Agent, "-" kept (a token character), as Settings › About shows it. */
+    @Test fun everyUserAgentNamesTheSameVersion() {
+        val v = "1.0.0-rc1"
+        val product = "Robot/1.0.0-rc1"
+        assertEquals(product, AppId.product(v))
+        assertEquals(product, DownloadPolicy.userAgent(v))
+        assertEquals(product, GitHubHosts.userAgent(v))
+        for (ua in listOf(WebUserAgent.api(v), WebUserAgent.api(v, null), Nearby.userAgent(v), OpenLibraryWire.request("dune", WebUserAgent.api(v)).header("User-Agent"),
+            WikipediaWire.searchRequest("en", "dune", v)!!.header("User-Agent"))) {
+            assertTrue(ua, ua!!.startsWith("$product (${AppId.PACKAGE}; "))
+        }
+        // Only token characters reach the header: no space, bracket, quote, CR or LF, and no letter outside ASCII.
+        assertEquals("Robot/1.0.0-betaX", AppId.product("1.0.0-beta (X)\r\n\"é"))
+        assertEquals("Robot/0", AppId.product("(;)"))
+        assertEquals(32, AppId.product("1".repeat(40)).removePrefix("Robot/").length)
     }
 
     @Test fun onlyBigDownloadsAskFirst() {

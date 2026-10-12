@@ -9,4 +9,14 @@ package app.heyrobot.core
  */
 object AppId {
     const val PACKAGE = "ai.robot_app"
+
+    /**
+     * 1.0: "Robot/<version>", the one way every User-Agent of Robot's names it and its version: the downloads and the
+     * updater (DownloadPolicy, GitHubHosts), Termux's update check, the search APIs, Wikipedia and Open Library
+     * (WebUserAgent) and Nominatim (Nearby). [version] is the build's versionName as Settings › About shows it ("1.0.0",
+     * "1.0.0-rc1"): ASCII letters, digits, "." and "-" (all token characters, RFC 9110), at most 32; anything else is
+     * dropped, so nothing but the version can reach the header.
+     */
+    fun product(version: String): String =
+        "Robot/" + version.filter { it in '0'..'9' || it in 'a'..'z' || it in 'A'..'Z' || it == '.' || it == '-' }.take(32).ifEmpty { "0" }
 }
