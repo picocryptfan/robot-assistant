@@ -1,0 +1,32 @@
+name: Idea
+description: Something you'd like Robot to do.
+title: "Idea: "
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        On the phone, Settings › About › **Send feedback** › Idea writes this for you (it starts with
+        `ROBOT FEEDBACK v1`): paste it whole into **The idea** below. Or just write it here.
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What would you like Robot to do, and when would you use it?
+      placeholder: |
+        ROBOT FEEDBACK v1
+        Kind: Idea
+        Ref: RFB-…
+        …
+        ---
+        The idea:
+        …
+    validations:
+      required: true
+  - type: checkboxes
+    id: personal
+    attributes:
+      label: Before you submit
+      options:
+        - label: I removed anything personal.
+          required: true
