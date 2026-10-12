@@ -18,6 +18,8 @@ enum class ToolGroup {
     WEATHER,
     /** The phone's storage, battery and memory (0.4.0). */
     PHONE,
+    /** Web search (0.9): described only when the words call for it (core web WebRouter) and web search is on. */
+    WEB,
 }
 
 object ToolRouter {
@@ -88,6 +90,7 @@ object ToolRouter {
             if (has(CALENDAR) || WHEN.containsMatchIn(plain)) add(ToolGroup.CALENDAR)
             if (has(WEATHER)) add(ToolGroup.WEATHER)
             if (has(PHONE) || stopsAnApp(words)) add(ToolGroup.PHONE)
+            if (app.heyrobot.core.web.WebRouter.wants(question)) add(ToolGroup.WEB)
         }
     }
 
@@ -186,11 +189,11 @@ object ToolRouter {
     /**
      * The tools described for [groups], in a fixed order. Tools turned Off in settings are never described, nor
      * send_text when the texting app is Off. ask_claude only with [askClaude] (Ask Claude on, escalation not Off:
-     * ClaudeSettings.localTool).
+     * ClaudeSettings.localTool); web_search only with [web] (0.9: Settings › Web search on and set up).
      */
-    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
+    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, web: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
         t.group in groups && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
-            (t != ToolName.ASK_CLAUDE || askClaude)
+            (t != ToolName.ASK_CLAUDE || askClaude) && (t != ToolName.WEB_SEARCH || web)
     }
 
     /** "core.people" for the logs (a fixed identifier, never the question). */

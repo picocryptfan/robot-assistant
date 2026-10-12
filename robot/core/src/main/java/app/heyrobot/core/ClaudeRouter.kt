@@ -711,14 +711,17 @@ object PreRouter {
      * The strongest signal in [question], or null (Gemma answers). [localWeather]: the weather tool is on and may run (0.4.0;
      * PanelController: not on the lock screen), so "weather" and "forecast" no longer count as current information; every
      * other word and signal still does ("the price of a winter coat", "explain why it rains", a long question).
+     * [localWeb] (0.9): web search is on with "Current information: Robot searches first", so current information stays
+     * with Robot as the weather did.
      */
-    fun signal(question: String, localWeather: Boolean = false): Signal? {
+    fun signal(question: String, localWeather: Boolean = false, localWeb: Boolean = false): Signal? {
         val t = ClaudeRouter.plain(question).replace(Regex("[^a-z0-9]+"), " ").trim()
         if (t.isEmpty() || LOCAL.containsMatchIn(t)) return null
         val rest = EVERYDAY.fold(t) { acc, r -> r.replace(acc, " ") }.let { if (localWeather) WEATHER_WORDS.replace(it, " ") else it }
         SIGNALS.firstOrNull { it.second.containsMatchIn(rest) }?.let { (signal, _) ->
             // Stories, poems and jokes are Robot's own to write (0.4.0); letters, speeches and essays still go to Claude.
             if (signal == Signal.WRITING && CREATIVE.containsMatchIn(rest)) return null
+            if (signal == Signal.CURRENT_INFO && localWeb) return null
             return signal
         }
         return if (t.split(' ').size > LONG_WORDS) Signal.LONG else null

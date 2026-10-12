@@ -412,6 +412,8 @@ data class RobotSettings(
             // They stop or delete something (or unload Robot's model): a card first.
             ToolName.FREE_MEMORY to Approval.ASK,
             ToolName.FREE_STORAGE to Approval.ASK,
+            // 0.9: a read that goes online, like the weather (Settings › Web search decides whether it exists at all).
+            ToolName.WEB_SEARCH to Approval.AUTO,
             // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
             ToolName.ASK_CLAUDE to Approval.ASK,
         )

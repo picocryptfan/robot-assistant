@@ -204,7 +204,7 @@ object ClaudeContext {
         Personal.of(attachment)?.let(::add)
         for (t in turns) {
             Personal.of(t.attachment)?.let(::add)
-            for (a in t.actions) if (a.content) add(Personal.of(a.tool))
+            for (a in t.actions) if (a.content) Personal.of(a.tool)?.let(::add)
             if (t.readBack) add(Personal.CLAUDE_APP)
         }
     }

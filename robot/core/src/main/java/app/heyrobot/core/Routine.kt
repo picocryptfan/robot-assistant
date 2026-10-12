@@ -210,7 +210,7 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
     MAPS_NAVIGATE(14, "maps directions"), FLASHLIGHT(15, "flashlight"), SEND_TEXT(16, "text"), DRAFT_EMAIL(17, "email"),
     LOOKUP_CONTACT(18, "contact lookup"), ADD_NOTE(19, "new note"), FIND_NOTES(20, "note search"), ADD_EVENT(21, "new event"),
     READ_CALENDAR(22, "calendar"), WEATHER(23, "weather"), PHONE_STATUS(24, "phone status"), FREE_MEMORY(25, "free memory"),
-    FREE_STORAGE(26, "free storage"), ASK_CLAUDE(27, "Ask Claude");
+    FREE_STORAGE(26, "free storage"), ASK_CLAUDE(27, "Ask Claude"), WEB_SEARCH(28, "web search");
 
     companion object {
         fun of(t: ToolName): StepCode = when (t) {
@@ -232,6 +232,7 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
             ToolName.FREE_MEMORY -> FREE_MEMORY
             ToolName.FREE_STORAGE -> FREE_STORAGE
             ToolName.ASK_CLAUDE -> ASK_CLAUDE
+            ToolName.WEB_SEARCH -> WEB_SEARCH
         }
     }
 }
@@ -465,6 +466,7 @@ object RoutineCodec {
         is Action.FreeMemory -> buildMap { a.app?.let { put("app", it) } }
         is Action.FreeStorage -> mapOf("what" to a.way.name.lowercase())
         is Action.ReadCalendar -> mapOf("day" to a.day)
+        is Action.WebSearch -> buildMap { put("query", a.query); a.depth?.let { put("depth", it) } }
     }
 
     private fun nearest(a: Action): Boolean = (a as? Action.MapsSearch)?.nearest == true || (a as? Action.MapsNavigate)?.nearest == true

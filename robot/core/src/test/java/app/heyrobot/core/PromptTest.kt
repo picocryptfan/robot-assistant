@@ -194,7 +194,8 @@ class PromptTest {
     @Test fun eachToolGroupCostsTokensOnlyWhenUsed() {
         val system = Prompt.system(now, locked = false)
         val core = Prompt.fixedTokens(system, Prompt.CORE_TOOLS)
-        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal })
+        // Without web search (0.9: off until you set it up), as before; with it, below.
+        val all = Prompt.fixedTokens(system, ToolName.entries.filter { !it.internal && it != ToolName.WEB_SEARCH })
         assertEquals(core, Prompt.fixedTokens(system))
         // ask_claude (Ask Claude on): one short tool and one line of the system prompt.
         val withClaude = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true), Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE)
@@ -207,9 +208,20 @@ class PromptTest {
         // The worst case: every group, Ask Claude on (its tool and line) and every optional system line. About 500 tokens
         // are left for the new turn: screen text is cut to fit (fitTurn) and older turns are dropped first.
         val worst = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true),
-            ToolName.entries.toList())
+            ToolName.entries.filter { it != ToolName.WEB_SEARCH })
         assertTrue("worst $worst", worst < 2_850)
         assertTrue(ContextWindow.newTurnLimit(worst) > 450)
+        // 0.9, web search on and its words used: web_search (about 140 estimated tokens, two parameters) and its line. The
+        // results and pages never come into this context (a one-shot of their own answers from them), so the room
+        // left for the new turn shrinks only by the tool: about 330 tokens in this worst case, every group at once.
+        val web = Prompt.fixedTokens(Prompt.system(now, locked = false, web = true), Prompt.CORE_TOOLS + ToolName.WEB_SEARCH)
+        assertTrue("web_search ${web - core}", web - core in 1..200)
+        val allWeb = Prompt.fixedTokens(Prompt.system(now, locked = false, web = true), ToolName.entries.filter { !it.internal })
+        assertTrue("all with web $allWeb", allWeb < 2_800)
+        val worstWeb = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true, web = true),
+            ToolName.entries.toList())
+        assertTrue("worst with web $worstWeb", worstWeb < 3_050)
+        assertTrue("${ContextWindow.newTurnLimit(worstWeb)}", ContextWindow.newTurnLimit(worstWeb) > 270)
         for (g in listOf(ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR)) {
             val tools = ToolRouter.tools(setOf(ToolGroup.CORE, g), RobotSettings())
             assertTrue(g.name, Prompt.fixedTokens(system, tools) in (core + 1) until all)

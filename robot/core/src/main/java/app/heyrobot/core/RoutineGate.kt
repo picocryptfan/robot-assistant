@@ -118,7 +118,8 @@ object RoutineGate {
         ToolName.WEATHER -> StepClass.READ_ONLINE
         ToolName.SET_TIMER, ToolName.SET_ALARM, ToolName.FLASHLIGHT, ToolName.ADD_NOTE -> StepClass.LOCAL_ACTION
         ToolName.OPEN_APP, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE, ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT -> StepClass.NEEDS_YOU
-        ToolName.FREE_MEMORY, ToolName.FREE_STORAGE, ToolName.ASK_CLAUDE -> StepClass.NEVER
+        // 0.9: a web search answers a question you ask; a routine never sends one by itself.
+        ToolName.FREE_MEMORY, ToolName.FREE_STORAGE, ToolName.ASK_CLAUDE, ToolName.WEB_SEARCH -> StepClass.NEVER
     }
 
     /** The steps the editor offers ("Do"): everything but [StepClass.NEVER]. */

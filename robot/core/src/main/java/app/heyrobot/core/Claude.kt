@@ -505,8 +505,9 @@ enum class Personal(val label: String) {
             Attachment.NONE -> null
         }
 
-        /** What a read tool's findings were. */
-        fun of(tool: ToolName): Personal = when (tool) {
+        /** What a read tool's findings were; null for public web text (0.9: web search is content, not personal). */
+        fun of(tool: ToolName): Personal? = when (tool) {
+            ToolName.WEB_SEARCH -> null
             ToolName.READ_CALENDAR -> CALENDAR
             ToolName.FIND_NOTES -> NOTES
             ToolName.LOOKUP_CONTACT -> CONTACTS

@@ -39,6 +39,13 @@ enum class AskWhy {
      * says what would leave the phone, answered by a tap.
      */
     ONLINE,
+    /**
+     * 0.9, a web search's own rule: "Ask before searching: Always ask", or a query with words that aren't yours (core web
+     * QueryCheck: from a web page, the screen or another AI). Always a card; a yes may answer it.
+     */
+    SEARCH,
+    /** 0.9: a web search with words from something Robot read on your phone (QueryCheck's personal words): a card answered by a tap. */
+    SEARCH_PERSONAL,
 }
 
 /** The one-time line after updating to 0.4.0 ([RobotSettings.safetyNotice]); tapping it opens Settings › Safety & privacy. */
@@ -101,19 +108,21 @@ object CardAnswer {
     const val TAP_LEARNED = "Robot learned that name from a Cheogram notification: check who it goes to on the card, then tap."
     const val TAP_UNSURE = "Robot isn't sure who or which it is: check the card, then tap."
     const val TAP_ONLINE = "Tap Allow always, Just this time or No on the card."
+    const val TAP_SEARCH = "This search has words from something Robot read on your phone: check it on the card, then tap."
 
     /**
      * Why a card needs a tap, whatever is said ([Card.tapFor]): a name learned from a Cheogram notification (whoever sent
      * it chose it), not being sure who or which (several people, a near match, a number or address the model wrote, a
      * loose app name), or going online for the first time. Null: a yes may answer it.
      */
-    fun tapFor(why: Set<AskWhy>): AskWhy? = listOf(AskWhy.LEARNED, AskWhy.WHO, AskWhy.ONLINE).firstOrNull { it in why }
+    fun tapFor(why: Set<AskWhy>): AskWhy? = listOf(AskWhy.LEARNED, AskWhy.WHO, AskWhy.ONLINE, AskWhy.SEARCH_PERSONAL).firstOrNull { it in why }
 
     /** What Robot says when a yes can't answer a card that needs a tap for [why]. */
     fun tapWords(why: AskWhy): String = when (why) {
         AskWhy.LEARNED -> TAP_LEARNED
         AskWhy.WHO -> TAP_UNSURE
         AskWhy.ONLINE -> TAP_ONLINE
+        AskWhy.SEARCH_PERSONAL -> TAP_SEARCH
         else -> TAP_ONE
     }
 

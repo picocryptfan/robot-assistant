@@ -119,6 +119,7 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.PHONE_STATUS -> RIcons.Phone
     ToolName.FREE_MEMORY -> RIcons.Chip
     ToolName.FREE_STORAGE -> RIcons.Folder
+    ToolName.WEB_SEARCH -> RIcons.Search
     null -> RIcons.Warning
 }
 

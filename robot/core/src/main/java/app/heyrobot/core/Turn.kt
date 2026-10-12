@@ -1,5 +1,6 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.web.WebOutcome
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -119,9 +120,14 @@ data class Executed(
      * of Android's settings ([SettingsPage], 0.4.0), e.g. storage after phone_status.
      */
     val handOff: String? = null,
+    /**
+     * 0.9, web_search: what the search found (or why it failed). The model's turn ends with it: the panel answers from it
+     * in a tool-free one-shot (or says why it failed in fixed words), and the main conversation never holds web text.
+     */
+    val web: WebOutcome? = null,
 ) {
-    /** Content entered the conversation: every later action in it asks first. */
-    val content: Boolean get() = !results.isNullOrEmpty()
+    /** Content entered the conversation: every later action in it asks first (web results too: content, not personal). */
+    val content: Boolean get() = !results.isNullOrEmpty() || web is WebOutcome.Found
 }
 
 interface TurnActions {
@@ -198,7 +204,9 @@ class StallTimer(private val gapMs: Long, start: Long) {
  * How the turn ended: [reason] when the model's reply ended (or was ended), [failure] when it failed. [escalate]: the
  * local model called ask_claude; nothing else of that reply ran, and the panel brings Claude in (or offers to).
  */
-data class TurnResult(val reason: DoneReason?, val failure: String? = null, val launchedApp: Boolean = false, val escalate: Boolean = false)
+data class TurnResult(val reason: DoneReason?, val failure: String? = null, val launchedApp: Boolean = false, val escalate: Boolean = false,
+    /** 0.9: the model called web_search and it ran: its turn ended there, and the panel answers from this. */
+    val web: WebOutcome? = null)
 
 /** The person's answers to confirmation cards. Thread-safe. */
 class Confirmations {
@@ -303,6 +311,9 @@ class TurnRunner(
     /** The round under way's results so far: a stop meanwhile tells the model what ran ([TurnModel.stopped]). */
     private var inRound: MutableList<Pair<String, Map<String, Any?>>>? = null
 
+    /** 0.9: a web search ran in this turn (core web WebOutcome): nothing else of the reply runs, and the turn ends. */
+    private var web: WebOutcome? = null
+
     suspend fun run(): TurnResult {
         var outcome = model.ask()
         var rounds = 0
@@ -320,6 +331,11 @@ class TurnRunner(
                 // Another app is opening: no follow-up reply. What ran (the launch included) is the model's to know.
                 model.abandon(round.responses)
                 return TurnResult(DoneReason.END, launchedApp = true)
+            }
+            // A web search ran: like ask_claude, the model's turn ends at the call, and the panel answers from what it found.
+            web?.let {
+                model.close()
+                return TurnResult(DoneReason.END, web = it)
             }
             view.phase(TurnPhase.THINKING)
             view.paragraphBreak()
@@ -344,7 +360,7 @@ class TurnRunner(
                 val round = runCalls(found.map { it.call }, speak = true)
                 // No tool results in this mode: the conversation is rebuilt from the history next time.
                 model.close()
-                TurnResult(DoneReason.END, launchedApp = round.launched)
+                TurnResult(DoneReason.END, launchedApp = round.launched, web = web)
             }
         }
     }
@@ -380,6 +396,17 @@ class TurnRunner(
         spokenThisRound.clear()
         for (raw in calls) {
             val parsed = parse(raw)
+            // After a web search, nothing else of this reply runs: the answer comes from the search (design A6.2).
+            if (web != null) {
+                val why = "Robot answers from the web search first."
+                val (tool, summary) = when (parsed) {
+                    is ParsedCall.Ok -> parsed.action.tool to parsed.action.describe()
+                    is ParsedCall.Invalid -> ToolName.of(parsed.tool) to "Couldn't do “${parsed.tool}”"
+                }
+                view.card(Card(newId(), tool, summary, ActionStatus.SKIPPED, why, remote = remote))
+                out += raw.name to ActionStatus.SKIPPED.toolResponse(why)
+                continue
+            }
             if (budget <= 0) {
                 val why = "Robot does at most ${TurnRules.MAX_CALLS} actions per answer."
                 val (tool, summary) = when (parsed) {
@@ -441,8 +468,9 @@ class TurnRunner(
         fun finish(r: Executed): Pair<Pair<String, Map<String, Any?>>, Boolean> {
             // What a read tool found is content: from now on every action in this conversation asks first.
             if (r.content) untrusted = true
+            if (r.web != null && r.status != ActionStatus.DECLINED) web = r.web
             val launched = r.launchedApp && r.status.succeeded
-            if (speak && !launched) view.say(r.spoken ?: r.detail)
+            if (speak && !launched && r.web == null) view.say(r.spoken ?: r.detail)
             if (!launched) spokenThisRound += r.spoken ?: r.detail
             return done(chosen, r.status, r.detail, launched, r)
         }

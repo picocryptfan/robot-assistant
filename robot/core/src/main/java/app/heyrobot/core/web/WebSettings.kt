@@ -4,10 +4,9 @@ import app.heyrobot.core.LogCode
 import org.json.JSONObject
 
 // Pure. Settings › Web search as data (design A5), the first search's tap-only card (A4.2, the 0.4.0 Nearby pattern),
-// the User-Agents (A2.2, A7), the time limits, and the voice log's numbers (A10.5). These are small types of their own
-// so the shared files (Settings.kt, VoiceLog.kt) can take them in one change when web search is wired: RobotSettings
-// gets a `web` object read with WebSettings.fromJson (schema 10, EST; an older file reads as Off), and VoiceEvent gets
-// the ids reserved below.
+// the User-Agents (A2.2, A7), the time limits, and the voice log's numbers (A10.5). 0.9 keeps these settings in a file
+// of their own, files/robot/web.json (the main app writes it, the voice process reads it; settings.json and its schema
+// don't change), read with WebSettings.fromJson: no file, or an unreadable one, is Off. VoiceEvent has the ids below.
 
 /** Which service searches for you: the one set-up picked. [code] is what the voice log stores. */
 enum class SearchService(val code: Int, val title: String, val label: String, val provider: SearchProvider, val keyId: String?, val setupLine: String) {
@@ -338,8 +337,7 @@ object WebLimits {
 }
 
 /**
- * The voice log's web search events (A10.5). Voice log ids 160–169 are reserved for web search (the next free block
- * after 0.4.1's 130–139, to confirm at merge); VoiceEvent takes these when it is wired, nothing is in VoiceLog.kt yet.
+ * The voice log's web search events (A10.5): VoiceEvent's WEB_SEARCH to WEB_FAILED, 160–163 of web search's 160–169.
  * Codes and numbers only: never the query, a URL, a domain, a title or page text.
  */
 enum class WebLogEvent(val reservedId: Int) {
