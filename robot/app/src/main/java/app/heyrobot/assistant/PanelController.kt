@@ -14,6 +14,8 @@ import app.heyrobot.core.helpers.HelperTrust
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
 import app.heyrobot.core.memory.MemoryRoute
+import app.heyrobot.core.messages.ActionOrigin
+import app.heyrobot.core.messages.MessageQuarantine
 import app.heyrobot.core.helpers.Pricing
 import android.os.PowerManager
 import android.os.SystemClock
@@ -257,6 +259,8 @@ data class UiTurn(
     val helper: String? = null,
     val by: String? = null,
     val home: Boolean = false,
+    /** 0.7: the reply card under it (PanelMessages). */
+    val reply: app.heyrobot.ui.common.ReplyCardView? = null,
 )
 
 data class Draft(val kind: Attachment, val thumb: Bitmap?)
@@ -475,6 +479,13 @@ object PanelController {
             // "What should the text to Mom say?" was said aloud: the answer comes by voice too.
             if (shown && askingTextFor != null) VoiceHub.main.post { if (shown && askingTextFor != null && _state.value.phase == Phase.IDLE) startListening() }
         }
+        // 0.7: after a conversation read aloud ("Reply, next, or stop?") or a reply card, one listen; and what Robot read
+        // of a message counts as heard back for 15 s from now.
+        if (!speaking) PanelMessages.quiet()
+        if (!speaking && msgListenAfterSpeech) {
+            msgListenAfterSpeech = false
+            VoiceHub.main.postDelayed({ if (shown && !VoiceHub.tts.isSpeaking && _state.value.phase == Phase.IDLE) startListening() }, 350)
+        }
         _state.update {
             when {
                 !speaking && it.phase == Phase.SPEAKING -> it.copy(phase = Phase.IDLE)
@@ -532,6 +543,7 @@ object PanelController {
         }
         BrainKeeper.prewarm(VoiceHub.app)
         HelperLink.warm(VoiceHub.app, s)
+        PanelMessages.onShow()
         // The voice models load on first use (VoiceHub's memory policy): speech recognition when the mic or the wake
         // word starts a question, the voice when a question is sent with spoken replies on. Nothing loads just for a show.
         RLog.i("panel_show", "src" to source?.let { RLog.Code(it) }, "locked" to locked, "turns" to chat.size)
@@ -565,6 +577,8 @@ object PanelController {
         VoiceHub.stt.cancel()
         VoiceHub.listener?.wakePaused = false
         listenAfterSpeech = false
+        msgListenAfterSpeech = false
+        PanelMessages.onHide()
         if (hidingFor == null) askingTextFor = null
         val forCapture = hidingFor == "capture"
         // A turn never goes on behind a hidden panel: closing stops it, and a card nobody can tap any more is declined.
@@ -1127,6 +1141,8 @@ object PanelController {
         if (q.isEmpty() && st.draft == null) return false
         // A card waits: a typed or spoken "yes" or "no" answers it (Settings › Safety & privacy).
         if (st.phase == Phase.CONFIRMING && st.draft == null && answerCard(q, fromVoice)) return true
+        // 0.7: a reply card waiting: "yes" (where allowed), "no", or "stop" in its 3 seconds.
+        if (st.draft == null && PanelMessages.answerCard(q, fromVoice)) return true
         if (st.busy || slot.running) {
             if (st.phase == Phase.CONFIRMING) {
                 notify(if (fromVoice && !VoiceHub.settings.voiceCards) CARD_TYPE_HINT else CARD_HINT)
@@ -1152,12 +1168,15 @@ object PanelController {
         expireHelperMode()
         // Conversation mode's commands first (0.5.0, docs/conversation-mode.md 5.4): "transcribe this conversation",
         // and while one runs "stop transcribing", "pause", "resume". Never the model's to decide.
-        val convCmd = if (q.isNotEmpty() && st.draft == null) ConversationRouter.route(q, ConversationSession.running) else null
+        // 0.7, your messages (PanelMessages, core MessagesRouter) before anything else: "read my messages", "reply …"; and a
+        // message's own words heard back while Robot read it are never a request (not even "remember that …").
+        val msgCmd = if (q.isNotEmpty() && st.draft == null) PanelMessages.route(q, fromVoice) else null
+        val convCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null) ConversationRouter.route(q, ConversationSession.running) else null
         // 0.7: memory's commands next ("remember that …", "forget that", "what do you know about me?"), Robot's own even in a
         // helper's conversation: what you ask Robot to remember never goes to a helper (core MemoryRouting).
-        val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null) MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null
+        val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null) MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null
         // The helpers' phrases next ("ask Claude …", "go get Jarvis"), then texting without the model, then the model (FastPath).
-        var cmd = if (q.isNotEmpty() && convCmd == null && memRoute == null) ClaudeRouter.route(q, names) else null
+        var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && memRoute == null) ClaudeRouter.route(q, names) else null
         // "Thanks Claude" outside a helper's conversation is ordinary talk.
         if (cmd == ClaudeCommand.Leave && !_state.value.claudeMode) cmd = null
         // "Not Claude", "you tell me": Robot answers, now and for the rest of the conversation (a helper's conversation ends too).
@@ -1200,7 +1219,7 @@ object PanelController {
         val way = if (memRoute != null) FastPath.Way.MODEL else FastPath.of(cmd, _state.value.claudeMode, attachment)
         val toClaude = way == FastPath.Way.CLAUDE
         // Groups are only ever added: a question that needs a new one rebuilds the conversation once (:brain).
-        if (cmd == null && !toClaude && convCmd == null && memRoute == null) groups = groups + ToolRouter.route(q)
+        if (cmd == null && !toClaude && convCmd == null && msgCmd == null && memRoute == null) groups = groups + ToolRouter.route(q)
         val replyId = newId()
         // Decided per turn: a screen turn stops saving until the person taps Keep.
         val keep = if (marked == Attachment.SCREEN && !keptByUser) false else st.keep
@@ -1227,6 +1246,7 @@ object PanelController {
         val guard = EscalationGuard()
         startTurn(replyId) {
             when {
+                msgCmd != null -> PanelMessages.run(replyId, msgCmd)
                 convCmd != null -> conversationCommand(replyId, convCmd)
                 memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)
                 cmd == ClaudeCommand.Leave -> {
@@ -1420,8 +1440,9 @@ object PanelController {
             toolRoom = budget - ContextWindow.fit(gen.history, budget).sumOf(TokenEstimate::turn) - TOOL_CALL_TOKENS
             // Chat only: whatever the model emits, no call reaches the approval gate (core ChatOnlyTurn; :brain drops them too).
             val model = BrainTurn(c, convId, replyId, gen, img).let { if (chatOnly) ChatOnlyTurn(it) else it }
-            return TurnRunner(model, PanelActions, PanelView(replyId), slot.confirmations, untrusted,
-                asked = askedNow, newId = ::newId).run()
+            // 0.7: notes kept from content (not your own words) make the turn content too (MemoryTurn.content).
+            return TurnRunner(model, PanelActions, PanelView(replyId), slot.confirmations, untrusted || mem.content,
+                asked = askedNow, messages = PanelMessages.taint(chat), newId = ::newId).run()
         }
         // ask_claude is a tool: a chat-only model gets none (the escalation triggers outside the model still apply).
         val result = gemma(askClaude = leftOut == null && !chatOnly)
@@ -1917,7 +1938,7 @@ object PanelController {
         }
         val result = try {
             TurnRunner(rounds, PanelActions, PanelView(replyId, h.name), slot.confirmations, untrusted = true, remote = true, asked = asked,
-                trusted = HelperTrust.reads(s, h), offered = session.offered, newId = ::newId).run()
+                trusted = HelperTrust.reads(s, h), offered = session.offered, messages = PanelMessages.taint(chat), newId = ::newId).run()
         } finally {
             val r = session.lastReport
             RLog.i("claude_turn", "kind" to h.kind, "model" to ((session as? ClaudeSession)?.model ?: RLog.Code("other")), "effort" to plan.effort,
@@ -2014,7 +2035,8 @@ object PanelController {
             override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = ModelOutcome.Done(DoneReason.END)
             override fun close() {}
         }
-        val r = TurnRunner(scripted, PanelActions, PanelView(replyId), slot.confirmations, untrusted = false, newId = ::newId).runHandOff()
+        val r = TurnRunner(scripted, PanelActions, PanelView(replyId), slot.confirmations, untrusted = false, messages = PanelMessages.taint(chat),
+            newId = ::newId).runHandOff()
         finishReply(replyId, DoneReason.END)
         if (r.launchedApp) leaveForApp()
     }
@@ -2090,6 +2112,20 @@ object PanelController {
      * "forget …" make a pick card first. On the lock screen it only says to unlock, unless memory is allowed there.
      */
     private suspend fun memoryCommand(replyId: String, route: MemoryRoute, spoken: Boolean) {
+        // 0.7, memory and messages: your "remember that …" in a conversation that holds a message is never saved at once.
+        // It goes through the turn runner as one remember call of your own words: a card that shows exactly the words kept,
+        // answered only by a tap, kept as content (core MessageQuarantine.rememberAfterMessages); a code is refused there.
+        when (val after = MessageQuarantine.rememberAfterMessages(route, PanelMessages.taint(chat))) {
+            null -> {}
+            is MessageQuarantine.AfterMessages.Refused -> return localReply(replyId, after.text)
+            is MessageQuarantine.AfterMessages.Card -> {
+                setText(replyId, if (after.fr) MessageQuarantine.CHECK_AND_TAP_FR else MessageQuarantine.CHECK_AND_TAP)
+                val result = TurnRunner(DirectCall(after.call), PanelActions, PanelView(replyId), slot.confirmations, untrusted = true,
+                    asked = setOf(ToolName.REMEMBER), messages = PanelMessages.taint(chat), origin = ActionOrigin.USER_WORDS, newId = ::newId).run()
+                result.failure?.let { return failReply(replyId, it) }
+                return finishReply(replyId, result.reason ?: DoneReason.END)
+            }
+        }
         var a = withContext(Dispatchers.IO) { MemoryPanel.command(route, Assistant.locked(VoiceHub.app), spoken) }
         if (a.pick.isNotEmpty()) {
             val id = newId()
@@ -2140,6 +2176,46 @@ object PanelController {
         voice.feed(replyId, spoken, _state.value.speak).forEach { speakSentence(it) }
         finishReply(replyId, DoneReason.END)
     }
+
+    // ------------------------------------------------------------------ messages (0.7, PanelMessages)
+
+    /** Listen once when Robot stops talking (after a conversation read aloud, or a reply card), or [now] (a reply's 3 seconds). */
+    private var msgListenAfterSpeech = false
+
+    internal fun messagesListen(now: Boolean) {
+        if (!now) msgListenAfterSpeech = true
+        else if (shown && !VoiceHub.tts.isSpeaking && _state.value.phase == Phase.IDLE) startListening()
+    }
+
+    /** Ends [replyId] with [text] shown; PanelMessages speaks it in each piece's own voice. */
+    internal fun messagesReply(replyId: String, text: String) {
+        markHelper(replyId, null)
+        _state.update { it.copy(helperStatus = null) }
+        setText(replyId, text)
+        finishReply(replyId, DoneReason.END)
+    }
+
+    /** The reply card under [replyId] (null: none). */
+    internal fun messagesCard(replyId: String, card: app.heyrobot.ui.common.ReplyCardView?) =
+        _state.update { st -> st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(reply = card) else it }) }
+
+    /** What History keeps of [replyId] changed ("Sent your reply to Mom"). */
+    internal fun messagesKept(replyId: String, kept: String) {
+        val i = chat.indexOfFirst { it.id == replyId }
+        if (i < 0) return
+        chat[i] = chat[i].copy(messages = true, kept = kept)
+        persist()
+    }
+
+    /** "Open chat": the app opens over the panel with your reply as a draft. */
+    internal fun messagesLaunch(i: Intent): Boolean {
+        val ok = host?.launch(i) == true
+        if (ok) scope.launch { leaveForApp() }
+        return ok
+    }
+
+    /** A card button (PanelActions.reply). */
+    fun reply(replyId: String, op: app.heyrobot.ui.common.ReplyOp) = PanelMessages.onCard(replyId, op)
 
     // ------------------------------------------------------------------ a helper's conversation ("go get Claude")
 
@@ -2280,7 +2356,7 @@ object PanelController {
         val call = RawToolCall(ToolName.SEND_TEXT.id, mapOf("to" to req.name, "message" to req.message))
         // Your own words asked for this text (or answered "what should it say?").
         val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.SEND_TEXT),
-            newId = ::newId).run()
+            messages = PanelMessages.taint(chat), newId = ::newId).run()
         result.failure?.let { failReply(replyId, it); return true }
         finishReply(replyId, result.reason ?: DoneReason.END)
         if (result.launchedApp) leaveForApp()
@@ -2357,7 +2433,9 @@ object PanelController {
         override suspend fun run(action: Action): Executed {
             // 0.7: remember and forget (core memory/); what the conversation holds decides where a remembered item came from.
             if (action.tool.group == ToolGroup.MEMORY) return withContext(Dispatchers.IO) {
-                MemoryPanel.run(action, spokenTurn, TurnRules.untrusted(chat) || _state.value.turns.lastOrNull()?.actions?.any { it.content } == true)
+                // (The last: a message is in the conversation, so only your own "remember that …" got here, after its tap.)
+                MemoryPanel.run(action, spokenTurn, TurnRules.untrusted(chat) || _state.value.turns.lastOrNull()?.actions?.any { it.content } == true,
+                    PanelMessages.taint(chat).active)
             } ?: Executed(ActionStatus.FAILED, "Something went wrong.")
             if (!action.online) return withContext(Dispatchers.IO) { executor().run(action) }
             val weather = action.tool == ToolName.WEATHER
@@ -2587,6 +2665,8 @@ object PanelController {
     /** Stop button: stops the reply (or the model load) and its voice; a waiting card is declined. */
     fun stopGenerating(why: TtsStop = TtsStop.BUTTON) {
         stopCardListening()
+        msgListenAfterSpeech = false
+        PanelMessages.stop()
         val id = reqId
         if (id != 0) client?.post(BrainProtocol.REQ_CANCEL, BrainMsg.Cancel(id))
         // The voice stops now: nothing already queued, and not the cut-off last sentence (finishReply drops it).
@@ -2603,6 +2683,8 @@ object PanelController {
      * turn stayed busy until it was done), so the next question can come at once.
      */
     fun stopSpeaking(why: TtsStop = TtsStop.TAP) {
+        msgListenAfterSpeech = false
+        PanelMessages.stop()
         if (_state.value.phase.stopEndsTurn(slot.running)) return stopGenerating(why)
         voice.mute()
         VoiceHub.stopVoice(why)
@@ -2642,9 +2724,12 @@ object PanelController {
             VoiceLog.add(VoiceEvent.NO_REPLY, NoReply.EMPTY)
             if (spokenTurn) cue(Cue.SORRY_NO_ANSWER)
         }
+        // 0.7: a turn with messages in it, or after one, is saved as a placeholder (core ChatTurn.messages); memory's History
+        // record (its item ids, a line for a private answer) keeps that placeholder (MemoryPanel.forHistory copies the turn).
+        val kept = PanelMessages.kept(replyId) ?: if (chat.any { it.messages }) app.heyrobot.core.messages.MessageReading.ANSWER_NOT_KEPT else null
         chat += MemoryPanel.forHistory(ChatTurn(replyId, TurnRole.ASSISTANT, text, System.currentTimeMillis(), actions = records(actions), stopped = stopped,
             claude = claude, sources = ui?.sources.orEmpty(), costMicros = costMicros,
-            helper = ui?.helper.takeIf { claude }, by = ui?.by.takeIf { claude }, home = claude && ui?.home == true))
+            helper = ui?.helper.takeIf { claude }, by = ui?.by.takeIf { claude }, home = claude && ui?.home == true, messages = kept != null, kept = kept))
         _state.update { st ->
             st.copy(
                 // Only the turn's phases end here: "hey robot" during the answer is already listening.

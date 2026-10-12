@@ -237,6 +237,46 @@ class MemoryPanelTest {
         assertNull(MemoryPanel.run(Action.SetTimer(60), false, false))
     }
 
+    /**
+     * 0.7, memory and messages: a reply History keeps as a message's placeholder keeps it through memory's record (its ids,
+     * a private answer's line); your own "remember that …" kept after its card in a conversation that held a message is
+     * content and says so; the card shows exactly the words kept; and notes kept from content make a turn content, also
+     * when an earlier question of the conversation got them.
+     */
+    @Test fun withMessagesInTheConversation() {
+        say("Remember that the cottage door code is 4512")
+        val code = MemoryPanel.forTurn("What's the cottage door code?", false, emptySet(), 4096)
+        MemoryPanel.mark("r1", code.packed.retrievedIds, secret = true)
+        val placeholder = app.heyrobot.core.messages.MessageReading.ANSWER_NOT_KEPT
+        val reply = MemoryPanel.forHistory(ChatTurn("r1", TurnRole.ASSISTANT, "The code is 4512, and Mom wrote: Bob is at 12 Elm Street", 1,
+            messages = true, kept = placeholder))
+        assertTrue(reply.messages)
+        assertEquals(placeholder, reply.kept)
+        assertEquals(code.packed.retrievedIds, reply.memoryIds)
+        val json = ConversationCodec.toJson(StoredConversation("c", 1, 2, listOf(reply)))
+        assertFalse(json.contains("4512") || json.contains("Elm") || json.contains(MemoryHygiene.SECRET_ANSWER))
+        assertEquals(placeholder, ConversationCodec.fromJson(json)!!.turns.single().text)
+        // The card's words are the words kept: cleaned before the card, never after.
+        val ready = MemoryPanel.prepare(Action.Remember("  Mom's   flight lands at 6  "), locked = false) as Prepared.Ready
+        assertEquals("Mom's flight lands at 6", ready.action.body())
+        val r = MemoryPanel.run(ready.action, spoken = true, content = true, messages = true)!!
+        assertEquals(ActionStatus.DONE, r.status)
+        val kept = items().first { it.text == "Mom's flight lands at 6" }
+        assertEquals(MemorySource.CONTENT, kept.source)
+        assertEquals("your words in a conversation that held a message", kept.sourceLabel)
+        // Notes from content make the turn content; your own words don't, and nor does an empty memory.
+        MemoryPanel.newConversation()
+        val own = MemoryPanel.forTurn("What's the cottage door code?", false, emptySet(), 4096)
+        assertFalse(own.content)
+        val flight = MemoryPanel.forTurn("When does Mom's flight land?", false, emptySet(), 4096)
+        assertTrue(kept.id in flight.packed.retrievedIds)
+        assertTrue(flight.content)
+        // Given to an earlier question of this conversation (so not found again), it still makes the turn content.
+        val later = MemoryPanel.forTurn("When does Mom's flight land?", false, setOf(kept.id), 4096)
+        assertTrue(kept.id !in later.packed.retrievedIds)
+        assertTrue(later.content)
+    }
+
     @Test fun theCommandsAreTheRoutersOnly() {
         assertNull(MemoryPanel.route("Remember to buy milk", false))
         assertNull(MemoryPanel.route("When is Julie's birthday?", false))

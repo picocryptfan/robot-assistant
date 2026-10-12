@@ -469,6 +469,9 @@ fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modi
             claude = t.helper, readBack = t.readBack, footer = t.footer, by = t.by, home = t.home,
         )
         t.offer?.let { ClassicOfferCard(it, onDismiss = { actions.dismissOffer(t.id) }, onAccept = { actions.acceptOffer(t.id) }) }
+        // 0.7: the reply card, the same card in Classic's colours.
+        t.reply?.let { r -> app.heyrobot.ui.common.ReplyCard(r, actions.reply?.let { f -> { op: app.heyrobot.ui.common.ReplyOp -> f(t.id, op) } },
+            Modifier.padding(top = 8.dp)) }
     }
 }
 

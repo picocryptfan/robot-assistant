@@ -204,3 +204,20 @@ object ReplyText {
         return emoji > 0
     }
 }
+
+/**
+ * Where "Open the chat" goes (design §B5's hand-off, phase 2's drafts): Cheogram's chat by its shortcut id
+ * "<account>#<address>", with your words in its box; other apps get the words shared to them, and you pick the chat
+ * there. Nothing is sent until you press Send in the app.
+ */
+object ChatLinks {
+    /** Cheogram's shortcut id as your account and the chat's address; null when it isn't one (quiet hours: no shortcut). */
+    fun cheogram(conversationId: String): Pair<String, String>? {
+        val i = conversationId.indexOf('#')
+        if (i <= 0 || i == conversationId.lastIndex) return null
+        val account = conversationId.substring(0, i).trim()
+        val jid = conversationId.substring(i + 1).trim()
+        if ('@' !in account || '@' !in jid || jid.any { it.isWhitespace() }) return null
+        return account to jid
+    }
+}

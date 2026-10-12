@@ -5,18 +5,9 @@ package app.heyrobot.core.messages
 // is left as it was (2); messages are kept in RAM only until their notification goes (3); nothing on the lock screen
 // (4); and messages reach a helper only through a card listing what goes.
 //
-// Wiring later (not on this branch, to keep it apart from the branches that change Settings.kt and VoiceLog.kt):
-// - RobotSettings gains these fields under the next settings schema (msgOn, msgApps as package names, msgGroups,
-//   msgKeep, msgReplyRoute, msgReplyCard, msgVoiceYes, msgAfterRead, msgTranslate, msgOfferLang, msgLocked,
-//   msgHelpersNoCard, msgAnnounce), and People's Person gains replyNoCard and replyLang; an older file reads each at the
-//   default below. Until then the app builds a [MessageSettings] from those fields.
-// - The voice log reserves ids 190–199 for messages: 190 MSG_READ (a = MessageApp ordinal, b = messages read, c = 1 if
-//   locked), 191 MSG_SUMMARY (a = conversations, b = messages, c = seconds), 192 MSG_TRANSLATE, 193 MSG_REPLY (a = app,
-//   b = route, c = how it ended), 194 MSG_REPLY_CARD (a = how the card was answered, b = 1 if translated, c = 1 if
-//   group), 195 MSG_MARK (a = read or clear, b = app), 196 MSG_HIDDEN (a = app, b = HiddenWhy ordinal), 197
-//   MSG_LISTENER (connected, disconnected, rebind, unbind), 198 MSG_GUARD (a = QuarantineVerdict ordinal), 199 spare.
-//   Codes and counts only: never a name or a word of a message.
-// - Claude.kt's Personal gains MESSAGES("messages you received"); ApprovalGate gains the quarantine (MessageTaint.kt).
+// Wired in 0.7: the app keeps these in their own file, messages.json ([MessagesFile]), so settings.json keeps its schema;
+// People's "Send my replies to … without a card" is [MessagesFile.noCard] by People id. The voice log's events 190–199
+// (VoiceEvent.MSG_*, codes in MessageLog.kt) record counts and codes only, never a name or a word of a message.
 
 /** How long a message stays in RAM: never on disk, whatever this says. */
 enum class KeepMessages(val title: String, val afterGoneMs: Long) {

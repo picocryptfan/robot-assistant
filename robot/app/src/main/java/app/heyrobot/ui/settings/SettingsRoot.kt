@@ -46,6 +46,8 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
         }
         preferenceGroup(null, "reach") {
             PreferenceItem("People, notes and calendar", peopleSummary(s, snap.facts), RIcons.Contacts, onClick = { go(SettingsRoutes.PEOPLE_NOTES_CALENDAR) })
+            // 0.7: messages.json (MessagesStore), not settings.json.
+            PreferenceItem("Messages", messagesSummary(messagesFile()), RIcons.Message, onClick = { go(SettingsRoutes.MESSAGES) })
             PreferenceItem("Weather", s.weatherHome?.let { "Home: ${it.name}" } ?: "No home set", RIcons.Sunny, onClick = { go(SettingsRoutes.WEATHER) })
             PreferenceItem("Helpers", helpersSummary(s, snap.facts), RIcons.Cloud, onClick = { a.openPage(Page.Helpers) })
             PreferenceItem("Conversation", conversationSummary(s), RIcons.Transcribe, onClick = { a.openPage(Page.ConversationSettings) })

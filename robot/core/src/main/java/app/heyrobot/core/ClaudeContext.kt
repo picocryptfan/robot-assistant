@@ -207,6 +207,7 @@ object ClaudeContext {
             for (a in t.actions) if (a.content) add(Personal.of(a.tool))
             if (t.readBack) add(Personal.CLAUDE_APP)
             if (t.memoryIds.isNotEmpty()) add(Personal.MEMORY)
+            if (t.messages) add(Personal.MESSAGES)
         }
     }
 

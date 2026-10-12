@@ -98,6 +98,16 @@ class VoiceLogTest {
         // Every source, load and command has a code of its own.
         assertEquals(app.heyrobot.core.memory.MemorySource.entries.size,
             app.heyrobot.core.memory.MemorySource.entries.map { app.heyrobot.core.memory.MemOrigin.of(it) }.toSet().size)
+        // 0.7's messages use 190 to 199 (180 to 189 are memory's), every code list unique.
+        val msg = listOf(VoiceEvent.MSG_READ, VoiceEvent.MSG_SUMMARY, VoiceEvent.MSG_TRANSLATE, VoiceEvent.MSG_REPLY, VoiceEvent.MSG_REPLY_CARD,
+            VoiceEvent.MSG_MARK, VoiceEvent.MSG_HIDDEN, VoiceEvent.MSG_LISTENER, VoiceEvent.MSG_GUARD, VoiceEvent.MSG_REFUSED)
+        assertEquals((190..199).toList(), msg.map { it.id })
+        assertEquals(msg, VoiceEvent.entries.filter { it.id in 190..199 })
+        for (c in app.heyrobot.core.messages.MessageLog.codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
+        assertEquals(app.heyrobot.core.messages.MessageApp.entries.size,
+            app.heyrobot.core.messages.MessageApp.entries.map { app.heyrobot.core.messages.MsgAppCode.of(it) }.toSet().size)
+        // Memory's and messages' events never share an id with each other or with any event before them.
+        assertEquals(VoiceEvent.entries.size, VoiceEvent.entries.map { it.id }.toSet().size)
         // Every model and backend has a code of its own.
         assertEquals(BrainModel.entries.size, BrainModel.entries.map { ModelCode.of(it) }.toSet().size)
         assertEquals(ModelBackend.entries.size, ModelBackend.entries.map { BackendCode.of(it) }.toSet().size)
@@ -271,6 +281,18 @@ class VoiceLogTest {
         assertEquals("Phone heat severe: fast translation only", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_THERMAL, 3, ThermalStep.FAST_ONLY.id)))
         assertEquals("Summary with the Claude app: about 6100 words · copied for you to paste",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_APP.id, 61, AppShareCode.CLIPBOARD.id)))
+        // 0.7, messages: counts and codes, never a name or a word.
+        assertEquals("Read 3 messages from Cheogram (phone locked)", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_READ, 1, 3, 1)))
+        assertEquals("Read 1 message from several apps", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_READ, 0, 1, 0)))
+        assertEquals("Summary of 4 conversations (23 messages) in 11 s", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_SUMMARY, 4, 23, 11)))
+        assertEquals("Message translated to English by Gemma in 900 ms", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_TRANSLATE, 2, 1, 900)))
+        assertEquals("Reply in Signal through the app's reply action: sent", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_REPLY, 2, 1, 1)))
+        assertEquals("Reply card: Send tapped · translated · group", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_REPLY_CARD, 1, 1, 1)))
+        assertEquals("After reading, Cheogram: marked as read", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_MARK, 1, 1, 0)))
+        assertEquals("Message hidden from Robot in Signal: the app shows only “New message”", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_HIDDEN, 2, 2, 0)))
+        assertEquals("Notification listener connected · 5 conversations held", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_LISTENER, 1, 5, 0)))
+        assertEquals("Messages guard: a message's own words came back as a request: nothing done", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_GUARD, 3, 0, 0)))
+        assertEquals("Messages not read: locked: unlock first", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_REFUSED, 2, 0, 0)))
         assertEquals("Summary with Claude API: about 1200 words · finished",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_API.id, 12, ClaudeEnd.END.id)))
         assertEquals("Transcription check (French): 12% of words wrong over 20 lines",

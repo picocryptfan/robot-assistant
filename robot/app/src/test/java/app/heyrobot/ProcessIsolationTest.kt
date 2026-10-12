@@ -104,7 +104,8 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/sys/MtLink.kt"), usersOf(Regex("""\bMtProtocol\.SERVICE_CLASS\b""")))
         assertEquals(listOf("app/assistant/conversation/FastTranslation.kt", "app/sys/MtLink.kt", "app/sys/MtSpeedRun.kt", "app/ui/ConversationSettings.kt"),
             usersOf(Regex("""\bMtLink\b""")))
-        assertEquals(listOf("app/assistant/conversation/ConversationSession.kt", "app/assistant/conversation/ConversationTranslations.kt",
+        // 0.7: a message's translation borrows it (FastTranslation.borrow), as TranslatePolicy orders the engines.
+        assertEquals(listOf("app/assistant/PanelMessages.kt", "app/assistant/conversation/ConversationSession.kt", "app/assistant/conversation/ConversationTranslations.kt",
             "app/assistant/conversation/FastTranslation.kt"), usersOf(Regex("""\bFastTranslation\b""")))
         assertEquals(listOf("core/core/FastTranslate.kt"), usersOf(Regex("""(?<!class )\bBergamotTranslator\(""")))
         // The service checks who sent each message, as BrainService does.
@@ -230,7 +231,9 @@ class ProcessIsolationTest {
         assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.mt.MtService"))
         val main = listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
             "app.heyrobot.people.CheogramListener", "app.heyrobot.sys.ExportProvider", "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService",
-            "app.heyrobot.update.InstallStatusReceiver")
+            "app.heyrobot.update.InstallStatusReceiver",
+            // 0.7: the panel's way to your messages, beside the listener that holds them.
+            "app.heyrobot.people.MessagesBridge")
         for (n in main) assertEquals(n, "", proc(n))
         // Every Robot component is accounted for (a new one must be placed deliberately).
         val ourComps = comps.keys.filter { it.startsWith("app.heyrobot.") }.toSet()
@@ -830,5 +833,111 @@ class ProcessIsolationTest {
         // Its settings are memory.json's, never settings.json's (whose schema stays 13 for the other 0.7 branch).
         assertEquals(13, app.heyrobot.core.RobotSettings.SCHEMA)
         assertTrue(!code(File(java("core"), "app/heyrobot/core/Settings.kt")).contains("memory"))
+    }
+
+    /**
+     * 0.7, messages (design §B4, §B10, §B12): the listener's MessageTap and MessagesBridge run in the main process, where the
+     * notifications' PendingIntents are; the bridge isn't exported, needs Robot's signature permission and answers Robot's
+     * own uid only; the panel reaches it by class name through MessagesLink alone. Message text is never written (no file
+     * API in the messages code, History keeps a placeholder), never logged (RLog calls carry codes only), never online (no
+     * network code, never a helper's session), never in :brain's or :llama's code (it reaches Robot's model only as a
+     * one-shot request with no tools); and a reply's recipient is the notification's own conversation, fired only by the
+     * main process after core ReplySend read the notification again.
+     */
+    @Test fun messagesStayOnThePhone() {
+        val doc = parse(mergedManifest())
+        val comps = components(doc)
+        val bridge = comps["app.heyrobot.people.MessagesBridge"] ?: throw AssertionError("MessagesBridge missing")
+        assertEquals("", bridge.getAttributeNS(ns, "process"))
+        assertEquals("false", bridge.getAttributeNS(ns, "exported"))
+        assertEquals("app.heyrobot.permission.INTERNAL", bridge.getAttributeNS(ns, "permission"))
+        assertEquals(0, bridge.getElementsByTagName("intent-filter").length)
+        // The listener asks for conversations, never ongoing notifications (Silent is yours to allow in Android's page).
+        val listener = comps.getValue("app.heyrobot.people.CheogramListener")
+        val meta = listener.getElementsByTagName("meta-data").let { nl -> (0 until nl.length).associate { (nl.item(it) as Element).let { e ->
+            e.getAttributeNS(ns, "name") to e.getAttributeNS(ns, "value") } } }
+        assertEquals("conversations", meta["android.service.notification.default_filter_types"])
+        assertEquals("ongoing", meta["android.service.notification.disabled_filter_types"])
+        // Main process only: the tap, the buffer and the bridge; the bridge checks each sender's uid.
+        assertEquals(listOf("app/people/CheogramListener.kt", "app/people/MessageTap.kt", "app/people/MessagesBridge.kt"), usersOf(Regex("""\bMessageTap\b""")))
+        assertTrue(code(File(java("app"), "app/heyrobot/people/MessagesBridge.kt")).contains("m.sendingUid != Process.myUid()"))
+        assertEquals(listOf("app/assistant/MessagesLink.kt"), usersOf(Regex("""\bMessagesProtocol\.SERVICE_CLASS\b""")))
+        assertEquals("app.heyrobot.people.MessagesBridge", Regex("""const val SERVICE_CLASS = "([^"]+)"""").find(File(java("core"), "app/heyrobot/core/messages/MessageWire.kt").readText())!!.groupValues[1])
+        assertEquals(listOf("app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt"), usersOf(Regex("""\bMessagesLink\b""")))
+        val ui = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bPanelMessages\b|\bMessagesLink\b"""), ui))
+        // The messages code: no file written, nothing online, no helper, no raw log, no engine.
+        val msg = ours.filterKeys { it.startsWith("core/core/messages/") || it in setOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt",
+            "app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt", "app/ui/common/ReplyCard.kt") }
+        assertTrue(msg.keys.toString(), msg.size >= 15)
+        assertEquals(emptyList<String>(), usersOf(Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)|writeText|writeBytes|openFileOutput|writeAtomic"""), msg))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bSocket\b|okhttp|\bWebView\b|\bHelper(Session|Link|Http)\b|\bClaude(Session|Client)\b|\bapp\.heyrobot\.(claude|helpers)\b"""), msg))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bLlama|\bBrainClient\b|BrainMsg\.Generate|\blitert"""), msg))
+        // Logging: a fixed tag, no other argument (no name, no text, no address); the voice log takes codes and counts.
+        assertEquals(emptyList<String>(), usersOf(Regex("""RLog\.[iwe]\([^)\n]*,"""), msg))
+        // messages.json: settings and People ids only, written by the main process (Settings, People's switch, the bridge for "Always for …").
+        assertEquals(listOf("app/people/MessagesBridge.kt", "app/ui/settings/MessagesSettings.kt", "app/ui/settings/SettingsNav.kt"),
+            usersOf(Regex("""\bMessagesStore\.save\(""")))
+        assertTrue(code(File(java("app"), "app/heyrobot/sys/MessagesStore.kt")).contains("writeAtomic(f, m.toJson())"))
+        // History: a turn with messages in it is saved as its placeholder, never its words (core ConversationCodec).
+        assertTrue(File(java("core"), "app/heyrobot/core/Conversation.kt").readText().contains("put(\"text\", if (t.messages) t.kept ?: app.heyrobot.core.messages.MessageReading.NOT_KEPT else t.text)"))
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/PanelController.kt")).contains("messages = kept != null, kept = kept)"))
+        // A reply: fired only by the bridge, after ReplySend read the notification again; the panel names a conversation by its key, and
+        // its words, never an address.
+        assertEquals(listOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt"), usersOf(Regex("""\bMessageTap\.fire\(|\bfun fire\(ctx""")))
+        val b = code(File(java("app"), "app/heyrobot/people/MessagesBridge.kt"))
+        assertTrue(b.contains("ReplySend.check(held, fresh?.second, req, s, locked)") && b.contains("MessageTap.fire(ctx, fresh!!.first, c.target, c.text)"))
+        val panel = code(File(java("app"), "app/heyrobot/assistant/PanelMessages.kt"))
+        assertEquals(1, Regex("""ReplyRequest\(""").findAll(panel).count())
+        assertTrue(panel.contains("ReplyRequest(p.thread.key, plan.text, plan.newestSeen)"))
+        // Robot's model sees messages only through one-shot requests (no tools); every turn of the panel carries the quarantine.
+        assertTrue(panel.contains("BrainOneShots.run(BrainMsg.OneShot("))
+        val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        // (Five: the chat turn, a helper's, the Claude app's hand-off, texting without the model, and 0.7 memory's "remember
+        // that …" in a conversation that holds a message.)
+        assertEquals(5, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
+        assertEquals(Regex("""TurnRunner\(""").findAll(pc).count(), Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
+        // Nothing of messages in :brain or :llama's code.
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.core\.messages\b"""), ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("claude/") }))
+    }
+
+    /**
+     * 0.7, memory and messages together (core MessageQuarantine, MemoryAndMessagesTest): message text never becomes memory by
+     * itself and memory never goes with a message's one-shot request. The panel's messages code and core's messages never
+     * open memory, put it in a prompt or write it; memory is written only by MemoryPanel (the router's "remember that …"
+     * and the remember tool after the gate) and Settings › Memory; your "remember that …" in a conversation that holds a
+     * message goes through the turn runner as your words before memory's router could save it; a message's words heard back
+     * are caught before memory's router sees them; suggestions aren't made from any conversation yet (phase 7.5 takes one
+     * through Suggestions.turnsOf, which gives nothing for a conversation that held a message); notes kept from content
+     * make a chat turn content.
+     */
+    @Test fun memoryAndMessagesTogether() {
+        val messagesCode = ours.filterKeys { it.startsWith("core/core/messages/") || it in setOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt",
+            "app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt", "app/ui/common/ReplyCard.kt", "app/ui/settings/MessagesSettings.kt") }
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bMemory(Panel|Files|Vault|SettingsStore|Recall|Prompt|Edits|Search|Turn)\b|\bPromptPacking\b|\bFileMemoryVault\b"""),
+            messagesCode))
+        // Core's messages use memory's words only to read your command (MemoryRoute, MemoryCommand) and its tokenizer.
+        assertEquals(listOf("core/core/messages/MessageTaint.kt"), usersOf(Regex("""\bapp\.heyrobot\.core\.memory\b"""), messagesCode))
+        // Memory is written in two places only: the panel's MemoryPanel and Settings › Memory.
+        assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/ui/settings/MemorySettings.kt"), usersOf(Regex("""\bMemoryEdits\.(add|update|edit)\(""")))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bSuggestions\.(request|accept|userWords|turnsOf)\("""), ours.filterKeys { it.startsWith("app/") }))
+        val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        // A message's words heard back (PanelMessages.route) come first, before memory's router.
+        val msgRoute = pc.indexOf("val msgCmd = if (q.isNotEmpty() && st.draft == null) PanelMessages.route(q, fromVoice) else null")
+        val memRoute = pc.indexOf("convCmd == null && msgCmd == null) MemoryPanel.route(q, Assistant.locked(VoiceHub.app))")
+        assertTrue(msgRoute in 0 until memRoute)
+        // "Remember that …" after a message: the quarantine's card, before memory's router saves anything.
+        val after = pc.indexOf("MessageQuarantine.rememberAfterMessages(route, PanelMessages.taint(chat))")
+        val saves = pc.indexOf("MemoryPanel.command(route, Assistant.locked(VoiceHub.app), spoken)")
+        assertTrue(after in 0 until saves)
+        assertTrue(pc.contains("asked = setOf(ToolName.REMEMBER), messages = PanelMessages.taint(chat), origin = ActionOrigin.USER_WORDS"))
+        // The only other origin is the model's (the default): nothing else is given your words' standing.
+        assertEquals(1, Regex("""origin = ActionOrigin\.""").findAll(pc).count())
+        // Notes kept from content make the chat turn content; a remembered item in a conversation with a message is content.
+        assertTrue(pc.contains("untrusted || mem.content,"))
+        assertTrue(pc.contains("== true,\n                    PanelMessages.taint(chat).active)"))
+        // The turn runner refuses what the quarantine forbids before anything is prepared or asked.
+        val turn = code(File(java("core"), "app/heyrobot/core/Turn.kt"))
+        assertTrue(turn.indexOf("MessageQuarantine.verdict(asked.tool, origin, messages) == QuarantineVerdict.FORBIDDEN") in 0 until turn.indexOf("actions.prepare(asked)"))
     }
 }

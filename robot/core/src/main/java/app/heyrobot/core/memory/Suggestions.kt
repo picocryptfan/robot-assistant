@@ -64,6 +64,9 @@ object Suggestions {
      * left out (a suggestion from them would be dropped anyway). Null when fewer than [MIN_USER_TURNS] remain.
      */
     fun userWords(turns: List<SpokenTurn>): String? {
+        // 0.7 with messages: a conversation that held a message gives no suggestion at all, not even from your own words
+        // in it (they may repeat or answer the message's): nothing from such a conversation becomes memory by itself.
+        if (turns.any { it.source == TurnSource.MESSAGE }) return null
         val own = turns.filter { it.source.own }
             .map { ScreenText.sanitize(it.text).replace(Regex("\\s+"), " ").trim() }
             .filter { it.isNotEmpty() && !SecretDetector.isSecret(it) }
@@ -77,6 +80,20 @@ object Suggestions {
             kept.addFirst(t)
         }
         return if (kept.size < MIN_USER_TURNS) null else kept.joinToString("\n")
+    }
+
+    /**
+     * A panel conversation's turns as the suggestion job sees them: your questions as your words, Robot's answers as
+     * Robot's, a helper's (or the Claude app's) as a helper's, and every turn that holds a message (ChatTurn.messages: read,
+     * summarized or translated, or an answer after one) as [TurnSource.MESSAGE], which makes [userWords] give nothing.
+     */
+    fun turnsOf(chat: List<app.heyrobot.core.ChatTurn>): List<SpokenTurn> = chat.map { t ->
+        SpokenTurn(t.text, when {
+            t.messages -> TurnSource.MESSAGE
+            t.role == app.heyrobot.core.TurnRole.USER -> TurnSource.USER_TYPED
+            t.claude || t.readBack -> TurnSource.HELPER
+            else -> TurnSource.ROBOT
+        })
     }
 
     /** The request, or null when there aren't enough of your own words. */

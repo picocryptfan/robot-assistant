@@ -473,11 +473,13 @@ internal fun openFirst(ctx: android.content.Context, intents: List<android.conte
 fun NotificationAccessScreen(facts: AssistantFacts?, onBack: () -> Unit) {
     PreferenceScreen("Notification access", onBack) {
         if (facts?.notificationAccess == true) {
-            preferenceGroup(null, "done") { StatusPreference("Notification access allowed", "Cheogram's one-to-one senders only", Mark.OK) }
+            preferenceGroup(null, "done") { StatusPreference("Notification access allowed", "What People and Messages turn on, nothing else", Mark.OK) }
         }
         preferenceGroup(null, "steps") { PreferenceBlock { NotificationAccessSteps() } }
-        preferenceFooter("Robot looks at Cheogram's notifications only, and of those only the sender of a one-to-one chat. Settings › People " +
-            "says what Robot reads, where it is kept, and how to take it back.")
+        // 0.7: Settings › Messages opens this page too.
+        preferenceFooter("To learn names, Robot looks at Cheogram's notifications only, and of those only the sender of a one-to-one chat. " +
+            "With Settings › Messages on, it also reads the messages of the apps you turn on there, in memory only. Settings › People and " +
+            "Settings › Messages say what Robot reads, where it is kept, and how to take it back.")
     }
 }
 
@@ -523,7 +525,8 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("What Robot reads, and where it goes", style = MaterialTheme.typography.titleSmall)
         Text("Notification access lets an app see every app's notifications. Robot asks Android for conversations only, drops all " +
-            "but Cheogram's at once, and ignores them all while this switch is off.", style = MaterialTheme.typography.bodyMedium, color = muted)
+            "but Cheogram's at once, and learns nothing from them while this switch is off. Settings › Messages, if you turn it on, " +
+            "uses the same access to read the apps you choose there, in memory only.", style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("From a Cheogram message in a one-to-one chat, Robot keeps only the sender's name and address and which of your accounts " +
             "got it. It never looks at, keeps or logs what the message says, and group chats teach it nothing. It checks Cheogram's " +
             "signature too, so an app pretending to be Cheogram teaches nothing.", style = MaterialTheme.typography.bodyMedium, color = muted)
@@ -814,6 +817,8 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                         TextButton(onClick = { forget(email = true) }) { Text("Forget") }
                     }
                 }
+                // 0.7: Settings › Messages on: replies to them without a card (3-second stop).
+                app.heyrobot.ui.settings.NoCardSwitch(o)
                 Text("${o.source.title} · changed ${DateUtils.getRelativeTimeSpanString(o.updatedAt)}", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = {

@@ -37,6 +37,8 @@ object FastTranslation {
     // Guarded by this.
     private var link: MtLink? = null
     private var held = false
+    /** 0.7: translations of your messages ([borrow]) using the engine right now. */
+    private var lent = 0
 
     /**
      * The fast engine for this phone now, for [LangPair] at [MtPriority] (interactive: the interpreter's turn; batch: a
@@ -76,13 +78,32 @@ object FastTranslation {
     fun release() {
         val l = synchronized(this) {
             held = false
-            link.also { link = null }
+            if (lent > 0) null else link.also { link = null }
         }
         l?.close()
     }
 
+    /**
+     * 0.7: a message's translation (assistant PanelMessages) may use the fast engine for the length of [block], as
+     * TranslatePolicy orders it, whether or not a session holds it; :mt is unbound after unless a session still holds it.
+     * [block] gets null when the engine isn't offered.
+     */
+    suspend fun <T> borrow(ctx: Context, pair: LangPair, block: suspend (Translator?) -> T): T {
+        val t = translator(ctx, pair, MtPriority.INTERACTIVE) ?: return block(null)
+        synchronized(this) { lent++ }
+        try {
+            return block(t)
+        } finally {
+            val l = synchronized(this) {
+                lent--
+                if (lent > 0 || held) null else link.also { link = null }
+            }
+            l?.close()
+        }
+    }
+
     private fun link(ctx: Context): MtLink = synchronized(this) {
-        if (!held) throw MtException(MtError.CANCELLED)
+        if (!held && lent == 0) throw MtException(MtError.CANCELLED)
         link ?: MtLink(ctx).also { link = it }
     }
 

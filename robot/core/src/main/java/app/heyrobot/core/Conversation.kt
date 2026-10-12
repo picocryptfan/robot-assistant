@@ -53,6 +53,13 @@ data class ChatTurn(
      * keeps the question without the notes block, and a rebuilt conversation gets it again from memory ([toPromptTurns]).
      */
     val memoryIds: List<String> = emptyList(),
+    /**
+     * 0.7: this turn holds messages other people wrote (read, summarized or translated), or answers in a conversation
+     * that does: content (every later action asks first), and never saved as it is: History keeps [kept] instead
+     * ("Robot read 3 messages from Mom (Cheogram)"), so no message's words reach the disk.
+     */
+    val messages: Boolean = false,
+    val kept: String? = null,
 ) {
     /** Who wrote this reply, for labels and transcripts: the helper's name, "Claude" for a reply saved before 0.6.0. */
     val author: String get() = by ?: if (claude) "Claude" else "Robot"
@@ -142,7 +149,9 @@ object ConversationCodec {
     private fun turn(t: ChatTurn) = JSONObject().apply {
         put("id", t.id)
         put("role", t.role.name)
-        put("text", t.text)
+        // A turn with messages in it is saved as its placeholder only (core messages MessageReading).
+        put("text", if (t.messages) t.kept ?: app.heyrobot.core.messages.MessageReading.NOT_KEPT else t.text)
+        if (t.messages) put("messages", true)
         put("time", t.time)
         if (t.attachment != Attachment.NONE) put("attachment", t.attachment.name)
         if (t.stopped) put("stopped", true)
@@ -159,8 +168,9 @@ object ConversationCodec {
         t.screenText?.let { put("screenText", it) }
         if (t.actions.isNotEmpty()) put("actions", JSONArray().apply {
             t.actions.forEach { a ->
-                put(JSONObject().put("tool", a.tool.id).put("summary", a.summary).put("status", a.status.name).apply {
-                    a.detail?.let { put("detail", it) }
+                // With messages in the conversation, a card's words may be a message's ("Add *Dinner at Mom's*"): its kind only.
+                put(JSONObject().put("tool", a.tool.id).put("summary", if (t.messages) a.tool.title else a.summary).put("status", a.status.name).apply {
+                    if (!t.messages) a.detail?.let { put("detail", it) }
                     if (a.content) put("content", true)
                 })
             }
@@ -185,6 +195,10 @@ object ConversationCodec {
             home = o.optBoolean("home", false),
             memoryIds = o.optJSONArray("memory")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf(app.heyrobot.core.memory.MemoryIds::valid) } }.orEmpty(),
             readBack = o.optBoolean("readBack", false),
+            messages = o.optBoolean("messages", false),
+            // What was saved in its place is what is saved again (a continued conversation keeps "Robot read 2 messages
+            // from Mom (Cheogram)", never a generic line, and never more).
+            kept = o.optString("text").takeIf { o.optBoolean("messages", false) },
             sources = o.optJSONArray("sources")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf { s -> s.isNotEmpty() } } }.orEmpty(),
             costMicros = o.optLong("costMicros", 0).coerceAtLeast(0),
             picture = o.optString("picture").takeIf { it.isNotEmpty() && it.length <= MAX_PICTURE && BASE64.matches(it) },

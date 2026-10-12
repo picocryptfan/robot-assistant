@@ -39,6 +39,12 @@ enum class AskWhy {
      * says what would leave the phone, answered by a tap.
      */
     ONLINE,
+    /**
+     * 0.7: a message other people wrote is in the conversation, and this would send something to someone other than its
+     * sender (a text, an email, a helper, anything online): always a card, answered by a tap (core messages
+     * MessageQuarantine). Not a switch: you asked that messages can never trigger actions.
+     */
+    MESSAGE,
 }
 
 /** The one-time line after updating to 0.4.0 ([RobotSettings.safetyNotice]); tapping it opens Settings › Safety & privacy. */
@@ -101,19 +107,21 @@ object CardAnswer {
     const val TAP_LEARNED = "Robot learned that name from a Cheogram notification: check who it goes to on the card, then tap."
     const val TAP_UNSURE = "Robot isn't sure who or which it is: check the card, then tap."
     const val TAP_ONLINE = "Tap Allow always, Just this time or No on the card."
+    const val TAP_MESSAGE = app.heyrobot.core.messages.MessageQuarantine.CARD_LINE
 
     /**
      * Why a card needs a tap, whatever is said ([Card.tapFor]): a name learned from a Cheogram notification (whoever sent
      * it chose it), not being sure who or which (several people, a near match, a number or address the model wrote, a
      * loose app name), or going online for the first time. Null: a yes may answer it.
      */
-    fun tapFor(why: Set<AskWhy>): AskWhy? = listOf(AskWhy.LEARNED, AskWhy.WHO, AskWhy.ONLINE).firstOrNull { it in why }
+    fun tapFor(why: Set<AskWhy>): AskWhy? = listOf(AskWhy.MESSAGE, AskWhy.LEARNED, AskWhy.WHO, AskWhy.ONLINE).firstOrNull { it in why }
 
     /** What Robot says when a yes can't answer a card that needs a tap for [why]. */
     fun tapWords(why: AskWhy): String = when (why) {
         AskWhy.LEARNED -> TAP_LEARNED
         AskWhy.WHO -> TAP_UNSURE
         AskWhy.ONLINE -> TAP_ONLINE
+        AskWhy.MESSAGE -> TAP_MESSAGE
         else -> TAP_ONE
     }
 

@@ -41,6 +41,9 @@ interface PanelActions {
     fun dismissOffer(replyId: String)
     fun endHelperMode()
 
+    /** 0.7: a tap on the reply card under [replyId] (Send, Edit, Open chat, Cancel, the tick boxes, Stop). */
+    fun reply(replyId: String, op: app.heyrobot.ui.common.ReplyOp) {}
+
     /** What the panel does on screen: each action through PanelController. */
     companion object Default : PanelActions {
         override fun send(text: String) = PanelController.send(text)
@@ -68,5 +71,6 @@ interface PanelActions {
         override fun acceptOffer(replyId: String) { PanelController.acceptOffer(replyId) }
         override fun dismissOffer(replyId: String) { PanelController.dismissOffer(replyId) }
         override fun endHelperMode() { PanelController.endHelperMode() }
+        override fun reply(replyId: String, op: app.heyrobot.ui.common.ReplyOp) { PanelController.reply(replyId, op) }
     }
 }

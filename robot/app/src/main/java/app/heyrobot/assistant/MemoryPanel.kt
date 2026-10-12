@@ -70,6 +70,12 @@ class MemoryTurn(
     val tools: Boolean,
     /** A secret item went in and "Speak secret items aloud" is off: the answer is shown, never spoken, never kept. */
     val quiet: Boolean,
+    /**
+     * An item that didn't come from your own words (MemorySource.CONTENT: kept from a screen, a read or a conversation that
+     * held a message) is in this turn's prompt, found now or given earlier in this conversation: the turn is content, so
+     * what the model asks for follows Safety cards, as after Robot reads anything (design §A10).
+     */
+    val content: Boolean = false,
 ) {
     val packed: PackedMemory get() = recall.packed
 
@@ -335,7 +341,9 @@ object MemoryPanel {
             remember(used = r.packed.retrievedIds)
         }
         val quiet = r.secret && f.items.filter { it.id in r.packed.retrievedIds && it.secret }.any { !app.heyrobot.core.memory.MemoryAccess.speak(it, question, s, locked) }
-        return MemoryTurn(r, { ids -> PromptPacking.notesFor(ids, f.items, now, z) }, tools = true, quiet = quiet)
+        // Notes from content, now or in this conversation's earlier questions (a rebuilt conversation gets those again).
+        val content = r.packed.content || f.items.any { it.id in given && it.tainted }
+        return MemoryTurn(r, { ids -> PromptPacking.notesFor(ids, f.items, now, z) }, tools = true, quiet = quiet, content = content)
     }
 
     /** One more answer used [ids] (a counter and a time, no text): background thread, after the answer. */
@@ -356,7 +364,8 @@ object MemoryPanel {
                 // A code, a password or a card number in what the model proposes: refused, with the reason.
                 SecretDetector.isSecret(action.text) -> Prepared.Refused(ActionStatus.FAILED, SECRET_REFUSAL)
                 MemoryEdits.clean(action.text).isEmpty() -> Prepared.Refused(ActionStatus.INVALID, "There was nothing to remember.")
-                else -> Prepared.Ready(action)
+                // The card shows exactly the words kept (MemoryEdits.add keeps them so cleaned).
+                else -> Prepared.Ready(action.copy(text = MemoryEdits.clean(action.text)))
             }
         }
         is Action.Forget -> prepareForget(action, locked)
@@ -382,17 +391,22 @@ object MemoryPanel {
 
     /**
      * Runs remember or forget after the gate (background thread), or null: not memory's. [spoken]: the question came by
-     * voice; [content]: the conversation holds content (a screen, a photo, a read tool's findings, a helper's words), so a
-     * remembered item is content too, with where it came from.
+     * voice; [content]: the conversation holds content (a screen, a photo, a read tool's findings, a helper's words, a
+     * message), so a remembered item is content too, with where it came from; [messages]: a message is in it (0.7: only
+     * your own "remember that …", kept after its card's tap: MessageQuarantine).
      */
-    fun run(action: Action, spoken: Boolean, content: Boolean): Executed? = when (action) {
+    fun run(action: Action, spoken: Boolean, content: Boolean, messages: Boolean = false): Executed? = when (action) {
         is Action.Remember -> {
             val now = clock()
             val item = MemoryItem(MemoryIds.newId(now), action.text, action.kind, source = when {
-                content -> MemorySource.CONTENT
+                content || messages -> MemorySource.CONTENT
                 spoken -> MemorySource.SAID
                 else -> MemorySource.TYPED
-            }, sourceLabel = if (content) "something Robot read in a conversation" else null, createdAt = now,
+            }, sourceLabel = when {
+                messages -> "your words in a conversation that held a message"
+                content -> "something Robot read in a conversation"
+                else -> null
+            }, createdAt = now,
                 expiresAt = action.until?.expiresAt(now, zone()))
             var added: app.heyrobot.core.memory.Added? = null
             val l = update { f -> MemoryEdits.add(f, item).also { added = it }.file }

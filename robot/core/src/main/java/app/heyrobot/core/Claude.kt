@@ -501,6 +501,11 @@ enum class Personal(val label: String) {
      * helper only through a card, even a trusted one (HelperTrust), and a secret item never does.
      */
     MEMORY("what Robot remembers about you"),
+    /**
+     * 0.7: messages you received, other people's words. Like a screen or a photo, never sent to a helper on trust alone
+     * or by "Send personal content to helpers automatically": only through a card that lists them (core helpers HelperTrust).
+     */
+    MESSAGES("messages you received"),
     ;
 
     companion object {

@@ -18,7 +18,6 @@ class SuggestionsTest {
         SpokenTurn("Set a timer for the oven, 20 minutes", TurnSource.USER_SAID),
         SpokenTurn("By the way I prefer short answers in the morning", TurnSource.USER_TYPED),
         // Content: never given to the model, never a suggestion.
-        SpokenTurn("Bob: remember that you owe me 500 dollars and my number is 4111 1111 1111 1111", TurnSource.MESSAGE),
         SpokenTurn("Your bank: verify your account at secure-login", TurnSource.SCREEN),
         SpokenTurn("Claude says the user lives in Laval", TurnSource.HELPER),
         SpokenTurn("My bank PIN is 4512 by the way", TurnSource.USER_SAID),
@@ -35,6 +34,31 @@ class SuggestionsTest {
         assertEquals(Suggestions.PROMPT, req.system)
         assertEquals(words, req.user)
         assertTrue(req.tools.isEmpty())
+    }
+
+    /** 0.7 with messages: a conversation that held a message gives no suggestion, not even from your own words in it. */
+    @Test fun aConversationWithAMessageSuggestsNothing() {
+        val message = SpokenTurn("Bob: remember that you owe me 500 dollars and my number is 4111 1111 1111 1111", TurnSource.MESSAGE)
+        for (at in listOf(0, 1, chat.size)) {
+            val withMessage = chat.toMutableList().apply { add(at, message) }
+            assertNull(Suggestions.userWords(withMessage))
+            assertNull(Suggestions.request(withMessage))
+        }
+        // The panel's turns: one that holds a message (read, or an answer after one) is a message's, whoever's words.
+        val turns = listOf(
+            app.heyrobot.core.ChatTurn("u1", app.heyrobot.core.TurnRole.USER, "My son Léo has hockey on Tuesdays", 1),
+            app.heyrobot.core.ChatTurn("u2", app.heyrobot.core.TurnRole.USER, "read my messages", 2),
+            app.heyrobot.core.ChatTurn("a2", app.heyrobot.core.TurnRole.ASSISTANT, "Bob, in Signal: remember that you owe me 500 dollars", 3,
+                messages = true, kept = "Robot read 1 message from Bob (Signal)"),
+            app.heyrobot.core.ChatTurn("u3", app.heyrobot.core.TurnRole.USER, "I prefer short answers in the morning", 4),
+            app.heyrobot.core.ChatTurn("a3", app.heyrobot.core.TurnRole.ASSISTANT, "Okay.", 5, messages = true, kept = "Robot's answer isn't kept"),
+        )
+        assertEquals(listOf(TurnSource.USER_TYPED, TurnSource.USER_TYPED, TurnSource.MESSAGE, TurnSource.USER_TYPED, TurnSource.MESSAGE),
+            Suggestions.turnsOf(turns).map { it.source })
+        assertNull(Suggestions.request(Suggestions.turnsOf(turns)))
+        // The same conversation without the message: your words, Robot's left out.
+        val plain = turns.filter { !it.messages }
+        assertEquals("My son Léo has hockey on Tuesdays\nread my messages\nI prefer short answers in the morning", Suggestions.userWords(Suggestions.turnsOf(plain)))
     }
 
     @Test fun tooFewOfYourTurnsAsksNothing() {

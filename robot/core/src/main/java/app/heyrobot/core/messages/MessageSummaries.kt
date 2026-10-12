@@ -52,20 +52,30 @@ object MessageReading {
         val all = toRead(t)
         val shown = all.takeLast(MAX_PER_THREAD)
         val out = ArrayList<String>()
-        if (all.size > shown.size) out += if (lang == Lang.FR) "Les ${shown.size} plus récents, et ${all.size - shown.size} plus anciens." else "The newest ${shown.size}, and ${all.size - shown.size} earlier."
-        for (m in shown) {
-            val who = m.senderName ?: t.name
-            val line = when {
-                m.text.isEmpty() && m.attachment != null -> if (lang == Lang.FR) "$who a envoyé ${m.attachment.fr}." else "$who sent ${m.attachment.en}."
-                m.text.isEmpty() -> null
-                m.attachment != null -> m.text + if (lang == Lang.FR) " (avec ${m.attachment.fr})" else " (with ${m.attachment.en})"
-                else -> m.text
-            } ?: continue
-            // In a group, who said it; an attachment alone already names them.
-            out += if (t.isGroup && m.text.isNotEmpty()) (if (lang == Lang.FR) "$who : $line" else "$who: $line") else line
-        }
+        earlier(all.size, shown.size, lang)?.let { out += it }
+        for (m in shown) line(m, t, lang)?.let { out += it }
         hidden(t, lang)?.let { out += it }
         return out
+    }
+
+    /** "The newest 5, and 4 earlier." when more than [shown] of [all] wait; null otherwise. */
+    fun earlier(all: Int, shown: Int, lang: Lang): String? = if (all <= shown) null
+        else if (lang == Lang.FR) "Les $shown plus récents, et ${all - shown} plus anciens." else "The newest $shown, and ${all - shown} earlier."
+
+    /**
+     * One message as Robot reads it: the words as written ("Marc: …" in a group), an attachment in words ("Mom sent a
+     * photo."); null for one with nothing to read.
+     */
+    fun line(m: IncomingMessage, t: MessageThread, lang: Lang): String? {
+        val who = m.senderName ?: t.name
+        val line = when {
+            m.text.isEmpty() && m.attachment != null -> if (lang == Lang.FR) "$who a envoyé ${m.attachment.fr}." else "$who sent ${m.attachment.en}."
+            m.text.isEmpty() -> null
+            m.attachment != null -> m.text + if (lang == Lang.FR) " (avec ${m.attachment.fr})" else " (with ${m.attachment.en})"
+            else -> m.text
+        } ?: return null
+        // In a group, who said it; an attachment alone already names them.
+        return if (t.isGroup && m.text.isNotEmpty()) (if (lang == Lang.FR) "$who : $line" else "$who: $line") else line
     }
 
     /** Why the text isn't there, in words (null when it is). */
@@ -81,6 +91,11 @@ object MessageReading {
             else -> "${t.app.title} hides this message from other apps."
         }
     }
+
+    /** What History keeps of a turn with messages in it when nothing more is known: never the words. */
+    const val NOT_KEPT = "Messages Robot read you (not kept)"
+    /** What History keeps of an answer in a conversation that holds messages: the answer may repeat them. */
+    const val ANSWER_NOT_KEPT = "Robot's answer isn't kept: this conversation holds your messages."
 
     /** What History keeps of a turn that read messages: who and how many, never the words. */
     fun historyLine(threads: List<MessageThread>, messages: Int, lang: Lang = Lang.EN): String {

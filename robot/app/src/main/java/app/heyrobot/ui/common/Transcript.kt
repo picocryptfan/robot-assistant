@@ -66,6 +66,8 @@ data class TurnUi(
     /** "Claude searched the web · nasa.gov", the cost. */
     val footer: List<String> = emptyList(),
     val offer: OfferView? = null,
+    /** 0.7: the reply card under a reply (ui/common ReplyCard). */
+    val reply: ReplyCardView? = null,
 )
 
 /** What a turn's buttons do. History passes [None]: its cards have no buttons. */
@@ -76,6 +78,8 @@ class TurnActions(
     /** The offer's Send and Not now, by the reply's id. */
     val acceptOffer: (String) -> Unit = {},
     val dismissOffer: (String) -> Unit = {},
+    /** 0.7: a reply card's taps, by the reply's id; null (History): no buttons. */
+    val reply: ((String, ReplyOp) -> Unit)? = null,
 ) {
     companion object {
         val None = TurnActions()
@@ -171,5 +175,6 @@ private fun ReplyText(t: TurnUi, actions: TurnActions, modifier: Modifier) {
             Text(line, style = MaterialTheme.typography.labelMedium, color = c.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
         }
         t.offer?.let { OfferCard(it, onAccept = { actions.acceptOffer(t.id) }, onDismiss = { actions.dismissOffer(t.id) }, modifier = Modifier.padding(top = 8.dp)) }
+        t.reply?.let { r -> ReplyCard(r, actions.reply?.let { f -> { op: ReplyOp -> f(t.id, op) } }, Modifier.padding(top = 8.dp)) }
     }
 }

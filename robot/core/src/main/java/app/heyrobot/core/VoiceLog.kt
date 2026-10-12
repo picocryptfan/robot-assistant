@@ -238,6 +238,30 @@ enum class VoiceEvent(val id: Int) {
     MT_LOAD(118),
     /** A segment was decoded again in two halves (too few words for its speech): a = speech ms, b = words before, c = words after. */
     CONV_REHEARD(119),
+    /**
+     * 0.7, messages (190 to 199; core messages MessageLog.kt has the codes). Counts and codes only: never a name, an
+     * address or a word of a message. Robot read you messages: a = [app.heyrobot.core.messages.MsgAppCode] (0: several
+     * apps), b = messages read, c = 1 if the phone was locked.
+     */
+    MSG_READ(190),
+    /** A summary of your messages by Robot's model: a = conversations, b = messages, c = seconds. */
+    MSG_SUMMARY(191),
+    /** A message translated: a = [LangCode] it went to, b = [MtEngine] (0: none answered), c = ms. */
+    MSG_TRANSLATE(192),
+    /** A reply: a = [app.heyrobot.core.messages.MsgAppCode], b = [app.heyrobot.core.messages.ReplyRouteCode], c = [app.heyrobot.core.messages.ReplyEnd]. */
+    MSG_REPLY(193),
+    /** A reply card was answered: a = [app.heyrobot.core.messages.CardEnd], b = 1 if it sent a translation, c = 1 for a group. */
+    MSG_REPLY_CARD(194),
+    /** After reading: a = [app.heyrobot.core.messages.MarkKind], b = [app.heyrobot.core.messages.MsgAppCode]. */
+    MSG_MARK(195),
+    /** A message's text was hidden from Robot: a = [app.heyrobot.core.messages.MsgAppCode], b = [app.heyrobot.core.messages.HiddenCode]. */
+    MSG_HIDDEN(196),
+    /** The notification listener: a = [app.heyrobot.core.messages.ListenerEvent], b = conversations held after it. */
+    MSG_LISTENER(197),
+    /** The quarantine acted: a = [app.heyrobot.core.messages.GuardCode]. */
+    MSG_GUARD(198),
+    /** Robot didn't read your messages: a = [app.heyrobot.core.messages.MsgRefusal]. */
+    MSG_REFUSED(199),
     /** Settings › Model (0.4.1; events 130 to 139): you chose a model. a = [ModelCode] now, b = [ModelCode] before. */
     MODEL_CHOSEN(130),
     /** A model loaded: a = [ModelCode], b = [BackendCode], c = ms the load took. */
@@ -824,6 +848,8 @@ object VoiceLogText {
             VoiceEvent.CONV_CHECK -> "Transcription check (" + code(LangCode.entries, c) + "): $a% of words wrong over $b lines"
             VoiceEvent.MT_LOAD -> if (b == 1) "Fast translation loaded in $a ms ($c directions)" else "Fast translation didn't load ($a ms): " + code(MtError.entries, c)
             VoiceEvent.CONV_REHEARD -> "Segment heard again in two halves (" + secs(a) + " of speech): $b words, then $c"
+            VoiceEvent.MSG_READ, VoiceEvent.MSG_SUMMARY, VoiceEvent.MSG_TRANSLATE, VoiceEvent.MSG_REPLY, VoiceEvent.MSG_REPLY_CARD, VoiceEvent.MSG_MARK,
+            VoiceEvent.MSG_HIDDEN, VoiceEvent.MSG_LISTENER, VoiceEvent.MSG_GUARD, VoiceEvent.MSG_REFUSED -> app.heyrobot.core.messages.MessageLog.describe(e)
         }
     }
 
