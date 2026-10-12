@@ -115,8 +115,9 @@ class MemorySettingsTest {
     @Test fun theListPinnedFirstThenNewestWithEachItemsState() {
         seed()
         open()
+        // The list comes in off the main thread: waited for, as in the dark test.
+        rule.waitUntil(5_000) { runCatching { rule.onNodeWithText("Robot remembers 6 things.", substring = true).assertExists() }.isSuccess }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
-        rule.onNodeWithText("Robot remembers 6 things.", substring = true).assertExists()
         rule.scrollToText("Pinned (2 of 6): in every answer")
         rule.onNodeWithText("Call me Sam").assert(hasText("Pinned · saved Sep 11"))
         rule.scrollToText("My sister Julie's birthday is May 3")
