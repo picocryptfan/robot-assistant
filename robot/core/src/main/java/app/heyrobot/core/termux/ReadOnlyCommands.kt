@@ -63,7 +63,8 @@ object ReadOnlyCommands {
             "top" -> top(v)
             "which", "type" -> v.all { !it.contains('/') }
             "command" -> v.firstOrNull() in setOf("-v", "-V") && v.drop(1).all { !it.startsWith("-") && !it.contains('/') }
-            "git" -> git(args)
+            // 1.0 audit (native-02): never git. Even status, log, diff and show read the repository's own config, which can
+            // name programs git runs (core.fsmonitor, gpg.program with log.showSignature…): a git command always shows its card.
             "pkg" -> v == listOf("list-installed")
             "dpkg" -> v.firstOrNull() in setOf("-l", "--list") && v.drop(1).all { !it.startsWith("-") && !it.contains('/') }
             "apt" -> v.toSet() == setOf("list", "--installed") && v.size == 2
@@ -172,41 +173,5 @@ object ReadOnlyCommands {
     private fun top(v: List<String>): Boolean {
         val joined = v.joinToString(" ")
         return joined.length <= 16 && Regex("^-b -n ?\\d{1,3}$|^-n ?\\d{1,3} -b$|^-bn ?\\d{1,3}$").matches(joined)
-    }
-
-    /** git status, git log with a count, git diff --stat, git branch (listing), git show --stat; -C <folder in ~>. */
-    private fun git(args: List<ShellWord>): Boolean {
-        val v = args.map { it.value }
-        var k = 0
-        while (k < v.size && v[k].startsWith("-")) {
-            when (v[k]) {
-                "-C" -> {
-                    val dir = args.getOrNull(k + 1) ?: return false
-                    if (!pathOk(dir, content = false)) return false
-                    val p = TermuxPaths.resolve(dir) ?: return false
-                    if (!TermuxPaths.inHome(p)) return false
-                    k += 2
-                    continue
-                }
-                "--no-pager", "-P" -> {}
-                else -> return false
-            }
-            k++
-        }
-        val sub = v.getOrNull(k) ?: return false
-        val rest = v.drop(k + 1)
-        val bad = rest.any { a -> listOf("--output", "--ext-diff", "--no-index", "--exec", "--textconv", "--open-files-in-pager").any { a == it || a.startsWith("$it=") } }
-        if (bad) return false
-        // rev:path names a file's content (git show --stat HEAD:.env prints it).
-        if (rest.any { !it.startsWith("-") && ':' in it }) return false
-        return when (sub) {
-            "status" -> true
-            "log" -> rest.any { Regex("^-n$|^-n\\d{1,4}$|^-\\d{1,4}$|^--max-count=\\d{1,4}$").matches(it) } &&
-                rest.indexOf("-n").let { it < 0 || rest.getOrNull(it + 1)?.all { c -> c.isDigit() } == true }
-            "diff" -> rest.any { it == "--stat" || it.startsWith("--stat=") || it == "--shortstat" || it == "--numstat" }
-            "show" -> rest.any { it == "--stat" || it.startsWith("--stat=") }
-            "branch" -> rest.all { it in setOf("-a", "-r", "-v", "-vv", "--all", "--remotes", "--verbose", "--list", "--show-current", "--no-color", "-l") }
-            else -> false
-        }
     }
 }

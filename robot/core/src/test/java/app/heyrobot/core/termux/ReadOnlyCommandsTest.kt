@@ -17,8 +17,6 @@ class ReadOnlyCommandsTest {
             "grep -n todo notes.md", "grep -rn TODO ~/projects", "grep -e x -e y notes.md",
             "ps", "ps -eo pid,pcpu,comm --sort=-pcpu | head -5", "ps aux | grep ssh", "ps -ef", "top -b -n 1", "top -bn1", "ls ~/storage/shared",
             "which git", "type ls", "command -v git",
-            "git status", "git log -n 5", "git log -5 --oneline", "git log --max-count=3", "git diff --stat", "git branch", "git branch -a", "git show --stat",
-            "git -C ~/notes status", "git -C ~/notes log -n 3 --oneline",
             "pkg list-installed", "dpkg -l", "apt list --installed",
             "termux-battery-status", "termux-audio-info", "termux-camera-info", "termux-tts-engines",
             "echo hello | wc -c", "printf 'a\\nb\\n' | sort | uniq", "cat notes.md | grep x | sort | uniq -c | head", "ls | cut -c1-10", "du -sh ~ | tail -n 1",
@@ -27,6 +25,9 @@ class ReadOnlyCommandsTest {
 
     @Test fun forbiddenForms() {
         for (s in listOf(
+            // 1.0 audit (native-02): never git, not even status or log: a repository's own config can name programs git runs.
+            "git status", "git log -n 5", "git log -5 --oneline", "git log --max-count=3", "git diff --stat", "git branch", "git branch -a", "git show --stat",
+            "git -C ~/notes status", "git -C ~/notes log -n 3 --oneline", "git --no-pager status",
             // Never on the list.
             "env", "printenv", "set", "history", "export", "declare -p", "echo hi", "printf x", "cat \$PREFIX/etc/motd",
             // Lists, background, redirections, expansions, here-docs, comments.

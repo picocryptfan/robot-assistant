@@ -44,6 +44,10 @@ class TermuxPolicyTest {
         assertEquals(RUN, cmd("tail -n 20 ~/logs/sync.log", SPOKEN, readOnlyOn).verdict)
         // Not on the list: still a card.
         assertEquals(CARD, cmd("mkdir x", settings = readOnlyOn).verdict)
+        // 1.0 audit (native-02): git reads the repository's own config, which can run programs: always its card.
+        for (g in listOf("git status", "git -C ~/notes status", "git log -n 5", "git diff --stat", "git show --stat", "git branch")) {
+            assertEquals(g, CARD, cmd(g, TYPED, readOnlyOn).verdict)
+        }
         // A helper's command, or one from content, always shows its card.
         assertEquals(CARD, cmd("du -sh ~", HELPER, readOnlyOn.copy(helpers = true)).verdict)
         assertEquals(TAP_ONLY, cmd("du -sh ~", CONTENT, readOnlyOn).verdict)

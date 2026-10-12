@@ -192,7 +192,7 @@ fun TermuxSettingsScreen(ui: TermuxUi, act: TermuxPageActions, onBack: () -> Uni
                 act.save(s.copy(commands = it))
             }
             SwitchPreference("Read-only commands without a card",
-                "Only commands on Robot's read-only list (ls, du, df, git status…), and never in a conversation with content Robot didn't write",
+                "Only commands on Robot's read-only list (ls, du, df, ps…), and never in a conversation with content Robot didn't write",
                 s.readOnlyWithoutCard, enabled = s.commands != CommandLevel.OFF) { act.save(s.copy(readOnlyWithoutCard = it)) }
             ListPreference("A spoken yes runs a command", s.spokenYes, SpokenYes.entries, { it.en },
                 { if (it == SpokenYes.WITHOUT_WARNINGS) "A command with a warning always needs a tap" else "Every command needs a tap on Run" }) {
