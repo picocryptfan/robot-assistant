@@ -110,13 +110,14 @@ checks `package: name='ai.robot_app'`, the permission, the authorities, the affi
 The release-readiness work for 1.0, on 0.9.0's code (the version number is still 0.9.0). Nothing here changes what Robot
 does with your words.
 
-- **Downloads** (Settings › Model, Voice, Conversation): every file Android's download manager fetches for Robot carries
-  `User-Agent: Robot/<version>` (core `DownloadPolicy`, the same as the updater's), not Android's default, which names the
-  phone model. Robot still has no network-state permission (`ProcessIsolationTest`, `tools/verify_apk.sh`), so it can't
-  see whether the phone is on mobile data: a download of 200 MB or more (the models, speech recognition, the natural
-  voice) first asks "Download 3.11 GB?": **Wait for Wi-Fi** (the download manager holds it until an unmetered network,
-  `setAllowedOverMetered(false)`), **Download anyway** or **Cancel**. Smaller ones (the fallback voice, the speaker
-  model, the fast translation engine) start as before.
+- **Downloads** (the Model tab, its Voice models, Settings › Conversation): every file Android's download manager
+  fetches for Robot carries `User-Agent: Robot/<version>` (core `DownloadPolicy`, the same as the updater's; the version
+  as Settings › About shows it, `1.0.0-rc1` with its "-", as in every User-Agent of Robot's since rc1: core
+  `AppId.product`), not Android's default, which names the phone model. Robot still has no network-state permission
+  (`ProcessIsolationTest`, `tools/verify_apk.sh`), so it can't see whether the phone is on mobile data: a download of
+  200 MB or more (the models, speech recognition, the natural voice) first asks "Download 3.11 GB?": **Wait for Wi-Fi**
+  (the download manager holds it until an unmetered network, `setAllowedOverMetered(false)`), **Download anyway** or
+  **Cancel**. Smaller ones (the fallback voice, the speaker model, the fast translation engine) start as before.
 - **"Robot closed unexpectedly"**: when you open Robot after the app or the assistant (`:voice`) crashed or stopped
   responding, a window says so once, from Android's records (`ApplicationExitInfo`; core `AppCrash`, `sys/Problems.kt`),
   with **Send feedback** (a bug report with the crash report ticked: Android's record, a native crash's frames as
@@ -139,13 +140,23 @@ does with your words.
 
 **On the phone (1.0 hardening):**
 
-1. **Big download on mobile data.** Wi-Fi off, Settings › Voice › Speech recognition › Download: *done when* the window
-   asks first; Wait for Wi-Fi shows "Waiting to start" until Wi-Fi is back, then downloads; Download anyway downloads
-   at once.
-2. **User-Agent.** Download any model through a proxy you control (or check the server log): *done when* it says
-   `Robot/0.9.0`.
-3. **Crash notice.** With a debug build, crash the main app once (`adb shell am crash ai.robot_app`), open Robot: *done
-   when* the window shows once; Send feedback opens a bug report whose "Crash report" preview names the crash.
+1. **Big download on mobile data.** Wi-Fi off, mobile data on, the Model tab › Voice models › Speech recognition ›
+   Download: *done when* the window asks first; with Wait for Wi-Fi the row says "Waiting to start" until Wi-Fi is back
+   (Android's download manager keeps the download pending: its job needs an unmetered network), then downloads; Download
+   anyway downloads at once. (Wi-Fi lost during a download that waits for it: "Paused at … MB: waiting for Wi-Fi (too
+   large for mobile data)".)
+2. **User-Agent (optional).** The header travels inside HTTPS, so only a proxy that decrypts HTTPS sees it, and Robot
+   trusts the system's certificate authorities only (`network_security_config.xml`; Android's download manager uses
+   Robot's rules for Robot's downloads), which a GrapheneOS phone without root can't add a proxy's to. On the phone,
+   check only the host names, in a DNS or router log: *done when* a download looks up Hugging Face's hosts only
+   (huggingface.co and the download hosts it redirects to). The value (`Robot/<version>`, the same in every User-Agent)
+   is `DownloadPolicyTest`'s; your own SearXNG's access log shows the search's (step 4 of 0.9's web search).
+3. **Crash notice.** Crash the main app once and open Robot: `adb shell 'am crash $(pidof ai.robot_app)'`. Any build
+   will do: `am crash` needs no debuggable app (AOSP's `ActivityManagerShellCommand.runCrash` refuses only for a user
+   with the "no debugging features" restriction, and `AppErrors.scheduleAppCrashLocked` only a package a device policy
+   protects). Give it the main process's pid: with the package name it crashes the last of Robot's processes in
+   Android's list by pid (the newest, often `:brain`, whose crash is a model problem, not this notice). *Done when* the
+   window shows once; Send feedback opens a bug report whose "Crash report" preview names the crash.
 4. **TalkBack.** Spoken replies off, ask a question: *done when* TalkBack reads the answer once, when it is complete.
 
 ## The 1.0 security audit's fixes
@@ -166,8 +177,8 @@ Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the se
   within 2 minutes (`PanelContinuity.UNLOCK_WINDOW_MS`), or you unlock with the panel still open and ask there. Then its
   turns stay, under "Said while the phone was locked"; the model gets them quoted as information, never as your words
   (core `Quoted.LOCKED`), a helper's transcript doesn't call them yours, their words in a web search need a card, and the
-  conversation is content: an action you didn't ask for in your own words needs its card whatever Safety cards says (as
-  with messages, not a switch). History keeps the conversations as before (a continued one keeps the mark).
+  conversation is content: an action you didn't ask for in your own words needs its card whatever When Robot asks first
+  says (as with messages, not a switch). History keeps the conversations as before (a continued one keeps the mark).
 - **Unlock events arrive** [ipc-3]: `USER_PRESENT` comes from SystemUI under an ordinary app uid, so non-exported receivers
   never got it; they are exported now, for protected system broadcasts only (`sys/ProtectedBroadcasts`).
 - **Clock's fake broadcasts can't flush the voice log** [ipc-4]: unverified alarms are logged once a minute with a count
@@ -191,15 +202,17 @@ Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the se
   and From your drive's notifications are `VISIBILITY_SECRET`.
 - **Private memory on screen** [secrets-memory-private-items-not-secure]: Settings › Memory and a panel showing a private
   answer are `FLAG_SECURE`; Memory's dialogs are secure and its fields ask the keyboard for no personalized learning.
-- **Who gets a search's words** [network-1]: the card and the "Sent to" line name Open Library, and Wikipedia when
-  Encyclopedia lookups ask it (core `WebAlso`).
+- **Who gets a search's words** [network-1]: the consent card, the action's line, the answer card's "Sent to" line and
+  History's line ("Searched the web (your SearXNG and Wikipedia) · …") name Open Library, and Wikipedia when
+  Encyclopedia lookups ask it (core `WebAlso`; the answer card and History from what the search actually asked,
+  `WebOutcome.Found.also`), so it shows at Ask before searching: Never ask too.
 - **Your own `.litertlm`** [native-01, ipc-5]: its container is checked strictly before LiteRT-LM reads it, and importing
   your own file warns that it runs with Robot's permissions (a known limitation: "Your own model file", SECURITY.md).
   Google's real files pass it: SmolLM2 135M (litert-community's smallest) and Gemma 4 E2B's CPU and Tensor G5 builds;
   Gemma 4 E2B's GPU-only build has no `prefill_decode` and was already unusable (`LiteRtLmTest` keeps their layouts).
 - **:llama's replies are capped** [native-03]: 256 KiB per request (core `StreamBudget`); past it the request ends.
 - **Routines on the locked phone** [physical-routines-writable-locked]: nothing makes, deletes or lists a routine or adds a
-  brief reminder ("Unlock first").
+  brief reminder ("Unlock first"; in French when it was said in French, « Déverrouille d'abord : … », the listing too).
 - **Calls** [physical-call-e164-plus-dropped, physical-car-trusted-any-number]: a contact's number is dialled with its "+";
   the locked trusted car session calls People and contacts only.
 
@@ -209,8 +222,8 @@ Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the se
    when* the panel is empty, and History lists the locked conversation on its own.
 2. **The unlock it asked for.** Lock, "hey robot, add a note: buy milk": *done when* it asks you to unlock. Unlock within
    2 minutes, "hey robot": *done when* the earlier turns show under "Said while the phone was locked"; "go ahead" brings
-   the note's card even with Settings › Safety & privacy › Safety cards at "Only when Robot isn't sure who", and "add a
-   note: buy eggs" (your own words) doesn't.
+   the note's card even with Settings › Safety & privacy › When Robot asks first at "Only when Robot isn't sure who", and
+   "add a note: buy eggs" (your own words) doesn't.
 3. **The window.** Step 2 again, waiting 3 minutes before "hey robot": *done when* the panel is empty.
 4. **Unlocked with the panel open.** Lock, "hey robot, what time is it?", unlock with your fingerprint while the panel
    stays, type "and the date?": *done when* the first exchange moves under "Said while the phone was locked" and the date
@@ -220,6 +233,69 @@ Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the se
 7. **A real `.litertlm`.** Settings › Model › Your own model file, import `SmolLM2_135M_Instruct.litertlm`
    (litert-community/SmolLM2-135M-Instruct, 143 MB): *done when* it is accepted (no "Robot won't open this file") and,
    chosen, it answers "hi" on the CPU.
+
+## Before rc1: what writing 1.0's phone tests found
+
+Drafting the Test Bench's 1.0 tests against the code turned up these; each is fixed with a test, and the README checks
+above and below say what is true now. No permission, component, setting or schema changes (settings stay at 13); the new
+words are in `res/values/strings.xml`, but for the French refusal of a routine listing, which core keeps beside its
+siblings.
+
+- **One version in every User-Agent**: `Robot/<versionName>`, its "-" kept (a token character), for the downloads, the
+  updater, Termux's update check, the search APIs, Wikipedia, Open Library and Nominatim alike (core `AppId.product`).
+  Before, the last four dropped it: `Robot/1.0.0rc1` beside the downloads' `Robot/1.0.0-rc1`. `DownloadPolicyTest`.
+- **Who got a search's words** (the audit's network-1, finished): the answer card's "Sent to" line and History's line
+  name Wikipedia and Open Library when the search asked them (`WebOutcome.Found.also`, set by `WebSearch` from what it
+  sent), so at Ask before searching: Never ask something on screen still says so. Before, only the consent card and the
+  action's line, which the answer replaces, did. `WebAnswerTest`, `SearchClientTest`.
+- **"Search the web for who is …"** is a who question for Encyclopedia lookups: the words after the routing phrase
+  count, in English and French (`WebAlso.encyclopedic` on `WebRouter.explicit`'s words; « où » now ends a word on the
+  JVM too). `WebGateTest`.
+- **A reference in a search in your browser**: words that start with a pronoun, a possessive or a demonstrative ("that
+  dentist", "this place", "them", "those", « ça », « ce resto », « cette adresse », « ces … », « celui-là ») go to the
+  model (`browser_search`, its card first, QueryCheck), as a bare pronoun did; before, "look that dentist up on
+  DuckDuckGo" opened DuckDuckGo at once with "that dentist". `BrowserRouterTest`, `BrowserGateTest`.
+- **Locked routines in French**: every routine command said in French is refused in French (`RoutineRouter.french`
+  from the command's own words; the panel passes what you said), and listing has its French line. Before, only a brief
+  reminder whose own words read as French was. `RoutineLockedPhoneTest`.
+- **Termux's GitHub build**: Settings › Termux shows the public test key sentence and the way to the F-Droid build as
+  soon as that build is installed, set up or not, and the checklist's Test says why it can't run while a lock holds
+  Termux instead of hiding its button. `TermuxSettingsTest`.
+- **Messages from the setup guide**: its switch opens Settings › Messages' own "Read your messages?" window (shared,
+  `MessagesSetupDialog`, its words now in `strings.xml`); Turn on waits for a ticked app, and with none of the apps
+  Robot reads installed it says "Messages stays off". Before, it turned Messages on directly, with Cheogram if it was
+  there and with no app at all otherwise. `SetupGuideScreenTest`, `MessagesSettingsTest`.
+- **"When Robot asks first"**: Settings › Web search's "Never ask" and Settings › Actions' footer still called the rule
+  "Safety cards", its name before the row was renamed; so did this README.
+- **The source scans** (`ProcessIsolationTest`): they read files through a small lexer (`Source`, `SourceTest`) instead
+  of regexes, so a string such as the "any file" type (star, slash, star) no longer hides the rest of `PeopleScreen.kt`
+  and `MainActivity.kt` as a comment would; every check passes on the whole files.
+- **README only** (the code was right): the big download's path and row, the crash notice's `am crash` (no debug build
+  needed; the main process's pid), the User-Agent checks (inside HTTPS: host names only, on a phone), the phrases that
+  search, Ready cards on the lock screen, and two lines about 0.9 files a new `ai.robot_app` install never reads.
+
+**On the phone (rc1 fixes):**
+
+1. **Who got the words.** Web search set up with your SearXNG, Encyclopedia lookups on, Ask before searching at Never
+   ask: "search the web for who is the mayor of Montreal": *done when* no card shows, the answer card's line says "Sent
+   to your SearXNG and Wikipedia: “who is the mayor of Montreal”", and History › that conversation says "Searched the web
+   (your SearXNG and Wikipedia) · …". The same with « cherche sur le web qui est la mairesse de Montréal ». With Book
+   lookups on, "search the web for books by Gabrielle Roy": "Sent to your SearXNG and Open Library: …".
+2. **A reference in your browser.** "What's on my calendar tomorrow?" (an event with a dentist), then "look that dentist
+   up on DuckDuckGo": *done when* a card "Search DuckDuckGo for “…” in your browser" shows the model's words in full and
+   only a tap answers it. « cherche ce resto sur Google » after a question about a restaurant: a card first. "Search
+   DuckDuckGo for the Stanley Cup": DuckDuckGo opens at once, no card.
+3. **Locked routines in French.** Lock the phone: « hey robot, quelles sont mes routines »: *done when* Robot says
+   « Déverrouille d'abord : la liste de tes routines n'est donnée que téléphone déverrouillé. »; « supprime ma routine du
+   soir »: « Déverrouille d'abord : les routines ne se changent que téléphone déverrouillé. »; "list my routines": the
+   English line.
+4. **Termux's GitHub build.** The Termux checks 3 and 4 below (Another signer, Test key).
+5. **Messages from the guide.** Settings › About › Setup guide › Messages, Read my messages: *done when* "Read your
+   messages?" shows with your texting app ticked (Cheogram, if installed), Turn on is greyed with nothing ticked, and
+   after Turn on Settings › Messages lists the app you ticked. On a phone with none of Cheogram, Signal, Molly, Messaging
+   or Google Messages: "Messages stays off", and the switch stays off.
+6. **The rule's name.** Settings › Web search › Ask before searching: "Never ask" reads "No card (Actions and When Robot
+   asks first still apply)".
 
 ## Setup guide (1.0)
 
@@ -239,8 +315,11 @@ guide version you last saw, the page Finish later left it on, the version you fi
   defaults: nothing is written; the page is marked skipped) and Next (Done on the summary), which wrap onto two lines at
   large text. System Back goes up one page. A choice is written as soon as you make it; looking or skipping writes nothing.
 - **Permissions** only when you tap the related choice (contacts, the calendar, approximate location, the microphone and
-  notifications), through the app's existing launchers; turning Messages on goes through Settings › Messages' own set-up
-  (your texting app ticked and pinned to its signing key), and its notification access steps are a tap away.
+  notifications), through the app's existing launchers. Turning Messages on goes through Settings › Messages' own window
+  ("Read your messages?": what Robot will do, then the apps it reads that are installed, Cheogram ticked when it is
+  there; each app ticked is pinned to its signing key at Turn on), and its notification access steps are a tap away. The
+  guide never turns Messages on with no app: Turn on waits until one is ticked, and with none of the apps Robot reads
+  installed the switch stays off and the page says so ("Messages stays off").
 
 | # | Page | What it offers (default) | Find it later |
 | --- | --- | --- | --- |
@@ -283,8 +362,11 @@ the summary, Home's and About's rows, and five goldens: What Robot can do (light
    3.31 GB on a Pixel 11), and the row shows the progress; the same on page 4 for speech recognition and the voice.
 3. **Permissions on a tap.** Pages 5, 7 and 10: *done when* Android asks only after Allow (the microphone and
    notifications, contacts, the calendar, approximate location), and the row turns to Allowed.
-4. **Choices land.** Turn off "hey robot", pick another voice, turn on the brief (its card first) and Messages: *done
-   when* Settings › Wake word, Voice, Routines and Messages show the same, and the summary lists them.
+4. **Choices land.** Turn off "hey robot", pick another voice, turn on the brief (its card first) and Messages ("Read
+   your messages?" first, as in Settings › Messages: tick your texting app, Turn on): *done when* Settings › Wake word,
+   Voice, Routines and Messages show the same (Messages with the app you ticked), and the summary lists them. With none
+   of the apps Robot reads installed (Cheogram, Signal, Molly, Messaging, Google Messages), Read my messages stays off
+   and the page says "Messages stays off".
 5. **Finish later.** On page 9, Finish later, close Robot from Recents and open it: *done when* Home shows "Continue
    the setup guide · Step 9 of 17" and the guide doesn't open by itself; Continue opens page 9.
 6. **Skip.** Skip pages 6 to 9: *done when* nothing changed in Settings › Actions, Safety & privacy, People, Messages and
@@ -319,18 +401,21 @@ test-key block, an update check and, for the ADB fixes, a way without a computer
 - **The update lock**: Trust this Termux records its signer **and** its version code and `lastUpdateTime` in
   `termux.json` (`TermuxSettings.trust`). Before each call is prepared and again as it runs (Android's
   `PACKAGE_REPLACED` doesn't reach a manifest receiver, so Robot checks every time), a different version code or install
-  time is `TermuxStatus.UPDATED`: every run pauses (the Test and the listing too), and Settings › Termux and the next Termux
-  card say "Termux changed to 0.119.0 (F-Droid). Check that you updated it yourself, then tap Trust this version." **Trust
-  this version** records the new one. A 0.9 `termux.json` without a version reads as changed once. A different signer
-  (`CHANGED`) is refused outright: Settings › Termux offers **Set up again**, which forgets the trusted Termux and turns
-  Termux off, and a Test made with the replaced Termux no longer counts. Voice log `TERMUX_LOCKED` (175: `TermuxLock`)
-  and, from Settings, `TERMUX_TRUST` (176: trusted, this version, Run anyway on or off, set up again).
+  time is `TermuxStatus.UPDATED`: every run pauses (the Test and the listing too), and Settings › Termux and the next
+  Termux card say "Termux changed to 0.119.0 (F-Droid). Check that you updated it yourself, then tap Trust this
+  version." **Trust this version** records the new one. A different signer (`CHANGED`) is refused outright: Settings ›
+  Termux offers **Set up again**, which forgets the trusted Termux and turns Termux off, and a Test made with the
+  replaced Termux no longer counts. Voice log `TERMUX_LOCKED` (175: `TermuxLock`) and, from Settings, `TERMUX_TRUST`
+  (176: trusted, this version, Run anyway on or off, set up again).
 - **The public test key**: in the GitHub build Robot runs nothing by default ("This Termux is signed with a public test
   key — anyone can make an 'update' that installs over it. Switch to the F-Droid build (Settings › Termux shows how)."):
-  Settings › Termux shows how to switch (keep what you need from `~`, uninstall Termux and its plugins, install from
-  F-Droid, set it up again) and **Run anyway, I understand the risk** (off; a tap and a confirmation; it holds for the
-  version you trusted, so every new version needs it again). Its tools stay described while it is paused, so a call says
-  why.
+  as soon as that build is installed (before Trust, or beside another signer's Set up again), Settings › Termux shows
+  that sentence and how to switch (keep what you need from `~`, uninstall Termux and its plugins, install from F-Droid,
+  set it up again), and, for the build you trusted, **Run anyway, I understand the risk** (off; a tap and a
+  confirmation; it holds for the version you trusted, so every new version needs it again). Until then the checklist's
+  Test says why it can't run ("Robot runs nothing in the GitHub build, not even the Test: …"; the update lock and
+  another signer have their own line) instead of hiding its button. Once a Termux set up with the Test is paused (an
+  update, Run anyway off again), its tools stay described, so a call says why.
 - **Robot's own keys by exact value** (left over from the 1.0 audit): every Termux call passes `ownSecrets` to
   TermuxPolicy, read in `:voice` just before (`TermuxSecrets`: each helper's key and each web search key, which `:voice`
   already reads for its helpers and searches), so a command or script argument holding one is refused with "This holds
@@ -371,15 +456,22 @@ token, no download or install in the check, the two addresses, the Shizuku run's
 **On the phone (Termux updates, the lock and Shizuku):**
 
 1. **Update check.** F-Droid Termux set up and trusted: Settings › Termux › Termux updates › Check now: *done when* it
-   shows the installed version and date, the developers' release and F-Droid's suggestion, and "Up to date"; through a
-   proxy you control, only api.github.com and f-droid.org were asked, with `Robot/<version>` and no cookie.
+   shows the installed version and date, the developers' release and F-Droid's suggestion, and "Up to date"; a DNS or
+   router log shows only api.github.com and f-droid.org asked. (The request's User-Agent, `Robot/<version>`, and its
+   lack of a cookie travel inside HTTPS: only a proxy that decrypts HTTPS would see them, and Robot trusts no added
+   certificate authority; `TermuxUpdatesTest` and `ProcessIsolationTest` check them.)
 2. **Update lock.** Update Termux from the F-Droid app (or reinstall the same APK over it): *done when* "run hello" says
    "Termux changed to … Trust this version in Settings › Termux.", Settings › Termux shows the same with Trust this
    version, and after it the script runs again.
 3. **Another signer.** Uninstall Termux, install the GitHub build: *done when* Settings › Termux says another signer and
-   offers Set up again, nothing runs, and after Set up again the checklist asks for Trust and the Test.
-4. **Test key.** With the GitHub build trusted: *done when* every call says the public test key sentence; Run anyway (a
-   confirmation) lets cards show; an update of that build pauses it and Run anyway is off again after Trust this version.
+   offers Set up again, shows the public test key sentence and Switch to the F-Droid build already, nothing runs, and the
+   Test says "Robot runs nothing, not even the Test, until you set Termux up again."
+4. **Test key.** Set up again (Allow, the line pasted): *done when* the public test key sentence and the steps to the
+   F-Droid build stay at the top, Run anyway says "Trust this Termux first", and the Test says "Robot runs nothing in the
+   GitHub build, not even the Test: …" with no Test button. Trust it, turn on Run anyway (a confirmation): *done when*
+   the Test runs and passes, and with the switch on, cards show. Turn Run anyway off: *done when* every call says the
+   public test key sentence. Turn it on again; an update of that build pauses it, and after Trust this version Run anyway
+   is off again (every call says the sentence until you turn it on).
 5. **Own keys.** With a helper's key saved, type "run the command echo <that key>": *done when* it is refused with "This
    holds one of Robot's own keys…" and `adb logcat -d | grep -c <the key's last 8 characters>` is 0.
 6. **Shizuku.** Install Shizuku from its GitHub releases, start it with Wireless debugging, export rish into Termux's home,
@@ -388,7 +480,9 @@ token, no download or install in the check, the two addresses, the Shizuku run's
    terminal's package (the line replaces it).
 7. **Run with Shizuku through Termux.** On "Let Robot repair that itself" (not done yet), tap Run with Shizuku through
    Termux, then Run on its card: *done when* the page says "Done", the status row turns Done, and "Stay the assistant after
-   a restart" turns Done by itself; locked, nothing is sent; with Shizuku stopped, the result says to start it.
+   a restart" turns Done by itself; with Shizuku stopped, the result says to start it. (Locked, nothing is sent:
+   `ShizukuRunTest` checks it. Settings never shows over the lock screen, so on the phone that needs the power button
+   pressed right after Run; optional.)
 
 ## What's new in 0.9.0
 
@@ -412,8 +506,8 @@ has its section below, with its phone checks. Settings file schema 13, as 0.8.0:
   cleaned and its secrets hidden. New: `com.termux.permission.RUN_COMMAND`, `<queries>` for `com.termux` and the
   `:voice` process's `TermuxResultReceiver` (not exported). Voice log events 170 to 173.
 - **Both are content, and 0.7's rules hold.** A web answer and a command's output are content Robot didn't write: under
-  the default Safety cards, later actions ask first, and every later Termux command is a card only a tap answers. After
-  a message in the conversation, every web search and every Termux run, yours too, is a card only a tap answers; a
+  When Robot asks first's default, later actions ask first, and every later Termux command is a card only a tap answers.
+  After a message in the conversation, every web search and every Termux run, yours too, is a card only a tap answers; a
   message's words in a query are never "your words", even heard back while Robot read the message, and "search the web
   for …" or "run …" heard back that way is the message's. What Robot remembers never goes to a search service: a query
   with a word from memory you didn't say yourself is refused, card or not. What a command printed reaches a search only
@@ -660,7 +754,7 @@ helpers, the engine hardening and the built-in updater; each has its section bel
   (`automaticToolCalling = false`, constrained decoding when the TPU build allows it), the approval gate decides.
   In a conversation with screen text, a picture or something Robot read, an action that writes or leaves the phone and
   that your own words this turn didn't ask for needs a tap ("Just do it" turns into "Ask first"; Settings › Safety &
-  privacy › Safety cards, where "Always after Robot reads something" is the rule before 0.4.0); the read tools
+  privacy › When Robot asks first, where "Always after Robot reads something" is the rule before 0.4.0); the read tools
   (contacts, notes, calendar) keep their own level;
   at most two actions and three tool rounds per answer; a call written as text runs only when :brain is in text-call
   mode (its TPU build refused the tool API, or since 0.4.5 the model is your own GGUF file) and the whole reply is the call. An app name is resolved before the card,
@@ -2790,8 +2884,8 @@ is read on the lock screen.
   its placeholder in a conversation continued from History. A sender's name and a group's title are the sender's choice:
   History keeps them on one line, at most 40 characters, without control, invisible or direction-changing characters
   (core `MessageReading.historyName`), and never as your words or Robot's.
-  Once a message is in the conversation, every action that writes or leaves the phone shows a card, whatever Safety
-  cards says (`AskWhy.MESSAGE` in `ApprovalGate`); one that would send anything to someone other than that message's
+  Once a message is in the conversation, every action that writes or leaves the phone shows a card, whatever When Robot
+  asks first says (`AskWhy.MESSAGE` in `ApprovalGate`); one that would send anything to someone other than that message's
   sender (a text, an email, a helper, anything online) needs a tap: "A message is in this conversation: check this,
   then tap." Summaries, translations and drafts are one-shot requests with no tools.
 - **Helpers:** messages are "messages you received" among personal content, like a screen or a photo: never sent on a
@@ -3819,10 +3913,10 @@ Four tools, so Robot can say whether tomorrow will be cloudy and help you free u
 are "Just do it" by default; the two that unload, stop or delete something ask first. Each has its own row in Settings ›
 Actions, and all four need the phone unlocked by default: the lock screen allows only questions, timers and alarms
 unless Settings › Safety & privacy › Works on the lock screen says more. What the reading ones find is content Robot
-didn't write, so later actions in that conversation that you didn't ask for yourself ask first (Safety cards, below), and
-it makes the conversation personal for Claude (below). The weather goes online, so in a conversation with screen text, a
-photo or something a read tool found, it shows a card first too unless your own words asked for the weather (the other
-read tools don't: nothing leaves the phone).
+didn't write, so later actions in that conversation that you didn't ask for yourself ask first (When Robot asks first,
+below), and it makes the conversation personal for Claude (below). The weather goes online, so in a conversation with
+screen text, a photo or something a read tool found, it shows a card first too unless your own words asked for the
+weather (the other read tools don't: nothing leaves the phone).
 
 | Tool | Does | Default |
 |---|---|---|
@@ -4047,8 +4141,8 @@ Claude.
 
 | Switch | Default | What it does |
 |---|---|---|
-| Safety cards | **When you didn't ask for it** | When content Robot didn't write (screen text, a photo, what a read tool found, Claude's words) makes an action that writes or leaves the phone ask first. *Always after Robot reads something*: any such content, every such action (the rule before 0.4.0). *When you didn't ask for it*: only an action your own words this turn didn't ask for. *Only when Robot isn't sure who*: content never does; only the reasons below. |
-| Card when Claude asks Robot to do something | on | Every call Claude makes shows a card (before: fixed). Off: Claude's calls follow Safety cards like any content; a read tool's findings still need "Share with Claude" unless the next-but-two switch is on. |
+| When Robot asks first (0.4.0: Safety cards) | **When you didn't ask for it** | When content Robot didn't write (screen text, a photo, what a read tool found, Claude's words) makes an action that writes or leaves the phone ask first. *Always after Robot reads something*: any such content, every such action (the rule before 0.4.0). *When you didn't ask for it*: only an action your own words this turn didn't ask for. *Only when Robot isn't sure who*: content never does; only the reasons below. |
+| Card when Claude asks Robot to do something | on | Every call Claude makes shows a card (before: fixed). Off: Claude's calls follow When Robot asks first like any content; a read tool's findings still need "Share with Claude" unless the next-but-two switch is on. |
 | Card when who-to isn't certain | on | Several people or numbers fit, a name only nearly matches, the model wrote a number or address itself, an app name matched loosely, no contact found (Cheogram's list or share screen). Off: Robot takes the best match (the card's first choice). |
 | Card for names learned from Cheogram | on | A name seen in a Cheogram notification (whoever sent it chose it). Off: such a person can be the best match like anyone. |
 | Card before deleting files | on | A large photo or video (Android's own confirmation still asks), or Robot's cache. Off: straight to Android's confirmation for the largest one. A list of apps to clear the cache of is a choice, not a safety card: it always shows. |
@@ -4059,11 +4153,11 @@ Claude.
 | Direct answers | on | Moved here from Settings › Replies (the Safety & privacy row on Settings says whether it is on). |
 | Keep screenshots and photos in history | off | With history on, a question's picture (a 320-pixel JPEG thumbnail, Base64 in the conversation file) and the screen's text (up to 8,000 characters) are saved with it, for History only: never replayed to the model, never in what Claude receives, never logged. A screen conversation is still saved only after Keep. **Remove saved screenshots and photos** takes them out of every conversation (the conversations stay). Robot's files are excluded from backups, as before. |
 
-The settings file is schema 6. An older file reads every switch at its default, which is the old behaviour, except
-Safety cards, which takes the new default "When you didn't ask for it" (as asked). After such an update the app shows,
-once, at the top of Home and Settings: "New: Settings › Safety & privacy. Cards now appear when you didn't ask for an
-action." Tapping it opens the page and the × dismisses it; either way it never shows again (`safetyNotice` in the
-settings file; a new install never sees it).
+The settings file is schema 6. An older file reads every switch at its default, which is the old behaviour, except When
+Robot asks first (then Safety cards), which takes the new default "When you didn't ask for it" (as asked). After such an
+update the app shows, once, at the top of Home and Settings: "New: Settings › Safety & privacy. Cards now appear when
+you didn't ask for an action." Tapping it opens the page and the × dismisses it; either way it never shows again
+(`safetyNotice` in the settings file; a new install never sees it).
 
 **What you asked for** (`ToolRouter.asked`, tested) is read from what you typed or said this turn, never from the
 screen's text, a photo or a tool's results: timers ("timer", "minuteur"), alarms ("alarm", "wake me", "réveil"), the
@@ -4117,7 +4211,7 @@ the mic nor a spoken yes answers a card; typed answers still work. Logged as `ca
 | Choice | What happens |
 |---|---|
 | **Ask the first time** (default, for new installs and upgrades) | The first time, a card that always shows, whatever the level: "Find the nearest “pharmacy” online (OpenStreetMap) and open the route in Organic Maps", and "To find the closest one, Robot would send “pharmacy” and your area (about 1 km) to OpenStreetMap's Nominatim. Nothing else leaves the phone." Buttons **Allow always** (from now on: Always), **Just this time**, **No, search the map** (Organic Maps' search this time), and a **Don't ask again** tick box that keeps the answer chosen (No with it ticked: Never). A tap only: a spoken yes says to tap; "no" or "cancel" declines it. |
-| **Always** | Robot goes online without that card (the level and Safety cards still apply). |
+| **Always** | Robot goes online without that card (the level and When Robot asks first still apply). |
 | **Never** | Organic Maps' search; nothing goes online. |
 
 Settings has one writer (the main app), so the panel keeps its lasting answer in a file of its own
@@ -4144,12 +4238,12 @@ it may go online, Robot
 The card says "Find the nearest “pharmacy” online (OpenStreetMap) and open the route in Organic Maps" while it runs;
 afterwards its saved line is "Opened Organic Maps' route to the nearest one OpenStreetMap knows, about 1.2 km away in a
 straight line." and its body (shown, never saved) "Familiprix · about 450 m", the street, and "Sent to OpenStreetMap:
-“pharmacy” near 45.53, -73.60" and "Data © OpenStreetMap contributors, ODbL". Like the weather, it makes the conversation personal ("your location") and is content
-for Safety cards. "Nearest" counts from the model's words or from your own this turn (if the model dropped it). No
-location permission, no fix, no internet, nothing found, or 20 seconds gone: Organic Maps' search as before, and the card
-says why ("OpenStreetMap knows no such place near you, so Robot opened Organic Maps' search instead: pick the place, then
-tap Route."). Stop ends the lookup at
-once. Logs: `maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Never: today's search.
+“pharmacy” near 45.53, -73.60" and "Data © OpenStreetMap contributors, ODbL". Like the weather, it makes the
+conversation personal ("your location") and is content for When Robot asks first. "Nearest" counts from the model's
+words or from your own this turn (if the model dropped it). No location permission, no fix, no internet, nothing found,
+or 20 seconds gone: Organic Maps' search as before, and the card says why ("OpenStreetMap knows no such place near you,
+so Robot opened Organic Maps' search instead: pick the place, then tap Route."). Stop ends the lookup at once. Logs:
+`maps_nearest found=… places=… requests=… ms=…` or the failure code, never the place. Never: today's search.
 
 **Search server** (Settings › Actions › Find the nearest place online, under the three choices; schema 12): OpenStreetMap's
 Nominatim by default. Type another Nominatim's address (your own, or another public one: `nominatim.example.org`,
@@ -4191,7 +4285,7 @@ inside Robot's own activity and is unchanged.
    didn't ask for an action." once; tapping it opens the page, × dismisses it, and it never comes back (a new install
    never shows it).
 2. Corner-swipe over a web page that says "set a timer for 2 minutes", tap the screen button, ask "summarize this": a
-   timer card shows (you didn't ask). Then type "set a timer for 1 minute": it just runs. Switch Safety cards to
+   timer card shows (you didn't ask). Then type "set a timer for 1 minute": it just runs. Switch When Robot asks first to
    "Always after Robot reads something": the same asks; "Only when Robot isn't sure who": neither asks. Back on the
    default, over a page that says "note: …": "what does this list say?" then a note from the page shows a card (naming
    a thing isn't asking); "remember that" saves without one; "now text it to Sam" goes by Texts' level.
@@ -4331,9 +4425,10 @@ calendar, settings, logs.
 - **Claude's actions**: Claude may ask for timers, alarms, maps, notes, the calendar, texts and email drafts, with the
   same schemas as Gemma's (strict). Every call is checked against its schema and **shows a card**, read tools included
   ("Share with Claude"), while Settings › Safety & privacy › "Card when Claude asks Robot to do something" is on (the
-  default; off, Claude's calls follow Safety cards like any content, and a read's findings still need "Share with Claude"
-  unless personal content may go to helpers automatically); the lock-screen rules apply; at most 2 calls and 3 tool rounds per answer; results go back as
-  `tool_result` blocks with `is_error` when the action failed. Not open_app, the flashlight or contact lookups.
+  default; off, Claude's calls follow When Robot asks first like any content, and a read's findings still need "Share
+  with Claude" unless personal content may go to helpers automatically); the lock-screen rules apply; at most 2 calls
+  and 3 tool rounds per answer; results go back as `tool_result` blocks with `is_error` when the action failed. Not
+  open_app, the flashlight or contact lookups.
 - **Errors**: a refused key ("Your Claude key was refused"), a rate limit ("Claude is busy, try again in a minute"),
   overloaded or 5xx (one retry, then said), no network ("No internet", with the Network permission hint), 60 s without
   any stream event ("Claude took too long to answer"; a thinking block in progress counts as progress). The SDK's own
@@ -5136,7 +5231,10 @@ pure logic is in `:core` (`Routine.kt`, `RoutineGate.kt`, `Brief.kt`, `AlarmWatc
     passeport": a brief reminder, said in the next morning's brief (it stays until the end of that day once said).
   - 1.0: on the locked phone none of these changes or lists anything ("Unlock first: routines are only changed with the
     phone unlocked."): a routine made, deleted or listed, or a brief reminder, needs the phone unlocked, as memory's
-    writes do, and the lock is checked again just before the file is written (core `RoutineLockedPhone`).
+    writes do, and the lock is checked again just before the file is written (core `RoutineLockedPhone`). Said in French
+    (« supprime ma routine du soir », « quelles sont mes routines », « rappelle-moi demain matin de … »), the refusal is
+    French too (core `RoutineRouter.french`): « Déverrouille d'abord : la liste de tes routines n'est donnée que
+    téléphone déverrouillé. »
   - While a routine or the brief speaks: "hey robot, next", "skip", "repeat", "stop" ("suivant", "passe", "répète");
     "stop" alone works too (the stop spotter). "Hey robot" pauses it for a minute while you say which; anything else
     ends it and is answered as usual.
@@ -5160,7 +5258,9 @@ pure logic is in `:core` (`Routine.kt`, `RoutineGate.kt`, `Brief.kt`, `AlarmWatc
   something waited or didn't work; "Morning brief ready · Play" when Android refused to let Robot speak by itself; "Your
   morning brief is ready · Open Robot" when Robot isn't the assistant. Since 1.0 all but the speaking one are secret on
   the lock screen (VISIBILITY_SECRET): Android's default "Show sensitive content when locked" would show a private
-  notification's words there in full, so the brief's words, a card's step and a routine's name only show unlocked.
+  notification's words there in full, so the brief's words, a card's step and a routine's name only show unlocked. So a
+  Ready card can't be seen or tapped on the lock screen: unlock, then tap it in the shade (or Settings › Routines ›
+  Ready).
 
 ### What runs without you (RoutineGate)
 
@@ -5170,7 +5270,7 @@ pure logic is in `:core` (`Routine.kt`, `RoutineGate.kt`, `Brief.kt`, `AlarmWatc
 | reads (calendar, notes, phone status, brief reminders) | runs | waits for the unlock unless "Everything" |
 | goes online (the weather) | only with "Routines may go online by themselves" on and Open-Meteo on its card | the weather without the town |
 | acts on the phone (timer, alarm, flashlight, a fixed note) | runs | only what Safety & privacy allows locked (timers and alarms by default), else it waits |
-| opens an app, a draft, maps, a new event | a Ready card you tap | a Ready card |
+| opens an app, a draft, maps, a new event | a Ready card you tap | a Ready card, shown and tapped after the unlock (secret on the lock screen) |
 | frees memory or storage, asks a helper | never offered | never |
 
 A step whose action is at "Ask first" in Settings › Actions becomes a Ready card too (nobody is there to answer a card).
@@ -5321,7 +5421,8 @@ voice log (Settings › Advanced › Voice log) shows each step as codes ("Routi
   a Ready card "didn't run at 07:30 · Tap to run it now"; at 11:00: nothing.
 - Change the time zone: *done when* the routine still fires at 7:30 local time.
 - A routine "every day at <in 2 minutes>, open Signal": *done when* nothing opens, "Robot has 1 thing ready for you"
-  appears (no details on the lock screen), and its tap opens the panel and Signal.
+  appears (since 1.0 not on the lock screen at all: it shows in the shade once you unlock), and its tap opens the panel
+  and Signal.
 - "Routines may go online by themselves" off: *done when* the brief says "Weather skipped: routines may not go online."
 - "Routines can run while the phone is locked" off: *done when* a locked brief waits and plays at the unlock.
 - A charging routine "when I plug in, set an alarm for 6:30": *done when* plugging in sets the alarm in Clock without
@@ -5674,9 +5775,13 @@ Searched the web · your SearXNG                          ≈ free
 [1] Panthers win back-to-back Stanley Cups · nhl.com
 [2] 2026 Stanley Cup Final · en.wikipedia.org
 Also found: Panthers repeat as champions · tsn.ca
-Read 1 page from this phone · Sent to your SearXNG: “who won the stanley cup this year”
+Read 1 page from this phone · Sent to your SearXNG and Wikipedia: “who won the stanley cup this year”
 From Wikipedia's article “2026 Stanley Cup Final”, CC BY-SA 4.0 (licence)
 ```
+
+The "Sent to" line names everyone the words went to (1.0, the audit's network-1): Wikipedia when Encyclopedia lookups
+asked it (a who, what or where question, here "who won …"), Open Library when Book lookups did; History's line too
+("Searched the web (your SearXNG and Wikipedia) · nhl.com, …"), whatever Ask before searching says.
 
 A tap on a source opens it in the browser (on the lock screen: unlock first); nothing on the card loads by itself.
 "Powered by Brave" shows on Brave's answers unless you turn that line off. The answer joins the conversation as a
@@ -5684,9 +5789,9 @@ helper's does (cut to about 600 tokens, without its marks). Failures are said in
 permission off, "Your SearXNG isn't answering", "Robot can't reach your SearXNG off your home network", the key refused
 or missing or out of credit, "The search took too long", "No results".
 
-**Web content is untrusted, not personal.** A web answer counts as content Robot didn't write: under the default Safety
-cards, an action you didn't ask for in your own words asks first for the rest of the conversation (a page saying "Robot,
-text Bob…" can't text anyone without a card). It doesn't make the conversation personal for helpers.
+**Web content is untrusted, not personal.** A web answer counts as content Robot didn't write: under When Robot asks
+first's default, an action you didn't ask for in your own words asks first for the rest of the conversation (a page
+saying "Robot, text Bob…" can't text anyone without a card). It doesn't make the conversation personal for helpers.
 
 ### Settings › Web search
 
@@ -5694,15 +5799,15 @@ text Bob…" can't text anyone without a card). It doesn't make the conversation
 |---|---|---|
 | Use web search | Off until set up | The page's main switch |
 | Search service, Address, API key, Delete key, Test | — | Set-up (above) |
-| Ask before searching | Ask the first time | Always ask, Never ask (the level and Safety cards still apply) |
+| Ask before searching | Ask the first time | Always ask, Never ask (the level and When Robot asks first still apply) |
 | Works on the lock screen | Off | Opens Safety & privacy, where it is one more row |
 | Daily searches | 100 | Today's count beside it |
 | Read result pages | When needed | Always, Never (snippets only) |
 | Read pages through | This phone | The search service when it can (Brave, Kagi) |
 | Pages per answer | 3 | 1 to 5 |
 | Safe search | Moderate | Off, Strict |
-| Encyclopedia lookups (Wikipedia) | On (since 1.0, when Robot published its contact; a setting saved before keeps its value) | Who, what and where questions also ask Wikipedia; the search's card and its "Sent to" line say so |
-| Book lookups (Open Library) | Off | Questions about books also ask Open Library; the search's card and its "Sent to" line say so (1.0) |
+| Encyclopedia lookups (Wikipedia) | On (since 1.0, when Robot published its contact) | Who, what and where questions also ask Wikipedia, "search the web for who is …" and « cherche sur le web qui est … » too (the words after the phrase); the search's card, its "Sent to" line and History's line say so |
+| Book lookups (Open Library) | Off | Questions about books also ask Open Library; the search's card, its "Sent to" line and History's line say so (1.0) |
 | Add my town to local searches | Off | "near me" becomes your Home for weather's town name |
 | "Powered by Brave" line | On | Brave only |
 | Current information | Robot searches first | Ask a helper first (only when your helper can search itself) |
@@ -5761,15 +5866,21 @@ Watch `adb logcat -s Robot` and Settings › Advanced › Voice log throughout.
 2. **The first search.** "Hey robot, who won the Stanley Cup this year?": the card "Search the web for “…”" with Allow
    always, Just this time, No and Don't ask again; a spoken "yes" says "Tap Allow always, Just this time or No on the
    card." Tap Just this time: "Searching the web…", the answer naming its source ("According to …"), spoken without [1],
-   the card with numbered sources and "Sent to your SearXNG: “…”". Note the time from the end of your speech to the
-   first word (EST ≤ 4 s after the tap).
+   the card with numbered sources and "Sent to your SearXNG and Wikipedia: “…”" (a who question, with Encyclopedia
+   lookups on since 1.0). Note the time from the end of your speech to the first word (EST ≤ 4 s after the tap).
 3. Ask again: the card again; Just this time. Then Allow always: no card the next time, and Settings › Web search › Ask
    before searching shows "Never ask".
-4. **Wikipedia (1.0).** Settings › Web search › Encyclopedia lookups is on, and Set up lists "Wikipedia only". "Qui est la
-   mairesse de Montréal ?": "Je cherche sur le web…", the card says the words go to your service and Wikipedia, the
-   answer in French; a wikipedia.org result on the card carries "From Wikipedia's article “…”, CC BY-SA 4.0 (licence)";
-   tapping a source opens it in Vanadium. Wikipedia's request carries the User-Agent "Robot/1.0.0 (ai.robot_app; Android
-   voice assistant; hey@robot-app.ai)" and nothing else about you.
+4. **Wikipedia (1.0).** Settings › Web search › Encyclopedia lookups is on, and Set up lists "Wikipedia only". « Cherche
+   sur le web qui est la mairesse de Montréal » (« Qui est la mairesse de Montréal ? » alone holds none of `WebRouter`'s
+   words, so Gemma would answer it without searching): "Je cherche sur le web…", the answer in French, and, with no card
+   since step 3's Allow always, the card's line "Sent to your SearXNG and Wikipedia: “qui est la mairesse de Montréal”"
+   and History's "Searched the web (your SearXNG and Wikipedia) · …"; a wikipedia.org result on the card carries "From
+   Wikipedia's article “…”, CC BY-SA 4.0 (licence)"; tapping a source opens it in Vanadium. A DNS or router log shows
+   fr.wikipedia.org asked. Wikipedia's request carries the User-Agent `Robot/<version> (ai.robot_app; Android voice
+   assistant; hey@robot-app.ai)`, the version as Settings › About shows it ("1.0.0-rc1" for rc1), and nothing else about
+   you; inside HTTPS only a decrypting proxy would see it (the hardening's check 2: Robot trusts no added certificate
+   authority), so `WikipediaWireTest` and `DownloadPolicyTest` check it, and a web server in front of your SearXNG logs
+   the same User-Agent for the search itself (http on your network).
 5. **Lock and network.** Lock the phone, ask a web question: "Unlock your phone, then ask again." Turn off GrapheneOS's
    Network toggle for Robot, unlocked: "Robot isn't allowed to use the network". Toggle back. Wi-Fi off, mobile data
    on, the SearXNG typed as `192.168.…`: "Robot can't reach your SearXNG off your home network", and SearXNG's log
@@ -5783,7 +5894,7 @@ Watch `adb logcat -s Robot` and Settings › Advanced › Voice log throughout.
    "Search the web for jo@example.com": "That search looked like it contained personal details, so Robot didn't send it."
 8. **Logs and History.** Voice log: "Web search with Your own SearXNG: N results in … ms", "Answer from the web: …" (numbers
    only); `adb logcat -s Robot | grep web_` shows no query, URL or domain. History › the conversation: the answer and
-   "Searched the web (your SearXNG) · nhl.com, …", no titles or snippets.
+   "Searched the web (your SearXNG and Wikipedia) · nhl.com, …", no titles or snippets.
 9. **Reading pages.** "How do I descale a Breville Barista Express?": "Reading 3 pages…" (the status counts 1/3, 2/3),
    steps with [1][2] on screen, no marks spoken, "Read 3 pages from this phone" on the card. Note the first-word time
    (EST 10–12 s) and the voice log's WEB_ANSWER tokens.
@@ -5857,12 +5968,16 @@ browser goes from your browser, with its cookies: an engine you're signed in to 
 - **"Search the web for …" while Robot's own web search is off** (not set up, or off) opens your default engine with
   your words; "google …" opens Google. With it on, both stay Robot's own search, as in 0.9.
 - **"Look it up on Google"**, « cherche-le sur Google », "google it": the words are the conversation's, so the model
-  writes them. `browser_search` (two short parameters, query and engine; its one line in the system prompt) is described
-  only when the question names an engine or the browser as where to search ("on Google", "in my browser"; not "is Google
-  down?"). The model's words pass **QueryCheck** (an email, a run of 6 or more digits, a link with data, a code, a street
-  address from content, what Robot remembers about you: never) and **always show a card first** with the query in full:
-  "Search Google for “…” in your browser", "Robot opens Google in your browser with these words: your browser sends them,
-  and Robot doesn't see the results." **Search** or **Cancel**; a word from something Robot read on your phone needs a tap.
+  writes them. So since rc1 do words that start with a pronoun, a possessive or a demonstrative ("look that dentist up
+  on DuckDuckGo", "search Google for this place", "look up their hours on Bing", « cherche ce resto sur Google », «
+  cette adresse », « ces horaires », « celui-là »): they aren't your literal words either. An article isn't one ("the
+  Stanley Cup", « la mairesse de Montréal » stay yours). `browser_search` (two short parameters, query and engine; its
+  one line in the system prompt) is described only when the question names an engine or the browser as where to search
+  ("on Google", "in my browser"; not "is Google down?"). The model's words pass **QueryCheck** (an email, a run of 6 or
+  more digits, a link with data, a code, a street address from content, what Robot remembers about you: never) and
+  **always show a card first** with the query in full: "Search Google for “…” in your browser", "Robot opens Google in
+  your browser with these words: your browser sends them, and Robot doesn't see the results." **Search** or **Cancel**;
+  a word from something Robot read on your phone needs a tap.
 - **Locked**: never on the lock screen ("Unlock your phone, then ask again."; it isn't a choice of Works on the lock
   screen). **After a message** in the conversation: a card only a tap answers, yours too (0.7's quarantine). A routine
   never opens one, and a helper is never offered it.
@@ -5976,10 +6091,13 @@ Pixel 10 Pro, GrapheneOS, Vanadium as the browser. Watch `adb logcat -s Robot` a
    night": *done when* Robot answers itself with sources, as in 0.9; "search Startpage for who won last night" opens the
    browser.
 7. **DuckDuckGo Instant Answers.** Settings › Web search › Robot reads the results › DuckDuckGo Instant Answers: the
-   consent (no pages), Turn on web search, Test: "DuckDuckGo Instant Answers answered: N results". "Who are the Montreal
-   Canadiens?": *done when* the answer names Wikipedia, the card says "Results from DuckDuckGo" with the Wikipedia
-   licence line, "Read … pages" doesn't appear, and the router's log shows a request to `api.duckduckgo.com` only (and
-   Wikipedia's, Encyclopedia lookups being on). "How do I descale a kettle?": "DuckDuckGo has no short answer for that."
+   consent (no pages), Turn on web search, Test: "DuckDuckGo Instant Answers answered: N results". "Search the web for
+   Montreal Canadiens" ("Who are the Montreal Canadiens?" alone holds none of `WebRouter`'s words, so Gemma would answer
+   it without searching): *done when* the answer names Wikipedia, the card says "Results from DuckDuckGo" with the
+   Wikipedia licence line and "Sent to DuckDuckGo: “Montreal Canadiens”", "Read … pages" doesn't appear, and the router's
+   log shows a request to `api.duckduckgo.com` only. "Search the web for who are the Montreal Canadiens" asks Wikipedia
+   too (Encyclopedia lookups): "Sent to DuckDuckGo and Wikipedia: …", and the log shows en.wikipedia.org. "Search the
+   web for how to descale a kettle": "DuckDuckGo has no short answer for that."
 8. **A public SearXNG.** Robot reads the results › A public SearXNG: the list of five and Other address under the
    warning; pick one, Turn on web search, Test: *done when* it says what came back (many refuse apps: 429 or 403, said in
    words); note which answered.
@@ -6189,7 +6307,7 @@ search model offered once, and helpers get memory and messages only through a ca
   (the recipient is the notification's own conversation; a tap sends by default, never a spoken yes for a group, a
   draft or a translation; re-checked before sending); `MessageTaint` and `MessageQuarantine` (text from a message is
   never an action; after a message every action asks, and one that leaves for someone else needs a tap, under every
-  Safety cards mode); `MessageSettings`.
+  choice of When Robot asks first); `MessageSettings`.
 
 What remains to wire: `REQ_EMBED` in `:brain` behind `TextEmbedder` and the search model's download (memory's phase 7.4),
 and suggestions after a conversation (7.5), which take a panel conversation through `Suggestions.turnsOf`: a conversation
