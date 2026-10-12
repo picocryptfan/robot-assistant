@@ -64,7 +64,7 @@ while [ $# -gt 0 ]; do
     --without-onnxruntime) WITH_ORT=0; shift ;;
     --without-llama) WITH_LLAMA=0; shift ;;
     --list) LIST=1; shift ;;
-    -h|--help) sed -n '2,52p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,48p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done

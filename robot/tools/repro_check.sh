@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do
     --keep) KEEP=1; shift ;;
     --signed) SIGNED="$2"; shift 2 ;;
     --gradle) GRADLE="$2"; shift 2 ;;
-    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
