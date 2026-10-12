@@ -111,6 +111,40 @@ class ModelProblemsTest {
         assertTrue(ProblemReport.text(brainUnderGguf, facts, t, utc).contains("llama.cpp in :llama, an isolated process (your GGUF file, never Fast) · stage: writing the answer · failure: the model process stopped (:brain)"))
     }
 
+    /** 0.7: the last 10 problems for the Model tab's list, codes and numbers only, newest first, one per time. */
+    @Test fun theLastTenProblemsAreKept() {
+        fun p(i: Int) = ModelProblem(t + i * 60_000L, BrainModel.GENERAL, ModelBackend.GPU, ProblemStage.WRITING, null, BrainModel.GENERAL, ModelBackend.CPU)
+        var text: String? = null
+        for (i in 1..13) text = ProblemList.add(text, p(i))
+        val list = ProblemList.decode(text)
+        assertEquals((13 downTo 4).map(::p), list)
+        assertEquals(ProblemList.KEEP, text!!.lines().count { it.startsWith("p2 ") })
+        assertTrue(text, text.lines().drop(1).filter { it.isNotEmpty() }.all { Regex("^[a-z0-9_ -]+$").matches(it) })
+        // The same problem noted twice is one; a damaged line or file loses only itself.
+        assertEquals(10, ProblemList.decode(ProblemList.add(text, p(13))).size)
+        assertEquals(listOf(p(2), p(1)), ProblemList.decode(ProblemList.add(ProblemList.add(null, p(1)), p(2)) + "nonsense\n"))
+        assertEquals(emptyList<ModelProblem>(), ProblemList.decode("something else\n" + p(1).encode()))
+        assertEquals(emptyList<ModelProblem>(), ProblemList.decode(null))
+        assertEquals(":brain · writing the answer · Fast on the GPU", ProblemList.row(p(1)))
+        assertEquals(":llama · loading · Your own model file on the CPU",
+            ProblemList.row(ModelProblem(t, BrainModel.OWN, ModelBackend.CPU, ProblemStage.LOADING, LoadFailure.ENGINE, null, null, format = ModelFormat.GGUF)))
+    }
+
+    /** 0.7: a native crash's summary under its exit: signal, code, abort message when safe, library frames. */
+    @Test fun aNativeCrashIsSummedUpUnderItsExit() {
+        val crash = NativeCrash(11, "SIGSEGV", 1, "SEGV_MAPERR", null, true, listOf("#00 libc.so +0x5b2c4 (abort+164)", "#01 liblitertlm_jni.so +0x1a2b3c"), 42)
+        val p = ModelProblem(t, BrainModel.GENERAL, ModelBackend.GPU, ProblemStage.WRITING, null, BrainModel.GENERAL, ModelBackend.CPU, brainPid = 12345)
+        val exit = ExitFacts(t, 12345, 5, "CRASH_NATIVE", 11, null, 100, 1_900_000, 2_400_000, crash)
+        val facts = ReportFacts("0.7.0", 70, Phone("Google", "Pixel 9a", "Google", "Tensor G4", 7_500_000_000L), "16 (SDK 36)", "fp", -1, listOf(exit), emptyList())
+        val text = ProblemReport.text(p, facts, t, utc)
+        assertTrue(text, text.contains("reason CRASH_NATIVE (5) · status 11 · importance 100 · PSS 1855 MB · RSS 2343 MB\n" +
+            "    Native crash: SIGSEGV (11), code SEGV_MAPERR (1)\n" +
+            "    Abort message: present (left out: it may hold a path or words)\n" +
+            "    Backtrace, the crashing thread's first 2 of 42 frames:\n" +
+            "    #00 libc.so +0x5b2c4 (abort+164)\n" +
+            "    #01 liblitertlm_jni.so +0x1a2b3c\n"))
+    }
+
     /** Paths in Android's free text never name a file of yours: only libraries and Robot's own model files keep a name. */
     @Test fun scrubKeepsNoPathOfYours() {
         assertEquals("crash in …/liblitertlm_jni.so", ProblemReport.scrub("crash in /data/app/~~x==/app.heyrobot-y==/lib/arm64/liblitertlm_jni.so"))
