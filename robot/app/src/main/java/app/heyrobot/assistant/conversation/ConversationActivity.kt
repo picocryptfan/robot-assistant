@@ -4,7 +4,6 @@ import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -128,9 +127,8 @@ class ConversationActivity : ComponentActivity() {
         ConversationSession.init(this)
         lockedNow.value = locked()
         try {
-            registerReceiver(lockWatch, IntentFilter().apply {
-                addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF)
-            }, Context.RECEIVER_NOT_EXPORTED)
+            app.heyrobot.sys.ProtectedBroadcasts.register(this, lockWatch,
+                app.heyrobot.sys.ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON, Intent.ACTION_SCREEN_OFF))
         } catch (_: Throwable) {}
         handle(intent, first = savedInstanceState == null)
         setContent { RobotTheme { Screen() } }

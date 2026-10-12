@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import app.heyrobot.assistant.RobotVoiceService
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.sys.ProtectedBroadcasts
 import app.heyrobot.core.AlarmCheck
 import app.heyrobot.core.AlarmEnd
 import app.heyrobot.core.AlarmSignal
@@ -146,8 +147,9 @@ object RoutineHub {
                     }
                     app.registerReceiver(it, IntentFilter().apply { addAction(ALARM_ALERT); addAction(ALARM_DONE) }, null, worker, Context.RECEIVER_EXPORTED)
                 }
+                // SystemUI sends the unlock, not the system: a non-exported receiver never gets it (ProtectedBroadcasts).
                 TriggerKind.UNLOCK -> receiver { onUnlock() }.also {
-                    app.registerReceiver(it, IntentFilter(Intent.ACTION_USER_PRESENT), null, worker, Context.RECEIVER_NOT_EXPORTED)
+                    ProtectedBroadcasts.register(app, it, ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT), worker)
                 }
                 TriggerKind.CHARGING -> receiver { i -> fire(TriggerEvent.Power(i.action == Intent.ACTION_POWER_CONNECTED)) }.also {
                     app.registerReceiver(it, IntentFilter().apply { addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED) },

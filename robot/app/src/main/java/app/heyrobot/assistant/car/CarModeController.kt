@@ -11,7 +11,7 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
+import app.heyrobot.sys.ProtectedBroadcasts
 import android.net.Uri
 import android.os.Bundle
 import android.os.PowerManager
@@ -187,7 +187,7 @@ object CarModeController {
         if (want && unlock == null) {
             unlock = object : BroadcastReceiver() {
                 override fun onReceive(c: Context, i: Intent) = input(CarInput.Unlocked(now()))
-            }.also { app.registerReceiver(it, IntentFilter(Intent.ACTION_USER_PRESENT), null, main, Context.RECEIVER_NOT_EXPORTED) }
+            }.also { ProtectedBroadcasts.register(app, it, ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT), main) }
         } else if (!want && unlock != null) {
             try { app.unregisterReceiver(unlock) } catch (_: Throwable) {}
             unlock = null

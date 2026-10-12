@@ -946,10 +946,23 @@ class ProcessIsolationTest {
         // Logs: codes and numbers only; never a routine's name, steps, words or a reminder.
         val leaky = Regex("""RLog\.[iw]\([^\n]*\b(name|text|lines|describe|reminder|title|said)\b""")
         assertEquals(emptyList<String>(), usersOf(leaky, routines))
-        // The only receiver another app can reach: Clock's ALARM_ALERT and ALARM_DONE, in the trigger hub.
-        assertEquals(listOf("app/assistant/routines/RoutineHub.kt"), usersOf(Regex("""\bRECEIVER_EXPORTED\b""")))
+        // The only receiver another app can reach: Clock's ALARM_ALERT and ALARM_DONE, in the trigger hub. 1.0 (ipc-3): the
+        // unlock comes from SystemUI, which isn't the system uid, so USER_PRESENT receivers are exported too (it is a
+        // protected broadcast: nothing else can send it), all through ProtectedBroadcasts and its protected actions only.
+        assertEquals(listOf("app/assistant/routines/RoutineHub.kt", "app/sys/ProtectedBroadcasts.kt"), usersOf(Regex("""\bRECEIVER_EXPORTED\b""")))
         val hub = withoutComments(File(java("app"), "app/heyrobot/assistant/routines/RoutineHub.kt"))
         assertEquals(1, Regex("""RECEIVER_EXPORTED""").findAll(hub).count())
+        val prot = code(File(java("app"), "app/heyrobot/sys/ProtectedBroadcasts.kt"))
+        assertTrue(prot.contains("val ACTIONS = setOf(Intent.ACTION_USER_PRESENT, Intent.ACTION_SCREEN_ON, Intent.ACTION_SCREEN_OFF)"))
+        assertEquals(1, Regex("""RECEIVER_EXPORTED""").findAll(prot).count())
+        val present = usersOf(Regex("""\bACTION_USER_PRESENT\b"""))
+        assertEquals(listOf("app/assistant/car/CarModeController.kt", "app/assistant/conversation/ConversationActivity.kt",
+            "app/assistant/routines/RoutineHub.kt", "app/sys/ProtectedBroadcasts.kt"), present)
+        for (f in present) {
+            val c = code(ours.getValue(f))
+            assertTrue(f, !c.contains("RECEIVER_NOT_EXPORTED") || !Regex("""registerReceiver\([^\n]*ACTION_USER_PRESENT""").containsMatchIn(c))
+            if (f != "app/sys/ProtectedBroadcasts.kt") assertTrue(f, c.contains("ProtectedBroadcasts.filter(Intent.ACTION_USER_PRESENT"))
+        }
         assertTrue(hub.contains("\"com.android.deskclock.ALARM_ALERT\"") && hub.contains("\"com.android.deskclock.ALARM_DONE\""))
         // One exact allow-while-idle alarm, never setAlarmClock (it would become Android's "next alarm").
         assertEquals(emptyList<String>(), usersOf(Regex("""\.setAlarmClock\(""")))
