@@ -39,7 +39,9 @@ class PageSaverTest {
 
     @Test fun aSettingsPageIsSavedByItsRoute() {
         assertEquals("settings:display", save(Page.Settings("display")))
-        for (p in listOf(Page.Settings("display"), Page.Settings("voice/wake"))) assertEquals(p, Page.Saver.restore(save(p)))
+        // Settings › About › Updates, which the updater's notifications open, too.
+        assertEquals("settings:updates", save(Page.Settings(SettingsRoutes.UPDATES)))
+        for (p in listOf(Page.Settings("display"), Page.Settings("voice/wake"), Page.Settings("updates"))) assertEquals(p, Page.Saver.restore(save(p)))
     }
 
     @Test fun anOpenNoteIsSavedByItsId() {
@@ -102,6 +104,8 @@ class PageSaverTest {
             Page.Licence(ROBOT_LICENCE, "COPYING") to Page.Licences,
             Page.Settings(SettingsRoutes.NOTIFICATION_ACCESS) to Page.People,
             Page.Settings(SettingsRoutes.adbFix("recognizer")) to Page.AdbFixes,
+            // The updater's notifications open Updates alone: Back goes to About, where its row is.
+            Page.Settings(SettingsRoutes.UPDATES) to Page.Settings(SettingsRoutes.ABOUT),
             Page.Settings("voice/barge-in") to Page.Settings("voice"),
             Page.Settings("display") to null,
             // A model's page sits under the Model tab.
@@ -129,6 +133,7 @@ class PageSaverTest {
         assertEquals(AppRoutes.Target(page = Page.Transcript("20261011-1402-7f3a", 12)), AppRoutes.target("transcripts:20261011-1402-7f3a:12"))
         assertEquals(AppRoutes.Target(page = Page.ConversationSettings), AppRoutes.target(AppPages.CONVERSATION_SETTINGS))
         assertEquals(AppRoutes.Target(page = Page.Helpers), AppRoutes.target(AppPages.HELPERS))
+        assertEquals(AppRoutes.Target(page = Page.Settings(SettingsRoutes.UPDATES)), AppRoutes.target(AppPages.UPDATES))
         assertNull(AppRoutes.target("settings"))
     }
 
@@ -136,7 +141,7 @@ class PageSaverTest {
         /** Every route ui/settings/SettingsNav.kt opens. */
         val SETTINGS_ROUTES = listOf(SettingsRoutes.VOICE, SettingsRoutes.BARGE_IN, SettingsRoutes.ACTIONS, SettingsRoutes.PEOPLE_NOTES_CALENDAR,
             SettingsRoutes.WEATHER, SettingsRoutes.HISTORY, SettingsRoutes.DISPLAY, SettingsRoutes.ADVANCED, SettingsRoutes.ABOUT,
-            SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer")) +
+            SettingsRoutes.UPDATES, SettingsRoutes.NOTIFICATION_ACCESS, SettingsRoutes.adbFix("recognizer")) +
             BrainModel.entries.map(ModelRoutes::model) + VoiceBundle.entries.map(ModelRoutes::voice)
     }
 }

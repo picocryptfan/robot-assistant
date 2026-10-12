@@ -7,6 +7,9 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.Approval
+import app.heyrobot.core.BrainModel
+import app.heyrobot.core.GpuFailure
+import app.heyrobot.core.ProblemStage
 import app.heyrobot.core.LookSettings
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.SpeakReplies
@@ -19,6 +22,8 @@ import app.heyrobot.ui.Snapshot
 import app.heyrobot.ui.Tab
 import app.heyrobot.ui.testing.ActionLog
 import app.heyrobot.ui.testing.PHONE
+import app.heyrobot.ui.testing.PIXEL_10_PRO
+import app.heyrobot.ui.testing.PIXEL_9A
 import app.heyrobot.ui.testing.facts
 import app.heyrobot.ui.testing.onRow
 import app.heyrobot.ui.testing.scrollToText
@@ -40,7 +45,8 @@ import org.robolectric.annotation.GraphicsMode
 class SettingsRootTest {
     @get:Rule val rule = createComposeRule()
     private val log = ActionLog()
-    private val snap = Snapshot(facts = facts())
+    // A Pixel 10 Pro: Fast is the TPU build (0.4.7 shows where the general build runs on other phones).
+    private val snap = Snapshot(facts = facts(), phone = PIXEL_10_PRO)
 
     private fun open(s: RobotSettings = RobotSettings(), snap: Snapshot = this.snap) {
         rule.show { SettingsRoot(s, snap, log.actions, look = LookSettings()) }
@@ -85,7 +91,12 @@ class SettingsRootTest {
         assertEquals("Off", wakeSummary(s.copy(wakeWord = false)))
         assertEquals("Heart · always speaks", voiceSummary(s))
         assertEquals("5 ask first · 1 off", actionsSummary(s))
-        assertEquals("Fast · stays loaded 5 min", modelSummary(s))
+        assertEquals("Fast · stays loaded 5 min", modelSummary(s, snap))
+        // 0.4.7: on a Pixel 9a Fast is the general build, on the GPU unless it failed there or you turned the GPU off.
+        assertEquals("Fast on the GPU · stays loaded 5 min", modelSummary(s, Snapshot(phone = PIXEL_9A)))
+        assertEquals("Fast on the CPU · stays loaded 5 min", modelSummary(s.copy(modelGpu = false), Snapshot(phone = PIXEL_9A)))
+        assertEquals("Fast on the CPU · always loaded", modelSummary(s.copy(keepModelMinutes = RobotSettings.KEEP_ALWAYS),
+            Snapshot(phone = PIXEL_9A, gpuFailure = GpuFailure(BrainModel.GENERAL, 1L, ProblemStage.LOADING, null))))
         assertEquals("Live words on", conversationSummary(s))
         assertEquals("Claude · Ask first", helpersSummary(s, facts()))
         open(s)

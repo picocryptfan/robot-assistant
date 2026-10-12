@@ -1745,11 +1745,16 @@ object PanelController {
     }
 
     /**
-     * No session for [h]: no key (none saved, or the saved one couldn't be read: then it was removed, and Robot says so),
-     * a server whose port Test connection hasn't found, or an address Robot won't use.
+     * No session for [h]: no key (none saved; the saved one couldn't be read just now: it is kept, and the next question
+     * tries again; or it could never be read again: then it was removed, and Robot says so), a server whose port Test
+     * connection hasn't found, or an address Robot won't use.
      */
     private fun noKey(replyId: String, h: HelperConfig, failure: ClaudeFailure) {
-        val text = if (failure == ClaudeFailure.NO_KEY && HelperLink.unreadable(h.id)) words(h).keyUnreadable else failure.say(who(h))
+        val text = when {
+            failure == ClaudeFailure.NO_KEY && HelperLink.unavailable(h.id) -> words(h).keyUnavailable
+            failure == ClaudeFailure.NO_KEY && HelperLink.unreadable(h.id) -> words(h).keyUnreadable
+            else -> failure.say(who(h))
+        }
         failReply(replyId, text)
     }
 

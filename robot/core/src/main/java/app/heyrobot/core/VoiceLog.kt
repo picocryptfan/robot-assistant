@@ -231,6 +231,11 @@ enum class VoiceEvent(val id: Int) {
     MODEL_FALLBACK(133),
     /** Another model was loaded, so Robot unloaded it first (never two at once): a = [ModelCode] unloaded, b = [ModelCode] to load. */
     MODEL_SWITCH(134),
+    /**
+     * 0.4.7: the GPU failed, so Robot runs the model on the CPU until you try the GPU again: a = [ModelCode], b =
+     * [ProblemStage], c = [LoadFailure] (0: its process stopped).
+     */
+    GPU_FALLBACK(135),
     // Routines and the morning brief (0.8): 140 to 159. Codes and counts only, never a routine's name, steps or words.
     /** A trigger came: a = [TriggerKind], b = routines it started, c = routines it didn't start (ROUTINE_SKIPPED says why). */
     ROUTINE_TRIGGER(140),
@@ -266,11 +271,12 @@ enum class VoiceEvent(val id: Int) {
 /** A model of the catalogue (BrainModel), as the voice log stores it. */
 enum class ModelCode(override val id: Int, override val title: String) : LogCode {
     FAST(1, "Fast (Gemma 4 E2B, TPU)"), SMARTER(2, "Smarter (Gemma 4 E4B, CPU)"), UNCENSORED(3, "Uncensored (Gemma 4 E4B abliterated, CPU)"),
-    OWN(4, "your own model file");
+    OWN(4, "your own model file"), GENERAL(5, "Fast (Gemma 4 E2B, general build)");
 
     companion object {
         fun of(m: BrainModel): ModelCode = when (m) {
             BrainModel.FAST -> FAST
+            BrainModel.GENERAL -> GENERAL
             BrainModel.SMARTER -> SMARTER
             BrainModel.UNCENSORED -> UNCENSORED
             BrainModel.OWN -> OWN
@@ -279,10 +285,14 @@ enum class ModelCode(override val id: Int, override val title: String) : LogCode
 }
 
 enum class BackendCode(override val id: Int, override val title: String) : LogCode {
-    TPU(1, "TPU"), CPU(2, "CPU");
+    TPU(1, "TPU"), CPU(2, "CPU"), GPU(3, "GPU");
 
     companion object {
-        fun of(b: ModelBackend): BackendCode = if (b == ModelBackend.TPU) TPU else CPU
+        fun of(b: ModelBackend): BackendCode = when (b) {
+            ModelBackend.TPU -> TPU
+            ModelBackend.CPU -> CPU
+            ModelBackend.GPU -> GPU
+        }
     }
 }
 
@@ -416,6 +426,7 @@ enum class NoReply(override val id: Int, override val title: String) : LogCode {
 
 enum class RepairWhen(override val id: Int, override val title: String) : LogCode {
     LOCKED_BOOT(1, "at boot, before unlock"), BOOT(2, "at boot"), APP(3, "app opened"), SETUP(4, "Assistant setup"), ASSISTANT_READY(5, "assistant started"),
+    UPDATE(6, "after an update"),
 }
 
 enum class Cue(override val id: Int, override val title: String) : LogCode {
@@ -786,6 +797,8 @@ object VoiceLogText {
             VoiceEvent.MODEL_FALLBACK -> "Used " + (if (c > 0) code(ModelCode.entries, c) else "no model") + " instead of " + code(ModelCode.entries, a) +
                 ": " + code(FallbackWhy.entries, b)
             VoiceEvent.MODEL_SWITCH -> "Unloaded " + code(ModelCode.entries, a) + " to load " + code(ModelCode.entries, b)
+            VoiceEvent.GPU_FALLBACK -> "The GPU failed for " + code(ModelCode.entries, a) + " while " + code(ProblemStage.entries, b) +
+                (if (c > 0) " (" + code(LoadFailure.entries, c) + ")" else " (its process stopped)") + ": the CPU from now on"
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
             VoiceEvent.CONV_START -> "Conversation started: " + code(ConvMode.entries, a) + " (" + code(ConvEntry.entries, b) + ")" +

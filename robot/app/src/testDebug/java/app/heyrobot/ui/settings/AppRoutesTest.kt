@@ -16,8 +16,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The intents that open the app on a page, as the panel, the transcript and summary screens, the tile and the Robot Notes
- * icon send them, each reaching the page it names (the redesign moved them out of MainActivity, unchanged).
+ * The intents that open the app on a page, as the panel, the transcript and summary screens, the tile, the Robot Notes
+ * icon and the updater's notifications send them, each reaching the page it names (the redesign moved them out of MainActivity, unchanged).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -55,6 +55,12 @@ class AppRoutesTest {
         assertEquals(Page.Settings(SettingsRoutes.ROUTINES), parentOf(Page.Settings(RoutineRoutes.BRIEF)))
         assertEquals(Page.Settings(SettingsRoutes.ROUTINES), parentOf(Page.Settings(RoutineRoutes.NEW)))
         assertNull(parentOf(Page.Settings(SettingsRoutes.ROUTINES)))
+    }
+
+    @Test fun theUpdatersNotifications() {
+        // "Robot … is available", the download's and the install's notices (update/UpdateNotices): Settings › About › Updates.
+        assertEquals(AppRoutes.Target(page = Page.Settings(SettingsRoutes.UPDATES)),
+            open(main().putExtra(AppPages.EXTRA, AppPages.UPDATES).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)))
     }
 
     @Test fun theNotesIconAndNothingElse() {

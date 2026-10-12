@@ -273,6 +273,8 @@ object ClaudeWords {
     /** A reply cut at its length limit before it said anything (its thinking used the room). */
     val CUT_EMPTY = W.cutEmpty
     val KEY_UNREADABLE = W.keyUnreadable
+    /** The saved key couldn't be read just now (a passing Keystore error): it is kept. */
+    val KEY_UNAVAILABLE = W.keyUnavailable
     const val SWIPE_TO_READ = "Open the Claude app, then swipe up from the corner and tap “Read Claude's answer”."
     /** The offer under a reply: Robot didn't answer (a hedge, or the pre-router) ... */
     val OFFER = W.offer

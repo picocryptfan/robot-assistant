@@ -141,7 +141,11 @@ object SummaryCheckFor {
     }
 }
 
-/** A summary step's limits (docs/conversation-mode.md 7.1): it waits its turn; once started, about 20 s on the TPU (EST), far longer on the CPU. */
+/**
+ * A summary step's limits (docs/conversation-mode.md 7.1): it waits its turn; once started, about 20 s on the TPU (EST), far
+ * longer on the CPU, and on 0.4.7's GPU (Fast on a Pixel 9a: about 25 to 70 s for a step by the estimates, unmeasured) the
+ * CPU's limit, so a slower GPU than estimated never cuts a step short.
+ */
 object SummaryBudget {
-    fun of(backend: ModelBackend?): OneShotBudget = OneShotBudget(null, if (backend == ModelBackend.CPU) 600_000 else 120_000, waitForLoad = true)
+    fun of(backend: ModelBackend?): OneShotBudget = OneShotBudget(null, if (TranslatePolicy.slow(backend)) 600_000 else 120_000, waitForLoad = true)
 }

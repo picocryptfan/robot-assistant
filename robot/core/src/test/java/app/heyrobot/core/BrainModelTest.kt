@@ -25,6 +25,39 @@ class BrainModelTest {
         assertEquals("Gemma 4 E2B (Tensor G5)", f.modelName)
     }
 
+    /**
+     * 0.4.7: the general E2B, pinned as the Hugging Face API showed it (b3ca0d2f, Apache-2.0, not gated): the same repository
+     * and commit as Fast, the file LiteRT-LM runs on the CPU or the GPU, with figures that fit an 8 GB phone.
+     */
+    @Test fun theGeneralE2bIsPinned() {
+        val g = BrainModel.GENERAL
+        assertEquals("e2b", g.id)
+        assertEquals("Fast", g.title)
+        assertEquals("Gemma 4 E2B", g.modelName)
+        assertEquals("gemma-4-E2B-it.litertlm", g.file)
+        assertEquals("https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it.litertlm", g.url)
+        assertEquals(2_588_147_712L, g.bytes)
+        assertEquals("181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c", g.sha256)
+        assertEquals(BrainModel.FAST.repo, g.repo)
+        assertEquals(BrainModel.FAST.commit, g.commit)
+        assertEquals(ModelBackend.CPU, g.backend)
+        assertTrue(g.gpu && g.fromGoogle)
+        assertEquals("Apache-2.0", g.licence)
+        assertEquals(4096, g.contextTokens)
+        assertTrue(g.memoryBytes in 2_000_000_000L..3_000_000_000L)
+        assertTrue(g.cacheBytes in ModelFiles.GPU_CACHE_BYTES..g.bytes)
+        assertEquals("model_verified_e2b.txt", ModelFiles.verifiedMark(g))
+        assertEquals("litert_cache/e2b", ModelFiles.cacheDir(g, ModelBackend.GPU))
+        assertEquals("litert_cache/e2b", ModelFiles.cacheDir(g, ModelBackend.CPU))
+        assertNull(ModelFiles.cacheDir(BrainModel.FAST))
+        assertEquals(ModelFiles.GPU_CACHE_BYTES, ModelFiles.cacheBytes(g, ModelBackend.GPU))
+        assertEquals(g.cacheBytes, ModelFiles.cacheBytes(g, ModelBackend.CPU))
+        assertEquals(0L, ModelFiles.cacheBytes(BrainModel.FAST, ModelBackend.TPU))
+        // Fast's name and model card text never say "this phone's TPU" (a Pixel 9a has none Robot can use).
+        assertFalse(g.about.contains("this phone's TPU") || g.speed.contains("this phone's TPU") || BrainModel.OWN.speed.contains("this phone's TPU"))
+        assertEquals(listOf(BrainModel.GENERAL), BrainModel.entries.filter { it.gpu })
+    }
+
     @Test fun theDefaultStaysFast() {
         assertEquals(BrainModel.FAST, BrainModel.DEFAULT)
         assertEquals(BrainModel.FAST, RobotSettings().brainModelChoice)
@@ -64,13 +97,13 @@ class BrainModelTest {
             assertTrue(m.name, sha.matches(m.sha256!!))
             assertTrue(m.name, m.bytes > 1_000_000_000L)
         }
-        assertEquals(listOf(BrainModel.FAST, BrainModel.SMARTER, BrainModel.UNCENSORED), BrainModel.entries.filter { it.builtIn })
+        assertEquals(listOf(BrainModel.FAST, BrainModel.GENERAL, BrainModel.SMARTER, BrainModel.UNCENSORED), BrainModel.entries.filter { it.builtIn })
         val own = BrainModel.OWN
         assertNull(own.url)
         assertNull(own.sha256)
         assertEquals(-1L, own.bytes)
         assertEquals(BrainModel.entries.size, BrainModel.entries.map { it.id }.toSet().size)
-        assertEquals(listOf("e2b_tpu", "e4b_cpu", "e4b_cpu_uncensored", "own"), BrainModel.entries.map { it.id })
+        assertEquals(listOf("e2b_tpu", "e2b", "e4b_cpu", "e4b_cpu_uncensored", "own"), BrainModel.entries.map { it.id })
     }
 
     /** No Gemma 4 E4B build for the Tensor TPU exists: only Fast is on the TPU, and nothing from horizon-edge is offered. */

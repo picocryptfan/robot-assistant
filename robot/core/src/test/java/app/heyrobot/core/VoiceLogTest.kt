@@ -58,8 +58,8 @@ class VoiceLogTest {
             ExportKind.entries, ClaudeStage.entries, ClaudeErrorKind.entries, MtError.entries, ModelCode.entries, BackendCode.entries,
             FallbackWhy.entries, LoadFailure.entries, ClaudeEnd.entries, ClaudeFail.entries, ClaudeModelCode.entries, LocationCode.entries,
             NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries,
-            TriggerKind.entries, AlarmEnd.entries, SkipWhy.entries, StepCode.entries, StepGo.entries, MissedRun.entries, SpeechWay.entries,
-            RoutineCommandCode.entries)
+            ProblemStage.entries, TriggerKind.entries, AlarmEnd.entries, SkipWhy.entries, StepCode.entries, StepGo.entries, MissedRun.entries,
+            SpeechWay.entries, RoutineCommandCode.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -83,8 +83,11 @@ class VoiceLogTest {
         assertEquals(LangCode.UNSURE, LangCode.of(null))
         assertEquals(LangCode.OTHER, LangCode.of("de"))
         // 0.4.1's model choice events use 130 to 139 (100 to 129 are taken by conversation mode and Ask Claude).
-        val model = listOf(VoiceEvent.MODEL_CHOSEN, VoiceEvent.MODEL_LOADED, VoiceEvent.MODEL_LOAD_FAILED, VoiceEvent.MODEL_FALLBACK, VoiceEvent.MODEL_SWITCH)
+        val model = listOf(VoiceEvent.MODEL_CHOSEN, VoiceEvent.MODEL_LOADED, VoiceEvent.MODEL_LOAD_FAILED, VoiceEvent.MODEL_FALLBACK, VoiceEvent.MODEL_SWITCH,
+            VoiceEvent.GPU_FALLBACK)
         for (e in model) assertTrue(e.name, e.id in 130..139)
+        // 0.4.7's GPU fallback keeps the id it shipped with: 0.6.0 left 135 free.
+        assertEquals(135, VoiceEvent.GPU_FALLBACK.id)
         assertEquals(model, VoiceEvent.entries.filter { it.id in 130..139 })
         // 0.8's routines use 140 to 159, in the order Routine.kt lists them; never a routine's name or words (the enums
         // and counts only, as the recording API's test checks).

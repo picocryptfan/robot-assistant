@@ -105,7 +105,7 @@ object SummaryJobs {
                     })
                 when (r) {
                     is LocalSummary.Outcome.Done -> {
-                        val rec = SummaryRecord("robot", (st.model ?: VoiceHub.settings.brainModelChoice).id, SummaryRecord.VIA_PHONE, System.currentTimeMillis(),
+                        val rec = SummaryRecord("robot", (st.model ?: BrainKeeper.modelHere(app)).id, SummaryRecord.VIA_PHONE, System.currentTimeMillis(),
                             r.text, parts = r.parts)
                         val n = store.addSummary(id, rec) ?: return@launch fail("The summary couldn't be saved on this phone.")
                         store.clearDraft(id)

@@ -8,12 +8,13 @@
         android:protectionLevel="signature" />
     <uses-permission android:name="app.heyrobot.permission.INTERNAL" />
 
-    <!-- Four uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
+    <!-- Five uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
          engine's files from Mozilla's storage.googleapis.com bucket); when you ask, a helper (the :voice process: Claude at
          api.anthropic.com, or the company you added, 0.6.0); your own AI server, if you add one (0.6.0, the :voice process,
-         only addresses on your own network or https); and when you ask for the weather or the nearest place (0.4.0),
-         Open-Meteo and a Nominatim server (the :voice process, and the main app once to look up your Home for weather).
-         Everything else runs on the phone; the :mt process never goes online. The only network permission. -->
+         only addresses on your own network or https); when you ask for the weather or the nearest place (0.4.0),
+         Open-Meteo and a Nominatim server (the :voice process, and the main app once to look up your Home for weather);
+         and Settings › Updates (the main app, GitHub: api.github.com and its download servers). Everything else runs on
+         the phone; the :mt process never goes online. The only network permission. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- 0.2.3, "Call audio" playback only (Settings › Voice): the phone in communication mode with the loudspeaker as the
@@ -56,6 +57,14 @@
          activity or a foreground service that isn't short (RoutineSpeakingService, mediaPlayback, alive only while a routine
          speaks). Normal permission, no prompt. Exact alarms are USE_EXACT_ALARM, above. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Settings › Updates: Robot installs its own updates from its GitHub releases, after checking each against the release's
+         SHA256SUMS and Robot's signing key. A special app access you turn on yourself (Settings › Apps › Special app access ›
+         Install unknown apps › Robot); until then Robot can only download and check. It installs nothing but Robot. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Only for "Install updates without asking" (off unless you turn it on): lets Robot ask Android to install its own update
+         without the confirmation window (Android 12 and later; Android still asks when another app store keeps Robot's
+         updates). A normal permission, granted at install; without it Android ignores the request and always asks. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <queries>
         <!-- open_app: every app with a launcher icon (no QUERY_ALL_PACKAGES). -->
@@ -353,7 +362,23 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
-        <!-- 3 minutes after BOOT_COMPLETED (an alarm set by BootReceiver): is the assistant running? -->
+        <!-- 3 minutes after BOOT_COMPLETED (an alarm set by BootReceiver, or UpdatedReceiver): is the assistant running? -->
         <receiver android:name=".boot.BootCheckReceiver" android:exported="false" />
+        <!-- Robot was updated, which ended its processes: what BootReceiver does after a restart, then the updater's part
+             (its downloads go, "Robot updated to ..." once). Not exported: Android sends MY_PACKAGE_REPLACED to Robot alone. -->
+        <receiver android:name=".boot.UpdatedReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Settings › Updates, all in the main process. The daily check and the download on Wi-Fi (JobScheduler): only the
+             system binds the service (BIND_JOB_SERVICE), so it needn't be exported. The install session's result comes back
+             through Robot's own PendingIntent to a receiver nothing else can reach. -->
+        <service
+            android:name=".update.UpdateJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false" />
+        <receiver android:name=".update.InstallStatusReceiver" android:exported="false" />
     </application>
 </manifest>

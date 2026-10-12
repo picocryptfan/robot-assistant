@@ -16,24 +16,26 @@ import app.heyrobot.core.helpers.HelperSpend
 import app.heyrobot.core.RLog
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
-import org.json.JSONObject
 import java.io.File
-import java.security.KeyStore
 import java.time.LocalDate
 
 // Main and voice processes. The helpers' files (0.6.0; Ask Claude's before) and the Claude app's intents, without any API
-// key: keys are encrypted and decrypted in the :voice process only (assistant/HelperKeys.kt). The main app reads whether
-// a key is saved and its masked form, and can delete it (then tells the voice process); it never reads a key itself.
+// key: keys are encrypted and decrypted in the :voice process only (assistant/HelperKeys.kt, through sys/KeystoreSecret.kt,
+// the class the updater's token shares). The main app reads whether a key is saved and its masked form, and can delete it
+// (then tells the voice process); it never reads a key itself.
 
 /**
  * Where a helper's key lives: files/robot/helpers/<id>/key.bin (IV and ciphertext, :voice only) and key.json (the masked
  * form and when it was saved), encrypted with the Android Keystore key robot_helper_<id>. Claude (id "claude") keeps
  * the files and key from before 0.6.0 (claude_key.bin, claude_key.json, robot_claude_api_key): nothing moved, nothing
- * was encrypted again.
+ * was encrypted again. Each is a [KeystoreSecret] in that format (0.3.0's), logged as helper_key: a read that fails is
+ * removed only when it can never work again, and kept when it may work in a moment.
  */
 object HelperKeyFiles {
     /** Claude's Keystore key since 0.3.0. */
     const val CLAUDE_ALIAS = "robot_claude_api_key"
+    /** The log lines' name for every helper's key (helper_key, helper_key_save, helper_key_read, ...), as in 0.6.0. */
+    const val LOG = "helper_key"
     private val SAFE = Regex("[a-z0-9_]{1,16}")
 
     fun alias(id: String): String = if (id == HelperConfig.CLAUDE_ID) CLAUDE_ALIAS else "robot_helper_$id"
@@ -44,34 +46,36 @@ object HelperKeyFiles {
         return File(File(Paths.dir(ctx), "helpers"), id)
     }
 
+    /** Claude's key: files/robot/claude_key.bin and .json, as since 0.3.0. */
+    private val claude = KeystoreSecret(CLAUDE_ALIAS, "claude_key", LOG)
+
+    /**
+     * Helper [id]'s key. Only HelperKeys (the :voice process) reads, saves or clears the clipboard through it
+     * (ProcessIsolationTest); the main app uses the functions below.
+     */
+    fun store(id: String): KeystoreSecret = if (id == HelperConfig.CLAUDE_ID) claude else {
+        require(SAFE.matches(id)) { "helper id" }
+        KeystoreSecret(alias(id), "key", LOG) { dir(it, id) }
+    }
+
     /** IV and ciphertext, written and read only by the :voice process. */
-    fun secret(ctx: Context, id: String): File = if (id == HelperConfig.CLAUDE_ID) File(Paths.dir(ctx), "claude_key.bin") else File(dir(ctx, id), "key.bin")
+    fun secret(ctx: Context, id: String): File = store(id).secret(ctx)
 
     /** Not secret: the masked form ("sk-ant-…AB12") and when it was saved, for Settings. */
-    fun meta(ctx: Context, id: String): File = if (id == HelperConfig.CLAUDE_ID) File(Paths.dir(ctx), "claude_key.json") else File(dir(ctx, id), "key.json")
+    fun meta(ctx: Context, id: String): File = store(id).meta(ctx)
 
-    fun saved(ctx: Context, id: String): Boolean = secret(ctx, id).isFile
+    fun saved(ctx: Context, id: String): Boolean = store(id).saved(ctx)
 
-    fun masked(ctx: Context, id: String): String? = if (!saved(ctx, id)) null else
-        readOrNull(meta(ctx, id))?.let { try { JSONObject(it).optString("masked").takeIf { m -> m.isNotEmpty() } } catch (_: Exception) { null } } ?: "Saved"
+    fun masked(ctx: Context, id: String): String? = store(id).masked(ctx)
 
-    /** A saved key couldn't be decrypted and was removed (Settings says so until a new key is saved). */
-    fun unreadable(ctx: Context, id: String): Boolean = !saved(ctx, id) &&
-        (readOrNull(meta(ctx, id))?.let { try { JSONObject(it).optBoolean("unreadable") } catch (_: Exception) { false } } ?: false)
+    /** A saved key could never be decrypted again and was removed (Settings says so until a new key is saved). */
+    fun unreadable(ctx: Context, id: String): Boolean = store(id).unreadable(ctx)
 
     /**
      * "Delete key" (background thread): the files and the Keystore key go. The caller then tells the voice process
      * ([Cmd.HELPER_KEY]), which drops its client.
      */
-    fun delete(ctx: Context, id: String) {
-        secret(ctx, id).delete()
-        meta(ctx, id).delete()
-        try {
-            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias(id))
-        } catch (t: Throwable) {
-            RLog.w("helper_key_delete", t)
-        }
-    }
+    fun delete(ctx: Context, id: String) = store(id).delete(ctx)
 
     /** "Remove helper": its key (crypto-shredded with the Keystore key), what Test connection found, its folder. */
     fun removeAll(ctx: Context, id: String) {

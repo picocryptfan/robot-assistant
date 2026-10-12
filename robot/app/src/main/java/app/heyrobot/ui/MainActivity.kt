@@ -44,7 +44,11 @@ import app.heyrobot.core.BargeRun
 import app.heyrobot.core.BargeTestResult
 import app.heyrobot.core.BrainModel
 import app.heyrobot.core.CalendarInfo
+import app.heyrobot.core.GpuFailure
+import app.heyrobot.core.ModelCatalogue
 import app.heyrobot.core.ModelFormat
+import app.heyrobot.core.ModelProblem
+import app.heyrobot.core.Phone
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.Note
@@ -72,8 +76,10 @@ import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.RecognizerKeeper
 import app.heyrobot.sys.RoutineIntents
+import app.heyrobot.update.Updater
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
+import app.heyrobot.sys.Problems
 import app.heyrobot.sys.SettingsIntents
 import app.heyrobot.sys.SettingsStore
 import app.heyrobot.sys.Transcripts
@@ -118,6 +124,8 @@ class MainActivity : ComponentActivity() {
                 RecognizerKeeper.flushPending(app)
                 RecognizerKeeper.check(app, RepairWhen.APP)
             } catch (_: Throwable) {}
+            // The updater's daily check, scheduled if Settings › Updates has it on.
+            try { Updater.onAppOpen(app) } catch (_: Throwable) {}
         }, "robot-recognizer").start()
     }
 
@@ -236,6 +244,12 @@ data class Snapshot(
     val facts: AssistantFacts? = null,
     /** The model Robot answers with: the one you chose when it is ready, else Fast (Home's "Get started"). */
     val model: ModelStatus = ModelStatus.MISSING,
+    /** 0.4.7: this phone (core Phone): its chip decides which Fast it gets and whether Robot uses its TPU or its GPU. */
+    val phone: Phone = Phone("", ""),
+    /** The GPU failure Robot remembers (it runs the general E2B on the CPU until you try the GPU again), or null. */
+    val gpuFailure: GpuFailure? = null,
+    /** The last model problem you haven't dismissed, with a report to copy or share, or null. */
+    val problem: ModelProblem? = null,
     val progress: String? = null,
     val percent: Int = -1,
     val failure: String? = null,
@@ -264,9 +278,14 @@ data class Snapshot(
 
     fun model(m: BrainModel): ModelStore.Snap? = models.firstOrNull { it.model == m }
 
+    /** This phone's Fast (0.4.7): the TPU build on a Tensor G5, the general build elsewhere. */
+    val fast: BrainModel get() = ModelCatalogue.fast(phone)
+
     /** [m] can be chosen: checked, and (your own file) runnable here, the TPU allowed if it needs it, llama.cpp in this build for a GGUF file. */
     fun ready(m: BrainModel): Boolean = model(m)?.status == ModelStatus.VERIFIED &&
-        (m != BrainModel.OWN || own?.backend != null && (own.format != ModelFormat.GGUF || ggufEngine))
+        (m != BrainModel.OWN || own?.backend != null && (own.format != ModelFormat.GGUF || ggufEngine) &&
+            // 0.4.7: a TPU build runs only where Robot has the TPU (a Tensor G5).
+            (own.backend != app.heyrobot.core.ModelBackend.TPU || phone.tpu == app.heyrobot.core.TpuSupport.SUPPORTED))
 
     /** Speech recognition and the default voice are installed. */
     val voiceReady: Boolean get() = voice(VoiceBundle.STT)?.status == ModelStatus.VERIFIED && voice(VoiceBundle.KOKORO)?.status == ModelStatus.VERIFIED
@@ -306,12 +325,16 @@ fun RobotAppUi(activity: MainActivity) {
     LaunchedEffect(resumed) {
         while (resumed) {
             snap = withContext(Dispatchers.IO) {
-                val models = BrainModel.entries.map { ModelStore.snapshot(ctx, it) }
-                val chosen = models.first { it.model == settings.brainModelChoice }
-                val use = chosen.takeIf { it.status == ModelStatus.VERIFIED } ?: models.first { it.model == BrainModel.FAST }
+                val phone = ModelStore.phone(ctx)
+                val models = ModelCatalogue.models(phone).map { ModelStore.snapshot(ctx, it) }
+                val chosen = models.first { it.model == ModelCatalogue.resolve(settings.brainModelChoice, phone) }
+                val use = chosen.takeIf { it.status == ModelStatus.VERIFIED } ?: models.first { it.model == ModelCatalogue.fast(phone) }
                 Snapshot(
                     facts = Assistant.facts(ctx),
                     model = use.status,
+                    phone = phone,
+                    gpuFailure = Problems.gpuFailure(ctx),
+                    problem = Problems.open(ctx),
                     progress = use.progress,
                     percent = use.percent,
                     failure = use.failure,
@@ -400,6 +423,10 @@ fun RobotAppUi(activity: MainActivity) {
             if (t.notesIcon) fromNotesIcon = true
         }
         activity.route.value = null
+    }
+    // Once after an update, when no notification could say it: "Robot updated to …".
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) { Updater.takeUpdatedNotice(ctx) }?.let(::say)
     }
 
     val permissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -490,8 +517,9 @@ fun RobotAppUi(activity: MainActivity) {
                 val why = withContext(Dispatchers.IO) { ModelStore.delete(ctx, m) }
                 if (why != null) return@launch say(why)
                 // The choice goes back to Fast with its model.
-                val chosen = settings.brainModelChoice == m && m != BrainModel.FAST
-                if (chosen) update(settings.copy(brainModel = BrainModel.FAST.id))
+                val fast = snap.fast
+                val chosen = ModelCatalogue.resolve(settings.brainModelChoice, snap.phone) == m && m != fast
+                if (chosen) update(settings.copy(brainModel = fast.id))
                 say("“${m.title}” was deleted." + if (chosen) " Robot uses Fast again." else "")
             }
         },
@@ -577,6 +605,18 @@ fun RobotAppUi(activity: MainActivity) {
             else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putString(Cmd.EXTRA_RUN, run.name) })
         },
         askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
+        // 0.4.7: the GPU again after it failed (the voice process reads the file at the next load), and the problem report.
+        tryGpuAgain = {
+            scope.launch {
+                withContext(Dispatchers.IO) { Problems.forgetGpuFailure(ctx) }
+                update(settings)
+                say("Robot will try the GPU at the next question. If it fails again, Robot goes back to the CPU by itself.")
+            }
+        },
+        reportText = { p -> Problems.report(ctx, p) },
+        copyReport = { text -> Problems.copy(ctx, text); say("The report is on the clipboard.") },
+        shareReport = { text -> try { Problems.share(ctx, text) } catch (_: Exception) { say("Couldn't open the share sheet.") } },
+        dismissProblem = { p -> Problems.dismiss(ctx, p) },
         askMedia = {
             mediaPermissions.launch(arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED))
@@ -767,4 +807,11 @@ class AppActions(
     /** 0.8: the panel opens to run a routine (Run now), or with a Ready card (its key). */
     val runRoutine: (String) -> Unit = {},
     val openReady: (String) -> Unit = {},
+    /** 0.4.7: Settings › Model › "Try the GPU again" after it failed. */
+    val tryGpuAgain: () -> Unit = {},
+    /** 0.4.7: a model problem's report, as you see it before you copy or share it (blocking: call it off the main thread). */
+    val reportText: (ModelProblem) -> String = { "" },
+    val copyReport: (String) -> Unit = {},
+    val shareReport: (String) -> Unit = {},
+    val dismissProblem: (ModelProblem) -> Unit = {},
 )

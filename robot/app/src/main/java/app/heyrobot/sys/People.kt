@@ -381,6 +381,8 @@ object AppPages {
     const val MODEL = "model"
     /** 0.8: Settings › Routines (a routine's notification when Robot isn't the assistant). */
     const val ROUTINES = "routines"
+    /** Settings › Updates (the updater's notifications). */
+    const val UPDATES = "updates"
     /** The Robot Notes launcher entry (an activity-alias of MainActivity). */
     const val NOTES_ALIAS = "app.heyrobot.ui.NotesLauncher"
 }

@@ -101,7 +101,8 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
                     when (snap.model) {
                         ModelStatus.VERIFIED -> "Ready on this phone"
                         ModelStatus.DOWNLOADING, ModelStatus.IMPORTING, ModelStatus.VERIFYING -> snap.progress ?: ModelLogic.headline(snap.model)
-                        else -> "3.1 GB, once. Wi-Fi recommended."
+                        // 0.4.7: this phone's Fast (2.6 GB on a Pixel 9a, 3.1 GB for a Pixel 10's TPU build).
+                        else -> "${app.heyrobot.core.PhoneStatus.size(snap.fast.bytes)}, once. Wi-Fi recommended."
                     },
                 ) { if (snap.model != ModelStatus.VERIFIED) FilledTonalButton(onClick = { a.openTab(Tab.MODEL) }) { Text("Open") } }
                 val stt = snap.voice(VoiceBundle.STT)

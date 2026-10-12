@@ -120,6 +120,8 @@ class HelperWords(w: HelperWho) {
     val budget = "Today's budget for helpers is used up, so Robot will ask before checking with $n again today."
     val cutEmpty = "$n ran out of room before it could answer. Ask again, or ask for a shorter answer."
     val keyUnreadable = "Robot couldn't read your saved $n key, so it was removed. Add it again in Robot's settings, under Helpers."
+    /** The saved key couldn't be read just now (a passing Keystore error): it is kept, and the next question reads it again. */
+    val keyUnavailable = "Robot couldn't read your saved $n key just now. It's still saved, so try again in a moment."
     val offer = "Want me to check with $n?"
     val offerAsWell = "Want $n's take as well?"
     val rather = "I'd rather check that with $n."
