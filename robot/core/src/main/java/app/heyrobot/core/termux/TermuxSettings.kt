@@ -62,8 +62,37 @@ data class TermuxSettings(
     val lockScreenScripts: Set<String> = emptySet(),
     /** The trusted Termux's signing certificate SHA-256 (hex), recorded at set-up; null until then. */
     val trustedSigner: String? = null,
+    /**
+     * 1.0, the update lock: the trusted Termux's version code and when Android last installed or updated it
+     * (PackageInfo.lastUpdateTime), recorded with its signer at Trust; 0 for a 0.9 file, which reads as a change.
+     */
+    val trustedVersionCode: Long = 0,
+    val trustedUpdatedAt: Long = 0,
+    /** Its version name, as Settings shows it. */
+    val trustedVersion: String? = null,
+    /** 1.0: "Run anyway, I understand the risk" for a GitHub build (public test key), for the trusted version only: off. */
+    val testKeyRisk: Boolean = false,
+    /** 1.0: "Check for Termux updates" once a week (Termux's GitHub releases and F-Droid's entry): on, once Termux is trusted. */
+    val updateCheck: Boolean = true,
 ) {
     fun script(name: String): ScriptLevel = scripts[name] ?: ScriptLevel.ASK
+
+    /** 1.0: the version you trusted, for TermuxIdentity.check (null before you trust a Termux). */
+    fun trusted(): TrustedVersion? = trustedSigner?.let { TrustedVersion(trustedVersionCode, trustedUpdatedAt, testKeyRisk) }
+
+    /**
+     * 1.0, "Trust" and "Trust this version": [check]'s signer, version code and install time recorded. "Run anyway" goes
+     * with the version it was given for, so a new version asks for it again.
+     */
+    fun trust(check: TermuxCheck): TermuxSettings = copy(trustedSigner = check.signer ?: trustedSigner, trustedVersionCode = check.versionCode,
+        trustedUpdatedAt = check.updatedAt, trustedVersion = check.version, testKeyRisk = false)
+
+    /** 1.0, "Set up again" (another signer): nothing trusted any more, and the switch off until the checklist is green again. */
+    fun untrust(): TermuxSettings = copy(enabled = false, trustedSigner = null, trustedVersionCode = 0, trustedUpdatedAt = 0, trustedVersion = null,
+        testKeyRisk = false)
+
+    /** 1.0: the weekly update check runs (it is on, and there is a trusted Termux to check). */
+    val checksUpdates: Boolean get() = updateCheck && trustedSigner != null
 
     fun toJson(): JSONObject = JSONObject().apply {
         put("enabled", enabled)
@@ -81,6 +110,11 @@ data class TermuxSettings(
         put("helpers", helpers)
         put("lockScreenScripts", JSONArray(lockScreenScripts.sorted()))
         trustedSigner?.let { put("trustedSigner", it) }
+        if (trustedVersionCode != 0L) put("trustedVersionCode", trustedVersionCode)
+        if (trustedUpdatedAt != 0L) put("trustedUpdatedAt", trustedUpdatedAt)
+        trustedVersion?.let { put("trustedVersion", it) }
+        put("testKeyRisk", testKeyRisk)
+        put("updateCheck", updateCheck)
     }
 
     companion object {
@@ -131,6 +165,11 @@ data class TermuxSettings(
                 helpers = o.optBoolean("helpers", d.helpers),
                 lockScreenScripts = locked,
                 trustedSigner = sha256(o.optString("trustedSigner", "")),
+                trustedVersionCode = o.optLong("trustedVersionCode", 0),
+                trustedUpdatedAt = o.optLong("trustedUpdatedAt", 0),
+                trustedVersion = o.optString("trustedVersion", "").takeIf { it.isNotBlank() }?.take(64),
+                testKeyRisk = o.optBoolean("testKeyRisk", d.testKeyRisk),
+                updateCheck = o.optBoolean("updateCheck", d.updateCheck),
             )
         }
     }

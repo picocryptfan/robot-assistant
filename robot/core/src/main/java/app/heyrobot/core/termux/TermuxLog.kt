@@ -10,7 +10,11 @@ import app.heyrobot.core.LogCode
 //   171 TERMUX_DONE    a = [TermuxExitBucket], b = ms, c = [TermuxLog.kbBucket] of the output × 2, + 1 when Termux cut it
 //   172 TERMUX_FAILED  a = [TermuxFailure]
 //   173 TERMUX_LATE    a result for a run Robot no longer waits for (its output dropped): a = [TermuxExitBucket]
-//   174–179            free for the agent
+//   174 TERMUX_UPDATE_CHECK (1.0, main process) a = [TermuxUpdateVerdict], b = the installed one's [TermuxSource] (ordinal + 1)
+//   175 TERMUX_LOCKED  (1.0) a call refused by the update lock, another signer or the test key: a = [TermuxLock]
+//   176 TERMUX_TRUST   (1.0, main process) a = [TermuxTrustOp], b = [TermuxSource] (ordinal + 1)
+//   177 TERMUX_ADB_FIX (1.0) an ADB fix sent through Shizuku: a = its number, b = ShizukuOutcome, c = ShizukuRefusal or TermuxFailure
+//   178–179            free for the agent
 
 object TermuxLog {
     const val FIRST_ID = 170
@@ -41,6 +45,17 @@ enum class TermuxRunKind(override val id: Int, override val title: String) : Log
     TERMINAL(6, "opened in Termux"),
     /** Settings › Termux: creating ~/robot, or listing your scripts in it (fixed commands, shown before the first run). */
     SETUP(7, "set-up step"),
+    /** 1.0, Settings › Advanced › ADB fixes: a fixed command sent as rish -c '…' after a tap. */
+    SHIZUKU(8, "ADB fix through Shizuku"),
+}
+
+/** 1.0, TERMUX_TRUST's a: what you did in Settings › Termux about which Termux Robot trusts. */
+enum class TermuxTrustOp(override val id: Int, override val title: String) : LogCode {
+    TRUSTED(1, "trusted this Termux"),
+    VERSION(2, "trusted this version"),
+    RISK_ON(3, "chose Run anyway (test key)"),
+    RISK_OFF(4, "turned Run anyway off"),
+    SET_UP_AGAIN(5, "set up again (another signer)"),
 }
 
 /** TERMUX_DONE's a: the exit code, bucketed. */

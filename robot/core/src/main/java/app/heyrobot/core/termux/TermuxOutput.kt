@@ -223,8 +223,8 @@ enum class TermuxFailure(override val id: Int, override val title: String, val e
         "Robot ne peut pas encore lancer de commandes dans Termux : autorisez-le dans Réglages › Termux."),
     NO_ANSWER(4, "no answer", "Termux didn't answer: check that its battery use isn't restricted.",
         "Termux n'a pas répondu : vérifiez que sa batterie n'est pas restreinte."),
-    NOT_TRUSTED(5, "signer changed", "Termux was reinstalled or replaced. Check where it came from, then Trust again in Settings › Termux.",
-        "Termux a été réinstallé ou remplacé. Vérifiez sa provenance, puis Faire confiance à nouveau dans Réglages › Termux."),
+    NOT_TRUSTED(5, "signer changed", "Termux was reinstalled or replaced. Check where it came from, then set it up again in Settings › Termux.",
+        "Termux a été réinstallé ou remplacé. Vérifiez sa provenance, puis configurez-le à nouveau dans Réglages › Termux."),
     INTERNAL(6, "internal error", "Termux couldn't run it.", "Termux n'a pas pu la lancer."),
     /** 0.9: Android found no Termux to start (not installed, or a build without RunCommandService). */
     NOT_INSTALLED(7, "not installed", "Termux isn't installed, or can't take commands from other apps: see Settings › Termux.",
