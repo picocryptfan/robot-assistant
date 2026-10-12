@@ -125,7 +125,7 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.FREE_MEMORY -> RIcons.Chip
     ToolName.FREE_STORAGE -> RIcons.Folder
     ToolName.REMEMBER, ToolName.FORGET -> RIcons.BookmarkAdded
-    ToolName.WEB_SEARCH -> RIcons.Search
+    ToolName.WEB_SEARCH, ToolName.BROWSER_SEARCH -> RIcons.Search
     ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> RIcons.Terminal
     null -> RIcons.Warning
 }

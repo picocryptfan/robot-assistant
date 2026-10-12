@@ -109,6 +109,39 @@
     <string name="shizuku_result_changed">Not sent: Termux changed since you trusted it (Settings › Termux).</string>
     <string name="shizuku_need_assistant">Make Robot your digital assistant first: Termux answers the assistant.</string>
     <!-- /Termux and Shizuku (1.0) -->
+    <!-- Search engines and their privacy levels (1.0): Settings › Web search's lists, the setup guide's web page, browser_search's card. -->
+    <string name="privacy_level_desc">Privacy: %1$s</string>
+    <string name="web_reads_group">Robot reads the results</string>
+    <string name="web_reads_intro">Robot sends your search words to the service, reads what it finds and answers with numbered sources. Tap one to set it up.</string>
+    <string name="web_browser_group">Opens in your browser</string>
+    <string name="web_browser_intro">Free, nothing to set up: Robot opens your browser at the engine\'s own search page and never sees the results. Your browser sends your words, with its cookies. Tap one to make it the default.</string>
+    <string name="web_browser_default">Default · %1$s</string>
+    <string name="web_in_use">In use · %1$s</string>
+    <string name="web_browser_how">Say “search DuckDuckGo for …” or « cherche sur Startpage … » to use one; “search in my browser for …” uses the default, and so does “search the web for …” while Robot\'s own web search is off. When the model writes the words (“look it up on Google”), a card shows them first. Startpage is the default: Google\'s results without Google seeing you, and by its policy it records neither your IP address nor your searches, under Dutch and EU law. DuckDuckGo is as private by its policy, but most of its results are Bing\'s and it is a US company.</string>
+    <string name="web_levels">Privacy levels, from each one\'s own policy (checked 12 October 2026). High: your words aren\'t kept with your IP address or an account, and no profile is made of them. Medium: they go with your IP address (or part of it, or an account) to a company that keeps them for weeks or months, with no ad profile unless you agree. Low: your searches are kept with you and used for ads, or a stranger\'s server sees them.</string>
+    <string name="web_off_browser">Until then Robot\'s own web search says it can\'t check the news, and “search the web for …” opens your browser instead.</string>
+    <string name="engine_line_startpage">Google\'s results, fetched without your IP address or cookies. Records neither your IP address nor your searches, no tracking cookies (its policy). Dutch company, part-owned by System1, a US ad company.</string>
+    <string name="engine_line_duckduckgo">Mostly Microsoft Bing\'s results, with its own crawler. Doesn\'t save your searches; uses your IP address only for the moment; ads from your words only (its policy). US company.</string>
+    <string name="engine_line_brave">Its own independent index. Keeps search words without your IP address and makes no profile (its policy). US company (Brave Software).</string>
+    <string name="engine_line_mojeek">Its own independent index. Replaces your IP address with a country code in its logs and sets no cookies (its policy). UK company.</string>
+    <string name="engine_line_qwant">Its own index (Staan, with Ecosia) and Microsoft Bing. Your words and part of your IP address go to Microsoft, kept 6 months; ad profiles only if you agree. French company.</string>
+    <string name="engine_line_ecosia">Microsoft Bing\'s results, Staan\'s, and Google\'s if you agree. Your words and IP address go to Microsoft (kept 6 months) or Google (9 months). German company.</string>
+    <string name="engine_line_google">Its own index, the largest. Keeps your searches with your IP address and cookies, ties them to your Google account when you\'re signed in, and uses them for ads. US company.</string>
+    <string name="engine_line_bing">Its own index. Keeps your searches with your IP address and cookies, ties them to your Microsoft account when you\'re signed in, and uses them for ads. US company.</string>
+    <string name="service_line_searxng_home">Your own server asks the engines for you, without cookies: they see your home\'s IP address, and nobody else sees your words. Free (your hardware).</string>
+    <string name="service_line_kagi">About 1.2¢ a search, with your key. Doesn\'t store API searches against your account or build a profile (its policy). US company.</string>
+    <string name="service_line_brave">Its own index. Free monthly credit (about 1,000 searches) with your key and a card on file. Keeps your searches 90 days with your API account. US company.</string>
+    <string name="service_line_mojeek">Its own index, with your key (through Mojeek\'s sales contact), about 0.2p a search. No tracking (its policy). UK company.</string>
+    <string name="service_line_searxng_public">Free. A stranger\'s server: they see your words and the phone\'s IP address, and no policy binds them. SearXNG asks Google, DuckDuckGo, Startpage, Bing… for you. Many refuse apps.</string>
+    <string name="service_line_wikipedia_only">Free, no account: facts from Wikipedia, no general web search. Wikimedia keeps the phone\'s IP address in its logs for up to 90 days; no ads, no profile.</string>
+    <string name="service_line_ddg_instant">Free, no account: DuckDuckGo\'s official short answers, often from Wikipedia, not a list of results; the card credits DuckDuckGo. Doesn\'t save your searches (its policy). US company.</string>
+    <string name="browser_card_note">Robot opens %1$s in your browser with these words: your browser sends them, and Robot doesn\'t see the results.</string>
+    <string name="browser_opened">Opened %1$s in your browser.</string>
+    <string name="browser_no_browser">No browser opened the search.</string>
+    <string name="web_public_title">A public SearXNG</string>
+    <string name="web_public_text">Picked on searx.space (12 October 2026) for a year\'s uptime and HTTPS. A stranger runs each one: they see your words and the phone\'s IP address. Public servers let an app search about 4 times an hour and many refuse apps: Test says whether one answers.</string>
+    <string name="web_public_other">Other address</string>
+    <string name="web_public_cancel">Cancel</string>
     <!-- Setup guide (1.0) -->
     <string name="guide_title">Setup guide</string>
     <string name="guide_finish_later">Finish later</string>
@@ -202,8 +235,8 @@
     <string name="guide_can_screen_does">Swipe up from a bottom corner over any app and ask about what you\'re looking at: a long article, a recipe, an error message.</string>
     <string name="guide_can_screen_where">Needs screen sharing on: Settings › Assistant setup</string>
     <string name="guide_can_web_say">“Search the web for tonight\'s Canadiens game”</string>
-    <string name="guide_can_web_fr">« Cherche sur le web … »</string>
-    <string name="guide_can_web_does">Robot searches with the service you chose, such as your own SearXNG, reads a few pages and answers with numbered sources.</string>
+    <string name="guide_can_web_fr">« Cherche sur le web … » · « Cherche sur Startpage … »</string>
+    <string name="guide_can_web_does">Robot searches with the service you chose, such as your own SearXNG, reads a few pages and answers with numbered sources. “Search DuckDuckGo for …” opens the engine in your browser instead, with nothing to set up.</string>
     <string name="guide_can_web_where">Off until you set it up: Settings › Web search</string>
     <string name="guide_can_termux_say">“Run backup”</string>
     <string name="guide_can_termux_does">Robot runs your own backup script in Termux, after a Run, Edit or Cancel card, and tells you how it went.</string>
@@ -347,13 +380,15 @@
     <string name="guide_helpers_sent">Until a helper has a key, Robot asks before going to it. Only your question goes by itself; your screen, a photo or what Robot read needs a tap. With a daily budget, US$1.00 by default: once it\'s reached, Robot asks first for the rest of the day.</string>
     <string name="guide_helpers_privacy">Online only when a helper is asked, and only to that helper. Keys stay encrypted on the phone. Robot shows which helper answered and what it cost.</string>
     <string name="guide_web_title">Web search and Termux (optional)</string>
-    <string name="guide_web_intro">Web search is off until you set it up with a service you choose: your own SearXNG, Brave, Kagi, Mojeek or a public SearXNG. Robot then answers current questions with numbered sources.</string>
+    <string name="guide_web_intro">A search in your browser needs nothing set up: say “search DuckDuckGo for …” or « cherche sur Startpage … » and Robot opens it, without seeing the results. Pick the engine “search in my browser for …” uses. Robot\'s own web search, which reads the results and answers with numbered sources, is off until you choose a service in Settings.</string>
+    <string name="guide_web_free_group">Robot reads the results, for free</string>
+    <string name="guide_web_free_intro">Free services Robot\'s own web search can use, set up in Settings › Web search, besides Kagi and Mojeek (paid, with your key):</string>
     <string name="guide_web_row">Web search</string>
     <string name="guide_web_later">Off: set it up later</string>
     <string name="guide_termux_intro">Advanced: Robot can run your own scripts and short commands in Termux, the Linux terminal app. Every command shows a card first. Off until every step of its checklist is done. Robot then checks once a week for a newer Termux, and after Termux changes it pauses until you trust the new version; it never runs commands in the GitHub build, signed with a public test key, unless you choose to.</string>
     <string name="guide_termux_row">Termux</string>
     <string name="guide_termux_later">Off: set it up later</string>
-    <string name="guide_web_privacy">Web search sends only your search words: to the service you chose, and to Wikipedia for who, what and where questions (Encyclopedia lookups, a switch). The few sites Robot reads see the phone\'s IP address. Never your conversation, location, contacts or notes. Termux runs on the phone; what your own scripts do is up to them. Once Termux is set up, Robot asks api.github.com and f-droid.org once a week which Termux is newest, and sends nothing about you.</string>
+    <string name="guide_web_privacy">Web search sends only your search words: to the service you chose, and to Wikipedia for who, what and where questions (Encyclopedia lookups, a switch). The few sites Robot reads see the phone\'s IP address. A search in your browser goes from your browser, with its cookies, to the engine you picked; Robot sends nothing itself. Never your conversation, location, contacts or notes. Termux runs on the phone; what your own scripts do is up to them. Once Termux is set up, Robot asks api.github.com and f-droid.org once a week which Termux is newest, and sends nothing about you.</string>
     <string name="guide_updates_title">Updates and feedback</string>
     <string name="guide_updates_intro">Robot finds its new releases on GitHub and installs one only after checking it.</string>
     <string name="guide_updates_auto">Check for updates automatically</string>
@@ -404,6 +439,7 @@
     <string name="guide_item_car">Car mode</string>
     <string name="guide_item_helpers">Helpers</string>
     <string name="guide_item_web">Web search</string>
+    <string name="guide_item_browser">Search in your browser</string>
     <string name="guide_item_termux">Termux</string>
     <string name="guide_item_updates">Automatic update checks</string>
     <string name="guide_item_test">Test builds</string>

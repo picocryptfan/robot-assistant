@@ -148,6 +148,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             // The Claude app: installed or "Install Claude" before any card.
             is Action.AskClaude -> if (ClaudeAppIntents.installed(ctx)) Prepared.Ready(action) else Prepared.Refused(ActionStatus.NO_APP, "Install Claude.")
             is Action.WebSearch -> web.prepare(action)
+            // 1.0: a search in your browser: your own words open at once, the model's show their card (core web BrowserGate).
+            is app.heyrobot.core.BrowserSearchAction -> BrowserSearchTool.prepare(ctx, action, said, webContext())
             else -> Prepared.Ready(action)
         }
     } catch (t: Throwable) {
@@ -187,6 +189,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 // 0.7: memory's own (MemoryPanel), never here.
                 is Action.Remember, is Action.Forget -> Executed(ActionStatus.FAILED, "Something went wrong.")
                 is Action.WebSearch -> web.run(action)
+                // 1.0: the engine's own address in your browser (ACTION_VIEW); Robot sends nothing and reads nothing.
+                is app.heyrobot.core.BrowserSearchAction -> BrowserSearchTool.open(ctx, action, launch)
                 // 0.9: a Termux run waits for its result and Stop ends it: TermuxTool.run (PanelController), never here.
                 is app.heyrobot.core.TermuxCommandAction, is app.heyrobot.core.TermuxScriptAction -> Executed(ActionStatus.FAILED, "Something went wrong.")
             }

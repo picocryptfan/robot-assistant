@@ -38,5 +38,7 @@
         <domain includeSubdomains="true">openlibrary.org</domain>
         <!-- 1.0: Termux's weekly update check asks F-Droid's API (and GitHub's, above). -->
         <domain includeSubdomains="true">f-droid.org</domain>
+        <!-- 1.0: DuckDuckGo's Instant Answer API (api.duckduckgo.com). A search in your browser is the browser's, not Robot's. -->
+        <domain includeSubdomains="true">duckduckgo.com</domain>
     </domain-config>
 </network-security-config>

@@ -1019,10 +1019,13 @@ class ProcessIsolationTest {
         // :claude module's WebTransport in the :voice process; Settings › Web search shows an example address (text only).
         // 0.9: Termux's F-Droid page (core termux TermuxSetup.kt), which Settings › Termux opens in the browser; Robot fetches nothing.
         // 1.0: F-Droid's API entry for Termux (core termux TermuxUpdates.kt), which the weekly update check asks.
+        // 1.0: DuckDuckGo's Instant Answer API (core web DuckDuckGo.kt), sent like the other services'; and the search engines'
+        // own pages and the short list of public SearXNG servers (core web Engines.kt): your browser opens an engine's, Robot
+        // fetches none of them, and a public SearXNG is reached only once you pick it at set-up.
         assertEquals(listOf("app/ui/HelpersScreens.kt", "app/ui/settings/WebSearchSettings.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt",
             "core/core/ModelState.kt", "core/core/MtBundle.kt", "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt",
             "core/core/helpers/Helpers.kt", "core/core/termux/TermuxSetup.kt", "core/core/termux/TermuxUpdates.kt", "core/core/update/GitHub.kt",
-            "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt",
+            "core/core/web/DuckDuckGo.kt", "core/core/web/Engines.kt", "core/core/web/OpenLibrary.kt", "core/core/web/SearchWire.kt",
             "core/core/web/Wikipedia.kt"),
             ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }
@@ -1073,6 +1076,27 @@ class ProcessIsolationTest {
         assertTrue(transport.contains(".followRedirects(false)") && transport.contains("LanDns(dns)") && transport.contains("addNetworkInterceptor(LanGuard)"))
         // No remote image in a reply: nothing loads an image from an address.
         assertEquals(emptyList<String>(), usersOf(Regex("""\bAsyncImage\b|\bcoil\b|\bGlide\b|\bPicasso\b|BitmapFactory\.decodeStream\(.*openStream""")))
+    }
+
+    /**
+     * 1.0, a search in your browser (core web Engines.kt and BrowserSearch.kt, BrowserActions.kt, the :voice process's
+     * BrowserSearchTool): Robot hands the engine's address to the browser as a link and goes no further. No HTTP client,
+     * socket, search client, web search's network module or key, no INTERNET check; the one intent is ACTION_VIEW with
+     * CATEGORY_BROWSABLE, and nothing reads what the browser shows.
+     */
+    @Test fun aSearchInYourBrowserNeverReachesTheNetwork() {
+        val path = ours.filterKeys { it in setOf("core/core/web/Engines.kt", "core/core/web/BrowserSearch.kt", "core/core/BrowserActions.kt", "app/assistant/BrowserSearchTool.kt") }
+        assertEquals(4, path.size)
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bSocket\b|okhttp|\bWebView\b|\bopenConnection\(|\bapp\.heyrobot\.helpers\b|""" +
+            """\bSearchClient\b|\bWebTransport\b|\bSearchRequest\b|\bWebKeys\b|\bINTERNET\b|\bDownloadManager\b"""), path))
+        val tool = code(File(java("app"), "app/heyrobot/assistant/BrowserSearchTool.kt"))
+        assertEquals(listOf("ACTION_VIEW"), Regex("""Intent\.(ACTION_\w+)""").findAll(tool).map { it.groupValues[1] }.toList())
+        assertTrue(tool.contains("addCategory(Intent.CATEGORY_BROWSABLE)") && !tool.contains("putExtra") && !tool.contains("setPackage"))
+        // Only ToolExecutor opens it (after the gate), and only the panel makes your own phrase's call.
+        assertEquals(listOf("app/assistant/ToolExecutor.kt"), usersOf(Regex("""\bBrowserSearchTool\.(open|prepare)\(""")))
+        assertEquals(listOf("app/assistant/PanelController.kt"), usersOf(Regex("""\bBrowserSearchTool\.directCall\(""")))
+        // Not an online action: the panel runs it as a local one (no OnlineRun, no web search's one-shot).
+        assertTrue(code(File(java("core"), "app/heyrobot/core/BrowserActions.kt")).contains("override val online get() = false"))
     }
 
     /**
@@ -1574,7 +1598,7 @@ class ProcessIsolationTest {
         val conv = pc.indexOf("val convCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null) ConversationRouter.route(q, ConversationSession.running) else null")
         val routines = pc.indexOf("val routineCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.claudeMode)\n            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null")
         val handsFree = pc.indexOf("val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&\n            !_state.value.claudeMode) PanelHandsFree.route(q) else null")
-        val web = pc.indexOf("val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&\n            !_state.value.claudeMode) WebRouter.explicit(q) else null")
+        val web = pc.indexOf("val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&\n            !_state.value.claudeMode) BrowserRouter.route(q) else null")
         val termux = pc.indexOf("val termux = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            !_state.value.claudeMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null")
         assertTrue(msgRoute in 0 until conv && conv < fbRoute && fbRoute < routines && routines < handsFree && handsFree < web && web < termux &&
             termux < memRoute && memRoute < freeUp && freeUp < helpers)

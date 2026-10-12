@@ -282,7 +282,7 @@ grep -qE 'cleartextTrafficPermitted.*false' <<<"$nscdomain" && pass "domain-conf
 # 0.9: and the web search services' and lookups' domains (your own SearXNG is decided by LanRule in code, as a helper);
 # 1.0: and F-Droid's (Termux's weekly update check).
 for d in anthropic.com openai.com googleapis.com mistral.ai x.ai deepseek.com groq.com openrouter.ai huggingface.co open-meteo.com openstreetmap.org github.com githubusercontent.com \
-  search.brave.com kagi.com mojeek.com wikipedia.org openlibrary.org f-droid.org; do
+  search.brave.com kagi.com mojeek.com wikipedia.org openlibrary.org f-droid.org duckduckgo.com; do
   has "'$d'" "$nsc" "no cleartext to $d"
 done
 has '"system"' "$nsc" "trusts the system's CAs"

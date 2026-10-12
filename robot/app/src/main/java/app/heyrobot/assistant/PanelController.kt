@@ -151,7 +151,7 @@ import app.heyrobot.core.web.WebConsent
 import app.heyrobot.core.web.WebFail
 import app.heyrobot.core.web.WebOutcome
 import app.heyrobot.core.web.WebQueryContext
-import app.heyrobot.core.web.WebRouter
+import app.heyrobot.core.web.BrowserRouter
 import app.heyrobot.core.web.WebStatus
 import app.heyrobot.core.web.WikipediaWire
 import app.heyrobot.helpers.web.WebSearch
@@ -1308,9 +1308,9 @@ object PanelController {
             !_state.value.claudeMode) PanelHandsFree.route(q) else null
         val routineOrHandsFree = routineCmd != null || handsFreeCmd != null
         // 0.9: "search the web for …" next: web_search with exactly your words, without the model (WebRouter); outside a
-        // helper's conversation and without an attachment.
+        // helper's conversation and without an attachment. 1.0: or a search in your browser ("search DuckDuckGo for …").
         val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&
-            !_state.value.claudeMode) WebRouter.explicit(q) else null
+            !_state.value.claudeMode) BrowserRouter.route(q) else null
         // 0.9: then "run backup", your own Termux script named in your own words (TermuxTool.direct), the same way.
         val termux = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&
             !_state.value.claudeMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null
@@ -1583,12 +1583,13 @@ object PanelController {
             val termuxTools = if (chatOnly || ToolGroup.TERMUX !in groups) emptySet() else withContext(Dispatchers.IO) { TermuxTool.tools(VoiceHub.app, locked) }
             val termuxLine = if (termuxTools.isEmpty()) null else withContext(Dispatchers.IO) { TermuxTool.promptLine(VoiceHub.app, termuxTools, locked) }
             fun toolsFor(g: Set<ToolGroup>): List<ToolName> =
-                if (chatOnly) emptyList() else ToolRouter.tools(g, s, askClaude, memory = mem.tools, web = webOn, termux = termuxTools)
+                if (chatOnly) emptyList() else ToolRouter.tools(g, s, askClaude, memory = mem.tools, web = webOn, termux = termuxTools,
+                    browser = BrowserRouter.named(question))
             fun systemFor(tools: List<ToolName>): String = app.heyrobot.core.memory.MemoryPrompt.system(if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers)
             else Prompt.system(now, locked, askClaude, texting = ToolName.SEND_TEXT in tools,
                 weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers, lockedTools = s.lockedTools,
                 helper = target?.name, helperSearches = target?.searching ?: true, helperHome = target?.home == true, driving = driving,
-                web = ToolName.WEB_SEARCH in tools, termux = termuxLine?.takeIf { tools.any { it.termux } }),
+                web = ToolName.WEB_SEARCH in tools, termux = termuxLine?.takeIf { tools.any { it.termux } }, browser = ToolName.BROWSER_SEARCH in tools),
                 tools = ToolName.REMEMBER in tools, pinned = mem.packed.systemLine)
             // 0.9: with every group this conversation called for, the new turn may not fit: the groups this question doesn't call
             // for give way first, then the others, until it keeps its room (core ToolBudget).
@@ -2618,16 +2619,20 @@ object PanelController {
 
     // ------------------------------------------------------------------ web search (0.9, core web; design Part A)
 
-    /** "Search the web for …": web_search with your words as they are, gated and carded as Gemma's call would be. */
-    private suspend fun directWeb(replyId: String, query: String, question: String, history: List<ChatTurn>, untrusted: Boolean) {
+    /**
+     * "Search the web for …": web_search with your words as they are, gated and carded as Gemma's call would be. 1.0: a
+     * search in your browser instead when your words name one, or while Robot's own web search is off (BrowserSearchTool).
+     */
+    private suspend fun directWeb(replyId: String, route: app.heyrobot.core.web.WebRoute, question: String, history: List<ChatTurn>, untrusted: Boolean) {
         RLog.i("web_direct")
-        val call = RawToolCall(ToolName.WEB_SEARCH.id, mapOf("query" to query))
+        val call = withContext(Dispatchers.IO) { BrowserSearchTool.directCall(VoiceHub.app, route) } ?: RawToolCall(ToolName.WEB_SEARCH.id, mapOf("query" to route.query))
         // 0.7's quarantine: after a message, even your own search is a card only a tap answers (core MessageQuarantine).
-        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOf(ToolName.WEB_SEARCH),
+        val result = TurnRunner(DirectCall(call), PanelActions, PanelView(replyId), slot.confirmations, untrusted, asked = setOfNotNull(ToolName.of(call.name)),
             messages = PanelMessages.taint(chat), newId = ::newId).run()
         result.failure?.let { return failReply(replyId, it) }
         result.web?.let { return webAnswer(replyId, question, history, it) }
         finishReply(replyId, result.reason ?: DoneReason.END)
+        if (result.launchedApp) leaveForApp()
     }
 
     /** web_search's run: on its own thread with one deadline (the request, then the pages); Stop disconnects it. */
