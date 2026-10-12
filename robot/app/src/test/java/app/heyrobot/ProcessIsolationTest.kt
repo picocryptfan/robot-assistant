@@ -431,8 +431,8 @@ class ProcessIsolationTest {
             assertEquals(BuildConfig.APPLICATION_ID, e.getAttributeNS(ns, "targetPackage"))
             assertTrue(comps.containsKey(e.getAttributeNS(ns, "targetClass")))
         }
-        assertEquals("90", m.getAttributeNS(ns, "versionCode"))
-        assertEquals("0.9.0", m.getAttributeNS(ns, "versionName"))
+        assertEquals("1000001", m.getAttributeNS(ns, "versionCode"))
+        assertEquals("1.0.0-rc1", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))

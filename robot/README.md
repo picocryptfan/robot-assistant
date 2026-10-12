@@ -3290,7 +3290,7 @@ first to change what I remember.".
   number, the tool refuses with the reason: only your own "remember that …" keeps one. With a message in the
   conversation, the model's remember keeps nothing and yours needs a tap ("Memory and messages together (0.7)" below).
 - **Notes kept from content** (an item whose source is something Robot read) make the question they go with content, as
-  a screen or a read does: what the model then asks for follows Settings › Safety & privacy › Safety cards, also later in
+  a screen or a read does: what the model then asks for follows Settings › Safety & privacy › When Robot asks first, also later in
   that conversation.
 
 ### Private items
@@ -3388,7 +3388,7 @@ It reads the file Export writes, `robot-memory.json`: 0.9's and 1.0's are the sa
   masked ("Private: tap to show") until tapped. Import (a tap, never by voice) and Cancel.
 - **Content until you say otherwise** (the audit's `MemoryTaint`): a file can be made by someone else, so imported items
   count as content, as memory kept from something Robot read does. A question they go with makes the conversation
-  content (what the model then asks for follows Safety cards), and the model is told they were "imported from a file,
+  content (what the model then asks for follows When Robot asks first), and the model is told they were "imported from a file,
   not confirmed as the user's own words". The preview's "These are my own memories, from my own export" (off) imports
   them as yours. An item the file marks as content (kept from something Robot read, a source Robot doesn't know, or
   imported and never confirmed on the phone that exported it) stays content either way. In Settings › Memory an imported
@@ -3491,10 +3491,10 @@ Nothing here has run on the phone yet. 0.9 and 1.0 installed side by side, a scr
    the rest with the private one as "Private: tap to show" (a tap shows it, another hides it), and a screenshot of the
    preview is refused.
 2. **Content by default.** Import without ticking: *done when* "Added N memories." offers Delete the file, Settings ›
-   Memory lists the items with "Imported", and, with Settings › Safety & privacy › Safety cards at "Only when Robot
+   Memory lists the items with "Imported", and, with Settings › Safety & privacy › When Robot asks first at "Only when Robot
    isn't sure who", a question one of them answers followed by "text Bob I'm on my way" brings a card first.
 3. **This is mine.** Open an imported item (not the one from a screen) › This is mine: *done when* "Imported" is gone
-   and step 2's question and text, in a new conversation, follow Safety cards as for your own words (no card).
+   and step 2's question and text, in a new conversation, follow When Robot asks first as for your own words (no card).
 4. **The tick.** Settings › Memory › Delete all, then import the file again with "These are my own memories, from my own
    export" ticked: *done when* step 2's text needs no card, the item 0.9 kept from a screen still says where it came
    from, and importing the file a third time says "Nothing to add." with Import greyed out.
