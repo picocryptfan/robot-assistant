@@ -41,6 +41,8 @@ enum class FeedbackEntry(override val id: Int, override val title: String, val k
     VOICE_LOG(3, "the voice log", "voicelog"),
     UPDATER(4, "an update error", "updates"),
     VOICE(5, "a voice command in the panel", "voice"),
+    /** 1.0: "Robot closed unexpectedly" when you opened Robot after a crash (core AppCrash). */
+    CRASH(6, "the notice that Robot closed unexpectedly", "crash"),
     ;
 
     companion object {

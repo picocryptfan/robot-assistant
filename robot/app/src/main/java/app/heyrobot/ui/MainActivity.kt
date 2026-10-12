@@ -67,6 +67,9 @@ import app.heyrobot.core.VoiceBench
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceEngineStatus
 import app.heyrobot.core.feedback.FeedbackEntry
+import app.heyrobot.core.feedback.FeedbackKind
+import app.heyrobot.core.AppCrash
+import app.heyrobot.core.AppExit
 import app.heyrobot.core.DownloadPolicy
 import app.heyrobot.core.readOrNull
 import app.heyrobot.sys.AppPages
@@ -346,6 +349,13 @@ fun RobotAppUi(activity: MainActivity) {
     var bigDownload by remember { mutableStateOf<Pair<Long, (Boolean) -> Unit>?>(null) }
     fun askNetwork(bytes: Long, start: (anyNetwork: Boolean) -> Unit) {
         if (DownloadPolicy.asksFirst(bytes)) bigDownload = bytes to start else start(true)
+    }
+    // 1.0: "Robot closed unexpectedly", once, after the app or the assistant crashed (core AppCrash), with Send feedback.
+    var crash by remember { mutableStateOf<AppExit?>(null) }
+    LaunchedEffect(Unit) { crash = withContext(Dispatchers.IO) { Problems.newCrash(ctx) } }
+    fun crashTold(e: AppExit) {
+        crash = null
+        scope.launch(Dispatchers.IO) { Problems.crashTold(ctx, e) }
     }
 
     LaunchedEffect(resumed) {
@@ -731,6 +741,20 @@ fun RobotAppUi(activity: MainActivity) {
                 }
             },
             dismissButton = { TextButton(onClick = { bigDownload = null }) { Text("Cancel") } },
+        )
+    }
+    crash?.let { e ->
+        AlertDialog(
+            onDismissRequest = { crashTold(e) },
+            title = { Text(AppCrash.TITLE) },
+            text = { Text(AppCrash.text(e)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    crashTold(e)
+                    page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.CRASH, FeedbackKind.BUG, e.facts.time))
+                }) { Text("Send feedback") }
+            },
+            dismissButton = { TextButton(onClick = { crashTold(e) }) { Text("Not now") } },
         )
     }
 

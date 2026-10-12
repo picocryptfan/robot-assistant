@@ -55,8 +55,8 @@ object FeedbackDiagnostics {
     }
 
     /** 0.4.7's problem report as it is (it holds codes, this phone and the model only: core ProblemReport). */
-    fun problem(report: String): DiagnosticBlock =
-        DiagnosticBlock(Diagnostic.PROBLEM, "Last problem report:", report.replace("\r\n", "\n").trimEnd().lines())
+    fun problem(report: String, title: String = "Last problem report:"): DiagnosticBlock =
+        DiagnosticBlock(Diagnostic.PROBLEM, title, report.replace("\r\n", "\n").trimEnd().lines())
 
     /**
      * Every switch and level, by its code, grouped as Settings has them. Names, addresses, wake phrases' words, server

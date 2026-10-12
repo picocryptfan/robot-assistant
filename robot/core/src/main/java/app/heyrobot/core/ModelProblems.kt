@@ -327,10 +327,7 @@ object ProblemReport {
         append('\n')
         append("When: ").append(time(p.time, zone)).append('\n')
         append("Robot: ").append(f.robotVersion).append(" (").append(f.versionCode).append(")\n")
-        append("Phone: ").append(f.phone.name).append(" · chip ").append(f.phone.chip.title.ifEmpty { "not a Tensor" })
-            .append(" (Build.SOC_MODEL “").append(plain(f.phone.socModel, 40) ?: "").append("”) · TPU ").append(f.phone.tpu.name.lowercase(Locale.ROOT))
-            .append(" · GPU ").append(if (ModelCatalogue.gpuOffered(f.phone)) "offered" else "not used").append('\n')
-        append("Android: ").append(f.android).append(" · build ").append(plain(f.fingerprint, 160) ?: "unknown").append('\n')
+        append(phoneLines(f))
         append("Model: ").append(modelLine(p.model, f.fileBytes)).append('\n')
         append("Ran on: ").append(p.backend.title).append(" · ").append(p.format.engine).append(" in ")
             .append(ModelProcess.of(p.format).title).append(" · stage: ").append(p.stage.title).append(" · failure: ")
@@ -340,15 +337,31 @@ object ProblemReport {
         append('\n')
         append("How the model process ended (Android's records of ").append(p.process.suffix).append("):\n")
         if (f.exits.isEmpty()) append("  none found\n")
-        for (e in f.exits) {
-            append("  ").append(time(e.time, zone)).append(" · pid ").append(e.pid).append(if (e.pid == p.brainPid && p.brainPid > 0) " (the one that failed)" else "")
-                .append(" · reason ").append(e.reasonName).append(" (").append(e.reason).append(") · status ").append(e.status)
-                .append(" · importance ").append(e.importance).append(" · PSS ").append(e.pssKb / 1024).append(" MB · RSS ").append(e.rssKb / 1024).append(" MB")
-            scrub(e.description)?.let { append(" · “").append(it).append('”') }
-            append('\n')
-            e.nativeCrash?.lines()?.forEach { append("    ").append(it).append('\n') }
-        }
+        for (e in f.exits) append(exitLines(e, zone, if (e.pid == p.brainPid && p.brainPid > 0) " (the one that failed)" else ""))
         append('\n')
+        append(logAndEnd(f, now, zone))
+    }
+
+    /** The "Phone:" and "Android:" lines (1.0: the crash report has them too, AppCrash). */
+    fun phoneLines(f: ReportFacts): String = buildString {
+        append("Phone: ").append(f.phone.name).append(" · chip ").append(f.phone.chip.title.ifEmpty { "not a Tensor" })
+            .append(" (Build.SOC_MODEL “").append(plain(f.phone.socModel, 40) ?: "").append("”) · TPU ").append(f.phone.tpu.name.lowercase(Locale.ROOT))
+            .append(" · GPU ").append(if (ModelCatalogue.gpuOffered(f.phone)) "offered" else "not used").append('\n')
+        append("Android: ").append(f.android).append(" · build ").append(plain(f.fingerprint, 160) ?: "unknown").append('\n')
+    }
+
+    /** One of Android's records of how a process ended, [mark] after its pid, and a native crash's frames under it. */
+    fun exitLines(e: ExitFacts, zone: ZoneId, mark: String = ""): String = buildString {
+        append("  ").append(time(e.time, zone)).append(" · pid ").append(e.pid).append(mark)
+            .append(" · reason ").append(e.reasonName).append(" (").append(e.reason).append(") · status ").append(e.status)
+            .append(" · importance ").append(e.importance).append(" · PSS ").append(e.pssKb / 1024).append(" MB · RSS ").append(e.rssKb / 1024).append(" MB")
+        scrub(e.description)?.let { append(" · “").append(it).append('”') }
+        append('\n')
+        e.nativeCrash?.lines()?.forEach { append("    ").append(it).append('\n') }
+    }
+
+    /** The voice log's last [LOG_LINES] events in words, and the line that says nothing was sent. */
+    fun logAndEnd(f: ReportFacts, now: Long, zone: ZoneId): String = buildString {
         val log = f.voiceLog.take(LOG_LINES)
         append("Voice log, last ").append(log.size).append(" events, newest first (codes only):\n")
         for (e in log) append("  ").append(time(e.time, zone)).append("  ").append(VoiceLogText.describe(e)).append('\n')

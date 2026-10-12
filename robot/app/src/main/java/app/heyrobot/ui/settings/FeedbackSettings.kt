@@ -123,6 +123,8 @@ data class FeedbackUi(
     val github: GitHubRepo? = null,
     /** The problem report's date ("Thu, 9 Oct 2026, 14:05"). */
     val problemDate: String? = null,
+    /** 1.0: the report is Robot's crash report (opened from "Robot closed unexpectedly"), not a model problem's. */
+    val crash: Boolean = false,
 )
 
 /** The message as it leaves: its kind, text and which diagnostics it holds (the voice log's bits). */
@@ -149,7 +151,8 @@ const val FEEDBACK_FOOTER = "What goes is exactly what Preview shows: your words
     "minute if nothing else replaced it. Your draft stays until you tap Done."
 
 private fun Diagnostic.summary(ui: FeedbackUi): String = when (this) {
-    Diagnostic.PROBLEM -> "The model problem" + (ui.problemDate?.let { " of $it" } ?: "") + ": codes, this phone and its Android build, the model, how its process ended"
+    Diagnostic.PROBLEM -> if (ui.crash) "Robot's crash" + (ui.problemDate?.let { " of $it" } ?: "") + ": codes, this phone and its Android build, how Robot's process ended"
+        else "The model problem" + (ui.problemDate?.let { " of $it" } ?: "") + ": codes, this phone and its Android build, the model, how its process ended"
     else -> detail
 }
 
@@ -423,10 +426,13 @@ private fun load(app: android.content.Context, args: FeedbackArgs, snap: Snapsho
     // The problem asked about, else the open one, else one from the last day.
     val now = System.currentTimeMillis()
     val listed = Problems.list(app)
-    val problem: ModelProblem? = args.problem?.let { t -> listed.firstOrNull { it.time == t } ?: Problems.last(app)?.takeIf { it.time == t } }
-        ?: Problems.open(app) ?: listed.firstOrNull { now - it.time in 0..86_400_000L }
+    // 1.0: from "Robot closed unexpectedly", the crash's own report instead (null when Android no longer keeps it).
+    val crash = if (args.entry == FeedbackEntry.CRASH) args.problem?.let { Problems.crashReport(app, it) } else null
+    val problem: ModelProblem? = if (args.entry == FeedbackEntry.CRASH) null
+        else args.problem?.let { t -> listed.firstOrNull { it.time == t } ?: Problems.last(app)?.takeIf { it.time == t } }
+            ?: Problems.open(app) ?: listed.firstOrNull { now - it.time in 0..86_400_000L }
     val blocks = listOfNotNull(
-        problem?.let { FeedbackDiagnostics.problem(Problems.report(app, it)) },
+        crash?.let { FeedbackDiagnostics.problem(it, "Crash report:") } ?: problem?.let { FeedbackDiagnostics.problem(Problems.report(app, it)) },
         FeedbackDiagnostics.voiceLog(inputs.voiceLog),
         FeedbackDiagnostics.settings(s, inputs.look, inputs.updates, inputs.memory, inputs.messages),
         if (args.entry == FeedbackEntry.UPDATER || FeedbackDiagnostics.updaterFailed(inputs.updateState)) FeedbackDiagnostics.updater(inputs.updateState) else null,
@@ -438,6 +444,7 @@ private fun load(app: android.content.Context, args: FeedbackArgs, snap: Snapsho
         secrets = FeedbackPrivacy.secrets(s, inputs.updates, UpdateStore.defaultRepo(app)?.slug, listOfNotNull(prefs.sendTo)),
         sendTo = prefs.sendTo,
         github = UpdateStore.repo(app),
-        problemDate = problem?.let { dateTime(it.time) },
+        problemDate = if (crash != null) args.problem?.let(::dateTime) else problem?.let { dateTime(it.time) },
+        crash = crash != null,
     )
 }
