@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in Robot doesn't work as it should.
+title: "Bug report: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The easiest way: on the phone, Settings › About › **Send feedback** › Bug report writes this report for you
+        (it starts with `ROBOT FEEDBACK v1`). Paste it whole into **The report** below and skip the other fields.
+        Its diagnostics hold codes and numbers only; read it before you submit and remove anything personal.
+        A security problem? Please don't open an issue: see SECURITY.md.
+  - type: textarea
+    id: report
+    attributes:
+      label: The report
+      description: The whole message Send feedback wrote, from `ROBOT FEEDBACK v1` to its last line.
+      placeholder: |
+        ROBOT FEEDBACK v1
+        Kind: Bug report
+        Ref: RFB-…
+        Robot: …
+        Phone: …
+        Model: …
+        Look: … · Language: …
+        ---
+        What happened:
+        …
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Robot's version
+      description: Settings › About (not needed if you pasted the report).
+      placeholder: "0.9.0 (90)"
+  - type: input
+    id: phone
+    attributes:
+      label: Phone and GrapheneOS build
+      placeholder: "Pixel 10 Pro, GrapheneOS 2026100201"
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: "Settings › Model: Fast, Smarter, Uncensored or your own file (not its name), and where it runs."
+      placeholder: "Fast (Gemma 4 E2B) on the TPU"
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: What you did, one step a line.
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+  - type: textarea
+    id: voicelog
+    attributes:
+      label: Voice log (optional)
+      description: Settings › Voice › Voice log › Copy. It holds codes and numbers, never what you said.
+      render: text
+  - type: checkboxes
+    id: personal
+    attributes:
+      label: Before you submit
+      options:
+        - label: I read the report and removed anything personal.
+          required: true

@@ -479,5 +479,19 @@ done
 for id in slimt ruy cpuinfo sentencepiece-browsermt tatoeba-cc0; do
   grep -qF "\"id\": \"$id\"" <<<"$list" && pass "the Licences list names $id" || fail "the Licences list lacks $id"
 done
+# 1.0: every part the APK packs is on the list with its text: the MIT and BSD texts carry each holder's copyright line, so
+# each ships as its own file (LicencesTest checks the list against the build; this checks the APK that came out of it).
+for a in licenses/MIT-anthropic-sdk-java.txt licenses/MIT-onnxruntime.txt licenses/MIT-silero-vad.txt licenses/MIT-piper-phonemize.txt \
+    licenses/MIT-jsoup.txt licenses/MIT-termux-constants.txt licenses/MIT-slf4j.txt licenses/MIT-standardwebhooks.txt \
+    licenses/MIT-fastdoubleparser.txt licenses/notices/readability4j-NOTICE.txt licenses/CC0-1.0.txt; do
+  has "assets/$a" "$assets" "asset $a"
+done
+for id in sherpa-onnx espeak-ng onnxruntime silero-vad kws-zipformer litert-lm litert-npu-google-tensor anthropic-sdk-java okhttp \
+    jsoup readability4j termux-constants jackson kotlin kotlinx-coroutines androidx material-symbols gson tatoeba-cc0 \
+    parakeet kokoro kitten titanet-small bergamot-fr-en gemma-4-e2b openstreetmap open-meteo; do
+  grep -qF "\"id\": \"$id\"" <<<"$list" && pass "the Licences list names $id" || fail "the Licences list lacks $id"
+done
+n=$(grep -c '"id": ' <<<"$list" || true)
+[ "$n" -ge 70 ] && pass "the Licences list has $n entries (>= 70)" || fail "the Licences list has $n entries, want >= 70"
 echo; [ "$fails" -eq 0 ] && echo "ALL CHECKS PASSED" || echo "$fails CHECK(S) FAILED"
 exit $((fails > 0))

@@ -33,6 +33,49 @@ and how they are used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
+## The 1.0 hardening (on top of 0.9.0)
+
+The release-readiness work for 1.0, on 0.9.0's code (the version number is still 0.9.0). Nothing here changes what Robot
+does with your words.
+
+- **Downloads** (Settings › Model, Voice, Conversation): every file Android's download manager fetches for Robot carries
+  `User-Agent: Robot/<version>` (core `DownloadPolicy`, the same as the updater's), not Android's default, which names the
+  phone model. Robot still has no network-state permission (`ProcessIsolationTest`, `tools/verify_apk.sh`), so it can't
+  see whether the phone is on mobile data: a download of 200 MB or more (the models, speech recognition, the natural
+  voice) first asks "Download 3.11 GB?": **Wait for Wi-Fi** (the download manager holds it until an unmetered network,
+  `setAllowedOverMetered(false)`), **Download anyway** or **Cancel**. Smaller ones (the fallback voice, the speaker
+  model, the fast translation engine) start as before.
+- **"Robot closed unexpectedly"**: when you open Robot after the app or the assistant (`:voice`) crashed or stopped
+  responding, a window says so once, from Android's records (`ApplicationExitInfo`; core `AppCrash`, `sys/Problems.kt`),
+  with **Send feedback** (a bug report with the crash report ticked: Android's record, a native crash's frames as
+  library names and offsets, this phone, the voice log; built like the model problem report) or **Not now**. The first
+  look after installing only marks what Android already kept. The model's processes keep their own problem reports.
+  Debug builds run StrictMode (log only).
+- **Accessibility** (the plan's findings A1 to A7): the speaker and language chips on transcript lines reserve a 48 dp
+  touch target; the consent tick box and the transcription check's "Include sentences" are one TalkBack stop with
+  their state (`TickRow`); the transcript menus are drawn with the "more" icon their label names ("More options"); the
+  screen button's "not ready" look uses the theme's outline colour (3:1 or more against the panel) instead of a 38 %
+  alpha; and in the panel, with spoken replies off, the answer is one TalkBack node that becomes a polite live region
+  once it is complete, so TalkBack reads it once, not word by word. Still to do on the phone: a TalkBack pass, a 200 %
+  font pass and Switch Access.
+- **Licences and source**: `tools/verify_apk.sh` also checks that the APK's Licences list names every bundled part (77
+  entries today) and that each MIT text and notice ships; `tools/make_source_bundle.sh` now takes slimt and its parts,
+  llama.cpp and KleidiAI, and Robot's own native sources ("Releasing").
+- **Build**: build-tools pinned to 35.0.0; `tools/repro_check.sh` ("Building").
+- **Home**: the corner-swipe tip says Robot sees the screen you're on once the phone is unlocked (it never reads a
+  locked screen).
+
+**On the phone (1.0 hardening):**
+
+1. **Big download on mobile data.** Wi-Fi off, Settings › Voice › Speech recognition › Download: *done when* the window
+   asks first; Wait for Wi-Fi shows "Waiting to start" until Wi-Fi is back, then downloads; Download anyway downloads
+   at once.
+2. **User-Agent.** Download any model through a proxy you control (or check the server log): *done when* it says
+   `Robot/0.9.0`.
+3. **Crash notice.** With a debug build, crash the main app once (`adb shell am crash app.heyrobot`), open Robot: *done
+   when* the window shows once; Send feedback opens a bug report whose "Crash report" preview names the crash.
+4. **TalkBack.** Spoken replies off, ask a question: *done when* TalkBack reads the answer once, when it is complete.
+
 ## What's new in 0.9.0
 
 Robot 0.9.0 is 0.8.0 with private web search and the Termux agent built beside it, both off until you set them up; each
@@ -317,7 +360,11 @@ helpers, the engine hardening and the built-in updater; each has its section bel
 
 ## Building
 
-Needs JDK 17+, the Android SDK (platform 36, build-tools 36) and Gradle 8.x.
+Needs JDK 17+ (21 used for the releases), the Android SDK (platform 36, build-tools 35.0.0, pinned in `build.gradle`
+since 1.0; NDK 27.1.12297006 and CMake 3.22.1 for the native scripts) and Gradle 8.14.3. There is no Gradle wrapper yet:
+the build machine has no copy of Gradle's distribution to pin its checksum from offline (add one with
+`gradle wrapper --gradle-version 8.14.3 --gradle-distribution-sha256-sum <sha256 from gradle.org>` on a machine with the
+network). Dependency verification metadata (`gradle/verification-metadata.xml`) is not generated for the same reason.
 
 ```
 cd robot
@@ -330,7 +377,13 @@ gradle :app:testDebugUnitTest                  # also the Compose UI tests and s
 gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                             -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk
+tools/repro_check.sh                           # 1.0: builds the unsigned APK twice (here and in a clean copy) and compares
 ```
+
+`tools/repro_check.sh` (1.0) builds the release APK unsigned in this checkout, then again in a fresh `git archive` copy of
+the committed tree in another folder (the git-ignored native libraries and models hard-linked in), and compares the two
+byte for byte, listing the entries that differ; `--signed Robot-x.y.z.apk` also runs `apksigcopier compare` against a
+published APK, as F-Droid checks. It needs a clean tree (commit first) and two release builds' time.
 
 `tools/build_llama.sh` needs the Android NDK (27.1.12297006; `ANDROID_NDK_HOME`), CMake 3.22+ and Ninja; it takes about two
 minutes on four cores and needs about 0.8 GB for the sources and the build (`--clean` removes the build afterwards). Gradle
@@ -353,7 +406,8 @@ source:
 
    ```
    tools/make_source_bundle.sh              # version from app/build.gradle; or --version 1.0.0
-   # -> build/source-bundle/robot-<version>-third-party-sources.tar.gz and its .sha256 (about 310 MB)
+   tools/make_source_bundle.sh --list       # what it takes, from the pins (no network)
+   # -> build/source-bundle/robot-<version>-third-party-sources.tar.gz and its .sha256 (about 360 MB)
    ```
 
    It takes sherpa-onnx at the commit of v1.13.8 (`11afbd00`, checked by its commit id), reads from that source the
@@ -364,13 +418,14 @@ source:
    bundle's `MANIFEST.tsv` and `README.md`. It adds ONNX Runtime 1.28.2's source (tag v1.28.2, commit `33ca9628`; 280 MB
    of the total, about 50 MB without it; `--without-onnxruntime` leaves it out, as its MIT licence allows, but sherpa-onnx's library is built to
    require it, so keep it unless size forces otherwise). The archive is reproducible from the same inputs (sorted, no
-   owners or times). Never commit it.
+   owners or times). Since 1.0 it also takes slimt, ruy, cpuinfo and SentencePiece (`mt/`, the `git archive` tars
+   `tools/build_robotmt.sh` pins, checked against the same SHA-256), llama.cpp and KleidiAI (`llama/`, as
+   `tools/build_llama.sh` pins them; `--without-llama` leaves them out for a build without `librobot_llama.so`), and
+   Robot's own native sources and build scripts at that commit (`robot/`); it reads those pins from the two build
+   scripts, so it can't drift from what they build. Never commit it.
 3. Attach to the GitHub release: the APK, `SHA256SUMS`, `robot-<version>-third-party-sources.tar.gz` and its
-   `.sha256`, and the release notes. Keep the bundle as long as that APK is offered (GPL-3.0 section 6).
-   Since 0.6.0 the APK also holds slimt (GPL-2.0-or-later, in `librobotmt.so`), which Robot builds from Robot's
-   `mt/src/main/cpp/` and four pinned trees; the bundle doesn't take those yet, so also attach the four trees as
-   `tools/build_robotmt.sh` writes them out (`git archive --format=tar <commit>` from `mt/native/git/<name>`; their
-   SHA-256 are in `THIRD_PARTY.md`, "In the `:mt` process only").
+   `.sha256`, and the release notes. Keep the bundle as long as that APK is offered (GPL-3.0 section 6). The bundle
+   holds slimt's source too (GPL-2.0-or-later, in `librobotmt.so` since 0.6.0), so nothing else needs attaching.
 
 **The release format the updater reads** (Settings › About › Updates, "Updates" below). Anything else is not offered:
 
@@ -3707,6 +3762,9 @@ Settings line and the card's "Sent to …" line name the server that gets the wo
 at nominatim.example.org"), and so do the failures ("nominatim.example.org is busy just now"). `NominatimClient` sends only
 to the server chosen (host, port and path checked again), with the same pace, cache and User-Agent. The default isn't
 written to settings.json, so if OpenStreetMap ever asks Robot to stop, a later default reaches everyone who didn't choose.
+Nominatim's usage policy asks that an app can switch servers "without requiring a software update": this setting is
+that switch (any HTTPS Nominatim, saved at once, no update needed), and **Never** turns the online lookup off entirely
+(Organic Maps' own search then).
 
 **Nominatim's usage policy** (operations.osmfoundation.org/policies/nominatim, read 11 October 2026): every search is
 one you asked for (no autocomplete, no lists, no periodic or background requests); at most one request a second from

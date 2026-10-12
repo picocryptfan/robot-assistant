@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -107,7 +108,9 @@ fun speakerColour(speaker: String): Color {
 @Composable
 fun SpeakerChip(speaker: String, shown: String, onClick: (() -> Unit)?) {
     Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.heightIn(min = 24.dp).clip(RoundedCornerShape(12.dp)).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+        // 1.0: a tappable chip reserves a 48 dp target around its 24 dp look.
+        modifier = (if (onClick != null) Modifier.minimumInteractiveComponentSize() else Modifier)
+            .heightIn(min = 24.dp).clip(RoundedCornerShape(12.dp)).then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .semantics { contentDescription = if (onClick != null) "Speaker: $shown. Tap to name or merge." else "Speaker: $shown" }) {
         Row(Modifier.padding(horizontal = 8.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(10.dp).clip(CircleShape).background(speakerColour(speaker)))

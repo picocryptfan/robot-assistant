@@ -350,7 +350,8 @@ fun ScreenButton(st: PanelState, actions: PanelActions) {
             if (state != null) stateDescription = state
         },
     ) {
-        Icon(RIcons.ScreenShare, null, tint = if (ready) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.38f))
+        // 1.0: the theme's outline colour (3:1 or more against the panel), not the 38 % alpha of a disabled button: it isn't.
+        Icon(RIcons.ScreenShare, null, tint = if (ready) LocalContentColor.current else MaterialTheme.colorScheme.outline)
     }
 }
 

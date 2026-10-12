@@ -16,7 +16,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,7 +29,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -81,6 +79,7 @@ import app.heyrobot.core.output.RouteType
 import app.heyrobot.sys.AudioDevices
 import app.heyrobot.sys.HandsFreeFiles
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.common.TickRow
 import app.heyrobot.ui.theme.RobotTheme
 import app.heyrobot.voice.AudioFrames
 import app.heyrobot.voice.CaptureRoute
@@ -571,10 +570,7 @@ class TranscriptionCheckActivity : ComponentActivity() {
                         Text("Heard: ${l.heard.ifBlank { "(nothing)" }}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { setInclude(!include) }, verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = include, onCheckedChange = setInclude)
-                    Text("Include sentences (what was said and heard)", style = MaterialTheme.typography.bodyMedium)
-                }
+                TickRow("Include sentences (what was said and heard)", include, setInclude, style = MaterialTheme.typography.bodyMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = { copyReport(include) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Copy report") }
                     TextButton(onClick = { logResults(); Results.lines.clear(); Results.logged = 0 }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Clear") }

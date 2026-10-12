@@ -1,5 +1,6 @@
 package app.heyrobot.sys
 
+import app.heyrobot.BuildConfig
 import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
@@ -11,6 +12,7 @@ import app.heyrobot.core.MtBundle
 import app.heyrobot.core.MtFile
 import app.heyrobot.core.MtMark
 import app.heyrobot.core.MtModelLogic
+import app.heyrobot.core.DownloadPolicy
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceFacts
 import app.heyrobot.core.VoiceMark
@@ -176,6 +178,7 @@ object MtModelStore {
                     .setDescription(VoiceModelLogic.size(f.gzBytes))
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                     .setDestinationInExternalFilesDir(ctx, null, "$STAGING/${b.id}/${f.name}.gz")
+                    .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
                 ids[f.name] = dm.enqueue(req)
             }
             setIds(ctx, b, ids)

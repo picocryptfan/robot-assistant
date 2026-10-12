@@ -130,6 +130,10 @@ class LicencesTest {
         // The script that makes that bundle names its file the same way.
         val script = File(root, "tools/make_source_bundle.sh").readText()
         assertTrue(script.contains("NAME=\"robot-\${VERSION}-third-party-sources\"") && script.contains("TGZ=\"\$OUT/\$NAME.tar.gz\""))
+        // 1.0: it also takes the sources of the two libraries Robot builds (slimt's and llama.cpp's), from the pins of the
+        // very scripts that build them, and Robot's own native sources.
+        assertTrue(script.contains("\"\$HERE/build_robotmt.sh\"") && script.contains("\"\$HERE/build_llama.sh\""))
+        for (part in listOf("mt/src/main/cpp", "brain/src/main/cpp", "--without-llama", "--list")) assertTrue(part, script.contains(part))
         // espeak-ng is GPL-3.0-or-later and says where its source is.
         val espeak = book.byId("espeak-ng")!!
         assertEquals("GPL-3.0-or-later", espeak.licence)

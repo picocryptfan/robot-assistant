@@ -15,6 +15,8 @@ import android.os.Build
 import android.os.PersistableBundle
 import app.heyrobot.BuildConfig
 import app.heyrobot.R
+import app.heyrobot.core.AppCrash
+import app.heyrobot.core.AppExit
 import app.heyrobot.core.ExitFacts
 import app.heyrobot.core.GpuFailure
 import app.heyrobot.core.GpuTrying
@@ -44,6 +46,8 @@ object Problems {
     private const val PREFS = "robot_problems"
     private const val DISMISSED = "dismissed"
     private const val DELETED = "deleted"
+    /** 1.0: the time of the last crash of the app or the assistant you were told about (AppCrash). */
+    private const val APP_SEEN = "app_exit_seen"
 
     private fun gpuFile(ctx: Context) = File(Paths.dir(ctx), GpuFailure.FILE)
     private fun tryingFile(ctx: Context) = File(Paths.dir(ctx), GpuTrying.FILE)
@@ -220,6 +224,61 @@ object Problems {
         ApplicationExitInfo.REASON_USER_REQUESTED -> "USER_REQUESTED"
         ApplicationExitInfo.REASON_USER_STOPPED -> "USER_STOPPED"
         else -> "UNKNOWN"
+    }
+
+    // ------------------------------------------------------------------ 1.0: "Robot closed unexpectedly" (main process)
+
+    /**
+     * [MAIN] The app's or the assistant's crash or "not responding" since the last one you were told about, or null
+     * (blocking: ActivityManager). The very first look only sets the mark (core AppCrash.firstSeen).
+     */
+    fun newCrash(ctx: Context): AppExit? {
+        val exits = appExits(ctx, traces = false)
+        val p = prefs(ctx)
+        if (!p.contains(APP_SEEN)) {
+            p.edit().putLong(APP_SEEN, AppCrash.firstSeen(exits, System.currentTimeMillis())).apply()
+            return null
+        }
+        return AppCrash.pick(exits, p.getLong(APP_SEEN, 0)).also { if (it != null) RLog.i("app_crash_seen", "proc" to RLog.Code(it.process), "reason" to it.facts.reason) }
+    }
+
+    /** [MAIN] You were told about [e] (Send feedback or Not now): it isn't told again. */
+    fun crashTold(ctx: Context, e: AppExit) {
+        val p = prefs(ctx)
+        p.edit().putLong(APP_SEEN, maxOf(p.getLong(APP_SEEN, 0), e.facts.time)).apply()
+    }
+
+    /**
+     * [MAIN] The crash report of the app's or the assistant's crash at [time] (Send feedback's), or null when Android no
+     * longer keeps it (blocking: ActivityManager and the tombstone). Other crashes within 10 minutes of it are listed too.
+     */
+    fun crashReport(ctx: Context, time: Long): String? {
+        val all = appExits(ctx, traces = true).filter { it.process in AppCrash.PROCESSES && AppCrash.unexpected(it.facts.reason) }
+        val e = all.firstOrNull { it.facts.time == time } ?: return null
+        val facts = ReportFacts(
+            robotVersion = BuildConfig.VERSION_NAME,
+            versionCode = BuildConfig.VERSION_CODE,
+            phone = ModelStore.phone(ctx),
+            android = "${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})",
+            fingerprint = Build.FINGERPRINT.orEmpty(),
+            fileBytes = -1,
+            exits = all.filter { it !== e && kotlin.math.abs(it.facts.time - time) < 10 * 60_000L }.take(2).map { it.facts },
+            voiceLog = VoiceLogCodec.decode(readOrNull(Paths.voiceLog(ctx))).asReversed(),
+        )
+        return AppCrash.report(e, facts, System.currentTimeMillis())
+    }
+
+    /** Android's records of Robot's processes that ended, newest first; a native crash's tombstone read only with [traces]. */
+    private fun appExits(ctx: Context, traces: Boolean): List<AppExit> = try {
+        ctx.getSystemService(ActivityManager::class.java).getHistoricalProcessExitReasons(ctx.packageName, 0, 16).mapNotNull { x ->
+            AppCrash.processOf(x.processName, ctx.packageName)?.let { proc ->
+                AppExit(proc, ExitFacts(x.timestamp, x.pid, x.reason, reasonName(x.reason), x.status, x.description, x.importance, x.pss, x.rss,
+                    if (traces && proc in AppCrash.PROCESSES) nativeCrash(x) else null))
+            }
+        }
+    } catch (t: Throwable) {
+        RLog.w("app_exits", t)
+        emptyList()
     }
 
     /** [MAIN] Puts the report on the clipboard, marked sensitive (Android then hides its preview). */

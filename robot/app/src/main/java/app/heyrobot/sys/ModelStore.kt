@@ -1,5 +1,6 @@
 package app.heyrobot.sys
 
+import app.heyrobot.BuildConfig
 import android.app.ActivityManager
 import android.app.DownloadManager
 import android.content.Context
@@ -20,6 +21,7 @@ import app.heyrobot.core.ModelLogic
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.OwnModel
 import app.heyrobot.core.Phone
+import app.heyrobot.core.DownloadPolicy
 import app.heyrobot.core.RLog
 import app.heyrobot.core.readOrNull
 import app.heyrobot.core.writeAtomic
@@ -210,8 +212,11 @@ object ModelStore {
 
     // ------------------------------------------------------------------ download
 
-    /** Null when the download started, else why not (plain words). */
-    fun startDownload(ctx: Context, m: BrainModel): String? {
+    /**
+     * Null when the download started, else why not (plain words). [anyNetwork] false: the download manager holds it until
+     * the phone is on Wi-Fi or another unmetered network (1.0, core DownloadPolicy: Robot can't see the network itself).
+     */
+    fun startDownload(ctx: Context, m: BrainModel, anyNetwork: Boolean = true): String? {
         val url = m.url ?: return "This one has no download: import your file."
         val existing = listOf(file(ctx, m), part(ctx, m)).filter { it.isFile }.sumOf { it.length() } + cacheBytes(ctx, m)
         // Voice-model and fast-engine downloads under way still need their space (DownloadManager reserves none).
@@ -227,6 +232,8 @@ object ModelStore {
             .setDescription("Robot's AI model (${ModelLogic.gb(m.bytes)})")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalFilesDir(ctx, null, m.file)
+            .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
+            .setAllowedOverMetered(anyNetwork)
         return try {
             val id = ctx.getSystemService(DownloadManager::class.java).enqueue(req)
             prefs(ctx).edit().putLong(key(m, "download_id"), id).remove(key(m, "last_failure")).apply()

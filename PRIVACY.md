@@ -1,10 +1,8 @@
 # Robot's privacy policy
 
-> **Draft for review.** Written against Robot 0.4.3's code (the `feature/compliance` branch). Re-check it before
-> publishing: 0.6.0 adds what it doesn't cover yet: conversation mode and its transcripts (kept on the phone), the fast
-> translation engine's model download (Mozilla's storage.googleapis.com bucket), the speaker model's (huggingface.co), a
-> summary sent to Claude after its card, and the other helpers (any company's API, or a server on your own network).
-> 0.7's memory, messages, model problem reports and feedback are covered below. Replace CONTACT with a real address.
+> **Draft for review.** Brought up to date with Robot 0.9.0 and the 1.0 hardening (conversation mode, helpers, memory,
+> messages, routines, headset and car mode, web search, Termux, the updater and feedback). Replace CONTACT with a real
+> address before publishing.
 
 ## The short version
 
@@ -46,6 +44,18 @@ can turn off.
   that key's fingerprint and the name of the store that installed it, nothing else about the app). Your choices, the
   people you let replies reach without a card (by an id, never a name) and those fingerprints are kept in a small
   settings file on the phone.
+- **Conversation transcripts** (conversation mode, when you start it): Robot writes down a conversation, translates it
+  and can summarize it, all on the phone. The audio is never kept; the transcript is kept in Robot's private storage
+  until you delete it, and leaves the phone only if you share it or send it to a helper after its card (below). "Tell
+  speakers apart" and "Your voice" keep voice fingerprints (lists of numbers, not audio) on the phone.
+- **Routines, headset and car mode** (off until you set them up): your routines, the morning brief's settings, and the
+  headsets and cars you add (their Bluetooth name and address, kept so Robot knows them again) stay in Robot's private
+  storage. New messages you ask Robot to announce in the headset or the car are read aloud there, from memory, never
+  stored.
+- **Termux** (off until you set it up): your scripts' names and settings stay in Robot's settings. A command Robot
+  sends goes to the Termux app on the same phone, which runs it with Termux's own permissions; Robot itself sends
+  nothing online for it (what your script or command does, including going online, is yours). The output is shown,
+  cleaned of secrets; History never keeps a command.
 - **Names learned from Cheogram** (off unless you turn on Settings › People › "Learn names from Cheogram
   notifications"): who messages you in Cheogram (name, address, account), never the messages.
 - **API keys** you add for Claude (or another helper), and the **access token** you may add for a private update
@@ -54,6 +64,9 @@ can turn off.
 - **Robot's diagnostic logs** (Settings › Voice › Voice log, and Android's log) hold codes and numbers only, never what
   you said or what Robot answered. They stay on the phone; you can copy the Voice log yourself (wake phrases by number)
   or add it to a bug report (below).
+- **"Robot closed unexpectedly."** When the app or the assistant panel crashed or stopped responding, Robot reads
+  Android's own record of it (the reason, the time, and for a native crash the library names and offsets) when you next
+  open it, and offers Send feedback. Nothing is sent unless you send it yourself.
 - **Model problem reports.** When Robot's model fails or crashes, Robot keeps a note of it (codes and numbers: which
   model, where it ran, at which stage, the memory) and the last 10 of them, on the Model tab. The report you can show
   there adds Robot's version, the phone and its Android build, Android's record of how the model's process ended (for a
@@ -69,10 +82,12 @@ can turn off.
 
 ## When Robot goes online, and what is sent
 
-1. **Downloading a model or a voice**, when you tap Download in Settings › Model. The files come from Hugging Face
-   (huggingface.co and its download servers), through Android's download manager. Hugging Face sees your IP address and
-   the request, including the User-Agent Android's download manager sends (it names the Android version and the phone
-   model). Nothing you say or type is sent. Robot checks every file against a fingerprint (SHA-256) before using it.
+1. **Downloading a model or a voice**, when you tap Download (Settings › Model, Voice or Conversation). The files come
+   from Hugging Face (huggingface.co and its download servers), and the fast translation engine's from Mozilla's
+   storage (storage.googleapis.com), through Android's download manager. They see your IP address and the request, whose
+   User-Agent names only Robot and its version ("Robot/1.0.0"). Nothing you say or type is sent. Before a download over
+   200 MB Robot asks whether to wait for Wi-Fi or download anyway. Robot checks every file against a fingerprint
+   (SHA-256) before using it.
 2. **The weather**, when you ask about it. Robot sends the place you named, or your approximate position (rounded to two
    decimals, about 1 km), to Open-Meteo (api.open-meteo.com and geocoding-api.open-meteo.com). Saving a "Home for
    weather" in Settings sends the place name you typed, once, to look it up. Open-Meteo says it keeps server logs, which
@@ -82,7 +97,8 @@ can turn off.
    address, a phone number or an email) and your area (about 1 km) to OpenStreetMap's Nominatim server
    (nominatim.openstreetmap.org), or to the Nominatim server you choose in Settings › Actions › Search server. The card
    names the server before anything goes. You can choose Never.
-4. **Claude**, only if you ask for it, or let Robot check a hard question with it (Settings › Ask Claude):
+4. **Claude and the other helpers**, only if you ask for one, or let Robot check a hard question with it (Settings ›
+   Helpers): Claude, another company's model with your own API key, or a model on your own computer:
    - With your own API key, Robot sends your question and the part of the conversation it shows you it will send to
      Anthropic's API (api.anthropic.com). That can include screen text or a photo you attached; personal content goes
      only with your tap unless you change that in Settings › Safety & privacy. Anthropic handles it under its own terms
@@ -90,7 +106,9 @@ can turn off.
    - What Robot remembers goes to a helper only on a card that lists it and only with your tap, unless you choose
      Settings › Memory › "Share memory with helpers: With helpers I trust"; private items never go. Your messages go to a
      helper only on a card that lists them, with your tap, whatever you trust; a question Robot sends by itself goes
-     alone. The same holds for the other helpers (any company's API, or a server on your network).
+     alone. The same holds for the other helpers (any company's API, or a server on your network), each under that
+     company's terms, or on your own server.
+   - A conversation's summary goes to a helper only after its card shows what will be sent and you tap.
    - Without a key, "Open in the Claude app" only fills in the Claude app (and may put your question on the clipboard);
      you press Send there.
 5. **Other apps you hand things to** (Cheogram, Proton Mail, your SMS or calendar app, Organic Maps, the Claude app).
@@ -113,6 +131,19 @@ can turn off.
    api.github.com only. GitHub handles the requests under its own privacy statement. Turn the automatic check off and
    Robot asks GitHub only when you tap Check now (and downloads only when you tap Download).
 
+7. **Web search**, only after you set it up (Settings › Web search, off by default) and agree to what it sends, and
+   then only when you ask, or when Robot's model calls for current facts and your settings allow it. Robot sends your
+   search words (with the question's language, the safe-search level and, for Brave, Kagi and Mojeek, your key) to the
+   one service you chose: your own SearXNG, Brave Search, Kagi, Mojeek or a public SearXNG. To answer, it may open up to
+   3 of the result pages from the phone, like a browser without cookies: those sites see your IP address. What Robot
+   remembers is never sent to a search service, and after a message every search waits for your tap. The service
+   handles your words under its own policy (Brave says it keeps searches for up to 90 days). History keeps your words,
+   the answer and the sources' domains, never the pages.
+8. **The morning brief and routines** go online only for the weather (Open-Meteo, as in 2) and a nearest-place step
+   (Nominatim, as in 3), when a routine or the brief includes it; a routine's card names the service, and one that runs
+   by itself goes online only while "Routines may go online by themselves" is on. A routine never searches the web,
+   runs Termux or asks a helper.
+
 Nothing else goes online. You can turn off Robot's Network permission in GrapheneOS: everything on the phone keeps
 working, and the online features above say they can't connect.
 
@@ -125,10 +156,18 @@ network permissions are granted at install; GrapheneOS lets you turn the network
 - **Contacts:** "text Mom", "what's Alex's number".
 - **Calendar:** "what's on tomorrow", "add lunch with Sam on Friday".
 - **Approximate location:** the weather "here" and the nearest place.
+- **Nearby devices** (Bluetooth, asked for only from Settings › Headset or Car mode): to answer your headset's voice
+  button and know your car when it connects. It doesn't allow scanning for devices.
+- **Phone calls** (optional, Settings › Car mode › Calls): to call after you said yes to the number Robot read back,
+  never an emergency number. Without it, every call opens the dialer and you tap Call.
+- **Do Not Disturb access** (optional, Settings › Car mode): only to switch Robot's own "Driving (Robot)" rule.
+- **Run commands in Termux** (asked for only from Settings › Termux): so Robot can send the commands you approve to
+  Termux.
 - **Photos and videos** (or only the ones you pick): finding large files to free space. Deleting one always asks you
   again, in Android's own window.
 - **Notifications:** Robot's own: that Android turned Robot off as the assistant after a restart or an update, a model
-  problem, an update that is available or ready, and the one that shows while a conversation is transcribed.
+  problem, an update that is available or ready, and the one that shows while a conversation is transcribed or a
+  routine speaks.
 - **Exact alarms** (at install): one alarm 3 minutes after the phone restarts (or Robot updates), to check that Robot is
   still your digital assistant and tell you if Android turned it off. The timers and alarms you ask for are set by your
   Clock app, which Robot only asks (the "set an alarm" permission); Robot keeps no alarm of its own for them.

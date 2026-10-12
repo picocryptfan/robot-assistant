@@ -98,6 +98,7 @@ import app.heyrobot.ui.common.TermuxCard
 import app.heyrobot.ui.common.MarkdownText
 import app.heyrobot.ui.common.OfferView
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.common.answerSemantics
 import app.heyrobot.ui.common.TurnActions
 import app.heyrobot.ui.common.TurnUi
 import app.heyrobot.ui.common.spans
@@ -413,7 +414,8 @@ private fun ScreenButton(st: ClassicInputState, onClick: () -> Unit) {
         modifier = Modifier.size(52.dp).semantics { contentDescription = "Ask about this screen" + (state?.let { ". $it" } ?: "") },
     ) {
         BadgedBox(badge = { if (!ready) Badge(containerColor = MaterialTheme.colorScheme.tertiary) }) {
-            Icon(RIcons.ScreenShare, null, tint = if (ready) LocalContentColor.current else LocalContentColor.current.copy(alpha = 0.55f))
+            // 1.0: the theme's outline colour (3:1 or more against the panel) instead of a faded one, with the dot.
+            Icon(RIcons.ScreenShare, null, tint = if (ready) LocalContentColor.current else MaterialTheme.colorScheme.outline)
         }
     }
 }
@@ -468,7 +470,7 @@ fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modi
     if (t.user) UserBubble(t.text, t.attachment, t.thumb, modifier, screenText = t.screenText)
     else Column(modifier) {
         AssistantBubble(
-            text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error, actions = t.cards,
+            text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error, actions = t.cards, announce = t.announce,
             onConfirm = actions.confirm, cardActions = actions.card,
             claude = t.helper, readBack = t.readBack, footer = t.footer, by = t.by, home = t.home,
         )
@@ -551,6 +553,7 @@ fun AssistantBubble(
     footer: List<String> = emptyList(),
     by: String? = null,
     home: Boolean = false,
+    announce: Boolean = false,
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
         if (claude && !error) {
@@ -579,7 +582,7 @@ fun AssistantBubble(
                 shape = RoundedCornerShape(22.dp, 22.dp, 22.dp, 6.dp),
                 modifier = Modifier.widthIn(max = 340.dp).testTag("classic-bubble"),
             ) {
-                Box(Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
+                Box(Modifier.padding(horizontal = 16.dp, vertical = 11.dp).answerSemantics(streaming, announce && text.isNotBlank())) {
                     if (text.isBlank()) TypingDots() else MarkdownText(text, streaming)
                 }
             }

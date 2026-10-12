@@ -33,15 +33,18 @@ Only the latest release is supported. There is no bug bounty.
   its settings promise ("prompt injection" that gets past Settings › Safety & privacy);
 - Robot sending something online that its settings and PRIVACY.md say it doesn't;
 - a model, voice or data file being used without its pinned SHA-256 check;
+- a Termux command running without the card your settings promise, or a web search sending what Robot remembers, a
+  message's words or anything but your search words;
 - an update installed without its checks (the release's `SHA256SUMS`, Robot's package, a newer version, Robot's signing
   key), or the updater's access token sent anywhere but api.github.com;
 - what you say or type ending up in a log or on storage.
 
 **Out of scope:** the models' answers themselves (what a model says, or refuses to say, is not a vulnerability unless it
-gets past Robot's cards), and third-party services and apps (Hugging Face, Open-Meteo, OpenStreetMap's Nominatim,
-Anthropic, Cheogram, Proton Mail, Organic Maps, GitHub): report those to them. A problem in a library Robot ships (sherpa-onnx,
-ONNX Runtime, LiteRT-LM, the Anthropic SDK, OkHttp, Jackson) is welcome here too, so Robot can update it; please also
-tell its maintainers.
+gets past Robot's cards), what your own Termux scripts do, and third-party services and apps (Hugging Face, Mozilla's
+model storage, Open-Meteo, OpenStreetMap's Nominatim, the search services, Anthropic and the other helpers' providers,
+Termux, Cheogram, Proton Mail, Organic Maps, GitHub): report those to them. A problem in a library Robot ships
+(sherpa-onnx, ONNX Runtime, LiteRT-LM, llama.cpp, slimt, the Anthropic SDK, OkHttp, Jackson, jsoup) is welcome here
+too, so Robot can update it; please also tell its maintainers.
 
 ## How Robot is built to be safe
 
@@ -51,7 +54,9 @@ tell its maintainers.
   The same holds for Install unknown apps once you allow it: only the main process's updater installs, and only Robot's
   own update.)
 - The model only proposes actions. Robot's approval rules decide, and an action that writes or leaves the phone after
-  Robot read untrusted content asks you first.
+  Robot read untrusted content (the screen, a message, a web page, a command's output) asks you first. Web search and
+  Termux are off until you set them up, and every Termux command shows its card first unless you chose otherwise for
+  your own script.
 - Every downloaded file is pinned to a commit, a size and a SHA-256, checked before it is loaded. A model file you import
   is untrusted input: Robot checks its header before loading it, and runs it on the TPU only after you allow it.
 - API keys (and the updater's access token) are encrypted with a non-exportable Android Keystore key. Backups and device

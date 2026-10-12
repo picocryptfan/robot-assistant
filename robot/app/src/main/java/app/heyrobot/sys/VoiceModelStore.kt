@@ -1,5 +1,6 @@
 package app.heyrobot.sys
 
+import app.heyrobot.BuildConfig
 import android.app.DownloadManager
 import android.content.Context
 import android.net.Uri
@@ -8,6 +9,7 @@ import app.heyrobot.core.FileDownload
 import app.heyrobot.core.InstallResult
 import app.heyrobot.core.InstalledFile
 import app.heyrobot.core.ModelStatus
+import app.heyrobot.core.DownloadPolicy
 import app.heyrobot.core.RLog
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceFacts
@@ -153,8 +155,14 @@ object VoiceModelStore {
 
     // ------------------------------------------------------------------ download, install, delete
 
-    /** Null when the download started (or goes on), else why not in plain words. */
-    fun startDownload(ctx: Context, b: VoiceBundle): String? {
+    /** The bytes [b]'s download still fetches (1.0: whether it asks about mobile data first, core DownloadPolicy). */
+    fun bytesToFetch(ctx: Context, b: VoiceBundle): Long = remaining(ctx, b).sumOf { it.bytes }
+
+    /**
+     * Null when the download started (or goes on), else why not in plain words. [anyNetwork] false: the download manager
+     * holds the files until the phone is on Wi-Fi or another unmetered network (core DownloadPolicy).
+     */
+    fun startDownload(ctx: Context, b: VoiceBundle, anyNetwork: Boolean = true): String? {
         val rem = remaining(ctx, b)
         // Files already downloaded (an install that failed to write) are not fetched again; other downloads under way
         // (Gemma, the other voice models) will still need their space.
@@ -181,6 +189,8 @@ object VoiceModelStore {
                     .setDescription(VoiceModelLogic.size(f.bytes))
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
                     .setDestinationInExternalFilesDir(ctx, null, "$STAGING/${b.id}/${f.name}")
+                    .addRequestHeader("User-Agent", DownloadPolicy.userAgent(BuildConfig.VERSION_NAME))
+                    .setAllowedOverMetered(anyNetwork)
                 ids[f.name] = dm.enqueue(req)
             }
             setIds(ctx, b, ids)
