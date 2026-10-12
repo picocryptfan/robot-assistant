@@ -76,6 +76,79 @@ does with your words.
    when* the window shows once; Send feedback opens a bug report whose "Crash report" preview names the crash.
 4. **TalkBack.** Spoken replies off, ask a question: *done when* TalkBack reads the answer once, when it is complete.
 
+## Setup guide (1.0)
+
+A full-screen guide through every feature, shown on first launch: what each does, a privacy line (what stays on the
+phone, and what goes online, if anything, and when), the choice itself with what is set now (the default on a new
+install), and "Find it later: Settings › …". It writes through the stores Settings already uses, so a choice there is
+the same as the switch on that Settings page: `settings.json` (no schema change), `messages.json`, `memory.json` (the
+lock screen's key changed first, as Settings › Memory does), `routine_settings.json` (the brief's card first),
+`headset.json` and the updater's settings. Its own state is `files/robot/setup_guide.json` (core `GuideState`): the
+guide version you last saw, the page Finish later left it on, the version you finished and the pages skipped.
+
+- **When it opens**: by itself once per guide version (core `SetupGuide.VERSION`, 1), at a launch no link opened a page
+  for: a new install, or an update that brings a new guide. Finish later (top right) or Back from Welcome closes it where
+  it is; Home then shows **Continue the setup guide** ("Step 9 of 17"). Home's **Run the setup guide again** (at the end)
+  and Settings › About › **Setup guide** open it again: where it was left, else from Welcome.
+- **The frame**: "Step n of 17" with a progress bar, the page's title (a heading), Back, **Skip this step** (keeps the
+  defaults: nothing is written; the page is marked skipped) and Next (Done on the summary), which wrap onto two lines at
+  large text. System Back goes up one page. A choice is written as soon as you make it; looking or skipping writes nothing.
+- **Permissions** only when you tap the related choice (contacts, the calendar, approximate location, the microphone and
+  notifications), through the app's existing launchers; turning Messages on goes through Settings › Messages' own set-up
+  (your texting app ticked and pinned to its signing key), and its notification access steps are a tap away.
+
+| # | Page | What it offers (default) | Find it later |
+| --- | --- | --- | --- |
+| 1 | Welcome | What Robot is, no account, nothing online unless you ask; how the guide works | Settings › About › Setup guide |
+| 2 | What Robot can do | Ten examples, each with what you say (and in French where Robot understands it before the model), what happens, "on the phone" or what goes online, and where to turn it on: a transcribed meeting and its summary, the interpreter, memory, messages with a reply in French, a routine and the morning brief, the screen, web search, Termux, car mode, helpers | Settings › About › Setup guide |
+| 3 | Your phone and Robot's brain | This phone and its chip, which Fast it gets (the Tensor G5's TPU build; the Tensor G6's in beta; the general build on the GPU or the CPU), its size and speed; Download (the 200 MB question first) or later | Settings › Model |
+| 4 | Voice | Speech recognition and the voice downloads; the voice (Heart), Play a sample, speed (1.0×) | Settings › Voice |
+| 5 | Opening Robot | The digital assistant and the microphone (Assistant setup's buttons), the corner swipe, "hey robot" (on), only while charging (off), what the lock screen allows; Talk to Robot to try it | Settings › Wake word, Assistant setup |
+| 6 | How Robot asks first | When Robot asks first (When you didn't ask for it), answer cards by voice (on), the lock screen's actions; Review each action; Back to the defaults when they differ | Settings › Actions, Safety & privacy |
+| 7 | People, texts, email, calendar, notes | Texting app, email app, Allow contacts and the calendar, People (and its .vcf import) | Settings › People, notes and calendar |
+| 8 | Messages | Read my messages (off), notification access, the apps, Announce new messages (off) | Settings › Messages |
+| 9 | Memory | Use memory (on), on the lock screen (off) | Settings › Memory |
+| 10 | Weather and places | Home for weather (looked up with Open-Meteo), approximate location (optional), Find the nearest place online (Ask the first time), the map search server | Settings › Weather, Actions |
+| 11 | Conversation mode | Translate transcripts (off); the speaker model and the fast translation engine (optional downloads) | Settings › Conversation |
+| 12 | Routines and the morning brief | The brief by itself after your alarm (off; its card first), when it runs and what it says | Settings › Routines |
+| 13 | Headset and car | Headset button opens Robot (on); car mode, set up later | Settings › Headset, Car mode |
+| 14 | Helpers (optional) | What a helper is, what's sent, the budget; set one up later | Settings › Helpers |
+| 15 | Web search and Termux (optional) | What each does and sends; set them up later | Settings › Web search, Termux |
+| 16 | Updates and feedback | Check for updates automatically (on), Include test builds (off), Send feedback (hey@robot-app.ai) | Settings › About › Updates, Send feedback |
+| 17 | You're set up | Every feature on or off now with its Settings path (core `GuideSummary`), a privacy recap, "Try saying…" in English and French, four of the examples | |
+
+Every word of the guide (and of its Home and About rows) is in `res/values/strings.xml`, ready for 1.1's French; the
+names of values (a voice, an app, a chip) are core's, as Settings shows them. Each page uses Settings' rows
+(`ui/pref`), so it looks like Android's Settings in both the standard and the Classic look and in dark mode; each
+example and each privacy line is one TalkBack stop, titles are headings, every target is 48 dp or more.
+
+**Code and tests.** Core `guide/SetupGuide.kt` (the pages' order and moves, the file, what Home offers, the summary's
+lines) with `SetupGuideTest`; the app's `ui/guide/` (`SetupGuideScreen`, `GuidePages`, `GuideStores` with the phone's
+`PhoneGuideStores`) and `sys/SetupGuideStore.kt`; `Page.Guide` ("guide" in the saved page stack). `SetupGuideScreenTest`
+(Robolectric) walks every page with Next and Back (a heading, a privacy line and "Find it later" on each, no target
+problems, nothing written by looking), Skip this step, Finish later and resuming, each page's choice reaching its store,
+the summary, Home's and About's rows, and five goldens: What Robot can do (light), Voice (dark), How Robot asks first at
+200 % font, Opening Robot in the Classic look, the summary.
+
+**On the phone (setup guide):**
+
+1. **First launch.** Install on a phone without Robot, open it: *done when* the guide opens at Welcome, Step 1 of 17, and
+   nothing has asked for a permission yet.
+2. **Downloads.** On page 3, Download: *done when* "Download 3.11 GB?" asks about Wi-Fi first (2.59 GB on a Pixel 9a,
+   3.31 GB on a Pixel 11), and the row shows the progress; the same on page 4 for speech recognition and the voice.
+3. **Permissions on a tap.** Pages 5, 7 and 10: *done when* Android asks only after Allow (the microphone and
+   notifications, contacts, the calendar, approximate location), and the row turns to Allowed.
+4. **Choices land.** Turn off "hey robot", pick another voice, turn on the brief (its card first) and Messages: *done
+   when* Settings › Wake word, Voice, Routines and Messages show the same, and the summary lists them.
+5. **Finish later.** On page 9, Finish later, close Robot from Recents and open it: *done when* Home shows "Continue
+   the setup guide · Step 9 of 17" and the guide doesn't open by itself; Continue opens page 9.
+6. **Skip.** Skip pages 6 to 9: *done when* nothing changed in Settings › Actions, Safety & privacy, People, Messages and
+   Memory.
+7. **TalkBack and 200 % font.** Walk the guide with TalkBack at Display size and font at their largest: *done when* each
+   title is announced as a heading, each example and privacy line is read in one stop, and Back, Skip this step and
+   Next stay reachable (on two lines).
+8. **Again.** Settings › About › Setup guide after Done: *done when* it opens at Welcome with every choice as you left it.
+
 ## What's new in 0.9.0
 
 Robot 0.9.0 is 0.8.0 with private web search and the Termux agent built beside it, both off until you set them up; each
