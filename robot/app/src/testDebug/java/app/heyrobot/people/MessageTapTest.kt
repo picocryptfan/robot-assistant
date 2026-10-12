@@ -69,6 +69,8 @@ class MessageTapTest {
         updated.clear()
         signers["com.cheogram.android"] = fdroid
         MessageAppSigners.source = { fake }
+        // A voice log of this test's own: no other test's events in it.
+        VoiceLog.resetForTests()
     }
 
     @After fun phone() {

@@ -50,6 +50,8 @@ class ClaudeWebSearchTest {
         server.start()
         client = ClaudeClient.create("sk-ant-api03-not-a-real-key", server.url("/").toString().removeSuffix("/"))
         RLog.sink = { synchronized(logged) { logged += it } }
+        // A voice log of this test's own: no other test's events in it.
+        VoiceLog.resetForTests()
     }
 
     @After fun down() {

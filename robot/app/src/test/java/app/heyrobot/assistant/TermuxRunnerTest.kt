@@ -47,6 +47,8 @@ class TermuxRunnerTest {
 
     @Before fun hook() {
         RLog.sink = { logged += it }
+        // A voice log of this test's own: no other test's events in it.
+        VoiceLog.resetForTests()
         mark = VoiceLog.total
     }
 

@@ -188,6 +188,8 @@ class VoiceLogTest {
 
     @Test fun theFileMirrorsMemoryAndSurvivesARestart() {
         val dir = java.nio.file.Files.createTempDirectory("voicelog").toFile()
+        // A log of this test's own: another test's events (the log is the process's) never land in it.
+        VoiceLog.resetForTests()
         try {
             val f = File(dir, "voice_log.txt")
             writeAtomic(f, VoiceLogCodec.encode(listOf(VoiceLogEntry(5, VoiceEvent.SCREEN, 1))))
@@ -198,12 +200,37 @@ class VoiceLogTest {
             VoiceLog.add(VoiceEvent.LISTEN_START, ListenWhy.RETRY, MicKind.RECOGNITION, AecState.OFF.id)
             VoiceLog.flush()
             val back = VoiceLogCodec.decode(f.readText())
+            assertEquals(4, back.size)
             assertEquals(VoiceLogEntry(5, VoiceEvent.SCREEN, 1), back.first())
             assertEquals(VoiceLogEntry(10, VoiceEvent.TTS_STOP, TtsStop.STOP_WORD.id, 900), back[2])
             assertEquals(VoiceLogEntry(10, VoiceEvent.LISTEN_START, ListenWhy.RETRY.id, MicKind.RECOGNITION.id, AecState.OFF.id), back[3])
             assertEquals(VoiceEvent.LISTEN_START, VoiceLog.entries().first().event)
         } finally {
-            VoiceLog.clock = System::currentTimeMillis
+            // No file for the tests after this one (its folder is about to go), and the system clock again.
+            VoiceLog.resetForTests()
+            dir.deleteRecursively()
+        }
+    }
+
+    /** Tests: each starts with an empty log of its own, without a file, while the count goes on. */
+    @Test fun aTestsLogHoldsOnlyItsOwnEvents() {
+        VoiceLog.resetForTests()
+        VoiceLog.add(VoiceEvent.WAKE, 1)
+        val total = VoiceLog.total
+        VoiceLog.resetForTests()
+        assertEquals(emptyList<VoiceLogEntry>(), VoiceLog.entries())
+        assertEquals(total, VoiceLog.total)
+        VoiceLog.add(VoiceEvent.SCREEN, 2)
+        assertEquals(listOf(VoiceEvent.SCREEN), VoiceLog.entries().map { it.event })
+        // A file given to an earlier test is gone too: a new init takes this one, and only this log's events go in it.
+        val dir = java.nio.file.Files.createTempDirectory("voicelog").toFile()
+        try {
+            val f = File(dir, "voice_log.txt")
+            VoiceLog.init(f)
+            VoiceLog.flush()
+            assertEquals(listOf(VoiceEvent.SCREEN), VoiceLogCodec.decode(f.readText()).map { it.event })
+        } finally {
+            VoiceLog.resetForTests()
             dir.deleteRecursively()
         }
     }

@@ -774,7 +774,7 @@ object VoiceLog {
     /** Writes are batched: the file follows the memory within this. */
     const val FLUSH_MS = 400L
 
-    private val ring = VoiceLogRing(CAPACITY)
+    @Volatile private var ring = VoiceLogRing(CAPACITY)
     @Volatile private var file: File? = null
     private var timer: ScheduledExecutorService? = null
     private var pending = false
@@ -832,6 +832,21 @@ object VoiceLog {
         } catch (_: Exception) {
             synchronized(lock) { pending = false }
         }
+    }
+
+    /**
+     * Tests only: a new, empty log from here on (no file, no timer, the system clock), so no test sees another's events.
+     * Called before a test that reads or writes the log, and after one that gave it a file. [total] keeps counting.
+     */
+    fun resetForTests() {
+        val t = synchronized(lock) {
+            ring = VoiceLogRing(CAPACITY)
+            file = null
+            pending = false
+            timer.also { timer = null }
+        }
+        t?.shutdownNow()
+        clock = System::currentTimeMillis
     }
 
     /** Writes the file now (the timer thread, or a test). */

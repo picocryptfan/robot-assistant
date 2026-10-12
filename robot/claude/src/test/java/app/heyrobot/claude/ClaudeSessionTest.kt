@@ -66,6 +66,8 @@ class ClaudeSessionTest {
         server.start()
         client = ClaudeClient.create(key, server.url("/").toString().removeSuffix("/"))
         RLog.sink = { synchronized(logged) { logged += it } }
+        // A voice log of this test's own: no other test's events in it.
+        app.heyrobot.core.VoiceLog.resetForTests()
     }
 
     @After fun down() {
