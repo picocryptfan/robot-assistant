@@ -154,11 +154,27 @@ object ModelCatalogue {
     /** The built-in TPU build for [chip], or null. */
     fun tpuBuild(chip: Chip): BrainModel? = BrainModel.entries.firstOrNull { it.tpuChip == chip }
 
-    /** Settings › Model's models, in order: this phone's Fast, the E4B models, your own file. */
+    /**
+     * Settings › Model's models, in order: this phone's Fast, its [fallback] where it has one (the general build on a
+     * Tensor G6, to download before the beta TPU build ever fails), the E4B models, your own file.
+     */
     fun models(p: Phone, tpuFailed: Boolean = false): List<BrainModel> {
         val fast = fast(p, tpuFailed)
-        return BrainModel.entries.filter { it == fast || !it.isFast }
+        val fallback = fallback(p, tpuFailed)
+        return BrainModel.entries.filter { it == fast || it == fallback || !it.isFast }
     }
+
+    /**
+     * 0.8: the build Robot switches to by itself when this phone's beta TPU build doesn't load (TpuFailure): the general
+     * build on a Tensor G6, listed as [FALLBACK_TITLE] so you can download it before that happens. It isn't a choice of its
+     * own (any build of Fast means this phone's Fast, [resolve]); null where there is no beta, and once it is Fast here.
+     */
+    fun fallback(p: Phone, tpuFailed: Boolean = false): BrainModel? = if (p.tpu == TpuSupport.BETA && !tpuFailed) BrainModel.GENERAL else null
+
+    const val FALLBACK_TITLE = "Fast (general build, fallback)"
+
+    /** [m]'s name in Settings › Model on [p]: the fallback build says so ([FALLBACK_TITLE]), every other its own title. */
+    fun title(m: BrainModel, p: Phone, tpuFailed: Boolean = false): String = if (m == fallback(p, tpuFailed)) FALLBACK_TITLE else m.title
 
     /** The model [stored] means on [p]: any build of Fast is this phone's Fast. */
     fun resolve(stored: BrainModel, p: Phone, tpuFailed: Boolean = false): BrainModel = if (stored.isFast) fast(p, tpuFailed) else stored

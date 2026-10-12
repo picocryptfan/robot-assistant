@@ -315,6 +315,7 @@ class ModelPagesTest {
         phone = PIXEL_11,
         models = listOf(
             ModelStore.Snap(BrainModel.FAST_G6, ModelStatus.MISSING),
+            ModelStore.Snap(BrainModel.GENERAL, ModelStatus.MISSING),
             ModelStore.Snap(BrainModel.SMARTER, ModelStatus.MISSING),
             ModelStore.Snap(BrainModel.UNCENSORED, ModelStatus.MISSING),
             ModelStore.Snap(BrainModel.OWN, ModelStatus.VERIFIED, fileBytes = tpuBuild.bytes),
@@ -324,12 +325,23 @@ class ModelPagesTest {
     @Test fun aPixel11ListsItsTensorG6FastAsABeta() {
         tab(snap = eleven)
         rule.onRow("Fast (beta)").assertIsSelected().assert(hasText("Gemma 4 E2B (Tensor G6) · Not downloaded", substring = true))
-        rule.onAllNodes(hasText("Fast", substring = true) and hasClickAction()).assertCountEquals(1)
+        // Its fallback, the general build, listed to download before the TPU build ever fails: a row to its page, not a choice.
+        rule.onAllNodes(hasText("Fast", substring = true) and hasClickAction()).assertCountEquals(2)
+        rule.onRow("Fast (general build, fallback)").assert(hasText("Used by itself if Fast (beta) doesn't load on the TPU", substring = true))
+            .assert(hasText("Not downloaded", substring = true)).performClick()
+        assertEquals("openPage ${Page.Settings(ModelRoutes.model(BrainModel.GENERAL))}", log.last())
         // Your own Tensor G5 build: not on a Tensor G6's TPU.
         rule.onRow(BrainModel.OWN.title).assertIsNotEnabled().assert(hasText("Built for the Tensor G5's TPU, which this phone doesn't have", substring = true))
         rule.scrollToText("Pixel 11 (Tensor G6)")
         rule.onNodeWithText("Pixel 11 (Tensor G6)").assert(hasText("supported in beta", substring = true))
         rule.onNodeWithText("Try the TPU again").assertDoesNotExist()
+    }
+
+    @Test fun theFallbacksPageDownloadsTheGeneralBuild() {
+        page(ModelRoutes.model(BrainModel.GENERAL), snap = eleven)
+        rule.onNodeWithText("Fast (general build, fallback)").assertExists()
+        rule.onRow("Download ${ModelLogic.gb(BrainModel.GENERAL.bytes)}").performClick()
+        assertEquals(listOf("download ${BrainModel.GENERAL}"), log)
     }
 
     @Test fun theTensorG6PageSaysItsSpeedIsAnEstimate() {
@@ -340,10 +352,12 @@ class ModelPagesTest {
 
     @Test fun aTpuFailureRunsTheGeneralFastUntilYouTryTheTpuAgain() {
         val failed = eleven.copy(tpuFailure = app.heyrobot.core.TpuFailure(BrainModel.FAST_G6, 1_760_000_000_000L, LoadFailure.ENGINE),
-            models = listOf(ModelStore.Snap(BrainModel.GENERAL, ModelStatus.VERIFIED, fileBytes = BrainModel.GENERAL.bytes)) + eleven.models.drop(1))
+            models = listOf(ModelStore.Snap(BrainModel.GENERAL, ModelStatus.VERIFIED, fileBytes = BrainModel.GENERAL.bytes)) +
+                eleven.models.filter { it.model != BrainModel.FAST_G6 && it.model != BrainModel.GENERAL })
         tab(snap = failed)
         rule.onRow("Fast").assertIsSelected().assert(hasText("Gemma 4 E2B · Ready"))
         rule.onNodeWithText("Fast (beta)").assertDoesNotExist()
+        rule.onNodeWithText("Fast (general build, fallback)").assertDoesNotExist()
         rule.scrollToText("The TPU didn't load (engine error)")
         rule.onNodeWithText("The TPU didn't load (engine error)").assert(hasText("general build on the CPU", substring = true))
         rule.scrollToText("Try the TPU again")

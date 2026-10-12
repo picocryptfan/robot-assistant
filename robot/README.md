@@ -62,8 +62,9 @@ Settings file schema 13, as 0.7.0: the new parts keep their own files in `files/
   (`gemma-4-E2B-it_Google_Tensor_G6.litertlm`, pinned at Fast's commit by size and SHA-256), marked beta, its speed an
   estimate from the Tensor G5's (not measured). A TPU build runs only on the chip its stamp names: a Tensor G5 build
   never on a Tensor G6, nor the reverse, your own file included. If the Tensor G6 build doesn't load on the TPU, Fast is
-  the general build on the CPU from then on (download it too, to have it ready), until Settings › Model › Try the TPU
-  again. Voice log event 136.
+  the general build on the CPU from then on (download it too, to have it ready: Settings › Model lists it on a Tensor G6
+  as "Fast (general build, fallback)", with its Download), until Settings › Model › Try the TPU again. Voice log event
+  136.
 - **A smaller APK**: its dex files are compressed now, as its native libraries always were (Android unpacks the
   libraries at install, where every process loads them); the debug build went from 121.4 MB to 68.5 MB. Nothing is
   minified (JNI looks classes and fields up by name). `tools/verify_apk.sh` checks every library and dex file is
@@ -79,8 +80,9 @@ Settings file schema 13, as 0.7.0: the new parts keep their own files in `files/
   still to do (R0 to R4, H0 to H3, C0 to C3), with these too:
   1. **Pixel 11, Fast (beta).** Download Fast (beta) on a Pixel 11 and ask something: *done when* it answers on the TPU
      (Settings › Model › In memory now: Fast (beta)); note its load time and speed in the voice log ("Model loaded"), a
-     1k-token prompt and a 256-token answer, MTP on and off. Then make the TPU fail once (or wait for a real failure): Fast
-     is the general build on the CPU with "The TPU didn't load" and Try the TPU again in Settings › Model.
+     1k-token prompt and a 256-token answer, MTP on and off. Download the general build too (Settings › Model lists it on a Pixel 11 as "Fast (general build, fallback)", with its Download).
+     Then make the TPU fail once (or wait for a real failure): Fast is the general build on the CPU with "The TPU didn't
+     load" and Try the TPU again in Settings › Model.
   2. **Pixel 10.** Fast is still the Tensor G5 build on the TPU, and an own Tensor G6 build says it can't run here.
   3. **The APK.** Install the release APK over 0.7.0 and run it: *done when* every process starts (the panel, a
      question on the TPU, a GGUF file in :llama, the fast translation in :mt, the voice) and `tools/verify_apk.sh` passes.
