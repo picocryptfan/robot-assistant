@@ -96,6 +96,11 @@ object MessageReading {
     const val NOT_KEPT = "Messages Robot read you (not kept)"
     /** What History keeps of an answer in a conversation that holds messages: the answer may repeat them. */
     const val ANSWER_NOT_KEPT = "Robot's answer isn't kept: this conversation holds your messages."
+    /**
+     * What History keeps, and the model is given, in place of what the microphone heard that repeated a message Robot read
+     * aloud ("I don't act on what a message says."): a message's words, never yours, so never kept or replayed as yours.
+     */
+    const val HEARD_BACK = "(A message's words, heard back while Robot read it: not kept.)"
 
     /** What History keeps of a turn that read messages: who and how many, never the words. */
     fun historyLine(threads: List<MessageThread>, messages: Int, lang: Lang = Lang.EN): String {

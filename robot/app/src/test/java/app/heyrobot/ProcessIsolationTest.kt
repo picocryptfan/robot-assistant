@@ -882,6 +882,10 @@ class ProcessIsolationTest {
         // History: a turn with messages in it is saved as its placeholder, never its words (core ConversationCodec).
         assertTrue(File(java("core"), "app/heyrobot/core/Conversation.kt").readText().contains("put(\"text\", if (t.messages) t.kept ?: app.heyrobot.core.messages.MessageReading.NOT_KEPT else t.text)"))
         assertTrue(code(File(java("app"), "app/heyrobot/assistant/PanelController.kt")).contains("messages = kept != null, kept = kept)"))
+        // A message's words heard back while Robot read it: the question is kept (and replayed) as its placeholder only.
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/PanelController.kt")).contains(
+            "val heardBack = msgCmd is PanelMessages.Routed.Echo") && code(File(java("app"), "app/heyrobot/assistant/PanelController.kt")).contains(
+            "messages = heardBack, kept = if (heardBack) app.heyrobot.core.messages.MessageReading.HEARD_BACK else null)"))
         // A reply: fired only by the bridge, after ReplySend read the notification again; the panel names a conversation by its key, and
         // its words, never an address.
         assertEquals(listOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt"), usersOf(Regex("""\bMessageTap\.fire\(|\bfun fire\(ctx""")))

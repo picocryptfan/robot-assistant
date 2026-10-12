@@ -1212,9 +1212,13 @@ object PanelController {
         // "Keep screenshots and photos in history" (off by default): the thumbnail and the screen's text go into the saved
         // conversation, for History only (never replayed to the model, never sent to Claude).
         val kept = VoiceHub.settings.let { it.keepMedia && it.saveHistory } && attachment != Attachment.NONE
+        // 0.7: a message's words heard back while Robot read it are the message's, never your question: History keeps their
+        // placeholder and the model is given it (core ChatTurn.messages), never the words.
+        val heardBack = msgCmd is PanelMessages.Routed.Echo
         val user = ChatTurn(newId(), TurnRole.USER, memRoute?.let { MemoryPanel.question(it, q) } ?: q.ifEmpty { Prompt.defaultQuestion(attachment) }, now, marked,
             picture = if (kept) st.draft?.thumb?.let { b -> java.util.Base64.getEncoder().encodeToString(Images.jpeg(b, Images.THUMB_EDGE, 70)) } else null,
-            screenText = if (kept) sText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }?.let { ToolCalls.safeTake(it, ConversationCodec.MAX_SCREEN_TEXT) } else null)
+            screenText = if (kept) sText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }?.let { ToolCalls.safeTake(it, ConversationCodec.MAX_SCREEN_TEXT) } else null,
+            messages = heardBack, kept = if (heardBack) app.heyrobot.core.messages.MessageReading.HEARD_BACK else null)
         chat += user
         val way = if (memRoute != null) FastPath.Way.MODEL else FastPath.of(cmd, _state.value.claudeMode, attachment)
         val toClaude = way == FastPath.Way.CLAUDE

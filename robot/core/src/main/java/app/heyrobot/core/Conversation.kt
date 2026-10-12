@@ -1,5 +1,6 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.messages.MessageReading
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -95,7 +96,9 @@ data class StoredConversation(val id: String, val created: Long, val updated: Lo
 fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): List<PromptTurn> = mapNotNull { t ->
     when (t.role) {
         // 0.7: a question that went with remembered items gets them again, as they are now ([notes]; none if they're gone).
-        TurnRole.USER -> PromptTurn(PromptRole.USER, (t.memoryIds.takeIf { it.isNotEmpty() }?.let(notes) ?: "") + Prompt.replayText(t.text, t.attachment))
+        // A message's words the microphone heard back (0.7) are never replayed as your question: their placeholder is.
+        TurnRole.USER -> PromptTurn(PromptRole.USER, (t.memoryIds.takeIf { it.isNotEmpty() }?.let(notes) ?: "") +
+            Prompt.replayText(if (t.messages) t.kept ?: MessageReading.NOT_KEPT else t.text, t.attachment))
         TurnRole.ASSISTANT -> {
             if (t.error) return@mapNotNull null
             val acts = t.actions.joinToString(" ") { "(${Markdown.plain(it.summary)}: ${it.status.label.lowercase()}.)" }
