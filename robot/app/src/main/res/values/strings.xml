@@ -63,7 +63,7 @@
     <string name="guide_welcome_3">Each page says what a feature does, what stays on the phone, and asks whether you want it. A choice is saved as soon as you make it. Skip this step keeps the default; Finish later brings you back here from Home.</string>
     <string name="guide_welcome_privacy">Your questions, answers, notes, history and settings stay in Robot\'s private storage on this phone. Robot has no analytics, ads or tracking, and turns off Android\'s cloud backup for its files.</string>
     <string name="guide_can_title">What Robot can do</string>
-    <string name="guide_can_intro">Things Robot does all on your phone, many of them even offline, without an account or a cloud service. Say them after “hey robot”, or tap Talk to Robot.</string>
+    <string name="guide_can_intro">Things Robot does for you on your phone, without an account; most of them work even offline. Say them after “hey robot”, or tap Talk to Robot.</string>
     <string name="guide_can_privacy">Each example says whether it stays on the phone, or what goes online and when. The ones that need setting up are off until you turn them on.</string>
     <string name="guide_tag_offline">On the phone, even offline</string>
     <string name="guide_tag_encrypted">On the phone, encrypted</string>
@@ -106,7 +106,7 @@
     <string name="guide_can_termux_where">Off until you set it up: Settings › Termux</string>
     <string name="guide_can_car_say">In the car: “navigate home”</string>
     <string name="guide_can_car_does">In car mode Robot talks through your car, announces a new message and reads your reply back before it goes, and opens Organic Maps\' route home.</string>
-    <string name="guide_can_car_where">Off until you add your car: Settings › Car mode</string>
+    <string name="guide_can_car_where">Off until you add your car: Settings › Car mode. Announcements: Settings › Messages</string>
     <string name="guide_can_helper_say">“Ask Claude …”, or the AI on your own computer</string>
     <string name="guide_can_helper_does">For a question Robot can\'t answer well, it hands it to the helper you set up. Your screen, a photo or what Robot read goes only after a tap.</string>
     <string name="guide_can_helper_where">Off until you set one up: Settings › Helpers</string>
@@ -116,7 +116,7 @@
     <string name="guide_phone_fast">Fast: %1$s, on the %2$s</string>
     <string name="guide_phone_size">%1$s to download, once. %2$s</string>
     <string name="guide_phone_beta">A beta on the Pixel 11</string>
-    <string name="guide_phone_beta_detail">If it doesn\'t load on the TPU, Robot switches to the general build by itself and tells you.</string>
+    <string name="guide_phone_beta_detail">If it doesn\'t load on the TPU, Robot switches to the general build by itself. Download that one too, from the Model tab, to have it ready.</string>
     <string name="guide_phone_download">Download</string>
     <string name="guide_phone_brain">Robot\'s brain · %1$s</string>
     <string name="guide_phone_download_label">Download Robot\'s brain</string>
@@ -192,7 +192,7 @@
     <string name="guide_messages_apps">Apps Robot reads</string>
     <string name="guide_messages_announce">Announce new messages</string>
     <string name="guide_messages_announce_detail">In private headphones and in car mode, never on the phone\'s speaker</string>
-    <string name="guide_messages_privacy">Messages stay in the phone\'s working memory only, never written to storage, and go nowhere unless you send a reply. Robot needs no SMS permission and reads no message history. A reply goes only after you tap Send on its card.</string>
+    <string name="guide_messages_privacy">Messages stay in the phone\'s working memory only, never written to storage, and go nowhere unless you send a reply. Robot needs no SMS permission and reads no message history. By default, a reply goes only after you tap Send on its card.</string>
     <string name="guide_memory_title">Memory</string>
     <string name="guide_memory_intro">Say “remember that …” and Robot keeps it, to use in later answers. It keeps only what you ask, or what you keep from a card, never anything from a message by itself.</string>
     <string name="guide_memory_use">Use memory</string>
@@ -233,12 +233,12 @@
     <string name="guide_hf_button_detail">Off: other apps get the button</string>
     <string name="guide_hf_car">Car mode</string>
     <string name="guide_hf_car_later">Off until you add your car. Set it up later, with the car connected</string>
-    <string name="guide_hf_privacy">Your headsets and cars are remembered by their Bluetooth name and address, on the phone. Personal answers and messages play only in private headphones or the car, never on the phone\'s speaker.</string>
+    <string name="guide_hf_privacy">Your headsets and cars are remembered by their Bluetooth name and address, on the phone. New messages are announced only in private headphones, or in the car while car mode runs, never on the phone\'s speaker.</string>
     <string name="guide_helpers_title">Helpers (optional)</string>
     <string name="guide_helpers_intro">For a question Robot can\'t answer well, it can ask a bigger AI: Claude, another company\'s model with your own key, or a model on your own computer. None is set up until you add a key or a server.</string>
     <string name="guide_helpers_row">Helpers</string>
     <string name="guide_helpers_later">Not set up: set one up later</string>
-    <string name="guide_helpers_sent">Until a helper has a key, Robot asks before going to it. Only your question goes by itself; your screen, a photo or what Robot read needs a tap. A daily budget, US$1.00 by default, caps what helpers cost.</string>
+    <string name="guide_helpers_sent">Until a helper has a key, Robot asks before going to it. Only your question goes by itself; your screen, a photo or what Robot read needs a tap. With a daily budget, US$1.00 by default: once it\'s reached, Robot asks first for the rest of the day.</string>
     <string name="guide_helpers_privacy">Online only when a helper is asked, and only to that helper. Keys stay encrypted on the phone. Robot shows which helper answered and what it cost.</string>
     <string name="guide_web_title">Web search and Termux (optional)</string>
     <string name="guide_web_intro">Web search is off until you set it up with a service you choose: your own SearXNG, Brave, Kagi, Mojeek or a public SearXNG. Robot then answers current questions with numbered sources.</string>

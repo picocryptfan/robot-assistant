@@ -1129,8 +1129,9 @@ class ProcessIsolationTest {
         // Memory's classes stay in the app's two processes: never :brain, :mt, :voice's engines or the helpers' clients.
         val memory = Regex("""\bapp\.heyrobot\.core\.memory\b|\bMemory(Panel|Files|SettingsStore|Turn|Answer)\b|\bFileMemoryVault\b""")
         assertEquals(emptyList<String>(), usersOf(memory, ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("voice/") || it.startsWith("claude/") }))
-        assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/assistant/PanelController.kt", "app/sys/MemoryVault.kt", "app/ui/settings/MemorySettings.kt",
-            "app/ui/settings/SettingsRoot.kt"), usersOf(memory, appFiles))
+        // 1.0: the setup guide's Memory page writes memory.json's two switches (the key changed first, through PhoneMemoryStore).
+        assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/assistant/PanelController.kt", "app/sys/MemoryVault.kt", "app/ui/guide/GuideStores.kt",
+            "app/ui/settings/MemorySettings.kt", "app/ui/settings/SettingsRoot.kt"), usersOf(memory, appFiles))
         // Into a model's prompt only from the panel's chat turn: once, in PanelController; never the one-shot client, conversation
         // mode (translations, summaries) or a helper's request.
         assertEquals(listOf("app/assistant/PanelController.kt"), usersOf(Regex("""\bMemoryPanel\.forTurn\(""")))

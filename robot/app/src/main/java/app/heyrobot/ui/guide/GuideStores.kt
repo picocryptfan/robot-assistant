@@ -6,22 +6,19 @@ import app.heyrobot.core.guide.GuideState
 import app.heyrobot.core.headset.HeadsetSettings
 import app.heyrobot.core.memory.MemoryLoad
 import app.heyrobot.core.memory.MemorySettings
-import app.heyrobot.core.messages.MessageAllowlist
-import app.heyrobot.core.messages.MessageApp
 import app.heyrobot.core.messages.MessageSettings
 import app.heyrobot.core.update.UpdateSettings
-import app.heyrobot.people.MessageAppSigners
-import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.HandsFreeFiles
 import app.heyrobot.sys.MemorySettingsStore
 import app.heyrobot.sys.MessagesStore
-import app.heyrobot.sys.NotificationAccess
 import app.heyrobot.sys.RoutineFiles
 import app.heyrobot.sys.SetupGuideStore
 import app.heyrobot.sys.TermuxStore
 import app.heyrobot.update.UpdateStore
 import app.heyrobot.sys.WebStore
 import app.heyrobot.ui.settings.PhoneMemoryStore
+import app.heyrobot.ui.settings.announceMessages
+import app.heyrobot.ui.settings.turnMessagesOn
 import app.heyrobot.update.Updater
 
 // MAIN PROCESS (1.0). What the setup guide reads and writes besides settings.json (which comes in as the app's settings,
@@ -78,21 +75,9 @@ class PhoneGuideStores(ctx: Context) : GuideStores {
         )
     }
 
-    override fun messages(on: Boolean) {
-        val now = MessagesStore.current(app).settings
-        if (on && now.allowlist.apps.isEmpty()) {
-            // As Settings › Messages' "Read your messages?" with its pre-ticked app: your texting app (Cheogram), pinned now.
-            val texting = MessageApp.CHEOGRAM.takeIf { c -> c.packages.any { HandOffApps.installed(app, it) } }
-            val apps = MessageAllowlist.atSetup(texting).apps
-            val pins = apps.flatMap { MessageAppSigners.pinsNow(app, it).entries }.associate { it.toPair() }
-            MessagesStore.update(app) { it.turnedOn(apps, pins) }
-        } else {
-            MessagesStore.update(app) { it.copy(settings = it.settings.copy(on = on)) }
-        }
-        if (on) NotificationAccess.rebind(app)
-    }
+    override fun messages(on: Boolean) = turnMessagesOn(app, on)
 
-    override fun announce(on: Boolean) = MessagesStore.update(app) { it.copy(settings = it.settings.copy(announce = on)) }
+    override fun announce(on: Boolean) = announceMessages(app, on)
 
     override fun memory(s: MemorySettings) = MemorySettingsStore.save(app, s)
 
