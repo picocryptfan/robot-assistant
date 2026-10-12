@@ -27,4 +27,21 @@ class RoutineLockedPhoneTest {
         assertNull(RoutineLockedPhone.refuse(RoutineCommand.BriefNow, locked = true))
         assertNull(RoutineLockedPhone.refuse(RoutineCommand.Run("Morning"), locked = true))
     }
+
+    /** 1.0: every routine command said in French is refused in French on the locked phone, the listing included. */
+    @Test fun frenchCommandsAreRefusedInFrench() {
+        fun refused(q: String) = route(q).let { RoutineLockedPhone.refuse(it, locked = true, fr = RoutineRouter.french(q, it)) }
+        for (q in listOf("supprime ma routine du soir", "efface la routine Morning", "Chaque matin de semaine à 7 h, dis-moi la météo pis mon agenda"))
+            assertEquals(q, RoutineLockedPhone.UNLOCK_CHANGE_FR, refused(q))
+        for (q in listOf("quelles sont mes routines", "liste mes routines", "mes routines", "dis robot, c'est quoi mes routines"))
+            assertEquals(q, RoutineLockedPhone.UNLOCK_LIST_FR, refused(q))
+        // The reminder's own words were the only clue before 1.0; « rappelle-moi … » is enough now.
+        for (q in listOf("rappelle-moi demain matin d'apporter le passeport", "ajoute à mon résumé : appeler la banque", "rappelle-moi le matin de sortir le bac"))
+            assertEquals(q, RoutineLockedPhone.UNLOCK_REMIND_FR, refused(q))
+        // English stays English, also with a French name or reminder that doesn't read as French.
+        assertEquals(RoutineLockedPhone.UNLOCK_CHANGE, refused("delete my morning routine"))
+        assertEquals(RoutineLockedPhone.UNLOCK_LIST, refused("list my routines"))
+        assertEquals(RoutineLockedPhone.UNLOCK_REMIND, refused("remind me in the morning to call Sophie"))
+        assertEquals(RoutineLockedPhone.UNLOCK_CHANGE, refused("every weekday at 7, tell me the weather"))
+    }
 }

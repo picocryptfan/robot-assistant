@@ -23,7 +23,6 @@ import app.heyrobot.core.RoutineGate
 import app.heyrobot.core.RoutineRouter
 import app.heyrobot.core.RoutineStep
 import app.heyrobot.core.RunOrigin
-import app.heyrobot.core.SpeechLang
 import app.heyrobot.core.StepGo
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
@@ -84,9 +83,12 @@ object PanelRoutines {
         null
     }
 
-    suspend fun handle(replyId: String, cmd: RoutineCommand, host: Host) {
-        // 1.0 (physical-routines-writable-locked): nothing is created, deleted, reminded or listed on the locked phone.
-        RoutineLockedPhone.refuse(cmd, host.locked, fr = (cmd as? RoutineCommand.Remind)?.let { SpeechLang.french(it.text) } == true)?.let { why ->
+    /** [cmd] as routed from [said], your words this turn (their language is the answer's). */
+    suspend fun handle(replyId: String, cmd: RoutineCommand, host: Host, said: String = "") {
+        // 1.0 (physical-routines-writable-locked): nothing is created, deleted, reminded or listed on the locked phone; said in
+        // French, the refusal is French too (core RoutineRouter.french).
+        val fr = RoutineRouter.french(said, cmd)
+        RoutineLockedPhone.refuse(cmd, host.locked, fr = fr)?.let { why ->
             reply(replyId, host, why)
             VoiceLog.add(VoiceEvent.ROUTINE_COMMAND, RoutineCommandCode.of(cmd), 0)
             host.finish(replyId)
@@ -98,7 +100,7 @@ object PanelRoutines {
             is RoutineCommand.Run -> run(replyId, cmd.name, host)
             RoutineCommand.ListAll -> reply(replyId, host, RoutineCards.list(store().all().filter { it.id != BriefRoutine.ID || it.enabled }))
             is RoutineCommand.Delete -> delete(replyId, cmd.name, host)
-            is RoutineCommand.Remind -> remind(replyId, cmd, host)
+            is RoutineCommand.Remind -> remind(replyId, cmd, host, fr)
         }
         VoiceLog.add(VoiceEvent.ROUTINE_COMMAND, RoutineCommandCode.of(cmd), if (done) 1 else 0)
         host.finish(replyId)
@@ -263,13 +265,12 @@ object PanelRoutines {
         return ok
     }
 
-    private suspend fun remind(replyId: String, cmd: RoutineCommand.Remind, host: Host): Boolean {
+    private suspend fun remind(replyId: String, cmd: RoutineCommand.Remind, host: Host, fr: Boolean): Boolean {
         val now = ZonedDateTime.now()
         val day = BriefReminders.dayFor(now, cmd.tomorrow)
-        if (host.locked) return !reply(replyId, host, RoutineLockedPhone.UNLOCK_REMIND)
+        if (host.locked) return !reply(replyId, host, if (fr) RoutineLockedPhone.UNLOCK_REMIND_FR else RoutineLockedPhone.UNLOCK_REMIND)
         val ok = withContext(Dispatchers.IO) { store().editReminders { BriefReminders.add(it, cmd.text, day) } } != null
         if (!ok) return !reply(replyId, host, "Robot couldn't keep that reminder.")
-        val fr = SpeechLang.french(cmd.text)
         val brief = store().settings().briefEnabled
         val text = if (fr) "C'est noté pour ton résumé de " + (if (day == now.toLocalDate()) "ce matin" else "demain matin") + " : ${cmd.text}."
             else "I'll remind you in " + (if (day == now.toLocalDate()) "this morning's" else "tomorrow's") + " brief: ${cmd.text}."

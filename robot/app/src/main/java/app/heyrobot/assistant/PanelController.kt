@@ -1402,7 +1402,7 @@ object PanelController {
                 msgCmd != null -> PanelMessages.run(replyId, msgCmd)
                 convCmd != null -> conversationCommand(replyId, convCmd)
                 fbCmd != null -> feedbackCommand(replyId, fbCmd)
-                routineCmd != null -> PanelRoutines.handle(replyId, routineCmd, routineHost)
+                routineCmd != null -> PanelRoutines.handle(replyId, routineCmd, routineHost, said = q)
                 handsFreeCmd != null -> PanelHandsFree.handle(replyId, handsFreeCmd, routineHost)
                 webQuery != null -> directWeb(replyId, webQuery, user.text, history, untrusted)
                 // 0.9: "run backup", your own script named in your own words: termux_script without the model.

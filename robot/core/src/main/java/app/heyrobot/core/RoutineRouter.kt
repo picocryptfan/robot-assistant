@@ -246,6 +246,28 @@ object RoutineRouter {
         return null
     }
 
+    /** The French phrases a command other than a new routine starts with (a new routine's draft has its own language). */
+    private val FRENCH_LEAD = listOf("liste mes routines", "quelles sont mes routines", "c est quoi mes routines", "montre moi mes routines",
+        "mes routines", "quelles routines j ai", "supprime", "efface", "enleve", "retire", "lance", "demarre", "fais", "execute", "part", "roule",
+        "rappelle moi", "ajoute", "mets")
+
+    /**
+     * 1.0: [cmd], routed from [text], was said in French, so Robot answers it in French (the locked phone's "Unlock first"
+     * lines): a new routine by its draft's language; « liste mes routines », « supprime … », « rappelle-moi … », « ajoute à
+     * mon résumé … » by the words they start with; a brief reminder also when its own words read as French.
+     */
+    fun french(text: String, cmd: RoutineCommand): Boolean {
+        if (cmd is RoutineCommand.Create) return cmd.draft.lang == BriefLang.FR
+        val p = Words(text)
+        var i = 0
+        while (true) {
+            val f = p.at(i, FILLER)
+            if (f == 0) break
+            i += f
+        }
+        return p.at(i, FRENCH_LEAD) > 0 || (cmd is RoutineCommand.Remind && SpeechLang.french(cmd.text))
+    }
+
     /** The routine of [routines] that [said] names ("evening" is "Evening routine", "soir" is "Routine du soir"), or null. */
     fun <T> find(said: String, routines: List<T>, name: (T) -> String): T? {
         val k = nameKey(said)
@@ -956,13 +978,14 @@ object RoutineLockedPhone {
     const val UNLOCK_LIST = "Unlock first: your routines are only listed with the phone unlocked."
     const val UNLOCK_REMIND = "Unlock first: reminders for your brief are only added with the phone unlocked."
     const val UNLOCK_CHANGE_FR = "Déverrouille d'abord : les routines ne se changent que téléphone déverrouillé."
+    const val UNLOCK_LIST_FR = "Déverrouille d'abord : la liste de tes routines n'est donnée que téléphone déverrouillé."
     const val UNLOCK_REMIND_FR = "Déverrouille d'abord : les rappels de ton résumé ne s'ajoutent que téléphone déverrouillé."
 
-    /** What Robot says instead of [cmd] on a [locked] phone; null when it may go on. */
+    /** What Robot says instead of [cmd] on a [locked] phone, in French when [fr] ([RoutineRouter.french]); null when it may go on. */
     fun refuse(cmd: RoutineCommand, locked: Boolean, fr: Boolean = false): String? = if (!locked) null else when (cmd) {
         is RoutineCommand.Create, is RoutineCommand.Delete -> if (fr) UNLOCK_CHANGE_FR else UNLOCK_CHANGE
         is RoutineCommand.Remind -> if (fr) UNLOCK_REMIND_FR else UNLOCK_REMIND
-        RoutineCommand.ListAll -> UNLOCK_LIST
+        RoutineCommand.ListAll -> if (fr) UNLOCK_LIST_FR else UNLOCK_LIST
         RoutineCommand.BriefNow, is RoutineCommand.Run -> null
     }
 }
