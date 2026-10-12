@@ -238,8 +238,9 @@ object PanelMessages {
      */
     fun taint(chat: List<ChatTurn>): MessageTaint {
         sync()
-        if (taint.active) return taint
-        return if (chat.any { it.messages }) MessageTaint(setOf("history"), emptySet()) else MessageTaint.NONE
+        val t = if (taint.active) taint else if (chat.any { it.messages }) MessageTaint(setOf("history"), emptySet()) else MessageTaint.NONE
+        // 1.0: turns said while the phone was locked are in it (ChatTurn.locked): an action you didn't ask for asks first.
+        return if (chat.any { it.locked }) t.copy(saidLocked = true) else t
     }
 
     /** [q] as a messages command, or a message's words heard back; null: not about messages. */

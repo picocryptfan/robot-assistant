@@ -37,14 +37,16 @@ import java.util.Locale
 /**
  * The marker a conversation carries once it holds text other people wrote: a message read, summarized or translated.
  * [conversations]: which ones ([MessageThread.key]); [senderKeys]: their senders, so a text back to the same person is
- * told apart from a text to anyone else. Never their words.
+ * told apart from a text to anyone else. Never their words. [saidLocked] (1.0): the conversation also holds turns said
+ * while the phone was locked, perhaps by someone else (ChatTurn.locked, core PanelContinuity): any action you didn't ask
+ * for in your own words asks first, whatever Safety cards says (ApprovalGate.decide).
  */
-data class MessageTaint(val conversations: Set<String> = emptySet(), val senderKeys: Set<String> = emptySet()) {
+data class MessageTaint(val conversations: Set<String> = emptySet(), val senderKeys: Set<String> = emptySet(), val saidLocked: Boolean = false) {
     val active: Boolean get() = conversations.isNotEmpty()
 
     /** The conversation now holds [thread]'s messages too. */
     fun with(thread: MessageThread): MessageTaint =
-        MessageTaint(conversations + thread.key, senderKeys + thread.incoming.mapNotNull { it.senderKey?.lowercase(Locale.ROOT) })
+        copy(conversations = conversations + thread.key, senderKeys = senderKeys + thread.incoming.mapNotNull { it.senderKey?.lowercase(Locale.ROOT) })
 
     /** A recipient that is one of the senders (the caller resolves the address the action would use). */
     fun isSender(address: String?): Boolean = address != null && address.trim().lowercase(Locale.ROOT) in senderKeys
@@ -60,7 +62,7 @@ data class MessageTaint(val conversations: Set<String> = emptySet(), val senderK
         return senderKeys.any { k -> phoneDigits(k)?.let { it.takeLast(10) == d.takeLast(10) } == true }
     }
 
-    override fun toString(): String = "MessageTaint(conversations=${conversations.size}, senders=${senderKeys.size})"
+    override fun toString(): String = "MessageTaint(conversations=${conversations.size}, senders=${senderKeys.size}, saidLocked=$saidLocked)"
 
     companion object {
         val NONE = MessageTaint()

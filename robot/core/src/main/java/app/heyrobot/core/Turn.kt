@@ -43,8 +43,8 @@ object TurnRules {
     fun untrusted(turns: List<ChatTurn>): Boolean =
         untrusted(turns.map { it.attachment }) || turns.any { t -> t.actions.any { it.content } } ||
             // Claude's answers (and one read off the Claude app's screen) are content Robot didn't write either; so are
-            // the messages Robot read you (0.7).
-            turns.any { it.claude || it.readBack || it.messages }
+            // the messages Robot read you (0.7), and what was said while the phone was locked (1.0, ChatTurn.locked).
+            turns.any { it.claude || it.readBack || it.messages || it.locked }
 }
 
 /** How a request to the model ended, as the turn sees it. */
@@ -479,7 +479,7 @@ class TurnRunner(
         }
         // The lock and the settings first: nothing about the phone (an installed app's name) is looked up for nothing.
         when (ApprovalGate.decide(asked.tool, actions.locked, actions.settings, content = untrusted, asked = asked.tool in this.asked, remote = remote,
-            online = asked.online, trusted = trusted, messages = messages.active)) {
+            online = asked.online, trusted = trusted, messages = messages.active, saidLocked = messages.saidLocked)) {
             GateDecision.NEEDS_UNLOCK -> return done(asked, ActionStatus.NEEDS_UNLOCK, ApprovalGate.unlockLine(asked.tool))
             GateDecision.DISABLED -> return done(asked, ActionStatus.DISABLED, "${asked.tool.title} are turned off in Robot's settings.")
             else -> {}
@@ -495,7 +495,8 @@ class TurnRunner(
         val fromMessage = MessageQuarantine.why(a.action, messages, origin)
         val reasons = a.reasons + fromMessage
         val decision = ApprovalGate.decide(a.action.tool, actions.locked, actions.settings, reasons, content = untrusted,
-            asked = a.action.tool in this.asked, remote = remote, online = a.action.online, trusted = trusted, messages = messages.active)
+            asked = a.action.tool in this.asked, remote = remote, online = a.action.online, trusted = trusted, messages = messages.active,
+            saidLocked = messages.saidLocked)
         if (messages.active && decision == GateDecision.CONFIRM) VoiceLog.add(VoiceEvent.MSG_GUARD,
             if (fromMessage.isEmpty()) app.heyrobot.core.messages.GuardCode.ASKED else app.heyrobot.core.messages.GuardCode.TAP_REQUIRED)
         val chosen = when (decision) {

@@ -37,9 +37,13 @@ object ApprovalGate {
      * - 0.7, [messages]: a message other people wrote is in the conversation (core messages MessageQuarantine): every
      *   action that writes or leaves the phone asks, whatever Safety cards says; one that would send something to anyone
      *   but that message's sender also carries [AskWhy.MESSAGE] (a tap). Not a switch.
+     * - 1.0, [saidLocked]: the conversation holds turns said while the phone was locked, perhaps by someone else, and you
+     *   continued it unlocked (core PanelContinuity): an action you didn't ask for in your own words this turn asks first,
+     *   whatever Safety cards says. Not a switch either.
      */
     fun decide(tool: ToolName, locked: Boolean, settings: RobotSettings, why: Set<AskWhy> = emptySet(), content: Boolean = false,
-        asked: Boolean = false, remote: Boolean = false, online: Boolean = tool.online, trusted: Boolean = false, messages: Boolean = false): GateDecision {
+        asked: Boolean = false, remote: Boolean = false, online: Boolean = tool.online, trusted: Boolean = false, messages: Boolean = false,
+        saidLocked: Boolean = false): GateDecision {
         val level = settings.approval(tool)
         return when {
             // 0.9: TermuxPolicy decided when the action was prepared (Settings › Termux, the lock, rules 2 to 5): only a
@@ -62,6 +66,7 @@ object ApprovalGate {
             level == Approval.ASK -> GateDecision.CONFIRM
             asks(why, settings) -> GateDecision.CONFIRM
             messages && !(tool.reads && !online) -> GateDecision.CONFIRM
+            saidLocked && !asked && !(tool.reads && !online) -> GateDecision.CONFIRM
             content && !(tool.reads && !online) && contentAsks(settings.safetyCards, asked) -> GateDecision.CONFIRM
             else -> GateDecision.RUN
         }

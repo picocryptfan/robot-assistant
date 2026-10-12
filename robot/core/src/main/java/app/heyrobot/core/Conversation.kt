@@ -61,6 +61,12 @@ data class ChatTurn(
      */
     val messages: Boolean = false,
     val kept: String? = null,
+    /**
+     * 1.0: said while the phone was locked (perhaps by someone else), in a conversation you then continued unlocked (core
+     * PanelContinuity): shown under "Said while the phone was locked", replayed to the model as quoted information
+     * ([Quoted.LOCKED]), and content (every action you didn't ask for asks first).
+     */
+    val locked: Boolean = false,
 ) {
     /** Who wrote this reply, for labels and transcripts: the helper's name, "Claude" for a reply saved before 0.6.0. */
     val author: String get() = by ?: if (claude) "Claude" else "Robot"
@@ -97,7 +103,8 @@ fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): L
     when (t.role) {
         // 0.7: a question that went with remembered items gets them again, as they are now ([notes]; none if they're gone).
         // A message's words the microphone heard back (0.7) are never replayed as your question: their placeholder is.
-        TurnRole.USER -> PromptTurn(PromptRole.USER, (t.memoryIds.takeIf { it.isNotEmpty() }?.let(notes) ?: "") +
+        // 1.0: words said while the phone was locked are never replayed as yours: quoted, as information (core Quoted).
+        TurnRole.USER -> PromptTurn(PromptRole.USER, (t.memoryIds.takeIf { it.isNotEmpty() }?.let(notes) ?: "") + (if (t.locked) Quoted.LOCKED + " " else "") +
             Prompt.replayText(if (t.messages) t.kept ?: MessageReading.NOT_KEPT else t.text, t.attachment))
         TurnRole.ASSISTANT -> {
             if (t.error) return@mapNotNull null
@@ -122,7 +129,7 @@ fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): L
                 else -> ClockEcho.strip(t.text)
             }
             val text = listOf(acts, said).filter { it.isNotBlank() }.joinToString(" ").trim()
-            if (text.isEmpty()) null else PromptTurn(PromptRole.MODEL, text)
+            if (text.isEmpty()) null else PromptTurn(PromptRole.MODEL, if (t.locked) Quoted.LOCKED + " " + text else text)
         }
     }
 }
@@ -175,6 +182,7 @@ object ConversationCodec {
         if (t.home) put("home", true)
         if (t.memoryIds.isNotEmpty()) put("memory", JSONArray(t.memoryIds))
         if (t.readBack) put("readBack", true)
+        if (t.locked) put("locked", true)
         if (t.sources.isNotEmpty()) put("sources", JSONArray(t.sources))
         if (t.costMicros > 0) put("costMicros", t.costMicros)
         t.picture?.let { put("picture", it) }
@@ -208,6 +216,7 @@ object ConversationCodec {
             home = o.optBoolean("home", false),
             memoryIds = o.optJSONArray("memory")?.let { a -> (0 until a.length()).mapNotNull { a.optString(it).takeIf(app.heyrobot.core.memory.MemoryIds::valid) } }.orEmpty(),
             readBack = o.optBoolean("readBack", false),
+            locked = o.optBoolean("locked", false),
             messages = o.optBoolean("messages", false),
             // What was saved in its place is what is saved again (a continued conversation keeps "Robot read 2 messages
             // from Mom (Cheogram)", never a generic line, and never more), one line without hidden characters.

@@ -744,6 +744,12 @@ class ProcessIsolationTest {
         assertTrue(show.indexOf("PanelContinuity.open(") in 0 until show.indexOf("if (!returning) {"))
         assertTrue(show.contains("startedLocked = PanelContinuity.stillLocked(startedLocked, locked)"))
         assertEquals(3, Regex("""startedLocked = PanelContinuity\.stillLocked\(""").findAll(panel).count())
+        // 1.0, the other way round: an unlocked show after a locked-begun conversation is new, unless its last reply asked
+        // for this unlock (then quoted); a question asked unlocked in the panel still open quotes what came before it.
+        assertTrue(show.contains("unlockAsked = PanelContinuity.unlockAsked(chat, System.currentTimeMillis())"))
+        assertTrue(show.contains("PanelContinuity.Open.CONTINUE_QUOTED -> quoteLockedTurns()"))
+        val send = panel.substringAfter("fun send(text: String, fromVoice: Boolean = false): Boolean {").substringBefore("\n    }\n")
+        assertTrue(send.indexOf("quoteLockedTurns()") in 0 until send.indexOf("startedLocked = PanelContinuity.stillLocked("))
     }
 
     /**

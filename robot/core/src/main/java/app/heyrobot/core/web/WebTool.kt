@@ -168,7 +168,7 @@ object WebQueryContext {
     fun of(turns: List<ChatTurn>, said: String, screen: String? = null, personalExtra: List<String> = emptyList(), memory: List<String> = emptyList(),
         fresh: Boolean = false): QueryContext {
         val heardBack = turns.lastOrNull { it.role == TurnRole.USER }?.let { it.messages && it.text == said } == true
-        val mine = turns.filter { it.role == TurnRole.USER && !it.messages }.map { it.text } + (if (heardBack) "" else said)
+        val mine = turns.filter { it.role == TurnRole.USER && !it.messages && !it.locked }.map { it.text } + (if (heardBack) "" else said)
         val untrusted = ArrayList<String>()
         val personal = ArrayList<String>(personalExtra)
         // 1.0 audit (injection-querycheck-notes-personal): sources whose words aren't all here (a photo's, a screen not kept,
@@ -177,6 +177,8 @@ object WebQueryContext {
         var blindPersonal = false
         var blindContent = false
         for (t in turns) {
+            // 1.0: what was said while the phone was locked (ChatTurn.locked) may be anyone's words: content, never yours.
+            if (t.locked) untrusted += t.text
             t.screenText?.let { untrusted += it }
             if (t.attachment == Attachment.PHOTO) blindPersonal = true
             if (t.attachment == Attachment.SCREEN && t.screenText == null) blindContent = true

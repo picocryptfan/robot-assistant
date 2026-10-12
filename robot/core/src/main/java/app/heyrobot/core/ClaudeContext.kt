@@ -186,7 +186,8 @@ object ClaudeContext {
     fun transcript(turns: List<ChatTurn>): String? = turns.mapNotNull { t ->
         if (t.error || t.text.isBlank()) return@mapNotNull null
         when (t.role) {
-            TurnRole.USER -> "User: " + oneLine(t.text) + when (t.attachment) {
+            // 1.0: words said while the phone was locked (ChatTurn.locked) may be anyone's, never "User".
+            TurnRole.USER -> (if (t.locked) "Said while the phone was locked: " else "User: ") + oneLine(t.text) + when (t.attachment) {
                 Attachment.PHOTO -> " [about a photo]"
                 Attachment.SCREEN -> " [about their screen]"
                 Attachment.NONE -> ""

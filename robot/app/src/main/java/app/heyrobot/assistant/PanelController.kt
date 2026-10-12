@@ -295,6 +295,8 @@ data class UiTurn(
     val reply: app.heyrobot.ui.common.ReplyCardView? = null,
     /** 0.9: a web answer's card (WebAnswerCard): shown, never saved (History keeps its saved line). */
     val web: AnswerCard? = null,
+    /** 1.0: said while the phone was locked (core ChatTurn.locked): under "Said while the phone was locked". */
+    val locked: Boolean = false,
 )
 
 data class Draft(val kind: Attachment, val thumb: Bitmap?)
@@ -559,16 +561,20 @@ object PanelController {
         // The lock-screen rule first, with no exception (core PanelContinuity): a locked show never shows an earlier
         // conversation, not even the camera's return.
         val stale = System.currentTimeMillis() - lastActivity > CONTINUE_MS
-        val open = PanelContinuity.open(locked, startedLocked, stale, chat.isEmpty(), convArg != null && ConversationStore.validId(convArg), back)
+        // 1.0: and the other way round, the lock screen's turns never steer your unlocked conversation, except quoted when
+        // its last reply asked for this unlock.
+        val open = PanelContinuity.open(locked, startedLocked, stale, chat.isEmpty(), convArg != null && ConversationStore.validId(convArg), back,
+            unlockAsked = PanelContinuity.unlockAsked(chat, System.currentTimeMillis()))
         when (open) {
             PanelContinuity.Open.LOAD -> loadConversation(convArg!!)
             PanelContinuity.Open.NEW_LOCKED -> newConversation(locked = true)
             PanelContinuity.Open.NEW -> newConversation(locked)
             PanelContinuity.Open.CONTINUE -> {}
+            PanelContinuity.Open.CONTINUE_QUOTED -> quoteLockedTurns()
         }
         // Continued unlocked: never lock-screen safe again (physical-locked-conversation-carryover).
         startedLocked = PanelContinuity.stillLocked(startedLocked, locked)
-        val returning = back && open == PanelContinuity.Open.CONTINUE
+        val returning = back && (open == PanelContinuity.Open.CONTINUE || open == PanelContinuity.Open.CONTINUE_QUOTED)
         ignoreAssist = source == RobotVoiceService.SRC_APP || returning
         if (!returning) {
             screenText = null
@@ -819,7 +825,24 @@ object PanelController {
     private fun ChatTurn.toUi() = UiTurn(id, role, text, attachment, keptPicture(picture),
         actions.map { UiAction(newId(), it.tool, it.summary, it.status, it.detail, content = it.content) }, stopped = stopped, error = error,
         claude = claude, readBack = readBack, sources = sources, cost = costMicros.takeIf { it > 0 && VoiceHub.settings.helperShowCost }?.let { ClaudeCost.line(it / 1e6) },
-        helper = helper, by = by, home = home)
+        helper = helper, by = by, home = home, locked = locked)
+
+    /**
+     * 1.0: a conversation begun on the lock screen goes on unlocked (core PanelContinuity: the continuation its "Unlock
+     * first" asked for, or the panel still open after the unlock). Its turns stay on screen under "Said while the phone was
+     * locked", are quoted for the model, and make the conversation content. :brain's live conversation holds them as they
+     * were said, and a helper's its own copy: both end, and the next turn rebuilds from the quoted history.
+     */
+    private fun quoteLockedTurns() {
+        val quoted = PanelContinuity.quoted(chat)
+        chat.clear()
+        chat += quoted
+        _state.update { st -> st.copy(turns = st.turns.map { it.copy(locked = true) }) }
+        endHelperMode()
+        closeLiveConversation()
+        RLog.i("locked_turns_quoted", "turns" to quoted.size)
+        persist()
+    }
 
     /**
      * "Remove saved screenshots and photos" (the main app): the conversation still held here loses its kept thumbnails
@@ -1248,7 +1271,9 @@ object PanelController {
             }
             return false
         }
-        // A question asked unlocked: this conversation is never shown on the lock screen again (core PanelContinuity).
+        // A question asked unlocked: this conversation is never shown on the lock screen again (core PanelContinuity), and
+        // what was said in it while the phone was locked is quoted from now on (1.0).
+        if (PanelContinuity.quotesNow(startedLocked, Assistant.locked(VoiceHub.app), chat.isEmpty())) quoteLockedTurns()
         startedLocked = PanelContinuity.stillLocked(startedLocked, Assistant.locked(VoiceHub.app))
         turnMemContent = false
         val names = names()
