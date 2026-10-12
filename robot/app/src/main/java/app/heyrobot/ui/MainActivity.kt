@@ -98,6 +98,10 @@ import app.heyrobot.sys.VoiceModelStore
 import app.heyrobot.sys.MtModelStore
 import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.guide.PhoneGuideStores
+import app.heyrobot.ui.guide.SetupGuideScreen
+import app.heyrobot.sys.SetupGuideStore
+import app.heyrobot.core.guide.SetupGuide
 import app.heyrobot.ui.model.ModelScreen
 import app.heyrobot.ui.settings.AppRoutes
 import app.heyrobot.ui.settings.HandsFreeNoticeLine
@@ -200,6 +204,8 @@ sealed class Page {
     data object Helpers : Page()
     data class Helper(val id: String) : Page()
     data object AddHelper : Page()
+    /** 1.0: the setup guide (where it is, in setup_guide.json). */
+    data object Guide : Page()
 
     companion object {
         /** The open page survives a recreation (rotation, dark mode, the process killed): "note:<id>", "setup:1"... */
@@ -226,6 +232,7 @@ sealed class Page {
                     Helpers -> "helpers"
                     is Helper -> "helper:${p.id}"
                     AddHelper -> "addhelper"
+                    Guide -> "guide"
                 }
             },
             restore = { v ->
@@ -249,6 +256,7 @@ sealed class Page {
                     v == "helpers" -> Helpers
                     v.startsWith("helper:") -> Helper(v.removePrefix("helper:"))
                     v == "addhelper" -> AddHelper
+                    v == "guide" -> Guide
                     else -> null
                 }
             },
@@ -338,6 +346,20 @@ fun RobotAppUi(activity: MainActivity) {
     var notesTick by remember { mutableIntStateOf(0) }
     var calendars by remember { mutableStateOf<List<CalendarInfo>>(emptyList()) }
     var permissionTick by remember { mutableIntStateOf(0) }
+
+    // 1.0: the setup guide, its state (Home's "Continue the setup guide") and the stores its pages write through.
+    val guideStores = remember { PhoneGuideStores(ctx) }
+    val guideState by remember { SetupGuideStore.current(ctx); SetupGuideStore.state }
+    /** Opens the guide where Finish later left it, or from Welcome. */
+    fun openGuide() {
+        SetupGuideStore.save(ctx, SetupGuide.open(SetupGuideStore.current(ctx)))
+        page = Page.Guide
+    }
+    // Once per guide version, by itself: at a launch that no link opened a page for (a new install, or an update with a new guide).
+    val launchRoute = remember { activity.route.value }
+    LaunchedEffect(Unit) {
+        if (launchRoute == null && page == null && SetupGuide.opensAtLaunch(SetupGuideStore.current(ctx))) openGuide()
+    }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val lstate by lifecycle.currentStateFlow.collectAsState()
@@ -530,6 +552,7 @@ fun RobotAppUi(activity: MainActivity) {
             else if (!activity.talk(id)) say("Couldn't open the assistant.")
         },
         openSetup = { page = Page.Setup() },
+        openGuide = ::openGuide,
         openTab = { tab = it; page = null },
         openConversation = { page = Page.Conversation(it) },
         askPermissions = { permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) },
@@ -785,6 +808,7 @@ fun RobotAppUi(activity: MainActivity) {
         Page.ConversationSettings -> ConversationSettingsScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
         Page.Helpers -> HelpersScreen(settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
         is Page.Helper -> HelperScreen(p.id, settings, snap, ::updateSettings, actions, snackbar, onBack = nav::back)
+        Page.Guide -> SetupGuideScreen(settings, snap, ::updateSettings, actions, guideStores, snackbar, onClose = nav::back)
         Page.AddHelper -> AddHelperScreen(settings, ::updateSettings, actions, snackbar, onAdded = { nav.replace(Page.Helper(it)) }, onBack = nav::back)
         null -> Scaffold(
             snackbarHost = { SnackbarHost(snackbar) },
@@ -812,7 +836,7 @@ fun RobotAppUi(activity: MainActivity) {
                 if (tab == Tab.HOME || tab == Tab.SETTINGS) HandsFreeNoticeLine(onOpen = { page = Page.Settings(SettingsRoutes.HEADSET) })
                 val m = Modifier.weight(1f)
                 when (tab) {
-                    Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
+                    Tab.HOME -> HomeScreen(snap, history.take(3), actions, m, guide = guideState)
                     Tab.NOTES -> NotesScreen(notes, actions, m)
                     Tab.HISTORY -> HistoryScreen(history, actions, m)
                     Tab.MODEL -> ModelScreen(settings, ::updateSettings, snap, busy, actions, m)
@@ -907,4 +931,6 @@ class AppActions(
     val deleteProblem: (ModelProblem) -> Unit = {},
     /** 0.9: Termux's RUN_COMMAND permission (Settings › Termux), asked for here only, as every permission is. */
     val askTermux: () -> Unit = {},
+    /** 1.0: the setup guide, where Finish later left it or from Welcome (Home, Settings › About). */
+    val openGuide: () -> Unit = {},
 )

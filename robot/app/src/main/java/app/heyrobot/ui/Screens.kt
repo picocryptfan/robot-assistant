@@ -46,7 +46,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.heyrobot.R
 import app.heyrobot.core.ModelLogic
+import app.heyrobot.core.guide.GuideState
+import app.heyrobot.core.guide.HomeGuide
+import app.heyrobot.core.guide.SetupGuide
+import androidx.compose.ui.res.stringResource
 import app.heyrobot.core.ModelStatus
 import app.heyrobot.core.ClaudeCost
 import app.heyrobot.core.StoredConversation
@@ -66,7 +71,7 @@ import app.heyrobot.ui.common.claudeFooter
 // MAIN PROCESS. Home, history and one saved conversation.
 
 @Composable
-fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, modifier: Modifier) {
+fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, modifier: Modifier, guide: GuideState = GuideState()) {
     val f = snap.facts
     val ready = f?.active == true && snap.model == ModelStatus.VERIFIED && snap.voiceReady
     Column(
@@ -92,6 +97,15 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
             Icon(RIcons.Mic, null)
             Spacer(Modifier.width(10.dp))
             Text("Talk to Robot", style = MaterialTheme.typography.titleMedium)
+        }
+        // 1.0: the setup guide left with Finish later: where it was, and Continue.
+        val underWay = guide.at?.takeIf { SetupGuide.home(guide) == HomeGuide.CONTINUE }
+        if (underWay != null) {
+            SectionCard(stringResource(R.string.guide_home_title)) {
+                Text(stringResource(R.string.guide_home_continue_detail, underWay.number, SetupGuide.COUNT), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilledTonalButton(onClick = a.openGuide, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.guide_home_continue)) }
+            }
         }
         if (!ready || !f.micGranted || !f.notificationsGranted) {
             SectionCard("Get started") {
@@ -158,6 +172,9 @@ fun HomeScreen(snap: Snapshot, recent: List<StoredConversation>, a: AppActions, 
                 for (c in recent) ConversationRow(c) { a.openConversation(c.id) }
                 TextButton(onClick = { a.openTab(Tab.HISTORY) }) { Text("All conversations") }
             }
+        }
+        if (underWay == null) {
+            TextButton(onClick = a.openGuide, modifier = Modifier.heightIn(min = 48.dp)) { Text(stringResource(R.string.guide_home_again)) }
         }
         Spacer(Modifier.height(12.dp))
     }

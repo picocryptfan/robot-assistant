@@ -2,6 +2,8 @@ package app.heyrobot.ui.settings
 
 import androidx.compose.runtime.Composable
 import app.heyrobot.BuildConfig
+import app.heyrobot.R
+import androidx.compose.ui.res.stringResource
 import app.heyrobot.core.feedback.FeedbackEntry
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Page
@@ -10,7 +12,7 @@ import app.heyrobot.ui.pref.PreferenceScreen
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
 
-// MAIN PROCESS. Settings › About (0.4.x redesign): the version, Updates (the built-in updater, 0.6.0), Send feedback (0.7)
+// MAIN PROCESS. Settings › About (0.4.x redesign): the version, the setup guide (1.0), Updates (the built-in updater, 0.6.0), Send feedback (0.7)
 // and the Licences (0.4.5), and room for more rows in the same group.
 
 @Composable
@@ -18,6 +20,8 @@ fun AboutSettingsScreen(a: AppActions, onBack: () -> Unit) {
     PreferenceScreen("About", onBack) {
         preferenceGroup(null, "about") {
             PreferenceItem("Version", "Robot ${BuildConfig.VERSION_NAME}")
+            // 1.0: the setup guide again, where Finish later left it or from Welcome.
+            PreferenceItem(stringResource(R.string.guide_about_row), stringResource(R.string.guide_about_detail), onClick = a.openGuide)
             // The built-in updater (0.6.0): an update on offer, or when Robot last checked.
             UpdatesEntry(a)
             // 0.7: a bug report or an idea, as plain text you send with the app you choose.
