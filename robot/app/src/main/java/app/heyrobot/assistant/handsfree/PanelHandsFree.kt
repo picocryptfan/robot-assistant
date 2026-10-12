@@ -353,8 +353,11 @@ object PanelHandsFree {
 
     private suspend fun call(replyId: String, c: HandsFreeCommand.Call, host: PanelRoutines.Host) {
         val asked = listOfNotNull(c.who, c.label).joinToString(" ")
-        // Outside a hands-free session: the call tool's card, as typed (the dialer opens, you tap Call).
-        if (session == null) {
+        // Outside a hands-free session: the call tool's card, as typed (the dialer opens, you tap Call). So too in a headset
+        // session where a personal sentence may not play (the read-back names who and their number): headphones Robot doesn't
+        // know are private, or the lock screen; the card shows it instead.
+        val s0 = session
+        if (s0 == null || (!inCar && !personalPlays(s0))) {
             host.tool(replyId, RoutineStep.Tool(Action.Call(asked)))
             return
         }
@@ -443,7 +446,17 @@ object PanelHandsFree {
         val range = (WhenParser.range("today", now) as? Read.Ok)?.value ?: return reply(replyId, host, "…")
         val events = withContext(Dispatchers.IO) { if (Calendars.readGranted(app)) Calendars.events(app, range) else null }
             ?: return reply(replyId, host, if (lang == SpokenLang.FR) "Permets à Robot de lire ton agenda dans l'app Robot." else "Allow Robot to read your calendar in the Robot app.")
-        reply(replyId, host, WhatsNext.line(events, now, lang))
+        // Your calendar: personal, so OutputGuard holds it where a personal sentence may not play.
+        val line = WhatsNext.line(events, now, lang)
+        host.text(replyId, line)
+        host.say(line, personal = true)
+    }
+
+    /** A personal answer may play in [s] now (OutputGuard): private headphones or the car, and not held by the lock screen. */
+    private fun personalPlays(s: HeadsetSession): Boolean {
+        val ctx = OutputContext.of(s.kind, s.routed(), HandsFreeHub.memory, HandsFreeHub.phone(), s.device, s.commRoute, CarModeController.trusted)
+        val guard = HandsFreeHub.headset.settings.guard(HandsFreeHub.headset.safety, HandsFreeHub.car.settings.readAloud)
+        return OutputGuard.decide(Utterance(SpeechClass.PERSONAL, SpeechSource.ANSWER, 1), ctx, guard) is OutputDecision.Speak
     }
 
     private fun music(replyId: String, a: MusicAction, host: PanelRoutines.Host) {

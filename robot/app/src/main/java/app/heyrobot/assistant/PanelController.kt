@@ -2731,13 +2731,13 @@ object PanelController {
      * One sentence aloud: Robot's voice, or a helper's ([claude], in its [voice]: another voice of the same model, so you
      * hear who talks).
      */
-    private fun speakSentence(s: String, claude: Boolean = false, voice: String? = null) {
+    private fun speakSentence(s: String, claude: Boolean = false, voice: String? = null, personal: Boolean = false) {
         // Never read out a tool call the model wrote as text.
         if (!claude && (s.contains("call:") || s.contains("<start_function_call>") || ToolCalls.parseText(s).isNotEmpty())) return
         val clean = SpeechText.clean(s)
         if (clean.isEmpty()) return
         // 0.8: in a headset or car session, OutputGuard first (personal sentences only on a private device, the car's two).
-        if (!PanelHandsFree.allow(clean) { personalNow(_state.value.turns.lastOrNull()?.id).isNotEmpty() }) return
+        if (!PanelHandsFree.allow(clean) { personal || personalNow(_state.value.turns.lastOrNull()?.id).isNotEmpty() }) return
         // Claude's voice per sentence: Kokoro's French voice for a French one, Claude's own otherwise.
         if (claude) ClaudeVoices.forSentence(VoiceHub.settings.voiceChoice, voice ?: VoiceHub.settings.claude?.voice, clean).let { (sid, lang) -> VoiceHub.tts.speakOther(clean, sid, lang) }
         else VoiceHub.tts.speak(clean)
@@ -2944,7 +2944,7 @@ object PanelController {
             paragraphBreak(replyId)
             appendText(replyId, text)
         }
-        override fun say(sentence: String) { if (_state.value.speak) speakSentence(sentence) }
+        override fun say(sentence: String, personal: Boolean) { if (_state.value.speak) speakSentence(sentence, personal = personal) }
         override suspend fun ask(replyId: String, card: Card, tapOnly: String?): Boolean {
             val view = PanelView(replyId)
             routineTapOnly = tapOnly?.let { card.id to it }

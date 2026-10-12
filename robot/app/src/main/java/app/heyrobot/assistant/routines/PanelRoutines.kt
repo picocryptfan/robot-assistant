@@ -49,8 +49,11 @@ object PanelRoutines {
         fun text(replyId: String, text: String)
         /** A paragraph added to the reply. */
         fun append(replyId: String, text: String)
-        /** One sentence in Robot's voice, when replies are spoken. */
-        fun say(sentence: String)
+        /**
+         * One sentence in Robot's voice, when replies are spoken. [personal]: it says something of yours (a routine's own
+         * sentence, your brief reminders), so in a headset or car session OutputGuard treats it as personal.
+         */
+        fun say(sentence: String, personal: Boolean = false)
         /** A card that waits for Save or Cancel; true when confirmed. [tapOnly]: what Robot says to a spoken yes (only a tap). */
         suspend fun ask(replyId: String, card: Card, tapOnly: String? = null): Boolean
         /** A card shown as it is (done, refused, cancelled). */
@@ -199,13 +202,13 @@ object PanelRoutines {
                 StepGo.WAIT_UNLOCK -> host.append(replyId, "Unlock your phone for: ${step.describe()}.")
                 else -> when (step) {
                     RoutineStep.Brief -> brief(replyId, host, origin, r, append = r.steps.size > 1)
-                    is RoutineStep.Say -> { host.append(replyId, step.text); host.say(step.text) }
+                    is RoutineStep.Say -> { host.append(replyId, step.text); host.say(step.text, personal = true) }
                     RoutineStep.Reminders -> {
                         val now = ZonedDateTime.now()
                         val due = BriefReminders.due(store().reminders(), now.toLocalDate(), now.zone).map { it.text }
                         val line = BriefComposer.reminders(due, BriefSource.lang(rs)) ?: "No brief reminders today."
                         host.append(replyId, line)
-                        host.say(line)
+                        host.say(line, personal = true)
                     }
                     RoutineStep.Messages -> {}
                     is RoutineStep.Tool -> {

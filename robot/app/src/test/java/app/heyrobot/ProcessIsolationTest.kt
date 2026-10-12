@@ -887,6 +887,27 @@ class ProcessIsolationTest {
     }
 
     /**
+     * A routine or the brief asked for in a headset or car session speaks through OutputGuard like any answer: the brief's
+     * parts in the panel (RoutineVoice's panel surface) line by line with the part's own personal mark, and a routine's
+     * own sentences and your brief reminders as personal (never on headphones Robot doesn't know are private).
+     */
+    @Test fun routineSpeechInASessionPassesOutputGuard() {
+        val voice = code(File(java("app"), "app/heyrobot/assistant/routines/RoutineVoice.kt"))
+        val play = voice.substringAfter("private fun playCurrent() {").substringBefore("\n    }\n")
+        assertTrue(play, play.contains("val lines = if (s.surface == Surface.PANEL) part.lines.filter { l -> PanelHandsFree.allow(SpeechText.clean(l)) { part.personal } } else part.lines"))
+        assertTrue(play, play.contains("lines.forEach(::say)") && !play.contains("part.lines.forEach(::say)"))
+        val panel = code(File(java("app"), "app/heyrobot/assistant/routines/PanelRoutines.kt"))
+        assertTrue(panel.contains("is RoutineStep.Say -> { host.append(replyId, step.text); host.say(step.text, personal = true) }"))
+        assertTrue(panel.contains("host.append(replyId, line)\n                        host.say(line, personal = true)"))
+        val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        assertTrue(pc.contains("override fun say(sentence: String, personal: Boolean) { if (_state.value.speak) speakSentence(sentence, personal = personal) }"))
+        assertTrue(pc.contains("if (!PanelHandsFree.allow(clean) { personal || personalNow(_state.value.turns.lastOrNull()?.id).isNotEmpty() }) return"))
+        // "What's next" says your calendar: personal too.
+        val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/PanelHandsFree.kt"))
+        assertTrue(hf.contains("val line = WhatsNext.line(events, now, lang)\n        host.text(replyId, line)\n        host.say(line, personal = true)"))
+    }
+
+    /**
      * 0.5.0, phase 5.3 (docs/conversation-mode.md 3, 8): the speaker model is downloaded by the main app only, like every
      * model; the voiceprint is decrypted in the :voice process only, seeds the session and nothing else; nothing about
      * speakers goes online or into a log but numbers.

@@ -7,6 +7,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.PowerManager
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.assistant.handsfree.PanelHandsFree
 import app.heyrobot.core.BriefControl
 import app.heyrobot.core.PlayState
 import app.heyrobot.core.RLog
@@ -209,11 +210,19 @@ object RoutineVoice {
             s.play = s.play.played()
             return playCurrent()
         }
+        // Asked in the panel during a headset or car session: each line through OutputGuard as the panel's own sentences are
+        // (a personal part only in private headphones, the car's two sentences); outside a session every line plays.
+        val lines = if (s.surface == Surface.PANEL) part.lines.filter { l -> PanelHandsFree.allow(SpeechText.clean(l)) { part.personal } } else part.lines
+        if (lines.isEmpty()) {
+            s.notSaid++
+            s.play = s.play.played()
+            return playCurrent()
+        }
         s.play = s.play.started()
-        s.said += part.lines.size
+        s.said += lines.size
         part.item?.let { s.saidItems += it }
         s.chars += part.chars
-        part.lines.forEach(::say)
+        lines.forEach(::say)
         val g = ++gen
         main.removeCallbacks(watchdog)
         watchFor = g
