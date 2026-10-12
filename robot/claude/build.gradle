@@ -25,6 +25,9 @@ dependencies {
     // The version the SDK already brings, named so the helpers' own transport doesn't rest on a transitive dependency.
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0'
+    // 0.9 web search: the HTML parser under Robot's copy of Readability4J (web/readability), for result pages read from the
+    // phone. No JavaScript engine. In the :voice process only, with the rest of this module (ProcessIsolationTest).
+    implementation 'org.jsoup:jsoup:1.15.1'
     // Network tests against a local mock server through the SDK's base-URL override: no real key, no network.
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.json:json:20180813'

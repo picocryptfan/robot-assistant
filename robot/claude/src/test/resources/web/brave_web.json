@@ -1,0 +1,52 @@
+{
+  "type": "search",
+  "query": {
+    "original": "descale breville barista express",
+    "show_strict_warning": false,
+    "is_navigational": false,
+    "spellcheck_off": true,
+    "country": "ca",
+    "more_results_available": true
+  },
+  "mixed": {"type": "mixed", "main": [{"type": "web", "index": 0, "all": false}], "top": [], "side": []},
+  "web": {
+    "type": "search",
+    "results": [
+      {
+        "title": "How to Descale a <strong>Breville</strong> Barista Express",
+        "url": "https://www.breville.com/us/en/support/descale.html",
+        "is_source_local": false,
+        "is_source_both": false,
+        "description": "Run the <strong>descale</strong> cycle every 2&ndash;3 months, or when the clean me light comes on.",
+        "page_age": "2026-03-02T10:00:00",
+        "profile": {"name": "Breville", "url": "https://www.breville.com/us/en/support/descale.html", "long_name": "breville.com", "img": "https://imgs.search.brave.com/abc/rs:fit:32:32:1:0/g:ce/aHR0cDovL2Zhdmlj"},
+        "language": "en",
+        "family_friendly": true,
+        "type": "search_result",
+        "subtype": "generic",
+        "meta_url": {"scheme": "https", "netloc": "breville.com", "hostname": "www.breville.com", "favicon": "https://imgs.search.brave.com/fav", "path": "› us › en › support"},
+        "age": "March 2, 2026",
+        "extra_snippets": [
+          "Fill the water tank with the descaling solution and water to the MAX line.",
+          "Press and hold the 1 CUP and 2 CUP buttons for 5 seconds to start descale mode.",
+          "Turn the dial to the steam position and let the solution run through."
+        ]
+      },
+      {
+        "title": "Descaling the Barista Express: step by step",
+        "url": "https://coffeegeek.example.org/guides/descale-barista-express",
+        "is_source_local": false,
+        "is_source_both": false,
+        "description": "A guide to <strong>descaling</strong> with citric acid.",
+        "profile": {"name": "Coffee Geek", "url": "https://coffeegeek.example.org/", "long_name": "coffeegeek.example.org"},
+        "age": "1 year ago",
+        "extra_snippets": []
+      },
+      {
+        "title": "No URL here",
+        "description": "Left out."
+      }
+    ],
+    "family_friendly": true
+  }
+}
