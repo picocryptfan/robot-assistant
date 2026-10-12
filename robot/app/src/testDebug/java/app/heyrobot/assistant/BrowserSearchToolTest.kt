@@ -20,6 +20,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -35,6 +36,9 @@ import org.robolectric.annotation.Config
 class BrowserSearchToolTest {
     private val ctx: Context = ApplicationProvider.getApplicationContext()
 
+    /** An empty voice log of its own (VoiceLog.resetForTests), so no other test's events show. */
+    @Before fun log() = VoiceLog.resetForTests()
+
     @After fun clean() {
         WebStore.file(ctx).delete()
     }
@@ -46,7 +50,6 @@ class BrowserSearchToolTest {
 
     @Test fun theSearchOpensAsALinkInYourBrowser() {
         val sent = mutableListOf<Intent>()
-        val before = VoiceLog.total
         val r = BrowserSearchTool.open(ctx, BrowserSearchAction("café crème à Montréal", BrowserEngine.DUCKDUCKGO, own = true)) { sent += it; true }
         assertEquals(ActionStatus.DONE, r.status)
         assertTrue(r.launchedApp)
@@ -60,8 +63,8 @@ class BrowserSearchToolTest {
         assertNull(i.extras)
         assertNull(i.`package`)
         // The voice log: the engine and whose words, never the words.
-        assertEquals(before + 1, VoiceLog.total)
-        val e = VoiceLog.entries().first { it.event == VoiceEvent.BROWSER_SEARCH }
+        val e = VoiceLog.entries().single()
+        assertEquals(VoiceEvent.BROWSER_SEARCH, e.event)
         assertEquals(listOf(BrowserEngine.DUCKDUCKGO.code, 1, 1), listOf(e.a, e.b, e.c))
     }
 
