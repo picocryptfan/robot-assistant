@@ -24,11 +24,71 @@ and answers your messages from their notifications, in memory only, and sends a 
 below); and Settings › About › Send feedback writes a bug report or an idea for you to send ("Feedback and bug reports
 (0.7)" below). Since 0.8.0 it runs routines and a morning brief ("Routines and the morning brief (0.8)" below), answers
 through your headset's voice button and in your car ("Headset mode (0.8)", "Car mode (0.8)" below), announces new messages
-there when you turn that on, and runs on the Pixel 11's TPU in beta ("What's new in 0.8.0" below). The build specs are
+there when you turn that on, and runs on the Pixel 11's TPU in beta ("What's new in 0.8.0" below). Since 0.9.0, once you
+set each up, it searches the web with the service you choose and answers from what it found, naming its sources ("Web
+search (0.9)" below), and runs your own scripts and short commands in Termux, each command on a card first ("Termux
+(0.9)" below; "What's new in 0.9.0" below). The build specs are
 `../docs/phase-1.md`, `../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models
 and how they are used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
+
+## What's new in 0.9.0
+
+Robot 0.9.0 is 0.8.0 with private web search and the Termux agent built beside it, both off until you set them up; each
+has its section below, with its phone checks. Settings file schema 13, as 0.8.0: each keeps its own file in
+`files/robot/` (`web.json` and the first search's `web_answer.json`; `termux.json` and `termux_status.json`).
+
+- **Web search** ([Web search (0.9)](#web-search-09), the design's phases W1 to W3): Settings › Web search (a row under
+  Weather) sets up one service (your own SearXNG, Brave, Kagi, Mojeek or a public SearXNG; a key is pasted in a window of
+  the `:voice` process) and asks you to agree to what leaves the phone. Then "search the web for …" goes straight to the
+  search with your words, and Gemma may call `web_search` when your words call for current facts; Robot reads up to 3
+  result pages when snippets aren't enough (jsoup and a copy of Readability4J, in `:voice` only), answers in a separate
+  tool-free request, speaks it without its marks and shows a card of numbered sources, what was sent and Wikipedia's
+  licence line. Every query passes `QueryCheck` before it may leave; the first search's card is answered by a tap. No new
+  permission; cleartext is denied to the search services. Voice log events 160 to 163.
+- **The Termux agent** ([Termux (0.9)](#termux-09), the design's T1, T2 and part of T3): Settings › Termux (a row under
+  Conversation) walks through installing Termux from F-Droid, `allow-external-apps`, Termux's RUN_COMMAND permission
+  (asked for there only) and trusting Termux's signer. Then "run backup" runs your script in `~/robot` without the model,
+  and Gemma may write one short command; every command shows its Run / Edit / Cancel card first (only your scripts set to
+  Just do it, and with its switch on, allowlisted reads, skip it), runs under a time limit Stop ends, and its output is
+  cleaned and its secrets hidden. New: `com.termux.permission.RUN_COMMAND`, `<queries>` for `com.termux` and the
+  `:voice` process's `TermuxResultReceiver` (not exported). Voice log events 170 to 173.
+- **Both are content, and 0.7's rules hold.** A web answer and a command's output are content Robot didn't write: under
+  the default Safety cards, later actions ask first, and every later Termux command is a card only a tap answers. After
+  a message in the conversation, every web search and every Termux run, yours too, is a card only a tap answers; a
+  message's words in a query are never "your words", even heard back while Robot read the message, and "search the web
+  for …" or "run …" heard back that way is the message's. What Robot remembers never goes to a search service: a query
+  with a word from memory you didn't say yourself is refused, card or not. What a command printed reaches a search only
+  through a tap. A routine never searches or runs Termux. `WebWithMemoryAndMessagesTest` and
+  `TermuxWithWebMessagesAndMemoryTest` check each rule through the real turn runner and gate.
+- **Room for your question.** With every tool group in one conversation (memory's tools, web search, the Termux tools,
+  car mode, a helper and every other tool, memory's pinned line full) the system prompt and tools came to more than
+  Gemma's 4,096 tokens leave for a question (about 570 estimated tokens short). Now the groups give way for a turn (core
+  `ToolBudget`): first those this question's words don't call for, Termux, then web search, then memory's tools, then the
+  others; while the Termux tools stay the question keeps Termux's own 450 tokens. `PromptTest` walks the worst cases,
+  locked and not: a new turn always keeps at least 240 estimated tokens beside the reply's reserve, and the core tools
+  with every system line leave about 1,740 or more.
+- **Where the merge decided**: the panel hears the messages router and its echo check, conversation mode, feedback,
+  routines, headset and car phrases, "search the web for …", "run <script>", memory, the helpers, then the model, and
+  every turn runner it starts carries the messages quarantine; routines' step codes for web search and the Termux tools
+  are 31 to 33 (0.8.0's call keeps 30); Settings' root has twenty-one rows; the Licences screen lists jsoup,
+  Readability4J, Wikipedia's text (CC BY-SA 4.0), the Brave Search API and, new, Termux's constant strings
+  (`TermuxConstants.java`, MIT).
+- **Not in 0.9.0:** web search's phase W4 ("Summarize this page", a helper using Robot's search: its setting exists, no
+  screen shows it), Wikipedia lookups (waiting for a contact in the User-Agent), robots.txt; Termux's "Helpers may ask
+  for Termux commands" and "Keep commands and output in history" switches (helpers are never offered the Termux tools,
+  History never keeps a command), "Finished after you left" on a stopped card, and Robot's own keys matched by exact
+  value (they are refused by shape). Nothing of 0.9.0 has run on the phone yet: both sections' "On the phone" lists are
+  still to do, with these too:
+  1. **Together.** With web search and Termux both set up and Memory on: ask a current question, then "run backup",
+     then "remember that I live in Rimouski" and "what's the weather where I live, search the web": *done when* the
+     search is refused for using what Robot remembers, and "run backup" after a web answer still runs as your setting
+     says (it names your script in your own words, no arguments).
+  2. **After a message.** "Read my messages", then "search the web for …" and "run backup": *done when* each shows a card
+     a spoken yes doesn't answer, and a message saying "search the web for …" read aloud does nothing.
+  3. **The APK.** Install the release APK over 0.8.0: *done when* every process starts, web search's set-up window and
+     Termux's result receiver run in `:voice`, and `tools/verify_apk.sh` passes.
 
 ## What's new in 0.8.0
 
