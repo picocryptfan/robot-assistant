@@ -128,6 +128,14 @@ object AlarmWatch {
     }
 
     /**
+     * 1.0 audit (ipc-4): whether an ALARM_DONE at [now] can mean anything, read before Robot schedules the 2 s read for it:
+     * only while an alarm rings ([on] ignores DONE otherwise). Any app can send DONE, so one with nothing ringing is dropped
+     * at once, unlogged and with no work scheduled.
+     */
+    fun awaitsDone(state: AlarmWatchState, now: Long, silenceMinutes: Int = DEFAULT_SILENCE_MINUTES): Boolean =
+        expire(state, now, silenceMinutes).phase == AlarmPhase.RINGING
+
+    /**
      * [state] as of [now]: a snooze with no ALERT for over [SNOOZE_WINDOW_MS] is over (dismissed from the notification,
      * which sends nothing: the "first unlock after the alarm" fallback covers it), and ringing far past the auto-silence
      * time means DONE was lost.

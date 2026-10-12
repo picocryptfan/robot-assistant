@@ -19,6 +19,7 @@ import app.heyrobot.core.AlarmEnd
 import app.heyrobot.core.AlarmSignal
 import app.heyrobot.core.AlarmWatch
 import app.heyrobot.core.BriefItem
+import app.heyrobot.core.LogThrottle
 import app.heyrobot.core.MissedRun
 import app.heyrobot.core.NextAlarm
 import app.heyrobot.core.RLog
@@ -206,21 +207,35 @@ object RoutineHub {
                 // Any app can send it: only Clock's own alarm, seen due now before it came, counts; anything else is ignored
                 // (never a routine, never the weather, never the once-a-day run).
                 if (!AlarmCheck.admits(seenAlarms, signal)) {
-                    VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM)
-                    RLog.i("alarm_unverified")
+                    // 1.0 (ipc-4): once a minute with a count, so a flood of fake ones can't push the real events out of the log.
+                    unverified.admit(now)?.let { n ->
+                        VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM, n)
+                        RLog.i("alarm_unverified", "count" to n)
+                    }
                     return
                 }
                 step(signal)
             }
             // Clock publishes the snoozed instance as the next alarm first: read it 2 s later (AlarmWatch.READ_DELAY_MS).
-            // A DONE counts only after a counted ALERT (AlarmWatch).
-            ALARM_DONE -> worker.postDelayed({
-                val next = nextAlarm()
-                seenAlarms = AlarmCheck.remember(seenAlarms, next, System.currentTimeMillis())
-                step(AlarmSignal.Done(now, next))
-            }, AlarmWatch.READ_DELAY_MS)
+            // A DONE counts only after a counted ALERT (AlarmWatch): with nothing ringing it is dropped here, unlogged and with
+            // nothing scheduled (1.0, ipc-4), and one read waits at a time.
+            ALARM_DONE -> {
+                if (donePending || !AlarmWatch.awaitsDone(RoutineFiles.store(app).state().alarm, now, rs.clockSilenceMinutes)) return
+                donePending = true
+                worker.postDelayed({
+                    donePending = false
+                    val next = nextAlarm()
+                    seenAlarms = AlarmCheck.remember(seenAlarms, next, System.currentTimeMillis())
+                    step(AlarmSignal.Done(now, next))
+                }, AlarmWatch.READ_DELAY_MS)
+            }
         }
     }
+
+    /** Unverified ALERTs, logged once a minute with their count. */
+    private val unverified = LogThrottle()
+    /** A DONE's 2 s read is waiting (worker thread only). */
+    private var donePending = false
 
     private fun nextAlarm(): NextAlarm? = try {
         app.getSystemService(AlarmManager::class.java).nextAlarmClock?.let { NextAlarm(it.triggerTime, it.showIntent?.creatorPackage == RoutineFacts.CLOCK) }

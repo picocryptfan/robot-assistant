@@ -991,7 +991,11 @@ class ProcessIsolationTest {
         assertTrue(onClock, onClock.indexOf("if (!AlarmCheck.admits(seenAlarms, signal)) {") in 0 until onClock.indexOf("step(signal)"))
         assertEquals(1, Regex("\\bstep\\(AlarmSignal\\.Alert\\(").findAll(hub).count() + Regex("\\bstep\\(signal\\)").findAll(hub).count())
         assertTrue(hub.contains("IntentFilter(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)"))
-        assertTrue(hub.contains("VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM)"))
+        assertTrue(hub.contains("VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM, n)"))
+        // 1.0 (ipc-4): logged once a minute with a count, and a DONE with nothing ringing is dropped before any work.
+        assertTrue(onClock.contains("unverified.admit(now)?.let { n ->"))
+        assertTrue(onClock.indexOf("AlarmWatch.awaitsDone(") in 0 until onClock.indexOf("worker.postDelayed("))
+        assertTrue(onClock.indexOf("if (donePending ||") in 0 until onClock.indexOf("worker.postDelayed("))
     }
 
     /** 0.8 review: a new message is announced only when Do Not Disturb's answer was read and lets it through (fails closed). */

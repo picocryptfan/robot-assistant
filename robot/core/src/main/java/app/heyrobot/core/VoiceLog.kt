@@ -312,7 +312,7 @@ enum class VoiceEvent(val id: Int) {
     ROUTINE_TRIGGER(140),
     /** A Clock alarm ended (AlarmWatch): a = [AlarmEnd], b = minutes it rang. */
     ALARM_END(141),
-    /** A routine its trigger didn't start: a = [SkipWhy], b = [TriggerKind]. */
+    /** A routine its trigger didn't start: a = [SkipWhy], b = [TriggerKind], c = how many in the minute (1.0: Clock's fake alarms, counted, not one each). */
     ROUTINE_SKIPPED(142),
     /** A run ended: a = steps, b = steps left for you (Ready cards, the unlock), c = ms. */
     ROUTINE_RUN(143),
@@ -999,7 +999,7 @@ object VoiceLogText {
             VoiceEvent.ROUTINE_TRIGGER -> "Routine trigger: " + code(TriggerKind.entries, a) + " · " + count(b, "routine") + " started" +
                 (if (c > 0) " · $c not started" else "")
             VoiceEvent.ALARM_END -> "Clock alarm ended: " + code(AlarmEnd.entries, a) + (if (b > 0) " after $b min" else "")
-            VoiceEvent.ROUTINE_SKIPPED -> "Routine not run after " + code(TriggerKind.entries, b) + ": " + code(SkipWhy.entries, a)
+            VoiceEvent.ROUTINE_SKIPPED -> "Routine not run after " + code(TriggerKind.entries, b) + ": " + code(SkipWhy.entries, a) + (if (c > 1) " ($c times in a minute)" else "")
             VoiceEvent.ROUTINE_RUN -> "Routine ran: " + count(a, "step") + (if (b > 0) " · $b left for you" else "") + " · " + secs(c)
             VoiceEvent.ROUTINE_STEP -> "Routine step: " + code(StepCode.entries, a) + " · " + code(StepGo.entries, b) + (if (c == 1) " · didn't work" else "")
             VoiceEvent.BRIEF_SPOKEN -> "Morning brief: " + count(a, "line") + " said" + (if (b > 0) " · $b kept for the unlock" else "") + " · $c characters"
