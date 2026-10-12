@@ -10,7 +10,9 @@
 # exact name and loaded only by the :mt module's class (0.6.0: required). The updater (Settings › About › Updates): its two
 # permissions, its job service and receivers in the main process and not exported, GitHub's addresses only in its core
 # code, no class of the voice or engine processes referring to it, and no GitHub token in the APK. 0.4.7: the phone's
-# OpenCL libraries (the GPU, for the general Gemma 4 E2B) and its TPU libraries declared optional, never packaged.
+# OpenCL libraries (the GPU, for the general Gemma 4 E2B) and its TPU libraries declared optional, never packaged. 0.7:
+# Send feedback needs no permission (no SEND_SMS: "Text it" opens your SMS app), and its classes refer to no network class
+# and no Android log (Robot sends nothing itself; the message is never logged).
 # Usage: tools/verify_apk.sh <apk>
 set -u -o pipefail
 APK="$1"
@@ -101,6 +103,7 @@ has '"android.permission.WRITE_SECURE_SETTINGS"' "$mf" "declares WRITE_SECURE_SE
 boot=$(subtree app.heyrobot.boot.BootReceiver)
 has '"android.intent.action.LOCKED_BOOT_COMPLETED"' "$boot" "BootReceiver gets LOCKED_BOOT_COMPLETED"
 has 'directBootAware(0x01010505)=true' "$(elem app.heyrobot.boot.BootReceiver)" "BootReceiver direct-boot aware"
+# (0.7: Send feedback's "Text it" opens your SMS app, so still no SEND_SMS.)
 for p in CAMERA READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE MANAGE_EXTERNAL_STORAGE KILL_BACKGROUND_PROCESSES QUERY_ALL_PACKAGES SEND_SMS READ_SMS WRITE_CONTACTS READ_CALL_LOG ACCESS_FINE_LOCATION; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
@@ -307,6 +310,14 @@ upd_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null
   awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(assistant|voice|brain|claude|helpers|mt)\//{ on=1 } on' |
   grep -cE 'Lapp/heyrobot/(update|core/update)/')
 [ "$upd_refs" = "0" ] && pass "no voice, model, helper or translation class refers to the updater (dex)" || fail "voice-side or engine classes refer to the updater: $upd_refs"
+# 0.7, Send feedback: core's feedback package, the page (ui/settings/Feedback*) and sys/Feedback* refer to no network class,
+# no WebView or download manager, and never to Android's log: the message leaves only through the app you pick.
+fb_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(core\/feedback\/|sys\/Feedback|ui\/settings\/Feedback)/{ on=1 } on' |
+  grep -cE 'Ljava/net/(URL;|URLConnection|HttpURLConnection|Socket)|Ljavax/net/|Lokhttp3/|Landroid/app/DownloadManager|Landroid/webkit/|Landroid/util/Log;')
+[ "$fb_refs" = "0" ] && pass "Send feedback's classes refer to no network class and no log (dex)" || fail "Send feedback's classes refer to network or log classes: $fb_refs"
+fb_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -cE "Class descriptor  : 'Lapp/heyrobot/(core/feedback/FeedbackReport|sys/FeedbackSend|ui/settings/FeedbackSettingsKt);'"; done | awk '{ s += $1 } END { print s + 0 }')
+[ "$fb_classes" = "3" ] && pass "Send feedback's classes in the dex" || fail "Send feedback's classes in the dex: $fb_classes"
 # The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load, and
 # (0.6.0) the other helpers' client, on plain OkHttp.
 sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession|app/heyrobot/helpers/openai/OpenAiSession);'"; done | wc -l)
