@@ -3,6 +3,7 @@ package app.heyrobot.core.web
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
 import app.heyrobot.core.AskWhy
+import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.Choice
@@ -153,20 +154,33 @@ object WebQueryContext {
     /**
      * 0.9 with 0.7: a turn holding messages (read, summarized, a reply card, or a message's words heard back while Robot read
      * it, which came in as a "question") is other people's words: personal content a tap answers, never your own words.
-     * [memory]: the texts of the memory items the model was given in this conversation (QueryContext.memory).
+     * [memory]: the texts of the memory items the model was given in this conversation (QueryContext.memory). [fresh]:
+     * [personalExtra] holds everything every read tool returned to the model in this conversation (the panel's live
+     * conversation: [readTexts]), so earlier reads leave no words unaccounted for.
      */
-    fun of(turns: List<ChatTurn>, said: String, screen: String? = null, personalExtra: List<String> = emptyList(), memory: List<String> = emptyList()): QueryContext {
+    fun of(turns: List<ChatTurn>, said: String, screen: String? = null, personalExtra: List<String> = emptyList(), memory: List<String> = emptyList(),
+        fresh: Boolean = false): QueryContext {
         val heardBack = turns.lastOrNull { it.role == TurnRole.USER }?.let { it.messages && it.text == said } == true
         val mine = turns.filter { it.role == TurnRole.USER && !it.messages }.map { it.text } + (if (heardBack) "" else said)
         val untrusted = ArrayList<String>()
         val personal = ArrayList<String>(personalExtra)
+        // 1.0 audit (injection-querycheck-notes-personal): sources whose words aren't all here (a photo's, a screen not kept,
+        // what a read tool returned to the model in an earlier turn: only the reply and the card are kept) make every word
+        // that isn't yours a card, word by word.
+        var blindPersonal = false
+        var blindContent = false
         for (t in turns) {
             t.screenText?.let { untrusted += it }
+            if (t.attachment == Attachment.PHOTO) blindPersonal = true
+            if (t.attachment == Attachment.SCREEN && t.screenText == null) blindContent = true
             if (t.messages) {
                 personal += t.text
+                // From History: only the placeholder ("Robot read 2 messages from Mom") is left of what was read.
+                if (t.kept != null && t.text == t.kept) blindPersonal = true
                 continue
             }
             if (t.role != TurnRole.ASSISTANT) continue
+            if (t.actions.any { it.content && it.tool != ToolName.WEB_SEARCH } && !fresh) blindPersonal = true
             val web = t.actions.any { it.tool == ToolName.WEB_SEARCH && it.content }
             if (t.claude || t.readBack || web) untrusted += t.text
             val read = t.actions.filter { it.content && it.tool != ToolName.WEB_SEARCH }
@@ -176,15 +190,38 @@ object WebQueryContext {
             }
         }
         screen?.takeIf { it.isNotBlank() }?.let { untrusted += it }
+        val content = TurnRules.untrusted(turns) || untrusted.isNotEmpty()
+        val isPersonal = ClaudeContext.personal(turns).isNotEmpty() || personal.isNotEmpty()
         return QueryContext(
             said = mine.filter { it.isNotBlank() },
             untrusted = untrusted,
             personal = personal,
-            content = TurnRules.untrusted(turns) || untrusted.isNotEmpty(),
-            isPersonal = ClaudeContext.personal(turns).isNotEmpty() || personal.isNotEmpty(),
+            content = content,
+            isPersonal = isPersonal,
             memory = memory.filter { it.isNotBlank() },
+            blindPersonal = blindPersonal || (isPersonal && personal.isEmpty()),
+            blindContent = blindContent || (content && untrusted.isEmpty()),
         )
     }
+}
+
+/**
+ * 1.0 audit (injection-querycheck-notes-personal): every string a read tool returned to the model ([Executed.results]: a
+ * note's text, an event's place, a contact's number), for QueryCheck's personal words. The card's body (find_notes': the
+ * titles) is only part of it.
+ */
+fun readTexts(results: List<Map<String, Any?>>?): List<String> {
+    val out = ArrayList<String>()
+    fun walk(v: Any?) {
+        when (v) {
+            is String -> if (v.isNotBlank()) out += v
+            is Map<*, *> -> v.values.forEach(::walk)
+            is Iterable<*> -> v.forEach(::walk)
+            is Array<*> -> v.forEach(::walk)
+        }
+    }
+    results?.forEach(::walk)
+    return out
 }
 
 /** What Robot says and shows while a search works (A4.3), in the question's language. */

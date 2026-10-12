@@ -68,7 +68,8 @@ class QueryCheckTest {
         val v = check("Tremblay dentist", listOf("find a dentist"), content = true) as QueryVerdict.Card
         assertEquals(QueryCard.UNKNOWN, v.why)
         assertEquals(listOf("Tremblay"), v.words)
-        assertEquals(QueryCard.UNKNOWN, (check("Tremblay dentist", listOf("find a dentist"), isPersonal = true) as QueryVerdict.Card).why)
+        // 1.0 audit (injection-querycheck-notes-personal): personal content whose words are gone needs a tap for any word not yours.
+        assertEquals(QueryCard.PERSONAL, (check("Tremblay dentist", listOf("find a dentist"), isPersonal = true) as QueryVerdict.Card).why)
         // Nothing but your words: no card, even then.
         assertEquals(QueryVerdict.Send("find a dentist"), check("find a dentist", listOf("find a dentist"), content = true, isPersonal = true))
     }

@@ -770,6 +770,7 @@ object PanelController {
         lastThumb = null
         chat.clear()
         MemoryPanel.newConversation()
+        forgetReads(allKnown = true)
         groups = setOf(ToolGroup.CORE)
         closeConvAfterTurn = false
         startedLocked = locked
@@ -791,6 +792,8 @@ object PanelController {
         lastThumb = null
         chat.clear()
         MemoryPanel.newConversation()
+        // What its earlier read tools returned isn't saved: any word not yours may be from it (QueryCheck).
+        forgetReads(allKnown = false)
         chat += c.turns
         // The groups its questions and actions used: continuing it describes the same tools.
         groups = ToolRouter.used(c.turns)
@@ -2626,7 +2629,8 @@ object PanelController {
         val screen = screenText?.takeIf { chat.any { it.attachment == Attachment.SCREEN } }
         // 0.7's memory: what the model was given from it never goes to a search service (QueryCheck refuses it).
         val memory = MemoryPanel.forWebCheck(chat.flatMap { it.memoryIds })
-        return WebQueryContext.of(chat.toList(), turnSaid.orEmpty(), screen, bodies, memory)
+        val reads = synchronized(readTexts) { readTexts.toList() }
+        return WebQueryContext.of(chat.toList(), turnSaid.orEmpty(), screen, bodies + reads, memory, fresh = readsAllKnown)
     }
 
     /** The search ran: the answer from what it found (WebReply), streamed and spoken without its [n] marks, then its card. */
@@ -2783,7 +2787,11 @@ object PanelController {
         // permission), into its card or a refusal; everything else as above.
         override suspend fun prepare(action: Action, untrusted: Boolean, remote: Boolean): Prepared =
             TermuxTool.prepareTurn(VoiceHub.app, action, untrusted, remote, turnSaid) { prepare(it) }
-        override suspend fun run(action: Action): Executed {
+        // 1.0 (injection-querycheck-notes-personal): what a read tool returned to the model (a note's text, not just its title)
+        // is kept for QueryCheck's personal words while this conversation lives.
+        override suspend fun run(action: Action): Executed = runAction(action).also(::noteRead)
+
+        private suspend fun runAction(action: Action): Executed {
             // 0.7: remember and forget (core memory/); what the conversation holds decides where a remembered item came from.
             if (action.tool.group == ToolGroup.MEMORY) return withContext(Dispatchers.IO) {
                 // (The last: a message is in the conversation, so only your own "remember that …" got here, after its tap.)
@@ -2815,6 +2823,23 @@ object PanelController {
                 throw e
             }
         }
+    }
+
+    /** Everything read tools returned to the model in this conversation (QueryCheck), and whether that is all of it. */
+    private val readTexts = ArrayList<String>()
+    @Volatile private var readsAllKnown = true
+
+    private fun noteRead(r: Executed) {
+        if (r.results.isNullOrEmpty() || r.web != null) return
+        synchronized(readTexts) {
+            readTexts += app.heyrobot.core.web.readTexts(r.results)
+            r.body?.let { readTexts += it }
+        }
+    }
+
+    private fun forgetReads(allKnown: Boolean) {
+        synchronized(readTexts) { readTexts.clear() }
+        readsAllKnown = allKnown
     }
 
     private fun executor(abort: Abort = Abort()) = ToolExecutor(VoiceHub.app, VoiceHub.settings, abort, toolRoom, turnSaid, ::webContext, ::webStep) { i -> host?.launch(i) ?: false }

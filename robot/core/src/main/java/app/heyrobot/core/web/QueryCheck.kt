@@ -41,9 +41,18 @@ data class QueryContext(
      * search service unless you said them yourself.
      */
     val memory: List<String> = emptyList(),
+    /**
+     * 1.0 audit (injection-querycheck-notes-personal): a personal source is in the conversation without all of its text here
+     * (a photo, what an earlier read tool returned to the model, a screen or messages no longer held), so any word that
+     * isn't yours may have come from it: each such word needs a tap. By default, as before: the flag with no text behind it.
+     */
+    val blindPersonal: Boolean = isPersonal && personal.isEmpty(),
+    /** The same for content Robot didn't write (a card a yes may answer). */
+    val blindContent: Boolean = content && untrusted.isEmpty(),
 ) {
     override fun toString(): String =
-        "QueryContext(said=${said.size}, untrusted=${untrusted.size}, personal=${personal.size}, content=$content, isPersonal=$isPersonal, memory=${memory.size})"
+        "QueryContext(said=${said.size}, untrusted=${untrusted.size}, personal=${personal.size}, content=$content, isPersonal=$isPersonal, memory=${memory.size}, " +
+            "blind=$blindPersonal/$blindContent)"
 }
 
 /** What happens to a query. */
@@ -148,7 +157,10 @@ object QueryCheck {
         return when {
             fromPersonal.isNotEmpty() -> QueryVerdict.Card(q, words(fromPersonal + fromContent), QueryCard.PERSONAL)
             fromContent.isNotEmpty() -> QueryVerdict.Card(q, words(fromContent), QueryCard.CONTENT)
-            (ctx.isPersonal && ctx.personal.isEmpty()) || (ctx.content && ctx.untrusted.isEmpty()) -> QueryVerdict.Card(q, words(notMine), QueryCard.UNKNOWN)
+            // Word by word: one that isn't yours, while a source's text is missing, may be from it (1.0: no longer only when a
+            // whole list was empty).
+            ctx.blindPersonal -> QueryVerdict.Card(q, words(notMine), QueryCard.PERSONAL)
+            ctx.blindContent -> QueryVerdict.Card(q, words(notMine), QueryCard.UNKNOWN)
             else -> QueryVerdict.Send(q)
         }
     }
