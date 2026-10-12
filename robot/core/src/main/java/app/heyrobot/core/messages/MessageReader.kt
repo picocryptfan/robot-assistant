@@ -24,9 +24,11 @@ data class Spoken(val text: String, val french: Boolean) {
 /**
  * What a reading turn shows ([shown], light Markdown) and says ([spoken]); the messages it read ([ids], for "read by
  * Robot" and "After Robot reads"), its conversation ([thread]), what History keeps instead ([kept]), and whether
- * conversations are left to read ([more]).
+ * conversations are left to read ([more]). [heard]: the messages' words as Robot reads them aloud, translations
+ * included, for the echo check (MessageQuarantine.originOf): what the microphone hears back of them is the message's.
  */
-class ReadPage(val shown: String, val spoken: List<Spoken>, val ids: List<String>, val thread: MessageThread?, val kept: String, val more: Boolean) {
+class ReadPage(val shown: String, val spoken: List<Spoken>, val ids: List<String>, val thread: MessageThread?, val kept: String, val more: Boolean,
+    val heard: List<String> = emptyList()) {
     override fun toString(): String = "ReadPage(spoken=${spoken.size}, ids=${ids.size}, more=$more)"
 }
 
@@ -75,7 +77,8 @@ object MessageReader {
         }
         val first = thread(threads.first(), lang, more = threads.size > 1, translations = translations, french = french)
         val head = listOfNotNull(count, hint)
-        return ReadPage(head.joinToString(" ") + "\n\n" + first.shown, head.map { frame(it, lang) } + first.spoken, first.ids, first.thread, first.kept, first.more)
+        return ReadPage(head.joinToString(" ") + "\n\n" + first.shown, head.map { frame(it, lang) } + first.spoken, first.ids, first.thread, first.kept, first.more,
+            first.heard)
     }
 
     /**
@@ -91,9 +94,11 @@ object MessageReader {
         val spoken = arrayListOf(frame(intro, lang))
         MessageReading.earlier(all.size, shownMsgs.size, lang)?.let { shown.append('\n').append(it); spoken += frame(it, lang) }
         val ids = ArrayList<String>()
+        val heard = ArrayList<String>()
         for (m in shownMsgs) {
             val line = MessageReading.line(m, t, lang) ?: continue
             ids += m.id
+            heard += m.text
             shown.append("\n- ").append(line)
             val tr = translations[m.id]
             if (tr != null) {
@@ -102,6 +107,8 @@ object MessageReader {
                 shown.append("\n  ").append(wrote).append(' ').append(tr.text)
                 spoken += frame(wrote, lang)
                 spoken += Spoken(tr.text, fr(lang))
+                // Read in your language: those are the words the microphone may hear back.
+                heard += tr.text
             } else {
                 spoken += Spoken(line, french(line))
             }
@@ -111,7 +118,7 @@ object MessageReader {
         shown.append("\n\n").append(p)
         spoken += frame(p, lang)
         val kept = MessageReading.historyLine(listOf(t), ids.size.coerceAtLeast(1), lang)
-        return ReadPage(shown.toString(), spoken, ids, t, kept, more)
+        return ReadPage(shown.toString(), spoken, ids, t, kept, more, heard.filter { it.isNotBlank() })
     }
 
     /** "Pierre wrote in Spanish. In English:" (or "in another language" when Robot can't name it). */

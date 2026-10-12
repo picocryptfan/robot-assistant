@@ -172,6 +172,14 @@ object PanelMessages {
         quietAt = System.currentTimeMillis()
     }
 
+    /**
+     * [text], other people's words or Robot's from them (a message, its translation, a summary, a draft), is being said
+     * aloud: what the microphone hears back of it in the next 15 seconds is the message's, never a request.
+     */
+    private fun saidAloud(text: String) {
+        if (PanelController.state.value.speak && text.isNotBlank()) readAloud += Heard(text, System.currentTimeMillis())
+    }
+
     /** What History keeps of [replyId] instead of its words; null: it holds no message. */
     fun kept(replyId: String): String? = kept[replyId]
 
@@ -328,8 +336,8 @@ object PanelMessages {
         lastThread = t
         reading = true
         taint = taint.with(t)
-        // Said aloud, the microphone may hear it back: that is the message, never a request.
-        if (PanelController.state.value.speak) readAloud += Heard(t.messages.filter { it.id in page.ids }.joinToString(" ") { it.text }, System.currentTimeMillis())
+        // Said aloud, the microphone may hear it back: that is the message, never a request (translated, too).
+        saidAloud(page.heard.joinToString(" "))
         VoiceLog.add(VoiceEvent.MSG_READ, MsgAppCode.of(t.app).id, page.ids.size, if (locked) 1 else 0)
         link().markReadByRobot(page.ids)
         when (MessagesStore.current(ctx).settings.afterReading) {
@@ -396,6 +404,7 @@ object PanelMessages {
         val french = MessageLanguage.frenchLine(langId)
         speak(listOf(Spoken(MessageSummaries.label(lang), fr(lang))) + summary.lines().map { it.trim().trimStart('-', '*', '•').trim() }.filter { it.isNotEmpty() }
             .map { Spoken(it, french(it)) })
+        saidAloud(summary)
         VoiceLog.add(VoiceEvent.MSG_SUMMARY, ts.size, ts.sumOf { MessageReading.toRead(it).size }, ((System.currentTimeMillis() - t0) / 1000).toInt())
     }
 
@@ -415,7 +424,7 @@ object PanelMessages {
             val already = if (fr(lang)) "Le message de ${t.name} est déjà en français, ou Robot n'a pas pu le traduire." else
                 "${t.name}'s message is already in English, or Robot couldn't translate it."
             return show(replyId, MessageReader.thread(t, lang, more = queue.isNotEmpty(), french = MessageLanguage.frenchLine(langId)).let {
-                ReadPage(already + "\n\n" + it.shown, listOf(Spoken(already, fr(lang))) + it.spoken, it.ids, it.thread, it.kept, it.more)
+                ReadPage(already + "\n\n" + it.shown, listOf(Spoken(already, fr(lang))) + it.spoken, it.ids, it.thread, it.kept, it.more, it.heard)
             }, Assistant.locked(ctx))
         }
         show(replyId, MessageReader.thread(t, lang, more = queue.isNotEmpty(), translations = tr, french = MessageLanguage.frenchLine(langId)), Assistant.locked(ctx))
@@ -671,6 +680,8 @@ object PanelMessages {
             else -> "Tap Send to send it."
         }
         speak(listOf(Spoken(head, fr(lang)), Spoken(p.sendText, MessageLanguage.frenchLine(langId)(p.sendText)), Spoken(tail, fr(lang))))
+        // A draft is Robot's model's words from the chat's messages: heard back, it is theirs too.
+        if (p.sendSource == ReplySource.MODEL_DRAFT) saidAloud(p.sendText)
     }
 
     /** "Send my replies to Mom without a card": said, then 3 seconds to stop it (a word, the Stop button, closing the panel). */
@@ -758,6 +769,7 @@ object PanelMessages {
                 update(p)
                 speak(listOf(Spoken(if (fr(lang)) "$name a écrit de nouveau :" else "$name wrote again:", fr(lang)),
                     Spoken(said, MessageLanguage.frenchLine(langId)(said)), Spoken(if (fr(lang)) "Touche Envoyer pour l'envoyer quand même." else "Tap Send to send it anyway.", fr(lang))))
+                saidAloud(said)
             }
             ReplyOutcome.GONE, ReplyOutcome.CANCELED_PI, ReplyOutcome.CHANGED -> {
                 if (a.outcome == ReplyOutcome.CHANGED) VoiceLog.add(VoiceEvent.MSG_GUARD, GuardCode.RECIPIENT_MISMATCH)

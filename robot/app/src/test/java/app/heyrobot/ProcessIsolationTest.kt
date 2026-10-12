@@ -896,6 +896,10 @@ class ProcessIsolationTest {
         assertTrue(panel.contains("ReplyRequest(p.thread.key, plan.text, plan.newestSeen)"))
         // Robot's model sees messages only through one-shot requests (no tools); every turn of the panel carries the quarantine.
         assertTrue(panel.contains("BrainOneShots.run(BrainMsg.OneShot("))
+        // Whatever of a message Robot says aloud counts for the echo check: the words read (or their translation), a summary,
+        // "Mom wrote again: «…»", and a draft from her messages.
+        for (w in listOf("saidAloud(page.heard.joinToString(\"\"))", "saidAloud(summary)", "saidAloud(said)",
+            "if (p.sendSource == ReplySource.MODEL_DRAFT) saidAloud(p.sendText)")) assertTrue(w, panel.contains(w))
         val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
         // (Five: the chat turn, a helper's, the Claude app's hand-off, texting without the model, and 0.7 memory's "remember
         // that …" in a conversation that holds a message.)
