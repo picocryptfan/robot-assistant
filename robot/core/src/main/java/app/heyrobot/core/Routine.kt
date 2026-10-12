@@ -11,8 +11,8 @@ import java.time.format.DateTimeParseException
 // each one of Robot's tools with arguments fixed when the routine is saved. No model ever picks a step or an argument
 // when a routine runs, so text a routine reads (a calendar title, a note) can't create an action. A routine is saved
 // only through its card (RoutineDraft); RoutineGate decides what may run without you. Stored in
-// files/routines/routines.json ([RoutineCodec], schema 1); the store (atomic write under a lock both processes take, a
-// damaged file kept aside as .bad) is wired with the editor and the :voice trigger hub, not here.
+// files/robot/routines.json ([RoutineCodec], schema 1), through RoutineStore (an atomic write under a lock both processes
+// take, a damaged file kept aside as .bad).
 
 /**
  * A span of the day: [from] inclusive, [to] exclusive. A [to] before [from] wraps past midnight (20:00–04:00 is the
@@ -191,12 +191,8 @@ data class Routine(
 // ---------------------------------------------------------------------------------------------- log codes
 
 /**
- * Voice log ids 140–159 are reserved for routines and the morning brief (VoiceLog.kt is left alone on this branch; the
- * entries are added when the :voice trigger hub is wired, codes and numbers only, never names or text):
- * 140 ROUTINE_TRIGGER (a = [TriggerKind]), 141 ALARM_END (a = [AlarmEnd], b = minutes it rang), 142 ROUTINE_SKIPPED
- * (a = [SkipWhy], b = [TriggerKind]), 143 ROUTINE_RUN (a = steps, b = held for you, c = ms), 144 ROUTINE_STEP
- * (a = [StepCode], b = [StepGo]), 145 BRIEF_SPOKEN (a = lines spoken, b = lines held until unlock, c = characters),
- * 146 READY_TAPPED (a = [StepCode]), 147–159 free for headset mode and later.
+ * Voice log ids 140–159 are routines' and the morning brief's (VoiceEvent.ROUTINE_TRIGGER to BRIEF_CONTROL, 0.8: 140 to
+ * 151 used, the rest free), codes and numbers only, never names or text. These enums are their codes.
  */
 enum class TriggerKind(override val id: Int, override val title: String) : LogCode {
     TIME(1, "a time"), ALARM(2, "an alarm turned off"), UNLOCK(3, "the first unlock"), DEVICE(4, "a headset or car"),
@@ -210,7 +206,7 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
     MAPS_NAVIGATE(14, "maps directions"), FLASHLIGHT(15, "flashlight"), SEND_TEXT(16, "text"), DRAFT_EMAIL(17, "email"),
     LOOKUP_CONTACT(18, "contact lookup"), ADD_NOTE(19, "new note"), FIND_NOTES(20, "note search"), ADD_EVENT(21, "new event"),
     READ_CALENDAR(22, "calendar"), WEATHER(23, "weather"), PHONE_STATUS(24, "phone status"), FREE_MEMORY(25, "free memory"),
-    FREE_STORAGE(26, "free storage"), ASK_CLAUDE(27, "Ask Claude"), REMEMBER(28, "remember"), FORGET(29, "forget");
+    FREE_STORAGE(26, "free storage"), ASK_CLAUDE(27, "Ask Claude"), REMEMBER(28, "remember"), FORGET(29, "forget"), CALL(30, "call");
 
     companion object {
         fun of(t: ToolName): StepCode = when (t) {
@@ -234,6 +230,7 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
             ToolName.ASK_CLAUDE -> ASK_CLAUDE
             ToolName.REMEMBER -> REMEMBER
             ToolName.FORGET -> FORGET
+            ToolName.CALL -> CALL
         }
     }
 }
@@ -458,6 +455,7 @@ object RoutineCodec {
         is Action.SendText -> mapOf("to" to a.to, "message" to a.message)
         is Action.DraftEmail -> mapOf("to" to a.to, "subject" to a.subject, "body" to a.text)
         is Action.LookupContact -> mapOf("name" to a.name)
+        is Action.Call -> mapOf("to" to a.to)
         is Action.AddNote -> buildMap { put("text", a.text); a.title?.let { put("title", it) } }
         is Action.FindNotes -> mapOf("query" to a.query)
         is Action.AddEvent -> buildMap { put("title", a.title); put("when", a.whenText); a.minutes?.let { put("duration_minutes", it) } }

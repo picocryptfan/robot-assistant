@@ -3,6 +3,24 @@ package app.heyrobot.core
 import app.heyrobot.core.feedback.Diagnostic
 import app.heyrobot.core.feedback.FeedbackEntry
 import app.heyrobot.core.feedback.FeedbackKind
+import app.heyrobot.core.car.CallWay
+import app.heyrobot.core.car.CarWhy
+import app.heyrobot.core.car.NavKind
+import app.heyrobot.core.car.ParkCode
+import app.heyrobot.core.car.ReplyEnd
+import app.heyrobot.core.car.TrustEnd
+import app.heyrobot.core.headset.AnnounceCode
+import app.heyrobot.core.headset.ButtonAction
+import app.heyrobot.core.headset.EndWhy
+import app.heyrobot.core.headset.EntryKind
+import app.heyrobot.core.headset.Gesture
+import app.heyrobot.core.headset.MicRoute
+import app.heyrobot.core.headset.RobotPhase
+import app.heyrobot.core.headset.RouteFail
+import app.heyrobot.core.output.AnswerCode
+import app.heyrobot.core.output.CardVoiceCode
+import app.heyrobot.core.output.HoldWhy
+import app.heyrobot.core.output.SessionKind
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -280,6 +298,72 @@ enum class VoiceEvent(val id: Int) {
      * [ProblemStage], c = [LoadFailure] (0: its process stopped).
      */
     GPU_FALLBACK(135),
+    // Routines and the morning brief (0.8): 140 to 159. Codes and counts only, never a routine's name, steps or words.
+    /** A trigger came: a = [TriggerKind], b = routines it started, c = routines it didn't start (ROUTINE_SKIPPED says why). */
+    ROUTINE_TRIGGER(140),
+    /** A Clock alarm ended (AlarmWatch): a = [AlarmEnd], b = minutes it rang. */
+    ALARM_END(141),
+    /** A routine its trigger didn't start: a = [SkipWhy], b = [TriggerKind]. */
+    ROUTINE_SKIPPED(142),
+    /** A run ended: a = steps, b = steps left for you (Ready cards, the unlock), c = ms. */
+    ROUTINE_RUN(143),
+    /** One step of a run: a = [StepCode], b = [StepGo], c = 1 if it didn't work. */
+    ROUTINE_STEP(144),
+    /** The brief: a = lines said, b = lines kept for the unlock, c = characters said. */
+    BRIEF_SPOKEN(145),
+    /** A Ready card was tapped: a = [StepCode] (0: a whole routine that didn't run at its time). */
+    READY_TAPPED(146),
+    /** How a run was said: a = [SpeechWay], b = 1 if the phone was locked. */
+    ROUTINE_SPEECH(147),
+    /** The one exact alarm for the next routine: a = minutes until it rings (-1: none to set), b = 1 exact, c = routines due then. */
+    ROUTINE_ALARM_SET(148),
+    /** A routine's time passed without it (Doze, a reboot): a = [MissedRun], b = minutes late. */
+    ROUTINE_MISSED(149),
+    /** A routine phrase in the panel, before the model: a = [RoutineCommandCode], b = 1 if it was done (a routine saved, run…). */
+    ROUTINE_COMMAND(150),
+    /** "Next", "skip", "repeat" or "stop" while a routine spoke: a = 1, 2, 3 or 4. */
+    BRIEF_CONTROL(151),
+    // Headset mode (0.8): 200 to 209. Codes and numbers only: a device is its number in devices.json ("device #2"), never its
+    // name or address.
+    /** A headset's button opened Robot: a = headset [EntryKind], b = 1 if locked (or EXTRA_SECURE), c = 1 if car mode was on. */
+    HEADSET_ENTRY(200),
+    /** The session's microphone route is up: a = headset [MicRoute], b = ms until it was, c = codec (0 while unknown). */
+    HEADSET_ROUTE(201),
+    /** The headset's route didn't come up: a = headset [RouteFail], b = 1 if it fell back to the phone microphone. */
+    HEADSET_ROUTE_FAILED(202),
+    /** OutputGuard held a sentence: a = output [HoldWhy], b = output [SessionKind], c = device number (0: none). */
+    OUTPUT_HELD(203),
+    /** The headset was told Robot listens (BluetoothHeadset.startVoiceRecognition): a = 1 if it was, b = ms after the button. */
+    BVRA_ACK(204),
+    /** A remembered headset or car came or went: a = 1 connected, 0 gone, b = device number, c = 1 headset, 2 car. */
+    DEVICE_PRESENCE(205),
+    /** "Is it headphones only you can hear?": a = device number, b = 1 yes, 0 no, -1 no answer. */
+    PRIVATE_ASKED(206),
+    /** A headset button while Robot held her media session: a = headset [Gesture], b = headset [ButtonAction], c = headset [RobotPhase]. */
+    BUTTON(207),
+    /** A message announced in the headset (0.7's messages): a = headset [AnnounceCode], b = 1 if its text was read. */
+    ANNOUNCE(208),
+    /** A card asked by voice in a headset or the car: a = output [CardVoiceCode], b = answers heard, c = output [AnswerCode]. */
+    SPOKEN_CARD(209),
+    // Car mode (0.8): 210 to 219.
+    /** Car mode: a = 1 on, 0 off, b = car [CarWhy]. */
+    CAR_MODE(210),
+    /** The trusted session (car functions on the lock screen): a = 1 on, 0 off, b = car [TrustEnd]. */
+    CAR_TRUSTED(211),
+    /** Kept for when you park: a = car [ParkCode] (0: the list was shown, b = how many). */
+    CAR_PARKED(212),
+    /** A call: a = car [CallWay], b = 1 for an emergency number (always the dialer). */
+    CAR_CALL(213),
+    /** A reply by voice in the car (0.7's messages): a = 1 handed to the app, 0 not, b = car [ReplyEnd]. */
+    CAR_REPLY(214),
+    /** "Driving (Robot)" Do Not Disturb: a = 1 set, 0 cleared, b = 1 if Android took it. */
+    CAR_DND(215),
+    /** "Navigate …" in car mode: a = car [NavKind]. */
+    CAR_NAV(216),
+    /** Music in car mode: a = 1 play, 2 pause, 3 next, 4 previous. */
+    CAR_MUSIC(217),
+    /** A headset or car session ended: a = headset [EndWhy], b = seconds it lasted, c = output [SessionKind]. */
+    HEADSET_END(218),
     /** 0.7, Settings › About › Send feedback opened: a = [FeedbackEntry] (where from), b = [FeedbackKind]. */
     FEEDBACK_OPENED(220),
     /**
@@ -419,6 +503,8 @@ enum class SttEnd(override val id: Int, override val title: String) : LogCode {
 
 enum class ShowSource(override val id: Int, override val title: String) : LogCode {
     WAKE(1, "wake word"), SWIPE(2, "corner swipe"), KEYGUARD(3, "lock screen"), APP(4, "button in the app"), CAPTURE(5, "back from the camera"), TEST(6, "test"),
+    /** 0.8: a headset's or car's button. */
+    HEADSET(7, "headset button"),
 }
 
 enum class BrainFail(override val id: Int, override val title: String) : LogCode {
@@ -876,6 +962,39 @@ object VoiceLogText {
             VoiceEvent.FEEDBACK_TEXTED -> "Feedback (" + code(FeedbackKind.entries, a) + ") opened in the SMS app with your number: " + sent(b, c)
             VoiceEvent.FEEDBACK_ASKED -> "Feedback asked for by voice: " + code(FeedbackKind.entries, a) + (if (b == 1) " · with words after the phrase" else "") +
                 (if (c == 1) " · phone locked: nothing opened" else "")
+            VoiceEvent.ROUTINE_TRIGGER -> "Routine trigger: " + code(TriggerKind.entries, a) + " · " + count(b, "routine") + " started" +
+                (if (c > 0) " · $c not started" else "")
+            VoiceEvent.ALARM_END -> "Clock alarm ended: " + code(AlarmEnd.entries, a) + (if (b > 0) " after $b min" else "")
+            VoiceEvent.ROUTINE_SKIPPED -> "Routine not run after " + code(TriggerKind.entries, b) + ": " + code(SkipWhy.entries, a)
+            VoiceEvent.ROUTINE_RUN -> "Routine ran: " + count(a, "step") + (if (b > 0) " · $b left for you" else "") + " · " + secs(c)
+            VoiceEvent.ROUTINE_STEP -> "Routine step: " + code(StepCode.entries, a) + " · " + code(StepGo.entries, b) + (if (c == 1) " · didn't work" else "")
+            VoiceEvent.BRIEF_SPOKEN -> "Morning brief: " + count(a, "line") + " said" + (if (b > 0) " · $b kept for the unlock" else "") + " · $c characters"
+            VoiceEvent.READY_TAPPED -> "Ready card tapped: " + (if (a == 0) "a routine that didn't run at its time" else code(StepCode.entries, a))
+            VoiceEvent.ROUTINE_SPEECH -> "Routine speech: " + code(SpeechWay.entries, a) + (if (b == 1) " · phone locked" else "")
+            VoiceEvent.ROUTINE_ALARM_SET -> if (a < 0) "Routine alarm: none to set" else
+                "Routine alarm set for $a min from now (" + (if (b == 1) "exact" else "inexact") + ") · " + count(c, "routine")
+            VoiceEvent.ROUTINE_MISSED -> "Routine time missed by $b min: " + code(MissedRun.entries, a)
+            VoiceEvent.ROUTINE_COMMAND -> "Routine command: " + code(RoutineCommandCode.entries, a) + (if (b == 1) " · done" else "")
+            VoiceEvent.BRIEF_CONTROL -> "While a routine spoke: " + (listOf("next", "skip", "repeat", "stop").getOrNull(a - 1) ?: "#$a")
+            VoiceEvent.HEADSET_ENTRY -> "Headset button: " + code(EntryKind.entries, a) + (if (b == 1) " · locked" else "") + (if (c == 1) " · car mode" else "")
+            VoiceEvent.HEADSET_ROUTE -> "Headset route up: " + code(MicRoute.entries, a) + " in $b ms"
+            VoiceEvent.HEADSET_ROUTE_FAILED -> "Headset route failed: " + code(RouteFail.entries, a) + if (b == 1) " · listening on the phone" else " · session ended"
+            VoiceEvent.OUTPUT_HELD -> "Sentence held (" + code(SessionKind.entries, b) + "): " + code(HoldWhy.entries, a) + (if (c > 0) " · device #$c" else "")
+            VoiceEvent.BVRA_ACK -> (if (a == 1) "Headset told Robot listens" else "Headset not told (no Nearby devices permission)") + " · $b ms"
+            VoiceEvent.DEVICE_PRESENCE -> (if (c == 2) "Car" else "Headset") + " device #$b " + if (a == 1) "connected" else "gone"
+            VoiceEvent.PRIVATE_ASKED -> "Private headphones? device #$a: " + when (b) { 1 -> "yes"; 0 -> "no"; else -> "no answer" }
+            VoiceEvent.BUTTON -> "Headset button: " + code(Gesture.entries, a) + " · " + code(ButtonAction.entries, b) + " while " + code(RobotPhase.entries, c)
+            VoiceEvent.ANNOUNCE -> "Message in the headset: " + code(AnnounceCode.entries, a) + if (b == 1) " · read" else ""
+            VoiceEvent.SPOKEN_CARD -> "Card by voice: " + code(CardVoiceCode.entries, a) + (if (b > 0) " · " + count(b, "answer") + " · " + code(AnswerCode.entries, c) else "")
+            VoiceEvent.CAR_MODE -> "Car mode " + (if (a == 1) "on: " else "off: ") + code(CarWhy.entries, b)
+            VoiceEvent.CAR_TRUSTED -> "Car mode's unlocked features " + (if (a == 1) "on: " else "off: ") + code(TrustEnd.entries, b)
+            VoiceEvent.CAR_PARKED -> if (a == 0) "From your drive: " + count(b, "thing") else "Kept for when you park: " + code(ParkCode.entries, a)
+            VoiceEvent.CAR_CALL -> "Call: " + code(CallWay.entries, a) + if (b == 1) " · emergency number" else ""
+            VoiceEvent.CAR_REPLY -> (if (a == 1) "Reply handed to the app" else "Reply not sent: " + code(ReplyEnd.entries, b))
+            VoiceEvent.CAR_DND -> "Driving Do Not Disturb " + (if (a == 1) "set" else "cleared") + if (b == 1) "" else " (Android didn't take it)"
+            VoiceEvent.CAR_NAV -> "Car navigation: " + code(NavKind.entries, a)
+            VoiceEvent.CAR_MUSIC -> "Car music: " + (listOf("play", "pause", "next", "previous").getOrNull(a - 1) ?: "#$a")
+            VoiceEvent.HEADSET_END -> code(SessionKind.entries, c).replaceFirstChar { it.uppercase() } + " session ended: " + code(EndWhy.entries, a) + " after $b s"
         }
     }
 

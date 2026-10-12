@@ -47,10 +47,15 @@ object SettingsRoutes {
     const val MEMORY = "memory"
     const val ADVANCED = "advanced"
     const val ABOUT = "about"
+    /** 0.8: Settings › Routines, the morning brief's page and each routine's (routines.json, not settings.json). */
+    const val ROUTINES = "routines"
     /** Settings › About › Updates (the built-in updater); its notifications open it too. */
     const val UPDATES = "updates"
     /** 0.7: Settings › Messages (messages.json). */
     const val MESSAGES = "messages"
+    /** 0.8: Settings › Headset and Settings › Car mode (with Add your car), from headset.json, car.json, places.json, devices.json. */
+    const val HEADSET = "headset"
+    const val CAR = "car"
     /** Settings › Advanced › ADB fixes › one fix, by its id (core AdbFixes). */
     fun adbFix(id: String) = "adb/$id"
     /** Settings › People › Notification access: the three steps. */
@@ -76,6 +81,10 @@ fun SettingsNav(
 ) {
     // Settings › Model's pages (the Model tab's rows open them).
     if (route.startsWith("model/") && ModelRoute(route, s, update, snap, busy, a, snackbar, onBack)) return
+    // 0.8: Settings › Routines and its pages.
+    if (route == SettingsRoutes.ROUTINES || route.startsWith(SettingsRoutes.ROUTINES + "/")) return RoutinesRoute(route, s, snap, a, snackbar, onBack)
+    // 0.8: Settings › Headset, Settings › Car mode and Add your car.
+    if (route == SettingsRoutes.HEADSET || route == SettingsRoutes.CAR || route.startsWith(SettingsRoutes.CAR + "/")) return HandsFreeRoute(route, a, snackbar, onBack)
     when (route) {
         SettingsRoutes.DISPLAY -> {
             val ctx = LocalContext.current
@@ -205,7 +214,7 @@ object AppRoutes {
         i.getStringExtra(AppPages.EXTRA) == AppPages.FEEDBACK ->
             AppPages.FEEDBACK + (FeedbackKind.of(i.getStringExtra(AppPages.EXTRA_FEEDBACK_KIND))?.let { ":" + it.name.lowercase() } ?: "")
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.UPDATES ||
+            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.ROUTINES || it == AppPages.UPDATES ||
             it == AppPages.MEMORY || it == AppPages.SETTINGS }
     }
 
@@ -220,6 +229,7 @@ object AppRoutes {
         r == AppPages.CONVERSATION_SETTINGS -> Target(page = Page.ConversationSettings)
         r == AppPages.HELPERS -> Target(page = Page.Helpers)
         r == AppPages.MODEL -> Target(tab = Tab.MODEL)
+        r == AppPages.ROUTINES -> Target(page = Page.Settings(SettingsRoutes.ROUTINES))
         r == AppPages.UPDATES -> Target(page = Page.Settings(SettingsRoutes.UPDATES))
         r == AppPages.SETTINGS -> Target(tab = Tab.SETTINGS)
         r == AppPages.MEMORY -> Target(page = Page.Settings(SettingsRoutes.MEMORY))

@@ -60,6 +60,16 @@ class AppRoutesTest {
         assertEquals(AppRoutes.Target(page = Page.ConversationSettings), open(Intent("android.service.quicksettings.action.QS_TILE_PREFERENCES")))
     }
 
+    @Test fun aRoutinesNotificationOpensSettingsRoutines() {
+        // 0.8: "Your morning brief is ready · Open Robot" when Robot isn't the assistant, and a run's summary.
+        assertEquals(AppRoutes.Target(page = Page.Settings(SettingsRoutes.ROUTINES)), open(main().putExtra(AppPages.EXTRA, AppPages.ROUTINES)))
+        // A routine's page and the brief's sit under Settings › Routines.
+        assertEquals(Page.Settings(SettingsRoutes.ROUTINES), parentOf(Page.Settings(RoutineRoutes.routine("r-1"))))
+        assertEquals(Page.Settings(SettingsRoutes.ROUTINES), parentOf(Page.Settings(RoutineRoutes.BRIEF)))
+        assertEquals(Page.Settings(SettingsRoutes.ROUTINES), parentOf(Page.Settings(RoutineRoutes.NEW)))
+        assertNull(parentOf(Page.Settings(SettingsRoutes.ROUTINES)))
+    }
+
     @Test fun theUpdatersNotifications() {
         // "Robot … is available", the download's and the install's notices (update/UpdateNotices): Settings › About › Updates.
         assertEquals(AppRoutes.Target(page = Page.Settings(SettingsRoutes.UPDATES)),

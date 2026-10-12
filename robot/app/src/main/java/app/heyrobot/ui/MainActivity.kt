@@ -76,6 +76,7 @@ import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.RecognizerKeeper
+import app.heyrobot.sys.RoutineIntents
 import app.heyrobot.update.Updater
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
@@ -92,6 +93,7 @@ import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.model.ModelScreen
 import app.heyrobot.ui.settings.AppRoutes
+import app.heyrobot.ui.settings.HandsFreeNoticeLine
 import app.heyrobot.ui.settings.SettingsNav
 import app.heyrobot.ui.settings.SettingsRoot
 import app.heyrobot.ui.settings.SettingsRoutes
@@ -145,6 +147,12 @@ class MainActivity : ComponentActivity() {
 
     /** The pages other screens and apps may open (ui/settings AppRoutes). */
     private fun routeOf(i: Intent?): String? = AppRoutes.of(i)
+
+    /** 0.8: opens the panel to run a routine or show a Ready card ([key]: sys RoutineIntents' show argument). */
+    fun routine(key: String, value: String): Boolean = showAssist(Bundle().apply {
+        putString("robot_source", "app")
+        putString(key, value)
+    })
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
     fun talk(conversation: String? = null): Boolean = showAssist(Bundle().apply {
@@ -609,6 +617,8 @@ fun RobotAppUi(activity: MainActivity) {
             else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putString(Cmd.EXTRA_RUN, run.name) })
         },
         askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
+        // 0.8: Nearby devices and the Phone permission, from their own rows in Settings › Headset and Car mode.
+        askPermission = { p -> peoplePermissions.launch(arrayOf(p)) },
         // 0.4.7: the GPU again after it failed (the voice process reads the file at the next load), and the problem report.
         tryGpuAgain = {
             scope.launch {
@@ -658,6 +668,14 @@ fun RobotAppUi(activity: MainActivity) {
         openUsageAccess = {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
             if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
+        },
+        runRoutine = { id ->
+            if (snap.facts?.active != true) { page = Page.Setup(); say("Make Robot your digital assistant first: routines run in the assistant.") }
+            else if (!activity.routine(RoutineIntents.ARG_ROUTINE, id)) say("Couldn't open the assistant.")
+        },
+        openReady = { key ->
+            if (snap.facts?.active != true) { page = Page.Setup(); say("Make Robot your digital assistant first.") }
+            else if (!activity.routine(RoutineIntents.ARG_READY, key)) say("Couldn't open the assistant.")
         },
     )
 
@@ -722,6 +740,8 @@ fun RobotAppUi(activity: MainActivity) {
                         onDismiss = { updateSettings(settings.copy(safetyNotice = false)) },
                     )
                 }
+                // Once, after updating to 0.8: routines, the headset button and car mode (core HandsFreeNotice).
+                if (tab == Tab.HOME || tab == Tab.SETTINGS) HandsFreeNoticeLine(onOpen = { page = Page.Settings(SettingsRoutes.HEADSET) })
                 val m = Modifier.weight(1f)
                 when (tab) {
                     Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
@@ -801,6 +821,11 @@ class AppActions(
     /** 0.5.0, phase 5.3: "Your voice" (voice process), and deleting the voiceprint (file and key). */
     val openVoiceprint: () -> Unit = {},
     val deleteVoiceprint: () -> Unit = {},
+    /** 0.8: a runtime permission asked from its own settings row (Nearby devices, Phone). */
+    val askPermission: (String) -> Unit = {},
+    /** 0.8: the panel opens to run a routine (Run now), or with a Ready card (its key). */
+    val runRoutine: (String) -> Unit = {},
+    val openReady: (String) -> Unit = {},
     /** 0.4.7: Settings › Model › "Try the GPU again" after it failed. */
     val tryGpuAgain: () -> Unit = {},
     /** 0.4.7: a model problem's report, as you see it before you copy or share it (blocking: call it off the main thread). */

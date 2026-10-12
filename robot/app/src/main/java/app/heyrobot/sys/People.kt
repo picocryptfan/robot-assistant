@@ -379,6 +379,8 @@ object AppPages {
     const val EXTRA_LINE = "robot_transcript_line"
     /** Settings › Model, the Model tab (0.4.3: from a chat-only model's answer to an action). */
     const val MODEL = "model"
+    /** 0.8: Settings › Routines (a routine's notification when Robot isn't the assistant). */
+    const val ROUTINES = "routines"
     /** Settings › Updates (the updater's notifications). */
     const val UPDATES = "updates"
     /** 0.7.0: the Settings tab, from the panel's Settings button (both looks). */

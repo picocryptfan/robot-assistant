@@ -52,6 +52,7 @@ class RobotVoiceService : VoiceInteractionService() {
             SRC_KEYGUARD -> ShowSource.KEYGUARD
             SRC_APP -> ShowSource.APP
             SRC_CAPTURE -> ShowSource.CAPTURE
+            SRC_HEADSET -> ShowSource.HEADSET
             else -> ShowSource.SWIPE
         })
     }
@@ -84,6 +85,8 @@ class RobotVoiceService : VoiceInteractionService() {
         const val SRC_APP = "app"
         /** Back from the camera or the photo picker. */
         const val SRC_CAPTURE = "capture"
+        /** 0.8: a headset's or car's button (HeadsetEntryActivity), or the car screen's Talk. */
+        const val SRC_HEADSET = "headset"
     }
 }
 

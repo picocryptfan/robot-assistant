@@ -59,7 +59,17 @@ class VoiceLogTest {
             MtVerdict.entries, LangCode.entries, IoCode.entries, MicEvent.entries, ThermalStep.entries, HelperCode.entries, AppShareCode.entries,
             ExportKind.entries, ClaudeStage.entries, ClaudeErrorKind.entries, MtError.entries, ModelCode.entries, BackendCode.entries,
             FallbackWhy.entries, LoadFailure.entries, ClaudeEnd.entries, ClaudeFail.entries, ClaudeModelCode.entries, LocationCode.entries,
-            NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries, ProblemStage.entries,
+            NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries,
+            ProblemStage.entries, TriggerKind.entries, AlarmEnd.entries, SkipWhy.entries, StepCode.entries, StepGo.entries, MissedRun.entries,
+            SpeechWay.entries, RoutineCommandCode.entries,
+            // 0.8, headset and car mode.
+            app.heyrobot.core.headset.EntryKind.entries, app.heyrobot.core.headset.MicRoute.entries, app.heyrobot.core.headset.RouteFail.entries,
+            app.heyrobot.core.output.HoldWhy.entries, app.heyrobot.core.output.SessionKind.entries, app.heyrobot.core.headset.Gesture.entries,
+            app.heyrobot.core.headset.ButtonAction.entries, app.heyrobot.core.headset.RobotPhase.entries, app.heyrobot.core.headset.AnnounceCode.entries,
+            app.heyrobot.core.output.CardVoiceCode.entries, app.heyrobot.core.output.AnswerCode.entries, app.heyrobot.core.car.CarWhy.entries,
+            app.heyrobot.core.car.TrustEnd.entries, app.heyrobot.core.car.ParkCode.entries, app.heyrobot.core.car.CallWay.entries,
+            app.heyrobot.core.car.ReplyEnd.entries, app.heyrobot.core.car.NavKind.entries, app.heyrobot.core.headset.EndWhy.entries,
+            // 0.7, memory and feedback.
             app.heyrobot.core.memory.MemOrigin.entries, app.heyrobot.core.memory.MemKindCode.entries, app.heyrobot.core.memory.MemForget.entries,
             app.heyrobot.core.memory.MemLock.entries, app.heyrobot.core.memory.MemCommandCode.entries,
             FeedbackKind.entries, FeedbackEntry.entries)
@@ -92,6 +102,22 @@ class VoiceLogTest {
         // 0.4.7's GPU fallback keeps the id it shipped with: 0.6.0 left 135 free.
         assertEquals(135, VoiceEvent.GPU_FALLBACK.id)
         assertEquals(model, VoiceEvent.entries.filter { it.id in 130..139 })
+        // 0.8's routines use 140 to 159, in the order Routine.kt lists them; never a routine's name or words (the enums
+        // and counts only, as the recording API's test checks).
+        val routines = listOf(VoiceEvent.ROUTINE_TRIGGER, VoiceEvent.ALARM_END, VoiceEvent.ROUTINE_SKIPPED, VoiceEvent.ROUTINE_RUN,
+            VoiceEvent.ROUTINE_STEP, VoiceEvent.BRIEF_SPOKEN, VoiceEvent.READY_TAPPED, VoiceEvent.ROUTINE_SPEECH, VoiceEvent.ROUTINE_ALARM_SET,
+            VoiceEvent.ROUTINE_MISSED, VoiceEvent.ROUTINE_COMMAND, VoiceEvent.BRIEF_CONTROL)
+        assertEquals((140..151).toList(), routines.map { it.id })
+        assertEquals(routines, VoiceEvent.entries.filter { it.id in 140..159 })
+        // 0.8's headset mode uses 200 to 209 and car mode 210 to 219 (the design's 150 to 169 went to routines and web search),
+        // in the order core output's HandsFree.kt reserved them; 219 is spare.
+        val headset = listOf(VoiceEvent.HEADSET_ENTRY, VoiceEvent.HEADSET_ROUTE, VoiceEvent.HEADSET_ROUTE_FAILED, VoiceEvent.OUTPUT_HELD, VoiceEvent.BVRA_ACK,
+            VoiceEvent.DEVICE_PRESENCE, VoiceEvent.PRIVATE_ASKED, VoiceEvent.BUTTON, VoiceEvent.ANNOUNCE, VoiceEvent.SPOKEN_CARD)
+        assertEquals((200..209).toList(), headset.map { it.id })
+        val car = listOf(VoiceEvent.CAR_MODE, VoiceEvent.CAR_TRUSTED, VoiceEvent.CAR_PARKED, VoiceEvent.CAR_CALL, VoiceEvent.CAR_REPLY, VoiceEvent.CAR_DND,
+            VoiceEvent.CAR_NAV, VoiceEvent.CAR_MUSIC, VoiceEvent.HEADSET_END)
+        assertEquals((210..218).toList(), car.map { it.id })
+        assertEquals(headset + car, VoiceEvent.entries.filter { it.id in 200..219 })
         // 0.7's memory events use 180 to 189; 183 (the search model) and 186 to 187 (transcripts) stay reserved for 7.4 and 7.5.
         val memory = listOf(VoiceEvent.MEM_SAVE, VoiceEvent.MEM_FORGET, VoiceEvent.MEM_RECALL, VoiceEvent.MEM_SUGGEST, VoiceEvent.MEM_LOCKED,
             VoiceEvent.MEM_COMMAND, VoiceEvent.MEM_KEY)
@@ -115,8 +141,8 @@ class VoiceLogTest {
         assertEquals((220..225).toList(), feedback.map { it.id })
         assertEquals(feedback, VoiceEvent.entries.filter { it.id in 220..229 })
         assertTrue(VoiceEvent.entries.none { it.name.startsWith("FEEDBACK_") && it.id !in 220..229 })
-        // Memory's (180 to 189), messages' (190 to 199) and feedback's (220 to 229) events never share an id with each other
-        // or with any other event, and no id is used twice.
+        // Routines' (140 to 159), memory's (180 to 189), messages' (190 to 199), headset's (200 to 209), car's (210 to 219)
+        // and feedback's (220 to 229) events never share an id with each other or with any other event, and no id is used twice.
         assertEquals(VoiceEvent.entries.size, VoiceEvent.entries.map { it.id }.toSet().size)
         // Every model and backend has a code of its own.
         assertEquals(BrainModel.entries.size, BrainModel.entries.map { ModelCode.of(it) }.toSet().size)
@@ -310,6 +336,26 @@ class VoiceLogTest {
         assertEquals("Segment heard again in two halves (4.2 s of speech): 3 words, then 11",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_REHEARD, 4200, 3, 11)))
         assertEquals("Languages this minute: 8 French · 5 English · 1 not sure", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_LANG, 8, 5, 1)))
+        // 0.8: routines, codes and counts only.
+        assertEquals("Routine trigger: an alarm turned off · 1 routine started · 1 not started",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_TRIGGER, TriggerKind.ALARM.id, 1, 1)))
+        assertEquals("Clock alarm ended: snoozed after 2 min", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ALARM_END, AlarmEnd.SNOOZED.id, 2)))
+        assertEquals("Routine not run after the first unlock: already ran today",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_SKIPPED, SkipWhy.ALREADY_RAN.id, TriggerKind.UNLOCK.id)))
+        assertEquals("Routine ran: 3 steps · 1 left for you · 2.5 s", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_RUN, 3, 1, 2500)))
+        assertEquals("Routine step: open app · ready card", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_STEP, StepCode.OPEN_APP.id, StepGo.READY.id)))
+        assertEquals("Routine step: weather · ran · didn't work",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_STEP, StepCode.WEATHER.id, StepGo.RUN.id, 1)))
+        assertEquals("Morning brief: 4 lines said · 3 kept for the unlock · 212 characters", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BRIEF_SPOKEN, 4, 3, 212)))
+        assertEquals("Ready card tapped: maps search", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.READY_TAPPED, StepCode.MAPS_SEARCH.id)))
+        assertEquals("Ready card tapped: a routine that didn't run at its time", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.READY_TAPPED, 0)))
+        assertEquals("Routine speech: Android refused it: a notification to tap · phone locked",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_SPEECH, SpeechWay.NOTIFICATION.id, 1)))
+        assertEquals("Routine alarm set for 540 min from now (exact) · 2 routines", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_ALARM_SET, 540, 1, 2)))
+        assertEquals("Routine alarm: none to set", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_ALARM_SET, -1)))
+        assertEquals("Routine time missed by 95 min: offered on a Ready card", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_MISSED, MissedRun.OFFER.id, 95)))
+        assertEquals("Routine command: make a routine · done", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.ROUTINE_COMMAND, RoutineCommandCode.CREATE.id, 1)))
+        assertEquals("While a routine spoke: repeat", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.BRIEF_CONTROL, 3)))
         assertEquals("now", VoiceLogText.ago(1_000))
         assertEquals("12 s ago", VoiceLogText.ago(12_000))
         assertEquals("3 min ago", VoiceLogText.ago(200_000))

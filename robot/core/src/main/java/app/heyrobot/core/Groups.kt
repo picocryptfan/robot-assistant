@@ -202,7 +202,7 @@ object ToolRouter {
      * ClaudeSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch).
      */
     fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, memory: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
-        t.group in groups && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
+        t.group in groups && t.forModel && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
             (t != ToolName.ASK_CLAUDE || askClaude) && (t.group != ToolGroup.MEMORY || memory)
     }
 

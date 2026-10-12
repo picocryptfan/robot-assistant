@@ -209,7 +209,11 @@ class ProcessIsolationTest {
             // 0.5.0, phase 5.3: "Your voice" uses the speaker model and the voiceprint's key, both only in :voice.
             "app.heyrobot.assistant.conversation.VoiceprintActivity",
             // 0.5.0, phase 5.6: summaries reach Robot's model and the Claude key, both only from :voice.
-            "app.heyrobot.assistant.conversation.SummaryActivity")
+            "app.heyrobot.assistant.conversation.SummaryActivity",
+            // 0.8, routines: the exact alarm's receiver and the speaking service, where the voice and the trigger hub are.
+            "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService",
+            // 0.8, headset and car mode: the headset button's trampoline and the car screen, where the sessions are.
+            "app.heyrobot.assistant.headset.HeadsetEntryActivity", "app.heyrobot.assistant.car.CarModeActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         // 0.4.5: llama.cpp's own process, isolated: Android runs it under a uid of its own with no permissions, no network
@@ -253,8 +257,31 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
             "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
             "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider",
-            "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver"))
+            "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService",
+            "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver",
+            "app.heyrobot.assistant.car.CarModeActivity"))
             assertEquals(n, "false", exported(n))
+        // 0.8: the headset button's trampoline is exported (Android starts it for a headset's button) with exactly the three
+        // actions core HeadsetEntry lists and no other filter, no history, not in Recents, shown over the lock screen only to
+        // pass the press on; no permission guards it (Bluetooth and the system start it).
+        val entry = c("app.heyrobot.assistant.headset.HeadsetEntryActivity")
+        assertEquals("true", exported("app.heyrobot.assistant.headset.HeadsetEntryActivity"))
+        assertEquals("", perm("app.heyrobot.assistant.headset.HeadsetEntryActivity"))
+        val entryActions = entry.getElementsByTagName("action").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }
+        assertEquals(app.heyrobot.core.headset.HeadsetEntry.ACTIONS, entryActions)
+        assertEquals(3, entry.getElementsByTagName("intent-filter").length)
+        assertTrue(entry.getElementsByTagName("data").length == 0)
+        for (a in listOf("noHistory", "excludeFromRecents", "showWhenLocked")) assertEquals(a, "true", entry.getAttributeNS(ns, a))
+        assertEquals(0, c("app.heyrobot.assistant.car.CarModeActivity").getElementsByTagName("intent-filter").length)
+        // 0.8: routines speak from a mediaPlayback foreground service (Android 17's background audio), never a short one;
+        // the receiver hears only the system's broadcasts that make the exact alarm wrong, after the first unlock.
+        assertEquals("mediaPlayback", c("app.heyrobot.assistant.routines.RoutineSpeakingService").getAttributeNS(ns, "foregroundServiceType"))
+        assertEquals("", perm("app.heyrobot.assistant.routines.RoutineSpeakingService"))
+        val routineActions = c("app.heyrobot.assistant.routines.RoutineAlarmReceiver").getElementsByTagName("action").let { nl ->
+            (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
+        assertEquals(setOf("android.intent.action.BOOT_COMPLETED", "android.intent.action.TIME_SET", "android.intent.action.TIMEZONE_CHANGED",
+            "android.intent.action.MY_PACKAGE_REPLACED"), routineActions)
+        assertEquals("", c("app.heyrobot.assistant.routines.RoutineAlarmReceiver").getAttributeNS(ns, "directBootAware"))
         // 0.5.0: the session is a microphone foreground service; the tile only the system binds.
         assertEquals("microphone", c("app.heyrobot.assistant.conversation.ConversationService").getAttributeNS(ns, "foregroundServiceType"))
         assertEquals("true", exported("app.heyrobot.assistant.conversation.ConversationTileService"))
@@ -318,13 +345,27 @@ class ProcessIsolationTest {
             "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
             // 0.5.0: conversation mode's microphone foreground service, and its wake lock while a session runs.
             "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MICROPHONE", "android.permission.WAKE_LOCK",
+            // 0.8: a routine speaking with the screen off (RoutineSpeakingService). Normal, no prompt.
+            "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
             // The updater: installing Robot's own update (a special app access you turn on yourself)...
             "android.permission.REQUEST_INSTALL_PACKAGES",
             // ... and, only for "Install updates without asking" (off by default), asking Android to skip its confirmation for
             // Robot's own update: without it Android ignores USER_ACTION_NOT_REQUIRED. A normal permission.
             "android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION",
             // (0.7, Send feedback, needs none: the share sheet, the clipboard, your SMS app and your browser take what you send.)
+            // 0.8, headset and car mode, each asked for only from its own settings row: Nearby devices (the headset told Robot
+            // listens, devices known exactly), the Phone permission ("Call directly after a spoken yes"), and Do Not Disturb
+            // access (Robot's own "Driving (Robot)" rule; a normal permission plus the access you grant in Android's settings).
+            "android.permission.BLUETOOTH_CONNECT", "android.permission.CALL_PHONE", "android.permission.ACCESS_NOTIFICATION_POLICY",
         ), used)
+        // 0.8: routines need nothing else: USE_EXACT_ALARM (above) rather than SCHEDULE_EXACT_ALARM; car mode reads no phone
+        // state, never scans for Bluetooth devices and never sends a text itself (no SEND_SMS, READ_PHONE_STATE, BLUETOOTH_SCAN).
+        assertTrue(listOf("SCHEDULE_EXACT_ALARM", "FOREGROUND_SERVICE_SHORT_SERVICE", "READ_PHONE_STATE", "BLUETOOTH_SCAN", "BLUETOOTH",
+            "BLUETOOTH_ADMIN", "BLUETOOTH_PRIVILEGED", "MANAGE_OWN_CALLS", "ANSWER_PHONE_CALLS", "READ_CALL_LOG").none { "android.permission.$it" in used })
+        // The three are asked only from their rows (Settings › Headset and Car mode, the main app's permission action), never
+        // at start: no other code asks for them.
+        assertEquals(listOf("app/ui/settings/HandsFreeSettings.kt"), usersOf(Regex("""Manifest\.permission\.(CALL_PHONE|BLUETOOTH_CONNECT)\b"""),
+            ours.filterKeys { it.startsWith("app/ui/") }))
         // Never installing or deleting other apps, never asking to update apps it didn't install, and no user-initiated job or
         // foreground service type for the updater's downloads (FOREGROUND_SERVICE itself is conversation mode's, above).
         assertTrue(listOf("INSTALL_PACKAGES", "DELETE_PACKAGES", "REQUEST_DELETE_PACKAGES", "INSTALL_PACKAGE_UPDATES", "INSTALL_SELF_UPDATES",
@@ -371,6 +412,10 @@ class ProcessIsolationTest {
         assertTrue("claude.ai" in hosts)
         val mimes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "mimeType") } }.toSet()
         assertTrue("vnd.android.cursor.dir/event" in mimes)
+        // 0.8: calls (tel: for the dialer and ACTION_CALL) and the headset button's three intents (who answers them).
+        val queried = queries.getElementsByTagName("action").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
+        assertTrue(queried.containsAll(listOf("android.intent.action.DIAL", "android.intent.action.CALL") + app.heyrobot.core.headset.HeadsetEntry.ACTIONS))
+        assertTrue("tel" in schemes)
     }
 
     /**
@@ -783,6 +828,47 @@ class ProcessIsolationTest {
     }
 
     /**
+     * 0.8, routines and the morning brief (design §2.5, §2.8): nothing a routine holds or says goes online except the
+     * weather to Open-Meteo through the weather tool's own code, nothing reaches a model or a helper, no routine's words
+     * reach a log line, the one runtime receiver another app may reach is Clock's two alarm broadcasts, the alarm is never
+     * Android's "next alarm", and the main app names :voice's receiver by its class only.
+     */
+    @Test fun routinesStayOnThePhone() {
+        val routines = ours.filterKeys { it.startsWith("app/assistant/routines/") || it == "app/sys/Routines.kt" || it.startsWith("app/ui/settings/Routine") ||
+            it in setOf("core/core/Routine.kt", "core/core/RoutineGate.kt", "core/core/RoutineRouter.kt", "core/core/RoutineSchedule.kt", "core/core/RoutineStore.kt",
+                "core/core/RoutineRuntime.kt", "core/core/Brief.kt", "core/core/AlarmWatch.kt") }
+        assertTrue(routines.keys.toString(), routines.size >= 15)
+        // No network of their own, no model, no helper; the weather goes through ToolExecutor (Open-Meteo's only client).
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bOpenMeteoClient\b|\bNominatimClient\b|\bBrain(Client|Keeper|Link|OneShots)\b|""" +
+            """\bHelper(Link|Session|Http)\b|\bClaude(Session|Client)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b"""), routines))
+        assertEquals(listOf("app/assistant/routines/RoutineRunner.kt"), usersOf(Regex("""\.briefWeather\(\)"""), routines))
+        // Logs: codes and numbers only; never a routine's name, steps, words or a reminder.
+        val leaky = Regex("""RLog\.[iw]\([^\n]*\b(name|text|lines|describe|reminder|title|said)\b""")
+        assertEquals(emptyList<String>(), usersOf(leaky, routines))
+        // The only receiver another app can reach: Clock's ALARM_ALERT and ALARM_DONE, in the trigger hub.
+        assertEquals(listOf("app/assistant/routines/RoutineHub.kt"), usersOf(Regex("""\bRECEIVER_EXPORTED\b""")))
+        val hub = withoutComments(File(java("app"), "app/heyrobot/assistant/routines/RoutineHub.kt"))
+        assertEquals(1, Regex("""RECEIVER_EXPORTED""").findAll(hub).count())
+        assertTrue(hub.contains("\"com.android.deskclock.ALARM_ALERT\"") && hub.contains("\"com.android.deskclock.ALARM_DONE\""))
+        // One exact allow-while-idle alarm, never setAlarmClock (it would become Android's "next alarm").
+        assertEquals(emptyList<String>(), usersOf(Regex("""\.setAlarmClock\(""")))
+        assertEquals(listOf("app/sys/Assistant.kt", "app/sys/Routines.kt"), usersOf(Regex("""\.setExactAndAllowWhileIdle\(""")))
+        // The main app reaches :voice's receiver by its class name, which must be the real one.
+        assertTrue(File(java("app"), "app/heyrobot/sys/Routines.kt").readText().contains("\"app.heyrobot.assistant.routines.RoutineAlarmReceiver\""))
+        assertTrue(File(java("app"), "app/heyrobot/assistant/routines/RoutineAlarmReceiver.kt").isFile)
+        // The speaking service is never sticky and never started at boot.
+        val svc = code(File(java("app"), "app/heyrobot/assistant/routines/RoutineSpeakingService.kt"))
+        assertTrue(svc.contains("START_NOT_STICKY") && !Regex("""return START_STICKY\b""").containsMatchIn(svc))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bRoutineSpeakingService\b"""), ours.filterKeys { it.startsWith("app/boot/") }))
+        // Saving a routine by voice goes through its card (RoutineDraft.save after the card's answer), never straight to the file;
+        // a routine from the screen's text needs the tap.
+        val panel = code(File(java("app"), "app/heyrobot/assistant/routines/PanelRoutines.kt"))
+        assertEquals(1, Regex("""\bdraft\.save\(""").findAll(panel).count())
+        assertTrue(Regex("""val yes = host\.ask\([^\n]*\n[^\n]*tapOnly = if \(draft\.fromContent\)""").containsMatchIn(panel))
+        assertTrue(panel.indexOf("val yes = host.ask(") < panel.indexOf("draft.save("))
+    }
+
+    /**
      * 0.5.0, phase 5.3 (docs/conversation-mode.md 3, 8): the speaker model is downloaded by the main app only, like every
      * model; the voiceprint is decrypted in the :voice process only, seeds the session and nothing else; nothing about
      * speakers goes online or into a log but numbers.
@@ -981,9 +1067,9 @@ class ProcessIsolationTest {
         for (w in listOf("saidAloud(page.heard.joinToString(\"\"))", "saidAloud(summary)", "saidAloud(said)",
             "if (p.sendSource == ReplySource.MODEL_DRAFT) saidAloud(p.sendText)")) assertTrue(w, panel.contains(w))
         val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
-        // (Six: the chat turn, a helper's, the Claude app's hand-off, texting without the model, 0.7 memory's "remember
-        // that …" in a conversation that holds a message, and 0.7.0's "free up memory" card.)
-        assertEquals(6, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
+        // (Seven: the chat turn, a helper's, the Claude app's hand-off, texting without the model, 0.7 memory's "remember
+        // that …" in a conversation that holds a message, 0.7.0's "free up memory" card, and 0.8's routine steps and calls.)
+        assertEquals(7, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         assertEquals(Regex("""TurnRunner\(""").findAll(pc).count(), Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         // Nothing of messages in :brain or :llama's code.
         assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.core\.messages\b"""), ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("claude/") }))
@@ -1012,14 +1098,24 @@ class ProcessIsolationTest {
         val pc = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
         // A message's words heard back (PanelMessages.route) come first, before memory's router.
         val msgRoute = pc.indexOf("val msgCmd = if (q.isNotEmpty() && st.draft == null) PanelMessages.route(q, fromVoice) else null")
-        val memRoute = pc.indexOf("val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null)\n            MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null")
+        val memRoute = pc.indexOf("val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree)\n            MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null")
         assertTrue(msgRoute in 0 until memRoute)
         // Send feedback's phrases after the messages router and its echo check (a message read aloud saying "report a bug: …" is
         // the message's), before memory, the helpers and the model.
         val fbRoute = pc.indexOf("val fbCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null) FeedbackRouter.route(q) else null")
-        val freeUp = pc.indexOf("val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null) FreeUp.asked(q) else null")
-        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null && freeAsk == null) ClaudeRouter.route(q, names) else null")
-        assertTrue(msgRoute in 0 until fbRoute && fbRoute < memRoute && memRoute < freeUp && freeUp < helpers)
+        val freeUp = pc.indexOf("val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && memRoute == null)\n            FreeUp.asked(q) else null")
+        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && memRoute == null && freeAsk == null)\n            ClaudeRouter.route(q, names) else null")
+        // 0.8: routines' phrases, then headset and car mode's, after feedback's and before memory's: the panel's order is the
+        // messages router and its echo check, conversation mode, feedback, routines, headset and car, memory, the helpers, the model.
+        val conv = pc.indexOf("val convCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null) ConversationRouter.route(q, ConversationSession.running) else null")
+        val routines = pc.indexOf("val routineCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.claudeMode)\n            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null")
+        val handsFree = pc.indexOf("val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&\n            !_state.value.claudeMode) PanelHandsFree.route(q) else null")
+        assertTrue(msgRoute in 0 until conv && conv < fbRoute && fbRoute < routines && routines < handsFree && handsFree < memRoute && memRoute < freeUp &&
+            freeUp < helpers)
+        val runs = listOf("msgCmd != null -> PanelMessages.run(", "convCmd != null -> conversationCommand(", "fbCmd != null -> feedbackCommand(",
+            "routineCmd != null -> PanelRoutines.handle(", "handsFreeCmd != null -> PanelHandsFree.handle(", "memRoute != null -> memoryCommand(",
+            "freeAsk != null -> freeMemoryCommand(").map { pc.indexOf(it) }
+        assertTrue(runs.toString(), runs.first() >= 0 && runs.zipWithNext().all { (a, b) -> a < b })
         val run = pc.indexOf("msgCmd != null -> PanelMessages.run(replyId, msgCmd)")
         assertTrue(run in 0 until pc.indexOf("fbCmd != null -> feedbackCommand(replyId, fbCmd)") &&
             pc.indexOf("fbCmd != null -> feedbackCommand(replyId, fbCmd)") < pc.indexOf("memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)"))

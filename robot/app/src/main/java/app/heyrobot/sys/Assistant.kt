@@ -81,6 +81,9 @@ data class AssistantFacts(
     val notificationAccess: Boolean = false,
     /** 0.4.0: "Learn names from Cheogram notifications" is on (Settings › People): only then is notification access asked for. */
     val learnFromCheogram: Boolean = false,
+    /** 0.8: "Headset button opens Robot", and who answers its three intents now (null: not read). */
+    val headsetButtonOn: Boolean = true,
+    val headsetButton: Map<String, app.heyrobot.core.headset.ButtonHandler>? = null,
 ) {
     /** Claude's masked key (null: none saved). */
     val claudeKey: String? get() = keys[app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID]
@@ -134,6 +137,8 @@ object Assistant {
             mediaPartial = PhoneInfo.mediaPartial(ctx),
             notificationAccess = NotificationAccess.granted(ctx),
             learnFromCheogram = try { SettingsStore.load(ctx).learnFromCheogram } catch (_: Exception) { false },
+            headsetButtonOn = HandsFreeFiles.store(ctx).headset().settings.buttonOpensRobot,
+            headsetButton = HeadsetButton.handlers(ctx),
         )
     }
 

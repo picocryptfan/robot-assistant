@@ -38,6 +38,7 @@ class ActionLog : ArrayList<String>() {
         askMedia = { add("askMedia") }, transcribe = { add("transcribe") }, interpret = { add("interpret") },
         openTranscriptionCheck = { add("openTranscriptionCheck") }, mtDownload = { add("mtDownload") }, mtCancel = { add("mtCancel") },
         mtDelete = { add("mtDelete") }, openVoiceprint = { add("openVoiceprint") }, deleteVoiceprint = { add("deleteVoiceprint") },
+        runRoutine = { add("runRoutine $it") }, openReady = { add("openReady $it") }, askPermission = { add("askPermission $it") },
         tryGpuAgain = { add("tryGpuAgain") }, reportText = { "REPORT for ${it.model.id}" }, copyReport = { add("copyReport $it") },
         shareReport = { add("shareReport $it") }, dismissProblem = { add("dismissProblem ${it.time}") },
         deleteProblem = { add("deleteProblem ${it.time}") },

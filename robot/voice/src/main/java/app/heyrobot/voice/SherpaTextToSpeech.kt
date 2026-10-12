@@ -48,6 +48,9 @@ class SherpaTextToSpeech internal constructor(
     @Volatile private var playback = Playback.ASSISTANT
     /** The playback the current [track] was built with, and the focus request of the speaking run. */
     private var trackPlayback = Playback.ASSISTANT
+    /** 0.8: a headset or car session's pin ([setPin]), and the one the current [track] was built with. */
+    @Volatile private var pin: OutputPin? = null
+    private var trackPin: OutputPin? = null
     private var focus = CallAudio.focus(Playback.ASSISTANT)
     private var runPlayback = Playback.ASSISTANT
 
@@ -316,7 +319,7 @@ class SherpaTextToSpeech internal constructor(
     }
 
     private fun ensureTrack(rate: Int): AudioTrack? = synchronized(trackLock) {
-        track?.let { if (it.sampleRate == rate && trackPlayback == runPlayback) return it }
+        track?.let { if (it.sampleRate == rate && trackPlayback == runPlayback && trackPin === pin) return it }
         track?.release()
         track = null
         written = 0
@@ -333,8 +336,15 @@ class SherpaTextToSpeech internal constructor(
                 .build()
             // Start playing after 0.1 s of audio, not once the whole multi-second buffer is full.
             try { t.setStartThresholdInFrames(rate / 10) } catch (_: Throwable) {}
+            // 0.8: a headset or car session pins the voice to its device and hears every route change while it plays.
+            val pinned = pin
+            if (pinned != null) {
+                pinned.device?.let { try { t.setPreferredDevice(it) } catch (_: Throwable) {} }
+                try { t.addOnRoutingChangedListener({ r -> pinned.onRouted(r.routedDevice) }, main) } catch (_: Throwable) {}
+            }
             track = t
             trackPlayback = p
+            trackPin = pinned
             t
         } catch (e: Throwable) {
             RLog.w("tts_track", e)
@@ -393,6 +403,10 @@ class SherpaTextToSpeech internal constructor(
 
     override fun setPlayback(p: Playback) {
         playback = p
+    }
+
+    override fun setPin(pin: OutputPin?) {
+        this.pin = pin
     }
 
     /** Ms of audio played in the current run (for the barge-in test and the voice log). */
@@ -590,6 +604,8 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
         sherpa.setPlayback(p)
         system?.setPlayback(p)
     }
+
+    override fun setPin(pin: OutputPin?) = sherpa.setPin(pin)
 
     /** Which engine speaks now, for the voice log. */
     val usesPhoneVoice: Boolean get() = active != null && active !== sherpa

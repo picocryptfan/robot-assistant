@@ -21,14 +21,14 @@ data class NextFire(val at: ZonedDateTime, val due: List<Due>) {
     val routines: List<Routine> get() = due.map { it.routine }
 }
 
-/** What a time trigger that comes late does (Doze, the phone off or not yet unlocked after a reboot). */
-enum class MissedRun {
+/** What a time trigger that comes late does (Doze, the phone off or not yet unlocked after a reboot). Also a voice log code (149). */
+enum class MissedRun(override val id: Int, override val title: String) : LogCode {
     /** Within [RoutineSchedule.GRACE] of its time: run as usual. */
-    RUN,
+    RUN(1, "ran a little late"),
     /** Later the same day: no speech by surprise; a Ready card "Your “Morning” routine didn't run at 7:00 · Run now". */
-    OFFER,
+    OFFER(2, "offered on a Ready card"),
     /** Older: nothing. */
-    DROP,
+    DROP(3, "too late: dropped"),
 }
 
 object RoutineSchedule {

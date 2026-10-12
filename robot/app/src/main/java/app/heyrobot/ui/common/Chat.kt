@@ -112,6 +112,7 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.SEND_TEXT -> RIcons.Message
     ToolName.DRAFT_EMAIL -> RIcons.Email
     ToolName.LOOKUP_CONTACT -> RIcons.Person
+    ToolName.CALL -> RIcons.Call
     ToolName.ADD_NOTE, ToolName.FIND_NOTES -> RIcons.Note
     ToolName.ADD_EVENT, ToolName.READ_CALENDAR -> RIcons.Event
     ToolName.ASK_CLAUDE -> RIcons.Cloud
