@@ -42,8 +42,8 @@ Settings file schema 13, as 0.7.0: the new parts keep their own files in `files/
   routines that start by themselves (a time, Clock's alarm turned off, the first unlock, a headset or car connecting,
   charging, or only when you ask), made by voice and always shown on a card first, or in Settings › Routines; the
   morning brief (the time, the weather, today's calendar, brief reminders and, new here, how many unread messages, by
-  app, from Settings › Messages: counts only, never who or what, so the same on the lock screen). Off until you set one
-  up. Voice log events 140 to 151.
+  app, from Settings › Messages: counts only, never who or what; on the lock screen it waits for the unlock with your
+  calendar, as the brief's other personal parts do). Off until you set one up. Voice log events 140 to 151.
 - **Headset mode** ([Headset mode (0.8)](#headset-mode-08)): your headset's voice button opens Robot, which listens
   through the headset and answers in your ears; personal answers play only in headphones only you can hear; the headset
   going stops speech at once. The button is Robot's by default (Settings › Headset turns it off). Voice log events 200 to
@@ -4673,8 +4673,8 @@ rings, Robot loads its voice and fetches the weather ("Get ready while the alarm
 ### Defaults
 
 - Morning brief: **off**. Once on: after your alarm (04:00 to 12:00), greeting, weather, calendar, brief reminders and
-  closing, and since 0.8 how many unread messages, by app, when Settings › Messages is on (never who or what, so the
-  same on the lock screen), On the lock screen: Time and weather, Finish when I unlock: on, Language:
+  closing, and since 0.8 how many unread messages, by app, when Settings › Messages is on (never who or what; held on the
+  lock screen with the calendar), On the lock screen: Time and weather, Finish when I unlock: on, Language:
   the phone's, Get ready while the alarm rings: on, Speak: Headset, else the phone speaker, Clock silences after: 10 min.
 - Routines can run while the phone is locked: **on**. Routines may go online by themselves: **on** (only the services
   each routine's card listed: Open-Meteo for the weather).
@@ -4806,8 +4806,9 @@ voice log (Settings › Advanced › Voice log) shows each step as codes ("Routi
 - "Delete my evening routine": *done when* only the card's Delete tap deletes it.
 
 **The unread count (0.8):** with Settings › Messages on and two unread messages in Cheogram and one in Signal, "brief
-me" *done when* it says "You have 3 unread messages: 2 in Cheogram and 1 in Signal." unlocked and locked alike (no
-name, no text); with Settings › Messages off it says nothing about messages.
+me" *done when* it says "You have 3 unread messages: 2 in Cheogram and 1 in Signal." unlocked (no name, no text); locked
+at "Time and weather" it waits with the calendar ("Unlock to hear your day") and is said after an unlock within 15
+minutes; with Settings › Messages off it says nothing about messages.
 
 **Not checkable yet:** R4 (news) needs helpers' news.
 
