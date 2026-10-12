@@ -57,7 +57,8 @@ class SearchClientTest {
         assertEquals(3, a.results.size)
         val req = server.takeRequest(5, TimeUnit.SECONDS)!!
         assertEquals("/search?q=who%20won%20the%20stanley%20cup&format=json&safesearch=1&pageno=1&language=en", req.path)
-        assertEquals("Robot/0.9.0 (app.heyrobot; Android voice assistant)", req.getHeader("User-Agent"))
+        // 1.0: Robot's published contact, the same for every Robot (never you or your phone).
+        assertEquals("Robot/0.9.0 (app.heyrobot; Android voice assistant; hey@robot-app.ai)", req.getHeader("User-Agent"))
         assertNull(req.getHeader("Cookie"))
         // JSON off in settings.yml: SearXNG's 403 says how to fix it.
         server.enqueue(MockResponse().setResponseCode(403).setBody("Forbidden"))
@@ -133,7 +134,7 @@ class SearchClientTest {
             .search("x", null) as SearchAnswer.Failed).why)
         // Wikipedia isn't asked without a published contact (Wikimedia's User-Agent rule).
         val wiki = Fake()
-        assertNull(client(home, sender = wiki).wikipedia("Montréal", "fr"))
+        assertNull(client(home, sender = wiki).wikipedia("Montréal", "fr", contact = null))
         assertTrue(wiki.sent.isEmpty())
         // Its intros, once a contact exists: the search, then the extracts, as results with the intro as their text.
         val wiki2 = object : WebSender {

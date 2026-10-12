@@ -12,17 +12,22 @@ class WikipediaWireTest {
 
     private val contact = "robot@example.org"
 
-    @Test fun offUntilAContactIsPublished() {
-        assertNull(WebUserAgent.CONTACT)
-        assertFalse(WikipediaWire.allowed(WebUserAgent.CONTACT))
-        assertNull(WikipediaWire.searchRequest("en", "jupiter", "0.7.0"))
-        assertNull(WikipediaWire.extractsRequest("en", listOf("Jupiter"), "0.7.0"))
-        assertFalse(WebSettings().encyclopedia)
-        assertFalse(WebSettings().wikipedia())
-        assertFalse(WebSettings(on = true, service = SearchService.WIKIPEDIA_ONLY).ready)
-        assertFalse(SearchService.WIKIPEDIA_ONLY.available())
-        assertTrue(SearchService.WIKIPEDIA_ONLY.available(contact))
-        assertTrue(WebSettings(encyclopedia = true).wikipedia(contact))
+    /** 1.0: Robot publishes hey@robot-app.ai, so Wikipedia is offered (the "Wikipedia only" service, Encyclopedia lookups). */
+    @Test fun robotsPublishedContactOpensWikipedia() {
+        assertEquals("hey@robot-app.ai", WebUserAgent.CONTACT)
+        assertTrue(WikipediaWire.allowed(WebUserAgent.CONTACT))
+        assertEquals("Robot/1.0.0 (app.heyrobot; Android voice assistant; hey@robot-app.ai)",
+            WikipediaWire.searchRequest("en", "jupiter", "1.0.0")!!.header("User-Agent"))
+        assertTrue(WebSettings().encyclopedia)
+        assertTrue(WebSettings().wikipedia())
+        assertTrue(WebSettings(on = true, service = SearchService.WIKIPEDIA_ONLY).ready)
+        assertTrue(SearchService.WIKIPEDIA_ONLY.available())
+        // Without a contact (none published), still off.
+        assertFalse(WikipediaWire.allowed(null))
+        assertFalse(SearchService.WIKIPEDIA_ONLY.available(null))
+        assertFalse(WebSettings(encyclopedia = true).wikipedia(null))
+        assertNull(WikipediaWire.searchRequest("en", "jupiter", "0.7.0", null))
+        assertNull(WikipediaWire.extractsRequest("en", listOf("Jupiter"), "0.7.0", null))
     }
 
     @Test fun aContactIsAnEmailOrAnHttpsAddress() {

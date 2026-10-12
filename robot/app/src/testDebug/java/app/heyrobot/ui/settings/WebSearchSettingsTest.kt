@@ -80,9 +80,9 @@ class WebSearchSettingsTest {
     fun settingUpYourSearxngEndsWithTheConsentAndATest() {
         val h = open(facts = WebFacts(homeServer = true))
         rule.onRow("Set up").performClick()
-        // Your own SearXNG first with a home server, suggested; Wikipedia only not offered yet (no contact for its rules).
+        // Your own SearXNG first with a home server, suggested; 1.0: Wikipedia only offered too (Robot publishes a contact).
         rule.inDialog("Your own SearXNG (suggested)").assertExists()
-        rule.onNode(hasText("Wikipedia only", substring = true) and androidx.compose.ui.test.hasAnyAncestor(isDialog())).assertDoesNotExist()
+        rule.onNode(hasText("Wikipedia only", substring = true) and androidx.compose.ui.test.hasAnyAncestor(isDialog())).assertExists()
         rule.inDialog("Your own SearXNG (suggested)").performClick()
         assertEquals(WebSettings(service = SearchService.SEARXNG_HOME), h.saved.last())
         // Its address: an address on your network, or https (plain http to a public address is refused).
@@ -130,8 +130,9 @@ class WebSearchSettingsTest {
             rule.scrollToText(row)
             assertEquals(row, emptyList<String>(), rule.touchTargetProblems())
         }
-        // Wikipedia needs a contact Robot doesn't publish yet; Read pages through needs Brave or Kagi.
-        rule.onRow("Encyclopedia lookups").assertIsNotEnabled()
+        // 1.0: Robot publishes a contact, so Encyclopedia lookups can be turned on (and is, by default); Read pages through
+        // needs Brave or Kagi.
+        rule.onRow("Encyclopedia lookups").assertIsEnabled()
         rule.onRow("Read pages through").assertIsNotEnabled()
         rule.onRow("Book lookups").performClick()
         assertTrue(h.saved.last().books)

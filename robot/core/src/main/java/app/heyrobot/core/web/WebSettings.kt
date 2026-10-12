@@ -106,8 +106,9 @@ data class WebSettings(
     val ask: WebAsk = WebAsk.FIRST_TIME,
     val askAt: Long = 0,
     /**
-     * Encyclopedia lookups (Wikipedia). The design's default is On, but Wikimedia's User-Agent policy wants a contact
-     * Robot doesn't have yet ([WebUserAgent.CONTACT], open question 1), so it is Off until one is published.
+     * Encyclopedia lookups (Wikipedia): On, the design's default, now that Robot publishes a contact for Wikimedia's
+     * User-Agent policy ([WebUserAgent.CONTACT]); Off without one. A search that asks Wikipedia says so on its card and its
+     * "Sent to" line (WebAlso).
      */
     val encyclopedia: Boolean = WikipediaWire.allowed(WebUserAgent.CONTACT),
     /** Book lookups (Open Library): off. */
@@ -296,9 +297,10 @@ object WebConsent {
 object WebUserAgent {
     /**
      * The contact (an email or a URL) Robot publishes in its API User-Agent, the same for every Robot user (open
-     * question 1). None yet: Wikipedia, whose policy requires one, stays off.
+     * question 1). 1.0: Robot's published address, so Wikipedia (whose User-Agent policy requires one) is offered: the
+     * "Wikipedia only" service and Encyclopedia lookups. It names Robot's project, never you or your phone.
      */
-    val CONTACT: String? = null
+    val CONTACT: String? = "hey@robot-app.ai"
 
     /**
      * The honest User-Agent for the search APIs and Wikipedia: "Robot/0.7.0 (app.heyrobot; Android voice assistant)",

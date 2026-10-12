@@ -119,7 +119,7 @@ has its section below, with its phone checks. Settings file schema 13, as 0.8.0:
   Readability4J, Wikipedia's text (CC BY-SA 4.0), the Brave Search API and, new, Termux's constant strings
   (`TermuxConstants.java`, MIT).
 - **Not in 0.9.0:** web search's phase W4 ("Summarize this page", a helper using Robot's search: its setting exists, no
-  screen shows it), Wikipedia lookups (waiting for a contact in the User-Agent), robots.txt; Termux's "Helpers may ask
+  screen shows it), Wikipedia lookups (waiting for a contact in the User-Agent; offered since 1.0), robots.txt; Termux's "Helpers may ask
   for Termux commands" and "Keep commands and output in history" switches (helpers are never offered the Termux tools,
   History never keeps a command), "Finished after you left" on a stopped card, and Robot's own keys matched by exact
   value (they are refused by shape). Nothing of 0.9.0 has run on the phone yet: both sections' "On the phone" lists are
@@ -5182,7 +5182,7 @@ Settings › **Web search** (a row of its own, under Weather). **Set up** lists 
 | **Brave Search API** | Keeps searches up to 90 days with your API account; about 0.5¢ a search, $5 of credit a month; a card on file | Your key |
 | **Mojeek** | Its own index; about 0.2p a search; keys through Mojeek's sales contact | Your key |
 | **A public SearXNG** | Run by someone you don't know, who can see and keep your searches; many refuse apps | Its https address |
-| Wikipedia only | Not offered yet: Wikimedia's rules want a contact address in Robot's requests, which Robot doesn't publish yet | — |
+| Wikipedia only | No account; answers facts from Wikipedia, no general web search. Since 1.0 Robot's requests name its contact, hey@robot-app.ai, as Wikimedia's User-Agent rules ask (the same for every Robot, never you or your phone) | — |
 
 The page also says "DuckDuckGo, Google and Bing have no search API that Robot can use."
 
@@ -5300,8 +5300,8 @@ text Bob…" can't text anyone without a card). It doesn't make the conversation
 | Read pages through | This phone | The search service when it can (Brave, Kagi) |
 | Pages per answer | 3 | 1 to 5 |
 | Safe search | Moderate | Off, Strict |
-| Encyclopedia lookups (Wikipedia) | Off until Robot publishes a contact | Who, what and where questions also ask Wikipedia |
-| Book lookups (Open Library) | Off | Questions about books also ask Open Library |
+| Encyclopedia lookups (Wikipedia) | On (since 1.0, when Robot published its contact; a setting saved before keeps its value) | Who, what and where questions also ask Wikipedia; the search's card and its "Sent to" line say so |
+| Book lookups (Open Library) | Off | Questions about books also ask Open Library; the search's card and its "Sent to" line say so (1.0) |
 | Add my town to local searches | Off | "near me" becomes your Home for weather's town name |
 | "Powered by Brave" line | On | Brave only |
 | Current information | Robot searches first | Ask a helper first (only when your helper can search itself) |
@@ -5340,8 +5340,8 @@ Mojeek) joins the helpers' one daily budget, and the card shows it when Settings
 - Phase W4: "Summarize this page" with 0.5.0's map-reduce planner, and Robot's `web_search` offered as a client tool to
   a helper that can't search itself (the "Let helpers use Robot's search" setting exists in `WebSettings` but no screen
   shows it yet).
-- Wikipedia (lookups and "Wikipedia only") waits for a contact Robot may publish in its User-Agent (open question 1 of
-  the design); the client is built and tested.
+- Wikipedia (lookups and "Wikipedia only") waited for a contact Robot could publish in its User-Agent (open question 1 of
+  the design). Since 1.0 Robot publishes hey@robot-app.ai there, so both are offered.
 - The User-Agent for pages is the design's proposal (`Mozilla/5.0 (Linux; Android 17) Robot`) and robots.txt is not
   read (open questions 2 and 3); Kagi's API terms, Brave's LLM context pricing and every timing above are unverified
   (design A16).
@@ -5363,9 +5363,11 @@ Watch `adb logcat -s Robot` and Settings › Advanced › Voice log throughout.
    first word (EST ≤ 4 s after the tap).
 3. Ask again: the card again; Just this time. Then Allow always: no card the next time, and Settings › Web search › Ask
    before searching shows "Never ask".
-4. **Wikipedia (not in this version):** Settings › Web search › Encyclopedia lookups is greyed out ("not available yet").
-   Instead: "Qui a gagné la coupe Stanley ?": "Je cherche sur le web…", the answer in French; a wikipedia.org result on
-   the card carries "From Wikipedia's article “…”, CC BY-SA 4.0 (licence)"; tapping a source opens it in Vanadium.
+4. **Wikipedia (1.0).** Settings › Web search › Encyclopedia lookups is on, and Set up lists "Wikipedia only". "Qui est la
+   mairesse de Montréal ?": "Je cherche sur le web…", the card says the words go to your service and Wikipedia, the
+   answer in French; a wikipedia.org result on the card carries "From Wikipedia's article “…”, CC BY-SA 4.0 (licence)";
+   tapping a source opens it in Vanadium. Wikipedia's request carries the User-Agent "Robot/1.0.0 (app.heyrobot; Android
+   voice assistant; hey@robot-app.ai)" and nothing else about you.
 5. **Lock and network.** Lock the phone, ask a web question: "Unlock your phone, then ask again." Turn off GrapheneOS's
    Network toggle for Robot, unlocked: "Robot isn't allowed to use the network". Toggle back. Wi-Fi off, mobile data
    on, the SearXNG typed as `192.168.…`: "Robot can't reach your SearXNG off your home network", and SearXNG's log

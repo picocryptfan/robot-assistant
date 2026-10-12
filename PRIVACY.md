@@ -133,7 +133,11 @@ can turn off.
 7. **Web search**, only after you set it up (Settings › Web search, off by default) and agree to what it sends, and
    then only when you ask, or when Robot's model calls for current facts and your settings allow it. Robot sends your
    search words (with the question's language, the safe-search level and, for Brave, Kagi and Mojeek, your key) to the
-   one service you chose: your own SearXNG, Brave Search, Kagi, Mojeek or a public SearXNG. To answer, it may open up to
+   one service you chose: your own SearXNG, Brave Search, Kagi, Mojeek, a public SearXNG or Wikipedia. With Encyclopedia
+   lookups on (the default), a who, what or where question's words also go to Wikipedia, and with Book lookups on (off by
+   default) a question about books also goes to Open Library; the search's card and its "Sent to" line name each of them.
+   Robot's requests to these services name Robot and its contact address (hey@robot-app.ai), the same for everyone,
+   never you or your phone. To answer, it may open up to
    3 of the result pages from the phone, like a browser without cookies: those sites see your IP address. What Robot
    remembers is never sent to a search service, and after a message every search waits for your tap. The service
    handles your words under its own policy (Brave says it keeps searches for up to 90 days). History keeps your words,
