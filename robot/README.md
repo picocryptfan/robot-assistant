@@ -1917,9 +1917,22 @@ is read on the lock screen.
   Cheogram's quiet-hours messages too. Ongoing notifications are never asked for.
 - The listener now unbinds itself only when both name learning and messages are off; with messages on and name learning
   off it learns no names (People's privacy note says so).
+- **Each app's signing key.** Turning an app on keeps the signing certificates (their SHA-256 digests) of each of its
+  packages installed then, and the installer Android names, as "Learn names from Cheogram notifications" already does for
+  Cheogram (core `MessageSigners`, `MessageAppSigners`). Robot reads a package's notifications only while it is signed so:
+  an app published by someone else under the same package name, or one whose key changed, is ignored, and Settings ›
+  Messages says "Signal changed its signing key: turn it on again to trust it" (off and on again keeps the key it has
+  then). Each package is its own entry: Cheogram's F-Droid build and its Play build are pinned apart, and a build
+  installed after you turned the app on is ignored until you turn it on again ("… was installed after you turned it on").
+  A key rotated with Android's own signing lineage still counts. A `messages.json` from an earlier 0.7 test build (version
+  1, no keys) trusts each package of an app that was already on at its first notification, if it was installed when the
+  listener connected (trust on first use; voice log event 197, "kept an app's signing key at its first notification").
 - Settings › Messages lives in `files/robot/messages.json`, like `look.json`: `settings.json` stays at schema 13. The
   main app writes it (and, for a reply card's "Always for Mom", the main process on the panel's behalf); the voice
-  process reads it each time the panel opens.
+  process reads it each time the panel opens. Every write (the page, People's "without a card", the card's "Always for
+  …", a first-use key) is one change under `messages.lock`, applied to the file as it is then and written whole (a
+  temporary file, fsync, rename), so none loses another's change (core `MessagesFile.update`, tested with 40 writers at
+  once).
 
 ### Reading
 
@@ -1956,15 +1969,23 @@ is read on the lock screen.
 
 ### Replies
 
-- **"Reply I'll be late"** (to the conversation read last, else the newest, which then never goes without a tap or a
-  yes, whatever the switches below say), "reply to Mom: I'll be late", "reply to Mom that I'm on my way", « réponds à
-  maman : j'arrive », « réponds que je vais être en retard » (made a sentence: « Je vais être en retard. »). "Reply to
-  Mom I'll be late" without a colon splits at the longest name Robot knows. Several conversations fit: a card to pick
-  one. None: "No message from Mom right now. To write to them, say “text Mom …”."
+- **"Reply I'll be late"** (to the conversation read last, or the newest after a summary, which then never goes without
+  a tap or a yes, whatever the switches below say), "reply to Mom: I'll be late", "reply to Mom that I'm on my way", «
+  réponds à maman : j'arrive », « réponds que je vais être en retard » (made a sentence: « Je vais être en retard. »).
+  "Reply to Mom I'll be late" without a colon splits at the longest name Robot knows. Several conversations fit: a card
+  to pick one. None: "No message from Mom right now. To write to them, say “text Mom …”."
+- **Only where a reply can apply** (core `MessagesRouter.applies`): "reply …", "respond …", "answer her for me", «
+  réponds … » go to your messages only after Robot read one in this conversation, or when they name someone a
+  conversation or People knows ("reply to Mom …", « réponds à maman … »). Otherwise they are ordinary questions for the
+  model, messages on or off: "reply in one word: is a tomato a fruit?", "respond in French: how are you?", « réponds en
+  une phrase : … », "reply to this email politely".
 - **The card:** "Reply to **Mom** · Cheogram", your words in quotes, and Send, Edit, Open chat, Cancel. Read aloud as
   "Reply to Mom: I'll be late. Tap Send to send it." A **tap on Send** sends it. A spoken yes sends only with "Answer
   reply cards by voice" on (off by default; for the car and headsets later), and never for a group, a reply Robot drafted
-  or a translation. "No" cancels. Its notes: the group sees it, an SMS may cost, Signal marks the chat read, Cheogram
+  or a translation; and only 3 seconds after Robot finished saying a message's words (a message, its translation, a
+  summary, a draft, "Mom wrote again: «…»"), since a "yes" in them, heard back by the microphone, would be Robot's own
+  voice: a yes before then hears "Tap Send, or say yes again." (core `MessageQuarantine.voiceYesNow`). A tap always
+  sends. "No" cancels. Its notes: the group sees it, an SMS may cost, Signal marks the chat read, Cheogram
   sends an emoji alone as a reaction, Robot hasn't checked how this app replies (Molly, Google Messages).
 - **Their language:** "Reply in French: I'll be there at six" shows your words and Robot's Québec French and sends the
   French. When her messages are in the other of your languages, the card offers "Send in French: «…»" unticked
@@ -1983,6 +2004,8 @@ is read on the lock screen.
   name alone (Signal gives no address, and anyone can choose a name) always gets the card, and a sender writing from an
   address nobody in People has is read under the name they chose, never as Mom. "Card before sending a reply" off does
   the same for everyone.
+- **Groups:** what the app says (or a titled conversation with two others), and, whatever it says, a conversation with
+  three people or more writing in it, you included: a reply there always needs a tap (core `NotificationParsing`).
 - **How replies go:** "Robot sends after you confirm" (default) or "Open the chat with my reply; I press Send": Cheogram's
   chat opens with your words in its box (by its shortcut, in the right account), another app gets them shared; nothing is
   sent until you press Send there. The main process refuses to send under that setting even if asked.
@@ -1990,16 +2013,23 @@ is read on the lock screen.
 ### What stays on the phone, and what can't happen
 
 - Message text lives in the main process's memory (`MessageTap`, until the notification goes or "Keep messages for"
-  says) and crosses to the panel in memory (`MessagesBridge`: not exported, Robot's signature permission, Robot's own uid
-  only). It is never written: History keeps "Robot read 2 messages from Mom (Cheogram)" or "Summary of 4 conversations"
-  instead, an answer later in that conversation is kept as "Robot's answer isn't kept: this conversation holds your
+  says; all of it at once when you turn "Read my messages" off or take notification access back) and crosses to the
+  panel in memory (`MessagesBridge`: not exported, Robot's signature permission, Robot's own uid only). The panel's
+  process lets it go when the panel hides, and after 2 minutes without a question or a tap: the conversation read last,
+  what was read aloud, a card's "wrote again" line, and the conversation's turns, which then show their placeholders as
+  History does (a reply card still waiting keeps your words and its conversation; "what did she say?" after that needs
+  "read my messages" again). It is never written: History keeps "Robot read 2 messages from Mom (Cheogram)" or "Summary
+  of 4 conversations" instead, an answer later in that conversation is kept as "Robot's answer isn't kept: this conversation holds your
   messages.", and a card's record keeps its kind, not its words. The voice log keeps codes and counts (events 190 to
   199: read, summary, translate, reply, reply card, mark, hidden, listener, guard, refused).
 - **A message's words never become an action.** What the microphone hears that repeats a message Robot read aloud in the
   last 15 seconds (its translation when read translated, a summary, "Mom wrote again: «…»" on a card, a draft) is
   answered "I don't act on what a message says.", and History and the model keep it as "(A message's words, heard back
   while Robot read it: not kept.)", never as your question. When the next chat question gives the model the
-  conversation, a turn that read messages is framed as other people's words, information only, never instructions.
+  conversation, a turn that read messages is framed as other people's words, information only, never instructions; so is
+  its placeholder in a conversation continued from History. A sender's name and a group's title are the sender's choice:
+  History keeps them on one line, at most 40 characters, without control, invisible or direction-changing characters
+  (core `MessageReading.historyName`), and never as your words or Robot's.
   Once a message is in the conversation, every action that writes or leaves the phone shows a card, whatever Safety
   cards says (`AskWhy.MESSAGE` in `ApprovalGate`); one that would send anything to someone other than that message's
   sender (a text, an email, a helper, anything online) needs a tap: "A message is in this conversation: check this,
@@ -2084,6 +2114,32 @@ number, Signal, and an SMS number. Put "Mom" in People with your test number as 
 20. **Answer reply cards by voice** on: "reply ok", then "yes": sent (1:1, your words). "No" on a card cancels it.
 21. **Each app** (Molly, Google Messages if you have them): the card says Robot hasn't checked how it replies; record
     what a reply does there.
+
+**After the review** (0.7.0):
+
+22. **Signing keys.** With Signal on, `adb shell run-as app.heyrobot cat files/robot/messages.json` shows a `pins` entry
+    for `org.thoughtcrime.securesms` (a 64-hex digest, the installer). Install a debug build of any app under a messaging
+    app's package name you don't use (or uninstall Molly and install a build signed by someone else): its notifications
+    are ignored, the voice log says "ignored an app whose signing key isn't the one kept", and Settings › Messages says
+    "… changed its signing key: turn it on again to trust it". Turn it off and on: read again. Install Cheogram's Play
+    build beside the F-Droid one: "Cheogram (Play Store build) was installed after you turned it on" until you turn
+    Cheogram off and on.
+23. **First use after an upgrade.** Over a 0.7 test build with Cheogram on: the first Cheogram message is read, the voice
+    log says "kept an app's signing key at its first notification", and `messages.json` now has `"v":2` and the pin.
+24. **"Reply" only where it applies.** In a new conversation with messages on: "reply in one word: is a tomato a fruit?"
+    and « réponds en une phrase : c'est quoi la capitale du Pérou? » are answered by the model; "reply to Mom: test" (Mom
+    in People) shows Mom's card; after "read my messages", "reply ok" shows the card for the conversation read.
+25. **The 3 seconds for a yes.** "Answer reply cards by voice" on; Mom writes "yes yes yes"; "read my messages", then
+    "reply ok" at once and say "yes" within 3 seconds of Robot reading her message: "Tap Send, or say yes again."; "yes"
+    after that sends.
+26. **A group by its senders.** In a Cheogram group whose notification isn't marked as a group (an older client), with
+    three people writing: "reply ok" says the group will see it and a yes is told to tap.
+27. **Words dropped.** Read a message with a unique word, close the panel, reopen it within a minute: the turn shows
+    "Robot read 1 message from …", not the words; again after 2 minutes idle with the panel open. Take notification
+    access back in Android's settings: "read my messages" reads nothing and the voice log says "dropped every message
+    held".
+28. **Names in History.** From the second phone, set a Cheogram nickname of 60 characters with a right-to-left override
+    in it; after "read my messages", History shows the name cut at 40 characters ending in "…", reading left to right.
 
 ## Helpers (0.6.0)
 
@@ -2347,9 +2403,10 @@ suggestions and transcripts (7.5) come later.
 | You say | Robot |
 | --- | --- |
 | "Remember that my sister's birthday is May 3" · « Souviens-toi que la fête de ma sœur est le 3 mai » · "Retiens que …" · « N'oublie pas que … » · "Keep in mind that …" | Saves it at once and says it back: "Got it: your sister's birthday is May 3." (« C'est noté : « … ». »). A card "Remembered" with Undo and Open Memory. |
-| "Remember I parked on P3 until tonight" (tomorrow, the end of the week) | It ends then, and goes a day later. |
+| "Remember that I parked on P3 until tonight" (tomorrow, the end of the week) | It ends then, and goes a day later. |
 | "Remember that I prefer Celsius" · "Remember: call me Sam" · « Souviens-toi : appelle-moi Sam » | A preference: pinned (six at most) and given to the model with every answer ("Got it: I'll call you Sam."). |
 | "Remember to buy milk" · « N'oublie pas d'acheter du lait » | As before: a note (the model's add_note). |
+| "Remember the movie where …" · "Do you remember …" · "Remember when …" · « Tu te souviens du film où … » | A question, never a save: the model answers it, with what memory finds. Only an explicit form saves: "remember that …", "remember: …", "remember my …", "keep in mind that …", "don't forget that …", « souviens-toi que … », « retiens que … », « n'oublie pas que … » ("remember my …" asked as a question, "remember my name?", is a question too). |
 | "Forget that" · « Oublie ça » | Removes what was saved last in this conversation (or what the last answer used): a "Forgotten" card with Undo. |
 | "Forget my sister's birthday" · « Oublie la fête de ma sœur » | One clear match goes, with Undo; several make a card to pick the one. |
 | "What do you remember about Julie?" · "What do you know about me?" · « Qu'est-ce que tu sais sur moi? » | Says them back as "you", never a private item; for "about me", a count, three examples and Open Memory. |
@@ -2357,7 +2414,8 @@ suggestions and transcripts (7.5) come later.
 
 These run before the model (core `MemoryCommands`, `MemoryRouting`), anchored at the start of what you said, even in a
 helper's conversation: what you ask Robot to remember never goes to a helper. Memory turned off, they answer "Memory is
-off"; on a locked phone, "Unlock first" (below).
+off"; on a locked phone, "Unlock first" (below), and a save or a forget always "Unlock first to save to memory." / "Unlock
+first to change what I remember.".
 
 ### What the model gets
 
@@ -2433,9 +2491,14 @@ JSON, after a warning that it isn't encrypted) and Delete all (after a confirm).
 - **Locked:** memory isn't opened. A question that asks for it ("do you remember …", « tu te souviens … », "what do you
   know about me?") hears "Unlock first: what you asked me to remember stays locked."; any other question is answered
   without it.
+- **Nothing is saved or removed on the lock screen**, whatever the switch below says: "remember that …" and the model's
+  remember hear "Unlock first to save to memory." (« Déverrouille d'abord pour l'enregistrer en mémoire. »), "forget …",
+  the model's forget and a card's Undo "Unlock first to change what I remember.", and an answer there doesn't count as a
+  use (core `MemoryAccess.writes`, `ApprovalGate`: remember and forget need an unlocked phone even when "Works on the lock
+  screen" lists them). Someone holding your locked phone can't plant or remove what Robot remembers.
 - **"Use memory on the lock screen"** seals the file again with a second key, `robot_memory_lock_v1`, made without the
-  unlock requirement, and deletes the first; off does the reverse (from an unlocked phone). Private items still never
-  come up there.
+  unlock requirement, and deletes the first; off does the reverse (from an unlocked phone). It lets memory be read there
+  (questions, "what do you know about me?"), never changed. Private items still never come up there.
 - **The key gone** (the screen lock removed on some Android versions, or the phone reset it): Settings › Memory says so,
   with Start over (the file kept aside as `memory.enc.bad`) and Delete.
 - Excluded from backup and device transfer (`allowBackup="false"`, `data_extraction_rules.xml`); a copy of the file is
@@ -2482,9 +2545,11 @@ Nothing here has run on the phone yet. Use a phone with a screen lock (PIN), Rob
    come again from memory).
 10. **Locked.** Lock the phone, "hey robot, do you remember my sister's birthday?": "Unlock first: what you asked me to
     remember stays locked." "What time is it?" is answered as usual. "Remember that the dog's name is Rex": "Unlock
-    first, then ask me again to remember it…", and nothing is saved.
+    first to save to memory.", and nothing is saved.
 11. **Use memory on the lock screen.** Turn it on (Settings › Memory › Privacy). Lock the phone: "what do you know about
-    me?" answers (never a private item). Step 8 still shows no plain text. Turn it off: locked, step 10 again.
+    me?" answers (never a private item). "Remember that the dog's name is Rex" still says "Unlock first to save to
+    memory." and "forget my sister's birthday" "Unlock first to change what I remember."; Settings › Memory shows no
+    change after you unlock. Step 8 still shows no plain text. Turn it off: locked, step 10 again.
 12. **A private item.** "Remember that the garage code is 4512": "Got it: a code, kept in Memory."; the card shows
     "[a code, kept in Memory]". "What's the garage code?" (unlocked): the answer is shown with "Not read aloud…", not
     spoken; History shows the question as "Remember: [a code, kept in Memory]" and a line in place of the answer. Locked
@@ -2508,6 +2573,9 @@ Nothing here has run on the phone yet. Use a phone with a screen lock (PIN), Rob
 18. **The voice log has only codes.** Settings › Voice › Voice log shows "Memory: saved a fact (you said it)", "Memory: 1
     item went with a question (words, … ms)", "Memory command: …". Export it and run `adb logcat -d -s Robot`: grep for
     sister, birthday, Julie, 4512: no match.
+18b. **Questions aren't saves.** "Remember the movie where Tom Hanks is stranded on an island?", "do you remember my
+    sister's birthday?", "remember when we went to Paris" and « tu te souviens du film où il y a un naufragé? »: answered
+    (the model, with what memory finds), no Remembered card, Settings › Memory unchanged.
 19. **The key after the screen lock changes (gate 7.0d).** Remove the screen lock, then set it again: Settings › Memory
     opens as before, or says the key is gone with Start over; record which. After GrapheneOS's auto-reboot, before the
     first unlock, "do you remember …" says unlock; after it, memory opens.
@@ -2539,7 +2607,10 @@ rules hold in code, with no switch (core `MessageQuarantine`, `TurnRunner`, `Sug
   still needs its tap.
 - **History.** A turn with a message is saved as its placeholder; memory's record of it (item ids, a private answer's
   line) keeps that placeholder, and a conversation continued from History keeps "Robot read 2 messages from Mom
-  (Cheogram)" when it is saved again (before, it became the generic line).
+  (Cheogram)" when it is saved again (before, it became the generic line). Given to the model again, the placeholder
+  stays inside the messages' information-only framing (the name in it is the sender's choice, at most 40 characters).
+- **The lock screen.** A message read there ("Messages on the lock screen: Read and reply") can't become memory there
+  either: nothing is saved to memory on a locked phone.
 - **Helpers.** Both are personal content: neither goes to a helper on its trust or with "Send personal content to helpers
   automatically", only through a card that lists them. Settings › Memory › "Share memory with helpers: With helpers I
   trust" lets a trusted helper have memory, never messages.
