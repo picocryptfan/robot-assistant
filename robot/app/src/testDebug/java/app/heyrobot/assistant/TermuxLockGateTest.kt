@@ -32,9 +32,9 @@ import org.robolectric.annotation.Config
 /**
  * 1.0, as TermuxTool prepares a call in the panel: the update lock, another signer and the GitHub build's public test key
  * refuse it with what changed and what to do (and the voice log's code), "Run anyway" lets the test-key build ask with its
- * card, and Robot's own keys by exact value (helpers', web search's, the updater's token: TermuxSecrets) refuse a command
- * or a script argument holding one, whoever wrote it, with no log holding the key. Only what Android says about Termux
- * and the keys are faked (TermuxTool.Facts).
+ * card, and Robot's own keys by exact value (helpers' and web search's: TermuxSecrets) refuse a command or a script
+ * argument holding one, whoever wrote it, with no log holding the key. The updater's token is never read here: a GitHub
+ * token is refused by its shape. Only what Android says about Termux and the keys are faked (TermuxTool.Facts).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -129,5 +129,22 @@ class TermuxLockGateTest {
         assertTrue(logged.isNotEmpty())
         assertTrue(logged.toString(), logged.none { it.contains(planted) || it.contains("zq9") })
         assertTrue(events().none { e -> listOf(e.a, e.b, e.c).any { it.toString().contains("zq9") } })
+    }
+
+    @Test fun aGitHubTokenIsRefusedByItsShape() {
+        // Not among the values TermuxSecrets reads (the updater's token stays in the main process): its shape refuses it.
+        val token = "ghp_" + "Zq9".repeat(12)
+        for (c in listOf("git push https://me:$token@github.com/me/notes", "curl -H 'Authorization: Bearer $token' https://api.github.com/user",
+            "echo github_pat_11ABCDEFG0" + "Zq9x".repeat(16))) {
+            for (source in listOf(CommandSource.MODEL, CommandSource.SPOKEN)) {
+                val r = prepare(TermuxCommandAction(c, source = source)) as Prepared.Refused
+                assertEquals("$source $c", TermuxReason.KEY_SHAPE.en, r.detail)
+            }
+        }
+        assertEquals(TermuxReason.KEY_SHAPE.en, (prepare(TermuxScriptAction("backup", args = "--token $token", source = CommandSource.MODEL)) as Prepared.Refused).detail)
+        // You typed it yourself: a card with its warning, answered by a tap.
+        val typed = prepare(TermuxCommandAction("git push https://me:$token@github.com/me/notes", source = CommandSource.TYPED)) as Prepared.Ready
+        assertTrue(AskWhy.COMMAND in typed.why)
+        assertTrue(logged.none { it.contains(token) })
     }
 }

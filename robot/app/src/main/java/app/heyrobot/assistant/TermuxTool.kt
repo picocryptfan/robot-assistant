@@ -137,7 +137,7 @@ object TermuxTool {
         if (!TermuxSetup.ready(check, granted, status, s.trustedSigner)) return Prepared.Refused(ActionStatus.FAILED, TermuxFailure.NOT_READY.en)
         val locked = f.locked(ctx)
         val key = UUID.randomUUID().toString()
-        // 1.0: Robot's own keys by exact value (helpers', web search's, the updater's token): never logged or shown.
+        // 1.0: Robot's own keys by exact value (helpers' and web search's; the updater's token by its shape): never logged or shown.
         val own = f.ownSecrets(ctx)
         return when (action) {
             is TermuxCommandAction -> {

@@ -75,7 +75,11 @@ class SecretMaskTest {
         assertFalse(SecretMask.hasOwn("abc", listOf("abc")))
         assertTrue(SecretMask.hasRobotKey("curl -H 'x-api-key: $ant' https://api.anthropic.com"))
         assertTrue(SecretMask.hasRobotKey("Authorization: Bearer sk-proj-" + "a".repeat(30)))
-        assertFalse(SecretMask.hasRobotKey("ghp_" + "x".repeat(36)))
+        // 1.0: GitHub's tokens too (the updater's token is one; :voice refuses it by its shape).
+        for (t in listOf("ghp_", "gho_", "ghu_", "ghs_", "ghr_")) assertTrue(t, SecretMask.hasRobotKey("git push https://me:$t" + "x".repeat(36) + "@github.com/me/x"))
+        assertTrue(SecretMask.hasRobotKey("GITHUB_TOKEN=github_pat_11ABCDEFG0" + "a".repeat(70)))
+        assertFalse(SecretMask.hasRobotKey("commit 8629e632fcb95da272221be327db653fb24befe9"))
+        assertFalse(SecretMask.hasRobotKey("ghp_short"))
         assertTrue(SecretMask.hasRobotKey("my-own-brave-token-1234", own))
         assertTrue(SecretMask.ROBOT_KEY_PREFIXES.contains("sk-ant-"))
     }

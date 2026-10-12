@@ -116,8 +116,8 @@ class ProcessIsolationTest {
             usersOf(Regex("""\bShizukuPath\b""")))
         assertEquals(listOf("app/ui/AdbFixesScreen.kt"), usersOf(Regex("""\bShizukuPath\.RUN\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
         // 1.0: the update lock, another signer and the test key are checked as each call is prepared and again as it runs;
-        // Robot's own keys by value reach TermuxPolicy (helpers', web search's and the updater's token, read in :voice for
-        // that alone, never logged).
+        // Robot's own keys by value reach TermuxPolicy (the helpers' and web search's keys :voice already reads, never
+        // logged). Never the updater's token, which only GitHubClient reads (above): a GitHub token is refused by its shape.
         val prepare = tool.substringAfter("fun prepare(ctx: Context, action: Action").substringBefore("\n    }\n")
         assertTrue(prepare, prepare.indexOf("check.lock?.let { return lockRefusal(") in 0 until prepare.indexOf("TermuxPolicy.command(") &&
             prepare.contains("TermuxPolicy.command(analysis, source, s, locked, untrusted, own)") && prepare.contains("val own = f.ownSecrets(ctx)") &&
@@ -125,8 +125,9 @@ class ProcessIsolationTest {
         val run = tool.substringAfter("suspend fun run(ctx: Context, action: Action").substringBefore("\n    }\n")
         assertTrue(run, run.indexOf("check.lock?.let {") in 0 until run.indexOf("runner.run(plan)"))
         assertEquals(listOf("app/assistant/TermuxSecrets.kt", "app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxSecrets\b""")))
-        assertEquals(listOf("app/assistant/TermuxSecrets.kt", "app/sys/OwnKeys.kt"), usersOf(Regex("""\bOwnKeys\b""")))
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bRLog\.|\bVoiceLog\."""), ours.filterKeys { it == "app/assistant/TermuxSecrets.kt" || it == "app/sys/OwnKeys.kt" }))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bRLog\.|\bVoiceLog\.|\bUpdateToken\b|\bapp\.heyrobot\.update\b"""),
+            ours.filterKeys { it == "app/assistant/TermuxSecrets.kt" }))
+        assertTrue(File(java("core"), "app/heyrobot/core/termux/SecretMask.kt").readText().contains("""Rule("(?<![A-Za-z0-9_])gh[pousr]_[A-Za-z0-9]{30,}", Kind.TOKEN, robot = true)"""))
         // Content-free logs: no RLog field named for a command's parts, and the label Termux logs is "Robot".
         val termux = ours.filterKeys { it.contains("/termux/") || Regex("""/Termux[A-Za-z]*\.kt$""").containsMatchIn(it) }
         assertTrue(termux.keys.toString(), termux.size >= 15)
@@ -884,9 +885,7 @@ class ProcessIsolationTest {
         // Who uses what.
         // (1.0: and Termux's weekly update check, through publicJson, below.)
         assertEquals(listOf("app/update/GitHubClient.kt", "app/update/TermuxUpdateCheck.kt", "app/update/Updater.kt"), usersOf(Regex("""\bGitHubClient\b""")))
-        // 1.0: the token is also read, by value, by sys/OwnKeys for the :voice process's TermuxSecrets (a Termux command
-        // holding it is refused); it is put in a request by GitHubClient alone (below).
-        assertEquals(listOf("app/sys/OwnKeys.kt", "app/update/GitHubClient.kt"), usersOf(Regex("""\bUpdateToken\.read\(""")))
+        assertEquals(listOf("app/update/GitHubClient.kt"), usersOf(Regex("""\bUpdateToken\.read\(""")))
         assertEquals(listOf("app/update/UpdateInstaller.kt", "app/update/Updater.kt"), usersOf(Regex("""\bUpdateInstaller\.install\(|\bPackageInstaller\b""")))
         assertEquals(listOf("app/update/UpdateInstaller.kt"), usersOf(Regex("""\bPackageInstaller\b""")))
         assertEquals(listOf("app/update/UpdateInstaller.kt"), usersOf(Regex("""\bcanRequestPackageInstalls\b|getPackageArchiveInfo""")))

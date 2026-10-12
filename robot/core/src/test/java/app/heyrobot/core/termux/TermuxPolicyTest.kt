@@ -114,8 +114,13 @@ class TermuxPolicyTest {
         val typed = cmd("echo sk-ant-api03-" + "q".repeat(40), TYPED)
         assertEquals(TAP_ONLY, typed.verdict)
         assertTrue(CommandWarning.SECRET in typed.warnings)
+        // 1.0: a GitHub token has the shape of the updater's token, one of Robot's own keys: refused unless you typed it.
+        val gh = "git clone https://me:ghp_" + "a".repeat(36) + "@github.com/me/x"
+        for (src in listOf(MODEL, HELPER, CONTENT, SPOKEN)) assertEquals("$src", TermuxReason.KEY_SHAPE, cmd(gh, src, on.copy(helpers = true)).reasons.single())
+        assertEquals(TermuxReason.KEY_SHAPE, cmd("echo github_pat_11ABCDEFG0" + "b".repeat(70), MODEL).reasons.single())
+        assertEquals(TAP_ONLY, cmd(gh, TYPED).verdict)
         // Other tokens: a warning and a tap.
-        assertEquals(TAP_ONLY, cmd("git clone https://me:ghp_" + "a".repeat(36) + "@github.com/me/x", MODEL).verdict)
+        assertEquals(TAP_ONLY, cmd("curl -H 'Authorization: Bearer glpat-" + "a".repeat(24) + "' https://gitlab.com/api/v4/user", MODEL).verdict)
     }
 
     /** No setting makes a command that isn't on the allowlist run without a card; there is no "run every command" option. */

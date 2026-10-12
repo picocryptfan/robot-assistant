@@ -232,9 +232,14 @@ test-key block, an update check and, for the ADB fixes, a way without a computer
   version you trusted, so every new version needs it again). Its tools stay described while it is paused, so a call says
   why.
 - **Robot's own keys by exact value** (left over from the 1.0 audit): every Termux call passes `ownSecrets` to
-  TermuxPolicy, read in `:voice` just before (`TermuxSecrets`: each helper's key, each web search key, and the updater's
-  token through `sys/OwnKeys`), so a command or script argument holding one is refused with "This holds one of Robot's own
-  keys…", whoever wrote it; with "Hide secrets in output" on (the default) the output is masked with them too. Never logged or shown (`TermuxLockGateTest` plants one).
+  TermuxPolicy, read in `:voice` just before (`TermuxSecrets`: each helper's key and each web search key, which `:voice`
+  already reads for its helpers and searches), so a command or script argument holding one is refused with "This holds
+  one of Robot's own keys…", whoever wrote it; with "Hide secrets in output" on (the default) the output is masked with
+  them too. Never logged or shown (`TermuxLockGateTest` plants one). The updater's GitHub token is never decrypted in
+  `:voice` (only the main process's `GitHubClient` reads it): instead GitHub's token shapes (`ghp_`, `gho_`, `ghu_`,
+  `ghs_`, `ghr_`, `github_pat_`) now count as the shape of one of Robot's keys, so a command or argument holding one is
+  refused unless you typed it ("This holds what looks like an API key, and you didn't type it…"; typed, it is a tap-only
+  card with its warning). An old 40-hex-digit token has no shape to tell it from a commit hash and isn't caught.
 - **ADB fixes without a computer** (Settings › Advanced › ADB fixes): each fix shows **With a computer (adb)** as before
   and **Without a computer (Shizuku)**: the same command without `adb shell`, as `rish -c '<command>'` (single-quoted, a
   `'` inside written `'\''`; core `ShizukuPath`), with Copy. The list says how: install Shizuku (RikkaApps, only from its
@@ -256,7 +261,7 @@ test-key block, an update check and, for the ADB fixes, a way without a computer
 **Code and tests.** Core `termux/TermuxIdentity.kt` (`TermuxStatus.UPDATED`, `TermuxLock`, `TrustedVersion`),
 `TermuxSettings.kt` (the record, `testKeyRisk`, `updateCheck`), `TermuxSetup.kt`, `TermuxUpdates.kt` and `ShizukuFixes.kt`;
 the app's `update/TermuxUpdateCheck.kt`, `GitHubClient.publicJson`, `sys/TermuxFiles.kt` (`TermuxUpdateStore`,
-`TermuxWords`), `assistant/TermuxTool.kt`, `TermuxSecrets.kt`, `sys/OwnKeys.kt`, `ui/settings/TermuxSettings.kt` and
+`TermuxWords`), `assistant/TermuxTool.kt`, `TermuxSecrets.kt`, `ui/settings/TermuxSettings.kt` and
 `ui/AdbFixesScreen.kt`. Tests: `TermuxLockTest` (source by digest, version lock and re-trust, signer refusal, test-key
 block and override), `TermuxUpdatesTest` (F-Droid's answer as recorded on 12 Oct 2026, GitHub's in its format with
 Termux's real tags and dates; the verdicts), `ShizukuFixesTest` (the rish forms and quoting, only AdbFixes commands, the

@@ -62,6 +62,8 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
 - **API keys** you add for Claude (or another helper), and the **access token** you may add for a private update
   repository (Settings › About › Updates › Advanced). They are encrypted with a key that never leaves your phone's secure
   hardware (Android Keystore, AES-GCM), and decrypted only when Robot calls that helper, or GitHub's API for the token.
+  Since 1.0 a helper's or web search key is also compared, on the phone, with a Termux command about to be sent, so one
+  holding it is refused; the update token never is (a command holding a GitHub token is refused by its shape).
 - **Robot's diagnostic logs** (Settings › Voice › Voice log, and Android's log) hold codes and numbers only, never what
   you said or what Robot answered. They stay on the phone; you can copy the Voice log yourself (wake phrases by number)
   or add it to a bug report (below).
