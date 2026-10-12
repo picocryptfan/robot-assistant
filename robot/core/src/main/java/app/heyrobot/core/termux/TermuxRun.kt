@@ -111,6 +111,15 @@ object TermuxRun {
 
     fun pidFile(execId: Int): String = "${TermuxPaths.TMP}/robot-$execId.pid"
 
+    /** The result PendingIntent's data: robot-termux://run/<id>, unique per run (B8.2). */
+    fun resultUri(execId: Int): String = "robot-termux://run/$execId"
+
+    /** The run a result is for, from its data URI; null for anything that isn't exactly [resultUri] of a positive id. */
+    fun execId(uri: String?): Int? {
+        val id = uri?.removePrefix("robot-termux://run/")?.takeIf { it != uri && it.length in 1..10 && it.all { c -> c in '0'..'9' } } ?: return null
+        return id.toIntOrNull()?.takeIf { it > 0 }
+    }
+
     private fun checkId(execId: Int) = require(execId > 0) { "execId must be positive" }
 
     private fun bashArgs(script: String, vararg rest: String): List<String> = listOf("--noprofile", "--norc", "-c", script, NAME) + rest

@@ -68,7 +68,12 @@ class ToolRouterTest {
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d))
         assertEquals(Prompt.CORE_TOOLS + listOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.LOOKUP_CONTACT),
             ToolRouter.tools(route("text Mom I'm late"), d))
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE, ToolRouter.tools(ToolGroup.entries.toSet(), d))
+        // 0.9: the Termux tools only when Settings › Termux turned them on (TermuxTool.tools), never by the groups alone.
+        val termux = setOf(ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND)
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - termux, ToolRouter.tools(ToolGroup.entries.toSet(), d))
+        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE, ToolRouter.tools(ToolGroup.entries.toSet(), d, termux = termux))
+        assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, termux = termux))
+        assertEquals(Prompt.CORE_TOOLS + ToolName.TERMUX_COMMAND, ToolRouter.tools(core + ToolGroup.TERMUX, d, termux = setOf(ToolName.TERMUX_COMMAND)))
         // ask_claude only with Ask Claude on and escalation not Off (ClaudeSettings.localTool).
         assertEquals(Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE, ToolRouter.tools(core, d, askClaude = true))
         // Turned off in settings: never described. Texting app off: no send_text.

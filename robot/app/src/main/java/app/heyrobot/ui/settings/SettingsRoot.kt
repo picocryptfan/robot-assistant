@@ -34,6 +34,9 @@ import app.heyrobot.ui.pref.preferenceGroup
 @Composable
 fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current)) {
     fun go(route: String) = a.openPage(Page.Settings(route))
+    // 0.9: Settings › Termux's own file (termux.json), read once per showing.
+    val ctx = LocalContext.current
+    val termux = androidx.compose.runtime.remember { termuxSummary(app.heyrobot.sys.TermuxStore.load(ctx), app.heyrobot.sys.TermuxStore.status(ctx).scripts.size) }
     PreferenceScreen("Settings", onBack = null, modifier = modifier) {
         preferenceGroup(null, "voice") {
             PreferenceItem("Wake word", wakeSummary(s), RIcons.Mic, onClick = { a.openPage(Page.WakePhrases) })
@@ -46,6 +49,7 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
             PreferenceItem("Weather", s.weatherHome?.let { "Home: ${it.name}" } ?: "No home set", RIcons.Sunny, onClick = { go(SettingsRoutes.WEATHER) })
             PreferenceItem("Helpers", helpersSummary(s, snap.facts), RIcons.Cloud, onClick = { a.openPage(Page.Helpers) })
             PreferenceItem("Conversation", conversationSummary(s), RIcons.Transcribe, onClick = { a.openPage(Page.ConversationSettings) })
+            PreferenceItem("Termux", termux, RIcons.Terminal, onClick = { go(SettingsRoutes.TERMUX) })
         }
         preferenceGroup(null, "app") {
             PreferenceItem("Model", modelSummary(s, snap), RIcons.Chip, onClick = { a.openTab(Tab.MODEL) })

@@ -18,6 +18,8 @@ enum class ToolGroup {
     WEATHER,
     /** The phone's storage, battery and memory (0.4.0). */
     PHONE,
+    /** 0.9: Termux (TermuxRouter's words), described only while Settings › Termux is on. */
+    TERMUX,
 }
 
 object ToolRouter {
@@ -88,6 +90,7 @@ object ToolRouter {
             if (has(CALENDAR) || WHEN.containsMatchIn(plain)) add(ToolGroup.CALENDAR)
             if (has(WEATHER)) add(ToolGroup.WEATHER)
             if (has(PHONE) || stopsAnApp(words)) add(ToolGroup.PHONE)
+            if (app.heyrobot.core.termux.TermuxRouter.calls(question)) add(ToolGroup.TERMUX)
         }
     }
 
@@ -186,12 +189,13 @@ object ToolRouter {
     /**
      * The tools described for [groups], in a fixed order. Tools turned Off in settings are never described, nor
      * send_text when the texting app is Off. ask_claude only with [askClaude] (Ask Claude on, escalation not Off:
-     * ClaudeSettings.localTool).
+     * ClaudeSettings.localTool). A Termux tool only when in [termux] (0.9: Settings › Termux on, set up, and that tool on).
      */
-    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
-        t.group in groups && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
-            (t != ToolName.ASK_CLAUDE || askClaude)
-    }
+    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, termux: Set<ToolName> = emptySet()): List<ToolName> =
+        ToolName.entries.filter { t ->
+            t.group in groups && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
+                (t != ToolName.ASK_CLAUDE || askClaude) && (!t.termux || t in termux)
+        }
 
     /** "core.people" for the logs (a fixed identifier, never the question). */
     fun label(tools: Collection<ToolName>): String =

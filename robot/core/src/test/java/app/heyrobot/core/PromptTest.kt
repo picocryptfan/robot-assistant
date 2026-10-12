@@ -206,8 +206,9 @@ class PromptTest {
         assertTrue("all $all", all < 2_600)
         // The worst case: every group, Ask Claude on (its tool and line) and every optional system line. About 500 tokens
         // are left for the new turn: screen text is cut to fit (fitTurn) and older turns are dropped first.
+        // (0.9: the Termux group, only while Settings › Termux is on, is measured with it in TermuxToolsTest.)
         val worst = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true),
-            ToolName.entries.toList())
+            ToolName.entries.filter { !it.termux })
         assertTrue("worst $worst", worst < 2_850)
         assertTrue(ContextWindow.newTurnLimit(worst) > 450)
         for (g in listOf(ToolGroup.PEOPLE, ToolGroup.NOTES, ToolGroup.CALENDAR)) {

@@ -598,6 +598,7 @@ fun RobotAppUi(activity: MainActivity) {
             else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putString(Cmd.EXTRA_RUN, run.name) })
         },
         askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
+        askTermux = { peoplePermissions.launch(arrayOf(app.heyrobot.core.termux.TermuxIntents.PERMISSION_RUN_COMMAND)) },
         // 0.4.7: the GPU again after it failed (the voice process reads the file at the next load), and the problem report.
         tryGpuAgain = {
             scope.launch {
@@ -796,4 +797,6 @@ class AppActions(
     val copyReport: (String) -> Unit = {},
     val shareReport: (String) -> Unit = {},
     val dismissProblem: (ModelProblem) -> Unit = {},
+    /** 0.9: Termux's RUN_COMMAND permission (Settings › Termux), asked for here only, as every permission is. */
+    val askTermux: () -> Unit = {},
 )

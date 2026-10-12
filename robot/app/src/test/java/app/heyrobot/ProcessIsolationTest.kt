@@ -50,6 +50,36 @@ class ProcessIsolationTest {
 
     private fun usersOf(pattern: Regex, files: Map<String, File> = ours) = files.filter { pattern.containsMatchIn(code(it.value)) }.keys.sorted()
 
+    /**
+     * 0.9, the Termux agent (docs/plans/websearch-termux-design.md B8.1): the RUN_COMMAND intent is built and sent only by the
+     * :voice process's TermuxSend (startForegroundService, nowhere else), its result receiver is :voice's and not exported,
+     * the permission is asked for by the main app only (MainActivity, for Settings › Termux), the runner and its cards
+     * stay in the assistant, and no Termux code logs a command, a path, an argument, a name or output.
+     */
+    @Test fun termuxRunsOnlyFromTheVoiceProcess() {
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt"), usersOf(Regex("""\bTermuxIntents\.ACTION_RUN_COMMAND\b""")))
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/conversation/ConversationService.kt"), usersOf(Regex("""\bstartForegroundService\(""")))
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxSend\b""")))
+        // The result PendingIntent: explicit to the receiver, one-shot and mutable (Termux fills the result in), made there only.
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt"), usersOf(Regex("""\bTermuxResultReceiver\b""")))
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/TermuxResultReceiver.kt")).contains("Intent(ctx, TermuxResultReceiver::class.java)") &&
+            File(java("app"), "app/heyrobot/assistant/TermuxResultReceiver.kt").readText().contains("PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_MUTABLE"))
+        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/TermuxRunner.kt", "app/assistant/TermuxTool.kt"),
+            usersOf(Regex("""\bTermuxRunner\b""")))
+        assertEquals(listOf("app/ui/MainActivity.kt"), usersOf(Regex("""PERMISSION_RUN_COMMAND\)\)|launch\(arrayOf\([^)]*PERMISSION_RUN_COMMAND""")))
+        assertEquals(listOf("app/assistant/TermuxPanel.kt", "app/assistant/TermuxTool.kt", "app/assistant/VoiceHub.kt", "app/assistant/PanelActions.kt",
+            "app/assistant/PanelController.kt").sorted(), usersOf(Regex("""\bTermux(Tool|Panel)\b""")).filter { !it.endsWith("TermuxResultReceiver.kt") && !it.endsWith("TermuxRunner.kt") })
+        // Settings › Termux only asks the voice process for its fixed set-up runs (Cmd.TERMUX), never a command.
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/VoiceHub.kt")).contains("Cmd.TERMUX -> TermuxTool.setup(app, i.getStringExtra(Cmd.EXTRA_RUN))"))
+        val setup = File(java("app"), "app/heyrobot/assistant/TermuxTool.kt").readText().substringAfter("fun setup(").substringBefore("\n    private suspend fun test(")
+        assertTrue(setup.contains("if (what !in setOf(TEST, LIST, FOLDER)) return"))
+        // Content-free logs: no RLog field named for a command's parts, and the label Termux logs is "Robot".
+        val termux = ours.filterKeys { it.contains("/termux/") || Regex("""/Termux[A-Za-z]*\.kt$""").containsMatchIn(it) }
+        assertTrue(termux.keys.toString(), termux.size >= 15)
+        assertEquals(emptyList<String>(), usersOf(Regex("""RLog\.[iw]\([^\n]*"(command|cmd|args|argv|arguments|name|script|path|output|stdout|stderr|errmsg|text)"\s+to"""), termux))
+        assertTrue(File(java("core"), "app/heyrobot/core/termux/TermuxIntents.kt").readText().contains("const val LABEL = \"Robot\""))
+    }
+
     @Test fun liteRtOnlyInTheBrainEngineFile() {
         assertEquals(listOf("brain/brain/GemmaEngine.kt"), usersOf(Regex("""\bcom\.google\.ai\.edge\.litert""")))
     }
@@ -208,7 +238,9 @@ class ProcessIsolationTest {
             // 0.5.0, phase 5.3: "Your voice" uses the speaker model and the voiceprint's key, both only in :voice.
             "app.heyrobot.assistant.conversation.VoiceprintActivity",
             // 0.5.0, phase 5.6: summaries reach Robot's model and the Claude key, both only from :voice.
-            "app.heyrobot.assistant.conversation.SummaryActivity")
+            "app.heyrobot.assistant.conversation.SummaryActivity",
+            // 0.9: Termux's results come back where its commands were sent from.
+            "app.heyrobot.assistant.TermuxResultReceiver")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         // 0.4.5: llama.cpp's own process, isolated: Android runs it under a uid of its own with no permissions, no network
@@ -250,7 +282,8 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
             "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
             "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider",
-            "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver"))
+            "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver",
+            "app.heyrobot.assistant.TermuxResultReceiver"))
             assertEquals(n, "false", exported(n))
         // 0.5.0: the session is a microphone foreground service; the tile only the system binds.
         assertEquals("microphone", c("app.heyrobot.assistant.conversation.ConversationService").getAttributeNS(ns, "foregroundServiceType"))
@@ -320,6 +353,8 @@ class ProcessIsolationTest {
             // ... and, only for "Install updates without asking" (off by default), asking Android to skip its confirmation for
             // Robot's own update: without it Android ignores USER_ACTION_NOT_REQUIRED. A normal permission.
             "android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION",
+            // 0.9: Termux's own dangerous permission, asked for from Settings › Termux by the main app only.
+            "com.termux.permission.RUN_COMMAND",
         ), used)
         // Never installing or deleting other apps, never asking to update apps it didn't install, and no user-initiated job or
         // foreground service type for the updater's downloads (FOREGROUND_SERVICE itself is conversation mode's, above).
@@ -360,7 +395,7 @@ class ProcessIsolationTest {
         assertTrue(File(java("app"), "app/heyrobot/sys/People.kt").readText().contains("\"app.heyrobot.ui.NotesLauncher\""))
         val queries = doc.getElementsByTagName("queries").item(0) as Element
         val packages = queries.getElementsByTagName("package").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
-        assertTrue(packages.containsAll(setOf("com.cheogram.android", "com.cheogram.android.playstore", "ch.protonmail.android", "com.anthropic.claude")))
+        assertTrue(packages.containsAll(setOf("com.cheogram.android", "com.cheogram.android.playstore", "ch.protonmail.android", "com.anthropic.claude", "com.termux")))
         val schemes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "scheme") } }.toSet()
         assertTrue(schemes.containsAll(setOf("xmpp", "mailto", "smsto", "claude", "https")))
         val hosts = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "host") } }.toSet()
@@ -659,8 +694,10 @@ class ProcessIsolationTest {
         // links (assets/licenses/components.json) are https. The updater's (GitHub's API, a release's page) are built in
         // core's GitHub.kt alone, from the repository and ids. Web search's request builders (core web SearchWire and
         // Wikipedia: Brave, Kagi, Mojeek and Wikipedia's API addresses) are built in core but not wired yet: nothing fetches them.
+        // 0.9: Termux's F-Droid page (core termux TermuxSetup.kt), which Settings › Termux opens in the browser; Robot fetches nothing.
         assertEquals(listOf("app/ui/HelpersScreens.kt", "core/core/ClaudeApp.kt", "core/core/Licences.kt", "core/core/ModelState.kt", "core/core/MtBundle.kt",
-            "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt", "core/core/helpers/Helpers.kt", "core/core/update/GitHub.kt",
+            "core/core/Nearby.kt", "core/core/VoiceModels.kt", "core/core/Weather.kt", "core/core/helpers/Helpers.kt", "core/core/termux/TermuxSetup.kt",
+            "core/core/update/GitHub.kt",
             "core/core/web/SearchWire.kt", "core/core/web/Wikipedia.kt"),
             ours.filter { withoutComments(it.value).contains("https://") }.keys.sorted())
         val audio = ours.filterKeys { it.startsWith("voice/") || it.startsWith("app/assistant/") }

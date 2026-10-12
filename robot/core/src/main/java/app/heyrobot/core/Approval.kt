@@ -39,6 +39,10 @@ object ApprovalGate {
         asked: Boolean = false, remote: Boolean = false, online: Boolean = tool.online, trusted: Boolean = false): GateDecision {
         val level = settings.approval(tool)
         return when {
+            // 0.9: TermuxPolicy decided when the action was prepared (Settings › Termux, the lock, rules 2 to 5): only a
+            // Termux reason ([AskWhy.TERMUX], COMMAND, FROM_CONTENT) shows the card; none means it runs (your script set to
+            // Just do it, or an allowlisted read).
+            tool.termux -> if (asks(why, settings)) GateDecision.CONFIRM else GateDecision.RUN
             level == Approval.OFF -> GateDecision.DISABLED
             locked && tool !in settings.lockedTools -> GateDecision.NEEDS_UNLOCK
             tool == ToolName.ASK_CLAUDE -> GateDecision.CONFIRM
@@ -56,7 +60,8 @@ object ApprovalGate {
 
     /** One of [why] needs a card with these settings. */
     fun asks(why: Set<AskWhy>, s: RobotSettings): Boolean =
-        AskWhy.PICK in why || AskWhy.ONLINE in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards)
+        AskWhy.PICK in why || AskWhy.ONLINE in why || (AskWhy.WHO in why && s.whoCards) || (AskWhy.LEARNED in why && s.learnedCards) || (AskWhy.DELETE in why && s.deleteCards) ||
+            AskWhy.TERMUX in why || AskWhy.COMMAND in why || AskWhy.FROM_CONTENT in why
 
     /** Content in the conversation makes this action ask first, under [mode] ([asked]: the person asked for it this turn). */
     fun contentAsks(mode: SafetyCards, asked: Boolean): Boolean = when (mode) {

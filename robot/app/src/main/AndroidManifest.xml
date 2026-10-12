@@ -61,6 +61,10 @@
          without the confirmation window (Android 12 and later; Android still asks when another app store keeps Robot's
          updates). A normal permission, granted at install; without it Android ignores the request and always asks. -->
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <!-- 0.9, the Termux agent (off until you set it up in Settings › Termux): a dangerous permission Termux itself defines,
+         asked for by the main app only, from that page. With it (and allow-external-apps=true in Termux) the :voice process
+         sends commands to Termux's RunCommandService; each one's card comes first unless you chose otherwise. -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <queries>
         <!-- open_app: every app with a launcher icon (no QUERY_ALL_PACKAGES). -->
@@ -119,6 +123,8 @@
         </intent>
         <!-- Ask Claude's app route: the official Claude app, resolved at run time (claude://, https claude.ai, a share). -->
         <package android:name="com.anthropic.claude" />
+        <!-- 0.9, the Termux agent: Termux's signer, version and RunCommandService (RUN_COMMAND doesn't work without it). -->
+        <package android:name="com.termux" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="claude" />
@@ -301,6 +307,12 @@
             </intent-filter>
             <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="true" />
         </service>
+        <!-- 0.9: Termux's result for a command Robot sent, through Robot's own one-shot PendingIntent (explicit to this
+             receiver). Not exported: no other app can send it anything. -->
+        <receiver
+            android:name=".assistant.TermuxResultReceiver"
+            android:process=":voice"
+            android:exported="false" />
         <!-- The camera app writes the photo here (app cache, deleted right after it is read). -->
         <provider
             android:name="androidx.core.content.FileProvider"

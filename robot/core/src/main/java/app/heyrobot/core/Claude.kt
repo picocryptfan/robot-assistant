@@ -496,6 +496,8 @@ enum class Personal(val label: String) {
      * "Summarize with a stronger AI" card, never through an escalation, Claude mode or "include the conversation".
      */
     CONVERSATION("a recorded conversation"),
+    /** 0.9: what a Termux command or script printed. */
+    TERMUX("your Termux output"),
     ;
 
     companion object {
@@ -513,6 +515,7 @@ enum class Personal(val label: String) {
             // The weather, and (0.4.0) the nearest place found online: both say where you are.
             ToolName.WEATHER, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE -> LOCATION
             ToolName.PHONE_STATUS, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE -> PHONE
+            ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND -> TERMUX
             else -> READ
         }
 

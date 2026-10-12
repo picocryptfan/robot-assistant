@@ -414,6 +414,9 @@ data class RobotSettings(
             ToolName.FREE_STORAGE to Approval.ASK,
             // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
             ToolName.ASK_CLAUDE to Approval.ASK,
+            // 0.9: not a level you set either: Settings › Termux (termux.json) and TermuxPolicy decide.
+            ToolName.TERMUX_SCRIPT to Approval.ASK,
+            ToolName.TERMUX_COMMAND to Approval.ASK,
         )
 
         /** The actions whose default became "Just do it" in schema 4. */

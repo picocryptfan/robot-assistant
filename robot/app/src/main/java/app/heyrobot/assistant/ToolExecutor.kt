@@ -171,6 +171,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.PhoneCheck -> phoneCheck(action)
                 is Action.FreeMemory -> freeMemory(action)
                 is Action.FreeStorage -> freeStorage(action)
+                // 0.9: a Termux run waits for its result and Stop ends it: TermuxTool.run (PanelController), never here.
+                is app.heyrobot.core.TermuxCommandAction, is app.heyrobot.core.TermuxScriptAction -> Executed(ActionStatus.FAILED, "Something went wrong.")
             }
         } catch (t: Throwable) {
             RLog.w("tool_run", t, "tool" to action.tool)

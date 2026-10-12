@@ -49,6 +49,8 @@ object SettingsRoutes {
     fun adbFix(id: String) = "adb/$id"
     /** Settings › People › Notification access: the three steps. */
     const val NOTIFICATION_ACCESS = "people/notification-access"
+    /** 0.9: Settings › Termux, the Termux agent's set-up and settings. */
+    const val TERMUX = "termux"
 }
 
 /** The page for [route]; an unknown one (from a newer version's saved state) goes back to Settings. */
@@ -81,6 +83,7 @@ fun SettingsNav(
         SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
         SettingsRoutes.UPDATES -> UpdatesRoute(snackbar, onBack)
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
+        SettingsRoutes.TERMUX -> TermuxRoute(a, snackbar, onBack, snap.facts?.active)
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)
             else -> LaunchedEffect(route) { onBack() }

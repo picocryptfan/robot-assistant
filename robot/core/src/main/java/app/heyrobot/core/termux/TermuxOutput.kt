@@ -225,7 +225,12 @@ enum class TermuxFailure(override val id: Int, override val title: String, val e
         "Termux n'a pas répondu : vérifiez que sa batterie n'est pas restreinte."),
     NOT_TRUSTED(5, "signer changed", "Termux was reinstalled or replaced. Check where it came from, then Trust again in Settings › Termux.",
         "Termux a été réinstallé ou remplacé. Vérifiez sa provenance, puis Faire confiance à nouveau dans Réglages › Termux."),
-    INTERNAL(6, "internal error", "Termux couldn't run it.", "Termux n'a pas pu la lancer.");
+    INTERNAL(6, "internal error", "Termux couldn't run it.", "Termux n'a pas pu la lancer."),
+    /** 0.9: Android found no Termux to start (not installed, or a build without RunCommandService). */
+    NOT_INSTALLED(7, "not installed", "Termux isn't installed, or can't take commands from other apps: see Settings › Termux.",
+        "Termux n'est pas installé, ou n'accepte pas les commandes d'autres applications : voyez Réglages › Termux."),
+    /** 0.9: Settings › Termux's set-up isn't finished (rule 1: nothing runs until every line is green). */
+    NOT_READY(8, "set-up not finished", "Finish setting up Termux in Settings › Termux first.", "Terminez d'abord la configuration de Termux dans Réglages › Termux.");
 
     fun text(fr: Boolean): String = if (fr) this.fr else en
 

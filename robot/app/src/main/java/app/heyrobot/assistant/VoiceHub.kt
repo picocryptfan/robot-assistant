@@ -505,6 +505,8 @@ object VoiceHub {
             Cmd.VOICE_BENCH -> VoiceEngines.benchmark()
             Cmd.BARGE_TEST -> BargeTest.start(enumOr(i.getStringExtra(Cmd.EXTRA_RUN), BargeRun.FIRST))
             Cmd.WAKE_TEST -> wakeTestUntil = if (i.getBooleanExtra(Cmd.EXTRA_ON, false)) SystemClock.elapsedRealtime() + WAKE_TEST_MS else 0L
+            // 0.9: Settings › Termux's Test, ~/robot and your scripts (fixed commands; the result receiver is in this process).
+            Cmd.TERMUX -> TermuxTool.setup(app, i.getStringExtra(Cmd.EXTRA_RUN))
         }
     }
 }

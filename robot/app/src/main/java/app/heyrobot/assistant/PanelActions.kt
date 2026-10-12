@@ -41,6 +41,9 @@ interface PanelActions {
     fun dismissOffer(replyId: String)
     fun endHelperMode()
 
+    /** 0.9: a Termux card's Edit, time limit, Open in Termux or Stop (Run and Cancel are [confirm]). */
+    fun termux(actionId: String, change: app.heyrobot.ui.common.TermuxCardChange) {}
+
     /** What the panel does on screen: each action through PanelController. */
     companion object Default : PanelActions {
         override fun send(text: String) = PanelController.send(text)
@@ -68,5 +71,6 @@ interface PanelActions {
         override fun acceptOffer(replyId: String) { PanelController.acceptOffer(replyId) }
         override fun dismissOffer(replyId: String) { PanelController.dismissOffer(replyId) }
         override fun endHelperMode() { PanelController.endHelperMode() }
+        override fun termux(actionId: String, change: app.heyrobot.ui.common.TermuxCardChange) { TermuxPanel.change(actionId, change) }
     }
 }

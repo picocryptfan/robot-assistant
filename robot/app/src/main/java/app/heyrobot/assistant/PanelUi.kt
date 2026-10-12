@@ -349,7 +349,7 @@ internal fun UiTurn.toTurnUi() = TurnUi(
     actions = actions.map {
         ActionView(it.id, it.tool, it.summary, it.status, it.detail, it.icon, it.body, it.choices, it.confirm, it.undo != null, it.more,
             cancel = it.cancel, openApp = it.handOff?.let { h -> SettingsPage.label(h) ?: "Open Cheogram" }, picture = it.picture, remember = it.remember,
-            allowContacts = it.allowContacts)
+            allowContacts = it.allowContacts, termux = it.termux)
     },
     streaming = streaming, stopped = stopped, error = error, helper = claude, readBack = readBack, by = by, home = home,
     footer = if (role == TurnRole.USER) emptyList() else claudeFooter(sources, cost, by),
@@ -368,7 +368,8 @@ private fun Messages(st: PanelState, actions: PanelActions, modifier: Modifier) 
     val turnActions = remember(actions) {
         TurnActions(
             confirm = actions::confirm,
-            card = CardActions(choose = actions::choose, undo = actions::undo, allow = actions::openPermissions, openApp = actions::openHandOff),
+            card = CardActions(choose = actions::choose, undo = actions::undo, allow = actions::openPermissions, openApp = actions::openHandOff,
+                termux = actions::termux),
             acceptOffer = actions::acceptOffer,
             dismissOffer = actions::dismissOffer,
         )

@@ -1,5 +1,8 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.termux.TermuxExitBucket
+import app.heyrobot.core.termux.TermuxFailure
+import app.heyrobot.core.termux.TermuxRunKind
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -236,6 +239,14 @@ enum class VoiceEvent(val id: Int) {
      * [ProblemStage], c = [LoadFailure] (0: its process stopped).
      */
     GPU_FALLBACK(135),
+    /** 0.9, the Termux agent (events 170 to 179, core termux TermuxLog): a run sent. a = [TermuxRunKind], b = its time limit in s. */
+    TERMUX_SENT(170),
+    /** A run ended: a = [TermuxExitBucket], b = ms, c = TermuxLog.doneC (the output's size bucket in KB × 2, + 1 when it was cut). */
+    TERMUX_DONE(171),
+    /** Termux couldn't run it, or didn't answer: a = [TermuxFailure]. */
+    TERMUX_FAILED(172),
+    /** A result for a run Robot no longer waited for (its output dropped): a = [TermuxExitBucket]. */
+    TERMUX_LATE(173),
     ;
 
     companion object {
@@ -774,6 +785,11 @@ object VoiceLogText {
             VoiceEvent.MODEL_SWITCH -> "Unloaded " + code(ModelCode.entries, a) + " to load " + code(ModelCode.entries, b)
             VoiceEvent.GPU_FALLBACK -> "The GPU failed for " + code(ModelCode.entries, a) + " while " + code(ProblemStage.entries, b) +
                 (if (c > 0) " (" + code(LoadFailure.entries, c) + ")" else " (its process stopped)") + ": the CPU from now on"
+            VoiceEvent.TERMUX_SENT -> "Termux run sent: " + code(TermuxRunKind.entries, a) + " · limit $b s"
+            VoiceEvent.TERMUX_DONE -> "Termux run ended: " + code(TermuxExitBucket.entries, a) + " in " + secs(b) +
+                " · output " + (if (c / 2 == 0) "empty" else "up to ${c / 2} KB") + (if (c % 2 == 1) " (cut)" else "")
+            VoiceEvent.TERMUX_FAILED -> "Termux run failed: " + code(TermuxFailure.entries, a)
+            VoiceEvent.TERMUX_LATE -> "Termux answered after Robot stopped waiting (" + code(TermuxExitBucket.entries, a) + "): dropped"
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
             VoiceEvent.CONV_START -> "Conversation started: " + code(ConvMode.entries, a) + " (" + code(ConvEntry.entries, b) + ")" +

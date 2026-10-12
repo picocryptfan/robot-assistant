@@ -17,7 +17,8 @@ class ApprovalGateTest {
     }
 
     @Test fun everythingElseNeedsUnlockOnTheLockScreen() {
-        for (t in ToolName.entries - LockScreen.DEFAULT) {
+        // (0.9: the Termux tools follow Settings › Termux instead, TermuxPolicy's lock rule: TermuxToolsTest.)
+        for (t in ToolName.entries.filter { !it.termux } - LockScreen.DEFAULT) {
             assertEquals(t.name, GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(t, true, defaults))
         }
     }
@@ -30,7 +31,7 @@ class ApprovalGateTest {
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.FLASHLIGHT, true, flashlight))
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.SET_TIMER, true, flashlight))
         val none = defaults.copy(lockedTools = emptySet())
-        for (t in ToolName.entries.filter { defaults.approval(it) != Approval.OFF }) assertEquals(t.name, GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(t, true, none))
+        for (t in ToolName.entries.filter { defaults.approval(it) != Approval.OFF && !it.termux }) assertEquals(t.name, GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(t, true, none))
         // Allowed there, a level still counts: Ask first asks, Off stays off.
         val texts = defaults.copy(lockedTools = setOf(ToolName.SEND_TEXT))
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SEND_TEXT, true, texts))
@@ -77,7 +78,7 @@ class ApprovalGateTest {
     @Test fun afterReadingScreenTextOrAPictureTurnsJustDoItIntoAsk() {
         for (s in listOf(defaults, allAuto).map { it.copy(safetyCards = SafetyCards.AFTER_READING) }) {
             // Every tool that writes or leaves the phone; the read tools only bring more to read (below).
-            for (t in ToolName.entries.filter { !it.reads }) for (asked in listOf(false, true)) {
+            for (t in ToolName.entries.filter { !it.reads && !it.termux }) for (asked in listOf(false, true)) {
                 assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, locked = false, settings = s, content = true, asked = asked))
             }
         }
@@ -97,7 +98,7 @@ class ApprovalGateTest {
     /** The default, "When you didn't ask for it": content forces a card only for an action your own words didn't ask for. */
     @Test fun byDefaultContentAsksOnlyForWhatYouDidNotAskFor() {
         assertEquals(SafetyCards.UNASKED, defaults.safetyCards)
-        for (s in listOf(defaults, allAuto)) for (t in ToolName.entries.filter { !it.reads || it.online }) {
+        for (s in listOf(defaults, allAuto)) for (t in ToolName.entries.filter { (!it.reads || it.online) && !it.termux }) {
             val level = s.approval(t)
             // Not asked for: as before, a card.
             assertEquals(t.name, if (level == Approval.OFF) GateDecision.DISABLED else GateDecision.CONFIRM,
@@ -168,7 +169,11 @@ class ApprovalGateTest {
      */
     @Test fun everyCombination() {
         val bools = listOf(false, true)
-        val reasons = (0 until (1 shl AskWhy.entries.size)).map { m -> AskWhy.entries.filterIndexed { i, _ -> m and (1 shl i) != 0 }.toSet() }
+        // Every set of the first five reasons, and the Termux ones (0.9) alone and together.
+        val termuxWhy = listOf(AskWhy.TERMUX, AskWhy.COMMAND, AskWhy.FROM_CONTENT)
+        val plain = AskWhy.entries - termuxWhy
+        val reasons = (0 until (1 shl plain.size)).map { m -> plain.filterIndexed { i, _ -> m and (1 shl i) != 0 }.toSet() } +
+            listOf(setOf(AskWhy.TERMUX), setOf(AskWhy.COMMAND), setOf(AskWhy.FROM_CONTENT), setOf(AskWhy.TERMUX, AskWhy.COMMAND), setOf(AskWhy.TERMUX, AskWhy.FROM_CONTENT))
         var n = 0
         for (t in ToolName.entries) for (level in Approval.entries) for (mode in SafetyCards.entries) for (lockSet in listOf(LockScreen.DEFAULT, setOf(t)))
             for (claudeCards in bools) for (who in bools) for (learned in bools) for (delete in bools) for (helpers in bools) {
@@ -188,8 +193,12 @@ class ApprovalGateTest {
                         AskWhy.LEARNED in why && learned,
                         AskWhy.DELETE in why && delete,
                         content && (!t.reads || t.online) && (mode == SafetyCards.AFTER_READING || (mode == SafetyCards.UNASKED && !asked)),
+                        why.any { it in termuxWhy },
                     )
                     val want = when {
+                        // 0.9: TermuxPolicy decided when it was prepared (Settings › Termux, the lock, rules 2 to 5): only its reasons count.
+                        t.termux -> if (why.any { it in termuxWhy } || AskWhy.PICK in why || AskWhy.ONLINE in why || (AskWhy.WHO in why && who) ||
+                            (AskWhy.LEARNED in why && learned) || (AskWhy.DELETE in why && delete)) GateDecision.CONFIRM else GateDecision.RUN
                         level == Approval.OFF -> GateDecision.DISABLED
                         locked && t !in lockSet -> GateDecision.NEEDS_UNLOCK
                         cardReasons.any { it } -> GateDecision.CONFIRM

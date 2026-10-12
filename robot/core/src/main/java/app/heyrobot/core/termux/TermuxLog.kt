@@ -5,8 +5,7 @@ import app.heyrobot.core.LogCode
 // Pure. What the voice log will record about Termux runs (docs/plans/websearch-termux-design.md B9): codes and small
 // numbers only, never the command, a path, an argument, a script name or output.
 //
-// Voice log ids 170–179 are reserved for the Termux agent. They are not in VoiceEvent yet (VoiceLog.kt is shared; they
-// are added there when the agent is wired, after confirming the block is still free):
+// Voice log ids 170–179 are the Termux agent's (VoiceEvent.TERMUX_SENT to TERMUX_LATE, 0.9):
 //   170 TERMUX_SENT    a = [TermuxRunKind], b = time limit in s
 //   171 TERMUX_DONE    a = [TermuxExitBucket], b = ms, c = [TermuxLog.kbBucket] of the output × 2, + 1 when Termux cut it
 //   172 TERMUX_FAILED  a = [TermuxFailure]
@@ -40,6 +39,8 @@ enum class TermuxRunKind(override val id: Int, override val title: String) : Log
     STOP(4, "stop"),
     TEST(5, "set-up test"),
     TERMINAL(6, "opened in Termux"),
+    /** Settings › Termux: creating ~/robot, or listing your scripts in it (fixed commands, shown before the first run). */
+    SETUP(7, "set-up step"),
 }
 
 /** TERMUX_DONE's a: the exit code, bucketed. */

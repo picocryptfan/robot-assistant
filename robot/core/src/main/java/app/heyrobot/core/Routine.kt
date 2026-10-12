@@ -210,7 +210,8 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
     MAPS_NAVIGATE(14, "maps directions"), FLASHLIGHT(15, "flashlight"), SEND_TEXT(16, "text"), DRAFT_EMAIL(17, "email"),
     LOOKUP_CONTACT(18, "contact lookup"), ADD_NOTE(19, "new note"), FIND_NOTES(20, "note search"), ADD_EVENT(21, "new event"),
     READ_CALENDAR(22, "calendar"), WEATHER(23, "weather"), PHONE_STATUS(24, "phone status"), FREE_MEMORY(25, "free memory"),
-    FREE_STORAGE(26, "free storage"), ASK_CLAUDE(27, "Ask Claude");
+    FREE_STORAGE(26, "free storage"), ASK_CLAUDE(27, "Ask Claude"), TERMUX_SCRIPT(28, "Termux script"),
+    TERMUX_COMMAND(29, "Termux command");
 
     companion object {
         fun of(t: ToolName): StepCode = when (t) {
@@ -232,6 +233,8 @@ enum class StepCode(override val id: Int, override val title: String) : LogCode 
             ToolName.FREE_MEMORY -> FREE_MEMORY
             ToolName.FREE_STORAGE -> FREE_STORAGE
             ToolName.ASK_CLAUDE -> ASK_CLAUDE
+            ToolName.TERMUX_SCRIPT -> TERMUX_SCRIPT
+            ToolName.TERMUX_COMMAND -> TERMUX_COMMAND
         }
     }
 }
@@ -465,6 +468,9 @@ object RoutineCodec {
         is Action.FreeMemory -> buildMap { a.app?.let { put("app", it) } }
         is Action.FreeStorage -> mapOf("what" to a.way.name.lowercase())
         is Action.ReadCalendar -> mapOf("day" to a.day)
+        // 0.9: never a routine's step (RoutineGate: NEVER); written as the tools take them all the same.
+        is TermuxScriptAction -> mapOf("name" to a.name, "args" to a.args)
+        is TermuxCommandAction -> buildMap { put("command", a.command); a.why?.let { put("why", it) } }
     }
 
     private fun nearest(a: Action): Boolean = (a as? Action.MapsSearch)?.nearest == true || (a as? Action.MapsNavigate)?.nearest == true

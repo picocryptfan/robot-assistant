@@ -94,6 +94,7 @@ import app.heyrobot.core.Tip
 import app.heyrobot.core.ToolName
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.CardActions
+import app.heyrobot.ui.common.TermuxCard
 import app.heyrobot.ui.common.MarkdownText
 import app.heyrobot.ui.common.OfferView
 import app.heyrobot.ui.common.RIcons
@@ -595,6 +596,8 @@ fun AssistantBubble(
  */
 @Composable
 fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: CardActions? = null) {
+    // 0.9: a Termux command's card, in this look's colours (ui/common TermuxCard).
+    a.termux?.let { return TermuxCard(a, it, onConfirm, more?.termux) }
     val bad = a.status in setOf(ActionStatus.FAILED, ActionStatus.INVALID, ActionStatus.NEEDS_UNLOCK, ActionStatus.DISABLED, ActionStatus.SKIPPED,
         ActionStatus.NEEDS_PERMISSION, ActionStatus.NOT_FOUND, ActionStatus.NO_APP)
     Surface(
