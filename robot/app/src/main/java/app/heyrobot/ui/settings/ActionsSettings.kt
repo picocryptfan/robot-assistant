@@ -46,6 +46,8 @@ private val GROUPS = listOf(
     "Notes" to listOf(ToolGroup.NOTES),
     "Calendar" to listOf(ToolGroup.CALENDAR),
     "Weather and the phone" to listOf(ToolGroup.WEATHER, ToolGroup.PHONE),
+    // 0.9: Web searches (Settings › Web search turns web search itself on and off).
+    "Web" to listOf(ToolGroup.WEB),
 )
 
 @Composable

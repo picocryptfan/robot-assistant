@@ -17,6 +17,8 @@ import app.heyrobot.core.ToolName
 import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.LookStore
+import app.heyrobot.sys.WebStore
+import app.heyrobot.core.web.WebSettings
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.Snapshot
@@ -32,7 +34,8 @@ import app.heyrobot.ui.pref.preferenceGroup
 
 /** The Settings tab. [look] is Settings › Display's (LookStore; a test passes its own). */
 @Composable
-fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current)) {
+fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current),
+    web: WebSettings = WebStore.current(LocalContext.current)) {
     fun go(route: String) = a.openPage(Page.Settings(route))
     PreferenceScreen("Settings", onBack = null, modifier = modifier) {
         preferenceGroup(null, "voice") {
@@ -44,6 +47,7 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
         preferenceGroup(null, "reach") {
             PreferenceItem("People, notes and calendar", peopleSummary(s, snap.facts), RIcons.Contacts, onClick = { go(SettingsRoutes.PEOPLE_NOTES_CALENDAR) })
             PreferenceItem("Weather", s.weatherHome?.let { "Home: ${it.name}" } ?: "No home set", RIcons.Sunny, onClick = { go(SettingsRoutes.WEATHER) })
+            PreferenceItem("Web search", webSummary(web, null), RIcons.Search, onClick = { go(SettingsRoutes.WEB_SEARCH) })
             PreferenceItem("Helpers", helpersSummary(s, snap.facts), RIcons.Cloud, onClick = { a.openPage(Page.Helpers) })
             PreferenceItem("Conversation", conversationSummary(s), RIcons.Transcribe, onClick = { a.openPage(Page.ConversationSettings) })
         }
