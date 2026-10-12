@@ -8,12 +8,16 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
+import app.heyrobot.core.web.BrowserEngine
+import app.heyrobot.core.web.PublicSearxng
 import app.heyrobot.core.web.SearchService
 import app.heyrobot.core.web.WebAsk
 import app.heyrobot.core.web.WebSettings
@@ -71,8 +75,9 @@ class WebSearchSettingsTest {
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.onRow("Use web search").assertIsNotEnabled()
         rule.onRow("Set up").assertIsEnabled()
-        rule.onNodeWithText(WebSetup.NOT_OFFERED, substring = true).assertExists()
         rule.shot("web_search_setup")
+        rule.scrollToText(WebSetup.NOT_OFFERED, substring = true)
+        rule.onNodeWithText(WebSetup.NOT_OFFERED, substring = true).assertExists()
     }
 
     // Robolectric settles with a focused text field in a dialog only on its default small screen (PreferencesTest).
@@ -140,6 +145,78 @@ class WebSearchSettingsTest {
         rule.scrollToText("Use web search")
         rule.onRow("Use web search").performClick()
         assertTrue(!h.saved.last().on)
+    }
+
+    /**
+     * 1.0: every service and every engine as a list, grouped "Robot reads the results" and "Opens in your browser", each row
+     * with its privacy level's chip and its line; a tap sets a service up, or makes an engine the default.
+     */
+    @Test fun everyServiceAndEngineIsListedWithItsLevel() {
+        val h = open(searxng, tested)
+        rule.scrollToText("Robot reads the results")
+        rule.onNode(hasText("Your own SearXNG") and hasClickAction()).assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+            .assert(hasText("In use · ", substring = true)).assert(hasContentDescription("Privacy: High"))
+        for ((name, level) in listOf("Kagi" to "High", "Brave Search API" to "Medium", "DuckDuckGo Instant Answers" to "High", "A public SearXNG" to "Low",
+            "Wikipedia only" to "Medium")) {
+            rule.scrollToText(name)
+            rule.onNode(hasText(name) and hasClickAction()).assert(hasContentDescription("Privacy: $level"))
+        }
+        rule.scrollToText("Opens in your browser")
+        rule.onNode(hasText("Startpage") and hasClickAction()).assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+            .assert(hasText("Default · ", substring = true)).assert(hasContentDescription("Privacy: High"))
+        for ((name, level) in listOf("DuckDuckGo" to "High", "Brave Search" to "High", "Qwant" to "Medium", "Ecosia" to "Medium", "Google" to "Low", "Bing" to "Low")) {
+            rule.scrollToText(name)
+            rule.onNode(hasText(name) and hasClickAction()).assert(hasContentDescription("Privacy: $level"))
+            assertEquals(name, emptyList<String>(), rule.touchTargetProblems())
+        }
+        rule.scrollToText("DuckDuckGo")
+        rule.onNode(hasText("DuckDuckGo") and hasClickAction()).performClick()
+        assertEquals(BrowserEngine.DUCKDUCKGO, h.saved.last().browserEngine)
+        // Another one goes through its set-up: DuckDuckGo's short answers need only the consent (no pages are read).
+        rule.scrollToText("DuckDuckGo Instant Answers")
+        rule.onNode(hasText("DuckDuckGo Instant Answers") and hasClickAction()).performClick()
+        assertEquals(SearchService.DDG_INSTANT, h.saved.last().service)
+        rule.inDialog(WebSetup.consent(SearchService.DDG_INSTANT)).assertExists()
+        rule.inDialog("Turn on web search").performClick()
+        assertTrue(h.saved.last().on && h.saved.last().ready)
+        assertEquals(listOf(WebWindow.MODE_TEST), h.windows)
+    }
+
+    // Robolectric settles with a focused text field in a dialog only on its default small screen (PreferencesTest).
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun theServiceInUseKeepsItsSetUp() {
+        val h = open(searxng, tested)
+        rule.scrollToText("In use · ", substring = true)
+        rule.onNode(hasText("Your own SearXNG") and hasClickAction()).performClick()
+        // Its address, as typed; nothing changes unless you save another.
+        rule.inDialog("Cancel").performClick()
+        assertTrue(h.saved.isEmpty())
+    }
+
+    @Test fun aPublicSearxngFromTheShortListOrYourOwnAddress() {
+        val h = open()
+        rule.scrollToText("A public SearXNG")
+        rule.onNode(hasText("A public SearXNG") and hasClickAction()).performClick()
+        rule.inDialog("Other address").assertExists()
+        rule.inDialog("A stranger runs each one", substring = true).assertExists()
+        rule.inDialog(PublicSearxng.host(PublicSearxng.LIST.first())).performClick()
+        assertEquals(PublicSearxng.LIST.first(), h.saved.last().publicSearxng)
+        assertEquals(SearchService.SEARXNG_PUBLIC, h.saved.last().service)
+        rule.inDialog(WebSetup.consent(SearchService.SEARXNG_PUBLIC)).assertExists()
+        rule.inDialog("Not now").performClick()
+        assertTrue(!h.saved.last().on)
+    }
+
+    @Test fun enginesLight() {
+        open(searxng, tested)
+        rule.scrollToText("Opens in your browser")
+        rule.shot("web_engines_light")
+    }
+
+    @Test fun enginesDark() {
+        open(searxng, tested, dark = true)
+        rule.scrollToText("Robot reads the results")
+        rule.shot("web_engines_dark")
     }
 
     @Test fun light() {

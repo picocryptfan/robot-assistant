@@ -4,9 +4,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -32,6 +35,7 @@ import app.heyrobot.core.headset.HeadsetSettings
 import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.core.messages.MessageSettings
 import app.heyrobot.core.update.UpdateSettings
+import app.heyrobot.core.web.BrowserEngine
 import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.MtModelStore
 import app.heyrobot.sys.VoiceModelStore
@@ -88,6 +92,7 @@ class SetupGuideScreenTest {
         override fun routines(s: RoutineSettings) { f = f.copy(routines = s); events += "routines brief=${s.briefEnabled} online=${s.briefOnline}" }
         override fun headset(s: HeadsetSettings) { f = f.copy(headset = s); events += "headset button=${s.buttonOpensRobot}" }
         override fun updates(s: UpdateSettings) { f = f.copy(updates = s); events += "updates auto=${s.autoCheck} test=${s.testBuilds}" }
+        override fun browserEngine(e: BrowserEngine) { f = f.copy(browserEngine = e); events += "browser ${e.id}" }
     }
 
     /** A Pixel 10 Pro on a new install: nothing downloaded, Robot not the assistant yet, nothing allowed. */
@@ -328,11 +333,39 @@ class SetupGuideScreenTest {
         guide(Stores(GuideStep.HELPERS))
         rule.onRow("Helpers").assert(hasText("Not set up: set one up later")).performClick()
         next()
+        rule.scrollToText("Web search")
         rule.onRow("Web search").performClick()
         rule.scrollToText("Termux")
         rule.onRow("Termux").performClick()
         assertEquals(listOf("openPage ${Page.Helpers}", "openPage ${Page.Settings(SettingsRoutes.WEB_SEARCH)}",
             "openPage ${Page.Settings(SettingsRoutes.TERMUX)}"), log)
+    }
+
+    /**
+     * 1.0: the web page lists the engines a search in your browser opens, each with its privacy level, the default picked
+     * here as in Settings; and the free services Robot's own search can use, with theirs.
+     */
+    @Test fun theWebPageListsTheEnginesAndTheFreeServicesWithTheirLevels() {
+        val stores = Stores(GuideStep.WEB_TERMUX)
+        guide(stores)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.onNode(hasText("Startpage") and hasClickAction()).assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+            .assert(hasContentDescription("Privacy: High"))
+        rule.scrollToText("DuckDuckGo")
+        rule.onNode(hasText("DuckDuckGo") and hasClickAction()).performClick()
+        assertEquals(listOf("browser duckduckgo"), stores.events)
+        rule.onNode(hasText("DuckDuckGo") and hasClickAction()).assert(SemanticsMatcher.expectValue(SemanticsProperties.Selected, true))
+        for ((name, level) in listOf("Google" to "Low", "Bing" to "Low", "Qwant" to "Medium", "Ecosia" to "Medium", "Mojeek" to "High", "Brave Search" to "High")) {
+            rule.scrollToText(name)
+            rule.onNode(hasText(name) and hasClickAction()).assert(hasContentDescription("Privacy: $level"))
+        }
+        for ((name, level) in listOf("DuckDuckGo Instant Answers" to "High", "Wikipedia only" to "Medium", "A public SearXNG" to "Low",
+            "Brave Search API" to "Medium", "Your own SearXNG" to "High")) {
+            rule.scrollToText(name)
+            rule.onNode(hasText(name)).assert(hasContentDescription("Privacy: $level"))
+        }
+        rule.scrollToText("A search in your browser goes from your browser", substring = true)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
     @Test fun whatRobotCanDoListsTenExamples() {
@@ -360,6 +393,9 @@ class SetupGuideScreenTest {
         line("Morning brief by itself", "On · Settings › Routines")
         rule.scrollToText("Web search")
         line("Web search", "Not set up · Settings › Web search")
+        // 1.0: a search in your browser needs no set-up: the engine it uses.
+        rule.scrollToText("Search in your browser")
+        line("Search in your browser", "Startpage · Settings › Web search")
         rule.scrollToText("Test builds")
         line("Test builds", "On · Settings › About › Updates")
         rule.scrollToText("“Read my messages” · « Lis mes messages »")

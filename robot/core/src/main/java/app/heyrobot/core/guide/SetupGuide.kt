@@ -116,6 +116,8 @@ enum class GuideItem {
     BRAIN, VOICE_MODELS, ASSISTANT, ROBOT_VOICE, WAKE_WORD, ONLY_WHILE_CHARGING, ASK_FIRST, VOICE_CARDS, LOCK_SCREEN,
     TEXT_APP, EMAIL_APP, CONTACTS, CALENDAR, MESSAGES, ANNOUNCE, MEMORY, MEMORY_LOCKED, WEATHER_HOME, LOCATION, NEAREST,
     TRANSLATE_TRANSCRIPTS, FAST_TRANSLATION, BRIEF, HEADSET_BUTTON, CAR_MODE, HELPERS, WEB_SEARCH, TERMUX, AUTO_UPDATES, TEST_BUILDS,
+    /** 1.0: the engine a search in your browser uses (needs no set-up). */
+    BROWSER_ENGINE,
 }
 
 /** [on] for a switch, or [value] for a choice (a name from core, as Settings shows it); [on] null with [value] null: not set. */
@@ -131,6 +133,8 @@ data class GuideChoices(
     val carOn: Boolean = false,
     val updates: UpdateSettings = UpdateSettings(),
     val webOn: Boolean = false,
+    /** 1.0: Settings › Web search's default engine for a search in your browser (its name, as Settings shows it). */
+    val browserEngine: String = app.heyrobot.core.web.BrowserEngine.DEFAULT.title,
     val termuxOn: Boolean = false,
     /** A helper can answer (a key saved, or your own server). */
     val helpersSetUp: Boolean = false,
@@ -179,6 +183,7 @@ object GuideSummary {
             SummaryLine(GuideItem.CAR_MODE, on = c.carOn),
             SummaryLine(GuideItem.HELPERS, on = c.helpersSetUp),
             SummaryLine(GuideItem.WEB_SEARCH, on = c.webOn),
+            SummaryLine(GuideItem.BROWSER_ENGINE, value = c.browserEngine),
             SummaryLine(GuideItem.TERMUX, on = c.termuxOn),
             SummaryLine(GuideItem.AUTO_UPDATES, on = c.updates.autoCheck),
             SummaryLine(GuideItem.TEST_BUILDS, on = c.updates.testBuilds),

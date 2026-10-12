@@ -8,6 +8,7 @@ import app.heyrobot.core.memory.MemoryLoad
 import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.core.messages.MessageSettings
 import app.heyrobot.core.update.UpdateSettings
+import app.heyrobot.core.web.BrowserEngine
 import app.heyrobot.sys.HandsFreeFiles
 import app.heyrobot.sys.MemorySettingsStore
 import app.heyrobot.sys.MessagesStore
@@ -36,6 +37,8 @@ data class GuideFiles(
     val updates: UpdateSettings = UpdateSettings(),
     val webOn: Boolean = false,
     val termuxOn: Boolean = false,
+    /** 1.0: Settings › Web search's default engine for a search in your browser. */
+    val browserEngine: BrowserEngine = BrowserEngine.DEFAULT,
 )
 
 /** The guide's stores; the phone's are [PhoneGuideStores], tests keep theirs in memory. */
@@ -53,6 +56,8 @@ interface GuideStores {
     fun routines(s: RoutineSettings)
     fun headset(s: HeadsetSettings)
     fun updates(s: UpdateSettings)
+    /** 1.0: Settings › Web search's default engine for a search in your browser (web.json). */
+    fun browserEngine(e: BrowserEngine)
 }
 
 class PhoneGuideStores(ctx: Context) : GuideStores {
@@ -72,6 +77,7 @@ class PhoneGuideStores(ctx: Context) : GuideStores {
             updates = UpdateStore.settings(app),
             webOn = WebStore.current(app).on,
             termuxOn = TermuxStore.load(app).enabled,
+            browserEngine = WebStore.current(app).browserEngine,
         )
     }
 
@@ -97,4 +103,6 @@ class PhoneGuideStores(ctx: Context) : GuideStores {
     }
 
     override fun updates(s: UpdateSettings) = Updater.setSettings(app, s)
+
+    override fun browserEngine(e: BrowserEngine) = WebStore.save(app, WebStore.current(app).copy(browserEngine = e))
 }

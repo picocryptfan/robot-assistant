@@ -48,16 +48,23 @@ import app.heyrobot.core.guide.GuideStep
 import app.heyrobot.core.guide.GuideSummary
 import app.heyrobot.core.guide.SummaryLine
 import app.heyrobot.core.helpers.HelperSettings
+import app.heyrobot.core.web.BrowserEngine
+import app.heyrobot.core.web.SearchService
+import app.heyrobot.core.web.level
 import app.heyrobot.ui.Mark
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.pref.ListPreference
 import app.heyrobot.ui.pref.PreferenceBlock
 import app.heyrobot.ui.pref.PreferenceItem
+import app.heyrobot.ui.pref.RadioPreference
 import app.heyrobot.ui.pref.SliderPreference
 import app.heyrobot.ui.pref.StatusPreference
 import app.heyrobot.ui.pref.SwitchPreference
+import app.heyrobot.ui.settings.PrivacyChip
 import app.heyrobot.ui.settings.RoutineRoutes
+import app.heyrobot.ui.settings.engineLine
+import app.heyrobot.ui.settings.serviceLine
 import app.heyrobot.ui.settings.SettingsRoutes
 import java.util.Locale
 
@@ -471,9 +478,25 @@ private fun LazyListScope.helpers(g: GuideCtx) {
 
 // ------------------------------------------------------------------------------------------------ 15. Web and Termux
 
+/** 1.0: what Robot's own web search can use for free (set up in Settings), each with its privacy level. */
+private val FREE_SERVICES = listOf(SearchService.DDG_INSTANT, SearchService.WIKIPEDIA_ONLY, SearchService.SEARXNG_PUBLIC, SearchService.BRAVE,
+    SearchService.SEARXNG_HOME)
+
 private fun LazyListScope.webTermux(g: GuideCtx) {
     title(R.string.guide_web_title)
     para(R.string.guide_web_intro)
+    // 1.0: the engines a search in your browser opens (nothing to set up), the default picked here as in Settings › Web search.
+    group(R.string.web_browser_group) {
+        for (e in BrowserEngine.entries) {
+            val line = stringResource(engineLine(e))
+            RadioPreference(e.title, if (e == g.files.browserEngine) stringResource(R.string.web_browser_default, line) else line,
+                selected = e == g.files.browserEngine, trailing = { PrivacyChip(e.level) }) { g.stores.browserEngine(e); g.changed() }
+        }
+    }
+    para(R.string.guide_web_free_intro)
+    group(R.string.guide_web_free_group) {
+        for (s in FREE_SERVICES) PreferenceItem(s.title, stringResource(serviceLine(s)), trailing = { PrivacyChip(s.level) })
+    }
     group(null) {
         PreferenceItem(stringResource(R.string.guide_web_row), stringResource(if (g.files.webOn) R.string.guide_on else R.string.guide_web_later), RIcons.Search,
             onClick = { g.a.openPage(Page.Settings(SettingsRoutes.WEB_SEARCH)) })
@@ -517,7 +540,7 @@ internal fun choices(g: GuideCtx): GuideChoices {
     val snap = g.snap
     return GuideChoices(
         robot = g.s, messages = g.files.messages, memory = g.files.memory, routines = g.files.routines, headset = g.files.headset, carOn = g.files.carOn,
-        updates = g.files.updates, webOn = g.files.webOn, termuxOn = g.files.termuxOn, helpersSetUp = helpersSetUp(g),
+        updates = g.files.updates, webOn = g.files.webOn, browserEngine = g.files.browserEngine.title, termuxOn = g.files.termuxOn, helpersSetUp = helpersSetUp(g),
         brainReady = snap.model(snap.fast)?.status == ModelStatus.VERIFIED, voiceReady = snap.voiceReady, assistant = f?.active == true,
         contacts = f?.contactsGranted == true, calendar = f?.calendarGranted == true, location = f?.locationGranted == true,
         fastTranslation = snap.mt?.status == ModelStatus.VERIFIED, cheogramInstalled = f?.cheogramInstalled == true,
@@ -554,6 +577,7 @@ private fun itemText(i: GuideItem): Pair<Int, Int> = when (i) {
     GuideItem.CAR_MODE -> R.string.guide_item_car to R.string.guide_path_car
     GuideItem.HELPERS -> R.string.guide_item_helpers to R.string.guide_path_helpers
     GuideItem.WEB_SEARCH -> R.string.guide_item_web to R.string.guide_path_web_only
+    GuideItem.BROWSER_ENGINE -> R.string.guide_item_browser to R.string.guide_path_web_only
     GuideItem.TERMUX -> R.string.guide_item_termux to R.string.guide_path_termux
     GuideItem.AUTO_UPDATES -> R.string.guide_item_updates to R.string.guide_path_updates_only
     GuideItem.TEST_BUILDS -> R.string.guide_item_test to R.string.guide_path_updates_only

@@ -302,6 +302,28 @@ fun PreferenceItem(
     }
 }
 
+/**
+ * 1.0: a row of a list you pick one of (the default search engine): a radio button before the texts, [trailing] at the end
+ * (a privacy chip), the whole row the target; one TalkBack node with the role RadioButton and its selected state.
+ */
+@Composable
+fun RadioPreference(
+    title: String,
+    summary: String?,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+    onClick: () -> Unit,
+) {
+    PrefFrame(Modifier.selectable(selected = selected, role = Role.RadioButton, onClick = onClick), modifier) {
+        PrefTexts(title, summary, null, true, leading = { androidx.compose.material3.RadioButton(selected = selected, onClick = null) })
+        if (trailing != null) {
+            Spacer(Modifier.width(16.dp))
+            trailing()
+        }
+    }
+}
+
 /** Settings' switch: a check in the thumb when on, a cross when off. [onCheckedChange] null when its row toggles it. */
 @Composable
 fun PrefSwitch(checked: Boolean, enabled: Boolean = true, onCheckedChange: ((Boolean) -> Unit)? = null, modifier: Modifier = Modifier) {

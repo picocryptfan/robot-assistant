@@ -18,7 +18,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import app.heyrobot.R
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.web.CurrentInfo
@@ -62,10 +64,12 @@ import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 // MAIN PROCESS. Settings › Web search (0.9, design A4.1 and A5): Off until set up. Set up picks one search service (your
-// own SearXNG first when you have a home server; DuckDuckGo, Google and Bing have none Robot can use), its address or its
-// key (pasted in the set-up window in the assistant's process, which also runs Test: the main process never loads the
-// HTTP client or reads a key), then the consent screen ("sites see the phone's IP"). Then every behaviour is a row with
-// its default. The settings live in web.json (sys WebStore), not in settings.json.
+// own SearXNG first when you have a home server; Google, Bing, Startpage and DuckDuckGo have no full API Robot can use),
+// its address or its key (pasted in the set-up window in the assistant's process, which also runs Test: the main process
+// never loads the HTTP client or reads a key), then the consent screen ("sites see the phone's IP"). Then every behaviour
+// is a row with its default. 1.0: then every service and every engine with its privacy level, grouped "Robot reads the
+// results" (a tap sets one up; a public SearXNG from a short list) and "Opens in your browser" (a tap makes one the default
+// for browser_search; SearchEngines.kt). The settings live in web.json (sys WebStore), not in settings.json.
 
 /** What the page shows besides the settings: the service's saved key (masked), today's searches, the last Test, the first search card's answer. */
 data class WebFacts(
@@ -85,9 +89,6 @@ fun webSummary(web: WebSettings, answer: WebConsentAnswer?): String {
     return (if (WebConsent.on(web, answer)) "On · " else "Off · ") + service.label
 }
 
-/** The services set-up lists, each with its one plain line (Wikipedia only says why it can't be chosen yet). */
-internal fun serviceDetail(s: SearchService): String =
-    if (s.available()) s.setupLine else s.setupLine + " Not available yet: Wikipedia's rules need a contact address Robot doesn't publish yet."
 
 /** The route: the settings and facts from the files, the set-up window in the assistant's process. */
 @Composable
@@ -145,6 +146,16 @@ fun WebSearchSettingsScreen(
     var address by rememberSaveable { mutableStateOf<String?>(null) }
     var consent by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
+    // 1.0: a public SearXNG from set-up's short list, or "Other address".
+    var publicPick by rememberSaveable { mutableStateOf(false) }
+    val lines = SearchService.entries.associateWith { stringResource(serviceLine(it)) }
+    val readsTitle = stringResource(R.string.web_reads_group)
+    val readsIntro = stringResource(R.string.web_reads_intro)
+    val browserTitle = stringResource(R.string.web_browser_group)
+    val browserIntro = stringResource(R.string.web_browser_intro)
+    val browserHow = stringResource(R.string.web_browser_how)
+    val levels = stringResource(R.string.web_levels)
+    val offBrowser = stringResource(R.string.web_off_browser)
 
     /** After the consent: on, with a key or Test next. */
     fun turnOn(w: WebSettings) {
@@ -160,8 +171,18 @@ fun WebSearchSettingsScreen(
         onChange(w)
         when {
             s == SearchService.SEARXNG_HOME -> address = s.name
-            s == SearchService.SEARXNG_PUBLIC -> address = s.name
+            s == SearchService.SEARXNG_PUBLIC -> publicPick = true
             else -> consent = s.name
+        }
+    }
+
+    /** A tap in the "Robot reads the results" list: another service is set up; the one in use keeps its set-up (its address). */
+    fun choose(s: SearchService) {
+        if (s != service) return picked(s)
+        when {
+            s == SearchService.SEARXNG_PUBLIC -> publicPick = true
+            s.needsAddress -> address = s.name
+            !on -> consent = s.name
         }
     }
 
@@ -227,17 +248,29 @@ fun WebSearchSettingsScreen(
                 }
             }
         }
+        // 1.0: every service and every engine with its privacy level.
+        readsResultsList(readsTitle, readsIntro, WebSetup.order(facts.homeServer).filter { it.available() || it == service }, service.takeIf { on }, ::choose)
+        browserList(browserTitle, browserIntro, web.browserEngine) { onChange(web.copy(browserEngine = it)) }
         preferenceFooter(
-            (service?.let { WebSetup.consent(it) + " " } ?: "Off until you set it up: until then Robot says it can't check the news. ") +
+            (service?.let { WebSetup.consent(it) + " " } ?: "Off until you set it up. $offBrowser ") +
                 (service?.let { "Each search: ${it.cost}" + (if (showCost) " (the card shows it; it counts toward the helpers' daily budget)." else ".") + " " } ?: "") +
                 "Answers come from Robot's own model, which reads the results and pages as information, never as instructions. History keeps " +
-                "the answer and the sources' domains; titles, links and page text are never saved.\n\n" + WebSetup.NOT_OFFERED,
+                "the answer and the sources' domains; titles, links and page text are never saved.\n\n" + WebSetup.NOT_OFFERED + "\n\n" + browserHow +
+                "\n\n" + levels,
         )
     }
 
     if (picking) {
         RadioDialog("Search with", service ?: WebSetup.suggested(facts.homeServer), WebSetup.order(facts.homeServer).filter { it.available() || it == service },
-            { it.title + if (it == WebSetup.suggested(facts.homeServer)) " (suggested)" else "" }, ::serviceDetail, onDismiss = { picking = false }, onPick = ::picked)
+            { it.title + if (it == WebSetup.suggested(facts.homeServer)) " (suggested)" else "" }, { lines[it] }, onDismiss = { picking = false }, onPick = ::picked)
+    }
+    if (publicPick) {
+        PublicSearxngDialog(web.publicSearxng, onDismiss = { publicPick = false }, onOther = { publicPick = false; address = SearchService.SEARXNG_PUBLIC.name }) { url ->
+            publicPick = false
+            val w = web.copy(service = SearchService.SEARXNG_PUBLIC, publicSearxng = url, on = false)
+            onChange(w)
+            consent = SearchService.SEARXNG_PUBLIC.name
+        }
     }
     address?.let { name ->
         val s = SearchService.valueOf(name)
