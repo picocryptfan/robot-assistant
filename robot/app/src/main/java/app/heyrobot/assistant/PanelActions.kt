@@ -18,6 +18,8 @@ interface PanelActions {
     fun openAssistSettings()
     fun openModelSettings()
     fun openPermissions()
+    /** 0.7.0: the header's Settings button (both looks): Robot's Settings, or "unlock first" on the lock screen. */
+    fun openSettings() {}
 
     fun attachScreen()
     fun removeDraft()
@@ -56,6 +58,7 @@ interface PanelActions {
         override fun openAssistSettings() { PanelController.openAssistSettings() }
         override fun openModelSettings() { PanelController.openModelSettings() }
         override fun openPermissions() { PanelController.openPermissions() }
+        override fun openSettings() { PanelController.openSettings() }
         override fun attachScreen() { PanelController.attachScreen() }
         override fun removeDraft() { PanelController.removeDraft() }
         override fun openCapture(mode: String) { PanelController.openCapture(mode) }

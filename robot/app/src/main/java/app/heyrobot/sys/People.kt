@@ -381,6 +381,8 @@ object AppPages {
     const val MODEL = "model"
     /** Settings › Updates (the updater's notifications). */
     const val UPDATES = "updates"
+    /** 0.7.0: the Settings tab, from the panel's Settings button (both looks). */
+    const val SETTINGS = "settings"
     /** 0.7: Settings › Memory (a memory card's "Open Memory" in the panel). */
     const val MEMORY = "memory"
     /** 0.7: Settings › About › Send feedback, from a feedback phrase in the panel, with its kind ([EXTRA_FEEDBACK_KIND]). */

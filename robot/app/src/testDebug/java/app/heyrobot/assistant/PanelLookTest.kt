@@ -144,8 +144,10 @@ class PanelLookTest {
             rule.onNodeWithText("Do it").performClick()
             rule.onNodeWithText("Cancel").performClick()
             rule.onNodeWithContentDescription("New conversation").performClick()
+            // 0.7.0: a Settings button in the header, in both looks (the tester's 0.6.0 report).
+            rule.onNodeWithContentDescription("Settings").performClick()
             rule.onNodeWithContentDescription("Close").performClick()
-            assertEquals("classic=$c", listOf("confirm a1 true", "confirm a1 false", "newConversation"), a.calls)
+            assertEquals("classic=$c", listOf("confirm a1 true", "confirm a1 false", "newConversation", "openSettings"), a.calls)
         }
         assertEquals(2, closed)
     }

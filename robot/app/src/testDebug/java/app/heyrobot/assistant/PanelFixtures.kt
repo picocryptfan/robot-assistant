@@ -27,6 +27,7 @@ class RecordingActions : PanelActions {
     override fun openAssistSettings() { calls += "openAssistSettings" }
     override fun openModelSettings() { calls += "openModelSettings" }
     override fun openPermissions() { calls += "openPermissions" }
+    override fun openSettings() { calls += "openSettings" }
     override fun attachScreen() { calls += "attachScreen" }
     override fun removeDraft() { calls += "removeDraft" }
     override fun openCapture(mode: String) { calls += "openCapture $mode" }

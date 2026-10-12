@@ -286,6 +286,7 @@ private fun PanelTop(st: PanelState, actions: PanelActions, onClose: () -> Unit)
         ClassicHeader(
             mood = orbMood(st.phase), status = classicStatusLine(st), showKeep = !st.keep && st.turns.isNotEmpty(), speak = st.speak,
             onKeep = actions::keepConversation, onToggleSpeak = actions::toggleSpeak, onNew = actions::newConversation, onClose = onClose,
+            onSettings = actions::openSettings,
         )
     }
 }

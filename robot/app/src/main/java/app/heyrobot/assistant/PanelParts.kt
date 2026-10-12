@@ -165,6 +165,8 @@ fun PanelHeader(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
                 Icon(if (st.speak) RIcons.VolumeUp else RIcons.VolumeOff, "Speak replies")
             }
             IconButton(onClick = actions::newConversation) { Icon(RIcons.Add, "New conversation") }
+            // 0.7.0: Robot's Settings from the panel (on the lock screen it asks to unlock first).
+            IconButton(onClick = actions::openSettings) { Icon(RIcons.Settings, "Settings") }
             IconButton(onClick = onClose) { Icon(RIcons.Close, "Close") }
         }
         if (showsProgress(st)) LinearProgressIndicator(Modifier.fillMaxWidth()) else Spacer(Modifier.height(4.dp))

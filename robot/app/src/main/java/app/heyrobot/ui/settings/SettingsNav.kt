@@ -206,7 +206,7 @@ object AppRoutes {
             AppPages.FEEDBACK + (FeedbackKind.of(i.getStringExtra(AppPages.EXTRA_FEEDBACK_KIND))?.let { ":" + it.name.lowercase() } ?: "")
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
             it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.UPDATES ||
-            it == AppPages.MEMORY }
+            it == AppPages.MEMORY || it == AppPages.SETTINGS }
     }
 
     /** What a route opens: a [tab] (every page closed), or a [page] over the one showing; [notesIcon]: from Robot Notes' icon. */
@@ -221,6 +221,7 @@ object AppRoutes {
         r == AppPages.HELPERS -> Target(page = Page.Helpers)
         r == AppPages.MODEL -> Target(tab = Tab.MODEL)
         r == AppPages.UPDATES -> Target(page = Page.Settings(SettingsRoutes.UPDATES))
+        r == AppPages.SETTINGS -> Target(tab = Tab.SETTINGS)
         r == AppPages.MEMORY -> Target(page = Page.Settings(SettingsRoutes.MEMORY))
         r == AppPages.FEEDBACK || r.startsWith(AppPages.FEEDBACK + ":") ->
             Target(page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.of(r.substringAfter(':', "")))))

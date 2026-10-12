@@ -32,6 +32,7 @@ import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -114,6 +115,29 @@ class SettingsRootTest {
         rule.scrollToText("Assistant setup")
         rule.onNodeWithText("Assistant setup").assert(hasText("Needs attention"))
         rule.onNodeWithContentDescription("Problem", useUnmergedTree = true).assertExists()
+    }
+
+    /**
+     * 0.7.0, the tester's 0.6.0 report ("Settings page needs a deep reorganization. Page is too long."): the root is
+     * Android's Settings' shape, top-level categories only, each a row with its icon, its title and a one-line summary
+     * that opens its page; no switch, list or text of a page's own on it.
+     */
+    @Test fun theRootIsCategoriesOnly() {
+        open()
+        val rows = listOf("Wake word", "Voice", "Actions", "Safety & privacy", "People, notes and calendar", "Messages", "Weather", "Helpers",
+            "Conversation", "Model", "Memory", "History", "Display", "Assistant setup", "Advanced", "About")
+        assertTrue(rows.size <= 18)
+        for (title in rows) {
+            rule.scrollToText(title)
+            val node = rule.onRow(title).fetchSemanticsNode()
+            val merged = node.config
+            val texts = merged.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }.orEmpty().map { it.text }
+            assertEquals(title, 2, texts.size)
+            assertEquals(title, title, texts[0])
+            assertTrue(title, '\n' !in texts[1])
+            assertTrue(title, androidx.compose.ui.semantics.SemanticsProperties.ToggleableState !in merged)
+            assertEquals(title, 0, rule.onAllNodes(androidx.compose.ui.test.isToggleable()).fetchSemanticsNodes().size)
+        }
     }
 
     @Test fun light() {

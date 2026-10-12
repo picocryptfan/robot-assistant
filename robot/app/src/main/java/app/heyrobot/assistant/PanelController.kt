@@ -836,6 +836,16 @@ object PanelController {
         leaveForRobot(h, HandOffApps.robotPage(VoiceHub.app, AppPages.MODEL))
     }
 
+    /**
+     * 0.7.0, the header's Settings button (the tester's 0.6.0 report: "add a setting button to the robot chat page"):
+     * Robot's Settings tab over the panel, as Open Robot does; on the lock screen it asks you to unlock first.
+     */
+    fun openSettings() {
+        if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then tap Settings again.")
+        val h = host ?: return
+        leaveForRobot(h, HandOffApps.robotPage(VoiceHub.app, AppPages.SETTINGS))
+    }
+
     /** "Allow" on a card that needs a permission: the main app's permission screen (it asks; the panel never does). */
     fun openPermissions() {
         if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone, then open the Robot app.")

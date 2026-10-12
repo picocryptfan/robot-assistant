@@ -35,6 +35,8 @@ class AppRoutesTest {
         assertEquals(AppRoutes.Target(tab = Tab.MODEL), open(HandOffApps.robotPage(ctx, AppPages.MODEL)))
         assertEquals(AppRoutes.Target(page = Page.Setup(people = true)), open(HandOffApps.robotPage(ctx, AppPages.PERMISSIONS)))
         assertEquals(AppRoutes.Target(tab = Tab.NOTES, notesIcon = true), open(HandOffApps.robotPage(ctx, AppPages.NOTES)))
+        // 0.7.0: the panel's Settings button opens the Settings tab.
+        assertEquals(AppRoutes.Target(tab = Tab.SETTINGS), open(HandOffApps.robotPage(ctx, AppPages.SETTINGS)))
         // 0.7: a memory card's "Open Memory" (SettingsPage.MEMORY, through SettingsIntents).
         assertEquals(AppRoutes.Target(page = Page.Settings(SettingsRoutes.MEMORY)),
             open(app.heyrobot.sys.SettingsIntents.of(ctx, app.heyrobot.core.SettingsPage.MEMORY).single()))

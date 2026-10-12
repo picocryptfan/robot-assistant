@@ -142,6 +142,8 @@ fun ClassicHeader(
     onToggleSpeak: () -> Unit,
     onNew: () -> Unit,
     onClose: () -> Unit,
+    /** 0.7.0: Robot's Settings (the panel asks to unlock first on the lock screen). */
+    onSettings: () -> Unit = {},
 ) {
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         StatusOrb(mood)
@@ -161,6 +163,7 @@ fun ClassicHeader(
             Icon(if (speak) RIcons.VolumeUp else RIcons.VolumeOff, if (speak) "Speaking replies: on" else "Speaking replies: off")
         }
         IconButton(onClick = onNew, modifier = Modifier.size(48.dp)) { Icon(RIcons.Add, "New conversation") }
+        IconButton(onClick = onSettings, modifier = Modifier.size(48.dp)) { Icon(RIcons.Settings, "Settings") }
         IconButton(onClick = onClose, modifier = Modifier.size(48.dp)) { Icon(RIcons.Close, "Close") }
     }
 }
