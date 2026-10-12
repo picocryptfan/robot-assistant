@@ -240,9 +240,17 @@ object TriggerNeeds {
         routines.filter { it.enabled }.map { it.trigger.kind }.toSet() - TriggerKind.ASKED +
             (if (waitingForUnlock) setOf(TriggerKind.UNLOCK) else emptySet())
 
-    /** "Get ready while the alarm rings": a routine after an alarm speaks, and the brief's setting allows it. */
+    /**
+     * "Get ready while the alarm rings": a routine after an alarm speaks the brief with its weather, and the brief's
+     * setting allows it. The early fetch goes online only where that routine's own run would (RoutineGate.briefWeather):
+     * "Routines may go online by themselves" on and Open-Meteo on its card. Clock's ALARM_ALERT comes to an exported
+     * receiver any app can send to, so it must never take Robot online where the routine itself wouldn't.
+     */
     fun prepareOnAlert(routines: List<Routine>, rs: RoutineSettings): Boolean =
-        rs.briefPrepare && routines.any { it.enabled && it.trigger is RoutineTrigger.AlarmDismissed && it.output != RoutineOutput.SILENT }
+        rs.briefPrepare && rs.online && BriefItem.WEATHER in rs.briefItems && routines.any {
+            it.enabled && it.trigger is RoutineTrigger.AlarmDismissed && it.output != RoutineOutput.SILENT && RoutineStep.Brief in it.steps &&
+                RoutineGate.briefWeather(it, RunOrigin.UNATTENDED, rs) == null
+        }
 }
 
 // ---------------------------------------------------------------------------------------------- where it may be said

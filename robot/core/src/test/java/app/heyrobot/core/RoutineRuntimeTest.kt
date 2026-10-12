@@ -155,10 +155,33 @@ class RoutineRuntimeTest {
             TriggerNeeds.of(listOf(r(RoutineTrigger.AlarmDismissed()), r(RoutineTrigger.Charging()), r(RoutineTrigger.At(LocalTime.NOON, RoutineWords.ALL)))))
         assertEquals(setOf(TriggerKind.UNLOCK), TriggerNeeds.of(emptyList(), waitingForUnlock = true))
         assertEquals(setOf(TriggerKind.DEVICE), TriggerNeeds.of(listOf(r(RoutineTrigger.Device(DeviceKind.CAR)))))
-        val alarm = listOf(r(RoutineTrigger.AlarmDismissed()))
+        val alarm = listOf(r(RoutineTrigger.AlarmDismissed()).copy(online = setOf(OnlineUse.OPEN_METEO)))
         assertTrue(TriggerNeeds.prepareOnAlert(alarm, RoutineSettings()))
         assertFalse(TriggerNeeds.prepareOnAlert(alarm, RoutineSettings(briefPrepare = false)))
-        assertFalse(TriggerNeeds.prepareOnAlert(listOf(r(RoutineTrigger.AlarmDismissed()).copy(output = RoutineOutput.SILENT)), RoutineSettings()))
+        assertFalse(TriggerNeeds.prepareOnAlert(listOf(alarm.single().copy(output = RoutineOutput.SILENT)), RoutineSettings()))
+    }
+
+    /**
+     * Clock's ALARM_ALERT reaches an exported receiver any app can send to: the weather fetched while it rings goes online
+     * only where the routine's own run would (RoutineGate.briefWeather), never by the alert alone.
+     */
+    @Test fun theAlarmRingingNeverTakesRobotOnlineWithoutTheRoutinesConsent() {
+        val consented = Routine("r", "X", RoutineTrigger.AlarmDismissed(), listOf(RoutineStep.Brief), true, created = 1, online = setOf(OnlineUse.OPEN_METEO))
+        assertTrue(TriggerNeeds.prepareOnAlert(listOf(consented), RoutineSettings()))
+        // "Routines may go online by themselves" off.
+        assertFalse(TriggerNeeds.prepareOnAlert(listOf(consented), RoutineSettings(online = false)))
+        // The card didn't list Open-Meteo: the brief turned on without it (briefOnline false), or a routine of yours.
+        assertFalse(TriggerNeeds.prepareOnAlert(listOf(consented.copy(online = emptySet())), RoutineSettings()))
+        assertFalse(TriggerNeeds.prepareOnAlert(listOf(BriefRoutine.of(RoutineSettings(briefEnabled = true, briefOnline = false))),
+            RoutineSettings(briefEnabled = true, briefOnline = false)))
+        assertTrue(TriggerNeeds.prepareOnAlert(listOf(BriefRoutine.of(RoutineSettings(briefEnabled = true, briefOnline = true))),
+            RoutineSettings(briefEnabled = true, briefOnline = true)))
+        // No weather to say: the brief without its weather item, or a routine without the brief.
+        assertFalse(TriggerNeeds.prepareOnAlert(listOf(consented), RoutineSettings(briefItems = BriefItem.DEFAULTS - BriefItem.WEATHER)))
+        assertFalse(TriggerNeeds.prepareOnAlert(listOf(consented.copy(steps = listOf(RoutineStep.Say("Good morning")))), RoutineSettings()))
+        // Switched off, or started by something else.
+        assertFalse(TriggerNeeds.prepareOnAlert(listOf(consented.copy(enabled = false)), RoutineSettings()))
+        assertFalse(TriggerNeeds.prepareOnAlert(listOf(consented.copy(trigger = RoutineTrigger.Unlock())), RoutineSettings()))
     }
 
     @Test fun outputGuardDecidesEachPart() {
