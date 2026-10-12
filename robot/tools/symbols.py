@@ -76,6 +76,12 @@ SYMBOLS = [
     ("TouchApp", "touch_app", "Actions."),
     ("Terminal", "terminal", "ADB fixes."),
     ("Transcribe", "transcribe", "Transcribing (the tile and shortcuts)."),
+    ("Call", "call", "A phone call (0.8)."),
+    ("Headset", "headphones", "Headset mode."),
+    ("Car", "directions_car", "Car mode."),
+    ("Navigate", "near_me", "A route in Organic Maps (car mode)."),
+    ("Key", "key", "Car mode's trusted session."),
+    ("Bluetooth", "bluetooth", ""),
 ]
 
 

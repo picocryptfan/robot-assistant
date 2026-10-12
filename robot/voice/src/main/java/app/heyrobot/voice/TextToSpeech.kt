@@ -72,6 +72,9 @@ interface TextToSpeech {
     /** How the voice is played (Settings › Voice); takes effect from the next piece of speech. */
     fun setPlayback(p: Playback) {}
 
+    /** 0.8, headset and car mode: Robot's voice pinned to one output and watched while it plays ([OutputPin]); null: as before. */
+    fun setPin(pin: OutputPin?) {}
+
     fun interface Listener {
         /** Called on the main thread when speaking starts or the queue runs empty. */
         fun onSpeakingChanged(speaking: Boolean)

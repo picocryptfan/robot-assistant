@@ -11,6 +11,9 @@ import android.content.pm.ServiceInfo
 import android.os.IBinder
 import app.heyrobot.R
 import app.heyrobot.assistant.VoiceHub
+import app.heyrobot.assistant.car.CarModeController
+import app.heyrobot.assistant.car.CarNotices
+import app.heyrobot.core.car.CarPhase
 import app.heyrobot.core.BriefControl
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ReadyCard
@@ -59,14 +62,26 @@ class RoutineSpeakingService : Service() {
             ACTION_NEXT -> VoiceHub.main.post { RoutineVoice.control(BriefControl.NEXT) }
             ACTION_REPEAT -> VoiceHub.main.post { RoutineVoice.control(BriefControl.REPEAT) }
             ACTION_STOP -> VoiceHub.main.post { RoutineVoice.control(BriefControl.STOP); if (!RoutineVoice.active) done() }
-            else -> if (!RoutineVoice.active) stopSelf()
+            // 0.8: car mode keeps this service in the foreground for the drive (its notification, with End).
+            ACTION_CAR -> {
+                if (!goForeground()) {
+                    VoiceHub.main.post { CarModeController.serviceRefused() }
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                VoiceHub.main.post { CarNotices.cancelStart(this); if (CarModeController.state.phase == CarPhase.OFF) CarModeController.start(); CarModeController.serviceStarted() }
+            }
+            ACTION_CAR_END -> VoiceHub.main.post { CarModeController.end() }
+            else -> if (!RoutineVoice.active && !CarModeController.on) stopSelf()
         }
         return START_NOT_STICKY
     }
 
     private fun goForeground(): Boolean = try {
         val r = RoutineVoice.now?.routine
-        startForeground(RoutineNotices.SPEAKING_ID, RoutineNotices.speaking(this, r), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        // A routine speaking shows its own notification; car mode's otherwise (0.8).
+        val n = if (r == null && carHolds()) CarNotices.notification(this) else RoutineNotices.speaking(this, r)
+        startForeground(RoutineNotices.SPEAKING_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
         foreground = true
         true
     } catch (t: Throwable) {
@@ -75,8 +90,9 @@ class RoutineSpeakingService : Service() {
         false
     }
 
-    /** The run is over: out of the foreground, notification gone, service stopped. */
+    /** The run is over: out of the foreground, notification gone, service stopped (car mode on: its notification again). */
     fun done() {
+        if (carHolds() && goForeground()) return
         try { stopForeground(STOP_FOREGROUND_REMOVE) } catch (_: Throwable) {}
         foreground = false
         stopSelf()
@@ -90,6 +106,32 @@ class RoutineSpeakingService : Service() {
         const val ACTION_NEXT = "app.heyrobot.routines.NEXT"
         const val ACTION_REPEAT = "app.heyrobot.routines.REPEAT"
         const val ACTION_STOP = "app.heyrobot.routines.STOP"
+        /** 0.8, car mode: in the foreground for the drive, and its notification's End. */
+        const val ACTION_CAR = "app.heyrobot.car.START"
+        const val ACTION_CAR_END = "app.heyrobot.car.END"
+
+        /** Car mode is starting or on: the service stays for it. */
+        private fun carHolds(): Boolean = CarModeController.state.phase != CarPhase.OFF
+
+        /** Car mode starts the service; false when Android refused (ForegroundServiceStartNotAllowedException). */
+        fun startCar(ctx: Context): Boolean = try {
+            ctx.startForegroundService(Intent(ctx, RoutineSpeakingService::class.java).setAction(ACTION_CAR))
+            true
+        } catch (t: Throwable) {
+            RLog.w("car_start_service", t)
+            false
+        }
+
+        /** Car mode ended: the service goes once no routine speaks. */
+        fun carEnded() {
+            if (!RoutineVoice.active) instance?.done()
+        }
+
+        /** Car mode's notification again (the trusted session, what was kept). */
+        fun refreshCar() {
+            val s = instance ?: return
+            if (carHolds() && !RoutineVoice.active) s.goForeground()
+        }
 
         /** Starts the service for [r]'s speech; false when Android refused (ForegroundServiceStartNotAllowedException). */
         fun start(ctx: Context, r: Routine): Boolean = try {

@@ -1,5 +1,6 @@
 package app.heyrobot.ui.settings
 
+import android.content.Intent
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -25,6 +26,8 @@ import app.heyrobot.ui.pref.IntroPreference
 import app.heyrobot.ui.pref.PreferenceItem
 import app.heyrobot.ui.pref.PreferenceScreen
 import app.heyrobot.ui.pref.StatusPreference
+import app.heyrobot.core.headset.HeadsetEntry
+import app.heyrobot.core.headset.HeadsetSetup
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
 import kotlinx.coroutines.Dispatchers
@@ -92,6 +95,15 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                 when (f.listening) { true -> "Yes"; false -> f.listeningNote ?: "No"; null -> "Starts when Robot is the running assistant" },
                 if (f.listening == true) Mark.OK else Mark.TODO)
             PreferenceItem("Assistant settings", "Android's Digital assistant app page", RIcons.SettingsVoice, onClick = a.openAssistantSettings)
+            // 0.8: who answers the headset button's three intents; Test presses it (VOICE_COMMAND), so Android's chooser shows if it would.
+            f.headsetButton?.let { h ->
+                val row = HeadsetSetup.row(f.headsetButtonOn, h)
+                StatusPreference(row.title, row.text.removePrefix("Headset button "), when (row.ok) { true -> Mark.OK; false -> Mark.TODO; null -> Mark.TODO },
+                    onClick = { a.openPage(Page.Settings(SettingsRoutes.HEADSET)) },
+                    action = if (!f.headsetButtonOn) null else ({ RowButton("Test", "Test the headset button") {
+                        try { ctx.startActivity(Intent(HeadsetEntry.VOICE_COMMAND).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (_: Exception) {}
+                    } }))
+            }
         }
         preferenceGroup("Permissions", "permissions") {
             StatusPreference("Microphone", if (f.micGranted) "Allowed" else "Needed for wake words and voice questions",

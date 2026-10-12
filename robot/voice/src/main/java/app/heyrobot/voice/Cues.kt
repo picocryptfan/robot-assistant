@@ -15,9 +15,15 @@ object Cues {
     /** Two short low tones: "that didn't work". */
     fun missed() = tone(ToneGenerator.TONE_PROP_NACK, 300)
 
-    private fun tone(type: Int, ms: Int) {
+    /**
+     * 0.8: the short chime before a headset or car session listens, in the headset: over its call route ([call]: the
+     * voice-call stream follows the communication device) or its media output.
+     */
+    fun listening(call: Boolean) = tone(ToneGenerator.TONE_PROP_BEEP, 150, if (call) AudioManager.STREAM_VOICE_CALL else AudioManager.STREAM_MUSIC)
+
+    private fun tone(type: Int, ms: Int, stream: Int = AudioManager.STREAM_MUSIC) {
         try {
-            val t = ToneGenerator(AudioManager.STREAM_MUSIC, 70)
+            val t = ToneGenerator(stream, 70)
             t.startTone(type, ms)
             main.postDelayed({ try { t.release() } catch (_: Throwable) {} }, ms + 300L)
         } catch (e: Throwable) {

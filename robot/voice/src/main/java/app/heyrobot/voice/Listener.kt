@@ -102,6 +102,8 @@ class Listener(
     @Volatile var wantCommunication = false
     /** What the capture uses now. */
     @Volatile var communication = false; private set
+    /** 0.8: the input the capture comes from now (AudioRecord.getRoutedDevice), for a headset session's route check. */
+    val routedInput: android.media.AudioDeviceInfo? get() = synchronized(recLock) { try { rec?.routedDevice } catch (_: Throwable) { null } }
     @Volatile var aec: AecState = AecState.OFF; private set
     /** When the last frame was read (elapsedRealtime): a capture that stalls without an error is restarted. */
     @Volatile var lastFrameAt = 0L; private set
@@ -197,7 +199,8 @@ class Listener(
         if (ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return fail("no_permission", ListenWhy.NO_PERMISSION)
         val record = synchronized(recLock) {
             var r: AudioRecord? = null
-            for (src in listOf(config.micSource, MicSource.MIC).distinct()) {
+            // 0.8: a headset or car session's call route captures with VOICE_COMMUNICATION from the start (CaptureRoute).
+            for (src in listOfNotNull(MicSource.VOICE_COMMUNICATION.takeIf { CaptureRoute.communication }, config.micSource, MicSource.MIC).distinct()) {
                 r = openStarted(src)
                 if (r != null) break
             }
@@ -225,6 +228,8 @@ class Listener(
                 .takeIf { it.state == AudioRecord.STATE_INITIALIZED || run { it.release(); false } }
         } catch (_: Throwable) { null } ?: return null
         val comm = src == MicSource.VOICE_COMMUNICATION
+        // 0.8: a headset session pins the capture to the headset's microphone.
+        CaptureRoute.preferred?.let { try { r.setPreferredDevice(it) } catch (_: Throwable) {} }
         // The effects go on the record's session before it starts, so the first frames are already cleaned.
         aec = if (comm) attachEffects(r) else AecState.OFF
         try {
@@ -412,16 +417,20 @@ class Listener(
         var wantSince = 0L
         var wasSpeaking = false
         var wasPaused = false
+        var routeGen = CaptureRoute.generation
         while (running) {
             if (ww == null) ww = synchronized(wwLock) { loadedWw }?.also { wakeWordLoaded = true }
             // The capture mode: decided under ringLock, so a question can't attach between the decision and the switch.
             val now = SystemClock.elapsedRealtime()
             val cur = if (communication) CapturePolicy.Capture.COMMUNICATION else CapturePolicy.Capture.RECOGNITION
-            val want = if (wantCommunication && now >= commRefusedUntil) CapturePolicy.Capture.COMMUNICATION else CapturePolicy.Capture.RECOGNITION
+            val want = if ((wantCommunication || CaptureRoute.communication) && now >= commRefusedUntil) CapturePolicy.Capture.COMMUNICATION
+                else CapturePolicy.Capture.RECOGNITION
             if (want == cur) wantSince = 0L else if (wantSince == 0L) wantSince = now
             val gate = synchronized(ringLock) {
                 val next = CapturePolicy.next(cur, want, questionOpen, ww?.hearing == true, if (wantSince == 0L) 0L else now - wantSince)
-                if (next != cur) CountDownLatch(1).also { switchGate = it } else null
+                // 0.8: a headset session's route changed: reopen on it between questions, even in the same mode.
+                val moved = routeGen != CaptureRoute.generation && !questionOpen
+                if (next != cur || moved) CountDownLatch(1).also { switchGate = it } else null
             }
             if (gate != null) {
                 val next = try {
@@ -433,6 +442,7 @@ class Listener(
                 r = next ?: break
                 ww?.reset()
                 wantSince = 0L
+                routeGen = CaptureRoute.generation
             }
             val n = try { r.read(buf, 0, FRAME) } catch (_: Throwable) { AudioRecord.ERROR }
             if (n <= 0) {

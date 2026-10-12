@@ -42,7 +42,7 @@ internal fun approvalSummary(t: ToolName, level: Approval, locked: Boolean): Str
 /** The actions in groups, as the panel's tools are (core ToolGroup). */
 private val GROUPS = listOf(
     "Timers, apps and maps" to listOf(ToolGroup.CORE),
-    "Texts and email" to listOf(ToolGroup.PEOPLE),
+    "Texts, calls and email" to listOf(ToolGroup.PEOPLE),
     "Notes" to listOf(ToolGroup.NOTES),
     "Calendar" to listOf(ToolGroup.CALENDAR),
     "Weather and the phone" to listOf(ToolGroup.WEATHER, ToolGroup.PHONE),

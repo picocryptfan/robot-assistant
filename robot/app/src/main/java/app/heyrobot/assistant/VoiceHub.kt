@@ -1,5 +1,6 @@
 package app.heyrobot.assistant
 
+import app.heyrobot.assistant.handsfree.HandsFreeHub
 import android.Manifest
 import android.app.ActivityManager
 import android.app.ApplicationExitInfo
@@ -271,8 +272,9 @@ object VoiceHub {
         worker.postDelayed(retry, 60_000)
         // Robot is the running assistant: keep the speech recognizer setting that keeps it so after a restart.
         worker.post { try { RecognizerKeeper.check(app, RepairWhen.ASSISTANT_READY) } catch (t: Throwable) { RLog.w("recognizer", t) } }
-        // 0.8: routines' triggers, and what a reboot made them miss.
+        // 0.8: routines' triggers, and what a reboot made them miss; headset and car mode.
         RoutineHub.start(app)
+        HandsFreeHub.start()
     }
 
     private fun register(r: BroadcastReceiver, f: IntentFilter, permission: String?) {
@@ -291,6 +293,7 @@ object VoiceHub {
         unregisterAll()
         BrainKeeper.release("shutdown")
         RoutineHub.stop()
+        HandsFreeHub.stop()
     }
 
     private fun unregisterAll() {
@@ -514,6 +517,7 @@ object VoiceHub {
             Cmd.BARGE_TEST -> BargeTest.start(enumOr(i.getStringExtra(Cmd.EXTRA_RUN), BargeRun.FIRST))
             Cmd.WAKE_TEST -> wakeTestUntil = if (i.getBooleanExtra(Cmd.EXTRA_ON, false)) SystemClock.elapsedRealtime() + WAKE_TEST_MS else 0L
             Cmd.ROUTINES -> RoutineHub.reload()
+            Cmd.HANDSFREE -> HandsFreeHub.reload()
         }
     }
 }

@@ -91,6 +91,8 @@ import app.heyrobot.core.MtBundle
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.model.ModelScreen
 import app.heyrobot.ui.settings.AppRoutes
+import app.heyrobot.ui.settings.HandsFreeNoticeLine
+import app.heyrobot.ui.settings.SettingsRoutes
 import app.heyrobot.ui.settings.SettingsNav
 import app.heyrobot.ui.settings.SettingsRoot
 import app.heyrobot.ui.settings.SetupScreen
@@ -605,6 +607,8 @@ fun RobotAppUi(activity: MainActivity) {
             else Cmd.send(ctx, Cmd.BARGE_TEST, Bundle().apply { putString(Cmd.EXTRA_RUN, run.name) })
         },
         askLocation = { peoplePermissions.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)) },
+        // 0.8: Nearby devices and the Phone permission, from their own rows in Settings › Headset and Car mode.
+        askPermission = { p -> peoplePermissions.launch(arrayOf(p)) },
         // 0.4.7: the GPU again after it failed (the voice process reads the file at the next load), and the problem report.
         tryGpuAgain = {
             scope.launch {
@@ -725,6 +729,8 @@ fun RobotAppUi(activity: MainActivity) {
                         onDismiss = { updateSettings(settings.copy(safetyNotice = false)) },
                     )
                 }
+                // Once, after updating to 0.8: routines, the headset button and car mode (core HandsFreeNotice).
+                if (tab == Tab.HOME || tab == Tab.SETTINGS) HandsFreeNoticeLine(onOpen = { page = Page.Settings(SettingsRoutes.HEADSET) })
                 val m = Modifier.weight(1f)
                 when (tab) {
                     Tab.HOME -> HomeScreen(snap, history.take(3), actions, m)
@@ -804,6 +810,8 @@ class AppActions(
     /** 0.5.0, phase 5.3: "Your voice" (voice process), and deleting the voiceprint (file and key). */
     val openVoiceprint: () -> Unit = {},
     val deleteVoiceprint: () -> Unit = {},
+    /** 0.8: a runtime permission asked from its own settings row (Nearby devices, Phone). */
+    val askPermission: (String) -> Unit = {},
     /** 0.8: the panel opens to run a routine (Run now), or with a Ready card (its key). */
     val runRoutine: (String) -> Unit = {},
     val openReady: (String) -> Unit = {},

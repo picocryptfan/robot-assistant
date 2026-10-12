@@ -55,6 +55,8 @@ import app.heyrobot.core.ConversationCommand
 import app.heyrobot.core.ConversationLock
 import app.heyrobot.core.ConversationRouter
 import app.heyrobot.assistant.conversation.ConversationService
+import app.heyrobot.assistant.car.CarModeController
+import app.heyrobot.assistant.handsfree.PanelHandsFree
 import app.heyrobot.assistant.routines.PanelRoutines
 import app.heyrobot.assistant.routines.RoutineVoice
 import app.heyrobot.assistant.conversation.ConversationSession
@@ -360,6 +362,8 @@ object PanelController {
     private var keptByUser = false
     private var ignoreAssist = false
     private var hidingFor: String? = null
+    /** 0.8: what a headset's button or car mode asked of this show (PanelHandsFree), or null. */
+    private var handsFree: PanelHandsFree.Show? = null
     private var reqId = 0
     private var client: BrainClient? = null
     /** What of the streaming reply is read aloud (muted by "stop", silent once cancelled). */
@@ -525,13 +529,15 @@ object PanelController {
             }
             // focusRequest restarts at 0 so a new panel's first composition does not pop the keyboard.
             _state.update { it.copy(speak = speak, notice = null, draft = null, focusRequest = 0) }
+            // 0.8: a headset's button or car mode (assistant/handsfree PanelHandsFree): a session routes the microphone first.
+            handsFree = PanelHandsFree.onShow(source, args, locked)?.also { hf -> _state.update { it.copy(speak = hf.speak) } }
             draftJpeg = null
         }
         // A helper's conversation never carries over onto the lock screen unless that helper is allowed there.
         if (locked && s.helper(_state.value.helperMode)?.locked != true) endHelperMode()
         _state.update {
             it.copy(locked = locked, screenChip = ScreenChip.HIDDEN, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint, partial = "",
-                showId = it.showId + 1, claudeScreen = false, lockedTools = s.lockedTools, tips = if (returning) it.tips else tips(s, locked))
+                showId = it.showId + 1, claudeScreen = false, lockedTools = s.lockedTools, tips = if (returning) it.tips else handsFree?.tips ?: tips(s, locked))
         }
         BrainKeeper.prewarm(VoiceHub.app)
         HelperLink.warm(VoiceHub.app, s)
@@ -542,7 +548,7 @@ object PanelController {
         VoiceLog.add(VoiceEvent.SESSION_SHOWN, showSource(source))
         startScreen(showSource(source), showFlags)
         // The question first: once it is attached, the capture mode can't switch under it ("Always echo cancellation").
-        if (source == RobotVoiceService.SRC_WAKE) startListening()
+        if (source == RobotVoiceService.SRC_WAKE && handsFree == null) startListening()
         // 0.8: opened by Settings' Run now or a Ready card's tap.
         PanelRoutines.onShow(args)?.let { (label, work) -> routineTurn(label, work) }
         VoiceHub.updateCapture()
@@ -553,12 +559,15 @@ object PanelController {
         RobotVoiceService.SRC_KEYGUARD -> ShowSource.KEYGUARD
         RobotVoiceService.SRC_APP -> ShowSource.APP
         RobotVoiceService.SRC_CAPTURE -> ShowSource.CAPTURE
+        RobotVoiceService.SRC_HEADSET -> ShowSource.HEADSET
         // The corner swipe (and the assist gesture) come without Robot's own source.
         else -> ShowSource.SWIPE
     }
 
     fun onHide() {
         shown = false
+        // 0.8: a headset or car session ends with the panel, and lets go of the headset.
+        if (hidingFor == null) PanelHandsFree.onHide()
         ConversationSession.panel(false)
         val st0 = _state.value
         if (st0.phase == Phase.LISTENING) VoiceLog.add(VoiceEvent.NO_QUESTION, NoQuestion.CLOSED)
@@ -942,6 +951,7 @@ object PanelController {
             override fun onFinal(text: String) {
                 main.post {
                     endListening()
+                    PanelHandsFree.heard(text.isBlank())
                     // No words came back: say so rather than going quiet.
                     if (text.isNotBlank()) sendSpoken(text) else missedQuestion(NoQuestion.EMPTY)
                 }
@@ -949,6 +959,7 @@ object PanelController {
             override fun onError(reason: SpeechToText.Reason, message: String) {
                 main.post {
                     endListening()
+                    PanelHandsFree.heard(true)
                     VoiceLog.add(VoiceEvent.NO_QUESTION, when (reason) {
                         SpeechToText.Reason.NO_SPEECH -> NoQuestion.NO_SPEECH
                         SpeechToText.Reason.UNAVAILABLE -> NoQuestion.UNAVAILABLE
@@ -987,6 +998,13 @@ object PanelController {
             VoiceLog.add(VoiceEvent.CUE, Cue.CHIME)
             Cues.missed()
         }
+    }
+
+    /** 0.8: a headset or car session's follow-up window ended with nothing said: listening stops, quietly. */
+    fun stopListeningQuietly() {
+        if (_state.value.phase != Phase.LISTENING && _state.value.phase != Phase.TRANSCRIBING) return
+        VoiceHub.stt.cancel()
+        endListening()
     }
 
     private fun endListening() {
@@ -1183,6 +1201,9 @@ object PanelController {
         // morning to …"); outside a helper's conversation. A routine said in a conversation holding screen text needs a tap.
         val routineCmd = if (q.isNotEmpty() && convCmd == null && cmd == null && st.draft == null && !_state.value.claudeMode)
             PanelRoutines.route(q, TurnRules.untrusted(chat)) else null
+        // 0.8: headset and car mode's phrases, and "call …" (the call tool's own words), before the model.
+        val handsFreeCmd = if (q.isNotEmpty() && convCmd == null && cmd == null && routineCmd == null && st.draft == null && !_state.value.claudeMode)
+            PanelHandsFree.route(q) else null
         dropOffers()
         val attachment = st.draft?.kind ?: Attachment.NONE
         val image = when (attachment) {
@@ -1241,6 +1262,7 @@ object PanelController {
             when {
                 convCmd != null -> conversationCommand(replyId, convCmd)
                 routineCmd != null -> PanelRoutines.handle(replyId, routineCmd, routineHost)
+                handsFreeCmd != null -> PanelHandsFree.handle(replyId, handsFreeCmd, routineHost)
                 cmd == ClaudeCommand.Leave -> {
                     endHelperMode()
                     localReply(replyId, ClaudeWords.LEFT)
@@ -1386,7 +1408,7 @@ object PanelController {
             val system = if (chatOnly) Prompt.chatSystem(now, direct = s.directAnswers)
             else Prompt.system(now, Assistant.locked(VoiceHub.app), askClaude, texting = ToolName.SEND_TEXT in tools,
                 weather = ToolName.WEATHER in tools, phone = ToolName.PHONE_STATUS in tools, direct = s.directAnswers, lockedTools = s.lockedTools,
-                helper = target?.name, helperSearches = target?.searching ?: true, helperHome = target?.home == true)
+                helper = target?.name, helperSearches = target?.searching ?: true, helperHome = target?.home == true, driving = CarModeController.on)
             // The time only for a question that needs it, after the question: the model copied a leading time into its replies.
             val clock = if (Prompt.needsClock(question, groups)) Prompt.clock(now) else ""
             // The new turn always fits the model's context: cut (and say so) rather than overflow.
@@ -2472,6 +2494,8 @@ object PanelController {
         if (!claude && (s.contains("call:") || s.contains("<start_function_call>") || ToolCalls.parseText(s).isNotEmpty())) return
         val clean = SpeechText.clean(s)
         if (clean.isEmpty()) return
+        // 0.8: in a headset or car session, OutputGuard first (personal sentences only on a private device, the car's two).
+        if (!PanelHandsFree.allow(clean) { personalNow(_state.value.turns.lastOrNull()?.id).isNotEmpty() }) return
         // Claude's voice per sentence: Kokoro's French voice for a French one, Claude's own otherwise.
         if (claude) ClaudeVoices.forSentence(VoiceHub.settings.voiceChoice, voice ?: VoiceHub.settings.claude?.voice, clean).let { (sid, lang) -> VoiceHub.tts.speakOther(clean, sid, lang) }
         else VoiceHub.tts.speak(clean)

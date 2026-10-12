@@ -60,6 +60,8 @@ class SettingsRootTest {
             "Actions" to "openPage ${Page.Settings(SettingsRoutes.ACTIONS)}",
             "Safety & privacy" to "openPage ${Page.Safety}",
             "Routines" to "openPage ${Page.Settings(SettingsRoutes.ROUTINES)}",
+            "Headset" to "openPage ${Page.Settings(SettingsRoutes.HEADSET)}",
+            "Car mode" to "openPage ${Page.Settings(SettingsRoutes.CAR)}",
             "People, notes and calendar" to "openPage ${Page.Settings(SettingsRoutes.PEOPLE_NOTES_CALENDAR)}",
             "Weather" to "openPage ${Page.Settings(SettingsRoutes.WEATHER)}",
             "Helpers" to "openPage ${Page.Helpers}",
@@ -90,7 +92,8 @@ class SettingsRootTest {
         assertEquals("On · “hey robot” and 2 others", wakeSummary(s))
         assertEquals("Off", wakeSummary(s.copy(wakeWord = false)))
         assertEquals("Heart · always speaks", voiceSummary(s))
-        assertEquals("5 ask first · 1 off", actionsSummary(s))
+        // 0.8's calls ask first too.
+        assertEquals("6 ask first · 1 off", actionsSummary(s))
         assertEquals("Fast · stays loaded 5 min", modelSummary(s, snap))
         // 0.4.7: on a Pixel 9a Fast is the general build, on the GPU unless it failed there or you turned the GPU off.
         assertEquals("Fast on the GPU · stays loaded 5 min", modelSummary(s, Snapshot(phone = PIXEL_9A)))
@@ -98,6 +101,9 @@ class SettingsRootTest {
         assertEquals("Fast on the CPU · always loaded", modelSummary(s.copy(keepModelMinutes = RobotSettings.KEEP_ALWAYS),
             Snapshot(phone = PIXEL_9A, gpuFailure = GpuFailure(BrainModel.GENERAL, 1L, ProblemStage.LOADING, null))))
         assertEquals("Live words on", conversationSummary(s))
+        // 0.8: headset.json and car.json's rows, from their defaults: the button on, car mode off.
+        assertEquals("Button opens Robot · no headphones yet", headsetSummary(app.heyrobot.core.output.HeadsetFile(), app.heyrobot.core.output.DeviceMemory()))
+        assertEquals("Off", app.heyrobot.core.car.CarSetup.summary(false, app.heyrobot.core.output.DeviceMemory()))
         assertEquals("Claude · Ask first", helpersSummary(s, facts()))
         open(s)
         rule.onNodeWithText("Wake word").assert(hasText("On · “hey robot” and 2 others"))

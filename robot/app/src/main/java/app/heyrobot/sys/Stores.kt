@@ -170,6 +170,8 @@ object Cmd {
     const val EXTRA_ON = "on"
     /** 0.8: Settings › Routines changed routines.json or routine_settings.json: the voice process reloads its triggers. */
     const val ROUTINES = "routines"
+    /** 0.8: Settings › Headset or Car mode changed headset.json, car.json, places.json or devices.json: :voice reads them again. */
+    const val HANDSFREE = "handsfree"
 
     fun send(ctx: Context, op: String, extras: Bundle = Bundle()) {
         try {

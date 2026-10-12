@@ -33,7 +33,8 @@ import app.heyrobot.ui.pref.preferenceGroup
 /** The Settings tab. [look] is Settings › Display's (LookStore; a test passes its own). */
 @Composable
 fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current),
-    routines: String = routinesSummary(LocalContext.current)) {
+    routines: String = routinesSummary(LocalContext.current), headset: String = headsetSummary(LocalContext.current),
+    car: String = carSummary(LocalContext.current)) {
     fun go(route: String) = a.openPage(Page.Settings(route))
     PreferenceScreen("Settings", onBack = null, modifier = modifier) {
         preferenceGroup(null, "voice") {
@@ -43,6 +44,9 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
             PreferenceItem("Safety & privacy", safetySummary(s), RIcons.Shield, onClick = { a.openPage(Page.Safety) })
             // 0.8: routines.json and routine_settings.json (RoutineFiles), not settings.json.
             PreferenceItem("Routines", routines, RIcons.Alarm, onClick = { go(SettingsRoutes.ROUTINES) })
+            // 0.8: headset.json, car.json and devices.json (HandsFreeFiles), not settings.json.
+            PreferenceItem("Headset", headset, RIcons.Headset, onClick = { go(SettingsRoutes.HEADSET) })
+            PreferenceItem("Car mode", car, RIcons.Car, onClick = { go(SettingsRoutes.CAR) })
         }
         preferenceGroup(null, "reach") {
             PreferenceItem("People, notes and calendar", peopleSummary(s, snap.facts), RIcons.Contacts, onClick = { go(SettingsRoutes.PEOPLE_NOTES_CALENDAR) })

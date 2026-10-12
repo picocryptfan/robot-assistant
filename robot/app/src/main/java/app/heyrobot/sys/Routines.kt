@@ -36,6 +36,8 @@ object RoutineIntents {
     const val RECEIVER = "app.heyrobot.assistant.routines.RoutineAlarmReceiver"
     const val ACTION_FIRE = "app.heyrobot.routines.FIRE"
     const val ACTION_READY = "app.heyrobot.routines.READY"
+    /** 0.8: car mode's "From your drive: n things" tapped (the same receiver, in :voice). */
+    const val ACTION_PARKED = "app.heyrobot.car.PARKED"
     /** The local date and time the alarm is for ("2026-10-12T07:00"), and when it was set to ring (ms). */
     const val EXTRA_SLOT = "slot"
     const val EXTRA_AT = "at"

@@ -147,7 +147,7 @@ exported=$(echo "$mf" | awk '
   own && /:name\(0x01010003\)="/ { v = $0; sub(/^.*:name\(0x01010003\)="/, "", v); sub(/".*$/, "", v); n = v }
   own && /exported\(0x01010010\)=true/ { ex = 1 }
   END { if (n != "" && ex) print n }' | sort | tr '\n' ' ')
-allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.assistant.conversation.ConversationTileService app.heyrobot.people.CheogramListener app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
+allow="androidx.profileinstaller.ProfileInstallReceiver app.heyrobot.assistant.RobotRecognitionService app.heyrobot.assistant.RobotSessionService app.heyrobot.assistant.RobotVoiceService app.heyrobot.assistant.conversation.ConversationTileService app.heyrobot.assistant.headset.HeadsetEntryActivity app.heyrobot.people.CheogramListener app.heyrobot.ui.MainActivity app.heyrobot.ui.NotesLauncher "
 [ "$exported" = "$allow" ] && pass "exported components are the allowlist" || fail "exported components: $exported"
 # The updater: Robot installs only its own updates (Install unknown apps, a special access you turn on), and asks Android to
 # skip its confirmation only with "Install updates without asking". It never installs or deletes other apps.
@@ -208,9 +208,30 @@ for a in BOOT_COMPLETED TIME_SET TIMEZONE_CHANGED MY_PACKAGE_REPLACED; do
 done
 hasnt 'LOCKED_BOOT_COMPLETED' "$rtn" "RoutineAlarmReceiver waits for the first unlock (routines.json is credential-encrypted)"
 hasnt 'com.android.deskclock' "$mf" "Clock's alarm broadcasts aren't a manifest receiver (a runtime one in :voice)"
-for p in SCHEDULE_EXACT_ALARM CALL_PHONE BLUETOOTH_CONNECT ACCESS_NOTIFICATION_POLICY FOREGROUND_SERVICE_SHORT_SERVICE; do
+for p in SCHEDULE_EXACT_ALARM FOREGROUND_SERVICE_SHORT_SERVICE; do
   hasnt "android.permission.$p\"" "$mf" "no $p permission"
 done
+# 0.8, headset and car mode: the headset button's trampoline in :voice, exported with exactly its three actions (Android
+# starts it for a headset's button), and the car screen in :voice, not exported; Nearby devices, the Phone permission and
+# Do Not Disturb access declared, each asked only from its own settings row; still no phone state, scanning or SMS.
+has ':voice' "$(elem app.heyrobot.assistant.headset.HeadsetEntryActivity)" "HeadsetEntryActivity in :voice"
+has 'exported(0x01010010)=true' "$(elem app.heyrobot.assistant.headset.HeadsetEntryActivity)" "HeadsetEntryActivity exported (the headset button)"
+hea=$(subtree app.heyrobot.assistant.headset.HeadsetEntryActivity)
+for a in android.intent.action.VOICE_COMMAND android.speech.action.WEB_SEARCH android.speech.action.VOICE_SEARCH_HANDS_FREE; do
+  has "\"$a\"" "$hea" "HeadsetEntryActivity gets $a"
+done
+[ "$(grep -c 'E: action ' <<<"$hea")" = 3 ] && pass "HeadsetEntryActivity has exactly three actions" || fail "HeadsetEntryActivity actions: $(grep -c 'E: action ' <<<"$hea")"
+hasnt 'android.intent.action.WEB_SEARCH"' "$hea" "HeadsetEntryActivity doesn't take the browsers' WEB_SEARCH"
+has ':voice' "$(elem app.heyrobot.assistant.car.CarModeActivity)" "CarModeActivity in :voice"
+has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.car.CarModeActivity)" "CarModeActivity not exported"
+for p in BLUETOOTH_CONNECT CALL_PHONE ACCESS_NOTIFICATION_POLICY; do
+  has "\"android.permission.$p\"" "$mf" "declares $p (asked only from its settings row)"
+done
+for p in READ_PHONE_STATE BLUETOOTH_SCAN MANAGE_OWN_CALLS ANSWER_PHONE_CALLS; do
+  hasnt "android.permission.$p\"" "$mf" "no $p permission"
+done
+intent_has '"android.intent.action.DIAL"' 'scheme(0x01010027)="tel"' && pass "<queries> has DIAL tel: (calls)" || fail "<queries> DIAL tel:"
+intent_has '"android.intent.action.VOICE_COMMAND"' && pass "<queries> has VOICE_COMMAND (who answers the headset button)" || fail "<queries> VOICE_COMMAND"
 # Helpers (0.6.0): the connection window (keys, Test connection) runs in :voice and isn't exported (the main app never sees a key).
 has ':voice' "$(elem app.heyrobot.assistant.HelperConnectionActivity)" "HelperConnectionActivity in :voice"
 has 'exported(0x01010010)=false' "$(elem app.heyrobot.assistant.HelperConnectionActivity)" "HelperConnectionActivity not exported"

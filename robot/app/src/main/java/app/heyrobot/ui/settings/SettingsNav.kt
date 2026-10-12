@@ -47,6 +47,9 @@ object SettingsRoutes {
     const val ROUTINES = "routines"
     /** Settings › About › Updates (the built-in updater); its notifications open it too. */
     const val UPDATES = "updates"
+    /** 0.8: Settings › Headset and Settings › Car mode (with Add your car), from headset.json, car.json, places.json, devices.json. */
+    const val HEADSET = "headset"
+    const val CAR = "car"
     /** Settings › Advanced › ADB fixes › one fix, by its id (core AdbFixes). */
     fun adbFix(id: String) = "adb/$id"
     /** Settings › People › Notification access: the three steps. */
@@ -70,6 +73,8 @@ fun SettingsNav(
     if (route.startsWith("model/") && ModelRoute(route, s, update, snap, busy, a, snackbar, onBack)) return
     // 0.8: Settings › Routines and its pages.
     if (route == SettingsRoutes.ROUTINES || route.startsWith(SettingsRoutes.ROUTINES + "/")) return RoutinesRoute(route, s, snap, a, snackbar, onBack)
+    // 0.8: Settings › Headset, Settings › Car mode and Add your car.
+    if (route == SettingsRoutes.HEADSET || route == SettingsRoutes.CAR || route.startsWith(SettingsRoutes.CAR + "/")) return HandsFreeRoute(route, a, snackbar, onBack)
     when (route) {
         SettingsRoutes.DISPLAY -> {
             val ctx = LocalContext.current

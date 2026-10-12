@@ -125,6 +125,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.SendText -> prepareText(action)
             is Action.DraftEmail -> prepareEmail(action)
             is Action.LookupContact -> if (Contacts.granted(ctx) || PeopleFiles.store(ctx).list().isNotEmpty()) Prepared.Ready(action) else needContacts()
+            // 0.8: who to call (People and the contacts, numbers only) and whether it is an emergency number.
+            is Action.Call -> app.heyrobot.assistant.car.CallPlacer.prepare(ctx, action, settings)
             is Action.AddEvent -> prepareEvent(action)
             is Action.ReadCalendar -> prepareRead(action)
             is Action.Weather -> prepareWeather(action)
@@ -162,6 +164,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.SendText -> text(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = false) }
                 is Action.DraftEmail -> email(action).also { if (it.status.succeeded && action.target?.remember == true) remember(action.to, action.target?.from, email = true) }
                 is Action.LookupContact -> lookup(action)
+                is Action.Call -> app.heyrobot.assistant.car.CallPlacer.run(ctx, action, ::start)
                 is Action.AddNote -> addNote(action)
                 is Action.FindNotes -> findNotes(action)
                 is Action.AddEvent -> addEvent(action)

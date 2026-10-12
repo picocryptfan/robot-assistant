@@ -65,6 +65,16 @@
          without the confirmation window (Android 12 and later; Android still asks when another app store keeps Robot's
          updates). A normal permission, granted at install; without it Android ignores the request and always asks. -->
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+    <!-- 0.8, headset and car mode: each declared but asked for only from its own settings row, never at install or start.
+         "Nearby devices" (Settings › Headset › Answer the headset's voice button, or Car mode's row): tells the headset Robot
+         listens within the 5 s Android waits, and knows devices by their whole address and class. It doesn't allow scanning. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Settings › Car mode › Calls › "Call directly after a spoken yes": ACTION_CALL after the read-back and yes, never an
+         emergency number (always the dialer). Without it, every call opens the dialer and you tap Call. -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- Settings › Car mode › "Do Not Disturb while driving" (off): Robot switches only its own "Driving (Robot)" rule, once
+         you grant Do Not Disturb access in Android's settings. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <queries>
         <!-- open_app: every app with a launcher icon (no QUERY_ALL_PACKAGES). -->
@@ -85,6 +95,25 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="geo" />
+        </intent>
+        <!-- 0.8: calls (the dialer, or a call after car mode's spoken yes), and who answers the headset button's three
+             intents (Assistant setup's "Headset button" row: Robot, or "ask each time"). -->
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.CALL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VOICE_COMMAND" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.WEB_SEARCH" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.action.VOICE_SEARCH_HANDS_FREE" />
         </intent>
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
@@ -258,6 +287,43 @@
             android:excludeFromRecents="true"
             android:taskAffinity="app.heyrobot.pick"
             android:theme="@style/Theme.Robot.Translucent" />
+        <!-- 0.8, headset mode (design §3.6): what a headset's or car's voice button (VOICE_COMMAND, after AT+BVRA) and a wired or
+             USB headset's long press or a voice-assist key (the two speech actions) start. Exported, because Android starts
+             it; exactly these three actions. Translucent, no history, not in Recents, over the lock screen only to pass the
+             press on to the assistant's session: it shows nothing and finishes at once. "Headset button opens Robot" off
+             disables it (other apps get the button). -->
+        <activity
+            android:name=".assistant.headset.HeadsetEntryActivity"
+            android:process=":voice"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:showWhenLocked="true"
+            android:taskAffinity="app.heyrobot.headset"
+            android:theme="@style/Theme.Robot.Translucent">
+            <intent-filter>
+                <action android:name="android.intent.action.VOICE_COMMAND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.speech.action.WEB_SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.speech.action.VOICE_SEARCH_HANDS_FREE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <!-- 0.8, car mode (design §4.3): the big-button car screen, in :voice where car mode runs. Not exported: only car mode
+             and its notification open it. Over the lock screen only during the trusted session (set in code). -->
+        <activity
+            android:name=".assistant.car.CarModeActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="app.heyrobot.car"
+            android:theme="@style/Theme.Robot" />
         <!-- 0.5.0, conversation mode (docs/conversation-mode.md 1, 5): the session's microphone foreground service, its
              transcript screen, the Transcription check (Settings › Voice) and the Quick Settings tile, all in :voice where
              the listener and the speech model live. Never started by Robot on its own (START_NOT_STICKY, never at boot). -->

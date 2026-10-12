@@ -210,7 +210,9 @@ class ProcessIsolationTest {
             // 0.5.0, phase 5.6: summaries reach Robot's model and the Claude key, both only from :voice.
             "app.heyrobot.assistant.conversation.SummaryActivity",
             // 0.8, routines: the exact alarm's receiver and the speaking service, where the voice and the trigger hub are.
-            "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService")
+            "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService",
+            // 0.8, headset and car mode: the headset button's trampoline and the car screen, where the sessions are.
+            "app.heyrobot.assistant.headset.HeadsetEntryActivity", "app.heyrobot.assistant.car.CarModeActivity")
         for (n in voice) assertEquals(n, ":voice", proc(n))
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         // 0.4.5: llama.cpp's own process, isolated: Android runs it under a uid of its own with no permissions, no network
@@ -253,8 +255,21 @@ class ProcessIsolationTest {
             "app.heyrobot.assistant.conversation.ConversationActivity", "app.heyrobot.assistant.conversation.TranscriptionCheckActivity",
             "app.heyrobot.assistant.conversation.VoiceprintActivity", "app.heyrobot.assistant.conversation.SummaryActivity", "app.heyrobot.sys.ExportProvider",
             "app.heyrobot.assistant.routines.RoutineAlarmReceiver", "app.heyrobot.assistant.routines.RoutineSpeakingService",
-            "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver"))
+            "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService", "app.heyrobot.update.InstallStatusReceiver",
+            "app.heyrobot.assistant.car.CarModeActivity"))
             assertEquals(n, "false", exported(n))
+        // 0.8: the headset button's trampoline is exported (Android starts it for a headset's button) with exactly the three
+        // actions core HeadsetEntry lists and no other filter, no history, not in Recents, shown over the lock screen only to
+        // pass the press on; no permission guards it (Bluetooth and the system start it).
+        val entry = c("app.heyrobot.assistant.headset.HeadsetEntryActivity")
+        assertEquals("true", exported("app.heyrobot.assistant.headset.HeadsetEntryActivity"))
+        assertEquals("", perm("app.heyrobot.assistant.headset.HeadsetEntryActivity"))
+        val entryActions = entry.getElementsByTagName("action").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }
+        assertEquals(app.heyrobot.core.headset.HeadsetEntry.ACTIONS, entryActions)
+        assertEquals(3, entry.getElementsByTagName("intent-filter").length)
+        assertTrue(entry.getElementsByTagName("data").length == 0)
+        for (a in listOf("noHistory", "excludeFromRecents", "showWhenLocked")) assertEquals(a, "true", entry.getAttributeNS(ns, a))
+        assertEquals(0, c("app.heyrobot.assistant.car.CarModeActivity").getElementsByTagName("intent-filter").length)
         // 0.8: routines speak from a mediaPlayback foreground service (Android 17's background audio), never a short one;
         // the receiver hears only the system's broadcasts that make the exact alarm wrong, after the first unlock.
         assertEquals("mediaPlayback", c("app.heyrobot.assistant.routines.RoutineSpeakingService").getAttributeNS(ns, "foregroundServiceType"))
@@ -334,11 +349,19 @@ class ProcessIsolationTest {
             // ... and, only for "Install updates without asking" (off by default), asking Android to skip its confirmation for
             // Robot's own update: without it Android ignores USER_ACTION_NOT_REQUIRED. A normal permission.
             "android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION",
+            // 0.8, headset and car mode, each asked for only from its own settings row: Nearby devices (the headset told Robot
+            // listens, devices known exactly), the Phone permission ("Call directly after a spoken yes"), and Do Not Disturb
+            // access (Robot's own "Driving (Robot)" rule; a normal permission plus the access you grant in Android's settings).
+            "android.permission.BLUETOOTH_CONNECT", "android.permission.CALL_PHONE", "android.permission.ACCESS_NOTIFICATION_POLICY",
         ), used)
-        // 0.8: routines need nothing else: USE_EXACT_ALARM (above) rather than SCHEDULE_EXACT_ALARM, no phone, Bluetooth or
-        // Do Not Disturb access (those come with car and headset mode, asked only from their own rows).
-        assertTrue(listOf("SCHEDULE_EXACT_ALARM", "CALL_PHONE", "BLUETOOTH_CONNECT", "ACCESS_NOTIFICATION_POLICY", "FOREGROUND_SERVICE_SHORT_SERVICE")
-            .none { "android.permission.$it" in used })
+        // 0.8: routines need nothing else: USE_EXACT_ALARM (above) rather than SCHEDULE_EXACT_ALARM; car mode reads no phone
+        // state, never scans for Bluetooth devices and never sends a text itself (no SEND_SMS, READ_PHONE_STATE, BLUETOOTH_SCAN).
+        assertTrue(listOf("SCHEDULE_EXACT_ALARM", "FOREGROUND_SERVICE_SHORT_SERVICE", "READ_PHONE_STATE", "BLUETOOTH_SCAN", "BLUETOOTH",
+            "BLUETOOTH_ADMIN", "BLUETOOTH_PRIVILEGED", "MANAGE_OWN_CALLS", "ANSWER_PHONE_CALLS", "READ_CALL_LOG").none { "android.permission.$it" in used })
+        // The three are asked only from their rows (Settings › Headset and Car mode, the main app's permission action), never
+        // at start: no other code asks for them.
+        assertEquals(listOf("app/ui/settings/HandsFreeSettings.kt"), usersOf(Regex("""Manifest\.permission\.(CALL_PHONE|BLUETOOTH_CONNECT)\b"""),
+            ours.filterKeys { it.startsWith("app/ui/") }))
         // Never installing or deleting other apps, never asking to update apps it didn't install, and no user-initiated job or
         // foreground service type for the updater's downloads (FOREGROUND_SERVICE itself is conversation mode's, above).
         assertTrue(listOf("INSTALL_PACKAGES", "DELETE_PACKAGES", "REQUEST_DELETE_PACKAGES", "INSTALL_PACKAGE_UPDATES", "INSTALL_SELF_UPDATES",
@@ -385,6 +408,10 @@ class ProcessIsolationTest {
         assertTrue("claude.ai" in hosts)
         val mimes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "mimeType") } }.toSet()
         assertTrue("vnd.android.cursor.dir/event" in mimes)
+        // 0.8: calls (tel: for the dialer and ACTION_CALL) and the headset button's three intents (who answers them).
+        val queried = queries.getElementsByTagName("action").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
+        assertTrue(queried.containsAll(listOf("android.intent.action.DIAL", "android.intent.action.CALL") + app.heyrobot.core.headset.HeadsetEntry.ACTIONS))
+        assertTrue("tel" in schemes)
     }
 
     /**
