@@ -89,6 +89,52 @@ class LiteRtLmTest {
         assertTrue(LiteRtLmCheck.check(ArrayByteSource(e4bCpu() + ByteArray((LiteRtLmCheck.MAX_GAP + 1).toInt()))).readable)
     }
 
+    /**
+     * 1.0: the strict check run on Google's real files (litert-community on Hugging Face, October 2026: the smallest,
+     * SmolLM2_135M_Instruct.litertlm, downloaded; Gemma 4 E2B's builds read by range, header and section starts only). They
+     * pass. Their layouts, rebuilt here from what their headers say (no file is kept): each section on a 16 KiB page, so up
+     * to 16 KiB between two and after the last; metadata first or last; formats 1.5 to 1.7; a SentencePiece or a Hugging
+     * Face tokenizer. The GPU-only build has no prefill_decode, as the plain check already says.
+     */
+    @Test fun googlesRealLayoutsPassTheStrictCheck() {
+        val page = 16_384L
+        fun strict(b: ByteArray) = LiteRtLmCheck.strictProblem(ArrayByteSource(b))
+        // SmolLM2_135M_Instruct.litertlm (143 MB): metadata, a Hugging Face tokenizer, the model, padded to the next page.
+        val smol = FakeLiteRtLm.litertlm(listOf(meta(FakeLiteRtLm.GENERIC, max = 4096),
+            Section(null, FakeLiteRtLm.HF_TOKENIZER_ZLIB, FakeLiteRtLm.hfTokenizer("""{"added_tokens":[{"content":"<|im_start|>","special":true}],"normalizer":null}""")),
+            tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps))), page = page)
+        assertNull(strict(smol))
+        assertEquals(check(smol), LiteRtLmCheck.check(ArrayByteSource(smol), strict = true))
+        assertEquals("generic_model", check(smol).modelType)
+        assertEquals(ModelBackend.CPU, check(smol).backend)
+        // gemma-4-E2B-it.litertlm (2.6 GB, for the CPU): metadata and the tokenizer first, then ten TFLite sections.
+        val e2bCpu = FakeLiteRtLm.litertlm(listOf(meta(), Section(null, SP_TOKENIZER, ByteArray(64)), small("tf_lite_embedder"),
+            small("tf_lite_per_layer_embedder"), small("tf_lite_audio_encoder_hw"), small("tf_lite_audio_adapter"), small("tf_lite_end_of_audio"),
+            tfl("tf_lite_vision_encoder", FakeLiteRtLm.tflite(cpuOps)), small("tf_lite_vision_adapter"), small("tf_lite_end_of_vision"),
+            tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(cpuOps)), small("tf_lite_mtp_drafter")), page = page)
+        assertNull(strict(e2bCpu))
+        assertEquals(ModelBackend.CPU, check(e2bCpu).backend)
+        // gemma-4-E2B-it_Google_Tensor_G5.litertlm (3.1 GB, the file Robot downloads for the Pixel 10): the model first,
+        // the tokenizer and metadata last, nothing after them.
+        val g5 = FakeLiteRtLm.litertlm(listOf(tfl("tf_lite_prefill_decode", FakeLiteRtLm.tflite(dispatchOps, g5Stamp)), small("tf_lite_embedder"),
+            small("tf_lite_aux"), small("tf_lite_per_layer_embedder"), small("tf_lite_mtp_drafter"), small("tf_lite_mtp_aux"),
+            tfl("tf_lite_vision_encoder", FakeLiteRtLm.tflite(dispatchOps, g5Stamp)), small("tf_lite_vision_adapter"), small("tf_lite_end_of_vision"),
+            small("tf_lite_audio_encoder_hw"), small("tf_lite_audio_adapter"), small("tf_lite_end_of_audio"), Section(null, SP_TOKENIZER, ByteArray(64)),
+            meta()), page = page, padEnd = false)
+        assertNull(strict(g5))
+        assertEquals(Chip.TENSOR_G5, check(g5).tensorBuild)
+        // gemma-4-E2B-it-gpu.litertlm (2.0 GB, format 1.6): a GPU decoder ("artisan") in place of prefill_decode, which Robot
+        // doesn't load: refused strictly, and unusable without strict, as before.
+        val gpu = FakeLiteRtLm.litertlm(listOf(meta(), Section(null, SP_TOKENIZER, ByteArray(64)), small("tf_lite_artisan_text_decoder")),
+            page = page, minor = 6, padEnd = false)
+        assertEquals("it doesn't have exactly one language model", strict(gpu))
+        assertEquals("1.6.0", check(gpu).format)
+        assertEquals("It holds no language model (no prefill_decode section).", check(gpu).unusable)
+        // A later minor format (embeddinggemma's files are 1.7) reads too.
+        assertNull(strict(FakeLiteRtLm.litertlm(listOf(meta(), Section(null, SP_TOKENIZER, ByteArray(64)), tfl("tf_lite_prefill_decode",
+            FakeLiteRtLm.tflite(cpuOps))), page = page, minor = 7)))
+    }
+
     @Test fun googlesTensorG5BuildIsATpuBuild() {
         val r = check(e2bG5())
         assertTrue(r.toString(), r.readable && r.decoder && r.aux && r.dispatchOp && (r.tensorStamp == Chip.TENSOR_G5) && r.gemma4 && r.toolTokens && r.vision)

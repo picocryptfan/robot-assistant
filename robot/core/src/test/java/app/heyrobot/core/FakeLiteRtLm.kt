@@ -92,8 +92,11 @@ object FakeLiteRtLm {
     const val LLM_METADATA = 5
     const val SP_TOKENIZER = 4
 
-    /** "LITERTLM", version 1.5.0, the header's end, the header flatbuffer, then each section 16-byte aligned. */
-    fun litertlm(sections: List<Section>, magic: String = "LITERTLM"): ByteArray {
+    /**
+     * "LITERTLM", version 1.[minor].0, the header's end, the header flatbuffer, then each section aligned to [page] bytes,
+     * the file too unless not [padEnd]. Google's real files put each section on a 16 KiB page (1.0, LiteRtLmTest).
+     */
+    fun litertlm(sections: List<Section>, magic: String = "LITERTLM", page: Long = 16, minor: Int = 5, padEnd: Boolean = true): ByteArray {
         fun header(begins: List<Long>): ByteArray = flatbuffer(Obj(
             Ref(Obj(Ref(Vec(listOf(kv("model_name", "fake")))))),
             Ref(Obj(Ref(Vec(sections.mapIndexed { i, s ->
@@ -102,22 +105,23 @@ object FakeLiteRtLm {
         ))
         val length = header(sections.map { 0L }).size
         val begins = ArrayList<Long>()
-        var at = align(32L + length)
-        for (s in sections) { begins += at; at = align(at + s.data.size) }
+        var at = align(32L + length, page)
+        var end = at
+        for (s in sections) { begins += at; end = at + s.data.size; at = align(end, page) }
         val h = header(begins)
         check(h.size == length)
-        val out = ByteArray(at.toInt())
+        val out = ByteArray((if (padEnd) at else end).toInt())
         System.arraycopy(magic.toByteArray(Charsets.US_ASCII), 0, out, 0, 8)
         fun put32(p: Int, v: Long) { for (i in 0 until 4) out[p + i] = ((v ushr (8 * i)) and 0xff).toByte() }
-        put32(8, 1); put32(12, 5); put32(16, 0)
-        val end = 32L + h.size
-        put32(24, end); put32(28, end ushr 32)
+        put32(8, 1); put32(12, minor.toLong()); put32(16, 0)
+        val headerEnd = 32L + h.size
+        put32(24, headerEnd); put32(28, headerEnd ushr 32)
         System.arraycopy(h, 0, out, 32, h.size)
         for ((i, s) in sections.withIndex()) System.arraycopy(s.data, 0, out, begins[i].toInt(), s.data.size)
         return out
     }
 
-    private fun align(p: Long) = (p + 15) / 16 * 16
+    private fun align(p: Long, to: Long = 16) = (p + to - 1) / to * to
 
     // ------------------------------------------------------------------ TFLite
 
