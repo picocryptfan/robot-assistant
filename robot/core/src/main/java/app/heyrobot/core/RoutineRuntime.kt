@@ -418,3 +418,44 @@ object RoutineTexts {
     const val DAMAGED = "Robot can't read your routines file. Nothing runs until you start over; the file is kept aside."
     const val TOO_NEW = "Your routines were saved by a newer Robot. Update Robot to use them."
 }
+
+// ---------------------------------------------------------------------------------------------- the editor's draft
+
+/**
+ * A routine being edited in Settings, kept across a recreation (rotation, the process killed) as JSON. Unlike
+ * [RoutineCodec.fromJson] it keeps a routine that can't be saved yet (no steps, no name): the editor says what is missing.
+ */
+object RoutineDraftCodec {
+    fun encode(r: Routine): String = RoutineCodec.toJson(r).toString()
+
+    fun decode(json: String?): Routine? = try {
+        val o = JSONObject(json ?: return null)
+        val c = o.optJSONObject("conditions")
+        val between = if (c != null && c.has("from")) {
+            val from = RoutineCodec.time(RoutineCodec.str(c, "from"))
+            val to = RoutineCodec.time(RoutineCodec.str(c, "to"))
+            if (from != null && to != null) TimeWindow(from, to) else null
+        } else null
+        val steps = o.optJSONArray("steps")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let(RoutineCodec::step) } }.orEmpty()
+        Routine(
+            id = RoutineCodec.str(o, "id")!!,
+            name = RoutineCodec.str(o, "name").orEmpty(),
+            trigger = RoutineCodec.trigger(o.getJSONObject("trigger"))!!,
+            steps = steps,
+            enabled = RoutineCodec.bool(o, "enabled") ?: true,
+            created = RoutineCodec.long(o, "created") ?: 0,
+            edited = RoutineCodec.long(o, "edited") ?: 0,
+            conditions = RoutineConditions(between, c?.optJSONArray("days")?.let(RoutineCodec::days), c?.let { RoutineCodec.bool(it, "once_per_day") } ?: true),
+            output = RoutineOutput.of(RoutineCodec.str(o, "output")) ?: RoutineOutput.HEADSET_OR_SPEAKER,
+            lock = RoutineLock.of(RoutineCodec.str(o, "lock")) ?: RoutineLock.FOLLOW,
+            online = o.optJSONArray("online")?.let { a -> (0 until a.length()).mapNotNull { OnlineUse.of(a.opt(it) as? String) }.toSet() }.orEmpty(),
+        )
+    } catch (_: Exception) {
+        null
+    }
+
+    /** "07:30" (24-hour) as a time, or null. */
+    fun time(s: String): LocalTime? = Regex("^\\s*([01]?\\d|2[0-3])\\s*[:.h]\\s*([0-5]\\d)\\s*$").find(s)?.let { LocalTime.of(it.groupValues[1].toInt(), it.groupValues[2].toInt()) }
+
+    fun hm(t: LocalTime): String = String.format(Locale.US, "%02d:%02d", t.hour, t.minute)
+}

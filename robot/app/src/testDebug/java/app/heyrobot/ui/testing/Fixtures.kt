@@ -37,6 +37,7 @@ class ActionLog : ArrayList<String>() {
         askMedia = { add("askMedia") }, transcribe = { add("transcribe") }, interpret = { add("interpret") },
         openTranscriptionCheck = { add("openTranscriptionCheck") }, mtDownload = { add("mtDownload") }, mtCancel = { add("mtCancel") },
         mtDelete = { add("mtDelete") }, openVoiceprint = { add("openVoiceprint") }, deleteVoiceprint = { add("deleteVoiceprint") },
+        runRoutine = { add("runRoutine $it") }, openReady = { add("openReady $it") },
     )
 }
 

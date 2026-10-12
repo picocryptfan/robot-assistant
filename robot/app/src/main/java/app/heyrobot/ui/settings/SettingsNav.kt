@@ -43,6 +43,8 @@ object SettingsRoutes {
     const val DISPLAY = "display"
     const val ADVANCED = "advanced"
     const val ABOUT = "about"
+    /** 0.8: Settings › Routines, the morning brief's page and each routine's (routines.json, not settings.json). */
+    const val ROUTINES = "routines"
     /** Settings › Advanced › ADB fixes › one fix, by its id (core AdbFixes). */
     fun adbFix(id: String) = "adb/$id"
     /** Settings › People › Notification access: the three steps. */
@@ -64,6 +66,8 @@ fun SettingsNav(
 ) {
     // Settings › Model's pages (the Model tab's rows open them).
     if (route.startsWith("model/") && ModelRoute(route, s, update, snap, busy, a, snackbar, onBack)) return
+    // 0.8: Settings › Routines and its pages.
+    if (route == SettingsRoutes.ROUTINES || route.startsWith(SettingsRoutes.ROUTINES + "/")) return RoutinesRoute(route, s, snap, a, snackbar, onBack)
     when (route) {
         SettingsRoutes.DISPLAY -> {
             val ctx = LocalContext.current
@@ -177,7 +181,7 @@ object AppRoutes {
         // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
         // Model from a chat-only model's answer to an action (0.4.3).
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
-            it == AppPages.MODEL || it == AppPages.HELPERS }
+            it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.ROUTINES }
     }
 
     /** What a route opens: a [tab] (every page closed), or a [page] over the one showing; [notesIcon]: from Robot Notes' icon. */
@@ -191,6 +195,7 @@ object AppRoutes {
         r == AppPages.CONVERSATION_SETTINGS -> Target(page = Page.ConversationSettings)
         r == AppPages.HELPERS -> Target(page = Page.Helpers)
         r == AppPages.MODEL -> Target(tab = Tab.MODEL)
+        r == AppPages.ROUTINES -> Target(page = Page.Settings(SettingsRoutes.ROUTINES))
         else -> null
     }
 }

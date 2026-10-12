@@ -31,7 +31,8 @@ import app.heyrobot.ui.pref.preferenceGroup
 
 /** The Settings tab. [look] is Settings › Display's (LookStore; a test passes its own). */
 @Composable
-fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current)) {
+fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modifier = Modifier, look: LookSettings = LookStore.current(LocalContext.current),
+    routines: String = routinesSummary(LocalContext.current)) {
     fun go(route: String) = a.openPage(Page.Settings(route))
     PreferenceScreen("Settings", onBack = null, modifier = modifier) {
         preferenceGroup(null, "voice") {
@@ -39,6 +40,8 @@ fun SettingsRoot(s: RobotSettings, snap: Snapshot, a: AppActions, modifier: Modi
             PreferenceItem("Voice", voiceSummary(s), RIcons.RecordVoiceOver, onClick = { go(SettingsRoutes.VOICE) })
             PreferenceItem("Actions", actionsSummary(s), RIcons.TouchApp, onClick = { go(SettingsRoutes.ACTIONS) })
             PreferenceItem("Safety & privacy", safetySummary(s), RIcons.Shield, onClick = { a.openPage(Page.Safety) })
+            // 0.8: routines.json and routine_settings.json (RoutineFiles), not settings.json.
+            PreferenceItem("Routines", routines, RIcons.Alarm, onClick = { go(SettingsRoutes.ROUTINES) })
         }
         preferenceGroup(null, "reach") {
             PreferenceItem("People, notes and calendar", peopleSummary(s, snap.facts), RIcons.Contacts, onClick = { go(SettingsRoutes.PEOPLE_NOTES_CALENDAR) })

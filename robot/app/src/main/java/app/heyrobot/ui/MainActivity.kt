@@ -71,6 +71,7 @@ import app.heyrobot.sys.NearestAnswers
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.ModelStore
 import app.heyrobot.sys.RecognizerKeeper
+import app.heyrobot.sys.RoutineIntents
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.Paths
 import app.heyrobot.sys.SettingsIntents
@@ -128,6 +129,12 @@ class MainActivity : ComponentActivity() {
 
     /** The pages other screens and apps may open (ui/settings AppRoutes). */
     private fun routeOf(i: Intent?): String? = AppRoutes.of(i)
+
+    /** 0.8: opens the panel to run a routine or show a Ready card ([key]: sys RoutineIntents' show argument). */
+    fun routine(key: String, value: String): Boolean = showAssist(Bundle().apply {
+        putString("robot_source", "app")
+        putString(key, value)
+    })
 
     /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
     fun talk(conversation: String? = null): Boolean = showAssist(Bundle().apply {
@@ -607,6 +614,14 @@ fun RobotAppUi(activity: MainActivity) {
             val opened = SettingsIntents.of(ctx, SettingsPage.USAGE_ACCESS).any { i -> try { ctx.startActivity(i); true } catch (_: Exception) { false } }
             if (!opened) say("Open Settings › Apps › Special app access › Usage access, then Robot.")
         },
+        runRoutine = { id ->
+            if (snap.facts?.active != true) { page = Page.Setup(); say("Make Robot your digital assistant first: routines run in the assistant.") }
+            else if (!activity.routine(RoutineIntents.ARG_ROUTINE, id)) say("Couldn't open the assistant.")
+        },
+        openReady = { key ->
+            if (snap.facts?.active != true) { page = Page.Setup(); say("Make Robot your digital assistant first.") }
+            else if (!activity.routine(RoutineIntents.ARG_READY, key)) say("Couldn't open the assistant.")
+        },
     )
 
     /** Turning a people or calendar feature on (from Off) asks for what it needs, if it isn't allowed yet. */
@@ -749,4 +764,7 @@ class AppActions(
     /** 0.5.0, phase 5.3: "Your voice" (voice process), and deleting the voiceprint (file and key). */
     val openVoiceprint: () -> Unit = {},
     val deleteVoiceprint: () -> Unit = {},
+    /** 0.8: the panel opens to run a routine (Run now), or with a Ready card (its key). */
+    val runRoutine: (String) -> Unit = {},
+    val openReady: (String) -> Unit = {},
 )

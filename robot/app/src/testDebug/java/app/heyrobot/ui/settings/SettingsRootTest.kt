@@ -33,7 +33,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The Settings tab: fourteen rows, each with its state under the title, each opening its page. */
+/** The Settings tab: fifteen rows (0.8: Routines), each with its state under the title, each opening its page. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
@@ -53,6 +53,7 @@ class SettingsRootTest {
             "Voice" to "openPage ${Page.Settings(SettingsRoutes.VOICE)}",
             "Actions" to "openPage ${Page.Settings(SettingsRoutes.ACTIONS)}",
             "Safety & privacy" to "openPage ${Page.Safety}",
+            "Routines" to "openPage ${Page.Settings(SettingsRoutes.ROUTINES)}",
             "People, notes and calendar" to "openPage ${Page.Settings(SettingsRoutes.PEOPLE_NOTES_CALENDAR)}",
             "Weather" to "openPage ${Page.Settings(SettingsRoutes.WEATHER)}",
             "Helpers" to "openPage ${Page.Helpers}",

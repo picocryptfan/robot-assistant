@@ -251,3 +251,22 @@ class RoutineRuntimeTest {
         assertEquals(RoutineCommandCode.entries.toList(), all.map(RoutineCommandCode::of))
     }
 }
+
+/** The editor's draft survives a recreation even before it can be saved. */
+class RoutineDraftCodecTest {
+    @Test fun aDraftThatCantBeSavedYetStillRoundTrips() {
+        val empty = Routine("r-1", "", RoutineTrigger.Charging(start = false), emptyList(), created = 5, conditions = RoutineConditions(days = RoutineWords.WEEKEND,
+            oncePerDay = false), output = RoutineOutput.SILENT, lock = RoutineLock.WAIT_FOR_UNLOCK)
+        assertFalse(RoutineCheck.valid(empty))
+        assertEquals(empty, RoutineDraftCodec.decode(RoutineDraftCodec.encode(empty)))
+        val full = empty.copy(name = "Night", steps = listOf(RoutineStep.Brief, RoutineStep.Say("Good night")), online = setOf(OnlineUse.OPEN_METEO),
+            conditions = RoutineConditions(TimeWindow(LocalTime.of(20, 0), LocalTime.of(4, 0))))
+        assertEquals(full, RoutineDraftCodec.decode(RoutineDraftCodec.encode(full)))
+        assertNull(RoutineDraftCodec.decode("{oops"))
+        assertNull(RoutineDraftCodec.decode(null))
+        assertEquals(LocalTime.of(7, 30), RoutineDraftCodec.time("7:30"))
+        assertEquals(LocalTime.of(19, 5), RoutineDraftCodec.time("19 h 05"))
+        assertNull(RoutineDraftCodec.time("24:00"))
+        assertEquals("07:05", RoutineDraftCodec.hm(LocalTime.of(7, 5)))
+    }
+}
