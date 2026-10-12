@@ -735,6 +735,9 @@ object PanelMessages {
     /** Sends the card's reply through the main process, which reads the notification again first (core ReplySend). */
     private suspend fun fire(p: Pending, how: CardEnd) {
         val plan = p.plan ?: return
+        // Once per card: a tap and a spoken yes (or two taps) both launched before it left send it once (this runs on the
+        // main thread up to the bridge, so the first one here marks it SENDING before any other can look).
+        if (p.state != ReplyCardState.WAITING && p.state != ReplyCardState.STOP_WINDOW) return
         val lang = p.lang
         val name = p.thread.name
         p.state = ReplyCardState.SENDING

@@ -894,6 +894,10 @@ class ProcessIsolationTest {
         val panel = code(File(java("app"), "app/heyrobot/assistant/PanelMessages.kt"))
         assertEquals(1, Regex("""ReplyRequest\(""").findAll(panel).count())
         assertTrue(panel.contains("ReplyRequest(p.thread.key, plan.text, plan.newestSeen)"))
+        // Sent once per card: fire() goes on only from a waiting card (or its 3 seconds), and marks it sending before the bridge.
+        val once = panel.indexOf("if (p.state != ReplyCardState.WAITING && p.state != ReplyCardState.STOP_WINDOW) return")
+        assertTrue(once in panel.indexOf("private suspend fun fire(") until panel.indexOf("p.state = ReplyCardState.SENDING"))
+        assertTrue(panel.indexOf("p.state = ReplyCardState.SENDING") < panel.indexOf("link().reply(ReplyRequest("))
         // Robot's model sees messages only through one-shot requests (no tools); every turn of the panel carries the quarantine.
         assertTrue(panel.contains("BrainOneShots.run(BrainMsg.OneShot("))
         // Whatever of a message Robot says aloud counts for the echo check: the words read (or their translation), a summary,
