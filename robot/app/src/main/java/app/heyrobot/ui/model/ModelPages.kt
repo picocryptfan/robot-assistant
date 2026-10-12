@@ -89,7 +89,8 @@ import kotlinx.coroutines.withContext
 // your own file may be a GGUF file (llama.cpp, on the CPU). 0.4.7: the last model problem with its report to copy or share
 // at the top, this phone and its chip (which Fast it gets, whether Robot uses its TPU), and where Fast runs on a phone
 // without the Tensor G5's TPU build: "Use the GPU" with "Try the GPU again" after a failure, and this phone's estimated
-// speeds; only this phone's Fast is listed.
+// speeds; only this phone's Fast is listed. 0.7: the problem's "Send as bug report" (Settings › About › Send feedback), and
+// the last 10 problems as a list, each with Show, Share, Send as bug report and Delete.
 
 /** The route of a model's page (Settings › Model › one model), and of a voice model's. */
 object ModelRoutes {
