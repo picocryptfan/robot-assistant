@@ -88,6 +88,14 @@ Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the se
   the camera" show counts only while the panel waits for one, and the lock-screen rule applies to it too.
 - **The lock screen never shows a conversation used unlocked** [physical-locked-conversation-carryover]: a conversation
   begun on the lock screen and then continued unlocked starts afresh at the next locked show (core `PanelContinuity`).
+- **The lock screen's turns never steer your unlocked conversation** (the same finding, the other way round): anyone can
+  talk to a locked phone, so the first unlocked show after a conversation begun there starts a new one. Except in the
+  continuation it asked for: its last reply asked you to unlock ("Unlock first", "Unlock to do this") and you open Robot
+  within 2 minutes (`PanelContinuity.UNLOCK_WINDOW_MS`), or you unlock with the panel still open and ask there. Then its
+  turns stay, under "Said while the phone was locked"; the model gets them quoted as information, never as your words
+  (core `Quoted.LOCKED`), a helper's transcript doesn't call them yours, their words in a web search need a card, and the
+  conversation is content: an action you didn't ask for in your own words needs its card whatever Safety cards says (as
+  with messages, not a switch). History keeps the conversations as before (a continued one keeps the mark).
 - **Unlock events arrive** [ipc-3]: `USER_PRESENT` comes from SystemUI under an ordinary app uid, so non-exported receivers
   never got it; they are exported now, for protected system broadcasts only (`sys/ProtectedBroadcasts`).
 - **Clock's fake broadcasts can't flush the voice log** [ipc-4]: unverified alarms are logged once a minute with a count
@@ -115,11 +123,31 @@ Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the se
   Encyclopedia lookups ask it (core `WebAlso`).
 - **Your own `.litertlm`** [native-01, ipc-5]: its container is checked strictly before LiteRT-LM reads it, and importing
   your own file warns that it runs with Robot's permissions (a known limitation: "Your own model file", SECURITY.md).
+  Google's real files pass it: SmolLM2 135M (litert-community's smallest) and Gemma 4 E2B's CPU and Tensor G5 builds;
+  Gemma 4 E2B's GPU-only build has no `prefill_decode` and was already unusable (`LiteRtLmTest` keeps their layouts).
 - **:llama's replies are capped** [native-03]: 256 KiB per request (core `StreamBudget`); past it the request ends.
 - **Routines on the locked phone** [physical-routines-writable-locked]: nothing makes, deletes or lists a routine or adds a
   brief reminder ("Unlock first").
 - **Calls** [physical-call-e164-plus-dropped, physical-car-trusted-any-number]: a contact's number is dialled with its "+";
   the locked trusted car session calls People and contacts only.
+
+**On the phone (1.0 audit, the lock screen's turns):**
+
+1. **A new conversation.** Lock the phone, "hey robot, what's 12 times 12?". Unlock, "hey robot" within a minute: *done
+   when* the panel is empty, and History lists the locked conversation on its own.
+2. **The unlock it asked for.** Lock, "hey robot, add a note: buy milk": *done when* it asks you to unlock. Unlock within
+   2 minutes, "hey robot": *done when* the earlier turns show under "Said while the phone was locked"; "go ahead" brings
+   the note's card even with Settings › Safety & privacy › Safety cards at "Only when Robot isn't sure who", and "add a
+   note: buy eggs" (your own words) doesn't.
+3. **The window.** Step 2 again, waiting 3 minutes before "hey robot": *done when* the panel is empty.
+4. **Unlocked with the panel open.** Lock, "hey robot, what time is it?", unlock with your fingerprint while the panel
+   stays, type "and the date?": *done when* the first exchange moves under "Said while the phone was locked" and the date
+   is answered.
+5. **Locked again.** After step 2, lock and "hey robot" within 5 minutes: *done when* the panel is empty.
+6. **TalkBack.** Step 2 with TalkBack on: *done when* "Said while the phone was locked" is read as a heading.
+7. **A real `.litertlm`.** Settings › Model › Your own model file, import `SmolLM2_135M_Instruct.litertlm`
+   (litert-community/SmolLM2-135M-Instruct, 143 MB): *done when* it is accepted (no "Robot won't open this file") and,
+   chosen, it answers "hi" on the CPU.
 
 ## Setup guide (1.0)
 
