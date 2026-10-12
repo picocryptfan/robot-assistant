@@ -15,6 +15,7 @@ import app.heyrobot.core.update.GitHubRepo
 import app.heyrobot.core.update.Hop
 import app.heyrobot.core.update.ReleaseAssets
 import app.heyrobot.core.update.UpdateFail
+import app.heyrobot.core.termux.TermuxUpdates
 import app.heyrobot.sys.Assistant
 import java.io.File
 import java.io.FileOutputStream
@@ -36,6 +37,8 @@ import javax.net.ssl.SSLException
 // Every request names Robot and its version (User-Agent "Robot/0.4.5") and nothing about the phone. Caps: 1 MB of JSON,
 // 64 KB of SHA256SUMS, the APK's own size (at most 300 MB). Stop disconnects (Abort). Nothing is logged here, least of all
 // a URL with a signature in it or the token.
+// 1.0: also Settings › Termux's update check ([publicJson]): two fixed public addresses (core TermuxUpdates: Termux's
+// releases on api.github.com, F-Droid's entry on f-droid.org), never with the token, no redirect followed, no cookies.
 
 internal object GitHubClient {
     class Failure(val why: UpdateFail, val http: Int = 0, val retryAt: Long? = null) : Exception(why.name)
@@ -49,6 +52,16 @@ internal object GitHubClient {
         request(ctx, repo.releasesUrl(), GitHubHosts.ACCEPT_JSON, UpdateToken.read(ctx), 0, abort, network) { c, _ ->
             readText(c, GitHubReleases.MAX_JSON)
         }
+
+    /**
+     * 1.0, "Check for Termux updates": the answer of one of core TermuxUpdates' two fixed public addresses, as text (at most
+     * [max] bytes). No token (it is a public request, never the updater's), no redirect followed, and only those URLs.
+     * Blocking.
+     */
+    fun publicJson(ctx: Context, url: String, accept: String, max: Int, abort: Abort, network: Network?): String {
+        if (!TermuxUpdates.allowed(url)) throw Failure(UpdateFail.REDIRECT_REFUSED)
+        return request(ctx, url, accept, SecretRead.Absent, 0, abort, network, public = true) { c, _ -> readText(c, max) }
+    }
 
     /** A release's SHA256SUMS. Blocking. */
     fun sums(ctx: Context, repo: GitHubRepo, file: FileRef, abort: Abort, network: Network?): String =
@@ -110,17 +123,19 @@ internal object GitHubClient {
      * off), so a header set here goes to the host it was set for and no other.
      */
     private fun <T> request(ctx: Context, start: String, accept: String, saved: SecretRead, from: Long, abort: Abort, network: Network?,
-                            read: (HttpsURLConnection, Int) -> T): T {
+                            public: Boolean = false, read: (HttpsURLConnection, Int) -> T): T {
         // GrapheneOS's Network toggle is the INTERNET permission at run time.
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) throw Failure(UpdateFail.NO_NETWORK_PERMISSION)
-        val token = (saved as? SecretRead.Present)?.value
+        // 1.0: a public request (Termux's update check) never carries the token.
+        val token = if (public) null else (saved as? SecretRead.Present)?.value
         // Saved but not readable just now: kept, and GitHub's "not found" for a private repository says so.
         val tokenKept = saved is SecretRead.Unavailable
         var url = start
         var hop = 0
         while (true) {
             if (abort.cancelled) throw Failure(UpdateFail.STOPPED)
-            if (!GitHubHosts.allowed(url)) throw Failure(UpdateFail.REDIRECT_REFUSED)
+            if (public) { if (!TermuxUpdates.allowed(url)) throw Failure(UpdateFail.REDIRECT_REFUSED) }
+            else if (!GitHubHosts.allowed(url)) throw Failure(UpdateFail.REDIRECT_REFUSED)
             val u = URL(url)
             val c = (network?.openConnection(u) ?: u.openConnection()) as? HttpsURLConnection ?: throw Failure(UpdateFail.REDIRECT_REFUSED)
             val forget = abort.onCancel { c.disconnect() }
@@ -139,6 +154,7 @@ internal object GitHubClient {
                 if (token != null && GitHubHosts.mayAuthorize(url)) c.setRequestProperty("Authorization", "Bearer $token")
                 val code = c.responseCode
                 if (code in REDIRECTS) {
+                    if (public) throw Failure(UpdateFail.REDIRECT_REFUSED, code)
                     when (val next = GitHubHosts.redirect(url, c.getHeaderField("Location"), ++hop)) {
                         is Hop.Follow -> url = next.url
                         is Hop.Refuse -> throw Failure(UpdateFail.REDIRECT_REFUSED, code)

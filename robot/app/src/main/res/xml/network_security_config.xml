@@ -36,5 +36,7 @@
         <domain includeSubdomains="true">mojeek.com</domain>
         <domain includeSubdomains="true">wikipedia.org</domain>
         <domain includeSubdomains="true">openlibrary.org</domain>
+        <!-- 1.0: Termux's weekly update check asks F-Droid's API (and GitHub's, above). -->
+        <domain includeSubdomains="true">f-droid.org</domain>
     </domain-config>
 </network-security-config>

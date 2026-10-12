@@ -12,6 +12,8 @@ import app.heyrobot.core.TermuxCalls
 import app.heyrobot.core.TermuxCommandAction
 import app.heyrobot.core.TermuxScriptAction
 import app.heyrobot.core.ToolName
+import app.heyrobot.core.VoiceEvent
+import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.termux.CommandAnalyzer
 import app.heyrobot.core.termux.CommandLevel
 import app.heyrobot.core.termux.CommandSource
@@ -24,6 +26,7 @@ import app.heyrobot.core.termux.TermuxCards
 import app.heyrobot.core.termux.TermuxDecision
 import app.heyrobot.core.termux.TermuxFailure
 import app.heyrobot.core.termux.TermuxIntents
+import app.heyrobot.core.termux.TermuxLock
 import app.heyrobot.core.termux.TermuxOutcome
 import app.heyrobot.core.termux.TermuxOutput
 import app.heyrobot.core.termux.TermuxPolicy
@@ -41,6 +44,7 @@ import app.heyrobot.core.termux.TermuxVerdict
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.TermuxFacts
 import app.heyrobot.sys.TermuxStore
+import app.heyrobot.sys.TermuxWords
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,6 +57,10 @@ import java.util.UUID
 // and run through [TermuxRunner] once its card was answered: the wrapper under GNU timeout in its own process group, the
 // result cleaned, masked and capped for the card and for Gemma. Settings › Termux's set-up runs (the Test, ~/robot and
 // your scripts) run here too, where the result receiver is. Nothing about a command reaches a log.
+// 1.0: the update lock (a Termux updated or installed again since you trusted it pauses every call until you Trust this
+// version), another signer (refused until set-up is redone) and the GitHub build's public test key (refused unless you
+// chose "Run anyway") are checked before each call is prepared and again before it runs; Robot's own keys by exact value
+// (TermuxSecrets) are passed to TermuxPolicy.
 
 object TermuxTool {
     @Volatile private var held: TermuxRunner? = null
@@ -74,7 +82,8 @@ object TermuxTool {
         val s = TermuxStore.load(ctx)
         if (!s.enabled || s.trustedSigner == null) return emptySet()
         val scripts = scripts(ctx, s, locked)
-        if (!TermuxFacts.ready(ctx, s)) return emptySet()
+        // 1.0: also while the update lock or the test key pauses it, so a call says what to do (prepare refuses it).
+        if (!TermuxFacts.readyOrLocked(ctx, s)) return emptySet()
         return buildSet {
             if (scripts.isNotEmpty()) add(ToolName.TERMUX_SCRIPT)
             if (s.commands != CommandLevel.OFF && !locked) add(ToolName.TERMUX_COMMAND)
@@ -111,18 +120,21 @@ object TermuxTool {
         val s = f.settings(ctx)
         if (!s.enabled) return Prepared.Refused(ActionStatus.DISABLED, TermuxReason.OFF.en)
         val check = f.check(ctx, s)
-        if (check.status == TermuxStatus.CHANGED) return Prepared.Refused(ActionStatus.FAILED, TermuxFailure.NOT_TRUSTED.en)
+        // 1.0: the update lock, another signer, the public test key: the call's card says what changed and what to do.
+        check.lock?.let { return lockRefusal(ctx, check, it) }
         val granted = f.granted(ctx)
         if (!granted) return Prepared.Refused(ActionStatus.NEEDS_PERMISSION, TermuxFailure.NO_PERMISSION.en)
         val status = f.status(ctx)
         if (!TermuxSetup.ready(check, granted, status, s.trustedSigner)) return Prepared.Refused(ActionStatus.FAILED, TermuxFailure.NOT_READY.en)
         val locked = f.locked(ctx)
         val key = UUID.randomUUID().toString()
+        // 1.0: Robot's own keys by exact value (helpers', web search's, the updater's token): never logged or shown.
+        val own = f.ownSecrets(ctx)
         return when (action) {
             is TermuxCommandAction -> {
                 val source = if (remote) CommandSource.HELPER else action.source
                 val analysis = CommandAnalyzer.analyze(action.command)
-                val d = TermuxPolicy.command(analysis, source, s, locked, untrusted)
+                val d = TermuxPolicy.command(analysis, source, s, locked, untrusted, own)
                 refused(d) ?: ready(action.copy(source = source, key = key,
                     card = TermuxCards.command(analysis, d, action.why, s.limitSeconds, written = source == CommandSource.MODEL || source == CommandSource.HELPER)), d)
             }
@@ -130,7 +142,8 @@ object TermuxTool {
                 val scripts = status.scripts
                 val source = if (remote) CommandSource.HELPER else action.source
                 val named = said?.let { ScriptRegistry.match(it, scripts, typed = true) }?.let { it.name == action.name && it.args.isBlank() } == true
-                val d = TermuxPolicy.script(action.name, action.args, source, s, locked, untrusted, named && action.args.isBlank(), known = scripts.map { it.name }.toSet())
+                val d = TermuxPolicy.script(action.name, action.args, source, s, locked, untrusted, named && action.args.isBlank(), own,
+                    known = scripts.map { it.name }.toSet())
                 if (TermuxReason.NOT_A_SCRIPT in d.reasons && d.verdict == TermuxVerdict.REFUSE) {
                     val yours = scripts.filter { s.script(it.name) != ScriptLevel.OFF }.joinToString(", ") { it.name }
                     return Prepared.Refused(ActionStatus.NOT_FOUND, TermuxReason.NOT_A_SCRIPT.en + if (yours.isEmpty()) " You have none yet." else " Yours: $yours.")
@@ -150,13 +163,18 @@ object TermuxTool {
     suspend fun prepareTurn(ctx: Context, action: Action, untrusted: Boolean, remote: Boolean, said: String?, other: suspend (Action) -> Prepared): Prepared =
         if (!action.tool.termux) other(action) else withContext(Dispatchers.IO) { prepare(ctx, action, untrusted, remote, said) }
 
-    /** What [prepare] reads of the phone: Settings › Termux, the installed Termux against your signer, the permission, the set-up, the lock. */
+    /**
+     * What [prepare] reads of the phone: Settings › Termux, the installed Termux against your signer (and the version you
+     * trusted), the permission, the set-up, the lock, and (1.0) Robot's own secrets by value.
+     */
     interface Facts {
         fun settings(ctx: Context): TermuxSettings
         fun check(ctx: Context, s: TermuxSettings): app.heyrobot.core.termux.TermuxCheck
         fun granted(ctx: Context): Boolean
         fun status(ctx: Context): TermuxSetupStatus
         fun locked(ctx: Context): Boolean
+        /** Robot's own keys, by value, for TermuxPolicy only: held in memory for one call, never logged or shown. */
+        fun ownSecrets(ctx: Context): Collection<String> = emptyList()
     }
 
     object PhoneFacts : Facts {
@@ -165,7 +183,21 @@ object TermuxTool {
         override fun granted(ctx: Context) = TermuxFacts.granted(ctx)
         override fun status(ctx: Context) = TermuxStore.status(ctx)
         override fun locked(ctx: Context) = Assistant.locked(ctx)
+        override fun ownSecrets(ctx: Context): Collection<String> = TermuxSecrets.own(ctx)
     }
+
+    /**
+     * 1.0: a call while the update lock, another signer or the test key holds Termux: refused, with what changed and what
+     * to do (res/values/strings.xml), and logged by its code only.
+     */
+    private fun lockRefusal(ctx: Context, check: app.heyrobot.core.termux.TermuxCheck, lock: TermuxLock): Prepared.Refused {
+        VoiceLog.add(VoiceEvent.TERMUX_LOCKED, lock)
+        RLog.i("termux_refused", "why" to lock)
+        return Prepared.Refused(ActionStatus.FAILED, lockText(ctx, check, lock))
+    }
+
+    /** What the next Termux card says while [lock] holds (sys TermuxWords: Settings › Termux says the same). */
+    private fun lockText(ctx: Context, check: app.heyrobot.core.termux.TermuxCheck, lock: TermuxLock): String = TermuxWords.lock(ctx, check, lock, card = true)
 
     /** The phone's own; a test's end-to-end run swaps in its own (nothing else sets it). */
     @Volatile internal var facts: Facts = PhoneFacts
@@ -231,7 +263,10 @@ object TermuxTool {
         val key = keyOf(action) ?: return Executed(ActionStatus.FAILED, "Something went wrong.")
         val card = cardOf(action) ?: return Executed(ActionStatus.FAILED, "Something went wrong.")
         val check = TermuxFacts.check(ctx, s)
+        // 1.0: checked again as it runs (the card may have waited): an update installed meanwhile pauses it.
+        check.lock?.let { VoiceLog.add(VoiceEvent.TERMUX_LOCKED, it); return Executed(ActionStatus.FAILED, lockText(ctx, check, it)) }
         if (!check.usable || s.trustedSigner == null) return Executed(ActionStatus.FAILED, TermuxFailure.NOT_TRUSTED.en)
+        val own = facts.ownSecrets(ctx)
         val edit = live(key)?.edit
         val limit = TermuxSettings.limit(edit?.limitSeconds ?: card.limitSeconds)
         val runner = runner(ctx)
@@ -241,7 +276,7 @@ object TermuxTool {
                 val command = edit?.command?.takeIf { it.isNotBlank() } ?: action.command
                 if (command != action.command) {
                     // Edited on the card: yours now, read again; what is refused stays refused (a fork bomb, Robot's own key).
-                    val d = TermuxPolicy.command(CommandAnalyzer.analyze(command), CommandSource.TYPED, s, Assistant.locked(ctx), untrustedConversation = false)
+                    val d = TermuxPolicy.command(CommandAnalyzer.analyze(command), CommandSource.TYPED, s, Assistant.locked(ctx), untrustedConversation = false, own)
                     if (d.verdict == TermuxVerdict.REFUSE) return Executed(ActionStatus.FAILED, d.say() ?: TermuxReason.EMPTY.en)
                 }
                 if (edit?.terminal == true) return openInTermux(ctx, runner, id, command, launch)
@@ -261,7 +296,7 @@ object TermuxTool {
         }
         val outcome = when (reply) {
             is TermuxReply.Answered -> TermuxOutcome(reply.result.exitCode, reply.ms,
-                TermuxOutput.prepare(reply.result, mask = s.hideSecrets, maxLines = s.outputLines, maxChars = s.outputChars), limitSeconds = limit)
+                TermuxOutput.prepare(reply.result, mask = s.hideSecrets, own = own, maxLines = s.outputLines, maxChars = s.outputChars), limitSeconds = limit)
             is TermuxReply.Failed -> TermuxOutcome(null, reply.ms, failure = reply.failure, limitSeconds = limit)
         }
         setLive(key) { it.copy(outcome = outcome) }
@@ -330,6 +365,8 @@ object TermuxTool {
         val now = System.currentTimeMillis()
         val check = TermuxFacts.check(ctx, s)
         fun failed(f: TermuxFailure) = st.copy(testAt = now, testOk = false, testMs = 0, testFailure = f, timeout = false, signer = check.signer)
+        // 1.0: nothing runs while the update lock, another signer or the test key holds it (the page says so and hides Test).
+        if (check.lock != null) return st
         if (!check.usable && check.status != TermuxStatus.UNKNOWN_SIGNER) return failed(if (check.status == TermuxStatus.CHANGED) TermuxFailure.NOT_TRUSTED else TermuxFailure.NOT_INSTALLED)
         if (!TermuxFacts.granted(ctx)) return failed(TermuxFailure.NO_PERMISSION)
         val runner = runner(ctx)
@@ -345,6 +382,7 @@ object TermuxTool {
 
     private suspend fun list(ctx: Context, st: TermuxSetupStatus, makeFolder: Boolean): TermuxSetupStatus {
         val now = System.currentTimeMillis()
+        if (TermuxFacts.check(ctx, TermuxStore.load(ctx)).lock != null) return st
         if (!TermuxFacts.granted(ctx)) return st.copy(listAt = now, listFailure = TermuxFailure.NO_PERMISSION)
         val runner = runner(ctx)
         if (makeFolder) {

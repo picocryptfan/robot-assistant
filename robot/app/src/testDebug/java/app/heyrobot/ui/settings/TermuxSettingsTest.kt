@@ -5,13 +5,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import app.heyrobot.core.termux.FdroidLatest
+import app.heyrobot.core.termux.GitHubLatest
 import app.heyrobot.core.termux.TermuxIdentity
+import app.heyrobot.core.termux.TermuxUpdateState
 import app.heyrobot.core.termux.TermuxPackage
 import app.heyrobot.core.termux.TermuxScriptInfo
 import app.heyrobot.core.termux.TermuxSettings
@@ -23,6 +29,8 @@ import app.heyrobot.ui.testing.shot
 import app.heyrobot.ui.testing.show
 import app.heyrobot.ui.testing.touchTargetProblems
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -34,6 +42,8 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * Settings › Termux (0.9, B5.1, B6): off by default, the switch held off until every set-up line is green, each line's
  * button (F-Droid, Allow, Copy, Test, Create it, Trust with its warning), your scripts' levels, and the screenshots.
+ * 1.0: Trust records the version; the update lock's Trust this version, another signer's Set up again, the public test
+ * key's way to F-Droid and its "Run anyway" (a tap and a confirmation), and "Termux updates" with Check now.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -43,7 +53,9 @@ class TermuxSettingsTest {
     private val log = ArrayList<String>()
     private val saved = ArrayList<TermuxSettings>()
 
-    private val fdroid = TermuxPackage(true, "0.118.3", listOf(TermuxIdentity.F_DROID), hasRunCommandService = true, permissionOwner = "com.termux")
+    private val may2025 = 1_747_950_000_000L
+    private val fdroid = TermuxPackage(true, "0.118.3", listOf(TermuxIdentity.F_DROID), hasRunCommandService = true, permissionOwner = "com.termux",
+        versionCode = 1002, lastUpdateTime = may2025)
     private val fresh = TermuxUi(check = TermuxIdentity.check(fdroid))
     private val ready = TermuxUi(
         settings = TermuxSettings(trustedSigner = TermuxIdentity.F_DROID),
@@ -57,6 +69,7 @@ class TermuxSettingsTest {
         val act = TermuxPageActions(
             save = { saved += it; ui = ui.copy(settings = it) }, askPermission = { log += "allow" }, openFdroid = { log += "fdroid" },
             openAppInfo = { log += "appInfo" }, copyLine = { log += "copy" }, run = { log += "run $it" },
+            checkUpdates = { log += "check" }, trustLog = { log += "trust ${it.name}" },
         )
         rule.show { TermuxSettingsScreen(ui, act, onBack = { log += "back" }) }
     }
@@ -75,9 +88,77 @@ class TermuxSettingsTest {
         rule.scrollToText("Trust this Termux")
         rule.onNodeWithContentDescription("Trust this Termux").performClick()
         rule.inDialog("Trust").performClick()
-        assertEquals(listOf("allow", "copy"), log)
+        assertEquals(listOf("allow", "copy", "trust TRUSTED"), log)
         assertEquals(TermuxIdentity.F_DROID, saved.last().trustedSigner)
+        // 1.0: with its version, so a later update pauses Termux until you trust it.
+        assertEquals(1002L, saved.last().trustedVersionCode)
+        assertEquals(may2025, saved.last().trustedUpdatedAt)
         assertTrue(saved.none { it.enabled })
+    }
+
+    @Test fun aNewVersionAsksYouToTrustIt() {
+        val newer = fdroid.copy(versionName = "0.119.0", versionCode = 1030, lastUpdateTime = may2025 + 86_400_000)
+        open(ready.copy(check = TermuxIdentity.check(newer, ready.settings.trustedSigner, trusted = ready.settings.trusted())))
+        rule.onNodeWithText("Termux changed to 0.119.0 (F-Droid). Check that you updated it yourself, then tap Trust this version.").assertExists()
+        // The Test waits: nothing runs while it is paused.
+        rule.onNodeWithContentDescription("Test Termux").assertDoesNotExist()
+        rule.onAllNodes(hasContentDescription("Trust this version of Termux"))[0].performClick()
+        rule.inDialog("Trust this version").performClick()
+        assertEquals(1030L, saved.last().trustedVersionCode)
+        assertEquals("0.119.0", saved.last().trustedVersion)
+        assertEquals(listOf("trust VERSION"), log)
+    }
+
+    @Test fun anotherSignerIsSetUpAgain() {
+        val github = fdroid.copy(signers = listOf(TermuxIdentity.GITHUB))
+        open(ready.copy(settings = ready.settings.copy(enabled = true), check = TermuxIdentity.check(github, ready.settings.trustedSigner, trusted = ready.settings.trusted())))
+        rule.onNodeWithText("Termux is signed with another key than the one you trusted", substring = true).assertExists()
+        rule.onAllNodes(hasContentDescription("Set up Termux again"))[0].performClick()
+        rule.inDialog("Set up again").performClick()
+        assertNull(saved.last().trustedSigner)
+        assertFalse(saved.last().enabled)
+        assertEquals(listOf("trust SET_UP_AGAIN"), log)
+    }
+
+    @Test fun theTestKeyBuildRunsNothingUntilRunAnyway() {
+        val github = fdroid.copy(signers = listOf(TermuxIdentity.GITHUB))
+        val s = TermuxSettings().trust(TermuxIdentity.check(github))
+        open(ready.copy(settings = s, check = TermuxIdentity.check(github, s.trustedSigner, trusted = s.trusted()),
+            status = ready.status.copy(signer = TermuxIdentity.GITHUB)))
+        rule.onNodeWithText("This Termux is signed with a public test key", substring = true).assertExists()
+        rule.onNode(hasText("Let Robot use Termux") and isToggleable()).assertIsNotEnabled()
+        rule.scrollToText("Install Termux from F-Droid, open it once", substring = true)
+        // (The checklist's first line has its F-Droid button too.)
+        val fdroidButtons = rule.onAllNodes(hasContentDescription("Get Termux on F-Droid"))
+        fdroidButtons[fdroidButtons.fetchSemanticsNodes().size - 1].performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        rule.scrollToText("Run anyway, I understand the risk")
+        rule.onNode(hasText("Run anyway, I understand the risk") and isToggleable()).assertIsOff().performClick()
+        // A confirmation first; Cancel keeps it off.
+        rule.inDialog("Cancel").performClick()
+        assertTrue(saved.isEmpty())
+        rule.onNode(hasText("Run anyway, I understand the risk") and isToggleable()).performClick()
+        rule.inDialog("Run anyway").performClick()
+        assertTrue(saved.last().testKeyRisk)
+        assertEquals(listOf("fdroid", "trust RISK_ON"), log)
+    }
+
+    @Test fun termuxUpdatesSaysWhatIsNewerAndChecksOnATap() {
+        val old = fdroid.copy(versionName = "0.118.2", versionCode = 1001)
+        val s = TermuxSettings().trust(TermuxIdentity.check(old))
+        val updates = TermuxUpdateState(checkedAt = may2025, github = GitHubLatest("0.118.3", may2025, "0.119.0-beta.3", may2025, mapOf("0.118.3" to may2025)),
+            fdroid = FdroidLatest(1002, "0.118.3", 1022, "0.119.0-beta.3"))
+        open(ready.copy(settings = s, check = TermuxIdentity.check(old, s.trustedSigner, trusted = s.trusted()), updates = updates))
+        rule.scrollToText("Check for Termux updates")
+        rule.onNode(hasText("Check for Termux updates") and isToggleable()).assertIsOn()
+        rule.scrollToText("Update available — install it from your F-Droid app")
+        rule.scrollToText("Suggests 0.118.3")
+        rule.scrollToText("a test version, 0.119.0-beta.3, is out too", substring = true)
+        rule.scrollToText("Robot asks only api.github.com and f-droid.org", substring = true)
+        rule.onNodeWithContentDescription("Check for Termux updates now").performClick()
+        assertEquals(listOf("check"), log)
+        rule.onNode(hasText("Check for Termux updates") and isToggleable()).performClick()
+        assertFalse(saved.last().updateCheck)
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }
 
     @Test fun onceGreenTheSwitchAndTheSettings() {

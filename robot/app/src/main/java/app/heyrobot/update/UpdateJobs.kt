@@ -14,10 +14,13 @@ import app.heyrobot.core.update.UpdateSettings
 // while "Check for updates automatically" is on; and, with "Download updates on Wi-Fi", the download, which Android runs only
 // on an unmetered network. Robot can't tell a metered network itself (it has no network-state permission); the job's
 // constraint does it. Both survive a restart (RECEIVE_BOOT_COMPLETED) and are scheduled again when the app opens or updates.
+// 1.0: and Settings › Termux's weekly "Check for Termux updates" (TermuxUpdateCheck), in the same service.
 
 object UpdateJobs {
     const val CHECK = 4_801
     const val DOWNLOAD = 4_802
+    /** 1.0: Termux's weekly update check. */
+    const val TERMUX = 4_803
     private const val DAY_MS = 24L * 3600 * 1000
     private const val FLEX_MS = 6L * 3600 * 1000
 
@@ -62,6 +65,27 @@ object UpdateJobs {
         }
     }
 
+    /** 1.0: Termux's weekly update check, scheduled while [on] (the switch, and a trusted Termux), cancelled otherwise. */
+    fun ensureTermux(ctx: Context, on: Boolean) {
+        val js = scheduler(ctx) ?: return
+        try {
+            if (!on) {
+                js.cancel(TERMUX)
+                return
+            }
+            if (js.getPendingJob(TERMUX) != null) return
+            js.schedule(JobInfo.Builder(TERMUX, ComponentName(ctx, UpdateJobService::class.java))
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_ANY)
+                .setPeriodic(app.heyrobot.core.termux.TermuxUpdates.WEEK_MS, DAY_MS)
+                .setPersisted(true)
+                .setEstimatedNetworkBytes(64L * 1024, 1024)
+                .build())
+            RLog.i("termux_updates_job", "op" to RLog.Code("scheduled"))
+        } catch (t: Throwable) {
+            RLog.w("termux_updates_job", t)
+        }
+    }
+
     fun cancelDownload(ctx: Context) {
         try { scheduler(ctx)?.cancel(DOWNLOAD) } catch (_: Throwable) {}
     }
@@ -103,6 +127,7 @@ class UpdateJobService : JobService() {
                 again = when (id) {
                     UpdateJobs.CHECK -> { Updater.autoCheck(app, a, params.network); false }
                     UpdateJobs.DOWNLOAD -> Updater.autoDownload(app, a, params.network)
+                    UpdateJobs.TERMUX -> { TermuxUpdateCheck.autoCheck(app, a, params.network); false }
                     else -> false
                 }
             } catch (t: Throwable) {
