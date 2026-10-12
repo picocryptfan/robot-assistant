@@ -290,6 +290,12 @@ object PanelRoutines {
         }
         host.text(replyId, ReadyCards.publicLine(cards.size) + ".")
         for (c in cards) {
+            // Locked (the notification's tap needs no unlock): a step that needs the unlock keeps its card for after it.
+            val routine = store().get(c.routineId)
+            if (routine != null && ReadyCards.keptOnTap(c, RoutineGate.decide(c.step, RunOrigin.READY_TAP, host.locked, routine, VoiceHub.settings, store().settings()))) {
+                host.append(replyId, "Unlock your phone for: ${c.step.describe()}. It stays ready until the end of the day.")
+                continue
+            }
             if (key == RoutineIntents.ALL_READY) {
                 val id = id()
                 val yes = host.ask(replyId, Card(id, (c.step as? RoutineStep.Tool)?.action?.tool, c.text(), ActionStatus.PENDING, null,

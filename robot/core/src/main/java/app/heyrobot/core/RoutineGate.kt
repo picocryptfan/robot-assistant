@@ -278,6 +278,13 @@ object ReadyCards {
     /** The cards still due on [today]. */
     fun live(cards: List<ReadyCard>, today: LocalDate): List<ReadyCard> = cards.filter { it.day == today }
 
+    /**
+     * A tap on [card] whose step the gate answers [go] (RoutineGate.decide with [RunOrigin.READY_TAP]) leaves the card
+     * waiting: its step needs the unlock (a tap on the lock screen, where the notification's tap needs none), so it stays
+     * for after the unlock instead of being used up by a tap that can't do it.
+     */
+    fun keptOnTap(card: ReadyCard, go: StepGo): Boolean = card.missed == null && go == StepGo.WAIT_UNLOCK
+
     /** [cards] with [card] added (expired ones gone, the same step of the same routine once, at most [MAX]). */
     fun add(cards: List<ReadyCard>, card: ReadyCard, today: LocalDate): List<ReadyCard> =
         (live(cards, today).filterNot { it.routineId == card.routineId && it.step == card.step && it.missed == card.missed } + card).takeLast(MAX)

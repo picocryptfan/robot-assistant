@@ -905,6 +905,10 @@ class ProcessIsolationTest {
         // "What's next" says your calendar: personal too.
         val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/PanelHandsFree.kt"))
         assertTrue(hf.contains("val line = WhatsNext.line(events, now, lang)\n        host.text(replyId, line)\n        host.say(line, personal = true)"))
+        // A Ready card's tap on the lock screen keeps a card whose step needs the unlock (checked before it is used up).
+        val ready = panel.substringAfter("private suspend fun ready(").substringBefore("\n    }\n")
+        val kept = ready.indexOf("ReadyCards.keptOnTap(c, RoutineGate.decide(c.step, RunOrigin.READY_TAP, host.locked, routine, VoiceHub.settings, store().settings()))")
+        assertTrue(ready, kept >= 0 && kept < ready.indexOf("store().editReady { list -> list.filterNot { it.key == c.key } }"))
     }
 
     /**
