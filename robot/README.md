@@ -58,7 +58,7 @@ does with your words.
   alpha; and in the panel, with spoken replies off, the answer is one TalkBack node that becomes a polite live region
   once it is complete, so TalkBack reads it once, not word by word. Still to do on the phone: a TalkBack pass, a 200 %
   font pass and Switch Access.
-- **Licences and source**: `tools/verify_apk.sh` also checks that the APK's Licences list names every bundled part (77
+- **Licences and source**: `tools/verify_apk.sh` also checks that the APK's Licences list names every bundled part (78
   entries today) and that each MIT text and notice ships; `tools/make_source_bundle.sh` now takes slimt and its parts,
   llama.cpp and KleidiAI, and Robot's own native sources ("Releasing").
 - **Build**: build-tools pinned to 35.0.0; `tools/repro_check.sh` ("Building").
@@ -186,7 +186,7 @@ guide version you last saw, the page Finish later left it on, the version you fi
 | 12 | Routines and the morning brief | The brief by itself after your alarm (off; its card first), when it runs and what it says | Settings › Routines |
 | 13 | Headset and car | Headset button opens Robot (on); car mode, set up later | Settings › Headset, Car mode |
 | 14 | Helpers (optional) | What a helper is, what's sent, the budget; set one up later | Settings › Helpers |
-| 15 | Web search and Termux (optional) | What each does and sends (Termux: the weekly update check, the pause after an update, the GitHub build's test key); set them up later | Settings › Web search, Termux |
+| 15 | Web search and Termux (optional) | What each does and sends (Termux: the weekly update check, the pause after an update, the GitHub build's test key); the engines a search in your browser opens, each with its privacy level, and the default (Startpage); the free services Robot's own search can use, with theirs; set them up later | Settings › Web search, Termux |
 | 16 | Updates and feedback | Check for updates automatically (on), Include test builds (off), Send feedback (hey@robot-app.ai) | Settings › About › Updates, Send feedback |
 | 17 | You're set up | Every feature on or off now with its Settings path (core `GuideSummary`), a privacy recap, "Try saying…" in English and French, four of the examples | |
 
@@ -5435,10 +5435,13 @@ Settings › **Web search** (a row of its own, under Weather). **Set up** lists 
 | **Kagi** (suggested otherwise) | Doesn't store API searches against your account; about 1.2¢ a search | Your API token |
 | **Brave Search API** | Keeps searches up to 90 days with your API account; about 0.5¢ a search, $5 of credit a month; a card on file | Your key |
 | **Mojeek** | Its own index; about 0.2p a search; keys through Mojeek's sales contact | Your key |
-| **A public SearXNG** | Run by someone you don't know, who can see and keep your searches; many refuse apps | Its https address |
+| **DuckDuckGo Instant Answers** (1.0) | DuckDuckGo's free short answers, not a list of results; no page is read | — |
+| **A public SearXNG** | Run by someone you don't know, who can see and keep your searches; many refuse apps | One of a short list (1.0), or its https address |
 | Wikipedia only | No account; answers facts from Wikipedia, no general web search. Since 1.0 Robot's requests name its contact, hey@robot-app.ai, as Wikimedia's User-Agent rules ask (the same for every Robot, never you or your phone) | — |
 
-The page also says "DuckDuckGo, Google and Bing have no search API that Robot can use."
+The page also says "Google, Bing, Startpage and DuckDuckGo have no full search API that Robot can use: they open in your
+browser instead." Since 1.0 every service and engine is listed with its privacy level ("Search engines and their privacy
+levels (1.0)" below).
 
 After the service (and its address), **one consent screen**: "When you ask, Robot sends your search words to … To
 answer, it may open up to 3 of the result pages from this phone, like a browser without cookies: those sites see your
@@ -5561,6 +5564,7 @@ text Bob…" can't text anyone without a card). It doesn't make the conversation
 | "Powered by Brave" line | On | Brave only |
 | Current information | Robot searches first | Ask a helper first (only when your helper can search itself) |
 | Keep sources in history | Domains only | Full links, None |
+| Opens in your browser (1.0) | Startpage | The engine a search in your browser uses when you name none; the list shows each engine's privacy level |
 
 The settings are in `files/robot/web.json` (core `WebSettings`), not in `settings.json`, whose schema doesn't change; the
 main app writes it and the voice process reads it at each question. Settings › Actions has **Web searches** (Just do it,
@@ -5658,6 +5662,186 @@ Watch `adb logcat -s Robot` and Settings › Advanced › Voice log throughout.
     search can raise it."
 18. to 20. (W4: summarizing a page, a helper using Robot's search, Current information: Ask a helper first with Claude):
     not built in 0.9; Current information's setting is there, test it as 20 says.
+
+## Search engines and their privacy levels (1.0)
+
+Easy, free public search engines, each listed with its privacy level. None of the big engines can be read by an app:
+Google's Custom Search JSON API is closed to new customers (existing ones until 1 January 2027), Bing's Search APIs were
+retired on 11 August 2025, DuckDuckGo and Startpage have no full-results API, and scraping their result pages breaks
+their terms (and breaks often). So **Robot never reads these engines' results**: it opens your browser at the engine's own
+search page with your words, and goes no further. The services Robot does read (0.9's web search) gain a free one,
+DuckDuckGo's Instant Answers, and a short list of public SearXNG servers; every engine and service has a level.
+
+### The levels
+
+Each level is made in code from what the engine's or service's own policy says happens to your words (core web
+`PrivacyFacts`, `PrivacyLevel.of`), never from how it describes itself:
+
+- **High**: your words aren't kept with your IP address or an account (beyond security logs of days), and no profile is
+  made of them.
+- **Medium**: your words go with your IP address (or part of it, or an account) to a company that keeps them for weeks
+  or months (itself or its results partner), with no advertising profile unless you agree.
+- **Low**: your searches are kept tied to you and used for advertising or personalisation, or a stranger's server sees
+  them and no policy binds it.
+
+### Opens in your browser (free, nothing to set up)
+
+| Engine | Level | Who runs it, whose results, what is kept (its policy, 12 October 2026) | Search address |
+|---|---|---|---|
+| **Startpage** (default) | High | Surfboard Holding B.V., The Hague, Netherlands; part-owned since 2019 by System1, a US advertising company. Google's results, asked for you without your IP address or cookies. "We don't record your IP address", "We don't log your searches", no tracking cookies; ads from Google AdSense on the words | `https://www.startpage.com/sp/search?query=…` |
+| **DuckDuckGo** | High | Duck Duck Go, Inc., USA. Mostly Microsoft Bing's results, with its own crawler. Doesn't save search history; the IP address is used "only temporarily"; ads from the current search's words, ad clicks measured by Microsoft's ad platform | `https://duckduckgo.com/?q=…` |
+| **Brave Search** | High | Brave Software, Inc., San Francisco, USA. Its own independent index. Keeps de-identified search words (the text, platform, country, language, date), nothing that links them to you, your device or IP address; no profile | `https://search.brave.com/search?q=…` |
+| **Mojeek** | High | Mojeek Ltd, UK. Its own crawler and index. No cookies unless you set a preference; its logs replace the IP address with a two-letter country code | `https://www.mojeek.com/search?q=…` |
+| **Qwant** | Medium | Qwant, Paris, France. Its own index (Staan, built with Ecosia) and Microsoft Bing's. Without your consent: a salted hash of your IP address; your words, the first three bytes of your IP address and your region go to Microsoft, de-identified after 6 months. Personalised ads and profiles only if you agree in its cookie banner | `https://www.qwant.com/?q=…` |
+| **Ecosia** | Medium | Ecosia GmbH, Berlin, Germany. Microsoft Bing's results, Staan's, and Google's if you agree. Your words and IP address go to Microsoft (IP anonymised after 6 months) or Google (9 months); Ecosia anonymises it after 7 days | `https://www.ecosia.org/search?q=…` |
+| **Google** | Low | Google LLC, USA. Its own index. Keeps searches with your IP address and cookies, ties them to your Google account when you're signed in, and uses them for ads and personalisation | `https://www.google.com/search?q=…` |
+| **Bing** | Low | Microsoft Corporation, USA. Its own index. The same: searches kept with your IP address and cookies, your Microsoft account when signed in, ads | `https://www.bing.com/search?q=…` |
+
+The words are percent-encoded (RFC 3986's unreserved characters only, a space as `%20`; core `BrowserEngine.url`): one
+query parameter, never a language, a region, an account or Robot's name. **Startpage is the default**: Google's results
+without Google seeing you, and by its policy it records neither your IP address nor your searches, under Dutch and EU
+law. DuckDuckGo is as private by its policy, but most of its results are Bing's and it is a US company. A search in your
+browser goes from your browser, with its cookies: an engine you're signed in to there (Google, Bing) sees it as yours.
+
+**Asking.**
+
+- **Your own words open at once**, before the model (core `BrowserRouter`, in the panel's place of 0.9's "search the
+  web for …"): "search DuckDuckGo for …", "look up … on Google", "search for … on Bing", "look … up on Brave Search",
+  "open Google and search for …", "duckduckgo …"; « cherche sur Startpage … », « cherche … sur Google », « recherche … sur
+  DuckDuckGo », « fais une recherche Google sur … », « checke … su Google »; and your default with "search in my browser
+  for …", "search for … in the browser", « cherche … dans mon navigateur ». The words are exactly yours, so no card and no
+  QueryCheck: the browser opens and the panel steps aside.
+- **"Search the web for …" while Robot's own web search is off** (not set up, or off) opens your default engine with
+  your words; "google …" opens Google. With it on, both stay Robot's own search, as in 0.9.
+- **"Look it up on Google"**, « cherche-le sur Google », "google it": the words are the conversation's, so the model
+  writes them. `browser_search` (two short parameters, query and engine; its one line in the system prompt) is described
+  only when the question names an engine or the browser as where to search ("on Google", "in my browser"; not "is Google
+  down?"). The model's words pass **QueryCheck** (an email, a run of 6 or more digits, a link with data, a code, a street
+  address from content, what Robot remembers about you: never) and **always show a card first** with the query in full:
+  "Search Google for “…” in your browser", "Robot opens Google in your browser with these words: your browser sends them,
+  and Robot doesn't see the results." **Search** or **Cancel**; a word from something Robot read on your phone needs a tap.
+- **Locked**: never on the lock screen ("Unlock your phone, then ask again."; it isn't a choice of Works on the lock
+  screen). **After a message** in the conversation: a card only a tap answers, yours too (0.7's quarantine). A routine
+  never opens one, and a helper is never offered it.
+- Robot sends nothing itself: no INTERNET use, no Stop, no deadline. The card says "Opened DuckDuckGo in your browser."
+  The voice log: **BROWSER_SEARCH** (164: the engine, your words or the model's, whether Robot's own search was off),
+  never the words; logcat `browser_search engine=1 by=1 fallback=1`.
+
+### Robot reads the results: the free options
+
+| Service | Level | Why | Cost |
+|---|---|---|---|
+| **DuckDuckGo Instant Answers** (new) | High | DuckDuckGo's official keyless Instant Answer API (`api.duckduckgo.com`): the answer box above its results (a topic's abstract, often Wikipedia's, a definition, a computed answer, the official site, related topics), never a list of results. Its policy: searches aren't saved. No page is read from the phone; "DuckDuckGo has no short answer for that" for most other questions | Free |
+| **Wikipedia only** | Medium | Facts from Wikipedia, no general web search; Wikimedia keeps the phone's IP address in its server logs for up to 90 days; no ads, no profile | Free |
+| **A public SearXNG** | Low | A stranger's server: they see your words and the phone's IP address. SearXNG asks Google, DuckDuckGo, Startpage, Bing… for you | Free |
+| **Brave Search API** | Medium | Its own index; keeps searches 90 days with your API account | Free monthly credit (about 1,000 searches) with your key and a card on file |
+| **Your own SearXNG** | High | Your server asks the engines without cookies; they see your home's IP address | Free (your hardware) |
+| Kagi, Mojeek | High | Their policies: no API searches stored against your account; no tracking | Paid, with your key |
+
+- **DuckDuckGo Instant Answers**: `GET https://api.duckduckgo.com/?q=…&format=json&no_html=1&skip_disambig=1&no_redirect=1&t=heyrobot`
+  with Robot's User-Agent (core `DuckDuckGoWire`; it answers 202 as often as 200). The API asks to be credited with each
+  answer's source, so the card says **"Results from DuckDuckGo"** and numbers each source with its link (Wikipedia's text
+  keeps its CC BY-SA 4.0 line); `t` names the app, the same for everyone. A bang is never followed, the answer's image
+  never loaded. Its consent: "When you ask, Robot sends your search words to DuckDuckGo. Nothing else leaves the phone."
+  Settings › About › Licences lists it (78 entries); the network security config denies cleartext to `duckduckgo.com`.
+- **A public SearXNG**: set-up offers a short list shipped in the APK (core `PublicSearxng`): `searx.tiekoetter.com`,
+  `search.hbubli.cc`, `baresearch.org`, `priv.au`, `anonsearch.win`, picked on searx.space on 12 October 2026 for a
+  year's uptime of 99.7 % or more, every test search answered, A+ for HTTPS and TLS and no analytics; or **Other
+  address**. The warning stays. A public server's limiter allows an app about 4 searches an hour from one address
+  (SearXNG's `API_MAX`), marks a client that never loads the page's CSS token as suspicious (`link_token`, on for every
+  public instance) and blocks it after a few such requests; many servers have JSON off. From the build machine (a cloud
+  address) every listed server refused a test search (429 or 403): whether one answers from your phone is for its Test
+  to say.
+
+### Settings › Web search and the setup guide
+
+After its settings, Settings › Web search lists every service under **Robot reads the results** (a tap sets one up: its
+address, a public SearXNG's list, or the consent; the one in use is ticked, "In use · …") and every engine under **Opens
+in your browser** (a tap makes it the default, "Default · …"), each row with its line and its level's chip ("High",
+"Medium", "Low", on its own colour, read by TalkBack as "Privacy: High"); the footer explains the levels and why Startpage
+is the default. The default is in `web.json` (`browserEngine`), not `settings.json`, whose schema stays 13. The setup
+guide's web page (15) lists the engines the same way, with the default picked there, and the free services with their
+levels; its privacy line says a search in your browser goes from your browser, with its cookies, and Robot sends
+nothing itself; the summary has "Search in your browser · Startpage". Every new word is in `res/values/strings.xml`;
+core keeps the names, the addresses and the facts.
+
+### How it's built
+
+- `:core`: `web/Engines.kt` (`BrowserEngine`, `PrivacyFacts`, `PrivacyLevel`, `SearchService.facts`, `PublicSearxng`),
+  `web/BrowserSearch.kt` (`BrowserRouter`, `WebRoute`, `BrowserGate`), `web/DuckDuckGo.kt`, `BrowserActions.kt`
+  (`BrowserSearchAction`, `browser_search`'s spec and parsing); `ToolName.BROWSER_SEARCH` (WEB group, Robot's own: no
+  level in Settings › Actions, never on the lock screen); `SearchService.DDG_INSTANT` (code 7); `VoiceEvent.BROWSER_SEARCH`
+  (164; 165 to 169 stay free).
+- `:app` (the `:voice` process): `assistant/BrowserSearchTool.kt` (ToolExecutor's prepare and run, the panel's call for
+  your phrase: `ACTION_VIEW` with `CATEGORY_BROWSABLE`, through the panel's own launch, so no new `<queries>`);
+  `ui/settings/SearchEngines.kt` (the lists, the chip, the public SearXNG list) and `RadioPreference`; `:claude`'s
+  `SearchClient` asks DuckDuckGo over the cloud route.
+- **No permission or manifest change.** `ProcessIsolationTest.aSearchInYourBrowserNeverReachesTheNetwork` checks that
+  the browser path names no HTTP client, socket, search client, key or INTERNET check and sends one `ACTION_VIEW`;
+  `tools/verify_apk.sh` checks the cleartext denial for `duckduckgo.com` too.
+- Tests: `EnginesTest` (every address's encoding, French accents included; the privacy table complete and each level its
+  facts; Startpage the default; the public list; no network from the browser path), `BrowserRouterTest` (English and
+  Québec French phrases, the model's turn, your own things), `BrowserGateTest` (your words at once; the model's through
+  QueryCheck and a card; the lock; a message; parsing), `DuckDuckGoWireTest`, `BrowserSearchToolTest` (Robolectric: the
+  intent, the default, the card's line, every line), `SearchClientTest`, `WebSearchSettingsTest` (the lists, the public
+  list; goldens `web_engines_light`, `web_engines_dark`, `web_search_setup`), `SetupGuideScreenTest`.
+
+### Sources (checked 12 October 2026)
+
+- Google Custom Search JSON API closed to new customers, existing ones until 1 January 2027:
+  https://developers.google.com/custom-search/v1/overview (as reported by https://brave.com/learn/google-api-shutdown/).
+- Bing Search APIs retired 11 August 2025: https://learn.microsoft.com/en-us/lifecycle/announcements/bing-search-api-retirement.
+- Startpage: https://www.startpage.com/en/privacy-policy/ (read; "Surfboard Holding BV … Den Haag"; supplemental policy
+  updated 13 August 2026), https://www.startpage.com/en/about-us/; System1's stake through Privacy One Group, Startpage's
+  announcement of 28 September 2019 (reported by https://reclaimthenet.org/startpage-buyout-ad-tech-company).
+- DuckDuckGo: https://duckduckgo.com/privacy (quoted through a search engine; the page didn't open from the build
+  machine); Instant Answer API terms https://duckduckgo.com/api (an archived copy, quoted through a search engine);
+  `api.duckduckgo.com`'s answer shape from one request made while writing this (not in the tests).
+- Brave Search: https://search.brave.com/help/privacy-policy (quoted through a search engine; the page answered 429),
+  https://brave.com/search/ (read), https://brave.com/search-independence/.
+- Mojeek: https://www.mojeek.com/about/privacy (read; updated 2 February 2022).
+- Qwant: https://about.qwant.com/en/legal/confidentialite/ (read); Staan: https://en.wikipedia.org/wiki/Ecosia and
+  Qwant's and Ecosia's announcements (August 2025).
+- Ecosia: https://support.ecosia.org/article/377-ip-addresses (read; updated 23 March 2026).
+- Google: https://policies.google.com/privacy. Microsoft: https://privacy.microsoft.com/privacystatement.
+- Wikimedia: its Privacy Policy and Data Retention Guidelines (https://foundation.wikimedia.org/wiki/Policy:Privacy_policy),
+  90 days for IP addresses in its logs.
+- Public SearXNG: https://searx.space/data/instances.json (12 October 2026, 14:35 UTC); the limiter's `API_MAX`,
+  `link_token`: https://docs.searxng.org/src/searx.botdetection.html (read).
+- The search addresses: each engine's own search form; each answered (or redirected to its bot check) from the build
+  machine, except DuckDuckGo's, which didn't open from there.
+
+### On the phone (1.0 search engines)
+
+Pixel 10 Pro, GrapheneOS, Vanadium as the browser. Watch `adb logcat -s Robot` and Settings › Advanced › Voice log.
+
+1. **Your own words.** Web search not set up: "hey robot, search DuckDuckGo for tonight's Canadiens game": *done when*
+   Vanadium opens DuckDuckGo's results for exactly those words, with no card, and the voice log says "Search opened in
+   your browser: DuckDuckGo · your words · web search off".
+2. **Québec French.** « Cherche sur Startpage les horaires du traversier de Québec », then « cherche la mairesse de
+   Montréal sur Google »: *done when* each opens its engine with the accents intact (é, è, à in the address bar's words).
+3. **The default.** Settings › Web search › Opens in your browser: Startpage is ticked ("Default · …"); tap Mojeek, then
+   "search in my browser for pouding chômeur": *done when* Mojeek opens. With web search still not set up, "search the
+   web for pizza near me" opens Mojeek too; "google Debian 14 release date" opens Google.
+4. **The model's words.** "Who won the Stanley Cup in 1993?", then "look it up on Google": *done when* a card shows
+   "Search Google for “…” in your browser" with the query in full, and only Search opens Vanadium; Cancel opens nothing.
+   Then "what's on my calendar tomorrow?" and "look that dentist up on DuckDuckGo": *done when* the card needs a tap (a
+   spoken yes says to tap).
+5. **Locked.** Lock the phone, "hey robot, search Bing for cats": *done when* Robot says "Unlock your phone, then ask
+   again." and nothing opens.
+6. **Robot's own search still wins when it's on.** With your SearXNG set up and on, "search the web for who won last
+   night": *done when* Robot answers itself with sources, as in 0.9; "search Startpage for who won last night" opens the
+   browser.
+7. **DuckDuckGo Instant Answers.** Settings › Web search › Robot reads the results › DuckDuckGo Instant Answers: the
+   consent (no pages), Turn on web search, Test: "DuckDuckGo Instant Answers answered: N results". "Who are the Montreal
+   Canadiens?": *done when* the answer names Wikipedia, the card says "Results from DuckDuckGo" with the Wikipedia
+   licence line, "Read … pages" doesn't appear, and the router's log shows a request to `api.duckduckgo.com` only (and
+   Wikipedia's, Encyclopedia lookups being on). "How do I descale a kettle?": "DuckDuckGo has no short answer for that."
+8. **A public SearXNG.** Robot reads the results › A public SearXNG: the list of five and Other address under the
+   warning; pick one, Turn on web search, Test: *done when* it says what came back (many refuse apps: 429 or 403, said in
+   words); note which answered.
+9. **TalkBack.** On Settings › Web search's lists and the guide's web page: *done when* each row is read in one stop with
+   its name, line, "Privacy: High" (or Medium, Low) and, for the engines, "selected" on the default.
 
 ## Termux (0.9)
 

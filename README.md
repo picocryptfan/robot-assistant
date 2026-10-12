@@ -62,8 +62,9 @@ crash reporting.
 - **Conversation mode:** transcribes a conversation in English and French, on the phone, translates it (also face to
   face, aloud) and summarizes it.
 - **Routines and a morning brief**, **headset mode** (your headset's button opens Robot) and **car mode**.
-- **Web search** with the service you choose (your own SearXNG, Brave, Kagi, Mojeek or a public SearXNG), off until you
-  set it up; answers name their sources.
+- **Web search** with the service you choose (your own SearXNG, Brave, Kagi, Mojeek, DuckDuckGo's Instant Answers or a
+  public SearXNG), off until you set it up; answers name their sources. Or, with nothing to set up, a search in your
+  browser with Startpage, DuckDuckGo, Google and five others, each listed with its privacy level.
 - **Termux:** runs your own scripts and short commands, each command on a card you approve first; off until you set it
   up.
 - **Helpers:** hand a question to Claude or another model with your own API key, or to a model on your own computer,

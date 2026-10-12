@@ -137,7 +137,8 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
 7. **Web search**, only after you set it up (Settings › Web search, off by default) and agree to what it sends, and
    then only when you ask, or when Robot's model calls for current facts and your settings allow it. Robot sends your
    search words (with the question's language, the safe-search level and, for Brave, Kagi and Mojeek, your key) to the
-   one service you chose: your own SearXNG, Brave Search, Kagi, Mojeek, a public SearXNG or Wikipedia. With Encyclopedia
+   one service you chose: your own SearXNG, Brave Search, Kagi, Mojeek, a public SearXNG (one of a short list Robot
+   shows, or one you type), DuckDuckGo's Instant Answers (1.0: short answers only; no page is read) or Wikipedia. With Encyclopedia
    lookups on (the default), a who, what or where question's words also go to Wikipedia, and with Book lookups on (off by
    default) a question about books also goes to Open Library; the search's card and its "Sent to" line name each of them.
    Robot's requests to these services name Robot and its contact address (hey@robot-app.ai), the same for everyone,
@@ -145,7 +146,16 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
    3 of the result pages from the phone, like a browser without cookies: those sites see your IP address. What Robot
    remembers is never sent to a search service, and after a message every search waits for your tap. The service
    handles your words under its own policy (Brave says it keeps searches for up to 90 days). History keeps your words,
-   the answer and the sources' domains, never the pages.
+   the answer and the sources' domains, never the pages. Settings › Web search lists each service and engine with a
+   privacy level (High, Medium or Low) made from its own policy.
+
+   **A search in your browser** (1.0, nothing to set up): when you say "search DuckDuckGo for …" or « cherche sur
+   Startpage … », Robot opens your browser at that engine's own search page with your words (Startpage by default:
+   Startpage, DuckDuckGo, Brave Search, Mojeek, Qwant, Ecosia, Google or Bing). Robot itself sends nothing and never sees
+   the results: your browser sends your words, with its cookies, to the engine, which handles them under its own policy
+   (Google and Bing keep searches with your IP address and use them for ads). When Robot's model wrote the words ("look
+   it up on Google"), they pass the same check as a web search and a card shows them before anything opens; never on
+   the lock screen.
 8. **The morning brief and routines** go online only for the weather (Open-Meteo, as in 2) and a nearest-place step
    (Nominatim, as in 3), when a routine or the brief includes it; a routine's card names the service, and one that runs
    by itself goes online only while "Routines may go online by themselves" is on. A routine never searches the web,

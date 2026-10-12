@@ -25,6 +25,12 @@ builds.
   resumes from Home ("Continue the setup guide"); Settings › About › Setup guide and Home run it again. Nothing is turned
   on unless you choose it, and Android asks for a permission only when you tap Allow.
 
+- **Search engines with their privacy levels**: "search DuckDuckGo for …", « cherche sur Startpage … » open the engine
+  in your browser (Startpage by default; also Brave Search, Mojeek, Qwant, Ecosia, Google, Bing), with nothing to set
+  up; Robot never reads their results. Web search gains DuckDuckGo's free Instant Answers and a short list of public
+  SearXNG servers. Settings › Web search and the setup guide list every engine and service with a High, Medium or Low
+  level made from its own policy.
+
 ## 0.9.0
 
 - **Web search**, off until you set it up: one service you choose (your own SearXNG, Brave, Kagi, Mojeek or a public
