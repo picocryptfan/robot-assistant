@@ -274,6 +274,13 @@ done
 has '"system"' "$nsc" "trusts the system's CAs"
 hasnt '"user"' "$nsc" "never trusts user-added CAs"
 libs=$(unzip -Z1 "$APK" 'lib/*')
+# 0.8: every native library and dex file compressed in the APK (Android unpacks the libraries into nativeLibraryDir at
+# install: extractNativeLibs), so the APK stays under GitHub's 100 MB per file; nothing loads them from the APK.
+stored=$(unzip -v "$APK" | awk '$2 == "Stored" && ($8 ~ /^lib\/.*\.so$/ || $8 ~ /^classes[0-9]*\.dex$/) { print $8 }' | tr '\n' ' ')
+[ -z "$stored" ] && pass "native libraries and dex files are compressed" || fail "stored uncompressed: $stored"
+has 'extractNativeLibs(0x010104ea)=true' "$mf" "extractNativeLibs is true (the libraries unpacked at install)"
+size=$(stat -c %s "$APK")
+[ "$size" -lt 100000000 ] && pass "APK is $size bytes (under GitHub's 100 MB)" || fail "APK is $size bytes (GitHub refuses files over 100 MB)"
 for l in libsherpa-onnx-jni.so libonnxruntime.so liblitertlm_jni.so libLiteRtDispatch_GoogleTensor.so; do has "lib/arm64-v8a/$l" "$libs" "packages $l"; done
 other_abis=$(grep -v '^lib/arm64-v8a/' <<<"$libs")
 [ -z "$other_abis" ] && pass "no other ABIs" || fail "non-arm64 libraries: $other_abis"

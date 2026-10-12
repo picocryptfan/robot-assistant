@@ -52,8 +52,16 @@ android {
     kotlinOptions { jvmTarget = '17' }
     androidResources { noCompress += ['onnx'] }
     // Same native packaging as the probe and the lab (Off Grid PR #702): extracted libraries, so
-    // Backend.NPU(nativeLibraryDir) finds the dispatch library.
+    // Backend.NPU(nativeLibraryDir) finds the dispatch library (and the manifest's extractNativeLibs="true"): the libraries
+    // are compressed in the APK and Android unpacks them into nativeLibraryDir at install, where System.loadLibrary,
+    // LiteRT's dispatch library lookup, sherpa-onnx, librobotmt and the isolated :llama process find them. 0.8: the dex
+    // files are compressed too (AGP stores them uncompressed by default for minSdk 28 and up, about 70 MB here; Android
+    // reads them through the package manager's dexopt either way, nothing loads them from the APK), so the APK stays
+    // well under GitHub's 100 MB per file. Still no R8: JNI looks classes and fields up by name (buildTypes, above).
     packaging {
+        dex {
+            useLegacyPackaging = true
+        }
         jniLibs {
             useLegacyPackaging = true
             excludes.add('**/libLiteRtCompilerPlugin_google_tensor.so')

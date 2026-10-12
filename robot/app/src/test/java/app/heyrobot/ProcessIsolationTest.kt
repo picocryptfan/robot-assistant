@@ -50,6 +50,24 @@ class ProcessIsolationTest {
 
     private fun usersOf(pattern: Regex, files: Map<String, File> = ours) = files.filter { pattern.containsMatchIn(code(it.value)) }.keys.sorted()
 
+    /**
+     * 0.8: the APK keeps its native libraries and dex files compressed (Android unpacks the libraries into nativeLibraryDir
+     * at install: Backend.NPU(nativeLibraryDir), sherpa-onnx, librobotmt and the isolated :llama load them from there), so
+     * it stays under GitHub's 100 MB per file; still no minification (JNI looks names up). tools/verify_apk.sh checks the
+     * built APK the same way.
+     */
+    @Test fun theApkKeepsItsLibrariesAndDexCompressed() {
+        val gradle = File(root, "app/build.gradle").readText().replace(Regex("//[^\n]*"), "")
+        val packaging = gradle.substringAfter("packaging {").substringBefore("resources {")
+        assertTrue(packaging, Regex("""dex \{\s*useLegacyPackaging = true\s*\}""").containsMatchIn(packaging))
+        assertTrue(packaging, Regex("""jniLibs \{\s*useLegacyPackaging = true""").containsMatchIn(packaging))
+        assertTrue(gradle.contains("minifyEnabled false") && !gradle.contains("minifyEnabled true") && !gradle.contains("shrinkResources true"))
+        assertTrue(File(main("app"), "AndroidManifest.xml").readText().contains("android:extractNativeLibs=\"true\""))
+        val verify = File(root, "tools/verify_apk.sh").readText()
+        assertTrue(verify.contains("native libraries and dex files are compressed") && verify.contains("extractNativeLibs(0x010104ea)=true") &&
+            verify.contains("-lt 100000000"))
+    }
+
     @Test fun liteRtOnlyInTheBrainEngineFile() {
         assertEquals(listOf("brain/brain/GemmaEngine.kt"), usersOf(Regex("""\bcom\.google\.ai\.edge\.litert""")))
     }
