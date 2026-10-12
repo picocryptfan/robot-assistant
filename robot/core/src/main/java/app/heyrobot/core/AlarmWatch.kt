@@ -23,6 +23,37 @@ enum class AlarmEnd(override val id: Int, override val title: String) : LogCode 
  */
 data class NextAlarm(val triggerAt: Long, val fromClock: Boolean)
 
+/** 0.8 review: Clock's next alarm as Robot read it (AlarmManager.getNextAlarmClock) at [seenAt]. */
+data class SeenAlarm(val triggerAt: Long, val fromClock: Boolean, val seenAt: Long)
+
+/**
+ * 0.8 review: Clock's ALARM_ALERT comes with no permission, so any app can send it. One counts only when Clock's own next
+ * alarm (its show intent's creator is the Clock app Robot detected), read before the alert and kept here, was due within
+ * [WITHIN_MS] of it; anything else is logged and ignored, so it never starts a routine nor uses up its once-a-day run (an
+ * ALARM_DONE counts only after a counted ALERT: AlarmWatch).
+ */
+object AlarmCheck {
+    const val WITHIN_MS = 2 * 60_000L
+    /** Next alarms kept (a snooze adds one, the next day's another). */
+    const val KEEP = 8
+    /** Kept this long after they were due. */
+    const val KEEP_MS = 24 * 3_600_000L
+
+    /** [seen] with [next] (read at [now]) added, the old ones gone. */
+    fun remember(seen: List<SeenAlarm>, next: NextAlarm?, now: Long): List<SeenAlarm> {
+        val kept = seen.filter { now - it.triggerAt <= KEEP_MS }
+        if (next == null || kept.any { it.triggerAt == next.triggerAt && it.fromClock == next.fromClock }) return kept.takeLast(KEEP)
+        return (kept + SeenAlarm(next.triggerAt, next.fromClock, now)).takeLast(KEEP)
+    }
+
+    /** An ALARM_ALERT at [alertAt] is Clock's: a Clock alarm Robot saw before it was due within [WITHIN_MS] of it. */
+    fun verified(seen: List<SeenAlarm>, alertAt: Long): Boolean =
+        seen.any { it.fromClock && it.seenAt <= alertAt && kotlin.math.abs(it.triggerAt - alertAt) <= WITHIN_MS }
+
+    /** [signal] may go to AlarmWatch: an ALERT only when [verified]; a DONE always (it counts only after a counted ALERT). */
+    fun admits(seen: List<SeenAlarm>, signal: AlarmSignal): Boolean = signal !is AlarmSignal.Alert || verified(seen, signal.at)
+}
+
 /** What :voice observed, with the wall clock in ms. */
 sealed class AlarmSignal {
     abstract val at: Long

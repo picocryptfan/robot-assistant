@@ -139,4 +139,38 @@ class AlarmWatchTest {
         assertFalse(AlarmWatch.inWindow(t0 + 7 * 60 * min, zone, TimeWindow.ALARM))
         assertFalse(AlarmWatch.inWindow(t0 - 3 * 60 * min, zone, TimeWindow.ALARM))
     }
+
+    /**
+     * 0.8 review: Clock's broadcasts come with no permission. An ALERT counts only when Clock's own next alarm, read before
+     * it, was due within 2 minutes; anything else is ignored before AlarmWatch sees it, so a forged ALERT then DONE never
+     * starts a routine, never fetches the weather and never uses up the once-a-day run the real alarm needs.
+     */
+    @Test fun onlyClocksOwnAlarmCounts() {
+        // The night before: Clock's 06:45 alarm read as the next one.
+        val night = t0 - 9 * 60 * min
+        var seen = AlarmCheck.remember(emptyList(), clockNext(t0), night)
+        assertTrue(AlarmCheck.verified(seen, t0 + 3 * s))
+        assertTrue(AlarmCheck.verified(seen, t0 - min))
+        assertFalse(AlarmCheck.verified(seen, t0 + 3 * min))
+        // A forged ALERT then DONE at 05:00, inside the alarm hours: ignored, nothing ends, nothing to run.
+        val forged = listOf(alert(t0 - 105 * min), done(t0 - 104 * min))
+        var st = AlarmWatchState()
+        val ends = forged.filter { AlarmCheck.admits(seen, it) }.map { sig -> AlarmWatch.on(st, sig).also { st = it.state } }
+        assertEquals(listOf(AlarmEnd.UNKNOWN), ends.map { it.end })
+        assertTrue(ends.none { it.prepare })
+        assertEquals(AlarmWatchState(), st)
+        // The real alarm afterwards still counts (its DONE dismisses it: the routine's run is still there to use).
+        val real = listOf(alert(t0 + 2 * s), done(t0 + 40 * s))
+        val realEnds = real.filter { AlarmCheck.admits(seen, it) }.map { sig -> AlarmWatch.on(st, sig).also { st = it.state } }
+        assertEquals(listOf(null, AlarmEnd.DISMISSED), realEnds.map { it.end })
+        // An alarm another app set (not Clock's), or one read only after the ALERT came, doesn't vouch for it.
+        assertFalse(AlarmCheck.verified(AlarmCheck.remember(emptyList(), NextAlarm(t0, fromClock = false), night), t0))
+        assertFalse(AlarmCheck.verified(AlarmCheck.remember(emptyList(), clockNext(t0), t0 + 5 * s), t0 + 2 * s))
+        // A snooze: Clock's snoozed instance, read after the DONE, vouches for the next ALERT; the old ones are let go.
+        seen = AlarmCheck.remember(seen, clockNext(t0 + 10 * min), t0 + 42 * s)
+        assertTrue(AlarmCheck.verified(seen, t0 + 10 * min + s))
+        assertTrue(AlarmCheck.remember(seen, null, t0 + 2 * 24 * 60 * min).isEmpty())
+        // The same alarm read twice is kept once.
+        assertEquals(seen, AlarmCheck.remember(seen, clockNext(t0), t0 + 50 * s))
+    }
 }

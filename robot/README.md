@@ -4697,8 +4697,12 @@ rings, Robot loads its voice and fetches the weather ("Get ready while the alarm
   and the system's `BOOT_COMPLETED`, `TIME_SET`, `TIMEZONE_CHANGED`, `MY_PACKAGE_REPLACED`) and `RoutineSpeakingService`
   (`foregroundServiceType="mediaPlayback"`, never sticky, never at boot).
 - **The one exported receiver:** Clock's two broadcasts come from another app with no permission, so the trigger hub
-  registers them at run time with `RECEIVER_EXPORTED`, only while a routine waits for an alarm. A fake `ALARM_DONE`
-  needs an `ALARM_ALERT` first and can only start your own routines under their gates, at most once a day by default.
+  registers them at run time with `RECEIVER_EXPORTED`, only while a routine waits for an alarm. An `ALARM_ALERT` counts
+  only when Clock's own next alarm (`AlarmManager.getNextAlarmClock()`, its show intent from Clock), read before the alert
+  and kept, was due within 2 minutes of it; any other is logged ("Routine not run after an alarm turned off: not Clock's own
+  alarm, ignored") and ignored, so it neither runs a routine nor uses up its once-a-day run. An `ALARM_DONE` counts only
+  after a counted `ALARM_ALERT`, and then can only start your own routines under their gates, at most once a day by
+  default.
 - Nothing else: no phone, Bluetooth, Do Not Disturb or location beyond what Robot already had. `ProcessIsolationTest`
   and `tools/verify_apk.sh` check all of this.
 

@@ -899,6 +899,19 @@ class ProcessIsolationTest {
     }
 
     /**
+     * 0.8 review: Clock's ALARM_ALERT counts only when Clock's own next alarm, read before it (now and at each
+     * ACTION_NEXT_ALARM_CLOCK_CHANGED), vouches for it (core AlarmCheck), checked before AlarmWatch sees it.
+     */
+    @Test fun onlyClocksOwnAlarmReachesTheRoutines() {
+        val hub = code(File(java("app"), "app/heyrobot/assistant/routines/RoutineHub.kt"))
+        val onClock = hub.substringAfter("private fun onClock(").substringBefore("\n    }\n")
+        assertTrue(onClock, onClock.indexOf("if (!AlarmCheck.admits(seenAlarms, signal)) {") in 0 until onClock.indexOf("step(signal)"))
+        assertEquals(1, Regex("\\bstep\\(AlarmSignal\\.Alert\\(").findAll(hub).count() + Regex("\\bstep\\(signal\\)").findAll(hub).count())
+        assertTrue(hub.contains("IntentFilter(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)"))
+        assertTrue(hub.contains("VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM)"))
+    }
+
+    /**
      * 0.8, Settings › Voice › Transcription check › Microphone: Headset records through the headset as a session listens
      * (its call route and pinned input, core CheckMics), only once its input is the one capturing, never over a session's
      * or a call's audio, and lets the route go whenever the recording stops.
