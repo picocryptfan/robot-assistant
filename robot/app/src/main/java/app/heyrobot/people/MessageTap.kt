@@ -161,6 +161,7 @@ object MessageTap {
         val held = buffer.thread(conversation) ?: return false
         val (sbn, t) = fresh(ctx, held.notificationKey) ?: return false
         val ref = t.markRead ?: return false
+        if (!app.heyrobot.core.messages.ReplyGuard.markable(ref, app.heyrobot.sys.Assistant.locked(ctx))) return false
         val action = sbn.notification.actions?.getOrNull(ref.index) ?: return false
         return try {
             action.actionIntent.send()

@@ -889,6 +889,9 @@ class ProcessIsolationTest {
         // A reply: fired only by the bridge, after ReplySend read the notification again; the panel names a conversation by its key, and
         // its words, never an address.
         assertEquals(listOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt"), usersOf(Regex("""\bMessageTap\.fire\(|\bfun fire\(ctx""")))
+        // A mark-as-read the app wants only from an unlocked phone is never fired while it is locked, as a reply isn't.
+        assertTrue(code(File(java("app"), "app/heyrobot/people/MessageTap.kt")).contains(
+            "if (!app.heyrobot.core.messages.ReplyGuard.markable(ref, app.heyrobot.sys.Assistant.locked(ctx))) return false"))
         val b = code(File(java("app"), "app/heyrobot/people/MessagesBridge.kt"))
         assertTrue(b.contains("ReplySend.check(held, fresh?.second, req, s, locked)") && b.contains("MessageTap.fire(ctx, fresh!!.first, c.target, c.text)"))
         val panel = code(File(java("app"), "app/heyrobot/assistant/PanelMessages.kt"))

@@ -84,6 +84,11 @@ class ReplyPlanTest {
         val readReply = on.copy(locked = MessagesLocked.READ_AND_REPLY)
         assertEquals(ReplyPlan.Refused(RefuseWhy.AUTH_REQUIRED), ReplyPlanner.plan(auth, "hi", ReplySource.DICTATED, readReply, locked = true))
         assertTrue(ReplyPlanner.plan(auth, "hi", ReplySource.DICTATED, readReply, locked = false) is ReplyPlan.Send)
+        // The same for a mark-as-read action ("Mark it as read", "After Robot reads a message: Mark as read") on the lock screen.
+        val mark = mom.markRead!!
+        assertTrue(ReplyGuard.markable(mark, locked = true))
+        assertFalse(ReplyGuard.markable(mark.copy(authRequired = true), locked = true))
+        assertTrue(ReplyGuard.markable(mark.copy(authRequired = true), locked = false))
         // "Open the chat; I press Send" never sends; no reply action opens the chat too.
         assertEquals(ReplyPlan.HandOff(MessageApp.CHEOGRAM, mom.conversationId, "hi", HandOffWhy.ROUTE_OPEN_CHAT),
             ReplyPlanner.plan(mom, " hi ", ReplySource.DICTATED, on.copy(replyRoute = ReplyRoute.OPEN_CHAT), false))

@@ -158,6 +158,12 @@ sealed class Recheck {
 }
 
 object ReplyGuard {
+    /**
+     * The conversation's mark-as-read action [ref] may fire now (the main process, "Mark it as read" or "After Robot reads
+     * a message"): as with a reply, never one the app wants only from an unlocked phone while the phone is [locked].
+     */
+    fun markable(ref: ActionRef, locked: Boolean): Boolean = !(locked && ref.authRequired)
+
     /** [fresh]: the same notification read again (getActiveNotifications([key])), null when it is gone. */
     fun recheck(p: ReplyPlan.Send, fresh: MessageThread?): Recheck {
         if (fresh == null) return Recheck.Gone
