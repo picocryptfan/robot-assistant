@@ -87,7 +87,7 @@ fun ActionsSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettin
             "On the lock screen: ${LockScreen.allowed(s.lockedTools)}; everything else asks you to unlock. When “Just do it” still " +
                 "shows a card (after Robot read something, a name it isn't sure of, a helper's requests) is in Safety & privacy. " +
                 (if (s.claudeActionCards) "Anything a helper asks Robot to do always shows a card first."
-                else "A helper's requests follow the levels above and Safety cards.") +
+                else "A helper's requests follow the levels above and When Robot asks first.") +
                 "\n\nFind the nearest place online: for “directions to the nearest pharmacy”, what would go is the words and your area " +
                 "(about 1 km), to ${server.label}." + (if (maps) "" else " Maps search and directions are Off.") + " " +
                 (if (server.isDefault) "The search server is OpenStreetMap's Nominatim (${Nearby.HOST}), the default; to use another " +

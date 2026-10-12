@@ -317,7 +317,7 @@ private fun daily(v: Float): Int = ((v / 10).roundToInt() * 10).coerceIn(DAILY_S
 private fun askDetail(a: WebAsk): String = when (a) {
     WebAsk.FIRST_TIME -> "The default. The first search shows a card you answer with a tap"
     WebAsk.ALWAYS -> "A card before every search"
-    WebAsk.NEVER -> "No card (Actions and Safety cards still apply)"
+    WebAsk.NEVER -> "No card (Actions and When Robot asks first still apply)"
 }
 
 private fun readDetail(r: ReadPages): String = when (r) {
