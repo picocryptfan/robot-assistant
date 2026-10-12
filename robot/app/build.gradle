@@ -18,7 +18,9 @@ android {
     compileSdk rootProject.ext.robotCompileSdk
     buildToolsVersion rootProject.ext.robotBuildTools
     defaultConfig {
-        applicationId 'app.heyrobot'
+        // 1.0: robot-app.ai reversed (a package name can't hold the hyphen); 0.9 and earlier were app.heyrobot, so 1.0 installs
+        // beside them as another app (README, "Moving from 0.9 to 1.0"). The namespace and the Kotlin packages stay app.heyrobot.
+        applicationId 'ai.robot_app'
         minSdk rootProject.ext.robotMinSdk
         targetSdk rootProject.ext.robotTargetSdk
         versionCode 90

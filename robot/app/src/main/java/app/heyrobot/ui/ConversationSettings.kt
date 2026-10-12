@@ -79,7 +79,7 @@ fun ConversationSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotS
     val v = snap.voice(b)
     val ready = v?.status == ModelStatus.VERIFIED
     // The fast engine's speed test: its link to the :mt process is kept while this page shows (the engine stays loaded for
-    // `adb shell dumpsys meminfo app.heyrobot:mt`), and let go when the page is left.
+    // `adb shell dumpsys meminfo ai.robot_app:mt`), and let go when the page is left.
     val mtb = MtBundle.FR_EN
     val mt = snap.mt
     var report by remember { mutableStateOf<MtSpeedReport?>(null) }
@@ -279,4 +279,4 @@ private fun conversationFooter(s: RobotSettings, total: Int, mtb: MtBundle): Str
         "Test translation speed translates Robot's $total test lines (Québec French and English) and compares each with what the same " +
         "engine gave on the build machine. The mark: a median of ${MtSpeedReport.MEDIAN_GATE_MS} ms a line or less, " +
         "${MtSpeedReport.RSS_GATE_MB} MB or less with both directions loaded, and every line the same. Only the test's own sentences " +
-        "are translated. While this page shows, the engine stays loaded: `adb shell dumpsys meminfo app.heyrobot:mt` shows its memory."
+        "are translated. While this page shows, the engine stays loaded: `adb shell dumpsys meminfo ${BuildConfig.APPLICATION_ID}:mt` shows its memory."

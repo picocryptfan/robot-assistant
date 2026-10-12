@@ -132,7 +132,8 @@ class CaptureActivity : Activity() {
         const val EXTRA_MODE = "mode"
         const val MODE_CAMERA = "camera"
         const val MODE_PHOTOS = "photos"
-        const val AUTHORITY = "app.heyrobot.capture"
+        /** The manifest's `${applicationId}.capture` (unique on the phone, so 1.0 installs beside 0.9). */
+        const val AUTHORITY = app.heyrobot.BuildConfig.APPLICATION_ID + ".capture"
         private const val REQ_CAMERA = 1
         private const val REQ_PICK = 2
 

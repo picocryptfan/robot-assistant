@@ -29,6 +29,6 @@ class ProtectedBroadcastsTest {
         assertEquals(1, seen)
         // Only protected system broadcasts may be exported this way.
         assertTrue(runCatching { ProtectedBroadcasts.filter("com.android.deskclock.ALARM_ALERT") }.isFailure)
-        assertTrue(runCatching { ProtectedBroadcasts.register(ctx, r, IntentFilter("app.heyrobot.X")) }.isFailure)
+        assertTrue(runCatching { ProtectedBroadcasts.register(ctx, r, IntentFilter("ai.robot_app.X")) }.isFailure)
     }
 }

@@ -2,11 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <!-- Robot's own signature permission: only apps signed with Robot's key (keys/README.md) hold it. It guards
-         the :brain service and the main app -> voice process commands. -->
+         the :brain service and the main app -> voice process commands. 1.0: named after the application ID
+         (ai.robot_app.permission.INTERNAL), as are the providers and task affinities, so 1.0 installs beside 0.9. -->
     <permission
-        android:name="app.heyrobot.permission.INTERNAL"
+        android:name="${applicationId}.permission.INTERNAL"
         android:protectionLevel="signature" />
-    <uses-permission android:name="app.heyrobot.permission.INTERNAL" />
+    <uses-permission android:name="${applicationId}.permission.INTERNAL" />
 
     <!-- Six uses only: the model downloads (DownloadManager: huggingface.co, and since 0.5.0 the fast translation
          engine's files from Mozilla's storage.googleapis.com bucket); when you ask, a helper (the :voice process: Claude at
@@ -213,7 +214,7 @@
         <!-- 0.5.0: exported transcripts for the share sheet (cacheDir/exports only), from the main app. -->
         <provider
             android:name=".sys.ExportProvider"
-            android:authorities="app.heyrobot.exports"
+            android:authorities="${applicationId}.exports"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/export_paths" />
@@ -270,7 +271,7 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:noHistory="false"
-            android:taskAffinity="app.heyrobot.capture"
+            android:taskAffinity="${applicationId}.capture"
             android:theme="@style/Theme.Robot.Translucent" />
         <!-- 1.0: Robot's app opens the panel for Run now, a Ready card or Continue through this trampoline, which asks the
              assistant service itself to show it (another app's showAssist arguments are dropped). Not exported. -->
@@ -307,7 +308,7 @@
             android:process=":voice"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:taskAffinity="app.heyrobot.delete"
+            android:taskAffinity="${applicationId}.delete"
             android:theme="@style/Theme.Robot.Translucent" />
         <!-- "Pick in Cheogram" (0.4.0): opens Cheogram's contact list for a result (ACTION_CREATE_SHORTCUT, nothing goes on the
              home screen), offers to remember who was picked in People, then opens their chat with the text. Started by the
@@ -317,7 +318,7 @@
             android:process=":voice"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:taskAffinity="app.heyrobot.pick"
+            android:taskAffinity="${applicationId}.pick"
             android:theme="@style/Theme.Robot.Translucent" />
         <!-- 0.8, headset mode (design §3.6): what a headset's or car's voice button (VOICE_COMMAND, after AT+BVRA) and a wired or
              USB headset's long press or a voice-assist key (the two speech actions) start. Exported, because Android starts
@@ -331,7 +332,7 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:showWhenLocked="true"
-            android:taskAffinity="app.heyrobot.headset"
+            android:taskAffinity="${applicationId}.headset"
             android:theme="@style/Theme.Robot.Translucent">
             <intent-filter>
                 <action android:name="android.intent.action.VOICE_COMMAND" />
@@ -354,7 +355,7 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
-            android:taskAffinity="app.heyrobot.car"
+            android:taskAffinity="${applicationId}.car"
             android:theme="@style/Theme.Robot" />
         <!-- 0.5.0, conversation mode (docs/conversation-mode.md 1, 5): the session's microphone foreground service, its
              transcript screen, the Transcription check (Settings › Voice) and the Quick Settings tile, all in :voice where
@@ -370,13 +371,13 @@
             android:exported="false"
             android:label="@string/shortcut_transcribe"
             android:launchMode="singleTask"
-            android:taskAffinity="app.heyrobot.transcribe"
+            android:taskAffinity="${applicationId}.transcribe"
             android:excludeFromRecents="false" />
         <activity
             android:name=".assistant.conversation.TranscriptionCheckActivity"
             android:process=":voice"
             android:exported="false"
-            android:taskAffinity="app.heyrobot.check"
+            android:taskAffinity="${applicationId}.check"
             android:windowSoftInputMode="adjustResize" />
         <!-- 0.5.0, phase 5.6: a transcript's summary, Robot's own or a stronger AI's after the consent card (in :voice: Robot's
              model and the Claude key are reached from there only; the main app opens it by name). -->
@@ -384,13 +385,13 @@
             android:name=".assistant.conversation.SummaryActivity"
             android:process=":voice"
             android:exported="false"
-            android:taskAffinity="app.heyrobot.summary" />
+            android:taskAffinity="${applicationId}.summary" />
         <!-- 0.5.0, phase 5.3: "Your voice", the optional "me" voiceprint (encrypted in :voice; the main app opens it by name). -->
         <activity
             android:name=".assistant.conversation.VoiceprintActivity"
             android:process=":voice"
             android:exported="false"
-            android:taskAffinity="app.heyrobot.voiceprint" />
+            android:taskAffinity="${applicationId}.voiceprint" />
         <service
             android:name=".assistant.conversation.ConversationTileService"
             android:process=":voice"
@@ -434,7 +435,7 @@
         <!-- The camera app writes the photo here (app cache, deleted right after it is read). -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="app.heyrobot.capture"
+            android:authorities="${applicationId}.capture"
             android:process=":voice"
             android:exported="false"
             android:grantUriPermissions="true">
@@ -464,7 +465,7 @@
         <service
             android:name=".people.MessagesBridge"
             android:exported="false"
-            android:permission="app.heyrobot.permission.INTERNAL" />
+            android:permission="${applicationId}.permission.INTERNAL" />
 
         <!-- Not exported: the system's boot broadcast still arrives, other apps cannot fake it. Direct-boot aware (0.2.3)
              so it also gets LOCKED_BOOT_COMPLETED, before the first unlock: there it only checks the speech recognizer

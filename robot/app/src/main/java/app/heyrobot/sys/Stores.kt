@@ -135,8 +135,10 @@ object ConversationStore {
  * a receiver the voice process registers with RECEIVER_NOT_EXPORTED and Robot's signature permission.
  */
 object Cmd {
+    /** Explicit to this package and not exported (above), so 0.9 beside 1.0 never gets it: the name can stay. */
     const val ACTION = "app.heyrobot.CMD"
-    const val PERMISSION = "app.heyrobot.permission.INTERNAL"
+    /** The manifest's signature permission, named after the application ID since 1.0 (ai.robot_app.permission.INTERNAL). */
+    const val PERMISSION = app.heyrobot.BuildConfig.APPLICATION_ID + ".permission.INTERNAL"
     const val SETTINGS = "settings"
     const val SPEAK_TEST = "speak_test"
     /** Voice models were installed or deleted: the voice process re-checks them. */

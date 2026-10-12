@@ -91,7 +91,8 @@ object Transcripts {
  * served by [ExportProvider], and removed at the next export or when transcripts are deleted.
  */
 object Exports {
-    const val AUTHORITY = "app.heyrobot.exports"
+    /** The manifest's `${applicationId}.exports` (unique on the phone, so 1.0 installs beside 0.9). */
+    const val AUTHORITY = app.heyrobot.BuildConfig.APPLICATION_ID + ".exports"
 
     fun dir(ctx: Context): File = File(ctx.cacheDir, "exports")
 

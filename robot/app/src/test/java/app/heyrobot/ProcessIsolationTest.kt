@@ -326,7 +326,7 @@ class ProcessIsolationTest {
         // 0.5.0: the fast translation engine in a process of its own, bound only by Robot's own processes.
         assertEquals(":mt", proc("app.heyrobot.mt.MtService"))
         assertEquals("false", exported("app.heyrobot.mt.MtService"))
-        assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.mt.MtService"))
+        assertEquals("ai.robot_app.permission.INTERNAL", perm("app.heyrobot.mt.MtService"))
         val main = listOf("app.heyrobot.ui.MainActivity", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
             "app.heyrobot.people.CheogramListener", "app.heyrobot.sys.ExportProvider", "app.heyrobot.boot.UpdatedReceiver", "app.heyrobot.update.UpdateJobService",
             "app.heyrobot.update.InstallStatusReceiver",
@@ -345,7 +345,7 @@ class ProcessIsolationTest {
         assertEquals("android.permission.BIND_NOTIFICATION_LISTENER_SERVICE", perm("app.heyrobot.people.CheogramListener"))
         assertTrue(File(java("app"), "app/heyrobot/sys/People.kt").readText().contains("\"app.heyrobot.people.CheogramListener\""))
         assertEquals("false", exported("app.heyrobot.brain.BrainService"))
-        assertEquals("app.heyrobot.permission.INTERNAL", perm("app.heyrobot.brain.BrainService"))
+        assertEquals("ai.robot_app.permission.INTERNAL", perm("app.heyrobot.brain.BrainService"))
         for (n in listOf("app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider", "app.heyrobot.boot.BootReceiver", "app.heyrobot.boot.BootCheckReceiver",
             "app.heyrobot.assistant.HelperConnectionActivity", "app.heyrobot.assistant.MediaDeleteActivity",
             "app.heyrobot.assistant.CheogramPickActivity", "app.heyrobot.assistant.conversation.ConversationService",
@@ -380,8 +380,12 @@ class ProcessIsolationTest {
         assertEquals("microphone", c("app.heyrobot.assistant.conversation.ConversationService").getAttributeNS(ns, "foregroundServiceType"))
         assertEquals("true", exported("app.heyrobot.assistant.conversation.ConversationTileService"))
         assertEquals("android.permission.BIND_QUICK_SETTINGS_TILE", perm("app.heyrobot.assistant.conversation.ConversationTileService"))
-        // The export provider shares the export folder only.
-        assertEquals("app.heyrobot.exports", c("app.heyrobot.sys.ExportProvider").getAttributeNS(ns, "authorities"))
+        // The export provider shares the export folder only. 1.0: both providers' authorities are the application ID's (they
+        // must be unique on the phone, with 0.9 installed beside it), the same as the code's.
+        assertEquals("ai.robot_app.exports", c("app.heyrobot.sys.ExportProvider").getAttributeNS(ns, "authorities"))
+        assertEquals("ai.robot_app.capture", c("androidx.core.content.FileProvider").getAttributeNS(ns, "authorities"))
+        assertEquals("ai.robot_app.exports", app.heyrobot.sys.Exports.AUTHORITY)
+        assertEquals("ai.robot_app.capture", app.heyrobot.assistant.CaptureActivity.AUTHORITY)
         assertEquals("<paths>\n    <cache-path name=\"exports\" path=\"exports/\" />\n</paths>",
             File(main("app"), "res/xml/export_paths.xml").readText().substringAfter("-->").trim().replace("\r", ""))
         // The updater: only the system binds its job service; Android tells Robot alone that it was updated.
@@ -410,18 +414,41 @@ class ProcessIsolationTest {
     @Test fun mergedManifestIdentityAndPermissions() {
         val doc = parse(mergedManifest())
         val m = doc.documentElement
-        assertEquals("app.heyrobot", m.getAttribute("package"))
+        // 1.0: the application ID is ai.robot_app (0.9 and earlier: app.heyrobot), and core's copy, which the adb commands
+        // and the updater use, is the same; the namespace and the classes stay app.heyrobot.
+        assertEquals("ai.robot_app", m.getAttribute("package"))
+        assertEquals("ai.robot_app", BuildConfig.APPLICATION_ID)
+        assertEquals(BuildConfig.APPLICATION_ID, app.heyrobot.core.AppId.PACKAGE)
+        assertTrue(File(root, "app/build.gradle").readText().contains("namespace 'app.heyrobot'"))
+        // The recognizer the ADB fixes set is the manifest's, package and class (written in full: the classes aren't in
+        // the package, so ".assistant.…" would name nothing).
+        val comps = components(doc)
+        assertTrue(comps.containsKey(app.heyrobot.core.AdbFixes.RECOGNIZER.substringAfter('/')))
+        assertEquals(m.getAttribute("package"), app.heyrobot.core.AdbFixes.RECOGNIZER.substringBefore('/'))
+        assertEquals("pm grant ai.robot_app android.permission.WRITE_SECURE_SETTINGS",
+            app.heyrobot.core.AdbFixes.ALL.flatMap { it.commands }.single { "pm grant" in it }.removePrefix("adb shell "))
+        // Every explicit task affinity is the application ID's, never 0.9's, so 1.0's windows never join 0.9's tasks.
+        val affinities = comps.values.map { it.getAttributeNS(ns, "taskAffinity") }.filter { it.isNotEmpty() }
+        assertEquals(9, affinities.size)
+        for (a in affinities) assertTrue(a, a.startsWith("ai.robot_app."))
+        // The launcher shortcuts target this package (a resource can't take the placeholder) and classes that exist.
+        val shortcuts = parse(File(main("app"), "res/xml/shortcuts.xml")).getElementsByTagName("intent")
+        assertEquals(2, shortcuts.length)
+        for (i in 0 until shortcuts.length) (shortcuts.item(i) as Element).let { e ->
+            assertEquals(BuildConfig.APPLICATION_ID, e.getAttributeNS(ns, "targetPackage"))
+            assertTrue(comps.containsKey(e.getAttributeNS(ns, "targetClass")))
+        }
         assertEquals("90", m.getAttributeNS(ns, "versionCode"))
         assertEquals("0.9.0", m.getAttributeNS(ns, "versionName"))
         val sdk = doc.getElementsByTagName("uses-sdk").item(0) as Element
         assertEquals("34", sdk.getAttributeNS(ns, "minSdkVersion"))
         assertEquals("36", sdk.getAttributeNS(ns, "targetSdkVersion"))
         val declared = doc.getElementsByTagName("permission").let { nl -> (0 until nl.length).map { nl.item(it) as Element } }
-        val internal = declared.single { it.getAttributeNS(ns, "name") == "app.heyrobot.permission.INTERNAL" }
+        val internal = declared.single { it.getAttributeNS(ns, "name") == "ai.robot_app.permission.INTERNAL" }
         assertEquals("signature", internal.getAttributeNS(ns, "protectionLevel"))
         val used = doc.getElementsByTagName("uses-permission").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
         assertEquals(setOf(
-            "app.heyrobot.permission.INTERNAL", "app.heyrobot.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+            "ai.robot_app.permission.INTERNAL", "ai.robot_app.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
             "android.permission.INTERNET", "android.permission.RECORD_AUDIO", "android.permission.POST_NOTIFICATIONS",
             "android.permission.RECEIVE_BOOT_COMPLETED", "android.permission.VIBRATE", "com.android.alarm.permission.SET_ALARM",
             "android.permission.USE_EXACT_ALARM",
@@ -1424,7 +1451,7 @@ class ProcessIsolationTest {
         val bridge = comps["app.heyrobot.people.MessagesBridge"] ?: throw AssertionError("MessagesBridge missing")
         assertEquals("", bridge.getAttributeNS(ns, "process"))
         assertEquals("false", bridge.getAttributeNS(ns, "exported"))
-        assertEquals("app.heyrobot.permission.INTERNAL", bridge.getAttributeNS(ns, "permission"))
+        assertEquals("ai.robot_app.permission.INTERNAL", bridge.getAttributeNS(ns, "permission"))
         assertEquals(0, bridge.getElementsByTagName("intent-filter").length)
         // The listener asks for conversations, never ongoing notifications (Silent is yours to allow in Android's page).
         val listener = comps.getValue("app.heyrobot.people.CheogramListener")

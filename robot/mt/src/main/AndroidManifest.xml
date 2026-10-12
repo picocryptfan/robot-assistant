@@ -9,6 +9,6 @@
             android:name="app.heyrobot.mt.MtService"
             android:process=":mt"
             android:exported="false"
-            android:permission="app.heyrobot.permission.INTERNAL" />
+            android:permission="${applicationId}.permission.INTERNAL" />
     </application>
 </manifest>

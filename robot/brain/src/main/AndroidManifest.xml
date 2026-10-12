@@ -20,7 +20,7 @@
             android:name="app.heyrobot.brain.BrainService"
             android:process=":brain"
             android:exported="false"
-            android:permission="app.heyrobot.permission.INTERNAL" />
+            android:permission="${applicationId}.permission.INTERNAL" />
 
         <!-- ":llama" (0.4.5): llama.cpp for your own GGUF file, in an isolated process: a uid of its own with no permissions,
              no network and none of Robot's files. Only :brain binds it (not exported), gives it the checked file open, and

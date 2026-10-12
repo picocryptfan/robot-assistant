@@ -265,7 +265,7 @@ object CarDnd {
             // The driving rule's type and builder are Android 15's (Robot targets Android 17 phones).
             if (!nm.isNotificationPolicyAccessGranted || android.os.Build.VERSION.SDK_INT < 35) false else {
                 val id = ruleId(ctx, nm)
-                nm.setAutomaticZenRuleState(id, Condition(Uri.parse("condition://app.heyrobot/driving"), "Driving", if (on) Condition.STATE_TRUE else Condition.STATE_FALSE))
+                nm.setAutomaticZenRuleState(id, Condition(condition(ctx), "Driving", if (on) Condition.STATE_TRUE else Condition.STATE_FALSE))
                 true
             }
         } catch (t: Throwable) {
@@ -275,12 +275,15 @@ object CarDnd {
         VoiceLog.add(VoiceEvent.CAR_DND, if (on) 1 else 0, if (ok) 1 else 0)
     }
 
+    /** The rule's condition, named after Robot's application ID (ai.robot_app since 1.0). */
+    private fun condition(ctx: Context): Uri = Uri.parse("condition://${ctx.packageName}/driving")
+
     @android.annotation.SuppressLint("NewApi") // Called only on Android 15 and later (set).
     private fun ruleId(ctx: Context, nm: NotificationManager): String {
         val prefs = ctx.getSharedPreferences("car", Context.MODE_PRIVATE)
         prefs.getString(PREF, null)?.takeIf { nm.getAutomaticZenRule(it) != null }?.let { return it }
         val name = if (HandsFreeHub.lang == SpokenLang.FR) "Conduite (Robot)" else "Driving (Robot)"
-        val rule = AutomaticZenRule.Builder(name, Uri.parse("condition://app.heyrobot/driving"))
+        val rule = AutomaticZenRule.Builder(name, condition(ctx))
             .setType(AutomaticZenRule.TYPE_DRIVING)
             .setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
             .setConfigurationActivity(ComponentName(ctx.packageName, "app.heyrobot.ui.MainActivity"))
