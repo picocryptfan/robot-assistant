@@ -51,8 +51,8 @@ class TombstoneTest {
     private fun fixture(abort: String?, crashingFrames: Int = 20): ByteArray {
         val frames = listOf(
             frame(0x5b2c4, "/apex/com.android.runtime/lib64/bionic/libc.so", "abort", 164),
-            frame(0x1a2b3c, "/data/app/~~Xy==/app.heyrobot-Ab==/lib/arm64/liblitertlm_jni.so", "litert::lm::Engine::Run(std::string const&)", 88),
-            frame(0x4400, "/data/app/~~Xy==/app.heyrobot-Ab==/base.apk!libLiteRtDispatch_GoogleTensor.so", null, 0),
+            frame(0x1a2b3c, "/data/app/~~Xy==/ai.robot_app-Ab==/lib/arm64/liblitertlm_jni.so", "litert::lm::Engine::Run(std::string const&)", 88),
+            frame(0x4400, "/data/app/~~Xy==/ai.robot_app-Ab==/base.apk!libLiteRtDispatch_GoogleTensor.so", null, 0),
             frame(0x10, secret, "read_model", 4),
             frame(0x20, "[anon:dalvik-jit-code-cache]", "app.heyrobot.brain.GemmaEngine.run", 12),
             frame(0x30, "/system/lib64/libOpenCL-pixel.so", "clEnqueueNDRangeKernel", 0),
@@ -68,7 +68,7 @@ class TombstoneTest {
         //   repeated MemoryMapping memory_mappings = 17; repeated LogBuffer log_buffers = 18; repeated FD open_fds = 19;
         //   uint32 process_uptime = 20; }
         return Proto().int(1, 1).str(2, "google/tegu/tegu:16/BP2A.250805.005/2025081900:user/release-keys").str(3, "0").str(4, "2026-10-11 14:05:03")
-            .int(5, 4200).int(6, 4242).int(7, 10123).str(8, "u:r:untrusted_app:s0").str(9, "app.heyrobot:brain").str(9, secret)
+            .int(5, 4200).int(6, 4242).int(7, 10123).str(8, "u:r:untrusted_app:s0").str(9, "ai.robot_app:brain").str(9, secret)
             .msg(10, signal)
             .apply { abort?.let { str(14, it) } }
             .msg(15, Proto().str(1, "null pointer dereference of jennifer"))
@@ -103,8 +103,8 @@ class TombstoneTest {
         assertEquals("Native crash: SIGSEGV (11), code SEGV_MAPERR (1)", c.lines().first())
         assertTrue(text, text.contains("Backtrace, the crashing thread's first 16 of 20 frames:"))
         // Nothing but that: not the other thread, a register, the memory, a map, an open file, the log or the command line.
-        for (w in listOf("jennifer", "Jennifer", "Anna", "storage", "diary", "/data/app", "app.heyrobot-Ab", "other_secret_fn", "libother", "6a656e",
-            "scudo", "untrusted_app", "BP2A", "app.heyrobot:brain", "dereference")) assertFalse(w, text.contains(w))
+        for (w in listOf("jennifer", "Jennifer", "Anna", "storage", "diary", "/data/app", "ai.robot_app-Ab", "other_secret_fn", "libother", "6a656e",
+            "scudo", "untrusted_app", "BP2A", "ai.robot_app:brain", "dereference")) assertFalse(w, text.contains(w))
     }
 
     @Test fun anAbortMessageWithAPathOrWordsIsOnlySaidToBeThere() {
@@ -133,11 +133,11 @@ class TombstoneTest {
     }
 
     @Test fun libraryNamesOnly() {
-        assertEquals("liblitertlm_jni.so", Tombstone.library("/data/app/~~a==/app.heyrobot-b==/lib/arm64/liblitertlm_jni.so"))
+        assertEquals("liblitertlm_jni.so", Tombstone.library("/data/app/~~a==/ai.robot_app-b==/lib/arm64/liblitertlm_jni.so"))
         assertEquals("libfoo.so", Tombstone.library("/data/app/x/base.apk!libfoo.so"))
         assertEquals("linker64", Tombstone.library("/apex/com.android.runtime/bin/linker64"))
         assertEquals("(not a library)", Tombstone.library("/storage/emulated/0/Download/gemma.litertlm"))
-        assertEquals("(not a library)", Tombstone.library("/data/user/0/app.heyrobot/files/models/my secret.so"))
+        assertEquals("(not a library)", Tombstone.library("/data/user/0/ai.robot_app/files/models/my secret.so"))
         assertEquals("(not a library)", Tombstone.library(""))
         assertNull(Tombstone.symbol("\u0000\u0001"))
         assertEquals("Foo::bar()", Tombstone.symbol("Foo::bar()\n"))

@@ -34,18 +34,29 @@ class AdbFixesTest {
     @Test fun alreadyRobotsIsLeftAsItIs() {
         for (role in listOf(true, false)) for (perm in listOf(true, false)) {
             assertEquals(Decision.ALREADY_ROBOT, d(role, perm, robot))
-            assertEquals(Decision.ALREADY_ROBOT, d(role, perm, "app.heyrobot/app.heyrobot.assistant.RobotRecognitionService"))
+            assertEquals(Decision.ALREADY_ROBOT, d(role, perm, "ai.robot_app/app.heyrobot.assistant.RobotRecognitionService"))
         }
     }
 
+    @Test fun robotZeroNinesRecognizerIsAnotherApp() {
+        // 1.0 is a new app (ai.robot_app): 0.9's recognizer, still installed beside it, is another app's and left alone;
+        // once 0.9 is uninstalled it names nothing installed, and Robot writes its own when it may.
+        val old = "app.heyrobot/.assistant.RobotRecognitionService"
+        assertFalse(RecognizerRepair.same(old, robot))
+        assertEquals(Decision.OTHER_RECOGNIZER, d(role = true, perm = true, cur = old))
+        assertEquals(Decision.WRITE, d(role = true, perm = true, cur = old, installed = false))
+    }
+
     @Test fun componentNamesCompareInEitherForm() {
-        assertTrue(RecognizerRepair.same("app.heyrobot/.assistant.RobotRecognitionService", "app.heyrobot/app.heyrobot.assistant.RobotRecognitionService"))
-        assertTrue(RecognizerRepair.same(" app.heyrobot/.assistant.RobotRecognitionService ", robot))
+        assertTrue(RecognizerRepair.same("com.example.speech/.Recognizer", "com.example.speech/com.example.speech.Recognizer"))
+        assertTrue(RecognizerRepair.same(" ai.robot_app/app.heyrobot.assistant.RobotRecognitionService ", robot))
+        // Robot's classes aren't in its package (1.0): the short form names ai.robot_app.assistant…, which doesn't exist.
+        assertFalse(RecognizerRepair.same("ai.robot_app/.assistant.RobotRecognitionService", robot))
         assertFalse(RecognizerRepair.same(other, robot))
         assertFalse(RecognizerRepair.same(null, robot))
         assertFalse(RecognizerRepair.same("", robot))
-        // The class the manifest declares (ProcessIsolationTest checks the recognizer component itself).
-        assertEquals("app.heyrobot/.assistant.RobotRecognitionService", robot)
+        // The package and class the manifest declares (ProcessIsolationTest checks the recognizer component itself).
+        assertEquals("ai.robot_app/app.heyrobot.assistant.RobotRecognitionService", robot)
         assertEquals("voice_recognition_service", RecognizerRepair.KEY)
     }
 
@@ -53,9 +64,9 @@ class AdbFixesTest {
         val ids = AdbFixes.ALL.map { it.id }
         assertEquals(ids.toSet().size, ids.size)
         val rec = AdbFixes.ALL.first { it.check == AdbCheck.RECOGNIZER_IS_ROBOT }
-        assertEquals(listOf("adb shell settings put secure voice_recognition_service app.heyrobot/.assistant.RobotRecognitionService"), rec.commands)
+        assertEquals(listOf("adb shell settings put secure voice_recognition_service ai.robot_app/app.heyrobot.assistant.RobotRecognitionService"), rec.commands)
         val grant = AdbFixes.ALL.first { it.check == AdbCheck.SECURE_SETTINGS_GRANTED }
-        assertEquals(listOf("adb shell pm grant app.heyrobot android.permission.WRITE_SECURE_SETTINGS"), grant.commands)
+        assertEquals(listOf("adb shell pm grant ai.robot_app android.permission.WRITE_SECURE_SETTINGS"), grant.commands)
         // Robot never writes the assistant itself (RoleManager owns it): no command or key for it here.
         for (f in AdbFixes.ALL) for (c in f.commands) {
             assertFalse(c, c.contains("voice_interaction_service"))

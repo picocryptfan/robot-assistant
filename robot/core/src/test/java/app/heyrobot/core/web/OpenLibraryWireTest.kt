@@ -12,7 +12,7 @@ class OpenLibraryWireTest {
     @Test fun theRequestCarriesTheWordsAndTheUserAgentOnly() {
         val r = OpenLibraryWire.request("Ursula K. Le Guin", WebUserAgent.api("0.9.0"))
         assertEquals("https://openlibrary.org/search.json?q=Ursula%20K.%20Le%20Guin&limit=5&fields=key,title,author_name,first_publish_year", r.url)
-        assertEquals("Robot/0.9.0 (app.heyrobot; Android voice assistant; hey@robot-app.ai)", r.header("User-Agent"))
+        assertEquals("Robot/0.9.0 (ai.robot_app; Android voice assistant; hey@robot-app.ai)", r.header("User-Agent"))
         assertEquals("SearchRequest(GET openlibrary.org)", r.toString())
     }
 

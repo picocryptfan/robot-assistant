@@ -15,7 +15,7 @@ import org.junit.Test
 
 /** Assistant setup's "Headset button" row, Settings › Headset's headphones, and Settings › Car mode's Add your car (0.8). */
 class HeadsetSetupTest {
-    private val own = "app.heyrobot"
+    private val own = "ai.robot_app"
 
     @Test fun whoAnswersTheButton() {
         assertEquals(ButtonHandler.ROBOT, HeadsetSetup.handler(own, "app.heyrobot.assistant.headset.HeadsetEntryActivity", own))

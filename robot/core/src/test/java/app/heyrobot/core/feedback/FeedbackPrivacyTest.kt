@@ -173,7 +173,7 @@ class FeedbackPrivacyTest {
         val problem = ProblemList.decode(app.heyrobot.core.readOrNull(File(files, "robot/${ProblemList.FILE}"))).first()
         // Android's own text in a problem report may hold anything; Robot scrubs paths and the last pass takes out the rest.
         val exits = listOf(
-            ExitFacts(t, 4242, 6, "CRASH_NATIVE", 11, "$phrase to $helperName crashed in /data/app/~~x==/app.heyrobot-y==/lib/arm64/liblitertlm_jni.so",
+            ExitFacts(t, 4242, 6, "CRASH_NATIVE", 11, "$phrase to $helperName crashed in /data/app/~~x==/ai.robot_app-y==/lib/arm64/liblitertlm_jni.so",
                 100, 1_900_000, 2_400_000),
             ExitFacts(t - 1_000, 4100, 6, "CRASH_NATIVE", 11, "reading /storage/emulated/0/Download/zorblax-own-model.gguf for ZQX-CONVERSATION-TEXT",
                 100, 1_900_000, 2_400_000),

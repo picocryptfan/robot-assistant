@@ -16,7 +16,7 @@ class WikipediaWireTest {
     @Test fun robotsPublishedContactOpensWikipedia() {
         assertEquals("hey@robot-app.ai", WebUserAgent.CONTACT)
         assertTrue(WikipediaWire.allowed(WebUserAgent.CONTACT))
-        assertEquals("Robot/1.0.0 (app.heyrobot; Android voice assistant; hey@robot-app.ai)",
+        assertEquals("Robot/1.0.0 (ai.robot_app; Android voice assistant; hey@robot-app.ai)",
             WikipediaWire.searchRequest("en", "jupiter", "1.0.0")!!.header("User-Agent"))
         assertTrue(WebSettings().encyclopedia)
         assertTrue(WebSettings().wikipedia())
@@ -41,7 +41,7 @@ class WikipediaWireTest {
     @Test fun searchRequest() {
         val r = WikipediaWire.searchRequest("en", "who is jupiter", "0.7.0", contact)!!
         assertEquals("https://en.wikipedia.org/w/rest.php/v1/search/page?q=who%20is%20jupiter&limit=3", r.url)
-        assertEquals("Robot/0.7.0 (app.heyrobot; Android voice assistant; robot@example.org)", r.header("User-Agent"))
+        assertEquals("Robot/0.7.0 (ai.robot_app; Android voice assistant; robot@example.org)", r.header("User-Agent"))
         assertEquals("https://fr.wikipedia.org/w/rest.php/v1/search/page?q=mairesse%20de%20Montr%C3%A9al&limit=3",
             WikipediaWire.searchRequest("FR", "mairesse de Montréal", "0.7.0", contact)!!.url)
         assertNull(WikipediaWire.searchRequest("de", "Berlin", "0.7.0", contact))

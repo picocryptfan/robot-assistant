@@ -88,7 +88,7 @@ fun facts(
     notificationsGranted: Boolean = true,
     listening: Boolean? = true,
 ): app.heyrobot.sys.AssistantFacts = app.heyrobot.sys.AssistantFacts(
-    roleHeld = roleHeld, active = active, recognizer = if (recognizerIsRobot) "app.heyrobot/.assistant.RobotRecognitionService" else "unset",
+    roleHeld = roleHeld, active = active, recognizer = if (recognizerIsRobot) app.heyrobot.core.AdbFixes.RECOGNIZER else "unset",
     recognizerIsRobot = recognizerIsRobot, recognizersFound = 1, micGranted = micGranted, notificationsGranted = notificationsGranted,
     listening = listening, listeningNote = null,
 )

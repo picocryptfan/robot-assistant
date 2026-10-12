@@ -56,7 +56,7 @@ class MtProtocolTest {
     }
 
     @Test fun memoryComesFromProcStatus() {
-        val status = "Name:\tapp.heyrobot:mt\nVmPeak:\t 9000000 kB\nVmHWM:\t  320512 kB\nVmRSS:\t  301234 kB\nThreads:\t12\n"
+        val status = "Name:\tai.robot_app:mt\nVmPeak:\t 9000000 kB\nVmHWM:\t  320512 kB\nVmRSS:\t  301234 kB\nThreads:\t12\n"
         assertEquals(MtMemory(301_234, 320_512), MtMemory.parse(status))
         assertEquals(MtMemory.UNKNOWN, MtMemory.parse(null))
         assertEquals(MtMemory(-1, 5), MtMemory.parse("VmHWM: 5 kB"))

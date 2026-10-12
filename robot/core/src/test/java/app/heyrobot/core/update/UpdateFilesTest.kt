@@ -93,7 +93,7 @@ class UpdateFilesTest {
 
     @Test fun aDownloadsFileNameIsOnlyEverItsVersionsApk() {
         // A state file naming another file (a path, another version's) doesn't name a download at all.
-        for (f in listOf("../../shared_prefs/x.xml", "/data/data/app.heyrobot/files/robot/settings.json", "Robot-0.4.7.apk", "Robot-0.4.6.apk.part", "")) {
+        for (f in listOf("../../shared_prefs/x.xml", "/data/data/ai.robot_app/files/robot/settings.json", "Robot-0.4.7.apk", "Robot-0.4.6.apk.part", "")) {
             val o = JSONObject(full.toJson())
             o.getJSONObject("downloaded").put("file", f)
             assertNull(f, UpdateState.fromJson(o.toString()).downloaded)

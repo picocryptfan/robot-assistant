@@ -27,7 +27,7 @@ class SearchWireTest {
         val r = SearxngWire.request(base, "who won the stanley cup", "en", SafeSearch.MODERATE, ua)
         assertEquals("GET", r.method)
         assertEquals("http://192.168.1.20:8888/search?q=who%20won%20the%20stanley%20cup&format=json&safesearch=1&pageno=1&language=en", r.url)
-        assertEquals("Robot/0.7.0 (app.heyrobot; Android voice assistant; hey@robot-app.ai)", r.header("user-agent"))
+        assertEquals("Robot/0.7.0 (ai.robot_app; Android voice assistant; hey@robot-app.ai)", r.header("user-agent"))
         assertEquals("SearchRequest(GET 192.168.1.20)", r.toString())
         val strict = SearxngWire.request(SearxngWire.base("https://search.tail1234.ts.net", false)!!, "a&b=c", null, SafeSearch.STRICT, ua)
         assertEquals("https://search.tail1234.ts.net/search?q=a%26b%3Dc&format=json&safesearch=2&pageno=1", strict.url)

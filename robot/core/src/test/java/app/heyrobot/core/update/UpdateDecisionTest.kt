@@ -169,8 +169,8 @@ class UpdateDecisionTest {
     private val robotKey = "11".repeat(32)
     private val oldKey = "22".repeat(32)
     private val otherKey = "33".repeat(32)
-    private val installed = ApkFacts("app.heyrobot", 45, "0.4.5", listOf(robotKey), listOf(robotKey), false)
-    private fun apk(pkg: String? = "app.heyrobot", code: Long = 46, name: String? = "0.4.6", signers: List<String> = listOf(robotKey),
+    private val installed = ApkFacts("ai.robot_app", 45, "0.4.5", listOf(robotKey), listOf(robotKey), false)
+    private fun apk(pkg: String? = "ai.robot_app", code: Long = 46, name: String? = "0.4.6", signers: List<String> = listOf(robotKey),
                     lineage: List<String> = listOf(robotKey), multiple: Boolean = false) = ApkFacts(pkg, code, name, signers, lineage, multiple)
 
     @Test fun theApksChecks() {
@@ -178,7 +178,11 @@ class UpdateDecisionTest {
         assertEquals(ArchiveVerdict.OK, ArchiveCheck.check(installed, apk(), v6))
         assertEquals(ArchiveVerdict.NOT_AN_APK, ArchiveCheck.check(installed, null, v6))
         assertEquals(ArchiveVerdict.NOT_AN_APK, ArchiveCheck.check(installed, apk(pkg = null), v6))
-        assertEquals(ArchiveVerdict.WRONG_PACKAGE, ArchiveCheck.check(installed, apk(pkg = "app.heyrobot.debug"), v6))
+        assertEquals(ArchiveVerdict.WRONG_PACKAGE, ArchiveCheck.check(installed, apk(pkg = "ai.robot_app.debug"), v6))
+        // 1.0's app ID; 0.9's (app.heyrobot) is another app, both ways: 0.9 refuses 1.0's APK just so.
+        assertEquals("ai.robot_app", ArchiveCheck.PACKAGE)
+        assertEquals(ArchiveVerdict.WRONG_PACKAGE, ArchiveCheck.check(installed, apk(pkg = "app.heyrobot"), v6))
+        assertEquals(ArchiveVerdict.WRONG_PACKAGE, ArchiveCheck.check(installed.copy(packageName = "app.heyrobot"), apk(), v6))
         assertEquals(ArchiveVerdict.WRONG_PACKAGE, ArchiveCheck.check(installed, apk(pkg = "com.evil"), v6))
         // The APK must be the release's version...
         assertEquals(ArchiveVerdict.WRONG_VERSION, ArchiveCheck.check(installed, apk(name = "0.4.7"), v6))

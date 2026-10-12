@@ -18,8 +18,8 @@ class NearbyTest {
         assertFalse(url.contains("45.508") || url.contains("73.587"))
         assertTrue(Nearby.searchUrl("pharmacie", 45.5, -73.6, 0.1).contains("viewbox=-73.70,45.60,-73.50,45.40"))
         // Nominatim's usage policy: a User-Agent naming the app (never the phone), and OpenStreetMap credited on the card.
-        assertEquals("Robot/0.4.0 (app.heyrobot; Android voice assistant, GPL-3.0)", Nearby.userAgent("0.4.0"))
-        assertEquals("Robot/0 (app.heyrobot; Android voice assistant, GPL-3.0)", Nearby.userAgent("(;)"))
+        assertEquals("Robot/0.4.0 (ai.robot_app; Android voice assistant, GPL-3.0)", Nearby.userAgent("0.4.0"))
+        assertEquals("Robot/0 (ai.robot_app; Android voice assistant, GPL-3.0)", Nearby.userAgent("(;)"))
         assertEquals("Data © OpenStreetMap contributors, ODbL", Nearby.ATTRIBUTION)
         assertEquals(1_000L, Nearby.MIN_GAP_MS)
         assertEquals(listOf(0.02, 0.1), Nearby.BOXES)

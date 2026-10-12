@@ -1,5 +1,6 @@
 package app.heyrobot.core.update
 
+import app.heyrobot.core.AppId
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -138,7 +139,12 @@ data class ApkFacts(
 enum class ArchiveVerdict { OK, NOT_AN_APK, WRONG_PACKAGE, WRONG_VERSION, NOT_NEWER, UNSIGNED, OTHER_SIGNER }
 
 object ArchiveCheck {
-    const val PACKAGE = "app.heyrobot"
+    /**
+     * 1.0: [AppId.PACKAGE]. Robot 0.9 (app.heyrobot) refuses 1.0's APK as WRONG_PACKAGE ("The downloaded app isn't Robot, so
+     * it won't be installed.") and bars it; 0.9 can't be changed, so README's "Moving from 0.9 to 1.0" and the release
+     * notes, which 0.9 shows before it downloads, say to install 1.0 beside it.
+     */
+    const val PACKAGE = AppId.PACKAGE
 
     /**
      * The downloaded APK ([apk], null when Android couldn't read it) against the installed Robot: the same package, the

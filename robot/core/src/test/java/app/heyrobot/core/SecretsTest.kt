@@ -67,7 +67,7 @@ class SecretsTest {
     }
 
     @Test fun theReasonIsTheClassNeverTheMessage() {
-        assertEquals(SecretRead.Unavailable("KeyStoreException"), SecretReads.classify(KeyStoreException("/data/user/0/app.heyrobot/files/robot/claude_key.bin")))
+        assertEquals(SecretRead.Unavailable("KeyStoreException"), SecretReads.classify(KeyStoreException("/data/user/0/ai.robot_app/files/robot/claude_key.bin")))
         assertEquals(SecretRead.Invalidated("AEADBadTagException"), SecretReads.classify(AEADBadTagException("sk-ant-api03-abc")))
         // A decrypted secret never shows in a log line or a crash text either.
         val present = SecretRead.Present("sk-ant-api03-secret")

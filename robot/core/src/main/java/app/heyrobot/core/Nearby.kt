@@ -264,10 +264,11 @@ object Nearby {
 
     /**
      * Nominatim's usage policy: a User-Agent that identifies the application. The app, its version ([version], the
-     * build's versionName) and where it comes from; nothing about the phone or the person.
+     * build's versionName), its app ID ([AppId]; app.heyrobot before 1.0) and where it comes from; nothing about the phone
+     * or the person.
      */
     fun userAgent(version: String): String =
-        "Robot/${version.filter { it.isLetterOrDigit() || it == '.' }.take(20).ifEmpty { "0" }} (app.heyrobot; Android voice assistant, GPL-3.0)"
+        "Robot/${version.filter { it.isLetterOrDigit() || it == '.' }.take(20).ifEmpty { "0" }} (${AppId.PACKAGE}; Android voice assistant, GPL-3.0)"
 
     /**
      * [query] may go to Nominatim: a kind of place or a name ("pharmacy", "Tim Hortons", "7-Eleven"), at most 6 words and 60

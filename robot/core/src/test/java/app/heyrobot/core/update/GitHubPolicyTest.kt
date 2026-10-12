@@ -93,7 +93,7 @@ class GitHubPolicyTest {
         assertEquals(Hop.Refuse(RedirectRefusal.HOST_NOT_ALLOWED), GitHubHosts.redirect(api, "//evil.example/x", 1))
         assertEquals(Hop.Refuse(RedirectRefusal.MALFORMED), GitHubHosts.redirect(api, "https://objects.githubusercontent.com/a b", 1))
         assertEquals(Hop.Refuse(RedirectRefusal.MALFORMED), GitHubHosts.redirect(api, "https://objects.githubusercontent.com\\@evil/", 1))
-        assertEquals(Hop.Refuse(RedirectRefusal.NOT_HTTPS), GitHubHosts.redirect(api, "file:///data/data/app.heyrobot/files/x", 1))
+        assertEquals(Hop.Refuse(RedirectRefusal.NOT_HTTPS), GitHubHosts.redirect(api, "file:///data/data/ai.robot_app/files/x", 1))
         assertTrue(GitHubHosts.redirect(api, "https://objects.githubusercontent.com/x", GitHubHosts.MAX_REDIRECTS) is Hop.Follow)
         assertEquals(Hop.Refuse(RedirectRefusal.TOO_MANY), GitHubHosts.redirect(api, "https://objects.githubusercontent.com/x", GitHubHosts.MAX_REDIRECTS + 1))
         assertEquals(5, GitHubHosts.MAX_REDIRECTS)

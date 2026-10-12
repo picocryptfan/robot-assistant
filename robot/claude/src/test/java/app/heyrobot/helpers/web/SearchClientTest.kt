@@ -58,7 +58,7 @@ class SearchClientTest {
         val req = server.takeRequest(5, TimeUnit.SECONDS)!!
         assertEquals("/search?q=who%20won%20the%20stanley%20cup&format=json&safesearch=1&pageno=1&language=en", req.path)
         // 1.0: Robot's published contact, the same for every Robot (never you or your phone).
-        assertEquals("Robot/0.9.0 (app.heyrobot; Android voice assistant; hey@robot-app.ai)", req.getHeader("User-Agent"))
+        assertEquals("Robot/0.9.0 (ai.robot_app; Android voice assistant; hey@robot-app.ai)", req.getHeader("User-Agent"))
         assertNull(req.getHeader("Cookie"))
         // JSON off in settings.yml: SearXNG's 403 says how to fix it.
         server.enqueue(MockResponse().setResponseCode(403).setBody("Forbidden"))

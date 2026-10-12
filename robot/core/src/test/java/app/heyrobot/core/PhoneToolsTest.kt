@@ -47,7 +47,7 @@ class PhoneToolsTest {
     }
 
     @Test fun robotIsNamedAsNeededAmongTheLargestApps() {
-        val line = PhoneStatus.appsLine(listOf(AppSize(FreeUp.ROBOT_LABEL, 4_600_000_000, 1_000_000, "app.heyrobot"), AppSize("Signal", 12_300_000_000, 0)))
+        val line = PhoneStatus.appsLine(listOf(AppSize(FreeUp.ROBOT_LABEL, 4_600_000_000, 1_000_000, "ai.robot_app"), AppSize("Signal", 12_300_000_000, 0)))
         assertEquals("Signal 12 GB, Robot (models, don't clear) 4.6 GB", line)
     }
 

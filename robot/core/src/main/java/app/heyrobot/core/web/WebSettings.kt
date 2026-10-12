@@ -1,5 +1,6 @@
 package app.heyrobot.core.web
 
+import app.heyrobot.core.AppId
 import app.heyrobot.core.LogCode
 import org.json.JSONObject
 
@@ -320,11 +321,12 @@ object WebUserAgent {
     val CONTACT: String? = "hey@robot-app.ai"
 
     /**
-     * The honest User-Agent for the search APIs and Wikipedia: "Robot/0.7.0 (app.heyrobot; Android voice assistant)",
-     * with "; <contact>" when there is one. Nothing about the phone or the person.
+     * The honest User-Agent for the search APIs and Wikipedia: "Robot/0.7.0 (ai.robot_app; Android voice assistant)",
+     * with "; <contact>" when there is one; Robot's app ID ([AppId], app.heyrobot before 1.0). Nothing about the phone or
+     * the person.
      */
     fun api(version: String, contact: String? = CONTACT): String =
-        "Robot/${version.filter { it.isLetterOrDigit() || it == '.' }.take(20).ifEmpty { "0" }} (app.heyrobot; Android voice assistant" +
+        "Robot/${version.filter { it.isLetterOrDigit() || it == '.' }.take(20).ifEmpty { "0" }} (${AppId.PACKAGE}; Android voice assistant" +
             (contact?.trim()?.takeIf { it.isNotEmpty() }?.let { "; $it" } ?: "") + ")"
 
     /** A generic mobile User-Agent for page fetches (the design's proposal for open question 2). */

@@ -38,7 +38,11 @@ object RecognizerRepair {
         else -> Decision.WRITE
     }
 
-    /** "app.heyrobot/.assistant.X" and "app.heyrobot/app.heyrobot.assistant.X" are the same component. */
+    /**
+     * "a.b/.X" and "a.b/a.b.X" are the same component (a class name starting with "." is in the package, as Android reads
+     * it). 1.0: Robot's package (ai.robot_app) and its classes' package (app.heyrobot) differ, so "ai.robot_app/.assistant.X"
+     * would name a class that doesn't exist: [AdbFixes.RECOGNIZER] is written in full.
+     */
     fun same(a: String?, b: String?): Boolean {
         fun full(s: String?): String? {
             val t = s?.trim()?.takeIf { it.isNotEmpty() } ?: return null
@@ -78,8 +82,10 @@ data class AdbFix(
 enum class AdbFixState { APPLIED, NOT_APPLIED, NEEDS_NEWER }
 
 object AdbFixes {
-    const val PACKAGE = "app.heyrobot"
-    const val RECOGNIZER = "app.heyrobot/.assistant.RobotRecognitionService"
+    /** 1.0: [AppId.PACKAGE] (0.9's grants were for `app.heyrobot` and don't carry over to it). */
+    const val PACKAGE = AppId.PACKAGE
+    /** The package, then the class (whose own package stays `app.heyrobot`), as Android flattens a component. */
+    const val RECOGNIZER = "$PACKAGE/app.heyrobot.assistant.RobotRecognitionService"
 
     const val HEADER = "Some things Android only lets a computer change. Each fix below is done once, with adb. " +
         "On the phone: Settings › About phone, tap Build number seven times; then Settings › System › Developer options, turn on " +

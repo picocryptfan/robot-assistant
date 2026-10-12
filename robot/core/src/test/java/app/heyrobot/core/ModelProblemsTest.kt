@@ -154,8 +154,8 @@ class ModelProblemsTest {
 
     /** Paths in Android's free text never name a file of yours: only libraries and Robot's own model files keep a name. */
     @Test fun scrubKeepsNoPathOfYours() {
-        assertEquals("crash in …/liblitertlm_jni.so", ProblemReport.scrub("crash in /data/app/~~x==/app.heyrobot-y==/lib/arm64/liblitertlm_jni.so"))
-        assertEquals("open …/gemma-4-E2B-it.litertlm failed", ProblemReport.scrub("open /storage/emulated/0/Android/data/app.heyrobot/files/gemma-4-E2B-it.litertlm failed"))
+        assertEquals("crash in …/liblitertlm_jni.so", ProblemReport.scrub("crash in /data/app/~~x==/ai.robot_app-y==/lib/arm64/liblitertlm_jni.so"))
+        assertEquals("open …/gemma-4-E2B-it.litertlm failed", ProblemReport.scrub("open /storage/emulated/0/Android/data/ai.robot_app/files/gemma-4-E2B-it.litertlm failed"))
         // A name with spaces in shared storage: the rest of the text goes with it.
         assertEquals("open …", ProblemReport.scrub("open /storage/emulated/0/Download/Anna's tax return.pdf failed"))
         assertEquals("…", ProblemReport.scrub("/sdcard/DCIM/Camera/IMG_2026.jpg"))
@@ -181,7 +181,7 @@ class ModelProblemsTest {
         ).reversed()
         val p = ModelProblem(t + 4_000, BrainModel.GENERAL, ModelBackend.GPU, ProblemStage.WRITING, null, BrainModel.GENERAL, ModelBackend.CPU,
             2_100_000_000L, 7_500_000_000L, false, 12345)
-        val exit = ExitFacts(t + 4_000, 12345, 5, "CRASH_NATIVE", 11, "crash in /data/app/~~a==/app.heyrobot-b==/lib/arm64/liblitertlm_jni.so " +
+        val exit = ExitFacts(t + 4_000, 12345, 5, "CRASH_NATIVE", 11, "crash in /data/app/~~a==/ai.robot_app-b==/lib/arm64/liblitertlm_jni.so " +
             "reading /storage/emulated/0/Documents/jennifer-smith-diary.txt", 100, 1_900_000, 2_400_000)
         val facts = ReportFacts("0.4.7", 47, Phone("Google", "Pixel 9a", "Google", "Tensor G4", 7_500_000_000L), "17 (SDK 37)",
             "google/tegu/tegu:17/CP3A.261005.005/2026100201:user/release-keys", 2_588_147_712L, listOf(exit), log)
@@ -193,7 +193,7 @@ class ModelProblemsTest {
             "Model loaded: Fast (Gemma 4 E2B, general build) on the GPU", "The GPU failed for Fast", "Nothing here was sent anywhere")) {
             assertTrue(w, text.contains(w))
         }
-        for (w in listOf("jennifer", "Jennifer", "Secrète", "Montréal", "diary", "/storage", "/data/app", "app.heyrobot-b")) assertFalse(w, text.contains(w))
+        for (w in listOf("jennifer", "Jennifer", "Secrète", "Montréal", "diary", "/storage", "/data/app", "ai.robot_app-b")) assertFalse(w, text.contains(w))
         assertFalse(personal.wakePhrases.any { text.contains(it.text) })
         // Your own file: neither its name nor its hash.
         val own = ProblemReport.text(p.copy(model = BrainModel.OWN, backend = ModelBackend.CPU, then = BrainModel.GENERAL), facts.copy(fileBytes = 1_234_567), t, utc)

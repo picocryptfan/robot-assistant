@@ -18,9 +18,9 @@ class ShizukuFixesTest {
     private val ready = TermuxCheck(TermuxStatus.READY, TermuxSource.F_DROID, TermuxIdentity.F_DROID, "0.118.3", 1002, 1)
 
     @Test fun eachFixAsRishRunsIt() {
-        assertEquals("rish -c 'settings put secure voice_recognition_service app.heyrobot/.assistant.RobotRecognitionService'",
+        assertEquals("rish -c 'settings put secure voice_recognition_service ai.robot_app/app.heyrobot.assistant.RobotRecognitionService'",
             ShizukuPath.command("recognizer"))
-        assertEquals("rish -c 'pm grant app.heyrobot android.permission.WRITE_SECURE_SETTINGS'", ShizukuPath.command("repair"))
+        assertEquals("rish -c 'pm grant ai.robot_app android.permission.WRITE_SECURE_SETTINGS'", ShizukuPath.command("repair"))
         for (fix in AdbFixes.ALL) {
             val lines = ShizukuPath.rishLines(fix)!!
             assertEquals(fix.commands.size, lines.size)

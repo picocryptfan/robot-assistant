@@ -18,12 +18,14 @@ class AppCrashTest {
         AppExit(process, ExitFacts(time, pid, reason, "R$reason", 0, null, 100, 1024, 2048, crash))
 
     @Test fun processNames() {
-        assertEquals("main", AppCrash.processOf("app.heyrobot", "app.heyrobot"))
-        assertEquals("voice", AppCrash.processOf("app.heyrobot:voice", "app.heyrobot"))
-        assertEquals("brain", AppCrash.processOf("app.heyrobot:brain", "app.heyrobot"))
-        assertNull(AppCrash.processOf("app.heyrobotx", "app.heyrobot"))
-        assertNull(AppCrash.processOf("org.example", "app.heyrobot"))
-        assertNull(AppCrash.processOf(null, "app.heyrobot"))
+        assertEquals("main", AppCrash.processOf("ai.robot_app", "ai.robot_app"))
+        assertEquals("voice", AppCrash.processOf("ai.robot_app:voice", "ai.robot_app"))
+        assertEquals("brain", AppCrash.processOf("ai.robot_app:brain", "ai.robot_app"))
+        assertNull(AppCrash.processOf("ai.robot_appx", "ai.robot_app"))
+        assertNull(AppCrash.processOf("org.example", "ai.robot_app"))
+        assertNull(AppCrash.processOf(null, "ai.robot_app"))
+        // 0.9 (app.heyrobot), installed beside 1.0, is another app.
+        assertNull(AppCrash.processOf("app.heyrobot:voice", "ai.robot_app"))
     }
 
     /** Only the app's and the assistant's crashes and "not responding" count, newer than the last one told; the newest wins. */
