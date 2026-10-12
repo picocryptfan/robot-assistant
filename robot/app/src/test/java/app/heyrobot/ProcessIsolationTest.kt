@@ -64,9 +64,11 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/assistant/TermuxResultReceiver.kt"), usersOf(Regex("""\bTermuxResultReceiver\b""")))
         assertTrue(code(File(java("app"), "app/heyrobot/assistant/TermuxResultReceiver.kt")).contains("Intent(ctx, TermuxResultReceiver::class.java)") &&
             File(java("app"), "app/heyrobot/assistant/TermuxResultReceiver.kt").readText().contains("PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_MUTABLE"))
-        assertEquals(listOf("app/assistant/TermuxResultReceiver.kt", "app/assistant/TermuxRunner.kt", "app/assistant/TermuxTool.kt"),
-            usersOf(Regex("""\bTermuxRunner\b""")))
-        assertEquals(listOf("app/ui/MainActivity.kt"), usersOf(Regex("""PERMISSION_RUN_COMMAND\)\)|launch\(arrayOf\([^)]*PERMISSION_RUN_COMMAND""")))
+        assertEquals(listOf("app/assistant/TermuxRunner.kt", "app/assistant/TermuxTool.kt"), usersOf(Regex("""\bTermuxRunner\b""")))
+        // Asked for by MainActivity alone (Settings › Termux's Allow); the main process only checks that it is held.
+        assertTrue(File(java("app"), "app/heyrobot/ui/MainActivity.kt").readText().contains("launch(arrayOf(app.heyrobot.core.termux.TermuxIntents.PERMISSION_RUN_COMMAND))"))
+        assertEquals(listOf("app/sys/TermuxFiles.kt", "app/ui/MainActivity.kt", "core/core/termux/TermuxIntents.kt"),
+            ours.filter { it.value.readText().contains("PERMISSION_RUN_COMMAND") }.keys.sorted())
         assertEquals(listOf("app/assistant/TermuxPanel.kt", "app/assistant/TermuxTool.kt", "app/assistant/VoiceHub.kt", "app/assistant/PanelActions.kt",
             "app/assistant/PanelController.kt").sorted(), usersOf(Regex("""\bTermux(Tool|Panel)\b""")).filter { !it.endsWith("TermuxResultReceiver.kt") && !it.endsWith("TermuxRunner.kt") })
         // Settings › Termux only asks the voice process for its fixed set-up runs (Cmd.TERMUX), never a command.
@@ -76,7 +78,8 @@ class ProcessIsolationTest {
         // Content-free logs: no RLog field named for a command's parts, and the label Termux logs is "Robot".
         val termux = ours.filterKeys { it.contains("/termux/") || Regex("""/Termux[A-Za-z]*\.kt$""").containsMatchIn(it) }
         assertTrue(termux.keys.toString(), termux.size >= 15)
-        assertEquals(emptyList<String>(), usersOf(Regex("""RLog\.[iw]\([^\n]*"(command|cmd|args|argv|arguments|name|script|path|output|stdout|stderr|errmsg|text)"\s+to"""), termux))
+        val leaky = Regex("""RLog\.[iw]\([^\n]*"(command|cmd|args|argv|arguments|name|script|path|output|stdout|stderr|errmsg|text)"\s+to""")
+        assertEquals(emptyList<String>(), termux.filter { leaky.containsMatchIn(withoutComments(it.value)) }.keys.toList())
         assertTrue(File(java("core"), "app/heyrobot/core/termux/TermuxIntents.kt").readText().contains("const val LABEL = \"Robot\""))
     }
 

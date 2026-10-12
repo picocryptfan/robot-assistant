@@ -131,7 +131,8 @@ private const val OUTPUT_LINES = 12
 fun TermuxCard(a: ActionView, t: TermuxCardView, onConfirm: ((String, Boolean) -> Unit)?, change: ((String, TermuxCardChange) -> Unit)?, modifier: Modifier = Modifier) {
     val c = MaterialTheme.colorScheme
     val classic = LocalLook.current == LookStyle.CLASSIC
-    val waiting = a.status == ActionStatus.PENDING && onConfirm != null
+    // Waiting for Run (not once it runs: the card stays the turn's pending one until the result is in).
+    val waiting = a.status == ActionStatus.PENDING && onConfirm != null && !t.running
     var editing by rememberSaveable(a.id) { mutableStateOf(false) }
     var text by rememberSaveable(a.id) { mutableStateOf(t.edited ?: t.command) }
     var limit by rememberSaveable(a.id) { mutableStateOf(t.limitSeconds) }

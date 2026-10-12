@@ -38,7 +38,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The Settings tab: fourteen rows, each with its state under the title, each opening its page. */
+/** The Settings tab: fifteen rows, each with its state under the title, each opening its page. */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = PHONE)
@@ -63,6 +63,7 @@ class SettingsRootTest {
             "Weather" to "openPage ${Page.Settings(SettingsRoutes.WEATHER)}",
             "Helpers" to "openPage ${Page.Helpers}",
             "Conversation" to "openPage ${Page.ConversationSettings}",
+            "Termux" to "openPage ${Page.Settings(SettingsRoutes.TERMUX)}",
             "Model" to "openTab ${Tab.MODEL}",
             "History" to "openPage ${Page.Settings(SettingsRoutes.HISTORY)}",
             "Display" to "openPage ${Page.Settings(SettingsRoutes.DISPLAY)}",
@@ -98,6 +99,11 @@ class SettingsRootTest {
             Snapshot(phone = PIXEL_9A, gpuFailure = GpuFailure(BrainModel.GENERAL, 1L, ProblemStage.LOADING, null))))
         assertEquals("Live words on", conversationSummary(s))
         assertEquals("Claude · Ask first", helpersSummary(s, facts()))
+        // 0.9: Settings › Termux (its own file), off by default.
+        val t = app.heyrobot.core.termux.TermuxSettings()
+        assertEquals("Off", termuxSummary(t, 2))
+        assertEquals("On · 2 scripts", termuxSummary(t.copy(enabled = true), 2))
+        assertEquals("On · commands ask first", termuxSummary(t.copy(enabled = true), 0))
         open(s)
         rule.onNodeWithText("Wake word").assert(hasText("On · “hey robot” and 2 others"))
         rule.onNodeWithText("Weather").assert(hasText("Home: Montreal"))
