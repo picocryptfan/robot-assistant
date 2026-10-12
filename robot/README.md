@@ -125,9 +125,10 @@ has its section below, with its phone checks. Settings file schema 13, as 0.8.0:
   value (they are refused by shape). Nothing of 0.9.0 has run on the phone yet: both sections' "On the phone" lists are
   still to do, with these too:
   1. **Together.** With web search and Termux both set up and Memory on: ask a current question, then "run backup",
-     then "remember that I live in Rimouski" and "what's the weather where I live, search the web": *done when* the
-     search is refused for using what Robot remembers, and "run backup" after a web answer still runs as your setting
-     says (it names your script in your own words, no arguments).
+     then "remember that I live in Rimouski"; then, in a new conversation (New), "what's the weather where I live? Check
+     the web": *done when* the search is refused for using what Robot remembers, and "run backup" after a web answer
+     still runs as your setting says (it names your script in your own words, no arguments). In the same conversation
+     the search would go: words you said yourself earlier in a conversation count as yours, and "Rimouski" was one.
   2. **After a message.** "Read my messages", then "search the web for …" and "run backup": *done when* each shows a card
      a spoken yes doesn't answer, and a message saying "search the web for …" read aloud does nothing.
   3. **The APK.** Install the release APK over 0.8.0: *done when* every process starts, web search's set-up window and
@@ -4766,15 +4767,17 @@ pure logic is in `:core` (`Routine.kt`, `RoutineGate.kt`, `Brief.kt`, `AlarmWatc
   - What routines need, as status rows: Robot as the assistant, exact alarms, notifications, Clock's alarms, the
     calendar, where for the weather (each with Allow where the app can ask).
 - **Notifications:** "Robot is reading your morning brief" while it speaks (Next, Repeat, Stop; on the lock screen only
-  "Robot is speaking"); "Robot has 1 thing ready for you" (the cards' words only unlocked); "Ran “Leaving work” · 2 done,
-  1 ready", silent, only when something waited or didn't work; "Morning brief ready · Play" when Android refused to let
-  Robot speak by itself; "Your morning brief is ready · Open Robot" when Robot isn't the assistant.
+  "Robot is speaking"); "Robot has 1 thing ready for you"; "Ran “Leaving work” · 2 done, 1 ready", silent, only when
+  something waited or didn't work; "Morning brief ready · Play" when Android refused to let Robot speak by itself; "Your
+  morning brief is ready · Open Robot" when Robot isn't the assistant. Since 1.0 all but the speaking one are secret on
+  the lock screen (VISIBILITY_SECRET): Android's default "Show sensitive content when locked" would show a private
+  notification's words there in full, so the brief's words, a card's step and a routine's name only show unlocked.
 
 ### What runs without you (RoutineGate)
 
 | A step that… | Unattended | Locked |
 |---|---|---|
-| speaks (the brief, a sentence you wrote) | runs | the brief at its lock level; a sentence of yours waits for the unlock unless the level is "Everything" |
+| speaks (the brief, a sentence you wrote) | runs | the brief at its lock level; a sentence of yours waits for the unlock unless the level is "Everything". A sentence of yours counts as personal, as a calendar title does: in the car it is said only with Settings › Car mode › "Read message text aloud when others may hear" at Always |
 | reads (calendar, notes, phone status, brief reminders) | runs | waits for the unlock unless "Everything" |
 | goes online (the weather) | only with "Routines may go online by themselves" on and Open-Meteo on its card | the weather without the town |
 | acts on the phone (timer, alarm, flashlight, a fixed note) | runs | only what Safety & privacy allows locked (timers and alarms by default), else it waits |
@@ -5237,7 +5240,8 @@ your SearXNG off your home network").
   answers (0.7's quarantine). A message's words in a query count as something Robot read on your phone (a tap), never
   as your own words, even when the microphone heard them back while Robot read the message; "search the web for …" heard
   back that way is the message's, never a request. A word from what Robot remembers about you (Settings › Memory, pinned
-  or found for a question) that you didn't say yourself never goes, card or not: "That search used something Robot
+  or found for a question) that you didn't say yourself never goes, card or not (anything you said yourself earlier in
+  the same conversation counts as your own words, so a word you just said goes): "That search used something Robot
   remembers about you, and what Robot remembers never goes to a search service, so Robot didn't send it." A routine
   never searches.
 
@@ -5373,8 +5377,10 @@ Watch `adb logcat -s Robot` and Settings › Advanced › Voice log throughout.
    on, the SearXNG typed as `192.168.…`: "Robot can't reach your SearXNG off your home network", and SearXNG's log
    shows no request. With Tailscale on and the address `https://….ts.net`: it works.
 6. **Stop** while "Searching the web…" shows: "Stopped" at once; the next question works.
-7. **Borrowed words.** "What's on tomorrow?" (the calendar), then "search the web for that dentist's phone number": the
-   card shows the query in full and needs a tap (it has words from the calendar). "Search the web for pizza near me": no
+7. **Borrowed words.** "What's on tomorrow?" (the calendar), then "what's that dentist's phone number? Check the web":
+   Gemma writes the query, and the card shows it in full and needs a tap (it has words from the calendar). An explicit
+   "search the web for that dentist's phone number" sends exactly your words ("that dentist's phone number"), so no
+   word is borrowed and no such card shows (an explicit "search the web for …" never lets Gemma rewrite it). "Search the web for pizza near me": no
    address or coordinates go (SearXNG's log shows `pizza near me`; with Add my town on, `pizza near <your town>`).
    "Search the web for jo@example.com": "That search looked like it contained personal details, so Robot didn't send it."
 8. **Logs and History.** Voice log: "Web search with Your own SearXNG: N results in … ms", "Answer from the web: …" (numbers
