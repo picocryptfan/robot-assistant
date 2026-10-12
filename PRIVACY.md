@@ -1,14 +1,14 @@
 # Robot's privacy policy
 
 > **Draft for review.** Brought up to date with Robot 0.9.0 and the 1.0 hardening (conversation mode, helpers, memory,
-> messages, routines, headset and car mode, web search, Termux, the updater and feedback).
+> messages, routines, headset and car mode, web search, Termux and its update check, the updater and feedback).
 
 ## The short version
 
 Robot does not collect anything about you. There is no account, no analytics, no ads, no crash reporting and no tracking.
 The people who make Robot receive nothing from your phone. Robot goes online only for the things listed below, and only
-when you start them, except the daily check for updates and, on Wi-Fi, the download of an update it found, which you
-can turn off.
+when you start them, except the daily check for updates and, on Wi-Fi, the download of an update it found, and, once
+you set up Termux, a weekly check for a newer Termux, which you can each turn off.
 
 ## What stays on your phone
 
@@ -51,15 +51,19 @@ can turn off.
   headsets and cars you add (their Bluetooth name and address, kept so Robot knows them again) stay in Robot's private
   storage. New messages you ask Robot to announce in the headset or the car are read aloud there, from memory, never
   stored.
-- **Termux** (off until you set it up): your scripts' names and settings stay in Robot's settings. A command Robot
+- **Termux** (off until you set it up): your scripts' names and settings stay in Robot's settings, with the Termux you
+  trusted (its signing key's fingerprint, version and install time, so Robot notices when it changes). A command Robot
   sends goes to the Termux app on the same phone, which runs it with Termux's own permissions; Robot itself sends
-  nothing online for it (what your script or command does, including going online, is yours). The output is shown,
-  cleaned of secrets; History never keeps a command.
+  nothing online for it (what your script or command does, including going online, is yours) except the weekly check
+  for a newer Termux (9 below). The output is shown, cleaned of secrets; History never keeps a command. The ADB fixes
+  Robot can send through Shizuku (Settings › Advanced › ADB fixes) go to Termux the same way, after your tap.
 - **Names learned from Cheogram** (off unless you turn on Settings › People › "Learn names from Cheogram
   notifications"): who messages you in Cheogram (name, address, account), never the messages.
 - **API keys** you add for Claude (or another helper), and the **access token** you may add for a private update
   repository (Settings › About › Updates › Advanced). They are encrypted with a key that never leaves your phone's secure
   hardware (Android Keystore, AES-GCM), and decrypted only when Robot calls that helper, or GitHub's API for the token.
+  Since 1.0 a helper's or web search key is also compared, on the phone, with a Termux command about to be sent, so one
+  holding it is refused; the update token never is (a command holding a GitHub token is refused by its shape).
 - **Robot's diagnostic logs** (Settings › Voice › Voice log, and Android's log) hold codes and numbers only, never what
   you said or what Robot answered. They stay on the phone; you can copy the Voice log yourself (wake phrases by number)
   or add it to a bug report (below).
@@ -146,6 +150,13 @@ can turn off.
    (Nominatim, as in 3), when a routine or the brief includes it; a routine's card names the service, and one that runs
    by itself goes online only while "Routines may go online by themselves" is on. A routine never searches the web,
    runs Termux or asks a helper.
+9. **Checking for Termux updates** (Settings › Termux › "Check for Termux updates"): once Termux is set up (on by
+   default then; the set-up says so), once a week, and when you tap Check now. Robot asks two addresses and nothing
+   else, over HTTPS: GitHub (api.github.com) for Termux's newest releases, without any token, and F-Droid (f-droid.org)
+   for Termux's entry. Each sees your IP address and Robot's version in the request ("Robot/1.0.0"), no cookie and
+   nothing about you; the answers are compared on the phone with the Termux you have. Robot never downloads or installs
+   Termux or any other app: it tells you to update from your F-Droid app. GitHub and F-Droid handle the requests under
+   their own policies. Turn the switch off and Robot doesn't ask.
 
 Nothing else goes online. You can turn off Robot's Network permission in GrapheneOS: everything on the phone keeps
 working, and the online features above say they can't connect.

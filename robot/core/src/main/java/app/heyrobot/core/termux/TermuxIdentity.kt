@@ -26,12 +26,26 @@ data class TermuxPackage(
     val hasRunCommandService: Boolean = false,
     /** getPermissionInfo("com.termux.permission.RUN_COMMAND").packageName, or null when no app defines it. */
     val permissionOwner: String? = null,
+    /** 1.0, the update lock: PackageInfo.longVersionCode. */
+    val versionCode: Long = 0,
+    /** 1.0, the update lock: PackageInfo.lastUpdateTime (ms), when Android last installed or updated it. */
+    val lastUpdateTime: Long = 0,
 )
+
+/**
+ * 1.0, the update lock: the Termux you trusted, as Settings › Termux recorded it at Trust (TermuxSettings): its version code
+ * and when Android last installed or updated it. A different one pauses every run until you Trust this version.
+ * [testKeyRisk]: "Run anyway, I understand the risk" was chosen for this version of a GitHub build (public test key).
+ */
+data class TrustedVersion(val versionCode: Long, val updatedAt: Long, val testKeyRisk: Boolean = false)
 
 enum class TermuxStatus {
     /** Usable. */
     READY,
-    /** Usable, with the warning that GitHub builds share a public test key. */
+    /**
+     * A GitHub build, signed with the public test key anyone can sign an "update" with. 1.0: Robot runs nothing in it
+     * unless you chose "Run anyway, I understand the risk" for the version you trusted ([TermuxCheck.testKeyRisk]).
+     */
     TEST_KEY,
     NOT_INSTALLED,
     /** No RunCommandService (the Google Play build): no other app can run commands in it. */
@@ -42,13 +56,30 @@ enum class TermuxStatus {
     PERMISSION_TAKEN,
     /** Older than 0.118.0, which fixed a world-readable files vulnerability. */
     TOO_OLD,
-    /** Not the Termux you trusted: reinstalled or replaced. */
+    /** Not the Termux you trusted: reinstalled or replaced by one with another signer. Refused until you set it up again. */
     CHANGED,
+    /**
+     * 1.0, the update lock: the Termux you trusted (its signer), but updated or installed again since (its version code or
+     * the time Android last installed it changed). Paused until you Trust this version.
+     */
+    UPDATED,
 }
 
-data class TermuxCheck(val status: TermuxStatus, val source: TermuxSource?, /** The single signer, normalized, if there is one. */ val signer: String?, val version: String?) {
-    /** Commands may be sent to it (with the set-up checklist's other lines green). */
-    val usable: Boolean get() = status == TermuxStatus.READY || status == TermuxStatus.TEST_KEY
+data class TermuxCheck(val status: TermuxStatus, val source: TermuxSource?, /** The single signer, normalized, if there is one. */ val signer: String?, val version: String?,
+    /** 1.0: the installed package's version code and when Android last installed or updated it (what Trust records). */
+    val versionCode: Long = 0, val updatedAt: Long = 0,
+    /** 1.0: a GitHub build you chose "Run anyway, I understand the risk" for, for the version you trusted. */
+    val testKeyRisk: Boolean = false) {
+    /** Commands may be sent to it (with the set-up checklist's other lines green). 1.0: a test-key build only with "Run anyway". */
+    val usable: Boolean get() = status == TermuxStatus.READY || (status == TermuxStatus.TEST_KEY && testKeyRisk)
+
+    /** 1.0: why Robot runs nothing in it now, though it may be set up: the update lock, another signer or the public test key. */
+    val lock: TermuxLock? get() = when {
+        status == TermuxStatus.UPDATED -> TermuxLock.UPDATED
+        status == TermuxStatus.CHANGED -> TermuxLock.SIGNER
+        status == TermuxStatus.TEST_KEY && !testKeyRisk -> TermuxLock.TEST_KEY
+        else -> null
+    }
 
     /** Settings › Termux's first line: "Termux 0.118.3 from F-Droid", "Termux from Google Play: this version can't…". */
     fun line(fr: Boolean = false): String {
@@ -62,8 +93,7 @@ data class TermuxCheck(val status: TermuxStatus, val source: TermuxSource?, /** 
                 else "Another app defines Termux's permission: uninstall it before trusting Termux."
             TermuxStatus.TOO_OLD -> if (fr) "$name$from est trop ancien : mettez-le à jour vers ${TermuxIdentity.MIN_VERSION} ou plus récent."
                 else "$name$from is too old: update it to ${TermuxIdentity.MIN_VERSION} or newer."
-            TermuxStatus.CHANGED -> if (fr) "Termux a été réinstallé ou remplacé. Vérifiez sa provenance, puis Faire confiance à nouveau dans Réglages › Termux."
-                else "Termux was reinstalled or replaced. Check where it came from, then Trust again in Settings › Termux."
+            TermuxStatus.CHANGED -> TermuxFailure.NOT_TRUSTED.text(fr)
             else -> "$name$from"
         }
     }
@@ -113,23 +143,38 @@ object TermuxIdentity {
     /**
      * What Settings › Termux says about [pkg], and whether Robot may use it. [pinned]: the signer recorded at "Trust this
      * Termux" (null before set-up); [pinnedStillSigns]: the system says the pinned certificate is in the package's
-     * signing lineage (hasSigningCertificate), so a key rotation isn't a replacement.
+     * signing lineage (hasSigningCertificate), so a key rotation isn't a replacement. [trusted] (1.0, the update lock): the
+     * version recorded with the pin; another version code or install time is [TermuxStatus.UPDATED]. The app always
+     * passes it once a signer is pinned (a 0.9 file without one reads as version 0: Trust this version).
      */
-    fun check(pkg: TermuxPackage, pinned: String? = null, pinnedStillSigns: Boolean = false): TermuxCheck {
+    fun check(pkg: TermuxPackage, pinned: String? = null, pinnedStillSigns: Boolean = false, trusted: TrustedVersion? = null): TermuxCheck {
         if (!pkg.installed) return TermuxCheck(TermuxStatus.NOT_INSTALLED, null, null, null)
         val signer = pkg.signers.mapNotNull { normalize(it) }.distinct().singleOrNull()?.takeIf { pkg.signers.size == 1 }
         val source = if (signer == null) TermuxSource.UNKNOWN else source(signer)
-        fun result(s: TermuxStatus) = TermuxCheck(s, source, signer, pkg.versionName)
+        val pinnedVersion = trusted?.takeIf { pinned != null }
+        fun result(s: TermuxStatus) = TermuxCheck(s, source, signer, pkg.versionName, pkg.versionCode, pkg.lastUpdateTime,
+            testKeyRisk = s == TermuxStatus.TEST_KEY && pinnedVersion?.testKeyRisk == true)
         if (pkg.permissionOwner != null && pkg.permissionOwner != TermuxIntents.PACKAGE) return result(TermuxStatus.PERMISSION_TAKEN)
         if (source == TermuxSource.GOOGLE_PLAY || !pkg.hasRunCommandService || pkg.permissionOwner == null) return result(TermuxStatus.NOT_SUPPORTED)
         val pin = normalize(pinned)
         if (pinned != null && (pin == null || (pin != signer && !pinnedStillSigns))) return result(TermuxStatus.CHANGED)
         if (signer == null) return result(TermuxStatus.UNKNOWN_SIGNER)
         if (!atLeast(pkg.versionName)) return result(TermuxStatus.TOO_OLD)
+        if (pinnedVersion != null && (pinnedVersion.versionCode != pkg.versionCode || pinnedVersion.updatedAt != pkg.lastUpdateTime)) return result(TermuxStatus.UPDATED)
         return result(when (source) {
             TermuxSource.GITHUB -> TermuxStatus.TEST_KEY
             TermuxSource.F_DROID, TermuxSource.TERMUX_DEVS -> TermuxStatus.READY
             else -> if (pin != null) TermuxStatus.READY else TermuxStatus.UNKNOWN_SIGNER
         })
     }
+}
+
+/** 1.0: why Robot runs nothing in the installed Termux now (voice log TERMUX_LOCKED's a). */
+enum class TermuxLock(override val id: Int, override val title: String) : app.heyrobot.core.LogCode {
+    /** Updated or installed again since you trusted it: Trust this version. */
+    UPDATED(1, "Termux changed since you trusted it"),
+    /** Signed by another key than the one you trusted: set it up again. */
+    SIGNER(2, "Termux has another signer"),
+    /** A GitHub build (public test key), without "Run anyway". */
+    TEST_KEY(3, "public test key"),
 }

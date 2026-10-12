@@ -25,9 +25,11 @@ object SecretMask {
 
     /**
      * The prefixes of the keys Robot itself keeps or will keep: Anthropic ("sk-ant-", the Claude key since 0.3.0), and
-     * the helpers' (0.6.0: OpenAI project keys, OpenRouter, xAI, Groq). Never put in a command by Robot or Gemma.
+     * the helpers' (0.6.0: OpenAI project keys, OpenRouter, xAI, Groq). Never put in a command by Robot or Gemma. 1.0: and
+     * GitHub's tokens (the updater's access token is one; the main process alone decrypts it, so the :voice process
+     * refuses it by its shape, not its value).
      */
-    val ROBOT_KEY_PREFIXES: List<String> = listOf("sk-ant-", "sk-proj-", "sk-or-", "xai-", "gsk_")
+    val ROBOT_KEY_PREFIXES: List<String> = listOf("sk-ant-", "sk-proj-", "sk-or-", "xai-", "gsk_", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_")
 
     /** Robot's own secret values shorter than this aren't searched for (they'd match ordinary text). */
     const val MIN_OWN = 8
@@ -49,8 +51,9 @@ object SecretMask {
         Rule("(?<![$KEY_CHARS])AIza[0-9A-Za-z_-]{35}", Kind.API_KEY),
         Rule("(?<![A-Za-z0-9_])(?:sk|rk)_live_[A-Za-z0-9]{16,}", Kind.API_KEY),
         Rule("(?<![A-Za-z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![0-9A-Z])", Kind.API_KEY),
-        Rule("(?<![A-Za-z0-9_])gh[pousr]_[A-Za-z0-9]{30,}", Kind.TOKEN),
-        Rule("(?<![A-Za-z0-9_])github_pat_[A-Za-z0-9_]{22,}", Kind.TOKEN),
+        // 1.0: GitHub's tokens have the shape of the updater's access token, one of Robot's own keys.
+        Rule("(?<![A-Za-z0-9_])gh[pousr]_[A-Za-z0-9]{30,}", Kind.TOKEN, robot = true),
+        Rule("(?<![A-Za-z0-9_])github_pat_[A-Za-z0-9_]{22,}", Kind.TOKEN, robot = true),
         Rule("(?<![$KEY_CHARS])glpat-[$KEY_CHARS]{20,}", Kind.TOKEN),
         Rule("(?<![A-Za-z0-9-])xox[abprs]-[A-Za-z0-9-]{10,}", Kind.TOKEN),
         Rule("(?<![A-Za-z0-9_])hf_[A-Za-z0-9]{30,}", Kind.TOKEN),

@@ -34,7 +34,8 @@ class TermuxIdentityTest {
 
         val github = TermuxIdentity.check(pkg(TermuxIdentity.GITHUB, "0.119.0-beta.3"))
         assertEquals(TermuxStatus.TEST_KEY, github.status)
-        assertTrue(github.usable)
+        // 1.0: nothing runs in a test-key build unless you chose "Run anyway" for it (TermuxLockTest).
+        assertFalse(github.usable)
         assertEquals("Termux 0.119.0-beta.3 from GitHub (public test key: anyone can make an update that installs over it)", github.line())
 
         assertEquals(TermuxStatus.READY, TermuxIdentity.check(pkg(TermuxIdentity.TERMUX_DEVS)).status)
@@ -67,7 +68,7 @@ class TermuxIdentityTest {
         // Not the one you trusted: stop, unless the system says the pinned key is in its signing lineage.
         val changed = TermuxIdentity.check(pkg(TermuxIdentity.GITHUB), pinned = TermuxIdentity.F_DROID)
         assertEquals(TermuxStatus.CHANGED, changed.status)
-        assertEquals("Termux was reinstalled or replaced. Check where it came from, then Trust again in Settings › Termux.", changed.line())
+        assertEquals("Termux was reinstalled or replaced. Check where it came from, then set it up again in Settings › Termux.", changed.line())
         assertEquals(TermuxFailure.NOT_TRUSTED.en, changed.line())
         assertEquals(TermuxFailure.NOT_TRUSTED.fr, changed.line(fr = true))
         assertEquals(TermuxStatus.READY, TermuxIdentity.check(pkg(other), pinned = TermuxIdentity.F_DROID, pinnedStillSigns = true).status)

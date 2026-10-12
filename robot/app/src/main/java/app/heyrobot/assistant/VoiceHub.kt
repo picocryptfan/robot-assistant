@@ -523,7 +523,7 @@ object VoiceHub {
             // 0.8: a new message with "Announce new messages" on (its key and Do Not Disturb's answer only).
             Cmd.MESSAGE_NEW -> i.getStringExtra(Cmd.EXTRA_KEY)?.let { HandsFreeMessages.arrived(it, i.getBooleanExtra(Cmd.EXTRA_DND, false)) }
             // 0.9: Settings › Termux's Test, ~/robot and your scripts (fixed commands; the result receiver is in this process).
-            Cmd.TERMUX -> TermuxTool.setup(app, i.getStringExtra(Cmd.EXTRA_RUN))
+            Cmd.TERMUX -> TermuxTool.setup(app, i.getStringExtra(Cmd.EXTRA_RUN), i.getStringExtra(Cmd.EXTRA_ID))
         }
     }
 }

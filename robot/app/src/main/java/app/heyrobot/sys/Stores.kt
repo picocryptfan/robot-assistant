@@ -197,7 +197,8 @@ object Cmd {
     const val EXTRA_DND = "dnd"
     /**
      * 0.9, Settings › Termux (extra [EXTRA_RUN]: "test", "folder" or "list"): the voice process runs that fixed set-up
-     * command in Termux; what it found comes back in files/robot/termux_status.json.
+     * command in Termux; what it found comes back in files/robot/termux_status.json. 1.0: "shizuku" with [EXTRA_ID], an
+     * ADB fix's id (Settings › Advanced › ADB fixes): that fix's fixed command through Shizuku's rish.
      */
     const val TERMUX = "termux"
 

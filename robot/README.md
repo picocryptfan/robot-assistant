@@ -176,7 +176,7 @@ guide version you last saw, the page Finish later left it on, the version you fi
 | 2 | What Robot can do | Ten examples, each with what you say (and in French where Robot understands it before the model), what happens, "on the phone" or what goes online, and where to turn it on: a transcribed meeting and its summary, the interpreter, memory, messages with a reply in French, a routine and the morning brief, the screen, web search, Termux, car mode, helpers | Settings › About › Setup guide |
 | 3 | Your phone and Robot's brain | This phone and its chip, which Fast it gets (the Tensor G5's TPU build; the Tensor G6's in beta; the general build on the GPU or the CPU), its size and speed; Download (the 200 MB question first) or later | Settings › Model |
 | 4 | Voice | Speech recognition and the voice downloads; the voice (Heart), Play a sample, speed (1.0×) | Settings › Voice |
-| 5 | Opening Robot | The digital assistant and the microphone (Assistant setup's buttons), the corner swipe, "hey robot" (on), only while charging (off), what the lock screen allows; Talk to Robot to try it | Settings › Wake word, Assistant setup |
+| 5 | Opening Robot | The digital assistant and the microphone (Assistant setup's buttons), staying the assistant after a restart (Settings › Advanced › ADB fixes, with a computer or Shizuku; 1.0), the corner swipe, "hey robot" (on), only while charging (off), what the lock screen allows; Talk to Robot to try it | Settings › Wake word, Assistant setup |
 | 6 | How Robot asks first | When Robot asks first (When you didn't ask for it), answer cards by voice (on), the lock screen's actions; Review each action; Back to the defaults when they differ | Settings › Actions, Safety & privacy |
 | 7 | People, texts, email, calendar, notes | Texting app, email app, Allow contacts and the calendar, People (and its .vcf import) | Settings › People, notes and calendar |
 | 8 | Messages | Read my messages (off), notification access, the apps, Announce new messages (off) | Settings › Messages |
@@ -186,7 +186,7 @@ guide version you last saw, the page Finish later left it on, the version you fi
 | 12 | Routines and the morning brief | The brief by itself after your alarm (off; its card first), when it runs and what it says | Settings › Routines |
 | 13 | Headset and car | Headset button opens Robot (on); car mode, set up later | Settings › Headset, Car mode |
 | 14 | Helpers (optional) | What a helper is, what's sent, the budget; set one up later | Settings › Helpers |
-| 15 | Web search and Termux (optional) | What each does and sends; set them up later | Settings › Web search, Termux |
+| 15 | Web search and Termux (optional) | What each does and sends (Termux: the weekly update check, the pause after an update, the GitHub build's test key); set them up later | Settings › Web search, Termux |
 | 16 | Updates and feedback | Check for updates automatically (on), Include test builds (off), Send feedback (hey@robot-app.ai) | Settings › About › Updates, Send feedback |
 | 17 | You're set up | Every feature on or off now with its Settings path (core `GuideSummary`), a privacy recap, "Try saying…" in English and French, four of the examples | |
 
@@ -221,6 +221,102 @@ the summary, Home's and About's rows, and five goldens: What Robot can do (light
    title is announced as a heading, each example and privacy line is read in one stop, and Back, Skip this step and
    Next stay reachable (on two lines).
 8. **Again.** Settings › About › Setup guide after Done: *done when* it opens at Welcome with every choice as you left it.
+
+## Termux updates, the update lock and the Shizuku path (1.0)
+
+Termux's GitHub release APKs are signed with a public test key: anyone can sign an APK that Android accepts as an update
+over a GitHub-build Termux. The F-Droid build is signed with F-Droid's key; the Google Play build can't take commands from
+other apps. Robot already pinned Termux's signer at set-up and checked it before every run; 1.0 adds a version lock, the
+test-key block, an update check and, for the ADB fixes, a way without a computer.
+
+- **Check for Termux updates** (Settings › Termux › Termux updates; on once a Termux is trusted, said in the Trust
+  dialog): once a week (the updater's job service, job `UpdateJobs.TERMUX`, any network) and on **Check now**, the main
+  app's `GitHubClient.publicJson` asks two fixed addresses and nothing else (core `TermuxUpdates`):
+  `https://api.github.com/repos/termux/termux-app/releases?per_page=5` (no token, ever) and
+  `https://f-droid.org/api/v1/packages/com.termux`. HTTPS only (f-droid.org joins the network security config's
+  cleartext-denied domains), no redirect followed, no cookie, `User-Agent: Robot/<version>` as `DownloadPolicy` sets it;
+  each request is made even when the other fails. The page shows the installed Termux (version, source — F-Droid, GitHub
+  public test key, Google Play or an unknown key — and `PackageInfo.lastUpdateTime`), the developers' newest GitHub release
+  (and a newer test version, if any), F-Droid's suggested version, and the verdict: up to date; "Update available —
+  install it from your F-Droid app" (the F-Droid build: F-Droid's suggested version code is newer); "Update available:
+  0.118.3. Robot never downloads or installs apps…" (another build: the developers' release is newer); "a year or more
+  older than the newest release" (the newest release came out a year or more after the installed one, or after you
+  installed it when it isn't among the five listed); or the developers released one F-Droid hasn't built yet. Robot never
+  downloads or installs another app. What came back is kept in `files/robot/termux_updates.json`; the main app's voice
+  log gets `TERMUX_UPDATE_CHECK` (174: the verdict, the source).
+- **The update lock**: Trust this Termux records its signer **and** its version code and `lastUpdateTime` in
+  `termux.json` (`TermuxSettings.trust`). Before each call is prepared and again as it runs (Android's
+  `PACKAGE_REPLACED` doesn't reach a manifest receiver, so Robot checks every time), a different version code or install
+  time is `TermuxStatus.UPDATED`: every run pauses (the Test and the listing too), and Settings › Termux and the next Termux
+  card say "Termux changed to 0.119.0 (F-Droid). Check that you updated it yourself, then tap Trust this version." **Trust
+  this version** records the new one. A 0.9 `termux.json` without a version reads as changed once. A different signer
+  (`CHANGED`) is refused outright: Settings › Termux offers **Set up again**, which forgets the trusted Termux and turns
+  Termux off, and a Test made with the replaced Termux no longer counts. Voice log `TERMUX_LOCKED` (175: `TermuxLock`)
+  and, from Settings, `TERMUX_TRUST` (176: trusted, this version, Run anyway on or off, set up again).
+- **The public test key**: in the GitHub build Robot runs nothing by default ("This Termux is signed with a public test
+  key — anyone can make an 'update' that installs over it. Switch to the F-Droid build (Settings › Termux shows how)."):
+  Settings › Termux shows how to switch (keep what you need from `~`, uninstall Termux and its plugins, install from
+  F-Droid, set it up again) and **Run anyway, I understand the risk** (off; a tap and a confirmation; it holds for the
+  version you trusted, so every new version needs it again). Its tools stay described while it is paused, so a call says
+  why.
+- **Robot's own keys by exact value** (left over from the 1.0 audit): every Termux call passes `ownSecrets` to
+  TermuxPolicy, read in `:voice` just before (`TermuxSecrets`: each helper's key and each web search key, which `:voice`
+  already reads for its helpers and searches), so a command or script argument holding one is refused with "This holds
+  one of Robot's own keys…", whoever wrote it; with "Hide secrets in output" on (the default) the output is masked with
+  them too. Never logged or shown (`TermuxLockGateTest` plants one). The updater's GitHub token is never decrypted in
+  `:voice` (only the main process's `GitHubClient` reads it): instead GitHub's token shapes (`ghp_`, `gho_`, `ghu_`,
+  `ghs_`, `ghr_`, `github_pat_`) now count as the shape of one of Robot's keys, so a command or argument holding one is
+  refused unless you typed it ("This holds what looks like an API key, and you didn't type it…"; typed, it is a tap-only
+  card with its warning). An old 40-hex-digit token has no shape to tell it from a commit hash and isn't caught.
+- **ADB fixes without a computer** (Settings › Advanced › ADB fixes): each fix shows **With a computer (adb)** as before
+  and **Without a computer (Shizuku)**: the same command without `adb shell`, as `rish -c '<command>'` (single-quoted, a
+  `'` inside written `'\''`; core `ShizukuPath`), with Copy. The list says how: install Shizuku (RikkaApps, only from its
+  GitHub releases or IzzyOnDroid, and how to check it's genuine), start it with Wireless debugging (Developer options;
+  Wi-Fi; again after each restart), Shizuku › Use Shizuku in terminal apps › Export files into Termux's home and paste one
+  line in Termux (moves `rish` to `$PREFIX/bin`, names `com.termux` in it, makes the dex read-only), run `rish -c id` once
+  and allow Termux only. It recommends "Let Robot repair that itself" first: with `WRITE_SECURE_SETTINGS` Robot sets its
+  recognizer again by itself after restarts. Safety: Shizuku gives adb's power to every app you authorize in it; authorize
+  only Termux, and stop Shizuku when done.
+- **Run with Shizuku through Termux**: with Termux set up and trusted (not the GitHub build, not paused), each fix's page
+  offers it. Its card (a dialog in Settings, answered only by a tap on Run) shows the exact command; the `:voice` process
+  then sends only that fix's fixed AdbFixes command (`Cmd.TERMUX` "shizuku" with the fix's id; never a command from the
+  intent, the panel or the model), refused on the lock screen, as `TermuxRunKind.SHIZUKU`, and checks the fix again
+  (`RecognizerKeeper`). The page shows how it ended; voice log `TERMUX_ADB_FIX` (177: the fix's number, the outcome, why).
+- **Nothing new in the manifest**: no permission, component or `<queries>` entry (`ProcessIsolationTest`'s identity test
+  and `tools/verify_apk.sh` unchanged but for f-droid.org in the network security config). Settings stay at schema 13:
+  the record and the two switches are in `termux.json`.
+
+**Code and tests.** Core `termux/TermuxIdentity.kt` (`TermuxStatus.UPDATED`, `TermuxLock`, `TrustedVersion`),
+`TermuxSettings.kt` (the record, `testKeyRisk`, `updateCheck`), `TermuxSetup.kt`, `TermuxUpdates.kt` and `ShizukuFixes.kt`;
+the app's `update/TermuxUpdateCheck.kt`, `GitHubClient.publicJson`, `sys/TermuxFiles.kt` (`TermuxUpdateStore`,
+`TermuxWords`), `assistant/TermuxTool.kt`, `TermuxSecrets.kt`, `ui/settings/TermuxSettings.kt` and
+`ui/AdbFixesScreen.kt`. Tests: `TermuxLockTest` (source by digest, version lock and re-trust, signer refusal, test-key
+block and override), `TermuxUpdatesTest` (F-Droid's answer as recorded on 12 Oct 2026, GitHub's in its format with
+Termux's real tags and dates; the verdicts), `ShizukuFixesTest` (the rish forms and quoting, only AdbFixes commands, the
+refusals), `TermuxLockGateTest`, `ShizukuRunTest`, `TermuxSettingsTest`, `AdbFixesTest`, and `ProcessIsolationTest` (no
+token, no download or install in the check, the two addresses, the Shizuku run's order).
+
+**On the phone (Termux updates, the lock and Shizuku):**
+
+1. **Update check.** F-Droid Termux set up and trusted: Settings › Termux › Termux updates › Check now: *done when* it
+   shows the installed version and date, the developers' release and F-Droid's suggestion, and "Up to date"; through a
+   proxy you control, only api.github.com and f-droid.org were asked, with `Robot/<version>` and no cookie.
+2. **Update lock.** Update Termux from the F-Droid app (or reinstall the same APK over it): *done when* "run hello" says
+   "Termux changed to … Trust this version in Settings › Termux.", Settings › Termux shows the same with Trust this
+   version, and after it the script runs again.
+3. **Another signer.** Uninstall Termux, install the GitHub build: *done when* Settings › Termux says another signer and
+   offers Set up again, nothing runs, and after Set up again the checklist asks for Trust and the Test.
+4. **Test key.** With the GitHub build trusted: *done when* every call says the public test key sentence; Run anyway (a
+   confirmation) lets cards show; an update of that build pauses it and Run anyway is off again after Trust this version.
+5. **Own keys.** With a helper's key saved, type "run the command echo <that key>": *done when* it is refused with "This
+   holds one of Robot's own keys…" and `adb logcat -d | grep -c <the key's last 8 characters>` is 0.
+6. **Shizuku.** Install Shizuku from its GitHub releases, start it with Wireless debugging, export rish into Termux's home,
+   paste the line from ADB fixes, run `rish -c id` (allow Termux): *done when* it prints `uid=2000(shell)`. Check that
+   Shizuku's export and the file picker reach Termux's home on Android 17, and that `rish` still names `PKG` for the
+   terminal's package (the line replaces it).
+7. **Run with Shizuku through Termux.** On "Let Robot repair that itself" (not done yet), tap Run with Shizuku through
+   Termux, then Run on its card: *done when* the page says "Done", the status row turns Done, and "Stay the assistant after
+   a restart" turns Done by itself; locked, nothing is sent; with Shizuku stopped, the result says to start it.
 
 ## What's new in 0.9.0
 
@@ -4466,7 +4562,8 @@ Settings › Actions sets each action to "Just do it", "Ask first" or "Off". A s
 At every boot Android keeps a non-system assistant only if Settings.Secure `voice_recognition_service` names an
 installed recognizer (`VoiceInteractionManagerService.initForUser`); empty, it picks a system app and Robot is off.
 GrapheneOS has no screen to set it. Settings › Advanced › **ADB fixes** lists the one-time commands with their status
-and a Copy button. With a computer (Settings › About phone, tap Build number seven times; Developer options, USB
+and a Copy button (1.0: also without a computer, through Shizuku's `rish` in Termux: "Termux updates, the update lock and
+the Shizuku path (1.0)" above). With a computer (Settings › About phone, tap Build number seven times; Developer options, USB
 debugging on):
 
 ```
@@ -5632,7 +5729,9 @@ plants a marker in all four and checks RLog and the voice log.
 permission (`<queries>` names `com.termux`; no `QUERY_ALL_PACKAGES`). F-Droid's build is recommended; GitHub's builds share
 a public test key (said, and Trust asks first); the Google Play build has no `RunCommandService` and can't take commands
 from other apps (said). **Trust this Termux** pins the signer in `termux.json`; before every run Robot checks it again, and
-a replaced Termux stops the agent until you Trust again. Settings › Termux also lists the other apps Robot can see that
+a replaced Termux stops the agent until you Trust again. (1.0: also its version, so an update pauses it until Trust this
+version; another signer needs the set-up again; the GitHub build runs nothing unless "Run anyway": "Termux updates, the
+update lock and the Shizuku path (1.0)" above.) Settings › Termux also lists the other apps Robot can see that
 hold Termux's permission (with `allow-external-apps` any of them can run commands; Android may not show Robot every app).
 
 **Settings** (`files/robot/termux.json`, its own file; settings.json stays at schema 13): Let Robot use Termux (off),
@@ -5644,8 +5743,8 @@ commands only) and write `files/robot/termux_status.json`. Assistant setup has a
 
 **Not in this step** (the design's T3): the "Helpers may ask for Termux commands" and "Keep commands and output in
 history" switches (helpers are never offered the Termux tools; History never keeps a command); "Finished after you left"
-on a card whose run ended after Stop (its result is dropped as late); Robot's own keys matched by exact value in commands
-(they are refused by shape). Termux:API commands are read and classified (sends and calls: red line, tap only; personal
+on a card whose run ended after Stop (its result is dropped as late). (Robot's own keys matched by exact value: since 1.0,
+"Termux updates, the update lock and the Shizuku path (1.0)" above.) Termux:API commands are read and classified (sends and calls: red line, tap only; personal
 reads mark the output personal), but their phone checks (T-21) haven't run.
 
 ### On the phone (0.9 Termux)
@@ -5720,7 +5819,7 @@ nothing new on the phone. (Routines and the morning brief, headset mode and car 
 [Car mode (0.8)](#car-mode-08); memory and messages since 0.7; web search and the Termux agent since 0.9: see
 [Web search (0.9)](#web-search-09) and [Termux (0.9)](#termux-09).) Each section says what exists and what is left to wire.
 Every voice log id is now in `VoiceEvent`, past the ones 0.6.0 uses (1 to 134): the GPU fallback 135 and the TPU fallback
-136, routines 140–151 of their 140–159, web search 160–163 of its 160–169, Termux 170–173 of its 170–179, memory
+136, routines 140–151 of their 140–159, web search 160–163 of its 160–169, Termux 170–177 of its 170–179 (174–177 since 1.0), memory
 180–189, messages 190–199, headset 200–209, car mode 210–219 and feedback 220–229 (`VoiceLogTest` checks none is used
 twice).
 

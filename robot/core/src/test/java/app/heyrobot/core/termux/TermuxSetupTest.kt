@@ -22,10 +22,17 @@ class TermuxSetupTest {
         assertFalse(TermuxSetup.ready(pinned, true, passed.copy(testOk = false), TermuxIdentity.F_DROID))
         // No GNU timeout: Stop and the limit couldn't end a run's tree.
         assertFalse(TermuxSetup.ready(pinned, true, passed.copy(timeout = false), TermuxIdentity.F_DROID))
-        // Reinstalled from GitHub over a pinned F-Droid Termux: refused until Trust again.
+        // Reinstalled from GitHub over a pinned F-Droid Termux: refused until it is set up again.
         val github = fdroid.copy(signers = listOf(TermuxIdentity.GITHUB))
         assertFalse(TermuxSetup.ready(TermuxIdentity.check(github, TermuxIdentity.F_DROID), true, passed, TermuxIdentity.F_DROID))
-        assertTrue(TermuxSetup.ready(TermuxIdentity.check(github, TermuxIdentity.GITHUB), true, passed, TermuxIdentity.GITHUB))
+        // 1.0: a GitHub build (public test key) you trusted and tested runs nothing until "Run anyway" (TermuxLockTest).
+        val ghPassed = passed.copy(signer = TermuxIdentity.GITHUB)
+        assertFalse(TermuxSetup.ready(TermuxIdentity.check(github, TermuxIdentity.GITHUB), true, ghPassed, TermuxIdentity.GITHUB))
+        assertTrue(TermuxSetup.ready(TermuxIdentity.check(github, TermuxIdentity.GITHUB, trusted = TrustedVersion(0, 0, testKeyRisk = true)), true, ghPassed,
+            TermuxIdentity.GITHUB))
+        // A Test made with the Termux that was replaced doesn't count for the new one.
+        assertFalse(TermuxSetup.ready(TermuxIdentity.check(github, TermuxIdentity.GITHUB, trusted = TrustedVersion(0, 0, testKeyRisk = true)), true, passed,
+            TermuxIdentity.GITHUB))
         // The Play build can't take commands from other apps.
         val play = fdroid.copy(signers = listOf(TermuxIdentity.GOOGLE_PLAY), hasRunCommandService = false)
         assertFalse(TermuxSetup.ready(TermuxIdentity.check(play, TermuxIdentity.GOOGLE_PLAY), true, passed, TermuxIdentity.GOOGLE_PLAY))

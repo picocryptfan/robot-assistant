@@ -330,6 +330,8 @@ object Updater {
     /** The app opened (background thread): the daily check is scheduled if it should be. */
     fun onAppOpen(ctx: Context) {
         UpdateJobs.ensure(ctx, UpdateStore.settings(ctx))
+        // 1.0: and Termux's weekly update check, while it is on.
+        TermuxUpdateCheck.ensure(ctx)
     }
 
     /**

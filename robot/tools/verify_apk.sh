@@ -279,9 +279,10 @@ nsc=$(echo "$vi" | awk '/E: network-security-config/{ on=1 } on')
 has 'E: domain-config' "$nsc" "network security config has a domain-config"
 nscdomain=$(grep -A3 'E: domain-config' <<<"$nsc")
 grep -qE 'cleartextTrafficPermitted.*false' <<<"$nscdomain" && pass "domain-config denies cleartext" || fail "domain-config doesn't deny cleartext"
-# 0.9: and the web search services' and lookups' domains (your own SearXNG is decided by LanRule in code, as a helper).
+# 0.9: and the web search services' and lookups' domains (your own SearXNG is decided by LanRule in code, as a helper);
+# 1.0: and F-Droid's (Termux's weekly update check).
 for d in anthropic.com openai.com googleapis.com mistral.ai x.ai deepseek.com groq.com openrouter.ai huggingface.co open-meteo.com openstreetmap.org github.com githubusercontent.com \
-  search.brave.com kagi.com mojeek.com wikipedia.org openlibrary.org; do
+  search.brave.com kagi.com mojeek.com wikipedia.org openlibrary.org f-droid.org; do
   has "'$d'" "$nsc" "no cleartext to $d"
 done
 has '"system"' "$nsc" "trusts the system's CAs"

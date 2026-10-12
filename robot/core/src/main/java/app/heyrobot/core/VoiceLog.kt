@@ -405,6 +405,14 @@ enum class VoiceEvent(val id: Int) {
     TERMUX_FAILED(172),
     /** A result for a run Robot no longer waited for (its output dropped): a = [TermuxExitBucket]. */
     TERMUX_LATE(173),
+    /** 1.0, Termux's weekly update check (main process): a = TermuxUpdateVerdict, b = the installed one's TermuxSource (ordinal + 1). */
+    TERMUX_UPDATE_CHECK(174),
+    /** 1.0, a Termux call refused by the update lock, another signer or the public test key: a = TermuxLock. */
+    TERMUX_LOCKED(175),
+    /** 1.0, Settings › Termux (main process): a = TermuxTrustOp, b = TermuxSource (ordinal + 1). */
+    TERMUX_TRUST(176),
+    /** 1.0, an ADB fix sent through Shizuku in Termux: a = its number, b = ShizukuOutcome, c = ShizukuRefusal or TermuxFailure. */
+    TERMUX_ADB_FIX(177),
     ;
 
     companion object {
@@ -865,6 +873,9 @@ object VoiceLogText {
 
     private fun secs(ms: Int): String = String.format(Locale.US, "%.1f s", ms / 1000.0)
 
+    /** 1.0: " · from F-Droid" for a TermuxSource by ordinal + 1 (0: none). */
+    private fun termuxSource(n: Int): String = app.heyrobot.core.termux.TermuxSource.entries.getOrNull(n - 1)?.let { " · " + it.en.substringBefore(" (") } ?: ""
+
     /** "1 call", "2 calls". */
     private fun count(n: Int, what: String): String = "$n $what" + if (n == 1) "" else "s"
 
@@ -979,6 +990,14 @@ object VoiceLogText {
                 " · output " + (if (c / 2 == 0) "empty" else "up to ${c / 2} KB") + (if (c % 2 == 1) " (cut)" else "")
             VoiceEvent.TERMUX_FAILED -> "Termux run failed: " + code(TermuxFailure.entries, a)
             VoiceEvent.TERMUX_LATE -> "Termux answered after Robot stopped waiting (" + code(TermuxExitBucket.entries, a) + "): dropped"
+            VoiceEvent.TERMUX_UPDATE_CHECK -> "Termux update check: " + code(app.heyrobot.core.termux.TermuxUpdateVerdict.entries, a) + termuxSource(b)
+            VoiceEvent.TERMUX_LOCKED -> "Termux call refused: " + code(app.heyrobot.core.termux.TermuxLock.entries, a)
+            VoiceEvent.TERMUX_TRUST -> "Termux: " + code(app.heyrobot.core.termux.TermuxTrustOp.entries, a) + termuxSource(b)
+            VoiceEvent.TERMUX_ADB_FIX -> "ADB fix $a through Shizuku: " + code(ShizukuOutcome.entries, b) + when {
+                c == 0 -> ""
+                b == ShizukuOutcome.REFUSED.id -> " (" + code(ShizukuRefusal.entries, c) + ")"
+                else -> " (" + code(app.heyrobot.core.termux.TermuxFailure.entries, c) + ")"
+            }
             VoiceEvent.RECOGNIZER_SET -> (if (b == 1) "Set Robot as the speech recognizer, so she stays the assistant after a restart ("
                 else "Couldn't set Robot as the speech recognizer (") + code(RepairWhen.entries, a) + ")"
             VoiceEvent.CONV_START -> "Conversation started: " + code(ConvMode.entries, a) + " (" + code(ConvEntry.entries, b) + ")" +
