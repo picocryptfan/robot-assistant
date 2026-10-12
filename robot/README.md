@@ -76,6 +76,51 @@ does with your words.
    when* the window shows once; Send feedback opens a bug report whose "Crash report" preview names the crash.
 4. **TalkBack.** Spoken replies off, ask a question: *done when* TalkBack reads the answer once, when it is complete.
 
+## The 1.0 security audit's fixes
+
+Each finding of the 1.0 audit (its ids in brackets) is fixed with a test; the sections below say more where they change.
+
+- **Another app can't drive the panel** [ipc-1, ipc-2]: any app on top can open the assistant with `showAssist` and
+  arguments of its choosing. The session now keeps a show's own arguments only when Robot's assistant service made the
+  show (an in-process token, never `SHOW_SOURCE_APPLICATION`; core `ShowTrust`, `ShowGate`); an app's show is the plain
+  panel, except Robot's own Talk to Robot, which carries a single-use nonce. Run now, a Ready card and Continue open the
+  panel through a non-exported `:voice` trampoline (`PanelLaunchActivity`) that asks the assistant service. A "back from
+  the camera" show counts only while the panel waits for one, and the lock-screen rule applies to it too.
+- **The lock screen never shows a conversation used unlocked** [physical-locked-conversation-carryover]: a conversation
+  begun on the lock screen and then continued unlocked starts afresh at the next locked show (core `PanelContinuity`).
+- **Unlock events arrive** [ipc-3]: `USER_PRESENT` comes from SystemUI under an ordinary app uid, so non-exported receivers
+  never got it; they are exported now, for protected system broadcasts only (`sys/ProtectedBroadcasts`).
+- **Clock's fake broadcasts can't flush the voice log** [ipc-4]: unverified alarms are logged once a minute with a count
+  (core `LogThrottle`), and a lone `ALARM_DONE` is dropped before any work.
+- **Termux's policy is wired in** [injection-termux-policy-unwired, physical-termux-policy-unwired]: every Termux call is
+  prepared by `TermuxTool.prepare` (Settings › Termux, the lock, the signer, the permission, the analyzer's reasons), so
+  each gets its card or refusal and a run its key and card (before, every run failed and the policy was skipped); a call
+  nobody prepared never runs. git left the read-only list [native-02].
+- **What Robot reads out is content** [injection-brief-calendar-untainted]: the brief's and "what's next"'s calendar titles
+  and reminders mark the conversation as content and personal, and replay to the model framed as information (core
+  `Quoted`).
+- **QueryCheck sees what read tools returned** [injection-querycheck-notes-personal]: a note's text, not only its title,
+  and checks word by word: while a source's words aren't all known, any word you didn't say needs a card.
+- **Memory from content stays content** [injection-memory-recall-taint]: items recalled in Robot's answers count for later
+  questions, and what is remembered in a turn that went with a content item is saved as content (core `MemoryTaint`).
+- **A sender's name is never your question** [injection-parked-reply-sender-name]: a reply kept for parking quotes and
+  cleans the name, and From your drive's tips only fill the text field.
+- **History** [secrets-history-refused-remember]: a refused "remember that …" (locked, Memory off) is saved as
+  "Remember: [not saved, not kept in History]", never its words.
+- **Lock screen notifications** [secrets-lockscreen-notification-content]: the brief's, Ready cards', routine summaries'
+  and From your drive's notifications are `VISIBILITY_SECRET`.
+- **Private memory on screen** [secrets-memory-private-items-not-secure]: Settings › Memory and a panel showing a private
+  answer are `FLAG_SECURE`; Memory's dialogs are secure and its fields ask the keyboard for no personalized learning.
+- **Who gets a search's words** [network-1]: the card and the "Sent to" line name Open Library, and Wikipedia when
+  Encyclopedia lookups ask it (core `WebAlso`).
+- **Your own `.litertlm`** [native-01, ipc-5]: its container is checked strictly before LiteRT-LM reads it, and importing
+  your own file warns that it runs with Robot's permissions (a known limitation: "Your own model file", SECURITY.md).
+- **:llama's replies are capped** [native-03]: 256 KiB per request (core `StreamBudget`); past it the request ends.
+- **Routines on the locked phone** [physical-routines-writable-locked]: nothing makes, deletes or lists a routine or adds a
+  brief reminder ("Unlock first").
+- **Calls** [physical-call-e164-plus-dropped, physical-car-trusted-any-number]: a contact's number is dialled with its "+";
+  the locked trusted car session calls People and contacts only.
+
 ## What's new in 0.9.0
 
 Robot 0.9.0 is 0.8.0 with private web search and the Termux agent built beside it, both off until you set them up; each
@@ -4748,6 +4793,9 @@ pure logic is in `:core` (`Routine.kt`, `RoutineGate.kt`, `Brief.kt`, `AlarmWatc
   - "list my routines", "delete my evening routine" (deleting needs a tap on its card, always).
   - "remind me in the morning to bring the passport", "add to my brief: …", "rappelle-moi demain matin d'apporter le
     passeport": a brief reminder, said in the next morning's brief (it stays until the end of that day once said).
+  - 1.0: on the locked phone none of these changes or lists anything ("Unlock first: routines are only changed with the
+    phone unlocked."): a routine made, deleted or listed, or a brief reminder, needs the phone unlocked, as memory's
+    writes do, and the lock is checked again just before the file is written (core `RoutineLockedPhone`).
   - While a routine or the brief speaks: "hey robot, next", "skip", "repeat", "stop" ("suivant", "passe", "répète");
     "stop" alone works too (the stop spotter). "Hey robot" pauses it for a minute while you say which; anything else
     ends it and is answered as usual.
@@ -5078,7 +5126,9 @@ you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; th
 - **The lock screen:** after one unlock in the car, car functions work locked until the car goes or 4 hours (the
   trusted session; the notification and screen say "unlocked features"); without it, "Unlock once to use car features".
 - **Calls** ("call Mom", "appelle maman", the screen's Call): spoken choices ("Mom: mobile, or work?"), the number read
-  back, then the dialer opens with it; "Call directly after a spoken yes" (with the Phone permission) places it.
+  back, then the dialer opens with it; "Call directly after a spoken yes" (with the Phone permission) places it, by the
+  contact's full international number (1.0: "+33 6 …" keeps its "+"). On the locked phone the trusted session calls
+  People and contacts only; a number said aloud needs the unlock (1.0).
   Emergency numbers always open the dialer and are never called by Robot. A call placed after a spoken yes is car mode's
   alone. Outside car mode, "call Mom" is the call tool's card (never described to the model, which can't call it); in a
   headset session on headphones you confirmed private, unlocked, the choices and the read-back are spoken instead and
