@@ -50,6 +50,12 @@ enum class PhoneLabel(val en: String, val fr: String, val keys: Set<String>) {
 data class PhoneCandidate(val name: String, val number: String, val label: PhoneLabel? = null, val learned: Boolean = false, val xmpp: Boolean = false) {
     val digits: String get() = PhoneNumbers.digits(number)
 
+    /**
+     * 1.0 audit (physical-call-e164-plus-dropped): what is dialled, with the E.164 "+" kept ("+33612345678"); [digits] alone
+     * would call 33612345678, a different or invalid number. [digits] stays for the read-back's last four.
+     */
+    val dialable: String get() = CallTarget.dialable(number)
+
     override fun toString(): String = "PhoneCandidate(label=$label, learned=$learned, xmpp=$xmpp)"
 }
 
@@ -119,11 +125,14 @@ object CallTarget {
      */
     fun plan(asked: String, candidates: List<PhoneCandidate>, rules: CallRules, locked: Boolean, trusted: Boolean, lang: SpokenLang,
         isEmergency: (String) -> Boolean): CallPlan {
-        val spoken = PhoneNumbers.digits(asked).takeIf { it.length >= 2 && asked.none { c -> c.isLetter() } }
+        val spoken = dialable(asked).takeIf { PhoneNumbers.digits(it).length >= 2 && asked.none { c -> c.isLetter() } }
         val all = if (spoken != null) listOf(PhoneCandidate(spoken, spoken)) else candidates
         // Emergency first, locked or not: the dialer with the number, never a direct call.
         all.firstOrNull { !it.xmpp && it.digits.isNotEmpty() && isEmergency(it.digits) }?.let { return CallPlan.Emergency(it.digits, emergency(it.digits, lang)) }
         if (locked && !trusted) return CallPlan.Refuse(UNLOCK_TO_CALL.get(lang), CallRefuse.LOCKED)
+        // 1.0 audit (physical-car-trusted-any-number): the trusted car session calls People and contacts only; a number
+        // said aloud (a premium-rate one, abroad) needs the phone unlocked.
+        if (locked && spoken != null) return CallPlan.Refuse(UNLOCK_TO_CALL.get(lang), CallRefuse.LOCKED)
         val phones = all.filter { !it.xmpp && it.digits.length >= 3 }
         if (phones.isEmpty()) {
             return if (all.any { it.xmpp }) CallPlan.Refuse(NO_XMPP.get(lang), CallRefuse.XMPP_ONLY)
@@ -167,7 +176,7 @@ object CallTarget {
         val choices = (plan as? CallPlan.Choose)?.options?.size ?: 0
         return when (val step = SpokenChoice.next(a, tries, rereads, choices, SessionKind.CAR, lang)) {
             SpokenStep.Confirm -> when (plan) {
-                is CallPlan.Confirm -> CallNext.Place(plan.target.digits, plan.way)
+                is CallPlan.Confirm -> CallNext.Place(plan.target.dialable, plan.way)
                 else -> CallNext.AskAgain(SpokenCards.hint(choices, lang))
             }
             is SpokenStep.Choose -> when (plan) {

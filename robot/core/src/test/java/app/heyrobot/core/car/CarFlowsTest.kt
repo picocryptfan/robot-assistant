@@ -47,7 +47,7 @@ class CallTargetTest {
         assertEquals(CallWay.DIAL, (plan("Mom", listOf(momMobile), direct.copy(callAfterSpokenYes = false)) as CallPlan.Confirm).way)
         // "Yes" or "call" places it; "no" doesn't; silence twice keeps it for parking.
         for (s in listOf("yes", "call", "call her", "oui", "appelle", "appelle-la")) {
-            assertEquals(s, CallNext.Place("15145550101", CallWay.DIAL), CallTarget.answer(p, SpokenChoice.answer(s, p.card), 0, 0, EN))
+            assertEquals(s, CallNext.Place("+15145550101", CallWay.DIAL), CallTarget.answer(p, SpokenChoice.answer(s, p.card), 0, 0, EN))
         }
         assertEquals(CallNext.Cancelled("Okay, no call."), CallTarget.answer(p, SpokenChoice.answer("no", p.card), 0, 0, EN))
         assertEquals(CallNext.Cancelled("D'accord, pas d'appel."), CallTarget.answer(p, SpokenChoice.answer("non", p.card), 0, 0, FR))
@@ -93,6 +93,28 @@ class CallTargetTest {
         assertTrue(EmergencyNumbers.basic("999", "GB"))
         assertFalse(EmergencyNumbers.basic("", "CA"))
         assertEquals("+15145550101", CallTarget.dialable(" +1 (514) 555-0101 "))
+    }
+
+    /** 1.0 audit (physical-call-e164-plus-dropped): a non-+1 contact is called with its "+", never as national digits. */
+    @Test fun anInternationalNumberKeepsItsPlus() {
+        val marie = PhoneCandidate("Marie", "+33612345678", PhoneLabel.MOBILE)
+        val p = plan("Marie", listOf(marie), direct) as CallPlan.Confirm
+        assertEquals("Call Marie, mobile, ending 5678?", app.heyrobot.core.output.SpokenCards.prompt(p.card, EN))
+        assertEquals(CallNext.Place("+33612345678", CallWay.CALL), CallTarget.answer(p, SpokenChoice.answer("yes", p.card), 0, 0, EN))
+        assertEquals("+33612345678", CallTarget.dialable("+33612345678"))
+        // A number typed with its "+" keeps it too.
+        assertEquals("+33612345678", ((plan("+33 6 12 34 56 78", emptyList(), direct) as CallPlan.Confirm).target.dialable))
+    }
+
+    /**
+     * 1.0 audit (physical-car-trusted-any-number): the trusted car session on the locked phone calls People and contacts
+     * only; a number said aloud needs the unlock (an emergency number still opens the dialer).
+     */
+    @Test fun aLockedTrustedSessionCallsOnlyPeopleAndContacts() {
+        assertEquals(CallPlan.Refuse("Unlock to call.", CallRefuse.LOCKED), plan("1 900 555 0199", emptyList(), direct, locked = true, trusted = true))
+        assertTrue(plan("Mom", listOf(momMobile), direct, locked = true, trusted = true) is CallPlan.Confirm)
+        assertTrue(plan("1 900 555 0199", emptyList(), direct) is CallPlan.Confirm)
+        assertTrue(plan("9 1 1", emptyList(), direct, locked = true, trusted = true) is CallPlan.Emergency)
     }
 
     @Test fun whatCantBeCalled() {
