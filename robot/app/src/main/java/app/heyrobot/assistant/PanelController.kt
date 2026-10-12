@@ -96,6 +96,7 @@ import app.heyrobot.core.NearbyFail
 import app.heyrobot.core.NoReply
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Prompt
+import app.heyrobot.core.Quoted
 import app.heyrobot.core.TokenEstimate
 import app.heyrobot.core.PromptTurn
 import app.heyrobot.core.PromptRole
@@ -3084,7 +3085,9 @@ object PanelController {
         // 0.7: a turn with messages in it, or after one, is saved as a placeholder (core ChatTurn.messages); memory's History
         // record (its item ids, a line for a private answer) keeps that placeholder (MemoryPanel.forHistory copies the turn).
         val kept = PanelMessages.kept(replyId) ?: if (chat.any { it.messages }) app.heyrobot.core.messages.MessageReading.ANSWER_NOT_KEPT else null
-        chat += MemoryPanel.forHistory(ChatTurn(replyId, TurnRole.ASSISTANT, text, System.currentTimeMillis(), actions = records(actions), stopped = stopped,
+        val quoted = synchronized(quotedReplies) { quotedReplies.remove(replyId) }
+        chat += MemoryPanel.forHistory(ChatTurn(replyId, TurnRole.ASSISTANT, text, System.currentTimeMillis(),
+            actions = records(actions) + if (quoted) listOf(Quoted.record()) else emptyList(), stopped = stopped,
             claude = claude, sources = ui?.sources.orEmpty(), costMicros = costMicros,
             helper = ui?.helper.takeIf { claude }, by = ui?.by.takeIf { claude }, home = claude && ui?.home == true, messages = kept != null, kept = kept))
         _state.update { st ->
@@ -3185,8 +3188,12 @@ object PanelController {
             return ran
         }
         override fun finish(replyId: String) = finishReply(replyId, DoneReason.END)
+        override fun quoted(replyId: String) { synchronized(quotedReplies) { quotedReplies += replyId } }
         override suspend fun leave() = leaveForApp()
     }
+
+    /** Replies that read out your calendar or reminders as they are (core Quoted): their saved turn carries its content record. */
+    private val quotedReplies = HashSet<String>()
 
     /** Settings' Run now or a Ready card's tap: a turn of its own, as if you had asked. */
     private fun routineTurn(label: String, work: suspend (String, PanelRoutines.Host) -> Unit) {

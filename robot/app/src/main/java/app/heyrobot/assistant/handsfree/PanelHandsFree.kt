@@ -449,7 +449,9 @@ object PanelHandsFree {
         val events = withContext(Dispatchers.IO) { if (Calendars.readGranted(app)) Calendars.events(app, range) else null }
             ?: return reply(replyId, host, if (lang == SpokenLang.FR) "Permets à Robot de lire ton agenda dans l'app Robot." else "Allow Robot to read your calendar in the Robot app.")
         // Your calendar: personal, so OutputGuard holds it where a personal sentence may not play.
+        // An event's title, as whoever made the event wrote it: content, and personal (core Quoted).
         val line = WhatsNext.line(events, now, lang)
+        host.quoted(replyId)
         host.text(replyId, line)
         host.say(line, personal = true)
     }

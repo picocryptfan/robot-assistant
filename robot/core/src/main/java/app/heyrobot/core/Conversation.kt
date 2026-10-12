@@ -117,6 +117,8 @@ fun List<ChatTurn>.toPromptTurns(notes: (List<String>) -> String? = { null }): L
                 // 0.9: a web answer joins as Claude's do, cut to about 600 tokens, without its [n] marks or links.
                 t.actions.any { it.tool == ToolName.WEB_SEARCH && it.content } && t.text.isNotBlank() ->
                     ClaudeContext.forLocal(app.heyrobot.core.web.Citations.forSpeech(t.text))
+                // 1.0: the brief or "what's next" read out your calendar and reminders as they are (core Quoted): information.
+                Quoted.of(t) && t.text.isNotBlank() -> Quoted.FRAME + " " + ClockEcho.strip(t.text)
                 else -> ClockEcho.strip(t.text)
             }
             val text = listOf(acts, said).filter { it.isNotBlank() }.joinToString(" ").trim()

@@ -61,6 +61,11 @@ object PanelRoutines {
         /** One of the routine's tool steps, through the approval gate with its card, as typed; null when nothing ran. */
         suspend fun tool(replyId: String, step: RoutineStep.Tool): Executed?
         fun finish(replyId: String)
+        /**
+         * 1.0 (injection-brief-calendar-untainted): the reply reads out your calendar or reminders as they are (core Quoted):
+         * the conversation is content and personal from then on.
+         */
+        fun quoted(replyId: String)
         /** An app opened: the panel steps aside. */
         suspend fun leave()
     }
@@ -109,6 +114,8 @@ object PanelRoutines {
         val rs = store().settings()
         val r = routine ?: BriefRoutine.of(rs)
         val locked = host.locked
+        // Calendar titles and reminders, as written by whoever wrote them: content, and personal.
+        host.quoted(replyId)
         val session = if (host.speak) RoutineVoice.open(r, RoutineVoice.Surface.PANEL, rs.briefLock == BriefLock.EVERYTHING, locked) { end ->
             RoutineHub.spoken(app, r, TriggerKind.ASKED, end)
         } else null
