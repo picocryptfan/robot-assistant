@@ -12,8 +12,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -21,6 +23,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -64,6 +67,7 @@ import app.heyrobot.core.VoiceBench
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceEngineStatus
 import app.heyrobot.core.feedback.FeedbackEntry
+import app.heyrobot.core.DownloadPolicy
 import app.heyrobot.core.readOrNull
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
@@ -338,6 +342,12 @@ fun RobotAppUi(activity: MainActivity) {
 
     fun say(msg: String) { scope.launch { snackbar.showSnackbar(msg) } }
 
+    // 1.0: a download over 200 MB asks first whether to wait for Wi-Fi (core DownloadPolicy: Robot can't see the network).
+    var bigDownload by remember { mutableStateOf<Pair<Long, (Boolean) -> Unit>?>(null) }
+    fun askNetwork(bytes: Long, start: (anyNetwork: Boolean) -> Unit) {
+        if (DownloadPolicy.asksFirst(bytes)) bigDownload = bytes to start else start(true)
+    }
+
     LaunchedEffect(resumed) {
         while (resumed) {
             snap = withContext(Dispatchers.IO) {
@@ -515,7 +525,10 @@ fun RobotAppUi(activity: MainActivity) {
         askPermissions = { permissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)) },
         openAssistantSettings = { if (!Assistant.openSettings(ctx)) say("Open Settings > Apps > Default apps > Digital assistant app.") },
         // A model whose publisher asks for conditions (core ModelTerms) downloads or imports only once you ticked them.
-        download = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else ModelStore.startDownload(ctx, m)?.let(::say) },
+        download = { m ->
+            if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED)
+            else askNetwork(m.bytes) { any -> ModelStore.startDownload(ctx, m, any)?.let(::say) }
+        },
         cancelDownload = { m -> ModelStore.cancelDownload(ctx, m) },
         // Storage Access Framework: no storage permission; a .litertlm or .gguf has no type of its own, so any file.
         import = { m -> if (ModelTerms.missing(settings, m) != null) say(ModelTerms.REFUSED) else { importTarget = m.id; importer.launch(arrayOf("*/*")) } },
@@ -569,7 +582,7 @@ fun RobotAppUi(activity: MainActivity) {
         },
         speakTest = { Cmd.send(ctx, Cmd.SPEAK_TEST) },
         say = ::say,
-        voiceDownload = { b -> VoiceModelStore.startDownload(ctx, b)?.let(::say) },
+        voiceDownload = { b -> askNetwork(VoiceModelStore.bytesToFetch(ctx, b)) { any -> VoiceModelStore.startDownload(ctx, b, any)?.let(::say) } },
         voiceCancel = { b -> VoiceModelStore.cancelDownload(ctx, b) },
         voiceDelete = { b -> VoiceModelStore.delete(ctx, b); say("${b.title} was deleted.") },
         voiceBench = {
@@ -704,6 +717,21 @@ fun RobotAppUi(activity: MainActivity) {
         update(s)
         if (f != null && turnedOn.any { it.group == ToolGroup.CALENDAR } && !f.calendarGranted) actions.askCalendar()
         else if (f != null && (textingOn || turnedOn.any { it.group == ToolGroup.PEOPLE }) && !f.contactsGranted) actions.askContacts()
+    }
+
+    bigDownload?.let { (bytes, start) ->
+        AlertDialog(
+            onDismissRequest = { bigDownload = null },
+            title = { Text(DownloadPolicy.title(bytes)) },
+            text = { Text(DownloadPolicy.text(bytes)) },
+            confirmButton = {
+                Row {
+                    TextButton(onClick = { bigDownload = null; start(false) }) { Text(DownloadPolicy.WAIT) }
+                    TextButton(onClick = { bigDownload = null; start(true) }) { Text(DownloadPolicy.ANYWAY) }
+                }
+            },
+            dismissButton = { TextButton(onClick = { bigDownload = null }) { Text("Cancel") } },
+        )
     }
 
     BackHandler(enabled = page != null || (tab != Tab.HOME && !(tab == Tab.NOTES && fromNotesIcon))) {
