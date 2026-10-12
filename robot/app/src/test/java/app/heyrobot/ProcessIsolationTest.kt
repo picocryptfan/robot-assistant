@@ -911,6 +911,15 @@ class ProcessIsolationTest {
         assertTrue(hub.contains("VoiceLog.add(VoiceEvent.ROUTINE_SKIPPED, SkipWhy.NOT_CLOCKS_ALARM, TriggerKind.ALARM)"))
     }
 
+    /** 0.8 review: a new message is announced only when Do Not Disturb's answer was read and lets it through (fails closed). */
+    @Test fun doNotDisturbFailsClosedForAnnouncements() {
+        val tap = code(File(java("app"), "app/heyrobot/people/MessageTap.kt"))
+        val dnd = tap.substringAfter("private fun dndAllows(").substringBefore("\n    }\n")
+        assertTrue(dnd, dnd.contains("app.heyrobot.core.messages.MessageDnd.allows(found, found == true && r.matchesInterruptionFilter())"))
+        assertTrue(dnd, dnd.contains("catch (_: Throwable) {\n        false"))
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/VoiceHub.kt")).contains("i.getBooleanExtra(Cmd.EXTRA_DND, false)"))
+    }
+
     /**
      * 0.8, Settings › Voice › Transcription check › Microphone: Headset records through the headset as a session listens
      * (its call route and pinned input, core CheckMics), only once its input is the one capturing, never over a session's

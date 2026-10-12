@@ -4850,7 +4850,8 @@ car mode share, and `core/headset`) with JVM tests, the wiring in `assistant/hea
   "Yes" reads it as "read my messages" does (translated if it isn't in your languages); "no" is quiet and the session
   ends. "Read the text: Always" reads it at once. Never on the speaker, a car or a Bluetooth speaker, never during a
   call, never while locked unless "Announce while locked" is on **and** Settings › Messages › Messages on the lock
-  screen is "Read and reply"; Do Not Disturb holds it as it holds the notification. After it is read, "reply …" is 0.7's
+  screen is "Read and reply"; Do Not Disturb holds it as it holds the notification (and when Robot can't read whether Do
+  Not Disturb lets it through, it isn't announced). After it is read, "reply …" is 0.7's
   reply card. A message that comes while Robot is busy is announced when she is free (within 2 minutes).
 - **The message's words never act** (0.7's quarantine): the main process tells `:voice` only which conversation has a
   new message and whether Do Not Disturb lets it through (`Cmd.MESSAGE_NEW`: its key and a yes or no, never who or

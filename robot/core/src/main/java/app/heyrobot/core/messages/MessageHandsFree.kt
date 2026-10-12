@@ -57,6 +57,14 @@ object MessageArrival {
     }
 }
 
+object MessageDnd {
+    /**
+     * 0.8 review: Do Not Disturb lets a new message be announced only when its notification's ranking was read ([found])
+     * and matches the interruption filter ([matches]). Anything Robot can't read fails closed: not announced.
+     */
+    fun allows(found: Boolean?, matches: Boolean): Boolean = found == true && matches
+}
+
 object AnnounceSenders {
     /**
      * "Announce from: People you choose": the newest message of [t] is from a confirmed person in [people] whose id is in

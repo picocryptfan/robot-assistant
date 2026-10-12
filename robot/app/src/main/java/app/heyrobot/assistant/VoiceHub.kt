@@ -521,7 +521,7 @@ object VoiceHub {
             Cmd.ROUTINES -> RoutineHub.reload()
             Cmd.HANDSFREE -> HandsFreeHub.reload()
             // 0.8: a new message with "Announce new messages" on (its key and Do Not Disturb's answer only).
-            Cmd.MESSAGE_NEW -> i.getStringExtra(Cmd.EXTRA_KEY)?.let { HandsFreeMessages.arrived(it, i.getBooleanExtra(Cmd.EXTRA_DND, true)) }
+            Cmd.MESSAGE_NEW -> i.getStringExtra(Cmd.EXTRA_KEY)?.let { HandsFreeMessages.arrived(it, i.getBooleanExtra(Cmd.EXTRA_DND, false)) }
         }
     }
 }
