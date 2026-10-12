@@ -349,7 +349,8 @@ source:
 
    ```
    tools/make_source_bundle.sh              # version from app/build.gradle; or --version 1.0.0
-   # -> build/source-bundle/robot-<version>-third-party-sources.tar.gz and its .sha256 (about 310 MB)
+   tools/make_source_bundle.sh --list       # what it takes, from the pins (no network)
+   # -> build/source-bundle/robot-<version>-third-party-sources.tar.gz and its .sha256 (about 360 MB)
    ```
 
    It takes sherpa-onnx at the commit of v1.13.8 (`11afbd00`, checked by its commit id), reads from that source the
@@ -360,13 +361,14 @@ source:
    bundle's `MANIFEST.tsv` and `README.md`. It adds ONNX Runtime 1.28.2's source (tag v1.28.2, commit `33ca9628`; 280 MB
    of the total, about 50 MB without it; `--without-onnxruntime` leaves it out, as its MIT licence allows, but sherpa-onnx's library is built to
    require it, so keep it unless size forces otherwise). The archive is reproducible from the same inputs (sorted, no
-   owners or times). Never commit it.
+   owners or times). Since 1.0 it also takes slimt, ruy, cpuinfo and SentencePiece (`mt/`, the `git archive` tars
+   `tools/build_robotmt.sh` pins, checked against the same SHA-256), llama.cpp and KleidiAI (`llama/`, as
+   `tools/build_llama.sh` pins them; `--without-llama` leaves them out for a build without `librobot_llama.so`), and
+   Robot's own native sources and build scripts at that commit (`robot/`); it reads those pins from the two build
+   scripts, so it can't drift from what they build. Never commit it.
 3. Attach to the GitHub release: the APK, `SHA256SUMS`, `robot-<version>-third-party-sources.tar.gz` and its
-   `.sha256`, and the release notes. Keep the bundle as long as that APK is offered (GPL-3.0 section 6).
-   Since 0.6.0 the APK also holds slimt (GPL-2.0-or-later, in `librobotmt.so`), which Robot builds from Robot's
-   `mt/src/main/cpp/` and four pinned trees; the bundle doesn't take those yet, so also attach the four trees as
-   `tools/build_robotmt.sh` writes them out (`git archive --format=tar <commit>` from `mt/native/git/<name>`; their
-   SHA-256 are in `THIRD_PARTY.md`, "In the `:mt` process only").
+   `.sha256`, and the release notes. Keep the bundle as long as that APK is offered (GPL-3.0 section 6). The bundle
+   holds slimt's source too (GPL-2.0-or-later, in `librobotmt.so` since 0.6.0), so nothing else needs attaching.
 
 **The release format the updater reads** (Settings › About › Updates, "Updates" below). Anything else is not offered:
 

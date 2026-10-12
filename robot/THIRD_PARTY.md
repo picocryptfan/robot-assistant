@@ -28,15 +28,18 @@ that every library the release build packs (`releaseRuntimeClasspath`) belongs t
 file the list names exists.
 
 **Source for the GPL components.** espeak-ng (GPL-3.0-or-later) is statically linked into the prebuilt
-`libsherpa-onnx-jni.so`, and its compiled data files are in the APK. Robot's own repository doesn't hold that source, so
-each release attaches `robot-<version>-third-party-sources.tar.gz` (and its `.sha256`), made by
-`tools/make_source_bundle.sh`: sherpa-onnx at the commit of v1.13.8, the exact espeak-ng archive (fork at `ed530aa1`) and
-every other source sherpa-onnx's Android build compiles in, each checked against the SHA-256 sherpa-onnx's CMake files pin
-(or, where only git could reach it, against its commit), and ONNX Runtime 1.28.2's source. See the README's "Releasing".
-slimt (GPL-2.0-or-later, used under GPL-3.0; in `librobotmt.so` since 0.6.0) is built by Robot itself from its
-`mt/src/main/cpp/` and the four trees `tools/build_robotmt.sh` fetches at pinned commits and checks (below, "In the `:mt`
-process only"). `make_source_bundle.sh` doesn't add those four trees yet: until it does, attach their `git archive` tars
-(the SHA-256 the table there gives) to the release with the bundle.
+`libsherpa-onnx-jni.so`, and 17 of its compiled data files are in the APK. Robot's own source does not cover them: Robot's
+repository holds neither the sherpa-onnx source nor the espeak-ng source, so GPL-3.0 section 6 is met by a separate
+source archive, not by Robot's repository. Each release attaches `robot-<version>-third-party-sources.tar.gz` (and its
+`.sha256`), made by `tools/make_source_bundle.sh`, next to the APK, for as long as that APK is offered. It holds:
+sherpa-onnx at the commit of v1.13.8, the exact espeak-ng archive (fork at `ed530aa1`) and every other source
+sherpa-onnx's Android build compiles in, each checked against the SHA-256 sherpa-onnx's CMake files pin (or, where only
+git could reach it, against its commit), and ONNX Runtime 1.28.2's source; slimt (GPL-2.0-or-later, used under GPL-3.0;
+in `librobotmt.so` since 0.6.0) with ruy, cpuinfo and SentencePiece, as the `git archive` tars `tools/build_robotmt.sh`
+pins (below, "In the `:mt` process only"); llama.cpp and KleidiAI as `tools/build_llama.sh` pins them (MIT and Apache-2.0,
+included so the archive is the APK's whole native source; `--without-llama` leaves them out); and Robot's own native
+sources and build scripts at that commit. The script reads the slimt and llama.cpp pins from the two build scripts, so
+the archive always matches what they build. See the README's "Releasing".
 
 | Component | Version | Licence | Where |
 |---|---|---|---|
