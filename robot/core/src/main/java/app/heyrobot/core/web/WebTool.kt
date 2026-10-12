@@ -101,7 +101,8 @@ object WebGate {
      * Allow always, Just this time and No, and Don't ask again; Always ask: [AskWhy.SEARCH]). The gate adds its own
      * (the level, the lock, content in the conversation).
      */
-    fun prepare(a: Action.WebSearch, s: WebSettings, answer: WebConsentAnswer?, ctx: QueryContext, searchesToday: Int, home: String? = null): Prepared {
+    fun prepare(a: Action.WebSearch, s: WebSettings, answer: WebConsentAnswer?, ctx: QueryContext, searchesToday: Int, home: String? = null,
+        question: String = a.query): Prepared {
         if (!WebConsent.on(s, answer)) return Prepared.Refused(ActionStatus.DISABLED, "Web search is off: turn it on in Robot's Settings › Web search.")
         val service = s.service ?: return Prepared.Refused(ActionStatus.DISABLED, WebFail.OFF.text(null) + ".")
         if (searchesToday >= s.dailySearches) {
@@ -119,8 +120,14 @@ object WebGate {
             is QueryVerdict.Send -> v.query
         }
         val action = a.copy(query = query, consent = null)
-        val card = WebConsent.card(WebConsent.ask(s, answer), service, query, pagesFromPhone(s))
-        if (card == null) return Prepared.Ready(action, why, note = notes.joinToString(" ").ifEmpty { null })
+        // 1.0 (network-1): the card names everyone the words go to (Wikipedia, Open Library: WebAlso), not only the service.
+        val also = WebAlso.names(s, service, question.ifBlank { query })
+        val card = WebConsent.card(WebConsent.ask(s, answer), service, query, pagesFromPhone(s), also)
+        if (card == null) {
+            // A query card with no consent card still says who besides the service would get the words.
+            if (notes.isNotEmpty() && also.isNotEmpty()) notes += WebConsent.note(service, pagesFromPhone(s), also)
+            return Prepared.Ready(action, why, note = notes.joinToString(" ").ifEmpty { null })
+        }
         notes += card.note
         if (!card.tapOnly) return Prepared.Ready(action, why + AskWhy.SEARCH, note = notes.joinToString(" "))
         val always = action.copy(consent = WebConsentChoice.ALWAYS)

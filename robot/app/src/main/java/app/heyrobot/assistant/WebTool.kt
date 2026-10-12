@@ -28,6 +28,7 @@ import app.heyrobot.core.web.SearchService
 import app.heyrobot.core.web.WebConsentAnswer
 import app.heyrobot.core.web.WebConsentChoice
 import app.heyrobot.core.web.WebFail
+import app.heyrobot.core.web.WebAlso
 import app.heyrobot.core.web.WebGate
 import app.heyrobot.core.web.WebLogNumbers
 import app.heyrobot.core.web.WebOutcome
@@ -77,7 +78,8 @@ class WebTool(
 ) {
     fun prepare(a: Action.WebSearch): Prepared {
         if (!Assistant.granted(ctx, Manifest.permission.INTERNET)) return Prepared.Refused(ActionStatus.FAILED, WebFail.NO_NETWORK_PERMISSION.text(null) + ".")
-        return WebGate.prepare(a, WebStore.load(ctx), WebAnswers.load(ctx), context(), WebCounts.today(ctx), settings.weatherHome?.name)
+        return WebGate.prepare(a, WebStore.load(ctx), WebAnswers.load(ctx), context(), WebCounts.today(ctx), settings.weatherHome?.name,
+            question = said?.takeIf { it.isNotBlank() } ?: a.query)
     }
 
     fun run(a: Action.WebSearch): Executed {
@@ -113,7 +115,8 @@ class WebTool(
                     VoiceLog.add(VoiceEvent.WEB_PAGES, outcome.pagesRead, WebLogNumbers.skipped(skips), (now - searched).toInt())
                     RLog.i("web_pages", "ok" to outcome.pagesRead, "skipped" to skips.size, "ms" to (now - searched), "why" to (skips.firstOrNull() ?: PageSkip.FAILED).code)
                 }
-                Executed(ActionStatus.DONE, "Sent to ${service.label}: “${outcome.query}”", web = outcome)
+                // 1.0 (network-1): everyone the words went to, as the card said (core WebAlso).
+                Executed(ActionStatus.DONE, "Sent to ${WebAlso.to(service, WebAlso.names(s, service, question))}: “${outcome.query}”", web = outcome)
             }
             is WebOutcome.Failed -> {
                 // Asked, and answered with a failure: it counts toward today's cap (a key's credit may have gone).

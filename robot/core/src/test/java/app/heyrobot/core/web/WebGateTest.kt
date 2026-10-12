@@ -46,6 +46,30 @@ class WebGateTest {
         assertEquals(app.heyrobot.core.Approval.AUTO, RobotSettings().approval(ToolName.WEB_SEARCH))
     }
 
+    /**
+     * 1.0 audit (network-1): with Book lookups on, a book question also goes to Open Library: the consent card and the
+     * "Sent to" line name it beside your SearXNG; a question about anything else names only the service.
+     */
+    @Test fun theCardNamesOpenLibraryWhenBooksGoThere() {
+        val books = searxng.copy(books = true, ask = WebAsk.ALWAYS, encyclopedia = false)
+        val q = "search the web for books about living with lymphoma"
+        val p = ready(WebGate.prepare(search("books about lymphoma"), books, null, QueryContext(said = listOf(q)), 0, question = q))
+        assertTrue(p.note, p.note!!.contains("Robot would send these words to your SearXNG and Open Library."))
+        assertEquals(listOf(WebAlso.OPEN_LIBRARY), WebAlso.names(books, SearchService.SEARXNG_HOME, q))
+        assertEquals("your SearXNG and Open Library", WebAlso.to(SearchService.SEARXNG_HOME, WebAlso.names(books, SearchService.SEARXNG_HOME, q)))
+        // Not a book question, or Book lookups off: the service alone.
+        val stanley = ready(WebGate.prepare(search(), books, null, mine, 0, question = "who won the stanley cup this year"))
+        assertTrue(stanley.note, stanley.note!!.contains("Robot would send these words to your SearXNG.") && !stanley.note!!.contains("Open Library"))
+        assertEquals(emptyList<String>(), WebAlso.names(books.copy(books = false), SearchService.SEARXNG_HOME, q))
+        // A personal query's tap-only card names them too, even with Never ask.
+        val personal = QueryContext(said = listOf("find books about it"), personal = listOf("Julie's lymphoma"))
+        val tap = ready(WebGate.prepare(search("lymphoma books"), books.copy(ask = WebAsk.NEVER), null, personal, 0, question = "find books about it"))
+        assertTrue(AskWhy.SEARCH_PERSONAL in tap.why)
+        assertTrue(tap.note, tap.note!!.contains("to your SearXNG and Open Library."))
+        // Three: commas, then "and".
+        assertEquals("Brave, Wikipedia and Open Library", WebAlso.to(SearchService.BRAVE, listOf(WebAlso.WIKIPEDIA, WebAlso.OPEN_LIBRARY)))
+    }
+
     @Test fun offOrNotSetUpNothingGoes() {
         val off = WebGate.prepare(search(), WebSettings(), null, mine, 0)
         assertEquals(ActionStatus.DISABLED, (off as Prepared.Refused).status)

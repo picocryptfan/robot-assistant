@@ -2,6 +2,7 @@ package app.heyrobot.helpers.web
 
 import app.heyrobot.core.Abort
 import app.heyrobot.core.web.OpenLibraryWire
+import app.heyrobot.core.web.WebAlso
 import app.heyrobot.core.web.PageContent
 import app.heyrobot.core.web.PageSkip
 import app.heyrobot.core.web.PageText
@@ -54,10 +55,11 @@ class WebSearch(
         }
         val answers = (answer as SearchAnswer.Results).answers
         // Wikipedia's intros first for a who/what/where question (Encyclopedia lookups), Open Library's books for a book question.
-        if (service != SearchService.WIKIPEDIA_ONLY && settings.wikipedia() && encyclopedic(question)) {
+        // The same decisions as the consent card's and the "Sent to" line's (core WebAlso).
+        if (WebAlso.wikipedia(settings, service, question)) {
             client.wikipedia(query, lang)?.let { wiki -> results = SearchWire.distinct(wiki + results) }
         }
-        if (settings.books && OpenLibraryWire.wanted(question.ifBlank { query })) {
+        if (WebAlso.books(settings, question.ifBlank { query })) {
             (client.books(query) as? SearchAnswer.Results)?.results?.let { books -> results = SearchWire.distinct(results.take(WebPlanLimits.WITH_BOOKS) + books) }
         }
         if (results.isEmpty()) return WebOutcome.Failed(service, WebFail.NO_RESULTS)
@@ -97,10 +99,6 @@ class WebSearch(
         return WebOutcome.Found(service, query, lang, results, passages, pagesRead = if (through) supplied else read, throughService = through,
             skipped = skipped.distinct(), answers = answers)
     }
-
-    /** "Who is…", "what is…", "where is…", "qui est…": a question Wikipedia's intro answers. */
-    private fun encyclopedic(question: String): Boolean =
-        Regex("^\\s*(?:who|what|where|qui|qu'est-ce|quel|quelle|ou|où)\\b", RegexOption.IGNORE_CASE).containsMatchIn(question)
 
     /** Results kept when books join them. */
     private object WebPlanLimits {

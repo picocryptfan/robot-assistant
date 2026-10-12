@@ -272,9 +272,12 @@ object WebConsent {
     fun on(settings: WebSettings, answer: WebConsentAnswer?): Boolean =
         settings.ready && !(answer != null && answer.at > settings.askAt && answer.off)
 
-    /** The first-use card's line (A4.2): the query, the service, and that pages may be opened from this phone ([pages]). */
-    fun note(service: SearchService, pages: Int): String =
-        "Robot would send these words to ${service.label}." +
+    /**
+     * The first-use card's line (A4.2): the query, the service and anyone else asked ([also]: WebAlso, 1.0), and that pages
+     * may be opened from this phone ([pages]).
+     */
+    fun note(service: SearchService, pages: Int, also: List<String> = emptyList()): String =
+        "Robot would send these words to ${WebAlso.to(service, also)}." +
             if (pages > 0) " It may also open up to $pages result page${if (pages == 1) "" else "s"} from this phone." else ""
 
     /**
@@ -282,10 +285,10 @@ object WebConsent {
      * that always shows, answered by a tap, with [ALLOW_ALWAYS], [JUST_THIS_TIME], [NO] and [DONT_ASK]. Always ask: a
      * plain card ([SEARCH], [CANCEL]). Never ask: none (the gate's own rules still apply).
      */
-    fun card(ask: WebAsk, service: SearchService, query: String, pages: Int): WebConsentCard? = when (ask) {
+    fun card(ask: WebAsk, service: SearchService, query: String, pages: Int, also: List<String> = emptyList()): WebConsentCard? = when (ask) {
         WebAsk.NEVER -> null
-        WebAsk.FIRST_TIME -> WebConsentCard("Search the web for “$query”", note(service, pages), listOf(ALLOW_ALWAYS, JUST_THIS_TIME, NO), DONT_ASK, tapOnly = true)
-        WebAsk.ALWAYS -> WebConsentCard("Search the web for “$query”", note(service, pages), listOf(SEARCH, CANCEL), null, tapOnly = false)
+        WebAsk.FIRST_TIME -> WebConsentCard("Search the web for “$query”", note(service, pages, also), listOf(ALLOW_ALWAYS, JUST_THIS_TIME, NO), DONT_ASK, tapOnly = true)
+        WebAsk.ALWAYS -> WebConsentCard("Search the web for “$query”", note(service, pages, also), listOf(SEARCH, CANCEL), null, tapOnly = false)
     }
 }
 
@@ -413,5 +416,36 @@ enum class WebFail(override val id: Int, override val title: String) : LogCode {
             QUERY_REFUSED -> "That search looked like it contained personal details, so Robot didn't send it."
             OFF -> "Web search is off"
         }
+    }
+}
+
+/**
+ * 1.0 audit (network-1): who gets a search's words besides the chosen service, decided once for the consent card, the run
+ * and the card's "Sent to" line: Wikipedia (Encyclopedia lookups, for a who/what/where question) and Open Library (Book
+ * lookups, for a question about books).
+ */
+object WebAlso {
+    const val WIKIPEDIA = "Wikipedia"
+    const val OPEN_LIBRARY = "Open Library"
+
+    /** "Who is…", "what is…", "where is…", "qui est…": a question Wikipedia's intro answers. */
+    fun encyclopedic(question: String): Boolean =
+        Regex("^\\s*(?:who|what|where|qui|qu'est-ce|quel|quelle|ou|où)\\b", RegexOption.IGNORE_CASE).containsMatchIn(question)
+
+    fun wikipedia(s: WebSettings, service: SearchService, question: String): Boolean =
+        service != SearchService.WIKIPEDIA_ONLY && s.wikipedia() && encyclopedic(question)
+
+    fun books(s: WebSettings, question: String): Boolean = s.books && OpenLibraryWire.wanted(question)
+
+    /** The others asked for [question] ([question]: your words, or the query when there are none). */
+    fun names(s: WebSettings, service: SearchService, question: String): List<String> = listOfNotNull(
+        WIKIPEDIA.takeIf { wikipedia(s, service, question) },
+        OPEN_LIBRARY.takeIf { books(s, question) },
+    )
+
+    /** "your SearXNG", "your SearXNG and Open Library", "Brave Search, Wikipedia and Open Library". */
+    fun to(service: SearchService, also: List<String>): String {
+        val all = listOf(service.label) + also
+        return if (all.size == 1) all[0] else all.dropLast(1).joinToString(", ") + " and " + all.last()
     }
 }
