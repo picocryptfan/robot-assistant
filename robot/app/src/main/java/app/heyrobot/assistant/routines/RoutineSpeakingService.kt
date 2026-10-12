@@ -148,7 +148,10 @@ class RoutineSpeakingService : Service() {
 /**
  * Routines' notifications: the speaking one (the service's), things ready for you, a run's summary when something waited
  * or failed, "ready · Play" when Android refused to speak, "Continue your brief" after the unlock, and "Open Robot" when
- * Robot isn't the assistant. On the lock screen each shows only its public version: never a routine's steps or words.
+ * Robot isn't the assistant. 1.0 audit (secrets-lockscreen-notification-content): VISIBILITY_PRIVATE hides nothing under
+ * Android's default "Show sensitive content when locked", so the ones that hold a routine's steps, the brief's words or
+ * a routine's name are VISIBILITY_SECRET: never on the secure lock screen (their redacted public version is kept for
+ * wherever Android uses it). Only the speaking one shows there, with Next, Repeat and Stop, as its public version.
  */
 object RoutineNotices {
     const val SPEAKING_ID = 8_410
@@ -226,7 +229,7 @@ object RoutineNotices {
             .setContentTitle(title)
             .setContentText(cards.last().text())
             .setStyle(Notification.BigTextStyle().bigText(text))
-            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setVisibility(Notification.VISIBILITY_SECRET)
             .setPublicVersion(publicVersion(ctx, CHANNEL, title))
             .setContentIntent(ready(ctx, RoutineIntents.ALL_READY))
             .setAutoCancel(true)
@@ -240,7 +243,7 @@ object RoutineNotices {
         notify(ctx, SUMMARY_ID, Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_robot)
             .setContentTitle(text)
-            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setVisibility(Notification.VISIBILITY_SECRET)
             .setPublicVersion(publicVersion(ctx, CHANNEL, "Robot ran a routine"))
             .setContentIntent(openRoutines(ctx))
             .setOnlyAlertOnce(true)
@@ -257,7 +260,7 @@ object RoutineNotices {
             .setSmallIcon(R.drawable.ic_robot)
             .setContentTitle(RoutineTexts.readyToPlay(r))
             .setContentText(RoutineTexts.PLAY_TEXT)
-            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setVisibility(Notification.VISIBILITY_SECRET)
             .setPublicVersion(publicVersion(ctx, CHANNEL, "Robot has something to say"))
             .setContentIntent(play)
             .addAction(Notification.Action.Builder(null, "Play", play).build())
@@ -290,7 +293,7 @@ object RoutineNotices {
             .setContentTitle(RoutineTexts.notAssistant(r))
             .setContentText(RoutineTexts.NOT_ASSISTANT_TEXT)
             .setStyle(Notification.BigTextStyle().bigText(RoutineTexts.NOT_ASSISTANT_TEXT))
-            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setVisibility(Notification.VISIBILITY_SECRET)
             .setPublicVersion(publicVersion(ctx, CHANNEL, "Robot has something for you"))
             .setContentIntent(openRoutines(ctx))
             .addAction(Notification.Action.Builder(null, "Open Robot", openRoutines(ctx)).build())
@@ -308,7 +311,7 @@ object RoutineNotices {
             .setContentTitle(RoutineTexts.silentTitle(r))
             .setContentText(text)
             .setStyle(Notification.BigTextStyle().bigText(text))
-            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setVisibility(Notification.VISIBILITY_SECRET)
             .setPublicVersion(publicVersion(ctx, CHANNEL, "Robot ran a routine"))
             .setAutoCancel(true)
             .build())

@@ -82,7 +82,10 @@ object CarNotices {
 
     fun cancelStart(ctx: Context) = cancel(ctx, START_ID)
 
-    /** Car mode ended: "From your drive: 2 things", the kept words only unlocked; a tap opens the panel with them. */
+    /**
+     * Car mode ended: "From your drive: 2 things", the kept words only unlocked; a tap opens the panel with them. 1.0:
+     * VISIBILITY_SECRET, never on the secure lock screen (PRIVATE shows the words there under Android's default setting).
+     */
     fun parked(ctx: Context) {
         cancelStart(ctx)
         val list = HandsFreeFiles.store(ctx).parked()
@@ -96,7 +99,7 @@ object CarNotices {
             .setContentTitle(title)
             .setContentText(list.last().item.summary)
             .setStyle(Notification.BigTextStyle().bigText(text))
-            .setVisibility(Notification.VISIBILITY_PRIVATE)
+            .setVisibility(Notification.VISIBILITY_SECRET)
             .setPublicVersion(Notification.Builder(ctx, CHANNEL).setSmallIcon(R.drawable.ic_robot).setContentTitle(title).build())
             .setContentIntent(open)
             .setAutoCancel(true)
