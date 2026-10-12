@@ -1,5 +1,7 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.feedback.FeedbackEntry
+import app.heyrobot.core.feedback.FeedbackKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -59,7 +61,8 @@ class VoiceLogTest {
             FallbackWhy.entries, LoadFailure.entries, ClaudeEnd.entries, ClaudeFail.entries, ClaudeModelCode.entries, LocationCode.entries,
             NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries, ProblemStage.entries,
             app.heyrobot.core.memory.MemOrigin.entries, app.heyrobot.core.memory.MemKindCode.entries, app.heyrobot.core.memory.MemForget.entries,
-            app.heyrobot.core.memory.MemLock.entries, app.heyrobot.core.memory.MemCommandCode.entries)
+            app.heyrobot.core.memory.MemLock.entries, app.heyrobot.core.memory.MemCommandCode.entries,
+            FeedbackKind.entries, FeedbackEntry.entries)
         for (c in codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(BrainFail.TIMEOUT, BrainFail.entries.single { it.id == 10 })
         for (e in BrainError.entries) assertTrue(e.name, BrainFail.of(e).name == e.name)
@@ -106,7 +109,14 @@ class VoiceLogTest {
         for (c in app.heyrobot.core.messages.MessageLog.codes) assertEquals(c.toString(), c.size, c.map { it.id }.toSet().size)
         assertEquals(app.heyrobot.core.messages.MessageApp.entries.size,
             app.heyrobot.core.messages.MessageApp.entries.map { app.heyrobot.core.messages.MsgAppCode.of(it) }.toSet().size)
-        // Memory's and messages' events never share an id with each other or with any event before them.
+        // 0.7's feedback events use 220 to 229 (225 the panel's, the others the main app's Send feedback page).
+        val feedback = listOf(VoiceEvent.FEEDBACK_OPENED, VoiceEvent.FEEDBACK_SHARED, VoiceEvent.FEEDBACK_COPIED, VoiceEvent.FEEDBACK_GITHUB,
+            VoiceEvent.FEEDBACK_TEXTED, VoiceEvent.FEEDBACK_ASKED)
+        assertEquals((220..225).toList(), feedback.map { it.id })
+        assertEquals(feedback, VoiceEvent.entries.filter { it.id in 220..229 })
+        assertTrue(VoiceEvent.entries.none { it.name.startsWith("FEEDBACK_") && it.id !in 220..229 })
+        // Memory's (180 to 189), messages' (190 to 199) and feedback's (220 to 229) events never share an id with each other
+        // or with any other event, and no id is used twice.
         assertEquals(VoiceEvent.entries.size, VoiceEvent.entries.map { it.id }.toSet().size)
         // Every model and backend has a code of its own.
         assertEquals(BrainModel.entries.size, BrainModel.entries.map { ModelCode.of(it) }.toSet().size)
@@ -308,5 +318,36 @@ class VoiceLogTest {
         val now = 1_760_000_060_000L
         val text = VoiceLogText.plain(listOf(VoiceLogEntry(now - 12_000, VoiceEvent.SCREEN, 1)), now, "Robot voice log", zone)
         assertEquals("Robot voice log · 1 events, newest first · copied Oct 9 08:54:20\nOct 9 08:54:08  (12 s ago)  Screen on\n", text)
+        // 0.7, Send feedback: codes and counts only, never the words.
+        assertEquals("Send feedback opened from the voice log: bug report",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_OPENED, FeedbackEntry.VOICE_LOG.id, FeedbackKind.BUG.id)))
+        assertEquals("Feedback (bug report) handed to the share sheet: about 3400 characters · with the problem report, the voice log, the settings summary",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_SHARED, FeedbackKind.BUG.id, 34, 7)))
+        assertEquals("Feedback (idea) copied: about 300 characters · with no diagnostics",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_COPIED, FeedbackKind.IDEA.id, 3, 0)))
+        assertEquals("Feedback (bug report) opened as a GitHub issue in the browser: about 6900 characters (cut to fit the link)",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_GITHUB, FeedbackKind.BUG.id, 69, 1)))
+        assertEquals("Feedback (other) opened in the SMS app with your number: about 200 characters · with the settings summary",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_TEXTED, FeedbackKind.OTHER.id, 2, 4)))
+        assertEquals("Feedback asked for by voice: idea · with words after the phrase",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_ASKED, FeedbackKind.IDEA.id, 1, 0)))
+        assertEquals("Feedback asked for by voice: bug report · phone locked: nothing opened",
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.FEEDBACK_ASKED, FeedbackKind.BUG.id, 0, 1)))
+    }
+
+    /**
+     * 0.7: the voice log's Copy never holds a wake phrase's words, only its number (the screen alone shows the words beside
+     * it): its text is made without any way to name a phrase.
+     */
+    @Test fun copyGivesWakePhrasesByNumberOnly() {
+        val now = 1_760_000_060_000L
+        val log = listOf(VoiceLogEntry(now - 2_000, VoiceEvent.WAKE, 2, -1, WakeAction.OPENED.id), VoiceLogEntry(now - 1_000, VoiceEvent.KWS_HIT, 2,
+            KwsSpotterCode.IDLE.id, MicKind.RECOGNITION.id * 10 + AecState.OFF.id), VoiceLogEntry(now, VoiceEvent.WAKE_IGNORED, WakeDrop.DEBOUNCE.id, 2))
+        val text = VoiceLogText.plain(log, now, "Robot voice log", ZoneOffset.UTC)
+        assertTrue(text, text.contains("Wake word #2: opened the panel") && text.contains("Spotter: wake word #2 ·") && text.contains("Wake word #2 ignored"))
+        assertFalse(text.contains("“"))
+        for (m in VoiceLogText::class.java.declaredMethods.filter { it.name == "plain" }) {
+            assertFalse(m.toGenericString(), m.parameterTypes.any { kotlin.jvm.functions.Function1::class.java.isAssignableFrom(it) })
+        }
     }
 }

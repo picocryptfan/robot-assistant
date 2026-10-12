@@ -4,7 +4,7 @@
 > publishing: 0.6.0 adds what it doesn't cover yet: conversation mode and its transcripts (kept on the phone), the fast
 > translation engine's model download (Mozilla's storage.googleapis.com bucket), the speaker model's (huggingface.co), a
 > summary sent to Claude after its card, and the other helpers (any company's API, or a server on your own network).
-> Replace CONTACT with a real address.
+> 0.7's model problem reports and feedback are covered below. Replace CONTACT with a real address.
 
 ## The short version
 
@@ -33,7 +33,20 @@ can turn off.
   repository (Settings › About › Updates › Advanced). They are encrypted with a key that never leaves your phone's secure
   hardware (Android Keystore, AES-GCM), and decrypted only when Robot calls that helper, or GitHub's API for the token.
 - **Robot's diagnostic logs** (Settings › Voice › Voice log, and Android's log) hold codes and numbers only, never what
-  you said or what Robot answered. They stay on the phone; you can copy the Voice log yourself for a bug report.
+  you said or what Robot answered. They stay on the phone; you can copy the Voice log yourself (wake phrases by number)
+  or add it to a bug report (below).
+- **Model problem reports.** When Robot's model fails or crashes, Robot keeps a note of it (codes and numbers: which
+  model, where it ran, at which stage, the memory) and the last 10 of them, on the Model tab. The report you can show
+  there adds Robot's version, the phone and its Android build, Android's record of how the model's process ended (for a
+  native crash: the signal and the names of the libraries it was in, never memory contents or paths of yours) and the last
+  50 voice log events. It stays on the phone; you may copy or share it, and Robot never sends it.
+- **Feedback** (Settings › About › Send feedback). A bug report or an idea you write, with only what you tick added: the
+  problem report, the last 60 voice log events, a summary of your settings' switches and levels, the updater's error
+  codes. Each part has a Preview of exactly what it adds, and none of them holds your conversations or History,
+  transcripts, messages, notes, people or contacts, calendar, wake phrases' words, helpers' names, addresses or keys, the
+  updater's repository or token, Wi-Fi or Bluetooth names, or where you are. Robot sends nothing: you send the message with
+  the app you pick (below), or copy it (the clipboard copy is marked sensitive and cleared after a minute if nothing
+  replaced it). The phone number you may set for "Text it" stays on the phone.
 
 ## When Robot goes online, and what is sent
 
@@ -58,7 +71,11 @@ can turn off.
    - Without a key, "Open in the Claude app" only fills in the Claude app (and may put your question on the clipboard);
      you press Send there.
 5. **Other apps you hand things to** (Cheogram, Proton Mail, your SMS or calendar app, Organic Maps, the Claude app).
-   Robot fills in a draft or opens a route; that app sends something only when you tap Send, under its own policy.
+   Robot fills in a draft or opens a route; that app sends something only when you tap Send, under its own policy. This
+   is also how feedback leaves (Settings › About › Send feedback): Share hands the message to the app you pick in
+   Android's share sheet (SMS, Signal, Molly…), "Text it" opens your SMS app with the number you set, and "Open a GitHub
+   issue" opens GitHub's new issue page in your browser with the message filled in (GitHub gets it only if you submit it
+   there, under its own privacy statement). Saying "report a bug" or "I have an idea" only opens that page.
 6. **Checking for updates** (Settings › About › Updates): once a day while "Check for updates automatically" is on (the
    default), and when you tap Check now. Robot asks GitHub (api.github.com) for the newest releases of Robot's repository,
    or of the one you set in Advanced, and downloads an update through api.github.com from GitHub's servers
@@ -82,8 +99,11 @@ network permissions are granted at install; GrapheneOS lets you turn the network
 - **Approximate location:** the weather "here" and the nearest place.
 - **Photos and videos** (or only the ones you pick): finding large files to free space. Deleting one always asks you
   again, in Android's own window.
-- **Notifications:** alarms, timers and reminders, such as the one after a restart, and that an update is available.
-- **Alarms** (at install): timers and alarms.
+- **Notifications:** Robot's own: that Android turned Robot off as the assistant after a restart or an update, a model
+  problem, an update that is available or ready, and the one that shows while a conversation is transcribed.
+- **Exact alarms** (at install): one alarm 3 minutes after the phone restarts (or Robot updates), to check that Robot is
+  still your digital assistant and tell you if Android turned it off. The timers and alarms you ask for are set by your
+  Clock app, which Robot only asks (the "set an alarm" permission); Robot keeps no alarm of its own for them.
 - **Usage access** (optional, in Android's settings): which apps use the most space.
 - **Notification access** (optional, only for learning names from Cheogram).
 - **Network** (at install): the online features above.

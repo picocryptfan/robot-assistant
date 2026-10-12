@@ -14,6 +14,8 @@ import androidx.compose.ui.platform.LocalContext
 import app.heyrobot.core.CalendarInfo
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.TranscriptIds
+import app.heyrobot.core.feedback.FeedbackEntry
+import app.heyrobot.core.feedback.FeedbackKind
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.LookStore
 import app.heyrobot.ui.AdbFixScreen
@@ -30,8 +32,8 @@ import kotlin.reflect.KProperty
 
 // MAIN PROCESS. Settings' sub-pages by route (Page.Settings, which survives a recreation as "settings:<route>"), the
 // pages open over the tabs (PageStack: Back goes up one page, as in Android's Settings), and where a link from outside
-// the app opens it (AppRoutes). New pages are added here, with what they need already passed in, so MainActivity never
-// changes for them.
+// the app opens it (AppRoutes; 0.7: Send feedback from the panel). New pages are added here, with what they need already
+// passed in, so MainActivity never changes for them.
 
 object SettingsRoutes {
     const val VOICE = "voice"
@@ -53,6 +55,10 @@ object SettingsRoutes {
     fun adbFix(id: String) = "adb/$id"
     /** Settings › People › Notification access: the three steps. */
     const val NOTIFICATION_ACCESS = "people/notification-access"
+    /** 0.7: Settings › About › Send feedback ([feedback] gives where it was opened from, the kind and a problem to report). */
+    const val FEEDBACK = "about/feedback"
+    fun feedback(entry: FeedbackEntry, kind: FeedbackKind? = null, problem: Long? = null): String =
+        FEEDBACK + "?e=" + entry.key + (kind?.let { "&k=" + it.name.lowercase() } ?: "") + (problem?.let { "&p=$it" } ?: "")
 }
 
 /** The page for [route]; an unknown one (from a newer version's saved state) goes back to Settings. */
@@ -84,7 +90,8 @@ fun SettingsNav(
         SettingsRoutes.MEMORY -> MemorySettingsRoute(a, snackbar, onBack)
         SettingsRoutes.ADVANCED -> AdvancedSettingsScreen(a, onBack)
         SettingsRoutes.ABOUT -> AboutSettingsScreen(a, onBack)
-        SettingsRoutes.UPDATES -> UpdatesRoute(snackbar, onBack)
+        SettingsRoutes.UPDATES -> UpdatesRoute(snackbar, onBack,
+            onReport = { a.openPage(Page.Settings(SettingsRoutes.feedback(FeedbackEntry.UPDATER, FeedbackKind.BUG))) })
         SettingsRoutes.NOTIFICATION_ACCESS -> NotificationAccessScreen(snap.facts, onBack)
         SettingsRoutes.MESSAGES -> {
             val ctx = LocalContext.current
@@ -92,6 +99,7 @@ fun SettingsNav(
         }
         else -> when {
             route.startsWith("adb/") -> AdbFixScreen(route.removePrefix("adb/"), snackbar, onBack)
+            route.startsWith(SettingsRoutes.FEEDBACK) -> FeedbackRoute(route, snap, snackbar, onBack)
             else -> LaunchedEffect(route) { onBack() }
         }
     }
@@ -106,6 +114,8 @@ fun parentOf(p: Page): Page? = when (p) {
         p.route == SettingsRoutes.NOTIFICATION_ACCESS -> Page.People
         // Settings › About › Updates, which the updater's notifications open alone.
         p.route == SettingsRoutes.UPDATES -> Page.Settings(SettingsRoutes.ABOUT)
+        // Send feedback: About when it was opened there, else the tabs (the Model tab, the panel).
+        p.route.startsWith(SettingsRoutes.FEEDBACK) -> if (FeedbackArgs.of(p.route).entry == FeedbackEntry.ABOUT) Page.Settings(SettingsRoutes.ABOUT) else null
         p.route.startsWith("adb/") -> Page.AdbFixes
         // A model's page sits under the Model tab.
         p.route.startsWith("model/") -> null
@@ -191,6 +201,9 @@ object AppRoutes {
         // Settings › Conversation also from the transcript screen's speaker-model offer (it only opens the page); Settings ›
         // Model from a chat-only model's answer to an action (0.4.3); Settings › About › Updates from the updater's notifications;
         // Settings › Memory from a memory card's "Open Memory" (0.7).
+        // 0.7: Send feedback from a feedback phrase in the panel, with its kind only (the words come in a file of Robot's own).
+        i.getStringExtra(AppPages.EXTRA) == AppPages.FEEDBACK ->
+            AppPages.FEEDBACK + (FeedbackKind.of(i.getStringExtra(AppPages.EXTRA_FEEDBACK_KIND))?.let { ":" + it.name.lowercase() } ?: "")
         else -> i.getStringExtra(AppPages.EXTRA)?.takeIf { it == AppPages.NOTES || it == AppPages.PERMISSIONS || it == AppPages.CONVERSATION_SETTINGS ||
             it == AppPages.MODEL || it == AppPages.HELPERS || it == AppPages.UPDATES ||
             it == AppPages.MEMORY }
@@ -209,6 +222,8 @@ object AppRoutes {
         r == AppPages.MODEL -> Target(tab = Tab.MODEL)
         r == AppPages.UPDATES -> Target(page = Page.Settings(SettingsRoutes.UPDATES))
         r == AppPages.MEMORY -> Target(page = Page.Settings(SettingsRoutes.MEMORY))
+        r == AppPages.FEEDBACK || r.startsWith(AppPages.FEEDBACK + ":") ->
+            Target(page = Page.Settings(SettingsRoutes.feedback(FeedbackEntry.VOICE, FeedbackKind.of(r.substringAfter(':', "")))))
         else -> null
     }
 }

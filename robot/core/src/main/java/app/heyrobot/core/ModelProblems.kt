@@ -180,6 +180,33 @@ data class ModelProblem(
 }
 
 /**
+ * The last [KEEP] model problems (0.7), for the Model tab's list: files/robot/[FILE], one [ModelProblem] per line (codes and
+ * numbers only), the newest last; one writer, the voice process, which adds each problem as it notes it. The main app
+ * hides one you delete (sys/Problems), never writing here.
+ */
+object ProblemList {
+    const val FILE = "model_problems.txt"
+    const val KEEP = 10
+    private const val HEADER = "robot-model-problems 1"
+
+    /** Newest first; a damaged line is skipped. */
+    fun decode(text: String?): List<ModelProblem> {
+        val lines = text?.lines() ?: return emptyList()
+        if (lines.firstOrNull()?.trim() != HEADER) return emptyList()
+        return lines.drop(1).mapNotNull { ModelProblem.decode(it) }.distinctBy { it.time }.sortedByDescending { it.time }.take(KEEP)
+    }
+
+    /** The list in [text] with [p] added (one with the same time is replaced), the newest [KEEP] kept. */
+    fun add(text: String?, p: ModelProblem): String {
+        val all = (decode(text).filter { it.time != p.time } + p).sortedBy { it.time }.takeLast(KEEP)
+        return HEADER + "\n" + all.joinToString("") { it.encode() + "\n" }
+    }
+
+    /** ":brain · writing the answer · Fast on the GPU": a row's process and stage under its date, for the list. */
+    fun row(p: ModelProblem): String = p.process.suffix + " · " + p.stage.title + " · " + p.model.title + " on the " + p.backend.title
+}
+
+/**
  * Android's record of how the model's process ended (ActivityManager.getHistoricalProcessExitReasons, ApplicationExitInfo;
  * :brain's, or 0.6.0 :llama's for a GGUF file):
  * [reasonName] is its REASON_ constant's name, [description] Android's own short text (scrubbed by [ProblemReport]).
@@ -187,6 +214,8 @@ data class ModelProblem(
 data class ExitFacts(
     val time: Long, val pid: Int, val reason: Int, val reasonName: String, val status: Int, val description: String?,
     val importance: Int, val pssKb: Long, val rssKb: Long,
+    /** 0.7: a native crash's tombstone, as [Tombstone] reads it (signal, code, library names and offsets); null otherwise. */
+    val nativeCrash: NativeCrash? = null,
 )
 
 /** The facts a report states besides the problem itself (the main app gathers them). */
@@ -292,6 +321,7 @@ object ProblemReport {
                 .append(" · importance ").append(e.importance).append(" · PSS ").append(e.pssKb / 1024).append(" MB · RSS ").append(e.rssKb / 1024).append(" MB")
             scrub(e.description)?.let { append(" · “").append(it).append('”') }
             append('\n')
+            e.nativeCrash?.lines()?.forEach { append("    ").append(it).append('\n') }
         }
         append('\n')
         val log = f.voiceLog.take(LOG_LINES)

@@ -4,7 +4,9 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
+import app.heyrobot.core.feedback.FeedbackKind
 import app.heyrobot.sys.AppPages
+import app.heyrobot.sys.FeedbackFiles
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.Tab
@@ -37,6 +39,11 @@ class AppRoutesTest {
         assertEquals(AppRoutes.Target(page = Page.Settings(SettingsRoutes.MEMORY)),
             open(app.heyrobot.sys.SettingsIntents.of(ctx, app.heyrobot.core.SettingsPage.MEMORY).single()))
         assertEquals("Open Memory", app.heyrobot.core.SettingsPage.label(app.heyrobot.core.SettingsPage.MEMORY))
+        // 0.7: a feedback phrase opens Send feedback with its kind; the words come in Robot's own file, never in the intent.
+        val fb = FeedbackFiles.openIntent(ctx, FeedbackKind.IDEA)
+        assertEquals(AppRoutes.Target(page = Page.Settings("about/feedback?e=voice&k=idea")), open(fb))
+        assertEquals(setOf(AppPages.EXTRA, AppPages.EXTRA_FEEDBACK_KIND), fb.extras!!.keySet())
+        assertEquals(AppRoutes.Target(page = Page.Settings("about/feedback?e=voice")), open(main().putExtra(AppPages.EXTRA, AppPages.FEEDBACK)))
     }
 
     @Test fun conversationModesLinks() {

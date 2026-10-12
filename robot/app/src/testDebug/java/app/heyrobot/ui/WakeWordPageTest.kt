@@ -151,4 +151,13 @@ class WakeWordPageTest {
         rule.onNodeWithContentDescription("Copy log").assertExists()
         assertTrue(rule.touchTargetProblems().isEmpty())
     }
+
+    /** 0.7: "Send as bug report" opens Send feedback with the voice log ticked. */
+    @Test fun theVoiceLogSendsABugReport() {
+        var reports = 0
+        rule.show { VoiceLogScreen(RobotSettings(), SnackbarHostState(), onBack = {}, onReport = { reports++ }) }
+        rule.onNodeWithText("Send as bug report").performClick()
+        assertEquals(1, reports)
+        assertTrue(rule.touchTargetProblems().isEmpty())
+    }
 }

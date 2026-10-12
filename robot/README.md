@@ -404,6 +404,203 @@ it is private. Watch Settings › Voice › Voice log and `adb logcat -s Robot` 
 13. **Fork.** Advanced › Repository: `nobody/x x` keeps Save off; a fork's `owner/name` (or its link) saves, Check now asks
     that repository; Use Robot's own repository goes back.
 
+## Feedback and bug reports (0.7)
+
+Testers send the developer a bug report or an idea from inside Robot: Settings › About › **Send feedback**. Robot writes
+your words and what you tick into one plain-text message, and you send it with the app you choose through Android's share
+sheet (SMS, Signal, Molly, Cheogram…), or copy it. The developer reads it and forwards it to an AI coding assistant as it
+is. No email, no server, nothing sent automatically: Robot sends nothing itself.
+
+### The page
+
+- **Bug / Idea / Other** (a segmented choice), then your words: "What happened?" for a bug, with **Steps** and **What you
+  expected** (both optional); "What would you like Robot to do?" for an idea; "What would you like to tell the
+  developer?" for anything else.
+- **Add to the message**, each a tick box with **Preview**, which shows exactly the text ticking it adds (and **Preview the
+  whole message**, exactly what Share hands over):
+  - **Problem report**: 0.4.7's model problem report as it is (the one you came from, else the open problem, else one
+    from the last day), now with a native crash's summary (below).
+  - **Voice log**: the last 60 events, newest first, as codes and numbers with their fixed words
+    (`10-11 14:05:03  WAKE 2 -1 0  Wake word #2: opened the panel`).
+  - **Settings summary**: every switch and level by its code (`Voice: wakeWord=on · phrases=[#1 MEDIUM on, #2 HIGH off] …`);
+    a wake phrase is its number and sensitivity, a helper its kind and switches, a place, a gateway or a server "set" or
+    "another", the updater's repository "Robot's own" or "another".
+  - **Updater** (after an update error, or from one): the last check, its error code and HTTP status, a refused file and
+    the last install, as codes.
+  A bug ticks the problem report (if there is one), the voice log and the settings summary (and the updater's codes when
+  you came from an update error); an idea or anything else ticks none. You change any of them.
+- **Share** (Android's share sheet, `ACTION_SEND` `text/plain` through `Intent.createChooser`, no subject so an SMS app
+  doesn't make it an MMS), **Copy** (the clipboard, marked sensitive so Android hides its preview, and cleared a minute
+  later if it still holds the message; Android lets Robot read the clipboard only while it is in front, so if you are
+  still in Signal then, it is cleared when you come back to Robot), **Text it** (only with a number set: your SMS app
+  opens with `ACTION_SENDTO smsto:<number>` and the message filled in; you press Send there) and **Open a GitHub issue**
+  (only while the updater has a repository: `https://github.com/<owner>/<repo>/issues/new?title=…&body=…` in your
+  browser, the message URL-encoded and cut to about 7,000 characters; a private repository needs you signed in to GitHub
+  there).
+- **Send to** in the page's menu (⋮): the developer's phone number for Text it, kept in `files/robot/feedback.json`
+  (not `settings.json`, which stays schema 13), never in the message. **Remove the number** takes it out.
+- Your draft (kind, words, ticks, reference) survives a rotation or Android stopping the app (saved state). After Share,
+  Copy, Text it or the GitHub issue, **Sent it?** offers **Done**, which clears the draft and closes the page; until then
+  it stays.
+
+### The message
+
+```
+ROBOT FEEDBACK v1
+Kind: Bug report
+Ref: RFB-7K2QD4XZ
+Robot: 0.6.0 (60) · release build
+Phone: Pixel 9a · Tensor G4 · Android 16 (BP2A.250805.005) · GrapheneOS
+Model: Fast · Gemma 4 E2B · GPU (fell back to CPU on 2026-10-11)
+Look: stock · Language: en-CA
+---
+What happened:
+<your words>
+---
+Steps:
+<steps>
+Expected:
+<what you expected>
+---
+Diagnostics (ticked by the tester):
+• Last problem report:
+…
+• Voice log, last 60 events, newest first (codes and numbers only):
+…
+• Settings summary (switches and levels only):
+…
+---
+Forward this whole message to the developer's assistant as it is.
+```
+
+The reference is `RFB-` and 8 random base32 characters, the same for every way you send one draft. "Robot" says a release,
+test (a pre-release version) or debug build; "GrapheneOS" is read from the build number GrapheneOS gives its builds (a
+date and hour, `2026100201`), "not GrapheneOS (by its build number)" otherwise; your own model file is "Your own model
+file (.gguf)", never its name. The message is kept under 12,000 characters: the voice log's oldest events go first, then
+the problem report's end, then the settings summary's; your words are never cut (long ones may arrive as several texts:
+Copy is there too).
+
+### What it never holds
+
+Your conversations or History, transcripts, messages, memory, People or contacts, notes, the calendar, a wake phrase's
+words ("phrase #2"), a helper's name, address, model on your server or key, the updater's repository or access token, a
+Wi-Fi or Bluetooth name, or where you are. The diagnostics are built from codes, numbers and switches only (core
+`FeedbackDiagnostics`, from the six files `FeedbackSources` reads: the settings, the look, the updater's two files, the
+voice logs and the GPU failure), and a last pass (`FeedbackPrivacy`) replaces any personal text Robot knows of that still
+turned up in a line Robot didn't write (Android's text in a problem report) with "[left out]". Your own words are never
+changed: what you type goes as you typed it.
+
+Since 0.7 the voice log's own **Copy** (Settings › Voice › Voice log) gives wake phrases by their number only too; the
+screen still shows the words beside the number.
+
+### Where it opens
+
+- Settings › About › **Send feedback**.
+- The Model tab's model problem: **Send as bug report**, its report ticked; and each problem in its list (below).
+- Settings › Voice › Voice log: **Send as bug report**.
+- Settings › About › Updates, after an error (a failed check, a refused file, an install that didn't finish): **Report
+  this**, a bug with the updater's codes ticked.
+- The panel, by voice or typed, decided by code before the model (`core/feedback/FeedbackRouter.kt`): "report a bug",
+  "file a bug report", "send feedback", "I have an idea", "feature request", and in Québec French « signaler un bogue »
+  (or « bug »), « j'ai une idée », « envoyer un commentaire », with only filler before them ("hey robot", "please",
+  "can you", "I want to", « je veux »). The page opens with the kind chosen, and what you said after the phrase starts
+  your text: "I have an idea: read my calendar in the brief" opens an idea reading "Read my calendar in the brief". The
+  panel only opens the page (the words go through `files/robot/feedback_prefill.json`, read once by the page within two
+  minutes and deleted; the intent carries the kind alone); it sends nothing. A question stays a question: "how do I report
+  a bug in Excel?", "can you report a bug in Excel?". On the lock screen it asks you to unlock first. In 0.7.0 the phrases
+  come after your messages' commands and their echo check (a message Robot read aloud that says "report a bug: …", heard
+  back by the microphone, is the message's: "I don't act on what a message says."), and before memory's commands, the
+  helpers and the model.
+
+### Model problems, fuller
+
+- The Model tab keeps the **last 10 model problems** (`files/robot/model_problems.txt`, codes and numbers only, written by
+  the voice process as it notes each one): under the open problem, or at the end of the tab once it is dismissed, a row
+  each with its date, the process (`:brain` or `:llama`) and the stage. A tap shows **Show**, **Share**, **Send as bug
+  report** and **Delete** (a deleted one is hidden by the main app, which never writes the voice process's file).
+- A **native crash** (`ApplicationExitInfo.REASON_CRASH_NATIVE`, whose trace since Android 12 is the tombstone as a
+  protocol buffer) is summed up under its exit in the report by core `Tombstone`, which reads only a few fields of
+  `tombstone.proto` with no protobuf library: the signal and its code, Android's abort message only when it holds no path,
+  quote, address, long number or non-ASCII text (else "present"), and the crashing thread's top 16 frames as
+  `#NN libname.so +0xOFFSET (symbol)`, library file names only (a model file or a file of yours is "(not a library)").
+  Never the memory around the fault, a register, the memory maps, the open files, the log buffers or the command line.
+
+### Code and tests
+
+Core: `app.heyrobot.core.feedback` (`Feedback.kt`: the kinds, the draft, the facts, the reference and `FeedbackReport`;
+`FeedbackDiagnostics.kt`: the diagnostics, `FeedbackPrivacy`, `FeedbackSources`, `feedback.json` and the prefill;
+`FeedbackRouter.kt`), `Tombstone.kt`, `ProblemList` in `ModelProblems.kt`, the GitHub issue link in `update/GitHub.kt`
+with every other GitHub address, and the voice log's events 220 to 225 (page opened and from where, share sheet opened,
+copied, GitHub issue opened, Text it, asked by voice: kinds, lengths in hundreds and which diagnostics, never words).
+Tests: `FeedbackReportTest` (the header, each kind, the defaults, the length and what is cut first, the GitHub link),
+`FeedbackPrivacyTest` (a phone with a marker in every store above, every diagnostic ticked as the app builds them: none
+reaches the message, a preview or the link), `FeedbackRouterTest` (English and French, the words after, questions),
+`TombstoneTest` (a tombstone written by hand field by field, with paths, registers, memory, maps, logs and the command
+line in it), `ModelProblemsTest` and `VoiceLogTest`. App: `ui/settings/FeedbackSettings.kt` (the page and its route),
+`sys/Feedback.kt` (the files, the clipboard, the intents), `sys/Problems.kt`; `FeedbackScreenTest` (debug unit tests:
+the kinds, Preview, Share, Copy, Text it, the GitHub issue, Done, the panel's words, a recreation, both looks, and the
+screenshots `feedback_light`, `feedback_dark`, `feedback_font200`), `ModelPagesTest`, `UpdatesSettingsTest`,
+`AppRoutesTest` and `PageSaverTest`. `ProcessIsolationTest` checks that no feedback code has network code or a log but
+codeless RLog events, that only the page sends and only the panel hands over words, that the tombstone is read only into
+`Tombstone`, and that no permission was added; `tools/verify_apk.sh` checks the same in the dex.
+
+### On the phone (0.7 feedback)
+
+Not yet checked. A debug build for steps 14 and 15 (`run-as`); watch Settings › Voice › Voice log (codes only) and
+`adb logcat -s Robot`, which must never show the message.
+
+1. **Share to Signal.** Settings › About › Send feedback: Bug is chosen, with "What happened?", Steps and What you
+   expected; Problem report (only if there is a problem), Voice log and Settings summary are ticked. Write a line, tap
+   **Share**: Android's share sheet; pick Signal (or Molly) and the developer's chat. The draft in Signal is the whole
+   message, starting "ROBOT FEEDBACK v1", "Kind: Bug report", "Ref: RFB-…", your words under "What happened:". Back in
+   Robot: **Sent it?** with Done. The voice log has "Send feedback opened from Settings › About" and "Feedback (bug
+   report) handed to the share sheet: about … characters · with …".
+2. **Share by SMS.** Share again and pick the SMS app: one draft (a long one is sent as several texts); no subject line,
+   no MMS.
+3. **Text it.** ⋮ › Send to…: "mom" says "Not a phone number" and keeps Save off; the developer's number saves. Text it:
+   the SMS app opens with the number and the message filled in, nothing sent until you press Send. ⋮ shows "Send to:
+   +1…", Remove the number takes it out and Text it goes.
+4. **Copy.** Copy: "Copied…"; Android's clipboard preview hides it (sensitive). Paste into a note within a minute: the
+   whole message. Wait a minute in Robot: the clipboard is empty. Copy again, switch to another app for over a minute,
+   come back to Robot: now it is cleared. Copy, then copy something else elsewhere: that is kept.
+5. **GitHub issue.** With Settings › About › Updates' repository set (Robot's own by default): Open a GitHub issue opens
+   the browser on the repository's new issue with the title ("Bug report: …") and the message in the body; a long one ends
+   "… (cut to fit the link: Copy has the whole report)" or with codes left out. While the repository is private, GitHub
+   asks you to sign in first. With a fork in Updates › Advanced › Repository, the link opens the fork's new issue instead.
+6. **Preview shows exactly what goes.** Each Preview shows the lines that box adds; Preview the whole message is
+   character for character what Signal received in step 1 (same draft). Untick the voice log: it is gone from the whole
+   message.
+7. **Nothing personal.** With a wake phrase of your own ("hey jennifer"), a helper named after a person with a home
+   server address, a Home for weather, a note, a person in People, a transcript and a History conversation: tick
+   everything, Preview the whole message and search it for each of those words, the server's address, the place and the
+   updater's repository: none is there (phrases as "#2"). Copy from Settings › Voice › Voice log: wake phrases by number only.
+8. **Idea and Other.** Idea: the field asks "What would you like Robot to do?", no Steps, nothing ticked; Other: "What
+   would you like to tell the developer?".
+9. **The draft stays.** Write a bug with steps, tick and untick, rotate the phone, switch apps, then
+   `adb shell am kill app.heyrobot` while Robot is in the background and come back: the same kind, words, ticks and
+   reference. Done clears it and closes the page.
+10. **Voice, English.** "Hey robot, report a bug": the panel says "Opening Send feedback…" and closes; Send feedback opens
+    with Bug. "Hey robot, I have an idea: read my calendar in the brief": Idea, the text "Read my calendar in the brief".
+    "Send feedback" (Other), "feature request" (Idea). "How do I report a bug in Excel?" is answered by the model. The
+    voice log has "Feedback asked for by voice: idea · with words after the phrase".
+11. **Voice, French.** « Signaler un bogue : le minuteur n'a pas sonné » (Bug, « Le minuteur n'a pas sonné »), « j'ai une
+    idée » (Idea), « envoyer un commentaire » (Other).
+12. **Locked.** On the lock screen, "report a bug": "Unlock your phone, then say it again…", nothing opens.
+13. **Entry points.** The Model tab's problem: Send as bug report opens a bug with its report ticked (Back returns to the
+    Model tab); Settings › Voice › Voice log: Send as bug report (Back to the log); Settings › About › Updates after a
+    failed check (Airplane mode, Check now): Report this, with Updater ticked ("error=NO_INTERNET").
+14. **Problem list and a Java crash.** With Fast loaded: `adb shell am crash $(adb shell pidof app.heyrobot:brain)`. The
+    Model tab shows the problem; dismiss it: "Last model problems" at the end of the tab with its row (date, ":brain",
+    the stage). Tap it: Show reads "reason CRASH" with no native crash lines; Share opens the share sheet; Send as bug
+    report opens Send feedback with that report; Delete removes the row (and the open problem if it was that one). After
+    11 problems, 10 rows.
+15. **A native crash's tombstone.** `adb shell run-as app.heyrobot kill -SEGV $(adb shell pidof app.heyrobot:brain)`
+    during an answer. Its report's exit line says "reason CRASH_NATIVE (5) · status 11", followed by "Native crash:
+    SIGSEGV (11), code SI_USER (0)", "Abort message: none" and "Backtrace, the crashing thread's first 16 of N frames:"
+    with lines like "#00 libc.so +0x… (…)": library names only, no `/data/app/…` path, no register, no memory, no file of
+    yours. Compare `am crash` (step 14), which leaves no tombstone.
+16. **Both looks.** Settings › Display › Classic look on: Send feedback looks and works the same.
+
 ## What's new in 0.4.7
 
 Robot on a **Pixel 9a** (and every other phone without a Tensor G5): until now Fast was Google's Tensor G5 TPU build,
@@ -3610,7 +3807,8 @@ classes load in the background when the panel opens.
 ### Voice log
 
 Settings › Voice › Voice log lists the last 300 things the voice side did, newest first, with relative times, and
-**Copy** puts them on the clipboard as plain text. When Robot doesn't respond, take a screenshot (or Copy) right away:
+**Copy** puts them on the clipboard as plain text (since 0.7 with wake phrases by number only; **Send as bug report**
+opens Send feedback, "Feedback and bug reports (0.7)"). When Robot doesn't respond, take a screenshot (or Copy) right away:
 the log shows where it stopped. It holds event codes and small numbers only, never words, transcripts, audio or
 names (`core/VoiceLog.kt`: the recording API takes only fixed enums and numbers, and `VoiceLogTest` checks that). It
 lives in the `:voice` process's memory and in `files/robot/voice_log.txt`, so it survives a restart.

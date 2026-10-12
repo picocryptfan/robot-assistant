@@ -35,10 +35,20 @@ data class GitHubRepo(val owner: String, val name: String) {
     /** The release's page, for "See it on GitHub": built here, never taken from the answer. */
     fun releasePage(tag: String): String = "https://github.com/$owner/$name/releases/tag/" + URLEncoder.encode(tag, "UTF-8").replace("+", "%20")
 
+    /**
+     * 0.7, Send feedback's "Open a GitHub issue": this repository's new-issue page with [title] and [body] filled in, opened in
+     * the browser, where you sign in (a private repository needs it) and submit it yourself; Robot sends nothing. Built here,
+     * where every GitHub address is.
+     */
+    fun newIssueUrl(title: String, body: String): String = "https://github.com/$owner/$name/issues/new?title=" + encode(title) + "&body=" + encode(body)
+
     override fun toString(): String = slug
 
     companion object {
         const val PER_PAGE = 20
+
+        /** [s] as a link's query value: UTF-8, every reserved character escaped, spaces as %20. */
+        fun encode(s: String): String = URLEncoder.encode(s, "UTF-8").replace("+", "%20")
 
         /**
          * What you typed or pasted: "owner/name", or a link to it ("https://github.com/owner/name", "github.com/owner/name.git",

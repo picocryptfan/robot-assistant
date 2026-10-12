@@ -109,6 +109,8 @@ import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.SpeechText
 import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.TextCommand
+import app.heyrobot.core.feedback.FeedbackCommand
+import app.heyrobot.core.feedback.FeedbackRouter
 import app.heyrobot.core.TextRequest
 import app.heyrobot.core.Tip
 import app.heyrobot.core.Tips
@@ -135,6 +137,7 @@ import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.ConversationStore
+import app.heyrobot.sys.FeedbackFiles
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.PeopleFiles
@@ -1169,19 +1172,23 @@ object PanelController {
         // Conversation mode's commands first (0.5.0, docs/conversation-mode.md 5.4): "transcribe this conversation",
         // and while one runs "stop transcribing", "pause", "resume". Never the model's to decide.
         // 0.7, your messages (PanelMessages, core MessagesRouter) before anything else: "read my messages", "reply …"; and a
-        // message's own words heard back while Robot read it are never a request (not even "remember that …").
+        // message's own words heard back while Robot read it are never a request (not even "remember that …" or "report a bug").
         val msgCmd = if (q.isNotEmpty() && st.draft == null) PanelMessages.route(q, fromVoice) else null
         val convCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null) ConversationRouter.route(q, ConversationSession.running) else null
+        // 0.7: "report a bug", "I have an idea", « signaler un bogue »: Send feedback opens in the app; the panel sends nothing.
+        // After the messages router and its echo check (a message read aloud saying "report a bug: …" is the message's), before the model.
+        val fbCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null) FeedbackRouter.route(q) else null
         // 0.7: memory's commands next ("remember that …", "forget that", "what do you know about me?"), Robot's own even in a
         // helper's conversation: what you ask Robot to remember never goes to a helper (core MemoryRouting).
-        val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null) MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null
+        val memRoute = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null)
+            MemoryPanel.route(q, Assistant.locked(VoiceHub.app)) else null
         // The helpers' phrases next ("ask Claude …", "go get Jarvis"), then texting without the model, then the model (FastPath).
-        var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && memRoute == null) ClaudeRouter.route(q, names) else null
+        var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null) ClaudeRouter.route(q, names) else null
         // "Thanks Claude" outside a helper's conversation is ordinary talk.
         if (cmd == ClaudeCommand.Leave && !_state.value.claudeMode) cmd = null
         // "Not Claude", "you tell me": Robot answers, now and for the rest of the conversation (a helper's conversation ends too).
         // Only an explicit "ask …" or "go get …" brings a helper back.
-        if (q.isNotEmpty() && memRoute == null && ClaudeRouter.declines(q, names)) {
+        if (q.isNotEmpty() && memRoute == null && fbCmd == null && ClaudeRouter.declines(q, names)) {
             if (cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join) cmd = null
             if (!claudeDeclined) RLog.i("claude_declined", "claudeMode" to _state.value.claudeMode)
             claudeDeclined = true
@@ -1220,10 +1227,10 @@ object PanelController {
             screenText = if (kept) sText?.let(ScreenText::sanitize)?.takeIf { it.isNotBlank() }?.let { ToolCalls.safeTake(it, ConversationCodec.MAX_SCREEN_TEXT) } else null,
             messages = heardBack, kept = if (heardBack) app.heyrobot.core.messages.MessageReading.HEARD_BACK else null)
         chat += user
-        val way = if (memRoute != null) FastPath.Way.MODEL else FastPath.of(cmd, _state.value.claudeMode, attachment)
+        val way = if (memRoute != null) FastPath.Way.MODEL else FastPath.of(cmd, _state.value.claudeMode && fbCmd == null, attachment)
         val toClaude = way == FastPath.Way.CLAUDE
         // Groups are only ever added: a question that needs a new one rebuilds the conversation once (:brain).
-        if (cmd == null && !toClaude && convCmd == null && msgCmd == null && memRoute == null) groups = groups + ToolRouter.route(q)
+        if (cmd == null && !toClaude && convCmd == null && msgCmd == null && fbCmd == null && memRoute == null) groups = groups + ToolRouter.route(q)
         val replyId = newId()
         // Decided per turn: a screen turn stops saving until the person taps Keep.
         val keep = if (marked == Attachment.SCREEN && !keptByUser) false else st.keep
@@ -1252,6 +1259,7 @@ object PanelController {
             when {
                 msgCmd != null -> PanelMessages.run(replyId, msgCmd)
                 convCmd != null -> conversationCommand(replyId, convCmd)
+                fbCmd != null -> feedbackCommand(replyId, fbCmd)
                 memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)
                 cmd == ClaudeCommand.Leave -> {
                     endHelperMode()
@@ -2161,6 +2169,21 @@ object PanelController {
     fun memoryChanged() {
         MemoryPanel.changedElsewhere()
         if (slot.running) closeConvAfterTurn = true else closeLiveConversation()
+    }
+
+    /**
+     * 0.7: a feedback phrase opens Settings › About › Send feedback in the app with its kind, and what you said after it
+     * starts your text (handed over in a file of Robot's own). The panel never sends anything: the page opens, you choose.
+     */
+    private suspend fun feedbackCommand(replyId: String, c: FeedbackCommand) {
+        val ctx = VoiceHub.app
+        val locked = Assistant.locked(ctx)
+        VoiceLog.add(VoiceEvent.FEEDBACK_ASKED, c.kind, if (c.text != null) 1 else 0, if (locked) 1 else 0)
+        if (locked) return localReply(replyId, "Unlock your phone, then say it again, or open Robot › Settings › About › Send feedback.",
+            spoken = "Unlock your phone, then say it again.")
+        withContext(Dispatchers.IO) { FeedbackFiles.prefill(ctx, c.kind, c.text) }
+        localReply(replyId, "Opening Send feedback. Nothing is sent until you choose an app.")
+        if (host?.launch(FeedbackFiles.openIntent(ctx, c.kind)) == true) leaveForApp()
     }
 
     private enum class ConversationEntry { START, OPEN }

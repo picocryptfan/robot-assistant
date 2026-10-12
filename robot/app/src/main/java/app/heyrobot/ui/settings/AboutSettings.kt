@@ -2,6 +2,7 @@ package app.heyrobot.ui.settings
 
 import androidx.compose.runtime.Composable
 import app.heyrobot.BuildConfig
+import app.heyrobot.core.feedback.FeedbackEntry
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.pref.PreferenceItem
@@ -9,8 +10,8 @@ import app.heyrobot.ui.pref.PreferenceScreen
 import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
 
-// MAIN PROCESS. Settings › About (0.4.x redesign): the version, Updates (the built-in updater, 0.6.0) and the Licences
-// (0.4.5), and room for more rows in the same group.
+// MAIN PROCESS. Settings › About (0.4.x redesign): the version, Updates (the built-in updater, 0.6.0), Send feedback (0.7)
+// and the Licences (0.4.5), and room for more rows in the same group.
 
 @Composable
 fun AboutSettingsScreen(a: AppActions, onBack: () -> Unit) {
@@ -19,6 +20,9 @@ fun AboutSettingsScreen(a: AppActions, onBack: () -> Unit) {
             PreferenceItem("Version", "Robot ${BuildConfig.VERSION_NAME}")
             // The built-in updater (0.6.0): an update on offer, or when Robot last checked.
             UpdatesEntry(a)
+            // 0.7: a bug report or an idea, as plain text you send with the app you choose.
+            PreferenceItem("Send feedback", "A bug or an idea, to the developer: you choose the app it goes with",
+                onClick = { a.openPage(Page.Settings(SettingsRoutes.feedback(FeedbackEntry.ABOUT))) })
             PreferenceItem("Licences", "Robot's licence and source code, and every part it uses with its licence and notices",
                 onClick = { a.openPage(Page.Licences) })
             // More rows of About go here, one line each.
