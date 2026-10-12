@@ -145,6 +145,27 @@ class SearchClientTest {
         assertTrue(intros.isNotEmpty() && intros.all { it.extra.isNotEmpty() && it.url.startsWith("https://fr.wikipedia.org/wiki/") || it.url.startsWith("https://en.wikipedia.org/wiki/") })
     }
 
+    /** 1.0: DuckDuckGo's Instant Answers, free and keyless, over the cloud route: short answers only, no page read from the phone. */
+    @Test fun duckDuckGosInstantAnswersNeedNoKeyAndReadNoPage() {
+        val ddg = Fake(202, res("duckduckgo_abstract.json"))
+        val s = WebSettings(on = true, service = SearchService.DDG_INSTANT, readPages = ReadPages.ALWAYS)
+        val a = client(s, null, ddg).search("Canadiens de Montréal", "fr") as SearchAnswer.Results
+        assertEquals("https://en.wikipedia.org/wiki/Montreal_Canadiens", a.results.first().url)
+        val (req, route) = ddg.sent.single()
+        assertEquals(WebTransport.Route.CLOUD, route)
+        assertEquals("https://api.duckduckgo.com/?q=Canadiens%20de%20Montr%C3%A9al&format=json&no_html=1&skip_disambig=1&no_redirect=1&t=heyrobot", req.url)
+        assertNull(req.header("Authorization") ?: req.header("X-Subscription-Token"))
+        // Read result pages: Always, and still no page is fetched: the fetcher would fail the test if asked.
+        val noFetch = PageFetcher(object : Dns { override fun lookup(hostname: String): List<InetAddress> = throw AssertionError("no page is read") },
+            PageRules(isPublic = { false }))
+        val o = WebSearch(SearchClient(s, null, "1.0.0", Fake(202, res("duckduckgo_abstract.json")), Abort()), noFetch, s)
+            .run("Canadiens", "who are the Canadiens", "en", "read", Abort()) as WebOutcome.Found
+        assertEquals(0, o.pagesRead)
+        assertTrue(o.skipped.isEmpty())
+        assertTrue(o.passages.isNotEmpty())
+        assertEquals(SearchService.DDG_INSTANT, o.service)
+    }
+
     @Test fun oneSearchWithPagesReadFromThePhone() {
         // The results point at this server (as a public site, through a fake DNS); one page is read, a PDF skipped.
         val host = "news.example.com"

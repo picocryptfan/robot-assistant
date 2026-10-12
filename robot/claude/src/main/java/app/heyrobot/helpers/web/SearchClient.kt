@@ -2,6 +2,7 @@ package app.heyrobot.helpers.web
 
 import app.heyrobot.core.Abort
 import app.heyrobot.core.web.BraveWire
+import app.heyrobot.core.web.DuckDuckGoWire
 import app.heyrobot.core.web.KagiWire
 import app.heyrobot.core.web.MojeekWire
 import app.heyrobot.core.web.OpenLibraryWire
@@ -19,7 +20,8 @@ import app.heyrobot.core.web.WikipediaWire
 
 // VOICE PROCESS ONLY, :claude module (0.9 web search, design A6.1 SearchClient). One search with the service Settings ›
 // Web search chose: your own SearXNG (HOME: LanRule on the LAN, Tailscale HTTPS anywhere), a public SearXNG, Brave,
-// Kagi or Mojeek (CLOUD, https only, your key), Wikipedia (search, then the articles' intros) and Open Library. Core's
+// Kagi or Mojeek (CLOUD, https only, your key), Wikipedia (search, then the articles' intros), DuckDuckGo's Instant Answers
+// (1.0, keyless) and Open Library. Core's
 // wires build each request and read each answer; [transport] sends it. Only the query words, the language, the
 // safe-search level, a result count and the key (for the paid services) leave the phone. Nothing here logs.
 
@@ -71,6 +73,8 @@ class SearchClient(
                 MojeekWire.parse(it.status, it.body, it.retryAfter)
             }
             SearchService.WIKIPEDIA_ONLY -> wikipedia(query, lang)?.let { SearchAnswer.Results(it) } ?: SearchAnswer.Failed(WebFail.OFF)
+            // 1.0: DuckDuckGo's free Instant Answer API (keyless): short answers with their sources, never a list of results.
+            SearchService.DDG_INSTANT -> send(DuckDuckGoWire.request(query, ua), WebTransport.Route.CLOUD) { DuckDuckGoWire.parse(it.status, it.body, query, it.retryAfter) }
         }
     }
 
