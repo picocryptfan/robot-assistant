@@ -115,8 +115,36 @@ object MessageWire {
     fun status(o: JSONObject?): MessagesStatus = if (o == null) MessagesStatus() else
         MessagesStatus(o.optBoolean("on"), o.optBoolean("access"), o.optBoolean("connected"), o.optBoolean("locked"), o.optInt("apps"))
 
-    fun list(status: MessagesStatus, threads: List<MessageThread>): String =
-        JSONObject().put("status", status(status)).put("threads", JSONArray().apply { threads.forEach { put(thread(it)) } }).toString()
+    /**
+     * Message text (and names) one list answer carries at most. It crosses Binder as a one-way message, whose buffer is
+     * about 512 KB for the whole process, as UTF-16: past that the answer would never arrive, and every conversation
+     * would be unreadable because a few hold long messages.
+     */
+    const val MAX_LIST_CHARS = 120_000
+
+    fun list(status: MessagesStatus, threads: List<MessageThread>, maxChars: Int = MAX_LIST_CHARS): String =
+        JSONObject().put("status", status(status)).put("threads", JSONArray().apply { fit(threads, maxChars).forEach { put(thread(it)) } }).toString()
+
+    /**
+     * [threads] (newest first) within [maxChars]: each keeps its newest messages that still fit (Robot reads the newest
+     * first); one with none left that had some goes.
+     */
+    fun fit(threads: List<MessageThread>, maxChars: Int): List<MessageThread> {
+        var left = maxChars
+        return threads.mapNotNull { t ->
+            val kept = ArrayDeque<IncomingMessage>()
+            for (m in t.messages.asReversed()) {
+                val c = m.text.length + (m.senderName?.length ?: 0) + (m.senderKey?.length ?: 0) + PER_MESSAGE
+                if (c > left) break
+                left -= c
+                kept.addFirst(m)
+            }
+            if (kept.isEmpty() && t.messages.isNotEmpty()) null else if (kept.size == t.messages.size) t else t.copy(messages = kept.toList())
+        }
+    }
+
+    /** A message's JSON besides its words (id, time, keys). */
+    private const val PER_MESSAGE = 80
 
     /** The status and the conversations of a [list] answer; damaged: off and none. */
     fun list(text: String?): Pair<MessagesStatus, List<MessageThread>> = try {

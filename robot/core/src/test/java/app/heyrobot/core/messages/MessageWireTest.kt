@@ -45,6 +45,28 @@ class MessageWireTest {
         assertFalse(req.toString().contains("arrive"))
     }
 
+    /**
+     * Forty conversations of 25 long messages each (anyone can send them) would be megabytes: past Binder's buffer for a
+     * one-way message, the list would never reach the panel and no conversation could be read. The answer keeps to its
+     * budget, newest conversations and messages first; ordinary ones cross whole.
+     */
+    @Test fun aListFitsBinderWhateverTheMessagesHold() {
+        val long = "x".repeat(4_000)
+        val threads = (0 until 40).map { i ->
+            thread(Snapshots.cheogram1to1(*Array(25) { j -> "$i-$j $long" }).copy(key = "0|com.cheogram.android|${2000 + i}|null|10123",
+                shortcutId = "sam@cheogram.com#p$i@cheogram.com"))
+        }
+        val json = MessageWire.list(MessagesStatus(on = true), threads)
+        assertTrue("${json.length}", json.length * 2 < 400_000)
+        val (_, back) = MessageWire.list(json)
+        assertTrue(back.size in 1 until threads.size)
+        assertEquals(threads.first().key, back.first().key)
+        assertEquals(threads.first().messages.last().id, back.first().messages.last().id)
+        assertTrue(back.all { it.messages.isNotEmpty() })
+        val ordinary = listOf(mom, group, thread(Snapshots.signal))
+        assertEquals(ordinary, MessageWire.list(MessageWire.list(MessagesStatus(), ordinary)).second)
+    }
+
     @Test fun theRecipientIsTheHeldNotificationsOwn() {
         val req = ReplyRequest(mom.key, "J'arrive", mom.newestIncoming)
         val r = ReplySend.check(mom, mom, req, on, locked = false) as ReplyCheck.Fire
