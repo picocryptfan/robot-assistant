@@ -331,7 +331,7 @@ class CarFlowMachinesTest {
         // Robot's read-back heard back is not a "send"; nothing heard twice keeps the reply for parking, with your words.
         val (st2, fx2) = msg(MessageFlow.start(marie, c, true), "yes", "tell her I'm late", "Reply to Marie I'm late send", "")
         assertFalse(fx2.flatten().any { it is FlowEffect.Send })
-        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to Marie: I'm late"), fx2.last().last())
+        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to “Marie”: I'm late"), fx2.last().last())
         assertEquals(MessageStep.DONE, st2!!.step)
     }
 
@@ -352,7 +352,7 @@ class CarFlowMachinesTest {
         assertEquals(listOf(FlowEffect.Say("Marie says: T'es où?", false), FlowEffect.Say("Reply?", true)), MessageFlow.start(marie, whole, true).second)
         // "Reply …" straight from the router, for an app without a Reply action: kept for parking.
         val (_, rfx) = MessageFlow.reply(marie.copy(replyable = false), "reply I'm late", c)
-        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to Marie: I'm late"), rfx.last())
+        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to “Marie”: I'm late"), rfx.last())
         // Dictation that says nothing twice: kept.
         val (dst, dfx) = msg(MessageFlow.start(marie, c, true), "yes", "yes", "", "")
         assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie"), dfx.last().last())

@@ -514,7 +514,8 @@ object PanelHandsFree {
         val list = HandsFreeFiles.store(app).parked()
         HandsFreeFiles.store(app).editParked { emptyList() }
         VoiceLog.add(VoiceEvent.CAR_PARKED, 0, list.size)
-        return Show(speak = false, tips = list.mapNotNull { it.ask }.distinct().take(3).map { Tip(it) })
+        // 1.0: a tip only fills the text field: it holds a sender's name (core CarMessages.parkedTips).
+        return Show(speak = false, tips = CarMessages.parkedTips(list.map { it.ask }))
     }
 
     const val ARG_PARKED = "robot_parked"

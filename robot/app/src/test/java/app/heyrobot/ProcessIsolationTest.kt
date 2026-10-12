@@ -719,6 +719,31 @@ class ProcessIsolationTest {
         assertEquals(3, Regex("""startedLocked = PanelContinuity\.stillLocked\(""").findAll(panel).count())
     }
 
+    /**
+     * 1.0 audit, prompt injection, where the panel meets core: the brief's and "what's next"'s reply carries core Quoted's
+     * content record; QueryCheck gets what read tools returned; memory items recalled in answers count; a parked reply only
+     * fills the text field.
+     */
+    @Test fun injectionMarksReachThePanel() {
+        val panel = code(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        assertTrue(panel.contains("actions = records(actions) + if (quoted) listOf(Quoted.record()) else emptyList()"))
+        assertTrue(panel.contains("override fun quoted(replyId: String) { synchronized(quotedReplies) { quotedReplies += replyId } }"))
+        val routines = code(File(java("app"), "app/heyrobot/assistant/routines/PanelRoutines.kt"))
+        val brief = routines.substringAfter("private suspend fun brief(").substringBefore("\n    }\n")
+        assertTrue(brief.indexOf("host.quoted(replyId)") in 0 until brief.indexOf("RoutineRunner.brief("))
+        val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/PanelHandsFree.kt"))
+        val next = hf.substringAfter("private suspend fun whatsNext(").substringBefore("\n    }\n")
+        assertTrue(next.indexOf("host.quoted(replyId)") in 0 until next.indexOf("host.text(replyId, line)"))
+        assertTrue(hf.contains("tips = CarMessages.parkedTips(list.map { it.ask })"))
+        // What every read tool returned (not only its card) goes to QueryCheck, until the conversation changes.
+        assertTrue(panel.contains("override suspend fun run(action: Action): Executed = runAction(action).also(::noteRead)"))
+        assertTrue(panel.contains("WebQueryContext.of(chat.toList(), turnSaid.orEmpty(), screen, bodies + reads, memory, fresh = readsAllKnown)"))
+        assertEquals(2, Regex("""forgetReads\(allKnown = """).findAll(panel).count())
+        // Memory: every turn's items, and what a content item leads to is saved as content.
+        assertTrue(panel.contains("val given = app.heyrobot.core.memory.MemoryTaint.given(chat)"))
+        assertTrue(panel.contains("_state.value.turns.lastOrNull()?.actions?.any { it.content } == true, turnMemContent)"))
+    }
+
     @Test fun voiceInteractionMetadataNamesTheComponents() {
         val x = File(main("app"), "res/xml/voice_interaction.xml").readText()
         assertTrue(x.contains("android:sessionService=\"app.heyrobot.assistant.RobotSessionService\""))

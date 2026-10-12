@@ -155,12 +155,25 @@ object CarMessages {
         }
 
     /**
-     * What is asked again once you park, for a reply kept with your [text] ("reply to Marie: I'm 10 minutes away"): the
-     * panel's 0.7 card then, which a tap sends. Null without words (the summary alone is kept).
+     * What is asked again once you park, for a reply kept with your [text] ("reply to “Marie”: I'm 10 minutes away"): the
+     * panel's 0.7 card then, which a tap sends. Null without words (the summary alone is kept). 1.0 audit
+     * (injection-parked-reply-sender-name): the sender chose their name, so it is cleaned (one line, no hidden characters,
+     * 40 at most) and quoted, never read as your words; the tip only fills the text field ([parkedTips]).
      */
     fun parkedAsk(n: MessageNotice, text: String, lang: SpokenLang): String? = text.trim().takeIf { it.isNotEmpty() }?.let {
-        if (lang == SpokenLang.FR) "réponds à ${n.sender} : $it" else "reply to ${n.sender}: $it"
+        val who = "“" + parkedName(n.sender) + "”"
+        if (lang == SpokenLang.FR) "réponds à $who : $it" else "reply to $who: $it"
     }
+
+    /** A sender's name as a parked ask holds it: History's cleaning, without quotes of its own. */
+    fun parkedName(sender: String): String =
+        app.heyrobot.core.messages.MessageReading.historyName(sender.replace(QUOTES, " ")).ifBlank { "?" }
+
+    private val QUOTES = Regex("[\"“”„«»‹›‘’`]")
+
+    /** "From your drive"'s tips: at most three, each only filling the text field (a sender's name is in it), never sent by a tap. */
+    fun parkedTips(asks: List<String?>): List<app.heyrobot.core.Tip> =
+        asks.filterNotNull().distinct().take(3).map { app.heyrobot.core.Tip(it, app.heyrobot.core.TipKind.FILL) }
 
     /** What Robot says after the main process answered: "Handed to Cheogram." (never "delivered"). */
     fun result(r: ReplyResult, app: String, lang: SpokenLang): String = when (r) {

@@ -102,7 +102,7 @@ class MessageHandsFreeTest {
         val held = CarMessages.startReply(n, "tell her I'm 10 minutes away", s, safety, false, false, SpokenLang.EN, VoiceReply.TAP_ONLY) as ReplyStart.Hold
         assertEquals(ReplyEnd.NEEDS_TAP, held.why)
         assertEquals("I'm 10 minutes away", held.text)
-        assertEquals("reply to ${n.sender}: I'm 10 minutes away", CarMessages.parkedAsk(n, held.text, SpokenLang.EN))
+        assertEquals("reply to “${n.sender}”: I'm 10 minutes away", CarMessages.parkedAsk(n, held.text, SpokenLang.EN))
         assertEquals(ReplyEnd.NEEDS_TAP, (CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.OPEN_CHAT) as ReplyStart.Hold).why)
         assertEquals(ReplyEnd.LOCKED, (CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.REFUSED) as ReplyStart.Hold).why)
         assertTrue(CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
