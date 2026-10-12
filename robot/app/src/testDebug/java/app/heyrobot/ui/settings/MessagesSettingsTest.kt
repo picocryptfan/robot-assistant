@@ -166,8 +166,10 @@ class MessagesSettingsTest {
         assertEquals(AfterReading.MARK_READ, saved.last().settings.afterReading)
         pick("Messages on the lock screen", "Who messaged")
         assertEquals(MessagesLocked.WHO_MESSAGED, saved.last().settings.locked)
+        // 0.8: Announce new messages, off by default; on, it offers the headset's and the car's pages.
         rule.scrollToText("Announce new messages")
-        rule.onNodeWithText("Announce new messages").assertIsNotEnabled()
+        rule.onRow("Announce new messages").assertIsOff().performClick()
+        assertTrue(saved.last().settings.announce)
         rule.scrollToText("A sent message can't be recalled", substring = true)
     }
 

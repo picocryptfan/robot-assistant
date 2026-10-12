@@ -67,6 +67,9 @@ class MessagesBridge : Service() {
                 MessagesProtocol.REQ_MARK_READ -> MessageWire.ok(allowedNow() && MessageWire.keyOf(req)?.let { MessageTap.markRead(applicationContext, it) } == true)
                 MessagesProtocol.REQ_CLEAR -> MessageWire.ok(allowedNow() && MessageWire.keyOf(req)?.let { MessageTap.clear(applicationContext, it) } == true)
                 MessagesProtocol.REQ_REPLY_LANG -> MessageWire.ok(MessageWire.replyLang(req)?.let { (id, lang) -> replyLang(id, lang); true } == true)
+                // 0.8, the brief: counts by app, locked or not (never who or what); nothing while Settings › Messages is off.
+                MessagesProtocol.REQ_UNREAD -> app.heyrobot.core.messages.MessageUnread.toJson(
+                    app.heyrobot.core.messages.MessageUnread.count(MessageTap.buffer.threads(System.currentTimeMillis()), MessagesStore.current(applicationContext).settings))
                 else -> return
             }
         } catch (t: Throwable) {

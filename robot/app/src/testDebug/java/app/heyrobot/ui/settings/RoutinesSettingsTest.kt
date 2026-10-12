@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -162,8 +163,10 @@ class RoutinesSettingsTest {
         rule.scrollToText("Weather")
         rule.onRow("Weather").performClick()
         assertTrue(BriefItem.WEATHER !in rs.briefItems)
+        // 0.8: the unread count comes from 0.7's messages (counts by app only), on by default like the other parts.
         rule.scrollToText("Unread messages")
-        rule.onRow("Unread messages").assertIsNotEnabled()
+        rule.onRow("Unread messages").assertIsOn().performClick()
+        assertTrue(BriefItem.MESSAGES !in rs.briefItems)
         rule.scrollToText("On the lock screen")
         rule.onRow("On the lock screen").performClick()
         rule.inDialog("Nothing until I unlock").performClick()

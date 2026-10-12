@@ -1,5 +1,7 @@
 package app.heyrobot.assistant
 
+import app.heyrobot.core.messages.MessageUnread
+import app.heyrobot.core.UnreadCount
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -111,6 +113,9 @@ class MessagesLink(ctx: Context) : AutoCloseable {
     suspend fun markRead(conversation: String): Boolean = MessageWire.ok(ask(MessagesProtocol.REQ_MARK_READ, MessageWire.key(conversation)))
 
     suspend fun clear(conversation: String): Boolean = MessageWire.ok(ask(MessagesProtocol.REQ_CLEAR, MessageWire.key(conversation)))
+
+    /** 0.8, the brief: how many messages Robot hasn't read to you, by app (counts only); null when off or unreachable. */
+    suspend fun unread(): UnreadCount? = ask(MessagesProtocol.REQ_UNREAD, null)?.let(MessageUnread::fromJson)
 
     /** "Always for Mom": the main process keeps it in messages.json. */
     suspend fun replyLang(person: String, lang: app.heyrobot.core.messages.Lang?): Boolean =

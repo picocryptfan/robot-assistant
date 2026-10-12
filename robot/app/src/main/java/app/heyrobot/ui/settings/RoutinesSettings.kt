@@ -360,8 +360,9 @@ fun BriefSettingsScreen(d: RoutinesData, act: RoutineActions, snackbar: Snackbar
         preferenceGroup("What it says", "items") {
             for (i in BriefItem.entries) {
                 val on = i in rs.briefItems
-                val soon = i == BriefItem.MESSAGES
-                SwitchPreference(itemTitle(i), if (soon) "Comes with messages (0.7)" else null, on && !soon, enabled = !soon) {
+                // 0.8: how many messages, by app, from Settings › Messages (never who or what); nothing while it is off.
+                val detail = if (i == BriefItem.MESSAGES) "How many, by app, from Settings › Messages; never who or what" else null
+                SwitchPreference(itemTitle(i), detail, on) {
                     act.settings(rs.copy(briefItems = BriefItem.entries.filter { e -> if (e == i) it else e in rs.briefItems }))
                 }
             }

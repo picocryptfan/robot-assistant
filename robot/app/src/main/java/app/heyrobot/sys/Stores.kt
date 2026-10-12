@@ -187,6 +187,14 @@ object Cmd {
     const val ROUTINES = "routines"
     /** 0.8: Settings › Headset or Car mode changed headset.json, car.json, places.json or devices.json: :voice reads them again. */
     const val HANDSFREE = "handsfree"
+    /**
+     * 0.8: a new message came with "Announce new messages" on (the main process's MessageTap): extra [EXTRA_KEY], the
+     * conversation's key in RAM, and [EXTRA_DND], whether Do Not Disturb lets it through. Never its sender or words: :voice
+     * asks the bridge for those, as for any read.
+     */
+    const val MESSAGE_NEW = "message_new"
+    const val EXTRA_KEY = "key"
+    const val EXTRA_DND = "dnd"
 
     fun send(ctx: Context, op: String, extras: Bundle = Bundle()) {
         try {

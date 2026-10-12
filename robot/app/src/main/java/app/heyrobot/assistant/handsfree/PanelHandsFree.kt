@@ -1,5 +1,8 @@
 package app.heyrobot.assistant.handsfree
 
+import app.heyrobot.core.messages.Lang
+import app.heyrobot.core.messages.MessageCommand
+import app.heyrobot.assistant.PanelMessages
 import app.heyrobot.core.output.Line
 import app.heyrobot.core.car.NavKind
 import app.heyrobot.core.car.PhoneLabel
@@ -72,8 +75,9 @@ import java.time.ZonedDateTime
 // sentence through OutputGuard while a session runs, and what is said once the answer is over: "Is it headphones only
 // you can hear?" the first time a personal sentence would play on a Bluetooth headset, and in the car "Want more?" after
 // two sentences. Calls in a session are spoken (CallFlow: choices, read-back, yes); new texts in the car wait for when
-// you park. Messages (0.7) are not here yet: their seams are core output's MessageFeed, SenderFilter and ReplyChannel.
-// Main thread, except handle (the panel's turn).
+// you park. 0.7's messages: a new one announced in private headphones or the car (HandsFreeMessages, which opens the
+// panel for it), "read my messages" through 0.7's reading with each piece through OutputGuard, and in the car a reply
+// only a tap may send kept for parking. Main thread, except handle (the panel's turn).
 
 object PanelHandsFree {
     /** What a hands-free show asks of the panel: replies spoken or not, and tips to offer (what you kept for parking). */
@@ -87,6 +91,8 @@ object PanelHandsFree {
         data class CallAnswer(val heard: String) : Cmd()
         /** Kept for parking: [ask] is asked again then. */
         data class Park(val code: ParkCode, val summary: String, val ask: String?) : Cmd()
+        /** The answer to an announced message's question ("Read it?", "Reply?", the read-back). */
+        data class MessageAnswer(val heard: String) : Cmd()
     }
 
     private val app get() = VoiceHub.app
@@ -117,6 +123,14 @@ object PanelHandsFree {
      */
     fun onShow(source: String?, args: Bundle?, locked: Boolean): Show? {
         args?.getString(ARG_PARKED)?.let { return parked() }
+        // 0.8: a new message to announce (HandsFreeMessages opened the panel for it): a session, then its question.
+        args?.getString(HandsFreeMessages.ARG_ANNOUNCE)?.let { key ->
+            reset()
+            if (!HandsFreeMessages.opened(key)) return null
+            val entry = args.getString(HandsFreeHub.ARG_ENTRY)?.let { e -> EntryKind.entries.firstOrNull { it.name == e } } ?: EntryKind.BVRA
+            HandsFreeHub.begin(entry, locked || args.getBoolean(HandsFreeHub.ARG_LOCKED), wake = false)
+            return Show(speak = true)
+        }
         val headset = source == RobotVoiceService.SRC_HEADSET
         val carWake = CarModeController.on && (source == RobotVoiceService.SRC_WAKE || source == RobotVoiceService.SRC_KEYGUARD)
         if (!headset && !carWake) return null
@@ -135,7 +149,18 @@ object PanelHandsFree {
     private var intro: String? = null
     private var callPrefix = false
 
-    fun takeIntro(): String? = intro.also { intro = null }
+    fun takeIntro(): String? = intro.also { intro = null } ?: session?.let(HandsFreeMessages::intro)
+
+    /** A headset or car session runs for the car: what the car may hear, and what waits for parking. */
+    val inCar: Boolean get() = session?.kind == SessionKind.CAR
+
+    /** "No" to an announcement: nothing more is said, and the session ends once this reply is over. */
+    fun endQuietly() {
+        endAfterReply = true
+    }
+
+    /** A reply kept for when you park ([ask]: asked again then, through every gate). */
+    fun keepReply(summary: String, ask: String?) = keep(ParkItem(ParkCode.REPLY, summary, System.currentTimeMillis()), ask)
 
     /** The panel closed: the session ends and lets go of the headset. */
     fun onHide() {
@@ -146,6 +171,7 @@ object PanelHandsFree {
         if (session !== s && session != null) return
         pendingPrivate?.let { VoiceLog.add(VoiceEvent.PRIVATE_ASKED, it.first, -1) }
         reset()
+        HandsFreeMessages.sessionEnded()
     }
 
     private fun reset() {
@@ -245,6 +271,7 @@ object PanelHandsFree {
             VoiceLog.add(VoiceEvent.PRIVATE_ASKED, p.first, -1)
         }
         if (callFlow != null) return Cmd.CallAnswer(q)
+        if (HandsFreeMessages.waiting) return Cmd.MessageAnswer(q)
         if (callPrefix) {
             callPrefix = false
             val c = HandsFreeRouter.route(q, carMode = true, wakePhrases = wake)
@@ -283,6 +310,7 @@ object PanelHandsFree {
                 is Cmd.More -> more(replyId, cmd.yes, host)
                 is Cmd.CallAnswer -> callAnswer(replyId, cmd.heard, host)
                 is Cmd.Park -> park(replyId, cmd, host)
+                is Cmd.MessageAnswer -> HandsFreeMessages.answer(replyId, cmd.heard, host)
             }
         } finally {
             host.finish(replyId)
@@ -312,9 +340,11 @@ object PanelHandsFree {
             is HandsFreeCommand.Navigate -> navigate(replyId, c, host)
             is HandsFreeCommand.Call -> call(replyId, c, host)
             HandsFreeCommand.WhatsNext -> whatsNext(replyId, host)
-            HandsFreeCommand.ReadMessages, is HandsFreeCommand.Reply ->
-                // 0.7's messages aren't in this version: the seams are core output's MessageFeed and ReplyChannel.
-                reply(replyId, host, if (fr) "Je ne peux pas encore lire tes messages." else "Robot can't read your messages yet.")
+            // 0.7's messages, when their own router let these words go (Settings › Messages off, or nothing read here yet).
+            HandsFreeCommand.ReadMessages -> PanelMessages.handsFreeCommand(replyId,
+                MessageCommand.Read(if (fr) Lang.FR else Lang.EN))
+            is HandsFreeCommand.Reply -> if (!HandsFreeMessages.reply(replyId, c.text, host)) PanelMessages.handsFreeCommand(replyId,
+                MessageCommand.Reply(null, c.text, if (fr) Lang.FR else Lang.EN))
             is HandsFreeCommand.Music -> music(replyId, c.action, host)
         }
     }
@@ -456,7 +486,7 @@ object PanelHandsFree {
         reply(replyId, host, CarMessages.KEEP_TEXT.get(lang))
     }
 
-    private fun keep(item: ParkItem, ask: String?) {
+    internal fun keep(item: ParkItem, ask: String?) {
         HandsFreeFiles.store(app).editParked { ParkFile.add(it, Parked(item, ask)) }
         VoiceLog.add(VoiceEvent.CAR_PARKED, item.code)
         CarModeController.parkChanged()

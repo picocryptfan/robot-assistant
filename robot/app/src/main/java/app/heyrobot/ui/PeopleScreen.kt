@@ -819,6 +819,7 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                 }
                 // 0.7: Settings › Messages on: replies to them without a card (3-second stop).
                 app.heyrobot.ui.settings.NoCardSwitch(o)
+                app.heyrobot.ui.settings.AnnounceSwitch(o)
                 Text("${o.source.title} · changed ${DateUtils.getRelativeTimeSpanString(o.updatedAt)}", style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedButton(onClick = {

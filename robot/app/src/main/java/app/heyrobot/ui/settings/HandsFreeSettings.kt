@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import app.heyrobot.core.car.CallSetting
+import app.heyrobot.core.car.CarAnnounce
+import app.heyrobot.core.car.CarAnnounceFrom
 import app.heyrobot.core.car.CarCandidate
 import app.heyrobot.core.car.CarDetect
 import app.heyrobot.core.car.CarLockUse
@@ -32,6 +34,8 @@ import app.heyrobot.core.car.CarSettings
 import app.heyrobot.core.car.CarSetup
 import app.heyrobot.core.car.NewTexts
 import app.heyrobot.core.car.SavedPlace
+import app.heyrobot.core.headset.AnnounceFrom
+import app.heyrobot.core.headset.AnnounceRead
 import app.heyrobot.core.headset.HeadsetSettings
 import app.heyrobot.core.headset.HeadsetSetup
 import app.heyrobot.core.headset.ListenWith
@@ -41,6 +45,7 @@ import app.heyrobot.core.output.DeviceRole
 import app.heyrobot.core.output.HandsFreeNotice
 import app.heyrobot.core.output.HeadsetFile
 import app.heyrobot.core.output.Places
+import app.heyrobot.core.output.ReadAloud
 import app.heyrobot.core.output.RememberedDevice
 import app.heyrobot.core.output.SeenDevice
 import app.heyrobot.core.output.SpokenLang
@@ -48,6 +53,7 @@ import app.heyrobot.sys.AudioDevices
 import app.heyrobot.sys.CoarseLocation
 import app.heyrobot.sys.HandsFreeFacts
 import app.heyrobot.sys.HandsFreeFiles
+import app.heyrobot.sys.MessagesStore
 import app.heyrobot.sys.Paths
 import app.heyrobot.ui.AppActions
 import app.heyrobot.ui.Mark
@@ -76,19 +82,23 @@ import java.util.Locale
 // settings.json; each change tells the :voice process. The optional permissions are asked only from their own rows:
 // Nearby devices, the Phone permission, and Do Not Disturb access (Android's own page).
 
-/** What Settings › Headset shows. */
+/** What Settings › Headset shows. [announce]: Settings › Messages reads messages and "Announce new messages" is on (0.8). */
 data class HeadsetPageData(
     val file: HeadsetFile = HeadsetFile(),
     val memory: DeviceMemory = DeviceMemory(),
     val facts: HandsFreeFacts? = null,
+    val announce: Boolean = false,
 ) {
     companion object {
         fun read(ctx: Context): HeadsetPageData {
             val s = HandsFreeFiles.store(ctx)
-            return HeadsetPageData(s.headset(), s.devices(), HandsFreeFacts.read(ctx))
+            return HeadsetPageData(s.headset(), s.devices(), HandsFreeFacts.read(ctx), announcing(ctx))
         }
     }
 }
+
+/** 0.8: Settings › Messages reads your messages and announces new ones (messages.json; both off by default). */
+internal fun announcing(ctx: Context): Boolean = try { MessagesStore.current(ctx).settings.let { it.on && it.announce } } catch (_: Throwable) { false }
 
 /** What Settings › Car mode and Add your car show. [candidates]: the Bluetooth devices connected now that could be your car. */
 data class CarPageData(
@@ -98,6 +108,8 @@ data class CarPageData(
     val callAfterYes: Boolean = true,
     val facts: HandsFreeFacts? = null,
     val candidates: List<CarCandidate> = emptyList(),
+    /** Settings › Messages announces new messages (0.8). */
+    val announce: Boolean = false,
 ) {
     val settings: CarSettings get() = file.settings
 
@@ -106,7 +118,7 @@ data class CarPageData(
             val s = HandsFreeFiles.store(ctx)
             val memory = s.devices()
             return CarPageData(s.car(), s.places(), memory, s.headset().safety.callAfterSpokenYes, HandsFreeFacts.read(ctx),
-                CarSetup.candidates(AudioDevices.all(ctx), memory))
+                CarSetup.candidates(AudioDevices.all(ctx), memory), announcing(ctx))
         }
     }
 }
@@ -181,6 +193,16 @@ private val FOLLOW_UP = listOf(0, 3, 6, 10, 15)
 
 private fun followUpTitle(s: Int): String = if (s == 0) "Don't wait" else "$s s"
 
+private fun announceFromDetail(a: AnnounceFrom): String = when (a) {
+    AnnounceFrom.CHOSEN_PEOPLE -> "Choose them in People › a person"
+    AnnounceFrom.EVERYONE -> "Anyone who writes in the apps Settings › Messages reads"
+}
+
+private fun readDetail(r: AnnounceRead): String = when (r) {
+    AnnounceRead.ASK_FIRST -> "Who wrote first; “yes” reads it, “no” is quiet"
+    AnnounceRead.ALWAYS -> "The whole message at once"
+}
+
 @Composable
 fun HeadsetSettingsScreen(d: HeadsetPageData, act: HandsFreeActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     val f = d.file
@@ -211,6 +233,22 @@ fun HeadsetSettingsScreen(d: HeadsetPageData, act: HandsFreeActions, snackbar: S
             }
             SwitchPreference("Stop when the headset disconnects", if (s.stopOnDisconnect) "Nothing more is said once it's gone; nothing moves to the speaker"
                 else "Off: a public answer may go on, on the speaker", s.stopOnDisconnect) { set(s.copy(stopOnDisconnect = it)) }
+        }
+        // 0.8: 0.7's messages announced in private headphones, once Settings › Messages announces them.
+        preferenceGroup("New messages", "announce") {
+            if (!d.announce) PreferenceItem("Announce new messages is off", "Turn it on in Settings › Messages", RIcons.Message,
+                onClick = { act.open(SettingsRoutes.MESSAGES) })
+            val on = d.announce && s.announceMessages
+            SwitchPreference("Announce new messages in the headset", if (on) "“Message from Marie. Read it?” in private headphones only" else "Off",
+                on, enabled = d.announce) { set(s.copy(announceMessages = it)) }
+            ListPreference("Announce from", s.announceFrom, AnnounceFrom.entries, { it.title }, detail = { announceFromDetail(it) }, enabled = on) {
+                set(s.copy(announceFrom = it))
+            }
+            ListPreference("Read the text", s.announceRead, AnnounceRead.entries, { it.title }, detail = { readDetail(it) }, enabled = on) {
+                set(s.copy(announceRead = it))
+            }
+            SwitchPreference("Announce while locked", if (s.announceLocked) "Only with Settings › Messages › Messages on the lock screen: Read and reply"
+                else "Off: nothing is announced until you unlock", s.announceLocked, enabled = on) { set(s.copy(announceLocked = it)) }
         }
         preferenceGroup("Your headphones", "devices") {
             val list = HeadsetSetup.headphones(d.memory)
@@ -349,6 +387,22 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
                     }, enabled = f.on, modifier = Modifier.heightIn(min = 48.dp)) { Text("Here") }
                 })
             }
+        }
+        // 0.8: 0.7's messages announced in the car while car mode runs, once Settings › Messages announces them.
+        preferenceGroup("New messages", "announce") {
+            if (!d.announce) PreferenceItem("Announce new messages is off", "Turn it on in Settings › Messages", RIcons.Message,
+                onClick = { act.open(SettingsRoutes.MESSAGES) })
+            val on = f.on && d.announce
+            ListPreference("Announce new messages", if (d.announce) s.announce else CarAnnounce.OFF, CarAnnounce.entries, { it.title }, enabled = on) {
+                set(s.copy(announce = it))
+            }
+            val announcing = on && s.announce != CarAnnounce.OFF
+            ListPreference("Announce from", s.announceFrom, CarAnnounceFrom.entries, { it.title }, enabled = announcing) { set(s.copy(announceFrom = it)) }
+            ListPreference("Read message text aloud when others may hear", s.readAloud, ReadAloud.entries, { it.title }, enabled = announcing) {
+                set(s.copy(readAloud = it))
+            }
+            SwitchPreference("Replies by voice", if (s.voiceReplies) "Read back word for word, then “send”, where Settings › Messages lets a spoken yes send; " +
+                "otherwise kept for when you park" else "Off: replies wait for when you park", s.voiceReplies, enabled = announcing) { set(s.copy(voiceReplies = it)) }
         }
         preferenceGroup("While you drive", "drive") {
             ListPreference("New texts while driving", s.newTexts, NewTexts.entries, { it.title }, enabled = f.on) { set(s.copy(newTexts = it)) }

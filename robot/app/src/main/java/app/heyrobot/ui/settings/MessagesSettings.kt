@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import app.heyrobot.ui.common.RIcons
 import app.heyrobot.core.Person
 import app.heyrobot.core.messages.AppPin
 import app.heyrobot.core.messages.AfterReading
@@ -151,8 +152,14 @@ fun MessagesSettingsScreen(
                 set { it.copy(locked = l) }
             }
         }
-        preferenceGroup("Later", "later") {
-            SwitchPreference("Announce new messages", "Headphones only; comes with headset mode", s.announce, enabled = false) {}
+        // 0.8: off by default; where and from whom are Settings › Headset's and Car mode's.
+        preferenceGroup("Announcements", "announce") {
+            SwitchPreference("Announce new messages", if (s.announce) "In private headphones, and in the car while car mode runs; never on the phone's speaker"
+                else "Off", s.announce, enabled = s.on) { an -> set { it.copy(announce = an) } }
+            if (s.on && s.announce) {
+                PreferenceItem("In the headset", "Who, how, and on the lock screen", RIcons.Headset, onClick = { a.openPage(Page.Settings(SettingsRoutes.HEADSET)) })
+                PreferenceItem("In the car", "Who, reading aloud and replies by voice", RIcons.Car, onClick = { a.openPage(Page.Settings(SettingsRoutes.CAR)) })
+            }
         }
         preferenceFooter(FOOTER)
     }
@@ -291,6 +298,33 @@ fun NoCardSwitch(p: Person, modifier: Modifier = Modifier) {
         Column(Modifier.weight(1f)) {
             Text("Send my replies to $who without a card", style = MaterialTheme.typography.bodyLarge)
             Text("Your own words, one to one, phone unlocked: Robot says them and sends after 3 seconds unless you say stop.",
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.width(16.dp))
+        PrefSwitch(on)
+    }
+}
+
+/**
+ * People › a person (0.8): "Announce messages from …", for Settings › Headset's and Car mode's "Announce from: People you
+ * choose". Only while Settings › Messages reads and announces messages, for someone you confirmed. Written to messages.json.
+ */
+@Composable
+fun AnnounceSwitch(p: Person, modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    val f = remember { MessagesStore.current(ctx) }.let { MessagesStore.state.value }
+    if (!f.settings.on || !f.settings.announce || !p.confirmed) return
+    val on = p.id in f.announcePeople
+    val who = MessagePeople.callName(p)
+    Row(
+        modifier.fillMaxWidth().heightIn(min = 56.dp)
+            .toggleable(on, role = Role.Switch) { v -> MessagesStore.update(ctx) { it.copy(announcePeople = if (v) it.announcePeople + p.id else it.announcePeople - p.id) } }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Announce messages from $who", style = MaterialTheme.typography.bodyLarge)
+            Text("In private headphones, and in the car in car mode, when “Announce from” is “People you choose”.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Spacer(Modifier.width(16.dp))

@@ -585,8 +585,9 @@ object PanelController {
         shown = false
         // 0.7: what was decrypted of memory goes with the panel.
         MemoryPanel.drop()
-        // 0.8: a headset or car session ends with the panel, and lets go of the headset.
+        // 0.8: a headset or car session ends with the panel, and lets go of the headset; a message that came meanwhile is announced.
         if (hidingFor == null) PanelHandsFree.onHide()
+        app.heyrobot.assistant.handsfree.HandsFreeMessages.panelHidden()
         ConversationSession.panel(false)
         val st0 = _state.value
         if (st0.phase == Phase.LISTENING) VoiceLog.add(VoiceEvent.NO_QUESTION, NoQuestion.CLOSED)
@@ -2297,6 +2298,11 @@ object PanelController {
     internal fun messagesListen(now: Boolean) {
         if (!now) msgListenAfterSpeech = true
         else if (shown && !VoiceHub.tts.isSpeaking && _state.value.phase == Phase.IDLE) startListening()
+    }
+
+    /** 0.8: an announced message's session ended ("no", or nothing more to say): the panel it opened goes. */
+    internal fun hideAfterAnnouncement() {
+        if (shown) host?.hidePanel()
     }
 
     /** Ends [replyId] with [text] shown; PanelMessages speaks it in each piece's own voice. */

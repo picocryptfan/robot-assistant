@@ -31,6 +31,7 @@ import app.heyrobot.core.messages.PersonSnapshot
 import app.heyrobot.core.messages.RemoteInputSnapshot
 import app.heyrobot.core.messages.ReplyOutcome
 import app.heyrobot.core.messages.ReplyTarget
+import app.heyrobot.sys.Cmd
 import app.heyrobot.sys.MessagesStore
 import app.heyrobot.sys.Paths
 
@@ -128,14 +129,34 @@ object MessageTap {
         buffer.connected(threads, System.currentTimeMillis())
     }
 
-    /** [MAIN] onNotificationPosted, on the main thread: an allowed app's conversation goes into RAM; anything else, nothing. */
+    /**
+     * [MAIN] onNotificationPosted, on the main thread: an allowed app's conversation goes into RAM; anything else, nothing.
+     * 0.8: with "Announce new messages" on, a new message from someone else tells the voice process which conversation
+     * (its key in RAM) and whether Do Not Disturb lets it through, never its sender or words; :voice decides whether it is
+     * announced (private headphones, or the car in car mode) and asks the bridge for it as for any read.
+     */
     fun posted(ctx: Context, sbn: StatusBarNotification) {
         listen(ctx)
         val s = file(ctx).settings
         if (!s.on || s.allowlist.allows(sbn.packageName) == null) return
         val t = parse(ctx, sbn) ?: return
+        val before = buffer.thread(t.key)
         buffer.posted(t)
         t.hidden?.let { log(ctx, VoiceEvent.MSG_HIDDEN, MsgAppCode.of(t.app).id, HiddenCode.of(it).id) }
+        if (s.announce && app.heyrobot.core.messages.MessageArrival.isNew(before, t)) {
+            Cmd.send(ctx, Cmd.MESSAGE_NEW, android.os.Bundle().apply {
+                putString(Cmd.EXTRA_KEY, t.key)
+                putBoolean(Cmd.EXTRA_DND, dndAllows(sbn))
+            })
+        }
+    }
+
+    /** Do Not Disturb lets [sbn] through now (Ranking.matchesInterruptionFilter); true when the listener can't say. */
+    private fun dndAllows(sbn: StatusBarNotification): Boolean = try {
+        val r = android.service.notification.NotificationListenerService.Ranking()
+        listener?.currentRanking?.getRanking(sbn.key, r)?.let { found -> !found || r.matchesInterruptionFilter() } ?: true
+    } catch (_: Throwable) {
+        true
     }
 
     /** [MAIN] onNotificationRemoved: its conversation goes (or is kept for "Keep messages for"). */

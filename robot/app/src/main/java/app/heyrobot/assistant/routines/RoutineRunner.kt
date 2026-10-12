@@ -62,6 +62,24 @@ object BriefSource {
     /** Weather fetched while the alarm rang is kept this long ("Get ready while the alarm rings"). */
     private const val KEEP_MS = 15 * 60_000L
 
+    /**
+     * 0.8, 0.7's messages for the brief: the main process counts what it holds by app (MessagesBridge, counts only, never
+     * who or what, so the same on the lock screen). Nothing while Settings › Messages is off here, on the main thread, or
+     * when the bridge doesn't answer within [UNREAD_MS]. Blocking.
+     */
+    fun unread(ctx: Context): UnreadSource = UnreadSource {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) return@UnreadSource null
+        if (!(try { app.heyrobot.sys.MessagesStore.reload(ctx).settings.on } catch (_: Throwable) { false })) return@UnreadSource null
+        try {
+            app.heyrobot.assistant.MessagesLink(ctx).use { link -> kotlinx.coroutines.runBlocking { kotlinx.coroutines.withTimeoutOrNull(UNREAD_MS) { link.unread() } } }
+        } catch (_: Throwable) {
+            RLog.w("brief_unread")
+            null
+        }
+    }
+
+    private const val UNREAD_MS = 4_000L
+
     /** The brief's language: Settings › Routines › Morning brief, else the phone's. */
     fun lang(rs: RoutineSettings): BriefLang = rs.briefLang ?: BriefLang.of(Locale.getDefault().toLanguageTag())
 
@@ -83,7 +101,7 @@ object BriefSource {
      * Open-Meteo); [withWeather] false: the weather isn't fetched (the greeting goes first).
      */
     fun input(ctx: Context, s: RobotSettings, rs: RoutineSettings, missing: BriefWeatherMissing?, withWeather: Boolean = true,
-        unread: UnreadSource = UnreadSource.NONE): BriefInput {
+        unread: UnreadSource = unread(ctx)): BriefInput {
         val now = ZonedDateTime.now()
         val items = rs.briefItems
         val weather = if (withWeather && missing == null && BriefItem.WEATHER in items) weather(ctx, s) else null
@@ -93,7 +111,7 @@ object BriefSource {
         } else null
         val reminders = BriefReminders.due(RoutineFiles.store(ctx).reminders(), day, now.zone).map { it.text }
         return BriefInput(now, lang(rs), items, weather, if (withWeather) missing ?: (if (weather == null) BriefWeatherMissing.UNAVAILABLE else null) else missing,
-            events, reminders, unread.unread())
+            events, reminders, if (BriefItem.MESSAGES in items && withWeather) unread.unread() else null)
     }
 
     /** The reminders the brief just said are read: kept to the end of the day, then gone. */
@@ -157,8 +175,8 @@ object RoutineRunner {
                     is RoutineStep.Say -> say(listOf(part(step.text, true, StepCode.SAY)))
                     RoutineStep.Reminders -> BriefComposer.reminders(BriefReminders.due(store.reminders(), now.toLocalDate(), now.zone).map { it.text }, lang)
                         ?.let { say(listOf(part(it, true, StepCode.REMINDERS, BriefItem.REMINDERS))) }
-                    // 0.7's messages: nothing to say until a source of unread messages exists (UnreadSource.NONE).
-                    RoutineStep.Messages -> UnreadSource.NONE.unread()?.let { say(listOf(part(BriefComposer.messages(it, lang), true, StepCode.MESSAGES))) }
+                    // 0.7's messages, counted by app (never who or what): nothing while Settings › Messages is off.
+                    RoutineStep.Messages -> BriefSource.unread(ctx).unread()?.let { say(listOf(part(BriefComposer.messages(it, lang), false, StepCode.MESSAGES))) }
                     is RoutineStep.Tool -> when (val t = tool(ctx, s, step.action, locked, public = p.go == StepGo.RUN_PUBLIC)) {
                         null -> { ready(ctx, r, step); ready++ }
                         else -> { fail = t.second; if (t.first != null) say(listOf(t.first!!)) }

@@ -250,6 +250,9 @@ object PanelMessages {
         if (fromVoice && readAloud.isNotEmpty()) {
             if (MessageQuarantine.originOf(q, heard(now), now) == ActionOrigin.INCOMING_TEXT) return Routed.Echo(if (SpeechLang.french(q)) Lang.FR else Lang.EN)
         }
+        // 0.8: an announcement in the headset or the car waits for its answer ("yes", "tell her I'm late", "send"): after the
+        // echo check above, the words are its own (assistant/handsfree HandsFreeMessages).
+        if (app.heyrobot.assistant.handsfree.HandsFreeMessages.waiting) return null
         val cmd = MessagesRouter.route(q, reading) ?: return null
         // Messages off: "reply in one word: …" or "clear it" is an ordinary question (only "read my messages" hears it's off).
         // On, a reply is about messages only after one was read here, or to someone a conversation or People knows.
@@ -641,6 +644,8 @@ object PanelMessages {
         }
         if (!plan(p, f, locked)) return
         val plan = p.plan!!
+        // 0.8, in the car: a card only a tap sends waits for parking.
+        if (plan.confirm == app.heyrobot.core.messages.Confirm.TAP && parkInCar(p)) return
         if (first) PanelController.messagesReply(p.replyId, headline(p, plain = true) + ".")
         lastRead = t.key
         lastThread = t
@@ -666,6 +671,8 @@ object PanelMessages {
             is ReplyPlan.HandOff -> {
                 // "Open the chat; I press Send", or no reply action: the chat opens with your words. Nothing is sent by Robot.
                 p.plan = null
+                // 0.8, in the car: nothing opens while you drive; it waits for parking.
+                if (parkInCar(p)) return false
                 if (p.state != ReplyCardState.OPENED) PanelController.messagesReply(p.replyId, headline(p, plain = true) + ".")
                 openChat(p)
                 return false
@@ -986,16 +993,81 @@ object PanelMessages {
         speak(listOf(Spoken(text, fr(lang))))
     }
 
-    /** Each piece in its voice (Kokoro's French voice for French), when replies are spoken. */
-    private fun speak(pieces: List<Spoken>) {
+    /**
+     * Each piece in its voice (Kokoro's French voice for French), when replies are spoken. 0.8: in a headset or car session
+     * each piece passes OutputGuard first as personal (PanelHandsFree.allow: private headphones only, the car's two
+     * sentences), unless [guarded] says the caller already asked it (HandsFreeMessages).
+     */
+    private fun speak(pieces: List<Spoken>, guarded: Boolean = false) {
         if (!PanelController.state.value.speak) return
         VoiceHub.tts.prewarm()
         val frVoice = MessageVoices.french(VoiceHub.settings.voiceChoice)
         for (p in pieces) {
             val clean = SpeechText.clean(p.text)
             if (clean.isEmpty()) continue
+            if (!guarded && !app.heyrobot.assistant.handsfree.PanelHandsFree.allow(clean) { true }) continue
             if (p.french && frVoice != null) VoiceHub.tts.speakOther(clean, frVoice.first, frVoice.second) else VoiceHub.tts.speak(clean)
         }
+    }
+
+    // ------------------------------------------------------------------ 0.8: headset and car (assistant/handsfree HandsFreeMessages)
+
+    /**
+     * [t], announced in the headset or the car, read after your yes (or at once, as Settings › Headset or Car mode say):
+     * read as "read my messages" reads a conversation, with its translations, and handled the same way: History keeps
+     * [replyId]'s placeholder (null: read at once, before any turn), the conversation is the one "reply …" means, it carries
+     * the quarantine, what is said counts for the echo check, Robot marks it read (RAM) and "After Robot reads" applies.
+     * The caller speaks [ReadPage.spoken] once OutputGuard allows it ([speakHandsFree]).
+     */
+    internal suspend fun handsFreeRead(replyId: String?, t: MessageThread, lang: Lang, locked: Boolean): ReadPage {
+        sync()
+        touch()
+        val s = MessagesStore.current(ctx).settings
+        val page = MessageReader.thread(t, lang, more = false, translations = others(t, lang, s.translate), french = MessageLanguage.frenchLine(langId))
+        replyId?.let { kept[it] = page.kept }
+        lastRead = t.key
+        lastThread = t
+        reading = false
+        taint = taint.with(t)
+        saidAloud(page.heard.joinToString(" "))
+        VoiceLog.add(VoiceEvent.MSG_READ, MsgAppCode.of(t.app).id, page.ids.size, if (locked) 1 else 0)
+        link().markReadByRobot(page.ids)
+        when (s.afterReading) {
+            AfterReading.LEAVE -> {}
+            AfterReading.CLEAR -> link().clear(t.key)
+            AfterReading.MARK_READ -> link().markRead(t.key)
+        }
+        return page
+    }
+
+    /** A messages phrase the hands-free router heard after 0.7's router let it go ("any messages?"), run as 0.7's own command. */
+    internal suspend fun handsFreeCommand(replyId: String, cmd: MessageCommand) = run(replyId, Routed.Command(cmd))
+
+    /** [pieces] in their voices, already allowed by OutputGuard (HandsFreeMessages). */
+    internal fun speakHandsFree(pieces: List<Spoken>) = speak(pieces, guarded = true)
+
+    /** A spoken yes counts now: Robot said none of a message's words in the last 3 seconds (core MessageQuarantine). */
+    internal fun voiceYesNow(): Boolean = System.currentTimeMillis().let { now -> MessageQuarantine.voiceYesNow(heard(now), now) }
+
+    /** A reply the car read back and you confirmed, sent by the main process to the conversation's own Reply action. */
+    internal suspend fun handsFreeReply(r: ReplyRequest): app.heyrobot.core.messages.ReplyAnswer? = link().reply(r)
+
+    /**
+     * In the car, a reply only a tap may send (0.7's card), or one Robot never sends itself ("Open the chat; I press Send",
+     * no Reply action): kept for when you park instead, with your own words (a draft or a translation without them), and
+     * nothing opens while you drive. False outside a car session.
+     */
+    private fun parkInCar(p: Pending): Boolean {
+        if (!app.heyrobot.assistant.handsfree.PanelHandsFree.inCar) return false
+        val lang = p.lang
+        val name = p.thread.name
+        val words = p.text.takeIf { p.source == ReplySource.DICTATED && it.isNotBlank() }
+        val summary = if (fr(lang)) "Répondre à $name" else "Reply to $name"
+        val ask = if (words == null) summary.replaceFirstChar { it.lowercase() } else if (fr(lang)) "réponds à $name : $words" else "reply to $name: $words"
+        app.heyrobot.assistant.handsfree.PanelHandsFree.keepReply(summary, ask)
+        card = null
+        say(p.replyId, app.heyrobot.core.output.OutputLines.KEEP_FOR_PARK.get(if (fr(lang)) app.heyrobot.core.output.SpokenLang.FR else app.heyrobot.core.output.SpokenLang.EN), lang)
+        return true
     }
 
     /** Your messages' words leave this process after this long without a question or a tap (and when the panel hides). */

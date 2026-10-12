@@ -1,5 +1,8 @@
 package app.heyrobot.ui.settings
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import android.Manifest
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -147,6 +150,40 @@ class HandsFreeSettingsTest {
         rule.scrollToText("Work")
         rule.onNodeWithText("Home · 45.5017, -73.5673").assertExists()
         rule.onNodeWithText("Not set").assertExists()
+    }
+
+    @Test fun newMessagesWaitForSettingsMessages() {
+        // 0.8: off until Settings › Messages announces new messages; its row opens that page.
+        rule.show { HeadsetSettingsScreen(HeadsetPageData(HeadsetFile(), DeviceMemory(), facts()), actions(), SnackbarHostState(), onBack = {}) }
+        rule.scrollToText("Announce new messages in the headset")
+        rule.onRow("Announce new messages in the headset").assertIsNotEnabled()
+        rule.onRow("Announce from").assertIsNotEnabled()
+        rule.scrollToText("Announce new messages is off")
+        rule.onRow("Announce new messages is off").performClick()
+        assertEquals("open ${SettingsRoutes.MESSAGES}", calls.last())
+    }
+
+    @Test fun newMessagesInTheHeadsetAndTheCar() {
+        var page by mutableStateOf(0)
+        rule.show {
+            if (page == 0) HeadsetSettingsScreen(HeadsetPageData(HeadsetFile(), DeviceMemory(), facts(), announce = true), actions(), SnackbarHostState(), onBack = {})
+            else CarSettingsScreen(CarPageData(CarFile(on = true), facts = facts(), announce = true), actions(), SnackbarHostState(), onBack = {})
+        }
+        rule.scrollToText("Announce from")
+        rule.onRow("Announce from").performClick()
+        rule.inDialog(app.heyrobot.core.headset.AnnounceFrom.EVERYONE.title).performClick()
+        assertEquals(app.heyrobot.core.headset.AnnounceFrom.EVERYONE, headset!!.settings.announceFrom)
+        rule.scrollToText("Announce while locked")
+        rule.onRow("Announce while locked").performClick()
+        assertTrue(headset!!.settings.announceLocked)
+        page = 1
+        rule.scrollToText("Replies by voice")
+        rule.onRow("Replies by voice").performClick()
+        assertFalse(car!!.settings.voiceReplies)
+        rule.scrollToText("Announce new messages")
+        rule.onRow("Announce new messages").performClick()
+        rule.inDialog(app.heyrobot.core.car.CarAnnounce.READ_WHOLE.title).performClick()
+        assertEquals(app.heyrobot.core.car.CarAnnounce.READ_WHOLE, car!!.settings.announce)
     }
 
     @Test fun addYourCarAsksIsThisYourCar() {

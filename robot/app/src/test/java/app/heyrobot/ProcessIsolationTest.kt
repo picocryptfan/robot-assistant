@@ -1004,14 +1004,17 @@ class ProcessIsolationTest {
         assertTrue(code(File(java("app"), "app/heyrobot/people/MessagesBridge.kt")).contains("m.sendingUid != Process.myUid()"))
         assertEquals(listOf("app/assistant/MessagesLink.kt"), usersOf(Regex("""\bMessagesProtocol\.SERVICE_CLASS\b""")))
         assertEquals("app.heyrobot.people.MessagesBridge", Regex("""const val SERVICE_CLASS = "([^"]+)"""").find(File(java("core"), "app/heyrobot/core/messages/MessageWire.kt").readText())!!.groupValues[1])
-        assertEquals(listOf("app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt"), usersOf(Regex("""\bMessagesLink\b""")))
+        // 0.8: the announcements ask the bridge for the conversation they announce, and the brief for its counts.
+        assertEquals(listOf("app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt", "app/assistant/handsfree/HandsFreeMessages.kt",
+            "app/assistant/routines/RoutineRunner.kt"), usersOf(Regex("""\bMessagesLink\b""")))
         val ui = ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }
         assertEquals(emptyList<String>(), usersOf(Regex("""\bPanelMessages\b|\bMessagesLink\b"""), ui))
         // The messages code: no file written, nothing online, no helper, no raw log, no engine. (messages.json, Settings ›
         // Messages, is written by MessagesFile.update alone: switches, People ids and the apps' signing keys, never a message.)
         val msg = ours.filterKeys { it.startsWith("core/core/messages/") || it in setOf("app/people/MessageTap.kt", "app/people/MessagesBridge.kt",
-            "app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt", "app/ui/common/ReplyCard.kt", "app/people/MessageAppSigners.kt") }
-        assertTrue(msg.keys.toString(), msg.size >= 15)
+            "app/assistant/MessagesLink.kt", "app/assistant/PanelMessages.kt", "app/ui/common/ReplyCard.kt", "app/people/MessageAppSigners.kt",
+            "app/assistant/handsfree/HandsFreeMessages.kt") }
+        assertTrue(msg.keys.toString(), msg.size >= 16)
         val writes = Regex("""FileOutputStream|RandomAccessFile|Files\.(write|copy|newOutputStream)|writeText|writeBytes|openFileOutput|writeAtomic""")
         assertEquals(listOf("core/core/messages/MessagesFile.kt"), usersOf(writes, msg))
         val mf = code(File(java("core"), "app/heyrobot/core/messages/MessagesFile.kt"))
@@ -1073,6 +1076,46 @@ class ProcessIsolationTest {
         assertEquals(Regex("""TurnRunner\(""").findAll(pc).count(), Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         // Nothing of messages in :brain or :llama's code.
         assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.core\.messages\b"""), ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("claude/") }))
+    }
+
+    /**
+     * 0.8, 0.7's messages in the brief, the headset and the car. The main process tells :voice only which conversation has
+     * a new message and whether Do Not Disturb lets it through (never who or what); :voice asks the bridge for it as any
+     * read does. 0.7's router keeps its echo check first, then lets an announcement's answer go to HandsFreeMessages; every
+     * piece of a message the panel says passes OutputGuard in a session; an announcement plays only after OutputGuard says
+     * so; the car sends a reply only after the read-back, only where 0.7's rules let a spoken yes send it, and only through
+     * the bridge; a reply only a tap may send waits for parking instead of a card; the brief gets counts by app only.
+     */
+    @Test fun messagesHandsFree() {
+        val tap = code(File(java("app"), "app/heyrobot/people/MessageTap.kt"))
+        val sent = Regex("""Cmd\.send\(ctx, Cmd\.MESSAGE_NEW, android\.os\.Bundle\(\)\.apply \{([^}]*)\}""").find(tap)!!.groupValues[1]
+        assertEquals(listOf("putString(Cmd.EXTRA_KEY, t.key)", "putBoolean(Cmd.EXTRA_DND, dndAllows(sbn))"), sent.lines().map { it.trim() }.filter { it.isNotEmpty() })
+        assertTrue(tap.contains("if (s.announce && app.heyrobot.core.messages.MessageArrival.isNew(before, t))"))
+        assertEquals(listOf("app/assistant/VoiceHub.kt", "app/people/MessageTap.kt", "app/sys/Stores.kt"), usersOf(Regex("""\bCmd\.MESSAGE_NEW\b|const val MESSAGE_NEW\b""")))
+        val pm = code(File(java("app"), "app/heyrobot/assistant/PanelMessages.kt"))
+        val echo = pm.indexOf("if (MessageQuarantine.originOf(q, heard(now), now) == ActionOrigin.INCOMING_TEXT) return Routed.Echo(")
+        val yields = pm.indexOf("if (app.heyrobot.assistant.handsfree.HandsFreeMessages.waiting) return null")
+        assertTrue(echo in 0 until yields)
+        assertTrue(pm.contains("if (!guarded && !app.heyrobot.assistant.handsfree.PanelHandsFree.allow(clean) { true }) continue"))
+        assertEquals(1, Regex("""speak\([^)]*guarded = true\)""").findAll(pm).count())
+        // In the car a card only a tap sends, or a chat Robot would open, waits for parking.
+        assertTrue(pm.contains("if (plan.confirm == app.heyrobot.core.messages.Confirm.TAP && parkInCar(p)) return"))
+        assertTrue(pm.contains("if (parkInCar(p)) return false"))
+        val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/HandsFreeMessages.kt"))
+        assertTrue(hf.contains("if (!s.on || !s.announce) return"))
+        assertTrue(hf.contains("if (phone.locked && s.locked != MessagesLocked.READ_AND_REPLY) return log(AnnounceCode.LOCKED)"))
+        assertTrue(hf.contains("val ok = when (val d = OutputGuard.decide(u, ctx, guard))"))
+        assertTrue(hf.contains("HandsFreeReplies.of(held, s, phone.locked, MessagePeople.withoutCard(held, people, f.noCard))"))
+        assertTrue(hf.contains("if (st.step == MessageStep.READ_BACK && !PanelMessages.voiceYesNow())"))
+        // The only reply it sends is the one MessageFlow read back and you confirmed, through the main process's bridge.
+        assertEquals(1, Regex("""PanelMessages\.handsFreeReply\(""").findAll(hf).count())
+        assertTrue(hf.contains("is FlowEffect.Send -> {\n                val answer = PanelMessages.handsFreeReply(ReplyRequest(e.conversationKey, e.text, f.thread.newestIncoming))"))
+        assertEquals(listOf("app/assistant/PanelMessages.kt", "app/assistant/handsfree/HandsFreeMessages.kt"), usersOf(Regex("""\bhandsFreeReply\(""")))
+        // The brief: counts by app, never a thread, from the main process.
+        val bridge = code(File(java("app"), "app/heyrobot/people/MessagesBridge.kt"))
+        assertTrue(bridge.contains("MessagesProtocol.REQ_UNREAD -> app.heyrobot.core.messages.MessageUnread.toJson("))
+        val runner = code(File(java("app"), "app/heyrobot/assistant/routines/RoutineRunner.kt"))
+        assertTrue(runner.contains("link.unread()") && !runner.contains("link.list()"))
     }
 
     /**

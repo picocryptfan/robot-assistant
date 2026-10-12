@@ -1,5 +1,6 @@
 package app.heyrobot.assistant
 
+import app.heyrobot.assistant.handsfree.HandsFreeMessages
 import app.heyrobot.assistant.handsfree.HandsFreeHub
 import android.Manifest
 import android.app.ActivityManager
@@ -519,6 +520,8 @@ object VoiceHub {
             Cmd.WAKE_TEST -> wakeTestUntil = if (i.getBooleanExtra(Cmd.EXTRA_ON, false)) SystemClock.elapsedRealtime() + WAKE_TEST_MS else 0L
             Cmd.ROUTINES -> RoutineHub.reload()
             Cmd.HANDSFREE -> HandsFreeHub.reload()
+            // 0.8: a new message with "Announce new messages" on (its key and Do Not Disturb's answer only).
+            Cmd.MESSAGE_NEW -> i.getStringExtra(Cmd.EXTRA_KEY)?.let { HandsFreeMessages.arrived(it, i.getBooleanExtra(Cmd.EXTRA_DND, true)) }
         }
     }
 }
