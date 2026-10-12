@@ -73,6 +73,7 @@ import app.heyrobot.core.AppExit
 import app.heyrobot.core.DownloadPolicy
 import app.heyrobot.core.readOrNull
 import app.heyrobot.sys.AppPages
+import app.heyrobot.sys.ShowNonces
 import app.heyrobot.sys.Assistant
 import app.heyrobot.sys.AssistantFacts
 import app.heyrobot.sys.Calendars
@@ -155,17 +156,29 @@ class MainActivity : ComponentActivity() {
     /** The pages other screens and apps may open (ui/settings AppRoutes). */
     private fun routeOf(i: Intent?): String? = AppRoutes.of(i)
 
-    /** 0.8: opens the panel to run a routine or show a Ready card ([key]: sys RoutineIntents' show argument). */
-    fun routine(key: String, value: String): Boolean = showAssist(Bundle().apply {
-        putString("robot_source", "app")
-        putString(key, value)
-    })
+    /**
+     * 0.8: opens the panel to run a routine or show a Ready card ([key]: sys RoutineIntents' show argument). 1.0 (ipc-1):
+     * through the :voice trampoline, which asks the assistant service to show it: the panel drops these arguments from any
+     * app's showAssist.
+     */
+    fun routine(key: String, value: String): Boolean = panel(key, value)
 
-    /** Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one. */
-    fun talk(conversation: String? = null): Boolean = showAssist(Bundle().apply {
-        putString("robot_source", "app")
-        conversation?.let { putString("robot_conversation", it) }
-    })
+    /**
+     * Opens the assistant panel (Robot must be the digital assistant). [conversation] continues a saved one (through the
+     * :voice trampoline, as [routine]); Talk to Robot is a plain showAssist with Robot's single-use nonce (sys ShowNonces).
+     */
+    fun talk(conversation: String? = null): Boolean = if (conversation != null) panel("robot_conversation", conversation) else try {
+        showAssist(Bundle().apply {
+            putString("robot_source", "app")
+            putString("robot_nonce", ShowNonces.mint(this@MainActivity))
+        })
+    } catch (_: Throwable) { false }
+
+    /** The :voice process's PanelLaunchActivity (by class name: the main app doesn't load the assistant's code). */
+    private fun panel(key: String, value: String): Boolean = try {
+        startActivity(Intent().setClassName(packageName, "app.heyrobot.assistant.PanelLaunchActivity").putExtra(key, value))
+        true
+    } catch (_: Throwable) { false }
 }
 
 enum class Tab(val title: String) { HOME("Home"), NOTES("Notes"), HISTORY("History"), MODEL("Model"), SETTINGS("Settings") }

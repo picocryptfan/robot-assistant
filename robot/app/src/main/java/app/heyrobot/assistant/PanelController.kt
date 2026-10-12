@@ -19,6 +19,7 @@ import app.heyrobot.core.messages.MessageQuarantine
 import app.heyrobot.core.helpers.Pricing
 import android.os.PowerManager
 import android.os.SystemClock
+import android.service.voice.VoiceInteractionSession
 import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
 import app.heyrobot.core.AskClaudeTool
@@ -79,6 +80,7 @@ import app.heyrobot.core.EscalationTrigger
 import app.heyrobot.core.Hedge
 import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ModelOutcome
+import app.heyrobot.core.PanelContinuity
 import app.heyrobot.core.Personal
 import app.heyrobot.core.PreRouter
 import app.heyrobot.core.RawToolCall
@@ -539,26 +541,35 @@ object PanelController {
         shown = true
         // 0.5.0: a conversation being transcribed pauses while you talk to Robot (nothing said to her is transcribed).
         ConversationSession.panel(true)
+        // [args]: what RobotSession's ShowGate let through (1.0, ipc-1): another app's showAssist arguments never get here.
         val source = args?.getString(RobotVoiceService.ARG_SOURCE)
         val convArg = args?.getString(RobotVoiceService.ARG_CONVERSATION)
-        // Only an explicit return from CaptureActivity keeps the picture (an abandoned capture does not).
-        val returning = source == RobotVoiceService.SRC_CAPTURE
+        // Only an explicit return from CaptureActivity, while the panel is hidden for it, keeps the picture (an abandoned
+        // capture does not; 1.0, ipc-2: nor a "capture" show nobody is waiting for).
+        val capturePending = hidingFor == "capture"
+        val back = source == RobotVoiceService.SRC_CAPTURE && capturePending
         hidingFor = null
-        ignoreAssist = source == RobotVoiceService.SRC_APP || returning
         val s = VoiceHub.settings
+        // The lock-screen rule first, with no exception (core PanelContinuity): a locked show never shows an earlier
+        // conversation, not even the camera's return.
+        val stale = System.currentTimeMillis() - lastActivity > CONTINUE_MS
+        val open = PanelContinuity.open(locked, startedLocked, stale, chat.isEmpty(), convArg != null && ConversationStore.validId(convArg), back)
+        when (open) {
+            PanelContinuity.Open.LOAD -> loadConversation(convArg!!)
+            PanelContinuity.Open.NEW_LOCKED -> newConversation(locked = true)
+            PanelContinuity.Open.NEW -> newConversation(locked)
+            PanelContinuity.Open.CONTINUE -> {}
+        }
+        // Continued unlocked: never lock-screen safe again (physical-locked-conversation-carryover).
+        startedLocked = PanelContinuity.stillLocked(startedLocked, locked)
+        val returning = back && open == PanelContinuity.Open.CONTINUE
+        ignoreAssist = source == RobotVoiceService.SRC_APP || returning
         if (!returning) {
             screenText = null
             screenshot = null
             claudePieces = null
             assistPieces.clear()
             screenPkg = null
-            val stale = System.currentTimeMillis() - lastActivity > CONTINUE_MS
-            when {
-                convArg != null && !locked && ConversationStore.validId(convArg) -> loadConversation(convArg)
-                // Never show an earlier conversation on the lock screen.
-                locked && (!startedLocked || stale) -> newConversation(locked = true)
-                stale || chat.isEmpty() -> newConversation(locked)
-            }
             val speak = when (s.speakReplies) {
                 SpeakReplies.ALWAYS -> true
                 SpeakReplies.NEVER -> false
@@ -583,8 +594,9 @@ object PanelController {
         // word starts a question, the voice when a question is sent with spoken replies on. Nothing loads just for a show.
         RLog.i("panel_show", "src" to source?.let { RLog.Code(it) }, "locked" to locked, "turns" to chat.size)
         shownAtE = SystemClock.elapsedRealtime()
-        VoiceLog.add(VoiceEvent.SESSION_SHOWN, showSource(source))
-        startScreen(showSource(source), showFlags)
+        val from = showSource(source, showFlags)
+        VoiceLog.add(VoiceEvent.SESSION_SHOWN, from)
+        startScreen(from, showFlags)
         // The question first: once it is attached, the capture mode can't switch under it ("Always echo cancellation").
         if (source == RobotVoiceService.SRC_WAKE && handsFree == null) startListening()
         // 0.8: opened by Settings' Run now or a Ready card's tap.
@@ -592,14 +604,15 @@ object PanelController {
         VoiceHub.updateCapture()
     }
 
-    private fun showSource(src: String?): ShowSource = when (src) {
+    private fun showSource(src: String?, flags: Int): ShowSource = when (src) {
         RobotVoiceService.SRC_WAKE -> ShowSource.WAKE
         RobotVoiceService.SRC_KEYGUARD -> ShowSource.KEYGUARD
         RobotVoiceService.SRC_APP -> ShowSource.APP
         RobotVoiceService.SRC_CAPTURE -> ShowSource.CAPTURE
         RobotVoiceService.SRC_HEADSET -> ShowSource.HEADSET
-        // The corner swipe (and the assist gesture) come without Robot's own source.
-        else -> ShowSource.SWIPE
+        // Another app's showAssist (its arguments dropped by ShowGate); the corner swipe (and the assist gesture) come
+        // without Robot's own source.
+        else -> if (flags and VoiceInteractionSession.SHOW_SOURCE_APPLICATION != 0) ShowSource.OTHER_APP else ShowSource.SWIPE
     }
 
     fun onHide() {
@@ -1224,6 +1237,8 @@ object PanelController {
             }
             return false
         }
+        // A question asked unlocked: this conversation is never shown on the lock screen again (core PanelContinuity).
+        startedLocked = PanelContinuity.stillLocked(startedLocked, Assistant.locked(VoiceHub.app))
         val names = names()
         // An offer under the last reply waits for a tap or a short yes (a yes never sends anything personal).
         if (st.draft == null && ClaudeRouter.isYes(q, names)) offers.keys.lastOrNull { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.let {
@@ -3173,6 +3188,7 @@ object PanelController {
     private fun routineTurn(label: String, work: suspend (String, PanelRoutines.Host) -> Unit) {
         if (_state.value.busy || slot.running) return notify("Robot is still on the last question.")
         VoiceHub.stopVoice(TtsStop.NEW_QUESTION)
+        startedLocked = PanelContinuity.stillLocked(startedLocked, Assistant.locked(VoiceHub.app))
         val user = ChatTurn(newId(), TurnRole.USER, label, System.currentTimeMillis())
         chat += user
         val replyId = newId()

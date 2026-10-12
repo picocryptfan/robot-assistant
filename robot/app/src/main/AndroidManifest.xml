@@ -272,6 +272,15 @@
             android:noHistory="false"
             android:taskAffinity="app.heyrobot.capture"
             android:theme="@style/Theme.Robot.Translucent" />
+        <!-- 1.0: Robot's app opens the panel for Run now, a Ready card or Continue through this trampoline, which asks the
+             assistant service itself to show it (another app's showAssist arguments are dropped). Not exported. -->
+        <activity
+            android:name=".assistant.PanelLaunchActivity"
+            android:process=":voice"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@style/Theme.Robot.Translucent" />
         <!-- A helper's connection window (0.6.0; Ask Claude's key window before): its API key is pasted here, in the :voice
              process, encrypted there and never passes through the main app (which opens this window by class name), and Test
              connection runs here. -->

@@ -8,6 +8,7 @@ import android.speech.RecognitionService
 import android.speech.SpeechRecognizer
 import app.heyrobot.core.RLog
 import app.heyrobot.core.ShowSource
+import app.heyrobot.core.ShowTrust
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.sys.BootCheck
@@ -63,8 +64,10 @@ class RobotVoiceService : VoiceInteractionService() {
      */
     fun show(source: String, extras: Bundle? = null): Boolean = try {
         showSession(Bundle().apply {
-            putString(ARG_SOURCE, source)
             extras?.let { putAll(it) }
+            putString(ARG_SOURCE, source)
+            // 1.0 (ipc-1): the panel keeps a show's own arguments only with this process's token (core ShowTrust).
+            putString(ShowTrust.ARG_VIS, TOKEN)
         }, VoiceInteractionSession.SHOW_WITH_ASSIST or VoiceInteractionSession.SHOW_WITH_SCREENSHOT)
         true
     } catch (t: Throwable) {
@@ -74,6 +77,12 @@ class RobotVoiceService : VoiceInteractionService() {
 
     companion object {
         @Volatile var instance: RobotVoiceService? = null
+
+        /**
+         * 1.0 (ipc-1): random for each start of the :voice process and only ever in its memory (and in the shows this service
+         * asks Android for): a show that carries it came from [show], never from another app's showAssist.
+         */
+        val TOKEN: String = java.util.UUID.randomUUID().toString()
 
         /** Bundle keys in the session's show args. */
         const val ARG_SOURCE = "robot_source"

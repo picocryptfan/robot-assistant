@@ -254,6 +254,8 @@ class ProcessIsolationTest {
         fun perm(n: String) = c(n).getAttributeNS(ns, "permission")
         val voice = listOf("app.heyrobot.assistant.RobotVoiceService", "app.heyrobot.assistant.RobotSessionService",
             "app.heyrobot.assistant.RobotRecognitionService", "app.heyrobot.assistant.CaptureActivity", "androidx.core.content.FileProvider",
+            // 1.0 (ipc-1): Robot's app opens the panel for Run now, Ready and Continue through this trampoline (not exported).
+            "app.heyrobot.assistant.PanelLaunchActivity",
             "app.heyrobot.assistant.HelperConnectionActivity", "app.heyrobot.assistant.MediaDeleteActivity",
             "app.heyrobot.assistant.CheogramPickActivity",
             // 0.5.0, conversation mode: where the listener and the speech model are.
@@ -271,6 +273,8 @@ class ProcessIsolationTest {
             // commands were sent from.
             "app.heyrobot.assistant.WebSearchActivity", "app.heyrobot.assistant.TermuxResultReceiver")
         for (n in voice) assertEquals(n, ":voice", proc(n))
+        assertEquals("false", exported("app.heyrobot.assistant.PanelLaunchActivity"))
+        assertEquals(0, c("app.heyrobot.assistant.PanelLaunchActivity").getElementsByTagName("intent-filter").length)
         assertEquals(":brain", proc("app.heyrobot.brain.BrainService"))
         // 0.4.5: llama.cpp's own process, isolated: Android runs it under a uid of its own with no permissions, no network
         // and none of Robot's files. Not exported, no intent filter, never guarded by (or holding) a permission, never
@@ -649,11 +653,60 @@ class ProcessIsolationTest {
         fun const(name: String) = Regex("""const val $name = "([^"]+)"""").find(vis)!!.groupValues[1]
         val ui = File(java("app"), "app/heyrobot/ui/MainActivity.kt").readText()
         assertTrue(ui.contains("putString(\"${const("ARG_SOURCE")}\", \"${const("SRC_APP")}\")"))
-        assertTrue(ui.contains("putString(\"${const("ARG_CONVERSATION")}\", it)"))
+        // 1.0 (ipc-1): Talk to Robot's showAssist carries Robot's single-use nonce; Continue, Run now and Ready go through the
+        // :voice trampoline by class name, with the keys the trampoline takes.
+        val trust = File(java("core"), "app/heyrobot/core/ShowTrust.kt").readText()
+        fun core(name: String) = Regex("""const val $name = "([^"]+)"""").find(trust)!!.groupValues[1]
+        assertEquals(const("ARG_SOURCE"), core("ARG_SOURCE"))
+        assertEquals(const("ARG_CONVERSATION"), core("ARG_CONVERSATION"))
+        assertEquals(const("SRC_APP"), core("SRC_APP"))
+        assertTrue(ui.contains("putString(\"${core("ARG_NONCE")}\", ShowNonces.mint(this@MainActivity))"))
+        assertTrue(ui.contains("panel(\"${const("ARG_CONVERSATION")}\", conversation)"))
+        assertTrue(ui.contains("setClassName(packageName, \"app.heyrobot.assistant.PanelLaunchActivity\")"))
+        assertTrue(File(java("app"), "app/heyrobot/assistant/PanelLaunchActivity.kt").isFile)
+        // The only showAssist in the app is Talk to Robot's, with the source and the nonce and nothing else.
+        assertEquals(listOf("app/ui/MainActivity.kt"), usersOf(Regex("""\bshowAssist\(""")))
+        assertEquals(1, Regex("""\bshowAssist\(""").findAll(code(File(java("app"), "app/heyrobot/ui/MainActivity.kt"))).count())
+        val talk = ui.substringAfter("showAssist(Bundle().apply {").substringBefore("})")
+        assertEquals(2, Regex("""putString\(""").findAll(talk).count())
         // Class names the main and voice processes use as strings.
         val sys = File(java("app"), "app/heyrobot/sys/Assistant.kt").readText()
         assertTrue(sys.contains("\"app.heyrobot.assistant.RobotVoiceService\"") && File(java("app"), "app/heyrobot/assistant/RobotVoiceService.kt").isFile)
         assertTrue(File(java("app"), "app/heyrobot/ui/MainActivity.kt").isFile)
+    }
+
+    /**
+     * 1.0 audit (ipc-1, ipc-2): any app on top can open the panel with showAssist and arguments of its choosing
+     * (SHOW_SOURCE_APPLICATION). The session reads a show's arguments only through ShowGate, which keeps them only when the
+     * assistant service made the show (its token) and an app's show at most "from the app" with Robot's nonce; Run now, Ready
+     * and Continue go through the non-exported :voice trampoline, which asks the service; the camera's return counts only
+     * while the panel is hidden for it.
+     */
+    @Test fun anotherAppsShowOpensOnlyThePlainPanel() {
+        val session = code(File(java("app"), "app/heyrobot/assistant/RobotSession.kt"))
+        val onShow = session.substringAfter("override fun onShow(args: Bundle?, showFlags: Int) {").substringBefore("\n    }\n")
+        assertTrue(onShow, onShow.contains("PanelController.onShow(ShowGate.args(context, args, showFlags), Assistant.locked(context), showFlags)"))
+        assertEquals(1, Regex("""\bPanelController\.onShow\(""").findAll(session).count())
+        val gate = code(File(java("app"), "app/heyrobot/assistant/ShowGate.kt"))
+        assertTrue(gate.contains("showFlags and VoiceInteractionSession.SHOW_SOURCE_APPLICATION != 0"))
+        assertTrue(gate.contains("ShowTrust.from(fromApp, args.getString(ShowTrust.ARG_VIS), RobotVoiceService.TOKEN, args.getString(ShowTrust.ARG_NONCE))"))
+        assertTrue(gate.contains("for (k in keys) if (k !in keep) out.remove(k)"))
+        // The token is put on a show by the service's show() alone, and lives only in :voice's memory.
+        assertEquals(listOf("app/assistant/RobotVoiceService.kt"), usersOf(Regex("""putString\(ShowTrust\.ARG_VIS""")))
+        assertEquals(listOf("app/assistant/RobotVoiceService.kt", "app/assistant/ShowGate.kt"), usersOf(Regex("""\bRobotVoiceService\.TOKEN\b|\bval TOKEN\b""")))
+        assertTrue(code(File(java("app"), "app/heyrobot/assistant/RobotVoiceService.kt")).contains("val TOKEN: String = java.util.UUID.randomUUID().toString()"))
+        // The trampoline asks the service, takes only its three string keys, and is not exported (the manifest test).
+        val tramp = code(File(java("app"), "app/heyrobot/assistant/PanelLaunchActivity.kt"))
+        assertTrue(tramp.contains("RobotVoiceService.instance?.show(RobotVoiceService.SRC_APP, extras)"))
+        assertTrue(tramp.contains("val KEYS = listOf(RoutineIntents.ARG_ROUTINE, RoutineIntents.ARG_READY, RobotVoiceService.ARG_CONVERSATION)"))
+        // The panel: a "capture" show counts only while hidden for the camera, and the lock-screen rule has no exception.
+        val panel = withoutComments(File(java("app"), "app/heyrobot/assistant/PanelController.kt"))
+        val show = panel.substringAfter("fun onShow(args: Bundle?, locked: Boolean, showFlags: Int = 0) {").substringBefore("\n    }\n")
+        assertTrue(show.contains("val capturePending = hidingFor == \"capture\""))
+        assertTrue(show.contains("val back = source == RobotVoiceService.SRC_CAPTURE && capturePending"))
+        assertTrue(show.indexOf("PanelContinuity.open(") in 0 until show.indexOf("if (!returning) {"))
+        assertTrue(show.contains("startedLocked = PanelContinuity.stillLocked(startedLocked, locked)"))
+        assertEquals(3, Regex("""startedLocked = PanelContinuity\.stillLocked\(""").findAll(panel).count())
     }
 
     @Test fun voiceInteractionMetadataNamesTheComponents() {

@@ -532,6 +532,8 @@ enum class ShowSource(override val id: Int, override val title: String) : LogCod
     WAKE(1, "wake word"), SWIPE(2, "corner swipe"), KEYGUARD(3, "lock screen"), APP(4, "button in the app"), CAPTURE(5, "back from the camera"), TEST(6, "test"),
     /** 0.8: a headset's or car's button. */
     HEADSET(7, "headset button"),
+    /** 1.0 (ipc-1): another app's showAssist, opened as the plain panel (its arguments dropped). */
+    OTHER_APP(8, "another app"),
 }
 
 enum class BrainFail(override val id: Int, override val title: String) : LogCode {

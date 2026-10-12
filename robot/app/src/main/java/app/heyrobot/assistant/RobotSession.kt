@@ -90,7 +90,8 @@ class RobotSession(ctx: Context) : VoiceInteractionSession(ctx), LifecycleOwner,
         LookStore.reload(context)
         registry.currentState = Lifecycle.State.RESUMED
         PanelController.attach(this)
-        PanelController.onShow(args, Assistant.locked(context), showFlags)
+        // 1.0 (ipc-1, ipc-2): only what Robot itself asked for counts; another app's showAssist opens the plain panel.
+        PanelController.onShow(ShowGate.args(context, args, showFlags), Assistant.locked(context), showFlags)
     }
 
     override fun onHide() {
