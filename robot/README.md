@@ -17,15 +17,69 @@ Robot is made of, with its licence, and the look has begun to move to stock Andr
 0.6.0 it also transcribes a conversation in French and English, on the phone, translates it (also face to face, aloud)
 and summarizes it (see "Conversation mode (0.5.0)" below), and it can hand a question to any company's model or to a
 model on your own computer the way it hands one to Claude (see "Helpers (0.6.0)" below). Settings › About › Updates
-finds Robot's new releases on GitHub and installs them after checking each one ("Updates" below). Coming in 0.7 (built,
-not yet checked on the phone): it remembers what you ask it to, on the phone and encrypted (see "Memory (0.7)" below), and
-it reads, summarizes, translates and answers your messages from their notifications, in memory only, and sends a reply
-only after you tap Send on its card (see "Messages (0.7)" below); nothing from a message becomes memory by itself
-("Memory and messages together (0.7)" below). The build specs are
+finds Robot's new releases on GitHub and installs them after checking each one ("Updates" below). Since 0.7.0 it
+remembers what you ask it to, on the phone and encrypted (see "Memory (0.7)" below), it reads, summarizes, translates
+and answers your messages from their notifications, in memory only, and sends a reply only after you tap Send on its card
+(see "Messages (0.7)" below); nothing from a message becomes memory by itself ("Memory and messages together (0.7)"
+below); and Settings › About › Send feedback writes a bug report or an idea for you to send ("Feedback and bug reports
+(0.7)" below). The build specs are
 `../docs/phase-1.md`, `../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models
 and how they are used, `../docs/voice-plan.md`.
 
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
+
+## What's new in 0.7.0
+
+Robot 0.7.0 is 0.6.0 with three pieces of work built beside it, the fixes from an adversarial review of them, and the
+first fixes from the tester's 0.6.0 report; each has its section below, with its phone checks. Settings file schema 13,
+as 0.6.0: memory, messages and feedback keep their own files (`memory.json`, `messages.json`, `feedback.json`).
+
+- **Memory** ([Memory (0.7)](#memory-07)): "remember that …", "forget that", "what do you know about me?" in English and
+  Québec French, before the model; pinned preferences and found items with each chat question, within its context; the
+  model's remember and forget behind cards; private items (a code, a PIN) kept but never spoken, pinned, sent or shown on
+  the lock screen; Settings › Memory to see, search, edit, pin, export and delete every item. One file, AES-256-GCM with a
+  Keystore key that needs the phone unlocked ("Use memory on the lock screen" off by default), excluded from backup;
+  never to a helper but through a card. Voice log events 180 to 189.
+- **Messages** ([Messages (0.7)](#messages-07)): Robot reads, summarizes, translates and answers the messages of the
+  apps you turn on in Settings › Messages (Cheogram, Signal, Molly, Messaging, Google Messages; all off), from their
+  notifications, in RAM only; a reply goes through the app's own reply action only after a tap on its card (or a
+  3-second "stop" for people you choose); a message's words never become an action, and once one is in the conversation
+  every action asks. Voice log events 190 to 199.
+- **Memory and messages together** ([Memory and messages together (0.7)](#memory-and-messages-together-07)): nothing from
+  a message becomes memory by itself; your own "remember that …" there is a card only a tap answers.
+- **Send feedback** ([Feedback and bug reports (0.7)](#feedback-and-bug-reports-07)): Settings › About › Send feedback
+  writes a ROBOT FEEDBACK v1 message (bug, idea or other) with the diagnostics you tick, each previewed (the model problem
+  report, now with a native crash's tombstone, the voice log, a settings summary that includes memory's and messages'
+  switches, the updater's codes), and you send it with the app you pick, copy it, text it or open a GitHub issue; Robot
+  sends nothing itself, and no memory item or message can reach it. The Model tab keeps the last 10 problems. "Report a
+  bug", « j'ai une idée » in the panel open the page. Voice log events 220 to 225.
+- **The review's fixes** (each in its section, with phone checks): each messaging app pinned to its signing key, package
+  by package (a look-alike or a changed key is ignored and named in Settings › Messages; an app on in an earlier test
+  build is pinned at its first notification); nothing saved to or removed from memory on the lock screen ("Unlock first to
+  save to memory."); "reply …" routed to your messages only after one was read here or to someone known, else the model's;
+  only explicit forms save to memory ("remember the movie where …" is a question); senders' names and group titles in
+  History at most 40 characters, cleaned, and given to the model inside the information-only framing; message words let
+  go from the panel's process when it hides or after 2 minutes idle, and from the main process when Messages is turned
+  off or notification access taken back; every `messages.json` write one change under its lock; a spoken yes on a reply
+  card only 3 seconds after Robot said a message's words; three people writing make a group.
+- **From the tester's 0.6.0 report:** History's list follows the conversations folder (a save from the panel or a
+  delete shows at once, without closing Settings); "free up memory" and "close apps" are answered by Robot itself with
+  how much memory is free, what unloading its model gives and, with Usage access, the apps likely still in memory, each
+  opening its App info for Force stop ([Freeing memory and storage](#freeing-memory-and-storage)); the panel has a
+  Settings button in both looks; the Settings root is categories only (it has been since the redesigned Settings, which
+  0.6.0 didn't have yet).
+- **Not in 0.7.0:** the memory search model (7.4) and suggestions and transcripts in memory (7.5); "Announce new
+  messages" (headset mode); messages to trusted helpers without a card; other helpers summarizing a transcript. Nothing of
+  0.7.0 has run on the phone yet: every section's "On the phone" list is still to do, with these too:
+  1. **History follows.** With the History tab open behind the panel, ask Robot something and close the panel: the new
+     conversation is listed at once. Delete one from its page, then Settings › History › Delete all: Home and the History
+     tab are empty without leaving Settings.
+  2. **Free up memory.** With Usage access on, use YouTube and Maps, then "hey robot, free up memory": Robot says how much
+     is free and names them; the card lists "Unload Robot's model · about 2 GB" and each app; tap YouTube: its App info
+     opens (tap Force stop yourself). « Libère de la mémoire »: the same in French. Turn Usage access off: the card offers
+     "Turn on Usage access…". Locked: only what is free.
+  3. **Settings from the panel.** Both looks (Settings › Display › Classic look): the panel's header has a gear; it opens
+     Robot's Settings tab. On the lock screen: "Unlock your phone, then tap Settings again."
 
 ## What's new in 0.6.0
 
