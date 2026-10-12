@@ -4940,8 +4940,10 @@ you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; th
   trusted session; the notification and screen say "unlocked features"); without it, "Unlock once to use car features".
 - **Calls** ("call Mom", "appelle maman", the screen's Call): spoken choices ("Mom: mobile, or work?"), the number read
   back, then the dialer opens with it; "Call directly after a spoken yes" (with the Phone permission) places it.
-  Emergency numbers always open the dialer and are never called by Robot. Outside car mode, "call Mom" is the call tool's
-  card (never described to the model).
+  Emergency numbers always open the dialer and are never called by Robot. A call placed after a spoken yes is car mode's
+  alone. Outside car mode, "call Mom" is the call tool's card (never described to the model, which can't call it); in a
+  headset session on headphones you confirmed private, unlocked, the choices and the read-back are spoken instead and
+  the yes opens the dialer with the number, where you tap Call (anywhere else in a headset session, the card).
 - **Navigation** ("navigate home", "take me to work", "le poste d'essence le plus proche"): Organic Maps' route preview
   to your saved Home or Work (tap Start when stopped), the nearest place's 0.4.0 flow, or a search.
 - **What's next** (your calendar), **music** (play, pause, next, previous: a media key to the current player), "repeat",
