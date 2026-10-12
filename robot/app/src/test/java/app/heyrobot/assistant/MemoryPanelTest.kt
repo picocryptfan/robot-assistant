@@ -174,6 +174,24 @@ class MemoryPanelTest {
     }
 
     /**
+     * 1.0 audit (secrets-history-refused-remember): the question the panel saves for a refused "remember that …" (locked,
+     * Memory off) is a placeholder: the PIN never reaches History's file.
+     */
+    @Test fun aRefusedRememberSavesAPlaceholder() {
+        val pin = "remember that my bank PIN is 4821"
+        keys.locked = true
+        val locked = MemoryPanel.route(pin, locked = true)!!
+        assertEquals("Unlock first to save to memory.", MemoryPanel.command(locked, true, spoken = true).text)
+        assertEquals(MemoryHygiene.NOT_SAVED, MemoryPanel.question(locked, pin))
+        keys.locked = false
+        settings = settings.copy(on = false)
+        val off = MemoryPanel.route(pin, locked = false)!!
+        assertTrue("$off", off is MemoryRoute.Off)
+        val saved = ConversationCodec.toJson(StoredConversation("c", 1, 2, listOf(ChatTurn("u", TurnRole.USER, MemoryPanel.question(off, pin), 1))))
+        assertFalse(saved, saved.contains("4821"))
+    }
+
+    /**
      * 0.7 after the review: nothing is saved to or removed from memory on the lock screen, even with "Use memory on the
      * lock screen" on (which still lets it be read there): your "remember that …", the model's remember and forget, a
      * card answered after the phone locked, Undo, and the use counter.

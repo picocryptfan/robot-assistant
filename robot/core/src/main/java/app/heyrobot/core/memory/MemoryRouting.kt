@@ -177,6 +177,32 @@ object MemoryHygiene {
         if (!c.secret) said
         else (if (c.language == "fr") "Retiens : " else "Remember: ") + SecretDetector.placeholder(SecretDetector.find(c.text), c.language == "fr")
 
+    /**
+     * The question History keeps for what the memory router took ([route]; [said]: your words). 1.0 audit
+     * (secrets-history-refused-remember): a "remember that …" that wasn't saved (the phone locked, Memory off) keeps a
+     * placeholder, never its words; any other refused memory command loses them too if they hold something private (a
+     * code, a password, a card number).
+     */
+    fun question(route: MemoryRoute, said: String): String {
+        if (route is MemoryRoute.Run) return (route.command as? MemoryCommand.Remember)?.let { question(it, said) } ?: said
+        val fr = when (route) {
+            is MemoryRoute.Unlock -> route.language
+            is MemoryRoute.Off -> route.language
+            else -> "en"
+        } == "fr"
+        val remember = MemoryCommands.parse(said) is MemoryCommand.Remember || (route as? MemoryRoute.Unlock)?.saving == true
+        return when {
+            remember -> if (fr) NOT_SAVED_FR else NOT_SAVED
+            SecretDetector.isSecret(said) -> if (fr) PRIVATE_FR else PRIVATE
+            else -> said
+        }
+    }
+
+    const val NOT_SAVED = "Remember: [not saved, not kept in History]"
+    const val NOT_SAVED_FR = "Retiens : [pas gardé, ni dans l'historique]"
+    const val PRIVATE = "[Something private about memory: not kept in History.]"
+    const val PRIVATE_FR = "[Quelque chose de privé sur la mémoire : pas gardé dans l'historique.]"
+
     /** The answer History keeps for a reply that had a secret item before it: never the answer itself. */
     const val SECRET_ANSWER = "[An answer with something private from Memory: not kept in History.]"
 

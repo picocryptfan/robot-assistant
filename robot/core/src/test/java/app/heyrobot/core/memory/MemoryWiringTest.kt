@@ -157,6 +157,30 @@ class MemoryWiringTest {
 
     // ------------------------------------------------------------------ History hygiene
 
+    /**
+     * 1.0 audit (secrets-history-refused-remember): "remember that my bank PIN is 4821" on a locked phone, or with Memory
+     * off, is refused, and History keeps a placeholder, never the words; another refused command loses a code it holds.
+     */
+    @Test fun aRefusedRememberIsNeverKeptInHistory() {
+        val pin = "hey robot, remember that my bank PIN is 4821"
+        for (route in listOf(MemoryRouting.route(pin, MemorySettings(on = true), locked = true)!!, MemoryRouting.route(pin, MemorySettings(on = false), locked = false)!!)) {
+            assertTrue("$route", route !is MemoryRoute.Run)
+            val kept = MemoryHygiene.question(route, pin)
+            assertEquals(MemoryHygiene.NOT_SAVED, kept)
+            val json = ConversationCodec.toJson(StoredConversation("c", 1, 2, listOf(ChatTurn("u", TurnRole.USER, kept, 1))))
+            assertFalse(json, json.contains("4821") || json.contains("PIN"))
+        }
+        // Not a secret, still not kept: it wasn't saved.
+        assertEquals(MemoryHygiene.NOT_SAVED, MemoryHygiene.question(MemoryRoute.Unlock("en", saving = true), "remember that I parked on level 3"))
+        assertEquals(MemoryHygiene.NOT_SAVED_FR, MemoryHygiene.question(MemoryRoute.Off("fr"), "retiens que mon NIP est 4821"))
+        // Another refused command with a code in it.
+        assertEquals(MemoryHygiene.PRIVATE, MemoryHygiene.question(MemoryRoute.Unlock("en", changing = true), "forget the garage code 4512"))
+        assertEquals("what do you know about me?", MemoryHygiene.question(MemoryRoute.Unlock("en"), "what do you know about me?"))
+        // Run: as before.
+        val c = MemoryCommands.parse("Remember that the door code is 4512") as MemoryCommand.Remember
+        assertEquals("Remember: [a code, kept in Memory]", MemoryHygiene.question(MemoryRoute.Run(c), "Remember that the door code is 4512"))
+    }
+
     @Test fun historyKeepsIdsNotTheNotes() {
         val c = MemoryCommands.parse("Remember that the door code is 4512") as MemoryCommand.Remember
         assertEquals("Remember: [a code, kept in Memory]", MemoryHygiene.question(c, "Remember that the door code is 4512"))

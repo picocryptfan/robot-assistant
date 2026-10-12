@@ -190,9 +190,11 @@ object MemoryPanel {
     /** The router's route for what you said ([locked]: the phone now), or null: not memory's. */
     fun route(q: String, locked: Boolean): MemoryRoute? = MemoryRouting.route(q, settings(), locked)
 
-    /** What History keeps of the question: a secret is never in it ("Remember: [a code, kept in Memory]"). */
-    fun question(route: MemoryRoute, said: String): String =
-        ((route as? MemoryRoute.Run)?.command as? MemoryCommand.Remember)?.let { MemoryHygiene.question(it, said) } ?: said
+    /**
+     * What History keeps of the question: a secret is never in it ("Remember: [a code, kept in Memory]"), nor a remember
+     * that wasn't saved (locked, Memory off: core MemoryHygiene).
+     */
+    fun question(route: MemoryRoute, said: String): String = MemoryHygiene.question(route, said)
 
     /** Runs [route] (background thread): the vault changes, the card and Robot's words. [spoken]: the question came by voice. */
     fun command(route: MemoryRoute, locked: Boolean, spoken: Boolean): MemoryAnswer {
