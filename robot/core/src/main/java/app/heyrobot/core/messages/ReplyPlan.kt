@@ -176,6 +176,33 @@ object ReplyGuard {
     }
 }
 
+/** What you say while a reply waits its 3 seconds ("Send my replies to Mom without a card", or "Card before sending a reply" off). */
+enum class WindowAnswer {
+    /** "Yes", "send it": it goes when the 3 seconds end, as it would anyway. */
+    YES,
+    /** "Stop", "no, no, don't send it", « non, attends »: it stops, and the card waits for Send. */
+    STOP,
+    /**
+     * Anything else stops it too (you began saying something, and a sent message can't be recalled); the card waits for
+     * Send and your words go on as a question.
+     */
+    OTHER,
+}
+
+object ReplyWindow {
+    /** A word of an objection anywhere in what was said, so a hurried "no no no" or "wait, don't" counts as "stop". */
+    private val OBJECTION = Regex("""(?<![\p{L}\p{N}])(?:stop|stoppe|wait|hold on|no|nope|nah|don't|dont|do not|cancel|never mind|arrete|attends|attendez|non|annule|annuler|laisse faire|laisse tomber)(?![\p{L}\p{N}])""")
+
+    fun answer(text: String, wakePhrases: List<String> = emptyList()): WindowAnswer {
+        when (app.heyrobot.core.CardAnswer.of(text, wakePhrases)) {
+            app.heyrobot.core.CardAnswer.Kind.YES -> return WindowAnswer.YES
+            app.heyrobot.core.CardAnswer.Kind.NO -> return WindowAnswer.STOP
+            null -> {}
+        }
+        return if (OBJECTION.containsMatchIn(MessagesRouter.fold(text))) WindowAnswer.STOP else WindowAnswer.OTHER
+    }
+}
+
 object ReplyText {
     private val THAT = Regex("^(?:that|que)\\s+|^qu['’](?=\\p{L})", RegexOption.IGNORE_CASE)
 

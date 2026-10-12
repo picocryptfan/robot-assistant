@@ -55,6 +55,19 @@ class ReplyPlanTest {
         assertEquals(Confirm.STOP_WINDOW, send(ReplyPlanner.plan(mom, "x", ReplySource.DICTATED, on.copy(replyCard = false), false)).confirm)
     }
 
+    /**
+     * A reply without a card goes after 3 seconds to say "stop" (a sent message can't be recalled): a hurried objection
+     * that isn't the exact word stops it too, and so does anything else you begin to say; only a yes lets it go.
+     */
+    @Test fun anythingButAYesStopsTheThreeSeconds() {
+        for (s in listOf("stop", "Stop!", "Hey Robot, stop", "no", "No, no, no!", "no wait", "Wait, don't send it", "don't", "cancel that",
+            "hold on", "never mind", "Non, attends", "arrête", "Annule ça", "laisse faire")) {
+            assertEquals(s, WindowAnswer.STOP, ReplyWindow.answer(s, listOf("hey robot")))
+        }
+        for (s in listOf("yes", "Send it", "oui")) assertEquals(s, WindowAnswer.YES, ReplyWindow.answer(s))
+        for (s in listOf("What's the weather tomorrow?", "I know", "Notre-Dame")) assertEquals(s, WindowAnswer.OTHER, ReplyWindow.answer(s))
+    }
+
     @Test fun groupsSayWhoWillSeeIt() {
         val p = send(ReplyPlanner.plan(thread(Snapshots.cheogramGroup), "J'arrive", ReplySource.DICTATED, on, false))
         assertTrue(ReplyNote.GROUP in p.notes)

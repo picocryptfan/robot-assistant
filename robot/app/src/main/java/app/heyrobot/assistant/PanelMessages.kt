@@ -877,19 +877,22 @@ object PanelMessages {
 
     /**
      * A spoken or typed answer while a reply card waits: "no" cancels it; "yes" sends it only where the card allows a
-     * spoken yes ("Answer reply cards by voice", 1:1, your own words), otherwise Robot says to tap Send; "stop" in its 3
-     * seconds stops it. False: not an answer (the question goes on as usual).
+     * spoken yes ("Answer reply cards by voice", 1:1, your own words), otherwise Robot says to tap Send; in its 3 seconds,
+     * anything but a yes stops it. False: not an answer (the question goes on as usual).
      */
     fun answerCard(q: String, fromVoice: Boolean): Boolean {
         sync()
         val p = card ?: return false
-        val folded = MessagesRouter.fold(q).trim().trimEnd('.', '!', '?')
+        val wakes = VoiceHub.settings.wakePhrases.filter { it.enabled }.map { it.text }
         if (p.state == ReplyCardState.STOP_WINDOW) {
-            if (STOP_WORDS.matches(folded)) { stopWindow(CardEnd.STOPPED); return true }
-            return false
+            // Anything said in its 3 seconds but a yes stops it (core ReplyWindow): "no, no, don't send it" as well as "stop".
+            return when (app.heyrobot.core.messages.ReplyWindow.answer(q, wakes)) {
+                app.heyrobot.core.messages.WindowAnswer.YES -> true
+                app.heyrobot.core.messages.WindowAnswer.STOP -> { stopWindow(CardEnd.STOPPED); true }
+                app.heyrobot.core.messages.WindowAnswer.OTHER -> { stopWindow(CardEnd.STOPPED); false }
+            }
         }
         if (p.state != ReplyCardState.WAITING || p.plan == null) return false
-        val wakes = VoiceHub.settings.wakePhrases.filter { it.enabled }.map { it.text }
         val kind = CardAnswer.of(q, wakes) ?: return false
         if (kind == CardAnswer.Kind.NO) {
             cancel(p)
@@ -925,8 +928,6 @@ object PanelMessages {
             if (p.french && frVoice != null) VoiceHub.tts.speakOther(clean, frVoice.first, frVoice.second) else VoiceHub.tts.speak(clean)
         }
     }
-
-    private val STOP_WORDS = Regex("^(?:(?:hey |ok )?robot,? )?(?:stop|stop it|wait|no|don't|dont|cancel|arrete|attends|non|annule|pas tout de suite)$")
 
     /** A summary's or a draft's one-shot may wait for the model to load. */
     private const val ONE_SHOT_MS = 120_000L
