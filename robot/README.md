@@ -2303,8 +2303,9 @@ is read on the lock screen.
 
 ### Not in 0.7, and not verified yet
 
-- "Announce new messages" (headphones) is a switch for headset mode, greyed out; "Messages can go to trusted helpers
-  without a card" isn't offered (messages go to a helper only through a card).
+- "Announce new messages" was a greyed-out switch until headset mode came: it works since 0.8 (headphones and car mode,
+  off by default; see [Headset mode (0.8)](#headset-mode-08)). "Messages can go to trusted helpers without a card"
+  isn't offered (messages go to a helper only through a card).
 - Nothing of this has run on the phone yet. Unverified (design §G): whether an existing grant delivers silent-channel and
   muted notifications; what Android's code redaction looks like on GrapheneOS; firing a reply with the app in the
   background on GrapheneOS; Molly's and Google Messages' notifications and actions; Signal with its screen lock; a
@@ -4590,7 +4591,7 @@ Asked ("run my…", Run now) or tapped (a Ready card), every step goes through t
 your town, then "Unlock to hear your day"; if you unlock within 15 minutes, the rest follows (Finish when I unlock).
 Every part goes through OutputGuard before it plays: nothing personal is said locked, nothing talks over a call, and
 "Headset only" says nothing on the speaker (and personal parts only in a headset Robot knows is private: wired, USB and
-hearing aids; a Bluetooth headset once headset mode can ask about it).
+hearing aids; a Bluetooth headset once you told headset mode it is private).
 
 **Late or missed times.** One exact alarm is set for the soonest routine (never Android's "next alarm"). Within 10
 minutes of its time a routine runs; up to 3 hours late the same day (Doze, a reboot) it waits on a Ready card ("Your
@@ -4605,7 +4606,8 @@ rings, Robot loads its voice and fetches the weather ("Get ready while the alarm
 ### Defaults
 
 - Morning brief: **off**. Once on: after your alarm (04:00 to 12:00), greeting, weather, calendar, brief reminders and
-  closing (unread messages come with 0.7), On the lock screen: Time and weather, Finish when I unlock: on, Language:
+  closing, and since 0.8 how many unread messages, by app, when Settings › Messages is on (never who or what, so the
+  same on the lock screen), On the lock screen: Time and weather, Finish when I unlock: on, Language:
   the phone's, Get ready while the alarm rings: on, Speak: Headset, else the phone speaker, Clock silences after: 10 min.
 - Routines can run while the phone is locked: **on**. Routines may go online by themselves: **on** (only the services
   each routine's card listed: Open-Meteo for the weather).
@@ -4662,12 +4664,12 @@ as the weather tool does), and only when its card listed it.
 - **Speaking unattended:** the foreground service is the path, not the panel first (the design's Path 1); if Android
   refuses to start it in the background, the run waits on "… ready · Play" (the design's Path 2 fallback). Whether
   the panel path would also work with the screen off is R0.3 below.
-- **Device triggers** start only for headsets and cars Robot remembers (`devices.json`, written by headset mode, not
-  built yet). A routine made by voice ("when I connect my car") waits for any remembered device of that kind; until
-  headset mode exists, none is remembered, so such routines don't start (Settings says so on the routine's page).
+- **Device triggers** start only for headsets and cars Robot remembers (`devices.json`, written by headset mode at a
+  headset's first use and by Settings › Car mode › Add your car). A routine made by voice ("when I connect my car")
+  waits for any remembered device of that kind; with none remembered such routines don't start (Settings says so on the
+  routine's page).
 - **What waits for the unlock** is kept in the `:voice` process's memory: a restart of it in between forgets it.
-- **Not built:** the brief in Robot's own words (Gemma), news through a helper (R4), the unread messages count (0.7: the
-  `UnreadSource` seam only), the "New: routines" line on Home, the editor's one-off dates and "only between two times"
+- **Not built:** the brief in Robot's own words (Gemma), news through a helper (R4), the "New: routines" line on Home, the editor's one-off dates and "only between two times"
   (both kept when a routine made by voice has them), and texts, emails and new events as editor steps (a routine made by
   voice may have them; they always wait for you).
 
@@ -4693,7 +4695,8 @@ voice log (Settings › Advanced › Voice log) shows each step as codes ("Routi
    in the shade, and the fourth posts "Morning brief ready · Play", whose Play speaks it. If the screen-off case is
    silent although the service started, note it: that decides whether the panel path is needed (design §1.2).
 4. **The unlock and the devices.** A routine "at the first unlock after" a time a minute ahead; lock, wait, unlock.
-   *Done when* it runs once that day, not at the second unlock. (Device triggers wait for headset mode.)
+   *Done when* it runs once that day, not at the second unlock. A routine "when my headphones connect" (after the
+   headset's first use) or "when my car connects" (after Add your car): *done when* it runs when they connect.
 5. **Weather in Doze.** The R0.2 routine with the brief, forced idle. *Done when* the weather is said, or "The weather
    isn't available right now." within 15 seconds, and the brief goes on.
 
@@ -4735,140 +4738,242 @@ voice log (Settings › Advanced › Voice log) shows each step as codes ("Routi
 - Edit a routine in Settings: *done when* Save shows its card again, and the change applies (the next time is set).
 - "Delete my evening routine": *done when* only the card's Delete tap deletes it.
 
-**Not checkable yet:** a device trigger ("when the car connects") needs headset mode's remembered devices; R4 (news,
-unread messages) needs helpers' news and 0.7's messages.
+**The unread count (0.8):** with Settings › Messages on and two unread messages in Cheogram and one in Signal, "brief
+me" *done when* it says "You have 3 unread messages: 2 in Cheogram and 1 in Signal." unlocked and locked alike (no
+name, no text); with Settings › Messages off it says nothing about messages.
+
+**Not checkable yet:** R4 (news) needs helpers' news.
+
+## Headset mode (0.8)
+
+Your headset's voice button opens Robot, which listens through the headset's microphone and answers in your ears;
+personal answers play only in headphones only you can hear, and new messages can be announced there. Design:
+`../docs/plans/routines-headset-car-design.md` §1 and §3; the pure logic is in `:core` (`core/output`, what headset and
+car mode share, and `core/headset`) with JVM tests, the wiring in `assistant/headset/` and `assistant/handsfree/` (the
+`:voice` process) and `ui/settings/HandsFreeSettings.kt` (the main app). Settings live in `files/robot/headset.json` and
+`devices.json`, not in settings.json (schema 13).
+
+**What it does.**
+- **The button.** A Bluetooth headset's (or car's) voice button (`VOICE_COMMAND`), a wired or USB-C headset's long press
+  (`WEB_SEARCH`, `VOICE_SEARCH_HANDS_FREE`) start `HeadsetEntryActivity`, a trampoline in `:voice` that opens the panel
+  for a headset session. During a phone call it does nothing to the call. If Robot isn't the digital assistant, a toast
+  says so. "Headset button opens Robot" off disables the trampoline, so other apps get the button back.
+- **The session** (`HeadsetSession`, core `HeadsetSessionMachine`): the headset as for a call (`setCommunicationDevice`,
+  `VOICE_COMMUNICATION` capture pinned to its microphone), a chime, the question, the answer pinned to the headset, then
+  "Keep listening for a follow-up" (6 s), and the route let go so your music comes back. If the headset's microphone
+  doesn't come up in 3 s, the phone's microphone takes the question ("Fall back to the phone mic"). The headset going
+  (the device list, `ACTION_AUDIO_BECOMING_NOISY`, the track's route) or another call stops speech at once; nothing moves
+  to the speaker.
+- **Where personal answers play** (core `OutputGuard`, per sentence): wired and USB headsets and hearing aids are
+  private; a Bluetooth headset once you answer "Is “Pixel Buds Pro” headphones only you can hear?" (asked the first time a
+  personal sentence would play there, kept in `devices.json`; Settings › Headset › Your headphones changes it); a car or
+  a speaker never. Locked, personal sentences wait for the unlock ("Unlock to hear it.").
+- **New messages** (0.7's messages, H3): with Settings › Messages › **Announce new messages** on (off by default), a new
+  message from someone "Announce from" lets through (People you choose, by default: People › a person › "Announce
+  messages from …"; or Everyone) is announced in private headphones within seconds: "Message from Marie. Read it?".
+  "Yes" reads it as "read my messages" does (translated if it isn't in your languages); "no" is quiet and the session
+  ends. "Read the text: Always" reads it at once. Never on the speaker, a car or a Bluetooth speaker, never during a
+  call, never while locked unless "Announce while locked" is on **and** Settings › Messages › Messages on the lock
+  screen is "Read and reply"; Do Not Disturb holds it as it holds the notification. After it is read, "reply …" is 0.7's
+  reply card. A message that comes while Robot is busy is announced when she is free (within 2 minutes).
+- **The message's words never act** (0.7's quarantine): the main process tells `:voice` only which conversation has a
+  new message and whether Do Not Disturb lets it through (`Cmd.MESSAGE_NEW`: its key and a yes or no, never who or
+  what); `:voice` asks the bridge for it as any read does. 0.7's router keeps its echo check first, so the message heard
+  back through the microphone is the message's, never a request; once read, every action in the conversation asks.
+- **Voice log** 200–209 (`HEADSET_ENTRY`, `HEADSET_ROUTE`, `HEADSET_ROUTE_FAILED`, `OUTPUT_HELD`, `BVRA_ACK`,
+  `DEVICE_PRESENCE`, `PRIVATE_ASKED`, `BUTTON`, `ANNOUNCE`, `SPOKEN_CARD`) and 218 (`HEADSET_END`): codes and numbers
+  only; a device is its number ("device #2"), never its name or address.
+
+**Defaults:** Headset button opens Robot: on. Listen with: the headset's microphone, Fall back to the phone mic: on.
+Keep listening for a follow-up: 6 s. Speak replies in the headset: on. Personal answers only in private headphones: on.
+Stop when the headset disconnects: on. Announce new messages in the headset: on, but nothing is announced until Settings
+› Messages › Announce new messages (off) is on; Announce from: People you choose (nobody chosen); Read the text: Ask
+first; Announce while locked: off. Answer the headset's voice button properly: off (asks for Nearby devices).
+
+**Permissions:** none new by default. `BLUETOOTH_CONNECT` (Nearby devices) only from "Answer the headset's voice button
+properly", to tell the headset Robot is listening within its 5 s (`BluetoothHeadset.startVoiceRecognition`) and to know
+devices by their whole address.
+
+**Known gaps:** "Hey robot" through the headset's microphone (`wakeThroughHeadset`) is not built: the wake word listens
+on the phone. The media-button switch ("Headset buttons control Robot while she talks") is not built: Robot holds no
+media session, so a single or double press stays your music app's. Whether a headset accepts the call route, how long
+it takes and how well Robot hears through it are the phone checks below.
+
+### On the phone (0.8 headset)
+
+Nothing of this has run on the phone. Install the debug build with Robot as the digital assistant and the voice models
+installed. The voice log (Settings › Advanced › Voice log) shows each step as codes ("Headset button: …", "Headset route
+up: …", "Message in the headset: …").
+
+**H0, platform checks first.**
+1. `adb shell cmd package query-activities -a android.intent.action.VOICE_COMMAND`, and the same for
+   `android.speech.action.WEB_SEARCH` and `android.speech.action.VOICE_SEARCH_HANDS_FREE`. *Done when* Robot's
+   `HeadsetEntryActivity` is listed for all three (a chooser may appear until you pick Robot).
+2. Two earbuds (one HFP-only, one LE Audio): `adb logcat -s HeadsetService MediaSessionService` while long-pressing.
+   *Note* whether `VOICE_COMMAND` starts, what each headset does after 5 s without `startVoiceRecognition` (an error
+   tone?), and what changes with "Answer the headset's voice button properly" on (the log: "Headset told Robot listens").
+3. A USB-C headset's long press, unlocked and locked: *note* which intent and `EXTRA_SECURE` (the log: "Headset button:
+   wired or USB long-press … · locked").
+4. *Note* each device's name and types in Settings › Headset › Your headphones after its first use (the name only ever
+   stays on the phone).
+5. The microphone: *note* "Headset route up: … in N ms" for each headset, and run Settings › Advanced › Transcription
+   check through the headset and through the phone for the same sentences.
+
+**H1, the session.** *Done when:*
+- The earbuds' button to the chime in at most 2 s, 10 of 10.
+- "What's on my calendar tomorrow" is heard only in the earbuds (after you answer yes to "Is … headphones only you can
+  hear?" the first time).
+- Taking an earbud out (or closing the case) mid-answer stops speech at once, and nothing plays on the speaker.
+- The same in French.
+- The USB-C headset's long press, locked: "set a timer for 5 minutes" works; "what's on my calendar" says to unlock.
+- Music resumes after the session.
+- During a phone call the button does nothing to the call.
+
+**H2, settings.** *Done when* each row of Settings › Headset changes what it says: Listen with "Phone microphone" asks
+through the phone; "Speak replies in the headset" off shows replies only; follow-up 0 s ends after the answer; "Stop
+when the headset disconnects" off lets a public answer go on; "Headset button opens Robot" off gives the button back to
+other apps (the chooser or the previous handler).
+
+**H3, 0.7 announcements.** Turn on Settings › Messages (Cheogram on) and Announce new messages; on Mom's page in People
+turn on "Announce messages from Mom". *Done when:*
+- A Cheogram message from Mom is announced in private earbuds within 3 s: "Message from Mom. Read it?".
+- "Yes" reads it; "no" is quiet and the panel goes.
+- It is never announced on the speaker (no headset), in a car, on a Bluetooth speaker, during a call, or while locked
+  (by default); a message from someone you didn't choose isn't announced (the log: "Message in the headset: sender not
+  chosen").
+- A message that arrives while Robot answers something else is announced after.
+
+## Car mode (0.8)
+
+Robot's own hands-free mode over your car's Bluetooth (not Android Auto): when your car connects, car mode starts, Robot
+talks through the car, the car screen shows big buttons, answers are short, and what needs the screen waits for when
+you park. Design: `../docs/plans/routines-headset-car-design.md` §1 and §4; the pure logic is in `core/car` and
+`core/output` with JVM tests, the wiring in `assistant/car/` and `assistant/handsfree/` (`:voice`) and
+`ui/settings/HandsFreeSettings.kt`, `ui/car/CarModeScreen.kt`. Settings live in `files/robot/car.json`, `places.json` and
+`devices.json`.
+
+**What it does.**
+- **Add your car** (Settings › Car mode › Add your car): pick it among the Bluetooth devices connected now. With car
+  mode on (off by default), the car connecting starts it in under 5 s; it ends 30 s after the car goes ("End car mode").
+  While on, routines' speaking service (`mediaPlayback`) keeps it in the foreground with the "Car mode" notification;
+  if Android refuses to start it in the background, "Car connected · Start car mode" waits for a tap.
+- **Talking:** "Car mode on." through the car; then your car's voice button, "hey robot", or the car screen's Talk.
+  Robot speaks through the car as a call (cars lower the radio), at most two sentences, then "Want more?". The model's
+  prompt gets one short line for driving.
+- **The lock screen:** after one unlock in the car, car functions work locked until the car goes or 4 hours (the
+  trusted session; the notification and screen say "unlocked features"); without it, "Unlock once to use car features".
+- **Calls** ("call Mom", "appelle maman", the screen's Call): spoken choices ("Mom: mobile, or work?"), the number read
+  back, then the dialer opens with it; "Call directly after a spoken yes" (with the Phone permission) places it.
+  Emergency numbers always open the dialer and are never called by Robot. Outside car mode, "call Mom" is the call tool's
+  card (never described to the model).
+- **Navigation** ("navigate home", "take me to work", "le poste d'essence le plus proche"): Organic Maps' route preview
+  to your saved Home or Work (tap Start when stopped), the nearest place's 0.4.0 flow, or a search.
+- **What's next** (your calendar), **music** (play, pause, next, previous: a media key to the current player), "repeat",
+  "stop listening", "end car mode".
+- **When you park:** new texts ("text Bob I'm late"), what needs the screen and replies that need a tap are kept; when car
+  mode ends, "From your drive: 2 things" opens the panel with them to ask again, each through every gate.
+- **New messages** (0.7's messages, C3): with Settings › Messages › Announce new messages on (off by default), a new
+  message is announced in the car while car mode runs, as Settings › Car mode says (Sender only, then ask; Announce
+  from: whoever Do Not Disturb lets through). "Yes" reads it (0.7's reading: translated, marked read by Robot, and "After
+  Robot reads" applies); then "Reply?": you say the reply, Robot reads it back word for word ("Reply to Marie: I'm 10
+  minutes away. Send?"), and "send" or "yes" hands exactly those words to the conversation's own Reply action through
+  the main process: "Handed to Cheogram." "No" sends nothing. **0.7's reply rules hold:** a spoken yes sends only where
+  Settings › Messages lets one ("Answer reply cards by voice", or a person you chose for replies without a card); a
+  reply only a tap may send (0.7's default card, a group, a locked phone) or one Robot never sends itself ("Open the
+  chat; I press Send") is kept for when you park with your words, and nothing opens while you drive. Messages are
+  announced locked only in the trusted session **and** with Messages on the lock screen at "Read and reply". The
+  message's words never act (0.7's echo check, and a "send" within 3 s of them doesn't count).
+- **Do Not Disturb while driving** (off; needs Do Not Disturb access): Robot's own "Driving (Robot)" rule while car mode
+  is on; your own override wins.
+- **Voice log** 210–217 (`CAR_MODE`, `CAR_TRUSTED`, `CAR_PARKED`, `CAR_CALL`, `CAR_REPLY`, `CAR_DND`, `CAR_NAV`,
+  `CAR_MUSIC`): codes and numbers only.
+
+**Defaults:** Use car mode: off. Start car mode when my car connects: on. End car mode: 30 s after it disconnects. Speak
+through the car as a call: on. After "hey robot" in the car, listen with: the phone microphone. Use car mode without
+unlocking: after one unlock in the car, for at most 4 hours. Calls: open the dialer. New texts while driving: keep for
+when I park. Announce new messages: sender only, then ask (nothing until Settings › Messages announces); Announce from:
+whoever Do Not Disturb lets through; Read message text aloud when others may hear: ask each time; Replies by voice: on.
+Do Not Disturb while driving: off. Keep the screen on: off.
+
+**Permissions:** `CALL_PHONE` only from "Call directly after a spoken yes"; Do Not Disturb access only from its row;
+Nearby devices optional (the car known by its whole address). Never `READ_PHONE_STATE`, Bluetooth scanning or
+`SEND_SMS`.
+
+**Known gaps:** Places are coordinates you type or paste (Organic Maps › a place › Copy coordinates) or "Here" (where
+the phone is now); there is no place search. The car screen has no Messages button yet (say "read my messages"). The
+drive brief and Android's own car mode switch are not built.
+
+### On the phone (0.8 car)
+
+Nothing of this has run in a car. Install the debug build with Robot as the digital assistant; then, with your car.
+
+**C0, platform checks first.**
+1. Add your car: *note* the name shown and whether Settings › Car mode lists it once connected.
+2. The steering-wheel voice button: *note* whether Robot opens (the log: "Headset button: Bluetooth voice button · car
+   mode"), whether the car shows "voice recognition" or a call screen, and what happens after 5 s.
+3. The car's microphone: *note* "Headset route up: … in N ms", and run the Transcription check in the car parked, at 50
+   and at 100 km/h (a passenger reads).
+4. Organic Maps: "navigate home" from a rough start, then Start: *note* whether it re-plans from the GPS position.
+5. Calls: the dialer and a direct call with the SIM, then with Cheogram's phone account as default: *note* whether the
+   call is hands-free through the car.
+6. Do Not Disturb: grant access, turn on "Do Not Disturb while driving": *note* "Driving (Robot)" in Android's Do Not
+   Disturb list, your own override, and that announcements still follow "Announce from".
+7. With GrapheneOS's Bluetooth timeout on: *note* whether the car still connects.
+
+**C1, car mode core.** *Done when:*
+- The car connecting starts car mode in under 5 s, 10 of 10; disconnecting ends it after 30 s.
+- With the phone locked and no unlock, "what's next" says "Unlock once to use car features"; after one unlock it works
+  locked until the car disconnects.
+- "Text Bob I'm late" is kept, and "From your drive" shows when car mode ends; its tap offers it again.
+- No answer is longer than two sentences without "Want more?".
+
+**C2, calls and navigation.** *Done when:*
+- "Call Mom" then "yes": the dialer by default; with "Call directly after a spoken yes" and the Phone permission, the
+  call goes through the car.
+- Two numbers for Mom: the choices are spoken, and "the second one" works.
+- "Call 911": on the phone check only that the dialer opens and nothing is dialed (unit tests cover the rest).
+- "Navigate home": Organic Maps' preview.
+- The same in French.
+
+**C3, 0.7 messages.** Settings › Messages on with Cheogram, Announce new messages on. *Done when:*
+- A Cheogram message is announced, read after "yes", and, with "Answer reply cards by voice" on, replied after the
+  read-back; the reply arrives in that chat (check on the other phone) and Robot says "Handed to Cheogram".
+- With "Answer reply cards by voice" off (the default), the reply is kept: "From your drive" offers "reply to …: …",
+  whose card sends it with a tap after you park.
+- "No" at the read-back sends nothing.
+- A Signal or Molly message (if installed): the reply works or is kept, per its notification.
+- With "Do Not Disturb while driving" on, only senders Do Not Disturb allows are announced.
 
 ## Built in core, not wired yet
 
 The pure logic of later work, in `:core` and tested on the JVM, merged on 0.6.0 so it builds and tests against 0.6.0's
 types. Nothing in the app calls it yet: no screen, setting, permission, receiver or service is new for it, and it does
-nothing new on the phone. (Routines and the morning brief, which started here, are wired since 0.8: see
-[Routines and the morning brief](#routines-and-the-morning-brief-08); memory and messages since 0.7.) Each section says
-what exists and what is left to wire. The voice log ids they reserve, in comments and not yet in `VoiceEvent`, are past
+nothing new on the phone. (Routines and the morning brief, headset mode and car mode, which started here, are wired since
+0.8: see [Routines and the morning brief](#routines-and-the-morning-brief-08), [Headset mode (0.8)](#headset-mode-08) and
+[Car mode (0.8)](#car-mode-08); memory and messages since 0.7.) Each section says what exists and what is left to wire. The voice log ids they reserve, in comments and not yet in `VoiceEvent`, are past
 the ones 0.6.0 uses (1 to 134): web search 160–169 and Termux 170–179 (routines use 140–151 of their 140–159, memory
 180–189, messages 190–199, headset 200–209, car mode 210–219 and feedback 220–229).
 
 Where they meet: a remembered headset or car becomes the routines' `TriggerEvent.Device` through `DeviceTriggers.event`,
 and `DeviceTriggers.matches` takes a routine's `RoutineTrigger.Device` (`DeviceRole` and `DeviceKind` are one by their
 ids); a 0.7 `MessageThread` is the `MessageNotice` the headset and the car speak through `notice()`, and the
-`MessageBuffer` their `MessageFeed` through `BufferFeed` (`output/DevicePresence.kt`, `output/MessageThreads.kt`). Still
-to settle when wiring: in the car or a headset a reply is sent after a spoken yes under `HandsFreeSafety` (on), while
-`ReplyPlanner` sends only after a tap unless "Answer reply cards by voice" is on; `ReplyResult` has no outcome for a
-message that came after the read-back (`ReplyGuard`'s `NewMessages`); and messages' `Lang` is the hands-free side's
-`SpokenLang` and the brief's `BriefLang` by name only.
+`MessageBuffer` their `MessageFeed` through `BufferFeed` (`output/DevicePresence.kt`, `output/MessageThreads.kt`). 0.8
+settled what was open: a hands-free reply is sent after its spoken read-back only where `ReplyPlanner` would let a spoken
+yes send it (`core/messages/MessageHandsFree.kt`: `HandsFreeReplies`), else it waits for parking; a message that came
+after the read-back is `ReplyResult.NEW_MESSAGES` (the reply waits for parking); the brief's count is
+`MessageUnread` (by app, counts only). Messages' `Lang` is still the hands-free side's `SpokenLang` and the brief's
+`BriefLang` by name only.
 
-### Headset and car mode (core only)
+### Headset and car mode (core only, until 0.8)
 
-The pure logic of headset mode and car mode (`../docs/plans/routines-headset-car-design.md`, §1, §3 and §4) is in
-`:core`, in the packages `core/output` (what both share), `core/headset` and `core/car`, and tested on the JVM. Nothing
-in the app uses it yet: no screen, activity, receiver, service, setting or permission is new, and nothing runs by
-itself.
-
-What exists:
-- **Where personal speech may play** (`output/OutputGuard.kt`, `output/AudioRoute.kt`): plain snapshots of what Android
-  reports (the device type, name, address, Bluetooth class; locked, screen, another call, other music, Do Not Disturb)
-  and one decision per sentence: play it (on the call route, ducking or pausing other sound, shortened in the car), ask
-  first ("Is “Pixel Buds Pro” headphones only you can hear?", or in the car "Others may hear it. Read it aloud?"), or
-  hold it (on screen, until the unlock with "Unlock to hear it." said instead, for parking, or not at all). Personal
-  sentences play in a headset session only on a private device; wired and USB headsets, the earpiece and hearing aids
-  are private, a Bluetooth headset once you confirm it, a car or a speaker never. The headset or car going away stops
-  everything; locked, personal sentences wait for the unlock outside car mode's trusted session. The tests walk every
-  combination of the table's inputs (276,480) against its rules.
-- **Your headsets and cars** (`output/DeviceMemory.kt`, `output/DevicePresence.kt`): `devices.json` schema 1, each
-  device remembered by its name and the last two bytes of its address (all Android gives without Nearby devices), or
-  its whole address with it, which then survives a rename. A rename seen by the tail alone keeps the device's role but
-  asks again whether it is private; two devices that look the same are never told apart. Connect and disconnect events
-  ride out a flapping link (5 s for a headset, 30 s for a car), and `DeviceTriggers.matches` is what the routines'
-  device trigger needs (a routine made by voice matches any remembered headset or car until one is picked).
-- **Spoken cards and choices** (`output/SpokenChoice.kt`): a card read as one short question with up to three choices
-  ("Call Mom: Martine Martin, mobile, or Martine Martin, work?"), answered with the panel's own yes and no words
-  (`CardAnswer`) plus "the second one", "la deuxième", "the work one", "le cell", "call", "appelle", "don't call",
-  "repeat". Robot's own prompt heard back is never an answer, and nothing usable twice keeps the card for later. What
-  must be seen stays tap-only in a headset or the car ("I'll keep that for when you can look at the phone", "… when you
-  park"): a name learned from Cheogram, the first-use card of the nearest place, deleting, personal content for a
-  helper, not being sure who (except who to call), more than three choices; in the car also what needs the screen, and
-  the Claude app hand-off is refused.
-- **Headset mode** (`core/headset`): the three intents a headset's button starts (`HeadsetEntry`), single, double and
-  long presses (`ButtonGestures`), the microphone route (`RoutePlanner`: SCO, LE Audio with `VOICE_COMMUNICATION`, wired
-  and USB without a communication device, the phone's microphone; the car's call route opened only to answer after
-  "hey robot"), the fallback to the phone's microphone, the session as a state machine (`HeadsetSessionMachine`: route,
-  chime, listen, answer, follow-up, release; stop at once when the headset goes or a call starts), Settings › Headset
-  with the design's defaults (`HeadsetSettings`), and message announcements for 0.7 (`HeadsetAnnounce`).
-- **Car mode** (`core/car`): its states (`CarModeMachine`: off, starting, on, ending after the grace; a refused
-  background start waits for a tap; ending it by voice keeps it off until the car reconnects; a second car takes over)
-  and the trusted session (after one unlock in the car, car functions work locked until the car leaves or 4 h;
-  `CarGate` is ApprovalGate with only those loosened); calls (`CallTarget`, `CallFlow`: read back who and which number,
-  the dialer by default, a direct call only after a spoken yes with the Phone permission, emergency numbers always the
-  dialer); messages (`CarMessages`, `MessageFlow`: announce, read after a yes, reply read back and sent word for word
-  through the conversation's own Reply action, or kept for parking); navigation (`CarNavigate`: Organic Maps' route
-  preview to Home or Work, the nearest place's flow, a search); the drive brief; short answers with "Want more?", one
-  status line, the "When you park" list (`Driving.kt`); Settings › Car mode with the design's defaults (`CarSettings`).
-- **By voice** (`output/HandsFreeRouter.kt`): "car mode", "I'm driving", "mode auto", "je conduis", "end car mode",
-  "fin du mode auto", "read that again", "répète", "stop listening", "c'est tout"; and in car mode "navigate home",
-  "amène-moi au travail", "le poste d'essence le plus proche", "call Marie on her cell", "appelle maman", "read my
-  messages", "j'ai-tu des messages?", "tell her I'm on my way", "dis-lui que j'arrive", "what's next", "c'est quoi la
-  suite?", "play music", "toune suivante". Anchored like the other routers, before the model, with misfire tests ("I'm
-  driving to Montreal tomorrow, what's the weather there", "call it a day", "what do you call a baby kangaroo").
-
-Where it differs from the design:
-- Voice log ids 200–219 (200–209 headset, 210–219 car; reserved in a comment in `output/HandsFree.kt`): the design's
-  150–169 went to routines and web search.
-- Media buttons: the design takes none (§3.7 rule 3). A switch, "Headset buttons control Robot while she talks" (off),
-  would hold a media session only while she speaks or listens, so a tap stops her and a double tap repeats; it is the
-  only way a single or double press can reach Robot. The voice button needs nothing of it.
-- Hearing aids count as private, like the wired headsets the design names. Unattended speech never talks over another
-  call. A message is never announced on the phone alone, and Do Not Disturb holds only messages, not routines (a bedtime
-  Do Not Disturb would otherwise hold the brief after your alarm).
-- In the car, a personal answer you asked for ("what's next") is said, and what came by itself (a routine, a message)
-  follows "Read message text aloud when others may hear" (ask each time by default), which the design applies to message
-  text and calendar titles.
-- Music in the car (play, pause, next, previous) is a media key sent to the current player
-  (`AudioManager.dispatchMediaKeyEvent`, no permission): the design has no music flow.
-- An unlock starts the trusted session (§4.6); the car leaving, 4 hours or ending car mode end it.
-
-What remains to wire:
-- **Manifest**: `HeadsetEntryActivity` in `:voice` (exported, translucent, `noHistory`, `excludeFromRecents`) with
-  exactly `HeadsetEntry.ACTIONS`; `CarModeActivity` in `:voice`, not exported; the `mediaPlayback` `SpeakingService`
-  shared with routines (car mode speaks with the screen off for the whole drive). `ProcessIsolationTest` and
-  `tools/verify_apk.sh` grow their allowlists by exactly these.
-- **Permissions** (§3.5, §4.7): `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (normal); `BLUETOOTH_CONNECT` ("Nearby devices"),
-  `CALL_PHONE` and `ACCESS_NOTIFICATION_POLICY` declared but asked only from their settings rows. Never `SEND_SMS`,
-  `READ_PHONE_STATE` or fine location.
-- **Receivers and callbacks in `:voice`**: `AudioManager.registerAudioDeviceCallback` into `DevicePresence` and
-  `CarModeMachine` (registered only while a headset, car or routine needs it); `ACTION_AUDIO_BECOMING_NOISY` and
-  `AudioTrack.OnRoutingChangedListener` into `OutputGuard.keepPlaying`; `OnCommunicationDeviceChangedListener` and the
-  capture's routed input into `HeadsetSessionMachine`; `USER_PRESENT` into car mode; the audio mode into "a call
-  started"; `BluetoothHeadset.startVoiceRecognition` within 5 s when allowed.
-- **`HeadsetSession` and `CarModeController`** in `:voice`, carrying out the machines' effects with `CallAudio`'s rules
-  (`setCommunicationDevice`, `setPreferredDevice`, the Listener's call-mode capture, the chime); `OutputGuard` around
-  `SherpaTextToSpeech.write`; the panel answering cards through `SpokenCards` while a headset or car session runs.
-- **The media session** for buttons, only with its switch on and only while Robot speaks or listens.
-- **Settings**: the fields of `HeadsetSettings`, `CarSettings` and `HandsFreeSafety` under the next settings schema (their
-  `toJson` and `fromJson` are the fragments; an older file reads as the defaults: headset button on, car mode off), and
-  the `devices.json` store (atomic write under a lock both processes take, the `PeopleStore` pattern).
-- **Screens**: Settings › Headset, Settings › Car mode (Add your car with `CarDetect.question`, Places), the Assistant
-  setup row "Headset button" with its Test, the car screen, the notifications ("Car connected · Start car mode", "From
-  your drive: 2 things").
-- **Voice log**: the entries 200–219 as listed in `output/HandsFree.kt`, codes and numbers only (a device is its
-  number).
-- **The rest**: a `call` tool (`ToolName.CALL`, `call(to)`) running `CallTarget`; `CarSpeech.PROMPT_LINE` in `Prompt.kt`
-  within `PromptTest`'s limits; `CarGate` in front of `ApprovalGate` in car mode; `HandsFreeRouter` before the model;
-  0.7's messages behind `MessageFeed`, `SenderFilter` and `ReplyChannel`; the Do Not Disturb "Driving (Robot)" rule.
-
-To confirm on the phone (design §3.1, §3.11, §4.1, §4.13), none of it checked yet:
-- H0.1: which apps answer `VOICE_COMMAND`, `android.speech.action.WEB_SEARCH` and `VOICE_SEARCH_HANDS_FREE` on
-  GrapheneOS (a chooser until you pick Robot).
-- H0.2: what headsets (and LE Audio ones) do without `startVoiceRecognition` within 5 s.
-- H0.3: the USB-C headset long-press's intent and `EXTRA_SECURE`, locked and unlocked.
-- H0.4: that `getProductName()` is the Bluetooth name, and the anonymized address and types per device.
-- H0.5: SCO or LE route time, the codec, and the word error rate over SCO.
-- C0.1–C0.3: the car's name and types, whether its steering-wheel button starts `VOICE_COMMAND`, SCO quality.
-- C0.4: Organic Maps re-planning from GPS on Start; whether its screen shows over the lock.
-- C0.5: calls through Cheogram's phone account hands-free.
-- C0.6: the `TYPE_DRIVING` Do Not Disturb rule on GrapheneOS 17.
-- C0.7: the car connecting with GrapheneOS's Bluetooth timeout on.
-- New here: that a media key sent from `:voice` reaches the current player; that a media session held only while Robot
-  talks hands play and pause back to your music app afterwards; that hearing aids report `TYPE_HEARING_AID`.
+Wired since 0.8: see [Headset mode (0.8)](#headset-mode-08) and [Car mode (0.8)](#car-mode-08). Their pure logic stays in
+`core/output`, `core/headset` and `core/car` with its JVM tests (OutputGuard's table walks all 276,480 combinations of its
+inputs). Where 0.8 differs from the design: voice log ids 200–219 (the design's 150–169 went to routines and web
+search); hearing aids count as private; unattended speech never talks over another call; a message is never announced
+on the phone alone; in the car, a personal answer you asked for is said, and what came by itself follows "Read message
+text aloud when others may hear"; music in the car is a media key to the current player; the call tool is never
+described to the model ("call Mom" is heard before it); and 0.7's reply rules decide whether a spoken yes may send a
+reply (a reply only a tap may send waits for parking).
 
 ### Memory and messages (0.7, core only)
 
