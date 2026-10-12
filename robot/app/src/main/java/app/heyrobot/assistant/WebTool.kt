@@ -115,8 +115,8 @@ class WebTool(
                     VoiceLog.add(VoiceEvent.WEB_PAGES, outcome.pagesRead, WebLogNumbers.skipped(skips), (now - searched).toInt())
                     RLog.i("web_pages", "ok" to outcome.pagesRead, "skipped" to skips.size, "ms" to (now - searched), "why" to (skips.firstOrNull() ?: PageSkip.FAILED).code)
                 }
-                // 1.0 (network-1): everyone the words went to, as the card said (core WebAlso).
-                Executed(ActionStatus.DONE, "Sent to ${WebAlso.to(service, WebAlso.names(s, service, question))}: “${outcome.query}”", web = outcome)
+                // 1.0 (network-1): everyone the words went to (core WebAlso), as the answer card and History say too.
+                Executed(ActionStatus.DONE, "Sent to ${WebAlso.to(service, outcome.also)}: “${outcome.query}”", web = outcome)
             }
             is WebOutcome.Failed -> {
                 // Asked, and answered with a failure: it counts toward today's cap (a key's credit may have gone).
@@ -196,7 +196,7 @@ object WebReply {
         if (text.isBlank()) return Result.Failed
         val cited = Citations.finish(text, one.sources)
         val card = AnswerCard.of(found.service, found.query, cited, found.pagesRead, found.throughService, found.skipped,
-            showCost = showCost, poweredByBrave = web.poweredByBrave)
+            showCost = showCost, poweredByBrave = web.poweredByBrave, also = found.also)
         val out = TokenEstimate.text(text)
         VoiceLog.add(VoiceEvent.WEB_ANSWER, one.inputTokens / 10, out, first.coerceAtLeast(0).toInt())
         RLog.i("web_answer", "in" to one.inputTokens, "out" to out, "first_ms" to first)

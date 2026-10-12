@@ -306,7 +306,9 @@ data class CardSource(val n: Int, val title: String, val domain: String, val url
 
 /**
  * The answer card (A4.4). Shown, never saved: titles, URLs, snippets, page text. Saved ([savedLine], [historySources]):
- * the service and the source domains (or full links, or nothing, per "Keep sources in history").
+ * the service and the source domains (or full links, or nothing, per "Keep sources in history"). 1.0 (network-1): [also],
+ * who else got the words (Wikipedia, Open Library), is named beside the service in the "Sent to" line and History's line,
+ * so it shows whatever "Ask before searching" says.
  */
 data class AnswerCard(
     val service: SearchService,
@@ -321,9 +323,12 @@ data class AnswerCard(
     val cost: String? = null,
     /** Credit lines: Wikipedia's licence for each article used, "Powered by Brave" when on. */
     val credits: List<String> = emptyList(),
+    /** 1.0 (network-1): the others the words went to ([WebOutcome.Found.also]). */
+    val also: List<String> = emptyList(),
 ) {
     val header: String get() = "Searched the web · ${service.label}"
-    val sent: String get() = "Sent to ${service.label}: “$query”"
+    /** "Sent to your SearXNG and Wikipedia: “…”" (core WebAlso). */
+    val sent: String get() = "Sent to ${WebAlso.to(service, also)}: “$query”"
     val readLine: String? get() = if (pagesRead <= 0) null else
         "Read $pagesRead page${if (pagesRead == 1) "" else "s"} " + if (throughService) "through ${service.label}" else "from this phone"
     val skippedLines: List<String> get() = skipped.map { (domain, why) -> "$domain: ${why.text}" }
@@ -349,10 +354,10 @@ data class AnswerCard(
         KeepSources.LINKS -> (cited + alsoFound).map { it.url }.distinct()
     }
 
-    /** The saved line: "Searched the web (your SearXNG) · nhl.com, en.wikipedia.org, tsn.ca". */
+    /** The saved line: "Searched the web (your SearXNG) · nhl.com, en.wikipedia.org, tsn.ca"; "(your SearXNG and Wikipedia)" (1.0). */
     fun savedLine(keep: KeepSources): String {
         val s = historySources(keep)
-        return "Searched the web (${service.label})" + if (s.isEmpty()) "" else " · " + s.joinToString(", ")
+        return "Searched the web (${WebAlso.to(service, also)})" + if (s.isEmpty()) "" else " · " + s.joinToString(", ")
     }
 
     companion object {
@@ -362,7 +367,8 @@ data class AnswerCard(
          * CC BY-SA text too), Brave's line when [poweredByBrave], and DuckDuckGo's for its Instant Answers (1.0).
          */
         fun of(service: SearchService, query: String, cited: Cited, pagesRead: Int = 0, throughService: Boolean = false,
-            skipped: List<Pair<String, PageSkip>> = emptyList(), showCost: Boolean = false, poweredByBrave: Boolean = true): AnswerCard {
+            skipped: List<Pair<String, PageSkip>> = emptyList(), showCost: Boolean = false, poweredByBrave: Boolean = true,
+            also: List<String> = emptyList()): AnswerCard {
             fun card(s: WebSource) = CardSource(s.n, s.title, s.domain, s.url)
             val all = cited.cited + cited.alsoFound
             val credits = buildList {
@@ -374,7 +380,7 @@ data class AnswerCard(
                 if (all.any { it.provider == SearchProvider.OPEN_LIBRARY }) add(SearchProvider.OPEN_LIBRARY.credit!!)
             }.distinct()
             return AnswerCard(service, query, cited.cited.map(::card), cited.alsoFound.map(::card), pagesRead, throughService, skipped,
-                if (showCost) service.cost else null, credits)
+                if (showCost) service.cost else null, credits, also)
         }
     }
 }

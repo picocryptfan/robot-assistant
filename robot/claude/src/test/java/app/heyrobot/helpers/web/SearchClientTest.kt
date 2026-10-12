@@ -145,6 +145,36 @@ class SearchClientTest {
         assertTrue(intros.isNotEmpty() && intros.all { it.extra.isNotEmpty() && it.url.startsWith("https://fr.wikipedia.org/wiki/") || it.url.startsWith("https://en.wikipedia.org/wiki/") })
     }
 
+    /**
+     * 1.0 (network-1): the search says who else got the words (Found.also), for the answer card's "Sent to" line and
+     * History's: Wikipedia for a who/what/where question with Encyclopedia lookups on, Open Library for a book question
+     * with Book lookups on, nobody else otherwise; Wikipedia without a contact gets nothing, so it isn't named.
+     */
+    @Test fun theSearchSaysWhoElseGotTheWords() {
+        val sender = object : WebSender {
+            val urls = mutableListOf<String>()
+            override fun send(req: SearchRequest, route: WebTransport.Route, abort: Abort): Reply {
+                urls += req.url
+                return Reply(200, when {
+                    req.url.contains("wikipedia.org") && req.url.contains("rest.php") -> res("wikipedia_search_fr.json")
+                    req.url.contains("wikipedia.org") -> res("wikipedia_extracts.json")
+                    req.url.contains("openlibrary.org") -> "{\"docs\":[]}"
+                    else -> res("searxng_stanley.json")
+                })
+            }
+        }
+        val s = home.copy(readPages = ReadPages.NEVER, books = true)
+        fun run(question: String, settings: WebSettings = s) =
+            WebSearch(SearchClient(settings, null, "1.0.0", sender, Abort()), PageFetcher(), settings).run("mairesse de Montréal", question, "fr", null, Abort()) as WebOutcome.Found
+        assertEquals(listOf("Wikipedia"), run("qui est la mairesse de Montréal").also)
+        assertTrue(sender.urls.any { it.contains("fr.wikipedia.org") })
+        sender.urls.clear()
+        assertEquals(emptyList<String>(), run("mairesse de Montréal: son budget").also)
+        assertFalse(sender.urls.any { it.contains("wikipedia.org") || it.contains("openlibrary.org") })
+        assertEquals(listOf("Open Library"), run("les romans de Gabrielle Roy").also)
+        assertEquals(emptyList<String>(), run("qui est la mairesse de Montréal", s.copy(encyclopedia = false)).also)
+    }
+
     /** 1.0: DuckDuckGo's Instant Answers, free and keyless, over the cloud route: short answers only, no page read from the phone. */
     @Test fun duckDuckGosInstantAnswersNeedNoKeyAndReadNoPage() {
         val ddg = Fake(202, res("duckduckgo_abstract.json"))

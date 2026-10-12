@@ -247,6 +247,24 @@ class WebAnswerTest {
         assertFalse(card.savedLine(KeepSources.DOMAINS).contains("Panthers"))
     }
 
+    /**
+     * 1.0 (network-1): the answer card's "Sent to" line and History's line name everyone the words went to, so they say it
+     * at Ask before searching: Never ask too, when no consent card showed.
+     */
+    @Test fun theSentToLineAndHistoryNameWikipediaAndOpenLibrary() {
+        val cited = Citations.finish("Valérie Plante [1].", sources.take(2))
+        val card = AnswerCard.of(SearchService.SEARXNG_HOME, "qui est la mairesse de Montréal", cited, also = listOf(WebAlso.WIKIPEDIA))
+        assertEquals("Sent to your SearXNG and Wikipedia: “qui est la mairesse de Montréal”", card.sent)
+        assertEquals("Sent to your SearXNG and Wikipedia: “qui est la mairesse de Montréal”", card.lines().first { it.startsWith("Sent to") })
+        assertEquals("Searched the web (your SearXNG and Wikipedia)", card.savedLine(KeepSources.NONE))
+        assertEquals("Searched the web (your SearXNG and Wikipedia) · nhl.com, en.wikipedia.org", card.savedLine(KeepSources.DOMAINS))
+        val both = AnswerCard.of(SearchService.BRAVE, "le guin books", cited, also = listOf(WebAlso.WIKIPEDIA, WebAlso.OPEN_LIBRARY))
+        assertEquals("Sent to Brave, Wikipedia and Open Library: “le guin books”", both.sent)
+        assertEquals("Searched the web (Brave, Wikipedia and Open Library)", both.savedLine(KeepSources.NONE))
+        // Nobody else: the service alone, as before.
+        assertEquals("Sent to your SearXNG: “x”", AnswerCard.of(SearchService.SEARXNG_HOME, "x", cited).sent)
+    }
+
     @Test fun braveAndCostLines() {
         val brave = listOf(WebSource(1, "Descale", "https://www.breville.com/descale", SearchProvider.BRAVE))
         val cited = Citations.finish("Hold both buttons [1].", brave)

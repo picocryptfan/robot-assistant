@@ -55,11 +55,14 @@ class WebSearch(
         }
         val answers = (answer as SearchAnswer.Results).answers
         // Wikipedia's intros first for a who/what/where question (Encyclopedia lookups), Open Library's books for a book question.
-        // The same decisions as the consent card's and the "Sent to" line's (core WebAlso).
+        // The same decisions as the consent card's (core WebAlso); who was actually sent the words goes in the "Sent to" line.
+        val also = ArrayList<String>()
         if (WebAlso.wikipedia(settings, service, question)) {
-            client.wikipedia(query, lang)?.let { wiki -> results = SearchWire.distinct(wiki + results) }
+            // Null: Wikipedia may not be asked (no contact for its User-Agent), so it got nothing.
+            client.wikipedia(query, lang)?.let { wiki -> also += WebAlso.WIKIPEDIA; results = SearchWire.distinct(wiki + results) }
         }
         if (WebAlso.books(settings, question.ifBlank { query })) {
+            also += WebAlso.OPEN_LIBRARY
             (client.books(query) as? SearchAnswer.Results)?.results?.let { books -> results = SearchWire.distinct(results.take(WebPlanLimits.WITH_BOOKS) + books) }
         }
         if (results.isEmpty()) return WebOutcome.Failed(service, WebFail.NO_RESULTS)
@@ -97,7 +100,7 @@ class WebSearch(
         if (abort.cancelled && !abort.expired) return WebOutcome.Failed(service, WebFail.STOPPED)
         val passages = if (pages.isEmpty()) emptyList() else Passages.select(question.ifBlank { query }, pages)
         return WebOutcome.Found(service, query, lang, results, passages, pagesRead = if (through) supplied else read, throughService = through,
-            skipped = skipped.distinct(), answers = answers)
+            skipped = skipped.distinct(), answers = answers, also = also)
     }
 
     /** Results kept when books join them. */

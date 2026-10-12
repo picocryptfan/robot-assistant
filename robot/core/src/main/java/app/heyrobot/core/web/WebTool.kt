@@ -29,7 +29,8 @@ sealed class WebOutcome {
      * [query] as it went, [lang] the question's language, [results] the service's (and Wikipedia's), [passages] the
      * pages' (or the service's own page text) best parts for the question, [pagesRead] how many pages gave text,
      * [throughService] read through the search service rather than from this phone, [skipped] the pages passed over and
-     * why (domain and reason, for the card), [answers] the short answers a SearXNG computed itself.
+     * why (domain and reason, for the card), [answers] the short answers a SearXNG computed itself, [also] who else was
+     * sent the words (1.0, network-1: [WebAlso.WIKIPEDIA], [WebAlso.OPEN_LIBRARY]), for the card's and History's lines.
      */
     data class Found(
         val service: SearchService,
@@ -41,6 +42,7 @@ sealed class WebOutcome {
         val throughService: Boolean = false,
         val skipped: List<Pair<String, PageSkip>> = emptyList(),
         val answers: List<String> = emptyList(),
+        val also: List<String> = emptyList(),
     ) : WebOutcome()
 
     /** Nothing to answer from: [why] in fixed words, naming [service]. */
