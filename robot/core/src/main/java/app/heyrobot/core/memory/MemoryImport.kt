@@ -26,7 +26,8 @@ enum class ImportProblem {
 /**
  * One item read from an export: what Robot keeps of it. Never its id or its People links. [contentMark]: the file says it
  * isn't your own words (kept from something Robot read, a source Robot doesn't know, or imported and never confirmed): it
- * stays content whatever you tick. [toString] never prints the text.
+ * stays content whatever you tick. [key] ([MemoryEdits.textKey]) and [holdsSecret] ([SecretDetector]) are found once,
+ * when the file is read, so the plan made again under the vault's lock is quick. [toString] never prints the text.
  */
 class ImportEntry(
     val text: String,
@@ -43,6 +44,9 @@ class ImportEntry(
     val usedAt: Long?,
     val contentMark: Boolean,
 ) {
+    val key: String = MemoryEdits.textKey(text)
+    val holdsSecret: Boolean = SecretDetector.isSecret(text)
+
     override fun toString(): String = "ImportEntry(kind=$kind, secret=$secret, content=$contentMark, chars=${text.length})"
 }
 
@@ -153,8 +157,8 @@ object MemoryImport {
         fun past(t: Long?): Long? = t?.takeIf { it <= now + MemoryLimits.DAY_MS }
         for (e in read.entries) {
             if (e.expiresAt != null && now >= e.expiresAt) { ended++; continue }
-            if (!keys.add(MemoryEdits.textKey(e.text))) { duplicates++; continue }
-            if (SecretDetector.isSecret(e.text)) { secrets++; continue }
+            if (!keys.add(e.key)) { duplicates++; continue }
+            if (e.holdsSecret) { secrets++; continue }
             if (room <= 0) { noRoom++; continue }
             room--
             var id: String
