@@ -816,6 +816,8 @@ class ProcessIsolationTest {
         assertTrue(panel.contains("history = history.toPromptTurns(mem.notes)") && panel.contains("pinned = mem.packed.systemLine"))
         // History keeps the reply through MemoryPanel.forHistory (ids, a secret answer's line), and the question's ids only.
         assertTrue(panel.contains("chat += MemoryPanel.forHistory(ChatTurn("))
+        // A private item never stays in the live conversation: it closes after that answer (rebuilt with History's line).
+        assertTrue(panel.indexOf("if (mem.recall.secret) closeConvAfterTurn = true") > panel.indexOf("MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)"))
         // A helper: memory only through its card (trusted helpers too, unless Settings › Memory says otherwise), never its tools.
         assertEquals(4, Regex("""HelperTrust\.(conversation|joinWithoutCard)\([^)]*MemoryPanel\.toTrusted\(\)\)""").findAll(panel).count())
         assertTrue(app.heyrobot.core.ToolName.REMEMBER !in app.heyrobot.core.ClaudeTools.OFFERED && app.heyrobot.core.ToolName.FORGET !in app.heyrobot.core.ClaudeTools.OFFERED)

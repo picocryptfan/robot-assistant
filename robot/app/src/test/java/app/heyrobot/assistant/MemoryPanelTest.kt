@@ -206,6 +206,27 @@ class MemoryPanelTest {
         assertTrue(json.contains(code.packed.retrievedIds.single()))
     }
 
+    /**
+     * A private item is never left in the live conversation (PanelController closes it after the answer, so a later answer
+     * can't repeat it aloud or into History): asked for by name again in the same conversation, it is given again, as a
+     * private answer again, instead of being taken as already there. An ordinary item already given isn't repeated.
+     */
+    @Test fun aPrivateItemIsGivenAgainWhenNamedAgain() {
+        say("Remember that my sister Julie's birthday is May 3")
+        say("Remember that the cottage door code is 4512")
+        MemoryPanel.newConversation()
+        val first = MemoryPanel.forTurn("What's the cottage door code?", false, emptySet(), 4096)
+        assertTrue(first.recall.secret && first.quiet)
+        val again = MemoryPanel.forTurn("And the cottage door code again?", false, first.packed.retrievedIds.toSet(), 4096)
+        assertEquals(first.packed.retrievedIds, again.packed.retrievedIds)
+        assertTrue(again.recall.secret && again.quiet)
+        // Not named: not given.
+        assertTrue(MemoryPanel.forTurn("What's the weather at the cottage?", false, first.packed.retrievedIds.toSet(), 4096).packed.retrievedIds.isEmpty())
+        val julie = MemoryPanel.forTurn("When is Julie's birthday?", false, emptySet(), 4096).packed.retrievedIds
+        assertEquals(1, julie.size)
+        assertTrue(MemoryPanel.forTurn("When is Julie's birthday?", false, julie.toSet(), 4096).packed.retrievedIds.isEmpty())
+    }
+
     @Test fun theToolsAreCardsAndRefuseASecret() {
         // The model proposing a code: refused, with the reason.
         val p = MemoryPanel.prepare(Action.Remember("The alarm code is 4512"), locked = false)

@@ -1398,6 +1398,9 @@ object PanelController {
             chat[i] = chat[i].copy(memoryIds = mem.packed.retrievedIds)
         }
         MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)
+        // A private item went in: the live conversation goes after this answer, so no later answer can repeat it (spoken, or
+        // kept in History); rebuilt, it holds History's line instead, and naming the item again gives it again.
+        if (mem.recall.secret) closeConvAfterTurn = true
         if (mem.quiet) {
             voice.mute()
             notify("Not read aloud: the answer holds something private from your memory.")

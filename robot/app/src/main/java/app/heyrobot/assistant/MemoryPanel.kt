@@ -335,7 +335,10 @@ object MemoryPanel {
         }
         val now = clock()
         val z = zone()
-        val r = MemoryRecall.forTurn(question, f, s, locked, now, given, maxTokens, zone = z)
+        // A private item never stays in the live conversation (it closes after its answer, PanelController): named again, it
+        // is given again rather than taken as already there.
+        val secrets = f.items.filter { it.secret }.mapTo(HashSet()) { it.id }
+        val r = MemoryRecall.forTurn(question, f, s, locked, now, given - secrets, maxTokens, zone = z)
         if (r.packed.retrievedIds.isNotEmpty()) {
             VoiceLog.add(VoiceEvent.MEM_RECALL, r.packed.retrievedIds.size, r.by.code, ((System.nanoTime() - t0) / 1_000_000).toInt())
             remember(used = r.packed.retrievedIds)
