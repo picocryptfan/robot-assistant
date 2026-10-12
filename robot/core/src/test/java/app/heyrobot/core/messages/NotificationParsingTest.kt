@@ -46,6 +46,31 @@ class NotificationParsingTest {
         assertEquals(Parsed.Ignored(IgnoreWhy.GROUP_OFF), NotificationParsing.parse(Snapshots.cheogramGroup, ALL_APPS.copy(groups = false)))
     }
 
+    /**
+     * 0.7 after the review: the app's own group flag (or a titled conversation with two others) as before, and, whatever
+     * the app says, three people or more writing in it (you included) make it a group: a reply there always needs a tap.
+     */
+    @Test fun threeSendersMakeAGroupWhateverTheAppSays() {
+        val one = Snapshots.cheogram1to1("Are you coming?")
+        val pierre = PersonSnapshot("Pierre", "pierre@cheogram.com")
+        // Two others in a "one-to-one" chat without a title: not three yet.
+        val two = one.copy(messages = one.messages + MessageSnapshot("Me too", T + 2 * MIN, pierre))
+        assertFalse(thread(two).isGroup)
+        // You wrote in it too: three people.
+        val withMe = two.copy(messages = two.messages + MessageSnapshot("OK", T + 3 * MIN, null))
+        assertTrue(thread(withMe).isGroup)
+        // Three others, the app saying it isn't a group, no title.
+        val three = two.copy(messages = two.messages + MessageSnapshot("Et moi", T + 3 * MIN, Snapshots.julie), conversationTitle = null)
+        assertTrue(thread(three).isGroup)
+        // The same name twice is one person; a historic message counts too.
+        val again = one.copy(messages = one.messages + MessageSnapshot("Still there?", T + 2 * MIN, Snapshots.mom),
+            historicMessages = listOf(MessageSnapshot("Hi", T - MIN, pierre)))
+        assertFalse(thread(again).isGroup)
+        assertTrue(thread(again.copy(historicMessages = again.historicMessages + MessageSnapshot("Bonjour", T - 2 * MIN, Snapshots.marc))).isGroup)
+        // A group's reply plan always asks for a tap.
+        assertEquals(Parsed.Ignored(IgnoreWhy.GROUP_OFF), NotificationParsing.parse(three, ALL_APPS.copy(groups = false)))
+    }
+
     @Test fun cheogramQuietHoursHasNoShortcut() {
         val t = thread(Snapshots.cheogramQuiet)
         assertEquals("0|com.cheogram.android|1003|null|10123", t.conversationId)

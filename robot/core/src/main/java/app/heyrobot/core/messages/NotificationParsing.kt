@@ -108,6 +108,8 @@ object NotificationParsing {
     /** Characters kept of one message (a summary cuts again, at 600). */
     const val MAX_TEXT = 4_000
     const val MAX_NAME = 80
+    /** Distinct people writing in a conversation (you included) that make it a group, whatever the app says. */
+    const val GROUP_SENDERS = 3
 
     /**
      * What apps show instead of the text: Signal's notification privacy ("New message"), and Android's redaction of a
@@ -135,7 +137,10 @@ object NotificationParsing {
         if (raw.isEmpty() && n.text != null) raw = listOf(MessageSnapshot(n.text, n.postTime, PersonSnapshot(n.title)) to false)
 
         val senders = raw.mapNotNull { (m, _) -> if (isMe(m.sender, n.user)) null else m.sender?.key ?: m.sender?.name }.toSet()
-        val group = n.isGroupConversation ?: (n.conversationTitle != null && senders.size > 1)
+        val mine = raw.any { (m, _) -> isMe(m.sender, n.user) }
+        // What the app says (or a titled conversation with two others), and, whatever it says, three people or more
+        // writing in it (you included): a reply to a group always needs a tap.
+        val group = (n.isGroupConversation ?: (n.conversationTitle != null && senders.size > 1)) || senders.size + (if (mine) 1 else 0) >= GROUP_SENDERS
         if (group && !allow.groups) return Parsed.Ignored(IgnoreWhy.GROUP_OFF)
 
         val reply = replyAction(n.actions)
