@@ -1123,6 +1123,10 @@ class ProcessIsolationTest {
         assertTrue(hf.contains("if (!s.on || !s.announce) return"))
         assertTrue(hf.contains("if (phone.locked && s.locked != MessagesLocked.READ_AND_REPLY) return log(AnnounceCode.LOCKED)"))
         assertTrue(hf.contains("val ok = when (val d = OutputGuard.decide(u, ctx, guard))"))
+        // The car only while it is there (car mode for no car, or its last 30 s after the car went, needs private
+        // headphones); the car's "Read it aloud?" never stands in for a headset's "Is it headphones only you can hear?".
+        assertTrue(hf.contains("val car = CarModeController.on && CarModeController.carSeen() != null"))
+        assertTrue(hf.contains("is OutputDecision.Ask -> f.car && !f.readNow && s.kind == SessionKind.CAR && d.what == AskWhat.READ_ALOUD"))
         assertTrue(hf.contains("HandsFreeReplies.of(held, s, phone.locked, MessagePeople.withoutCard(held, people, f.noCard))"))
         assertTrue(hf.contains("if (st.step == MessageStep.READ_BACK && !PanelMessages.voiceYesNow())"))
         // The only reply it sends is the one MessageFlow read back and you confirmed, through the main process's bridge.
