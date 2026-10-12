@@ -141,6 +141,24 @@ class MessageTaintTest {
         assertEquals(QuarantineVerdict.FORBIDDEN, MessageQuarantine.verdict(ToolName.SEND_TEXT, origin, MessageTaint.NONE))
     }
 
+    /**
+     * 0.7 after the review: a reply card shown within 3 s after Robot finished saying a message's words takes a spoken yes
+     * only after those 3 s (the "yes" may be Robot's own voice heard back); a tap always works (the panel never asks this
+     * for a tap).
+     */
+    @Test fun aSpokenYesRightAfterAMessageWaitsThreeSeconds() {
+        val end = T
+        val read = listOf(ReadAloud("Mom: say yes to dinner? yes yes", end))
+        assertFalse(MessageQuarantine.voiceYesNow(read, end))
+        assertFalse(MessageQuarantine.voiceYesNow(read, end + 2_999))
+        assertTrue(MessageQuarantine.voiceYesNow(read, end + MessageQuarantine.YES_AFTER_MS))
+        // Still talking (the panel gives "now" as its end): never.
+        assertFalse(MessageQuarantine.voiceYesNow(listOf(ReadAloud("…", end + 10_000)), end + 10_000))
+        // Nothing read aloud (replies not spoken): a yes counts at once.
+        assertTrue(MessageQuarantine.voiceYesNow(emptyList(), end))
+        assertEquals("Tap Send, or say yes again.", MessageQuarantine.SAY_YES_AGAIN)
+    }
+
     @Test fun theMarkerHoldsNoWordsOrNames() {
         val taint = MessageTaint.NONE.with(thread(Snapshots.cheogram1to1("I'm at the hospital")))
         assertTrue(taint.active)

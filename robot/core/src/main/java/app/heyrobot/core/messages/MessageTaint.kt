@@ -116,6 +116,17 @@ object MessageQuarantine {
     const val NOT_FROM_MESSAGES_FR = "Je n'agis pas selon ce que dit un message."
     /** What the microphone hears this soon after Robot read a message aloud may be the message itself. */
     const val ECHO_MS = 15_000L
+    /**
+     * A spoken yes on a reply card counts only this long after Robot finished saying a message's words (a message, its
+     * translation, a summary, a draft, "Mom wrote again: «…»"): a "yes" in them, heard back by the microphone, would be
+     * Robot's own voice. A tap always counts.
+     */
+    const val YES_AFTER_MS = 3_000L
+    const val SAY_YES_AGAIN = "Tap Send, or say yes again."
+    const val SAY_YES_AGAIN_FR = "Touche Envoyer, ou redis oui."
+
+    /** A spoken yes may answer a reply card [now]: Robot isn't saying a message's words, and finished them [YES_AFTER_MS] ago or more. */
+    fun voiceYesNow(readAloud: List<ReadAloud>, now: Long): Boolean = readAloud.none { now - it.endedAt < YES_AFTER_MS }
 
     /** Actions whose effect reaches someone else: a text, an email, a helper, or anything that goes online. */
     fun leavesForOthers(tool: ToolName): Boolean =

@@ -909,6 +909,14 @@ object PanelMessages {
             speak(listOf(Spoken(words, fr(p.lang))))
             return true
         }
+        // A yes heard within 3 seconds of Robot saying a message's words may be Robot's own voice: only after that (a tap always works).
+        if (fromVoice && !MessageQuarantine.voiceYesNow(heard(System.currentTimeMillis()), System.currentTimeMillis())) {
+            val words = if (fr(p.lang)) MessageQuarantine.SAY_YES_AGAIN_FR else MessageQuarantine.SAY_YES_AGAIN
+            PanelController.notify(words)
+            speak(listOf(Spoken(words, fr(p.lang))))
+            if (PanelController.state.value.speak) PanelController.messagesListen(now = false)
+            return true
+        }
         scope.launch { fire(p, if (fromVoice) CardEnd.VOICE_YES else CardEnd.TAP) }
         return true
     }
