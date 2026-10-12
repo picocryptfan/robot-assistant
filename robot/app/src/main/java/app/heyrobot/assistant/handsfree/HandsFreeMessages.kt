@@ -221,8 +221,9 @@ object HandsFreeMessages {
             is OutputDecision.Hold -> { VoiceLog.add(VoiceEvent.OUTPUT_HELD, d.why, s.kind.id, s.headsetNumber()); false }
         }
         if (!ok) {
+            // Nothing is said: the session ends, and with it the panel it opened (sessionEnded).
             log(AnnounceCode.NOT_PRIVATE)
-            flow = null
+            f.waiting = false
             VoiceHub.main.post { s.cancel() }
             return null
         }
