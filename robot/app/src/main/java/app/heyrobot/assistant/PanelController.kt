@@ -831,13 +831,15 @@ object PanelController {
      * 1.0: a conversation begun on the lock screen goes on unlocked (core PanelContinuity: the continuation its "Unlock
      * first" asked for, or the panel still open after the unlock). Its turns stay on screen under "Said while the phone was
      * locked", are quoted for the model, and make the conversation content. :brain's live conversation holds them as they
-     * were said, and a helper's its own copy: both end, and the next turn rebuilds from the quoted history.
+     * were said, a helper's its own copy and an offer what it would have sent: all end, and the next turn rebuilds from the
+     * quoted history.
      */
     private fun quoteLockedTurns() {
         val quoted = PanelContinuity.quoted(chat)
         chat.clear()
         chat += quoted
         _state.update { st -> st.copy(turns = st.turns.map { it.copy(locked = true) }) }
+        dropOffers()
         endHelperMode()
         closeLiveConversation()
         RLog.i("locked_turns_quoted", "turns" to quoted.size)
