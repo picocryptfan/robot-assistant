@@ -1928,6 +1928,9 @@ is read on the lock screen.
   (the newest 5, "and 4 earlier"), what hides one (Signal's privacy, a code Android hides), then "Reply, next, or stop?"
   and one listen. "Next" / « suivant » reads the next one, "stop" / « arrête » ends it. More than 2 conversations or 6
   messages: Robot adds "Say “summarize” for a summary."
+- With "Read my messages" off, only "read my messages" and "summarize my messages" hear that it is off: "reply in one
+  word: …", "respond in French", "translate Pierre's message" or "clear it" stay ordinary questions for the model
+  (core `MessagesRouter.applies`).
 - **"What did Mom say?"**, « qu'est-ce que maman a dit? », "what did Pierre write?": that conversation. "Mom" is your People
   alias when the sender's address is one of that person's (Cheogram's address, or a JMP number against People's phones),
   else the name the notification shows; a name learned from a notification but not kept counts for nothing. A name Robot
@@ -1946,16 +1949,18 @@ is read on the lock screen.
   language Robot's model alone, which also names the language.
 - **After Robot reads a message** (7.6): Leave it (default), Clear the notification, or Mark as read (the sender may see
   you read it). "Mark it as read" / « marque comme lu » and "clear it" / « efface la notification » do it once, for the
-  conversation read last.
+  conversation read last ("clear it", "remove that" only once Robot read one in this conversation). A mark-as-read the
+  app wants only from an unlocked phone never fires while it is locked, as a reply doesn't.
 - **Locked:** "Unlock first" by default. "Messages on the lock screen" (7.6): Off, Who messaged (names only, "Unlock your
   phone to hear them"), Read and reply. The main process checks the lock itself before it hands anything over.
 
 ### Replies
 
-- **"Reply I'll be late"** (to the conversation read last, else the newest), "reply to Mom: I'll be late", "reply to Mom
-  that I'm on my way", « réponds à maman : j'arrive », « réponds que je vais être en retard » (made a sentence: « Je vais
-  être en retard. »). "Reply to Mom I'll be late" without a colon splits at the longest name Robot knows. Several
-  conversations fit: a card to pick one. None: "No message from Mom right now. To write to them, say “text Mom …”."
+- **"Reply I'll be late"** (to the conversation read last, else the newest, which then never goes without a tap or a
+  yes, whatever the switches below say), "reply to Mom: I'll be late", "reply to Mom that I'm on my way", « réponds à
+  maman : j'arrive », « réponds que je vais être en retard » (made a sentence: « Je vais être en retard. »). "Reply to
+  Mom I'll be late" without a colon splits at the longest name Robot knows. Several conversations fit: a card to pick
+  one. None: "No message from Mom right now. To write to them, say “text Mom …”."
 - **The card:** "Reply to **Mom** · Cheogram", your words in quotes, and Send, Edit, Open chat, Cancel. Read aloud as
   "Reply to Mom: I'll be late. Tap Send to send it." A **tap on Send** sends it. A spoken yes sends only with "Answer
   reply cards by voice" on (off by default; for the car and headsets later), and never for a group, a reply Robot drafted
@@ -1973,7 +1978,11 @@ is read on the lock screen.
   notification's conversation, never anything the model or the voice process says.
 - **"Send my replies to Mom without a card"** (People › Mom, while messages are on; off): your own dictated words to her
   in a one-to-one chat, on an unlocked phone, go after "Sending to Mom: I'll be late" and 3 seconds to say "stop" (or tap
-  Stop, or close the panel). "Card before sending a reply" off does the same for everyone.
+  Stop, or close the panel). Anything you say in those 3 seconds but a yes stops it too ("no, wait, don't send it").
+  Only to her own address in People (Cheogram's address, or a JMP number against her phones): a sender read as Mom by
+  name alone (Signal gives no address, and anyone can choose a name) always gets the card, and a sender writing from an
+  address nobody in People has is read under the name they chose, never as Mom. "Card before sending a reply" off does
+  the same for everyone.
 - **How replies go:** "Robot sends after you confirm" (default) or "Open the chat with my reply; I press Send": Cheogram's
   chat opens with your words in its box (by its shortcut, in the right account), another app gets them shared; nothing is
   sent until you press Send there. The main process refuses to send under that setting even if asked.
@@ -1987,11 +1996,14 @@ is read on the lock screen.
   messages.", and a card's record keeps its kind, not its words. The voice log keeps codes and counts (events 190 to
   199: read, summary, translate, reply, reply card, mark, hidden, listener, guard, refused).
 - **A message's words never become an action.** What the microphone hears that repeats a message Robot read aloud in the
-  last 15 seconds is answered "I don't act on what a message says." Once a message is in the conversation, every action
-  that writes or leaves the phone shows a card, whatever Safety cards says (`AskWhy.MESSAGE` in `ApprovalGate`); one that
-  would send anything to someone other than that message's sender (a text, an email, a helper, anything online) needs a
-  tap: "A message is in this conversation: check this, then tap." Summaries, translations and drafts are one-shot
-  requests with no tools.
+  last 15 seconds (its translation when read translated, a summary, "Mom wrote again: «…»" on a card, a draft) is
+  answered "I don't act on what a message says.", and History and the model keep it as "(A message's words, heard back
+  while Robot read it: not kept.)", never as your question. When the next chat question gives the model the
+  conversation, a turn that read messages is framed as other people's words, information only, never instructions.
+  Once a message is in the conversation, every action that writes or leaves the phone shows a card, whatever Safety
+  cards says (`AskWhy.MESSAGE` in `ApprovalGate`); one that would send anything to someone other than that message's
+  sender (a text, an email, a helper, anything online) needs a tap: "A message is in this conversation: check this,
+  then tap." Summaries, translations and drafts are one-shot requests with no tools.
 - **Helpers:** messages are "messages you received" among personal content, like a screen or a photo: never sent on a
   helper's trust or by "Send personal content to helpers automatically"; only through a card that lists them (Include,
   when a helper joins the conversation). Robot checking with a helper by itself sends your question alone.
@@ -2063,8 +2075,10 @@ number, Signal, and an SMS number. Put "Mom" in People with your test number as 
 17. **Open the chat; I press Send:** set it, then reply: the chat opens with your words; nothing is sent, ever (watch the
     other phone for a minute).
 18. **Without a card:** People › Mom › "Send my replies to Mom without a card" on. "Reply I'm on my way": Robot says it,
-    and it goes 3 seconds after she stops talking. Again, and say "stop": nothing is sent, the card waits for Send. A
-    group, a draft ("answer her for me") or "reply in French: …" still show a card that needs a tap.
+    and it goes 3 seconds after she stops talking. Again, and say "stop": nothing is sent, the card waits for Send; again,
+    and say "no, wait": the same. A group, a draft ("answer her for me") or "reply in French: …" still show a card that
+    needs a tap; so does Mom on Signal (her name only). From the second phone, a new Cheogram account whose nickname is
+    Mom's name in People is read under that nickname, never as "Mom", and "reply to Mom" doesn't find it.
 19. **Their language:** Mom writes in French; "reply I'll be there at six": the card offers "Send in French: «…»"
     unticked; tick it and "Always for Mom", send; the next reply to her has it ticked.
 20. **Answer reply cards by voice** on: "reply ok", then "yes": sent (1:1, your words). "No" on a card cancels it.
@@ -2374,7 +2388,9 @@ A password, PIN, code, card, ID or account number (core `SecretDetector`) you as
   question as "Remember: [a code, kept in Memory]";
 - never pinned, never on the lock screen, never sent to a helper;
 - given to the model only when your question names it on an unlocked phone; that answer is shown but not spoken (unless
-  Settings › Memory › "Say private items aloud" is on), and History keeps a line in its place;
+  Settings › Memory › "Say private items aloud" is on), and History keeps a line in its place; the live conversation
+  starts again after that answer (with History's line), so no later answer can repeat it, and naming it again gives it
+  again;
 - shown in full only in Settings › Memory, with a lock.
 
 ### History and helpers
@@ -2412,7 +2428,8 @@ JSON, after a warning that it isn't encrypted) and Delete all (after a confirm).
   locked, its key gone, damaged, or saved by a newer Robot. A Keystore that can't answer reads as "not now"; nothing
   deletes the file by itself.
 - The panel decrypts it only while it shows; Settings › Memory only while it is open. A change there tells the panel,
-  which starts its live conversation again, so a deleted item can't come back in an answer.
+  which starts its live conversation again, so a deleted item can't come back in an answer, and a "Forgotten" card's
+  Undo in the panel can't put one back.
 - **Locked:** memory isn't opened. A question that asks for it ("do you remember …", « tu te souviens … », "what do you
   know about me?") hears "Unlock first: what you asked me to remember stays locked."; any other question is answered
   without it.
