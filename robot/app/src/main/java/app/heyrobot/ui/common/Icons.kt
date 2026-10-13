@@ -1,7 +1,6 @@
 package app.heyrobot.ui.common
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
@@ -116,13 +115,13 @@ object RIcons {
     // </symbols>
 
     /**
-     * Robot's own glyph (a robot face, not a Material symbol), kept for the Classic look's panel orb only; nothing in
-     * the standard look shows a mascot.
+     * Robot's own glyph (not a Material symbol): 1.0's app icon, a robot head shaped as a speech bubble, on its 48-unit
+     * grid (res/drawable/ic_robot_idle.xml). Home's greeting and the "run it now" rows; the panel's robot changes with
+     * what Robot is doing (RobotFace). Non-zero fill: the eyes wind the other way and come out as holes.
      */
     val Robot by lazy {
-        ImageVector.Builder("robot", 24.dp, 24.dp, 24f, 24f).apply {
-            addPath(addPathNodes("M11,2h2v3h-2zM6,6h12a2,2 0,0 1,2 2v9a2,2 0,0 1,-2 2H6a2,2 0,0 1,-2 -2V8a2,2 0,0 1,2 -2zM9,10a1.5,1.5 0,1 0,0 3a1.5,1.5 0,1 0,0 -3zM15,10a1.5,1.5 0,1 0,0 3a1.5,1.5 0,1 0,0 -3zM8,15h8v1.5H8zM1,10h2v5H1zM21,10h2v5h-2z"),
-                fill = SolidColor(Color.Black), pathFillType = PathFillType.EvenOdd)
+        ImageVector.Builder("robot", 24.dp, 24.dp, 48f, 48f).apply {
+            addPath(addPathNodes("M14,13H34A9,9 0 0 1 43,22V30A9,9 0 0 1 34,39H14A9,9 0 0 1 5,30V22A9,9 0 0 1 14,13ZM12,37H23L10,46ZM24,6H24A1.5,1.5 0 0 1 25.5,7.5V12.5A1.5,1.5 0 0 1 24,14H24A1.5,1.5 0 0 1 22.5,12.5V7.5A1.5,1.5 0 0 1 24,6ZM20.8,5.5A3.2,3.2 0 1 1 27.2,5.5A3.2,3.2 0 1 1 20.8,5.5ZM12.9,26A3.6,3.6 0 1 0 20.1,26A3.6,3.6 0 1 0 12.9,26ZM27.9,26A3.6,3.6 0 1 0 35.1,26A3.6,3.6 0 1 0 27.9,26Z"), fill = SolidColor(Color.Black))
         }.build()
     }
 }
