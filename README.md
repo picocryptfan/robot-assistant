@@ -109,7 +109,7 @@ Robot for you, it follows 0.9's app ID: remove that entry and add the repository
   browser with Startpage, DuckDuckGo, Google and five others, each listed with its privacy level.
 - **Termux:** runs your own scripts and short commands, each command on a card you approve first; off until you set it
   up.
-- **Helpers:** hand a question to Claude or another model with your own API key, or to a model on your own computer,
+- **Helpers:** hand a question to a paid AI service with your own API key, or to a model on your own computer,
   only when you ask or allow it.
 - **Send feedback** writes a bug report or an idea for you to send yourself; Robot sends nothing on its own.
 

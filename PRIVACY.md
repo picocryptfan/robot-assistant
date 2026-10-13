@@ -62,7 +62,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
   Robot can send through Shizuku (Settings › Advanced › ADB fixes) go to Termux the same way, after your tap.
 - **Names learned from Cheogram** (off unless you turn on Settings › People › "Learn names from Cheogram
   notifications"): who messages you in Cheogram (name, address, account), never the messages.
-- **API keys** you add for Claude (or another helper), and the **access token** you may add for a private update
+- **API keys** you add for a helper, and the **access token** you may add for a private update
   repository (Settings › About › Updates › Advanced). They are encrypted with a key that never leaves your phone's secure
   hardware (Android Keystore, AES-GCM), and decrypted only when Robot calls that helper, or GitHub's API for the token.
   Since 1.0 a helper's or web search key is also compared, on the phone, with a Termux command about to be sent, so one
@@ -103,21 +103,21 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
    address, a phone number or an email) and your area (about 1 km) to OpenStreetMap's Nominatim server
    (nominatim.openstreetmap.org), or to the Nominatim server you choose in Settings › Actions › Search server. The card
    names the server before anything goes. You can choose Never.
-4. **Claude and the other helpers**, only if you ask for one, or let Robot check a hard question with it (Settings ›
-   Helpers): Claude, another company's model with your own API key, or a model on your own computer:
+4. **Helpers**, only if you ask for one, or let Robot check a hard question with it (Settings › Helpers): a paid AI
+   service with your own API key, or a model on your own computer:
    - With your own API key, Robot sends your question and the part of the conversation it shows you it will send to
-     Anthropic's API (api.anthropic.com). That can include screen text or a photo you attached; personal content goes
-     only with your tap unless you change that in Settings › Safety & privacy. Anthropic handles it under its own terms
-     and privacy policy, and you pay Anthropic directly. If you let Claude search the web, Anthropic's search does that.
+     that company's API. That can include screen text or a photo you attached; personal content goes only with your tap
+     unless you change that in Settings › Safety & privacy. The company handles it under its own terms and privacy
+     policy, and you pay it directly. If you let the helper search the web, that company's search does that.
    - What Robot remembers goes to a helper only on a card that lists it and only with your tap, unless you choose
      Settings › Memory › "Share memory with helpers: With helpers I trust"; private items never go. Your messages go to a
      helper only on a card that lists them, with your tap, whatever you trust; a question Robot sends by itself goes
      alone. The same holds for the other helpers (any company's API, or a server on your network), each under that
      company's terms, or on your own server.
    - A conversation's summary goes to a helper only after its card shows what will be sent and you tap.
-   - Without a key, the “Open Claude” button only fills in the Claude app (and may put your question on the clipboard);
-     you press Send there.
-5. **Other apps you hand things to** (Cheogram, Proton Mail, your SMS or calendar app, Organic Maps, the Claude app).
+   - Without a key, the button that opens the service's own app only fills in that app (and may put your question on
+     the clipboard); you press Send there.
+5. **Other apps you hand things to** (Cheogram, Proton Mail, your SMS or calendar app, Organic Maps, an AI service's own app).
    Robot fills in a draft or opens a route; that app sends something only when you tap Send, under its own policy. A
    **reply to a message** (Settings › Messages) is the exception you choose: Robot shows it on a card and, after you tap
    Send (or, for someone you chose in People, after 3 seconds in which you can say "stop"), hands your words to that
