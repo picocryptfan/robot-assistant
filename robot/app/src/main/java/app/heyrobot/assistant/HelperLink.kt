@@ -2,8 +2,8 @@ package app.heyrobot.assistant
 
 import android.Manifest
 import android.content.Context
-import app.heyrobot.claude.ClaudeClient
-import app.heyrobot.claude.ClaudeSession
+import app.heyrobot.helpers.anthropic.ClaudeClient
+import app.heyrobot.helpers.anthropic.ClaudeSession
 import app.heyrobot.core.ClaudeFailure
 import app.heyrobot.core.ClaudeModel
 import app.heyrobot.core.ClaudePrompt
@@ -28,7 +28,7 @@ import java.time.LocalDate
 import java.util.IdentityHashMap
 import java.util.concurrent.ConcurrentHashMap
 
-// VOICE PROCESS. The panel's way to its helpers (the :claude module): one client per helper and saved key (and, for a
+// VOICE PROCESS. The panel's way to its helpers (the :helpers module): one client per helper and saved key (and, for a
 // server, its address), and a session per question or per conversation ("go get …"). A client stays open while a session
 // still uses it, so saving a new key doesn't break a conversation under way; it closes when its last session ends.
 // Keys are decrypted here only (HelperKeys.read), just before a client is made; one the Keystore can't read just now is

@@ -15,7 +15,7 @@ import org.json.JSONObject
 // company's own app on this phone (Claude, ChatGPT, Grok, Gemini, Mistral, DeepSeek), opened with the question. Each is a
 // [HelperConfig] in settings, made from a [Preset]: how to reach it (one of three wire formats, [Protocol]), the small
 // ways the company's API differs from the common one ([Quirks], data rather than code paths), its models with what they
-// can do, and the words Settings uses. Nothing here touches the network: the clients live in the :claude module, which
+// can do, and the words Settings uses. Nothing here touches the network: the clients live in the :helpers module, which
 // only the :voice process loads.
 
 /** The wire format a helper speaks. */

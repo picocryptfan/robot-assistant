@@ -16,7 +16,7 @@ import java.util.Base64
 
 // Pure (org.json). OpenAI Chat Completions, the format every company's OpenAI-compatible API and every home server
 // speaks (Mistral, DeepSeek, Groq, OpenRouter, Google's compatibility layer, Ollama, LM Studio, llama.cpp, vLLM): the
-// request, the stream read one SSE payload at a time, and the rules a conversation's history must keep. The :claude
+// request, the stream read one SSE payload at a time, and the rules a conversation's history must keep. The :helpers
 // module's OpenAiSession sends and receives; everything that decides is here, tested against recorded shapes.
 //
 // The request is byte-stable for the same conversation (a fixed order, no timestamp), so providers' automatic prefix

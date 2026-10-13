@@ -179,7 +179,7 @@ echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install    # sherpa-onnx libraries, wake-word and VAD models, espeak-ng data, each checked by SHA-256
 tools/build_robotmt.sh                  # librobotmt.so, the fast translation engine, from pinned sources
 tools/build_llama.sh                    # optional: librobot_llama.so, for your own GGUF files
-gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :claude:testReleaseUnitTest :app:testReleaseUnitTest
+gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
 gradle :app:testDebugUnitTest           # Compose UI tests and screenshots (Robolectric, offline)
 gradle :app:assembleRelease             # unsigned without a key: see robot/README.md, "Building"
 tools/verify_apk.sh app/build/outputs/apk/release/app-release.apk

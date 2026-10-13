@@ -53,7 +53,7 @@ import kotlinx.coroutines.withContext
 
 // VOICE PROCESS. The web_search tool's glue (0.9, design A6.1 WebTool): ToolExecutor's prepare and run for it. Before
 // anything leaves the phone, core WebGate (web search on, today's cap, the query's check, Ask before searching); then the
-// :claude module's WebSearch with the key decrypted here (WebKeys), and what it found goes back as the action's result
+// :helpers module's WebSearch with the key decrypted here (WebKeys), and what it found goes back as the action's result
 // for the panel's one-shot answer. The first search card's lasting answer, today's count and a paid search's cost are
 // written here. The voice log and logcat get codes and numbers only: never the query, a URL, a domain or a title.
 

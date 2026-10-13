@@ -132,7 +132,7 @@ dependencies {
     // 0.5.0: the fast translation engine's :mt process (MtService, librobotmt.so when tools/build_robotmt.sh built it).
     implementation project(':mt')
     // Ask Claude: the Anthropic SDK, used only by the assistant package (the :voice process).
-    implementation project(':claude')
+    implementation project(':helpers')
 
     implementation platform('androidx.compose:compose-bom:2025.06.01')
     implementation 'androidx.compose.ui:ui'

@@ -7,8 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.PersistableBundle
 import app.heyrobot.assistant.HelperLink
-import app.heyrobot.claude.ClaudeListener
-import app.heyrobot.claude.ClaudeOutcome
+import app.heyrobot.helpers.anthropic.ClaudeListener
+import app.heyrobot.helpers.anthropic.ClaudeOutcome
 import app.heyrobot.core.AppShareCode
 import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.ClaudeEffort

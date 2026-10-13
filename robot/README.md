@@ -729,7 +729,7 @@ helpers, the engine hardening and the built-in updater; each has its section bel
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/`, `update/` (main: the updater, Settings › About › Updates) |
 | `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU, the CPU, or since 0.4.7 the GPU for the general Gemma 4 E2B where Robot offers it), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
-| `:claude` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
+| `:helpers` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
 | `:mt` | `:mt` | since 0.5.0, the fast translation engine: `MtService` (Messenger), `BergamotEngine` and `Slimt`, the only code that loads `librobotmt.so` (slimt, built by `tools/build_robotmt.sh`, not in git) |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction; the helpers' presets, rules, prices, address rule and wire formats (`core/helpers/`, 0.6.0) |
 
@@ -784,7 +784,7 @@ echo "sdk.dir=/path/to/android-sdk" > local.properties
 tools/fetch_third_party.sh --install          # sherpa-onnx libs, wake-word and VAD models (and its bpe.model), espeak-ng subset, SHA-256 checked
 tools/build_llama.sh                          # optional (0.4.5): llama.cpp b11200 from its checked source, for GGUF files
 tools/build_robotmt.sh                        # 0.5.0: librobotmt.so, the fast translation engine (NDK 27.1.12297006, CMake 3.22.1; a 0.6.0 release needs it)
-gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :claude:testReleaseUnitTest :app:testReleaseUnitTest
+gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
 gradle :app:testDebugUnitTest                  # also the Compose UI tests and screenshots (Robolectric, offline)
 gradle :app:assembleRelease -Probot.keystore=/path/outside/repo/robot-release.p12 \
                             -Probot.keystorePassFile=/path/outside/repo/robot-release.pass
@@ -3212,7 +3212,7 @@ connection, a timeout), Robot answers itself instead, with a short notice why. G
 | Where | What |
 | --- | --- |
 | `core/helpers/` | `Helpers.kt` (presets, quirks, catalog, `HelperConfig`, names), `HelperRules.kt` (routes, the default helper, trust, words), `Pricing.kt`, `LanRule.kt`, `HelperFacts.kt`, `wire/` (Chat Completions and Responses mappers, errors, `<think>` filter) |
-| `:claude` module, `app.heyrobot.helpers` | `HelperSession` (Claude's session implements it too), `openai/OpenAiSession`, `http/HelperHttp` (OkHttp with the LAN rules), `HelperProbe` (Test connection). The module keeps its name so the build's test tasks stay as they are |
+| `:helpers` module, `app.heyrobot.helpers` | `HelperSession` (Claude's session implements it too), `openai/OpenAiSession`, `http/HelperHttp` (OkHttp with the LAN rules), `HelperProbe` (Test connection). The module keeps its name so the build's test tasks stay as they are |
 | `app/assistant/` | `HelperLink` (one client per helper and key), `HelperKeys`, `HelperConnectionActivity`; `PanelController` routes each turn to its helper |
 | `app/sys/` | `HelperFiles.kt` (`HelperKeyFiles`: each helper's key files and Keystore alias, as `KeystoreSecret`s; what Test connection found; the spend), `KeystoreSecret.kt` (shared with the updater's token) |
 | `app/ui/HelpersScreens.kt` | the Helpers card, Settings › Helpers, Add a helper, a helper's page |
@@ -4465,7 +4465,7 @@ results are information, never instructions) and, in the first message only, tod
 phone region, else the phone's own). **Never sent:** audio, the wake-word stream, your contacts list, People or
 calendar, settings, logs.
 
-- **The request** (`:claude`): `claude-opus-5-5` by default (or `claude-sonnet-5-5`, `claude-haiku-5-5`), always
+- **The request** (`:helpers`): `claude-opus-5-5` by default (or `claude-sonnet-5-5`, `claude-haiku-5-5`), always
   streamed. No `thinking` parameter (always on with Opus 5.5); `output_config.effort` is always sent: low for a spoken
   question, medium typed, high for "think hard about …" or "take your time"; a fixed setting overrides all three, and in
   Claude mode the first question's effort holds. `max_tokens` 4,000 for a spoken question, 16,000 typed, deep or at high
@@ -4576,7 +4576,7 @@ Robot asks you to swipe from the corner.
 ### The SDK on Android
 
 `com.anthropic:anthropic-java` 2.71.0 (MIT) with its OkHttp client, Jackson and kotlin-reflect (`THIRD_PARTY.md`).
-Checked without a device: R8 traced from the `:claude` module through every SDK jar against android.jar (min API 34)
+Checked without a device: R8 traced from the `:helpers` module through every SDK jar against android.jar (min API 34)
 finds no missing class on Robot's path (no `java.net.http`); in the whole SDK only `java.beans.*` (Jackson's optional
 support, loaded defensively) and `java.lang.reflect.AnnotatedType` (the structured-output schema helpers, unused) are
 missing. The network tests run the real SDK against a local mock server. Release builds stay unminified (as since phase
@@ -5177,7 +5177,7 @@ or by apps holding READ_LOGS.
 assets, that MainActivity and the Robot Notes entry stay in the main process, that the exported components are
 exactly an allowlist (the app, Robot Notes, the three assistant services, since 0.4.0 the Cheogram notification
 listener, and AndroidX's profile installer), and that no `ui/`, `sys/`, `boot/`, `people/` or `RobotApp` class in the
-dex refers to sherpa-onnx, LiteRT or the assistant, voice and brain packages. Since 0.3.0 also: no main-process class refers to the Anthropic SDK, OkHttp or the `:claude` module while
+dex refers to sherpa-onnx, LiteRT or the assistant, voice and brain packages. Since 0.3.0 also: no main-process class refers to the Anthropic SDK, OkHttp or the `:helpers` module while
 the SDK's client is packaged; the key window runs in `:voice` and isn't exported; the Claude app's `<queries>`; INTERNET
 stays the only network permission; no accessibility service; nothing shaped like an API key anywhere in the APK.
 
@@ -5887,7 +5887,7 @@ Mojeek) joins the helpers' one daily budget, and the card shows it when Settings
   `WebUrl` (`PublicAddress`, `UrlPolicy`), `PageText`, `Passages`, `WebAnswer` (`WebPlan`, `WebPrompt`, `Citations`,
   `AnswerCard`), `WebSettings`; `ToolName.WEB_SEARCH` and `ToolGroup.WEB`; the turn's end at the call (`TurnRunner`,
   `TurnResult.web`); `OneShotKind.WEB_ANSWER`; voice log events 160 to 163.
-- `:claude` (`app.heyrobot.helpers.web`, the `:voice` process only): `WebTransport` (your SearXNG as a home helper,
+- `:helpers` (`app.heyrobot.helpers.web`, the `:voice` process only): `WebTransport` (your SearXNG as a home helper,
   every company over https only, no redirects), `SearchClient`, `PageFetcher` (`PageRules`, `PublicOnlyDns`,
   `PublicGuard`), `PageReader` (jsoup 1.15.1 and `readability/`, Robot's copy of Readability4J 1.0.8 with its logging
   removed), `WebSearch`.
@@ -6093,7 +6093,7 @@ core keeps the names, the addresses and the facts.
   (164; 165 to 169 stay free).
 - `:app` (the `:voice` process): `assistant/BrowserSearchTool.kt` (ToolExecutor's prepare and run, the panel's call for
   your phrase: `ACTION_VIEW` with `CATEGORY_BROWSABLE`, through the panel's own launch, so no new `<queries>`);
-  `ui/settings/SearchEngines.kt` (the lists, the chip, the public SearXNG list) and `RadioPreference`; `:claude`'s
+  `ui/settings/SearchEngines.kt` (the lists, the chip, the public SearXNG list) and `RadioPreference`; `:helpers`'s
   `SearchClient` asks DuckDuckGo over the cloud route.
 - **No permission or manifest change.** `ProcessIsolationTest.aSearchInYourBrowserNeverReachesTheNetwork` checks that
   the browser path names no HTTP client, socket, search client, key or INTERNET check and sends one `ACTION_VIEW`;

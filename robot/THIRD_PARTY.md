@@ -232,10 +232,10 @@ sentence in `bench/test-clip.txt`. No person's voice. Used only by Settings › 
 While a sherpa-onnx voice is not downloaded, or when it is chosen, Robot speaks through Android's TextToSpeech API,
 which on GrapheneOS is the system's GrapheneOS Speech Services; nothing is packaged.
 
-### Anthropic Java SDK 2.71.0 (MIT): the API client of one of the helpers (`:claude` module)
+### Anthropic Java SDK 2.71.0 (MIT): the API client of one of the helpers (`:helpers` module)
 
 The official SDK for the Claude API (https://github.com/anthropics/anthropic-sdk-java), from Maven Central, used only
-by the `:claude` module, which only the assistant package (the `:voice` process) depends on; the main process never
+by the `:helpers` module, which only the assistant package (the `:voice` process) depends on; the main process never
 loads it (`ProcessIsolationTest`, `tools/verify_apk.sh`). It talks to `api.anthropic.com` only when you ask for
 Claude, or let Robot check a hard question with Claude (docs/ask-claude.md). Built in as Java/Kotlin classes (no native code). Licence: MIT.
 
@@ -259,7 +259,7 @@ What it brings with it at run time (resolved by Gradle, versions as built):
 | `org.slf4j:slf4j-api:2.0.16` (no binding: it logs nothing) | MIT |
 | `com.standardwebhooks:standardwebhooks:1.2.0` | MIT |
 
-Since 0.6.0 the `:claude` module also uses OkHttp 4.12.0 (and its Okio) directly, the same jars as above, for the other
+Since 0.6.0 the `:helpers` module also uses OkHttp 4.12.0 (and its Okio) directly, the same jars as above, for the other
 helpers' clients (OpenAI Chat Completions and Responses, `app.heyrobot.helpers`, in the `:voice` process only); no other
 SDK is added.
 
@@ -269,7 +269,7 @@ transport and page fetcher).
 
 ### jsoup 1.15.1 (MIT) and Robot's copy of Readability4J 1.0.8 (Apache-2.0): reading result pages (0.9 web search)
 
-When web search reads a result page from the phone (`:claude` module, `app.heyrobot.helpers.web`, the `:voice` process
+When web search reads a result page from the phone (`:helpers` module, `app.heyrobot.helpers.web`, the `:voice` process
 only), jsoup parses it (an HTML parser with no JavaScript engine; nothing on the page is loaded) and Robot's copy of
 Readability4J finds the article in it, as Firefox's Reader View does.
 
@@ -279,7 +279,7 @@ Readability4J finds the article in it, as Firefox's Reader View does.
 
 Readability4J 1.0.8 (https://github.com/dankito/Readability4J, commit `170d052e99db58ecac85a77cdaa63ac8253be1fd`,
 Copyright 2017 dankito, Apache-2.0) is a Kotlin port of Mozilla's Readability.js (Copyright (c) 2010 Arc90 Inc,
-Apache-2.0). It is not a dependency: its source is copied into `claude/src/main/java/app/heyrobot/helpers/web/readability/`
+Apache-2.0). It is not a dependency: its source is copied into `helpers/src/main/java/app/heyrobot/helpers/web/readability/`
 with its LICENSE and a NOTICE that says what Robot changed (the package name; every slf4j logging call removed, so no
 logging library sees page text; built against jsoup 1.15.1 instead of 1.11.2; its "extended" variant and tests not
 copied). The NOTICE is in the APK (`licenses/notices/readability4j-NOTICE.txt`) and on the Licences screen.

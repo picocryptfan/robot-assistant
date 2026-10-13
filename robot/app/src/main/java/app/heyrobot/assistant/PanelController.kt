@@ -3,8 +3,8 @@ package app.heyrobot.assistant
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
-import app.heyrobot.claude.ClaudeListener
-import app.heyrobot.claude.ClaudeTurn
+import app.heyrobot.helpers.anthropic.ClaudeListener
+import app.heyrobot.helpers.anthropic.ClaudeTurn
 import app.heyrobot.helpers.HelperSession
 import app.heyrobot.core.HelperName
 import app.heyrobot.core.helpers.HelperConfig
@@ -42,7 +42,7 @@ import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.ClaudeBlock
 import app.heyrobot.core.ClaudeCommand
 import app.heyrobot.core.ClaudeContext
-import app.heyrobot.claude.ClaudeSession
+import app.heyrobot.helpers.anthropic.ClaudeSession
 import app.heyrobot.core.ClaudeCost
 import app.heyrobot.core.ClaudeEffortSetting
 import app.heyrobot.core.ClaudeFailure

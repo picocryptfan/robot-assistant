@@ -11,7 +11,7 @@ import kotlin.math.roundToLong
 // Pure. Ask Claude (docs/ask-claude.md): the models and their published prices, how hard Claude thinks and how long it
 // may answer, the cost line and the daily budget, the plain-language failures, Claude's voice, which route a question
 // takes (the Claude app or the API) and when Robot may bring Claude in by itself. Nothing here touches the network:
-// the API client lives in the :claude module, which only the :voice process loads.
+// the API client lives in the :helpers module, which only the :voice process loads.
 
 /** Prices in US dollars per million tokens, as published (docs/ask-claude.md "Cost line"). */
 data class ClaudePrices(val input: Double, val output: Double, val cacheRead: Double, val cacheWrite: Double)
@@ -167,7 +167,7 @@ data class ClaudeSpend(val day: String, val micros: Long) {
 
 /**
  * Why a helper's request failed, as Robot says it (0.6.0: every helper; [HelperFailure] is the same type). Mapped from the
- * SDK's typed exceptions (most specific first) in the :claude module, or from an HTTP status and the error body's type and
+ * SDK's typed exceptions (most specific first) in the :helpers module, or from an HTTP status and the error body's type and
  * code for the other wire formats; the words are fixed here so they are tested once. [text] is Claude's, word for word as
  * before; [say] puts in another helper's name. [retry]: worth one more try (overloaded or 5xx).
  */

@@ -18,7 +18,7 @@ See the README's "Build from source" and [`robot/README.md`](robot/README.md) ("
 
 ```
 cd robot
-gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :claude:testReleaseUnitTest :app:testReleaseUnitTest
+gradle :core:testReleaseUnitTest :voice:testReleaseUnitTest :helpers:testReleaseUnitTest :app:testReleaseUnitTest
 gradle :app:testDebugUnitTest      # Compose UI tests and screenshots; -Droborazzi.record=true rewrites the goldens
 ```
 

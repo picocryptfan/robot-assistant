@@ -15,7 +15,7 @@ import java.util.Locale
 // Robot checking with Claude on its own sends only the question from then on. Claude joining a personal conversation
 // sees what came before only after a tap on Include ("Start fresh" sends none of it). Never sent: audio, the wake-word
 // stream, the contacts list, Robot's People (names learned from Cheogram notifications included), the calendar,
-// settings or logs. The :claude module turns these plain blocks into the SDK's request.
+// settings or logs. The :helpers module turns these plain blocks into the SDK's request.
 
 /** A piece of a user message to Claude. */
 sealed class ClaudeBlock {
