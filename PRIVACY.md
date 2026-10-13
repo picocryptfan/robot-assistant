@@ -109,6 +109,8 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
      that company's API. That can include screen text or a photo you attached; personal content goes only with your tap
      unless you change that in Settings › Safety & privacy. The company handles it under its own terms and privacy
      policy, and you pay it directly. If you let the helper search the web, that company's search does that.
+   - Which AI service you use is your choice, and that company's own privacy policy covers what it receives. Read it
+     before you add your key.
    - What Robot remembers goes to a helper only on a card that lists it and only with your tap, unless you choose
      Settings › Memory › "Share memory with helpers: With helpers I trust"; private items never go. Your messages go to a
      helper only on a card that lists them, with your tap, whatever you trust; a question Robot sends by itself goes
