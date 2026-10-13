@@ -3491,12 +3491,14 @@ Nothing here has run on the phone yet. 0.9 and 1.0 installed side by side, a scr
    the rest with the private one as "Private: tap to show" (a tap shows it, another hides it), and a screenshot of the
    preview is refused.
 2. **Content by default.** Import without ticking: *done when* "Added N memories." offers Delete the file, Settings ›
-   Memory lists the items with "Imported", and, with Settings › Safety & privacy › When Robot asks first at "Only when Robot
-   isn't sure who", a question one of them answers followed by "text Bob I'm on my way" brings a card first.
+   Memory lists the items with "Imported", and, with Settings › Safety & privacy › When Robot asks first at "Always after
+   Robot reads something" (content only makes a card at that level or "When you didn't ask for it"), a question one of them
+   answers followed by "add a note: buy eggs" brings a card first (a note is Just do it by default, so the card comes from
+   the import; a text would ask first anyway).
 3. **This is mine.** Open an imported item (not the one from a screen) › This is mine: *done when* "Imported" is gone
-   and step 2's question and text, in a new conversation, follow When Robot asks first as for your own words (no card).
+   and step 2's question and note, in a new conversation, follow When Robot asks first as for your own words (no card).
 4. **The tick.** Settings › Memory › Delete all, then import the file again with "These are my own memories, from my own
-   export" ticked: *done when* step 2's text needs no card, the item 0.9 kept from a screen still says where it came
+   export" ticked: *done when* step 2's note needs no card, the item 0.9 kept from a screen still says where it came
    from, and importing the file a third time says "Nothing to add." with Import greyed out.
 5. **Delete the file.** After an import, tap Delete the file: *done when* "The file is deleted." and the Files app no
    longer lists `robot-memory.json` (or Robot says to delete it there, for an app that doesn't allow it).
