@@ -1,31 +1,36 @@
 # Robot
 
-> **Draft for review** (written for 1.0 against Robot 0.9.0's code). Check the repository links, the certificate
+> Draft for review (written for 1.0 against Robot 0.9.0's code). Check the repository links, the certificate
 > fingerprint and the sizes against the release before publishing.
 
-Robot is a private voice assistant for GrapheneOS on Google Pixel phones. Its AI model runs on the phone, so what you
-say and what it answers stay there. It goes online only when you ask it to: for the weather, a web search you set up, a
-question you hand to an online helper with your own key, or a download. Say "hey robot", or swipe up from a bottom
-corner, and ask.
+I made Robot because I couldn't find a complete voice assistant that doesn't come from Google or Apple.
+
+Robot is a private voice assistant for GrapheneOS on Google Pixel phones. I start with Pixels because GrapheneOS runs
+on them, and the point is to keep Google off the phone. Robot's AI model runs on the phone, so what you say and what it
+answers stay there. It goes online only when you ask it to: for the weather, a web search you set up, a question you
+hand to an online helper with your own key, or a download. Say "hey robot", or swipe up from a bottom corner, and ask.
 
 Robot is free software under the GNU GPL version 3 (GPL-3.0-only). There is no account, no analytics, no ads and no
 crash reporting.
 
-## Status and devices
+## Phones
 
-- **Tested on:** Pixel 10 Pro with GrapheneOS. Robot's fast model (Gemma 4 E2B) runs on the Tensor G5's TPU there.
-- **Other Pixels** (Pixel 9a and the Tensor G1 to G4 phones): the same model runs on the CPU or GPU. It works, more
-  slowly; these phones have had less testing.
-- **Pixel 11 (Tensor G6):** the TPU build is in beta.
-- Android 14 or later, arm64 only. Robot is built and tested on GrapheneOS; other Android builds are untested.
+| Phone | Status |
+|---|---|
+| Pixel 10 Pro with GrapheneOS | Where I test. Robot's fast model (Gemma 4 E2B) runs on the Tensor G5's TPU. |
+| Other Pixels (Pixel 9a and the Tensor G1 to G4 phones) | The same model runs on the CPU or GPU. It works, more slowly. I've tested these phones less. |
+| Pixel 11 (Tensor G6) | The TPU build is in beta. |
+| Snapdragon and other Android phones | Planned, after the Pixels. Other Android builds are untested for now. |
+
+Robot needs Android 14 or later, arm64 only. I build and test it on GrapheneOS.
 
 ## Install
 
-1. **Download** the APK from this repository's [GitHub Releases](https://github.com/picocryptfan/robot-assistant/releases)
+1. Download the APK from this repository's [GitHub Releases](https://github.com/picocryptfan/robot-assistant/releases)
    (`Robot-<version>.apk`), or add the repository to [Obtainium](https://github.com/ImranR98/Obtainium) (Add App, paste
    `https://github.com/picocryptfan/robot-assistant`) so it tells you about new releases. Robot can also check for
    its own updates (Settings › About › Updates).
-2. **Check the signing certificate** before you install the first time. Its SHA-256 fingerprint is:
+2. Check the signing certificate before you install the first time. Its SHA-256 fingerprint is:
 
    ```
    40:25:57:A4:6A:49:17:50:68:8A:3D:FF:71:41:00:FE:1D:20:B2:F6:11:93:A9:12:35:8C:2E:DD:34:1A:6B:6A
@@ -34,10 +39,10 @@ crash reporting.
    On a computer: `apksigner verify --print-certs Robot-<version>.apk` ("Signer #1 certificate SHA-256 digest", without
    the colons). Obtainium and AppVerifier can check it on the phone. Android refuses any later update signed with
    another key, and so does Robot's own updater.
-3. **Make Robot your digital assistant** when it asks (Settings › Apps › Default apps › Digital assistant app). The
+3. Make Robot your digital assistant when it asks (Settings › Apps › Default apps › Digital assistant app). The
    corner swipe and "hey robot" then open it, also from the lock screen.
-4. **Download what you need**, from the app's first screen, once (Wi-Fi recommended: Robot warns before any download
-   over 200 MB and lets you wait for Wi-Fi):
+4. Download what you need, once, from the app's first screen. Wi-Fi is best: Robot warns before any download over
+   200 MB and lets you wait for Wi-Fi.
 
    | What | Size | Needed for |
    |---|---|---|
@@ -56,32 +61,32 @@ it as a new app beside 0.9, not as an update, and nothing you have in 0.9 moves 
 install it: it downloads 1.0, says "The downloaded app isn't Robot, so it won't be installed." and then stops offering
 it. Both apps are called Robot; long-press an icon › App info shows which version it is.
 
-1. **Install 1.0** from the [release page](https://github.com/picocryptfan/robot-assistant/releases), beside 0.9,
+1. Install 1.0 from the [release page](https://github.com/picocryptfan/robot-assistant/releases), beside 0.9,
    and check its certificate as above: it is the same key.
-2. **People.** In 0.9: Settings › People, notes and calendar › People › More options (⋮) › Export (.vcf), and save
+2. People. In 0.9: Settings › People, notes and calendar › People › More options (⋮) › Export (.vcf), and save
    `Robot People.vcf`. In 1.0: the same page › More options › Import contacts file (.vcf), pick that file, then Import.
    It holds the people you confirmed, with their names, nicknames, numbers, emails and XMPP addresses. People Robot
    learned from Cheogram that you haven't confirmed, and which number or address Robot uses first for someone, don't
    come along.
-3. **Memory.** In 0.9: Settings › Memory › Export › Choose a file, and save `robot-memory.json` (it isn't encrypted).
+3. Memory. In 0.9: Settings › Memory › Export › Choose a file, and save `robot-memory.json` (it isn't encrypted).
    In 1.0, unlocked: Settings › Memory › Import, pick that file, and check the preview: what it adds, what is already
    there, and what it skips (a password, a PIN, a code or a card number is never imported: add those yourself with
    Settings › Memory › Add something, where they stay private). Tick "These are my own memories, from my own export"
    when it is your own file, then tap Import. Without the tick, Robot treats the imported items as something it read
    (an action they lead to asks first) until you open one in Settings › Memory and tap This is mine. Then let Robot
    delete the file (it offers to), or delete it yourself.
-4. **Models.** 1.0 downloads its models again, from its first screen (or the Model tab, Settings › Voice and Settings ›
+4. Models. 1.0 downloads its models again, from its first screen (or the Model tab, Settings › Voice and Settings ›
    Conversation). Robot's model can come from a file you already have instead: the Model tab › the model › Import a file
    copies it and checks its SHA-256 as a download is. The copy 0.9 downloaded is in 0.9's own folder, which the file
    picker can't open; with adb you can copy it out first (`adb shell ls /sdcard/Android/data/app.heyrobot/files/`, then
    `adb shell cp /sdcard/Android/data/app.heyrobot/files/<file> /sdcard/Download/`), import it, and delete the copy in
    Download afterwards. The voices, speech recognition and the translation engine always download again.
-5. **Make 1.0 your digital assistant**: Settings › Apps › Default apps › Digital assistant app, and pick Robot. Both are
+5. Make 1.0 your digital assistant in Settings › Apps › Default apps › Digital assistant app, and pick Robot. Both are
    listed as Robot: in 1.0, Settings › Assistant setup says "Android lists Robot as your assistant" once you picked the
    right one; if it doesn't, pick the other.
-6. **Uninstall 0.9**: long-press its icon › App info (it says version 0.9.0) › Uninstall. This deletes everything 0.9
+6. Uninstall 0.9: long-press its icon › App info (it says version 0.9.0) › Uninstall. This deletes everything 0.9
    kept.
-7. **Do the ADB fixes again** in 1.0 (Settings › Advanced › ADB fixes), with a computer or with Shizuku: 0.9's were for
+7. Do the ADB fixes again in 1.0 (Settings › Advanced › ADB fixes), with a computer or with Shizuku. 0.9's were for
    its app ID, so both show "Not done", and their commands now name `ai.robot_app`. Until then Android may stop using
    Robot as the assistant after a restart.
 
@@ -91,31 +96,32 @@ accesses (Robot asks again as you turn things on). Before step 6, share the note
 save the transcripts you want (a transcript › More options › Save as Markdown or Save as text). If Obtainium follows
 Robot for you, it follows 0.9's app ID: remove that entry and add the repository again.
 
-## What it can do
+## Features
 
-- **Answer by voice or text**, on the phone, and about a photo or the screen you're on (once the phone is unlocked).
-  Choose a smarter, slower model, or your own `.litertlm` or `.gguf` file.
-- **Do things, asking first when it should:** timers and alarms, texts and emails as drafts (you press Send), notes,
-  your calendar, contacts, directions in Organic Maps, the weather (Open-Meteo), the nearest place of a kind
-  (OpenStreetMap), your phone's storage, battery and memory, and freeing space. Every rule about when Robot asks first
-  is a switch in Settings › Safety & privacy.
-- **Remember what you ask it to**, encrypted on the phone, and **read, summarize, translate and answer your messages**
-  from the apps you choose (a reply goes only after you tap Send).
-- **Conversation mode:** transcribes a conversation in English and French, on the phone, translates it (also face to
+- Robot answers by voice or text, on the phone, and about a photo or the screen you're on (once the phone is
+  unlocked). You can choose a smarter, slower model, or your own `.litertlm` or `.gguf` file.
+- It sets timers and alarms. It drafts texts and emails: it writes the text, you press Send. It also handles notes,
+  your calendar and contacts, directions in Organic Maps, the weather (Open-Meteo), the nearest place of a kind
+  (OpenStreetMap), your phone's storage, battery and memory, and freeing space. Robot asks first when an action
+  needs it, and every rule about when it asks is a switch in Settings › Safety & privacy.
+- It remembers what you ask it to, encrypted on the phone.
+- It reads, summarizes, translates and answers your messages from the apps you choose, such as Cheogram. A reply
+  goes only after you tap Send.
+- Conversation mode transcribes a conversation in English and French, on the phone, translates it (also face to
   face, aloud) and summarizes it.
-- **Routines and a morning brief**, **headset mode** (your headset's button opens Robot) and **car mode**.
-- **Web search** with the service you choose (your own SearXNG, Brave, Kagi, Mojeek, DuckDuckGo's Instant Answers or a
-  public SearXNG), off until you set it up; answers name their sources. Or, with nothing to set up, a search in your
-  browser with Startpage, DuckDuckGo, Google and five others, each listed with its privacy level.
-- **Termux:** runs your own scripts and short commands, each command on a card you approve first; off until you set it
-  up.
-- **Helpers:** hand a question to a paid AI service with your own API key, or to a model on your own computer,
-  only when you ask or allow it.
-- **Send feedback** writes a bug report or an idea for you to send yourself; Robot sends nothing on its own.
+- Routines and a morning brief. Headset mode, where your headset's button opens Robot, and car mode.
+- Web search uses the service you choose: your own SearXNG, Brave, Kagi, Mojeek, DuckDuckGo's Instant Answers or a
+  public SearXNG. It is off until you set it up, and answers name their sources. With nothing to set up, you can
+  search in your browser with Startpage, DuckDuckGo, Google and five others, each listed with its privacy level.
+- Termux runs your own scripts and short commands. You approve each command on a card first, and it is off until you
+  set it up.
+- Helpers take a question to a paid AI service with your own API key, or to a model on your own computer. They do
+  that only when you ask or allow it.
+- Send feedback writes a bug report or an idea for you to send yourself. Robot sends nothing on its own.
 
 The full description of every feature, with its checks, is in [`robot/README.md`](robot/README.md).
 
-## Privacy, in short
+## Privacy
 
 - Your voice is turned into text on the phone and never recorded. Answers are made on the phone.
 - Nothing about you is collected. The people who make Robot receive nothing from your phone.
@@ -123,10 +129,10 @@ The full description of every feature, with its checks, is in [`robot/README.md`
   the daily update check, which you can turn off. You can turn off Robot's Network permission in GrapheneOS and
   everything on the phone keeps working.
 - The nearest-place search uses OpenStreetMap's Nominatim server unless you pick another one in Settings › Actions ›
-  Search server; you can switch servers there at any time without an update, or choose Never.
+  Search server. You can switch servers there at any time without an update, or choose Never.
 - Logs hold codes and numbers only, never what you said.
 
-The full policy: [`PRIVACY.md`](PRIVACY.md).
+The full policy is in [`PRIVACY.md`](PRIVACY.md).
 
 ## Models and licences
 
@@ -144,7 +150,7 @@ The full policy: [`PRIVACY.md`](PRIVACY.md).
 The uncensored model has had its refusals removed; it is a community build, and what you do with it is your
 responsibility. Robot is not a medical device.
 
-Known limitation: a `.litertlm` file you import yourself runs with Robot's own permissions (LiteRT-LM reads it inside
+One limit to know: a `.litertlm` file you import yourself runs with Robot's own permissions (LiteRT-LM reads it inside
 Robot's model process, which needs the GPU and the TPU), unlike a `.gguf` file, which runs in an isolated process with
 none. Robot checks the file's layout strictly before LiteRT-LM reads it, but not the model inside, and warns you before
 you pick one: only import files you trust. See [`SECURITY.md`](SECURITY.md).
@@ -177,9 +183,9 @@ and how a release is made, are in [`robot/README.md`](robot/README.md) ("Buildin
 
 ## Contributing, security and licence
 
-- How to build, test and send changes: [`CONTRIBUTING.md`](CONTRIBUTING.md). What changed in each version:
+- How to build, test and send changes is in [`CONTRIBUTING.md`](CONTRIBUTING.md). What changed in each version is in
   [`CHANGELOG.md`](CHANGELOG.md).
-- Found a security problem? Please report it privately: [`SECURITY.md`](SECURITY.md).
+- If you find a security problem, please report it privately: [`SECURITY.md`](SECURITY.md).
 - Robot is Copyright (C) 2026 the Robot authors, and free software: you can redistribute it and/or modify it under the
   terms of the GNU General Public License version 3 ([`LICENSE`](LICENSE)). It comes with NO WARRANTY. Third-party parts
   keep their own licences ([`robot/THIRD_PARTY.md`](robot/THIRD_PARTY.md)).
