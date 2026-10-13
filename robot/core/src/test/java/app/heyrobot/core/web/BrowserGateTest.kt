@@ -89,6 +89,29 @@ class BrowserGateTest {
         assertEquals(setOf(AskWhy.SEARCH), other.why)
     }
 
+    /**
+     * Your own words go where your phrase sent them: the engine it names, Google for "google …", else your default. A model
+     * call (with a photo or the screen, the model answers the phrase) that sends them to another engine shows the card.
+     */
+    @Test fun yourWordsGoOnlyWhereYouSentThemWithoutACard() {
+        val browser = "search in my browser for café crème"
+        val elsewhere = ready(BrowserGate.prepare(BrowserSearchAction("café crème", BrowserEngine.GOOGLE), browser, ctx(browser), default))
+        assertFalse((elsewhere.action as BrowserSearchAction).own)
+        assertEquals(setOf(AskWhy.SEARCH), elsewhere.why)
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.BROWSER_SEARCH, false, RobotSettings(), elsewhere.why, asked = true))
+        val web = "search the web for café crème"
+        assertFalse((ready(BrowserGate.prepare(BrowserSearchAction("café crème", BrowserEngine.BING), web, ctx(web), default)).action as BrowserSearchAction).own)
+        // Your default named, or none: at once.
+        for (e in listOf(null, default)) {
+            val r = ready(BrowserGate.prepare(BrowserSearchAction("café crème", e), browser, ctx(browser), default))
+            assertEquals(BrowserSearchAction("café crème", default, own = true), r.action)
+            assertTrue(r.why.isEmpty())
+        }
+        // "Google cats" while Robot's own web search is off opens Google at once, as said.
+        val g = ready(BrowserGate.prepare(BrowserSearchAction("cats", BrowserEngine.GOOGLE), "google cats", ctx("google cats"), default))
+        assertEquals(BrowserSearchAction("cats", BrowserEngine.GOOGLE, own = true), g.action)
+    }
+
     @Test fun theEngineIsTheOneNamedTheOneSaidOrYourDefault() {
         assertEquals(BrowserEngine.BING, BrowserGate.engine(BrowserSearchAction("x", BrowserEngine.BING), "look it up on Google", default))
         assertEquals(BrowserEngine.GOOGLE, BrowserGate.engine(BrowserSearchAction("x"), "look it up on Google", default))
