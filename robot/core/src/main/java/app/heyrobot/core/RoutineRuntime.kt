@@ -311,13 +311,13 @@ object RoutineOutputs {
     }
 
     /**
-     * A decision that keeps the part for later ("Finish when I unlock") rather than dropping it: held for the lock screen
-     * or for parking, or kept from a device others may hear (asked about, or not private), to say once it is back on the
-     * phone or in private headphones.
+     * A decision that keeps the part for later ("Finish when I unlock") rather than dropping it: held for the lock screen,
+     * or kept from a device others may hear (asked about, or not private), to say once it is back on the phone or in
+     * private headphones.
      */
     fun waitsForUnlock(d: OutputDecision?): Boolean = when (d) {
         is OutputDecision.Ask -> true
-        is OutputDecision.Hold -> d.keep == Keep.UNLOCK || d.keep == Keep.PARK || d.why == HoldWhy.NOT_PRIVATE
+        is OutputDecision.Hold -> d.keep == Keep.UNLOCK || d.why == HoldWhy.NOT_PRIVATE
         else -> false
     }
 

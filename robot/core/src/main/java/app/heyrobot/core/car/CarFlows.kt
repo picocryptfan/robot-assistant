@@ -4,7 +4,6 @@ import app.heyrobot.core.messages.VoiceReply
 import app.heyrobot.core.output.AnswerCode
 import app.heyrobot.core.output.HandsFreeSafety
 import app.heyrobot.core.output.MessageNotice
-import app.heyrobot.core.output.OutputLines
 import app.heyrobot.core.output.ReplyWords
 import app.heyrobot.core.output.SpokenCard
 import app.heyrobot.core.output.SpokenCards
@@ -14,8 +13,8 @@ import app.heyrobot.core.output.SpokenLang
 // Pure. The car's multi-step flows as state machines (design §4.5): a call (choices, read-back, yes) and a message
 // (announce, read, reply, read-back, send). CarModeController keeps one flow at a time, gives it each thing heard (the
 // transcript, "" for silence) and carries out what it returns: say a line and listen again, place the call, send the
-// reply, or keep something for parking. Robot's own last line is kept in the state, so the microphone hearing it back
-// is never taken for an answer.
+// reply, or hand it to the screen's own card (the call tool's, or the reply's), as outside the car. Robot's own last line
+// is kept in the state, so the microphone hearing it back is never taken for an answer.
 
 /** What a flow asks the controller to do. */
 sealed class FlowEffect {
@@ -25,11 +24,11 @@ sealed class FlowEffect {
     data class Place(val number: String, val way: CallWay) : FlowEffect()
     /** Hand exactly [text] to the conversation's Reply action (ReplyChannel); say CarMessages.result after. */
     data class Send(val conversationKey: String, val text: String) : FlowEffect()
-    /** Keep it for parking ([summary]: the card's words, personal, never logged; [ask]: what is asked again once you park). */
-    data class Park(val code: ParkCode, val summary: String, val ask: String? = null) : FlowEffect()
+    /** The call tool's own card on the screen for who was asked (its choices, the learned name), as a typed "call Mom". */
+    data class CallCard(val why: CallOnScreen) : FlowEffect()
     /**
-     * "Hold screen actions until I park" off: the screen's own reply to the conversation, with exactly [text] (its card,
-     * its tap or its chat, as outside the car); [why]: what the car couldn't do by voice.
+     * The screen's own reply to the conversation, with exactly [text] ("": none yet): its card, its tap, its chat or its
+     * refusal, as outside the car; [why]: what the car didn't do by voice.
      */
     data class OnScreen(val text: String, val why: ReplyEnd) : FlowEffect()
 }
@@ -38,19 +37,17 @@ sealed class FlowEffect {
 data class CallFlowState(val plan: CallPlan, val tries: Int = 0, val rereads: Int = 0, val said: String = "", val done: Boolean = false)
 
 object CallFlow {
-    /** Start from CallTarget.plan: ask, or say why not (and keep it for parking when that is why). */
+    /** Start from CallTarget.plan: ask, or say why not (and show the call tool's card when that is why). */
     fun start(plan: CallPlan, asked: String, lang: SpokenLang): Pair<CallFlowState, List<FlowEffect>> {
         val st = CallFlowState(plan)
         return when (plan) {
             is CallPlan.Confirm -> ask(st, plan.card, lang)
             is CallPlan.Choose -> ask(st, plan.card, lang)
             is CallPlan.Emergency -> st.copy(done = true) to listOf(FlowEffect.Place(plan.number, CallWay.DIAL), FlowEffect.Say(plan.say, false))
-            is CallPlan.Hold -> st.copy(done = true) to listOf(FlowEffect.Say(plan.say, false), FlowEffect.Park(if (plan.why == CallHold.LEARNED) ParkCode.LEARNED_NAME else ParkCode.TOO_MANY, call(asked, lang)))
+            is CallPlan.OnScreen -> st.copy(done = true) to listOf(FlowEffect.Say(plan.say, false), FlowEffect.CallCard(plan.why))
             is CallPlan.Refuse -> st.copy(done = true) to listOf(FlowEffect.Say(plan.say, false))
         }
     }
-
-    private fun call(asked: String, lang: SpokenLang) = (if (lang == SpokenLang.FR) "Appeler " else "Call ") + asked.trim()
 
     private fun ask(st: CallFlowState, card: SpokenCard, lang: SpokenLang): Pair<CallFlowState, List<FlowEffect>> {
         val p = SpokenCards.prompt(card, lang)
@@ -72,7 +69,7 @@ object CallFlow {
             is CallNext.Cancelled -> st.copy(done = true) to listOf(FlowEffect.Say(next.say, false))
             CallNext.Reread -> st.copy(rereads = st.rereads + 1) to listOf(FlowEffect.Say(st.said, true))
             is CallNext.AskAgain -> st.copy(tries = st.tries + 1, said = next.say) to listOf(FlowEffect.Say(next.say, true))
-            is CallNext.Held -> st.copy(done = true) to listOf(FlowEffect.Say(next.say, false), FlowEffect.Park(ParkCode.NO_ANSWER, card.action))
+            is CallNext.OnScreen -> st.copy(done = true) to listOf(FlowEffect.Say(next.say, false), FlowEffect.CallCard(CallOnScreen.NO_ANSWER))
         }
     }
 }
@@ -91,7 +88,8 @@ data class MessageFlowState(
 
 /**
  * What a message flow needs from settings and the moment. [voice]: 0.7's reply rules for the conversation
- * (core messages HandsFreeReplies): only [VoiceReply.BY_VOICE] is sent after the read-back; the rest waits for parking.
+ * (core messages HandsFreeReplies): only [VoiceReply.BY_VOICE] is sent after the read-back; the rest goes to the screen's
+ * reply card.
  */
 data class MessageFlowContext(val settings: CarSettings, val safety: HandsFreeSafety, val locked: Boolean, val trusted: Boolean, val lang: SpokenLang,
     val voice: VoiceReply = VoiceReply.TAP_ONLY)
@@ -123,16 +121,12 @@ object MessageFlow {
     private fun startReply(st: MessageFlowState, dictated: String, c: MessageFlowContext): Pair<MessageFlowState, List<FlowEffect>> =
         when (val r = CarMessages.startReply(st.notice, dictated, c.settings, c.safety, c.locked, c.trusted, c.lang, c.voice)) {
             is ReplyStart.ReadBack -> st.copy(step = MessageStep.READ_BACK, draft = r.draft, said = r.say, tries = 0, rereads = 0) to listOf(FlowEffect.Say(r.say, true))
+            // Nothing said twice: no reply, as when you don't answer a card.
             is ReplyStart.AskText -> if (st.step == MessageStep.DICTATING && st.tries + 1 >= SpokenChoice.MAX_TRIES) {
-                st.copy(step = MessageStep.DONE) to listOf(FlowEffect.Say(OutputLines.KEEP_FOR_PARK.get(c.lang), false),
-                    FlowEffect.Park(ParkCode.REPLY, replyTo(st.notice, c.lang)))
+                st.copy(step = MessageStep.DONE) to listOf(FlowEffect.Say(CarMessages.NOT_SENT.get(c.lang), false))
             } else st.copy(step = MessageStep.DICTATING, said = r.say, tries = if (st.step == MessageStep.DICTATING) st.tries + 1 else 0) to listOf(FlowEffect.Say(r.say, true))
-            is ReplyStart.Hold -> st.copy(step = MessageStep.DONE) to listOf(FlowEffect.Say(r.say, false),
-                FlowEffect.Park(ParkCode.REPLY, replyTo(st.notice, c.lang), CarMessages.parkedAsk(st.notice, r.text, c.lang)))
             is ReplyStart.OnScreen -> st.copy(step = MessageStep.DONE) to listOf(FlowEffect.OnScreen(r.text, r.why))
         }
-
-    private fun replyTo(n: MessageNotice, lang: SpokenLang) = (if (lang == SpokenLang.FR) "Répondre à " else "Reply to ") + n.sender
 
     /** [heard] ("" for silence) at the current step. */
     fun on(st: MessageFlowState, heard: String, c: MessageFlowContext, wakePhrases: List<String> = emptyList()): Pair<MessageFlowState, List<FlowEffect>> {
@@ -160,7 +154,7 @@ object MessageFlow {
                 when (val next = CarMessages.answer(d, a, st.tries, st.rereads, lang)) {
                     is ReplyNext.Send -> st.copy(step = MessageStep.DONE) to listOf(FlowEffect.Send(next.conversationKey, next.text))
                     is ReplyNext.Done -> st.copy(step = MessageStep.DONE) to listOfNotNull(FlowEffect.Say(next.say, false),
-                        if (next.why == ReplyEnd.SILENCE) FlowEffect.Park(ParkCode.REPLY, replyTo(st.notice, lang), CarMessages.parkedAsk(st.notice, d.text, lang)) else null)
+                        if (next.why == ReplyEnd.SILENCE) FlowEffect.OnScreen(d.text, ReplyEnd.SILENCE) else null)
                     ReplyNext.Reread -> st.copy(rereads = st.rereads + 1) to listOf(FlowEffect.Say(st.said, true))
                     is ReplyNext.AskAgain -> st.copy(tries = st.tries + 1) to listOf(FlowEffect.Say(next.say, true))
                 }

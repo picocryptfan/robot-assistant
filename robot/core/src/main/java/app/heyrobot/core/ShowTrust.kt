@@ -11,7 +11,7 @@ import java.security.MessageDigest
  *   Ready card (through the :voice trampoline), the camera's return;
  * - an app's show keeps at most "from Robot's app" and a conversation to continue, and only with Robot's own single-use
  *   nonce ([From.ROBOT_APP]);
- * - anything else ([From.OTHER]) opens the plain panel: no routine, no Ready card, no parked list, no headset or call
+ * - anything else ([From.OTHER]) opens the plain panel: no routine, no Ready card, no headset or call
  *   session, no capture return, no spoken replies.
  */
 object ShowTrust {

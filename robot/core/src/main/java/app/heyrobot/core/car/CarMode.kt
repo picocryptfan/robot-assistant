@@ -17,9 +17,8 @@ import app.heyrobot.core.output.SpokenLang
 // Pure. Car mode (docs/plans/routines-headset-car-design.md §4): Robot's own hands-free mode over the car's standard
 // Bluetooth (HFP for the microphone and Robot's voice, A2DP optionally). It is not Android Auto, which GrapheneOS offers
 // only through sandboxed Google Play and which shows only Play apps with Android Auto support (PUBLISHED, GrapheneOS
-// usage guide). There is no activity recognition without Google Play services and coarse location gives no speed, so
-// being connected to your car counts as driving (the conservative choice); an optional driving signal ([CarInput.Driving])
-// can say you stopped.
+// usage guide). Being connected to your car is what turns car mode on; Robot never tries to tell whether the car is
+// moving, and nothing in car mode depends on it (1.0: no driving restrictions).
 //
 // CarModeController (:voice) keeps a [CarState] and feeds it [CarInput]s: the remembered car's devices coming and going
 // (AudioDeviceCallback, raw: the end grace is counted here), unlocks (USER_PRESENT), time, and what you say or tap. It
@@ -55,7 +54,7 @@ data class TrustedSession(val car: Int, val since: Long, val until: Long)
 /**
  * [car]: the remembered car (its number) car mode is for; null when you started it without one. [present]: remembered
  * enabled cars connected now. [declined]: you ended car mode while this car stayed connected, so it doesn't start again
- * until the car reconnects. [moving]: the optional driving signal (null: unknown, so driving).
+ * until the car reconnects.
  */
 data class CarState(
     val phase: CarPhase = CarPhase.OFF,
@@ -65,7 +64,6 @@ data class CarState(
     val trusted: TrustedSession? = null,
     val present: Set<Int> = emptySet(),
     val declined: Int? = null,
-    val moving: Boolean? = null,
     val startedBy: CarWhy? = null,
 ) {
     val on: Boolean get() = phase == CarPhase.ACTIVE || phase == CarPhase.ENDING
@@ -103,9 +101,6 @@ sealed class CarInput {
     data class Unlocked(override val at: Long) : CarInput()
 
     data class Tick(override val at: Long) : CarInput()
-
-    /** An optional driving signal: [moving] false means stopped (the "When you park" list may be offered). */
-    data class Driving(val moving: Boolean, override val at: Long) : CarInput()
 }
 
 sealed class CarEffect {
@@ -117,15 +112,13 @@ sealed class CarEffect {
     data class Say(val line: Line) : CarEffect()
     /** CarModeActivity, if the screen is on. */
     data object ShowCarScreen : CarEffect()
-    /** VoiceHub.carMode: the prompt line, the hidden panel features, spoken cards. */
+    /** Car mode on or off for the panel: the prompt's car line (short spoken answers) and the car's spoken flows. */
     data class CarModeFlag(val on: Boolean) : CarEffect()
     /** The "Driving (Robot)" Do Not Disturb rule (setAutomaticZenRuleState). */
     data class SetDnd(val on: Boolean) : CarEffect()
     /** UiModeManager.enableCarMode / disableCarMode. */
     data class AndroidCarMode(val on: Boolean) : CarEffect()
     data class Trusted(val on: Boolean, val why: TrustEnd) : CarEffect()
-    /** Car mode ended or you stopped: the "When you park" list's notification ("From your drive: 2 things"). */
-    data object ParkNotice : CarEffect()
     /** Voice log CAR_MODE. */
     data class Logged(val on: Boolean, val why: CarWhy) : CarEffect()
     /** Call [CarModeMachine.on] with a Tick at [at]. */
@@ -205,7 +198,6 @@ object CarModeMachine {
             else -> s to emptyList()
         }
         is CarInput.End -> end(s, CarWhy.ENDED_BY_YOU, settings)
-        is CarInput.Driving -> s.copy(moving = input.moving) to if (!input.moving && s.moving != false) listOf(CarEffect.ParkNotice) else emptyList()
         else -> s to emptyList()
     }
 
@@ -231,7 +223,6 @@ object CarModeMachine {
             if (settings.androidCarMode) add(CarEffect.AndroidCarMode(false))
             add(CarEffect.StopService)
             if (why == CarWhy.ENDED_BY_YOU) add(CarEffect.Say(CAR_OFF))
-            add(CarEffect.ParkNotice)
             add(CarEffect.Logged(false, why))
         }
         val declined = if (why == CarWhy.ENDED_BY_YOU && s.car != null && s.car in s.present) s.car else null

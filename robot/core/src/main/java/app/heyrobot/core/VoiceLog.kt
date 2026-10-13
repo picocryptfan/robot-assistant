@@ -6,7 +6,6 @@ import app.heyrobot.core.feedback.FeedbackKind
 import app.heyrobot.core.car.CallWay
 import app.heyrobot.core.car.CarWhy
 import app.heyrobot.core.car.NavKind
-import app.heyrobot.core.car.ParkCode
 import app.heyrobot.core.car.ReplyEnd
 import app.heyrobot.core.car.TrustEnd
 import app.heyrobot.core.headset.AnnounceCode
@@ -365,8 +364,7 @@ enum class VoiceEvent(val id: Int) {
     CAR_MODE(210),
     /** The trusted session (car functions on the lock screen): a = 1 on, 0 off, b = car [TrustEnd]. */
     CAR_TRUSTED(211),
-    /** Kept for when you park: a = car [ParkCode] (0: the list was shown, b = how many). */
-    CAR_PARKED(212),
+    // 212 was CAR_PARKED, 1.0's test builds' "kept for when you park": gone with that list, never used again.
     /** A call: a = car [CallWay], b = 1 for an emergency number (always the dialer). */
     CAR_CALL(213),
     /** A reply by voice in the car (0.7's messages): a = 1 handed to the app, 0 not, b = car [ReplyEnd]. */
@@ -1070,7 +1068,6 @@ object VoiceLogText {
             VoiceEvent.SPOKEN_CARD -> "Card by voice: " + code(CardVoiceCode.entries, a) + (if (b > 0) " · " + count(b, "answer") + " · " + code(AnswerCode.entries, c) else "")
             VoiceEvent.CAR_MODE -> "Car mode " + (if (a == 1) "on: " else "off: ") + code(CarWhy.entries, b)
             VoiceEvent.CAR_TRUSTED -> "Car mode's unlocked features " + (if (a == 1) "on: " else "off: ") + code(TrustEnd.entries, b)
-            VoiceEvent.CAR_PARKED -> if (a == 0) "From your drive: " + count(b, "thing") else "Kept for when you park: " + code(ParkCode.entries, a)
             VoiceEvent.CAR_CALL -> "Call: " + code(CallWay.entries, a) + if (b == 1) " · emergency number" else ""
             VoiceEvent.CAR_REPLY -> (if (a == 1) "Reply handed to the app" else "Reply not sent: " + code(ReplyEnd.entries, b))
             VoiceEvent.CAR_DND -> "Driving Do Not Disturb " + (if (a == 1) "set" else "cleared") + if (b == 1) "" else " (Android didn't take it)"

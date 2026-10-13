@@ -12,18 +12,21 @@ import app.heyrobot.core.output.SpeechSource
 import app.heyrobot.core.output.SpokenLang
 import app.heyrobot.core.output.Utterance
 
-// Pure. Driving-safe output (design §4.3 "Spoken style" and "Car screen", §4.5 flows 1 and 6, §4.8 "When you park",
-// §4.9 rule 7): short spoken answers ("Want more?" after two sentences), no long text read out, nothing to look at but
-// one status line, and everything that needs the screen or a tap kept on the "When you park" list, shown as one
-// notification when car mode ends. Navigation opens Organic Maps' route preview (om://route: no link starts navigation,
-// you tap Start when stopped). Music is the current player's play, pause, next and previous, sent as media keys.
+// Pure. Car mode's output (design §4.3 "Spoken style" and "Car screen", §4.5 flows 1 and 6): short spoken answers ("Want
+// more?" after two sentences), no long text read out, and one status line on the big-button screen. 1.0 (the user, 13
+// Oct 2026): nothing is held for when you park; what needs the screen opens as it would outside the car, since a
+// passenger may be the one asking. Navigation opens your maps app's route preview (om://route: no link starts navigation
+// by itself, so you tap Start). Music is the current player's play, pause, next and previous, sent as media keys.
 
 /** Car mode's spoken style. */
 object CarSpeech {
     const val MAX_SENTENCES = 2
 
-    /** The system prompt's car-mode line (about 25 tokens, EST); Prompt.kt adds it while car mode is on (PromptTest limits it). */
-    const val PROMPT_LINE = " The user is driving: answer in one or two short spoken sentences, never ask them to read or tap anything."
+    /**
+     * The system prompt's car-mode line (about 15 tokens, EST); Prompt.kt adds it while car mode is on (PromptTest limits
+     * it). The style only: nothing in it keeps the model from a tool or a card (1.0, no driving restrictions).
+     */
+    const val PROMPT_LINE = " Car mode is on: answer in one or two short spoken sentences."
 
     val WANT_MORE = Line("Want more?", "Tu en veux plus?")
 
@@ -57,14 +60,11 @@ object CarScreen {
 
     enum class Button { TALK, MESSAGES, CALL, NAVIGATE_HOME, END }
 
-    /** What the panel hides in car mode. */
-    enum class Hidden { ASK_ABOUT_SCREEN, CAMERA, TIPS }
-
     /** The screen's buttons: Messages only once 0.7 is there, Navigate home only with a saved home. */
     fun buttons(messages: Boolean, home: Boolean): List<Button> = listOfNotNull(Button.TALK, Button.MESSAGES.takeIf { messages }, Button.CALL,
         Button.NAVIGATE_HOME.takeIf { home }, Button.END)
 
-    /** One status line of at most [MAX_STATUS] characters ("Listening…", "Calling Mom", "2 things for when you park"). */
+    /** One status line of at most [MAX_STATUS] characters ("Listening…", "Calling Mom"). */
     fun status(text: String): String {
         val t = text.replace(Regex("\\s+"), " ").trim()
         if (t.length <= MAX_STATUS) return t
@@ -74,41 +74,6 @@ object CarScreen {
 
     /** The notification's and screen's title: with the key while trusted. */
     fun title(trusted: Boolean, lang: SpokenLang): String = if (trusted) CarGate.INDICATOR.get(lang) else if (lang == SpokenLang.FR) "Mode auto" else "Car mode"
-}
-
-/** Why something waits for parking. Also the voice log's CAR_PARKED a. */
-enum class ParkCode(override val id: Int, override val title: String) : LogCode {
-    NEW_TEXT(1, "a new text"), NEEDS_SCREEN(2, "needs the screen"), WHO_UNSURE(3, "not sure who"), MUST_SEE(4, "must be seen"),
-    LEARNED_NAME(5, "a name learned from a notification"), REPLY(6, "a reply"), TOO_MANY(7, "too many choices"), READ_LATER(8, "to read later"),
-    NO_ANSWER(9, "no answer"),
-}
-
-/** One thing kept for parking: [summary] is personal (the card's words), never logged. */
-data class ParkItem(val code: ParkCode, val summary: String, val at: Long) {
-    override fun toString(): String = "ParkItem($code)"
-}
-
-/** The "When you park" list (the routines' ready.json with the origin "car", §4.8). */
-object ParkList {
-    const val MAX = 20
-
-    /** [list] with [item] (the same thing once; at most [MAX], the oldest dropped). */
-    fun add(list: List<ParkItem>, item: ParkItem): List<ParkItem> =
-        (list.filterNot { it.code == item.code && it.summary == item.summary } + item).takeLast(MAX)
-
-    /** The notification when car mode ends: "From your drive: 2 things"; null when nothing waits. */
-    fun notice(n: Int, lang: SpokenLang): String? = when {
-        n <= 0 -> null
-        lang == SpokenLang.FR -> if (n == 1) "De ton trajet : 1 chose" else "De ton trajet : $n choses"
-        else -> if (n == 1) "From your drive: 1 thing" else "From your drive: $n things"
-    }
-
-    /** The car screen's status line: "2 things for when you park". */
-    fun status(n: Int, lang: SpokenLang): String? = when {
-        n <= 0 -> null
-        lang == SpokenLang.FR -> if (n == 1) "1 chose pour quand tu seras stationné" else "$n choses pour quand tu seras stationné"
-        else -> if (n == 1) "1 thing for when you park" else "$n things for when you park"
-    }
 }
 
 /** Where "navigate …" goes. Also the voice log's CAR_NAV a. */
@@ -132,18 +97,18 @@ sealed class NavPlan {
     data class Route(val uri: String, override val say: String, override val kind: NavKind) : NavPlan()
     /** Hand to the nearest-place flow for [what]. */
     data class Nearest(val what: String, override val say: String) : NavPlan() { override val kind get() = NavKind.NEAREST }
-    /** Organic Maps' search for [query]: you pick when you're stopped. */
+    /** Organic Maps' search for [query]: you pick the place there. */
     data class Search(val query: String, override val say: String) : NavPlan() { override val kind get() = NavKind.SEARCH }
     data class Unlock(override val say: String) : NavPlan() { override val kind get() = NavKind.LOCKED }
     data class NoPlace(override val say: String) : NavPlan() { override val kind get() = NavKind.NO_PLACE }
 }
 
 object CarNavigate {
-    val ROUTE_READY = Line("Route ready in your maps app. Tap Start when you're stopped.", "L'itinéraire est prêt dans ton application de cartes. Appuie sur Démarrer quand tu seras arrêté.")
-    val ROUTE_LOCKED = Line("Route ready in your maps app. Unlock to see it, and tap Start when you're stopped.",
-        "L'itinéraire est prêt dans ton application de cartes. Déverrouille pour le voir, et appuie sur Démarrer quand tu seras arrêté.")
+    val ROUTE_READY = Line("Route ready in your maps app. Tap Start to go.", "L'itinéraire est prêt dans ton application de cartes. Appuie sur Démarrer pour partir.")
+    val ROUTE_LOCKED = Line("Route ready in your maps app. Unlock to see it, then tap Start.",
+        "L'itinéraire est prêt dans ton application de cartes. Déverrouille pour le voir, puis appuie sur Démarrer.")
     val UNLOCK_TO_START = Line("Unlock to start the route.", "Déverrouille pour lancer l'itinéraire.")
-    val PICK_WHEN_STOPPED = Line("Pick it in your maps app when you're stopped.", "Choisis-le dans ton application de cartes quand tu seras arrêté.")
+    val PICK_IN_MAPS = Line("Pick it in your maps app.", "Choisis-le dans ton application de cartes.")
     val HERE = Line("Here", "Ici")
 
     fun noPlace(home: Boolean, lang: SpokenLang): String = when (lang) {
@@ -172,7 +137,7 @@ object CarNavigate {
                 NavPlan.Route(uri, say, kind)
             }
             is NavDestination.Nearest -> NavPlan.Nearest(dest.what, say)
-            is NavDestination.Other -> NavPlan.Search(dest.query, PICK_WHEN_STOPPED.get(lang))
+            is NavDestination.Other -> NavPlan.Search(dest.query, PICK_IN_MAPS.get(lang))
         }
     }
 }
@@ -180,7 +145,7 @@ object CarNavigate {
 /** The drive brief (§4.4 "Drive brief when the car connects", off): the weather, then what's next. */
 enum class DriveItem { WEATHER, NEXT_EVENT }
 
-/** What of the drive brief is said now, asked first ("Read it aloud?"), or held (for the unlock or parking). */
+/** What of the drive brief is said now, asked first ("Read it aloud?"), or held (for the unlock, or the screen). */
 data class DriveBriefPlan(val speak: List<DriveItem>, val ask: List<DriveItem>, val held: List<DriveItem>)
 
 object DriveBrief {
