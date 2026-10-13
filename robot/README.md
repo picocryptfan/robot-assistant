@@ -6216,6 +6216,22 @@ on a card whose run ended after Stop (its result is dropped as late). (Robot's o
 "Termux updates, the update lock and the Shizuku path (1.0)" above.) Termux:API commands are read and classified (sends and calls: red line, tap only; personal
 reads mark the output personal), but their phone checks (T-21) haven't run.
 
+### On the phone (1.0.0-rc3: Ask a helper, the new icon)
+
+rc2 looked for updates in the old private repository, so install rc3 by hand once; from rc3 on, updates come from
+picocryptfan/robot-assistant.
+
+1. **Ask a helper.** With a helper on: "ask the helper why the sky is blue", "ask a helper what a heron eats",
+   « demande à l'assistant pourquoi le ciel est bleu », and the old "ask Claude what day it is": *done when* all four go
+   to your helper and the app says "Ask a helper" everywhere.
+2. **Near misses.** "help", "ask for help", "ask my helper to pick up milk", "don't ask the helper, what's 12 times 7?":
+   *done when* none goes to a helper, and "ask my helper to …" becomes a message card.
+3. **No helper.** Every helper off, "ask the helper what a heron eats": *done when* Robot says every helper is off and
+   sends nothing.
+4. **The icon.** *Done when* the home screen, themed icons and the status bar show the new talking head.
+5. **The panel robot.** *Done when* it shows listening while you speak or a card waits for yes/no, typing while Robot
+   thinks, speaking while it reads aloud, idle otherwise, in both looks, and switches without a fade with animations off.
+
 ### On the phone (1.0.0-rc2 security fixes)
 
 Pixel 10 Pro, GrapheneOS. Watch Settings › Advanced › Voice log.

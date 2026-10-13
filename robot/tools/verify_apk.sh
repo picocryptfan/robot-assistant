@@ -39,7 +39,7 @@ cert=$("$BT/apksigner" verify --print-certs "$APK" 2>/dev/null | sed -n 's/.*cer
 sigv=$("$BT/apksigner" verify -v "$APK" 2>/dev/null)
 grep -qE "Verified using v[23] scheme \(APK Signature Scheme v[23]\): true" <<<"$sigv" && pass "v2/v3 signature verifies" || fail "v2/v3 signature"
 badging=$("$BT/aapt2" dump badging "$APK" 2>/dev/null)
-has "package: name='ai.robot_app' versionCode='1000002' versionName='1.0.0-rc2'" "$badging" "package ai.robot_app 1.0.0-rc2 (1000002)"
+has "package: name='ai.robot_app' versionCode='1000003' versionName='1.0.0-rc3'" "$badging" "package ai.robot_app 1.0.0-rc3 (1000003)"
 has "minSdkVersion:'34'" "$badging" "minSdk 34"
 has "targetSdkVersion:'36'" "$badging" "targetSdk 36"
 has "application-label:'Robot'" "$badging" "label Robot"
