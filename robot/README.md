@@ -1,4 +1,4 @@
-# Robot (phases 1 and 2, Ask Claude, Helpers)
+# Robot (phases 1 and 2, Ask a helper, Helpers)
 
 A private voice assistant for GrapheneOS on the Pixel 10 Pro (since 0.4.7 also the Pixel 9a and other Pixels: "What's new
 in 0.4.7" below). Open it with the corner swipe, from the lock
@@ -11,8 +11,9 @@ Mail), keeps and finds notes, reads and adds calendar events and looks up contac
 Since 0.4.0 it also checks the weather (online, from Open-Meteo, when you ask) and your phone's storage, battery and
 memory, helps free memory and storage, finds the nearest place of a kind online (OpenStreetMap, when you ask) for
 Organic Maps' route, and has every rule about when it asks first as a switch in Settings › Safety & privacy.
-Since 0.3.0, and only when you ask (or let it), Robot can hand a question to Claude: through the Claude API with your
-key, or by opening the Claude app (see "Ask Claude" below). Since 0.4.5 Settings › About › Licences lists every part
+Since 0.3.0, and only when you ask (or let it), Robot can hand a question to a helper ("Ask a helper", called Ask Claude
+before 1.0): to Claude through the Anthropic API with your key, or by opening the Claude app (see "Ask a helper (0.3.0)"
+below). Since 0.4.5 Settings › About › Licences lists every part
 Robot is made of, with its licence, and the look has begun to move to stock Android ("What's new in 0.4.5" below). Since
 0.6.0 it also transcribes a conversation in French and English, on the phone, translates it (also face to face, aloud)
 and summarizes it (see "Conversation mode (0.5.0)" below), and it can hand a question to any company's model or to a
@@ -3005,6 +3006,26 @@ exactly as before. Robot still stays offline unless you ask a helper ("ask Gemin
 check hard questions with one, and only text leaves the phone. Design: `../docs/ask-claude.md` for the rules every
 helper follows; this section for what 0.6.0 adds.
 
+### Ask a helper (1.0)
+
+In 1.0 the feature is called **Ask a helper**, and so is everything the app shows about it (Settings, tips, the setup
+guide, the voice log). You don't need a helper's name:
+
+| You say | Robot |
+|---|---|
+| "ask the helper …", "ask a helper …", "ask my helper …" | asks the helper it checks with (Settings › Helpers › When Robot needs help › Ask; else the first one it can ask itself, else the first one on) |
+| « demande à l'assistant … », « demande à un assistant … » (also without the « à ») | the same, in French |
+| "ask the helper" alone | that helper joins the conversation, as "go get …" does |
+| "ask Claude …", "Claude, what's …", « demande à Claude … » | as before: still heard, never shown or suggested |
+| "ask Gemini …", "go get Jarvis" | the helper you named, as since 0.6.0 |
+
+The words are code, like a helper's name: only after "ask" or « demande (à) », at the start of what you said. "The
+helper is coming at six", "talk to the helper" and "go get the helper" stay with Robot, and "help" is never "helper".
+"Ask my helper to pick up the kids" (or "… if she can stay late") is a message for a person, not a question for a
+helper. "Don't ask the helper", "not the helper" and « ne demande pas à l'assistant » turn the helper down, as "not
+Claude" does, and "yes, ask the helper" answers an offer. Routines refuse the new phrases as they refuse "ask Claude".
+No helper can be called "Helper" or "Assistant". With no helper on, Robot says so and where to turn one on.
+
 ### What you can add (Settings › Helpers › Add a helper)
 
 | Helper | How Robot talks to it | Models it lists first | Web search |
@@ -4336,10 +4357,11 @@ inside Robot's own activity and is unchanged.
     deadline: Organic Maps opens once, never twice. "The nearest pharmacy near 5692 Avenue du Parc": a plain search
     (an address never goes online). `adb logcat -s Robot | grep maps_nearest`: codes only.
 
-## Ask Claude (0.3.0)
+## Ask a helper (0.3.0, as Ask Claude)
 
-Robot stays offline by default. Nothing goes to Claude unless you ask for it ("hey robot, ask Claude why the sky is
-blue", "go get Claude"), or you let Robot check hard questions with Claude ("When Robot needs help" below). Voice stays
+This section describes the feature as 0.3.0 built it, with Claude as its only helper; what 1.0 calls it and how you
+say it are in "Ask a helper (1.0)" above. Robot stays offline by default. Nothing goes to Claude unless you ask for it
+("hey robot, ask a helper why the sky is blue", "go get Claude"), or you let Robot check hard questions with Claude ("When Robot needs help" below). Voice stays
 on the phone: speech to text and text to speech run here, and only text leaves it. Ask Claude is on by default; without
 an API key, questions for Claude open the Claude app. Spec: `../docs/ask-claude.md`.
 

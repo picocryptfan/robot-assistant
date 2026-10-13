@@ -36,6 +36,9 @@ History, notes, transcripts, keys and routines don't move: share or save what yo
   is complete when replies aren't spoken.
 - The third-party source bundle now also holds slimt and its parts, llama.cpp and KleidiAI, and Robot's own native
   sources; `tools/repro_check.sh` builds the APK twice and compares; build-tools are pinned to 35.0.0.
+- **"Ask Claude" is now "Ask a helper".** Say "ask the helper …", "ask a helper …" or "ask my helper …" (« demande à
+  l'assistant … », « demande à un assistant … ») and Robot asks the helper it checks with (Settings › Helpers › When
+  Robot needs help › Ask). "Ask Claude …" still works when spoken; the app no longer shows it.
 - The Home screen's corner-swipe tip no longer says Robot sees the screen on the lock screen.
 - Public README, CONTRIBUTING, CHANGELOG, issue templates; PRIVACY and SECURITY brought up to date.
 - **Setup guide**: on first launch (and once more whenever a new version of the guide comes), a guide walks through
