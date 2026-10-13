@@ -137,7 +137,7 @@ class SetupGuideScreenTest {
     private fun line(title: String, state: String) = rule.onNode(hasText(title) and hasText(state)).assertExists()
 
     private val titles = listOf(
-        "Welcome to Robot", "What Robot can do", "Your phone and Robot's brain", "Voice", "Opening Robot", "How Robot asks first",
+        "Welcome to Robot™", "What Robot can do", "Your phone and Robot's brain", "Voice", "Opening Robot", "How Robot asks first",
         "People, texts, email, calendar and notes", "Messages", "Memory", "Weather and places", "Conversation mode", "Routines and the morning brief",
         "Headset and car", "Helpers (optional)", "Web search and Termux (optional)", "Updates and feedback", "You're set up",
     )
@@ -175,7 +175,7 @@ class SetupGuideScreenTest {
         assertEquals(GuideStep.PHONE, stores.state.at)
         rule.onNode(hasText("Back") and hasClickAction()).performClick()
         rule.onNode(hasText("Back") and hasClickAction()).performClick()
-        heading("Welcome to Robot")
+        heading("Welcome to Robot™")
         // Welcome has no Back button.
         rule.onNode(hasText("Back") and hasClickAction()).assertDoesNotExist()
         assertEquals(0, closed)

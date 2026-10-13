@@ -1,4 +1,4 @@
-# Robot
+# Robot™
 
 > Draft for review (written for 1.0 against Robot 0.9.0's code). Check the repository links, the certificate
 > fingerprint and the sizes against the release before publishing.
@@ -193,6 +193,7 @@ and how a release is made, are in [`robot/README.md`](robot/README.md) ("Buildin
 - How to build, test and send changes is in [`CONTRIBUTING.md`](CONTRIBUTING.md). What changed in each version is in
   [`CHANGELOG.md`](CHANGELOG.md).
 - If you find a security problem, please report it privately: [`SECURITY.md`](SECURITY.md).
+- Robot™ and Robot Assistant™ are trademarks of the Robot project.
 - Robot is Copyright (C) 2026 the Robot authors, and free software: you can redistribute it and/or modify it under the
   terms of the GNU General Public License version 3 ([`LICENSE`](LICENSE)). It comes with NO WARRANTY. Third-party parts
   keep their own licences ([`robot/THIRD_PARTY.md`](robot/THIRD_PARTY.md)).
