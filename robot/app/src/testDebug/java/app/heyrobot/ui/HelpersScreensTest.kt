@@ -48,14 +48,16 @@ class HelpersScreensTest {
     @get:Rule val rule = createComposeRule()
     private val log = ActionLog()
     private val snap = Snapshot(facts = facts())
+    /** Claude as installs before 1.0.0 had it (a new install has no helper: [aNewInstallOffersToAddOne]). */
+    private val legacy = RobotSettings(helpers = listOf(HelperConfig.claude()))
 
-    private fun helpers(start: RobotSettings = RobotSettings()): SettingsHost {
+    private fun helpers(start: RobotSettings = legacy): SettingsHost {
         val host = SettingsHost(start)
         rule.showSettings(host) { s, u -> HelpersScreen(s, snap, u, log.actions, SnackbarHostState(), onBack = {}) }
         return host
     }
 
-    private fun claude(start: RobotSettings = RobotSettings()): SettingsHost {
+    private fun claude(start: RobotSettings = legacy): SettingsHost {
         val host = SettingsHost(start)
         rule.showSettings(host) { s, u -> HelperScreen(HelperConfig.CLAUDE_ID, s, snap, u, log.actions, SnackbarHostState(), onBack = { log += "back" }) }
         return host
@@ -76,7 +78,7 @@ class HelpersScreensTest {
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.inDialog("Off").performClick()
         rule.onNode(isDialog()).assertDoesNotExist()
-        assertEquals(RobotSettings(help = Escalation.OFF), host.last)
+        assertEquals(legacy.copy(help = Escalation.OFF), host.last)
         rule.scrollToText("Daily budget for all helpers")
         rule.onRow("Daily budget for all helpers")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "Today: $0.00 of $1.00 (an estimate)")).performClick()
@@ -153,5 +155,36 @@ class HelpersScreensTest {
     @Test fun light() {
         helpers()
         rule.shot("helpers_light")
+    }
+
+    @Test fun aNewInstallOffersToAddOne() {
+        // 1.0.0: no helper until you add one; "Add a helper" lists every company (its app, or its API) and your server.
+        helpers(RobotSettings())
+        rule.onNode(hasText("No helpers")).assertExists()
+        rule.onRow("Add a helper").assert(hasText("A company's model or its app, or a model on your own computer", substring = true)).performClick()
+        assertEquals(listOf("openPage ${Page.AddHelper}"), log)
+        rule.shot("helpers_none_light")
+    }
+
+    // The address dialog has a text field: Robolectric settles with one only on its default small screen (PreferencesTest).
+    @Test @Config(qualifiers = "w320dp-h640dp-mdpi")
+    fun eachCompanyWithAnAppSaysSo() {
+        rule.showSettings(SettingsHost()) { s, u -> AddHelperScreen(s, u, log.actions, SnackbarHostState(), onAdded = {}, onBack = {}) }
+        rule.onRow(Presets.OPENAI.title).assert(hasText("or the ChatGPT app, without a key", substring = true))
+        rule.onRow(Presets.ANTHROPIC.title).assert(hasText("or the Claude app, without a key", substring = true))
+        rule.scrollToText(Presets.GROQ.title)
+        rule.onRow(Presets.GROQ.title).assert(hasText("GPT-OSS 120B, GPT-OSS 20B, Qwen 3.8 27B"))
+        rule.scrollToText(Presets.XAI.title)
+        rule.onRow(Presets.XAI.title).assert(hasText("or the Grok app, without a key", substring = true))
+    }
+
+    @Test fun aHelperWithAnAppChoosesItOrItsApi() {
+        val gpt = HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck")
+        val host = SettingsHost(RobotSettings(helpers = listOf(gpt)))
+        rule.showSettings(host) { s, u -> HelperScreen("hgpt", s, snap, u, log.actions, SnackbarHostState(), onBack = {}) }
+        rule.scrollToText("Use")
+        rule.onRow("Use").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "ChatGPT app")).performClick()
+        rule.inDialog("OpenAI API").performClick()
+        assertEquals(app.heyrobot.core.ClaudeRoute.API, host.last.helper("hgpt")!!.route)
     }
 }

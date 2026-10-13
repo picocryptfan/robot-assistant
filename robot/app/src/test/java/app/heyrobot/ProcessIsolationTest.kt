@@ -522,6 +522,8 @@ class ProcessIsolationTest {
         val queries = doc.getElementsByTagName("queries").item(0) as Element
         val packages = queries.getElementsByTagName("package").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "name") } }.toSet()
         assertTrue(packages.containsAll(setOf("com.cheogram.android", "com.cheogram.android.playstore", "ch.protonmail.android", "com.anthropic.claude", "com.termux")))
+        // 1.0.0: every helper's app Robot can open is visible to it (Android 11+ package visibility).
+        assertTrue(packages.containsAll(app.heyrobot.core.helpers.Presets.ALL.mapNotNull { it.app }))
         val schemes = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "scheme") } }.toSet()
         assertTrue(schemes.containsAll(setOf("xmpp", "mailto", "smsto", "claude", "https")))
         val hosts = queries.getElementsByTagName("data").let { nl -> (0 until nl.length).map { (nl.item(it) as Element).getAttributeNS(ns, "host") } }.toSet()
@@ -1150,10 +1152,14 @@ class ProcessIsolationTest {
         // (and whether Claude's key couldn't be read just now or was removed, for the summary's words), nothing else of it.
         val linkUses = conv.values.flatMap { f -> Regex("""\bHelperLink\.(\w+)""").findAll(code(f)).map { it.groupValues[1] }.toList() }.toSet()
         assertTrue(linkUses.toString(), setOf("transcriptSession", "done", "networkAllowed", "keySaved", "unavailable", "unreadable").containsAll(linkUses))
-        // ...which is Claude's, with its fixed prompt, no tools and no web search.
+        // ...which is the chosen helper's (1.0.0: any helper with its API; Claude's before), always with its fixed transcript
+        // prompt, no tools and no web search, whichever client it uses.
         val link = code(File(java("app"), "app/heyrobot/assistant/HelperLink.kt"))
-        assertTrue(Regex("""fun transcriptSession\([^{]*\{[^}]*HelperConfig\.claude\(\)[^}]*ClaudeSession\([^)]*\bemptyList\(\), search = false, """ +
-            """conversation = false, system = ClaudePrompt\.TRANSCRIPT_SYSTEM\)""").containsMatchIn(link))
+        val ts = Regex("""fun transcriptSession\(ctx: Context, h: HelperConfig\): HelperSession\? \{[\s\S]*?\n    }""").find(link)!!.value
+        assertTrue(ts, Regex("""ClaudeSession\(held\.claude!!, ClaudeModel\.of\(h\.model\), emptyList\(\), search = false, conversation = false, system = ClaudePrompt\.TRANSCRIPT_SYSTEM\)""").containsMatchIn(ts))
+        assertTrue(ts, Regex("""OpenAiSession\(held\.http!!, h\.copy\(search = false\), emptyList\(\), conversation = false,.*?system = ClaudePrompt\.transcriptSystem\(h\.name\)\)""")
+            .containsMatchIn(ts.replace(Regex("\\s+"), " ")))
+        assertEquals(2, Regex("""(?<!transcript)Session\(""").findAll(ts).count())
         // The summary screen and the summaries' job are in the voice process (the main app opens the screen by name).
         assertEquals(emptyList<String>(), usersOf(Regex("""\bSummary(Jobs|Activity)\b|\bClaude(Api|App)Helper\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
         // The clip reader reads what you picked; nothing in conversation mode writes audio.

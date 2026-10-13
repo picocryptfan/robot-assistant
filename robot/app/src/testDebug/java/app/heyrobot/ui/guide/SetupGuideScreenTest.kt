@@ -387,7 +387,7 @@ class SetupGuideScreenTest {
 
     @Test fun theOptionalPagesOnlyOpenTheirSettings() {
         guide(Stores(GuideStep.HELPERS))
-        rule.onRow("Helpers").assert(hasText("Not set up: set one up later")).performClick()
+        rule.onRow("Helpers").assert(hasText("None yet: add one")).performClick()
         next()
         rule.scrollToText("Web search")
         rule.onRow("Web search").performClick()

@@ -113,7 +113,9 @@ class SettingsRootTest {
         // 0.8: headset.json and car.json's rows, from their defaults: the button on, car mode off.
         assertEquals("Button opens Robot · no headphones yet", headsetSummary(app.heyrobot.core.output.HeadsetFile(), app.heyrobot.core.output.DeviceMemory()))
         assertEquals("Off", app.heyrobot.core.car.CarSetup.summary(false, app.heyrobot.core.output.DeviceMemory()))
-        assertEquals("Claude · Ask first", helpersSummary(s, facts()))
+        // 1.0.0: a new install has no helper; Claude as installs before had it.
+        assertEquals("None", helpersSummary(s, facts()))
+        assertEquals("Claude · Ask first", helpersSummary(s.copy(helpers = listOf(app.heyrobot.core.helpers.HelperConfig.claude())), facts()))
         // 0.9: Settings › Termux (its own file), off by default.
         val t = app.heyrobot.core.termux.TermuxSettings()
         assertEquals("Off", termuxSummary(t, 2))

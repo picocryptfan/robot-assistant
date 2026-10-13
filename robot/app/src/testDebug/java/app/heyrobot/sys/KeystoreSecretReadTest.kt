@@ -237,7 +237,7 @@ class KeystoreSecretReadTest {
                 assertFalse(HelperKeyFiles.unreadable(ctx, h.id))
             }
             // A summary's Claude session: none, and the summary says it couldn't read the key just now.
-            assertNull(HelperLink.transcriptSession(ctx, ClaudeModel.DEFAULT))
+            assertNull(HelperLink.transcriptSession(ctx, claude))
             assertTrue(HelperLink.unavailable(claude.id))
             assertTrue(keystore.deleted.isEmpty())
         }
