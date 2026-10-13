@@ -125,7 +125,7 @@ History, notes, transcripts, keys and routines don't move: share or save what yo
 
 - **Conversation mode**: transcribes a conversation in French and English on the phone, with speaker labels.
 - **Fast translation engine** (Mozilla Bergamot fr↔en, run by slimt), the interpreter (face to face, aloud) and summaries.
-- **Helpers**: Ask Claude became Settings › Helpers: Claude, any company's API with your key, or a model on your own
+- **Helpers**: the paid AI helper became Settings › Helpers: any company's API with your key, or a model on your own
   computer.
 - **Updates**: Settings › About › Updates finds Robot's new releases on GitHub and installs them after checking each one.
 - Engine hardening: llama.cpp in its own isolated process.
@@ -169,8 +169,8 @@ Built conversation mode and the fast translation engine; released as part of 0.6
 
 ## 0.3.1 and 0.3.0
 
-- **Ask Claude**: hand a question to Claude through the API with your own key, or open it in the Claude app, only when
-  you ask or allow it.
+- **Paid AI helper**: hand a question to a paid AI service through its API with your own key, or open it in that
+  service's app, only when you ask or allow it.
 
 ## 0.2.3
 

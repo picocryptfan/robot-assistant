@@ -29,7 +29,7 @@ checks).
 ## Rules the code keeps
 
 - **Process isolation.** The AI model runs in `:brain` (and GGUF files in `:llama`), which have no network code; voice,
-  tools and online helpers run in `:voice`; the main app never loads an engine or the Claude SDK. `ProcessIsolationTest`
+  tools and online helpers run in `:voice`; the main app never loads an engine or a helper's SDK. `ProcessIsolationTest`
   checks this from the sources and the merged manifest and fails a change that breaks it.
 - **No content in logs.** Log with `RLog` (codes and numbers) and the voice log's fixed events. Never log what was said,
   typed, read, answered or sent, a name, a number, an address, a path of yours or a key.
@@ -47,7 +47,7 @@ checks).
 
 ## Dependencies
 
-- Dependencies are reviewed once a month (sherpa-onnx, LiteRT-LM and the NPU runtime; the Anthropic SDK, OkHttp and
+- Dependencies are reviewed once a month (sherpa-onnx, LiteRT-LM and the NPU runtime; the helper's Java SDK, OkHttp and
   Jackson; Kotlin, AGP and the Compose BOM) against the GitHub Advisory Database and OSV.
 - A high or critical advisory in a part Robot ships gets a patch release as soon as a fix is available; anything else
   waits for the next release.

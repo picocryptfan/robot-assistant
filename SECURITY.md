@@ -41,15 +41,15 @@ Only the latest release is supported. There is no bug bounty.
 
 **Out of scope:** the models' answers themselves (what a model says, or refuses to say, is not a vulnerability unless it
 gets past Robot's cards), what your own Termux scripts do, and third-party services and apps (Hugging Face, Mozilla's
-model storage, Open-Meteo, OpenStreetMap's Nominatim, the search services, Anthropic and the other helpers' providers,
+model storage, Open-Meteo, OpenStreetMap's Nominatim, the search services, the helpers' providers,
 Termux, Cheogram, Proton Mail, Organic Maps, GitHub): report those to them. A problem in a library Robot ships
-(sherpa-onnx, ONNX Runtime, LiteRT-LM, llama.cpp, slimt, the Anthropic SDK, OkHttp, Jackson, jsoup) is welcome here
+(sherpa-onnx, ONNX Runtime, LiteRT-LM, llama.cpp, slimt, the helper's Java SDK, OkHttp, Jackson, jsoup) is welcome here
 too, so Robot can update it; please also tell its maintainers.
 
 ## How Robot is built to be safe
 
 - The AI model runs in its own process (`:brain`), which has no network code; voice, tools and online helpers run in
-  `:voice`; the main app never loads an engine or the Claude SDK. Tests check that from the sources and the merged
+  `:voice`; the main app never loads an engine or a helper's SDK. Tests check that from the sources and the merged
   manifest. (Android grants the network per app, not per process: the separation is in the code, and the tests keep it.
   The same holds for Install unknown apps once you allow it: only the main process's updater installs, and only Robot's
   own update.)
