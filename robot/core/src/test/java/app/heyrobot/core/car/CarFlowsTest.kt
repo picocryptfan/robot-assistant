@@ -45,13 +45,14 @@ class CallTargetTest {
         assertEquals(CallWay.CALL, (plan("Mom", listOf(momMobile), direct) as CallPlan.Confirm).way)
         assertEquals(CallWay.DIAL, (plan("Mom", listOf(momMobile), direct.copy(hasCallPermission = false)) as CallPlan.Confirm).way)
         assertEquals(CallWay.DIAL, (plan("Mom", listOf(momMobile), direct.copy(callAfterSpokenYes = false)) as CallPlan.Confirm).way)
-        // "Yes" or "call" places it; "no" doesn't; silence twice keeps it for parking.
+        // "Yes" or "call" places it; "no" doesn't; silence twice shows the call tool's card on the screen.
         for (s in listOf("yes", "call", "call her", "oui", "appelle", "appelle-la")) {
             assertEquals(s, CallNext.Place("+15145550101", CallWay.DIAL), CallTarget.answer(p, SpokenChoice.answer(s, p.card), 0, 0, EN))
         }
         assertEquals(CallNext.Cancelled("Okay, no call."), CallTarget.answer(p, SpokenChoice.answer("no", p.card), 0, 0, EN))
         assertEquals(CallNext.Cancelled("D'accord, pas d'appel."), CallTarget.answer(p, SpokenChoice.answer("non", p.card), 0, 0, FR))
-        assertEquals(CallNext.Held("I'll keep that for when you park."), CallTarget.answer(p, SpokenChoice.answer("", p.card), 1, 0, EN))
+        assertEquals(CallNext.OnScreen("It's on the screen."), CallTarget.answer(p, SpokenChoice.answer("", p.card), 1, 0, EN))
+        assertEquals(CallNext.OnScreen("C'est à l'écran."), CallTarget.answer(p, SpokenChoice.answer("", p.card), 1, 0, FR))
         assertEquals(CallNext.Reread, CallTarget.answer(p, SpokenChoice.answer("repeat", p.card), 0, 0, EN))
     }
 
@@ -72,7 +73,9 @@ class CallTargetTest {
         assertTrue(plan("Mom", listOf(momMobile, momWork, momHome)) is CallPlan.Choose)
         val twins = plan("Mom", listOf(momMobile, momMobile.copy(number = "+1 514 555 0999"))) as CallPlan.Choose
         assertEquals(listOf("Martine Martin, mobile, ending 0101", "Martine Martin, mobile, ending 0999"), twins.card.options.map { it.label })
-        assertEquals(CallPlan.Hold(CallTarget.TOO_MANY.en, CallHold.TOO_MANY), plan("Mom", listOf(momMobile, momWork, momHome, momHome.copy(number = "5145550404"))))
+        // More than three: the call tool's card on the screen, as a typed "call Mom".
+        assertEquals(CallPlan.OnScreen("Several people match. Pick one on the screen.", CallOnScreen.TOO_MANY),
+            plan("Mom", listOf(momMobile, momWork, momHome, momHome.copy(number = "5145550404"))))
     }
 
     @Test fun emergencyNumbersAlwaysOpenTheDialer() {
@@ -125,8 +128,9 @@ class CallTargetTest {
         assertEquals(momMobile, (plan("Mom", listOf(PhoneCandidate("Martine", "m@x.example", xmpp = true), momMobile)) as CallPlan.Confirm).target)
         assertEquals(CallPlan.Refuse("I don't have a number for Bob.", CallRefuse.NOT_FOUND), plan("Bob", emptyList()))
         assertEquals(CallPlan.Refuse("Je n'ai pas de numéro pour Bob.", CallRefuse.NOT_FOUND), plan("Bob", emptyList(), lang = FR))
-        // A name learned from Cheogram: kept for parking.
-        assertEquals(CallPlan.Hold("I'll keep that for when you park.", CallHold.LEARNED), plan("Marie", listOf(momMobile.copy(learned = true))))
+        // A name learned from Cheogram: the call tool's card on the screen, which checks it.
+        assertEquals(CallPlan.OnScreen("Check who it is on the screen.", CallOnScreen.LEARNED), plan("Marie", listOf(momMobile.copy(learned = true))))
+        assertEquals(CallPlan.OnScreen("Vérifie qui c'est à l'écran.", CallOnScreen.LEARNED), plan("Marie", listOf(momMobile.copy(learned = true)), lang = FR))
         assertFalse(momMobile.toString().contains("Martine") || momMobile.toString().contains("0101"))
     }
 }
@@ -134,9 +138,7 @@ class CallTargetTest {
 /** Messages in the car (0.7; §4.5 flow 3, §4.11 "Reply payload"). */
 class CarMessagesTest {
     private val marie = MessageNotice("CHEOGRAM:me#marie", "Marie", "k1", "On se voit à 5?", "Cheogram", replyable = true)
-    /** "Hold screen actions until I park" on: today's holds (off is [noHolds]). */
-    private val s = CarSettings(holdWhileDriving = true)
-    private val noHolds = CarSettings()
+    private val s = CarSettings()
     private val safety = HandsFreeSafety()
 
     @Test fun announcing() {
@@ -177,65 +179,61 @@ class CarMessagesTest {
         assertEquals("Reply to Marie: I'm 10 minutes away. Send?", d.say)
         assertEquals("Réponse à Marie : I'm 10 minutes away. J'envoie?", CarMessages.readBack(d.draft, FR))
         assertEquals("Reply to Marie: See you at 5? Send?", CarMessages.readBack(d.draft.copy(text = "See you at 5?"), EN))
-        // "No" at the read-back sends nothing; silence twice keeps it for parking.
+        // "No" at the read-back sends nothing; silence twice hands the words to the screen's reply card (MessageFlow).
         val card = CarMessages.card(d.draft, EN)
         assertEquals(ReplyNext.Done("Okay, not sent.", ReplyEnd.DECLINED), CarMessages.answer(d.draft, SpokenChoice.answer("no", card), 0, 0, EN))
-        assertEquals(ReplyNext.Done("I'll keep that for when you park.", ReplyEnd.SILENCE), CarMessages.answer(d.draft, SpokenChoice.answer("", card), 1, 0, EN))
+        assertEquals(ReplyNext.Done("Your reply is on the screen.", ReplyEnd.SILENCE), CarMessages.answer(d.draft, SpokenChoice.answer("", card), 1, 0, EN))
+        assertEquals(ReplyNext.Done("Ta réponse est à l'écran.", ReplyEnd.SILENCE), CarMessages.answer(d.draft, SpokenChoice.answer("", card), 1, 0, FR))
         assertEquals(ReplyNext.AskAgain("Say yes or no."), CarMessages.answer(d.draft, SpokenChoice.answer("send it to Bob", card), 0, 0, EN))
         // Robot's own read-back heard back is never a "send".
         assertFalse(CarMessages.answer(d.draft, SpokenChoice.answer("I'm 10 minutes away send", card, d.say), 0, 0, EN) is ReplyNext.Send)
         assertEquals("Handed to Cheogram.", CarMessages.result(ReplyResult.HANDED_OVER, "Cheogram", EN))
         assertEquals("Remis à Cheogram.", CarMessages.result(ReplyResult.HANDED_OVER, "Cheogram", FR))
+        // Not handed over: never "when you park"; the screen's card has the words (but on the lock screen).
+        assertEquals("That didn't work. Your reply is on the screen.", CarMessages.result(ReplyResult.FAILED, "Cheogram", EN))
+        assertEquals("A new message just came. Your reply is on the screen.", CarMessages.result(ReplyResult.NEW_MESSAGES, "Cheogram", EN))
+        assertEquals("I can't send that by voice. Your reply is on the screen.", CarMessages.result(ReplyResult.NO_REPLY_ACTION, "Cheogram", EN))
+        assertEquals(CarGate.UNLOCK_ONCE.en, CarMessages.result(ReplyResult.LOCKED, "Cheogram", EN))
+        for (r in ReplyResult.entries) for (l in SpokenLang.entries) {
+            val line = CarMessages.result(r, "Cheogram", l)
+            assertFalse(line, line.contains("park") || line.contains("stationn"))
+        }
         assertFalse(d.draft.toString().contains("minutes"))
     }
 
-    @Test fun repliesThatWait() {
-        assertEquals(ReplyStart.Hold(CarMessages.CANT_REPLY.en, ReplyEnd.NOT_REPLYABLE, "ok"), CarMessages.startReply(marie.copy(replyable = false), "ok", s, safety, false, false, EN, VoiceReply.BY_VOICE))
-        assertEquals(ReplyEnd.GROUP, (CarMessages.startReply(marie.copy(group = "Famille"), "ok", s, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", s.copy(voiceReplies = false), safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", s, safety.copy(replyAfterSpokenYes = false), false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.LOCKED, (CarMessages.startReply(marie, "ok", s, safety, true, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
+    /**
+     * 1.0 (the user, 13 Oct 2026: no driving restrictions): what the car can't read back and send by voice goes to the
+     * screen's own reply to the conversation, with your words, exactly as outside the car. Nothing is kept for parking.
+     */
+    @Test fun repliesNotSentByVoiceGoToTheScreen() {
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.NOT_REPLYABLE, "ok"), CarMessages.startReply(marie.copy(replyable = false), "ok", s, safety, false, false, EN, VoiceReply.BY_VOICE))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.GROUP, "ok"), CarMessages.startReply(marie.copy(group = "Famille"), "ok", s, safety, false, false, EN, VoiceReply.TAP_ONLY))
+        val long = CarMessages.startReply(marie, "x ".repeat(200), s, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.OnScreen
+        assertEquals(ReplyEnd.TOO_LONG, long.why)
+        assertTrue(long.text.length > CarMessages.MAX_REPLY)
+        // A tap-only reply, and one that opens the chat: the screen's card or chat, with the words.
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "I'm late"), CarMessages.startReply(marie, "tell her I'm late", s, safety, false, false, EN, VoiceReply.TAP_ONLY))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "I'm late"), CarMessages.startReply(marie, "tell her I'm late", s, safety, false, false, EN, VoiceReply.OPEN_CHAT))
+        // "Replies by voice" off and "Send a reply after a spoken yes" off: the screen's card, as outside the car.
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.VOICE_OFF, "ok"), CarMessages.startReply(marie, "ok", s.copy(voiceReplies = false), safety, false, false, EN, VoiceReply.BY_VOICE))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.VOICE_OFF, "ok"), CarMessages.startReply(marie, "ok", s, safety.copy(replyAfterSpokenYes = false), false, false, EN, VoiceReply.BY_VOICE))
+        // 0.7's refusal: its own refusal on the screen.
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.LOCKED, "ok"), CarMessages.startReply(marie, "ok", s, safety, false, false, EN, VoiceReply.REFUSED))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.LOCKED, "ok"), CarMessages.startReply(marie, "ok", s, safety, true, true, EN, VoiceReply.REFUSED))
+        // Locked without a trusted session: 0.7's own lock-screen rule decides, as on a locked phone outside the car.
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.LOCKED, "ok"), CarMessages.startReply(marie, "ok", s, safety, true, false, EN, VoiceReply.BY_VOICE))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.LOCKED, "ok"), CarMessages.startReply(marie.copy(replyable = false), "ok", s, safety, true, false, EN, VoiceReply.TAP_ONLY))
+        // Without words where the screen takes it: "" (0.7 then drafts one for a tap, as a "reply" without words does).
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.VOICE_OFF, ""), CarMessages.startReply(marie, "tell her", s.copy(voiceReplies = false), safety, false, false, EN, VoiceReply.BY_VOICE))
+        // Read back and sent by voice where everything allows it; the trusted session counts as unlocked; empty asks.
+        assertTrue(CarMessages.startReply(marie, "ok", s, safety, false, false, EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
         assertTrue(CarMessages.startReply(marie, "ok", s, safety, true, true, EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
         assertEquals(ReplyStart.AskText("What should the reply say?"), CarMessages.startReply(marie, "tell her", s, safety, false, false, EN, VoiceReply.BY_VOICE))
-        assertEquals(ReplyEnd.TOO_LONG, (CarMessages.startReply(marie, "x ".repeat(200), s, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.Hold).why)
-        // New texts wait for parking unless "Open Cheogram now" (and unlocked).
-        assertEquals(NewTexts.KEEP_FOR_PARKING, CarMessages.newText(s, false))
-        assertEquals(NewTexts.OPEN_CHEOGRAM, CarMessages.newText(s.copy(newTexts = NewTexts.OPEN_CHEOGRAM), false))
-        assertEquals(NewTexts.KEEP_FOR_PARKING, CarMessages.newText(s.copy(newTexts = NewTexts.OPEN_CHEOGRAM), true))
-    }
-
-    @Test fun withoutTheHoldsRepliesGoToTheScreen() {
-        assertFalse(noHolds.holdWhileDriving)
-        // What the car can't read back and send by voice goes to the screen's own reply card (or the chat), with your words.
-        assertEquals(ReplyStart.OnScreen(ReplyEnd.NOT_REPLYABLE, "ok"), CarMessages.startReply(marie.copy(replyable = false), "ok", noHolds, safety, false, false, EN, VoiceReply.BY_VOICE))
-        assertEquals(ReplyStart.OnScreen(ReplyEnd.GROUP, "ok"), CarMessages.startReply(marie.copy(group = "Famille"), "ok", noHolds, safety, false, false, EN, VoiceReply.TAP_ONLY))
-        assertEquals(ReplyEnd.TOO_LONG, (CarMessages.startReply(marie, "x ".repeat(200), noHolds, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.OnScreen).why)
-        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "I'm late"), CarMessages.startReply(marie, "tell her I'm late", noHolds, safety, false, false, EN, VoiceReply.TAP_ONLY))
-        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "I'm late"), CarMessages.startReply(marie, "tell her I'm late", noHolds, safety, false, false, EN, VoiceReply.OPEN_CHAT))
-        // The same with the holds on: kept for parking.
-        for (v in listOf(VoiceReply.TAP_ONLY, VoiceReply.OPEN_CHAT)) {
-            assertEquals(ReplyStart.Hold("I'll keep that for when you park.", ReplyEnd.NEEDS_TAP, "I'm late"),
-                CarMessages.startReply(marie, "tell her I'm late", s, safety, false, false, EN, v))
-        }
-        // A spoken read-back still where it may be sent by voice; empty still asks.
-        assertTrue(CarMessages.startReply(marie, "tell her I'm late", noHolds, safety, false, false, EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
-        assertEquals(ReplyStart.AskText("What should the reply say?"), CarMessages.startReply(marie.copy(replyable = false), "tell her", noHolds, safety, false, false, EN, VoiceReply.TAP_ONLY))
-        // Never looser than outside the car: the lock rules, 0.7's refusal, "Replies by voice" and "Send a reply after a spoken yes" still keep it.
-        assertEquals(ReplyStart.Hold(CarGate.UNLOCK_ONCE.en, ReplyEnd.LOCKED, "ok"), CarMessages.startReply(marie.copy(replyable = false), "ok", noHolds, safety, true, false, EN, VoiceReply.TAP_ONLY))
-        assertTrue(CarMessages.startReply(marie, "ok", noHolds, safety, true, true, EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
-        assertEquals(ReplyEnd.LOCKED, (CarMessages.startReply(marie, "ok", noHolds, safety, true, true, EN, VoiceReply.REFUSED) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.LOCKED, (CarMessages.startReply(marie, "ok", noHolds, safety, false, false, EN, VoiceReply.REFUSED) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", noHolds.copy(voiceReplies = false), safety, false, false, EN, VoiceReply.TAP_ONLY) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", noHolds, safety.copy(replyAfterSpokenYes = false), false, false, EN, VoiceReply.TAP_ONLY) as ReplyStart.Hold).why)
-        // New texts open now, whatever the hidden "New texts while driving" row says; locked, they are still kept.
-        for (n in NewTexts.entries) {
-            assertEquals(NewTexts.OPEN_CHEOGRAM, CarMessages.newText(noHolds.copy(newTexts = n), false))
-            assertEquals(NewTexts.KEEP_FOR_PARKING, CarMessages.newText(noHolds.copy(newTexts = n), true))
-        }
+        assertEquals(ReplyStart.AskText("What should the reply say?"), CarMessages.startReply(marie.copy(replyable = false), "tell her", s, safety, false, false, EN, VoiceReply.TAP_ONLY))
     }
 }
 
-/** Driving-safe output, the park list, navigation and the drive brief (§4.3, §4.5, §4.8). */
+/** Car mode's output, navigation and the drive brief (§4.3, §4.5). */
 class DrivingTest {
     @Test fun shortAnswers() {
         assertEquals(CarSpeech.Short("It's 4 degrees.", null), CarSpeech.shorten("It's 4 degrees.", EN))
@@ -249,33 +247,17 @@ class DrivingTest {
         assertEquals(long.split(' ').size, (s.spoken.removeSuffix("… Want more?").split(' ') + s.rest!!.split(' ')).size)
         assertEquals(CarSpeech.Short("", null), CarSpeech.shorten("  ", EN))
         assertTrue(CarSpeech.PROMPT_LINE.length < 120)
+        // The style only: nothing in the model's car line keeps it from a tool, a card or the screen.
+        for (w in listOf("driving", "read", "tap", "screen", "never")) assertFalse(w, CarSpeech.PROMPT_LINE.lowercase().contains(w))
     }
 
     @Test fun theCarScreen() {
         assertEquals("Calling Mom", CarScreen.status("Calling  Mom"))
-        val st = CarScreen.status("2 things for when you park, and a very long tail that goes on")
+        val st = CarScreen.status("Calling Martine Martin, mobile, and a very long tail that goes on")
         assertTrue(st.length <= CarScreen.MAX_STATUS)
         assertTrue(st.endsWith("…"))
         assertEquals(listOf(CarScreen.Button.TALK, CarScreen.Button.CALL, CarScreen.Button.END), CarScreen.buttons(messages = false, home = false))
         assertEquals(5, CarScreen.buttons(messages = true, home = true).size)
-    }
-
-    @Test fun theParkList() {
-        var l = emptyList<ParkItem>()
-        l = ParkList.add(l, ParkItem(ParkCode.NEW_TEXT, "Text Bob: I'm late", 1))
-        l = ParkList.add(l, ParkItem(ParkCode.NEW_TEXT, "Text Bob: I'm late", 2))
-        l = ParkList.add(l, ParkItem(ParkCode.NEEDS_SCREEN, "Open Signal", 3))
-        assertEquals(2, l.size)
-        assertEquals(2L, l.first { it.code == ParkCode.NEW_TEXT }.at)
-        for (i in 0 until 30) l = ParkList.add(l, ParkItem(ParkCode.MUST_SEE, "x$i", 10L + i))
-        assertEquals(ParkList.MAX, l.size)
-        assertEquals("From your drive: 2 things", ParkList.notice(2, EN))
-        assertEquals("From your drive: 1 thing", ParkList.notice(1, EN))
-        assertEquals("De ton trajet : 2 choses", ParkList.notice(2, FR))
-        assertNull(ParkList.notice(0, EN))
-        assertEquals("2 things for when you park", ParkList.status(2, EN))
-        assertTrue(CarScreen.status(ParkList.status(2, FR)!!).length <= CarScreen.MAX_STATUS)
-        assertFalse(ParkItem(ParkCode.NEW_TEXT, "Text Bob", 1).toString().contains("Bob"))
     }
 
     @Test fun navigation() {
@@ -284,7 +266,9 @@ class DrivingTest {
         val here = 45.52 to -73.58
         val r = CarNavigate.plan(NavDestination.Home, s, here, locked = false, trusted = false, lang = EN) as NavPlan.Route
         assertEquals("om://route?sll=45.520000,-73.580000&saddr=Here&dll=45.500000,-73.600000&daddr=Maison&type=vehicle", r.uri)
-        assertEquals("Route ready in your maps app. Tap Start when you're stopped.", r.say)
+        assertEquals("Route ready in your maps app. Tap Start to go.", r.say)
+        assertEquals("L'itinéraire est prêt dans ton application de cartes. Appuie sur Démarrer pour partir.",
+            CarNavigate.plan(NavDestination.Home, s, here, false, false, FR).say)
         assertEquals(NavKind.HOME, r.kind)
         // Without a position: the place itself.
         assertTrue((CarNavigate.plan(NavDestination.Home, s, null, false, false, EN) as NavPlan.Route).uri.startsWith("geo:45.500000,-73.600000"))
@@ -294,7 +278,11 @@ class DrivingTest {
         assertEquals(NavPlan.Unlock("Unlock to start the route."), CarNavigate.plan(NavDestination.Home, s, here, true, false, EN))
         assertEquals(CarNavigate.ROUTE_LOCKED.en, CarNavigate.plan(NavDestination.Home, s, here, true, true, EN).say)
         assertEquals(NavPlan.Unlock("Unlock to start the route."), CarNavigate.plan(NavDestination.Other("airport"), s, here, true, true, EN))
-        assertEquals(NavPlan.Search("airport", "Pick it in your maps app when you're stopped."), CarNavigate.plan(NavDestination.Other("airport"), s, here, false, false, EN))
+        assertEquals(NavPlan.Search("airport", "Pick it in your maps app."), CarNavigate.plan(NavDestination.Other("airport"), s, here, false, false, EN))
+        // Nothing waits for when you're stopped.
+        for (l in listOf(CarNavigate.ROUTE_READY, CarNavigate.ROUTE_LOCKED, CarNavigate.PICK_IN_MAPS)) {
+            assertFalse(l.en, l.en.contains("stopped") || l.fr.contains("arrêté"))
+        }
         assertTrue(CarNavigate.plan(NavDestination.Nearest("gas station"), s, here, false, false, EN) is NavPlan.Nearest)
     }
 
@@ -315,7 +303,7 @@ class DrivingTest {
 class CarFlowMachinesTest {
     private val mom = listOf(PhoneCandidate("Martine Martin", "5145550101", PhoneLabel.MOBILE), PhoneCandidate("Martine Martin", "5145550202", PhoneLabel.WORK))
     private val marie = MessageNotice("CHEOGRAM:me#marie", "Marie", "k1", "T'es où?", "Cheogram", replyable = true)
-    private val c = MessageFlowContext(CarSettings(holdWhileDriving = true), HandsFreeSafety(), locked = false, trusted = false, lang = EN, voice = VoiceReply.BY_VOICE)
+    private val c = MessageFlowContext(CarSettings(), HandsFreeSafety(), locked = false, trusted = false, lang = EN, voice = VoiceReply.BY_VOICE)
 
     private fun call(vararg heard: String, plan: CallPlan): Pair<CallFlowState, List<List<FlowEffect>>> {
         var (st, fx) = CallFlow.start(plan, "Mom", EN)
@@ -335,11 +323,11 @@ class CarFlowMachinesTest {
         assertEquals(emptyList<FlowEffect>(), CallFlow.on(st, "yes", EN).second)
     }
 
-    @Test fun robotsOwnPromptIsNotAnAnswerAndSilenceTwiceIsParked() {
+    @Test fun robotsOwnPromptIsNotAnAnswerAndSilenceTwiceShowsTheCallCard() {
         val plan = CallTarget.plan("Mom", mom, CallRules(), false, false, EN) { false }
         val (st, fx) = call("Martine Martin mobile or Martine Martin work", "", plan = plan)
         assertEquals(listOf(FlowEffect.Say("Say the first or the second, or no.", true)), fx[1])
-        assertEquals(listOf(FlowEffect.Say("I'll keep that for when you park.", false), FlowEffect.Park(ParkCode.NO_ANSWER, "Call Mom")), fx[2])
+        assertEquals(listOf(FlowEffect.Say("It's on the screen.", false), FlowEffect.CallCard(CallOnScreen.NO_ANSWER)), fx[2])
         assertTrue(st.done)
     }
 
@@ -347,8 +335,12 @@ class CarFlowMachinesTest {
         val (st, fx) = CallFlow.start(CallTarget.plan("911", emptyList(), CallRules(CallSetting.CALL_AFTER_YES, true), false, false, EN) { it == "911" }, "911", EN)
         assertEquals(FlowEffect.Place("911", CallWay.DIAL), fx[0])
         assertTrue(st.done)
-        val (_, held) = CallFlow.start(CallTarget.plan("Marie", listOf(mom[0].copy(learned = true)), CallRules(), false, false, EN) { false }, "Marie", EN)
-        assertEquals(FlowEffect.Park(ParkCode.LEARNED_NAME, "Call Marie"), held[1])
+        // A learned name, or more than three numbers: the call tool's own card on the screen, as a typed "call Marie".
+        val (_, learned) = CallFlow.start(CallTarget.plan("Marie", listOf(mom[0].copy(learned = true)), CallRules(), false, false, EN) { false }, "Marie", EN)
+        assertEquals(listOf(FlowEffect.Say("Check who it is on the screen.", false), FlowEffect.CallCard(CallOnScreen.LEARNED)), learned)
+        val four = mom + mom.map { it.copy(number = it.number.replace("01", "09").replace("02", "08")) }
+        val (_, many) = CallFlow.start(CallTarget.plan("Mom", four, CallRules(), false, false, EN) { false }, "Mom", EN)
+        assertEquals(FlowEffect.CallCard(CallOnScreen.TOO_MANY), many.last())
         val (_, refused) = CallFlow.start(CallTarget.plan("Mom", mom, CallRules(), true, false, EN) { false }, "Mom", EN)
         assertEquals(listOf(FlowEffect.Say("Unlock to call.", false)), refused)
         // "Repeat" re-reads; "no" ends it.
@@ -382,10 +374,10 @@ class CarFlowMachinesTest {
         assertEquals(listOf(FlowEffect.Say("Reply to Marie: j'arrive. Send?", true)), fx[2])
         assertEquals(listOf(FlowEffect.Say("Okay, not sent.", false)), fx[3])
         assertFalse(fx.flatten().any { it is FlowEffect.Send })
-        // Robot's read-back heard back is not a "send"; nothing heard twice keeps the reply for parking, with your words.
+        // Robot's read-back heard back is not a "send"; nothing heard twice puts the reply on the screen's card, with your words.
         val (st2, fx2) = msg(MessageFlow.start(marie, c, true), "yes", "tell her I'm late", "Reply to Marie I'm late send", "")
         assertFalse(fx2.flatten().any { it is FlowEffect.Send })
-        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to “Marie”: I'm late"), fx2.last().last())
+        assertEquals(listOf(FlowEffect.Say("Your reply is on the screen.", false), FlowEffect.OnScreen("I'm late", ReplyEnd.SILENCE)), fx2.last())
         assertEquals(MessageStep.DONE, st2!!.step)
     }
 
@@ -404,35 +396,36 @@ class CarFlowMachinesTest {
         // Read at once (both settings), then the reply offer.
         val whole = c.copy(settings = CarSettings(announce = CarAnnounce.READ_WHOLE, readAloud = ReadAloud.ALWAYS))
         assertEquals(listOf(FlowEffect.Say("Marie says: T'es où?", false), FlowEffect.Say("Reply?", true)), MessageFlow.start(marie, whole, true).second)
-        // "Reply …" straight from the router, for an app without a Reply action: kept for parking.
+        // "Reply …" straight from the router, for an app without a Reply action: the screen's reply (it opens the chat).
         val (_, rfx) = MessageFlow.reply(marie.copy(replyable = false), "reply I'm late", c)
-        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to “Marie”: I'm late"), rfx.last())
-        // Dictation that says nothing twice: kept.
+        assertEquals(listOf(FlowEffect.OnScreen("I'm late", ReplyEnd.NOT_REPLYABLE)), rfx)
+        // Dictation that says nothing twice: no reply, nothing kept.
         val (dst, dfx) = msg(MessageFlow.start(marie, c, true), "yes", "yes", "", "")
-        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie"), dfx.last().last())
+        assertEquals(listOf(FlowEffect.Say("Okay, not sent.", false)), dfx.last())
         assertEquals(MessageStep.DONE, dst!!.step)
         // "Read my messages".
         assertEquals(MessageStep.OFFERED, MessageFlow.read(marie, c).first.step)
     }
 
-    @Test fun withoutTheHoldsTheScreenTakesTheReply() {
-        val off = c.copy(settings = CarSettings())
-        // "Reply …" for an app without a Reply action: the screen's own reply, with the words, nothing kept.
-        val (st, fx) = MessageFlow.reply(marie.copy(replyable = false), "reply I'm late", off)
+    /** 1.0: in the car a reply that can't go by voice is the screen's, unlocked and locked, as outside the car; nothing is parked. */
+    @Test fun theScreenTakesWhatTheCarDoesntSendByVoice() {
+        // "Reply …" for an app without a Reply action: the screen's own reply, with the words.
+        val (st, fx) = MessageFlow.reply(marie.copy(replyable = false), "reply I'm late", c)
         assertEquals(listOf(FlowEffect.OnScreen("I'm late", ReplyEnd.NOT_REPLYABLE)), fx)
         assertEquals(MessageStep.DONE, st.step)
-        // Read, "Reply?", then words only a tap may send: the screen's card, not the park list.
-        val tap = off.copy(voice = VoiceReply.TAP_ONLY)
+        // Read, "Reply?", then words only a tap may send: the screen's card.
+        val tap = c.copy(voice = VoiceReply.TAP_ONLY)
         val (tst, tfx) = msg(MessageFlow.start(marie, tap, true), "yes", "tell her I'm late", ctx = tap)
         assertEquals(listOf(FlowEffect.OnScreen("I'm late", ReplyEnd.NEEDS_TAP)), tfx.last())
-        assertFalse(tfx.flatten().any { it is FlowEffect.Park || it is FlowEffect.Send })
+        assertFalse(tfx.flatten().any { it is FlowEffect.Send })
         assertEquals(MessageStep.DONE, tst!!.step)
-        // A reply that may go by voice is still read back and sent the same way.
-        val (_, vfx) = msg(MessageFlow.start(marie, off, true), "yes", "tell her I'm late", "send", ctx = off)
+        // Locked in a trusted session with 0.7's "Read and reply": the same; locked without one, 0.7's lock rule on the screen.
+        val trusted = tap.copy(locked = true, trusted = true)
+        assertEquals(listOf(FlowEffect.OnScreen("I'm late", ReplyEnd.NEEDS_TAP)), MessageFlow.reply(marie, "reply I'm late", trusted).second)
+        val locked = c.copy(locked = true)
+        assertEquals(listOf(FlowEffect.OnScreen("I'm late", ReplyEnd.LOCKED)), MessageFlow.reply(marie, "reply I'm late", locked).second)
+        // A reply that may go by voice is still read back and sent.
+        val (_, vfx) = msg(MessageFlow.start(marie, c, true), "yes", "tell her I'm late", "send")
         assertEquals(listOf(FlowEffect.Send("CHEOGRAM:me#marie", "I'm late")), vfx.last())
-        // With the holds on: kept for parking, as before.
-        val held = tap.copy(settings = CarSettings(holdWhileDriving = true))
-        val (_, hfx) = msg(MessageFlow.start(marie, held, true), "yes", "tell her I'm late", ctx = held)
-        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to “Marie”: I'm late"), hfx.last().last())
     }
 }

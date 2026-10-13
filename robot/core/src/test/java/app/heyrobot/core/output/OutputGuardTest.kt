@@ -71,11 +71,11 @@ class OutputGuardTest {
         assertEquals(Speak(VolumePolicy.CALL), OutputGuard.decide(u(true, SpeechSource.ANSWER), inCar(), s))
         assertEquals(Speak(VolumePolicy.CALL, shorten = true), OutputGuard.decide(u(false, SpeechSource.ANSWER, chars = 400), inCar(), s))
         assertEquals(Speak(VolumePolicy.CALL), OutputGuard.decide(u(false, SpeechSource.CARD, chars = 400), inCar(), s))
-        // It came by itself and others may hear: ask each time (default), always, or never (kept for parking).
+        // It came by itself and others may hear: ask each time (default), always, or never (on the screen, as in a headset that isn't private).
         assertEquals(Ask(AskWhat.READ_ALOUD), OutputGuard.decide(u(true, SpeechSource.ROUTINE), inCar(), s))
         assertEquals(Ask(AskWhat.READ_ALOUD), OutputGuard.decide(u(true, SpeechSource.MESSAGE), inCar(), s))
         assertEquals(Speak(VolumePolicy.CALL), OutputGuard.decide(u(true, SpeechSource.ROUTINE), inCar(), s.copy(readAloud = ReadAloud.ALWAYS)))
-        assertEquals(Hold(HoldWhy.NOT_PRIVATE, Keep.PARK), OutputGuard.decide(u(true, SpeechSource.ROUTINE), inCar(), s.copy(readAloud = ReadAloud.NEVER)))
+        assertEquals(Hold(HoldWhy.NOT_PRIVATE, Keep.SCREEN), OutputGuard.decide(u(true, SpeechSource.ROUTINE), inCar(), s.copy(readAloud = ReadAloud.NEVER)))
         assertEquals(Hold(HoldWhy.NOT_PRIVATE, Keep.NONE), OutputGuard.decide(u(true, SpeechSource.MESSAGE), inCar(), s.copy(readAloud = ReadAloud.NEVER)))
         assertEquals(Speak(VolumePolicy.CALL), OutputGuard.decide(u(false, SpeechSource.ROUTINE), inCar(), s))
         // Locked: personal only in a trusted session.
@@ -116,7 +116,8 @@ class OutputGuardTest {
         assertEquals(Hold(HoldWhy.CALL, Keep.SCREEN), OutputGuard.decide(u(false, SpeechSource.ROUTINE), headset(Trust.PRIVATE, call = true), s))
         assertEquals(Hold(HoldWhy.CALL, Keep.UNLOCK), OutputGuard.decide(u(false, SpeechSource.ROUTINE), phone(locked = true, call = true), s))
         assertEquals(Hold(HoldWhy.CALL, Keep.NONE), OutputGuard.decide(u(true, SpeechSource.MESSAGE), headset(Trust.PRIVATE, call = true), s))
-        assertEquals(Hold(HoldWhy.CALL, Keep.PARK), OutputGuard.decide(u(false, SpeechSource.ROUTINE), inCar().copy(phone = PhoneState(false, callActive = true)), s))
+        // In the car, as anywhere: on the screen (unlocked), never kept for parking.
+        assertEquals(Hold(HoldWhy.CALL, Keep.SCREEN), OutputGuard.decide(u(false, SpeechSource.ROUTINE), inCar().copy(phone = PhoneState(false, callActive = true)), s))
         assertEquals(Speak(VolumePolicy.NORMAL), OutputGuard.decide(u(false, SpeechSource.ANSWER), headset(Trust.PRIVATE, call = true, comm = true), s))
         // Music: short lines duck, long answers pause it.
         assertEquals(Speak(VolumePolicy.DUCK_OTHERS), OutputGuard.decide(u(false, SpeechSource.ANSWER, chars = 30), phone(media = true), s))
@@ -160,7 +161,6 @@ class OutputGuardTest {
                 if (d.shorten) assertEquals(why, SessionKind.CAR, session)
             }
             if (d is Hold) {
-                if (d.keep == Keep.PARK) assertEquals(why, SessionKind.CAR, session)
                 if (d.keep == Keep.SCREEN) assertFalse(why, locked)
                 if (src == SpeechSource.MESSAGE) assertEquals(why, Keep.NONE, d.keep)
                 if (d.sayUnlock) assertEquals(why, HoldWhy.LOCKED, d.why)
@@ -210,6 +210,6 @@ class OutputGuardTest {
         assertEquals("Est-ce que « Pixel Buds Pro », ce sont des écouteurs que toi seul peux entendre? Dis oui ou non.",
             OutputLines.privateQuestion("Pixel Buds Pro", SpokenLang.FR))
         assertEquals("Déverrouille pour l'entendre.", OutputLines.UNLOCK_TO_HEAR.get(SpokenLang.FR))
-        assertEquals("I'll keep that for when you park.", OutputLines.KEEP_FOR_PARK.get(SpokenLang.EN))
+        assertEquals("I'll keep that for when you can look at the phone.", OutputLines.KEEP_FOR_LOOK.get(SpokenLang.EN))
     }
 }

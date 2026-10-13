@@ -102,7 +102,7 @@ class CarModeTest {
         val (off, fx) = run(CarInput.CarGone(car, 10_000), CarInput.Tick(40_000), start = st)
         assertEquals(CarPhase.OFF, off.phase)
         assertNull(off.trusted)
-        assertEquals(listOf(CarEffect.Trusted(false, TrustEnd.CAR_GONE), CarEffect.CarModeFlag(false), CarEffect.StopService, CarEffect.ParkNotice,
+        assertEquals(listOf(CarEffect.Trusted(false, TrustEnd.CAR_GONE), CarEffect.CarModeFlag(false), CarEffect.StopService,
             CarEffect.Logged(false, CarWhy.CAR_GONE)), fx[1])
         // Connecting again starts a new car mode, without the trust.
         val (again, _) = run(CarInput.CarSeen(car, 50_000), CarInput.Started(50_100), start = off)
@@ -192,13 +192,6 @@ class CarModeTest {
         assertEquals(1, run(CarInput.CarSeen(car, 100), start = st).first.car)
     }
 
-    @Test fun aDrivingSignalOffersTheParkList() {
-        val st = active()
-        val (stopped, fx) = run(CarInput.Driving(false, 1_000), CarInput.Driving(false, 2_000), CarInput.Driving(true, 3_000), CarInput.Driving(false, 4_000), start = st)
-        assertEquals(listOf(listOf(CarEffect.ParkNotice), emptyList(), emptyList(), listOf(CarEffect.ParkNotice)), fx)
-        assertEquals(false, stopped.moving)
-    }
-
     @Test fun detectionAndSetup() {
         assertEquals(CarSeen.Car(car), CarDetect.of(carSco, memory))
         assertEquals(CarSeen.Car(car), CarDetect.of(carSco.copy(type = RouteType.BT_A2DP), memory))
@@ -219,13 +212,12 @@ class CarModeTest {
     @Test fun settingsDefaultsAndJson() {
         val d = CarSettings()
         assertTrue(d.startOnConnect && d.speakAsCall && d.voiceReplies)
-        assertFalse(d.dndWhileDriving || d.androidCarMode || d.keepScreenOn || d.driveBrief || d.holdWhileDriving)
+        assertFalse(d.dndWhileDriving || d.androidCarMode || d.keepScreenOn || d.driveBrief)
         assertEquals(30_000L, d.endGraceMs)
         assertEquals(4 * HOUR, d.trustedMs)
         assertEquals(ListenWith.PHONE_MIC, d.wakeListenWith)
         assertEquals(CarLockUse.AFTER_ONE_UNLOCK, d.lockUse)
         assertEquals(CallSetting.OPEN_DIALER, d.calls)
-        assertEquals(NewTexts.KEEP_FOR_PARKING, d.newTexts)
         assertEquals(CarAnnounce.SENDER_THEN_ASK, d.announce)
         assertEquals(CarAnnounceFrom.DND_ALLOWS, d.announceFrom)
         assertEquals(ReadAloud.ASK, d.readAloud)
@@ -234,10 +226,9 @@ class CarModeTest {
         assertEquals(d, CarSettings.fromJson(JSONObject()))
         val home = SavedPlace.of("  12 rue\nPrincipale ", 45.5, -73.6)!!
         assertEquals("12 rue Principale", home.label)
-        val changed = CarSettings(false, 60, false, ListenWith.HEADSET_MIC, CarLockUse.NEVER, 8, CallSetting.CALL_AFTER_YES, NewTexts.OPEN_CHEOGRAM,
-            CarAnnounce.READ_WHOLE, CarAnnounceFrom.EVERYONE, false, ReadAloud.ALWAYS, true, true, true, home, SavedPlace.of("Work", 45.4, -73.5), true, true)
+        val changed = CarSettings(false, 60, false, ListenWith.HEADSET_MIC, CarLockUse.NEVER, 8, CallSetting.CALL_AFTER_YES,
+            CarAnnounce.READ_WHOLE, CarAnnounceFrom.EVERYONE, false, ReadAloud.ALWAYS, true, true, true, home, SavedPlace.of("Work", 45.4, -73.5), true)
         assertEquals(changed, CarSettings.fromJson(JSONObject(changed.toJson().toString())))
-        assertEquals(true, changed.toJson().getBoolean("holdWhileDriving"))
         val odd = CarSettings.fromJson(JSONObject().put("endGraceSeconds", 9_999).put("trustedHours", 0).put("lockUse", "SOMETIMES")
             .put("home", JSONObject().put("label", "x").put("lat", 200.0).put("lon", 0.0)))
         assertEquals(300, odd.endGraceSeconds)
@@ -249,23 +240,40 @@ class CarModeTest {
         assertFalse(home.toString().contains("Principale"))
     }
 
-    @Test fun holdScreenActionsIsOffUnlessYouTurnItOn() {
-        // A settings file from before 1.0.0 (every other row set, no "holdWhileDriving"): off, for everyone.
-        val old = JSONObject().put("startOnConnect", true).put("newTexts", "KEEP_FOR_PARKING").put("dndWhileDriving", true).put("voiceReplies", true)
-        assertFalse(CarSettings.fromJson(old).holdWhileDriving)
-        assertTrue(CarSettings.fromJson(old).dndWhileDriving)
-        assertFalse(app.heyrobot.core.output.CarFile.decode("""{"v":1,"on":true,"car":{"newTexts":"OPEN_CHEOGRAM"}}""").settings.holdWhileDriving)
-        assertFalse(app.heyrobot.core.output.CarFile.decode(null).settings.holdWhileDriving)
-        // On: kept through the file, and only this row changes.
-        val on = app.heyrobot.core.output.CarFile(true, CarSettings(holdWhileDriving = true))
-        assertEquals(on, app.heyrobot.core.output.CarFile.decode(on.encode()))
-        assertEquals(CarSettings().copy(holdWhileDriving = true), CarSettings.fromJson(JSONObject().put("holdWhileDriving", true)))
-        // Car mode itself (Do Not Disturb, the screen, the trusted session) doesn't look at it.
-        for (dnd in listOf(false, true)) {
-            val a = CarModeMachine.on(CarState(phase = CarPhase.CONNECTED, car = 1, present = setOf(1)), CarInput.Started(1_000), CarSettings(dndWhileDriving = dnd))
-            val b = CarModeMachine.on(CarState(phase = CarPhase.CONNECTED, car = 1, present = setOf(1)), CarInput.Started(1_000),
-                CarSettings(dndWhileDriving = dnd, holdWhileDriving = true))
-            assertEquals(a, b)
+    /**
+     * 1.0 (the user, 13 Oct 2026: no driving restrictions): "Hold screen actions until I park" (holdWhileDriving) and "New
+     * texts while driving" (newTexts) are gone. A car.json that still has them loads with every other row as it was, and
+     * the next save leaves them out.
+     */
+    @Test fun anOldCarFileWithTheDrivingRowsStillLoads() {
+        val old = """{"v":1,"on":true,"car":{"startOnConnect":false,"newTexts":"KEEP_FOR_PARKING","holdWhileDriving":true,""" +
+            """"dndWhileDriving":true,"voiceReplies":false,"calls":"CALL_AFTER_YES","endGraceSeconds":60}}"""
+        val f = app.heyrobot.core.output.CarFile.decode(old)
+        assertTrue(f.on)
+        assertEquals(CarSettings(startOnConnect = false, dndWhileDriving = true, voiceReplies = false, calls = CallSetting.CALL_AFTER_YES, endGraceSeconds = 60), f.settings)
+        for (v in listOf("OPEN_CHEOGRAM", "SOMETHING_ELSE")) {
+            val o = JSONObject().put("newTexts", v).put("holdWhileDriving", false).put("keepScreenOn", true)
+            assertEquals(CarSettings(keepScreenOn = true), CarSettings.fromJson(o))
+        }
+        // Written again, without the old keys.
+        val json = JSONObject(f.encode()).getJSONObject("car")
+        assertFalse(json.has("holdWhileDriving") || json.has("newTexts"))
+        // Through the store, as the app reads and changes it.
+        val dir = java.nio.file.Files.createTempDirectory("car-old").toFile()
+        try {
+            java.io.File(dir, app.heyrobot.core.output.HandsFreeStore.CAR).writeText(old)
+            java.io.File(dir, app.heyrobot.core.output.HandsFreeStore.LEGACY_PARK).writeText("""{"v":1,"items":[{"code":1,"summary":"Text Bob","at":1}]}""")
+            val store = app.heyrobot.core.output.HandsFreeStore(dir)
+            assertEquals(f, store.car())
+            store.editCar { it.copy(settings = it.settings.copy(keepScreenOn = true)) }
+            val saved = java.io.File(dir, app.heyrobot.core.output.HandsFreeStore.CAR).readText()
+            assertFalse(saved, saved.contains("holdWhileDriving") || saved.contains("newTexts"))
+            assertTrue(store.car().settings.keepScreenOn && store.car().settings.dndWhileDriving)
+            // What 1.0's test builds kept for parking is deleted, not read.
+            store.dropLegacy()
+            assertFalse(java.io.File(dir, app.heyrobot.core.output.HandsFreeStore.LEGACY_PARK).exists())
+        } finally {
+            dir.deleteRecursively()
         }
     }
 }

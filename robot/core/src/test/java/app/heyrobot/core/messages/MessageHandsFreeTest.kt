@@ -95,25 +95,22 @@ class MessageHandsFreeTest {
         assertEquals(VoiceReply.TAP_ONLY, HandsFreeReplies.of(group, on.copy(voiceYesSends = true), locked = false, noCard = true))
     }
 
-    @Test fun inTheCarATapOnlyReplyIsKeptForParkingWithYourWords() {
+    @Test fun inTheCarATapOnlyReplyGoesToTheScreenWithYourWords() {
         val n = momThread.notice()!!
-        // With "Hold screen actions until I park" on (off, it goes to the screen's card: CarMessagesTest).
-        val s = CarSettings(holdWhileDriving = true)
+        val s = CarSettings()
         val safety = HandsFreeSafety()
-        val held = CarMessages.startReply(n, "tell her I'm 10 minutes away", s, safety, false, false, SpokenLang.EN, VoiceReply.TAP_ONLY) as ReplyStart.Hold
-        assertEquals(ReplyEnd.NEEDS_TAP, held.why)
-        assertEquals("I'm 10 minutes away", held.text)
-        assertEquals("reply to “${n.sender}”: I'm 10 minutes away", CarMessages.parkedAsk(n, held.text, SpokenLang.EN))
-        assertEquals(ReplyEnd.NEEDS_TAP, (CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.OPEN_CHAT) as ReplyStart.Hold).why)
-        assertEquals(ReplyEnd.LOCKED, (CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.REFUSED) as ReplyStart.Hold).why)
+        // 1.0: the screen's own reply card (or chat, or refusal) with your words, as outside the car; nothing waits for parking.
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "I'm 10 minutes away"),
+            CarMessages.startReply(n, "tell her I'm 10 minutes away", s, safety, false, false, SpokenLang.EN, VoiceReply.TAP_ONLY))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "ok"), CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.OPEN_CHAT))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.LOCKED, "ok"), CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.REFUSED))
         assertTrue(CarMessages.startReply(n, "ok", s, safety, false, false, SpokenLang.EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
-        assertNull(CarMessages.parkedAsk(n, " ", SpokenLang.EN))
         // The main process's answers, as said in the car: "Handed to Cheogram", never "delivered".
         assertEquals(ReplyResult.HANDED_OVER, ReplyOutcome.SENT.handsFree())
         assertEquals(ReplyResult.NEW_MESSAGES, ReplyOutcome.NEW_MESSAGES.handsFree())
         assertEquals(ReplyResult.GONE, ReplyOutcome.CHANGED.handsFree())
         assertEquals(ReplyResult.LOCKED, ReplyOutcome.AUTH_REQUIRED.handsFree())
-        assertTrue(CarMessages.result(ReplyResult.NEW_MESSAGES, "Cheogram", SpokenLang.EN).contains("park"))
+        assertEquals("A new message just came. Your reply is on the screen.", CarMessages.result(ReplyResult.NEW_MESSAGES, "Cheogram", SpokenLang.EN))
         assertTrue(ReplyOutcome.entries.all { o -> CarMessages.result(o.handsFree(), "Cheogram", SpokenLang.FR).isNotBlank() })
     }
 
