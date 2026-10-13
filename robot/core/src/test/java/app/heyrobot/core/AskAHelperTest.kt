@@ -41,9 +41,10 @@ class AskAHelperTest {
         // Depth and the screen, as with a name.
         assertEquals(ask("about this screen", extra = Attachment.SCREEN), route("ask the helper about this screen"))
         assertEquals(ask("think hard about this plan", deep = true), route("ask the helper to think hard about this plan"))
-        // Nothing after it: the helper joins, as "ask Claude" does.
-        assertEquals(ClaudeCommand.Join(helper = any), route("ask the helper"))
-        assertEquals(ClaudeCommand.Join(helper = any), route("ask a helper."))
+        // Nothing after it: the helper joins, as "ask Claude" does, but as after a mishearing (no helper was named).
+        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("ask the helper"))
+        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("ask a helper."))
+        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("ask my helper"))
     }
 
     @Test fun theNewFrenchPhrases() {
@@ -54,7 +55,8 @@ class AskAHelperTest {
         // The "à" not heard.
         assertEquals(ask("pourquoi le ciel est bleu"), route("demande l'assistant pourquoi le ciel est bleu"))
         assertEquals(ask("m'écrire un poème"), route("demande à l'assistant de m'écrire un poème"))
-        assertEquals(ClaudeCommand.Join(helper = any), route("demande à un assistant"))
+        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("demande à un assistant"))
+        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("demande à l'assistant"))
     }
 
     @Test fun askClaudeStillWorksAsAHiddenAlias() {
@@ -78,7 +80,7 @@ class AskAHelperTest {
             "ask the helpers", "helper", "I need a helper", "ask helper why the sky is blue",
             // Not after "ask": the helper is never addressed by these words, joined or thanked.
             "the helper is coming at six", "the helper, what's the weather?", "a helper, what's the weather?", "go get the helper", "talk to the helper",
-            "thanks the helper", "stop the helper", "my helper can come over tomorrow", "what does the helper think about this",
+            "my helper can come over tomorrow", "what does the helper think about this", "helper, thanks", "assistant",
             // Someone at home who helps: a message for a person.
             "ask my helper to pick up the kids", "ask my helper if she can stay late", "ask my helper whether dinner is ready",
             "ask the helper if he's coming tomorrow", "ask a helper if she knows the way",
@@ -87,6 +89,44 @@ class AskAHelperTest {
             // Robot's own words: the wake phrase, a card's yes and no, stop.
             "hey robot", "robot", "yes", "no", "stop", "oui", "non", "arrête",
         )) assertNull(t, route(t))
+    }
+
+    @Test fun joiningWithoutANameAlwaysAsksBeforeTheConversationGoes() {
+        // A helper you trust skips the Include card only when you called it by its name: "ask the helper" names none.
+        val trusted = HelperConfig.of(Presets.HOME, "h2", "af_bella", "Jarvis", "http://192.168.1.20:11434/v1").copy(trust = true)
+        val s = RobotSettings().withHelper(trusted)
+        val names = HelperName.all(s)
+        val personal = setOf(Personal.CALENDAR)
+        val byName = route("ask Jarvis", names) as ClaudeCommand.Join
+        assertTrue(app.heyrobot.core.helpers.HelperTrust.joinWithoutCard(trusted, personal, byName.misheard))
+        for (t in listOf("ask the helper", "ask a helper", "ask my helper", "demande à l'assistant", "demande à un assistant")) {
+            val j = route(t, names) as ClaudeCommand.Join
+            assertFalse(t, app.heyrobot.core.helpers.HelperTrust.joinWithoutCard(trusted, personal, j.misheard))
+            // Even a conversation with nothing personal in it asks first.
+            val plain = listOf(ChatTurn("u1", TurnRole.USER, "what's a good name for a cat?", 0L), ChatTurn("a1", TurnRole.ASSISTANT, "Miso.", 0L))
+            assertEquals(t, "Include the conversation so far?", ClaudeContext.includeQuestion(plain, j.misheard))
+        }
+    }
+
+    @Test fun thankingTheHelperLeaves() {
+        val s = RobotSettings().withHelper(HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck"))
+        for (names in listOf(null, HelperName.all(s))) for (t in listOf("thanks helper", "Thanks, helper.", "thank you helper", "thank you, the helper",
+            "thanks the helper", "thanks my helper", "bye helper", "stop the helper", "that's all, helper", "hey robot, thanks helper",
+            "merci l'assistant", "Merci, l’assistant !", "merci assistant", "au revoir l'assistant", "c'est tout l'assistant")) {
+            assertEquals(t, ClaudeCommand.Leave, route(t, names))
+            // Never a question for the helper, in its conversation or out of it.
+            assertFalse(t, FastPath.of(route(t, names), claudeMode = true, attachment = Attachment.NONE) == FastPath.Way.CLAUDE)
+            // No router before the helpers' takes it (the panel runs these first, in a helper's conversation too).
+            assertNull(t, MessagesRouter.route(t))
+            assertNull(t, ConversationRouter.route(t, running = false))
+            assertNull(t, FeedbackRouter.route(t))
+            assertNull(t, FreeUp.asked(t))
+            assertNull(t, MemoryRouting.route(t, MemorySettings(), locked = false))
+        }
+        // The names still leave, and "thanks" alone stays ordinary talk.
+        assertEquals(ClaudeCommand.Leave, route("thanks Claude"))
+        assertEquals(ClaudeCommand.Leave, route("thanks ChatGPT", HelperName.all(s)))
+        for (t in listOf("thanks", "thank you", "merci", "thanks for the help", "thank you for helping", "thanks, that helped")) assertNull(t, route(t))
     }
 
     @Test fun theOtherRoutersLeaveTheNewPhrasesAlone() {
@@ -127,6 +167,52 @@ class AskAHelperTest {
     @Test fun noHelperMayBeCalledHelperOrAssistant() {
         val s = RobotSettings()
         for (n in listOf("Helper", "Assistant", "My Helper")) assertTrue(n, HelperNames.check(n, "new", s, setOf("hey", "robot")) is NameCheck.Problem)
+    }
+
+    @Test fun everyPresetsNameCanBeSaved() {
+        val wake = setOf("hey", "robot")
+        for (s in listOf(RobotSettings(helpers = emptyList()), RobotSettings())) for (p in Presets.ALL) {
+            val id = if (p == Presets.ANTHROPIC) HelperConfig.CLAUDE_ID else "new"
+            assertFalse(p.id, HelperNames.check(p.defaultName, id, s, wake) is NameCheck.Problem)
+        }
+        // Another company: the name in its address when there is one, "My AI" when not.
+        val empty = RobotSettings(helpers = emptyList())
+        assertEquals("My AI", Presets.OTHER.defaultName)
+        assertEquals("Example", HelperNames.forNew(Presets.OTHER, "new", empty, wake, "https://api.example.com/v1"))
+        assertEquals("Cerebras", HelperNames.forNew(Presets.OTHER, "new", empty, wake, "https://inference.cerebras.ai/v1"))
+        assertEquals("Example", HelperNames.forNew(Presets.OTHER, "new", empty, wake, "https://llm.example.co.uk/v1"))
+        assertEquals("My llm", HelperNames.forNew(Presets.OTHER, "new", empty, wake, "https://api.my-llm.dev/v1"))
+        assertEquals("My AI", HelperNames.forNew(Presets.OTHER, "new", empty, wake, "https://203.0.113.9/v1"))
+        assertEquals("My AI", HelperNames.forNew(Presets.OTHER, "new", empty, wake, "https://ai.io/v1"))
+        assertEquals("My AI", HelperNames.forNew(Presets.OTHER, "new", empty, wake, null))
+        // A name in the address that is a command word, or taken: the default, then numbered.
+        assertEquals("My AI", HelperNames.forNew(Presets.OTHER, "new", empty, wake, "https://api.helper.com/v1"))
+        val taken = empty.withHelper(HelperConfig.of(Presets.OTHER, "h1", "am_puck", "Example", "https://api.example.com/v1"))
+        assertEquals("Example 2", HelperNames.forNew(Presets.OTHER, "new", taken, wake, "https://api.example.com/v1"))
+        // The other presets keep their names, numbered when one is already there.
+        assertEquals("Gemini", HelperNames.forNew(Presets.GEMINI, "new", empty, wake))
+        assertEquals("Gemini 2", HelperNames.forNew(Presets.GEMINI, "new", empty.withHelper(HelperConfig.of(Presets.GEMINI, "h1", "am_puck")), wake))
+    }
+
+    @Test fun aHelperSavedAsHelperKeepsWorking() {
+        // Before 1.0.0 another company's helper was called "Helper" by default.
+        val text = """{"schema":9,"helpers":[{"id":"claude","preset":"anthropic","name":"Claude","model":"claude-opus-5-5"},
+            {"id":"h1abcde","preset":"compatible","name":"Helper","model":"m-1","baseUrl":"https://api.example.com/v1"}]}"""
+        val s = RobotSettings.fromJson(text)
+        val h = s.helper("h1abcde")!!
+        assertEquals("Helper", h.name)
+        val wake = setOf("hey", "robot")
+        // Its own name stays allowed (renaming it to the same name, say); another helper can't take it, nor can it become "Assistant".
+        assertFalse(HelperNames.check("Helper", h.id, s, wake) is NameCheck.Problem)
+        assertTrue(HelperNames.check("Helper", "new", s, wake) is NameCheck.Problem)
+        assertTrue(HelperNames.check("Assistant", h.id, s, wake) is NameCheck.Problem)
+        // Asked by its name it still answers; "ask the helper" is still the one Robot checks with.
+        val names = HelperName.all(s)
+        assertEquals(ask("why the sky is blue", helper = "h1abcde"), route("ask helper why the sky is blue", names))
+        assertEquals(ask("why the sky is blue"), route("ask the helper why the sky is blue", names))
+        assertEquals(ClaudeCommand.Leave, route("thanks helper", names))
+        // A default name, not one you chose: the diagnostics don't hide the word "helper".
+        assertFalse("Helper" in app.heyrobot.core.feedback.FeedbackPrivacy.secrets(s, null, null))
     }
 
     @Test fun routinesRefuseTheNewPhrases() {

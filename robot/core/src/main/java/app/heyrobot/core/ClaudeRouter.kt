@@ -64,6 +64,14 @@ data class HelperName(val id: String, val forms: List<List<String>>, val mishear
         val ANY = HelperName(ANY_ID, listOf(listOf("the", "helper"), listOf("a", "helper"), listOf("my", "helper"), listOf("lassistant"),
             listOf("l", "assistant"), listOf("un", "assistant")))
 
+        /**
+         * 1.0.0: how you thank or stop the helper "ask the helper" brought in: "thanks helper", "thank you, the helper", "stop my
+         * helper", « merci l'assistant », « merci assistant ». Heard in a leave only ([ClaudeRouter.route]), so "helper" alone
+         * still names nobody anywhere else.
+         */
+        val ANY_LEAVE = HelperName(ANY_ID, listOf(listOf("helper"), listOf("the", "helper"), listOf("my", "helper"), listOf("lassistant"),
+            listOf("l", "assistant"), listOf("assistant")))
+
         /** A word sequence in the router's plain form ("ChatGPT" → [chatgpt], "Deep Seek" → [deep, seek]). */
         fun words(s: String): List<String> = ClaudeRouter.plain(s).split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
 
@@ -221,8 +229,8 @@ object ClaudeRouter {
         val i = head(ws)
         if (i >= ws.size) return null
 
-        // Leave first: "stop Claude" and "thanks Claude" are never questions.
-        if (LEAVES.any { seqName(ws, i, it, names) != null } || BACK.any { seq(ws, i, *it) }) return ClaudeCommand.Leave
+        // Leave first: "stop Claude" and "thanks Claude" are never questions. 1.0.0: nor "thanks helper", « merci l'assistant ».
+        if (LEAVES.any { seqName(ws, i, it, names + HelperName.ANY_LEAVE) != null } || BACK.any { seq(ws, i, *it) }) return ClaudeCommand.Leave
 
         // "read Claude's answer" (an app Robot reads back).
         if (ws.getOrNull(i)?.w == "read" && ws.getOrNull(i + 2)?.w in setOf("answer", "reply", "response")) {
@@ -242,7 +250,9 @@ object ClaudeRouter {
             if (!m.exact && next in FOR_A_PERSON) return null
             // "My helper" may be a person who helps at home: "ask my helper to pick up the kids" is a message for them.
             if (m.id == HelperName.ANY_ID && ws[askAt - 2].w == "my" && next in FOR_A_PERSON) return null
-            return rest(text, ws, askAt, ASK_DROP)?.let { ask(it, m.id) } ?: ClaudeCommand.Join(misheard = !m.exact, helper = m.id)
+            // "Ask the helper" alone joins like a mishearing: no helper was named, so the conversation so far goes only after a
+            // tap, even to a helper you trust (HelperTrust.joinWithoutCard).
+            return rest(text, ws, askAt, ASK_DROP)?.let { ask(it, m.id) } ?: ClaudeCommand.Join(misheard = !m.exact || m.id == HelperName.ANY_ID, helper = m.id)
         }
 
         // "what does Claude think about …", "qu'est-ce que Claude pense de …".
