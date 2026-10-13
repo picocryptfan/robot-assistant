@@ -37,6 +37,7 @@ Look and wording:
 - The Home screen's corner-swipe tip no longer says Robot sees the screen on the lock screen.
 - "Robot closed unexpectedly": after the app or the panel crashes or stops responding, Robot says so the next time you open it and offers Send feedback with a report of codes only.
 - Accessibility: larger touch targets on transcript chips, the consent tick box as one TalkBack stop, the "More" menu drawn with a "more" icon, a higher-contrast "not ready" button, and the panel's answer read by TalkBack once it is complete when replies aren't spoken.
+- Trademark marks: Settings › About and the setup guide's first page show Robot™, About ends with "Robot™ and Robot Assistant™ are trademarks of the Robot project.", and the README and these notes carry the same mark. The launcher name, spoken text and notifications are unchanged.
 
 Security:
 

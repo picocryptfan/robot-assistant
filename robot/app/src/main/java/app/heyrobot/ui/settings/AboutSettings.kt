@@ -19,7 +19,7 @@ import app.heyrobot.ui.pref.preferenceGroup
 fun AboutSettingsScreen(a: AppActions, onBack: () -> Unit) {
     PreferenceScreen("About", onBack) {
         preferenceGroup(null, "about") {
-            PreferenceItem("Version", "Robot ${BuildConfig.VERSION_NAME}")
+            PreferenceItem("Version", "Robot™ ${BuildConfig.VERSION_NAME}")
             // 1.0: the setup guide again, where Finish later left it or from Welcome.
             PreferenceItem(stringResource(R.string.guide_about_row), stringResource(R.string.guide_about_detail), onClick = a.openGuide)
             // The built-in updater (0.6.0): an update on offer, or when Robot last checked.
@@ -36,5 +36,7 @@ fun AboutSettingsScreen(a: AppActions, onBack: () -> Unit) {
                 "Jetpack Compose and more, and downloads models such as Gemma 4 and Parakeet when you ask: each with its licence, " +
                 "credits and notices under Licences.",
         )
+        // Trademark claim (13 Oct 2026): unregistered marks, so ™ and never ®.
+        preferenceFooter("Robot™ and Robot Assistant™ are trademarks of the Robot project.", "trademark")
     }
 }
