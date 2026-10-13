@@ -860,7 +860,7 @@ tags are dropped and links show only their words, so write them to read well tha
 Settings › About › Licences names both places, from `app/src/main/assets/licenses/components.json` (`robot.sourceTag`,
 `robot.sourceBundle`, "{version}" filled in): `<repository>/tree/v<version>` and
 `<repository>/releases/download/v<version>/robot-<version>-third-party-sources.tar.gz`. The repository link there is
-today's (`picocryptfan/robot-gos-assistant`); change it in that one file if the public repository has another name.
+today's (`picocryptfan/robot-assistant`); change it in that one file if the public repository has another name.
 
 ## Updates
 
@@ -870,7 +870,7 @@ a new release, downloads it, checks it, and hands it to Android, whose own windo
 ### How it works
 
 - **Where:** the GitHub Releases of one repository. By default it is the one Settings › About › Licences names as Robot's
-  source (`robot.source` in `app/src/main/assets/licenses/components.json`, today `picocryptfan/robot-gos-assistant`):
+  source (`robot.source` in `app/src/main/assets/licenses/components.json`, today `picocryptfan/robot-assistant`):
   the only place it is written, so a renamed repository is one change there. Robot asks
   `GET https://api.github.com/repos/{owner}/{repo}/releases?per_page=20` and takes the highest version above the one
   installed, whatever order GitHub lists them in. (Not `/releases/latest`: for a repository without releases it answers

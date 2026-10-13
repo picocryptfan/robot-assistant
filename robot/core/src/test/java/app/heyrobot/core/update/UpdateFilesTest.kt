@@ -44,7 +44,7 @@ class UpdateFilesTest {
     }
 
     @Test fun theRepositoryIsYoursOrTheDefault() {
-        val def = GitHubRepo("picocryptfan", "robot-gos-assistant")
+        val def = GitHubRepo("picocryptfan", "robot-assistant")
         assertEquals(def, UpdateSettings().repoOr(def))
         assertEquals(GitHubRepo("fork", "robot"), UpdateSettings(repo = "fork/robot").repoOr(def))
         assertNull(UpdateSettings().repoOr(null))

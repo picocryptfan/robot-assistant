@@ -9,10 +9,10 @@ import org.junit.Test
 /** The repository, the hosts and redirects Robot follows, where the token may go, and GitHub's errors. */
 class GitHubPolicyTest {
     @Test fun repositoriesAsTypedOrPasted() {
-        val r = GitHubRepo("picocryptfan", "robot-gos-assistant")
-        for (t in listOf("picocryptfan/robot-gos-assistant", " picocryptfan/robot-gos-assistant ", "https://github.com/picocryptfan/robot-gos-assistant",
-            "https://github.com/picocryptfan/robot-gos-assistant/", "github.com/picocryptfan/robot-gos-assistant.git", "HTTPS://GitHub.com/picocryptfan/robot-gos-assistant",
-            "http://www.github.com/picocryptfan/robot-gos-assistant")) {
+        val r = GitHubRepo("picocryptfan", "robot-assistant")
+        for (t in listOf("picocryptfan/robot-assistant", " picocryptfan/robot-assistant ", "https://github.com/picocryptfan/robot-assistant",
+            "https://github.com/picocryptfan/robot-assistant/", "github.com/picocryptfan/robot-assistant.git", "HTTPS://GitHub.com/picocryptfan/robot-assistant",
+            "http://www.github.com/picocryptfan/robot-assistant")) {
             assertEquals(t, r, GitHubRepo.parse(t))
         }
         assertEquals("a-b/c.d_e-1", GitHubRepo.parse("a-b/c.d_e-1")!!.slug)
@@ -29,10 +29,10 @@ class GitHubPolicyTest {
     }
 
     @Test fun theDefaultComesFromTheLicencesSourceLinkOnly() {
-        assertEquals(GitHubRepo("picocryptfan", "robot-gos-assistant"), GitHubRepo.fromSourceLink("https://github.com/picocryptfan/robot-gos-assistant"))
-        assertNull(GitHubRepo.fromSourceLink("https://gitlab.com/picocryptfan/robot-gos-assistant"))
-        assertNull(GitHubRepo.fromSourceLink("http://github.com/picocryptfan/robot-gos-assistant"))
-        assertNull(GitHubRepo.fromSourceLink("picocryptfan/robot-gos-assistant"))
+        assertEquals(GitHubRepo("picocryptfan", "robot-assistant"), GitHubRepo.fromSourceLink("https://github.com/picocryptfan/robot-assistant"))
+        assertNull(GitHubRepo.fromSourceLink("https://gitlab.com/picocryptfan/robot-assistant"))
+        assertNull(GitHubRepo.fromSourceLink("http://github.com/picocryptfan/robot-assistant"))
+        assertNull(GitHubRepo.fromSourceLink("picocryptfan/robot-assistant"))
         assertNull(GitHubRepo.fromSourceLink(null))
     }
 

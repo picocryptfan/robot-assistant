@@ -80,7 +80,7 @@ class FeedbackScreenTest {
     )
     private val ui = FeedbackUi(facts, blocks, problemDate = "9 Oct 2025, 08:53")
     private val about = FeedbackArgs(FeedbackEntry.ABOUT, null, null)
-    private val repo = GitHubRepo("picocryptfan", "robot-gos-assistant")
+    private val repo = GitHubRepo("picocryptfan", "robot-assistant")
 
     /** What reached the app: "share BUG 7 …text…" and the like. */
     private val taps = ArrayList<String>()
@@ -190,7 +190,7 @@ class FeedbackScreenTest {
         rule.onNodeWithText("A private repository needs you signed in to GitHub there.", substring = true).assertExists()
         rule.onNodeWithText("Text it").performClick()
         rule.onNodeWithText("Open a GitHub issue").performClick()
-        assertEquals(listOf("text BUG 7", "github BUG https://github.com/picocryptfan/robot-gos-assistant/issues/new?title=Bug%20report%3A%20RFB-ABCD2345"), taps)
+        assertEquals(listOf("text BUG 7", "github BUG https://github.com/picocryptfan/robot-assistant/issues/new?title=Bug%20report%3A%20RFB-ABCD2345"), taps)
         rule.onNodeWithText("Sent it?").assertExists()
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }

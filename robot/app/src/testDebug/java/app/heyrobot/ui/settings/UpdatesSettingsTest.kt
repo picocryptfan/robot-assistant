@@ -47,8 +47,8 @@ import org.robolectric.annotation.GraphicsMode
 class UpdatesSettingsTest {
     @get:Rule val rule = createComposeRule()
 
-    private val own = GitHubRepo("picocryptfan", "robot-gos-assistant")
-    private val offer = FoundRelease("picocryptfan/robot-gos-assistant", "v0.4.6", "0.4.6", false, "2026-10-11T09:30:00Z",
+    private val own = GitHubRepo("picocryptfan", "robot-assistant")
+    private val offer = FoundRelease("picocryptfan/robot-assistant", "v0.4.6", "0.4.6", false, "2026-10-11T09:30:00Z",
         "What's new\n\n• Updates from Settings › About › Updates\n• Faster wake word", FileRef(101, "Robot-0.4.6.apk", 97_000_000), FileRef(102, "SHA256SUMS", 250))
     private val base = UpdatesUi(
         installed = "0.4.5", settings = UpdateSettings(), repo = own, defaultRepo = own,
@@ -156,7 +156,7 @@ class UpdatesSettingsTest {
         val scroll = rule.onNode(hasScrollAction())
         scroll.performScrollToNode(hasText("Repository"))
         rule.onNodeWithText("Use Robot's own repository").assertDoesNotExist()
-        rule.onNodeWithText("Repository").assert(hasText("picocryptfan/robot-gos-assistant")).performClick()
+        rule.onNodeWithText("Repository").assert(hasText("picocryptfan/robot-assistant")).performClick()
         val field = rule.onNode(hasText("owner/name") and SemanticsMatcher.keyIsDefined(SemanticsProperties.EditableText))
         field.performTextReplacement("x")
         rule.onNodeWithText("Not a GitHub repository (owner/name)").assertExists()
@@ -177,7 +177,7 @@ class UpdatesSettingsTest {
         rule.onNode(hasScrollAction()).performScrollToNode(hasText("Use Robot's own repository"))
         rule.onNodeWithText("Repository").assert(hasText("fork/robot"))
         assertEquals(emptyList<UpdateSettings>(), seen)
-        rule.onNodeWithText("Use Robot's own repository").assert(hasText("picocryptfan/robot-gos-assistant")).performClick()
+        rule.onNodeWithText("Use Robot's own repository").assert(hasText("picocryptfan/robot-assistant")).performClick()
         assertEquals(listOf(UpdateSettings()), seen)
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
     }

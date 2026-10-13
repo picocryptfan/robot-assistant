@@ -21,9 +21,9 @@ crash reporting.
 
 ## Install
 
-1. **Download** the APK from this repository's [GitHub Releases](https://github.com/picocryptfan/robot-gos-assistant/releases)
+1. **Download** the APK from this repository's [GitHub Releases](https://github.com/picocryptfan/robot-assistant/releases)
    (`Robot-<version>.apk`), or add the repository to [Obtainium](https://github.com/ImranR98/Obtainium) (Add App, paste
-   `https://github.com/picocryptfan/robot-gos-assistant`) so it tells you about new releases. Robot can also check for
+   `https://github.com/picocryptfan/robot-assistant`) so it tells you about new releases. Robot can also check for
    its own updates (Settings › About › Updates).
 2. **Check the signing certificate** before you install the first time. Its SHA-256 fingerprint is:
 
@@ -56,7 +56,7 @@ it as a new app beside 0.9, not as an update, and nothing you have in 0.9 moves 
 install it: it downloads 1.0, says "The downloaded app isn't Robot, so it won't be installed." and then stops offering
 it. Both apps are called Robot; long-press an icon › App info shows which version it is.
 
-1. **Install 1.0** from the [release page](https://github.com/picocryptfan/robot-gos-assistant/releases), beside 0.9,
+1. **Install 1.0** from the [release page](https://github.com/picocryptfan/robot-assistant/releases), beside 0.9,
    and check its certificate as above: it is the same key.
 2. **People.** In 0.9: Settings › People, notes and calendar › People › More options (⋮) › Export (.vcf), and save
    `Robot People.vcf`. In 1.0: the same page › More options › Import contacts file (.vcf), pick that file, then Import.

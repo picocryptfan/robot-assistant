@@ -88,7 +88,7 @@ class FeedbackPrivacyTest {
         "message" to "ZQX-MESSAGE-BODY", "message sender" to "ZQX-SENDER-Annabelle", "memory" to "ZQX-MEMORY-ITEM", "person" to "ZQX-PERSON-Annabelle",
         "contact number" to "+15145550177", "note" to "ZQX-NOTE-TEXT", "calendar" to "ZQX-CALENDAR-EVENT", "wake phrase" to phrase,
         "helper name" to helperName, "helper alias" to alias, "helper address" to "192.168.77.41", "helper model" to homeModel, "helper key" to key,
-        "updater token" to token, "updater repository" to repo, "default repository" to "picocryptfan/robot-gos-assistant", "release notes" to "ZQX-NOTES",
+        "updater token" to token, "updater repository" to repo, "default repository" to "picocryptfan/robot-assistant", "release notes" to "ZQX-NOTES",
         "wifi" to "ZQX-WIFI-HomeNet", "bluetooth" to "ZQX-BT-Headphones", "weather home" to "Rue Zorblax", "latitude" to "45.512345",
         "longitude" to "-73.554321", "sms gateway" to "zorblaxgate.example", "search server" to "nominatim.zorblax.example", "spoken prefill" to "ZQX-PREFILL",
         "send to" to "+15145550199", "own model file" to "zorblax-own-model.gguf", "user path" to "/storage/emulated/0",
@@ -186,7 +186,7 @@ class FeedbackPrivacyTest {
             FeedbackDiagnostics.settings(inputs.settings, inputs.look, inputs.updates, inputs.memory, inputs.messages),
             FeedbackDiagnostics.updater(inputs.updateState, utc),
         )
-        val secrets = FeedbackPrivacy.secrets(inputs.settings, inputs.updates, "picocryptfan/robot-gos-assistant", listOf("+15145550199"))
+        val secrets = FeedbackPrivacy.secrets(inputs.settings, inputs.updates, "picocryptfan/robot-assistant", listOf("+15145550199"))
         val facts = FeedbackFacts(FeedbackFacts.robot("0.7.0", 70, false), FeedbackFacts.phone(Phone("Google", "Pixel 9a", "Google", "Tensor G4"), "16",
             "BP2A.250805.005", "2025081900"), FeedbackFacts.model(BrainModel.OWN, ModelBackend.CPU, inputs.gpuFailure, app.heyrobot.core.ModelFormat.GGUF),
             FeedbackFacts.look(inputs.look.classic), "en-CA")
@@ -231,10 +231,10 @@ class FeedbackPrivacyTest {
             helpers = listOf(HelperConfig.claude(), HelperConfig.of(Presets.OTHER, "h1", "af_heart", name = helperName, baseUrl = address)
                 .copy(aliases = listOf(alias), model = homeModel)),
             weatherHome = WeatherPlace("41 Rue Zorblax, Montréal", 45.5, -73.6))
-        val secrets = FeedbackPrivacy.secrets(s, UpdateSettings(repo = repo), "picocryptfan/robot-gos-assistant", listOf("+15145550199"))
+        val secrets = FeedbackPrivacy.secrets(s, UpdateSettings(repo = repo), "picocryptfan/robot-assistant", listOf("+15145550199"))
         assertEquals("said [left out] to [left out] at [left out] ([left out], [left out])",
             FeedbackPrivacy.redact("said HEY ZORBLAX KETTERING to Zorblax Home Mistral at $address ($homeModel, kettering BOX)", secrets))
-        assertEquals("[left out] · [left out] · [left out]", FeedbackPrivacy.redact("$repo · picocryptfan/robot-gos-assistant · +15145550199", secrets))
+        assertEquals("[left out] · [left out] · [left out]", FeedbackPrivacy.redact("$repo · picocryptfan/robot-assistant · +15145550199", secrets))
         assertEquals("weather for [left out]", FeedbackPrivacy.redact("weather for 41 Rue Zorblax, Montréal", secrets))
         // Claude's own name, the default wake phrase's words in Robot's own lines, and short words are left alone.
         assertEquals("Question sent to Claude", FeedbackPrivacy.redact("Question sent to Claude", secrets))

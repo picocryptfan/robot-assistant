@@ -35,13 +35,13 @@ class UpdaterTest {
     @Test fun theDefaultRepositoryIsTheOneTheLicencesListNames() {
         val book = LicenceBook.parse(File(root, "app/src/main/assets/${LicenceBook.FILE}").readText())
         val repo = GitHubRepo.fromSourceLink(book.robot.source)
-        assertEquals(GitHubRepo("picocryptfan", "robot-gos-assistant"), repo)
+        assertEquals(GitHubRepo("picocryptfan", "robot-assistant"), repo)
         // The tag and bundle links follow from the same place, so a rename is one change in one file.
         assertTrue(book.robot.sourceTag.startsWith(book.robot.source + "/"))
         assertTrue(book.robot.sourceBundle.startsWith(book.robot.source + "/releases/download/"))
         // And no Kotlin source writes it a second time.
         val sources = listOf("core", "app", "voice", "brain", "claude").flatMap { m -> File(root, "$m/src/main/java").walkTopDown().filter { it.isFile && it.extension == "kt" }.toList() }
-        assertEquals(emptyList<String>(), sources.filter { it.readText().contains("robot-gos-assistant") }.map { it.name })
+        assertEquals(emptyList<String>(), sources.filter { it.readText().contains("robot-assistant") }.map { it.name })
     }
 
     @Test fun installStatusesAreAndroids() {

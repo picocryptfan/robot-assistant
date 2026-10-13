@@ -173,10 +173,10 @@ class FeedbackReportTest {
     }
 
     @Test fun aGitHubIssueLinkFitsAndSaysWhatItCut() {
-        val repo = GitHubRepo("picocryptfan", "robot-gos-assistant")
+        val repo = GitHubRepo("picocryptfan", "robot-assistant")
         val d = FeedbackDraft(FeedbackKind.BUG, "The timer didn't ring & the panel froze?", ticked = Diagnostic.entries.toSet())
         val link = FeedbackReport.issue(repo, d, ref, facts, blocks)
-        assertTrue(link.url.startsWith("https://github.com/picocryptfan/robot-gos-assistant/issues/new?title=Bug%20report%3A%20The%20timer%20didn%27t%20ring%20%26"))
+        assertTrue(link.url.startsWith("https://github.com/picocryptfan/robot-assistant/issues/new?title=Bug%20report%3A%20The%20timer%20didn%27t%20ring%20%26"))
         val body = link.url.substringAfter("&body=")
         assertTrue(body.length.toString(), body.length <= FeedbackReport.GITHUB_MAX)
         assertTrue(link.cut)

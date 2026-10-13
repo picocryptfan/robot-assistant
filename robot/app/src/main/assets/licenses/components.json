@@ -5,9 +5,9 @@
   "licence": "GPL-3.0-only",
   "copyright": "Copyright (C) 2026 the Robot authors",
   "text": "licenses/GPL-3.0.txt",
-  "source": "https://github.com/picocryptfan/robot-gos-assistant",
-  "sourceTag": "https://github.com/picocryptfan/robot-gos-assistant/tree/v{version}",
-  "sourceBundle": "https://github.com/picocryptfan/robot-gos-assistant/releases/download/v{version}/robot-{version}-third-party-sources.tar.gz"
+  "source": "https://github.com/picocryptfan/robot-assistant",
+  "sourceTag": "https://github.com/picocryptfan/robot-assistant/tree/v{version}",
+  "sourceBundle": "https://github.com/picocryptfan/robot-assistant/releases/download/v{version}/robot-{version}-third-party-sources.tar.gz"
  },
  "licences": {
   "GPL-3.0-only": {
