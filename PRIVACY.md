@@ -117,9 +117,10 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
    - A conversation's summary goes to a helper only after its card shows what will be sent and you tap.
    - Without a key, the button that opens the service's own app only fills in that app (and may put your question on
      the clipboard); you press Send there.
-5. **Other apps you hand things to** (Cheogram, Proton Mail, your SMS or calendar app, Organic Maps, an AI service's own app).
-   Robot fills in a draft or opens a route; that app sends something only when you tap Send, under its own policy. A
-   **reply to a message** (Settings › Messages) is the exception you choose: Robot shows it on a card and, after you tap
+5. **Other apps you hand things to** (Cheogram, Proton Mail, your SMS or calendar app, Organic Maps, an AI service's
+   own app). Robot fills in a draft or opens a route; that app sends something only when you tap Send, under its own
+   policy.
+   A **reply to a message** (Settings › Messages) is the exception you choose: Robot shows it on a card and, after you tap
    Send (or, for someone you chose in People, after 3 seconds in which you can say "stop"), hands your words to that
    app's own reply action, as Android Auto and watches do; the app sends them to that conversation, under its own policy
    (an SMS may cost what your carrier charges). With "Open the chat with my reply; I press Send" Robot never sends. "Mark
