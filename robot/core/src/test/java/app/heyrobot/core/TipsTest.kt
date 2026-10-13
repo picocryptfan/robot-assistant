@@ -10,7 +10,7 @@ class TipsTest {
     private val d = RobotSettings()
 
     @Test fun threeDifferentEachOpenAndAllInTurn() {
-        val can = Tips.Can(d, locked = false, claude = true, screen = true)
+        val can = Tips.Can(d, locked = false, helper = true, screen = true)
         val all = Tips.available(can)
         assertTrue(all.size > 9)
         val seen = mutableSetOf<Tip>()
@@ -32,9 +32,9 @@ class TipsTest {
         val tips = Tips.available(Tips.Can(off, locked = false)).map { it.text }
         assertFalse(tips.any { it.contains("weather") || it.startsWith("Text ") })
         assertFalse("no helper, no screen", tips.any { it.contains("helper") || it.contains("screen") })
-        assertTrue(Tips.available(Tips.Can(d, false, claude = true)).any { it.text.contains("Ask a helper") })
+        assertTrue(Tips.available(Tips.Can(d, false, helper = true)).any { it.text.contains("Ask a helper") })
         // Locked: questions, and only what works on the lock screen (timers and alarms by default); no photos.
-        val locked = Tips.available(Tips.Can(d, locked = true, claude = false, screen = false))
+        val locked = Tips.available(Tips.Can(d, locked = true, helper = false, screen = false))
         assertEquals(listOf("Set a timer for 10 minutes", "Wake me up at 7:00", "Tell me a fun fact"), locked.map { it.text })
         assertEquals(locked, Tips.pick(Tips.Can(d, locked = true), 5))
         assertTrue(Tips.available(Tips.Can(d.copy(lockedTools = setOf(ToolName.FLASHLIGHT)), locked = true)).any { it.text.contains("flashlight") })
@@ -42,7 +42,7 @@ class TipsTest {
 
     /** A tip that would do something or go online only fills the text field; a question that reads on the phone asks at once. */
     @Test fun tipsThatActOrGoOnlineOnlyFillTheField() {
-        val all = Tips.available(Tips.Can(d, locked = false, claude = true, screen = true)).associate { it.text to it.kind }
+        val all = Tips.available(Tips.Can(d, locked = false, helper = true, screen = true)).associate { it.text to it.kind }
         for (t in listOf("Set a timer for 10 minutes", "Wake me up at 7:00", "Remember that I parked on level 3", "Turn on the flashlight",
                 "Text Mom I'm on my way", "Email Sam about dinner on Friday", "Add lunch with Alex on Friday at noon", "Help me free up space",
                 "Directions to the nearest pharmacy", "What's the weather tomorrow?", "Ask a helper why the sky is blue")) {

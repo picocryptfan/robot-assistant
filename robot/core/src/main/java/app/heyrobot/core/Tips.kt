@@ -22,7 +22,7 @@ object Tips {
      * What the panel can do right now. [claude]: the Claude helper is on and reachable (the helper tip's condition, as
      * before 0.6.0); [screen]: the screen came with this panel.
      */
-    data class Can(val settings: RobotSettings, val locked: Boolean, val claude: Boolean = false, val screen: Boolean = false)
+    data class Can(val settings: RobotSettings, val locked: Boolean, val helper: Boolean = false, val screen: Boolean = false)
 
     /**
      * [tool]: what tapping it would do; [online]: it goes online without a tool of its own (a helper). One that writes,
@@ -41,7 +41,7 @@ object Tips {
         Entry(Tip("Ask about a photo", TipKind.PHOTO), needs = { !it.locked }),
         Entry(Tip("Remember that I parked on level 3"), ToolName.ADD_NOTE),
         Entry(Tip("How's my battery?"), ToolName.PHONE_STATUS),
-        Entry(Tip("Ask a helper why the sky is blue"), online = true, needs = { it.claude }),
+        Entry(Tip("Ask a helper why the sky is blue"), online = true, needs = { it.helper }),
         Entry(Tip("Directions to the nearest pharmacy"), ToolName.MAPS_NAVIGATE),
         Entry(SCREEN, needs = { it.screen }),
         Entry(Tip("Wake me up at 7:00"), ToolName.SET_ALARM),

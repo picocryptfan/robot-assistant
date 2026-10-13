@@ -22,7 +22,7 @@ import app.heyrobot.core.ToolName
 //   content"), not being sure who (except for a call, where up to three spoken choices of who are allowed), more than
 //   three choices, and "Answer cards by voice" off.
 // - Car: what needs the screen (opening an app, a new text, an email or event draft, freeing space) waits for parking;
-//   the Claude app hand-off is refused ("I can't open the Claude app while you drive"), as car mode never hands off to it.
+//   a helper's app hand-off is refused ("I can't open another app while you drive"), as car mode never hands off to one.
 // - Locked: a card whose question names people or places is answered after the unlock, except car functions in a trusted
 //   car session.
 
@@ -117,7 +117,7 @@ object SpokenCards {
     val DRIVING_HOLD: Set<ToolName> = setOf(ToolName.OPEN_APP, ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE)
 
     val UNLOCK_TO_ANSWER = Line("Unlock to answer that.", "Déverrouille pour répondre.")
-    val NO_CLAUDE_DRIVING = Line("I can't open the Claude app while you drive.", "Je ne peux pas ouvrir l'app Claude pendant que tu conduis.")
+    val NO_HELPER_APP_DRIVING = Line("I can't open another app while you drive.", "Je ne peux pas ouvrir une autre app pendant que tu conduis.")
 
     /** How [card] is answered where [ctx] says, in [lang]. */
     fun plan(card: SpokenCard, ctx: CardContext, lang: SpokenLang): CardVoice {
@@ -126,7 +126,7 @@ object SpokenCards {
         val to = if (car) DeferTo.PARK else DeferTo.READY
         val keep = (if (car) OutputLines.KEEP_FOR_PARK else OutputLines.KEEP_FOR_LOOK).get(lang)
         fun defer(why: CardVoiceCode) = CardVoice.Defer(keep, to, why)
-        if (car && card.tool == ToolName.ASK_HELPER) return CardVoice.Refuse(NO_CLAUDE_DRIVING.get(lang), CardVoiceCode.REFUSED)
+        if (car && card.tool == ToolName.ASK_HELPER) return CardVoice.Refuse(NO_HELPER_APP_DRIVING.get(lang), CardVoiceCode.REFUSED)
         if (!ctx.voiceCards) return defer(CardVoiceCode.VOICE_OFF)
         val tap = card.waiting.tapFor
         if (tap == AskWhy.LEARNED || tap == AskWhy.ONLINE || card.deletes || (card.waiting.personal && !ctx.voiceYesPersonal)) return defer(CardVoiceCode.MUST_SEE)

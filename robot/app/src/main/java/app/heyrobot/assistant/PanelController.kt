@@ -156,7 +156,6 @@ import app.heyrobot.helpers.web.WebSearch
 import app.heyrobot.helpers.web.WebStep
 import app.heyrobot.sys.AppPages
 import app.heyrobot.sys.Assistant
-import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.FeedbackFiles
 import app.heyrobot.sys.HandOffApps
@@ -770,11 +769,11 @@ object PanelController {
 
     /** The next three tips for an empty panel: only what is on and can work now (core Tips). */
     private fun tips(s: RobotSettings, locked: Boolean): List<Tip> {
-        // The tip names Claude (the Claude helper's own tip): only when Claude can take it now.
-        val c = s.claude
-        val api = c != null && HelperSettings.apiReady(c, keySaved(c))
-        val claude = c != null && c.on && (if (locked) api && c.locked else api || ClaudeAppIntents.installed(VoiceHub.app))
-        return Tips.pick(Tips.Can(s, locked, claude = claude), tipRound++)
+        // "Ask a helper …" is a tip only when some helper can take the question now (the one "ask the helper" would use);
+        // on the lock screen, only one allowed there and reachable through its API.
+        val t = askTarget(s)
+        val helper = t != null && (!locked || (t.locked && HelperSettings.apiReady(t, keySaved(t))))
+        return Tips.pick(Tips.Can(s, locked, helper = helper), tipRound++)
     }
 
     /** A tip that asks about the screen: the screen goes with it (or the panel says why it can't). */

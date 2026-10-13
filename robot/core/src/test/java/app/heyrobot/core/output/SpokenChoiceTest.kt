@@ -170,7 +170,7 @@ class SpokenChoiceTest {
             assertTrue(t.id, SpokenCards.plan(timer.copy(tool = t), car, en) is CardVoice.Ask)
         }
         // The Claude app hand-off: refused in the car, with the reason.
-        assertEquals(CardVoice.Refuse("I can't open the Claude app while you drive.", CardVoiceCode.REFUSED), SpokenCards.plan(timer.copy(tool = ToolName.ASK_HELPER), car, en))
+        assertEquals(CardVoice.Refuse("I can't open another app while you drive.", CardVoiceCode.REFUSED), SpokenCards.plan(timer.copy(tool = ToolName.ASK_HELPER), car, en))
         assertEquals(CardVoice.Refuse("Je ne peux pas ouvrir l'app Claude pendant que tu conduis.", CardVoiceCode.REFUSED),
             SpokenCards.plan(timer.copy(tool = ToolName.ASK_HELPER), car, SpokenLang.FR))
         // "Answer cards by voice" off: held.
