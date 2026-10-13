@@ -6,7 +6,7 @@ import java.util.Locale
 // is a switch with a sensible default, so each person picks their own safety level. ApprovalGate reads them.
 
 /**
- * "Safety cards": when content Robot didn't write (screen text, a photo, what a read tool found, Claude's words) makes an
+ * "Safety cards": when content Robot didn't write (screen text, a photo, what a read tool found, a helper's words) makes an
  * action that writes or leaves the phone show its card even under "Just do it".
  */
 enum class SafetyCards(val title: String, val detail: String) {

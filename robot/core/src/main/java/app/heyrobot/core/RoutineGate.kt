@@ -22,7 +22,7 @@ enum class StepClass(val badge: String) {
     LOCAL_ACTION("runs by itself"),
     /** Opening an app or a draft, maps, a new event: never unattended, a Ready card you tap. */
     NEEDS_YOU("waits for you"),
-    /** Freeing memory or storage, deleting, Ask Claude, anything that sends personal content to a helper. */
+    /** Freeing memory or storage, deleting, asking a helper, anything that sends personal content to a helper. */
     NEVER("not offered"),
 }
 

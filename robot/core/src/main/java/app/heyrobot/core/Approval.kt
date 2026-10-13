@@ -19,8 +19,8 @@ object ApprovalGate {
      *
      * - Off in Settings › Actions: not done. Locked, and not one of "Works on the lock screen" (timers and alarms by
      *   default; questions always work): unlock first.
-     * - The hand-off to a helper's app always shows "Open the ChatGPT app with: «…»". [remote], a helper asked for it (its input may come
-     *   from web pages): a card with "Card when a helper asks Robot to do something" on; and a read tool's findings go to
+     * - The hand-off to a helper's app always shows "Open the ChatGPT app with: «…»". [remote], a helper asked for it
+     *   (its input may come from web pages): a card with "Card when a helper asks Robot to do something" on; and a read tool's findings go to
      *   the helper only after a tap unless "Send personal content to helpers automatically" is on or the helper is
      *   trusted with personal content ([trusted]), and so does an action that looks something up online for it
      *   ([online]: the nearest place, found around where you are).

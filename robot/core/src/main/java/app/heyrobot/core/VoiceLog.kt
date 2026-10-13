@@ -129,7 +129,7 @@ enum class VoiceEvent(val id: Int) {
     /** Robot set voice_recognition_service to its recognizer (it keeps it the assistant at boot): a = [RepairWhen], b = 1 if it worked. */
     RECOGNIZER_SET(34),
     // CLAUDE_*: names kept from 0.3 (Send feedback's diagnostics print them); since 0.6.0 they log every helper.
-    /** A request to a helper (0.3.0): a = request number in the turn (0: the question), b = [AnthropicModelCode] (0: not Anthropic). */
+    /** A request to a helper (0.3.0): a = request number in the turn (0: the question), b = [AnthropicModelCode] (0: other). */
     CLAUDE_SENT(35),
     /** a = ms from the request to the helper's first stream event. */
     CLAUDE_FIRST(36),

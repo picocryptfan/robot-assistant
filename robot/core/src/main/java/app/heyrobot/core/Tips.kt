@@ -18,7 +18,10 @@ object Tips {
     /** Shown only when the screen came with this panel (it may come a moment after the panel opens: [withScreen]). */
     val SCREEN = Tip("What's on my screen?", TipKind.SCREEN)
 
-    /** What the panel can do right now. [claude]: the Claude helper is on and reachable (the helper tip's condition); [screen]: the screen came with this panel. */
+    /**
+     * What the panel can do right now. [claude]: the Claude helper is on and reachable (the helper tip's condition, as
+     * before 0.6.0); [screen]: the screen came with this panel.
+     */
     data class Can(val settings: RobotSettings, val locked: Boolean, val claude: Boolean = false, val screen: Boolean = false)
 
     /**

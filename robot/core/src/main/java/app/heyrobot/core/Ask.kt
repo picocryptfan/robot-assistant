@@ -265,8 +265,8 @@ enum class HelperLeftOut(override val id: Int, override val title: String) : Log
 }
 
 /**
- * Whether the local model is told about the hand-over tool (ask_claude) for one question: the tool and its one line in the system prompt go
- * together, or neither does (docs/ask-claude.md "When Robot needs help"). Pure.
+ * Whether the local model is told about the hand-over tool (ask_claude) for one question: the tool and its one line in
+ * the system prompt go together, or neither does (docs/ask-claude.md "When Robot needs help"). Pure.
  */
 object AskHelperTool {
     /**

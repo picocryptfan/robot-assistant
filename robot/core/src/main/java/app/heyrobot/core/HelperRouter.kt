@@ -20,8 +20,8 @@ import java.util.Locale
 
 sealed class HelperCommand {
     /**
-     * One question for a helper ([helper]: its id). [deep]: you asked for depth ("think hard about", "take your time"). [extra]: you asked
-     * about the screen or a photo; it goes only after a tap on a card.
+     * One question for a helper ([helper]: its id). [deep]: you asked for depth ("think hard about", "take your time").
+     * [extra]: you asked about the screen or a photo; it goes only after a tap on a card.
      */
     data class Ask(val question: String, val deep: Boolean = false, val extra: Attachment = Attachment.NONE, val helper: String = HelperName.CLAUDE_ID) : HelperCommand()
 
@@ -224,7 +224,7 @@ object HelperRouter {
     /** After a request to "my helper", these words are a message for a person ("ask my helper to pick up milk"). */
     private val FOR_A_PERSON = setOf("to", "if", "whether", "si", "de", "d")
 
-    /** The command at the start of [text] for one of [names] (Claude alone by default, as before 0.6.0), or null: ordinary talk for Robot. */
+    /** The command at the start of [text] for one of [names] (Claude alone by default, as before 0.6.0), or null: Robot's talk. */
     fun route(text: String, names: List<HelperName> = CLAUDE): HelperCommand? {
         val ws = words(text)
         val i = head(ws)
@@ -665,8 +665,8 @@ object Phonetic {
 /**
  * What answers a question before the local model is asked, in this order: the helpers' phrases (and a helper's
  * conversation), then texting without the model ("text mom I'm running late", [TextCommand]), then the model. A helper
- * command always wins, so "ask Claude to text mom …" goes to Claude, never to the texting shortcut. "Thanks Claude" and "read Claude's
- * answer" are handled before this.
+ * command always wins, so "ask Claude to text mom …" goes to Claude, never to the texting shortcut. "Thanks Claude" and
+ * "read Claude's answer" are handled before this.
  */
 object FastPath {
     enum class Way { HELPER, TEXT, MODEL }

@@ -928,7 +928,7 @@ class ProcessIsolationTest {
         // own key, set by the :helpers module's HelperHttp in the :voice process, which never refers to the updater: above;
         // and web search's request builder in core, SearchWire, names Kagi's key header, for the :helpers module's
         // WebTransport to send as it is, in the :voice process, 0.9.)
-        assertEquals(listOf("app/update/GitHubClient.kt", "helpers/helpers/http/HelperHttp.kt", "core/core/web/SearchWire.kt"),
+        assertEquals(listOf("app/update/GitHubClient.kt", "core/core/web/SearchWire.kt", "helpers/helpers/http/HelperHttp.kt"),
             ours.filter { codeWithStrings(it.value).contains("\"Authorization\"") }.keys.sorted())
         val client = codeWithStrings(File(java("app"), "app/heyrobot/update/GitHubClient.kt"))
         val auth = client.lines().filter { it.contains("\"Authorization\"") }
@@ -1146,14 +1146,14 @@ class ProcessIsolationTest {
             usersOf(Regex("""\bBrain(Keeper|Link|OneShots)\b"""), conv))
         assertEquals(listOf("app/assistant/conversation/ConversationTranslations.kt", "app/assistant/conversation/SummaryJobs.kt"),
             usersOf(Regex("""\bBrainOneShots\b"""), conv))
-        // Claude: only the helpers, which act on a SummaryJob (made by the card's Send) and check HelperGate first.
-        assertEquals(listOf("app/assistant/conversation/Helpers.kt"), usersOf(Regex("""\bClaude(Session|Client|Listener|Outcome)\b|\btranscriptSession\b"""), conv))
+        // A helper's API: only the helpers, which act on a SummaryJob (made by the card's Send) and check HelperGate first.
+        assertEquals(listOf("app/assistant/conversation/Helpers.kt"), usersOf(Regex("""\bAnthropic(Session|Client)\b|\bHelper(TurnListener|Outcome)\b|\btranscriptSession\b"""), conv))
         val helpers = code(File(java("app"), "app/heyrobot/assistant/conversation/Helpers.kt"))
         assertEquals(2, Regex("""HelperGate\.allowed\(job\)""").findAll(helpers).count())
         // 0.6.0: never another helper's session (any company's API, your own server, Test connection), a key or Robot's
         // actions: HelperLink only for Claude's transcript session (and whether Claude's key is saved, for the card)...
         assertEquals(emptyList<String>(), usersOf(Regex("""\bHelperLink\.session\(|\bHelper(Session|Http|Probe|Keys|KeyFiles)\b|\bOpenAiSession\b|""" +
-            """\bapp\.heyrobot\.helpers\b|\bClaudeTools\b"""), conv))
+            """\bapp\.heyrobot\.helpers\.(?!(HelperTurnListener|HelperOutcome)\b)|\bHelperTools\b"""), conv))
         assertEquals(listOf("app/assistant/conversation/Helpers.kt", "app/assistant/conversation/SummaryActivity.kt"), usersOf(Regex("""\bHelperLink\b"""), conv))
         // (and whether Claude's key couldn't be read just now or was removed, for the summary's words), nothing else of it.
         val linkUses = conv.values.flatMap { f -> Regex("""\bHelperLink\.(\w+)""").findAll(code(f)).map { it.groupValues[1] }.toList() }.toSet()
@@ -1162,12 +1162,12 @@ class ProcessIsolationTest {
         // prompt, no tools and no web search, whichever client it uses.
         val link = code(File(java("app"), "app/heyrobot/assistant/HelperLink.kt"))
         val ts = Regex("""fun transcriptSession\(ctx: Context, h: HelperConfig\): HelperSession\? \{[\s\S]*?\n    }""").find(link)!!.value
-        assertTrue(ts, Regex("""AnthropicSession\(held\.claude!!, AnthropicModel\.of\(h\.model\), emptyList\(\), search = false, conversation = false, system = HelperPrompt\.TRANSCRIPT_SYSTEM\)""").containsMatchIn(ts))
+        assertTrue(ts, Regex("""AnthropicSession\(held\.anthropic!!, AnthropicModel\.of\(h\.model\), emptyList\(\), search = false, conversation = false, system = HelperPrompt\.CLAUDE_TRANSCRIPT_SYSTEM\)""").containsMatchIn(ts))
         assertTrue(ts, Regex("""OpenAiSession\(held\.http!!, h\.copy\(search = false\), emptyList\(\), conversation = false,.*?system = HelperPrompt\.transcriptSystem\(h\.name\)\)""")
             .containsMatchIn(ts.replace(Regex("\\s+"), " ")))
         assertEquals(2, Regex("""(?<!transcript)Session\(""").findAll(ts).count())
         // The summary screen and the summaries' job are in the voice process (the main app opens the screen by name).
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bSummary(Jobs|Activity)\b|\bClaude(Api|App)Helper\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bSummary(Jobs|Activity)\b|\b(ApiHelper|AppShareHelper)\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
         // The clip reader reads what you picked; nothing in conversation mode writes audio.
         assertEquals(emptyList<String>(), usersOf(Regex("""openOutputStream|FileOutputStream|MediaMuxer|MediaRecorder|AudioRecord\b"""),
             conv.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))
@@ -1203,7 +1203,7 @@ class ProcessIsolationTest {
         assertTrue(routines.keys.toString(), routines.size >= 15)
         // No network of their own, no model, no helper; the weather goes through ToolExecutor (Open-Meteo's only client).
         assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bOpenMeteoClient\b|\bNominatimClient\b|\bBrain(Client|Keeper|Link|OneShots)\b|""" +
-            """\bHelper(Link|Session|Http)\b|\bClaude(Session|Client)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b"""), routines))
+            """\bHelper(Link|Session|Http)\b|\bAnthropic(Session|Client)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b"""), routines))
         assertEquals(listOf("app/assistant/routines/RoutineRunner.kt"), usersOf(Regex("""\.briefWeather\(\)"""), routines))
         // Logs: codes and numbers only; never a routine's name, steps, words or a reminder.
         val leaky = Regex("""RLog\.[iw]\([^\n]*\b(name|text|lines|describe|reminder|title|said)\b""")
@@ -1522,7 +1522,7 @@ class ProcessIsolationTest {
         val mf = code(File(java("core"), "app/heyrobot/core/messages/MessagesFile.kt"))
         assertEquals(1, Regex("""\bwriteAtomic\(""").findAll(mf).count())
         assertTrue(mf.contains("withFileLock(File(file.parentFile, LOCK))") && mf.contains("if (next != now) writeAtomic(file, next.toJson())"))
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bSocket\b|okhttp|\bWebView\b|\bHelper(Session|Link|Http)\b|\bClaude(Session|Client)\b|\bapp\.heyrobot\.(claude|helpers)\b"""), msg))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bSocket\b|okhttp|\bWebView\b|\bHelper(Session|Link|Http)\b|\bAnthropic(Session|Client)\b|\bapp\.heyrobot\.helpers\b"""), msg))
         assertEquals(emptyList<String>(), usersOf(Regex("""\bLlama|\bBrainClient\b|BrainMsg\.Generate|\blitert"""), msg))
         // Logging: a fixed tag, no other argument (no name, no text, no address); the voice log takes codes and counts.
         assertEquals(emptyList<String>(), usersOf(Regex("""RLog\.[iwe]\([^)\n]*,"""), msg))
