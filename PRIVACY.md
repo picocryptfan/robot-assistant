@@ -115,7 +115,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
      alone. The same holds for the other helpers (any company's API, or a server on your network), each under that
      company's terms, or on your own server.
    - A conversation's summary goes to a helper only after its card shows what will be sent and you tap.
-   - Without a key, "Open in the Claude app" only fills in the Claude app (and may put your question on the clipboard);
+   - Without a key, the “Open Claude” button only fills in the Claude app (and may put your question on the clipboard);
      you press Send there.
 5. **Other apps you hand things to** (Cheogram, Proton Mail, your SMS or calendar app, Organic Maps, the Claude app).
    Robot fills in a draft or opens a route; that app sends something only when you tap Send, under its own policy. A
@@ -133,7 +133,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
    or of the one you set in Advanced, and downloads an update through api.github.com from GitHub's servers
    (objects.githubusercontent.com, release-assets.githubusercontent.com, or github.com if GitHub sends it there) when you
    tap Download, or by itself on Wi-Fi if "Download updates on Wi-Fi" is on (the default). To GitHub: your IP address and
-   Robot's version in the request ("Robot/0.6.0"); nothing else is sent. An access token, if you add one, goes to
+   Robot's version in the request ("Robot/1.0.0"); nothing else is sent. An access token, if you add one, goes to
    api.github.com only. GitHub handles the requests under its own privacy statement. Turn the automatic check off and
    Robot asks GitHub only when you tap Check now (and downloads only when you tap Download).
 
@@ -188,6 +188,9 @@ network permissions are granted at install; GrapheneOS lets you turn the network
 - **Phone calls** (optional, Settings › Car mode › Calls): to call after you said yes to the number Robot read back,
   never an emergency number. Without it, every call opens the dialer and you tap Call.
 - **Do Not Disturb access** (optional, Settings › Car mode): only to switch Robot's own "Driving (Robot)" rule.
+- **Write secure settings** (optional, and only if you grant it yourself with adb or Shizuku, in Settings › Advanced › ADB
+  fixes): so Robot can keep its own recognizer set as your digital assistant after a restart. It changes that one setting
+  and nothing else.
 - **Run commands in Termux** (asked for only from Settings › Termux): so Robot can send the commands you approve to
   Termux.
 - **Photos and videos** (or only the ones you pick): finding large files to free space. Deleting one always asks you
