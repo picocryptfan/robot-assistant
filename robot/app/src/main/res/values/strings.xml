@@ -384,7 +384,7 @@
     <string name="guide_hf_car_later">Off until you add your car. Set it up later, with the car connected</string>
     <string name="guide_hf_privacy">Your headsets and cars are remembered by their Bluetooth name and address, on the phone. New messages are announced only in private headphones, or in the car while car mode runs, never on the phone\'s speaker.</string>
     <string name="guide_helpers_title">Helpers (optional)</string>
-    <string name="guide_helpers_intro">For a question Robot can\'t answer well, it can ask a bigger AI: Claude, another company\'s model with your own key, or a model on your own computer. None is set up until you add a key or a server.</string>
+    <string name="guide_helpers_intro">For a question Robot can\'t answer well, it can ask a bigger AI: a paid AI service with your own API key, or a model on your own computer. None is set up until you add a key or a server.</string>
     <string name="guide_helpers_row">Helpers</string>
     <string name="guide_helpers_later">Not set up: set one up later</string>
     <string name="guide_helpers_sent">Until a helper has a key, Robot asks before going to it. Only your question goes by itself; your screen, a photo or what Robot read needs a tap. With a daily budget, US$1.00 by default: once it\'s reached, Robot asks first for the rest of the day.</string>

@@ -147,7 +147,7 @@ fun HelpersScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> U
     val spend = f?.spend
     PreferenceScreen("Helpers", onBack, snackbar = snackbar) {
         item(key = "intro") {
-            IntroPreference("Other AIs Robot asks only when you say so (“ask a helper …”, “go get Gemini”) or when you let it check hard questions.")
+            IntroPreference("Other AIs Robot asks only when you say so (“ask a helper …”, or “go get” and a helper's name) or when you let it check hard questions.")
         }
         preferenceGroup("Your helpers", "helpers") {
             if (s.helpers.isEmpty()) PreferenceItem("No helpers", "Robot answers everything itself")

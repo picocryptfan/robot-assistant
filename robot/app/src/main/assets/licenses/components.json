@@ -258,7 +258,7 @@
    "maven": [
     "com.anthropic:*"
    ],
-   "note": "Ask Claude's API client, used only when you ask for Claude with your own key."
+   "note": "The API client of one of the helpers, used only when you add that helper with your own API key."
   },
   {
    "id": "okhttp",
@@ -934,7 +934,7 @@
    "copyright": "Copyright 2019 Square, Inc.",
    "url": "https://square.github.io/okhttp/",
    "where": "build",
-   "note": "The Claude client's tests only."
+   "note": "The helper clients' tests only."
   },
   {
    "id": "robolectric",
