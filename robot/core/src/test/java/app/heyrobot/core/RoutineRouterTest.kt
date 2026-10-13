@@ -143,7 +143,7 @@ class RoutineRouterTest {
         assertEquals(listOf(weather), d.routine.steps)
         assertEquals(listOf("clear the cache"), d.refused)
         assertTrue(d.canSave)
-        assertTrue(d.card().lines.contains("Routines can't free memory or storage, delete things or ask Claude: “clear the cache” was left out."))
+        assertTrue(d.card().lines.contains("Routines can't free memory or storage, delete things or ask a helper: “clear the cache” was left out."))
     }
 
     /** Words that look like commands, in a step: a sentence to say stays a sentence; deleting is refused, never run. */

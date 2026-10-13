@@ -288,7 +288,7 @@ object MessagesRouter {
         ?.takeIf { it.isNotEmpty() && fold(it) !in PRONOUNS }
 
     /** Not a name: "what did you say?" is a question for Robot. */
-    private val PRONOUNS = setOf("you", "i", "he", "she", "they", "it", "we", "robot", "claude", "that", "this", "tu", "il", "elle", "ils", "elles",
+    private val PRONOUNS = setOf("you", "i", "he", "she", "they", "it", "we", "robot", "claude", "helper", "that", "this", "tu", "il", "elle", "ils", "elles",
         "on", "vous", "nous", "je", "ca", "cela", "ce", "lui")
 
     /** "my mom" → "mom", "maman" stays, a trailing "'s" goes. */

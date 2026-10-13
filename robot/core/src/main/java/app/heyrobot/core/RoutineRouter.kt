@@ -109,7 +109,7 @@ object RoutineCards {
             val online = r.needsOnline
             add(if (online.isEmpty()) "Nothing goes online." else "Online by itself: " + online.joinToString(", ") { it.title } + ". Nothing about you is sent.")
             for (u in d.unparsed) add("I didn't understand “$u”: edit it in Routines.")
-            for (x in d.refused) add("Routines can't free memory or storage, delete things or ask Claude: “$x” was left out.")
+            for (x in d.refused) add("Routines can't free memory or storage, delete things or ask a helper: “$x” was left out.")
             addAll(d.notes)
             addAll(d.problems)
         }
@@ -796,7 +796,10 @@ object RoutineRouter {
     private val NEVER = listOf("free up", "free memory", "free storage", "free space", "free some space", "clear the cache", "clear cache", "clean up",
         "delete", "erase", "wipe", "uninstall", "remove", "ask claude", "ask cloud", "ask clyde", "ask claud", "ask clod", "get claude",
         "libere", "liberer", "vide le cache", "supprime", "supprimer", "efface", "effacer", "nettoie", "desinstalle", "demande a claude",
-        "demande a cloud", "va chercher claude")
+        "demande a cloud", "va chercher claude",
+        // 1.0.0: "Ask a helper"'s own phrases.
+        "ask the helper", "ask a helper", "ask my helper", "demande a l assistant", "demande a lassistant", "demande l assistant",
+        "demande a un assistant", "demande un assistant")
     private val READ_VERBS = listOf("tell me about", "tell me", "give me", "read me", "read out", "read", "let me know", "show me", "whats on", "what is on",
         "whats", "what is", "check", "how is", "hows", "dis moi", "donne moi", "lis moi", "lis", "annonce moi", "c est quoi", "quelle est", "quel est",
         "verifie", "montre moi")

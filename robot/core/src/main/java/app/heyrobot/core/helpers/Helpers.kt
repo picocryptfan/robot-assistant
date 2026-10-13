@@ -393,7 +393,9 @@ object HelperNames {
 
     /** Words that are commands of their own: a helper called one of them would turn every "thanks" or "stop" into a name. */
     private val COMMANDS = setOf("stop", "thanks", "thank", "back", "yes", "no", "cancel", "okay", "ok", "bye", "goodbye", "ask", "get", "go", "read",
-        "merci", "oui", "non", "annule", "demande", "help", "wait", "not", "you", "me", "it", "the", "a", "an")
+        "merci", "oui", "non", "annule", "demande", "help", "wait", "not", "you", "me", "it", "the", "a", "an",
+        // 1.0.0: "ask the helper …" and « demande à l'assistant … » mean the helper Robot checks with, never one called that.
+        "helper", "assistant", "lassistant")
 
     /** Common words and names that are often said for something else: allowed, with a warning. */
     private val COMMON = setOf("max", "echo", "sage", "nova", "ray", "sky", "alex", "sam", "jo", "joe", "jack", "kim", "lee", "mark", "will", "grace",

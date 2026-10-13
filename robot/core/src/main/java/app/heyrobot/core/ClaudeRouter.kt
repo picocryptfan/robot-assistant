@@ -51,6 +51,19 @@ data class HelperName(val id: String, val forms: List<List<String>>, val mishear
         /** Claude as 0.3 to 0.5 heard it. */
         val CLAUDE = HelperName(CLAUDE_ID, listOf(listOf("claude")), listOf("cloud", "clod", "clawed", "claud", "klode", "clyde").map { listOf(it) }, app = true)
 
+        /**
+         * 1.0.0, "Ask a helper": no name, the helper Robot checks with ([app.heyrobot.core.helpers.HelperSettings.target]),
+         * which the panel picks when the command arrives. Never a helper's id (ids are letters, digits and "_").
+         */
+        const val ANY_ID = "*"
+
+        /**
+         * "the helper", "a helper", "my helper", « l'assistant », « un assistant »: heard after "ask" and « demande (à) »
+         * only ([ClaudeRouter.route]), and in a refusal ("don't ask the helper"), never on their own or after "go get".
+         */
+        val ANY = HelperName(ANY_ID, listOf(listOf("the", "helper"), listOf("a", "helper"), listOf("my", "helper"), listOf("lassistant"),
+            listOf("l", "assistant"), listOf("un", "assistant")))
+
         /** A word sequence in the router's plain form ("ChatGPT" → [chatgpt], "Deep Seek" → [deep, seek]). */
         fun words(s: String): List<String> = ClaudeRouter.plain(s).split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
 
@@ -199,6 +212,8 @@ object ClaudeRouter {
         arrayOf("back", "to", "robot"), arrayOf("go", "back", "to", "robot"), arrayOf("switch", "back", "to", "robot"), arrayOf("retour", "a", "robot"),
     )
     private val ASKS: List<Array<String>> = listOf(arrayOf("ask", "*"), arrayOf("demande", "a", "*"), arrayOf("demande", "*"))
+    /** After a request to "my helper", these words are a message for a person ("ask my helper to pick up milk"). */
+    private val FOR_A_PERSON = setOf("to", "if", "whether", "si", "de", "d")
 
     /** The command at the start of [text] for one of [names] (Claude alone by default), or null: ordinary talk for Robot. */
     fun route(text: String, names: List<HelperName> = CLAUDE): ClaudeCommand? {
@@ -215,14 +230,18 @@ object ClaudeRouter {
             if (w != null && w.endsWith("s") && names.any { n -> n.app && (n.forms + n.misheard).any { it == listOf(w.dropLast(1)) } }) return ClaudeCommand.ReadAnswer
         }
 
-        // "ask Claude …", "demande à Claude …" (and "demande Claude", when the "à" was not heard).
-        ASKS.firstNotNullOfOrNull { seqName(ws, i, it, names) }?.let { (askAt, m) ->
+        // "ask Claude …", "demande à Claude …" (and "demande Claude", when the "à" was not heard). 1.0.0: "ask the helper …",
+        // "ask a helper …", "ask my helper …", « demande à l'assistant … », « demande à un assistant … » ([HelperName.ANY]),
+        // after the helpers' own names, so a helper you named wins a tie.
+        ASKS.firstNotNullOfOrNull { seqName(ws, i, it, names + HelperName.ANY) }?.let { (askAt, m) ->
             val next = ws.getOrNull(askAt)?.w
             // "ask Clyde if he's coming to dinner": a message for a person (Robot's to handle), not a question for Claude.
             if (next in setOf("if", "whether", "si") && ws.getOrNull(askAt + 1)?.w in PERSON) return null
             // After a word that only sounds like the name, "ask Clyde to pick up milk" or "… whether dinner is ready" is
             // a message for a person too: only the name itself carries a request like that.
-            if (!m.exact && next in setOf("to", "if", "whether", "si", "de", "d")) return null
+            if (!m.exact && next in FOR_A_PERSON) return null
+            // "My helper" may be a person who helps at home: "ask my helper to pick up the kids" is a message for them.
+            if (m.id == HelperName.ANY_ID && ws[askAt - 2].w == "my" && next in FOR_A_PERSON) return null
             return rest(text, ws, askAt, ASK_DROP)?.let { ask(it, m.id) } ?: ClaudeCommand.Join(misheard = !m.exact, helper = m.id)
         }
 
@@ -345,7 +364,7 @@ object ClaudeRouter {
         val ws = words(text)
         if (ws.isEmpty()) return false
         val start = head(ws)
-        val d = Declines(text, ws, names)
+        val d = Declines(text, ws, names + HelperName.ANY)
         return ws.indices.any { i -> d.contrast(i) || d.verbFirst(i) || yourself(text, ws, i, start) || d.french(i) }
     }
 
@@ -424,6 +443,8 @@ object ClaudeRouter {
             REFUSE_FIRST.firstOrNull { seq(ws, i, *it) }?.let { p ->
                 val v = i + p.size
                 if (ws.getOrNull(v)?.w !in REFUSED) return@let
+                // "don't ask the helper": a name that starts with a connecting word ([HelperName.ANY]).
+                if (nameAfterVerb(v + 1)) return true
                 var k = v + 1
                 while (k < ws.size && k - v <= 3 && ws[k].w in CONNECT) k++
                 // "don't use the cloud" is about storage: after "the", only the name itself.
@@ -550,7 +571,7 @@ object ClaudeRouter {
         val ws = words(text).map { it.w }
         if (ws.isEmpty() || ws.size > 6) return false
         val first = ws.first()
-        val named = names.flatMap { n -> n.forms.flatten() }.toSet()
+        val named = (names + HelperName.ANY).flatMap { n -> n.forms.flatten() }.toSet()
         return first in setOf("yes", "yeah", "yep", "yup", "sure", "ok", "okay", "please", "oui", "daccord", "absolutely", "definitely", "go") &&
             ws.all { it in YES || it in named }
     }

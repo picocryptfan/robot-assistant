@@ -376,6 +376,9 @@ object PanelController {
     private const val HELPER_IDLE_MS = 10 * 60_000L
     /** A helper that was removed from Settings while Robot still knew it. */
     private const val GONE = "That helper isn't in Robot's settings any more."
+    /** "Ask the helper …" with no helper to ask (1.0.0). */
+    private const val NO_HELPER = "No helper is set up yet. Add one in Robot's settings, under Helpers."
+    private const val NONE_ON = "Every helper is off. Turn one on in Robot's settings, under Helpers."
     /**
      * Failures that mean the helper can't be reached right now (your server is off, no connection, it timed out): a
      * question Robot sent by itself, before its own model ran, comes back to Robot instead.
@@ -1379,8 +1382,12 @@ object PanelController {
         val keep = if (marked == Attachment.SCREEN && !keptByUser) false else st.keep
         // Screen text, a picture, a read tool's findings or Claude's words anywhere in this conversation: every action asks first.
         val untrusted = TurnRules.untrusted(chat)
-        // The helper this turn goes to: the one named, or the one whose conversation is on.
-        val turnHelper = if (toClaude) VoiceHub.settings.helper((cmd as? ClaudeCommand.Ask)?.helper ?: (cmd as? ClaudeCommand.Join)?.helper ?: _state.value.helperMode) else null
+        // The helper this turn goes to: the one named, or the one whose conversation is on. 1.0.0: "ask the helper …" names
+        // none (HelperName.ANY_ID): the one Robot checks with ("When Robot needs help › Ask:"), else the first one on, which
+        // then says what it needs (a key, say).
+        val askedId = (cmd as? ClaudeCommand.Ask)?.helper ?: (cmd as? ClaudeCommand.Join)?.helper ?: _state.value.helperMode
+        val turnHelper = if (!toClaude) null else if (askedId == HelperName.ANY_ID) target() ?: VoiceHub.settings.helpers.firstOrNull { it.on }
+            else VoiceHub.settings.helper(askedId)
         val api = turnHelper != null && turnHelper.on && HelperSettings.route(turnHelper, keySaved(turnHelper)) == ClaudeRoute.API
         _state.update {
             it.copy(
@@ -1988,7 +1995,8 @@ object PanelController {
         val app = VoiceHub.app
         if (h == null) {
             endHelperMode()
-            return localReply(replyId, GONE)
+            val any = (cmd as? ClaudeCommand.Ask)?.helper == HelperName.ANY_ID || (cmd as? ClaudeCommand.Join)?.helper == HelperName.ANY_ID
+            return localReply(replyId, if (!any) GONE else if (s.helpers.isEmpty()) NO_HELPER else NONE_ON)
         }
         val w = words(h)
         val keySaved = keySaved(h)
