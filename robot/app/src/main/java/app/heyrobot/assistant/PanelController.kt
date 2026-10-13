@@ -522,6 +522,10 @@ object PanelController {
     /** The helper Robot checks with when it needs help ("When Robot needs help › Ask:"), or none. */
     private fun target(s: RobotSettings = VoiceHub.settings): HelperConfig? = HelperSettings.target(s) { keySaved(it) }
 
+    /** "Ask the helper …" (1.0.0): a helper that can take the question now (its API, or its app installed), or none. */
+    private fun askTarget(s: RobotSettings = VoiceHub.settings): HelperConfig? =
+        HelperSettings.askTarget(s, { keySaved(it) }) { pkg -> HandOffApps.installed(VoiceHub.app, pkg) }
+
     private fun init() {
         if (initialized) return
         initialized = true
@@ -1403,11 +1407,10 @@ object PanelController {
         // Screen text, a picture, a read tool's findings or Claude's words anywhere in this conversation: every action asks first.
         val untrusted = TurnRules.untrusted(chat)
         // The helper this turn goes to: the one named, or the one whose conversation is on. 1.0.0: "ask the helper …" names
-        // none (HelperName.ANY_ID): the one Robot checks with ("When Robot needs help › Ask:"), else the first one on, which
-        // then says what it needs (a key, say).
+        // none (HelperName.ANY_ID): one that can take it now, the one you chose first (HelperSettings.askTarget); none, and
+        // helperTurn says what's missing.
         val askedId = (cmd as? ClaudeCommand.Ask)?.helper ?: (cmd as? ClaudeCommand.Join)?.helper ?: _state.value.helperMode
-        val turnHelper = if (!toClaude) null else if (askedId == HelperName.ANY_ID) target() ?: VoiceHub.settings.helpers.firstOrNull { it.on }
-            else VoiceHub.settings.helper(askedId)
+        val turnHelper = if (!toClaude) null else if (askedId == HelperName.ANY_ID) askTarget() else VoiceHub.settings.helper(askedId)
         val api = turnHelper != null && turnHelper.on && HelperSettings.route(turnHelper, keySaved(turnHelper)) == ClaudeRoute.API
         _state.update {
             it.copy(
@@ -2016,7 +2019,14 @@ object PanelController {
         if (h == null) {
             endHelperMode()
             val any = (cmd as? ClaudeCommand.Ask)?.helper == HelperName.ANY_ID || (cmd as? ClaudeCommand.Join)?.helper == HelperName.ANY_ID
-            return localReply(replyId, if (!any) GONE else if (s.helpers.isEmpty()) NO_HELPER else NONE_ON)
+            // "Ask the helper …" with helpers on but none ready: what the one you'd get still needs (a key, or its app).
+            val waiting = s.helper(s.helpDefault)?.takeIf { it.on } ?: s.helpers.firstOrNull { it.on }
+            return localReply(replyId, when {
+                !any -> GONE
+                s.helpers.isEmpty() -> NO_HELPER
+                waiting == null -> NONE_ON
+                else -> words(waiting).notReady
+            })
         }
         val w = words(h)
         val keySaved = keySaved(h)

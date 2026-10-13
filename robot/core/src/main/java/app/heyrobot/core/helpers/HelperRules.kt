@@ -54,6 +54,20 @@ object HelperSettings {
         return s.helpers.firstOrNull { apiReady(it, keySaved(it)) } ?: s.helpers.firstOrNull { it.on && it.presetOf.app != null }
     }
 
+    /**
+     * 1.0.0, "ask the helper …" (no name said): a helper that can take the question now. The one you chose ("Ask:") when it
+     * can; else the first Robot can ask itself; else the first on whose app is installed ([appInstalled], by package).
+     * Null: none can, and Robot says what's missing rather than show a card that only says to install an app.
+     */
+    fun askTarget(s: RobotSettings, keySaved: (HelperConfig) -> Boolean, appInstalled: (String) -> Boolean): HelperConfig? {
+        fun usable(h: HelperConfig): Boolean {
+            val key = keySaved(h)
+            return apiReady(h, key) || (h.on && route(h, key) == ClaudeRoute.APP && h.presetOf.app?.let(appInstalled) == true)
+        }
+        s.helper(s.helpDefault)?.takeIf(::usable)?.let { return it }
+        return s.helpers.firstOrNull { apiReady(it, keySaved(it)) } ?: s.helpers.firstOrNull(::usable)
+    }
+
     /** The first Kokoro voice that neither Robot ([robotSpeaker]) nor another helper uses, for a new helper. */
     fun freeVoice(s: RobotSettings, robotSpeaker: Int?): String {
         val used = s.helpers.map { it.voice }.toSet()
@@ -142,6 +156,8 @@ class HelperWords(w: HelperWho) {
     val loading = "$n is loading its model…"
     val unlockToCheck = "Unlock your phone to check with $n."
     val nothingSent = "Okay, nothing was sent to $n."
+    /** "Ask the helper …" when no helper can take it yet ([HelperSettings.askTarget]): what [n], the one you'd get, still needs. */
+    val notReady = "$n can't answer yet. Add its API key in Robot's settings, under Helpers" + (w.app?.let { ", or install the $it app" } ?: "") + "."
 
     fun tapToInclude(p: Set<Personal>): String = "Tap Send to include ${Personal.list(p)}."
 }

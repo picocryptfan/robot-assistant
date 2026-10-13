@@ -234,11 +234,18 @@ object Presets {
         searchNote = "A server on your network has no web search Robot can use.",
     )
 
+    /**
+     * 1.0.0: called "My AI" when its address gives no name ([HelperNames.forNew]); "Helper" before, which is now how you ask
+     * whichever helper Robot checks with, so a name nobody may pick ([HelperNames.check] lets one saved before keep it).
+     */
     val OTHER = Preset(
-        "compatible", HelperKind.OTHER, "Another company", "Another company (OpenAI-compatible)", "Helper", Protocol.CHAT, null,
+        "compatible", HelperKind.OTHER, "Another company", "Another company (OpenAI-compatible)", "My AI", Protocol.CHAT, null,
         Quirks(toolChoice = false), emptyList(), keyRequired = false,
         searchNote = "Robot doesn't know this company's web search.",
     )
+
+    /** [OTHER]'s name before 1.0.0, a default rather than a name you chose (the diagnostics keep it). */
+    const val OTHER_FORMER_NAME = "Helper"
 
     /** In the order "Add a helper" lists them. */
     val ALL: List<Preset> = listOf(ANTHROPIC, OPENAI, GEMINI, MISTRAL, DEEPSEEK, GROQ, OPENROUTER, XAI, HOME, OTHER)
@@ -397,6 +404,38 @@ object HelperNames {
         // 1.0.0: "ask the helper …" and « demande à l'assistant … » mean the helper Robot checks with, never one called that.
         "helper", "assistant", "lassistant")
 
+    /** The command words 1.0.0 added, which a helper may already have been called. */
+    private val SINCE_1_0 = setOf("helper", "assistant", "lassistant")
+
+    /** Second-level labels under a two-letter country code ("example.co.uk"): the name is the label before them. */
+    private val SECOND_LEVEL = setOf("co", "com", "org", "net", "ac", "gov", "edu", "ne", "or")
+
+    /**
+     * A name for another company's helper from its address: "https://api.example.com/v1" → "Example", "openrouter.ai" →
+     * "Openrouter". Null when the address gives none (an IP address, a label under three letters).
+     */
+    fun fromAddress(address: String): String? {
+        val host = LanRule.normalize(address)?.host ?: return null
+        if (LanRule.literal(host) != null) return null
+        val labels = host.split('.').filter { it.isNotEmpty() }
+        var main = labels.dropLast(1)
+        if (main.size >= 2 && main.last() in SECOND_LEVEL && labels.last().length == 2) main = main.dropLast(1)
+        val label = main.lastOrNull() ?: labels.firstOrNull() ?: return null
+        val name = clean(label.replace('-', ' '))
+        if (name.count { it.isLetter() } < 3) return null
+        return name.replaceFirstChar { it.titlecase(java.util.Locale.ROOT) }
+    }
+
+    /**
+     * The name a new helper of [p] gets ([id], in [s]): for another company, the one in its [address] when it has one, else
+     * the preset's: the first of each, then "… 2" to "… 9", that [check] doesn't refuse. You can rename it on its page.
+     */
+    fun forNew(p: Preset, id: String, s: app.heyrobot.core.RobotSettings, wakeWords: Set<String>, address: String? = null): String {
+        val bases = listOfNotNull(address?.takeIf { p.kind == HelperKind.OTHER }?.let(::fromAddress), p.defaultName).distinct()
+        val tries = bases.flatMap { b -> listOf(b) + (2..9).map { "$b $it" } }
+        return tries.firstOrNull { check(it, id, s, wakeWords) !is NameCheck.Problem } ?: p.defaultName
+    }
+
     /** Common words and names that are often said for something else: allowed, with a warning. */
     private val COMMON = setOf("max", "echo", "sage", "nova", "ray", "sky", "alex", "sam", "jo", "joe", "jack", "kim", "lee", "mark", "will", "grace",
         "hope", "joy", "rose", "april", "may", "june", "august", "summer", "river", "star", "sunny", "honey", "buddy", "friend", "bob", "ben")
@@ -412,8 +451,12 @@ object HelperNames {
         if (raw.any { !(it.isLetterOrDigit() || it == ' ') }) return NameCheck.Problem("Use letters, digits and spaces only.")
         val words = app.heyrobot.core.HelperName.words(raw)
         if (words.isEmpty() || words.size > 3) return NameCheck.Problem("Give it a name of one to three words.")
+        // A name saved before 1.0.0 made "helper" and "assistant" command words ("Helper", another company's default) keeps
+        // working: it is only refused for a new helper or a new name.
+        val kept = s.helpers.any { it.id == id && app.heyrobot.core.HelperName.words(it.name) == words }
         for (w in words) {
             if (w == "robot" || w in wakeWords) return NameCheck.Problem("“$w” is in a wake phrase: Robot would mix them up.")
+            if (kept && w in SINCE_1_0) continue
             if (w in COMMANDS || w in app.heyrobot.core.ClaudeRouter.FILLER_WORDS) return NameCheck.Problem("“$w” is a word Robot listens for in commands.")
         }
         for (other in s.helpers) {

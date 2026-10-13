@@ -147,7 +147,7 @@ fun HelpersScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> U
     val spend = f?.spend
     PreferenceScreen("Helpers", onBack, snackbar = snackbar) {
         item(key = "intro") {
-            IntroPreference("Other AIs Robot asks only when you say so (“ask a helper …”, “go get Gemini”) or when you let it check hard questions.")
+            IntroPreference("Other AIs Robot asks only when you say so (“ask a helper …”, or “go get” and a helper's name) or when you let it check hard questions.")
         }
         preferenceGroup("Your helpers", "helpers") {
             if (s.helpers.isEmpty()) PreferenceItem("No helpers", "Robot answers everything itself")
@@ -207,7 +207,7 @@ fun AddHelperScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAct
         // Claude keeps its id (its key file, the Claude app, the settings mirror) when you add it back.
         val id = if (p.kind == HelperKind.ANTHROPIC && HelperConfig.CLAUDE_ID !in taken) HelperConfig.CLAUDE_ID else HelperConfig.newId(taken) { Random.nextInt(it) }
         val wake = wakeWords(s)
-        val name = (listOf(p.defaultName) + (2..9).map { "${p.defaultName} $it" }).firstOrNull { HelperNames.check(it, id, s, wake) !is NameCheck.Problem } ?: p.defaultName
+        val name = HelperNames.forNew(p, id, s, wake, base)
         val robot = s.voiceChoice.takeIf { it.bundle == VoiceBundle.KOKORO }?.speaker
         val h = HelperConfig.of(p, id, HelperSettings.freeVoice(s, robot), name, base).copy(trust = trust)
         update(s.withHelper(h))

@@ -12,6 +12,7 @@ import app.heyrobot.core.VoiceLogCodec
 import app.heyrobot.core.VoiceLogEntry
 import app.heyrobot.core.VoiceLogText
 import app.heyrobot.core.helpers.HelperKind
+import app.heyrobot.core.helpers.Presets
 import app.heyrobot.core.memory.MemorySettings
 import app.heyrobot.core.messages.MessagesFile
 import app.heyrobot.core.readOrNull
@@ -152,7 +153,7 @@ object FeedbackPrivacy {
         val out = mutableListOf<String>()
         out += s.wakePhrases.map { it.text }
         for (h in s.helpers) {
-            if (h.name != h.presetOf.defaultName) out += h.name
+            if (h.name != h.presetOf.defaultName && !(h.kind == HelperKind.OTHER && h.name == Presets.OTHER_FORMER_NAME)) out += h.name
             out += h.aliases
             h.baseUrl?.let { u -> out += u; hostOf(u)?.let { out += it } }
             if (h.kind == HelperKind.HOME || h.kind == HelperKind.OTHER) out += h.model
