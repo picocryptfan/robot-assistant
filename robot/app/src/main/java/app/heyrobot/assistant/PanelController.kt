@@ -880,7 +880,8 @@ object PanelController {
     private fun persist() {
         val st = _state.value
         if (!st.keep || !VoiceHub.settings.saveHistory || chat.isEmpty()) return
-        val c = StoredConversation(st.convId, chat.first().time, System.currentTimeMillis(), chat.toList())
+        // 1.0: a conversation begun on the lock screen is saved with its turns marked, so History's Continue quotes them.
+        val c = StoredConversation(st.convId, chat.first().time, System.currentTimeMillis(), PanelContinuity.stored(chat.toList(), startedLocked))
         scope.launch(Dispatchers.IO) { ConversationStore.save(VoiceHub.app, c) }
     }
 

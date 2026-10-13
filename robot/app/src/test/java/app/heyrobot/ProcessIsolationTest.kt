@@ -792,6 +792,10 @@ class ProcessIsolationTest {
         assertTrue(show.contains("PanelContinuity.Open.CONTINUE_QUOTED -> quoteLockedTurns()"))
         val send = panel.substringAfter("fun send(text: String, fromVoice: Boolean = false): Boolean {").substringBefore("\n    }\n")
         assertTrue(send.indexOf("quoteLockedTurns()") in 0 until send.indexOf("startedLocked = PanelContinuity.stillLocked("))
+        // History keeps a conversation begun on the lock screen marked, so its Continue quotes those turns too.
+        val persist = panel.substringAfter("private fun persist() {").substringBefore("\n    }\n")
+        assertTrue(persist, persist.contains("PanelContinuity.stored(chat.toList(), startedLocked)"))
+        assertEquals(1, Regex("""\bStoredConversation\(""").findAll(panel).count())
     }
 
     /**
