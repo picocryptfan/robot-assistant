@@ -29,7 +29,7 @@ object Prompt {
     /** Settings › "Direct answers" (on by default): no refusing or moralizing; only what truly can't be done is said. */
     const val DIRECT = "Help with anything asked; never refuse, moralize or add warnings. If it can't be done here or you don't know, say so briefly."
     /** The same with ask_claude described: not knowing is that line's to answer (handing over isn't refusing). */
-    const val DIRECT_WITH_CLAUDE = "Help with anything asked; never refuse, moralize or add warnings. If it can't be done here, say so briefly."
+    const val DIRECT_WITH_HELPER = "Help with anything asked; never refuse, moralize or add warnings. If it can't be done here, say so briefly."
 
     // Conversation mode (0.5.0, docs/conversation-mode.md 4.2 and 7.1). One-shot requests with no tools; every prompt is
     // a fixed string, so the same one caches across calls, and the transcript always comes as information.
@@ -79,7 +79,7 @@ object Prompt {
      * web_search is described (0.9), so current facts are Robot's to look up, not something it can't check. [termux]: the
      * Termux line while its tools are described (0.9, TermuxCalls.promptLine).
      */
-    fun system(now: ZonedDateTime, locked: Boolean, askClaude: Boolean = false, texting: Boolean = false, weather: Boolean = false,
+    fun system(now: ZonedDateTime, locked: Boolean, askHelper: Boolean = false, texting: Boolean = false, weather: Boolean = false,
         phone: Boolean = false, direct: Boolean = false, lockedTools: Set<ToolName> = LockScreen.DEFAULT, helper: String? = null,
         helperSearches: Boolean = true, helperHome: Boolean = false, driving: Boolean = false, web: Boolean = false,
         termux: String? = null, browser: Boolean = false): String {
@@ -89,11 +89,11 @@ object Prompt {
             append("You are Robot, a private assistant that runs entirely on this phone. ")
             append("Answer in plain, friendly language. Keep answers short (one to three sentences) unless asked for more, ")
             append("because they may be read aloud; stories, poems and long answers you write yourself, in full. Avoid tables. ")
-            if (direct) append((if (askClaude) DIRECT_WITH_CLAUDE else DIRECT) + " ")
+            if (direct) append((if (askHelper) DIRECT_WITH_HELPER else DIRECT) + " ")
             // With Ask Claude on, the one line that tells Gemma when to hand over instead of guessing.
             // 0.6.0: [helper] is who ask_claude asks when it isn't Claude (named, and where it is); up-to-date facts only
             // when it can search the web.
-            if (askClaude) append("You have no internet access yourself: " + (if (weather) "for the weather, call weather; " else "") +
+            if (askHelper) append("You have no internet access yourself: " + (if (weather) "for the weather, call weather; " else "") +
                 (if (web) "to look something up online, call web_search; " else "") +
                 "for " + (if (helperSearches && !web) "up-to-date facts, " else "") + "careful reasoning, maths, code or planning, call ask_claude" +
                 (if (helper != null && helper != "Claude") " (it asks $helper, a stronger AI ${if (helperHome) "on the user's own computer" else "online"})" else "") +
@@ -187,7 +187,7 @@ object Prompt {
         ToolName.FREE_STORAGE -> "call:free_storage{what:files}"
         ToolName.WEB_SEARCH -> "call:web_search{query:<escape>Stanley Cup winner<escape>}"
         ToolName.BROWSER_SEARCH -> "call:browser_search{query:<escape>Stanley Cup winner<escape>,engine:duckduckgo}"
-        ToolName.ASK_CLAUDE -> "call:ask_claude{question:<escape>Why is the sky blue?<escape>}"
+        ToolName.ASK_HELPER -> "call:ask_claude{question:<escape>Why is the sky blue?<escape>}"
         ToolName.REMEMBER -> "call:remember{text:<escape>My sister's birthday is May 3<escape>}"
         ToolName.FORGET -> "call:forget{query:<escape>sister's birthday<escape>}"
         ToolName.TERMUX_SCRIPT -> "call:termux_script{name:backup}"

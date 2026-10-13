@@ -170,7 +170,7 @@ fun HelpersScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> U
             }
         }
         preferenceGroup("Cost", "cost") {
-            ListPreference("Daily budget for all helpers", s.helperBudgetCents, RobotSettings.CLAUDE_BUDGETS,
+            ListPreference("Daily budget for all helpers", s.helperBudgetCents, RobotSettings.HELPER_BUDGETS,
                 { c -> CostText.dollarsText(c * 10_000L).removeSuffix(".00") },
                 summary = "Today: ${CostText.dollarsText(spend?.total ?: 0)} of ${CostText.dollarsText(s.helperBudgetCents * 10_000L)} (an estimate)") {
                 update(s.copy(helperBudgetCents = it))
@@ -441,7 +441,7 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
                 PreferenceItem("Use the published prices", null, RIcons.Refresh, enabled = on, onClick = { set(h.copy(prices = null, pricesFor = null)) })
             }
             if (h.price !is HelperPrice.Free) {
-                ListPreference<Int?>("Daily cap for ${h.name}", h.budgetCents, listOf<Int?>(null) + RobotSettings.CLAUDE_BUDGETS.take(4),
+                ListPreference<Int?>("Daily cap for ${h.name}", h.budgetCents, listOf<Int?>(null) + RobotSettings.HELPER_BUDGETS.take(4),
                     { c -> c?.let { CostText.dollarsText(it * 10_000L).removeSuffix(".00") } ?: "None" },
                     summary = "Today: ${CostText.dollarsText(f?.spend?.by?.get(h.id) ?: 0)}" +
                         (h.budgetCents?.let { " of ${CostText.dollarsText(it * 10_000L)}" } ?: " · no cap") + " (an estimate)",

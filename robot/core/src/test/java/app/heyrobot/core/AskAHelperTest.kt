@@ -115,7 +115,7 @@ class AskAHelperTest {
             "merci l'assistant", "Merci, l’assistant !", "merci assistant", "au revoir l'assistant", "c'est tout l'assistant")) {
             assertEquals(t, HelperCommand.Leave, route(t, names))
             // Never a question for the helper, in its conversation or out of it.
-            assertFalse(t, FastPath.of(route(t, names), claudeMode = true, attachment = Attachment.NONE) == FastPath.Way.CLAUDE)
+            assertFalse(t, FastPath.of(route(t, names), inHelperMode = true, attachment = Attachment.NONE) == FastPath.Way.HELPER)
             // No router before the helpers' takes it (the panel runs these first, in a helper's conversation too).
             assertNull(t, MessagesRouter.route(t))
             assertNull(t, ConversationRouter.route(t, running = false))
@@ -143,7 +143,7 @@ class AskAHelperTest {
             assertNull(t, MemoryRouting.route(t, MemorySettings(), locked = false))
             assertNull(t, RoutineRouter.route(t, now))
             // A Claude command wins over texting, and these are one.
-            assertEquals(t, FastPath.Way.CLAUDE, FastPath.of(route(t), claudeMode = false, attachment = Attachment.NONE))
+            assertEquals(t, FastPath.Way.HELPER, FastPath.of(route(t), inHelperMode = false, attachment = Attachment.NONE))
         }
     }
 

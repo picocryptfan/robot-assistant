@@ -69,11 +69,11 @@ class WeatherToolTest {
         assertTrue(with.contains("For the weather, call weather."))
         assertTrue(with.contains("for news or prices, say you can't check that"))
         assertFalse(with.contains("news, weather or prices"))
-        val claude = Prompt.system(now, locked = false, askClaude = true, weather = true)
+        val claude = Prompt.system(now, locked = false, askHelper = true, weather = true)
         assertTrue(claude.contains("for the weather, call weather; for up-to-date facts"))
         // A dozen tokens more, and only in conversations that describe the tool.
         assertTrue(TokenEstimate.text(with) - TokenEstimate.text(without) in 0..20)
-        assertTrue(TokenEstimate.text(claude) - TokenEstimate.text(Prompt.system(now, locked = false, askClaude = true)) in 0..20)
+        assertTrue(TokenEstimate.text(claude) - TokenEstimate.text(Prompt.system(now, locked = false, askHelper = true)) in 0..20)
         // Its schema is small: the weather group costs well under 150 tokens.
         val system = Prompt.system(now, locked = false)
         val cost = Prompt.fixedTokens(system, Prompt.CORE_TOOLS + ToolName.WEATHER) - Prompt.fixedTokens(system, Prompt.CORE_TOOLS)

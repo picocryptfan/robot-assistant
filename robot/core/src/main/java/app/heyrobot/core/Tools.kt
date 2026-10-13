@@ -63,7 +63,7 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
      * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
      * the Claude app it is the hand-off, always behind a card.
      */
-    ASK_CLAUDE("ask_claude", "Ask a helper", ToolGroup.CORE, internal = true),
+    ASK_HELPER("ask_claude", "Ask a helper", ToolGroup.CORE, internal = true),
     /**
      * 0.7 memory (core memory/): keep something about you for later conversations, or drop it. Robot's own, under
      * Settings › Memory rather than Settings › Actions, described only with Memory on and words that call for them.
@@ -179,7 +179,7 @@ object ToolSpecs {
             ToolParam("query", "string", "Short search words", true),
             ToolParam("depth", "string", "quick, or read to open pages", false),
         )),
-        ToolSpec(ToolName.ASK_CLAUDE, "Ask Claude, a stronger AI online, instead of guessing.", listOf(
+        ToolSpec(ToolName.ASK_HELPER, "Ask Claude, a stronger AI online, instead of guessing.", listOf(
             ToolParam("question", "string", "The person's question", true),
         )),
         // 0.7: what the person asks Robot to keep about them, as small as a tool can be (the router answers "remember that …"
@@ -350,8 +350,8 @@ sealed class Action {
      * meant (null: the one Robot checks with); [app] its package and [appName] ("ChatGPT"), filled in from your settings
      * when the card is made (ToolExecutor), never by a model.
      */
-    data class AskClaude(val text: String, val helper: String? = null, val app: String? = null, val appName: String? = null) : Action() {
-        override val tool get() = ToolName.ASK_CLAUDE
+    data class AskHelper(val text: String, val helper: String? = null, val app: String? = null, val appName: String? = null) : Action() {
+        override val tool get() = ToolName.ASK_HELPER
         private val where get() = appName?.let { "the $it app" } ?: "the helper's app"
         override fun describe() = if (text.isBlank()) "Open $where" else "Open $where with: «${short(text)}»"
         override fun body() = text.takeIf { it.length > SHORT }
@@ -668,7 +668,7 @@ object ToolCalls {
             // Empty: "go get Claude" with nothing to summarise opens the app without text.
             // 1.0.0: [helper] names one of your helpers by id (the panel's hand-off to the one you called); the app it opens is
             // always looked up from your settings when the card is made, never taken from the call.
-            ToolName.ASK_CLAUDE -> ParsedCall.Ok(Action.AskClaude(longArg(a, AppHandOff.MAX_CHARS, "question", "query", "q", "text", "prompt").orEmpty(),
+            ToolName.ASK_HELPER -> ParsedCall.Ok(Action.AskHelper(longArg(a, AppHandOff.MAX_CHARS, "question", "query", "q", "text", "prompt").orEmpty(),
                 helper = textArg(a, 16, "helper")?.takeIf { Regex("[a-z0-9_]{1,16}").matches(it) }))
             // Both optional: no place is where you are, no day is today.
             ToolName.WEATHER -> ParsedCall.Ok(Action.Weather(textArg(a, MAX_NAME, "place", "location", "city", "where", "town"),

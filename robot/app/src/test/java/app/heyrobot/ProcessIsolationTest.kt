@@ -1659,10 +1659,10 @@ class ProcessIsolationTest {
         // web for …" and Termux's "run <script>" next, before memory's: the panel's order is the messages router and its echo
         // check, conversation mode, feedback, routines, headset and car, web search, Termux, memory, the helpers, the model.
         val conv = pc.indexOf("val convCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null) ConversationRouter.route(q, ConversationSession.running) else null")
-        val routines = pc.indexOf("val routineCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.claudeMode)\n            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null")
-        val handsFree = pc.indexOf("val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&\n            !_state.value.claudeMode) PanelHandsFree.route(q) else null")
-        val web = pc.indexOf("val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&\n            !_state.value.claudeMode) BrowserRouter.route(q) else null")
-        val termux = pc.indexOf("val termux = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            !_state.value.claudeMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null")
+        val routines = pc.indexOf("val routineCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.inHelperMode)\n            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null")
+        val handsFree = pc.indexOf("val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&\n            !_state.value.inHelperMode) PanelHandsFree.route(q) else null")
+        val web = pc.indexOf("val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&\n            !_state.value.inHelperMode) BrowserRouter.route(q) else null")
+        val termux = pc.indexOf("val termux = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            !_state.value.inHelperMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null")
         assertTrue(msgRoute in 0 until conv && conv < fbRoute && fbRoute < routines && routines < handsFree && handsFree < web && web < termux &&
             termux < memRoute && memRoute < freeUp && freeUp < helpers)
         val runs = listOf("msgCmd != null -> PanelMessages.run(", "convCmd != null -> conversationCommand(", "fbCmd != null -> feedbackCommand(",

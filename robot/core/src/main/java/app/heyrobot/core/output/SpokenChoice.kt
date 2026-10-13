@@ -126,7 +126,7 @@ object SpokenCards {
         val to = if (car) DeferTo.PARK else DeferTo.READY
         val keep = (if (car) OutputLines.KEEP_FOR_PARK else OutputLines.KEEP_FOR_LOOK).get(lang)
         fun defer(why: CardVoiceCode) = CardVoice.Defer(keep, to, why)
-        if (car && card.tool == ToolName.ASK_CLAUDE) return CardVoice.Refuse(NO_CLAUDE_DRIVING.get(lang), CardVoiceCode.REFUSED)
+        if (car && card.tool == ToolName.ASK_HELPER) return CardVoice.Refuse(NO_CLAUDE_DRIVING.get(lang), CardVoiceCode.REFUSED)
         if (!ctx.voiceCards) return defer(CardVoiceCode.VOICE_OFF)
         val tap = card.waiting.tapFor
         if (tap == AskWhy.LEARNED || tap == AskWhy.ONLINE || card.deletes || (card.waiting.personal && !ctx.voiceYesPersonal)) return defer(CardVoiceCode.MUST_SEE)

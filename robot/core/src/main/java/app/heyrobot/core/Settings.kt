@@ -175,7 +175,7 @@ data class RobotSettings(
     /** "Safety cards": when content Robot read makes an action ask first (older files: the new default too). */
     val safetyCards: SafetyCards = SafetyCards.UNASKED,
     /** "Card when Claude asks Robot to do something". */
-    val claudeActionCards: Boolean = true,
+    val helperActionCards: Boolean = true,
     /** "Card when who-to isn't certain": several people, a near match, a number or address the model wrote, a loose app name. */
     val whoCards: Boolean = true,
     /** "Card for names learned from Cheogram". */
@@ -341,7 +341,7 @@ data class RobotSettings(
         put("meVoiceprint", meVoiceprint)
         if (convReminderAt > 0) put("convReminderAt", convReminderAt)
         put("safetyCards", safetyCards.name)
-        put("claudeActionCards", claudeActionCards)
+        put("claudeActionCards", helperActionCards)
         put("whoCards", whoCards)
         put("learnedCards", learnedCards)
         put("deleteCards", deleteCards)
@@ -422,7 +422,7 @@ data class RobotSettings(
             // 1.0: not a level you set: your own words open at once, the model's show their card (BrowserGate).
             ToolName.BROWSER_SEARCH to Approval.AUTO,
             // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
-            ToolName.ASK_CLAUDE to Approval.ASK,
+            ToolName.ASK_HELPER to Approval.ASK,
             // 0.7, not levels you set either (Settings › Memory): remember runs when you asked for it (a card otherwise,
             // ApprovalGate), forget always shows its card.
             ToolName.REMEMBER to Approval.AUTO,
@@ -438,7 +438,7 @@ data class RobotSettings(
         val EVENT_MINUTES = listOf(15, 30, 45, 60, 90, 120)
 
         /** Daily budgets for all helpers offered in Settings, in cents. */
-        val CLAUDE_BUDGETS = listOf(25, 50, 100, 200, 500)
+        val HELPER_BUDGETS = listOf(25, 50, 100, 200, 500)
 
         fun clampRate(v: Float): Float = if (v.isNaN()) 1.0f else v.coerceIn(0.5f, 2.0f)
         fun clampKeep(v: Int): Int = if (v == KEEP_ALWAYS) v else v.coerceIn(0, 120)
@@ -510,7 +510,7 @@ data class RobotSettings(
                 convReminderAt = o.optLong("convReminderAt", 0).coerceAtLeast(0),
                 // Schema 6: absent from older files, which read as the defaults (the new "When you didn't ask for it" included).
                 safetyCards = enumOr(o.optString("safetyCards"), d.safetyCards),
-                claudeActionCards = o.optBoolean("claudeActionCards", d.claudeActionCards),
+                helperActionCards = o.optBoolean("claudeActionCards", d.helperActionCards),
                 whoCards = o.optBoolean("whoCards", d.whoCards),
                 learnedCards = o.optBoolean("learnedCards", d.learnedCards),
                 deleteCards = o.optBoolean("deleteCards", d.deleteCards),

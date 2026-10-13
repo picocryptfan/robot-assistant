@@ -90,7 +90,7 @@ import app.heyrobot.ui.common.OfferView
 import app.heyrobot.ui.common.TurnActions
 import app.heyrobot.ui.common.TurnUi
 import app.heyrobot.ui.common.TurnView
-import app.heyrobot.ui.common.claudeFooter
+import app.heyrobot.ui.common.replyFooter
 import app.heyrobot.ui.common.transcriptGap
 import app.heyrobot.ui.theme.LocalLook
 import app.heyrobot.ui.theme.LookStyle
@@ -308,11 +308,11 @@ private fun classicStatusLine(st: PanelState): String = when (st.phase) {
     Phase.TRANSCRIBING -> "Writing it down…"
     // "Claude is thinking…" (or "Checking with Claude…", "My server is loading its model…") until the helper's first words.
     Phase.THINKING -> st.helperStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
-    Phase.ANSWERING -> st.turns.lastOrNull()?.takeIf { it.claude }?.let { "${it.by ?: "The helper"} is answering…" } ?: "Answering…"
+    Phase.ANSWERING -> st.turns.lastOrNull()?.takeIf { it.fromHelper }?.let { "${it.by ?: "The helper"} is answering…" } ?: "Answering…"
     Phase.CONFIRMING -> if (st.cardHearing != null) "Say yes or no…" else "Waiting for you: tap the card, or answer yes or no"
     Phase.SPEAKING -> "Speaking · tap to stop"
     Phase.IDLE -> when {
-        st.claudeMode -> "Talking with ${st.helperName ?: "the helper"}: your questions go " + if (st.helperHome) "to your server" else "online"
+        st.inHelperMode -> "Talking with ${st.helperName ?: "the helper"}: your questions go " + if (st.helperHome) "to your server" else "online"
         st.locked -> "Locked: " + LockScreen.allowed(st.lockedTools)
         st.brain.readiness == BrainKeeper.Readiness.LOADING -> "Getting ready…"
         else -> "On this phone, private"
@@ -335,14 +335,14 @@ private fun ColumnScope.PanelNotices(st: PanelState, actions: PanelActions) {
     when (look) {
         LookStyle.STOCK -> {
             ModelProblem(st, actions)
-            if (st.claudeMode) HelperModeChip(actions)
+            if (st.inHelperMode) HelperModeChip(actions)
         }
         LookStyle.CLASSIC -> {
             val b = st.brain
             if (st.notice == null && (b.readiness == BrainKeeper.Readiness.NO_MODEL || b.readiness == BrainKeeper.Readiness.FAILED)) {
                 ClassicBrainBanner(b.problem, openRobot = b.readiness == BrainKeeper.Readiness.NO_MODEL, onOpenRobot = actions::openRobotApp)
             }
-            if (st.claudeMode) ClassicHelperModeChip(st.helperName ?: "Helper", actions::endHelperMode)
+            if (st.inHelperMode) ClassicHelperModeChip(st.helperName ?: "Helper", actions::endHelperMode)
         }
     }
 }
@@ -355,8 +355,8 @@ internal fun UiTurn.toTurnUi() = TurnUi(
             cancel = it.cancel, openApp = it.handOff?.let { h -> SettingsPage.label(h) ?: "Open Cheogram" }, picture = it.picture, remember = it.remember,
             allowContacts = it.allowContacts, termux = it.termux)
     },
-    streaming = streaming, stopped = stopped, error = error, helper = claude, readBack = readBack, by = by, home = home,
-    footer = if (role == TurnRole.USER) emptyList() else claudeFooter(sources, cost, by),
+    streaming = streaming, stopped = stopped, error = error, helper = fromHelper, readBack = readBack, by = by, home = home,
+    footer = if (role == TurnRole.USER) emptyList() else replyFooter(sources, cost, by),
     offer = offer?.let { OfferView(it.api, it.text, it.sends, it.preview, it.asWell, it.name, it.app) },
     reply = reply,
     web = web,

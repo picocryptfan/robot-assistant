@@ -123,7 +123,7 @@ class RoutineTest {
             o.getJSONArray("steps").put(JSONObject().put("type", "tool").put("tool", t).put("args", args))
             assertNull(t, RoutineCodec.fromJson(o))
         }
-        for (a in listOf(Action.FreeStorage(StorageWay.FILES), Action.FreeMemory(null), Action.AskClaude("what's new"))) {
+        for (a in listOf(Action.FreeStorage(StorageWay.FILES), Action.FreeMemory(null), Action.AskHelper("what's new"))) {
             val r = routine(steps = listOf(RoutineStep.Tool(a)))
             assertTrue(a.toString(), RoutineCheck.problems(r).any { it.startsWith("Routines can't do this:") })
             assertEquals(StepClass.NEVER, RoutineGate.classOf(RoutineStep.Tool(a)))

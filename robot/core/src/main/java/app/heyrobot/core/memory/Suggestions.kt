@@ -91,7 +91,7 @@ object Suggestions {
         SpokenTurn(t.text, when {
             t.messages -> TurnSource.MESSAGE
             t.role == app.heyrobot.core.TurnRole.USER -> TurnSource.USER_TYPED
-            t.claude || t.readBack -> TurnSource.HELPER
+            t.fromHelper || t.readBack -> TurnSource.HELPER
             else -> TurnSource.ROBOT
         })
     }

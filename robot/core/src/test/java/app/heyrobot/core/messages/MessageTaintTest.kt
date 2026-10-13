@@ -80,7 +80,7 @@ class MessageTaintTest {
         for (mode in SafetyCards.entries) for (asked in listOf(false, true)) {
             val s = allAuto.copy(safetyCards = mode)
             // "text mom", "send my address to Bob": a text to someone else, an email, a helper, an online lookup.
-            for (tool in listOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ASK_CLAUDE, ToolName.WEATHER)) {
+            for (tool in listOf(ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ASK_HELPER, ToolName.WEATHER)) {
                 val d = MessageQuarantine.decide(tool, false, s, ActionOrigin.MODEL, taint, asked = asked)
                 assertEquals("$tool $mode", GateDecision.CONFIRM, d.decision)
                 assertTrue("$tool $mode", d.tapOnly)

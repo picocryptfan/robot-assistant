@@ -195,7 +195,7 @@ object WebQueryContext {
             if (t.role != TurnRole.ASSISTANT) continue
             if (t.actions.any { it.content && it.tool != ToolName.WEB_SEARCH } && !fresh) blindPersonal = true
             val web = t.actions.any { it.tool == ToolName.WEB_SEARCH && it.content }
-            if (t.claude || t.readBack || web) untrusted += t.text
+            if (t.fromHelper || t.readBack || web) untrusted += t.text
             val read = t.actions.filter { it.content && it.tool != ToolName.WEB_SEARCH }
             if (read.isNotEmpty()) {
                 personal += t.text

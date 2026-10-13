@@ -119,7 +119,7 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.CALL -> RIcons.Call
     ToolName.ADD_NOTE, ToolName.FIND_NOTES -> RIcons.Note
     ToolName.ADD_EVENT, ToolName.READ_CALENDAR -> RIcons.Event
-    ToolName.ASK_CLAUDE -> RIcons.Cloud
+    ToolName.ASK_HELPER -> RIcons.Cloud
     ToolName.WEATHER -> RIcons.Sunny
     ToolName.PHONE_STATUS -> RIcons.Phone
     ToolName.FREE_MEMORY -> RIcons.Chip
@@ -252,7 +252,7 @@ fun keptPicture(b64: String?): Bitmap? = try {
 }
 
 /** The lines under a helper's reply ([by]: its name): the search and its domains, then the cost. */
-fun claudeFooter(sources: List<String>, cost: String?, by: String? = null): List<String> = listOfNotNull(
+fun replyFooter(sources: List<String>, cost: String?, by: String? = null): List<String> = listOfNotNull(
     if (sources.isNotEmpty()) "${by ?: "The helper"} searched the web · " + sources.joinToString(", ") else null,
     cost,
 )

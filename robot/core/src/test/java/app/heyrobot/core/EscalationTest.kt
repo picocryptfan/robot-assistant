@@ -181,8 +181,8 @@ class EscalationTest {
 
     private val key = claudeSettings()
     private fun d(s: RobotSettings = key, keySaved: Boolean = true, personal: Boolean = false, locked: Boolean = false, budget: Boolean = false,
-        already: Boolean = false, fromClaude: Boolean = false, declined: Boolean = false) =
-        EscalationPolicy.decide(s, keySaved, personal, locked, budget, already, fromClaude, declined)
+        already: Boolean = false, fromHelper: Boolean = false, declined: Boolean = false) =
+        EscalationPolicy.decide(s, keySaved, personal, locked, budget, already, fromHelper, declined)
 
     /** Setting × key present × personal content × locked × budget reached × "not Claude". */
     @Test fun policyMatrix() {
@@ -228,13 +228,13 @@ class EscalationTest {
     @Test fun oncePerTurnAndNeverFromClaude() {
         // The policy: a turn that already escalated, or a Claude answer, never escalates.
         assertEquals(EscalationDecision.NONE, d(already = true))
-        assertEquals(EscalationDecision.NONE, d(fromClaude = true))
-        assertEquals(EscalationDecision.NONE, d(fromClaude = true, personal = true))
+        assertEquals(EscalationDecision.NONE, d(fromHelper = true))
+        assertEquals(EscalationDecision.NONE, d(fromHelper = true, personal = true))
         // The guard the panel keeps per turn: the first trigger wins, the second (a hedge after the pre-router) doesn't.
         val g = EscalationGuard()
-        assertFalse(g.take(fromClaude = true))
-        assertTrue(g.take(fromClaude = false))
-        assertFalse(g.take(fromClaude = false))
+        assertFalse(g.take(fromHelper = true))
+        assertTrue(g.take(fromHelper = false))
+        assertFalse(g.take(fromHelper = false))
         assertTrue(g.used)
     }
 
@@ -294,17 +294,17 @@ class EscalationTest {
         val now = java.time.ZonedDateTime.of(2026, 10, 11, 9, 0, 0, 0, java.time.ZoneId.of("Europe/Paris"))
         val core = setOf(ToolGroup.CORE)
         for ((declined, a) in listOf(true to Attachment.NONE, false to Attachment.SCREEN, false to Attachment.PHOTO, true to Attachment.SCREEN)) {
-            val askClaude = AskHelperTool.offered(key, true, true, declined, a)
-            assertFalse(askClaude)
-            assertFalse(ToolName.ASK_CLAUDE in ToolRouter.tools(ToolGroup.entries.toSet(), key, askClaude))
-            val system = Prompt.system(now, locked = false, askClaude = askClaude)
+            val askHelper = AskHelperTool.offered(key, true, true, declined, a)
+            assertFalse(askHelper)
+            assertFalse(ToolName.ASK_HELPER in ToolRouter.tools(ToolGroup.entries.toSet(), key, askHelper))
+            val system = Prompt.system(now, locked = false, askHelper = askHelper)
             assertFalse(system, system.contains("ask_claude") || system.contains("Claude"))
-            assertFalse(Prompt.textCallHint(ToolRouter.tools(core, key, askClaude)).contains("ask_claude"))
+            assertFalse(Prompt.textCallHint(ToolRouter.tools(core, key, askHelper)).contains("ask_claude"))
         }
         // A plain question still gets both.
-        val askClaude = AskHelperTool.offered(key, true, true, false, Attachment.NONE)
-        assertTrue(ToolName.ASK_CLAUDE in ToolRouter.tools(core, key, askClaude))
-        assertTrue(Prompt.system(now, locked = false, askClaude = askClaude).contains("call ask_claude instead of guessing"))
+        val askHelper = AskHelperTool.offered(key, true, true, false, Attachment.NONE)
+        assertTrue(ToolName.ASK_HELPER in ToolRouter.tools(core, key, askHelper))
+        assertTrue(Prompt.system(now, locked = false, askHelper = askHelper).contains("call ask_claude instead of guessing"))
     }
 
     /** Gemma handed over without a word: unless Claude answers right away, Robot's own answer comes first. */

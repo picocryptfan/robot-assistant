@@ -65,7 +65,7 @@ class PanelStatusTest {
         assertEquals(PanelStatus("Waiting for Claude…"), panelStatus(base.copy(phase = Phase.THINKING, helperStatus = "Claude is thinking…")))
         assertEquals(PanelStatus("Checking with Jarvis…"), panelStatus(base.copy(phase = Phase.THINKING, helperStatus = "Checking with Jarvis…")))
         assertEquals(PanelStatus("Jarvis is answering…"),
-            panelStatus(base.copy(phase = Phase.ANSWERING, turns = listOf(UiTurn("r", TurnRole.ASSISTANT, "Hi", claude = true, by = "Jarvis")))))
+            panelStatus(base.copy(phase = Phase.ANSWERING, turns = listOf(UiTurn("r", TurnRole.ASSISTANT, "Hi", fromHelper = true, by = "Jarvis")))))
         // A card listened to for its yes or no.
         assertEquals(PanelStatus("Say yes or no", RIcons.Mic), panelStatus(base.copy(phase = Phase.CONFIRMING, cardHearing = Phase.LISTENING)))
         assertEquals(PanelStatus("Transcribing…"), panelStatus(base.copy(phase = Phase.CONFIRMING, cardHearing = Phase.TRANSCRIBING)))

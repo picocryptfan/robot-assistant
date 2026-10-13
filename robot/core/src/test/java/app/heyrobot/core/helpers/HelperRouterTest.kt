@@ -38,7 +38,7 @@ class HelperRouterTest {
         assertEquals(HelperCommand.Ask("about stars"), route("ask clyde about stars"))
         // Leaving works with any helper's name (and "back to Robot").
         for (t in listOf("thanks Jarvis", "bye chat gpt", "thank you DeepSeek", "back to Robot", "merci Jarvis")) assertEquals(t, HelperCommand.Leave, route(t))
-        assertEquals(FastPath.Way.CLAUDE, FastPath.of(route("ask Jarvis to set a timer"), claudeMode = false, attachment = Attachment.NONE))
+        assertEquals(FastPath.Way.HELPER, FastPath.of(route("ask Jarvis to set a timer"), inHelperMode = false, attachment = Attachment.NONE))
     }
 
     @Test fun aWordThatSoundsLikeANameCountsOnlyAfterACommandVerb() {

@@ -37,7 +37,7 @@ class ApprovalGateTest {
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SEND_TEXT, true, texts))
         assertEquals(GateDecision.DISABLED, ApprovalGate.decide(ToolName.SEND_TEXT, true, texts.copy(approvals = texts.approvals + (ToolName.SEND_TEXT to Approval.OFF))))
         // The Claude app hand-off never: it isn't one of the choices.
-        assertFalse(ToolName.ASK_CLAUDE in LockScreen.CHOICES)
+        assertFalse(ToolName.ASK_HELPER in LockScreen.CHOICES)
         assertEquals("questions, timers and alarms", LockScreen.allowed(defaults.lockedTools))
         assertEquals("questions only", LockScreen.allowed(emptySet()))
         assertEquals("questions and flashlight", LockScreen.allowed(setOf(ToolName.FLASHLIGHT)))
@@ -118,7 +118,7 @@ class ApprovalGateTest {
     @Test fun unsureOnlyIgnoresContent() {
         val s = allAuto.copy(safetyCards = SafetyCards.UNSURE_ONLY)
         // 0.7: remember with content, or not asked for, is always a card (below and in everyCombination).
-        for (t in ToolName.entries - ToolName.ASK_CLAUDE - ToolName.REMEMBER) {
+        for (t in ToolName.entries - ToolName.ASK_HELPER - ToolName.REMEMBER) {
             assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, s, content = true))
             assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, s, why = setOf(AskWhy.WHO), content = true))
         }
@@ -146,7 +146,7 @@ class ApprovalGateTest {
         // On (the default): every call Claude makes shows a card, read tools included.
         for (t in HelperTools.OFFERED) assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, allAuto, content = true, asked = true, remote = true))
         // Off: the usual rules; Claude's words are content, so what you didn't ask for still asks (under the default).
-        val off = allAuto.copy(claudeActionCards = false)
+        val off = allAuto.copy(helperActionCards = false)
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.SET_TIMER, false, off, content = true, asked = true, remote = true))
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.SET_TIMER, false, off, content = true, asked = false, remote = true))
         // What a read finds for Claude goes to Claude: a tap first, unless personal content may go by itself.
@@ -163,7 +163,7 @@ class ApprovalGateTest {
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.ADD_NOTE, true, off, remote = true))
         assertEquals(GateDecision.DISABLED, ApprovalGate.decide(ToolName.ADD_NOTE, false, off.copy(approvals = off.approvals + (ToolName.ADD_NOTE to Approval.OFF)), remote = true))
         // The Claude app hand-off always shows "Open Claude with".
-        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.ASK_CLAUDE, false, allAuto.copy(claudeActionCards = false, safetyCards = SafetyCards.UNSURE_ONLY)))
+        assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.ASK_HELPER, false, allAuto.copy(helperActionCards = false, safetyCards = SafetyCards.UNSURE_ONLY)))
     }
 
     /**
@@ -180,13 +180,13 @@ class ApprovalGateTest {
         var n = 0
         for (t in ToolName.entries) for (level in Approval.entries) for (mode in SafetyCards.entries) for (lockSet in listOf(LockScreen.DEFAULT, setOf(t)))
             for (claudeCards in bools) for (who in bools) for (learned in bools) for (delete in bools) for (helpers in bools) {
-                val s = defaults.copy(approvals = defaults.approvals + (t to level), safetyCards = mode, lockedTools = lockSet, claudeActionCards = claudeCards,
+                val s = defaults.copy(approvals = defaults.approvals + (t to level), safetyCards = mode, lockedTools = lockSet, helperActionCards = claudeCards,
                     whoCards = who, learnedCards = learned, deleteCards = delete, personalToHelpers = helpers)
                 for (locked in bools) for (why in reasons) for (content in bools) for (asked in bools) for (remote in bools) {
                     n++
                     val got = ApprovalGate.decide(t, locked, s, why, content, asked, remote)
                     val cardReasons = listOf(
-                        t == ToolName.ASK_CLAUDE,
+                        t == ToolName.ASK_HELPER,
                         remote && claudeCards,
                         remote && t.reads && !helpers,
                         level == Approval.ASK,

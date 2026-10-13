@@ -614,7 +614,7 @@ class AnthropicSessionTest {
         s.ask(ask("q"), voicePlan, heard)
         assertTrue(logged.isNotEmpty())
         // What history would store for these turns carries no key either.
-        val c = StoredConversation("c", 0, 0, listOf(ChatTurn("u", TurnRole.USER, "q", 0), ChatTurn("a", TurnRole.ASSISTANT, heard.text.toString(), 0, claude = true)))
+        val c = StoredConversation("c", 0, 0, listOf(ChatTurn("u", TurnRole.USER, "q", 0), ChatTurn("a", TurnRole.ASSISTANT, heard.text.toString(), 0, fromHelper = true)))
         assertFalse(ConversationCodec.toJson(c).contains(key))
         // (The log check itself runs after every test, in down().)
     }

@@ -27,7 +27,7 @@ object TurnRules {
      * Claude's tool rounds in one answer at most ("plan my week and add these to my calendar"): each call behind a card,
      * and still at most [MAX_CALLS] calls in the answer. Server-side web search continuations (pause_turn) are not rounds.
      */
-    const val CLAUDE_MAX_ROUNDS = 3
+    const val HELPER_MAX_ROUNDS = 3
 
     /**
      * Robot asks before any action in a conversation that carries screen text or a picture (this turn's or an
@@ -44,7 +44,7 @@ object TurnRules {
         untrusted(turns.map { it.attachment }) || turns.any { t -> t.actions.any { it.content } } ||
             // Claude's answers (and one read off the Claude app's screen) are content Robot didn't write either; so are
             // the messages Robot read you (0.7), and what was said while the phone was locked (1.0, ChatTurn.locked).
-            turns.any { it.claude || it.readBack || it.messages || it.locked }
+            turns.any { it.fromHelper || it.readBack || it.messages || it.locked }
 }
 
 /** How a request to the model ended, as the turn sees it. */
@@ -56,7 +56,7 @@ sealed class ModelOutcome {
 }
 
 /** Robot's call to ask Claude (ask_claude): the turn ends there and EscalationPolicy decides what happens. */
-private fun RawToolCall.asksClaude(): Boolean = ToolName.of(name) == ToolName.ASK_CLAUDE
+private fun RawToolCall.asksHelper(): Boolean = ToolName.of(name) == ToolName.ASK_HELPER
 
 /** The model side of a turn. The reply's text reaches the view as it streams (the port's job). */
 interface TurnModel {
@@ -302,7 +302,7 @@ class TurnRunner(
      * calls ask_claude.
      */
     private val remote: Boolean = false,
-    private val maxRounds: Int = if (remote) TurnRules.CLAUDE_MAX_ROUNDS else TurnRules.MAX_ROUNDS,
+    private val maxRounds: Int = if (remote) TurnRules.HELPER_MAX_ROUNDS else TurnRules.MAX_ROUNDS,
     /**
      * The actions the person asked for in their own words this turn ([ToolRouter.asked], or a fast path's): under "Safety
      * cards: When you didn't ask for it" content doesn't make these ask. Never screen text, a photo or a tool's results.
@@ -347,7 +347,7 @@ class TurnRunner(
         var rounds = 0
         while (outcome is ModelOutcome.Calls && rounds < maxRounds) {
             // The local model asks Claude: its turn ends here, nothing else it asked for runs.
-            if (!remote && outcome.calls.any { it.asksClaude() }) return escalate()
+            if (!remote && outcome.calls.any { it.asksHelper() }) return escalate()
             rounds++
             val round = try {
                 runCalls(outcome.calls, speak = false)
@@ -384,7 +384,7 @@ class TurnRunner(
                 val found = if (outcome.reason == DoneReason.END && outcome.textCalls) ToolCalls.wholeReplyCalls(view.text) else emptyList()
                 if (found.isEmpty()) return TurnResult(outcome.reason)
                 view.replaceText("")
-                if (found.any { it.call.asksClaude() }) return escalate()
+                if (found.any { it.call.asksHelper() }) return escalate()
                 val round = runCalls(found.map { it.call }, speak = true)
                 // No tool results in this mode: the conversation is rebuilt from the history next time.
                 model.close()
@@ -394,7 +394,7 @@ class TurnRunner(
     }
 
     /**
-     * The Claude app route: the model's one call is the hand-off (ask_claude, Action.AskClaude), shown on its card
+     * The Claude app route: the model's one call is the hand-off (ask_claude, Action.AskHelper), shown on its card
      * ("Open Claude with: «…»") and run only after the tap; then Robot steps aside. No model reply follows.
      */
     suspend fun runHandOff(): TurnResult {

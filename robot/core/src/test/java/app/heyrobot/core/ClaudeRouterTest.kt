@@ -110,15 +110,15 @@ class ClaudeRouterTest {
     @Test fun askClaudePhrasesComeBeforeTheTextingShortcut() {
         val q = "ask Claude to text mom I'm running late"
         assertEquals(ask("text mom I'm running late"), route(q))
-        assertEquals(FastPath.Way.CLAUDE, FastPath.of(route(q), claudeMode = false, attachment = Attachment.NONE))
+        assertEquals(FastPath.Way.HELPER, FastPath.of(route(q), inHelperMode = false, attachment = Attachment.NONE))
         // Without the Claude phrase the texting shortcut takes it, before the model.
         val t = "text mom I'm running late"
         assertNull(route(t))
-        assertEquals(FastPath.Way.TEXT, FastPath.of(route(t), claudeMode = false, attachment = Attachment.NONE))
+        assertEquals(FastPath.Way.TEXT, FastPath.of(route(t), inHelperMode = false, attachment = Attachment.NONE))
         assertEquals("I'm running late", TextCommand.parse(t, listOf("Mom"))?.message)
         // In Claude mode a request to text goes to Claude (whose call shows a card); a question about a photo goes to the model.
-        assertEquals(FastPath.Way.CLAUDE, FastPath.of(route(t), claudeMode = true, attachment = Attachment.NONE))
-        assertEquals(FastPath.Way.MODEL, FastPath.of(route("what is this"), claudeMode = false, attachment = Attachment.PHOTO))
+        assertEquals(FastPath.Way.HELPER, FastPath.of(route(t), inHelperMode = true, attachment = Attachment.NONE))
+        assertEquals(FastPath.Way.MODEL, FastPath.of(route("what is this"), inHelperMode = false, attachment = Attachment.PHOTO))
     }
 
     @Test fun sentencesAboutAPersonCalledClaudeOrClydeStayLocal() {

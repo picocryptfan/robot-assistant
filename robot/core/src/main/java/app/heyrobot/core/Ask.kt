@@ -3,43 +3,14 @@ package app.heyrobot.core
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.core.helpers.HelperWho
-import app.heyrobot.core.helpers.HelperWords
-import java.time.LocalDate
 import java.util.Locale
 import kotlin.math.roundToLong
 
-// Pure. Ask Claude (docs/ask-claude.md): the models and their published prices, how hard Claude thinks and how long it
-// may answer, the cost line and the daily budget, the plain-language failures, Claude's voice, which route a question
-// takes (the Claude app or the API) and when Robot may bring Claude in by itself. Nothing here touches the network:
-// the API client lives in the :helpers module, which only the :voice process loads.
-
-/** Prices in US dollars per million tokens, as published (docs/ask-claude.md "Cost line"). */
-data class AnthropicPrices(val input: Double, val output: Double, val cacheRead: Double, val cacheWrite: Double)
-
-/**
- * The models you can pick. Exact model ID strings, never with a date suffix. [fallback]: the request carries the
- * server-side refusal fallback (`fallbacks: "default"`); Claude Haiku 5.5 has none, and a fallback list there is a 400.
- * Prices as published (https://platform.claude.com/docs/en/about-claude/pricing.md, read 2026-10-11): cache reads are
- * 0.05x input on Opus 5.5 and Sonnet 5.5, 0.025x on Fable 5.1, 0.1x on Haiku 5.5; 5-minute cache writes 1.25x.
- */
-enum class AnthropicModel(val id: String, val title: String, val detail: String, private val prices: AnthropicPrices, private val longPrices: AnthropicPrices?, val fallback: Boolean) {
-    OPUS("claude-opus-5-5", "Claude Opus 5.5", "Recommended for most questions: \$4 per million tokens in, \$20 out.", AnthropicPrices(4.0, 20.0, 0.20, 5.0), null, true),
-    SONNET("claude-sonnet-5-5", "Claude Sonnet 5.5", "Fast and capable: \$2 in, \$10 out.", AnthropicPrices(2.0, 10.0, 0.10, 2.5), null, true),
-    HAIKU("claude-haiku-5-5", "Claude Haiku 5.5", "The fastest and cheapest: \$0.10 in, \$0.50 out.", AnthropicPrices(0.10, 0.50, 0.01, 0.125), AnthropicPrices(0.50, 2.50, 0.05, 0.625), false),
-    /** 0.6.0: for the hardest questions; slower, and its thinking is always on (as on Opus 5.5). */
-    FABLE("claude-fable-5-1", "Claude Fable 5.1", "For the hardest questions, slower: \$10 in, \$50 out.", AnthropicPrices(10.0, 50.0, 0.25, 12.50), null, true);
-
-    /** The rate card for a request whose prompt (all input, cached or not) had [promptTokens]. */
-    fun prices(promptTokens: Long): AnthropicPrices = if (longPrices != null && promptTokens > LONG_PROMPT) longPrices else prices
-
-    companion object {
-        val DEFAULT = OPUS
-        /** Claude Haiku 5.5 bills prompts over this many tokens on its higher rate card. */
-        const val LONG_PROMPT = 100_000L
-
-        fun of(id: String?): AnthropicModel = entries.firstOrNull { it.id == id } ?: DEFAULT
-    }
-}
+// Pure. Asking a helper (docs/ask-claude.md; every helper since 0.6.0): how hard a helper thinks and how long it may
+// answer, the tokens a request used, the cost line, the plain-language failures, a helper's voice, which route a question
+// takes (the helper's app or its API) and when Robot may bring a helper in by itself. Nothing here touches the network:
+// the clients live in the :helpers module, which only the :voice process loads. Anthropic's models and prices, and the
+// Claude helper as 0.3 to 0.5 had it, are in Anthropic.kt.
 
 /** `output_config.effort`. Always sent explicitly: the API default differs between models. */
 enum class HelperEffort(val wire: String) { LOW("low"), MEDIUM("medium"), HIGH("high") }
@@ -88,48 +59,6 @@ data class TokenUsage(val input: Long = 0, val output: Long = 0, val cacheRead: 
     val prompt: Long get() = input + cacheRead + cacheWrite
 }
 
-/** One attempt within a request (`usage.iterations`): the model that ran it, if the API said, and its tokens. */
-data class AnthropicAttempt(val model: String?, val usage: TokenUsage)
-
-object AnthropicCost {
-    /** Web search: \$10 per 1,000 searches. */
-    const val SEARCH_DOLLARS = 0.01
-
-    /**
-     * The server-side fallback's models (Claude Opus 4.8 and Claude Opus 5, chosen by the API): \$5 in, \$25 out, cache
-     * reads \$0.50, writes \$6.25. Any model that isn't one of the three Robot asks for is priced like this.
-     */
-    val FALLBACK_PRICES = AnthropicPrices(5.0, 25.0, 0.50, 6.25)
-
-    /** The estimated price of one request, in dollars, at [model]'s rates. */
-    fun dollars(model: AnthropicModel, u: TokenUsage): Double = tokens(model.prices(u.prompt), u) + u.searches * SEARCH_DOLLARS
-
-    private fun tokens(p: AnthropicPrices, u: TokenUsage): Double =
-        (u.input * p.input + u.output * p.output + u.cacheRead * p.cacheRead + u.cacheWrite * p.cacheWrite) / 1_000_000.0
-
-    /** The rates of the model that ran a request: one of Robot's three by its ID, any other at the fallback's. */
-    fun prices(served: String?, requested: AnthropicModel, promptTokens: Long): AnthropicPrices {
-        if (served.isNullOrEmpty()) return requested.prices(promptTokens)
-        return AnthropicModel.entries.firstOrNull { served == it.id || served.startsWith(it.id + "-") }?.prices(promptTokens) ?: FALLBACK_PRICES
-    }
-
-    /**
-     * A request's price as the API bills it: each attempt in [attempts] (`usage.iterations`, the per-attempt record when
-     * a fallback ran) at the rates of the model that ran it, otherwise [total] at the rates of [served] (the model the
-     * response names, which sticky fallback routing can change). Searches at a cent each.
-     */
-    fun request(requested: AnthropicModel, served: String?, total: TokenUsage, attempts: List<AnthropicAttempt> = emptyList()): Double =
-        (if (attempts.isEmpty()) tokens(prices(served, requested, total.prompt), total)
-        else attempts.sumOf { tokens(prices(it.model ?: served, requested, it.usage.prompt), it.usage) }) + total.searches * SEARCH_DOLLARS
-
-    /** The tokens a request used in all: the attempts' sum when there are attempts, otherwise [total]. */
-    fun used(total: TokenUsage, attempts: List<AnthropicAttempt>): TokenUsage = if (attempts.isEmpty()) total else
-        attempts.fold(TokenUsage(searches = total.searches)) { a, t ->
-            a.copy(input = a.input + t.usage.input, output = a.output + t.usage.output, cacheRead = a.cacheRead + t.usage.cacheRead,
-                cacheWrite = a.cacheWrite + t.usage.cacheWrite)
-        }
-}
-
 /** Every helper's cost line and spend, as Robot writes them. */
 object CostText {
     /** Millionths of a dollar, for the budget file (whole numbers). */
@@ -147,25 +76,6 @@ object CostText {
 
     /** "\$0.42" for today's spend in Settings. */
     fun dollarsText(micros: Long): String = String.format(Locale.US, "$%.2f", micros / 1_000_000.0)
-}
-
-/** Today's spend on Claude (the :voice process writes it after each reply; Settings shows it). Pure. */
-data class ClaudeSpend(val day: String, val micros: Long) {
-    /** The spend for [today]: a new day starts from zero. */
-    fun on(today: LocalDate): ClaudeSpend = if (day == today.toString()) this else ClaudeSpend(today.toString(), 0)
-
-    fun add(today: LocalDate, dollars: Double): ClaudeSpend = on(today).let { it.copy(micros = it.micros + CostText.micros(dollars)) }
-
-    fun reached(today: LocalDate, budgetCents: Int): Boolean = budgetCents >= 0 && on(today).micros >= budgetCents * 10_000L
-
-    fun toJson(): String = org.json.JSONObject().put("day", day).put("micros", micros).toString()
-
-    companion object {
-        fun fromJson(text: String?): ClaudeSpend = try {
-            val o = org.json.JSONObject(text ?: return ClaudeSpend("", 0))
-            ClaudeSpend(o.optString("day"), o.optLong("micros").coerceAtLeast(0))
-        } catch (_: Exception) { ClaudeSpend("", 0) }
-    }
 }
 
 /**
@@ -257,37 +167,6 @@ enum class HelperFailure(val retry: Boolean = false) {
     }
 }
 
-
-/** Robot's own words about Claude (each helper's are [HelperWords]). */
-object ClaudeWords {
-    private val W = HelperWords(HelperWho.CLAUDE)
-    val DECLINED = W.declined
-    val THINKING = W.thinking
-    val CHECKING = W.checking
-    val SEARCHED = W.searched
-    val OFF = W.off
-    val LOCKED = W.locked
-    val JOINED = W.joined
-    const val LEFT = "Back to Robot."
-    val NOT_HERE = W.notHere
-    val BUDGET = W.budget
-    /** A reply cut at its length limit before it said anything (its thinking used the room). */
-    val CUT_EMPTY = W.cutEmpty
-    val KEY_UNREADABLE = W.keyUnreadable
-    /** The saved key couldn't be read just now (a passing Keystore error): it is kept. */
-    val KEY_UNAVAILABLE = W.keyUnavailable
-    const val SWIPE_TO_READ = "Open the Claude app, then swipe up from the corner and tap “Read Claude's answer”."
-    /** The offer under a reply: Robot didn't answer (a hedge, or the pre-router) ... */
-    val OFFER = W.offer
-    /** ... or under Robot's own answer, after the local model first handed the question over. */
-    val OFFER_AS_WELL = W.offerAsWell
-    /** The local model handed over and, asked again, still gave no answer of its own: the offer stands alone. */
-    val RATHER = W.rather
-
-    /** A spoken yes to an offer that would send personal content [p]: only a tap sends it. */
-    fun tapToInclude(p: Set<Personal>): String = W.tapToInclude(p)
-}
-
 /**
  * Claude's voice: another voice of the same model as Robot's, so you hear who is talking without a second model
  * load. Kokoro speaks the chosen [KOKORO] voice; Kitten its other voice of the same pair; the phone's voice reads
@@ -340,20 +219,6 @@ object HelperVoices {
     }
 }
 
-/** The API key's shape, checked before it is saved (pure; the key itself is handled in the :voice process only). */
-object AnthropicKeyFormat {
-    /**
-     * An Anthropic API key: "sk-ant-", then ASCII letters, digits, "-" and "_" only. Anything else (an accented letter,
-     * a Cyrillic look-alike, full-width digits) is refused before saving: HTTP headers can't carry it, and the HTTP
-     * client's error for a bad header character quotes the whole value.
-     */
-    fun plausible(k: String): Boolean = k.startsWith("sk-ant-") && k.length in 40..400 &&
-        k.all { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '-' || it == '_' }
-
-    /** "sk-ant-…AB12": shown in Settings. */
-    fun mask(k: String): String = "sk-ant-…" + k.takeLast(4)
-}
-
 /**
  * A cheap check of a sentence's language, to read Claude's French in a French voice: common French words, elisions
  * ("l'", "qu'") and accents against common English words. Pure.
@@ -388,30 +253,6 @@ enum class Escalation(val title: String, val detail: String) {
     OFF("Off", "Robot never suggests a helper."),
     ASK("Ask me first", "Robot offers to check with the helper and waits for a yes or a tap."),
     AUTO("Automatic", "Robot checks with the helper by itself for hard questions (only through its API, at a price it knows)."),
-}
-
-/**
- * The Ask Claude settings, with the defaults that depend on whether an API key is saved: since 0.6.0 the Claude helper's
- * ([RobotSettings.claude]) under [HelperSettings], the same rules for every helper. Pure.
- */
-object ClaudeSettings {
-    private fun claude(s: RobotSettings) = s.claude ?: HelperConfig.claude().copy(enabled = false)
-
-    /**
-     * Ask Claude on or off: on unless you turned it off (or removed Claude), with or without a key (without one,
-     * questions go to the Claude app). [keySaved] is kept for callers that pass it; it doesn't change the answer.
-     */
-    @Suppress("UNUSED_PARAMETER")
-    fun enabled(s: RobotSettings, keySaved: Boolean = false): Boolean = s.claude?.on ?: false
-
-    /** "Claude app" without a key, "Claude API" once a key is saved, unless you chose. */
-    fun route(s: RobotSettings, keySaved: Boolean): AskRoute = HelperSettings.route(claude(s), keySaved)
-
-    /** Automatic once a key is saved, Ask me first before; never Automatic without a key (the app can't escalate by itself). */
-    fun escalation(s: RobotSettings, keySaved: Boolean): Escalation = HelperSettings.escalation(s, claude(s), keySaved)
-
-    /** Robot may describe ask_claude to the local model: Ask Claude is on and escalation isn't Off. */
-    fun localTool(s: RobotSettings, keySaved: Boolean): Boolean = enabled(s, keySaved) && escalation(s, keySaved) != Escalation.OFF
 }
 
 /** Why ask_claude is left out of a question for the local model (logged as this code only, never the words). */
@@ -559,7 +400,7 @@ object EscalationPolicy {
      * [personal]: what would be sent includes this question's screen text or picture: always asks first, with a card
      * listing it (earlier personal turns are never sent by an escalation, so they don't need one). [budgetReached]:
      * Automatic drops to Ask first for the rest of the day. [alreadyEscalated]: at most one escalation per turn.
-     * [fromClaude]: a Claude answer is never re-escalated. [declined]: you said "not Claude" in this conversation, so
+     * [fromHelper]: a Claude answer is never re-escalated. [declined]: you said "not Claude" in this conversation, so
      * Robot neither asks Claude nor offers to.
      */
     fun decide(
@@ -569,9 +410,9 @@ object EscalationPolicy {
         locked: Boolean,
         budgetReached: Boolean,
         alreadyEscalated: Boolean = false,
-        fromClaude: Boolean = false,
+        fromHelper: Boolean = false,
         declined: Boolean = false,
-    ): EscalationDecision = decide(s, s.claude, keySaved, personal, locked, budgetReached, alreadyEscalated, fromClaude, declined)
+    ): EscalationDecision = decide(s, s.claude, keySaved, personal, locked, budgetReached, alreadyEscalated, fromHelper, declined)
 
     /**
      * The same for any helper (0.6.0): [target] is the helper Robot would check with ([HelperSettings.target]; null: none),
@@ -587,12 +428,12 @@ object EscalationPolicy {
         locked: Boolean,
         budgetReached: Boolean,
         alreadyEscalated: Boolean = false,
-        fromClaude: Boolean = false,
+        fromHelper: Boolean = false,
         declined: Boolean = false,
         priceKnown: Boolean = target?.price?.known ?: false,
         needsSearch: Boolean = false,
     ): EscalationDecision {
-        if (fromClaude || alreadyEscalated || declined || target == null || !target.on) return EscalationDecision.NONE
+        if (fromHelper || alreadyEscalated || declined || target == null || !target.on) return EscalationDecision.NONE
         val mode = HelperSettings.escalation(s, target, keySaved)
         if (mode == Escalation.OFF) return EscalationDecision.NONE
         val api = HelperSettings.apiReady(target, keySaved)
@@ -618,8 +459,8 @@ class EscalationGuard {
     var used = false; private set
 
     /** True the first time only; false for a Claude answer. */
-    fun take(fromClaude: Boolean): Boolean {
-        if (fromClaude || used) return false
+    fun take(fromHelper: Boolean): Boolean {
+        if (fromHelper || used) return false
         used = true
         return true
     }

@@ -668,10 +668,10 @@ object Phonetic {
  * answer" are handled before this.
  */
 object FastPath {
-    enum class Way { CLAUDE, TEXT, MODEL }
+    enum class Way { HELPER, TEXT, MODEL }
 
-    fun of(cmd: HelperCommand?, claudeMode: Boolean, attachment: Attachment): Way = when {
-        cmd is HelperCommand.Ask || cmd is HelperCommand.Join || (cmd == null && claudeMode) -> Way.CLAUDE
+    fun of(cmd: HelperCommand?, inHelperMode: Boolean, attachment: Attachment): Way = when {
+        cmd is HelperCommand.Ask || cmd is HelperCommand.Join || (cmd == null && inHelperMode) -> Way.HELPER
         cmd == null && attachment == Attachment.NONE -> Way.TEXT
         else -> Way.MODEL
     }
