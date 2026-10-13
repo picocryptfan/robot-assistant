@@ -309,7 +309,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val far = Nearby.distance(f.metres, WeatherUnits.of(region))
         RLog.i("maps_nearest", "found" to true, "places" to f.places, "requests" to requests, "ms" to ms)
         val sent = "Sent to ${server.sentTo}: “$what” near ${Nearby.coord(f.lat)}, ${Nearby.coord(f.lon)}"
-        return Executed(ActionStatus.DONE, "Opened Organic Maps' route to the nearest one OpenStreetMap knows, $far away in a straight line.",
+        return Executed(ActionStatus.DONE, "Opened the route in Organic Maps to the nearest one OpenStreetMap knows, $far away in a straight line.",
             launchedApp = true, results = listOf(mapOf("place" to place.name, "distance" to far)),
             body = listOfNotNull("${place.name} · $far", place.address).joinToString("\n") + "\n\n" + sent + "\n" + Nearby.ATTRIBUTION)
     }
@@ -344,7 +344,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
     private fun canPick(pkg: String?): Boolean = pkg != null && CheogramIntents.canPick(ctx, pkg)
 
     /** A choice's kind on the card ("Mobile"), and where a learned name came from. */
-    private fun kind(r: Reach): String? = listOfNotNull(r.label, if (r.learned) "seen in Cheogram" else null).joinToString(" · ").ifEmpty { null }
+    private fun kind(r: Reach): String? = listOfNotNull(r.label, if (r.learned) "seen in a notification" else null).joinToString(" · ").ifEmpty { null }
 
     /**
      * After a text or an email opened from a place tapped with "Always use this for …": it is remembered for the name
@@ -464,8 +464,8 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         // says "already drafting"); the link's route adds this text after it (Cheogram's source). The card says which.
         val detail = when {
             t.via == TextVia.CHEOGRAM && routes[i].first == CheogramRoute.ACCOUNT -> "Opened a draft in Cheogram: nothing is sent until Send is " +
-                "pressed there. If that chat already had a draft, Cheogram keeps the old one."
-            t.via == TextVia.CHEOGRAM -> "Opened a draft in Cheogram: nothing is sent until Send is pressed there. With several Cheogram " +
+                "pressed there. If that chat already had a draft, the old one stays."
+            t.via == TextVia.CHEOGRAM -> "Opened a draft in Cheogram: nothing is sent until Send is pressed there. With several " +
                 "accounts, choose the account first. If that chat already had a draft, the text is added after it."
             t.via == TextVia.CHEOGRAM_LIST -> "Opened Cheogram's contact list: pick who it goes to, and their chat opens with the message. " +
                 "Nothing is sent until Send is pressed there."

@@ -53,7 +53,7 @@ fun PeopleNotesCalendarScreen(s: RobotSettings, snap: Snapshot, calendars: List<
                     TextApp.OFF -> "Robot doesn't write texts"
                 }
             }, RIcons.Message) { update(s.copy(textApp = it)) }
-            TextPreference("SMS gateway", s.smsGateway, PhoneNumbers.DEFAULT_GATEWAY, "Gateway", "The domain Cheogram texts numbers through (JMP: cheogram.com).",
+            TextPreference("SMS gateway", s.smsGateway, PhoneNumbers.DEFAULT_GATEWAY, "Gateway", "The domain your messaging app texts numbers through (JMP: cheogram.com).",
                 keyboard = KeyboardOptions(autoCorrectEnabled = false)) { update(s.copy(smsGateway = PhoneNumbers.gateway(it))) }
             TextPreference("Phone region", s.phoneRegion ?: "", "This phone's own (${device ?: "unknown"})", "Region",
                 "Two letters, for numbers without a country code (US, FR, DE…). Empty: this phone's own (${device ?: "unknown"}).",

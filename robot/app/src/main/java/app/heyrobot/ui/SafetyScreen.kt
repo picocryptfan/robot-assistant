@@ -46,7 +46,7 @@ fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
                 s.claudeActionCards) { update(s.copy(claudeActionCards = it)) }
             SwitchPreference("Card when who-to isn't certain", "Several matches, a near match, or a number the model wrote",
                 s.whoCards) { update(s.copy(whoCards = it)) }
-            SwitchPreference("Card for names learned from Cheogram", "Whoever sent the message chose that name",
+            SwitchPreference("Card for names learned from notifications", "Whoever sent the message chose that name",
                 s.learnedCards) { update(s.copy(learnedCards = it)) }
             SwitchPreference("Answer cards by voice", "Say yes or no while a card waits", s.voiceCards) { update(s.copy(voiceCards = it)) }
             SwitchPreference("Card before deleting files", "Large photos and videos, and Robot's cache",
@@ -95,7 +95,7 @@ internal val SAFETY_FOOTER =
         "itself, or an app name matched loosely. Off: Robot takes the best match.\n\n" +
         "Answer cards by voice: while a card waits, say “yes”, “do it”, “send it” or “oui”, or “no”, “cancel” or “annule” (or " +
         "type it). Robot listens when replies are spoken or you asked by voice; the mic answers the card too. A card for a name " +
-        "learned from Cheogram, or when Robot isn't sure who or which, still needs a tap (a no works). Off: a tap, or a typed yes or no.\n\n" +
+        "learned from a notification, or when Robot isn't sure who or which, still needs a tap (a no works). Off: a tap, or a typed yes or no.\n\n" +
         "Card before deleting files: a large photo or video (Android still asks too), or Robot's cache. Off: Robot goes straight " +
         "to Android's confirmation for the largest one.\n\n" +
         "Works on the lock screen: a locked phone can't tell who is asking. Questions always work; the actions turned on above too. " +

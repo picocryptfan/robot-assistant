@@ -165,7 +165,7 @@ internal fun ToolsSetupRows(f: AssistantFacts, a: AppActions) {
 internal const val TOOLS_SETUP_NOTE =
     "Weather and phone status are all optional. The weather comes from Open-Meteo over the internet; your phone's status is read on " +
         "the phone and never leaves it. Location is approximate only: “the weather here” and “the nearest pharmacy” use where the " +
-        "phone is, rounded to about 1 km; without it, Robot uses your Home for weather and Organic Maps' search. You turn Usage access " +
+        "phone is, rounded to about 1 km; without it, Robot uses your Home for weather and your maps app's search. You turn Usage access " +
         "on for Robot in Android's settings. Photos and videos: to free storage, Robot can show your largest ones (only the ones you " +
         "picked, if you chose that; allow again to pick more, or all), and Android asks before any is deleted. Robot doesn't ask for " +
         "All files access: Android clears apps' caches by itself when space runs low, and each app's info page clears its own."

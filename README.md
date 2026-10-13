@@ -66,7 +66,7 @@ it. Both apps are called Robot; long-press an icon › App info shows which vers
 2. People. In 0.9: Settings › People, notes and calendar › People › More options (⋮) › Export (.vcf), and save
    `Robot People.vcf`. In 1.0: the same page › More options › Import contacts file (.vcf), pick that file, then Import.
    It holds the people you confirmed, with their names, nicknames, numbers, emails and XMPP addresses. People Robot
-   learned from Cheogram that you haven't confirmed, and which number or address Robot uses first for someone, don't
+   learned from notifications that you haven't confirmed, and which number or address Robot uses first for someone, don't
    come along.
 3. Memory. In 0.9: Settings › Memory › Export › Choose a file, and save `robot-memory.json` (it isn't encrypted).
    In 1.0, unlocked: Settings › Memory › Import, pick that file, and check the preview: what it adds, what is already
@@ -101,14 +101,15 @@ Robot for you, it follows 0.9's app ID: remove that entry and add the repository
 - Robot answers by voice or text, on the phone, and about a photo or the screen you're on (once the phone is
   unlocked). You can choose a smarter, slower model, or your own `.litertlm` or `.gguf` file.
 - It sets timers and alarms. It drafts texts and emails: it writes the text, you press Send. It also handles notes,
-  your calendar and contacts, directions in Organic Maps, the weather (Open-Meteo), the nearest place of a kind
+  your calendar and contacts, directions in your maps app, the weather (Open-Meteo), the nearest place of a kind
   (OpenStreetMap), your phone's storage, battery and memory, and freeing space. Robot asks first when an action
   needs it, and every rule about when it asks is a switch in Settings › Safety & privacy.
 - It remembers what you ask it to, encrypted on the phone.
-- It reads, summarizes, translates and answers your messages from the apps you choose, such as Cheogram. A reply
+- It reads, summarizes, translates and answers your messages from the apps you choose. A reply
   goes only after you tap Send.
 - Conversation mode transcribes a conversation in English and French, on the phone, translates it (also face to
   face, aloud) and summarizes it.
+- Robot works in English and Québec French. It can also write down and read other languages, but it answers in English or French.
 - Routines and a morning brief. Headset mode, where your headset's button opens Robot, and car mode.
 - Web search uses the service you choose: your own SearXNG, Brave, Kagi, Mojeek, DuckDuckGo's Instant Answers or a
   public SearXNG. It is off until you set it up, and answers name their sources. With nothing to set up, you can

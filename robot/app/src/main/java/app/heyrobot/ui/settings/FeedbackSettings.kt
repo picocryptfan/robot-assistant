@@ -141,7 +141,7 @@ class FeedbackActions(
 )
 
 const val FEEDBACK_INTRO = "Tell the developer about a bug or an idea. Robot puts your words and what you tick into one plain-text message, and you " +
-    "send it with the app you choose: SMS, Signal, Molly or another. Robot sends nothing itself."
+    "send it with the app you choose: your SMS or messaging app, for example. Robot sends nothing itself."
 
 const val FEEDBACK_FOOTER = "What goes is exactly what Preview shows: your words, Robot's version, this phone and its Android build, the model and " +
     "the look, and only what you tick. What Robot adds is codes, numbers and switches: never your conversations or History, transcripts, " +
@@ -287,7 +287,7 @@ fun FeedbackScreen(
                         }
                     }
                 }
-                Text("Share opens Android's share sheet: pick SMS, Signal, Molly or another app, and the developer." +
+                Text("Share opens Android's share sheet: pick your SMS or messaging app, and the developer." +
                     (ui?.sendTo?.let { " Text it opens your SMS app with $it filled in; you press Send there." } ?: ""),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 ui?.github?.let { repo ->

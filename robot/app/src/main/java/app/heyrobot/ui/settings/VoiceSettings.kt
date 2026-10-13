@@ -27,6 +27,7 @@ import app.heyrobot.ui.Page
 import app.heyrobot.ui.Snapshot
 import app.heyrobot.ui.Tab
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.pref.IntroPreference
 import app.heyrobot.ui.pref.ListPreference
 import app.heyrobot.ui.pref.PreferenceBlock
 import app.heyrobot.ui.pref.PreferenceItem
@@ -72,6 +73,7 @@ private fun stopKeyDetail(v: StopKey): String = when (v) {
 fun VoiceSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> Unit, a: AppActions, snackbar: SnackbarHostState, onBack: () -> Unit) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     PreferenceScreen("Voice", onBack, snackbar = snackbar) {
+        item(key = "languages") { IntroPreference(LANGUAGES_NOTE) }
         if (!snap.voiceReady) {
             preferenceGroup(null, "download") {
                 StatusPreference("Download voice models", "${VoiceModelLogic.size(VoiceBundle.STT.bytes + VoiceBundle.KOKORO.bytes)} · until then, typing and the phone's voice",
@@ -134,6 +136,10 @@ fun VoiceSettingsScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings
         preferenceFooter(VOICE_FOOTER)
     }
 }
+
+/** Which languages work in 1.0, said once where they first come up (the setup guide and the README say the same). */
+internal const val LANGUAGES_NOTE =
+    "Robot works in English and Québec French. It can also write down and read other languages, but it answers in English or French."
 
 /** What the Voice page's rows mean, at length. */
 internal val VOICE_FOOTER =

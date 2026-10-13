@@ -24,7 +24,7 @@ enum class PersonSource(val title: String) {
     CHEOGRAM_PICK("Picked in Cheogram"),
     PHONE_PICKER("From the phone's contacts"),
     /** Seen in a Cheogram message notification ("Learn names from Cheogram notifications"). */
-    NOTIFICATION("Seen in Cheogram"),
+    NOTIFICATION("Seen in a notification"),
     SHARE("Shared to Robot"),
     /** "Always use this for …" on a card, for one of the phone's contacts ([Person.systemLookupKey]). */
     REMEMBERED("Remembered from a card"),

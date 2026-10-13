@@ -282,7 +282,7 @@ internal fun keepDetail(k: KeepMessages): String = when (k) {
 internal fun afterDetail(a: AfterReading): String = when (a) {
     AfterReading.LEAVE -> "Nothing changes in the app; Robot only remembers it read it."
     AfterReading.CLEAR -> "The notification goes; the chat stays unread in the app. A reply then opens the chat."
-    AfterReading.MARK_READ -> "The sender may see you read it (Cheogram's read marker, Signal's receipts). A reply then opens the chat."
+    AfterReading.MARK_READ -> "The sender may see you read it (a read marker or a receipt). A reply then opens the chat."
 }
 
 internal fun lockedDetail(l: MessagesLocked): String = when (l) {
@@ -303,9 +303,9 @@ internal const val FOOTER = "Robot reads the shade, not a database: no SMS permi
     "until its notification goes; History keeps a line such as “Robot read 2 messages from Mom”, never the words, and the voice log keeps " +
     "numbers only.\n\nReplies go to the conversation the notification belongs to, never to anyone else, and only after you tap Send on the " +
     "card (or, for someone you chose in People, after a 3-second stop). A sent message can't be recalled. An SMS reply may cost what your " +
-    "carrier charges. Signal marks the chat read and may send a read receipt when you reply from its notification. Cheogram sends an emoji " +
-    "alone as a reaction, and its Mark as read tells the sender.\n\nSignal shows other apps only “New message” unless Signal › Settings › " +
-    "Notifications › Show is “Name and message”. Android hides messages that look like login codes from apps like Robot."
+    "carrier charges. Some messaging apps mark the chat read and may send a read receipt when you reply from their notification. Some send an emoji " +
+    "alone as a reaction, and their Mark as read tells the sender.\n\nSome apps show other apps only “New message” unless their notification " +
+    "settings show the name and message. Android hides messages that look like login codes from apps like Robot."
 
 /**
  * People › a person (0.7): "Send my replies to … without a card". Only while Settings › Messages is on, for someone you

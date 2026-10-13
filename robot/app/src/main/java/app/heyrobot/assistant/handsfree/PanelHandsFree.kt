@@ -430,7 +430,7 @@ object PanelHandsFree {
                 VoiceLog.add(VoiceEvent.CAR_NAV, plan.kind)
                 if (plan is NavPlan.Route) {
                     val opened = try { app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(plan.uri)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true } catch (_: Throwable) { false }
-                    if (!opened) return reply(replyId, host, if (lang == SpokenLang.FR) "Organic Maps n'est pas installé." else "Organic Maps isn't installed.")
+                    if (!opened) return reply(replyId, host, if (lang == SpokenLang.FR) "Ton application de cartes n'est pas installée." else "Your maps app isn't installed.")
                     reply(replyId, host, plan.say)
                     host.leave()
                 } else {

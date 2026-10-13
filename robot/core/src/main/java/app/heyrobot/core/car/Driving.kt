@@ -79,7 +79,7 @@ object CarScreen {
 /** Why something waits for parking. Also the voice log's CAR_PARKED a. */
 enum class ParkCode(override val id: Int, override val title: String) : LogCode {
     NEW_TEXT(1, "a new text"), NEEDS_SCREEN(2, "needs the screen"), WHO_UNSURE(3, "not sure who"), MUST_SEE(4, "must be seen"),
-    LEARNED_NAME(5, "a name learned from Cheogram"), REPLY(6, "a reply"), TOO_MANY(7, "too many choices"), READ_LATER(8, "to read later"),
+    LEARNED_NAME(5, "a name learned from a notification"), REPLY(6, "a reply"), TOO_MANY(7, "too many choices"), READ_LATER(8, "to read later"),
     NO_ANSWER(9, "no answer"),
 }
 
@@ -139,11 +139,11 @@ sealed class NavPlan {
 }
 
 object CarNavigate {
-    val ROUTE_READY = Line("Route ready in Organic Maps. Tap Start when you're stopped.", "L'itinéraire est prêt dans Organic Maps. Appuie sur Démarrer quand tu seras arrêté.")
-    val ROUTE_LOCKED = Line("Route ready in Organic Maps. Unlock to see it, and tap Start when you're stopped.",
-        "L'itinéraire est prêt dans Organic Maps. Déverrouille pour le voir, et appuie sur Démarrer quand tu seras arrêté.")
+    val ROUTE_READY = Line("Route ready in your maps app. Tap Start when you're stopped.", "L'itinéraire est prêt dans ton application de cartes. Appuie sur Démarrer quand tu seras arrêté.")
+    val ROUTE_LOCKED = Line("Route ready in your maps app. Unlock to see it, and tap Start when you're stopped.",
+        "L'itinéraire est prêt dans ton application de cartes. Déverrouille pour le voir, et appuie sur Démarrer quand tu seras arrêté.")
     val UNLOCK_TO_START = Line("Unlock to start the route.", "Déverrouille pour lancer l'itinéraire.")
-    val PICK_WHEN_STOPPED = Line("Pick it in Organic Maps when you're stopped.", "Choisis-le dans Organic Maps quand tu seras arrêté.")
+    val PICK_WHEN_STOPPED = Line("Pick it in your maps app when you're stopped.", "Choisis-le dans ton application de cartes quand tu seras arrêté.")
     val HERE = Line("Here", "Ici")
 
     fun noPlace(home: Boolean, lang: SpokenLang): String = when (lang) {

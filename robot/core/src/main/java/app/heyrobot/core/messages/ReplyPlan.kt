@@ -137,9 +137,9 @@ object ReplyPlanner {
 
     fun note(n: ReplyNote, lang: Lang): String? = when (n) {
         ReplyNote.GROUP -> if (lang == Lang.FR) "Tout le groupe le verra. Touche Envoyer pour l'envoyer." else "Everyone in the group will see it. Tap Send to send it."
-        ReplyNote.EMOJI_REACTION -> if (lang == Lang.FR) "Cheogram envoie un émoji seul comme réaction." else "Cheogram sends an emoji alone as a reaction."
+        ReplyNote.EMOJI_REACTION -> if (lang == Lang.FR) "Cette application envoie un émoji seul comme réaction." else "This app sends an emoji alone as a reaction."
         ReplyNote.SMS -> if (lang == Lang.FR) "C'est un texto : des frais de l'opérateur peuvent s'appliquer." else "This is an SMS: carrier charges may apply."
-        ReplyNote.MARKS_READ -> if (lang == Lang.FR) "Signal marque la conversation comme lue et peut envoyer un accusé de lecture." else "Signal marks the chat read and may send a read receipt."
+        ReplyNote.MARKS_READ -> if (lang == Lang.FR) "Cette application marque la conversation comme lue et peut envoyer un accusé de lecture." else "This app marks the chat read and may send a read receipt."
         ReplyNote.UNVERIFIED_APP -> if (lang == Lang.FR) "Robot n'a pas encore vérifié comment cette application envoie une réponse." else "Robot hasn't checked yet how this app sends a reply."
         ReplyNote.OPENS_APP -> null
     }

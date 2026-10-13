@@ -381,7 +381,7 @@ class PeopleStoreTest {
         assertEquals(listOf(ContactIds.system(7)), worse.best("mom").map { it.id })
         // Someone confirmed matched but can't be reached this way: the learned one is never left alone on the card.
         val a = Action.SendText("mom", "hi")
-        val learnedOnly = listOf(Recipients.Option("Mom", "XMPP · seen in Cheogram", "spoof@example.org", a, learned = true))
+        val learnedOnly = listOf(Recipients.Option("Mom", "XMPP · seen in a notification", "spoof@example.org", a, learned = true))
         assertEquals(emptyList<Recipients.Option>(), Recipients.trusted(smith.best("mom"), learnedOnly))
         // Only the learned one: found, never sure, and offered as a choice to tap, with the box that keeps them, never as a
         // button already filled in.
@@ -395,13 +395,13 @@ class PeopleStoreTest {
         // Its account was only seen in a notification: the chat opens by the xmpp: link, which needs no roster entry.
         assertNull(reach.account)
         val t = TextTarget(reach.name, reach.address, reach.address, "Cheogram", TextVia.CHEOGRAM, from = reach)
-        val p = Recipients.prepare(a, m, listOf(Recipients.Option(reach.name, "XMPP · seen in Cheogram", reach.address, a.copy(target = t), learned = true,
+        val p = Recipients.prepare(a, m, listOf(Recipients.Option(reach.name, "XMPP · seen in a notification", reach.address, a.copy(target = t), learned = true,
             remember = a.copy(target = t.copy(remember = true)))), 0, Recipients.rememberLabel("mom")) { a } as Prepared.Ready
         assertTrue(p.mustAsk)
-        assertEquals(listOf("XMPP · seen in Cheogram · spoof@example.org"), p.choices.map { it.label })
+        assertEquals(listOf("XMPP · seen in a notification · spoof@example.org"), p.choices.map { it.label })
         assertEquals(Recipients.LEARNED_NOTE, p.note)
         assertEquals("Always use this for “mom”", p.remember)
-        assertEquals("Text **Mom** (spoof@example.org) in Cheogram · name seen in Cheogram", (p.action as Action.SendText).describe())
+        assertEquals("Text **Mom** (spoof@example.org) in Cheogram · name seen in a notification", (p.action as Action.SendText).describe())
         assertNull((p.action as Action.SendText).target!!.account)
         // Keep (or an edit, or the ticked box) confirms them: from then on they count like anyone else.
         val c = PeopleEdit.confirm(listOf(spoof), "s", 40)

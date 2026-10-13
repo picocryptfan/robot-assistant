@@ -96,7 +96,7 @@ class NearbyTest {
         assertTrue(Action.MapsSearch("pharmacy", nearest = true).online)
         assertTrue(Action.Weather(null, null).online)
         assertFalse(Action.SetTimer(60).online)
-        assertEquals("Find the nearest “pharmacy” online (OpenStreetMap) and open the route in Organic Maps", n.describe())
+        assertEquals("Find the nearest “pharmacy” online (OpenStreetMap) and open the route in your maps app", n.describe())
         assertEquals(Action.MapsNavigate("pharmacy"), Nearby.plain(n))
         assertEquals(Action.MapsSearch("x"), Nearby.plain(Action.MapsSearch("x", nearest = true)))
         // Where you are: personal for Claude, as the weather is.
@@ -105,9 +105,9 @@ class NearbyTest {
         // Ask the first time by default (SettingsTest has the migration).
         assertEquals(NearestOnline.ASK, RobotSettings().nearestOnline)
         // Anything in the way: Organic Maps' search, and the card says why.
-        assertEquals("No internet: Robot couldn't reach OpenStreetMap, so Robot opened Organic Maps' search instead: pick the place, then tap Route.",
+        assertEquals("No internet: Robot couldn't reach OpenStreetMap, so Robot opened your maps app's search instead: pick the place, then tap Route.",
             Nearby.instead(NearbyFail.NO_INTERNET, navigate = true))
-        assertEquals("OpenStreetMap knows no such place near you, so Robot opened Organic Maps' search instead.", Nearby.instead(NearbyFail.NOTHING, navigate = false))
+        assertEquals("OpenStreetMap knows no such place near you, so Robot opened your maps app's search instead.", Nearby.instead(NearbyFail.NOTHING, navigate = false))
         // Every failure has its own words and log code.
         assertEquals(NearbyFail.entries.size, NearbyFail.entries.map { it.id }.distinct().size)
     }
@@ -125,7 +125,7 @@ class NearbyTest {
         assertEquals(listOf("Allow always", "Just this time", "No, search the map"), card.choices.map { it.label })
         assertEquals("Don't ask again", card.remember)
         assertEquals("To find the closest one, Robot would send “pharmacy” and your area (about 1 km) to OpenStreetMap's Nominatim. " +
-            "Nothing else leaves the phone. “No, search the map” uses Organic Maps' search instead, on the phone.", card.note)
+            "Nothing else leaves the phone. “No, search the map” uses your maps app's search instead, on the phone.", card.note)
         val (always, once, no) = card.choices
         assertEquals(Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ALWAYS), always.action)
         assertEquals(Action.MapsNavigate("pharmacy", nearest = true, consent = NearestConsent.ONCE), once.action)
@@ -195,10 +195,10 @@ class NearbyTest {
         // The card says exactly who gets the words and the area.
         val card = Nearby.prepare(Action.MapsNavigate("pharmacy"), "pharmacy", wanted = true, mode = NearestOnline.ASK, server = own)
         assertEquals("To find the closest one, Robot would send “pharmacy” and your area (about 1 km) to the Nominatim server at geo.example.net:8443. " +
-            "Nothing else leaves the phone. “No, search the map” uses Organic Maps' search instead, on the phone.", card.note)
+            "Nothing else leaves the phone. “No, search the map” uses your maps app's search instead, on the phone.", card.note)
         assertEquals(Nearby.consentNote("pharmacy"), Nearby.prepare(Action.MapsNavigate("pharmacy"), "pharmacy", true, NearestOnline.ASK).note)
         // A failure names the server that failed; OpenStreetMap's keep their words.
-        assertEquals("No internet: Robot couldn't reach geo.example.net:8443, so Robot opened Organic Maps' search instead.",
+        assertEquals("No internet: Robot couldn't reach geo.example.net:8443, so Robot opened your maps app's search instead.",
             Nearby.instead(NearbyFail.NO_INTERNET, navigate = false, server = own))
         assertEquals("geo.example.net:8443 is busy just now", NearbyFail.BUSY.text(own))
         assertEquals("geo.example.net:8443 didn't answer properly", NearbyFail.SERVICE.text(own))

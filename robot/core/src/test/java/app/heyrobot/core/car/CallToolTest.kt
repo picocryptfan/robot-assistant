@@ -47,7 +47,7 @@ class CallToolTest {
         assertEquals("Call", c.copy(direct = true).confirmLabel)
         // An emergency number never says Call: the dialer opens and you tap Call there.
         assertEquals("Open the dialer", c.copy(direct = true, emergency = true).confirmLabel)
-        assertTrue(c.copy(learned = true).describe().contains("seen in Cheogram"))
+        assertTrue(c.copy(learned = true).describe().contains("seen in a notification"))
     }
 
     /**

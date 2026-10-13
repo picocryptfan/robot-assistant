@@ -119,7 +119,7 @@ object CardAnswer {
 
     const val PROMPT = "Say yes or no."
     const val TAP_ONE = "Tap the one you mean on the card."
-    const val TAP_LEARNED = "Robot learned that name from a Cheogram notification: check who it goes to on the card, then tap."
+    const val TAP_LEARNED = "Robot learned that name from a notification: check who it goes to on the card, then tap."
     const val TAP_UNSURE = "Robot isn't sure who or which it is: check the card, then tap."
     const val TAP_ONLINE = "Tap Allow always, Just this time or No on the card."
     const val TAP_MESSAGE = app.heyrobot.core.messages.MessageQuarantine.CARD_LINE

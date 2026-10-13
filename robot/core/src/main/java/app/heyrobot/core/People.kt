@@ -218,7 +218,7 @@ object Recipients {
         if (matches.any { !it.learned } && options.isNotEmpty() && options.all { it.learned }) emptyList() else options
 
     /** The card's line when its one choice is someone learned from a notification. */
-    const val LEARNED_NOTE = "This name was seen in a Cheogram notification, and whoever sent it chose it. Robot treats them as someone " +
+    const val LEARNED_NOTE = "This name was seen in a notification, and whoever sent it chose it. Robot treats them as someone " +
         "you know only once you tick the box, or tap Keep in Settings › People."
 
     /**
@@ -296,7 +296,7 @@ object Recipients {
             val emails = c.emails.distinct().take(2)
             if (emails.isNotEmpty()) put("emails", emails)
             c.xmpp.firstOrNull()?.let { put("xmpp", it.jid) }
-            if (c.learned) put("note", "name seen in a Cheogram notification, not confirmed")
+            if (c.learned) put("note", "name seen in a notification, not confirmed")
         }
     }
 }

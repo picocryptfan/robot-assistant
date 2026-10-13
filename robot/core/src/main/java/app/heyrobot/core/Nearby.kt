@@ -319,7 +319,7 @@ object Nearby {
     /** The first-use card's line: exactly what would leave the phone, and to whom (the search server in Settings). */
     fun consentNote(what: String, server: NearbyServer = NearbyServer.DEFAULT): String =
         "To find the closest one, Robot would send “$what” and your area (about 1 km) to ${server.label}. Nothing " +
-            "else leaves the phone. “$NO_SEARCH” uses Organic Maps' search instead, on the phone."
+            "else leaves the phone. “$NO_SEARCH” uses your maps app's search instead, on the phone."
 
     /**
      * The maps action [a] ready for its card: [wanted] is "the nearest …" in the model's or your words, and something
@@ -346,10 +346,10 @@ object Nearby {
 
     /** The card's line when the nearest place couldn't be found and Organic Maps' search opened instead ([navigate]: directions). */
     fun instead(why: NearbyFail, navigate: Boolean, server: NearbyServer = NearbyServer.DEFAULT): String =
-        "${why.text(server)}, so Robot opened Organic Maps' search instead" + if (navigate) ": pick the place, then tap Route." else "."
+        "${why.text(server)}, so Robot opened your maps app's search instead" + if (navigate) ": pick the place, then tap Route." else "."
 
     /** The card while it waits or runs: no place yet, and the words it was asked for. */
-    fun describe(what: String) = "Find the nearest “$what” online (OpenStreetMap) and open the route in Organic Maps"
+    fun describe(what: String) = "Find the nearest “$what” online (OpenStreetMap) and open the route in your maps app"
 
     /** Two decimals (about 1 km): all OpenStreetMap learns of where you are. */
     fun coord(v: Double): String = String.format(Locale.US, "%.2f", v)

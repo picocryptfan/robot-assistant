@@ -40,7 +40,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
   reads the messages in those apps' notifications, through Android's notification access, to read them to you,
   summarize, translate or answer them. It needs no SMS permission and reads no message history. Their words stay in the
   phone's working memory (RAM) only, while the notification is there (or for the hour or day you choose), and are never
-  written to storage: History keeps a line such as "Robot read 2 messages from Mom (Cheogram)" (the name at most 40
+  written to storage: History keeps a line such as "Robot read 2 messages from Mom" (the name at most 40
   characters), and the voice log only numbers. The assistant's panel lets them go when it closes, or after 2 minutes
   without a question. Robot reads an app only while it is signed with the key it had when you turned it on (it keeps
   that key's fingerprint and the name of the store that installed it, nothing else about the app). Your choices, the
@@ -60,8 +60,9 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
   nothing online for it (what your script or command does, including going online, is yours) except the weekly check
   for a newer Termux (9 below). The output is shown, cleaned of secrets; History never keeps a command. The ADB fixes
   Robot can send through Shizuku (Settings › Advanced › ADB fixes) go to Termux the same way, after your tap.
-- Names learned from Cheogram (off unless you turn on Settings › People › "Learn names from Cheogram
-  notifications"): who messages you in Cheogram (name, address, account), never the messages.
+- Names learned from notifications (off unless you turn on Settings › People › "Learn names from message
+  notifications"): who messages you in the one messaging app this works with today (the switch names it): name, address
+  and account, never the messages.
 - API keys you add for a helper, and the access token you may add for a private update
   repository (Settings › About › Updates › Advanced). They are encrypted with a key that never leaves your phone's secure
   hardware (Android Keystore, AES-GCM), and decrypted only when Robot calls that helper, or GitHub's API for the token.
@@ -119,7 +120,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
    - A conversation's summary goes to a helper only after its card shows what will be sent and you tap.
    - Without a key, the button that opens the service's own app only fills in that app (and may put your question on
      the clipboard); you press Send there.
-5. Other apps you hand things to (Cheogram, Proton Mail, your SMS or calendar app, Organic Maps, an AI service's
+5. Other apps you hand things to (your messaging app, your email app, your SMS or calendar app, your maps app, an AI service's
    own app). Robot fills in a draft or opens a route; that app sends something only when you tap Send, under its own
    policy.
    A reply to a message (Settings › Messages) is the exception you choose: Robot shows it on a card and, after you tap
@@ -128,7 +129,7 @@ you set up Termux, a weekly check for a newer Termux, which you can each turn of
    (an SMS may cost what your carrier charges). With "Open the chat with my reply; I press Send" Robot never sends. "Mark
    as read", if you choose it, lets the app tell the sender you read the message. This
    is also how feedback leaves (Settings › About › Send feedback): Share hands the message to the app you pick in
-   Android's share sheet (SMS, Signal, Molly…), "Text it" opens your SMS app with the number you set, and "Open a GitHub
+   Android's share sheet (your SMS or messaging app…), "Text it" opens your SMS app with the number you set, and "Open a GitHub
    issue" opens GitHub's new issue page in your browser with the message filled in (GitHub gets it only if you submit it
    there, under its own privacy statement). Saying "report a bug" or "I have an idea" only opens that page.
 6. Checking for updates (Settings › About › Updates): once a day while "Check for updates automatically" is on (the
@@ -206,7 +207,7 @@ network permissions are granted at install; GrapheneOS lets you turn the network
   Clock app, which Robot only asks (the "set an alarm" permission); Robot keeps no alarm of its own for them.
 - Usage access (optional, in Android's settings): which apps use the most space, and, when you ask Robot to free up
   memory, which apps you used in the last few hours (read on the phone, for that answer only).
-- Notification access (optional): learning names from Cheogram, and reading your messages from the apps you turn on in
+- Notification access (optional): learning names from your messaging app, and reading your messages from the apps you turn on in
   Settings › Messages (nothing from any other app is read).
 - Network (at install): the online features above.
 - Install unknown apps (optional, in Android's settings, which Settings › About › Updates opens): so Robot can install its own

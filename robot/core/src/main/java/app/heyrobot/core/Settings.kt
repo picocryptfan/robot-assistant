@@ -54,8 +54,8 @@ enum class TextApp(val title: String) {
 enum class NearestOnline(val title: String, val detail: String) {
     ASK("Ask the first time", "The first “nearest …” shows a card that says what would go online; you choose there."),
     ALWAYS("Always", "Robot asks the search server below (OpenStreetMap's Nominatim unless you choose another) for that kind of " +
-        "place around where you are (about 1 km) and opens Organic Maps' route to the closest. It uses the internet."),
-    NEVER("Never", "Organic Maps' search, which ranks places around you. Nothing goes online."),
+        "place around where you are (about 1 km) and opens your maps app's route to the closest. It uses the internet."),
+    NEVER("Never", "Your maps app's search, which ranks places around you. Nothing goes online."),
 }
 
 /** Which app opens with an email draft: Proton Mail, or the system chooser every time. */

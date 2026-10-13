@@ -199,7 +199,7 @@ object ToolSpecs {
 sealed class Action {
     private companion object {
         /** After a person whose name was learned from a Cheogram notification: whoever sent it chose that name. */
-        const val LEARNED = " · name seen in Cheogram"
+        const val LEARNED = " · name seen in a notification"
     }
 
     abstract val tool: ToolName

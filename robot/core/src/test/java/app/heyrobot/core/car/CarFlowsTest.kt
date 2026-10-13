@@ -252,7 +252,7 @@ class DrivingTest {
         val here = 45.52 to -73.58
         val r = CarNavigate.plan(NavDestination.Home, s, here, locked = false, trusted = false, lang = EN) as NavPlan.Route
         assertEquals("om://route?sll=45.520000,-73.580000&saddr=Here&dll=45.500000,-73.600000&daddr=Maison&type=vehicle", r.uri)
-        assertEquals("Route ready in Organic Maps. Tap Start when you're stopped.", r.say)
+        assertEquals("Route ready in your maps app. Tap Start when you're stopped.", r.say)
         assertEquals(NavKind.HOME, r.kind)
         // Without a position: the place itself.
         assertTrue((CarNavigate.plan(NavDestination.Home, s, null, false, false, EN) as NavPlan.Route).uri.startsWith("geo:45.500000,-73.600000"))
@@ -262,7 +262,7 @@ class DrivingTest {
         assertEquals(NavPlan.Unlock("Unlock to start the route."), CarNavigate.plan(NavDestination.Home, s, here, true, false, EN))
         assertEquals(CarNavigate.ROUTE_LOCKED.en, CarNavigate.plan(NavDestination.Home, s, here, true, true, EN).say)
         assertEquals(NavPlan.Unlock("Unlock to start the route."), CarNavigate.plan(NavDestination.Other("airport"), s, here, true, true, EN))
-        assertEquals(NavPlan.Search("airport", "Pick it in Organic Maps when you're stopped."), CarNavigate.plan(NavDestination.Other("airport"), s, here, false, false, EN))
+        assertEquals(NavPlan.Search("airport", "Pick it in your maps app when you're stopped."), CarNavigate.plan(NavDestination.Other("airport"), s, here, false, false, EN))
         assertTrue(CarNavigate.plan(NavDestination.Nearest("gas station"), s, here, false, false, EN) is NavPlan.Nearest)
     }
 

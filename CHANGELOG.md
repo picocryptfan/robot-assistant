@@ -16,6 +16,7 @@ History, notes, transcripts, keys and routines don't move: share or save what yo
 
 ## 1.0.0 (unreleased)
 
+- **Wording**: explanations describe the kind of app ("your messaging app", "your maps app") instead of naming one, and a name stays only on a row or step that checks, opens or picks that app. The guide and Settings › Voice now say once that Robot works in English and Québec French, and only writes down and reads other languages.
 - **New icon**: a robot head shaped as a speech bubble, on blue, with a themed version and the same head in
   notifications. The robot in the chat window now shows whether it's listening, thinking or speaking.
 - **Fixed after rc1** (a security review of everything changed since the 1.0 audit):

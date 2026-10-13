@@ -291,12 +291,12 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
             }
         }
         preferenceGroup("Remembering", "remember") {
-            SwitchPreference("Remember who you pick", "In Cheogram, or on a card (“Always use this for mom”)", s.rememberPicks) {
+            SwitchPreference("Remember who you pick", "When you pick in a list, or on a card (“Always use this for mom”)", s.rememberPicks) {
                 update(s.copy(rememberPicks = it))
             }
         }
-        preferenceGroup("Learn from Cheogram", "learn") {
-            SwitchPreference("Learn names from Cheogram notifications", "Who messages you, never the message", s.learnFromCheogram) { on ->
+        preferenceGroup("Learn names from notifications", "learn") {
+            SwitchPreference("Learn names from message notifications", "Who messages you, never the message. Works with Cheogram only for now", s.learnFromCheogram) { on ->
                 update(s.copy(learnFromCheogram = on))
                 // Turned on: the Cheogram installed now is the one trusted (its signer is kept at its first notification).
                 if (on) { scope.launch(Dispatchers.IO) { PeopleFiles.forgetCheogramSigner(ctx) }; NotificationAccess.rebind(ctx) }
@@ -304,7 +304,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
             when {
                 s.learnFromCheogram && !granted -> StatusPreference("Notification access", "Needed: three steps", Mark.TODO,
                     onClick = { a.openPage(Page.Settings(SettingsRoutes.NOTIFICATION_ACCESS)) })
-                s.learnFromCheogram -> StatusPreference("Notification access allowed", "Cheogram's one-to-one senders only", Mark.OK)
+                s.learnFromCheogram -> StatusPreference("Notification access allowed", "Senders of one-to-one chats only", Mark.OK)
                 granted -> StatusPreference("Notification access is still allowed", "Robot ignores notifications while this is off", Mark.TODO,
                     action = { TextButton(onClick = { openFirst(ctx, NotificationAccess.settings(ctx), a) }) { Text("Open") } })
             }
@@ -312,7 +312,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
             PreferenceBlock { CheogramPrivacy(canTakeBack = granted && s.learnFromCheogram) { openFirst(ctx, NotificationAccess.settings(ctx), a) } }
         }
         if (learned.isNotEmpty()) {
-            preferenceGroup("Learned from Cheogram (${learned.size})", "learned") {
+            preferenceGroup("Learned from notifications (${learned.size})", "learned") {
                 for (p in learned.take(MAX_LEARNED_SHOWN)) {
                     TwoTargetPreference(p.name, People.summary(p).ifEmpty { null }, onClick = { onOpen(p.id) }, onClickLabel = "Open") {
                         TextButton(onClick = { scope.launch {
@@ -347,9 +347,9 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
             preferenceItems("Your people (${people.size})", "people", shown, { it.id }) { p -> PersonRow(p) { onOpen(p.id) } }
         }
         preferenceFooter(
-            "Import contacts file (.vcf), in the menu: from Proton Mail on the web, Contacts › select all › Export selection as " +
-                ".VCF. Robot keeps names, nicknames, numbers, emails and XMPP addresses only. Export (.vcf) makes a backup, and a " +
-                "file any contacts app can import.\n\nAdd from Cheogram: Cheogram's list says “Create shortcut”; nothing goes on " +
+            "Import contacts file (.vcf), in the menu: in your email provider's contacts page, select all and export as " +
+                "vCard (.vcf). Robot keeps names, nicknames, numbers, emails and XMPP addresses only. Export (.vcf) makes a backup, and a " +
+                "file any contacts app can import.\n\nAdd from Cheogram: its list says “Create shortcut”; nothing goes on " +
                 "your home screen.",
         )
     }
@@ -477,7 +477,7 @@ fun NotificationAccessScreen(facts: AssistantFacts?, onBack: () -> Unit) {
         }
         preferenceGroup(null, "steps") { PreferenceBlock { NotificationAccessSteps() } }
         // 0.7: Settings › Messages opens this page too.
-        preferenceFooter("To learn names, Robot looks at Cheogram's notifications only, and of those only the sender of a one-to-one chat. " +
+        preferenceFooter("To learn names, Robot looks at the notifications of one messaging app only, and of those only the sender of a one-to-one chat. " +
             "With Settings › Messages on, it also reads the messages of the apps you turn on there, in memory only. Settings › People and " +
             "Settings › Messages say what Robot reads, where it is kept, and how to take it back.")
     }
@@ -525,11 +525,11 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text("What Robot reads, and where it goes", style = MaterialTheme.typography.titleSmall)
         Text("Notification access lets an app see every app's notifications. Robot asks Android for conversations only, drops all " +
-            "but Cheogram's at once, and learns nothing from them while this switch is off. Settings › Messages, if you turn it on, " +
+            "but that one app's at once, and learns nothing from them while this switch is off. Settings › Messages, if you turn it on, " +
             "uses the same access to read the apps you choose there, in memory only.", style = MaterialTheme.typography.bodyMedium, color = muted)
-        Text("From a Cheogram message in a one-to-one chat, Robot keeps only the sender's name and address and which of your accounts " +
-            "got it. It never looks at, keeps or logs what the message says, and group chats teach it nothing. It checks Cheogram's " +
-            "signature too, so an app pretending to be Cheogram teaches nothing.", style = MaterialTheme.typography.bodyMedium, color = muted)
+        Text("From a message in a one-to-one chat, Robot keeps only the sender's name and address and which of your accounts " +
+            "got it. It never looks at, keeps or logs what the message says, and group chats teach it nothing. It checks the app's " +
+            "signature too, so an app pretending to be it teaches nothing.", style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("Names stay on this phone, in Robot's private storage, left out of Android's backups. Robot never sends them anywhere by " +
             "itself: not to a helper, not to any other online AI model. Robot's own model, on the phone, sees a name only when " +
             "it looks someone up for you. Only if you choose to share with a helper a conversation in which Robot " +
@@ -547,7 +547,7 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
 @Composable
 private fun PersonRow(p: Person, onClick: () -> Unit) {
     val also = (p.aliases + p.nicknames).takeIf { it.isNotEmpty() }?.let { "Also called " + it.joinToString(", ") }
-    val line = listOfNotNull(also, People.summary(p).takeIf { it.isNotEmpty() }, if (!p.confirmed) "seen in Cheogram" else null).joinToString(" · ")
+    val line = listOfNotNull(also, People.summary(p).takeIf { it.isNotEmpty() }, if (!p.confirmed) "seen in a notification" else null).joinToString(" · ")
     PreferenceItem(p.name, line.ifEmpty { null }, onClick = onClick, leading = {
         Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer).clearAndSetSemantics {},
             contentAlignment = Alignment.Center) {
@@ -732,7 +732,7 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
             if (o != null && !o.confirmed) {
                 Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Seen in a Cheogram notification", style = MaterialTheme.typography.titleSmall)
+                        Text("Seen in a notification", style = MaterialTheme.typography.titleSmall)
                         Text("Whoever sent the message chose this name. Until you keep or edit them, Robot always shows a card first, and never offers them in place of someone you know.",
                             style = MaterialTheme.typography.bodyMedium)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -826,7 +826,7 @@ fun PersonScreen(id: String?, a: AppActions, snackbar: SnackbarHostState, onBack
                     if (dirty) return@OutlinedButton a.say("Save first.")
                     try { ctx.startActivity(PhoneContacts.insert(o)) } catch (_: ActivityNotFoundException) { a.say("No contacts app on this phone takes new contacts.") }
                 }, modifier = Modifier.heightIn(min = 48.dp)) { Text("Save to phone's contacts") }
-                Text("Opens your Contacts app with everything filled in: choose the account and save there. Cheogram, Proton Mail and the " +
+                Text("Opens your Contacts app with everything filled in: choose the account and save there. Your messaging and email apps and the " +
                     "dialer then know the name too. Robot itself never writes to your contacts.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 12.dp))
             }

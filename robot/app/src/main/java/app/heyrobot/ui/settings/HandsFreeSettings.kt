@@ -427,8 +427,8 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
                 "robot”, then “navigate home”, “call Mom” or “what's next”. Answers are short; anything that needs the screen, and " +
                 "new texts, wait for when you park: “From your drive” shows when car mode ends.\n\nCalls open the dialer unless " +
                 "you choose to call after a spoken yes; emergency numbers always open the dialer, and Robot never calls one " +
-                "itself. Navigation opens Organic Maps' route preview: tap Start when you're stopped. Places are kept on this " +
-                "phone only: type or paste coordinates (Organic Maps › a place › Copy coordinates), or use where you are now.",
+                "itself. Navigation opens your maps app's route preview: tap Start when you're stopped. Places are kept on this " +
+                "phone only: type or paste coordinates (in your maps app: a place › Copy coordinates), or use where you are now.",
         )
     }
     car?.let { n -> d.memory.byNumber(n)?.let { c -> DeviceDialog(c, onDismiss = { car = null }, act = act, car = true) } }
@@ -442,7 +442,7 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
 private fun PlaceDialog(which: String, now: SavedPlace?, onDismiss: () -> Unit, onSave: (SavedPlace?) -> Unit) {
     val title = if (which == "home") "Home" else "Work"
     val initial = now?.let { String.format(Locale.US, "%.5f, %.5f", it.lat, it.lon) } ?: ""
-    EditDialog(title, initial, "Coordinates", "Such as 45.50170, -73.56730 (Organic Maps › a place › Copy coordinates). Empty: none.",
+    EditDialog(title, initial, "Coordinates", "Such as 45.50170, -73.56730 (in your maps app: a place › Copy coordinates). Empty: none.",
         validate = { t -> if (t.isBlank() || CarSetup.coordinates(t) != null) null else "Coordinates, such as 45.5017, -73.5673" },
         keyboard = KeyboardOptions(keyboardType = KeyboardType.Text, autoCorrectEnabled = false),
         onDismiss = onDismiss,

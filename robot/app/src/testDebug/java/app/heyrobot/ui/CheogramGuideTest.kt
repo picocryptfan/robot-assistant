@@ -26,7 +26,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * Settings › People › "Learn names from Cheogram notifications" (0.4.6): why Android calls notification access a restricted
+ * Settings › People › "Learn names from message notifications" (0.4.6): why Android calls notification access a restricted
  * setting, the three steps with a button for each page, what Robot reads and keeps, that it never goes to Claude or any
  * online model by itself, and how to take it back.
  */
@@ -53,7 +53,7 @@ class CheogramGuideTest {
     @Test fun thePrivacyNoteSaysWhatIsReadAndWhereItGoes() {
         var opened = 0
         rule.show { Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) { CheogramPrivacy(canTakeBack = true) { opened++ } } }
-        for (t in listOf("drops all but Cheogram's", "only the sender's name and address", "never looks at, keeps or logs what the message says",
+        for (t in listOf("drops all but that one app's", "only the sender's name and address", "never looks at, keeps or logs what the message says",
             "group chats teach it nothing", "Names stay on this phone", "not to a helper, not to any other online AI model",
             "To take it back")) {
             rule.onNodeWithText(t, substring = true).assertExists()

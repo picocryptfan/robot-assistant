@@ -203,7 +203,7 @@
     <string name="guide_welcome_3">Each page says what a feature does, what stays on the phone, and asks whether you want it. A choice is saved as soon as you make it. Skip this step keeps the default; Finish later brings you back here from Home.</string>
     <string name="guide_welcome_privacy">Your questions, answers, notes, history and settings stay in Robot\'s private storage on this phone. Robot has no analytics, ads or tracking, and turns off Android\'s cloud backup for its files.</string>
     <string name="guide_can_title">What Robot can do</string>
-    <string name="guide_can_intro">Things Robot does for you on your phone, without an account; most of them work even offline. Say them after “hey robot”, or tap Talk to Robot.</string>
+    <string name="guide_can_intro">Things Robot does for you on your phone, without an account; most of them work even offline. Say them after “hey robot”, or tap Talk to Robot. Robot works in English and Québec French. It can also write down and read other languages, but it answers in English or French.</string>
     <string name="guide_can_privacy">Each example says whether it stays on the phone, or what goes online and when. The ones that need setting up are off until you turn them on.</string>
     <string name="guide_tag_offline">On the phone, even offline</string>
     <string name="guide_tag_encrypted">On the phone, encrypted</string>
@@ -220,7 +220,7 @@
     <string name="guide_can_meeting_where">Who said what needs the speaker model: Settings › Conversation</string>
     <string name="guide_can_interpreter_say">“Be my interpreter”</string>
     <string name="guide_can_interpreter_fr">« Traduis cette conversation »</string>
-    <string name="guide_can_interpreter_does">Lay the phone flat between you and someone who speaks French. Each half shows and reads aloud what the other person said, English and Québec French.</string>
+    <string name="guide_can_interpreter_does">Lay the phone flat between you and someone who speaks French. Each half shows and reads aloud what the other person said.</string>
     <string name="guide_can_interpreter_where">Faster with the fast translation engine: Settings › Conversation</string>
     <string name="guide_can_memory_say">“Remember that I parked on P3 until tonight”, later “where did I park?”</string>
     <string name="guide_can_memory_fr">« Souviens-toi que … »</string>
@@ -245,7 +245,7 @@
     <string name="guide_can_termux_does">Robot runs your own backup script in Termux, after a Run, Edit or Cancel card, and tells you how it went.</string>
     <string name="guide_can_termux_where">Off until you set it up: Settings › Termux</string>
     <string name="guide_can_car_say">In the car: “navigate home”</string>
-    <string name="guide_can_car_does">In car mode Robot talks through your car, announces a new message and reads your reply back before it goes, and opens Organic Maps\' route home.</string>
+    <string name="guide_can_car_does">In car mode Robot talks through your car, announces a new message and reads your reply back before it goes, and opens your maps app\'s route home.</string>
     <string name="guide_can_car_where">Off until you add your car: Settings › Car mode. Announcements: Settings › Messages</string>
     <string name="guide_can_helper_say">“Ask a helper why the sky is blue”</string>
     <string name="guide_can_helper_does">For a question Robot can\'t answer well, it hands it to the helper you set up. Your screen, a photo or what Robot read goes only after a tap.</string>
@@ -350,7 +350,7 @@
     <string name="guide_memory_locked_detail">Anyone who can talk to your locked phone could hear what Robot remembers</string>
     <string name="guide_memory_privacy">Memory is one file on the phone, encrypted with a key in the phone\'s secure hardware that works only while the phone is unlocked, unless you allow the lock screen. Something like a password is kept private: never spoken unless you allow it, never sent to a helper.</string>
     <string name="guide_weather_title">Weather and places</string>
-    <string name="guide_weather_intro">Robot gets the weather when you ask, and finds “the nearest pharmacy” for Organic Maps\' route. A home town is used when Robot can\'t tell where you are.</string>
+    <string name="guide_weather_intro">Robot gets the weather when you ask, and finds “the nearest pharmacy” for your maps app\'s route. A home town is used when Robot can\'t tell where you are.</string>
     <string name="guide_weather_home">Home for weather</string>
     <string name="guide_weather_location">Approximate location (optional)</string>
     <string name="guide_weather_location_on">Allowed, approximate only (about 1 km)</string>
@@ -377,7 +377,7 @@
     <string name="guide_routines_voice">Make your own routines by voice, such as “every weekday at 7, tell me the weather and my calendar”. Robot shows each on a card and saves it only when you say yes.</string>
     <string name="guide_routines_privacy">Routines run on the phone. The brief goes online by itself only for the weather, from Open-Meteo; nothing about you is sent.</string>
     <string name="guide_hf_title">Headset and car</string>
-    <string name="guide_hf_intro">A long press of your headset\'s or car\'s voice button opens Robot. In car mode, Robot talks through your car with short answers, helps with calls and Organic Maps\' routes, and keeps what needs the screen for when you park.</string>
+    <string name="guide_hf_intro">A long press of your headset\'s or car\'s voice button opens Robot. In car mode, Robot talks through your car with short answers, helps with calls and your maps app\'s routes, and keeps what needs the screen for when you park.</string>
     <string name="guide_hf_button">Headset button opens Robot</string>
     <string name="guide_hf_button_detail">Off: other apps get the button</string>
     <string name="guide_hf_car">Car mode</string>

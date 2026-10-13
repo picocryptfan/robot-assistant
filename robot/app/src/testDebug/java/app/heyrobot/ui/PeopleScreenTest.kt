@@ -68,7 +68,7 @@ class PeopleScreenTest {
         val host = SettingsHost(start)
         rule.showSettings(host) { s, u -> PeopleScreen(s, u, null, log.actions, SnackbarHostState(), onOpen = { opened += it }, onBack = {}) }
         // The list is read off the main thread; the learned group, below the switches, shows once it is.
-        rule.waitUntil(5_000) { runCatching { rule.scrollToText("Learned from Cheogram (1)") }.isSuccess }
+        rule.waitUntil(5_000) { runCatching { rule.scrollToText("Learned from notifications (1)") }.isSuccess }
         return host
     }
 
@@ -88,7 +88,7 @@ class PeopleScreenTest {
         rule.scrollToText("Remember who you pick")
         rule.onNodeWithText("Remember who you pick").assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch)).performClick()
         assertEquals(RobotSettings(rememberPicks = false), host.last)
-        rule.onNodeWithText("Learn names from Cheogram notifications").assertIsOff().performClick()
+        rule.onNodeWithText("Learn names from message notifications").assertIsOff().performClick()
         assertEquals(RobotSettings(rememberPicks = false, learnFromCheogram = true), host.last)
         // On without access: the row to the three steps.
         rule.onNodeWithText("Notification access").assert(hasText("Needed: three steps")).performClick()

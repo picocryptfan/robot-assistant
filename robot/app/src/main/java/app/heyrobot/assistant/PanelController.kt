@@ -2805,11 +2805,11 @@ object PanelController {
         val a = _state.value.turns.flatMap { it.actions }.firstOrNull { it.id == actionId } ?: return
         val pkg = a.handOff ?: return
         val page = SettingsPage.isPage(pkg)
-        if (Assistant.locked(VoiceHub.app)) return notify(if (page) "Unlock your phone, then open Settings." else "Unlock your phone, then open Cheogram.")
+        if (Assistant.locked(VoiceHub.app)) return notify(if (page) "Unlock your phone, then open Settings." else "Unlock your phone, then open your messaging app.")
         val h = host ?: return
         val tries = if (page) SettingsIntents.of(VoiceHub.app, pkg)
         else listOfNotNull(VoiceHub.app.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        if (tries.isEmpty()) return notify(if (page) "Settings didn't open." else "Cheogram isn't installed.")
+        if (tries.isEmpty()) return notify(if (page) "Settings didn't open." else "Your messaging app isn't installed.")
         stopGenerating(TtsStop.OTHER)
         if (tries.any { h.launch(it) }) {
             hidingFor = "action"

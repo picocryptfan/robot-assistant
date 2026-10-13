@@ -62,7 +62,7 @@ class SafetyScreenTest {
         val cases = listOf<Pair<String, (RobotSettings) -> RobotSettings>>(
             "Card when a helper asks Robot to do something" to { it.copy(claudeActionCards = !d.claudeActionCards) },
             "Card when who-to isn't certain" to { it.copy(whoCards = !d.whoCards) },
-            "Card for names learned from Cheogram" to { it.copy(learnedCards = !d.learnedCards) },
+            "Card for names learned from notifications" to { it.copy(learnedCards = !d.learnedCards) },
             "Answer cards by voice" to { it.copy(voiceCards = !d.voiceCards) },
             "Card before deleting files" to { it.copy(deleteCards = !d.deleteCards) },
             "Send personal content to helpers automatically" to { it.copy(personalToHelpers = !d.personalToHelpers) },

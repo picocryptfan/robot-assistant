@@ -128,14 +128,14 @@ fun SetupScreen(f: AssistantFacts?, a: AppActions, snackbar: SnackbarHostState, 
                 "Settings › Advanced › ADB fixes.\n\n" +
                 "People, notes and calendar: Robot asks for these only when you tap Allow. What it reads stays on the phone; texts and " +
                 "emails open as drafts and you press Send. " + (if (f.learnFromCheogram) "" else "Optional: Settings › People can learn " +
-                "names from Cheogram notifications. It is off, and needs no access while it is off.") + "\n\n" + TOOLS_SETUP_NOTE + "\n\n" +
+                "names from your messaging app's notifications. It is off, and needs no access while it is off.") + "\n\n" + TOOLS_SETUP_NOTE + "\n\n" +
                 "Helpers: Robot uses the network for four things only: downloading its models, a helper when you ask for one, the " +
                 "weather (Open-Meteo) when you ask for it, and your own AI server, if you add one.",
         )
     }
 }
 
-/** Assistant setup › People, notes and calendar: the two permissions with Allow, the hand-off apps, and Cheogram's notifications. */
+/** Assistant setup › People, notes and calendar: the two permissions with Allow, the hand-off apps, and message notifications. */
 @Composable
 private fun PeopleRows(f: AssistantFacts, a: AppActions) {
     StatusPreference("Contacts",
@@ -153,9 +153,9 @@ private fun PeopleRows(f: AssistantFacts, a: AppActions) {
         if (f.protonInstalled) Mark.OK else Mark.TODO)
     // 0.4.0: notification access is asked for only once "Learn names from Cheogram notifications" is on (Settings › People).
     when {
-        f.learnFromCheogram && f.notificationAccess -> StatusPreference("Cheogram notifications",
-            "Notification access allowed: Robot keeps who messages you in Cheogram, never the text", Mark.OK)
-        f.learnFromCheogram -> StatusPreference("Cheogram notifications", "Needs notification access: three steps", Mark.TODO,
+        f.learnFromCheogram && f.notificationAccess -> StatusPreference("Message notifications",
+            "Notification access allowed: Robot keeps who messages you, never the text", Mark.OK)
+        f.learnFromCheogram -> StatusPreference("Message notifications", "Needs notification access: three steps", Mark.TODO,
             onClick = { a.openPage(Page.Settings(SettingsRoutes.NOTIFICATION_ACCESS)) })
     }
     if (!f.contactsGranted || !f.calendarGranted) {
