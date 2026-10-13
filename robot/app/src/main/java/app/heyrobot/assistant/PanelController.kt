@@ -623,7 +623,7 @@ object PanelController {
         if (locked && s.helper(_state.value.helperMode)?.locked != true) endHelperMode()
         _state.update {
             it.copy(locked = locked, screenChip = ScreenChip.HIDDEN, sttAvailable = VoiceHub.stt.available, micHint = VoiceHub.stt.hint, partial = "",
-                showId = it.showId + 1, claudeScreen = false, lockedTools = s.lockedTools, tips = if (returning) it.tips else handsFree?.tips ?: tips(s, locked))
+                showId = it.showId + 1, claudeScreen = false, lockedTools = s.lockedTools, tips = if (returning) it.tips else tips(s, locked))
         }
         BrainKeeper.prewarm(VoiceHub.app)
         HelperLink.warm(VoiceHub.app, s)

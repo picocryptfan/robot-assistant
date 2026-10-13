@@ -377,7 +377,7 @@
     <string name="guide_routines_voice">Make your own routines by voice, such as “every weekday at 7, tell me the weather and my calendar”. Robot shows each on a card and saves it only when you say yes.</string>
     <string name="guide_routines_privacy">Routines run on the phone. The brief goes online by itself only for the weather, from Open-Meteo; nothing about you is sent.</string>
     <string name="guide_hf_title">Headset and car</string>
-    <string name="guide_hf_intro">A long press of your headset\'s or car\'s voice button opens Robot. In car mode, Robot talks through your car with short answers, helps with calls and your maps app\'s routes, and keeps what needs the screen for when you park.</string>
+    <string name="guide_hf_intro">A long press of your headset\'s or car\'s voice button opens Robot. In car mode, Robot talks through your car with short answers and helps with calls and your maps app\'s routes. Everything else works as it does outside the car.</string>
     <string name="guide_hf_button">Headset button opens Robot</string>
     <string name="guide_hf_button_detail">Off: other apps get the button</string>
     <string name="guide_hf_car">Car mode</string>

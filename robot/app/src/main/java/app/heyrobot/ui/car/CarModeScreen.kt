@@ -45,7 +45,7 @@ import app.heyrobot.ui.common.RIcons
 data class CarScreenState(
     val title: String = "Car mode",
     val trusted: Boolean = false,
-    /** The one status line ("Listening…", "2 things for when you park"). */
+    /** The one status line ("Listening…", "Calling Mom"). */
     val status: String = "",
     val buttons: List<CarScreen.Button> = CarScreen.buttons(messages = false, home = true),
 )

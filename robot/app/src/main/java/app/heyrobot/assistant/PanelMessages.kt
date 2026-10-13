@@ -645,8 +645,6 @@ object PanelMessages {
         }
         if (!plan(p, f, locked)) return
         val plan = p.plan!!
-        // 0.8, in the car: a card only a tap sends waits for parking.
-        if (plan.confirm == app.heyrobot.core.messages.Confirm.TAP && parkInCar(p)) return
         if (first) PanelController.messagesReply(p.replyId, headline(p, plain = true) + ".")
         lastRead = t.key
         lastThread = t
@@ -672,8 +670,6 @@ object PanelMessages {
             is ReplyPlan.HandOff -> {
                 // "Open the chat; I press Send", or no reply action: the chat opens with your words. Nothing is sent by Robot.
                 p.plan = null
-                // 0.8, in the car: nothing opens while you drive; it waits for parking.
-                if (parkInCar(p)) return false
                 if (p.state != ReplyCardState.OPENED) PanelController.messagesReply(p.replyId, headline(p, plain = true) + ".")
                 openChat(p)
                 return false
@@ -1042,9 +1038,9 @@ object PanelMessages {
     }
 
     /**
-     * A reply the car didn't read back ("Hold screen actions until I park" off; core CarMessages.startReply): 0.7's own
-     * reply to [t], the conversation the car announced or read, with exactly your [words]: its card, its tap or its chat,
-     * by its own rules, as outside the car.
+     * A reply the car didn't read back and send by voice (core CarMessages.startReply), or one the Reply action didn't
+     * take: 0.7's own reply to [t], the conversation the car announced or read, with exactly your [words] ("": a draft, as
+     * a "reply" without words): its card, its tap, its chat or its refusal, by its own rules, as outside the car.
      */
     internal suspend fun handsFreeOnScreen(replyId: String, t: MessageThread, words: String, lang: Lang) {
         sync()
@@ -1064,26 +1060,6 @@ object PanelMessages {
 
     /** A reply the car read back and you confirmed, sent by the main process to the conversation's own Reply action. */
     internal suspend fun handsFreeReply(r: ReplyRequest): app.heyrobot.core.messages.ReplyAnswer? = link().reply(r)
-
-    /**
-     * In the car, a reply only a tap may send (0.7's card), or one Robot never sends itself ("Open the chat; I press Send",
-     * no Reply action): kept for when you park instead, with your own words (a draft or a translation without them), and
-     * nothing opens while you drive. False outside a car session, and in the car with Settings › Car mode › "Hold screen
-     * actions until I park" off (the default): the card or the chat then comes now, as outside the car.
-     */
-    private fun parkInCar(p: Pending): Boolean {
-        if (!app.heyrobot.assistant.handsfree.PanelHandsFree.inCar) return false
-        if (!app.heyrobot.assistant.handsfree.HandsFreeHub.car.settings.holdWhileDriving) return false
-        val lang = p.lang
-        val name = p.thread.name
-        val words = p.text.takeIf { p.source == ReplySource.DICTATED && it.isNotBlank() }
-        val summary = if (fr(lang)) "Répondre à $name" else "Reply to $name"
-        val ask = if (words == null) summary.replaceFirstChar { it.lowercase() } else if (fr(lang)) "réponds à $name : $words" else "reply to $name: $words"
-        app.heyrobot.assistant.handsfree.PanelHandsFree.keepReply(summary, ask)
-        card = null
-        say(p.replyId, app.heyrobot.core.output.OutputLines.KEEP_FOR_PARK.get(if (fr(lang)) app.heyrobot.core.output.SpokenLang.FR else app.heyrobot.core.output.SpokenLang.EN), lang)
-        return true
-    }
 
     /** Your messages' words leave this process after this long without a question or a tap (and when the panel hides). */
     const val IDLE_DROP_MS = 120_000L
