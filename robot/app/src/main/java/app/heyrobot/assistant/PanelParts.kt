@@ -83,6 +83,7 @@ import app.heyrobot.core.LockScreen
 import app.heyrobot.core.ScreenAccess
 import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.Tip
+import app.heyrobot.ui.common.RobotFaceIcon
 import app.heyrobot.ui.common.NoticeRow
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.theme.RobotTokens
@@ -144,13 +145,21 @@ fun panelStatus(st: PanelState): PanelStatus {
 fun showsProgress(st: PanelState): Boolean = st.phase == Phase.TRANSCRIBING || st.phase == Phase.THINKING ||
     st.cardHearing == Phase.TRANSCRIBING || st.brain.readiness == BrainKeeper.Readiness.LOADING
 
-/** "Robot", the status line under it, and the header's actions: Keep, Speak replies, New conversation, Close. */
+/**
+ * The robot (1.0: listening, typing, speaking or idle, in the primary colour), "Robot", the status line under it, and the
+ * header's actions: Keep, Speak replies, New conversation, Close.
+ */
 @Composable
 fun PanelHeader(st: PanelState, actions: PanelActions, onClose: () -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Robot", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // Beside the name, not beside both lines: the status line keeps the whole width ("Reading aloud · tap to stop").
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RobotFaceIcon(st.face, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Robot", style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
                 PanelStatusLine(st)
             }
             if (!st.keep && st.turns.isNotEmpty()) {

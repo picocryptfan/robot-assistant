@@ -60,7 +60,7 @@ class IconsTest {
             assertEquals(name, 960f, g.translationY)
             assertTrue(name, g.size > 0)
         }
-        assertEquals(24f, RIcons.Robot.viewportWidth)
+        assertEquals(48f, RIcons.Robot.viewportWidth)
     }
 
     @Test fun iconsAreTheOnesTheScriptWrites() {

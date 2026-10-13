@@ -16,6 +16,8 @@ History, notes, transcripts, keys and routines don't move: share or save what yo
 
 ## 1.0.0 (unreleased)
 
+- **New icon**: a robot head shaped as a speech bubble, on blue, with a themed version and the same head in
+  notifications. The robot in the chat window now shows whether it's listening, thinking or speaking.
 - **Fixed after rc1** (a security review of everything changed since the 1.0 audit):
   - a Termux command run through Shizuku's `rish` shows "Runs with ADB's rights through Shizuku" and runs only when
     you tap, never on a spoken yes;

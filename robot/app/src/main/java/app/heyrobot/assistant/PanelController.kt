@@ -170,6 +170,7 @@ import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.PhoneInfo
 import app.heyrobot.sys.Phones
 import app.heyrobot.sys.SettingsIntents
+import app.heyrobot.ui.common.RobotFace
 import app.heyrobot.ui.common.keptPicture
 import app.heyrobot.voice.Cues
 import app.heyrobot.voice.SpeechToText
@@ -218,6 +219,20 @@ fun Phase.afterTurn(speaking: Boolean): Phase = when (this) {
  * waiting for a yes or no stays: "stop" then only quiets Robot's "Say yes or no.".
  */
 fun Phase.stopEndsTurn(turnRunning: Boolean): Boolean = turnRunning && (this == Phase.THINKING || this == Phase.ANSWERING)
+
+/**
+ * 1.0: which robot the panel's header shows in this phase (both looks). Listening wins, a card's "yes" or "no" included
+ * ([cardHearing]); then Robot's voice ([talking]: reading aloud, also while the reply is still being written or a card
+ * is read out); then writing the reply; otherwise idle, a card waiting for a tap included.
+ */
+fun Phase.face(cardHearing: Phase?, talking: Boolean): RobotFace =
+    if (cardHearing != null) RobotFace.LISTENING
+    else when (this) {
+        Phase.LISTENING, Phase.TRANSCRIBING -> RobotFace.LISTENING
+        Phase.SPEAKING -> RobotFace.SPEAKING
+        Phase.THINKING, Phase.ANSWERING -> if (talking) RobotFace.SPEAKING else RobotFace.TYPING
+        Phase.IDLE, Phase.CONFIRMING -> if (talking) RobotFace.SPEAKING else RobotFace.IDLE
+    }
 
 /**
  * [icon]: the real app's launcher icon on an open_app card. [body]: the full message, email or note, or what a read
@@ -345,7 +360,12 @@ data class PanelState(
     val cardHearing: Phase? = null,
     /** The empty panel's three tips (core Tips), a different three each time it opens. */
     val tips: List<Tip> = emptyList(),
+    /** 1.0: Robot's voice is reading aloud right now (VoiceHub's TTS), whatever the phase: the header's robot speaks. */
+    val talking: Boolean = false,
 ) {
+    /** The robot in the header. */
+    val face: RobotFace get() = phase.face(cardHearing, talking)
+
     /** A helper's conversation is on. */
     val claudeMode: Boolean get() = helperMode != null
 
@@ -534,9 +554,9 @@ object PanelController {
         }
         _state.update {
             when {
-                !speaking && it.phase == Phase.SPEAKING -> it.copy(phase = Phase.IDLE)
-                speaking && it.phase == Phase.IDLE -> it.copy(phase = Phase.SPEAKING)
-                else -> it
+                !speaking && it.phase == Phase.SPEAKING -> it.copy(phase = Phase.IDLE, talking = false)
+                speaking && it.phase == Phase.IDLE -> it.copy(phase = Phase.SPEAKING, talking = true)
+                else -> it.copy(talking = speaking)
             }
         }
     }
@@ -793,7 +813,7 @@ object PanelController {
         lastActivity = System.currentTimeMillis()
         _state.update {
             PanelState(newId(), locked = locked, speak = it.speak, sttAvailable = it.sttAvailable, micHint = it.micHint, screenChip = it.screenChip,
-                showId = it.showId, brain = it.brain, lockedTools = it.lockedTools, tips = it.tips)
+                showId = it.showId, brain = it.brain, lockedTools = it.lockedTools, tips = it.tips, talking = it.talking)
         }
     }
 
@@ -821,7 +841,7 @@ object PanelController {
         lastActivity = System.currentTimeMillis()
         _state.update {
             PanelState(c.id, turns = c.turns.map { t -> t.toUi() }, keep = true, sttAvailable = it.sttAvailable, micHint = it.micHint,
-                showId = it.showId, brain = it.brain, lockedTools = it.lockedTools, tips = it.tips)
+                showId = it.showId, brain = it.brain, lockedTools = it.lockedTools, tips = it.tips, talking = it.talking)
         }
     }
 

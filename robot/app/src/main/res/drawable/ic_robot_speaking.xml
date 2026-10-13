@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Robot in the chat window: speaking the reply. One colour; tint it with the theme's primary colour. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp" android:viewportWidth="48" android:viewportHeight="48">
+    <path android:fillColor="#FF000000" android:pathData="M16,11H32A10,10 0 0 1 42,21V32A10,10 0 0 1 32,42H16A10,10 0 0 1 6,32V21A10,10 0 0 1 16,11ZM24,5H24A1.4,1.4 0 0 1 25.4,6.4V10.6A1.4,1.4 0 0 1 24,12H24A1.4,1.4 0 0 1 22.6,10.6V6.4A1.4,1.4 0 0 1 24,5ZM20.8,4.8A3.2,3.2 0 1 1 27.2,4.8A3.2,3.2 0 1 1 20.8,4.8ZM13.4,21.5A3.6,3.6 0 1 0 20.6,21.5A3.6,3.6 0 1 0 13.4,21.5ZM27.4,21.5A3.6,3.6 0 1 0 34.6,21.5A3.6,3.6 0 1 0 27.4,21.5ZM18.8,31.6A1.7,1.7 0 0 0 17.1,33.3V33.7A1.7,1.7 0 0 0 18.8,35.4H18.8A1.7,1.7 0 0 0 20.5,33.7V33.3A1.7,1.7 0 0 0 18.8,31.6ZM24,30A1.7,1.7 0 0 0 22.3,31.7V35.3A1.7,1.7 0 0 0 24,37H24A1.7,1.7 0 0 0 25.7,35.3V31.7A1.7,1.7 0 0 0 24,30ZM29.2,31.6A1.7,1.7 0 0 0 27.5,33.3V33.7A1.7,1.7 0 0 0 29.2,35.4H29.2A1.7,1.7 0 0 0 30.9,33.7V33.3A1.7,1.7 0 0 0 29.2,31.6Z" />
+</vector>

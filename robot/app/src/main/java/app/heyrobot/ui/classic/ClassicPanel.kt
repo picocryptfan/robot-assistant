@@ -98,6 +98,8 @@ import app.heyrobot.ui.common.TermuxCard
 import app.heyrobot.ui.common.MarkdownText
 import app.heyrobot.ui.common.OfferView
 import app.heyrobot.ui.common.RIcons
+import app.heyrobot.ui.common.RobotFace
+import app.heyrobot.ui.common.RobotFaceIcon
 import app.heyrobot.ui.common.answerSemantics
 import app.heyrobot.ui.common.TurnActions
 import app.heyrobot.ui.common.TurnUi
@@ -146,9 +148,11 @@ fun ClassicHeader(
     onClose: () -> Unit,
     /** 0.7.0: Robot's Settings (the panel asks to unlock first on the lock screen). */
     onSettings: () -> Unit = {},
+    /** 1.0: the robot inside the orb, by what Robot is doing. */
+    face: RobotFace = RobotFace.IDLE,
 ) {
     Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        StatusOrb(mood)
+        StatusOrb(mood, face)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text("Robot", style = MaterialTheme.typography.titleLarge)
@@ -170,9 +174,12 @@ fun ClassicHeader(
     }
 }
 
-/** The assistant's state at a glance: a pulsing ring while listening or speaking, a slower glow while thinking. */
+/**
+ * The assistant's state at a glance: a pulsing ring while listening or speaking, a slower glow while thinking. 1.0: the
+ * robot inside changes too ([face]), in the orb's own content colour so it keeps its contrast on every mood.
+ */
 @Composable
-private fun StatusOrb(mood: OrbMood) {
+private fun StatusOrb(mood: OrbMood, face: RobotFace) {
     val t = rememberInfiniteTransition(label = "orb")
     val pulse by t.animateFloat(1f, 1.18f, infiniteRepeatable(tween(if (mood == OrbMood.WORKING) 900 else 600), RepeatMode.Reverse), label = "pulse")
     val active = mood != OrbMood.IDLE
@@ -186,7 +193,7 @@ private fun StatusOrb(mood: OrbMood) {
     Box(Modifier.size(44.dp).testTag("classic-orb"), contentAlignment = Alignment.Center) {
         if (active) Box(Modifier.size(44.dp).scale(ring).clip(CircleShape).background(c.copy(alpha = 0.22f)))
         Box(Modifier.size(36.dp).clip(CircleShape).background(c), contentAlignment = Alignment.Center) {
-            Icon(RIcons.Robot, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.contentColorFor(c))
+            RobotFaceIcon(face, tint = MaterialTheme.colorScheme.contentColorFor(c), modifier = Modifier.size(26.dp))
         }
     }
 }
