@@ -63,6 +63,23 @@ class LockedTurnsTest {
         assertFalse(ConversationCodec.fromJson(ConversationCodec.toJson(StoredConversation("c2", 1, 2, listOf(stranger))))!!.turns.single().locked)
     }
 
+    /**
+     * A conversation begun on the lock screen that the next unlocked show left behind (a new conversation) is still in
+     * History: continuing it from there quotes its turns too, never replays them as your words.
+     */
+    @Test fun historysContinueQuotesThemToo() {
+        val locked = listOf(stranger, unlockFirst)
+        val saved = StoredConversation("c3", 1, 2, PanelContinuity.stored(locked, startedLocked = true))
+        val back = ConversationCodec.fromJson(ConversationCodec.toJson(saved))!!.turns
+        assertEquals(listOf(true, true), back.map { it.locked })
+        assertEquals(locked.map { it.text }, back.map { it.text })
+        assertTrue(TurnRules.untrusted(back + yours))
+        assertEquals(Quoted.LOCKED + " " + stranger.text, (back + yours).toPromptTurns().first().text)
+        // Begun unlocked, or already quoted and continued unlocked: saved as it is.
+        assertEquals(locked, PanelContinuity.stored(locked, startedLocked = false))
+        assertEquals(said + yours, PanelContinuity.stored(said + yours, startedLocked = false))
+    }
+
     @Test fun anActionYouDidntAskForNeedsItsCardWhateverSafetyCardsSays() {
         val allAuto = RobotSettings().copy(approvals = ToolName.entries.associateWith { Approval.AUTO })
         for (mode in SafetyCards.entries) {

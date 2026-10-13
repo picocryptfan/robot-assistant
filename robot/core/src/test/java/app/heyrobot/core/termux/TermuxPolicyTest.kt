@@ -37,6 +37,23 @@ class TermuxPolicyTest {
         }
     }
 
+    /**
+     * 1.0, the Shizuku path: once rish is in Termux, `rish -c '…'` has ADB's rights. Whoever wrote it, its card needs a tap
+     * and names that right, as `su -c` does; a spoken or typed yes never runs it.
+     */
+    @Test fun aShellWithAdbsRightsNeedsATap() {
+        for (s in listOf("rish -c 'pm grant ai.robot_app android.permission.WRITE_SECURE_SETTINGS'", "rish -c 'rm -rf /sdcard/DCIM'", "rish")) {
+            for (src in listOf(TYPED, SPOKEN, MODEL)) {
+                val d = cmd(s, src, readOnlyOn)
+                assertEquals("$s $src", TAP_ONLY, d.verdict)
+                assertTrue("$s $src", CommandWarning.ADB_RIGHTS in d.warnings)
+                assertEquals(TermuxTap.COMMAND, d.tap)
+            }
+        }
+        assertEquals("This command runs with ADB's rights through Shizuku: check the card, then tap Run.", cmd("rish -c id").say())
+        assertEquals("Cette commande s'exécute avec les droits d'ADB via Shizuku : vérifiez la carte, puis touchez Exécuter.", cmd("rish -c id").say(fr = true))
+    }
+
     @Test fun readOnlyCommandsRunWithoutACardOnlyWithTheSwitch() {
         assertEquals(RUN, cmd("du -sh ~", settings = readOnlyOn).verdict)
         assertEquals(listOf(TermuxReason.READ_ONLY), cmd("du -sh ~", settings = readOnlyOn).reasons)

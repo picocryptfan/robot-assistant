@@ -172,11 +172,21 @@ object BrowserRouter {
 object BrowserGate {
     fun engine(a: BrowserSearchAction, said: String?, default: BrowserEngine): BrowserEngine = a.engine ?: BrowserRouter.engineIn(said) ?: default
 
-    /** [a]'s words are exactly what your own phrase this turn asked for ([said]): nobody else wrote them. */
-    fun own(a: BrowserSearchAction, said: String?): Boolean {
+    /**
+     * [a]'s words are exactly what your own phrase this turn asked for ([said]), to the engine it chose: the one it names,
+     * Google for "google …", else your [default]. Nobody else wrote them or picked where they go (a model that names another
+     * engine shows the card).
+     */
+    fun own(a: BrowserSearchAction, said: String?, default: BrowserEngine): Boolean {
         val mine = BrowserRouter.ownWords(said) ?: return false
-        val named = BrowserRouter.engineIn(said)
-        return norm(mine) == norm(a.query) && (named == null || a.engine == null || named == a.engine)
+        return norm(mine) == norm(a.query) && (a.engine == null || a.engine == (saidEngine(said) ?: default))
+    }
+
+    /** The engine your own phrase [said] chose, if any: the one it names, or Google for "google …" (WebRouter's form). */
+    private fun saidEngine(said: String?): BrowserEngine? = when (val r = said?.let(BrowserRouter::route)) {
+        is WebRoute.Browser -> r.engine
+        is WebRoute.Search -> if (r.google) BrowserEngine.GOOGLE else null
+        null -> null
     }
 
     private fun norm(s: String) = s.trim().replace(Regex("\\s+"), " ")
@@ -187,7 +197,7 @@ object BrowserGate {
      */
     fun prepare(a: BrowserSearchAction, said: String?, ctx: QueryContext, default: BrowserEngine, note: (BrowserEngine) -> String? = { null }): Prepared {
         val engine = engine(a, said, default)
-        if (own(a, said)) return Prepared.Ready(a.copy(query = norm(a.query), engine = engine, own = true))
+        if (own(a, said, default)) return Prepared.Ready(a.copy(query = norm(a.query), engine = engine, own = true))
         return when (val v = QueryCheck.check(a.query, ctx)) {
             is QueryVerdict.Refuse -> Prepared.Refused(ActionStatus.FAILED, v.why.text)
             is QueryVerdict.Card -> Prepared.Ready(a.copy(query = v.query, engine = engine), why = setOf(if (v.why.tapOnly) AskWhy.SEARCH_PERSONAL else AskWhy.SEARCH),

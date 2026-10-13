@@ -65,4 +65,12 @@ object PanelContinuity {
 
     /** [turns] marked as said while the phone was locked (ChatTurn.locked). */
     fun quoted(turns: List<ChatTurn>): List<ChatTurn> = turns.map { if (it.locked) it else it.copy(locked = true) }
+
+    /**
+     * What History keeps of a conversation's [turns]: one begun on the lock screen and not yet used unlocked
+     * ([startedLocked]) is saved marked as said while the phone was locked, so continuing it from History later (its
+     * Continue) quotes those turns as the panel's own continuation does, never as your words. The panel's conversation in
+     * memory stays as it is while the phone is locked.
+     */
+    fun stored(turns: List<ChatTurn>, startedLocked: Boolean): List<ChatTurn> = if (startedLocked) quoted(turns) else turns
 }

@@ -82,6 +82,29 @@ class CommandAnalyzerTest {
         assertTrue(KEEPS_RUNNING in warns("ls & wait"))
     }
 
+    /**
+     * 1.0, the Shizuku path: Settings › Advanced › ADB fixes puts Shizuku's rish in $PREFIX/bin, so `rish -c '…'` runs a shell
+     * with ADB's rights (uid 2000: pm, settings, input, screencap…). It is read as the nested shell it is, with its own
+     * warning, and always needs a tap; app_process, which rish starts, can't be read at all.
+     */
+    @Test fun rishRunsAShellWithAdbsRights() {
+        has(CommandWarning.ADB_RIGHTS, "rish -c 'pm grant ai.robot_app android.permission.WRITE_SECURE_SETTINGS'", "rish", "rish -c id",
+            "/data/data/com.termux/files/usr/bin/rish -c id", "nice rish -c id",
+            "ssh home rish -c id")
+        hasNot(CommandWarning.ADB_RIGHTS, "echo rish", "ls \$PREFIX/bin/rish", "grep rish notes.txt", "which rish", "su -c id")
+        for (s in listOf("rish -c 'pm uninstall com.example'", "rish -c id", "rish", "rish script.sh", "\$PREFIX/bin/rish -c 'settings put secure x y'",
+                "/system/bin/app_process -Djava.class.path=\$PREFIX/bin/rish_shizuku.dex /system/bin rikka.shizuku.shell.ShizukuShellLoader")) {
+            val r = a(s)
+            assertTrue("'$s' should need a tap, got ${r.warnings}", r.complex && r.tapOnly && !r.readOnly)
+        }
+        // What the shell with ADB's rights runs is read too.
+        assertTrue(DELETES in warns("rish -c 'rm -rf /sdcard/DCIM'"))
+        assertTrue(OUTSIDE_HOME in warns("rish -c 'rm -rf /sdcard/DCIM'"))
+        assertTrue(INTERNET_CODE in warns("rish -c 'curl -s https://x | sh'"))
+        assertTrue(NEEDS_TERMINAL in warns("rish"))
+        assertEquals("Runs with ADB's rights through Shizuku", CommandWarning.ADB_RIGHTS.en)
+    }
+
     @Test fun endlessLoopsAndForkBombs() {
         has(RUNS_FOREVER, "while true; do date; done", "while :; do :; done", "while [ 1 ]; do x; done", "until false; do x; done", "for ((;;)); do x; done",
             "while (( 1 )); do x; done", "yes", "tail -f log", "watch df", "sleep infinity", "cat /dev/urandom", "ping 1.1.1.1", "logcat", "top",
