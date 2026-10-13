@@ -1041,6 +1041,18 @@ object PanelMessages {
         return page
     }
 
+    /**
+     * A reply the car didn't read back ("Hold screen actions until I park" off; core CarMessages.startReply): 0.7's own
+     * reply to [t], the conversation the car announced or read, with exactly your [words]: its card, its tap or its chat,
+     * by its own rules, as outside the car.
+     */
+    internal suspend fun handsFreeOnScreen(replyId: String, t: MessageThread, words: String, lang: Lang) {
+        sync()
+        lastRead = t.key
+        lastThread = t
+        run(replyId, Routed.Command(MessageCommand.Reply(null, words, lang)))
+    }
+
     /** A messages phrase the hands-free router heard after 0.7's router let it go ("any messages?"), run as 0.7's own command. */
     internal suspend fun handsFreeCommand(replyId: String, cmd: MessageCommand) = run(replyId, Routed.Command(cmd))
 
@@ -1056,10 +1068,12 @@ object PanelMessages {
     /**
      * In the car, a reply only a tap may send (0.7's card), or one Robot never sends itself ("Open the chat; I press Send",
      * no Reply action): kept for when you park instead, with your own words (a draft or a translation without them), and
-     * nothing opens while you drive. False outside a car session.
+     * nothing opens while you drive. False outside a car session, and in the car with Settings › Car mode › "Hold screen
+     * actions until I park" off (the default): the card or the chat then comes now, as outside the car.
      */
     private fun parkInCar(p: Pending): Boolean {
         if (!app.heyrobot.assistant.handsfree.PanelHandsFree.inCar) return false
+        if (!app.heyrobot.assistant.handsfree.HandsFreeHub.car.settings.holdWhileDriving) return false
         val lang = p.lang
         val name = p.thread.name
         val words = p.text.takeIf { p.source == ReplySource.DICTATED && it.isNotBlank() }

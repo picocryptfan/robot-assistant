@@ -27,6 +27,11 @@ sealed class FlowEffect {
     data class Send(val conversationKey: String, val text: String) : FlowEffect()
     /** Keep it for parking ([summary]: the card's words, personal, never logged; [ask]: what is asked again once you park). */
     data class Park(val code: ParkCode, val summary: String, val ask: String? = null) : FlowEffect()
+    /**
+     * "Hold screen actions until I park" off: the screen's own reply to the conversation, with exactly [text] (its card,
+     * its tap or its chat, as outside the car); [why]: what the car couldn't do by voice.
+     */
+    data class OnScreen(val text: String, val why: ReplyEnd) : FlowEffect()
 }
 
 /** A call in progress: the current plan (choices or read-back), unusable answers so far, re-reads, and Robot's last line. */
@@ -124,6 +129,7 @@ object MessageFlow {
             } else st.copy(step = MessageStep.DICTATING, said = r.say, tries = if (st.step == MessageStep.DICTATING) st.tries + 1 else 0) to listOf(FlowEffect.Say(r.say, true))
             is ReplyStart.Hold -> st.copy(step = MessageStep.DONE) to listOf(FlowEffect.Say(r.say, false),
                 FlowEffect.Park(ParkCode.REPLY, replyTo(st.notice, c.lang), CarMessages.parkedAsk(st.notice, r.text, c.lang)))
+            is ReplyStart.OnScreen -> st.copy(step = MessageStep.DONE) to listOf(FlowEffect.OnScreen(r.text, r.why))
         }
 
     private fun replyTo(n: MessageNotice, lang: SpokenLang) = (if (lang == SpokenLang.FR) "Répondre à " else "Reply to ") + n.sender

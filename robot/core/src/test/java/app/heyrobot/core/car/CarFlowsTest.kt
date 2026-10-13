@@ -134,7 +134,9 @@ class CallTargetTest {
 /** Messages in the car (0.7; §4.5 flow 3, §4.11 "Reply payload"). */
 class CarMessagesTest {
     private val marie = MessageNotice("CHEOGRAM:me#marie", "Marie", "k1", "On se voit à 5?", "Cheogram", replyable = true)
-    private val s = CarSettings()
+    /** "Hold screen actions until I park" on: today's holds (off is [noHolds]). */
+    private val s = CarSettings(holdWhileDriving = true)
+    private val noHolds = CarSettings()
     private val safety = HandsFreeSafety()
 
     @Test fun announcing() {
@@ -200,6 +202,36 @@ class CarMessagesTest {
         assertEquals(NewTexts.KEEP_FOR_PARKING, CarMessages.newText(s, false))
         assertEquals(NewTexts.OPEN_CHEOGRAM, CarMessages.newText(s.copy(newTexts = NewTexts.OPEN_CHEOGRAM), false))
         assertEquals(NewTexts.KEEP_FOR_PARKING, CarMessages.newText(s.copy(newTexts = NewTexts.OPEN_CHEOGRAM), true))
+    }
+
+    @Test fun withoutTheHoldsRepliesGoToTheScreen() {
+        assertFalse(noHolds.holdWhileDriving)
+        // What the car can't read back and send by voice goes to the screen's own reply card (or the chat), with your words.
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.NOT_REPLYABLE, "ok"), CarMessages.startReply(marie.copy(replyable = false), "ok", noHolds, safety, false, false, EN, VoiceReply.BY_VOICE))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.GROUP, "ok"), CarMessages.startReply(marie.copy(group = "Famille"), "ok", noHolds, safety, false, false, EN, VoiceReply.TAP_ONLY))
+        assertEquals(ReplyEnd.TOO_LONG, (CarMessages.startReply(marie, "x ".repeat(200), noHolds, safety, false, false, EN, VoiceReply.BY_VOICE) as ReplyStart.OnScreen).why)
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "I'm late"), CarMessages.startReply(marie, "tell her I'm late", noHolds, safety, false, false, EN, VoiceReply.TAP_ONLY))
+        assertEquals(ReplyStart.OnScreen(ReplyEnd.NEEDS_TAP, "I'm late"), CarMessages.startReply(marie, "tell her I'm late", noHolds, safety, false, false, EN, VoiceReply.OPEN_CHAT))
+        // The same with the holds on: kept for parking.
+        for (v in listOf(VoiceReply.TAP_ONLY, VoiceReply.OPEN_CHAT)) {
+            assertEquals(ReplyStart.Hold("I'll keep that for when you park.", ReplyEnd.NEEDS_TAP, "I'm late"),
+                CarMessages.startReply(marie, "tell her I'm late", s, safety, false, false, EN, v))
+        }
+        // A spoken read-back still where it may be sent by voice; empty still asks.
+        assertTrue(CarMessages.startReply(marie, "tell her I'm late", noHolds, safety, false, false, EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
+        assertEquals(ReplyStart.AskText("What should the reply say?"), CarMessages.startReply(marie.copy(replyable = false), "tell her", noHolds, safety, false, false, EN, VoiceReply.TAP_ONLY))
+        // Never looser than outside the car: the lock rules, 0.7's refusal, "Replies by voice" and "Send a reply after a spoken yes" still keep it.
+        assertEquals(ReplyStart.Hold(CarGate.UNLOCK_ONCE.en, ReplyEnd.LOCKED, "ok"), CarMessages.startReply(marie.copy(replyable = false), "ok", noHolds, safety, true, false, EN, VoiceReply.TAP_ONLY))
+        assertTrue(CarMessages.startReply(marie, "ok", noHolds, safety, true, true, EN, VoiceReply.BY_VOICE) is ReplyStart.ReadBack)
+        assertEquals(ReplyEnd.LOCKED, (CarMessages.startReply(marie, "ok", noHolds, safety, true, true, EN, VoiceReply.REFUSED) as ReplyStart.Hold).why)
+        assertEquals(ReplyEnd.LOCKED, (CarMessages.startReply(marie, "ok", noHolds, safety, false, false, EN, VoiceReply.REFUSED) as ReplyStart.Hold).why)
+        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", noHolds.copy(voiceReplies = false), safety, false, false, EN, VoiceReply.TAP_ONLY) as ReplyStart.Hold).why)
+        assertEquals(ReplyEnd.VOICE_OFF, (CarMessages.startReply(marie, "ok", noHolds, safety.copy(replyAfterSpokenYes = false), false, false, EN, VoiceReply.TAP_ONLY) as ReplyStart.Hold).why)
+        // New texts open now, whatever the hidden "New texts while driving" row says; locked, they are still kept.
+        for (n in NewTexts.entries) {
+            assertEquals(NewTexts.OPEN_CHEOGRAM, CarMessages.newText(noHolds.copy(newTexts = n), false))
+            assertEquals(NewTexts.KEEP_FOR_PARKING, CarMessages.newText(noHolds.copy(newTexts = n), true))
+        }
     }
 }
 
@@ -283,7 +315,7 @@ class DrivingTest {
 class CarFlowMachinesTest {
     private val mom = listOf(PhoneCandidate("Martine Martin", "5145550101", PhoneLabel.MOBILE), PhoneCandidate("Martine Martin", "5145550202", PhoneLabel.WORK))
     private val marie = MessageNotice("CHEOGRAM:me#marie", "Marie", "k1", "T'es où?", "Cheogram", replyable = true)
-    private val c = MessageFlowContext(CarSettings(), HandsFreeSafety(), locked = false, trusted = false, lang = EN, voice = VoiceReply.BY_VOICE)
+    private val c = MessageFlowContext(CarSettings(holdWhileDriving = true), HandsFreeSafety(), locked = false, trusted = false, lang = EN, voice = VoiceReply.BY_VOICE)
 
     private fun call(vararg heard: String, plan: CallPlan): Pair<CallFlowState, List<List<FlowEffect>>> {
         var (st, fx) = CallFlow.start(plan, "Mom", EN)
@@ -381,5 +413,26 @@ class CarFlowMachinesTest {
         assertEquals(MessageStep.DONE, dst!!.step)
         // "Read my messages".
         assertEquals(MessageStep.OFFERED, MessageFlow.read(marie, c).first.step)
+    }
+
+    @Test fun withoutTheHoldsTheScreenTakesTheReply() {
+        val off = c.copy(settings = CarSettings())
+        // "Reply …" for an app without a Reply action: the screen's own reply, with the words, nothing kept.
+        val (st, fx) = MessageFlow.reply(marie.copy(replyable = false), "reply I'm late", off)
+        assertEquals(listOf(FlowEffect.OnScreen("I'm late", ReplyEnd.NOT_REPLYABLE)), fx)
+        assertEquals(MessageStep.DONE, st.step)
+        // Read, "Reply?", then words only a tap may send: the screen's card, not the park list.
+        val tap = off.copy(voice = VoiceReply.TAP_ONLY)
+        val (tst, tfx) = msg(MessageFlow.start(marie, tap, true), "yes", "tell her I'm late", ctx = tap)
+        assertEquals(listOf(FlowEffect.OnScreen("I'm late", ReplyEnd.NEEDS_TAP)), tfx.last())
+        assertFalse(tfx.flatten().any { it is FlowEffect.Park || it is FlowEffect.Send })
+        assertEquals(MessageStep.DONE, tst!!.step)
+        // A reply that may go by voice is still read back and sent the same way.
+        val (_, vfx) = msg(MessageFlow.start(marie, off, true), "yes", "tell her I'm late", "send", ctx = off)
+        assertEquals(listOf(FlowEffect.Send("CHEOGRAM:me#marie", "I'm late")), vfx.last())
+        // With the holds on: kept for parking, as before.
+        val held = tap.copy(settings = CarSettings(holdWhileDriving = true))
+        val (_, hfx) = msg(MessageFlow.start(marie, held, true), "yes", "tell her I'm late", ctx = held)
+        assertEquals(FlowEffect.Park(ParkCode.REPLY, "Reply to Marie", "reply to “Marie”: I'm late"), hfx.last().last())
     }
 }

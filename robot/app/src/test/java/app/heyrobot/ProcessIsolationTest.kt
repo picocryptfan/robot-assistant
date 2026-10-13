@@ -1604,6 +1604,9 @@ class ProcessIsolationTest {
         // In the car a card only a tap sends, or a chat Robot would open, waits for parking.
         assertTrue(pm.contains("if (plan.confirm == app.heyrobot.core.messages.Confirm.TAP && parkInCar(p)) return"))
         assertTrue(pm.contains("if (parkInCar(p)) return false"))
+        // 1.0: only with Settings › Car mode › "Hold screen actions until I park" on; off, the card or the chat comes now.
+        val park = pm.substring(pm.indexOf("private fun parkInCar(p: Pending): Boolean {"))
+        assertTrue(park.indexOf("if (!app.heyrobot.assistant.handsfree.HandsFreeHub.car.settings.holdWhileDriving) return false") in 0 until park.indexOf("keepReply("))
         val hf = code(File(java("app"), "app/heyrobot/assistant/handsfree/HandsFreeMessages.kt"))
         assertTrue(hf.contains("if (!s.on || !s.announce) return"))
         assertTrue(hf.contains("if (phone.locked && s.locked != MessagesLocked.READ_AND_REPLY) return log(AnnounceCode.LOCKED)"))
@@ -1618,6 +1621,15 @@ class ProcessIsolationTest {
         assertEquals(1, Regex("""PanelMessages\.handsFreeReply\(""").findAll(hf).count())
         assertTrue(hf.contains("is FlowEffect.Send -> {\n                val answer = PanelMessages.handsFreeReply(ReplyRequest(e.conversationKey, e.text, f.thread.newestIncoming))"))
         assertEquals(listOf("app/assistant/PanelMessages.kt", "app/assistant/handsfree/HandsFreeMessages.kt"), usersOf(Regex("""\bhandsFreeReply\(""")))
+        // The holds off: what the car can't send by voice goes to the panel's own reply (its card, tap or chat) for the
+        // conversation the car announced, with exactly your words; it never sends anything itself.
+        assertTrue(hf.contains("is FlowEffect.OnScreen -> {"))
+        assertTrue(hf.contains("PanelMessages.handsFreeOnScreen(replyId, f.thread, e.text, msgLang(lang))"))
+        assertEquals(listOf("app/assistant/PanelMessages.kt", "app/assistant/handsfree/HandsFreeMessages.kt"), usersOf(Regex("""\bhandsFreeOnScreen\(""")))
+        assertTrue(pm.contains("run(replyId, Routed.Command(MessageCommand.Reply(null, words, lang)))"))
+        // New texts in the car: core CarMessages.newText decides (kept only with the holds on, or locked).
+        val phf = code(File(java("app"), "app/heyrobot/assistant/handsfree/PanelHandsFree.kt"))
+        assertTrue(phf.contains("CarMessages.newText(HandsFreeHub.car.settings, HandsFreeHub.phone().locked) == NewTexts.KEEP_FOR_PARKING ->"))
         // The brief: counts by app, never a thread, from the main process.
         val bridge = code(File(java("app"), "app/heyrobot/people/MessagesBridge.kt"))
         assertTrue(bridge.contains("MessagesProtocol.REQ_UNREAD -> app.heyrobot.core.messages.MessageUnread.toJson("))

@@ -353,6 +353,12 @@ object HandsFreeMessages {
                 PanelHandsFree.keep(ParkItem(e.code, e.summary, System.currentTimeMillis()), e.ask)
                 VoiceLog.add(VoiceEvent.CAR_REPLY, 0, ReplyEnd.HELD.id)
             }
+            // "Hold screen actions until I park" off: the screen's own reply card (or the chat) now, as outside the car.
+            is FlowEffect.OnScreen -> {
+                VoiceLog.add(VoiceEvent.CAR_REPLY, 0, ReplyEnd.ON_SCREEN.id)
+                if (shown.isNotEmpty()) host.text(replyId, shown.toString().also { shown.clear() })
+                PanelMessages.handsFreeOnScreen(replyId, f.thread, e.text, msgLang(lang))
+            }
             is FlowEffect.Place -> Unit
         }
         if (shown.isNotEmpty()) host.text(replyId, shown.toString())

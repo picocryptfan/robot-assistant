@@ -21,8 +21,10 @@ import app.heyrobot.core.ToolName
 //   place's first-use card, deleting, a card that sends personal content to a helper (unless "Voice yes can send personal
 //   content"), not being sure who (except for a call, where up to three spoken choices of who are allowed), more than
 //   three choices, and "Answer cards by voice" off.
-// - Car: what needs the screen (opening an app, a new text, an email or event draft, freeing space) waits for parking;
-//   a helper's app hand-off is refused ("I can't open another app while you drive"), as car mode never hands off to one.
+// - Car, with "Hold screen actions until I park" on (CarSettings.holdWhileDriving; off by default): what needs the screen
+//   (opening an app, a new text, an email or event draft, freeing space) waits for parking, and a helper's app hand-off
+//   is refused ("I can't open another app while you drive"). Off, those cards are answered exactly as in a headset: Robot
+//   can't tell the driver from a passenger. The rules above and below hold either way.
 // - Locked: a card whose question names people or places is answered after the unlock, except car functions in a trusted
 //   car session.
 
@@ -60,6 +62,8 @@ data class CardContext(
     val voiceCards: Boolean = true,
     /** Safety & privacy › "Voice yes can send personal content". */
     val voiceYesPersonal: Boolean = false,
+    /** Settings › Car mode › "Hold screen actions until I park" (CarSettings.holdWhileDriving): only counts in the car. */
+    val holdWhileDriving: Boolean = false,
 )
 
 /** Why a card wasn't asked by voice. Also part of the voice log's SPOKEN_CARD. */
@@ -113,7 +117,7 @@ object SpokenCards {
     /** Choices read aloud at most (§1.4). */
     const val MAX_SPOKEN = 3
 
-    /** What the car keeps for parking: they open a screen or a draft you finish by tapping. */
+    /** What the car keeps for parking with "Hold screen actions until I park" on: they open a screen or a draft you finish by tapping. */
     val DRIVING_HOLD: Set<ToolName> = setOf(ToolName.OPEN_APP, ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT, ToolName.FREE_MEMORY, ToolName.FREE_STORAGE)
 
     val UNLOCK_TO_ANSWER = Line("Unlock to answer that.", "Déverrouille pour répondre.")
@@ -126,11 +130,13 @@ object SpokenCards {
         val to = if (car) DeferTo.PARK else DeferTo.READY
         val keep = (if (car) OutputLines.KEEP_FOR_PARK else OutputLines.KEEP_FOR_LOOK).get(lang)
         fun defer(why: CardVoiceCode) = CardVoice.Defer(keep, to, why)
-        if (car && card.tool == ToolName.ASK_HELPER) return CardVoice.Refuse(NO_HELPER_APP_DRIVING.get(lang), CardVoiceCode.REFUSED)
+        // The driving holds, only when you chose them; off, the card goes on as in a headset.
+        val holds = car && ctx.holdWhileDriving
+        if (holds && card.tool == ToolName.ASK_HELPER) return CardVoice.Refuse(NO_HELPER_APP_DRIVING.get(lang), CardVoiceCode.REFUSED)
         if (!ctx.voiceCards) return defer(CardVoiceCode.VOICE_OFF)
         val tap = card.waiting.tapFor
         if (tap == AskWhy.LEARNED || tap == AskWhy.ONLINE || card.deletes || (card.waiting.personal && !ctx.voiceYesPersonal)) return defer(CardVoiceCode.MUST_SEE)
-        if (car && card.tool in DRIVING_HOLD) return defer(CardVoiceCode.NEEDS_SCREEN)
+        if (holds && card.tool in DRIVING_HOLD) return defer(CardVoiceCode.NEEDS_SCREEN)
         if (tap == AskWhy.WHO && !card.spokenWho) return defer(CardVoiceCode.WHO_UNSURE)
         if (card.options.size > MAX_SPOKEN) return defer(CardVoiceCode.TOO_MANY)
         if (ctx.locked && card.personal && !(car && ctx.carTrusted && card.carFunction)) return CardVoice.Defer(UNLOCK_TO_ANSWER.get(lang), to, CardVoiceCode.LOCKED)

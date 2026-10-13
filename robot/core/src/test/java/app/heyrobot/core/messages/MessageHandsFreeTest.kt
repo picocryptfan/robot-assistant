@@ -97,7 +97,8 @@ class MessageHandsFreeTest {
 
     @Test fun inTheCarATapOnlyReplyIsKeptForParkingWithYourWords() {
         val n = momThread.notice()!!
-        val s = CarSettings()
+        // With "Hold screen actions until I park" on (off, it goes to the screen's card: CarMessagesTest).
+        val s = CarSettings(holdWhileDriving = true)
         val safety = HandsFreeSafety()
         val held = CarMessages.startReply(n, "tell her I'm 10 minutes away", s, safety, false, false, SpokenLang.EN, VoiceReply.TAP_ONLY) as ReplyStart.Hold
         assertEquals(ReplyEnd.NEEDS_TAP, held.why)
