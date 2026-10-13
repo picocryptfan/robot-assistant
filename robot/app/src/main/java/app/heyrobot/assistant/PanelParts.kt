@@ -123,7 +123,7 @@ fun panelStatus(st: PanelState): PanelStatus {
             st.helperStatus?.let { s -> HELPER_THINKING.matchEntire(s)?.let { "Waiting for ${it.groupValues[1]}…" } ?: s }
                 ?: if (loading) "Loading the model…" else "Working…",
         )
-        Phase.ANSWERING -> PanelStatus(st.turns.lastOrNull()?.takeIf { it.claude }?.let { "${it.by ?: "Claude"} is answering…" } ?: "Answering…")
+        Phase.ANSWERING -> PanelStatus(st.turns.lastOrNull()?.takeIf { it.claude }?.let { "${it.by ?: "The helper"} is answering…" } ?: "Answering…")
         Phase.CONFIRMING -> when (st.cardHearing) {
             Phase.LISTENING -> PanelStatus("Say yes or no", RIcons.Mic)
             Phase.TRANSCRIBING -> PanelStatus("Transcribing…")
@@ -131,7 +131,7 @@ fun panelStatus(st: PanelState): PanelStatus {
         }
         Phase.SPEAKING -> PanelStatus("Reading aloud · tap to stop", RIcons.VolumeUp)
         Phase.IDLE -> when {
-            st.claudeMode -> PanelStatus("Talking with ${st.helperName ?: "Claude"}: questions go " + if (st.helperHome) "to your server" else "online",
+            st.claudeMode -> PanelStatus("Talking with ${st.helperName ?: "the helper"}: questions go " + if (st.helperHome) "to your server" else "online",
                 if (st.helperHome) RIcons.Home else RIcons.Cloud)
             st.locked -> PanelStatus("Locked: " + LockScreen.allowed(st.lockedTools), RIcons.Lock)
             loading -> PanelStatus("Loading the model…")

@@ -308,11 +308,11 @@ private fun classicStatusLine(st: PanelState): String = when (st.phase) {
     Phase.TRANSCRIBING -> "Writing it down…"
     // "Claude is thinking…" (or "Checking with Claude…", "My server is loading its model…") until the helper's first words.
     Phase.THINKING -> st.helperStatus ?: if (st.brain.readiness == BrainKeeper.Readiness.LOADING) "Waking up the model…" else "Thinking…"
-    Phase.ANSWERING -> st.turns.lastOrNull()?.takeIf { it.claude }?.let { "${it.by ?: "Claude"} is answering…" } ?: "Answering…"
+    Phase.ANSWERING -> st.turns.lastOrNull()?.takeIf { it.claude }?.let { "${it.by ?: "The helper"} is answering…" } ?: "Answering…"
     Phase.CONFIRMING -> if (st.cardHearing != null) "Say yes or no…" else "Waiting for you: tap the card, or answer yes or no"
     Phase.SPEAKING -> "Speaking · tap to stop"
     Phase.IDLE -> when {
-        st.claudeMode -> "Talking with ${st.helperName ?: "Claude"}: your questions go " + if (st.helperHome) "to your server" else "online"
+        st.claudeMode -> "Talking with ${st.helperName ?: "the helper"}: your questions go " + if (st.helperHome) "to your server" else "online"
         st.locked -> "Locked: " + LockScreen.allowed(st.lockedTools)
         st.brain.readiness == BrainKeeper.Readiness.LOADING -> "Getting ready…"
         else -> "On this phone, private"
@@ -342,7 +342,7 @@ private fun ColumnScope.PanelNotices(st: PanelState, actions: PanelActions) {
             if (st.notice == null && (b.readiness == BrainKeeper.Readiness.NO_MODEL || b.readiness == BrainKeeper.Readiness.FAILED)) {
                 ClassicBrainBanner(b.problem, openRobot = b.readiness == BrainKeeper.Readiness.NO_MODEL, onOpenRobot = actions::openRobotApp)
             }
-            if (st.claudeMode) ClassicHelperModeChip(st.helperName ?: "Claude", actions::endHelperMode)
+            if (st.claudeMode) ClassicHelperModeChip(st.helperName ?: "Helper", actions::endHelperMode)
         }
     }
 }

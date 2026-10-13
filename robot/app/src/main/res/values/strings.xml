@@ -247,7 +247,7 @@
     <string name="guide_can_car_say">In the car: “navigate home”</string>
     <string name="guide_can_car_does">In car mode Robot talks through your car, announces a new message and reads your reply back before it goes, and opens Organic Maps\' route home.</string>
     <string name="guide_can_car_where">Off until you add your car: Settings › Car mode. Announcements: Settings › Messages</string>
-    <string name="guide_can_helper_say">“Ask Claude …”, or the AI on your own computer</string>
+    <string name="guide_can_helper_say">“Ask a helper why the sky is blue”</string>
     <string name="guide_can_helper_does">For a question Robot can\'t answer well, it hands it to the helper you set up. Your screen, a photo or what Robot read goes only after a tap.</string>
     <string name="guide_can_helper_where">Off until you set one up: Settings › Helpers</string>
     <string name="guide_phone_title">Your phone and Robot\'s brain</string>

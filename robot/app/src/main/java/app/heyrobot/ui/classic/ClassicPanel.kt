@@ -560,7 +560,7 @@ fun AssistantBubble(
             Row(Modifier.padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (home) RIcons.Home else RIcons.Cloud, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
                 Spacer(Modifier.width(5.dp))
-                Text(if (readBack) "Claude, from the Claude app" else by ?: "Claude", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
+                Text(if (readBack) "Claude, from the Claude app" else by ?: "Helper", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.tertiary)
             }
         }
         for (a in actions) {
@@ -712,7 +712,7 @@ fun ClassicOfferCard(o: OfferView, onDismiss: () -> Unit, onAccept: () -> Unit) 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(RIcons.Cloud, null, Modifier.size(22.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(if (!o.api) "Open Claude with: «${o.text.take(120)}${if (o.text.length > 120) "…" else ""}»"
+                Text(if (!o.api) "Open the Claude app with: «${o.text.take(120)}${if (o.text.length > 120) "…" else ""}»"
                     else if (o.asWell) "Want ${o.name}'s take as well?" else "Want me to check with ${o.name}?",
                     style = MaterialTheme.typography.titleSmall)
             }
@@ -727,7 +727,7 @@ fun ClassicOfferCard(o: OfferView, onDismiss: () -> Unit, onAccept: () -> Unit) 
             Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {
                 TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) { Text("No thanks") }
                 FilledTonalButton(onClick = onAccept, modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text(if (o.api) "Send" else "Open Claude")
+                    Text(if (o.api) "Send" else "Open the app")
                 }
             }
         }

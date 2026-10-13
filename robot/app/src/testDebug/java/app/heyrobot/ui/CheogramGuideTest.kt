@@ -54,7 +54,7 @@ class CheogramGuideTest {
         var opened = 0
         rule.show { Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) { CheogramPrivacy(canTakeBack = true) { opened++ } } }
         for (t in listOf("drops all but Cheogram's", "only the sender's name and address", "never looks at, keeps or logs what the message says",
-            "group chats teach it nothing", "Names stay on this phone", "not to Claude, not to any other helper or online AI model",
+            "group chats teach it nothing", "Names stay on this phone", "not to a helper, not to any other online AI model",
             "To take it back")) {
             rule.onNodeWithText(t, substring = true).assertExists()
         }
@@ -69,7 +69,7 @@ class CheogramGuideTest {
      */
     @Test fun thePrivacyNoteNamesEveryWayToAHelper() {
         rule.show { Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) { CheogramPrivacy(canTakeBack = false) {} } }
-        for (t in listOf("share with Claude or another helper", "Include", "a helper you trust with personal content",
+        for (t in listOf("share with a helper a conversation", "Include", "a helper you trust with personal content",
             "Send personal content to helpers automatically")) {
             rule.onNodeWithText(t, substring = true).assertExists()
         }

@@ -268,7 +268,7 @@ private fun conversationFooter(s: RobotSettings, total: Int, mtb: MtBundle): Str
         "Translate transcripts: each line in the other language (${s.convPairChoice.title}), under it, on this phone: at once by the " +
         "fast engine when it is downloaded, then better by Robot's model. The transcript screen's Translate turns it on or off for " +
         "one transcript. The interpreter always translates. Offer a stronger AI first: for a long conversation (about half an hour or " +
-        "more), one marked important, or a summary whose check found something missing, Robot offers Claude first. Nothing is sent " +
+        "more), one marked important, or a summary whose check found something missing, Robot offers a stronger AI first. Nothing is sent " +
         "before you tap Send on its card.\n\n" +
         "Fast translation: Robot's fast translation engine translates French ↔ English on this phone in a fraction of a second, in a " +
         "process of its own: Mozilla's Bergamot models, run by slimt. Once it is downloaded, each transcript line gets its translation " +

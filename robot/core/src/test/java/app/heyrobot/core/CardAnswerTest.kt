@@ -70,10 +70,10 @@ class CardAnswerTest {
         assertEquals(AskWhy.ONLINE, CardAnswer.tapFor(setOf(AskWhy.ONLINE)))
     }
 
-    /** What a tap would send to Claude: a yes needs "Voice yes can send personal content". */
+    /** What a tap would send to a helper: a yes needs "Voice yes can send personal content". */
     @Test fun personalContentNeedsItsOwnSwitch() {
         val card = CardAnswer.Waiting(personal = true, confirm = "Share with Claude")
-        assertEquals(CardAnswer.Reply(CardAnswer.Does.TAP, "Tap Share with Claude to share it with Claude."), reply("yes", card))
+        assertEquals(CardAnswer.Reply(CardAnswer.Does.TAP, "Tap Share with Claude to share it."), reply("yes", card))
         assertEquals(CardAnswer.Reply(CardAnswer.Does.CONFIRM), reply("yes", card, voiceYesPersonal = true))
         assertEquals(CardAnswer.Reply(CardAnswer.Does.DECLINE), reply("no", card))
     }

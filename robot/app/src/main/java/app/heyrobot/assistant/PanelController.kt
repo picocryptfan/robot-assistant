@@ -1820,7 +1820,7 @@ object PanelController {
             st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(o.api, text, o.payload?.sends.orEmpty(), o.payload?.preview, o.asWell, h.name)) else it })
         }
         // Said too, so you know a yes will do.
-        if (_state.value.speak) VoiceHub.tts.speak(if (!o.api) "Want me to open Claude?" else if (o.asWell) words(h).offerAsWell else words(h).offer)
+        if (_state.value.speak) VoiceHub.tts.speak(if (!o.api) "Want me to open the Claude app?" else if (o.asWell) words(h).offerAsWell else words(h).offer)
     }
 
     private fun dropOffers() {
@@ -1858,7 +1858,7 @@ object PanelController {
         RLog.i("claude_offer", "accepted" to true, "api" to o.api, "tapped" to tapped, "kind" to h.kind)
         if (!o.api) {
             // The offer was the card: the Claude app opens now (never on the lock screen).
-            if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone to open Claude.")
+            if (Assistant.locked(VoiceHub.app)) return notify("Unlock your phone to open the Claude app.")
             lastToApp = o.question
             scope.launch {
                 val r = withContext(Dispatchers.IO) { executor().run(Action.AskClaude(o.question)) }

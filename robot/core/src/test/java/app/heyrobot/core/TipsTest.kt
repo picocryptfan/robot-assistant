@@ -31,8 +31,8 @@ class TipsTest {
         val off = d.copy(approvals = d.approvals + (ToolName.WEATHER to Approval.OFF), textApp = TextApp.OFF)
         val tips = Tips.available(Tips.Can(off, locked = false)).map { it.text }
         assertFalse(tips.any { it.contains("weather") || it.startsWith("Text ") })
-        assertFalse("no Claude, no screen", tips.any { it.contains("Claude") || it.contains("screen") })
-        assertTrue(Tips.available(Tips.Can(d, false, claude = true)).any { it.text.contains("Claude") })
+        assertFalse("no helper, no screen", tips.any { it.contains("helper") || it.contains("screen") })
+        assertTrue(Tips.available(Tips.Can(d, false, claude = true)).any { it.text.contains("Ask a helper") })
         // Locked: questions, and only what works on the lock screen (timers and alarms by default); no photos.
         val locked = Tips.available(Tips.Can(d, locked = true, claude = false, screen = false))
         assertEquals(listOf("Set a timer for 10 minutes", "Wake me up at 7:00", "Tell me a fun fact"), locked.map { it.text })
@@ -45,7 +45,7 @@ class TipsTest {
         val all = Tips.available(Tips.Can(d, locked = false, claude = true, screen = true)).associate { it.text to it.kind }
         for (t in listOf("Set a timer for 10 minutes", "Wake me up at 7:00", "Remember that I parked on level 3", "Turn on the flashlight",
                 "Text Mom I'm on my way", "Email Sam about dinner on Friday", "Add lunch with Alex on Friday at noon", "Help me free up space",
-                "Directions to the nearest pharmacy", "What's the weather tomorrow?", "Ask Claude why the sky is blue")) {
+                "Directions to the nearest pharmacy", "What's the weather tomorrow?", "Ask a helper why the sky is blue")) {
             assertEquals(t, TipKind.FILL, all[t])
         }
         for (t in listOf("What's on my calendar today?", "How's my battery?", "How much storage is free?", "Find my note about the wifi",

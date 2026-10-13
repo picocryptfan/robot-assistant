@@ -147,7 +147,7 @@ fun HelpersScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> U
     val spend = f?.spend
     PreferenceScreen("Helpers", onBack, snackbar = snackbar) {
         item(key = "intro") {
-            IntroPreference("Other AIs Robot asks only when you say so (“ask Claude …”, “go get Gemini”) or when you let it check hard questions.")
+            IntroPreference("Other AIs Robot asks only when you say so (“ask a helper …”, “go get Gemini”) or when you let it check hard questions.")
         }
         preferenceGroup("Your helpers", "helpers") {
             if (s.helpers.isEmpty()) PreferenceItem("No helpers", "Robot answers everything itself")
@@ -180,7 +180,7 @@ fun HelpersScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> U
             SwitchPreference("Show cost", "“≈ 1¢” under each helper's reply", s.helperShowCost) { update(s.copy(helperShowCost = it)) }
         }
         preferenceFooter(
-            "Robot stays offline unless you ask a helper (“ask Claude …”, “go get Jarvis”) or let Robot check hard questions with one. " +
+            "Robot stays offline unless you ask for a helper (“ask a helper …”, “go get Jarvis”) or let Robot check hard questions with one. " +
                 "Only text leaves the phone: your voice is turned into text here, and a helper's answer is read by Robot's voices.\n\n" +
                 (if (s.personalToHelpers) "By itself, Robot sends your question and the last two turns of the conversation, with any screen text, " +
                     "photo or what it read (Safety & privacy › Send personal content to helpers automatically is on)."

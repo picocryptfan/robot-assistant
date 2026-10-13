@@ -419,9 +419,9 @@ object ClaudeSettings {
 
 /** Why ask_claude is left out of a question for the local model (logged as this code only, never the words). */
 enum class ClaudeLeftOut(override val id: Int, override val title: String) : LogCode {
-    OFF(1, "Ask Claude or “When Robot needs help” is off"),
-    NOWHERE(2, "no API key and no Claude app"),
-    DECLINED(3, "you said not Claude in this conversation"),
+    OFF(1, "Ask a helper or “When Robot needs help” is off"),
+    NOWHERE(2, "no API key and no app to open"),
+    DECLINED(3, "you turned the helper down in this conversation"),
     SCREEN(4, "a question about the screen: Robot answers it first"),
     PHOTO(5, "a question about a photo: Robot answers it first"),
 }

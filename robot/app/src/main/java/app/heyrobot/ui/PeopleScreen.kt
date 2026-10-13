@@ -260,7 +260,7 @@ fun PeopleScreen(s: RobotSettings, update: (RobotSettings) -> Unit, facts: Assis
     }) {
         item(key = "intro") {
             IntroPreference("People Robot knows besides your contacts: who to text or email, and what you call them. Kept on this phone " +
-                "only, never sent to Claude, and not in Android's backups.")
+                "only, never sent to a helper, and not in Android's backups.")
         }
         if (damaged) item(key = "damaged") {
             Surface(color = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -531,8 +531,8 @@ internal fun CheogramPrivacy(canTakeBack: Boolean, openAccess: () -> Unit) {
             "got it. It never looks at, keeps or logs what the message says, and group chats teach it nothing. It checks Cheogram's " +
             "signature too, so an app pretending to be Cheogram teaches nothing.", style = MaterialTheme.typography.bodyMedium, color = muted)
         Text("Names stay on this phone, in Robot's private storage, left out of Android's backups. Robot never sends them anywhere by " +
-            "itself: not to Claude, not to any other helper or online AI model. Robot's own model, on the phone, sees a name only when " +
-            "it looks someone up for you. Only if you choose to share with Claude or another helper a conversation in which Robot " +
+            "itself: not to a helper, not to any other online AI model. Robot's own model, on the phone, sees a name only when " +
+            "it looks someone up for you. Only if you choose to share with a helper a conversation in which Robot " +
             "looked someone up (Include, a helper you trust with personal content, or Safety & privacy › Send personal content to " +
             "helpers automatically) can what Robot said about them go with it.",
             style = MaterialTheme.typography.bodyMedium, color = muted)

@@ -251,13 +251,13 @@ class VoiceLogTest {
         assertEquals("Question heard but no reply: the model failed", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.NO_REPLY, NoReply.FAILED.id)))
         assertEquals("Stopped listening: #99", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.LISTEN_STOP, 99)))
         // Ask Claude kept out, and the model asked again for its own answer: codes and flags only.
-        assertEquals("Claude not offered to the model: you said not Claude in this conversation",
+        assertEquals("No helper offered to the model: you turned the helper down in this conversation",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_LEFT_OUT, ClaudeLeftOut.DECLINED.id)))
-        assertEquals("Claude not offered to the model: a question about the screen: Robot answers it first",
+        assertEquals("No helper offered to the model: a question about the screen: Robot answers it first",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_LEFT_OUT, ClaudeLeftOut.SCREEN.id)))
-        assertEquals("The model handed over to Claude without a word; asked again, it answered itself",
+        assertEquals("The model handed over to a helper without a word; asked again, it answered itself",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.OWN_ANSWER, 1)))
-        assertEquals("The model handed over to Claude without a word; asked again, it still gave no answer",
+        assertEquals("The model handed over to a helper without a word; asked again, it still gave no answer",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.OWN_ANSWER, 0)))
         // Where "Something went wrong with Claude" came from, and what Robot read with care: codes and counts only.
         assertEquals("Claude's error came from the SDK reading the stream · data the SDK couldn't read",

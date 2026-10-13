@@ -239,7 +239,7 @@ fun OfferCard(o: OfferView, onAccept: () -> Unit, onDismiss: () -> Unit, modifie
         }
         CardButtons {
             TextButton(onClick = onDismiss) { Text("Not now") }
-            FilledTonalButton(onClick = onAccept) { Text(if (o.api) "Send" else "Open Claude") }
+            FilledTonalButton(onClick = onAccept) { Text(if (o.api) "Send" else "Open the app") }
         }
     }
 }
@@ -253,7 +253,7 @@ fun keptPicture(b64: String?): Bitmap? = try {
 
 /** The lines under a helper's reply ([by]: its name): the search and its domains, then the cost. */
 fun claudeFooter(sources: List<String>, cost: String?, by: String? = null): List<String> = listOfNotNull(
-    if (sources.isNotEmpty()) "${by ?: "Claude"} searched the web · " + sources.joinToString(", ") else null,
+    if (sources.isNotEmpty()) "${by ?: "The helper"} searched the web · " + sources.joinToString(", ") else null,
     cost,
 )
 

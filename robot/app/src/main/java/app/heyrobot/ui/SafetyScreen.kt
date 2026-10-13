@@ -103,7 +103,7 @@ internal val SAFETY_FOOTER =
         "Send personal content to helpers automatically, for every helper: when Robot checks with a helper by itself, it may " +
         "include the conversation's screen text, photos and what it read (your calendar, notes, contacts, location), and what " +
         "Robot reads for a helper goes without “Share with …”. Off: only your question goes, and anything more needs a tap. " +
-        "“Go get Claude” and “ask Claude about my screen” always ask first. Voice yes can send personal content, for every " +
+        "Bringing a helper into the conversation and “ask a helper about my screen” always ask first. Voice yes can send personal content, for every " +
         "helper: off, a spoken or typed “yes” never sends your screen, a photo or what Robot read to a helper; only a tap does. " +
         "A helper you trust with personal content (on its page in Settings › Helpers) gets what Robot read without asking, but " +
         "your screen and photos still need a tap. These two switches go further, for every helper.\n\n" +

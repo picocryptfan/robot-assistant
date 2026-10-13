@@ -125,7 +125,7 @@ class SafetyScreenTest {
 
     @Test fun theFooterKeepsEveryExplanation() {
         open()
-        for (t in listOf("“annule”", "Android's confirmation for the largest one", "“Go get Claude” and “ask Claude about my screen” always ask first",
+        for (t in listOf("“annule”", "Android's confirmation for the largest one", "Bringing a helper into the conversation and “ask a helper about my screen” always ask first",
             "a screen conversation is still saved only after Keep")) {
             rule.scrollToText(t, substring = true)
         }

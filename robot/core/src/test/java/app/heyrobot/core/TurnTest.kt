@@ -738,12 +738,12 @@ class TurnTest {
         // The panel runs the hand-off as a remote-free, card-only turn (TurnRunner with the scripted call).
         val turn = async { TurnRunner(model, actions, view, conf, untrusted = false, remote = false, maxRounds = 1) { "h${++ids}" }.runHandOff() }
         val id = withTimeout(5_000) { view.pending.receive() }
-        assertEquals("Open Claude with: «why is the sky blue»", view.cards[id]!!.summary)
+        assertEquals("Open the Claude app with: «why is the sky blue»", view.cards[id]!!.summary)
         conf.answer(id, true)
         assertTrue(turn.await().launchedApp)
         // Nothing to say: the app opens without text.
         assertEquals(ParsedCall.Ok(Action.AskClaude("")), ToolCalls.parse(call("ask_claude")))
-        assertEquals("Open Claude", Action.AskClaude("").describe())
+        assertEquals("Open the Claude app", Action.AskClaude("").describe())
         // Locked: never.
         actions.lockedNow = true
         val v2 = FakeView()

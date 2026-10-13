@@ -38,7 +38,7 @@ object Tips {
         Entry(Tip("Ask about a photo", TipKind.PHOTO), needs = { !it.locked }),
         Entry(Tip("Remember that I parked on level 3"), ToolName.ADD_NOTE),
         Entry(Tip("How's my battery?"), ToolName.PHONE_STATUS),
-        Entry(Tip("Ask Claude why the sky is blue"), online = true, needs = { it.claude }),
+        Entry(Tip("Ask a helper why the sky is blue"), online = true, needs = { it.claude }),
         Entry(Tip("Directions to the nearest pharmacy"), ToolName.MAPS_NAVIGATE),
         Entry(SCREEN, needs = { it.screen }),
         Entry(Tip("Wake me up at 7:00"), ToolName.SET_ALARM),

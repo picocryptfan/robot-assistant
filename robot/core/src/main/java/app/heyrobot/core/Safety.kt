@@ -12,7 +12,7 @@ import java.util.Locale
 enum class SafetyCards(val title: String, val detail: String) {
     /** Before 0.4.0's switch, the only rule: any content in the conversation, every such action asks. */
     AFTER_READING("Always after Robot reads something",
-        "Once a conversation has screen text, a photo, or something Robot read or Claude said, every action that writes or leaves the phone asks first."),
+        "Once a conversation has screen text, a photo, or something Robot read or a helper said, every action that writes or leaves the phone asks first."),
     /** The default: content only forces a card for an action you didn't ask for in your own words this time. */
     UNASKED("When you didn't ask for it",
         "Content Robot read makes an action ask first only when you didn't ask for that kind of action yourself this time. Text on a screen, in a photo or in what Robot found never counts as your words."),
@@ -168,7 +168,7 @@ object CardAnswer {
             kind == Kind.NO -> Reply(Does.DECLINE)
             card.tapFor != null -> Reply(Does.TAP, card.say ?: tapWords(card.tapFor))
             card.choices > 1 -> Reply(Does.TAP, TAP_ONE)
-            card.personal && !voiceYesPersonal -> Reply(Does.TAP, "Tap ${card.confirm ?: "the button"} to share it with Claude.")
+            card.personal && !voiceYesPersonal -> Reply(Does.TAP, "Tap ${card.confirm ?: "the button"} to share it.")
             card.choices == 1 -> Reply(Does.CHOOSE_ONLY)
             else -> Reply(Does.CONFIRM)
         }

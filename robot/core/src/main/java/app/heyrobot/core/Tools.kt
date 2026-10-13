@@ -63,7 +63,7 @@ enum class ToolName(val id: String, val title: String, val group: ToolGroup, val
      * not Off. Through the API it never runs as a tool (the turn hands over to Claude, EscalationPolicy decides); through
      * the Claude app it is the hand-off, always behind a card.
      */
-    ASK_CLAUDE("ask_claude", "Ask Claude", ToolGroup.CORE, internal = true),
+    ASK_CLAUDE("ask_claude", "Ask a helper", ToolGroup.CORE, internal = true),
     /**
      * 0.7 memory (core memory/): keep something about you for later conversations, or drop it. Robot's own, under
      * Settings › Memory rather than Settings › Actions, described only with Memory on and words that call for them.
@@ -350,9 +350,9 @@ sealed class Action {
      */
     data class AskClaude(val text: String) : Action() {
         override val tool get() = ToolName.ASK_CLAUDE
-        override fun describe() = if (text.isBlank()) "Open Claude" else "Open Claude with: «${short(text)}»"
+        override fun describe() = if (text.isBlank()) "Open the Claude app" else "Open the Claude app with: «${short(text)}»"
         override fun body() = text.takeIf { it.length > SHORT }
-        override val confirmLabel get() = "Open Claude"
+        override val confirmLabel get() = "Open the app"
 
         private companion object {
             const val SHORT = 120

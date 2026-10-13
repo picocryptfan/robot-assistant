@@ -944,10 +944,10 @@ object VoiceLogText {
             }
             VoiceEvent.VOLUME_KEY -> (if (a == VolumeKeyStop.KEY_VOLUME_UP) "Volume up" else "Volume down") + " stopped Robot talking"
             VoiceEvent.SCREEN -> if (a == 1) "Screen on" else "Screen off"
-            VoiceEvent.CLAUDE_SENT -> (if (a == 0) "Question sent to Claude" else "More sent to Claude (request ${a + 1})") + " (" + code(ClaudeModelCode.entries, b) + ")"
-            VoiceEvent.CLAUDE_FIRST -> "Claude's first event after $a ms"
-            VoiceEvent.CLAUDE_DONE -> "Claude's answer ended after " + secs(a) + " (" + code(ClaudeEnd.entries, b) + ") · $c characters"
-            VoiceEvent.CLAUDE_FAILED -> "Claude failed: " + code(ClaudeFail.entries, a)
+            VoiceEvent.CLAUDE_SENT -> (if (a == 0) "Question sent to the helper" else "More sent to the helper (request ${a + 1})") + " (" + code(ClaudeModelCode.entries, b) + ")"
+            VoiceEvent.CLAUDE_FIRST -> "The helper's first event after $a ms"
+            VoiceEvent.CLAUDE_DONE -> "The helper's answer ended after " + secs(a) + " (" + code(ClaudeEnd.entries, b) + ") · $c characters"
+            VoiceEvent.CLAUDE_FAILED -> "The helper failed: " + code(ClaudeFail.entries, a)
             VoiceEvent.KWS_HIT -> "Spotter: " + keyword(a) + (if (b == KwsSpotterCode.IDLE.id) "" else " " + code(KwsSpotterCode.entries, b)) +
                 " · mic: " + code(MicKind.entries, c / 10) + " · echo cancellation " + code(AecState.entries, c % 10)
             VoiceEvent.KWS_SET -> "Wake phrases set: $a listened for" + (if (b > 0) " · $b the model can't spell" else "") +
@@ -959,8 +959,8 @@ object VoiceLogText {
                 (if (b > 0) " · microphone at " + String.format(Locale.US, "%.1f kHz", b / 10.0) else "") + " · " + CaptureFx.words(c)
             VoiceEvent.BARGE_HIT -> "Barge-in test heard " + keyword(a) + (if (b >= 0) " " + secs(b) + " in" else "") + ": " + code(BargeHitKind.entries, c)
             VoiceEvent.KEYBOARD -> "Keyboard over the panel: $a px high, window slid up $b px, panel padded $c px"
-            VoiceEvent.CLAUDE_LEFT_OUT -> "Claude not offered to the model: " + code(ClaudeLeftOut.entries, a)
-            VoiceEvent.OWN_ANSWER -> "The model handed over to Claude without a word; asked again, " + (if (a == 1) "it answered itself" else "it still gave no answer")
+            VoiceEvent.CLAUDE_LEFT_OUT -> "No helper offered to the model: " + code(ClaudeLeftOut.entries, a)
+            VoiceEvent.OWN_ANSWER -> "The model handed over to a helper without a word; asked again, " + (if (a == 1) "it answered itself" else "it still gave no answer")
             VoiceEvent.CLAUDE_UNKNOWN -> "Claude's error came from " + code(ClaudeStage.entries, a) + (if (b > 0) " · HTTP $b" else "") +
                 (if (c > 0) " · " + code(ClaudeErrorKind.entries, c) else "")
             VoiceEvent.CLAUDE_READ -> "Claude's reply: " + listOfNotNull(if (a > 0) count(a, "call") + " with input in one piece" else null,
