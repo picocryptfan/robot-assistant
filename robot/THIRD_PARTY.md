@@ -9,6 +9,8 @@ phase 0 probe). The speech recognition and voice models are not in the APK at al
 downloads them on request (see "Downloaded by the app" below); `tools/fetch_voice_models.sh` fetches the same files on a
 computer and checks them.
 
+The design documents linked under `docs/` in this file are private and are not in this repository.
+
 ## In the app: Settings › About › Licences
 
 The app shows every component below, with its version, licence, copyright line, notes and the full licence text, from

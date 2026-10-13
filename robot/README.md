@@ -32,6 +32,8 @@ search (0.9)" below), and runs your own scripts and short commands in Termux, ea
 `../docs/phase-1.md`, `../docs/phase-2.md`, `../docs/ask-claude.md` and `../docs/conversation-mode.md`; the voice models
 and how they are used, `../docs/voice-plan.md`.
 
+The design documents linked under `docs/` in this file (and `docs/plans/`) are private and are not in this repository.
+
 Licence: GPL-3.0-only, see `../LICENSE`. Third-party parts and their licences: `THIRD_PARTY.md`.
 
 ## The app ID: ai.robot_app (1.0)
@@ -799,7 +801,7 @@ published APK, as F-Droid checks. It needs a clean tree (commit first) and two r
 minutes on four cores and needs about 0.8 GB for the sources and the build (`--clean` removes the build afterwards). Gradle
 never builds native code: without the script's library the app builds as before, and GGUF files can't run in that build.
 
-The release key is `../keys/robot-release.p12.enc` (decrypt it outside the repository, see `../keys/README.md`).
+The release key is kept privately, outside this repository.
 The two paths can also come from the environment (`ROBOT_KEYSTORE`, `ROBOT_KEYSTORE_PASS_FILE`); the password
 file holds the password on its first line. Without them the release APK is unsigned. Nothing about the key
 goes into the repository or the build output.

@@ -7,8 +7,12 @@ I made Robot because I couldn't find a complete voice assistant that doesn't com
 
 Robot is a private voice assistant for GrapheneOS on Google Pixel phones. I start with Pixels because GrapheneOS runs
 on them, and the point is to keep Google off the phone. Robot's AI model runs on the phone, so what you say and what it
-answers stay there. It goes online only when you ask it to: for the weather, a web search you set up, a question you
-hand to an online helper with your own key, or a download. Say "hey robot", or swipe up from a bottom corner, and ask.
+answers stay there. Robot goes online for what you ask: the weather, a web search you set up, a question you hand to
+an online helper with your own key, or a download. It also checks for its own updates once a day and downloads them on
+Wi-Fi, checks for Termux updates once a week after you set Termux up, and lets routines go online if you allow it.
+Each can be turned off: Settings › About › Updates (Check for updates automatically, Download updates on Wi-Fi),
+Settings › Termux (Check for Termux updates), Settings › Routines (Routines may go online by themselves).
+Say "hey robot", or swipe up from a bottom corner, and ask.
 
 Robot is free software under the GNU GPL version 3 (GPL-3.0-only). There is no account, no analytics, no ads and no
 crash reporting.
@@ -40,7 +44,8 @@ Robot needs Android 14 or later, arm64 only. I build and test it on GrapheneOS.
    the colons). Obtainium and AppVerifier can check it on the phone. Android refuses any later update signed with
    another key, and so does Robot's own updater.
 3. Make Robot your digital assistant when it asks (Settings › Apps › Default apps › Digital assistant app). The
-   corner swipe and "hey robot" then open it, also from the lock screen.
+   corner swipe and "hey robot" then open it, also from the lock screen. Android drops Robot as your assistant at the
+   next restart unless you also do Settings › Advanced › ADB fixes › "Stay the assistant after a restart".
 4. Download what you need, once, from the app's first screen. Wi-Fi is best: Robot warns before any download over
    200 MB and lets you wait for Wi-Fi.
 
@@ -57,9 +62,9 @@ Robot needs Android 14 or later, arm64 only. I build and test it on GrapheneOS.
 ## Moving from 0.9 to 1.0
 
 Robot 1.0 has a new app ID, `ai.robot_app` (0.9 and the test builds before it were `app.heyrobot`), so Android installs
-it as a new app beside 0.9, not as an update, and nothing you have in 0.9 moves by itself. 0.9's own updater can't
-install it: it downloads 1.0, says "The downloaded app isn't Robot, so it won't be installed." and then stops offering
-it. Both apps are called Robot; long-press an icon › App info shows which version it is.
+it as a new app beside 0.9, not as an update, and nothing you have in 0.9 moves by itself. 0.9 (and 1.0.0-rc1 and rc2)
+check the old private repository for updates, so they won't offer you 1.0: you install it by hand from the release page.
+Both apps are called Robot; long-press an icon › App info shows which version it is.
 
 1. Install 1.0 from the [release page](https://github.com/picocryptfan/robot-assistant/releases), beside 0.9,
    and check its certificate as above: it is the same key.
@@ -93,7 +98,7 @@ it. Both apps are called Robot; long-press an icon › App info shows which vers
 What doesn't move: your settings, History, notes, transcripts, the keys of your helpers and web search, routines,
 headsets and cars, the Termux set-up, the updater's access token, your voiceprint, and Android's permissions and special
 accesses (Robot asks again as you turn things on). Before step 6, share the notes you want to keep (a note › Share) and
-save the transcripts you want (a transcript › More options › Save as Markdown or Save as text). If Obtainium follows
+save the transcripts you want (in 0.9: a transcript › the gear button › Save as Markdown (.md) or Save as text). If Obtainium follows
 Robot for you, it follows 0.9's app ID: remove that entry and add the repository again.
 
 ## Features
@@ -126,8 +131,9 @@ The full description of every feature, with its checks, is in [`robot/README.md`
 
 - Your voice is turned into text on the phone and never recorded. Answers are made on the phone.
 - Nothing about you is collected. The people who make Robot receive nothing from your phone.
-- Robot goes online only for what you start (a download, the weather, the nearest place, a web search, a helper) and for
-  the daily update check, which you can turn off. You can turn off Robot's Network permission in GrapheneOS and
+- Robot goes online for what you start (a download, the weather, the nearest place, a web search, a helper), for the
+  daily update check and its download on Wi-Fi, for the weekly Termux check once Termux is set up, and for routines
+  you allow to; each of those can be turned off. You can turn off Robot's Network permission in GrapheneOS and
   everything on the phone keeps working.
 - The nearest-place search uses OpenStreetMap's Nominatim server unless you pick another one in Settings › Actions ›
   Search server. You can switch servers there at any time without an update, or choose Never.
