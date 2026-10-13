@@ -1,13 +1,15 @@
 package app.heyrobot.helpers.anthropic
 
-import app.heyrobot.core.ClaudeContext
-import app.heyrobot.core.ClaudeEffortSetting
-import app.heyrobot.core.ClaudeErrorKind
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudeModel
-import app.heyrobot.core.ClaudePlan
-import app.heyrobot.core.ClaudeStage
-import app.heyrobot.core.ClaudeTools
+import app.heyrobot.helpers.HelperTurnListener
+import app.heyrobot.helpers.HelperOutcome
+import app.heyrobot.core.HelperContext
+import app.heyrobot.core.HelperEffortSetting
+import app.heyrobot.core.AnthropicErrorKind
+import app.heyrobot.core.HelperFailure
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.HelperPlan
+import app.heyrobot.core.AnthropicStage
+import app.heyrobot.core.HelperTools
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.VoiceEvent
@@ -38,17 +40,17 @@ import java.util.concurrent.TimeUnit
  * their input whole), citations, pauses inside the code, fallbacks, and what Robot doesn't know. "Tell me about Donald
  * Trump" on 0.3.1 said "Something went wrong with Claude.": the first answer that searched through Claude's code.
  */
-class ClaudeWebSearchTest {
+class AnthropicWebSearchTest {
     private lateinit var server: MockWebServer
-    private lateinit var client: ClaudeClient
+    private lateinit var client: AnthropicClient
     private val logged = mutableListOf<String>()
     private val now = ZonedDateTime.of(2026, 10, 10, 14, 5, 0, 0, ZoneId.of("America/Toronto"))
-    private val plan = ClaudePlan.of(ClaudeEffortSetting.AUTO, voice = true, deep = false)
+    private val plan = HelperPlan.of(HelperEffortSetting.AUTO, voice = true, deep = false)
 
     @Before fun up() {
         server = MockWebServer()
         server.start()
-        client = ClaudeClient.create("sk-ant-api03-not-a-real-key", server.url("/").toString().removeSuffix("/"))
+        client = AnthropicClient.create("sk-ant-api03-not-a-real-key", server.url("/").toString().removeSuffix("/"))
         RLog.sink = { synchronized(logged) { logged += it } }
         // A voice log of this test's own: no other test's events in it.
         VoiceLog.resetForTests()
@@ -101,17 +103,17 @@ class ClaudeWebSearchTest {
 
     // ------------------------------------------------------------------ helpers
 
-    private class Heard : ClaudeListener {
+    private class Heard : HelperTurnListener {
         val text = StringBuilder()
         var declined = 0
         override fun text(delta: String) { text.append(delta) }
         override fun declined() { declined++ }
     }
 
-    private fun session(model: ClaudeModel = ClaudeModel.OPUS, conversation: Boolean = true) =
-        ClaudeSession(client, model, ClaudeTools.tools(RobotSettings()), search = true, conversation = conversation, idleMs = 10_000, retryDelayMs = 10)
+    private fun session(model: AnthropicModel = AnthropicModel.OPUS, conversation: Boolean = true) =
+        AnthropicSession(client, model, HelperTools.tools(RobotSettings()), search = true, conversation = conversation, idleMs = 10_000, retryDelayMs = 10)
 
-    private fun ask(q: String) = ClaudeContext.oneShot(q, now, "CA")
+    private fun ask(q: String) = HelperContext.oneShot(q, now, "CA")
 
     /** The next request Robot sent; it must be one the API takes (a request ending with Claude's turn continues a pause). */
     private fun take(): JSONObject {
@@ -120,7 +122,7 @@ class ClaudeWebSearchTest {
         val ms = b.getJSONArray("messages")
         val messages = (0 until ms.length()).map { mapper.readValue(ms.getJSONObject(it).toString(), BetaMessageParam::class.java) }
         val paused = messages.last().role() == BetaMessageParam.Role.ASSISTANT
-        assertNull(b.toString(), ClaudeHistory.check(messages, messages.map { ClaudeHistory.seal(ClaudeHistory.blocks(it)) }, paused))
+        assertNull(b.toString(), AnthropicHistory.check(messages, messages.map { AnthropicHistory.seal(AnthropicHistory.blocks(it)) }, paused))
         return b
     }
 
@@ -146,7 +148,7 @@ class ClaudeWebSearchTest {
             for (e in events) acc.accumulate(mapper.readValue(e, BetaRawMessageStreamEvent::class.java))
             null
         } catch (t: Throwable) { t }
-        // If a later SDK reads this, ClaudeReply can go (and this test with it).
+        // If a later SDK reads this, AnthropicReply can go (and this test with it).
         assertTrue(thrown.toString(), thrown is com.anthropic.errors.AnthropicInvalidDataException)
     }
 
@@ -160,7 +162,7 @@ class ClaudeWebSearchTest {
         val before = VoiceLog.total
         val s = session()
         val heard = Heard()
-        assertEquals(ClaudeOutcome.Done(), s.ask(ask("tell me about Donald Trump"), plan, heard))
+        assertEquals(HelperOutcome.Done(), s.ask(ask("tell me about Donald Trump"), plan, heard))
         assertEquals("He is the president of the United States.", heard.text.toString())
         // The page Claude cited first, then the rest of what the search found.
         assertEquals(listOf("apnews.com", "en.wikipedia.org", "bbc.com"), s.lastReport.domains)
@@ -170,7 +172,7 @@ class ClaudeWebSearchTest {
         assertEquals(Triple(1, 1, 0), Triple(read.a, read.b, read.c))
         assertTrue(voice(before).none { it.event == VoiceEvent.CLAUDE_FAILED })
         // Claude mode: the next question carries the turn exactly as it came, which the API takes.
-        assertEquals(ClaudeOutcome.Done(), s.ask(ClaudeContext.next("since when?"), plan, Heard()))
+        assertEquals(HelperOutcome.Done(), s.ask(HelperContext.next("since when?"), plan, Heard()))
         take()
         val second = take()
         assertEquals(listOf("thinking", "server_tool_use", "server_tool_use", "web_search_tool_result", "code_execution_tool_result", "text"),
@@ -197,12 +199,12 @@ class ClaudeWebSearchTest {
             blockStart(3, """{"type":"text","text":""}"""), citation(3, "https://www.theweathernetwork.com/y"), textDelta(3, "Sunny, "), citation(3, "https://weather.gc.ca/x"), textDelta(3, "then rain."), blockStop(3),
             end("end_turn"), stop))
         server.enqueue(sse(start("claude-haiku-5-5"), *text(0, "Yes."), end("end_turn", searches = 0), stop))
-        val s = session(ClaudeModel.HAIKU)
+        val s = session(AnthropicModel.HAIKU)
         val heard = Heard()
-        assertEquals(ClaudeOutcome.Done(), s.ask(ask("weather tomorrow?"), plan, heard))
+        assertEquals(HelperOutcome.Done(), s.ask(ask("weather tomorrow?"), plan, heard))
         assertEquals("Let me check.Sunny, then rain.", heard.text.toString())
         assertEquals(listOf("theweathernetwork.com", "weather.gc.ca"), s.lastReport.domains)
-        s.ask(ClaudeContext.next("sure?"), plan, Heard())
+        s.ask(HelperContext.next("sure?"), plan, Heard())
         take()
         val turn = content(take(), 1)
         assertEquals("""{"query": "weather"}""".replace(" ", ""), turn.getJSONObject(1).getJSONObject("input").toString())
@@ -218,32 +220,32 @@ class ClaudeWebSearchTest {
         server.enqueue(sse(start(), *text(0, "Yes."), end("end_turn", searches = 0), stop))
         val s = session()
         val heard = Heard()
-        assertEquals(ClaudeOutcome.Done(), s.ask(ask("aurora tonight?"), plan, heard))
+        assertEquals(HelperOutcome.Done(), s.ask(ask("aurora tonight?"), plan, heard))
         assertEquals("After midnight.", heard.text.toString())
         take()
         // The paused turn goes back as it is, its code still running; no extra user message.
         val continued = take()
         assertEquals(2, continued.getJSONArray("messages").length())
         assertEquals(listOf("thinking", "server_tool_use", "server_tool_use", "web_search_tool_result"), types(continued.getJSONArray("messages").getJSONObject(1)))
-        s.ask(ClaudeContext.next("really?"), plan, Heard())
+        s.ask(HelperContext.next("really?"), plan, Heard())
         assertEquals(listOf("thinking", "server_tool_use", "server_tool_use", "web_search_tool_result", "code_execution_tool_result", "text"),
             types(take().getJSONArray("messages").getJSONObject(1)))
         assertNull(s.problem())
     }
 
     @Test fun tooManyPausesInsideCodeEndWithoutTheUnfinishedCode() = runBlocking {
-        repeat(ClaudeSession.MAX_CONTINUATIONS + 1) { n ->
+        repeat(AnthropicSession.MAX_CONTINUATIONS + 1) { n ->
             val said = if (n == 0) text(0, "Searching.").toList() else emptyList()
             val events = listOf(start()) + said + codeSearch(said.size.coerceAtMost(1), "srvtoolu_c$n", "srvtoolu_s$n", "q$n", "https://example.com/$n") + listOf(end("pause_turn"), stop)
             server.enqueue(sse(*events.toTypedArray()))
         }
         server.enqueue(sse(start(), *text(0, "Fine."), end("end_turn", searches = 0), stop))
         val s = session()
-        assertEquals(ClaudeOutcome.Done(cut = true), s.ask(ask("search a lot"), plan, Heard()))
+        assertEquals(HelperOutcome.Done(cut = true), s.ask(ask("search a lot"), plan, Heard()))
         // Each pause left its code unfinished: only the text stays, and the next request is one the API takes.
         assertNull(s.problem())
-        s.ask(ClaudeContext.next("and?"), plan, Heard())
-        repeat(ClaudeSession.MAX_CONTINUATIONS + 1) { take() }
+        s.ask(HelperContext.next("and?"), plan, Heard())
+        repeat(AnthropicSession.MAX_CONTINUATIONS + 1) { take() }
         assertEquals(listOf("text"), types(take().getJSONArray("messages").getJSONObject(1)))
     }
 
@@ -258,11 +260,11 @@ class ClaudeWebSearchTest {
             *text(1, "Four minutes is right."), end("end_turn"), stop))
         server.enqueue(sse(start(), *text(0, "Yes."), end("end_turn", searches = 0), stop))
         val s = session()
-        val calls = s.ask(ask("set a tea timer and check how long to steep"), plan, Heard()) as ClaudeOutcome.Calls
+        val calls = s.ask(ask("set a tea timer and check how long to steep"), plan, Heard()) as HelperOutcome.Calls
         assertEquals("set_timer", calls.calls.single().name)
-        assertEquals(ClaudeOutcome.Done(), s.answer(listOf(mapOf("status" to "done")), Heard()))
+        assertEquals(HelperOutcome.Done(), s.answer(listOf(mapOf("status" to "done")), Heard()))
         assertEquals(listOf("tea.example"), s.lastReport.domains)
-        s.ask(ClaudeContext.next("thanks"), plan, Heard())
+        s.ask(HelperContext.next("thanks"), plan, Heard())
         take()
         assertEquals(listOf("tool_result"), types(take().getJSONArray("messages").getJSONObject(2)))
         val third = take()
@@ -272,7 +274,7 @@ class ClaudeWebSearchTest {
 
     @Test fun aCallWhoseInputCameWholeStillRuns() = runBlocking {
         server.enqueue(sse(start(), blockStart(0, """{"type":"tool_use","id":"toolu_w","name":"set_timer","input":{"minutes":5}}"""), blockStop(0), end("tool_use", searches = 0), stop))
-        val o = session().ask(ask("timer for 5 minutes"), plan, Heard()) as ClaudeOutcome.Calls
+        val o = session().ask(ask("timer for 5 minutes"), plan, Heard()) as HelperOutcome.Calls
         assertEquals("5", o.calls.single().args["minutes"].toString())
     }
 
@@ -284,7 +286,7 @@ class ClaudeWebSearchTest {
             end("refusal", searches = 0, details = ""","stop_details":{"type":"refusal","category":"general_harms","explanation":null}"""), stop))
         val s = session()
         val heard = Heard()
-        assertEquals(ClaudeOutcome.Declined, s.ask(ask("something"), plan, heard))
+        assertEquals(HelperOutcome.Declined, s.ask(ask("something"), plan, heard))
         assertEquals(1, heard.declined)
         assertTrue(s.history.isEmpty())
     }
@@ -301,10 +303,10 @@ class ClaudeWebSearchTest {
         val before = VoiceLog.total
         val s = session()
         val heard = Heard()
-        assertEquals(ClaudeOutcome.Done(), s.ask(ask("hi"), plan, heard))
+        assertEquals(HelperOutcome.Done(), s.ask(ask("hi"), plan, heard))
         assertEquals("Still here.", heard.text.toString())
         assertEquals(1, voice(before).single { it.event == VoiceEvent.CLAUDE_READ }.c)
-        s.ask(ClaudeContext.next("ok"), plan, Heard())
+        s.ask(HelperContext.next("ok"), plan, Heard())
         take()
         // The unknown block never goes back.
         assertEquals(listOf("text"), types(take().getJSONArray("messages").getJSONObject(1)))
@@ -315,7 +317,7 @@ class ClaudeWebSearchTest {
         server.enqueue(sse(start(), blockStart(0, """{"type":"text","text":""}"""), textDelta(0, "One, "), textDelta(7, "lost"), textDelta(0, "two."), blockStop(0),
             end("end_turn", searches = 0), stop))
         val heard = Heard()
-        assertEquals(ClaudeOutcome.Done(), session().ask(ask("count"), plan, heard))
+        assertEquals(HelperOutcome.Done(), session().ask(ask("count"), plan, heard))
         assertTrue(heard.text.startsWith("One, "))
         assertTrue(heard.text.endsWith("two."))
         assertTrue(logged.toString(), logged.any { it == "claude_event_skipped event=content_block_delta error=IllegalStateException" })
@@ -327,34 +329,34 @@ class ClaudeWebSearchTest {
 
     @Test fun aStreamCutBeforeClaudeFinishedSaysWhere() = runBlocking {
         server.enqueue(sse(start(), blockStart(0, """{"type":"text","text":""}"""), textDelta(0, "Half")))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.UNKNOWN), session().ask(ask("q"), plan, Heard()))
-        assertEquals(ClaudeStage.CLOSED.id, unknownAt().a)
+        assertEquals(HelperOutcome.Failed(HelperFailure.UNKNOWN), session().ask(ask("q"), plan, Heard()))
+        assertEquals(AnthropicStage.CLOSED.id, unknownAt().a)
         assertTrue(VoiceLog.entries().first { it.event == VoiceEvent.CLAUDE_FAILED }.time <= unknownAt().time)
     }
 
     @Test fun anEventTheSdkCannotParseSaysWhere() = runBlocking {
         server.enqueue(sse(start(), "content_block_start" to """{"type":"content_block_start","index":0,"content_block":{"type":"text","text":"""))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.UNKNOWN), session().ask(ask("q"), plan, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.UNKNOWN), session().ask(ask("q"), plan, Heard()))
         val e = unknownAt()
-        assertEquals(ClaudeStage.SDK.id, e.a)
+        assertEquals(AnthropicStage.SDK.id, e.a)
         assertEquals(0, e.b)
-        assertTrue(e.c in listOf(ClaudeErrorKind.JSON.id, ClaudeErrorKind.INVALID_DATA.id, ClaudeErrorKind.SDK_OTHER.id))
+        assertTrue(e.c in listOf(AnthropicErrorKind.JSON.id, AnthropicErrorKind.INVALID_DATA.id, AnthropicErrorKind.SDK_OTHER.id))
         assertTrue(logged.any { it.startsWith("claude_request failure=UNKNOWN stage=SDK error=") })
     }
 
     @Test fun anHttpStatusRobotDoesNotKnowSaysWhichOne() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(418).setHeader("content-type", "application/json")
             .setBody("""{"type":"error","error":{"type":"teapot_error","message":"mock"}}"""))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.UNKNOWN), session().ask(ask("q"), plan, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.UNKNOWN), session().ask(ask("q"), plan, Heard()))
         val e = unknownAt()
-        assertEquals(Triple(ClaudeStage.HTTP.id, 418, ClaudeErrorKind.API_ERROR.id), Triple(e.a, e.b, e.c))
+        assertEquals(Triple(AnthropicStage.HTTP.id, 418, AnthropicErrorKind.API_ERROR.id), Triple(e.a, e.b, e.c))
     }
 
     @Test fun aKnownFailureLogsNoSubCode() = runBlocking {
         server.enqueue(MockResponse().setResponseCode(429).setHeader("content-type", "application/json")
             .setBody("""{"type":"error","error":{"type":"rate_limit_error","message":"mock"}}"""))
         val before = VoiceLog.total
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.RATE_LIMITED), session().ask(ask("q"), plan, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.RATE_LIMITED), session().ask(ask("q"), plan, Heard()))
         assertTrue(voice(before).none { it.event == VoiceEvent.CLAUDE_UNKNOWN })
     }
 
@@ -363,18 +365,18 @@ class ClaudeWebSearchTest {
     @Test fun theValidatorPairsEveryServerToolsResult() {
         val mapper = com.anthropic.core.jsonMapper()
         fun block(json: String) = mapper.readValue(json, BetaContentBlockParam::class.java)
-        fun msg(role: BetaMessageParam.Role, vararg b: BetaContentBlockParam) = ClaudeHistory.message(role, b.toList())
+        fun msg(role: BetaMessageParam.Role, vararg b: BetaContentBlockParam) = AnthropicHistory.message(role, b.toList())
         fun user(vararg b: BetaContentBlockParam) = msg(BetaMessageParam.Role.USER, *b)
         fun assistant(vararg b: BetaContentBlockParam) = msg(BetaMessageParam.Role.ASSISTANT, *b)
-        fun check(vararg m: BetaMessageParam, paused: Boolean = false) = ClaudeHistory.check(m.toList(), m.map { ClaudeHistory.seal(ClaudeHistory.blocks(it)) }, paused)
-        val q = ClaudeHistory.text("q")
+        fun check(vararg m: BetaMessageParam, paused: Boolean = false) = AnthropicHistory.check(m.toList(), m.map { AnthropicHistory.seal(AnthropicHistory.blocks(it)) }, paused)
+        val q = AnthropicHistory.text("q")
         val code = block("""{"type":"server_tool_use","id":"srvtoolu_c","name":"code_execution","input":{"code":"x"},"caller":{"type":"direct"}}""")
         val search = block("""{"type":"server_tool_use","id":"srvtoolu_s","name":"web_search","input":{"query":"x"},"caller":{"type":"code_execution_20260120","tool_id":"srvtoolu_c"}}""")
         val found = block("""{"type":"web_search_tool_result","tool_use_id":"srvtoolu_s","content":[]}""")
         val ran = block("""{"type":"code_execution_tool_result","tool_use_id":"srvtoolu_c","content":{"type":"code_execution_result","stdout":"","stderr":"","return_code":0,"content":[]}}""")
         val bash = block("""{"type":"server_tool_use","id":"srvtoolu_b","name":"bash_code_execution","input":{"command":"ls"}}""")
         val bashRan = block("""{"type":"bash_code_execution_tool_result","tool_use_id":"srvtoolu_b","content":{"type":"bash_code_execution_result","stdout":"","stderr":"","return_code":0,"content":[]}}""")
-        val a = ClaudeHistory.text("a")
+        val a = AnthropicHistory.text("a")
         assertNull(check(user(q), assistant(code, search, found, ran, a), user(q)))
         assertNull(check(user(q), assistant(bash, bashRan, a), user(q)))
         assertEquals("server_tool_unpaired", check(user(q), assistant(code, search, found, a), user(q)))
@@ -385,7 +387,7 @@ class ClaudeWebSearchTest {
         val timer = block("""{"type":"tool_use","id":"toolu_t","name":"set_timer","input":{"minutes":4}}""")
         val direct = block("""{"type":"server_tool_use","id":"srvtoolu_d","name":"web_search","input":{"query":"tea"}}""")
         val directFound = block("""{"type":"web_search_tool_result","tool_use_id":"srvtoolu_d","content":[]}""")
-        val done = ClaudeRequests.results(listOf("toolu_t"), listOf(mapOf("status" to "done"))).single()
+        val done = AnthropicRequests.results(listOf("toolu_t"), listOf(mapOf("status" to "done"))).single()
         assertNull(check(user(q), assistant(direct, timer), user(done)))
         assertNull(check(user(q), assistant(direct, timer), user(done), assistant(directFound, a), user(q)))
         assertEquals("server_tool_unpaired", check(user(q), assistant(direct, timer), user(done), assistant(a), user(q)))
@@ -393,7 +395,7 @@ class ClaudeWebSearchTest {
         assertEquals("server_tool_unpaired", check(user(q), assistant(direct, timer), user(done, q)))
         // A cut turn loses its unfinished code with the searches it made, and keeps the thinking as it came.
         val think = block("""{"type":"thinking","thinking":"","signature":"SIG"}""")
-        assertEquals(listOf(think, a), ClaudeHistory.closed(listOf(think, a, code, search, found)))
-        assertEquals(listOf(think, a, bash, bashRan), ClaudeHistory.closed(listOf(think, a, bash, bashRan, code, search)))
+        assertEquals(listOf(think, a), AnthropicHistory.closed(listOf(think, a, code, search, found)))
+        assertEquals(listOf(think, a, bash, bashRan), AnthropicHistory.closed(listOf(think, a, bash, bashRan, code, search)))
     }
 }

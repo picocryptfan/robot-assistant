@@ -242,7 +242,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     }
 
     private companion object {
-        /** app.heyrobot.core.ClaudeVoices.SYSTEM_PITCH (the voice module doesn't read Ask Claude's settings). */
+        /** app.heyrobot.core.HelperVoices.SYSTEM_PITCH (the voice module doesn't read Ask Claude's settings). */
         const val OTHER_PITCH = 0.82f
         const val RISK_STOP = 1
         const val RISK_WAKE = 2

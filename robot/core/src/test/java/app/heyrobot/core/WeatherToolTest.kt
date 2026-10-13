@@ -35,9 +35,9 @@ class WeatherToolTest {
     @Test fun cloudIsAMishearingOfClaudeOnlyAfterACommand() {
         // "cloud cover" stays Robot's (and routes to the weather); "ask cloud about …" is still Claude.
         for (q in listOf("cloud cover tomorrow?", "Okay, cloud cover tomorrow?", "what's the cloud cover tomorrow", "clouds this afternoon?")) {
-            assertNull(q, ClaudeRouter.route(q))
+            assertNull(q, HelperRouter.route(q))
         }
-        assertTrue(ClaudeRouter.route("ask cloud about the weather in Paris") is ClaudeCommand.Ask)
+        assertTrue(HelperRouter.route("ask cloud about the weather in Paris") is HelperCommand.Ask)
     }
 
     @Test fun withTheToolOnWeatherStaysOnThePhone() {
@@ -92,7 +92,7 @@ class WeatherToolTest {
         assertFalse(ToolName.WEATHER in d.lockedTools)
         assertTrue(ToolName.WEATHER.reads && ToolName.WEATHER.online && !ToolName.WEATHER.internal)
         // Claude is never offered it (it has web search, and where you are is yours).
-        assertFalse(ToolName.WEATHER in ClaudeTools.OFFERED)
+        assertFalse(ToolName.WEATHER in HelperTools.OFFERED)
     }
 
     @Test fun theCallTakesAnOptionalPlaceAndDay() {
@@ -136,11 +136,11 @@ class WeatherToolTest {
         val a = ChatTurn("2", TurnRole.ASSISTANT, "Cloudy, 12 degrees.", 2,
             actions = listOf(ActionRecord(ToolName.WEATHER, "Check the weather here for Sun Oct 11", ActionStatus.DONE, "Forecast for where you are, from Open-Meteo.", content = true)))
         val history = listOf(q, a)
-        assertEquals(setOf(Personal.LOCATION), ClaudeContext.personal(history))
-        assertEquals("Include the conversation so far? It contains your location.", ClaudeContext.includeQuestion(history))
+        assertEquals(setOf(Personal.LOCATION), HelperContext.personal(history))
+        assertEquals("Include the conversation so far? It contains your location.", HelperContext.includeQuestion(history))
         // Robot checking with Claude by itself then sends the question only, and later actions ask first.
-        val blocks = ClaudeContext.escalation("and what about Paris?", history, now, "CA")
-        assertFalse(blocks.filterIsInstance<ClaudeBlock.Text>().any { it.text.contains("Cloudy") || it.text.contains("weather tomorrow") })
+        val blocks = HelperContext.escalation("and what about Paris?", history, now, "CA")
+        assertFalse(blocks.filterIsInstance<HelperBlock.Text>().any { it.text.contains("Cloudy") || it.text.contains("weather tomorrow") })
         assertTrue(TurnRules.untrusted(history))
         // The card's saved line names no place.
         assertFalse(a.actions.single().detail!!.contains("Montreal"))

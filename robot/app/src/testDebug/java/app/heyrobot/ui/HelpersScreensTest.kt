@@ -12,7 +12,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performClick
-import app.heyrobot.core.ClaudeVoices
+import app.heyrobot.core.HelperVoices
 import app.heyrobot.core.Escalation
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.helpers.HelperConfig
@@ -114,7 +114,7 @@ class HelpersScreensTest {
         assertEquals("helperWindow claude ${HelperWindow.MODE_KEY}", log.last())
         rule.scrollToText("Claude's voice")
         rule.onRow("Claude's voice").performClick()
-        rule.inDialog(ClaudeVoices.title("bf_emma")).performClick()
+        rule.inDialog(HelperVoices.title("bf_emma")).performClick()
         rule.onNode(isDialog()).assertDoesNotExist()
         assertEquals("bf_emma", host.last.claude!!.voice)
         rule.scrollToText("Trusted with personal content")
@@ -185,6 +185,6 @@ class HelpersScreensTest {
         rule.scrollToText("Use")
         rule.onRow("Use").assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "ChatGPT app")).performClick()
         rule.inDialog("OpenAI API").performClick()
-        assertEquals(app.heyrobot.core.ClaudeRoute.API, host.last.helper("hgpt")!!.route)
+        assertEquals(app.heyrobot.core.AskRoute.API, host.last.helper("hgpt")!!.route)
     }
 }

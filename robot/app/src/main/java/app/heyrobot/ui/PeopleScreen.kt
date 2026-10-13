@@ -6,8 +6,10 @@ import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -17,15 +19,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,8 +58,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +73,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.heyrobot.core.Addresses
 import app.heyrobot.core.CheogramLinks
 import app.heyrobot.core.ContactPhone
+import app.heyrobot.core.HelperContext
 import app.heyrobot.core.People
 import app.heyrobot.core.PeopleCodec
 import app.heyrobot.core.PeopleEdit
@@ -76,23 +87,13 @@ import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.VCard
 import app.heyrobot.core.VCardFile
 import app.heyrobot.core.XmppAddress
-import app.heyrobot.sys.CheogramIntents
 import app.heyrobot.sys.AssistantFacts
+import app.heyrobot.sys.CheogramIntents
 import app.heyrobot.sys.HandOffApps
 import app.heyrobot.sys.NotificationAccess
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.PhoneContacts
 import app.heyrobot.ui.common.RIcons
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import app.heyrobot.ui.pref.IntroPreference
 import app.heyrobot.ui.pref.PreferenceBlock
 import app.heyrobot.ui.pref.PreferenceCategory
@@ -105,14 +106,14 @@ import app.heyrobot.ui.pref.preferenceFooter
 import app.heyrobot.ui.pref.preferenceGroup
 import app.heyrobot.ui.pref.preferenceItems
 import app.heyrobot.ui.settings.SettingsRoutes
+import java.io.InputStream
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.InputStream
-import java.util.Locale
 
 // MAIN PROCESS. Settings › People (docs/people.md): Robot's own list of people, for texts and emails to someone who
 // isn't in the phone's contacts, or whom you call something else ("mom"). Ways in: by hand, a contacts file (.vcf, as
@@ -515,7 +516,7 @@ internal fun NotificationAccessSteps() {
  * What "Learn names from Cheogram notifications" reads, where it is kept, and how to take it back (0.4.6), each claim as
  * the code does it: CheogramListener (Cheogram's packages only, signed as first seen, a 1:1 chat's sender name and key
  * and the shortcut's account; the manifest asks for conversations only), PeopleStore (files/people, left out of backups),
- * ClaudeContext and HelperTrust (0.6.0: People and lookups never go to Claude or another helper unless a conversation that
+ * HelperContext and HelperTrust (0.6.0: People and lookups never go to Claude or another helper unless a conversation that
  * has one is shared: Include, a helper trusted with personal content, or "Send personal content to helpers
  * automatically"; no helper is given lookup_contact, and what a text it asks for answers it doesn't say who got it).
  */

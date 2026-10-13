@@ -96,7 +96,7 @@ class FreeUpTest {
             val auto = d.copy(approvals = d.approvals + (t to Approval.AUTO))
             assertEquals(t.name, GateDecision.RUN, ApprovalGate.decide(t, false, auto))
             assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, auto, content = true))
-            assertFalse(t.reads || t.online || t in ClaudeTools.OFFERED)
+            assertFalse(t.reads || t.online || t in HelperTools.OFFERED)
             assertEquals(Personal.PHONE, Personal.of(t))
         }
     }
@@ -111,8 +111,8 @@ class FreeUpTest {
             assertFalse(q, ToolGroup.PHONE in ToolRouter.route(q))
         }
         // "stop Claude" stays Claude's (it ends Claude mode); "stop Robot" is not a Claude command.
-        assertEquals(ClaudeCommand.Leave, ClaudeRouter.route("stop Claude"))
-        assertNull(ClaudeRouter.route("Stop Robot"))
+        assertEquals(HelperCommand.Leave, HelperRouter.route("stop Claude"))
+        assertNull(HelperRouter.route("Stop Robot"))
     }
 
     @Test fun freeingIsAboutThePhoneNotTheCalendar() {

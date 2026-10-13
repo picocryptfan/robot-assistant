@@ -131,7 +131,7 @@ class BrowserGateTest {
         assertEquals(GateDecision.CONFIRM, ApprovalGate.decide(ToolName.BROWSER_SEARCH, false, s, asked = true, messages = true))
         // A routine never opens one, and a helper is never offered it.
         assertEquals(StepClass.NEVER, RoutineGate.classOf(ToolName.BROWSER_SEARCH))
-        assertFalse(ToolName.BROWSER_SEARCH in app.heyrobot.core.ClaudeTools.OFFERED)
+        assertFalse(ToolName.BROWSER_SEARCH in app.heyrobot.core.HelperTools.OFFERED)
     }
 
     @Test fun theModelsCallIsReadLikeTheOthers() {

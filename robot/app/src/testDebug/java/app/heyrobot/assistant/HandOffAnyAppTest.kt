@@ -10,6 +10,7 @@ import android.content.pm.PackageInfo
 import androidx.test.core.app.ApplicationProvider
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
+import app.heyrobot.core.AppHandOff
 import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RobotSettings
@@ -58,15 +59,15 @@ class HandOffAnyAppTest {
         for (p in Presets.ALL.filter { it.app != null && it.app != ClaudeAppLink.PACKAGE }) {
             val pkg = p.app!!
             install(pkg)
-            val i = HandOffIntents.intent(ctx, pkg, ClaudeAppLink.Way.SEND, "why is the sky blue")!!
+            val i = HandOffIntents.intent(ctx, pkg, AppHandOff.Way.SEND, "why is the sky blue")!!
             assertEquals(Intent.ACTION_SEND, i.action)
             assertEquals("text/plain", i.type)
             assertEquals(pkg, i.`package`)
             assertEquals("why is the sky blue", i.getStringExtra(Intent.EXTRA_TEXT))
             // The Claude app's own links never go to another app.
-            assertNull(HandOffIntents.intent(ctx, pkg, ClaudeAppLink.Way.APP_LINK, "x"))
-            assertNull(HandOffIntents.intent(ctx, pkg, ClaudeAppLink.Way.WEB_LINK, "x"))
-            assertEquals(ClaudeAppLink.Way.SEND, HandOffIntents.choose(ctx, pkg))
+            assertNull(HandOffIntents.intent(ctx, pkg, AppHandOff.Way.APP_LINK, "x"))
+            assertNull(HandOffIntents.intent(ctx, pkg, AppHandOff.Way.WEB_LINK, "x"))
+            assertEquals(AppHandOff.Way.SEND, HandOffIntents.choose(ctx, pkg))
             assertTrue(HandOffIntents.facts(ctx, pkg).let { it.installed && it.send && !it.appLink && !it.webLink })
         }
         // Not installed: nothing to choose.

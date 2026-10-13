@@ -17,24 +17,24 @@ import java.util.Locale
 // five letters or more (or two syllables) also matches a word that sounds like it ([Phonetic]), but only where a
 // mishearing may count (after a command verb), so it is marked misheard and its conversation asks before anything earlier goes.
 
-sealed class ClaudeCommand {
+sealed class HelperCommand {
     /**
      * One question for Claude. [deep]: you asked for depth ("think hard about", "take your time"). [extra]: you asked
      * about the screen or a photo; it goes only after a tap on a card.
      */
-    data class Ask(val question: String, val deep: Boolean = false, val extra: Attachment = Attachment.NONE, val helper: String = HelperName.CLAUDE_ID) : ClaudeCommand()
+    data class Ask(val question: String, val deep: Boolean = false, val extra: Attachment = Attachment.NONE, val helper: String = HelperName.CLAUDE_ID) : HelperCommand()
 
     /**
      * Claude mode: the following turns go to Claude. [question]: said in the same breath ("go get Claude and ask …").
      * [misheard]: a word that only sounded like the name ("get cloud"): the conversation so far goes only after a tap.
      */
-    data class Join(val question: String? = null, val misheard: Boolean = false, val helper: String = HelperName.CLAUDE_ID) : ClaudeCommand()
+    data class Join(val question: String? = null, val misheard: Boolean = false, val helper: String = HelperName.CLAUDE_ID) : HelperCommand()
 
     /** Leave Claude mode, or any helper's ("thanks Claude", "back to Robot"); outside it, ordinary talk. */
-    data object Leave : ClaudeCommand()
+    data object Leave : HelperCommand()
 
     /** "Read Claude's answer": the Claude app's last answer, from the corner swipe's screen data. */
-    data object ReadAnswer : ClaudeCommand()
+    data object ReadAnswer : HelperCommand()
 }
 
 /**
@@ -59,21 +59,21 @@ data class HelperName(val id: String, val forms: List<List<String>>, val mishear
 
         /**
          * "the helper", "a helper", "my helper", « l'assistant », « un assistant »: heard after "ask" and « demande (à) »
-         * only ([ClaudeRouter.route]), and in a refusal ("don't ask the helper"), never on their own or after "go get".
+         * only ([HelperRouter.route]), and in a refusal ("don't ask the helper"), never on their own or after "go get".
          */
         val ANY = HelperName(ANY_ID, listOf(listOf("the", "helper"), listOf("a", "helper"), listOf("my", "helper"), listOf("lassistant"),
             listOf("l", "assistant"), listOf("un", "assistant")))
 
         /**
          * 1.0.0: how you thank or stop the helper "ask the helper" brought in: "thanks helper", "thank you, the helper", "stop my
-         * helper", « merci l'assistant », « merci assistant ». Heard in a leave only ([ClaudeRouter.route]), so "helper" alone
+         * helper", « merci l'assistant », « merci assistant ». Heard in a leave only ([HelperRouter.route]), so "helper" alone
          * still names nobody anywhere else.
          */
         val ANY_LEAVE = HelperName(ANY_ID, listOf(listOf("helper"), listOf("the", "helper"), listOf("my", "helper"), listOf("lassistant"),
             listOf("l", "assistant"), listOf("assistant")))
 
         /** A word sequence in the router's plain form ("ChatGPT" → [chatgpt], "Deep Seek" → [deep, seek]). */
-        fun words(s: String): List<String> = ClaudeRouter.plain(s).split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
+        fun words(s: String): List<String> = HelperRouter.plain(s).split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }
 
         /** How [h] is heard: its name, the preset's spellings and mishearings when it keeps the preset's name, and your aliases. */
         fun of(h: app.heyrobot.core.helpers.HelperConfig): HelperName {
@@ -93,7 +93,7 @@ data class HelperName(val id: String, val forms: List<List<String>>, val mishear
 /** Where a name was found in what was said: whose, where it ends, and whether it was the name itself ([exact]). */
 class HeardName(val id: String, val end: Int, val exact: Boolean)
 
-object ClaudeRouter {
+object HelperRouter {
     /** "Claude" and how Parakeet may hear it; the mishearings count only after a command verb ([seq]'s "*"). */
     val ALIASES = setOf("claude", "cloud", "clod", "clawed", "claud", "klode", "clyde")
 
@@ -224,18 +224,18 @@ object ClaudeRouter {
     private val FOR_A_PERSON = setOf("to", "if", "whether", "si", "de", "d")
 
     /** The command at the start of [text] for one of [names] (Claude alone by default), or null: ordinary talk for Robot. */
-    fun route(text: String, names: List<HelperName> = CLAUDE): ClaudeCommand? {
+    fun route(text: String, names: List<HelperName> = CLAUDE): HelperCommand? {
         val ws = words(text)
         val i = head(ws)
         if (i >= ws.size) return null
 
         // Leave first: "stop Claude" and "thanks Claude" are never questions. 1.0.0: nor "thanks helper", « merci l'assistant ».
-        if (LEAVES.any { seqName(ws, i, it, names + HelperName.ANY_LEAVE) != null } || BACK.any { seq(ws, i, *it) }) return ClaudeCommand.Leave
+        if (LEAVES.any { seqName(ws, i, it, names + HelperName.ANY_LEAVE) != null } || BACK.any { seq(ws, i, *it) }) return HelperCommand.Leave
 
         // "read Claude's answer" (an app Robot reads back).
         if (ws.getOrNull(i)?.w == "read" && ws.getOrNull(i + 2)?.w in setOf("answer", "reply", "response")) {
             val w = ws.getOrNull(i + 1)?.w
-            if (w != null && w.endsWith("s") && names.any { n -> n.app && (n.forms + n.misheard).any { it == listOf(w.dropLast(1)) } }) return ClaudeCommand.ReadAnswer
+            if (w != null && w.endsWith("s") && names.any { n -> n.app && (n.forms + n.misheard).any { it == listOf(w.dropLast(1)) } }) return HelperCommand.ReadAnswer
         }
 
         // "ask Claude …", "demande à Claude …" (and "demande Claude", when the "à" was not heard). 1.0.0: "ask the helper …",
@@ -252,16 +252,16 @@ object ClaudeRouter {
             if (m.id == HelperName.ANY_ID && ws[askAt - 2].w == "my" && next in FOR_A_PERSON) return null
             // "Ask the helper" alone joins like a mishearing: no helper was named, so the conversation so far goes only after a
             // tap, even to a helper you trust (HelperTrust.joinWithoutCard).
-            return rest(text, ws, askAt, ASK_DROP)?.let { ask(it, m.id) } ?: ClaudeCommand.Join(misheard = !m.exact || m.id == HelperName.ANY_ID, helper = m.id)
+            return rest(text, ws, askAt, ASK_DROP)?.let { ask(it, m.id) } ?: HelperCommand.Join(misheard = !m.exact || m.id == HelperName.ANY_ID, helper = m.id)
         }
 
         // "what does Claude think about …", "qu'est-ce que Claude pense de …".
         (seqName(ws, i, arrayOf("what", "does", "=", "think"), names) ?: seqName(ws, i, arrayOf("whats", "=", "think"), names))?.let { (at, m) ->
-            val r = rest(text, ws, at, setOf("about", "of")) ?: return ClaudeCommand.Join(helper = m.id)
+            val r = rest(text, ws, at, setOf("about", "of")) ?: return HelperCommand.Join(helper = m.id)
             return ask("What do you think about ${r.trimEnd('?', '.', ' ')}?", m.id)
         }
         seqName(ws, i, arrayOf("quest", "ce", "que", "=", "pense"), names)?.let { (at, m) ->
-            val r = rest(text, ws, at) ?: return ClaudeCommand.Join(helper = m.id)
+            val r = rest(text, ws, at) ?: return HelperCommand.Join(helper = m.id)
             return ask("Que penses-tu ${r.trimEnd('?', '.', ' ')} ?", m.id)
         }
 
@@ -275,18 +275,18 @@ object ClaudeRouter {
             // person.
             if (!m.exact) {
                 while (k < ws.size && ws[k].w in BARE_TAIL) k++
-                if (k >= ws.size) return ClaudeCommand.Join(misheard = true, helper = m.id)
+                if (k >= ws.size) return HelperCommand.Join(misheard = true, helper = m.id)
                 val asks = (ws[k].w in setOf("and", "then", "et", "puis") && ws.getOrNull(k + 1)?.w in setOf("ask", "demande", "demandes")) ||
                     ws[k].w in setOf("ask", "demande")
-                return if (asks) ClaudeCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP + "demandes"), misheard = true, helper = m.id) else null
+                return if (asks) HelperCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP + "demandes"), misheard = true, helper = m.id) else null
             }
             while (k < ws.size && ws[k].w in JOIN_TAIL) k++
-            if (k >= ws.size) return ClaudeCommand.Join(helper = m.id)
+            if (k >= ws.size) return HelperCommand.Join(helper = m.id)
             // "talk to Claude about my day".
-            if (ws[k].w in ABOUT && k + 1 < ws.size) return ClaudeCommand.Join("Let's talk about " + text.substring(ws[k + 1].start).trim().trimEnd('.', '!', ' ') + ".", helper = m.id)
+            if (ws[k].w in ABOUT && k + 1 < ws.size) return HelperCommand.Join("Let's talk about " + text.substring(ws[k + 1].start).trim().trimEnd('.', '!', ' ') + ".", helper = m.id)
             // "get Claude, what's …" or "go get Claude and ask him …": the rest is the first question.
             if (nameEnd.punctAfter in setOf(',', ':', '—', '-') || ws[k].w in JOIN_LINK) {
-                return ClaudeCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP), helper = m.id)
+                return HelperCommand.Join(rest(text, ws, k, JOIN_LINK + ASK_DROP), helper = m.id)
             }
             // "get cloud storage prices": not a command.
             return null
@@ -296,8 +296,8 @@ object ClaudeRouter {
         // written, and only into a question or a request: "Claude can come over tomorrow", "Claude Monet painted …" and
         // "Claude please stop calling me" are about someone called Claude, and a mishearing never counts here.
         nameAt(ws, i, names, exactOnly = true)?.let { m ->
-            if (m.end >= ws.size) return ClaudeCommand.Join(helper = m.id)
-            if (addressed(ws.drop(m.end), comma = ws[m.end - 1].punctAfter in setOf(',', ':', '—'))) return rest(text, ws, m.end)?.let { ask(it, m.id) } ?: ClaudeCommand.Join(helper = m.id)
+            if (m.end >= ws.size) return HelperCommand.Join(helper = m.id)
+            if (addressed(ws.drop(m.end), comma = ws[m.end - 1].punctAfter in setOf(',', ':', '—'))) return rest(text, ws, m.end)?.let { ask(it, m.id) } ?: HelperCommand.Join(helper = m.id)
         }
         return null
     }
@@ -333,7 +333,7 @@ object ClaudeRouter {
         }
     }
 
-    private fun ask(q: String, helper: String) = ClaudeCommand.Ask(q, deep(q), extra(q), helper)
+    private fun ask(q: String, helper: String) = HelperCommand.Ask(q, deep(q), extra(q), helper)
 
     private val DEEP = listOf("think hard", "think carefully", "think it through", "take your time", "in depth", "in detail",
         "reflechis bien", "prends ton temps", "en detail")
@@ -670,8 +670,8 @@ object Phonetic {
 object FastPath {
     enum class Way { CLAUDE, TEXT, MODEL }
 
-    fun of(cmd: ClaudeCommand?, claudeMode: Boolean, attachment: Attachment): Way = when {
-        cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join || (cmd == null && claudeMode) -> Way.CLAUDE
+    fun of(cmd: HelperCommand?, claudeMode: Boolean, attachment: Attachment): Way = when {
+        cmd is HelperCommand.Ask || cmd is HelperCommand.Join || (cmd == null && claudeMode) -> Way.CLAUDE
         cmd == null && attachment == Attachment.NONE -> Way.TEXT
         else -> Way.MODEL
     }
@@ -725,7 +725,7 @@ object PreRouter {
             """\b(current|recent) (events|affairs|situation|president|prime minister|premier|ceo|leader|champions?|record|prices?|rates?|scores?|standings|rankings?|polls?)\b""",
             """\b(who is|whos) (the )?(current |new )?(president|prime minister|premier|chancellor|mayor|ceo|pope|king|queen|governor)\b""",
             """\b(what happened|whats happening|what is happening) (today|yesterday|this week|last night|in|with|at)\b""",
-            // French, without accents (ClaudeRouter.plain): "les dernières nouvelles sur Artemis", "l'actualité", "le prix
+            // French, without accents (HelperRouter.plain): "les dernières nouvelles sur Artemis", "l'actualité", "le prix
             // de l'essence", "le taux de change", "qui a gagné", "le pointage", "la météo", "qui est le premier ministre".
             """\bdernieres nouvelles\b""", """\bnouvelles (sur|de|du|des|concernant|a propos|dans)\b""",
             """\bquelles sont les nouvelles\b""", """\bl?actualites?\b""", """\bl?actu\b""", """\bmanchettes?\b""", """\ble dernier (sur|de)\b""",
@@ -746,7 +746,7 @@ object PreRouter {
      * with Robot as the weather did.
      */
     fun signal(question: String, localWeather: Boolean = false, localWeb: Boolean = false): Signal? {
-        val t = ClaudeRouter.plain(question).replace(Regex("[^a-z0-9]+"), " ").trim()
+        val t = HelperRouter.plain(question).replace(Regex("[^a-z0-9]+"), " ").trim()
         if (t.isEmpty() || LOCAL.containsMatchIn(t)) return null
         val rest = EVERYDAY.fold(t) { acc, r -> r.replace(acc, " ") }.let { if (localWeather) WEATHER_WORDS.replace(it, " ") else it }
         SIGNALS.firstOrNull { it.second.containsMatchIn(rest) }?.let { (signal, _) ->
@@ -777,7 +777,7 @@ object Hedge {
         """\bi (dont|do not) have (the )?(ability|capability|means|capacity|tools|any way|a way) to\b""",
         """\bi (dont|do not) have (any |enough |specific |reliable |current |up to date |recent |real time |live )?(access|internet|web|online|information|data|details|knowledge|info)\b""",
         """\b(no|without) (internet|web|online|real time) access\b""", """\b(beyond|outside( of)?) my (capabilities|abilities|knowledge|scope)\b""",
-        // French, without accents or apostrophes (ClaudeRouter.plain): "je ne sais pas", "je sais pas", "je ne suis pas sûr",
+        // French, without accents or apostrophes (HelperRouter.plain): "je ne sais pas", "je sais pas", "je ne suis pas sûr",
         // "je ne peux pas", "je peux pas" (Québec), "je ne suis pas en mesure", "chu pas capable", "je n'ai pas accès",
         // "j'ai pas accès", "en tant qu'IA".
         """\bje (ne )?sais pas\b""", """\b(chais|jsais|chsais) pas\b""", """\bje (ne )?suis pas (sur|sure|certain|certaine)\b""",
@@ -807,7 +807,7 @@ object Hedge {
         """\b(informations?|nouvelles|donnees|evenements) (actuelles|actuels|recentes|recents|a jour|du jour)\b""", """\bl?actualites?\b""",
     ).joinToString("|"))
 
-    private fun words(reply: String): String = ClaudeRouter.plain(reply).replace(Regex("[^a-z0-9]+"), " ").trim()
+    private fun words(reply: String): String = HelperRouter.plain(reply).replace(Regex("[^a-z0-9]+"), " ").trim()
 
     fun detect(reply: String): Boolean {
         val t = words(reply)

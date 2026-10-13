@@ -196,7 +196,7 @@ object CardAnswer {
     fun of(text: String, wakePhrases: List<String> = emptyList()): Kind? {
         if (text.isBlank()) return null
         if (TextCommand.cancelKind(text, wakePhrases) != null) return Kind.NO
-        val w = ClaudeRouter.plain(TextCommand.stripWake(text, wakePhrases, loose = true)).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+        val w = HelperRouter.plain(TextCommand.stripWake(text, wakePhrases, loose = true)).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
         if (w.isEmpty() || w.size > MAX_WORDS) return null
         var i = 0
         var yes = false

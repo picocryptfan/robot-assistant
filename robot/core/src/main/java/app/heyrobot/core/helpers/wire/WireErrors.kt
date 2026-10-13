@@ -1,6 +1,6 @@
 package app.heyrobot.core.helpers.wire
 
-import app.heyrobot.core.ClaudeFailure
+import app.heyrobot.core.HelperFailure
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -15,7 +15,7 @@ import org.json.JSONObject
  */
 data class WireError(val type: String?, val code: String?, val param: String? = null) {
     /** Robot's words for it with HTTP [status] (200 for an error inside a stream). */
-    fun failure(status: Int?): ClaudeFailure = ClaudeFailure.of(status, type, code)
+    fun failure(status: Int?): HelperFailure = HelperFailure.of(status, type, code)
 }
 
 object WireErrors {

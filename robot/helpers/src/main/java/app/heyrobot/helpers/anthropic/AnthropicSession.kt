@@ -1,30 +1,32 @@
 package app.heyrobot.helpers.anthropic
 
-import app.heyrobot.core.ClaudeAttempt
-import app.heyrobot.core.ClaudeBlock
-import app.heyrobot.core.ClaudeCost
-import app.heyrobot.core.ClaudeEffortSetting
-import app.heyrobot.core.ClaudeEnd
-import app.heyrobot.core.ClaudeErrorKind
-import app.heyrobot.core.ClaudeFail
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudeModel
-import app.heyrobot.core.ClaudeModelCode
-import app.heyrobot.core.ClaudePlan
-import app.heyrobot.core.ClaudePrompt
-import app.heyrobot.core.ClaudeStage
-import app.heyrobot.core.ClaudeUsage
-import app.heyrobot.core.DoneReason
-import app.heyrobot.core.ModelOutcome
+import app.heyrobot.core.AnthropicAttempt
+import app.heyrobot.core.AnthropicCost
+import app.heyrobot.core.AnthropicErrorKind
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.AnthropicModelCode
+import app.heyrobot.core.AnthropicStage
+import app.heyrobot.core.HelperBlock
+import app.heyrobot.core.HelperContext
+import app.heyrobot.core.HelperEffortSetting
+import app.heyrobot.core.HelperEnd
+import app.heyrobot.core.HelperFail
+import app.heyrobot.core.HelperFailure
+import app.heyrobot.core.HelperPlan
+import app.heyrobot.core.HelperPrompt
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.TokenEstimate
+import app.heyrobot.core.TokenUsage
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolSpec
 import app.heyrobot.core.TurnModel
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
+import app.heyrobot.helpers.HelperOutcome
 import app.heyrobot.helpers.HelperSession
+import app.heyrobot.helpers.HelperTurnListener
+import app.heyrobot.helpers.HelperTurnReport
 import com.anthropic.core.JsonValue
 import com.anthropic.core.http.StreamResponse
 import com.anthropic.errors.AnthropicServiceException
@@ -33,6 +35,9 @@ import com.anthropic.models.beta.messages.BetaMessage
 import com.anthropic.models.beta.messages.BetaMessageParam
 import com.anthropic.models.beta.messages.BetaRawMessageDeltaEvent
 import com.anthropic.models.beta.messages.BetaRawMessageStreamEvent
+import java.net.URI
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -40,9 +45,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import java.net.URI
-import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.atomic.AtomicReference
 
 // VOICE PROCESS ONLY. One conversation with Claude: a one-shot question, or Claude mode (docs/ask-claude.md). Every
 // request streams; text deltas go to the listener as they arrive (the panel feeds them to the sentence splitter and the
@@ -50,66 +52,12 @@ import java.util.concurrent.atomic.AtomicReference
 // blocks), so the prompt cache and the preserved thinking stay valid: a turn paused by a long search continues in the
 // same assistant message, and only blocks at the very end are ever removed. A question that fails, is declined or is
 // stopped leaves no trace; tool rounds that really ran stay, with their results, until a later request carries them.
-// Before every request the history is checked (ClaudeHistory.check): one the API would refuse ends the conversation
+// Before every request the history is checked (AnthropicHistory.check): one the API would refuse ends the conversation
 // with a plain message instead.
 
-/**
- * What a helper's turn tells the panel while it streams (every helper since 0.6.0). Called on the caller's coroutine
- * (the panel's main thread).
- */
-interface ClaudeListener {
-    /** More of Claude's reply. */
-    fun text(delta: String)
-
-    /** Claude declined (`stop_reason == "refusal"`): what was shown of this reply is withdrawn. */
-    fun declined()
-
-    /** Claude started thinking (a thinking block opened): "Claude is thinking…" until its words arrive. */
-    fun thinking() {}
-
-    /** 0.6.0: a server on your network sent nothing for a while: it is probably loading its model ("… is loading its model…"). */
-    fun loading() {}
-
-    /**
-     * More of the turn's estimated price became known (a request's input as it starts, the rest as it ends, or an
-     * estimate when it was stopped or failed): the panel adds it to today's spend at once.
-     */
-    fun spent(dollars: Double) {}
-}
-
-/** How one ask or answer ended (every helper's, since 0.6.0). */
-sealed class ClaudeOutcome {
-    /** [cut]: stopped at max_tokens (or the context window), or after too many search continuations. */
-    data class Done(val cut: Boolean = false) : ClaudeOutcome()
-
-    /** Claude asks Robot to act; the results go back through [ClaudeSession.answer]. */
-    data class Calls(val calls: List<RawToolCall>) : ClaudeOutcome()
-
-    data object Declined : ClaudeOutcome()
-
-    data class Failed(val failure: ClaudeFailure) : ClaudeOutcome()
-}
-
-/** A turn's numbers, for the cost line, the daily budget and the log (no content). */
-data class ClaudeTurnReport(
-    val dollars: Double = 0.0,
-    val usage: ClaudeUsage = ClaudeUsage(),
-    val requests: Int = 0,
-    /** The web domains Claude's searches returned ("Claude searched the web"). */
-    val domains: List<String> = emptyList(),
-    val searches: Int = 0,
-    /** Web search results that came back as an error object. */
-    val searchErrors: Int = 0,
-    /**
-     * 0.6.0: Robot could tell what the turn cost. False for a helper whose price isn't known (nothing is added to the
-     * spend, and the cost line says "cost unknown").
-     */
-    val costKnown: Boolean = true,
-)
-
-class ClaudeSession(
-    private val client: ClaudeClient,
-    val model: ClaudeModel,
+class AnthropicSession(
+    private val client: AnthropicClient,
+    val model: AnthropicModel,
     private val tools: List<ToolSpec>,
     private val search: Boolean,
     /** Claude mode: the request's automatic cache breakpoint follows the last message, and the effort stays the same. */
@@ -118,13 +66,13 @@ class ClaudeSession(
     private val idleMs: Long = IDLE_MS,
     private val retryDelayMs: Long = 1_000,
     /**
-     * The system prompt: ClaudePrompt.SYSTEM (spoken answers), or ClaudePrompt.TRANSCRIPT_SYSTEM for a transcript's
+     * The system prompt: HelperPrompt.SYSTEM (spoken answers), or HelperPrompt.TRANSCRIPT_SYSTEM for a transcript's
      * summary (0.5.0, docs/conversation-mode.md 7.2: one question, no tools, no search).
      */
-    private val system: String = ClaudePrompt.SYSTEM,
+    private val system: String = HelperPrompt.SYSTEM,
 ) : HelperSession {
     private val messages = mutableListOf<BetaMessageParam>()
-    /** Each message's thinking blocks as they came ([ClaudeHistory.seal]); empty for the user's. */
+    /** Each message's thinking blocks as they came ([AnthropicHistory.seal]); empty for the user's. */
     private val seals = mutableListOf<List<String>>()
     /** The history as the question under way found it: a failed, declined or stopped question goes back to this. */
     private var before: List<BetaMessageParam> = emptyList()
@@ -133,54 +81,54 @@ class ClaudeSession(
     private var keep = -1
     /** Claude's tool_use ids waiting for results, in order. */
     private var pending: List<String> = emptyList()
-    private var plan: ClaudePlan = ClaudePlan.of(ClaudeEffortSetting.AUTO, voice = true, deep = false)
+    private var plan: HelperPlan = HelperPlan.of(HelperEffortSetting.AUTO, voice = true, deep = false)
     /** Claude mode's first plan: its effort holds for the whole conversation (a change would restart the cache). */
-    private var firstPlan: ClaudePlan? = null
-    private var report = ClaudeTurnReport()
+    private var firstPlan: HelperPlan? = null
+    private var report = HelperTurnReport()
 
     /** Messages so far (tests read the shape; the panel never does). */
     internal val history: List<BetaMessageParam> get() = messages.toList()
 
-    /** What [ClaudeHistory.check] would say about the next question's request (tests). */
+    /** What [AnthropicHistory.check] would say about the next question's request (tests). */
     internal fun problem(): String? = when {
         messages.isEmpty() -> null
-        messages.last().role() == BetaMessageParam.Role.USER -> ClaudeHistory.check(messages, seals)
-        else -> ClaudeHistory.check(messages + ClaudeHistory.message(BetaMessageParam.Role.USER, listOf(ClaudeHistory.text("next"))), seals + listOf(emptyList()))
+        messages.last().role() == BetaMessageParam.Role.USER -> AnthropicHistory.check(messages, seals)
+        else -> AnthropicHistory.check(messages + AnthropicHistory.message(BetaMessageParam.Role.USER, listOf(AnthropicHistory.text("next"))), seals + listOf(emptyList()))
     }
 
     /** Nothing has been said to Claude in this conversation yet (Claude mode's first question carries what came before). */
     override val fresh: Boolean get() = messages.isEmpty()
 
     /** The numbers of the last turn ([ask] starts a new one). */
-    override val lastReport: ClaudeTurnReport get() = report
+    override val lastReport: HelperTurnReport get() = report
 
     override val offered: Set<ToolName> = tools.map { it.tool }.toSet()
 
-    /** A new question: [blocks] from ClaudeContext. */
-    override suspend fun ask(blocks: List<ClaudeBlock>, plan: ClaudePlan, listener: ClaudeListener): ClaudeOutcome {
+    /** A new question: [blocks] from HelperContext. */
+    override suspend fun ask(blocks: List<HelperBlock>, plan: HelperPlan, listener: HelperTurnListener): HelperOutcome {
         // The last turn was stopped while a card waited and nobody said what ran: nothing did.
         if (pending.isNotEmpty()) abandon(emptyList(), stopped = true)
         this.plan = if (!conversation) plan else firstPlan?.let { plan.keeping(it) } ?: plan.also { firstPlan = it }
-        report = ClaudeTurnReport()
+        report = HelperTurnReport()
         before = messages.toList()
         beforeSeals = seals.toList()
         keep = -1
         val last = messages.lastOrNull()
         if (last != null && last.role() == BetaMessageParam.Role.USER) {
             // Results of a turn that ended before Claude answered them: the question joins their message.
-            messages[messages.lastIndex] = ClaudeRequests.user(blocks, before = ClaudeHistory.blocks(last))
+            messages[messages.lastIndex] = AnthropicRequests.user(blocks, before = AnthropicHistory.blocks(last))
         } else {
-            messages += ClaudeRequests.user(blocks)
+            messages += AnthropicRequests.user(blocks)
             seals += emptyList<String>()
         }
         return run(listener)
     }
 
     /** The results of Claude's calls, in the order it asked ([TurnModel.answer]). */
-    override suspend fun answer(results: List<Map<String, Any?>>, listener: ClaudeListener): ClaudeOutcome {
+    override suspend fun answer(results: List<Map<String, Any?>>, listener: HelperTurnListener): HelperOutcome {
         val ids = pending
         pending = emptyList()
-        messages += ClaudeHistory.message(BetaMessageParam.Role.USER, ClaudeRequests.results(ids, results))
+        messages += AnthropicHistory.message(BetaMessageParam.Role.USER, AnthropicRequests.results(ids, results))
         seals += emptyList<String>()
         // This round really ran: whatever happens to the rest of the turn, Claude will hear about it.
         keep = messages.size
@@ -200,7 +148,7 @@ class ClaudeSession(
         }
         val why = if (stopped) "The user stopped before this ran." else "The turn ended before this ran."
         val filled = pending.indices.map { i -> results.getOrNull(i) ?: mapOf("status" to "not_done", "detail" to why) }
-        messages += ClaudeHistory.message(BetaMessageParam.Role.USER, ClaudeRequests.results(pending, filled))
+        messages += AnthropicHistory.message(BetaMessageParam.Role.USER, AnthropicRequests.results(pending, filled))
         seals += emptyList<String>()
         pending = emptyList()
         keep = messages.size
@@ -223,7 +171,7 @@ class ClaudeSession(
         if (messages.isEmpty()) firstPlan = null
     }
 
-    private suspend fun run(listener: ClaudeListener): ClaudeOutcome {
+    private suspend fun run(listener: HelperTurnListener): HelperOutcome {
         var continuations = 0
         var retried = false
         // The history ends with Claude's paused turn, sent back as it is.
@@ -231,10 +179,10 @@ class ClaudeSession(
         try {
             while (true) {
                 // A request the API would refuse is never sent: Claude mode starts over instead.
-                ClaudeHistory.check(messages, seals, paused)?.let { problem ->
+                AnthropicHistory.check(messages, seals, paused)?.let { problem ->
                     RLog.i("claude_history", "problem" to RLog.Code(problem))
                     rollBack()
-                    return ClaudeOutcome.Failed(ClaudeFailure.RESET)
+                    return HelperOutcome.Failed(HelperFailure.RESET)
                 }
                 val r = stream(listener)
                 report = report.copy(requests = report.requests + 1)
@@ -248,7 +196,7 @@ class ClaudeSession(
                             continue
                         }
                         rollBack()
-                        return ClaudeOutcome.Failed(r.failure)
+                        return HelperOutcome.Failed(r.failure)
                     }
                     is Streamed.Ok -> {
                         report = report.copy(
@@ -260,7 +208,7 @@ class ClaudeSession(
                             "refusal" -> {
                                 rollBack()
                                 listener.declined()
-                                return ClaudeOutcome.Declined
+                                return HelperOutcome.Declined
                             }
                             "pause_turn" -> {
                                 // A server-side search loop paused: the turn goes back as it is and continues in the same
@@ -268,7 +216,7 @@ class ClaudeSession(
                                 append(r.blocks)
                                 if (++continuations > MAX_CONTINUATIONS) {
                                     closeLast()
-                                    return ClaudeOutcome.Done(cut = true)
+                                    return HelperOutcome.Done(cut = true)
                                 }
                                 paused = true
                                 continue
@@ -276,18 +224,18 @@ class ClaudeSession(
                             "tool_use" -> if (r.calls.isNotEmpty()) {
                                 append(r.blocks)
                                 pending = r.calls.map { it.first }
-                                return ClaudeOutcome.Calls(r.calls.map { it.second })
+                                return HelperOutcome.Calls(r.calls.map { it.second })
                             }
                             // A reply cut off mid-call never runs its calls, and the cut call leaves the history.
                             "max_tokens", "model_context_window_exceeded" -> {
                                 append(r.blocks)
                                 closeLast()
-                                return ClaudeOutcome.Done(cut = true)
+                                return HelperOutcome.Done(cut = true)
                             }
                         }
                         append(r.blocks)
                         if (r.calls.isNotEmpty()) closeLast()
-                        return ClaudeOutcome.Done()
+                        return HelperOutcome.Done()
                     }
                 }
             }
@@ -301,29 +249,29 @@ class ClaudeSession(
     private fun append(blocks: List<BetaContentBlockParam>) {
         val last = messages.lastOrNull()
         if (last != null && last.role() == BetaMessageParam.Role.ASSISTANT) {
-            messages[messages.lastIndex] = ClaudeHistory.message(BetaMessageParam.Role.ASSISTANT, ClaudeHistory.blocks(last) + blocks)
-            seals[seals.lastIndex] = seals.last() + ClaudeHistory.seal(blocks)
+            messages[messages.lastIndex] = AnthropicHistory.message(BetaMessageParam.Role.ASSISTANT, AnthropicHistory.blocks(last) + blocks)
+            seals[seals.lastIndex] = seals.last() + AnthropicHistory.seal(blocks)
         } else {
-            messages += ClaudeHistory.message(BetaMessageParam.Role.ASSISTANT, blocks)
-            seals += ClaudeHistory.seal(blocks)
+            messages += AnthropicHistory.message(BetaMessageParam.Role.ASSISTANT, blocks)
+            seals += AnthropicHistory.seal(blocks)
         }
     }
 
-    /** The last assistant message without the calls left unanswered at its end ([ClaudeHistory.closed]). */
+    /** The last assistant message without the calls left unanswered at its end ([AnthropicHistory.closed]). */
     private fun closeLast() {
         val i = messages.lastIndex
         if (i < 0 || messages[i].role() != BetaMessageParam.Role.ASSISTANT) return
-        val b = ClaudeHistory.closed(ClaudeHistory.blocks(messages[i]))
-        messages[i] = ClaudeHistory.message(BetaMessageParam.Role.ASSISTANT, b)
-        seals[i] = ClaudeHistory.seal(b)
+        val b = AnthropicHistory.closed(AnthropicHistory.blocks(messages[i]))
+        messages[i] = AnthropicHistory.message(BetaMessageParam.Role.ASSISTANT, b)
+        seals[i] = AnthropicHistory.seal(b)
     }
 
     /** One request's usage as the stream reported it so far: the model that served it, the totals, the attempts. */
-    private class Usage(val model: String?, val total: ClaudeUsage, val attempts: List<ClaudeAttempt>, val final: Boolean)
+    private class Usage(val model: String?, val total: TokenUsage, val attempts: List<AnthropicAttempt>, val final: Boolean)
 
     private sealed class Streamed {
         /**
-         * [blocks]: Claude's turn as it goes back (ClaudeHistory.echo). [calls]: its tool_use blocks (id, call), never one
+         * [blocks]: Claude's turn as it goes back (AnthropicHistory.echo). [calls]: its tool_use blocks (id, call), never one
          * from an attempt a fallback replaced.
          */
         class Ok(val blocks: List<BetaContentBlockParam>, val stop: String?, val calls: List<Pair<String, RawToolCall>>,
@@ -331,10 +279,10 @@ class ClaudeSession(
 
         /**
          * [shown]: some text had reached the user already (then it is never retried: it would be said twice). [stage],
-         * [status] and [kind]: where it broke, for the voice log when it is [ClaudeFailure.UNKNOWN].
+         * [status] and [kind]: where it broke, for the voice log when it is [HelperFailure.UNKNOWN].
          */
-        class Failure(val failure: ClaudeFailure, val shown: Boolean, val stage: ClaudeStage? = null, val status: Int = 0,
-            val kind: ClaudeErrorKind? = null) : Streamed()
+        class Failure(val failure: HelperFailure, val shown: Boolean, val stage: AnthropicStage? = null, val status: Int = 0,
+            val kind: AnthropicErrorKind? = null) : Streamed()
     }
 
     private sealed class Event {
@@ -343,7 +291,7 @@ class ClaudeSession(
         class Alive(val thinking: Boolean, val started: Boolean) : Event()
         class Used(val usage: Usage) : Event()
         class Finished(val ok: Streamed) : Event()
-        class Error(val t: Throwable, val stage: ClaudeStage) : Event()
+        class Error(val t: Throwable, val stage: AnthropicStage) : Event()
         /** The request ended without an answer and without an exception: the stream stopped before Claude finished. */
         class Cut : Event()
     }
@@ -353,19 +301,19 @@ class ClaudeSession(
      * read on the caller's coroutine, so a Stop cancels at once; the stream is closed off the main thread. Its usage is
      * counted however it ends.
      */
-    private suspend fun stream(listener: ClaudeListener): Streamed {
+    private suspend fun stream(listener: HelperTurnListener): Streamed {
         val params = try {
-            ClaudeRequests.params(model, plan, tools, search, conversation, messages.toList(), system)
+            AnthropicRequests.params(model, plan, tools, search, conversation, messages.toList(), system)
         } catch (t: Exception) {
-            RLog.w("claude_request", t, "stage" to ClaudeStage.REQUEST)
-            return Streamed.Failure(ClaudeFailure.UNKNOWN, false, ClaudeStage.REQUEST, 0, ClaudeClient.kind(t)).also(::logFailure)
+            RLog.w("claude_request", t, "stage" to AnthropicStage.REQUEST)
+            return Streamed.Failure(HelperFailure.UNKNOWN, false, AnthropicStage.REQUEST, 0, AnthropicClient.kind(t)).also(::logFailure)
         }
         val events = Channel<Event>(Channel.UNLIMITED)
         val gone = AtomicBoolean(false)
         val open = AtomicReference<StreamResponse<BetaRawMessageStreamEvent>?>(null)
         val worker = Thread({
             // Where a throwable would come from: the request, the SDK reading the stream, or Robot's own reading.
-            var stage = ClaudeStage.OPENING
+            var stage = AnthropicStage.OPENING
             try {
                 val resp = client.sdk.beta().messages().createStreaming(params)
                 open.set(resp)
@@ -374,11 +322,11 @@ class ClaudeSession(
                     resp.close()
                     return@Thread
                 }
-                val reply = ClaudeReply()
+                val reply = AnthropicReply()
                 val watch = UsageWatch()
                 var thinking = false
                 var skipped = 0
-                stage = ClaudeStage.SDK
+                stage = AnthropicStage.SDK
                 resp.use { s ->
                     s.stream().forEach { e ->
                         if (gone.get()) throw CancellationException()
@@ -412,11 +360,11 @@ class ClaudeSession(
                         events.trySend(if (text.isNotEmpty()) Event.Text(text) else Event.Alive(thinking, started))
                     }
                 }
-                stage = ClaudeStage.ROBOT
+                stage = AnthropicStage.ROBOT
                 val done = reply.done()
                 events.trySend(if (done.complete) Event.Finished(finish(done)) else Event.Cut())
             } catch (t: Throwable) {
-                if (!gone.get()) events.trySend(Event.Error(t, if (t is AnthropicServiceException) ClaudeStage.HTTP else stage))
+                if (!gone.get()) events.trySend(Event.Error(t, if (t is AnthropicServiceException) AnthropicStage.HTTP else stage))
             } finally {
                 events.close()
             }
@@ -433,10 +381,10 @@ class ClaudeSession(
         var heard = false
         var ended: Streamed? = null
         fun end(r: Streamed): Streamed { ended = r; return r }
-        VoiceLog.add(VoiceEvent.CLAUDE_SENT, report.requests, ClaudeModelCode.of(model).id)
+        VoiceLog.add(VoiceEvent.CLAUDE_SENT, report.requests, AnthropicModelCode.of(model).id)
         // The request's price so far: added to the report and to today's spend as soon as it is known.
         fun count(u: Usage) {
-            val d = ClaudeCost.request(model, u.model, u.total, u.attempts)
+            val d = AnthropicCost.request(model, u.model, u.total, u.attempts)
             if (d > counted) {
                 listener.spent(d - counted)
                 report = report.copy(dollars = report.dollars + (d - counted))
@@ -450,7 +398,7 @@ class ClaudeSession(
                 val next: Event? = if (thinking) {
                     events.receiveCatching().getOrNull()
                 } else {
-                    val r = withTimeoutOrNull(idleMs) { events.receiveCatching() } ?: return end(Streamed.Failure(ClaudeFailure.TIMEOUT, shown))
+                    val r = withTimeoutOrNull(idleMs) { events.receiveCatching() } ?: return end(Streamed.Failure(HelperFailure.TIMEOUT, shown))
                     r.getOrNull()
                 }
                 if (!heard && (next is Event.Alive || next is Event.Text || next is Event.Used)) {
@@ -459,10 +407,10 @@ class ClaudeSession(
                 }
                 when (next) {
                     // The worker always ends with Finished, Cut or Error: a channel closed without any means it died.
-                    null -> return end(Streamed.Failure(ClaudeFailure.UNKNOWN, shown, ClaudeStage.WORKER))
+                    null -> return end(Streamed.Failure(HelperFailure.UNKNOWN, shown, AnthropicStage.WORKER))
                     is Event.Cut -> {
-                        RLog.i("claude_request", "failure" to ClaudeFailure.UNKNOWN, "stage" to ClaudeStage.CLOSED)
-                        return end(Streamed.Failure(ClaudeFailure.UNKNOWN, shown, ClaudeStage.CLOSED))
+                        RLog.i("claude_request", "failure" to HelperFailure.UNKNOWN, "stage" to AnthropicStage.CLOSED)
+                        return end(Streamed.Failure(HelperFailure.UNKNOWN, shown, AnthropicStage.CLOSED))
                     }
                     is Event.Alive -> {
                         thinking = next.thinking
@@ -480,9 +428,9 @@ class ClaudeSession(
                     }
                     is Event.Finished -> return end(next.ok)
                     is Event.Error -> {
-                        val f = ClaudeClient.failure(next.t)
+                        val f = AnthropicClient.failure(next.t)
                         RLog.w("claude_request", next.t, "failure" to f, "stage" to next.stage)
-                        return end(Streamed.Failure(f, shown, next.stage, (next.t as? AnthropicServiceException)?.statusCode() ?: 0, ClaudeClient.kind(next.t)))
+                        return end(Streamed.Failure(f, shown, next.stage, (next.t as? AnthropicServiceException)?.statusCode() ?: 0, AnthropicClient.kind(next.t)))
                     }
                 }
             }
@@ -491,9 +439,9 @@ class ClaudeSession(
             gone.set(true)
             val ms = (System.currentTimeMillis() - t0).toInt()
             when (val e = ended) {
-                is Streamed.Ok -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, ClaudeEnd.of(e.stop).id, said.length)
+                is Streamed.Ok -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, HelperEnd.of(e.stop).id, said.length)
                 is Streamed.Failure -> logFailure(e)
-                null -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, ClaudeEnd.STOPPED.id, said.length)
+                null -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, HelperEnd.STOPPED.id, said.length)
             }
             withContext(NonCancellable + Dispatchers.IO) {
                 try { open.get()?.close() } catch (_: Throwable) {}
@@ -504,10 +452,10 @@ class ClaudeSession(
             if (u != null) {
                 val final = if (u.final) u else Usage(u.model, u.total.copy(output = maxOf(u.total.output, TokenEstimate.text(said.toString()).toLong())), u.attempts, false)
                 count(final)
-                val used = ClaudeCost.used(final.total, final.attempts)
+                val used = AnthropicCost.used(final.total, final.attempts)
                 val all = report.usage
                 report = report.copy(
-                    usage = ClaudeUsage(all.input + used.input, all.output + used.output, all.cacheRead + used.cacheRead, all.cacheWrite + used.cacheWrite, all.searches + used.searches),
+                    usage = TokenUsage(all.input + used.input, all.output + used.output, all.cacheRead + used.cacheRead, all.cacheWrite + used.cacheWrite, all.searches + used.searches),
                     searches = report.searches + used.searches.toInt(),
                 )
                 // Numbers only: token counts, whether the cache was read, who served it, how it ended.
@@ -521,23 +469,23 @@ class ClaudeSession(
     /** Builds a request's [Usage] from message_start and message_delta (the worker thread's). */
     private class UsageWatch {
         private var model: String? = null
-        private var total = ClaudeUsage()
-        private var attempts: List<ClaudeAttempt> = emptyList()
+        private var total = TokenUsage()
+        private var attempts: List<AnthropicAttempt> = emptyList()
 
         fun start(m: BetaMessage): Usage? {
             model = try { m.model().asString() } catch (_: Throwable) { null }
             val u = m.usage()
-            total = ClaudeUsage(u.inputTokens(), u.outputTokens(), u.cacheReadInputTokens().orElse(0L), u.cacheCreationInputTokens().orElse(0L),
+            total = TokenUsage(u.inputTokens(), u.outputTokens(), u.cacheReadInputTokens().orElse(0L), u.cacheCreationInputTokens().orElse(0L),
                 u.serverToolUse().map { it.webSearchRequests() }.orElse(0L))
-            attempts = u.iterations().orElse(emptyList()).map { ClaudeAttempt(it.model().map { m2 -> m2.asString() }.orElse(null),
-                ClaudeUsage(it.inputTokens(), it.outputTokens(), it.cacheReadInputTokens(), it.cacheCreationInputTokens())) }
+            attempts = u.iterations().orElse(emptyList()).map { AnthropicAttempt(it.model().map { m2 -> m2.asString() }.orElse(null),
+                TokenUsage(it.inputTokens(), it.outputTokens(), it.cacheReadInputTokens(), it.cacheCreationInputTokens())) }
             return Usage(model, total, attempts, final = false)
         }
 
         /** message_delta's counts are the request's totals so far. */
         fun delta(d: BetaRawMessageDeltaEvent): Usage {
             val u = d.usage()
-            total = ClaudeUsage(
+            total = TokenUsage(
                 input = u.inputTokens().orElse(total.input),
                 output = u.outputTokens(),
                 cacheRead = u.cacheReadInputTokens().orElse(total.cacheRead),
@@ -545,15 +493,15 @@ class ClaudeSession(
                 searches = u.serverToolUse().map { it.webSearchRequests() }.orElse(total.searches),
             )
             u.iterations().ifPresent { list ->
-                attempts = list.map { ClaudeAttempt(it.model().map { m2 -> m2.asString() }.orElse(null),
-                    ClaudeUsage(it.inputTokens(), it.outputTokens(), it.cacheReadInputTokens(), it.cacheCreationInputTokens())) }
+                attempts = list.map { AnthropicAttempt(it.model().map { m2 -> m2.asString() }.orElse(null),
+                    TokenUsage(it.inputTokens(), it.outputTokens(), it.cacheReadInputTokens(), it.cacheCreationInputTokens())) }
             }
             return Usage(model, total, attempts, final = d.delta().stopReason().isPresent)
         }
     }
 
     /** The finished reply: its stop reason, the turn as it goes back, the calls, the sources' domains. */
-    private fun finish(reply: ClaudeReply.Done): Streamed.Ok {
+    private fun finish(reply: AnthropicReply.Done): Streamed.Ok {
         val stop = reply.stop
         val content = reply.content
         if (reply.whole + reply.fromCode + reply.leftOut > 0) {
@@ -581,15 +529,15 @@ class ClaudeSession(
         } catch (_: Exception) {
             // The sources line is a nicety: a result Robot can't read only leaves its domains out.
         }
-        val blocks = ClaudeHistory.echo(content.map { it.toParam() }).ifEmpty { listOf(ClaudeHistory.text("…")) }
+        val blocks = AnthropicHistory.echo(content.map { it.toParam() }).ifEmpty { listOf(AnthropicHistory.text("…")) }
         if (boundary >= 0) RLog.i("claude_fallback", "served" to RLog.Code(reply.model ?: "none"))
         return Streamed.Ok(blocks, stop, calls, domains.distinct(), searchErrors)
     }
 
     /** A failed request in the voice log: why, and for "Something went wrong" where it broke (numbers and codes only). */
     private fun logFailure(f: Streamed.Failure) {
-        VoiceLog.add(VoiceEvent.CLAUDE_FAILED, ClaudeFail.of(f.failure))
-        if (f.failure == ClaudeFailure.UNKNOWN) VoiceLog.add(VoiceEvent.CLAUDE_UNKNOWN, f.stage?.id ?: 0, f.status, f.kind?.id ?: 0)
+        VoiceLog.add(VoiceEvent.CLAUDE_FAILED, HelperFail.of(f.failure))
+        if (f.failure == HelperFailure.UNKNOWN) VoiceLog.add(VoiceEvent.CLAUDE_UNKNOWN, f.stage?.id ?: 0, f.status, f.kind?.id ?: 0)
     }
 
     companion object {
@@ -619,43 +567,5 @@ class ClaudeSession(
 
         /** "en.wikipedia.org" from a result's URL, without "www.". */
         internal fun host(url: String): String? = try { URI(url).host?.lowercase()?.removePrefix("www.")?.takeIf { it.isNotEmpty() } } catch (_: Exception) { null }
-    }
-}
-
-/**
- * A helper as a [TurnModel] (Claude's, and every helper's since 0.6.0): the turn runner shows the helper's calls as cards
- * (remote = true) and sends their results back. [first]: the question's blocks.
- */
-class ClaudeTurn(
-    private val session: HelperSession,
-    private val first: List<ClaudeBlock>,
-    private val plan: ClaudePlan,
-    private val listener: ClaudeListener,
-    /** How a failure is said: Claude's words, or another helper's (HelperWho). */
-    private val say: (ClaudeFailure) -> String = { it.text },
-) : TurnModel {
-    /** Why the last request failed, if it did (a server that can't be reached may give the question back to Robot). */
-    var failure: ClaudeFailure? = null
-        private set
-
-    override suspend fun ask(): ModelOutcome = outcome(session.ask(first, plan, listener))
-
-    override suspend fun answer(results: List<Pair<String, Map<String, Any?>>>): ModelOutcome = outcome(session.answer(results.map { it.second }, listener))
-
-    override fun close() = session.abandon()
-
-    override fun abandon(results: List<Pair<String, Map<String, Any?>>>) = session.abandon(results.map { it.second })
-
-    override fun stopped(results: List<Pair<String, Map<String, Any?>>>) = session.abandon(results.map { it.second }, stopped = true)
-
-    private fun outcome(o: ClaudeOutcome): ModelOutcome = when (o) {
-        is ClaudeOutcome.Done -> ModelOutcome.Done(if (o.cut) DoneReason.LENGTH else DoneReason.END)
-        is ClaudeOutcome.Calls -> ModelOutcome.Calls(o.calls)
-        // The listener already put "Claude declined that one." in place of the reply.
-        ClaudeOutcome.Declined -> ModelOutcome.Done(DoneReason.END)
-        is ClaudeOutcome.Failed -> {
-            failure = o.failure
-            ModelOutcome.Failed(say(o.failure))
-        }
     }
 }

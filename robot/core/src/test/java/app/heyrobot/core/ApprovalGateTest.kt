@@ -144,7 +144,7 @@ class ApprovalGateTest {
 
     @Test fun claudesActionsHaveTheirOwnSwitch() {
         // On (the default): every call Claude makes shows a card, read tools included.
-        for (t in ClaudeTools.OFFERED) assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, allAuto, content = true, asked = true, remote = true))
+        for (t in HelperTools.OFFERED) assertEquals(t.name, GateDecision.CONFIRM, ApprovalGate.decide(t, false, allAuto, content = true, asked = true, remote = true))
         // Off: the usual rules; Claude's words are content, so what you didn't ask for still asks (under the default).
         val off = allAuto.copy(claudeActionCards = false)
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.SET_TIMER, false, off, content = true, asked = true, remote = true))

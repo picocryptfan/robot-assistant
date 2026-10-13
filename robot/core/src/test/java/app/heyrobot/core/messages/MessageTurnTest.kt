@@ -9,7 +9,7 @@ import app.heyrobot.core.Attachment
 import app.heyrobot.core.Card
 import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.ChatTurn
-import app.heyrobot.core.ClaudeContext
+import app.heyrobot.core.HelperContext
 import app.heyrobot.core.Confirmations
 import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.DoneReason
@@ -180,7 +180,7 @@ class MessageTurnTest {
         assertEquals("New notes", back.turns[2].actions.single().summary)
         assertNull(back.turns[2].actions.single().detail)
         assertTrue(TurnRules.untrusted(back.turns))
-        assertEquals(setOf(Personal.MESSAGES), ClaudeContext.personal(back.turns))
+        assertEquals(setOf(Personal.MESSAGES), HelperContext.personal(back.turns))
         // A turn marked without its placeholder still keeps no words.
         assertEquals(MessageReading.NOT_KEPT, ConversationCodec.fromJson(ConversationCodec.toJson(c.copy(turns = listOf(read.copy(kept = null)))))!!.turns.single().text)
         assertFalse(TurnRules.untrusted(listOf(user)))

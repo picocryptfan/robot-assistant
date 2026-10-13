@@ -1,13 +1,14 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeCost
-import app.heyrobot.core.ClaudeModel
-import org.json.JSONObject
+import app.heyrobot.core.AnthropicCost
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.CostText
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 import kotlin.math.roundToLong
+import org.json.JSONObject
 
 // Pure. What a helper's reply costs (docs/ask-claude.md "Cost", 0.6.0 for every helper). Prices are never guessed: a
 // model's price comes, in this order, from what the provider reported for the request itself (OpenRouter's usage.cost),
@@ -158,14 +159,14 @@ object Pricing {
     fun line(dollars: Double?, free: Boolean = false): String? = when {
         dollars == null -> "cost unknown"
         free && dollars == 0.0 -> null
-        else -> ClaudeCost.line(dollars)
+        else -> CostText.line(dollars)
     }
 }
 
 /**
  * The prices Robot ships, each read from the provider's own pricing page on the day given (never guessed). A model that
  * isn't here has no price until you enter one. Sources, read 2026-10-11:
- * - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing.md ([ClaudeModel] holds them; web search $10 per 1,000).
+ * - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing.md ([AnthropicModel] holds them; web search $10 per 1,000).
  * - OpenAI: https://developers.openai.com/api/docs/pricing.md (Standard; long context over 272K input tokens; web search $10 per 1,000 calls).
  * - Google: https://ai.google.dev/gemini-api/docs/pricing (paid tier; Gemini 3.8 Flash's price through 31 Dec 2026 and from 1 Jan 2027).
  * - DeepSeek: https://api-docs.deepseek.com/quick_start/pricing (off-peak; peak is double, 01:00-04:00 and 06:00-10:00 UTC Monday to
@@ -196,7 +197,7 @@ object PriceTable {
 
     /** By model id. Cache writes: OpenAI's own column; elsewhere the provider prices no write, so it is input. */
     val SHIPPED: Map<String, PriceCard> = buildMap {
-        for (m in ClaudeModel.entries) put(m.id, claude(m))
+        for (m in AnthropicModel.entries) put(m.id, claude(m))
         put("gpt-6-astra", openai(Rates(10.0, 50.0, 1.00, 12.50), Rates(20.0, 75.0, 2.00, 25.0)))
         put("gpt-6.1-sol", openai(Rates(2.0, 10.0, 0.10, 2.50), Rates(4.0, 15.0, 0.20, 5.0)))
         put("gpt-6-luna", openai(Rates(0.10, 0.50, 0.01, 0.125), Rates(0.20, 0.75, 0.02, 0.25)))
@@ -214,13 +215,13 @@ object PriceTable {
         put("grok-4.7", PriceCard(Rates(2.0, 6.0, 0.50, 2.0), Rates(4.0, 12.0, 1.00, 4.0), 200_000, perSearch = 0.005, asOf = AS_OF, source = XAI))
     }
 
-    /** Claude's three (and Fable's) prices as a card, from [ClaudeModel] (the one place they live). */
-    fun claude(m: ClaudeModel): PriceCard {
+    /** Claude's three (and Fable's) prices as a card, from [AnthropicModel] (the one place they live). */
+    fun claude(m: AnthropicModel): PriceCard {
         val p = m.prices(0)
         val l = m.prices(Long.MAX_VALUE)
         val long = if (l != p) Rates(l.input, l.output, l.cacheRead, l.cacheWrite) else null
-        return PriceCard(Rates(p.input, p.output, p.cacheRead, p.cacheWrite), long, if (long != null) ClaudeModel.LONG_PROMPT + 1 else Long.MAX_VALUE,
-            perSearch = ClaudeCost.SEARCH_DOLLARS, asOf = AS_OF, source = ANTHROPIC)
+        return PriceCard(Rates(p.input, p.output, p.cacheRead, p.cacheWrite), long, if (long != null) AnthropicModel.LONG_PROMPT + 1 else Long.MAX_VALUE,
+            perSearch = AnthropicCost.SEARCH_DOLLARS, asOf = AS_OF, source = ANTHROPIC)
     }
 
     fun of(model: String): PriceCard? = SHIPPED[model]

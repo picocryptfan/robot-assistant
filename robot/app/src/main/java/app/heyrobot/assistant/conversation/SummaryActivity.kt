@@ -199,7 +199,7 @@ class SummaryActivity : ComponentActivity() {
                                 ask = null
                                 if (c.toApp) shareToApp(c.card, h).let { note = it } else {
                                     val chars = c.card.blocks.sumOf { b -> b.text.length }
-                                    SummaryJobs.send(this@SummaryActivity, c.card, ClaudeApiHelper(applicationContext, h, chars, budgetUsed(s, h)))
+                                    SummaryJobs.send(this@SummaryActivity, c.card, ApiHelper(applicationContext, h, chars, budgetUsed(s, h)))
                                 }
                             })
                         // Several helpers could summarize: the others, a tap away (each opens its own card, with its own price).
@@ -289,11 +289,11 @@ class SummaryActivity : ComponentActivity() {
         val zone = ZoneId.systemDefault()
         val lang = ConversationSettings.summaryLang(s)
         val region = s.regionFor(app.heyrobot.sys.Phones.deviceRegion(this))
-        val id = ClaudeApiHelper.idFor(h)
+        val id = ApiHelper.idFor(h)
         // The price on the card is estimated from the very text it would send, at the helper's own price.
         val first = ConsentCard.build(id, h.name, Disclosure(h.presetOf.company, null, ""), meta, tr, ZonedDateTime.now(zone), region, lang, zone)
         val chars = first.blocks.sumOf { it.text.length }
-        val card = ConsentCard.build(id, h.name, ClaudeApiHelper(this, h, chars, budgetUsed(s, h)).disclosure, meta, tr, ZonedDateTime.now(zone), region, lang, zone)
+        val card = ConsentCard.build(id, h.name, ApiHelper(this, h, chars, budgetUsed(s, h)).disclosure, meta, tr, ZonedDateTime.now(zone), region, lang, zone)
         return Ask.Card(card, false, h.id, all.filter { it.id != h.id })
     }
 
@@ -303,7 +303,7 @@ class SummaryActivity : ComponentActivity() {
         val zone = ZoneId.systemDefault()
         val lang = ConversationSettings.summaryLang(s)
         val region = s.regionFor(app.heyrobot.sys.Phones.deviceRegion(this))
-        val a = ClaudeAppHelper(this, h)
+        val a = AppShareHelper(this, h)
         return Ask.Card(ConsentCard.build(a.id, "the ${h.presetOf.defaultName} app", a.disclosure, meta, tr, ZonedDateTime.now(zone), region, lang, zone), true, h.id)
     }
 
@@ -315,7 +315,7 @@ class SummaryActivity : ComponentActivity() {
             return ConsentCard.TOO_LONG_FOR_APP
         }
         val job = card.approve(System.currentTimeMillis())
-        val (i, how) = ClaudeAppHelper(this, h).intent(job) ?: return "The $name app isn't there, or doesn't take a share."
+        val (i, how) = AppShareHelper(this, h).intent(job) ?: return "The $name app isn't there, or doesn't take a share."
         return try {
             startActivity(i)
             SummaryJobs.shared(card, how)
@@ -352,7 +352,7 @@ class SummaryActivity : ComponentActivity() {
                 Checkbox(checked = card.anonymized, onCheckedChange = onNames)
                 Text(ConsentCard.TOGGLE, style = MaterialTheme.typography.bodyMedium)
             }
-            val tooLong = if (toApp) ConsentCard.appShare(card) == null else !ConsentCard.apiFits(card.blocks, ClaudeApiHelper.maxInputTokens(h))
+            val tooLong = if (toApp) ConsentCard.appShare(card) == null else !ConsentCard.apiFits(card.blocks, ApiHelper.maxInputTokens(h))
             if (tooLong) Text(if (toApp) ConsentCard.TOO_LONG_FOR_APP else ConsentCard.TOO_LONG_FOR_API, style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End)) {

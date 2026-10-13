@@ -3,7 +3,7 @@ package app.heyrobot.core.memory
 import app.heyrobot.core.Action
 import app.heyrobot.core.ApprovalGate
 import app.heyrobot.core.ChatTurn
-import app.heyrobot.core.ClaudeContext
+import app.heyrobot.core.HelperContext
 import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.GateDecision
@@ -209,9 +209,9 @@ class MemoryWiringTest {
     @Test fun memoryReachesAHelperOnlyThroughTheCard() {
         val turns = listOf(ChatTurn("u1", TurnRole.USER, "When is my sister's birthday?", 1, memoryIds = listOf(julie.id)),
             ChatTurn("r1", TurnRole.ASSISTANT, "May 3.", 2))
-        val p = ClaudeContext.personal(turns)
+        val p = HelperContext.personal(turns)
         assertEquals(setOf(Personal.MEMORY), p)
-        assertEquals("Include the conversation so far? It contains what Robot remembers about you.", ClaudeContext.includeQuestion(turns))
+        assertEquals("Include the conversation so far? It contains what Robot remembers about you.", HelperContext.includeQuestion(turns))
         val s = RobotSettings()
         val trusted = HelperConfig.claude().copy(trust = true)
         // Not with "Send personal content to helpers automatically", not to a trusted helper (the design's default)...
@@ -223,7 +223,7 @@ class MemoryWiringTest {
         assertFalse(HelperTrust.conversation(s, HelperConfig.claude(), p, memoryToTrusted = true))
         assertTrue(HelperTrust.joinWithoutCard(trusted, p, misheard = false, memoryToTrusted = true))
         // Escalating by itself sends only the question.
-        val blocks = ClaudeContext.escalation("What about Leo?", turns, java.time.ZonedDateTime.now(utc), "CA", personal = p,
+        val blocks = HelperContext.escalation("What about Leo?", turns, java.time.ZonedDateTime.now(utc), "CA", personal = p,
             includePersonal = HelperTrust.conversation(s, trusted, p))
         assertEquals(2, blocks.size)
         // A conversation without memory is as before.
@@ -311,7 +311,7 @@ class MemoryWiringTest {
         assertTrue(ToolName.FORGET in ToolRouter.asked("forget what I said about Julie"))
         // Robot's own (not under Settings › Actions), never a helper's.
         assertTrue(ToolName.REMEMBER.internal && ToolName.FORGET.internal)
-        assertFalse(ToolName.REMEMBER in app.heyrobot.core.ClaudeTools.OFFERED || ToolName.FORGET in app.heyrobot.core.ClaudeTools.OFFERED)
+        assertFalse(ToolName.REMEMBER in app.heyrobot.core.HelperTools.OFFERED || ToolName.FORGET in app.heyrobot.core.HelperTools.OFFERED)
     }
 
     @Test fun aMemoryTheModelProposesIsACard() {

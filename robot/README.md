@@ -729,7 +729,7 @@ helpers, the engine hardening and the built-in updater; each has its section bel
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/`, `update/` (main: the updater, Settings › About › Updates) |
 | `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU, the CPU, or since 0.4.7 the GPU for the general Gemma 4 E2B where Robot offers it), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
-| `:helpers` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`ClaudeClient`, `ClaudeRequests`, `ClaudeSession`, `ClaudeHistory`, `ClaudeTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
+| `:helpers` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`AnthropicClient`, `AnthropicRequests`, `AnthropicSession`, `AnthropicHistory`, `HelperTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
 | `:mt` | `:mt` | since 0.5.0, the fast translation engine: `MtService` (Messenger), `BergamotEngine` and `Slimt`, the only code that loads `librobotmt.so` (slimt, built by `tools/build_robotmt.sh`, not in git) |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction; the helpers' presets, rules, prices, address rule and wire formats (`core/helpers/`, 0.6.0) |
 
@@ -2537,7 +2537,7 @@ the build and both directions' files are verified.
   and English. It includes what other people said and the names you gave them."), where ("Goes to: Anthropic (Claude
   Opus 5.5), over the internet, with your API key. ≈ 9¢."), and offers "Replace names with “Speaker 1, 2”" (also where
   the names were said). **The Claude API** (your key; Ask Claude on): one question with its own fixed prompt
-  (`ClaudePrompt.TRANSCRIPT_SYSTEM`), no tools, no web search, medium effort, room for 16,000 tokens; the answer streams,
+  (`HelperPrompt.TRANSCRIPT_SYSTEM`), no tools, no web search, medium effort, room for 16,000 tokens; the answer streams,
   is saved as "Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52.", and its cost is shown and counted in
   the daily budget (which warns, never blocks what you asked for). **The Claude app:** the same text in a share to the
   app (or, if it doesn't take one, on the clipboard marked sensitive, and the app opens): you press Send there; Robot
@@ -3151,7 +3151,7 @@ transfer include nothing (`allowBackup="false"`, the data extraction rules exclu
 
 ### What goes to a helper, and trust
 
-Every helper follows Claude's rules (`HelperTrust`, `ClaudeContext`): Robot checking by itself in a personal
+Every helper follows Claude's rules (`HelperTrust`, `HelperContext`): Robot checking by itself in a personal
 conversation sends only your question; "go get …" in a personal conversation asks "Include the conversation so far?";
 a spoken yes never sends personal content; your screen and photos go only after a tap on their card.
 
@@ -3180,7 +3180,7 @@ connection, a timeout), Robot answers itself instead, with a short notice why. G
 
 - **Published prices**, read on 11 Oct 2026 from each provider's own page and shipped in `core/helpers/Pricing.kt`
   (`PriceTable`, with the source and date on each card):
-  - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing.md (Claude's prices stay in `ClaudeModel`)
+  - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing.md (Claude's prices stay in `AnthropicModel`)
   - OpenAI: https://developers.openai.com/api/docs/pricing.md (Standard, long-context rates over 272K input tokens)
   - Google: https://ai.google.dev/gemini-api/docs/pricing (paid tier; Gemini 3.8 Flash doubles on 1 Jan 2027)
   - DeepSeek: https://api-docs.deepseek.com/quick_start/pricing (off-peak; double 01:00–04:00 and 06:00–10:00 UTC on weekdays)
@@ -4477,7 +4477,7 @@ calendar, settings, logs.
   values.
 - **A valid history**: tool results of a turn that ended early are kept until a request carrying them succeeds; a
   mid-answer fallback's declined attempt leaves its thinking and calls out of what goes back; and a pure check
-  (`ClaudeHistory.check`) runs before every request. A history that would get a 400 ends Claude mode with a plain
+  (`AnthropicHistory.check`) runs before every request. A history that would get a 400 ends Claude mode with a plain
   message instead.
 - **Caching**: the tools (Robot's, in a fixed order, then web search) and the system prompt are byte-stable; a cache
   breakpoint follows the system prompt, and in Claude mode the request's automatic breakpoint follows the last message.
@@ -4505,7 +4505,7 @@ thinking…" shows until the first words. In Claude mode a chip reads
 "Talking with Claude · Back to Robot"; Claude mode ends with "thanks Claude", the chip, the panel closing, 10 minutes
 without a turn, or the lock screen (unless "Allow on lock screen" is on). Stop and "stop" work as for Robot. Under a
 reply: "Claude searched the web · nasa.gov, esa.int" and the **cost line**, "≈ 1¢" (Settings › Show cost), estimated
-from `usage` and the published prices per million tokens (one table in `:core`, `ClaudeModel`): Opus 5.5 $4 in, $20
+from `usage` and the published prices per million tokens (one table in `:core`, `AnthropicModel`): Opus 5.5 $4 in, $20
 out, cache reads $0.20; Sonnet 5.5 $2 / $10, cache reads $0.10; Haiku 5.5 $0.10 / $0.50 (up to 100K prompt tokens); a fallback model at
 its own rates; web search $10 per 1,000. A stopped, failed or timed-out request counts too (its input is known as it
 starts), and today's spend is written as each part becomes known. A conversation with Claude in it is saved under the usual history rules and shows a small cloud in History.
@@ -4556,7 +4556,7 @@ more without `ask_claude` in the same turn and shows its own short answer, with 
 "I'd rather check that with Claude." is left for when that second try gives nothing either. **"Not Claude"** ("no
 Claude", "don't ask Claude", "without Claude", "leave Claude out of it", "you tell me", "answer it yourself", "on your
 own", "pas Claude", "sans Claude", "ne demande pas à Claude", "réponds toi-même", and Parakeet's "not cloud") is
-heard anywhere in what you say (`ClaudeRouter.declines`, pure, tested): Robot answers, ends Claude mode if it was on,
+heard anywhere in what you say (`HelperRouter.declines`, pure, tested): Robot answers, ends Claude mode if it was on,
 and for the rest of the conversation neither offers Claude nor checks with it, until a new conversation or an explicit
 "ask Claude …" or "go get Claude". The Voice log notes when Claude was left out and the second try (codes only).
 

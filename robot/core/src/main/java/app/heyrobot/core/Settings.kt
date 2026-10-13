@@ -255,7 +255,7 @@ data class RobotSettings(
     /** The Claude helper, or null when you removed it. */
     val claude: HelperConfig? get() = helper(HelperConfig.CLAUDE_ID)
 
-    val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claude?.model)
+    val claudeModelChoice: AnthropicModel get() = AnthropicModel.of(claude?.model)
 
     fun helper(id: String?): HelperConfig? = helpers.firstOrNull { it.id == id }
 
@@ -553,12 +553,12 @@ data class RobotSettings(
             val c = HelperConfig.claude()
             return c.copy(
                 enabled = if (o.has("claudeEnabled")) o.optBoolean("claudeEnabled") else null,
-                route = enumValues<ClaudeRoute>().firstOrNull { it.name == o.optString("claudeRoute") },
-                model = ClaudeModel.of(o.optString("claudeModel", c.model)).id,
+                route = enumValues<AskRoute>().firstOrNull { it.name == o.optString("claudeRoute") },
+                model = AnthropicModel.of(o.optString("claudeModel", c.model)).id,
                 effort = enumOr(o.optString("claudeEffort"), c.effort),
                 search = o.optBoolean("claudeSearch", c.search),
                 locked = o.optBoolean("claudeLocked", c.locked),
-                voice = ClaudeVoices.of(o.optString("claudeVoice", c.voice)),
+                voice = HelperVoices.of(o.optString("claudeVoice", c.voice)),
             )
         }
 

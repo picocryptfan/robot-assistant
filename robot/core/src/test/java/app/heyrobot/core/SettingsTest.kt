@@ -442,8 +442,8 @@ class SettingsTest {
         wakePhrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(3, "robot", WakeSensitivity.LOW, enabled = false)),
         bargeIn = BargeIn.ALWAYS, interrupt = InterruptSensitivity.HIGH, playback = Playback.CALL, stopKey = StopKey.EITHER,
         // Ask Claude's fields (0.3 to 0.4.5) become the Claude helper and every helper's budget, cost line and escalation.
-        helpers = listOf(HelperConfig.claude().copy(enabled = false, route = ClaudeRoute.API, model = ClaudeModel.SONNET.id,
-            effort = ClaudeEffortSetting.HIGH, search = false, locked = true, voice = "bf_emma")),
+        helpers = listOf(HelperConfig.claude().copy(enabled = false, route = AskRoute.API, model = AnthropicModel.SONNET.id,
+            effort = HelperEffortSetting.HIGH, search = false, locked = true, voice = "bf_emma")),
         helperShowCost = false, help = Escalation.AUTO, helperBudgetCents = 200, weatherHome = WeatherPlace("Lyon", 45.76, 4.84),
         safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
         lockedTools = setOf(ToolName.SET_TIMER, ToolName.FLASHLIGHT), personalToHelpers = true, voiceYesPersonal = true,
@@ -495,9 +495,9 @@ class SettingsTest {
         val claude = read.claude!!
         assertEquals(listOf(HelperConfig.CLAUDE_ID), read.helpers.map { it.id })
         assertEquals(false, claude.enabled)
-        assertEquals(ClaudeRoute.API, claude.route)
-        assertEquals(ClaudeModel.SONNET, read.claudeModelChoice)
-        assertEquals(ClaudeEffortSetting.HIGH, claude.effort)
+        assertEquals(AskRoute.API, claude.route)
+        assertEquals(AnthropicModel.SONNET, read.claudeModelChoice)
+        assertEquals(HelperEffortSetting.HIGH, claude.effort)
         assertEquals(false, claude.search)
         assertEquals(true, claude.locked)
         assertEquals("bf_emma", claude.voice)

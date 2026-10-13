@@ -1,12 +1,13 @@
 package app.heyrobot.core.web
 
+import app.heyrobot.core.HelperRouter
 import java.util.Locale
 
 // Pure. Which questions are web search's (design A4.3, A6.1 WebRouter), in English and French: the explicit forms Robot
 // routes in code before Gemma ("search the web for X", "look up X online", "cherche sur le web X", "recherche X"), whose
 // query is exactly your words X; and the words that make the WEB tool group described to Gemma (search, look up, online,
 // news, who won, cherche, actualité…). Searches of your own things stay with them: "search my notes for…" is a note
-// search, "look up Bob" a contact lookup, "ask Claude to search…" Claude's (ClaudeRouter runs first). Also the question's
+// search, "look up Bob" a contact lookup, "ask Claude to search…" Claude's (HelperRouter runs first). Also the question's
 // language for the services and the one-shot (fr or en, by its words).
 
 object WebRouter {

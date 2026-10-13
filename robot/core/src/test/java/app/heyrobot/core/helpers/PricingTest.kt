@@ -1,8 +1,8 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeCost
-import app.heyrobot.core.ClaudeModel
-import app.heyrobot.core.ClaudeUsage
+import app.heyrobot.core.AnthropicCost
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.TokenUsage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -18,10 +18,10 @@ class PricingTest {
     private fun shipped(id: String) = HelperPrice.Published(PriceTable.of(id)!!)
 
     @Test fun claudesPricesAreTheModelsOwn() {
-        // The Claude table stays in one place (ClaudeModel); the card is made from it, with web search at a cent.
-        for (m in ClaudeModel.entries) {
+        // The Claude table stays in one place (AnthropicModel); the card is made from it, with web search at a cent.
+        for (m in AnthropicModel.entries) {
             val u = HelperUsage(input = 1_000, output = 2_000, cacheRead = 3_000, cacheWrite = 4_000, searches = 1)
-            val c = ClaudeCost.dollars(m, ClaudeUsage(1_000, 2_000, 3_000, 4_000, 1))
+            val c = AnthropicCost.dollars(m, TokenUsage(1_000, 2_000, 3_000, 4_000, 1))
             assertEquals(m.id, c, Pricing.dollars(shipped(m.id), u, monday9)!!, 1e-12)
         }
         // As published: Sonnet 5.5's cache reads at $0.10, Opus 5.5's at $0.20, Fable 5.1 $10 / $50 with cache reads at $0.25.

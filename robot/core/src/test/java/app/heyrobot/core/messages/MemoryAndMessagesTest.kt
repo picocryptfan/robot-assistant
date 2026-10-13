@@ -7,8 +7,8 @@ import app.heyrobot.core.AskWhy
 import app.heyrobot.core.Card
 import app.heyrobot.core.CardAnswer
 import app.heyrobot.core.ChatTurn
-import app.heyrobot.core.ClaudeBlock
-import app.heyrobot.core.ClaudeContext
+import app.heyrobot.core.HelperBlock
+import app.heyrobot.core.HelperContext
 import app.heyrobot.core.Confirmations
 import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.DoneReason
@@ -290,7 +290,7 @@ class MemoryAndMessagesTest {
         assertFalse(prompt.any { it.text.contains("Elm") })
         // The conversation is still content, and holds both kinds of personal content.
         assertTrue(TurnRules.untrusted(back.turns))
-        assertEquals(setOf(Personal.MEMORY, Personal.MESSAGES), ClaudeContext.personal(back.turns))
+        assertEquals(setOf(Personal.MEMORY, Personal.MESSAGES), HelperContext.personal(back.turns))
     }
 
     // ------------------------------------------------------------------ 4. helpers: a card, never trust or automatic
@@ -323,12 +323,12 @@ class MemoryAndMessagesTest {
             ChatTurn("u2", TurnRole.USER, "read my messages", 2L),
             ChatTurn("a2", TurnRole.ASSISTANT, "Mom Martin: the door code is 4512", 3L, messages = true, kept = "Robot read 1 message from Mom Martin (Cheogram)"),
         )
-        val personal = ClaudeContext.personal(turns)
+        val personal = HelperContext.personal(turns)
         assertEquals(setOf(Personal.MEMORY, Personal.MESSAGES), personal)
         val s = RobotSettings(personalToHelpers = true)
-        val blocks = ClaudeContext.escalation("what's the capital of Peru?", turns, ZonedDateTime.now(ZoneOffset.UTC), "CA", personal = personal,
+        val blocks = HelperContext.escalation("what's the capital of Peru?", turns, ZonedDateTime.now(ZoneOffset.UTC), "CA", personal = personal,
             includePersonal = HelperTrust.conversation(s, trusted, personal, memoryToTrusted = true))
-        val sent = blocks.filterIsInstance<ClaudeBlock.Text>().joinToString("\n") { it.text }
+        val sent = blocks.filterIsInstance<HelperBlock.Text>().joinToString("\n") { it.text }
         for (w in listOf("May 3", "4512", "Mom Martin", "sister")) assertFalse(w, sent.contains(w))
     }
 }

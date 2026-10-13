@@ -14,7 +14,7 @@ import kotlin.math.roundToLong
 // the API client lives in the :helpers module, which only the :voice process loads.
 
 /** Prices in US dollars per million tokens, as published (docs/ask-claude.md "Cost line"). */
-data class ClaudePrices(val input: Double, val output: Double, val cacheRead: Double, val cacheWrite: Double)
+data class AnthropicPrices(val input: Double, val output: Double, val cacheRead: Double, val cacheWrite: Double)
 
 /**
  * The models you can pick. Exact model ID strings, never with a date suffix. [fallback]: the request carries the
@@ -22,38 +22,38 @@ data class ClaudePrices(val input: Double, val output: Double, val cacheRead: Do
  * Prices as published (https://platform.claude.com/docs/en/about-claude/pricing.md, read 2026-10-11): cache reads are
  * 0.05x input on Opus 5.5 and Sonnet 5.5, 0.025x on Fable 5.1, 0.1x on Haiku 5.5; 5-minute cache writes 1.25x.
  */
-enum class ClaudeModel(val id: String, val title: String, val detail: String, private val prices: ClaudePrices, private val longPrices: ClaudePrices?, val fallback: Boolean) {
-    OPUS("claude-opus-5-5", "Claude Opus 5.5", "Recommended for most questions: \$4 per million tokens in, \$20 out.", ClaudePrices(4.0, 20.0, 0.20, 5.0), null, true),
-    SONNET("claude-sonnet-5-5", "Claude Sonnet 5.5", "Fast and capable: \$2 in, \$10 out.", ClaudePrices(2.0, 10.0, 0.10, 2.5), null, true),
-    HAIKU("claude-haiku-5-5", "Claude Haiku 5.5", "The fastest and cheapest: \$0.10 in, \$0.50 out.", ClaudePrices(0.10, 0.50, 0.01, 0.125), ClaudePrices(0.50, 2.50, 0.05, 0.625), false),
+enum class AnthropicModel(val id: String, val title: String, val detail: String, private val prices: AnthropicPrices, private val longPrices: AnthropicPrices?, val fallback: Boolean) {
+    OPUS("claude-opus-5-5", "Claude Opus 5.5", "Recommended for most questions: \$4 per million tokens in, \$20 out.", AnthropicPrices(4.0, 20.0, 0.20, 5.0), null, true),
+    SONNET("claude-sonnet-5-5", "Claude Sonnet 5.5", "Fast and capable: \$2 in, \$10 out.", AnthropicPrices(2.0, 10.0, 0.10, 2.5), null, true),
+    HAIKU("claude-haiku-5-5", "Claude Haiku 5.5", "The fastest and cheapest: \$0.10 in, \$0.50 out.", AnthropicPrices(0.10, 0.50, 0.01, 0.125), AnthropicPrices(0.50, 2.50, 0.05, 0.625), false),
     /** 0.6.0: for the hardest questions; slower, and its thinking is always on (as on Opus 5.5). */
-    FABLE("claude-fable-5-1", "Claude Fable 5.1", "For the hardest questions, slower: \$10 in, \$50 out.", ClaudePrices(10.0, 50.0, 0.25, 12.50), null, true);
+    FABLE("claude-fable-5-1", "Claude Fable 5.1", "For the hardest questions, slower: \$10 in, \$50 out.", AnthropicPrices(10.0, 50.0, 0.25, 12.50), null, true);
 
     /** The rate card for a request whose prompt (all input, cached or not) had [promptTokens]. */
-    fun prices(promptTokens: Long): ClaudePrices = if (longPrices != null && promptTokens > LONG_PROMPT) longPrices else prices
+    fun prices(promptTokens: Long): AnthropicPrices = if (longPrices != null && promptTokens > LONG_PROMPT) longPrices else prices
 
     companion object {
         val DEFAULT = OPUS
         /** Claude Haiku 5.5 bills prompts over this many tokens on its higher rate card. */
         const val LONG_PROMPT = 100_000L
 
-        fun of(id: String?): ClaudeModel = entries.firstOrNull { it.id == id } ?: DEFAULT
+        fun of(id: String?): AnthropicModel = entries.firstOrNull { it.id == id } ?: DEFAULT
     }
 }
 
 /** `output_config.effort`. Always sent explicitly: the API default differs between models. */
-enum class ClaudeEffort(val wire: String) { LOW("low"), MEDIUM("medium"), HIGH("high") }
+enum class HelperEffort(val wire: String) { LOW("low"), MEDIUM("medium"), HIGH("high") }
 
 /** The effort setting: automatic, or one level for every question (a setting overrides both automatic rules). */
-enum class ClaudeEffortSetting(val title: String, val level: ClaudeEffort?) {
+enum class HelperEffortSetting(val title: String, val level: HelperEffort?) {
     AUTO("Automatic", null),
-    LOW("Low", ClaudeEffort.LOW),
-    MEDIUM("Medium", ClaudeEffort.MEDIUM),
-    HIGH("High", ClaudeEffort.HIGH),
+    LOW("Low", HelperEffort.LOW),
+    MEDIUM("Medium", HelperEffort.MEDIUM),
+    HIGH("High", HelperEffort.HIGH),
 }
 
 /** How hard Claude thinks and how long it may answer, for one question. */
-data class ClaudePlan(val effort: ClaudeEffort, val maxTokens: Long) {
+data class HelperPlan(val effort: HelperEffort, val maxTokens: Long) {
     companion object {
         /** A spoken answer: short, and thinking counts towards it too (never lowball it). */
         const val VOICE_TOKENS = 4_000L
@@ -65,13 +65,13 @@ data class ClaudePlan(val effort: ClaudeEffort, val maxTokens: Long) {
          * about", "take your time"). A fixed setting wins over all three. High effort always gets the long limit: its
          * thinking alone can use up a short one and leave no answer.
          */
-        fun of(setting: ClaudeEffortSetting, voice: Boolean, deep: Boolean): ClaudePlan {
+        fun of(setting: HelperEffortSetting, voice: Boolean, deep: Boolean): HelperPlan {
             val effort = setting.level ?: when {
-                deep -> ClaudeEffort.HIGH
-                voice -> ClaudeEffort.LOW
-                else -> ClaudeEffort.MEDIUM
+                deep -> HelperEffort.HIGH
+                voice -> HelperEffort.LOW
+                else -> HelperEffort.MEDIUM
             }
-            return ClaudePlan(effort, if (voice && !deep && effort != ClaudeEffort.HIGH) VOICE_TOKENS else DEEP_TOKENS)
+            return HelperPlan(effort, if (voice && !deep && effort != HelperEffort.HIGH) VOICE_TOKENS else DEEP_TOKENS)
         }
     }
 
@@ -79,19 +79,19 @@ data class ClaudePlan(val effort: ClaudeEffort, val maxTokens: Long) {
      * This question's plan in a Claude-mode conversation whose first question had [first]: the effort stays the same
      * for the whole conversation (a change would restart the prompt cache); the length still follows this question.
      */
-    fun keeping(first: ClaudePlan): ClaudePlan =
-        ClaudePlan(first.effort, if (first.effort == ClaudeEffort.HIGH) DEEP_TOKENS else maxTokens)
+    fun keeping(first: HelperPlan): HelperPlan =
+        HelperPlan(first.effort, if (first.effort == HelperEffort.HIGH) DEEP_TOKENS else maxTokens)
 }
 
 /** What one request used, from its `usage` (numbers only). */
-data class ClaudeUsage(val input: Long = 0, val output: Long = 0, val cacheRead: Long = 0, val cacheWrite: Long = 0, val searches: Long = 0) {
+data class TokenUsage(val input: Long = 0, val output: Long = 0, val cacheRead: Long = 0, val cacheWrite: Long = 0, val searches: Long = 0) {
     val prompt: Long get() = input + cacheRead + cacheWrite
 }
 
 /** One attempt within a request (`usage.iterations`): the model that ran it, if the API said, and its tokens. */
-data class ClaudeAttempt(val model: String?, val usage: ClaudeUsage)
+data class AnthropicAttempt(val model: String?, val usage: TokenUsage)
 
-object ClaudeCost {
+object AnthropicCost {
     /** Web search: \$10 per 1,000 searches. */
     const val SEARCH_DOLLARS = 0.01
 
@@ -99,18 +99,18 @@ object ClaudeCost {
      * The server-side fallback's models (Claude Opus 4.8 and Claude Opus 5, chosen by the API): \$5 in, \$25 out, cache
      * reads \$0.50, writes \$6.25. Any model that isn't one of the three Robot asks for is priced like this.
      */
-    val FALLBACK_PRICES = ClaudePrices(5.0, 25.0, 0.50, 6.25)
+    val FALLBACK_PRICES = AnthropicPrices(5.0, 25.0, 0.50, 6.25)
 
     /** The estimated price of one request, in dollars, at [model]'s rates. */
-    fun dollars(model: ClaudeModel, u: ClaudeUsage): Double = tokens(model.prices(u.prompt), u) + u.searches * SEARCH_DOLLARS
+    fun dollars(model: AnthropicModel, u: TokenUsage): Double = tokens(model.prices(u.prompt), u) + u.searches * SEARCH_DOLLARS
 
-    private fun tokens(p: ClaudePrices, u: ClaudeUsage): Double =
+    private fun tokens(p: AnthropicPrices, u: TokenUsage): Double =
         (u.input * p.input + u.output * p.output + u.cacheRead * p.cacheRead + u.cacheWrite * p.cacheWrite) / 1_000_000.0
 
     /** The rates of the model that ran a request: one of Robot's three by its ID, any other at the fallback's. */
-    fun prices(served: String?, requested: ClaudeModel, promptTokens: Long): ClaudePrices {
+    fun prices(served: String?, requested: AnthropicModel, promptTokens: Long): AnthropicPrices {
         if (served.isNullOrEmpty()) return requested.prices(promptTokens)
-        return ClaudeModel.entries.firstOrNull { served == it.id || served.startsWith(it.id + "-") }?.prices(promptTokens) ?: FALLBACK_PRICES
+        return AnthropicModel.entries.firstOrNull { served == it.id || served.startsWith(it.id + "-") }?.prices(promptTokens) ?: FALLBACK_PRICES
     }
 
     /**
@@ -118,21 +118,24 @@ object ClaudeCost {
      * a fallback ran) at the rates of the model that ran it, otherwise [total] at the rates of [served] (the model the
      * response names, which sticky fallback routing can change). Searches at a cent each.
      */
-    fun request(requested: ClaudeModel, served: String?, total: ClaudeUsage, attempts: List<ClaudeAttempt> = emptyList()): Double =
+    fun request(requested: AnthropicModel, served: String?, total: TokenUsage, attempts: List<AnthropicAttempt> = emptyList()): Double =
         (if (attempts.isEmpty()) tokens(prices(served, requested, total.prompt), total)
         else attempts.sumOf { tokens(prices(it.model ?: served, requested, it.usage.prompt), it.usage) }) + total.searches * SEARCH_DOLLARS
 
     /** The tokens a request used in all: the attempts' sum when there are attempts, otherwise [total]. */
-    fun used(total: ClaudeUsage, attempts: List<ClaudeAttempt>): ClaudeUsage = if (attempts.isEmpty()) total else
-        attempts.fold(ClaudeUsage(searches = total.searches)) { a, t ->
+    fun used(total: TokenUsage, attempts: List<AnthropicAttempt>): TokenUsage = if (attempts.isEmpty()) total else
+        attempts.fold(TokenUsage(searches = total.searches)) { a, t ->
             a.copy(input = a.input + t.usage.input, output = a.output + t.usage.output, cacheRead = a.cacheRead + t.usage.cacheRead,
                 cacheWrite = a.cacheWrite + t.usage.cacheWrite)
         }
+}
 
+/** Every helper's cost line and spend, as Robot writes them. */
+object CostText {
     /** Millionths of a dollar, for the budget file (whole numbers). */
     fun micros(dollars: Double): Long = (dollars * 1_000_000).roundToLong().coerceAtLeast(0)
 
-    /** "≈ 1¢", "< 1¢", "≈ 12¢", "≈ \$1.40": the line under a Claude reply. */
+    /** "≈ 1¢", "< 1¢", "≈ 12¢", "≈ \$1.40": the line under a helper's reply. */
     fun line(dollars: Double): String {
         val cents = dollars * 100
         return when {
@@ -151,7 +154,7 @@ data class ClaudeSpend(val day: String, val micros: Long) {
     /** The spend for [today]: a new day starts from zero. */
     fun on(today: LocalDate): ClaudeSpend = if (day == today.toString()) this else ClaudeSpend(today.toString(), 0)
 
-    fun add(today: LocalDate, dollars: Double): ClaudeSpend = on(today).let { it.copy(micros = it.micros + ClaudeCost.micros(dollars)) }
+    fun add(today: LocalDate, dollars: Double): ClaudeSpend = on(today).let { it.copy(micros = it.micros + CostText.micros(dollars)) }
 
     fun reached(today: LocalDate, budgetCents: Int): Boolean = budgetCents >= 0 && on(today).micros >= budgetCents * 10_000L
 
@@ -171,7 +174,7 @@ data class ClaudeSpend(val day: String, val micros: Long) {
  * code for the other wire formats; the words are fixed here so they are tested once. [text] is Claude's, word for word as
  * before; [say] puts in another helper's name. [retry]: worth one more try (overloaded or 5xx).
  */
-enum class ClaudeFailure(val retry: Boolean = false) {
+enum class HelperFailure(val retry: Boolean = false) {
     KEY_REFUSED,
     NO_CREDITS,
     NOT_ALLOWED,
@@ -235,7 +238,7 @@ enum class ClaudeFailure(val retry: Boolean = false) {
          * [code]: the error's code where the API gives one (OpenAI says "out of credit" with a 429 and a code), read
          * before the status so it is never taken for "busy".
          */
-        fun of(status: Int?, type: String?, code: String? = null): ClaudeFailure = when {
+        fun of(status: Int?, type: String?, code: String? = null): HelperFailure = when {
             code in CREDIT_CODES || type == "insufficient_quota" || (code != null && code.endsWith("_spend_limit_exceeded")) -> NO_CREDITS
             type == "authentication_error" || status == 401 || code == "invalid_api_key" -> KEY_REFUSED
             type == "billing_error" || status == 402 -> NO_CREDITS
@@ -254,8 +257,6 @@ enum class ClaudeFailure(val retry: Boolean = false) {
     }
 }
 
-/** Every helper's failures (0.6.0): the same type as Claude's. */
-typealias HelperFailure = ClaudeFailure
 
 /** Robot's own words about Claude (each helper's are [HelperWords]). */
 object ClaudeWords {
@@ -292,7 +293,7 @@ object ClaudeWords {
  * load. Kokoro speaks the chosen [KOKORO] voice; Kitten its other voice of the same pair; the phone's voice reads
  * Claude at a lower pitch (no speaker id).
  */
-object ClaudeVoices {
+object HelperVoices {
     /** The Kokoro v1.0 English voices docs/voice-plan.md lists, with their speaker ids. */
     val KOKORO: List<Pair<String, Int>> = listOf(
         "am_michael" to 16, "am_fenrir" to 14, "am_puck" to 18, "bf_emma" to 21, "af_bella" to 2, "af_heart" to 3,
@@ -340,7 +341,7 @@ object ClaudeVoices {
 }
 
 /** The API key's shape, checked before it is saved (pure; the key itself is handled in the :voice process only). */
-object ClaudeKeyFormat {
+object AnthropicKeyFormat {
     /**
      * An Anthropic API key: "sk-ant-", then ASCII letters, digits, "-" and "_" only. Anything else (an accented letter,
      * a Cyrillic look-alike, full-width digits) is refused before saving: HTTP headers can't carry it, and the HTTP
@@ -369,7 +370,7 @@ object SpeechLang {
 
     fun french(sentence: String): Boolean {
         val t = sentence.lowercase(java.util.Locale.ROOT)
-        val words = ClaudeRouter.plain(t).split(Regex("[^a-z]+")).filter { it.isNotEmpty() }
+        val words = HelperRouter.plain(t).split(Regex("[^a-z]+")).filter { it.isNotEmpty() }
         val fr = words.count { it in FRENCH } + ELISION.findAll(t).count() + ACCENT.findAll(t).count() / 2
         val en = words.count { it in ENGLISH }
         return fr >= 2 && fr > en * 2
@@ -377,7 +378,7 @@ object SpeechLang {
 }
 
 /** Which way a question to Claude goes. */
-enum class ClaudeRoute(val title: String, val detail: String) {
+enum class AskRoute(val title: String, val detail: String) {
     APP("Claude app", "Opens the Claude app with your question; uses your claude.ai plan. Robot doesn't hear the answer."),
     API("Claude API", "Robot asks Claude itself and speaks the answer. Needs an API key with credits."),
 }
@@ -404,21 +405,17 @@ object ClaudeSettings {
     fun enabled(s: RobotSettings, keySaved: Boolean = false): Boolean = s.claude?.on ?: false
 
     /** "Claude app" without a key, "Claude API" once a key is saved, unless you chose. */
-    fun route(s: RobotSettings, keySaved: Boolean): ClaudeRoute = HelperSettings.route(claude(s), keySaved)
+    fun route(s: RobotSettings, keySaved: Boolean): AskRoute = HelperSettings.route(claude(s), keySaved)
 
     /** Automatic once a key is saved, Ask me first before; never Automatic without a key (the app can't escalate by itself). */
     fun escalation(s: RobotSettings, keySaved: Boolean): Escalation = HelperSettings.escalation(s, claude(s), keySaved)
 
     /** Robot may describe ask_claude to the local model: Ask Claude is on and escalation isn't Off. */
     fun localTool(s: RobotSettings, keySaved: Boolean): Boolean = enabled(s, keySaved) && escalation(s, keySaved) != Escalation.OFF
-
-    /** The same for the helper Robot checks with ([target]; null: none, so no tool). */
-    fun localTool(s: RobotSettings, target: HelperConfig?, keySaved: Boolean): Boolean =
-        target != null && target.on && HelperSettings.escalation(s, target, keySaved) != Escalation.OFF
 }
 
 /** Why ask_claude is left out of a question for the local model (logged as this code only, never the words). */
-enum class ClaudeLeftOut(override val id: Int, override val title: String) : LogCode {
+enum class HelperLeftOut(override val id: Int, override val title: String) : LogCode {
     OFF(1, "Ask a helper or “When Robot needs help” is off"),
     NOWHERE(2, "no API key and no app to open"),
     DECLINED(3, "you turned the helper down in this conversation"),
@@ -430,7 +427,7 @@ enum class ClaudeLeftOut(override val id: Int, override val title: String) : Log
  * Whether the local model is told about ask_claude for one question: the tool and its one line in the system prompt go
  * together, or neither does (docs/ask-claude.md "When Robot needs help"). Pure.
  */
-object AskClaudeTool {
+object AskHelperTool {
     /**
      * Null when ask_claude is described, otherwise why not, first reason first: Ask Claude off or escalation Off
      * ([ClaudeSettings.localTool]); nowhere for the question to go ([reachable]: the API with a key, or the Claude app
@@ -438,25 +435,25 @@ object AskClaudeTool {
      * ([attachment], see [picture]): Robot answers those itself first, and "ask Claude about this screen" still goes to
      * Claude.
      */
-    fun leftOut(s: RobotSettings, keySaved: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): ClaudeLeftOut? = when {
-        !ClaudeSettings.localTool(s, keySaved) -> ClaudeLeftOut.OFF
-        !reachable -> ClaudeLeftOut.NOWHERE
-        declined -> ClaudeLeftOut.DECLINED
-        attachment == Attachment.SCREEN -> ClaudeLeftOut.SCREEN
-        attachment == Attachment.PHOTO -> ClaudeLeftOut.PHOTO
+    fun leftOut(s: RobotSettings, keySaved: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): HelperLeftOut? = when {
+        !ClaudeSettings.localTool(s, keySaved) -> HelperLeftOut.OFF
+        !reachable -> HelperLeftOut.NOWHERE
+        declined -> HelperLeftOut.DECLINED
+        attachment == Attachment.SCREEN -> HelperLeftOut.SCREEN
+        attachment == Attachment.PHOTO -> HelperLeftOut.PHOTO
         else -> null
     }
 
     fun offered(s: RobotSettings, keySaved: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): Boolean =
         leftOut(s, keySaved, reachable, declined, attachment) == null
 
-    /** The same for any helper (0.6.0): [localTool] is ClaudeSettings.localTool for the helper Robot checks with. */
-    fun leftOut(localTool: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): ClaudeLeftOut? = when {
-        !localTool -> ClaudeLeftOut.OFF
-        !reachable -> ClaudeLeftOut.NOWHERE
-        declined -> ClaudeLeftOut.DECLINED
-        attachment == Attachment.SCREEN -> ClaudeLeftOut.SCREEN
-        attachment == Attachment.PHOTO -> ClaudeLeftOut.PHOTO
+    /** The same for any helper (0.6.0): [localTool] is HelperSettings.localTool for the helper Robot checks with. */
+    fun leftOut(localTool: Boolean, reachable: Boolean, declined: Boolean, attachment: Attachment): HelperLeftOut? = when {
+        !localTool -> HelperLeftOut.OFF
+        !reachable -> HelperLeftOut.NOWHERE
+        declined -> HelperLeftOut.DECLINED
+        attachment == Attachment.SCREEN -> HelperLeftOut.SCREEN
+        attachment == Attachment.PHOTO -> HelperLeftOut.PHOTO
         else -> null
     }
 

@@ -856,7 +856,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
         val pkg = r.app!!
         val name = r.appName!!
         val way = HandOffIntents.choose(ctx, pkg) ?: return Executed(ActionStatus.NO_APP, AppHandOff.install(name))
-        val text = ClaudeAppLink.cap(a.text)
+        val text = AppHandOff.cap(a.text)
         if (text.isNotEmpty()) HandOffIntents.copy(ctx, text, name)
         val i = HandOffIntents.intent(ctx, pkg, way, text) ?: return Executed(ActionStatus.NO_APP, AppHandOff.install(name))
         RLog.i("claude_app", "way" to way, "claude" to (pkg == ClaudeAppLink.PACKAGE))

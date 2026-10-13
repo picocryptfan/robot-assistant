@@ -3,34 +3,28 @@ package app.heyrobot.assistant
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Bundle
-import app.heyrobot.helpers.anthropic.ClaudeListener
-import app.heyrobot.helpers.anthropic.ClaudeTurn
-import app.heyrobot.helpers.HelperSession
-import app.heyrobot.core.HelperName
-import app.heyrobot.core.helpers.HelperConfig
-import app.heyrobot.core.helpers.HelperPrice
-import app.heyrobot.core.helpers.HelperSettings
-import app.heyrobot.core.helpers.HelperTrust
-import app.heyrobot.core.helpers.HelperWho
-import app.heyrobot.core.helpers.HelperWords
-import app.heyrobot.core.memory.MemoryRoute
-import app.heyrobot.core.messages.ActionOrigin
-import app.heyrobot.core.messages.MessageQuarantine
-import app.heyrobot.core.helpers.Pricing
 import android.os.PowerManager
 import android.os.SystemClock
 import android.service.voice.VoiceInteractionSession
+import app.heyrobot.assistant.car.CarModeController
+import app.heyrobot.assistant.conversation.ConversationService
+import app.heyrobot.assistant.conversation.ConversationSession
+import app.heyrobot.assistant.handsfree.PanelHandsFree
+import app.heyrobot.assistant.routines.PanelRoutines
+import app.heyrobot.assistant.routines.RoutineVoice
 import app.heyrobot.core.Abort
 import app.heyrobot.core.Action
-import app.heyrobot.core.AskClaudeTool
 import app.heyrobot.core.ActionRecord
 import app.heyrobot.core.ActionStatus
+import app.heyrobot.core.AppHandOff
 import app.heyrobot.core.Approval
+import app.heyrobot.core.AskHelperTool
+import app.heyrobot.core.AskRoute
+import app.heyrobot.core.AskWhy
 import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainError
-import app.heyrobot.core.AskWhy
-import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainFail
+import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.BrainProtocol
 import app.heyrobot.core.Card
 import app.heyrobot.core.CardAnswer
@@ -39,36 +33,18 @@ import app.heyrobot.core.ChatOnlyTurn
 import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.ClaudeAppAnswer
 import app.heyrobot.core.ClaudeAppLink
-import app.heyrobot.core.ClaudeBlock
-import app.heyrobot.core.ClaudeCommand
-import app.heyrobot.core.ClaudeContext
-import app.heyrobot.helpers.anthropic.ClaudeSession
-import app.heyrobot.core.ClaudeCost
-import app.heyrobot.core.ClaudeEffortSetting
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudeLeftOut
-import app.heyrobot.core.ClaudePayload
-import app.heyrobot.core.ClaudePlan
-import app.heyrobot.core.ClaudeRoute
-import app.heyrobot.core.ClaudeRouter
+import app.heyrobot.core.ClaudeWords
+import app.heyrobot.core.ClockEcho
 import app.heyrobot.core.ConsentRecord
+import app.heyrobot.core.ContextWindow
 import app.heyrobot.core.ConvEntry
 import app.heyrobot.core.ConvMode
 import app.heyrobot.core.ConvStop
+import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.ConversationCommand
 import app.heyrobot.core.ConversationLock
 import app.heyrobot.core.ConversationRouter
-import app.heyrobot.assistant.conversation.ConversationService
-import app.heyrobot.assistant.car.CarModeController
-import app.heyrobot.assistant.handsfree.PanelHandsFree
-import app.heyrobot.assistant.routines.PanelRoutines
-import app.heyrobot.assistant.routines.RoutineVoice
-import app.heyrobot.assistant.conversation.ConversationSession
-import app.heyrobot.sys.Transcripts
-import app.heyrobot.core.ClaudeSettings
-import app.heyrobot.core.ClaudeVoices
-import app.heyrobot.core.ClaudeWords
-import app.heyrobot.core.ClockEcho
+import app.heyrobot.core.CostText
 import app.heyrobot.core.Cue
 import app.heyrobot.core.DoneCode
 import app.heyrobot.core.DoneReason
@@ -77,32 +53,36 @@ import app.heyrobot.core.EscalationDecision
 import app.heyrobot.core.EscalationGuard
 import app.heyrobot.core.EscalationPolicy
 import app.heyrobot.core.EscalationTrigger
-import app.heyrobot.core.Hedge
-import app.heyrobot.core.LockScreen
-import app.heyrobot.core.ModelOutcome
-import app.heyrobot.core.PanelContinuity
-import app.heyrobot.core.Personal
-import app.heyrobot.core.PreRouter
-import app.heyrobot.core.RawToolCall
-import app.heyrobot.core.Shared
-import app.heyrobot.core.ToolName
-import app.heyrobot.core.TurnModel
 import app.heyrobot.core.Executed
 import app.heyrobot.core.FastPath
 import app.heyrobot.core.FreeUp
-import app.heyrobot.core.NoQuestion
+import app.heyrobot.core.Hedge
+import app.heyrobot.core.HelperBlock
+import app.heyrobot.core.HelperCommand
+import app.heyrobot.core.HelperContext
+import app.heyrobot.core.HelperFailure
+import app.heyrobot.core.HelperLeftOut
+import app.heyrobot.core.HelperName
+import app.heyrobot.core.HelperPayload
+import app.heyrobot.core.HelperPlan
+import app.heyrobot.core.HelperRouter
+import app.heyrobot.core.HelperVoices
+import app.heyrobot.core.LockScreen
+import app.heyrobot.core.ModelOutcome
 import app.heyrobot.core.Nearby
 import app.heyrobot.core.NearbyFail
+import app.heyrobot.core.NoQuestion
 import app.heyrobot.core.NoReply
+import app.heyrobot.core.PanelContinuity
+import app.heyrobot.core.Personal
+import app.heyrobot.core.PreRouter
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Prompt
-import app.heyrobot.core.Quoted
-import app.heyrobot.core.TokenEstimate
-import app.heyrobot.core.PromptTurn
 import app.heyrobot.core.PromptRole
-import app.heyrobot.core.ContextWindow
-import app.heyrobot.core.ConversationCodec
+import app.heyrobot.core.PromptTurn
+import app.heyrobot.core.Quoted
 import app.heyrobot.core.RLog
+import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.ReplyVoice
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.RoutineCodec
@@ -112,38 +92,53 @@ import app.heyrobot.core.ScreenChip
 import app.heyrobot.core.ScreenData
 import app.heyrobot.core.ScreenText
 import app.heyrobot.core.SettingsPage
+import app.heyrobot.core.Shared
 import app.heyrobot.core.ShowSource
-import app.heyrobot.core.StallTimer
 import app.heyrobot.core.SpeakReplies
 import app.heyrobot.core.SpeechText
+import app.heyrobot.core.StallTimer
 import app.heyrobot.core.StoredConversation
+import app.heyrobot.core.TermuxCalls
 import app.heyrobot.core.TextCommand
-import app.heyrobot.core.feedback.FeedbackCommand
-import app.heyrobot.core.feedback.FeedbackRouter
 import app.heyrobot.core.TextRequest
 import app.heyrobot.core.Tip
 import app.heyrobot.core.Tips
-import app.heyrobot.core.ToolCalls
-import app.heyrobot.core.TermuxCalls
-import app.heyrobot.core.ToolGroup
+import app.heyrobot.core.TokenEstimate
 import app.heyrobot.core.ToolBudget
+import app.heyrobot.core.ToolCalls
+import app.heyrobot.core.ToolGroup
+import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolRouter
+import app.heyrobot.core.TtsStop
 import app.heyrobot.core.TurnActions
+import app.heyrobot.core.TurnModel
 import app.heyrobot.core.TurnPhase
-import app.heyrobot.core.TurnRole
 import app.heyrobot.core.TurnResult
+import app.heyrobot.core.TurnRole
 import app.heyrobot.core.TurnRules
 import app.heyrobot.core.TurnRunner
 import app.heyrobot.core.TurnSlot
 import app.heyrobot.core.TurnView
-import app.heyrobot.core.TtsStop
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.core.VolumeKeyStop
 import app.heyrobot.core.WeatherAsk
 import app.heyrobot.core.WeatherFail
+import app.heyrobot.core.feedback.FeedbackCommand
+import app.heyrobot.core.feedback.FeedbackRouter
+import app.heyrobot.core.helpers.HelperConfig
+import app.heyrobot.core.helpers.HelperPrice
+import app.heyrobot.core.helpers.HelperSettings
+import app.heyrobot.core.helpers.HelperTrust
+import app.heyrobot.core.helpers.HelperWho
+import app.heyrobot.core.helpers.HelperWords
+import app.heyrobot.core.helpers.Pricing
+import app.heyrobot.core.memory.MemoryRoute
+import app.heyrobot.core.messages.ActionOrigin
+import app.heyrobot.core.messages.MessageQuarantine
 import app.heyrobot.core.toPromptTurns
 import app.heyrobot.core.web.AnswerCard
+import app.heyrobot.core.web.BrowserRouter
 import app.heyrobot.core.web.Citations
 import app.heyrobot.core.web.CurrentInfo
 import app.heyrobot.core.web.QueryContext
@@ -151,30 +146,37 @@ import app.heyrobot.core.web.WebConsent
 import app.heyrobot.core.web.WebFail
 import app.heyrobot.core.web.WebOutcome
 import app.heyrobot.core.web.WebQueryContext
-import app.heyrobot.core.web.BrowserRouter
 import app.heyrobot.core.web.WebStatus
 import app.heyrobot.core.web.WikipediaWire
+import app.heyrobot.helpers.HelperSession
+import app.heyrobot.helpers.HelperTurn
+import app.heyrobot.helpers.HelperTurnListener
+import app.heyrobot.helpers.anthropic.AnthropicSession
 import app.heyrobot.helpers.web.WebSearch
 import app.heyrobot.helpers.web.WebStep
-import app.heyrobot.sys.WebAnswers
-import app.heyrobot.sys.WebStore
 import app.heyrobot.sys.AppPages
-import app.heyrobot.sys.ClaudeAppIntents
-import app.heyrobot.sys.HandOffIntents
 import app.heyrobot.sys.Assistant
-import app.heyrobot.sys.HelperSpendStore
+import app.heyrobot.sys.ClaudeAppIntents
 import app.heyrobot.sys.ConversationStore
 import app.heyrobot.sys.FeedbackFiles
 import app.heyrobot.sys.HandOffApps
+import app.heyrobot.sys.HandOffIntents
+import app.heyrobot.sys.HelperSpendStore
 import app.heyrobot.sys.NotesFiles
 import app.heyrobot.sys.PeopleFiles
 import app.heyrobot.sys.PhoneInfo
 import app.heyrobot.sys.Phones
 import app.heyrobot.sys.SettingsIntents
+import app.heyrobot.sys.Transcripts
+import app.heyrobot.sys.WebAnswers
+import app.heyrobot.sys.WebStore
 import app.heyrobot.ui.common.RobotFace
 import app.heyrobot.ui.common.keptPicture
 import app.heyrobot.voice.Cues
 import app.heyrobot.voice.SpeechToText
+import java.time.LocalDate
+import java.time.ZonedDateTime
+import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -189,9 +191,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.time.LocalDate
-import java.time.ZonedDateTime
-import java.util.UUID
 
 // VOICE PROCESS. The assistant panel's state and logic, kept per process (not per session) so a
 // conversation survives the panel hiding for the camera or a new session object. All state changes
@@ -404,8 +403,8 @@ object PanelController {
      * Failures that mean the helper can't be reached right now (your server is off, no connection, it timed out): a
      * question Robot sent by itself, before its own model ran, comes back to Robot instead.
      */
-    private val FALLS_BACK = setOf(ClaudeFailure.NO_INTERNET, ClaudeFailure.UNREACHABLE, ClaudeFailure.TIMEOUT, ClaudeFailure.SERVER,
-        ClaudeFailure.OVERLOADED, ClaudeFailure.NO_ADDRESS, ClaudeFailure.NOT_LOCAL, ClaudeFailure.CERTIFICATE)
+    private val FALLS_BACK = setOf(HelperFailure.NO_INTERNET, HelperFailure.UNREACHABLE, HelperFailure.TIMEOUT, HelperFailure.SERVER,
+        HelperFailure.OVERLOADED, HelperFailure.NO_ADDRESS, HelperFailure.NOT_LOCAL, HelperFailure.CERTIFICATE)
 
     private val scope = MainScope()
     /** The one turn that may run at a time, and its confirmation cards. */
@@ -493,7 +492,7 @@ object PanelController {
     /** The day the "budget used up" sentence was said (once a day). */
     private var budgetSaid: String? = null
     /**
-     * You said "not Claude" in this conversation (ClaudeRouter.declines): no ask_claude for the local model, no
+     * You said "not Claude" in this conversation (HelperRouter.declines): no ask_claude for the local model, no
      * pre-router, no automatic escalation and no offers, until a new conversation or an explicit "ask Claude …" or "go
      * get Claude". Shown nowhere and never saved.
      */
@@ -503,7 +502,7 @@ object PanelController {
      * What an offer's tap does, fixed when it was made: the API request's [payload], or the user's [question] for the
      * Claude app. It never picks up a screen or a picture that arrived later.
      */
-    private class PendingOffer(val api: Boolean, val question: String, val payload: ClaudePayload?, val voiceAsked: Boolean, val asWell: Boolean = false,
+    private class PendingOffer(val api: Boolean, val question: String, val payload: HelperPayload?, val voiceAsked: Boolean, val asWell: Boolean = false,
         val helper: String = HelperConfig.CLAUDE_ID)
 
     /** Your region for Claude's first message: the one set in Settings, else the phone's own (SIM, network, language). */
@@ -852,7 +851,7 @@ object PanelController {
 
     private fun ChatTurn.toUi() = UiTurn(id, role, text, attachment, keptPicture(picture),
         actions.map { UiAction(newId(), it.tool, it.summary, it.status, it.detail, content = it.content) }, stopped = stopped, error = error,
-        claude = claude, readBack = readBack, sources = sources, cost = costMicros.takeIf { it > 0 && VoiceHub.settings.helperShowCost }?.let { ClaudeCost.line(it / 1e6) },
+        claude = claude, readBack = readBack, sources = sources, cost = costMicros.takeIf { it > 0 && VoiceHub.settings.helperShowCost }?.let { CostText.line(it / 1e6) },
         helper = helper, by = by, home = home, locked = locked)
 
     /**
@@ -1309,7 +1308,7 @@ object PanelController {
         turnMemContent = false
         val names = names()
         // An offer under the last reply waits for a tap or a short yes (a yes never sends anything personal).
-        if (st.draft == null && ClaudeRouter.isYes(q, names)) offers.keys.lastOrNull { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.let {
+        if (st.draft == null && HelperRouter.isYes(q, names)) offers.keys.lastOrNull { k -> st.turns.lastOrNull { it.role == TurnRole.ASSISTANT }?.id == k }?.let {
             acceptOffer(it, tapped = false)
             return true
         }
@@ -1353,18 +1352,18 @@ object PanelController {
             termux == null && memRoute == null) FreeUp.asked(q) else null
         // The helpers' phrases next ("ask Claude …", "go get Jarvis"), then texting without the model, then the model (FastPath).
         var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&
-            termux == null && memRoute == null && freeAsk == null) ClaudeRouter.route(q, names) else null
+            termux == null && memRoute == null && freeAsk == null) HelperRouter.route(q, names) else null
         // "Thanks Claude" outside a helper's conversation is ordinary talk.
-        if (cmd == ClaudeCommand.Leave && !_state.value.claudeMode) cmd = null
+        if (cmd == HelperCommand.Leave && !_state.value.claudeMode) cmd = null
         // "Not Claude", "you tell me": Robot answers, now and for the rest of the conversation (a helper's conversation ends too).
         // Only an explicit "ask …" or "go get …" brings a helper back.
         if (q.isNotEmpty() && memRoute == null && fbCmd == null && !routineOrHandsFree && webQuery == null && termux == null && freeAsk == null &&
-            ClaudeRouter.declines(q, names)) {
-            if (cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join) cmd = null
+            HelperRouter.declines(q, names)) {
+            if (cmd is HelperCommand.Ask || cmd is HelperCommand.Join) cmd = null
             if (!claudeDeclined) RLog.i("claude_declined", "claudeMode" to _state.value.claudeMode)
             claudeDeclined = true
             endHelperMode()
-        } else if (cmd is ClaudeCommand.Ask || cmd is ClaudeCommand.Join) {
+        } else if (cmd is HelperCommand.Ask || cmd is HelperCommand.Join) {
             claudeDeclined = false
         }
         if (cmd != null) RLog.i("claude_command", "kind" to RLog.Code(cmd.javaClass.simpleName))
@@ -1386,7 +1385,7 @@ object PanelController {
         val now = System.currentTimeMillis()
         // "Ask Claude about my screen" said without attaching it is still a screen question: the conversation is
         // personal from here on, and it is saved only with Keep.
-        val marked = if (attachment != Attachment.NONE) attachment else (cmd as? ClaudeCommand.Ask)?.extra ?: Attachment.NONE
+        val marked = if (attachment != Attachment.NONE) attachment else (cmd as? HelperCommand.Ask)?.extra ?: Attachment.NONE
         // "Keep screenshots and photos in history" (off by default): the thumbnail and the screen's text go into the saved
         // conversation, for History only (never replayed to the model, never sent to Claude).
         val kept = VoiceHub.settings.let { it.keepMedia && it.saveHistory } && attachment != Attachment.NONE
@@ -1410,13 +1409,13 @@ object PanelController {
         // The helper this turn goes to: the one named, or the one whose conversation is on. 1.0.0: "ask the helper …" names
         // none (HelperName.ANY_ID): one that can take it now, the one you chose first (HelperSettings.askTarget); none, and
         // helperTurn says what's missing.
-        val askedId = (cmd as? ClaudeCommand.Ask)?.helper ?: (cmd as? ClaudeCommand.Join)?.helper ?: _state.value.helperMode
+        val askedId = (cmd as? HelperCommand.Ask)?.helper ?: (cmd as? HelperCommand.Join)?.helper ?: _state.value.helperMode
         val turnHelper = if (!toClaude) null else if (askedId == HelperName.ANY_ID) askTarget() else VoiceHub.settings.helper(askedId)
-        val api = turnHelper != null && turnHelper.on && HelperSettings.route(turnHelper, keySaved(turnHelper)) == ClaudeRoute.API
+        val api = turnHelper != null && turnHelper.on && HelperSettings.route(turnHelper, keySaved(turnHelper)) == AskRoute.API
         _state.update {
             it.copy(
                 turns = it.turns + UiTurn(user.id, TurnRole.USER, user.text, marked, st.draft?.thumb) +
-                    UiTurn(replyId, TurnRole.ASSISTANT, "", streaming = true, claude = api && !(cmd is ClaudeCommand.Join && cmd.question == null),
+                    UiTurn(replyId, TurnRole.ASSISTANT, "", streaming = true, claude = api && !(cmd is HelperCommand.Join && cmd.question == null),
                         helper = turnHelper?.id, by = turnHelper?.name, home = turnHelper?.home == true),
                 phase = Phase.THINKING, draft = null, partial = "", notice = null, keep = keep,
                 locked = Assistant.locked(VoiceHub.app),
@@ -1441,11 +1440,11 @@ object PanelController {
                 termux != null -> termuxScript(replyId, termux, untrusted)
                 memRoute != null -> memoryCommand(replyId, memRoute, fromVoice)
                 freeAsk != null -> freeMemoryCommand(replyId, freeAsk)
-                cmd == ClaudeCommand.Leave -> {
+                cmd == HelperCommand.Leave -> {
                     endHelperMode()
                     localReply(replyId, ClaudeWords.LEFT)
                 }
-                cmd == ClaudeCommand.ReadAnswer -> if (claudePieces != null) {
+                cmd == HelperCommand.ReadAnswer -> if (claudePieces != null) {
                     finishOrDrop(replyId)
                     readBack()
                 } else {
@@ -1519,7 +1518,7 @@ object PanelController {
                 EscalationDecision.AUTO -> {
                     guard.take(fromClaude = false)
                     val personal = personalNow(null)
-                    val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personal,
+                    val blocks = HelperContext.escalation(question, history, ZonedDateTime.now(), userRegion, personal = personal,
                         includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
                     // A helper that can't be reached (a server that's off, no connection): Robot answers itself instead.
                     if (!escalateNow(replyId, question, blocks, voiceAsked, reuseBubble = true, h = target, fallBack = true)) return
@@ -1568,12 +1567,12 @@ object PanelController {
         // ask_claude is described (with its one line in the system prompt) only with a helper to check with, escalation
         // not Off, somewhere for the question to go (its API, or the Claude app installed), no "not Claude" in this
         // conversation, and no screen or photo with the question or before it in the conversation: Robot answers those
-        // itself first, and a follow-up keeps the live conversation that still holds the screen (AskClaudeTool).
+        // itself first, and a follow-up keeps the live conversation that still holds the screen (AskHelperTool).
         val api = target != null && HelperSettings.apiReady(target, keySaved)
-        val localTool = ClaudeSettings.localTool(s, target, keySaved)
+        val localTool = HelperSettings.localTool(s, target, keySaved)
         val reachable = localTool && (api || (target?.presetOf?.app?.let { pkg -> withContext(Dispatchers.IO) { HandOffIntents.installed(VoiceHub.app, pkg) } } == true))
-        val leftOut = AskClaudeTool.leftOut(localTool, reachable, claudeDeclined, AskClaudeTool.picture(attachment, history))
-        if (leftOut != null && leftOut != ClaudeLeftOut.OFF && leftOut != ClaudeLeftOut.NOWHERE) {
+        val leftOut = AskHelperTool.leftOut(localTool, reachable, claudeDeclined, AskHelperTool.picture(attachment, history))
+        if (leftOut != null && leftOut != HelperLeftOut.OFF && leftOut != HelperLeftOut.NOWHERE) {
             RLog.i("claude_left_out", "why" to leftOut)
             VoiceLog.add(VoiceEvent.CLAUDE_LEFT_OUT, leftOut)
         }
@@ -1708,7 +1707,7 @@ object PanelController {
     private fun personalNow(replyId: String?): Set<Personal> {
         val ui = replyId?.takeIf { id -> chat.none { it.id == id } }?.let { id -> _state.value.turns.firstOrNull { it.id == id } }
         val reply = ui?.let { listOf(ChatTurn(it.id, TurnRole.ASSISTANT, it.text, 0, actions = records(it.actions))) }.orEmpty()
-        return ClaudeContext.personal(chat + reply)
+        return HelperContext.personal(chat + reply)
     }
 
     /**
@@ -1769,7 +1768,7 @@ object PanelController {
             EscalationDecision.AUTO -> if (offerOnly || target == null) finishOrDrop(replyId) else {
                 // A screen or photo question gets here only with personal content allowed to go by itself: it goes along.
                 val shared = if (attachment != Attachment.NONE && HelperTrust.attachments(s)) Shared(screenText = screen, image = image) else Shared()
-                val blocks = ClaudeContext.escalation(question, history, ZonedDateTime.now(), userRegion, shared, personal = personal,
+                val blocks = HelperContext.escalation(question, history, ZonedDateTime.now(), userRegion, shared, personal = personal,
                     includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
                 finishOrDrop(replyId)
                 escalateNow(null, question, blocks, voiceAsked, reuseBubble = false, h = target)
@@ -1789,7 +1788,7 @@ object PanelController {
                     finishReply(replyId, DoneReason.END)
                 }
                 // What the tap sends is fixed now: this question's screen or picture, never one that arrives later.
-                val payload = if (!api) null else ClaudeContext.payload(question, history, ZonedDateTime.now(), userRegion, personal, attachment,
+                val payload = if (!api) null else HelperContext.payload(question, history, ZonedDateTime.now(), userRegion, personal, attachment,
                     Shared(screenText = screen, image = image), includePersonal = HelperTrust.conversation(s, target, personal, MemoryPanel.toTrusted()))
                 offer(replyId, PendingOffer(api, question, payload, voiceAsked, asWell, target.id))
             }
@@ -1839,7 +1838,7 @@ object PanelController {
         dropOffers()
         val h = VoiceHub.settings.helper(o.helper) ?: return
         offers[replyId] = o
-        val text = if (o.api) o.question else ClaudeAppLink.cap(o.question)
+        val text = if (o.api) o.question else AppHandOff.cap(o.question)
         _state.update { st ->
             st.copy(turns = st.turns.map { if (it.id == replyId) it.copy(offer = Offer(o.api, text, o.payload?.sends.orEmpty(), o.payload?.preview, o.asWell, h.name,
                 h.presetOf.defaultName)) else it })
@@ -1943,11 +1942,11 @@ object PanelController {
 
     /**
      * Robot checks with helper [h] (automatically, or after your tap): "Checking with Claude…" in Robot's voice, then the
-     * answer in the helper's. [blocks]: exactly what goes (ClaudeContext.escalation, or an offer's frozen payload).
+     * answer in the helper's. [blocks]: exactly what goes (HelperContext.escalation, or an offer's frozen payload).
      * [fallBack] (Automatic, before Robot's own model ran): a helper that can't be reached before it said anything gives
      * the question back; then true is returned, the reply is Robot's again, and Robot answers itself.
      */
-    private suspend fun escalateNow(replyId: String?, question: String, blocks: List<ClaudeBlock>, voiceAsked: Boolean, reuseBubble: Boolean,
+    private suspend fun escalateNow(replyId: String?, question: String, blocks: List<HelperBlock>, voiceAsked: Boolean, reuseBubble: Boolean,
         h: HelperConfig, fallBack: Boolean = false): Boolean {
         val s = VoiceHub.settings
         val app = VoiceHub.app
@@ -1975,14 +1974,14 @@ object PanelController {
             }
         }
         return try {
-            runHelper(id, h, session, blocks, ClaudePlan.of(h.effort, voiceAsked, ClaudeRouter.deep(question)), ToolRouter.asked(question), fallBack)
+            runHelper(id, h, session, blocks, HelperPlan.of(h.effort, voiceAsked, HelperRouter.deep(question)), ToolRouter.asked(question), fallBack)
         } finally {
             HelperLink.done(session)
         }
     }
 
     /** [h] couldn't be reached before it said anything: the reply is Robot's again (Robot answers), with a notice why. */
-    private fun fellBack(replyId: String, h: HelperConfig, failure: ClaudeFailure): Boolean {
+    private fun fellBack(replyId: String, h: HelperConfig, failure: HelperFailure): Boolean {
         markHelper(replyId, null)
         _state.update { st -> st.copy(helperStatus = null, phase = Phase.THINKING, turns = st.turns.map { if (it.id == replyId) it.copy(text = "", actions = emptyList()) else it }) }
         voice.start(replyId)
@@ -2004,23 +2003,23 @@ object PanelController {
      * tries again; or it could never be read again: then it was removed, and Robot says so), a server whose port Test
      * connection hasn't found, or an address Robot won't use.
      */
-    private fun noKey(replyId: String, h: HelperConfig, failure: ClaudeFailure) {
+    private fun noKey(replyId: String, h: HelperConfig, failure: HelperFailure) {
         val text = when {
-            failure == ClaudeFailure.NO_KEY && HelperLink.unavailable(h.id) -> words(h).keyUnavailable
-            failure == ClaudeFailure.NO_KEY && HelperLink.unreadable(h.id) -> words(h).keyUnreadable
+            failure == HelperFailure.NO_KEY && HelperLink.unavailable(h.id) -> words(h).keyUnavailable
+            failure == HelperFailure.NO_KEY && HelperLink.unreadable(h.id) -> words(h).keyUnreadable
             else -> failure.say(who(h))
         }
         failReply(replyId, text)
     }
 
     /** A question for helper [h] ("ask Claude …", "go get Jarvis", or any question in a helper's conversation). */
-    private suspend fun helperTurn(replyId: String, cmd: ClaudeCommand?, h: HelperConfig?, said: String, attachment: Attachment, sText: String?, image: ByteArray?,
+    private suspend fun helperTurn(replyId: String, cmd: HelperCommand?, h: HelperConfig?, said: String, attachment: Attachment, sText: String?, image: ByteArray?,
         thumb: Bitmap?, history: List<ChatTurn>, voiceAsked: Boolean) {
         val s = VoiceHub.settings
         val app = VoiceHub.app
         if (h == null) {
             endHelperMode()
-            val any = (cmd as? ClaudeCommand.Ask)?.helper == HelperName.ANY_ID || (cmd as? ClaudeCommand.Join)?.helper == HelperName.ANY_ID
+            val any = (cmd as? HelperCommand.Ask)?.helper == HelperName.ANY_ID || (cmd as? HelperCommand.Join)?.helper == HelperName.ANY_ID
             // "Ask the helper …" with helpers on but none ready: what the one you'd get still needs (a key, or its app).
             val waiting = s.helper(s.helpDefault)?.takeIf { it.on } ?: s.helpers.firstOrNull { it.on }
             return localReply(replyId, when {
@@ -2034,29 +2033,29 @@ object PanelController {
         val keySaved = keySaved(h)
         if (!h.on) return localReply(replyId, w.off)
         val question = when (cmd) {
-            is ClaudeCommand.Ask -> cmd.question
-            is ClaudeCommand.Join -> cmd.question
+            is HelperCommand.Ask -> cmd.question
+            is HelperCommand.Join -> cmd.question
             else -> said
         }
-        if (HelperSettings.route(h, keySaved) == ClaudeRoute.APP) {
+        if (HelperSettings.route(h, keySaved) == AskRoute.APP) {
             // Its app (the Claude app, ChatGPT, …): the question, or for "go get …" a short summary of the conversation so far.
-            return handOff(replyId, question ?: ClaudeAppLink.summary(history).orEmpty(), h)
+            return handOff(replyId, question ?: AppHandOff.summary(history).orEmpty(), h)
         }
-        if (h.presetOf.keyRequired && !keySaved) return localReply(replyId, ClaudeFailure.NO_KEY.say(who(h)))
+        if (h.presetOf.keyRequired && !keySaved) return localReply(replyId, HelperFailure.NO_KEY.say(who(h)))
         if (Assistant.locked(app) && !h.locked) {
             endHelperMode()
             return localReply(replyId, w.locked)
         }
         if (!HelperLink.networkAllowed(app)) return networkCard(replyId)
-        if (cmd is ClaudeCommand.Join) {
+        if (cmd is HelperCommand.Join) {
             startHelperMode(h, joinedAt = history.size, misheard = cmd.misheard)
             // Nothing goes to the helper until there is a question.
             if (question == null) return localReply(replyId, w.joined)
         }
         val mode = _state.value.helperMode == h.id
-        val deep = (cmd as? ClaudeCommand.Ask)?.deep ?: ClaudeRouter.deep(said)
+        val deep = (cmd as? HelperCommand.Ask)?.deep ?: HelperRouter.deep(said)
         // The screen or a photo goes only after a tap on its card ("Send your screen's text to Claude?").
-        val extra = if (attachment != Attachment.NONE) attachment else (cmd as? ClaudeCommand.Ask)?.extra ?: Attachment.NONE
+        val extra = if (attachment != Attachment.NONE) attachment else (cmd as? HelperCommand.Ask)?.extra ?: Attachment.NONE
         var shared = Shared()
         if (extra != Attachment.NONE) {
             val screen = if (extra == Attachment.SCREEN) sText ?: screenText else null
@@ -2086,23 +2085,23 @@ object PanelController {
         val now = ZonedDateTime.now()
         try {
             val blocks = when {
-                !mode -> ClaudeContext.oneShot(question ?: said, now, userRegion, shared)
+                !mode -> HelperContext.oneShot(question ?: said, now, userRegion, shared)
                 session.fresh -> {
                     // The helper joins the conversation: a personal one only after "Include" ("Start fresh" sends none of it),
                     // or by itself to a helper you trust that you called by its name (never with a screen or a photo in it).
                     val before = history.take(helperJoinedAt.coerceIn(0, history.size))
-                    val personal = ClaudeContext.personal(before)
+                    val personal = HelperContext.personal(before)
                     // A conversation from a word that only sounded like the name asks too, personal or not.
                     val include = HelperTrust.joinWithoutCard(h, personal, helperMisheard, MemoryPanel.toTrusted()) ||
-                        ClaudeContext.includeQuestion(before, helperMisheard)?.let { q ->
+                        HelperContext.includeQuestion(before, helperMisheard)?.let { q ->
                             askToShare(replyId, q, null, "Include", "Start fresh", detail = "Start fresh: ${h.name} sees only what you ask from now on.",
                                 personal = personal.isNotEmpty(), name = h.name)
                         } ?: false
-                    ClaudeContext.join(before, question ?: said, now, userRegion, shared, include, helperMisheard)
+                    HelperContext.join(before, question ?: said, now, userRegion, shared, include, helperMisheard)
                 }
-                else -> ClaudeContext.next(question ?: said, shared)
+                else -> HelperContext.next(question ?: said, shared)
             }
-            runHelper(replyId, h, session, blocks, ClaudePlan.of(h.effort, voiceAsked, deep), ToolRouter.asked(said))
+            runHelper(replyId, h, session, blocks, HelperPlan.of(h.effort, voiceAsked, deep), ToolRouter.asked(said))
         } finally {
             if (!mode) HelperLink.done(session)
         }
@@ -2114,7 +2113,7 @@ object PanelController {
      * calls as cards (always), then the cost line, today's spend, and Robot's own conversation rebuilt with it.
      * [fallBack]: see [escalateNow]; true when the question went back to Robot.
      */
-    private suspend fun runHelper(replyId: String, h: HelperConfig, session: HelperSession, blocks: List<ClaudeBlock>, plan: ClaudePlan, asked: Set<ToolName>,
+    private suspend fun runHelper(replyId: String, h: HelperConfig, session: HelperSession, blocks: List<HelperBlock>, plan: HelperPlan, asked: Set<ToolName>,
         fallBack: Boolean = false): Boolean {
         val w = words(h)
         val s = VoiceHub.settings
@@ -2129,7 +2128,7 @@ object PanelController {
             appendText(replyId, text)
             voice.feed(replyId, text, _state.value.speak).forEach { speakSentence(it, claude = true, voice = h.voice) }
         }
-        val heard = object : ClaudeListener {
+        val heard = object : HelperTurnListener {
             override fun text(delta: String) {
                 if (first < 0) first = System.currentTimeMillis() - t0
                 stream(echo.feed(delta))
@@ -2158,7 +2157,7 @@ object PanelController {
                 scope.launch(Dispatchers.IO) { HelperSpendStore.add(VoiceHub.app, h.id, dollars) }
             }
         }
-        val turn = ClaudeTurn(session, blocks, plan, heard) { it.say(who(h)) }
+        val turn = HelperTurn(session, blocks, plan, heard) { it.say(who(h)) }
         // One echo filter per round: the question's answer, then the text after each tool round.
         val rounds = object : TurnModel {
             override suspend fun ask(): ModelOutcome = turn.ask().also { stream(echo.flush()) }
@@ -2175,7 +2174,7 @@ object PanelController {
                 trusted = HelperTrust.reads(s, h), offered = session.offered, messages = PanelMessages.taint(chat), newId = ::newId).run()
         } finally {
             val r = session.lastReport
-            RLog.i("claude_turn", "kind" to h.kind, "model" to ((session as? ClaudeSession)?.model ?: RLog.Code("other")), "effort" to plan.effort,
+            RLog.i("claude_turn", "kind" to h.kind, "model" to ((session as? AnthropicSession)?.model ?: RLog.Code("other")), "effort" to plan.effort,
                 "firstMs" to first, "ms" to (System.currentTimeMillis() - t0), "requests" to r.requests, "searches" to r.searches,
                 "searchErrors" to r.searchErrors, "cache_read_input_tokens" to r.usage.cacheRead)
         }
@@ -2188,7 +2187,7 @@ object PanelController {
                 return fellBack(replyId, h, f)
             }
             // Robot's copy of the conversation can't make a valid request any more: the helper's conversation starts over.
-            if (f == ClaudeFailure.RESET) endHelperMode()
+            if (f == HelperFailure.RESET) endHelperMode()
             // Said aloud, in Robot's voice ("No internet", "Claude is busy, try again in a minute").
             if (_state.value.speak) VoiceHub.tts.speak(it)
             failReply(replyId, it)
@@ -2250,8 +2249,8 @@ object PanelController {
 
     /** GrapheneOS's Network toggle is off for Robot: a card that says so (no helper can be reached at all), said too. */
     private fun networkCard(replyId: String) {
-        PanelView(replyId).card(Card(newId(), ToolName.ASK_CLAUDE, "Robot can't use the network", ActionStatus.FAILED, ClaudeFailure.NO_NETWORK_PERMISSION.text))
-        if (_state.value.speak) VoiceHub.tts.speak(ClaudeFailure.NO_NETWORK_PERMISSION.text)
+        PanelView(replyId).card(Card(newId(), ToolName.ASK_CLAUDE, "Robot can't use the network", ActionStatus.FAILED, HelperFailure.NO_NETWORK_PERMISSION.text))
+        if (_state.value.speak) VoiceHub.tts.speak(HelperFailure.NO_NETWORK_PERMISSION.text)
         _state.update { it.copy(helperStatus = null) }
         markHelper(replyId, null)
         finishReply(replyId, DoneReason.END)
@@ -3072,7 +3071,7 @@ object PanelController {
         // 0.8: in a headset or car session, OutputGuard first (personal sentences only on a private device, the car's two).
         if (!PanelHandsFree.allow(clean) { personal || personalNow(_state.value.turns.lastOrNull()?.id).isNotEmpty() }) return
         // Claude's voice per sentence: Kokoro's French voice for a French one, Claude's own otherwise.
-        if (claude) ClaudeVoices.forSentence(VoiceHub.settings.voiceChoice, voice ?: VoiceHub.settings.claude?.voice, clean).let { (sid, lang) -> VoiceHub.tts.speakOther(clean, sid, lang) }
+        if (claude) HelperVoices.forSentence(VoiceHub.settings.voiceChoice, voice ?: VoiceHub.settings.claude?.voice, clean).let { (sid, lang) -> VoiceHub.tts.speakOther(clean, sid, lang) }
         else VoiceHub.tts.speak(clean)
     }
 

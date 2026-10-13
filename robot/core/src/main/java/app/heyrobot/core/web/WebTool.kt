@@ -7,7 +7,7 @@ import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.Choice
-import app.heyrobot.core.ClaudeContext
+import app.heyrobot.core.HelperContext
 import app.heyrobot.core.OneShotKind
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Priority
@@ -204,7 +204,7 @@ object WebQueryContext {
         }
         screen?.takeIf { it.isNotBlank() }?.let { untrusted += it }
         val content = TurnRules.untrusted(turns) || untrusted.isNotEmpty()
-        val isPersonal = ClaudeContext.personal(turns).isNotEmpty() || personal.isNotEmpty()
+        val isPersonal = HelperContext.personal(turns).isNotEmpty() || personal.isNotEmpty()
         return QueryContext(
             said = mine.filter { it.isNotBlank() },
             untrusted = untrusted,

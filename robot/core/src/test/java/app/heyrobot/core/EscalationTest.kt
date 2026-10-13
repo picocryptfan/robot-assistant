@@ -210,8 +210,8 @@ class EscalationTest {
         assertEquals(Escalation.ASK, ClaudeSettings.escalation(s, keySaved = false))
         assertEquals(EscalationDecision.OFFER, d(s, keySaved = false))
         // A key but the app route chosen: still asks first (only the API escalates automatically).
-        assertEquals(EscalationDecision.OFFER, d(s.withClaude { it.copy(route = ClaudeRoute.APP) }, keySaved = true))
-        assertEquals(EscalationDecision.AUTO, d(s.withClaude { it.copy(route = ClaudeRoute.API) }, keySaved = true))
+        assertEquals(EscalationDecision.OFFER, d(s.withClaude { it.copy(route = AskRoute.APP) }, keySaved = true))
+        assertEquals(EscalationDecision.AUTO, d(s.withClaude { it.copy(route = AskRoute.API) }, keySaved = true))
     }
 
     @Test fun askClaudeOffMeansNoEscalation() {
@@ -252,41 +252,41 @@ class EscalationTest {
     /** Whether the local model hears of ask_claude: settings, somewhere to go, "not Claude", and the question's screen or photo. */
     @Test fun askClaudeIsLeftOutForRefusalsAndScreenOrPhotoQuestions() {
         fun left(s: RobotSettings = key, keySaved: Boolean = true, reachable: Boolean = true, declined: Boolean = false, a: Attachment = Attachment.NONE) =
-            AskClaudeTool.leftOut(s, keySaved, reachable, declined, a)
+            AskHelperTool.leftOut(s, keySaved, reachable, declined, a)
         assertNull(left())
         assertNull(left(keySaved = false))
-        assertTrue(AskClaudeTool.offered(key, true, true, false, Attachment.NONE))
-        assertEquals(ClaudeLeftOut.OFF, left(claudeSettings(claudeEnabled = false)))
-        assertEquals(ClaudeLeftOut.OFF, left(claudeSettings(claudeHelp = Escalation.OFF)))
-        assertEquals(ClaudeLeftOut.NOWHERE, left(reachable = false))
-        assertEquals(ClaudeLeftOut.DECLINED, left(declined = true))
-        assertEquals(ClaudeLeftOut.SCREEN, left(a = Attachment.SCREEN))
-        assertEquals(ClaudeLeftOut.PHOTO, left(a = Attachment.PHOTO))
+        assertTrue(AskHelperTool.offered(key, true, true, false, Attachment.NONE))
+        assertEquals(HelperLeftOut.OFF, left(claudeSettings(claudeEnabled = false)))
+        assertEquals(HelperLeftOut.OFF, left(claudeSettings(claudeHelp = Escalation.OFF)))
+        assertEquals(HelperLeftOut.NOWHERE, left(reachable = false))
+        assertEquals(HelperLeftOut.DECLINED, left(declined = true))
+        assertEquals(HelperLeftOut.SCREEN, left(a = Attachment.SCREEN))
+        assertEquals(HelperLeftOut.PHOTO, left(a = Attachment.PHOTO))
         // The first reason wins: a refusal says more than the picture.
-        assertEquals(ClaudeLeftOut.DECLINED, left(declined = true, a = Attachment.SCREEN))
-        assertEquals(ClaudeLeftOut.OFF, left(claudeSettings(claudeEnabled = false), declined = true, a = Attachment.PHOTO))
+        assertEquals(HelperLeftOut.DECLINED, left(declined = true, a = Attachment.SCREEN))
+        assertEquals(HelperLeftOut.OFF, left(claudeSettings(claudeEnabled = false), declined = true, a = Attachment.PHOTO))
         for (s in listOf(key, claudeSettings(claudeHelp = Escalation.ASK), claudeSettings(claudeHelp = Escalation.AUTO))) for (keySaved in listOf(false, true))
             for (declined in listOf(false, true)) for (a in Attachment.entries) {
-                val offered = AskClaudeTool.offered(s, keySaved, true, declined, a)
+                val offered = AskHelperTool.offered(s, keySaved, true, declined, a)
                 assertEquals("$s $keySaved $declined $a", !declined && a == Attachment.NONE, offered)
             }
-        assertEquals(5, ClaudeLeftOut.entries.map { it.id }.toSet().size)
+        assertEquals(5, HelperLeftOut.entries.map { it.id }.toSet().size)
     }
 
     /** A follow-up in a conversation that showed Robot the screen or a photo is about it too. */
     @Test fun aFollowUpIsAboutTheEarlierScreenOrPhoto() {
         fun user(a: Attachment = Attachment.NONE) = ChatTurn("u", TurnRole.USER, "q", 0, a)
         fun robot() = ChatTurn("r", TurnRole.ASSISTANT, "a", 0)
-        assertEquals(Attachment.NONE, AskClaudeTool.picture(Attachment.NONE, emptyList()))
-        assertEquals(Attachment.NONE, AskClaudeTool.picture(Attachment.NONE, listOf(user(), robot())))
-        assertEquals(Attachment.SCREEN, AskClaudeTool.picture(Attachment.SCREEN, emptyList()))
-        assertEquals(Attachment.SCREEN, AskClaudeTool.picture(Attachment.NONE, listOf(user(Attachment.SCREEN), robot(), user(), robot())))
+        assertEquals(Attachment.NONE, AskHelperTool.picture(Attachment.NONE, emptyList()))
+        assertEquals(Attachment.NONE, AskHelperTool.picture(Attachment.NONE, listOf(user(), robot())))
+        assertEquals(Attachment.SCREEN, AskHelperTool.picture(Attachment.SCREEN, emptyList()))
+        assertEquals(Attachment.SCREEN, AskHelperTool.picture(Attachment.NONE, listOf(user(Attachment.SCREEN), robot(), user(), robot())))
         // The newest one counts; the question's own wins.
-        assertEquals(Attachment.PHOTO, AskClaudeTool.picture(Attachment.NONE, listOf(user(Attachment.SCREEN), robot(), user(Attachment.PHOTO), robot())))
-        assertEquals(Attachment.SCREEN, AskClaudeTool.picture(Attachment.SCREEN, listOf(user(Attachment.PHOTO), robot())))
+        assertEquals(Attachment.PHOTO, AskHelperTool.picture(Attachment.NONE, listOf(user(Attachment.SCREEN), robot(), user(Attachment.PHOTO), robot())))
+        assertEquals(Attachment.SCREEN, AskHelperTool.picture(Attachment.SCREEN, listOf(user(Attachment.PHOTO), robot())))
         // So the phone test's follow-up keeps the same system prompt and tools as the screen question (the live conversation is reused).
         val history = listOf(user(Attachment.SCREEN), robot())
-        assertEquals(ClaudeLeftOut.SCREEN, AskClaudeTool.leftOut(key, true, true, false, AskClaudeTool.picture(Attachment.NONE, history)))
+        assertEquals(HelperLeftOut.SCREEN, AskHelperTool.leftOut(key, true, true, false, AskHelperTool.picture(Attachment.NONE, history)))
     }
 
     /** Without ask_claude, neither the tool nor its line in the system prompt reaches the model. */
@@ -294,7 +294,7 @@ class EscalationTest {
         val now = java.time.ZonedDateTime.of(2026, 10, 11, 9, 0, 0, 0, java.time.ZoneId.of("Europe/Paris"))
         val core = setOf(ToolGroup.CORE)
         for ((declined, a) in listOf(true to Attachment.NONE, false to Attachment.SCREEN, false to Attachment.PHOTO, true to Attachment.SCREEN)) {
-            val askClaude = AskClaudeTool.offered(key, true, true, declined, a)
+            val askClaude = AskHelperTool.offered(key, true, true, declined, a)
             assertFalse(askClaude)
             assertFalse(ToolName.ASK_CLAUDE in ToolRouter.tools(ToolGroup.entries.toSet(), key, askClaude))
             val system = Prompt.system(now, locked = false, askClaude = askClaude)
@@ -302,7 +302,7 @@ class EscalationTest {
             assertFalse(Prompt.textCallHint(ToolRouter.tools(core, key, askClaude)).contains("ask_claude"))
         }
         // A plain question still gets both.
-        val askClaude = AskClaudeTool.offered(key, true, true, false, Attachment.NONE)
+        val askClaude = AskHelperTool.offered(key, true, true, false, Attachment.NONE)
         assertTrue(ToolName.ASK_CLAUDE in ToolRouter.tools(core, key, askClaude))
         assertTrue(Prompt.system(now, locked = false, askClaude = askClaude).contains("call ask_claude instead of guessing"))
     }
@@ -326,11 +326,11 @@ class EscalationTest {
     }
 
     @Test fun defaultRouteFollowsTheKey() {
-        assertEquals(ClaudeRoute.APP, ClaudeSettings.route(claudeSettings(), keySaved = false))
-        assertEquals(ClaudeRoute.API, ClaudeSettings.route(claudeSettings(), keySaved = true))
+        assertEquals(AskRoute.APP, ClaudeSettings.route(claudeSettings(), keySaved = false))
+        assertEquals(AskRoute.API, ClaudeSettings.route(claudeSettings(), keySaved = true))
         // Your choice stands either way.
-        assertEquals(ClaudeRoute.APP, ClaudeSettings.route(claudeSettings(claudeRoute = ClaudeRoute.APP), keySaved = true))
-        assertEquals(ClaudeRoute.API, ClaudeSettings.route(claudeSettings(claudeRoute = ClaudeRoute.API), keySaved = false))
+        assertEquals(AskRoute.APP, ClaudeSettings.route(claudeSettings(claudeRoute = AskRoute.APP), keySaved = true))
+        assertEquals(AskRoute.API, ClaudeSettings.route(claudeSettings(claudeRoute = AskRoute.API), keySaved = false))
         // Deleting the key doesn't turn Ask Claude off: the Claude app takes the questions.
         assertTrue(ClaudeSettings.enabled(claudeSettings(), keySaved = false))
         assertTrue(ClaudeSettings.enabled(claudeSettings(), keySaved = true))

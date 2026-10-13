@@ -8,7 +8,7 @@ import com.anthropic.models.beta.messages.BetaTextBlockParam
 // types: checked before every request (a history that breaks them would only get a 400, so Claude mode starts over
 // instead), and used to build Claude's turns the way the API wants them echoed back.
 
-internal object ClaudeHistory {
+internal object AnthropicHistory {
     /** A message's blocks (a plain string becomes one text block). */
     fun blocks(m: BetaMessageParam): List<BetaContentBlockParam> {
         val c = m.content()

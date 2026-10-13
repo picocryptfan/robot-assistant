@@ -37,13 +37,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import app.heyrobot.core.ClaudeCost
-import app.heyrobot.core.ClaudeEffortSetting
-import app.heyrobot.core.ClaudeModel
-import app.heyrobot.core.ClaudeRoute
-import app.heyrobot.core.ClaudeVoices
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.AskRoute
+import app.heyrobot.core.CostText
 import app.heyrobot.core.Escalation
+import app.heyrobot.core.HelperEffortSetting
 import app.heyrobot.core.HelperName
+import app.heyrobot.core.HelperVoices
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.helpers.EffortStyle
@@ -111,7 +111,7 @@ private fun status(h: HelperConfig, f: AssistantFacts?): Pair<Mark, String> {
     return when {
         !h.on -> Mark.TODO to "Off"
         f?.keysUnreadable?.contains(h.id) == true -> Mark.WARN to "The saved key couldn't be read and was removed: add it again"
-        p.app != null && HelperSettings.route(h, key) == ClaudeRoute.APP ->
+        p.app != null && HelperSettings.route(h, key) == AskRoute.APP ->
             if (f?.app(p.app)?.installed == false) Mark.TODO to "No key, and the ${p.defaultName} app isn't installed" else Mark.OK to "Opens the ${p.defaultName} app"
         p.keyRequired && !key -> Mark.TODO to "No key"
         p.protocol == Protocol.ANTHROPIC -> Mark.OK to "Ready"
@@ -171,11 +171,11 @@ fun HelpersScreen(s: RobotSettings, snap: Snapshot, update: (RobotSettings) -> U
         }
         preferenceGroup("Cost", "cost") {
             ListPreference("Daily budget for all helpers", s.helperBudgetCents, RobotSettings.CLAUDE_BUDGETS,
-                { c -> ClaudeCost.dollarsText(c * 10_000L).removeSuffix(".00") },
-                summary = "Today: ${ClaudeCost.dollarsText(spend?.total ?: 0)} of ${ClaudeCost.dollarsText(s.helperBudgetCents * 10_000L)} (an estimate)") {
+                { c -> CostText.dollarsText(c * 10_000L).removeSuffix(".00") },
+                summary = "Today: ${CostText.dollarsText(spend?.total ?: 0)} of ${CostText.dollarsText(s.helperBudgetCents * 10_000L)} (an estimate)") {
                 update(s.copy(helperBudgetCents = it))
             }
-            val by = s.helpers.mapNotNull { h -> spend?.by?.get(h.id)?.takeIf { it > 0 }?.let { "${h.name}: ${ClaudeCost.dollarsText(it)}" } }
+            val by = s.helpers.mapNotNull { h -> spend?.by?.get(h.id)?.takeIf { it > 0 }?.let { "${h.name}: ${CostText.dollarsText(it)}" } }
             if (by.isNotEmpty()) PreferenceItem("Spent today", by.joinToString(" · "))
             SwitchPreference("Show cost", "“≈ 1¢” under each helper's reply", s.helperShowCost) { update(s.copy(helperShowCost = it)) }
         }
@@ -378,10 +378,10 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
         if (p.app != null) {
             preferenceGroup(null, "route") {
                 val route = HelperSettings.route(h, key)
-                ListPreference("Use", route, ClaudeRoute.entries, { HelperSettings.routeTitle(p, it) }, { r ->
+                ListPreference("Use", route, AskRoute.entries, { HelperSettings.routeTitle(p, it) }, { r ->
                     HelperSettings.routeDetail(p, r) + when {
-                        r == ClaudeRoute.APP && f?.app(p.app)?.installed == false -> " The ${p.defaultName} app isn't installed."
-                        r == ClaudeRoute.API && !key -> " Add a key first."
+                        r == AskRoute.APP && f?.app(p.app)?.installed == false -> " The ${p.defaultName} app isn't installed."
+                        r == AskRoute.API && !key -> " Add a key first."
                         else -> ""
                     }
                 }, enabled = on) { set(h.copy(route = it)) }
@@ -402,12 +402,12 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
             }
         }
         preferenceGroup("Model", "model") {
-            val shownModel = if (p.protocol == Protocol.ANTHROPIC) ClaudeModel.of(h.model).title
+            val shownModel = if (p.protocol == Protocol.ANTHROPIC) AnthropicModel.of(h.model).title
                 else h.catalogModel?.title ?: h.model.ifEmpty { "None chosen" }
             PreferenceItem("Model", shownModel, RIcons.Chip, enabled = on, onClick = { pickModel = true })
             if (effortStyle != EffortStyle.NONE || p.protocol == Protocol.ANTHROPIC) {
-                ListPreference("How hard ${h.name} thinks", h.effort, ClaudeEffortSetting.entries, { it.title }, { e ->
-                    if (e == ClaudeEffortSetting.AUTO) "Low for spoken questions, medium for typed ones, high when you ask for it" else null
+                ListPreference("How hard ${h.name} thinks", h.effort, HelperEffortSetting.entries, { it.title }, { e ->
+                    if (e == HelperEffortSetting.AUTO) "Low for spoken questions, medium for typed ones, high when you ask for it" else null
                 }, enabled = on) { set(h.copy(effort = it)) }
             }
         }
@@ -426,7 +426,7 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
             SwitchPreference("Allow on lock screen", "A locked phone can't show who is asking", h.locked, enabled = on) { set(h.copy(locked = it)) }
         }
         preferenceGroup("Voice and trust", "voice") {
-            ListPreference("${h.name}'s voice", ClaudeVoices.of(h.voice), ClaudeVoices.KOKORO.map { it.first }, ClaudeVoices::title,
+            ListPreference("${h.name}'s voice", HelperVoices.of(h.voice), HelperVoices.KOKORO.map { it.first }, HelperVoices::title,
                 { name -> s.helpers.firstOrNull { it.id != h.id && it.voice == name }?.let { "Also ${it.name}'s" } }, enabled = on) { set(h.copy(voice = it)) }
             SwitchPreference("Trusted with personal content",
                 if (s.personalToHelpers) "Every helper gets it already (Safety & privacy)" else if (h.trust) "What Robot read goes without asking"
@@ -442,9 +442,9 @@ fun HelperScreen(id: String, s: RobotSettings, snap: Snapshot, update: (RobotSet
             }
             if (h.price !is HelperPrice.Free) {
                 ListPreference<Int?>("Daily cap for ${h.name}", h.budgetCents, listOf<Int?>(null) + RobotSettings.CLAUDE_BUDGETS.take(4),
-                    { c -> c?.let { ClaudeCost.dollarsText(it * 10_000L).removeSuffix(".00") } ?: "None" },
-                    summary = "Today: ${ClaudeCost.dollarsText(f?.spend?.by?.get(h.id) ?: 0)}" +
-                        (h.budgetCents?.let { " of ${ClaudeCost.dollarsText(it * 10_000L)}" } ?: " · no cap") + " (an estimate)",
+                    { c -> c?.let { CostText.dollarsText(it * 10_000L).removeSuffix(".00") } ?: "None" },
+                    summary = "Today: ${CostText.dollarsText(f?.spend?.by?.get(h.id) ?: 0)}" +
+                        (h.budgetCents?.let { " of ${CostText.dollarsText(it * 10_000L)}" } ?: " · no cap") + " (an estimate)",
                     enabled = on) { set(h.copy(budgetCents = it)) }
             }
         }
@@ -581,7 +581,7 @@ private fun ModelDialog(h: HelperConfig, facts: HelperFacts, a: AppActions, onDi
         text = {
             Column(Modifier.selectableGroup().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (p.protocol == Protocol.ANTHROPIC) {
-                    for (m in ClaudeModel.entries) ModelChoice(m.title, m.detail, ClaudeModel.of(h.model) == m) { onPick(m.id) }
+                    for (m in AnthropicModel.entries) ModelChoice(m.title, m.detail, AnthropicModel.of(h.model) == m) { onPick(m.id) }
                     return@Column
                 }
                 for (m in p.models) ModelChoice(m.title, m.detail + badges(m.tools, m.search, m.vision), h.model == m.id) { onPick(m.id) }

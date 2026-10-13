@@ -1,13 +1,10 @@
 package app.heyrobot.helpers
 
-import app.heyrobot.helpers.anthropic.ClaudeListener
-import app.heyrobot.helpers.anthropic.ClaudeOutcome
-import app.heyrobot.helpers.anthropic.ClaudeTurn
-import app.heyrobot.core.ClaudeBlock
-import app.heyrobot.core.ClaudeEffort
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudePlan
-import app.heyrobot.core.ClaudeTools
+import app.heyrobot.core.HelperBlock
+import app.heyrobot.core.HelperEffort
+import app.heyrobot.core.HelperFailure
+import app.heyrobot.core.HelperPlan
+import app.heyrobot.core.HelperTools
 import app.heyrobot.core.DoneReason
 import app.heyrobot.core.ModelOutcome
 import app.heyrobot.core.RLog
@@ -70,10 +67,10 @@ class OpenAiSessionTest {
 
     private fun session(h: HelperConfig = home(), tools: Boolean = false, conversation: Boolean = false, timing: Timing = Timing(2_000, 2_000, 2_000, 2_000, 500),
         dropped: Set<Extra> = emptySet(), onDropped: (Extra) -> Unit = {}) =
-        OpenAiSession(http(h), h, if (tools) ClaudeTools.tools(RobotSettings()) else emptyList(), conversation, dropped = dropped, onDropped = onDropped,
+        OpenAiSession(http(h), h, if (tools) HelperTools.tools(RobotSettings()) else emptyList(), conversation, dropped = dropped, onDropped = onDropped,
             timing = timing, retryDelayMs = 10)
 
-    private class Heard : ClaudeListener {
+    private class Heard : HelperTurnListener {
         val text = StringBuilder()
         var declined = 0
         var loading = 0
@@ -99,14 +96,14 @@ class OpenAiSessionTest {
     private fun error(code: Int, body: String) = MockResponse().setResponseCode(code).setHeader("content-type", "application/json").setBody(body)
     private fun take(): RecordedRequest = server.takeRequest(5, TimeUnit.SECONDS)!!
     private fun body(r: RecordedRequest) = JSONObject(r.body.readUtf8())
-    private val q = listOf(ClaudeBlock.Text("[Today is Monday.]"), ClaudeBlock.Text("why is the sky blue"))
-    private val voice = ClaudePlan(ClaudeEffort.LOW, 4_000)
+    private val q = listOf(HelperBlock.Text("[Today is Monday.]"), HelperBlock.Text("why is the sky blue"))
+    private val voice = HelperPlan(HelperEffort.LOW, 4_000)
 
     @Test fun aQuestionStreamsAndJoinsTheHistory() = runBlocking {
         server.enqueue(answer("The sky ", "is blue."))
         val s = session(conversation = true)
         val h = Heard()
-        assertEquals(ClaudeOutcome.Done(), s.ask(q, voice, h))
+        assertEquals(HelperOutcome.Done(), s.ask(q, voice, h))
         assertEquals("The sky is blue.", h.text.toString())
         val r = take()
         assertEquals("/v1/chat/completions", r.path)
@@ -127,7 +124,7 @@ class OpenAiSessionTest {
         assertEquals(1, s.lastReport.requests)
         // The next question in the conversation carries the first answer back as it came.
         server.enqueue(answer("Because of Rayleigh scattering."))
-        s.ask(listOf(ClaudeBlock.Text("and why?")), voice, Heard())
+        s.ask(listOf(HelperBlock.Text("and why?")), voice, Heard())
         val m2 = body(take()).getJSONArray("messages")
         assertEquals(listOf("system", "user", "assistant", "user"), (0 until m2.length()).map { m2.getJSONObject(it).getString("role") })
         assertEquals("The sky is blue.", m2.getJSONObject(2).getString("content"))
@@ -139,11 +136,11 @@ class OpenAiSessionTest {
         server.enqueue(answer("Timer set."))
         val s = session(tools = true)
         val o = s.ask(q, voice, Heard())
-        assertEquals(ClaudeOutcome.Calls(listOf(RawToolCall("set_timer", mapOf("minutes" to 10)))), o)
+        assertEquals(HelperOutcome.Calls(listOf(RawToolCall("set_timer", mapOf("minutes" to 10)))), o)
         val first = body(take())
         assertTrue(first.getJSONArray("tools").length() > 0)
         assertFalse(first.has("tool_choice"))
-        assertEquals(ClaudeOutcome.Done(), s.answer(listOf(mapOf("status" to "done")), Heard()))
+        assertEquals(HelperOutcome.Done(), s.answer(listOf(mapOf("status" to "done")), Heard()))
         val ms = body(take()).getJSONArray("messages")
         val roles = (0 until ms.length()).map { ms.getJSONObject(it).getString("role") }
         assertEquals(listOf("system", "user", "assistant", "tool"), roles)
@@ -157,19 +154,19 @@ class OpenAiSessionTest {
         server.enqueue(error(500, """{"error":{"type":"server_error","message":"mock"}}"""))
         server.enqueue(error(503, """{"error":{"message":"mock"}}"""))
         val s = session()
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.SERVER), s.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.SERVER), s.ask(q, voice, Heard()))
         assertEquals(2, server.requestCount)
         assertTrue(s.history.isEmpty())
         // A refused key: said at once, never retried.
         server.enqueue(error(401, """{"error":{"message":"bad key","type":"invalid_request_error","code":"invalid_api_key"}}"""))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.KEY_REFUSED), s.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.KEY_REFUSED), s.ask(q, voice, Heard()))
         assertEquals(3, server.requestCount)
         // Out of credit with a 429 (OpenAI's code): not "busy".
         server.enqueue(error(429, """{"error":{"message":"…","type":"insufficient_quota","code":"insufficient_quota"}}"""))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.NO_CREDITS), s.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.NO_CREDITS), s.ask(q, voice, Heard()))
         // A model the server doesn't have (Ollama's 404): the home words.
         server.enqueue(error(404, """{"error":"model 'qwen3.8:27b' not found"}"""))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.MODEL_UNAVAILABLE), s.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.MODEL_UNAVAILABLE), s.ask(q, voice, Heard()))
         assertTrue(s.history.isEmpty())
     }
 
@@ -178,7 +175,7 @@ class OpenAiSessionTest {
         server.enqueue(answer("OK"))
         val dropped = mutableListOf<Extra>()
         val s = session(onDropped = { dropped += it })
-        assertEquals(ClaudeOutcome.Done(), s.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Done(), s.ask(q, voice, Heard()))
         assertTrue(body(take()).has("stream_options"))
         assertFalse(body(take()).has("stream_options"))
         assertEquals(listOf(Extra.STREAM_OPTIONS), dropped)
@@ -189,7 +186,7 @@ class OpenAiSessionTest {
         // A 400 with nothing left to drop is said.
         server.enqueue(error(400, """{"error":{"message":"bad"}}"""))
         val bare = session(dropped = Extra.entries.toSet())
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.BAD_REQUEST), bare.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.BAD_REQUEST), bare.ask(q, voice, Heard()))
     }
 
     @Test fun zeroDataRetentionIsNeverDroppedAndATooLongQuestionDropsNothing() = runBlocking {
@@ -200,23 +197,23 @@ class OpenAiSessionTest {
         server.enqueue(error(400, """{"error":{"message":"bad","type":"invalid_request_error"}}"""))
         server.enqueue(error(400, """{"error":{"message":"bad","type":"invalid_request_error"}}"""))
         val dropped = mutableListOf<Extra>()
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.BAD_REQUEST), openRouter { dropped += it }.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.BAD_REQUEST), openRouter { dropped += it }.ask(q, voice, Heard()))
         assertEquals(listOf(Extra.EFFORT), dropped)
         repeat(2) { assertTrue(body(take()).getJSONObject("provider").getBoolean("zdr")) }
         assertEquals(2, server.requestCount)
         // A 400 that names zero data retention (no provider keeps nothing for this model): said, nothing dropped or sent again.
         server.enqueue(error(400, """{"error":{"message":"no zdr","type":"invalid_request_error","param":"provider.zdr"}}"""))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.BAD_REQUEST), openRouter { dropped += it }.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.BAD_REQUEST), openRouter { dropped += it }.ask(q, voice, Heard()))
         assertEquals(3, server.requestCount)
         // Too long: no part is to blame, so none is dropped for later questions.
         server.enqueue(error(400, """{"error":{"message":"too long","type":"invalid_request_error","code":"context_length_exceeded"}}"""))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.TOO_LONG), openRouter { dropped += it }.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.TOO_LONG), openRouter { dropped += it }.ask(q, voice, Heard()))
         assertEquals(4, server.requestCount)
         // A 400 that names the part it refused: that part only.
         server.enqueue(error(400, """{"error":{"message":"no","type":"invalid_request_error","param":"stream_options"}}"""))
         server.enqueue(answer("OK"))
         val named = mutableListOf<Extra>()
-        assertEquals(ClaudeOutcome.Done(), session(onDropped = { named += it }).ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Done(), session(onDropped = { named += it }).ask(q, voice, Heard()))
         assertEquals(listOf(Extra.STREAM_OPTIONS), named)
         assertEquals(listOf(Extra.EFFORT), dropped)
     }
@@ -224,7 +221,7 @@ class OpenAiSessionTest {
     @Test fun aServerThatLoadsItsModelThenAnswers() = runBlocking {
         server.enqueue(answer("Hello").setHeadersDelay(900, TimeUnit.MILLISECONDS))
         val h = Heard()
-        assertEquals(ClaudeOutcome.Done(), session().ask(q, voice, h))
+        assertEquals(HelperOutcome.Done(), session().ask(q, voice, h))
         assertEquals(1, h.loading)
         assertEquals("Hello", h.text.toString())
     }
@@ -235,7 +232,7 @@ class OpenAiSessionTest {
         val s = session(timing = Timing(300, 300, 300, 1_000, 500))
         val h = Heard()
         val o = s.ask(q, voice, h)
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.TIMEOUT), o)
+        assertEquals(HelperOutcome.Failed(HelperFailure.TIMEOUT), o)
         assertEquals(1, h.loading)
         assertTrue(s.history.isEmpty())
         // A stop (the coroutine cancelled) mid-answer: back to before the question.
@@ -251,17 +248,17 @@ class OpenAiSessionTest {
         server.enqueue(sse(chunk("""{"refusal":"I can't help with that."}"""), chunk("{}", "stop"), "[DONE]"))
         val h = Heard()
         val s = session()
-        assertEquals(ClaudeOutcome.Declined, s.ask(q, voice, h))
+        assertEquals(HelperOutcome.Declined, s.ask(q, voice, h))
         assertEquals(1, h.declined)
         assertTrue(s.history.isEmpty())
     }
 
     @Test fun anErrorInsideTheStream() = runBlocking {
         server.enqueue(sse(chunk("""{"content":"Hel"}"""), """{"error":{"code":429,"message":"slow","metadata":{"error_type":"rate_limit_error"}},"choices":[]}"""))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.RATE_LIMITED), session().ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.RATE_LIMITED), session().ask(q, voice, Heard()))
         // A stream that stops before saying how it ended is a failure, never an answer.
         server.enqueue(sse(chunk("""{"content":"half an ans"}""")))
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.UNKNOWN), session().ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.UNKNOWN), session().ask(q, voice, Heard()))
     }
 
     @Test fun costFromYourPricesOrReported() = runBlocking {
@@ -288,7 +285,7 @@ class OpenAiSessionTest {
     @Test fun noRedirectsAndCleartextOnlyToYourNetwork() = runBlocking {
         // A redirect is never followed.
         server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "http://8.8.8.8/v1/chat/completions"))
-        assertTrue(session().ask(q, voice, Heard()) is ClaudeOutcome.Failed)
+        assertTrue(session().ask(q, voice, Heard()) is HelperOutcome.Failed)
         assertEquals(1, server.requestCount)
         // A company never gets http://.
         assertNull(HelperHttp.create(base, key, home = false))
@@ -299,7 +296,7 @@ class OpenAiSessionTest {
         val viaName = HelperHttp.create("http://my.server.example:${server.port}/v1", key, home = true, dns = publicDns)!!
         val h = HelperConfig.of(Presets.HOME, "h3", "am_puck", "Jarvis", "http://my.server.example:${server.port}/v1").copy(model = "m")
         val s = OpenAiSession(viaName, h, emptyList(), false, retryDelayMs = 10)
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.NOT_LOCAL), s.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.NOT_LOCAL), s.ask(q, voice, Heard()))
         assertEquals(1, server.requestCount)
         // Mixed: a public and the private one; only the private one is used.
         val mixed = object : Dns { override fun lookup(hostname: String) = listOf(InetAddress.getByName("93.184.216.34"), InetAddress.getByName("127.0.0.1")) }
@@ -357,7 +354,7 @@ class OpenAiSessionTest {
         // The stream arriving one byte at a time (an accented letter and an emoji split inside their bytes, a tag split too).
         server.enqueue(answer("Café ", "<thi", "nk>hmm</think>", "déjà 👍").throttleBody(1, 1, TimeUnit.MILLISECONDS))
         val h = Heard()
-        assertEquals(ClaudeOutcome.Done(), session().ask(q, voice, h))
+        assertEquals(HelperOutcome.Done(), session().ask(q, voice, h))
         assertEquals("Café déjà 👍", h.text.toString())
     }
 
@@ -366,7 +363,7 @@ class OpenAiSessionTest {
         server.shutdown()
         val h = HelperConfig.of(Presets.HOME, "h4", "am_puck", "Jarvis", "http://127.0.0.1:$port/v1").copy(model = "m")
         val s = OpenAiSession(HelperHttp.create("http://127.0.0.1:$port/v1", null, home = true)!!, h, emptyList(), false, retryDelayMs = 10)
-        assertEquals(ClaudeOutcome.Failed(ClaudeFailure.UNREACHABLE), s.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Failed(HelperFailure.UNREACHABLE), s.ask(q, voice, Heard()))
         server = MockWebServer().also { it.start() }
     }
 
@@ -384,16 +381,16 @@ class OpenAiSessionTest {
         ))
         val gpt = HelperConfig.of(Presets.OPENAI, "h5", "am_puck").copy(model = "gpt-6.1-sol")
         // The Responses session against the mock (a home-style client so the test can use http on 127.0.0.1).
-        val s = OpenAiSession(HelperHttp.create(base, key, home = true)!!, gpt, ClaudeTools.tools(RobotSettings()), conversation = true, retryDelayMs = 10)
+        val s = OpenAiSession(HelperHttp.create(base, key, home = true)!!, gpt, HelperTools.tools(RobotSettings()), conversation = true, retryDelayMs = 10)
         val h = Heard()
-        assertEquals(ClaudeOutcome.Calls(listOf(RawToolCall("set_timer", mapOf("minutes" to 5)))), s.ask(q, ClaudePlan(ClaudeEffort.MEDIUM, 16_000), h))
+        assertEquals(HelperOutcome.Calls(listOf(RawToolCall("set_timer", mapOf("minutes" to 5)))), s.ask(q, HelperPlan(HelperEffort.MEDIUM, 16_000), h))
         val first = take()
         assertEquals("/v1/responses", first.path)
         val b1 = body(first)
         assertFalse(b1.getBoolean("store"))
         assertEquals("reasoning.encrypted_content", b1.getJSONArray("include").getString(0))
         assertEquals("medium", b1.getJSONObject("reasoning").getString("effort"))
-        assertEquals(ClaudeOutcome.Done(), s.answer(listOf(mapOf("status" to "done")), h))
+        assertEquals(HelperOutcome.Done(), s.answer(listOf(mapOf("status" to "done")), h))
         val input = body(take()).getJSONArray("input")
         val types = (0 until input.length()).map { input.getJSONObject(it).optString("type").ifEmpty { input.getJSONObject(it).getString("role") } }
         assertEquals(listOf("user", "reasoning", "function_call", "function_call_output"), types)
@@ -405,20 +402,20 @@ class OpenAiSessionTest {
 
     @Test fun theTurnRunnerSeesAHelperAsAModel() = runBlocking {
         server.enqueue(answer("Fine."))
-        val t = ClaudeTurn(session(), q, voice, Heard())
+        val t = HelperTurn(session(), q, voice, Heard())
         assertEquals(ModelOutcome.Done(DoneReason.END), t.ask())
         // The panel runs only the tools a helper was given: none with its actions off, and the call it sends anyway is
         // passed on as it came, for the turn runner to refuse.
         val none = session()
         assertTrue(none.offered.isEmpty())
-        assertEquals(ClaudeTools.tools(RobotSettings()).map { it.tool }.toSet(), session(tools = true).offered)
+        assertEquals(HelperTools.tools(RobotSettings()).map { it.tool }.toSet(), session(tools = true).offered)
         server.enqueue(sse(chunk("""{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"add_note","arguments":"{\"text\":\"x\"}"}}]}""", "tool_calls"), "[DONE]"))
-        assertEquals(ClaudeOutcome.Calls(listOf(RawToolCall("add_note", mapOf("text" to "x")))), none.ask(q, voice, Heard()))
+        assertEquals(HelperOutcome.Calls(listOf(RawToolCall("add_note", mapOf("text" to "x")))), none.ask(q, voice, Heard()))
         // Failures come back in the helper's words.
         server.enqueue(error(401, "{}"))
         server.enqueue(error(401, "{}"))
         val who = app.heyrobot.core.helpers.HelperWho.of(home())
-        assertEquals(ModelOutcome.Failed("Your Jarvis key was refused. Check it in Robot's settings."), ClaudeTurn(session(), q, voice, Heard()) { it.say(who) }.ask())
+        assertEquals(ModelOutcome.Failed("Your Jarvis key was refused. Check it in Robot's settings."), HelperTurn(session(), q, voice, Heard()) { it.say(who) }.ask())
     }
 
     @Test fun probeFindsTheServerListsModelsAndAsks() = runBlocking {
@@ -440,7 +437,7 @@ class OpenAiSessionTest {
         server.enqueue(MockResponse().setResponseCode(401))
         val k = HelperProbe.run(home(), null, listOf(base))
         assertTrue(k.needsKey)
-        assertEquals(ClaudeFailure.KEY_REFUSED, k.failure)
+        assertEquals(HelperFailure.KEY_REFUSED, k.failure)
         assertEquals(mapOf<String, Any>(), HelperProbe.ids("not json").associateWith { it })
     }
 }

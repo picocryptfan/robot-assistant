@@ -668,7 +668,7 @@ object ToolCalls {
             // Empty: "go get Claude" with nothing to summarise opens the app without text.
             // 1.0.0: [helper] names one of your helpers by id (the panel's hand-off to the one you called); the app it opens is
             // always looked up from your settings when the card is made, never taken from the call.
-            ToolName.ASK_CLAUDE -> ParsedCall.Ok(Action.AskClaude(longArg(a, ClaudeAppLink.MAX_CHARS, "question", "query", "q", "text", "prompt").orEmpty(),
+            ToolName.ASK_CLAUDE -> ParsedCall.Ok(Action.AskClaude(longArg(a, AppHandOff.MAX_CHARS, "question", "query", "q", "text", "prompt").orEmpty(),
                 helper = textArg(a, 16, "helper")?.takeIf { Regex("[a-z0-9_]{1,16}").matches(it) }))
             // Both optional: no place is where you are, no day is today.
             ToolName.WEATHER -> ParsedCall.Ok(Action.Weather(textArg(a, MAX_NAME, "place", "location", "city", "where", "town"),

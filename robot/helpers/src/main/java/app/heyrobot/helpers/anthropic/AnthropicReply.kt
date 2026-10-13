@@ -15,7 +15,7 @@ import java.util.TreeMap
 // the whole answer then failed as "Something went wrong with Claude". Here a call keeps the input it started with when
 // no pieces follow; a block or delta type Robot doesn't know is left out (counted); citations stay on their text.
 
-internal class ClaudeReply {
+internal class AnthropicReply {
     /** What the stream said, once it ended. */
     class Done(
         val content: List<BetaContentBlock>,

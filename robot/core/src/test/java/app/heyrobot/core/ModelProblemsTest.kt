@@ -219,7 +219,7 @@ class ModelProblemsTest {
             VoiceLogEntry(t, VoiceEvent.CONV_START, ConvMode.entries.first().id, ConvEntry.APP.id, 0),
             VoiceLogEntry(t + 1_000, VoiceEvent.CONV_TRANSLATE, MtEngine.GEMMA.id, 2_400, MtVerdict.entries.first().id),
             VoiceLogEntry(t + 2_000, VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_API.id, 3, 1),
-            VoiceLogEntry(t + 2_500, VoiceEvent.CLAUDE_SENT, 0, ClaudeModelCode.entries.first().id),
+            VoiceLogEntry(t + 2_500, VoiceEvent.CLAUDE_SENT, 0, AnthropicModelCode.entries.first().id),
             VoiceLogEntry(t + 3_000, VoiceEvent.MODEL_LOADED, ModelCode.GENERAL.id, BackendCode.GPU.id, 4_100),
             VoiceLogEntry(t + 4_000, VoiceEvent.GPU_FALLBACK, ModelCode.GENERAL.id, ProblemStage.WRITING.id, LoadFailure.ENGINE.id),
         ).reversed()

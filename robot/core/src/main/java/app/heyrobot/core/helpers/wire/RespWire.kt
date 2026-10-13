@@ -1,6 +1,6 @@
 package app.heyrobot.core.helpers.wire
 
-import app.heyrobot.core.ClaudeBlock
+import app.heyrobot.core.HelperBlock
 import app.heyrobot.core.Json
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.ToolSpec
@@ -67,11 +67,11 @@ object RespWire {
     }
 
     /** The user's message: input_text parts, and input_image parts when the model can see ([images]). */
-    fun user(blocks: List<ClaudeBlock>, images: Boolean = true): JSONObject {
+    fun user(blocks: List<HelperBlock>, images: Boolean = true): JSONObject {
         val parts = JSONArray()
         for (b in blocks) when (b) {
-            is ClaudeBlock.Text -> parts.put(JSONObject().put("type", "input_text").put("text", b.text))
-            is ClaudeBlock.Image -> if (images) parts.put(JSONObject().put("type", "input_image").put("image_url", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(b.jpeg)))
+            is HelperBlock.Text -> parts.put(JSONObject().put("type", "input_text").put("text", b.text))
+            is HelperBlock.Image -> if (images) parts.put(JSONObject().put("type", "input_image").put("image_url", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(b.jpeg)))
         }
         return JSONObject().put("role", "user").put("content", parts)
     }

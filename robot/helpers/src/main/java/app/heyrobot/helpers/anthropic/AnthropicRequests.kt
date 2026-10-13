@@ -1,10 +1,12 @@
 package app.heyrobot.helpers.anthropic
 
-import app.heyrobot.core.ClaudeBlock
-import app.heyrobot.core.ClaudeEffort
-import app.heyrobot.core.ClaudeModel
-import app.heyrobot.core.ClaudePlan
-import app.heyrobot.core.ClaudePrompt
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.HelperBlock
+import app.heyrobot.core.HelperContext
+import app.heyrobot.core.HelperEffort
+import app.heyrobot.core.HelperPlan
+import app.heyrobot.core.HelperPrompt
+import app.heyrobot.core.HelperTools
 import app.heyrobot.core.Json
 import app.heyrobot.core.ToolSpec
 import com.anthropic.core.JsonValue
@@ -31,15 +33,15 @@ import java.util.Base64
 // nothing per conversation. A breakpoint goes after the system prompt; in Claude mode the request's own automatic
 // breakpoint follows the last message (history is append-only, so no earlier message is ever edited).
 
-internal object ClaudeRequests {
+internal object AnthropicRequests {
     /** Web searches in one request at most. */
     const val SEARCH_MAX_USES = 3L
 
     private val EPHEMERAL: BetaCacheControlEphemeral = BetaCacheControlEphemeral.builder().build()
 
-    private val SYSTEM: List<BetaTextBlockParam> = system(ClaudePrompt.SYSTEM)
+    private val SYSTEM: List<BetaTextBlockParam> = system(HelperPrompt.SYSTEM)
     /** 0.5.0: the transcript summary's own fixed prompt (docs/conversation-mode.md 7.2), cached the same way. */
-    private val TRANSCRIPT: List<BetaTextBlockParam> = system(ClaudePrompt.TRANSCRIPT_SYSTEM)
+    private val TRANSCRIPT: List<BetaTextBlockParam> = system(HelperPrompt.TRANSCRIPT_SYSTEM)
 
     private fun system(text: String): List<BetaTextBlockParam> = listOf(BetaTextBlockParam.builder().text(text).cacheControl(EPHEMERAL).build())
 
@@ -47,20 +49,20 @@ internal object ClaudeRequests {
      * Thinking is never sent (on Claude Opus 5.5 it is always on, and `disabled` is a 400); effort is always explicit
      * (the API's default differs by model). Forced tool_choice is a 400 on these models: auto.
      */
-    fun params(model: ClaudeModel, plan: ClaudePlan, tools: List<ToolSpec>, search: Boolean, cacheLast: Boolean, messages: List<BetaMessageParam>,
-        system: String = ClaudePrompt.SYSTEM): MessageCreateParams {
+    fun params(model: AnthropicModel, plan: HelperPlan, tools: List<ToolSpec>, search: Boolean, cacheLast: Boolean, messages: List<BetaMessageParam>,
+        system: String = HelperPrompt.SYSTEM): MessageCreateParams {
         val b = MessageCreateParams.builder()
             .model(model.id)
             .maxTokens(plan.maxTokens)
             // Only Robot's two fixed prompts: the spoken-answer one, or the transcript summary's.
-            .systemOfBetaTextBlockParams(if (system == ClaudePrompt.TRANSCRIPT_SYSTEM) TRANSCRIPT else SYSTEM)
+            .systemOfBetaTextBlockParams(if (system == HelperPrompt.TRANSCRIPT_SYSTEM) TRANSCRIPT else SYSTEM)
             .outputConfig(BetaOutputConfig.builder().effort(effort(plan.effort)).build())
             .messages(messages)
         for (t in tools) b.addTool(tool(t))
         // The newer web search (dynamic filtering) is documented for Claude Opus 5.5 and Sonnet 5.5; Claude Haiku 5.5 gets the
         // basic one.
         if (search) {
-            if (model == ClaudeModel.HAIKU) b.addTool(BetaWebSearchTool20250305.builder().maxUses(SEARCH_MAX_USES).build())
+            if (model == AnthropicModel.HAIKU) b.addTool(BetaWebSearchTool20250305.builder().maxUses(SEARCH_MAX_USES).build())
             else b.addTool(BetaWebSearchTool20260209.builder().maxUses(SEARCH_MAX_USES).build())
         }
         if (tools.isNotEmpty() || search) b.toolChoice(BetaToolChoiceAuto.builder().build())
@@ -74,15 +76,15 @@ internal object ClaudeRequests {
         return b.build()
     }
 
-    private fun effort(e: ClaudeEffort): BetaOutputConfig.Effort = when (e) {
-        ClaudeEffort.LOW -> BetaOutputConfig.Effort.LOW
-        ClaudeEffort.MEDIUM -> BetaOutputConfig.Effort.MEDIUM
-        ClaudeEffort.HIGH -> BetaOutputConfig.Effort.HIGH
+    private fun effort(e: HelperEffort): BetaOutputConfig.Effort = when (e) {
+        HelperEffort.LOW -> BetaOutputConfig.Effort.LOW
+        HelperEffort.MEDIUM -> BetaOutputConfig.Effort.MEDIUM
+        HelperEffort.HIGH -> BetaOutputConfig.Effort.HIGH
     }
 
     /**
      * One of Robot's tools with the same schema as Gemma's (ToolSpec): its properties in order, then the required ones,
-     * and no others. Strict, so the API only produces input that fits the schema (Robot still checks it: ClaudeTools.check).
+     * and no others. Strict, so the API only produces input that fits the schema (Robot still checks it: HelperTools.check).
      */
     fun tool(spec: ToolSpec): BetaTool {
         val props = BetaTool.InputSchema.Properties.builder()
@@ -96,16 +98,16 @@ internal object ClaudeRequests {
             .build()
     }
 
-    /** A user message from the plain blocks ClaudeContext built; [before]: tool results it must open with. */
-    fun user(blocks: List<ClaudeBlock>, before: List<BetaContentBlockParam> = emptyList()): BetaMessageParam =
+    /** A user message from the plain blocks HelperContext built; [before]: tool results it must open with. */
+    fun user(blocks: List<HelperBlock>, before: List<BetaContentBlockParam> = emptyList()): BetaMessageParam =
         BetaMessageParam.builder()
             .role(BetaMessageParam.Role.USER)
             .contentOfBetaContentBlockParams(before + blocks.map(::block))
             .build()
 
-    private fun block(b: ClaudeBlock): BetaContentBlockParam = when (b) {
-        is ClaudeBlock.Text -> BetaContentBlockParam.ofText(BetaTextBlockParam.builder().text(b.text).build())
-        is ClaudeBlock.Image -> BetaContentBlockParam.ofImage(BetaImageBlockParam.builder().source(
+    private fun block(b: HelperBlock): BetaContentBlockParam = when (b) {
+        is HelperBlock.Text -> BetaContentBlockParam.ofText(BetaTextBlockParam.builder().text(b.text).build())
+        is HelperBlock.Image -> BetaContentBlockParam.ofImage(BetaImageBlockParam.builder().source(
             BetaBase64ImageSource.builder().mediaType(BetaBase64ImageSource.MediaType.IMAGE_JPEG).data(Base64.getEncoder().encodeToString(b.jpeg)).build(),
         ).build())
     }

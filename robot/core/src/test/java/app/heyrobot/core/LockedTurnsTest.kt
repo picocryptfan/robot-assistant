@@ -39,11 +39,11 @@ class LockedTurnsTest {
     @Test fun theConversationIsContentAndAHelperIsNeverToldTheyAreYours() {
         assertTrue(TurnRules.untrusted(said + yours))
         assertFalse(TurnRules.untrusted(listOf(stranger, unlockFirst, yours)))
-        val transcript = ClaudeContext.transcript(said + yours)!!
+        val transcript = HelperContext.transcript(said + yours)!!
         assertTrue(transcript, transcript.startsWith("Said while the phone was locked: text Mom"))
         assertTrue(transcript, transcript.endsWith("User: what's on my calendar today?"))
         // Nothing personal by itself: what a helper gets of it is decided as before.
-        assertEquals(emptySet<Personal>(), ClaudeContext.personal(said))
+        assertEquals(emptySet<Personal>(), HelperContext.personal(said))
     }
 
     @Test fun aSearchWithTheirWordsIsNeverYours() {

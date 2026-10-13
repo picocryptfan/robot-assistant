@@ -50,24 +50,24 @@ class SummaryByHelperTest {
     private val mistral = HelperConfig.of(Presets.MISTRAL, "hmis", "bf_emma")
 
     @Test fun eachHelperHasItsOwnCard() {
-        val g = ClaudeApiHelper(ctx, gpt, 35_000)
+        val g = ApiHelper(ctx, gpt, 35_000)
         assertEquals("api_hgpt", g.id)
         assertEquals(HelperRoute.API, g.route)
         // OpenAI's published price for the model chosen, from the text's length (no peak hours, no dated change for it).
         assertEquals("Goes to: OpenAI (GPT-6.1 Sol), over the internet, with your API key. ≈ 5¢.", g.disclosure.line)
-        assertEquals(ClaudeApiHelper.OTHER_INPUT_TOKENS, g.maxInputTokens())
+        assertEquals(ApiHelper.OTHER_INPUT_TOKENS, g.maxInputTokens())
         // Claude keeps its id and its room.
-        val c = ClaudeApiHelper(ctx, HelperConfig.claude(), 35_000)
-        assertEquals(ClaudeApiHelper.ID, c.id)
-        assertEquals(ClaudeApiHelper.MAX_INPUT_TOKENS, c.maxInputTokens())
+        val c = ApiHelper(ctx, HelperConfig.claude(), 35_000)
+        assertEquals(ApiHelper.ID, c.id)
+        assertEquals(ApiHelper.MAX_INPUT_TOKENS, c.maxInputTokens())
         // A price Robot doesn't know: said on the card. Over budget: said too.
-        assertTrue(ClaudeApiHelper(ctx, mistral, 35_000).disclosure.line.contains("Cost unknown"))
-        assertTrue(ClaudeApiHelper(ctx, gpt, 35_000, budgetUsed = true).disclosure.line.endsWith("Today's budget for helpers is used up: this adds to it."))
+        assertTrue(ApiHelper(ctx, mistral, 35_000).disclosure.line.contains("Cost unknown"))
+        assertTrue(ApiHelper(ctx, gpt, 35_000, budgetUsed = true).disclosure.line.endsWith("Today's budget for helpers is used up: this adds to it."))
     }
 
     @Test fun aJobForOneHelperNeverRunsOnAnother() = runBlocking {
-        val g = ClaudeApiHelper(ctx, gpt, 1_000)
-        val forClaude = ConsentCard.build(ClaudeApiHelper.ID, "Claude", g.disclosure, meta, t, now, "CA", "en", zone).approve(System.currentTimeMillis())
+        val g = ApiHelper(ctx, gpt, 1_000)
+        val forClaude = ConsentCard.build(ApiHelper.ID, "Claude", g.disclosure, meta, t, now, "CA", "en", zone).approve(System.currentTimeMillis())
         val r = g.summarize(forClaude, object : HelperListener {})
         assertEquals(HelperResult.Failed("Nothing was sent: Robot needs your OK on the card."), r)
     }
@@ -79,7 +79,7 @@ class SummaryByHelperTest {
         val share = ComponentName(pkg, "$pkg.Share")
         pm.addActivityIfNotPresent(share)
         pm.addIntentFilterForActivity(share, IntentFilter(Intent.ACTION_SEND).apply { addDataType("text/plain"); addCategory(Intent.CATEGORY_DEFAULT) })
-        val a = ClaudeAppHelper(ctx, gpt)
+        val a = AppShareHelper(ctx, gpt)
         assertEquals("app_hgpt", a.id)
         assertEquals("Goes to: the ChatGPT app, with your own account there, when you press Send there.", a.disclosure.line)
         val card = ConsentCard.build(a.id, "the ChatGPT app", a.disclosure, meta, t, now, "CA", "en", zone)
@@ -89,9 +89,9 @@ class SummaryByHelperTest {
         assertEquals(pkg, i.`package`)
         assertEquals(card.appText, i.getStringExtra(Intent.EXTRA_TEXT))
         // Another helper's card is never shared with this app; an app that isn't installed gets nothing.
-        val other = ConsentCard.build(ClaudeAppHelper.ID, "the Claude app", a.disclosure, meta, t, now, "CA", "en", zone)
+        val other = ConsentCard.build(AppShareHelper.ID, "the Claude app", a.disclosure, meta, t, now, "CA", "en", zone)
         assertNull(a.intent(other.approve(System.currentTimeMillis())))
-        val grok = ClaudeAppHelper(ctx, HelperConfig.of(Presets.XAI, "hgrk", "am_fenrir"))
+        val grok = AppShareHelper(ctx, HelperConfig.of(Presets.XAI, "hgrk", "am_fenrir"))
         assertNull(grok.intent(ConsentCard.build(grok.id, "the Grok app", grok.disclosure, meta, t, now, "CA", "en", zone).approve(System.currentTimeMillis())))
     }
 }

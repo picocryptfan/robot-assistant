@@ -2,7 +2,7 @@ package app.heyrobot.core.helpers
 
 import app.heyrobot.core.ApprovalGate
 import app.heyrobot.core.ChatTurn
-import app.heyrobot.core.ClaudeContext
+import app.heyrobot.core.HelperContext
 import app.heyrobot.core.ConversationCodec
 import app.heyrobot.core.GateDecision
 import app.heyrobot.core.Prompt
@@ -50,7 +50,7 @@ class HelperHistoryTest {
     @Test fun robotsModelSeesWhoAnswered() {
         val prompt = conv.turns.toPromptTurns()[1].text
         assertTrue(prompt, prompt.startsWith("[Jarvis answered] "))
-        assertTrue(ClaudeContext.transcript(conv.turns)!!.contains("Jarvis: It's 42."))
+        assertTrue(HelperContext.transcript(conv.turns)!!.contains("Jarvis: It's 42."))
     }
 
     @Test fun robotsSystemPromptIsUnchangedForClaude() {

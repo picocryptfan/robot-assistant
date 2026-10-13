@@ -1,10 +1,10 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeEffort
-import app.heyrobot.core.ClaudeEffortSetting
-import app.heyrobot.core.ClaudeModel
-import app.heyrobot.core.ClaudeRoute
-import app.heyrobot.core.ClaudeVoices
+import app.heyrobot.core.HelperEffort
+import app.heyrobot.core.HelperEffortSetting
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.AskRoute
+import app.heyrobot.core.HelperVoices
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.enumOr
 import org.json.JSONArray
@@ -43,13 +43,13 @@ enum class EffortStyle {
     RESPONSES;
 
     /** The wire value for [e], or null when nothing is sent. */
-    fun wire(e: ClaudeEffort): String? = when (this) {
+    fun wire(e: HelperEffort): String? = when (this) {
         NONE -> null
-        MISTRAL -> if (e == ClaudeEffort.LOW) "none" else "high"
+        MISTRAL -> if (e == HelperEffort.LOW) "none" else "high"
         DEEPSEEK -> when (e) {
-            ClaudeEffort.LOW -> "low"
-            ClaudeEffort.MEDIUM -> "high"
-            ClaudeEffort.HIGH -> "max"
+            HelperEffort.LOW -> "low"
+            HelperEffort.MEDIUM -> "high"
+            HelperEffort.HIGH -> "max"
         }
         else -> e.wire
     }
@@ -140,7 +140,7 @@ object Presets {
     val ANTHROPIC = Preset(
         "anthropic", HelperKind.ANTHROPIC, "Anthropic", "Anthropic (Claude)", "Claude", Protocol.ANTHROPIC, null,
         Quirks(search = SearchStyle.ANTHROPIC, strictTools = true, effort = EffortStyle.NONE),
-        ClaudeModel.entries.map { CatalogModel(it.id, it.title, it.detail, tools = true, search = true, vision = true) },
+        AnthropicModel.entries.map { CatalogModel(it.id, it.title, it.detail, tools = true, search = true, vision = true) },
         keyWhere = "console.anthropic.com › API keys", keyPrefixes = listOf("sk-ant-"),
         billing = "API use is paid with API credits, which a claude.ai Pro or Max plan doesn't include.",
         app = "com.anthropic.claude", misheard = listOf("cloud", "clod", "clawed", "claud", "klode", "clyde"), searchByDefault = true,
@@ -273,11 +273,11 @@ data class HelperConfig(
     val name: String,
     val model: String,
     val enabled: Boolean? = null,
-    val route: ClaudeRoute? = null,
-    val effort: ClaudeEffortSetting = ClaudeEffortSetting.AUTO,
+    val route: AskRoute? = null,
+    val effort: HelperEffortSetting = HelperEffortSetting.AUTO,
     val search: Boolean = false,
     val actions: Boolean = true,
-    val voice: String = ClaudeVoices.DEFAULT,
+    val voice: String = HelperVoices.DEFAULT,
     val locked: Boolean = false,
     val trust: Boolean = false,
     val baseUrl: String? = null,
@@ -337,7 +337,7 @@ data class HelperConfig(
          * Claude as installs before 1.0.0 had it (on; the Claude app without a key, the API with one): kept for settings
          * files from before 0.6.0 (RobotSettings.legacyClaude). 1.0.0: a new install has no helper.
          */
-        fun claude(): HelperConfig = HelperConfig(CLAUDE_ID, Presets.ANTHROPIC.id, Presets.ANTHROPIC.defaultName, ClaudeModel.DEFAULT.id, search = true)
+        fun claude(): HelperConfig = HelperConfig(CLAUDE_ID, Presets.ANTHROPIC.id, Presets.ANTHROPIC.defaultName, AnthropicModel.DEFAULT.id, search = true)
 
         /** A new helper of [preset] ([id]: unused; [voice]: the first voice nobody else uses). */
         fun of(preset: Preset, id: String, voice: String, name: String = preset.defaultName, baseUrl: String? = null): HelperConfig =
@@ -364,13 +364,13 @@ data class HelperConfig(
             if (preset.needsAddress && base == null) return null
             return HelperConfig(
                 id = id, preset = preset.id, name = name,
-                model = if (preset.protocol == Protocol.ANTHROPIC) ClaudeModel.of(model).id else model,
+                model = if (preset.protocol == Protocol.ANTHROPIC) AnthropicModel.of(model).id else model,
                 enabled = if (o.has("enabled")) o.optBoolean("enabled") else null,
-                route = if (preset.app != null) enumValues<ClaudeRoute>().firstOrNull { it.name == o.optString("route") } else null,
-                effort = enumOr(o.optString("effort"), ClaudeEffortSetting.AUTO),
+                route = if (preset.app != null) enumValues<AskRoute>().firstOrNull { it.name == o.optString("route") } else null,
+                effort = enumOr(o.optString("effort"), HelperEffortSetting.AUTO),
                 search = o.optBoolean("search", preset.searchByDefault),
                 actions = o.optBoolean("actions", true),
-                voice = ClaudeVoices.of(o.optString("voice")),
+                voice = HelperVoices.of(o.optString("voice")),
                 locked = o.optBoolean("locked", false),
                 trust = o.optBoolean("trust", false),
                 baseUrl = if (preset.needsAddress) base else null,
@@ -466,7 +466,7 @@ object HelperNames {
         for (w in words) {
             if (w == "robot" || w in wakeWords) return NameCheck.Problem("“$w” is in a wake phrase: Robot would mix them up.")
             if (kept && w in SINCE_1_0) continue
-            if (w in COMMANDS || w in app.heyrobot.core.ClaudeRouter.FILLER_WORDS) return NameCheck.Problem("“$w” is a word Robot listens for in commands.")
+            if (w in COMMANDS || w in app.heyrobot.core.HelperRouter.FILLER_WORDS) return NameCheck.Problem("“$w” is a word Robot listens for in commands.")
         }
         for (other in s.helpers) {
             if (other.id == id) continue

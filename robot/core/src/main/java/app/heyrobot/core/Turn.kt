@@ -298,7 +298,7 @@ class TurnRunner(
     private var untrusted: Boolean,
     /**
      * Claude is the model (the API route): every call shows a card (unless Settings › Safety & privacy says otherwise),
-     * only [ClaudeTools.OFFERED] exist, and each input is checked against its schema before it is read. Claude never
+     * only [HelperTools.OFFERED] exist, and each input is checked against its schema before it is read. Claude never
      * calls ask_claude.
      */
     private val remote: Boolean = false,
@@ -314,7 +314,7 @@ class TurnRunner(
      * 0.6.0, [remote]: the tools this helper was given (none when its actions are off or its model can't use them). A
      * helper's reply is untrusted (a server can answer with any call at all), so a call to anything else is refused.
      */
-    private val offered: Set<ToolName> = ClaudeTools.OFFERED.toSet(),
+    private val offered: Set<ToolName> = HelperTools.OFFERED.toSet(),
     /**
      * 0.7: the messages other people wrote that are in this conversation (core messages MessageQuarantine): every action
      * that writes or leaves the phone asks, and one that sends something to anyone but their sender needs a tap.
@@ -414,9 +414,9 @@ class TurnRunner(
         // A tool the model is never told about stays out of its reach (0.8's call tool: "call Mom" is the panel's, not the model's).
         if (!model.appCalls && ToolName.of(raw.name)?.forModel == false) return ParsedCall.Invalid(raw.name.take(40), "unknown tool")
         if (!remote) return ToolCalls.parse(raw)
-        val tool = ToolName.of(raw.name)?.takeIf { it in ClaudeTools.OFFERED } ?: return ParsedCall.Invalid(raw.name.take(40), "unknown tool")
+        val tool = ToolName.of(raw.name)?.takeIf { it in HelperTools.OFFERED } ?: return ParsedCall.Invalid(raw.name.take(40), "unknown tool")
         if (tool !in offered) return ParsedCall.Invalid(tool.id, "this tool wasn't offered")
-        ClaudeTools.check(ToolSpecs.of(tool), raw.args)?.let { return ParsedCall.Invalid(tool.id, it) }
+        HelperTools.check(ToolSpecs.of(tool), raw.args)?.let { return ParsedCall.Invalid(tool.id, it) }
         return ToolCalls.parse(raw)
     }
 

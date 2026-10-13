@@ -2,7 +2,7 @@ package app.heyrobot.core.output
 
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.CardAnswer
-import app.heyrobot.core.ClaudeRouter
+import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.TextCommand
 import app.heyrobot.core.ToolName
@@ -202,7 +202,7 @@ object SpokenChoice {
 
     private fun phrases(vararg p: String): List<List<String>> = p.map { it.split(' ') }
 
-    private fun words(text: String): List<String> = ClaudeRouter.plain(text).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+    private fun words(text: String): List<String> = HelperRouter.plain(text).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
 
     private fun canon(w: String): String = SYNONYMS[w] ?: w
 

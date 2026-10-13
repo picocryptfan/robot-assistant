@@ -1,6 +1,6 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeFailure
+import app.heyrobot.core.HelperFailure
 import app.heyrobot.core.helpers.wire.Extra
 import org.json.JSONArray
 import org.json.JSONObject
@@ -22,7 +22,7 @@ data class HelperFacts(
     /** The model the tiny question went to, and whether it called the tool when asked to ([actions], null: not checked). */
     val model: String? = null,
     val actions: Boolean? = null,
-    val failure: ClaudeFailure? = null,
+    val failure: HelperFailure? = null,
     val needsKey: Boolean = false,
     val checkedAt: Long = 0,
     val ms: Long = 0,
@@ -72,7 +72,7 @@ data class HelperFacts(
                 models = o.optJSONArray("models")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }.orEmpty(),
                 answered = o.optBoolean("answered"), model = str("model"),
                 actions = if (o.has("actions")) o.optBoolean("actions") else null,
-                failure = enumValues<ClaudeFailure>().firstOrNull { it.name == o.optString("failure") },
+                failure = enumValues<HelperFailure>().firstOrNull { it.name == o.optString("failure") },
                 needsKey = o.optBoolean("needsKey"), checkedAt = o.optLong("checkedAt"), ms = o.optLong("ms"),
                 dropped = o.optJSONObject("dropped")?.let { d ->
                     d.keys().asSequence().associateWith { m -> d.optJSONArray(m)?.let { a -> (0 until a.length()).mapNotNull { i -> enumValues<Extra>().firstOrNull { it.name == a.optString(i) } }.toSet() }.orEmpty() }

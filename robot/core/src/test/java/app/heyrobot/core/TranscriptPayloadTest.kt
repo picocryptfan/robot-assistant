@@ -10,7 +10,7 @@ import java.time.ZoneOffset
 import java.time.ZonedDateTime
 
 /** "Summarize with a stronger AI": what the card lists is what is sent, and nothing is sent without your tap (docs/conversation-mode.md 7.2). */
-class ClaudeTranscriptPayloadTest {
+class TranscriptPayloadTest {
     private val zone = ZoneOffset.UTC
     private val now = ZonedDateTime.of(2026, 10, 11, 14, 52, 0, 0, zone)
     private val start = ZonedDateTime.of(2026, 10, 11, 14, 2, 0, 0, zone).toInstant().toEpochMilli()
@@ -21,7 +21,7 @@ class ClaudeTranscriptPayloadTest {
         apply(TranscriptEvent.Me("S1"))
         apply(TranscriptEvent.Rename("S2", "Marie"))
     }.result()
-    private val api = Disclosure.claudeApi(ClaudeModel.OPUS, HelperCost.estimate(ClaudeModel.OPUS, 36_000))
+    private val api = Disclosure.claudeApi(AnthropicModel.OPUS, HelperCost.estimate(AnthropicModel.OPUS, 36_000))
 
     private fun card(anonymize: Boolean = false) = ConsentCard.build("claude-api", "Claude", api, meta, t, now, "CA", "en", zone, anonymize)
 
@@ -94,7 +94,7 @@ class ClaudeTranscriptPayloadTest {
 
     @Test fun theCostEstimate() {
         // About 6,000 words (36,000 characters): about 9 cents on Opus.
-        assertEquals("≈ 9¢", ClaudeCost.line(HelperCost.estimate(ClaudeModel.OPUS, 36_000)))
-        assertTrue(HelperCost.estimate(ClaudeModel.HAIKU, 36_000) < HelperCost.estimate(ClaudeModel.SONNET, 36_000))
+        assertEquals("≈ 9¢", CostText.line(HelperCost.estimate(AnthropicModel.OPUS, 36_000)))
+        assertTrue(HelperCost.estimate(AnthropicModel.HAIKU, 36_000) < HelperCost.estimate(AnthropicModel.SONNET, 36_000))
     }
 }

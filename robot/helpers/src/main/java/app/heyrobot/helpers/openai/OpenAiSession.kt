@@ -1,16 +1,13 @@
 package app.heyrobot.helpers.openai
 
-import app.heyrobot.helpers.anthropic.ClaudeListener
-import app.heyrobot.helpers.anthropic.ClaudeOutcome
-import app.heyrobot.helpers.anthropic.ClaudeTurnReport
-import app.heyrobot.core.ClaudeBlock
-import app.heyrobot.core.ClaudeEffort
-import app.heyrobot.core.ClaudeEffortSetting
-import app.heyrobot.core.ClaudeEnd
-import app.heyrobot.core.ClaudeFail
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudePlan
-import app.heyrobot.core.ClaudePrompt
+import app.heyrobot.core.HelperBlock
+import app.heyrobot.core.HelperEffort
+import app.heyrobot.core.HelperEffortSetting
+import app.heyrobot.core.HelperEnd
+import app.heyrobot.core.HelperFail
+import app.heyrobot.core.HelperFailure
+import app.heyrobot.core.HelperPlan
+import app.heyrobot.core.HelperPrompt
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.TokenEstimate
@@ -33,20 +30,15 @@ import app.heyrobot.core.helpers.wire.RespWire
 import app.heyrobot.core.helpers.wire.Step
 import app.heyrobot.core.helpers.wire.Stop
 import app.heyrobot.core.helpers.wire.WireErrors
+import app.heyrobot.helpers.HelperOutcome
 import app.heyrobot.helpers.HelperSession
+import app.heyrobot.helpers.HelperTurnListener
+import app.heyrobot.helpers.HelperTurnReport
+import app.heyrobot.helpers.anthropic.AnthropicSession
 import app.heyrobot.helpers.http.HelperHttp
 import app.heyrobot.helpers.http.NotLocalException
 import app.heyrobot.helpers.http.SseReader
 import app.heyrobot.helpers.http.textUpTo
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import okhttp3.Call
-import org.json.JSONObject
 import java.io.InterruptedIOException
 import java.net.ConnectException
 import java.net.NoRouteToHostException
@@ -57,9 +49,18 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Call
+import org.json.JSONObject
 
 // VOICE PROCESS ONLY, :helpers module. One conversation with a helper that speaks Chat Completions or the Responses API
-// (0.6.0): another company's model, or a model on your own server. It keeps ClaudeSession's promises (HelperSession) on
+// (0.6.0): another company's model, or a model on your own server. It keeps AnthropicSession's promises (HelperSession) on
 // the pure wire readers in core: every request streams; text goes to the listener as it arrives, reasoning never does;
 // the helper's turns go back exactly as they came; a failed, declined or stopped question leaves no trace and tool rounds
 // that ran stay; the history is checked before every request. Two things are its own:
@@ -84,7 +85,7 @@ class OpenAiSession(
     private val timing: Timing = Timing.of(config),
     private val retryDelayMs: Long = 1_000,
     private val clock: () -> Instant = Instant::now,
-    /** 1.0.0: a fixed system prompt in place of the spoken one (a transcript summary's, ClaudePrompt.transcriptSystem). */
+    /** 1.0.0: a fixed system prompt in place of the spoken one (a transcript summary's, HelperPrompt.transcriptSystem). */
     private val system: String? = null,
 ) : HelperSession {
     private val protocol = config.presetOf.protocol
@@ -93,9 +94,9 @@ class OpenAiSession(
     private var before: List<JSONObject> = emptyList()
     private var keep = -1
     private var pending: List<String> = emptyList()
-    private var plan: ClaudePlan = ClaudePlan.of(ClaudeEffortSetting.AUTO, voice = true, deep = false)
-    private var firstPlan: ClaudePlan? = null
-    private var report = ClaudeTurnReport()
+    private var plan: HelperPlan = HelperPlan.of(HelperEffortSetting.AUTO, voice = true, deep = false)
+    private var firstPlan: HelperPlan? = null
+    private var report = HelperTurnReport()
     private val refused = dropped.toMutableSet()
 
     init {
@@ -109,13 +110,13 @@ class OpenAiSession(
     val droppedExtras: Set<Extra> get() = refused.toSet()
 
     override val fresh: Boolean get() = messages.isEmpty()
-    override val lastReport: ClaudeTurnReport get() = report
+    override val lastReport: HelperTurnReport get() = report
     override val offered: Set<ToolName> = tools.map { it.tool }.toSet()
 
-    override suspend fun ask(blocks: List<ClaudeBlock>, plan: ClaudePlan, listener: ClaudeListener): ClaudeOutcome {
+    override suspend fun ask(blocks: List<HelperBlock>, plan: HelperPlan, listener: HelperTurnListener): HelperOutcome {
         if (pending.isNotEmpty()) abandon(emptyList(), stopped = true)
         this.plan = if (!conversation) plan else firstPlan?.let { plan.keeping(it) } ?: plan.also { firstPlan = it }
-        report = ClaudeTurnReport()
+        report = HelperTurnReport()
         // Items are never changed once in the history: a shallow copy is enough.
         before = messages.toList()
         keep = -1
@@ -124,7 +125,7 @@ class OpenAiSession(
         return run(listener)
     }
 
-    override suspend fun answer(results: List<Map<String, Any?>>, listener: ClaudeListener): ClaudeOutcome {
+    override suspend fun answer(results: List<Map<String, Any?>>, listener: HelperTurnListener): HelperOutcome {
         val ids = pending
         pending = emptyList()
         addResults(ids, results)
@@ -165,12 +166,12 @@ class OpenAiSession(
     private fun options(): ChatOptions {
         val search = config.searching
         val name = config.name
-        val system = this.system ?: ClaudePrompt.system(name, tools.isNotEmpty(), search)
+        val system = this.system ?: HelperPrompt.system(name, tools.isNotEmpty(), search)
         return ChatOptions(config.model, config.presetOf.quirks, config.catalogModel?.effort ?: config.presetOf.quirks.effort, plan, tools, search, system,
             config.zdr, refused.toSet())
     }
 
-    private suspend fun run(listener: ClaudeListener): ClaudeOutcome {
+    private suspend fun run(listener: HelperTurnListener): HelperOutcome {
         var retried = false
         var adapted = 0
         try {
@@ -179,7 +180,7 @@ class OpenAiSession(
                 if (problem != null) {
                     RLog.i("helper_history", "problem" to RLog.Code(problem))
                     rollBack()
-                    return ClaudeOutcome.Failed(ClaudeFailure.RESET)
+                    return HelperOutcome.Failed(HelperFailure.RESET)
                 }
                 val o = options()
                 val r = stream(o, listener)
@@ -206,7 +207,7 @@ class OpenAiSession(
                             }
                         }
                         rollBack()
-                        return ClaudeOutcome.Failed(r.failure)
+                        return HelperOutcome.Failed(r.failure)
                     }
                     is Streamed.Ok -> {
                         report = report.copy(domains = (report.domains + r.domains).distinct().take(MAX_DOMAINS), searches = report.searches + r.searches)
@@ -214,20 +215,20 @@ class OpenAiSession(
                             Stop.DECLINED -> {
                                 rollBack()
                                 listener.declined()
-                                return ClaudeOutcome.Declined
+                                return HelperOutcome.Declined
                             }
                             Stop.CALLS -> {
                                 append(r.echo)
                                 pending = r.calls.map { it.first }
-                                return ClaudeOutcome.Calls(r.calls.map { it.second })
+                                return HelperOutcome.Calls(r.calls.map { it.second })
                             }
                             Stop.CUT -> {
                                 append(r.echo, closed = true)
-                                return ClaudeOutcome.Done(cut = true)
+                                return HelperOutcome.Done(cut = true)
                             }
                             Stop.END -> {
                                 append(r.echo)
-                                return ClaudeOutcome.Done()
+                                return HelperOutcome.Done()
                             }
                         }
                     }
@@ -259,7 +260,7 @@ class OpenAiSession(
 
     private sealed class Streamed {
         class Ok(val echo: List<JSONObject>, val stop: Stop, val calls: List<Pair<String, RawToolCall>>, val domains: List<String>, val searches: Int) : Streamed()
-        class Failure(val failure: ClaudeFailure, val shown: Boolean, val status: Int = 0, val param: String? = null) : Streamed()
+        class Failure(val failure: HelperFailure, val shown: Boolean, val status: Int = 0, val param: String? = null) : Streamed()
     }
 
     private sealed class Event {
@@ -267,12 +268,12 @@ class OpenAiSession(
         class Alive(val thinking: Boolean) : Event()
         class Used(val usage: HelperUsage) : Event()
         class Finished(val ok: Streamed.Ok) : Event()
-        class Failed(val failure: ClaudeFailure, val status: Int, val param: String? = null) : Event()
+        class Failed(val failure: HelperFailure, val status: Int, val param: String? = null) : Event()
         class Cut : Event()
     }
 
     /** One request, streamed on its own thread; its events come back through a channel, so a Stop cancels at once. */
-    private suspend fun stream(o: ChatOptions, listener: ClaudeListener): Streamed {
+    private suspend fun stream(o: ChatOptions, listener: HelperTurnListener): Streamed {
         val body = if (responses) RespWire.request(o, messages) else ChatWire.request(o, messages)
         val call = http.post(if (responses) "responses" else "chat/completions", body)
         val events = Channel<Event>(Channel.UNLIMITED)
@@ -288,7 +289,7 @@ class OpenAiSession(
                         val text = try { resp.body?.source()?.let { s -> s.request(MAX_ERROR_BYTES); s.buffer.readUtf8(minOf(s.buffer.size, MAX_ERROR_BYTES)) } } catch (_: Exception) { null }
                         val status = resp.code
                         val e = WireErrors.parse(text)
-                        val f = if (home && status == 404) ClaudeFailure.MODEL_UNAVAILABLE else e.failure(status)
+                        val f = if (home && status == 404) HelperFailure.MODEL_UNAVAILABLE else e.failure(status)
                         events.trySend(Event.Failed(f, status, e.param))
                         return@Thread
                     }
@@ -382,7 +383,7 @@ class OpenAiSession(
                         listener.loading()
                         continue
                     }
-                    return end(Streamed.Failure(ClaudeFailure.TIMEOUT, shown))
+                    return end(Streamed.Failure(HelperFailure.TIMEOUT, shown))
                 }
                 val next = r.getOrNull()
                 if (!heard && next != null && next !is Event.Failed) {
@@ -390,8 +391,8 @@ class OpenAiSession(
                     VoiceLog.add(VoiceEvent.CLAUDE_FIRST, (System.currentTimeMillis() - t0).toInt())
                 }
                 when (next) {
-                    null -> return end(Streamed.Failure(ClaudeFailure.UNKNOWN, shown))
-                    is Event.Cut -> return end(Streamed.Failure(ClaudeFailure.UNKNOWN, shown))
+                    null -> return end(Streamed.Failure(HelperFailure.UNKNOWN, shown))
+                    is Event.Cut -> return end(Streamed.Failure(HelperFailure.UNKNOWN, shown))
                     is Event.Alive -> {
                         if (next.thinking && !thinking && !shown) listener.thinking()
                         thinking = next.thinking
@@ -412,8 +413,8 @@ class OpenAiSession(
             val ms = (System.currentTimeMillis() - t0).toInt()
             when (val e = ended) {
                 is Streamed.Ok -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, end(e.stop).id, said.length)
-                is Streamed.Failure -> VoiceLog.add(VoiceEvent.CLAUDE_FAILED, ClaudeFail.of(e.failure).id, config.kind.id)
-                null -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, ClaudeEnd.STOPPED.id, said.length)
+                is Streamed.Failure -> VoiceLog.add(VoiceEvent.CLAUDE_FAILED, HelperFail.of(e.failure).id, config.kind.id)
+                null -> VoiceLog.add(VoiceEvent.CLAUDE_DONE, ms, HelperEnd.STOPPED.id, said.length)
             }
             withContext(NonCancellable + Dispatchers.IO) { try { call.cancel() } catch (_: Throwable) {} }
             // However it ended, what was billed is counted: without the server's usage (a stop, a cut, a server that sends
@@ -423,7 +424,7 @@ class OpenAiSession(
                 val final = if (usage == null) u else u.copy(output = maxOf(u.output, TokenEstimate.text(said.toString()).toLong()))
                 count(final)
                 val all = report.usage
-                report = report.copy(usage = app.heyrobot.core.ClaudeUsage(all.input + final.input, all.output + final.output, all.cacheRead + final.cacheRead,
+                report = report.copy(usage = app.heyrobot.core.TokenUsage(all.input + final.input, all.output + final.output, all.cacheRead + final.cacheRead,
                     all.cacheWrite + final.cacheWrite, all.searches + final.searches))
                 RLog.i("helper_usage", "kind" to config.kind, "in" to final.input, "out" to final.output, "cached" to final.cacheRead,
                     "searches" to final.searches, "reported" to (final.reported != null), "final" to (usage != null))
@@ -431,11 +432,11 @@ class OpenAiSession(
         }
     }
 
-    private fun end(s: Stop): ClaudeEnd = when (s) {
-        Stop.END -> ClaudeEnd.END
-        Stop.CALLS -> ClaudeEnd.TOOL_USE
-        Stop.CUT -> ClaudeEnd.CUT
-        Stop.DECLINED -> ClaudeEnd.DECLINED
+    private fun end(s: Stop): HelperEnd = when (s) {
+        Stop.END -> HelperEnd.END
+        Stop.CALLS -> HelperEnd.TOOL_USE
+        Stop.CUT -> HelperEnd.CUT
+        Stop.DECLINED -> HelperEnd.DECLINED
     }
 
     /** The words of a request (no pictures), for an estimate when the server sent no usage. */
@@ -458,7 +459,7 @@ class OpenAiSession(
         const val MAX_ADAPT = 4
 
         /** The failures a refused optional part can cause (Ollama says "does not support tools" as an api_error with a 400). */
-        private val ADAPTABLE = setOf(ClaudeFailure.BAD_REQUEST, ClaudeFailure.SERVER, ClaudeFailure.UNKNOWN)
+        private val ADAPTABLE = setOf(HelperFailure.BAD_REQUEST, HelperFailure.SERVER, HelperFailure.UNKNOWN)
         private const val MAX_ERROR_BYTES = 16_384L
         /** A reply that came whole (not streamed) is read up to this much. */
         private const val MAX_WHOLE_BYTES = 8L * 1024 * 1024
@@ -467,17 +468,17 @@ class OpenAiSession(
          * An exception to Robot's words (its class only; the message can quote the request). [opened]: the server had
          * answered, so a failure now is a dropped connection or silence, not an unreachable server.
          */
-        fun failure(t: Throwable, home: Boolean, opened: Boolean = false): ClaudeFailure = when (t) {
-            is NotLocalException -> ClaudeFailure.NOT_LOCAL
+        fun failure(t: Throwable, home: Boolean, opened: Boolean = false): HelperFailure = when (t) {
+            is NotLocalException -> HelperFailure.NOT_LOCAL
             // OkHttp: http:// to a client that only speaks TLS.
-            is UnknownServiceException -> ClaudeFailure.NOT_LOCAL
-            is SSLPeerUnverifiedException, is SSLHandshakeException -> ClaudeFailure.CERTIFICATE
-            is UnknownHostException, is ConnectException, is NoRouteToHostException -> if (home) ClaudeFailure.UNREACHABLE else ClaudeFailure.NO_INTERNET
-            is InterruptedIOException -> if (home && !opened) ClaudeFailure.UNREACHABLE else ClaudeFailure.TIMEOUT
+            is UnknownServiceException -> HelperFailure.NOT_LOCAL
+            is SSLPeerUnverifiedException, is SSLHandshakeException -> HelperFailure.CERTIFICATE
+            is UnknownHostException, is ConnectException, is NoRouteToHostException -> if (home) HelperFailure.UNREACHABLE else HelperFailure.NO_INTERNET
+            is InterruptedIOException -> if (home && !opened) HelperFailure.UNREACHABLE else HelperFailure.TIMEOUT
             // A header OkHttp can't send ("Unexpected char … in Authorization value"): the key has a character a key never has.
-            is IllegalArgumentException -> if (t.message?.startsWith("Unexpected char") == true) ClaudeFailure.KEY_REFUSED else ClaudeFailure.UNKNOWN
-            is java.io.IOException -> if (home) ClaudeFailure.UNREACHABLE else ClaudeFailure.NO_INTERNET
-            else -> ClaudeFailure.UNKNOWN
+            is IllegalArgumentException -> if (t.message?.startsWith("Unexpected char") == true) HelperFailure.KEY_REFUSED else HelperFailure.UNKNOWN
+            is java.io.IOException -> if (home) HelperFailure.UNREACHABLE else HelperFailure.NO_INTERNET
+            else -> HelperFailure.UNKNOWN
         }
 
         /** "en.wikipedia.org" from a URL, without "www.". */
@@ -490,10 +491,10 @@ class OpenAiSession(
  * cold model), [loadingMs] before Robot says it is loading.
  */
 data class Timing(val low: Long, val medium: Long, val high: Long, val firstByteMs: Long, val loadingMs: Long) {
-    fun idleMs(e: ClaudeEffort): Long = when (e) {
-        ClaudeEffort.LOW -> low
-        ClaudeEffort.MEDIUM -> medium
-        ClaudeEffort.HIGH -> high
+    fun idleMs(e: HelperEffort): Long = when (e) {
+        HelperEffort.LOW -> low
+        HelperEffort.MEDIUM -> medium
+        HelperEffort.HIGH -> high
     }
 
     companion object {

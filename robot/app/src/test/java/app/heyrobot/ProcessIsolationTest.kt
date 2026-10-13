@@ -1,11 +1,17 @@
 package app.heyrobot
 
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.HelperPrompt
+import app.heyrobot.core.HelperRouter
+import app.heyrobot.helpers.HelperSession
+import app.heyrobot.helpers.anthropic.AnthropicClient
+import app.heyrobot.helpers.anthropic.AnthropicSession
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
-import java.io.File
-import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Build check (source, Gradle and merged-manifest scan), as the probe's: LiteRT-LM lives only in :brain's
@@ -250,7 +256,7 @@ class ProcessIsolationTest {
                 k.startsWith("app/update/") || k == "app/RobotApp.kt"
         }
         assertTrue(mainFiles.size >= 25)
-        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude|mt)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|HelperLink|HelperKeys|ClaudeSession|ClaudeClient|HelperSession|OpenAiSession|HelperHttp|HelperProbe|HelperConnectionActivity|MtService|BergamotEngine|Slimt)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b""")
+        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude|mt)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|HelperLink|HelperKeys|AnthropicSession|AnthropicClient|HelperSession|OpenAiSession|HelperHttp|HelperProbe|HelperConnectionActivity|MtService|BergamotEngine|Slimt)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b""")
         assertEquals(emptyList<String>(), usersOf(forbidden, mainFiles))
         // And the :voice code must not load LiteRT or the fast translation engine either (it binds :brain and :mt by class name).
         assertEquals(emptyList<String>(), usersOf(Regex("""litertlm|\bGemmaEngine\b|\bBrainService\b|\bapp\.heyrobot\.mt\b|\b(MtService|BergamotEngine|Slimt)\b"""),
@@ -1156,8 +1162,8 @@ class ProcessIsolationTest {
         // prompt, no tools and no web search, whichever client it uses.
         val link = code(File(java("app"), "app/heyrobot/assistant/HelperLink.kt"))
         val ts = Regex("""fun transcriptSession\(ctx: Context, h: HelperConfig\): HelperSession\? \{[\s\S]*?\n    }""").find(link)!!.value
-        assertTrue(ts, Regex("""ClaudeSession\(held\.claude!!, ClaudeModel\.of\(h\.model\), emptyList\(\), search = false, conversation = false, system = ClaudePrompt\.TRANSCRIPT_SYSTEM\)""").containsMatchIn(ts))
-        assertTrue(ts, Regex("""OpenAiSession\(held\.http!!, h\.copy\(search = false\), emptyList\(\), conversation = false,.*?system = ClaudePrompt\.transcriptSystem\(h\.name\)\)""")
+        assertTrue(ts, Regex("""AnthropicSession\(held\.claude!!, AnthropicModel\.of\(h\.model\), emptyList\(\), search = false, conversation = false, system = HelperPrompt\.TRANSCRIPT_SYSTEM\)""").containsMatchIn(ts))
+        assertTrue(ts, Regex("""OpenAiSession\(held\.http!!, h\.copy\(search = false\), emptyList\(\), conversation = false,.*?system = HelperPrompt\.transcriptSystem\(h\.name\)\)""")
             .containsMatchIn(ts.replace(Regex("\\s+"), " ")))
         assertEquals(2, Regex("""(?<!transcript)Session\(""").findAll(ts).count())
         // The summary screen and the summaries' job are in the voice process (the main app opens the screen by name).
@@ -1419,7 +1425,7 @@ class ProcessIsolationTest {
         assertTrue(panel.indexOf("if (mem.recall.secret) {\n            closeConvAfterTurn = true") > panel.indexOf("MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)"))
         // A helper: memory only through its card (trusted helpers too, unless Settings › Memory says otherwise), never its tools.
         assertEquals(4, Regex("""HelperTrust\.(conversation|joinWithoutCard)\([^)]*MemoryPanel\.toTrusted\(\)\)""").findAll(panel).count())
-        assertTrue(app.heyrobot.core.ToolName.REMEMBER !in app.heyrobot.core.ClaudeTools.OFFERED && app.heyrobot.core.ToolName.FORGET !in app.heyrobot.core.ClaudeTools.OFFERED)
+        assertTrue(app.heyrobot.core.ToolName.REMEMBER !in app.heyrobot.core.HelperTools.OFFERED && app.heyrobot.core.ToolName.FORGET !in app.heyrobot.core.HelperTools.OFFERED)
         // No network, and the logs get codes and counts: no item, text, query or question in an RLog call.
         val mem = ours.filterKeys { it.startsWith("core/core/memory/") || it in setOf("app/assistant/MemoryPanel.kt", "app/sys/MemoryVault.kt",
             "app/ui/settings/MemorySettings.kt", "app/ui/settings/MemoryImportScreen.kt", "core/core/StrictJson.kt") }
@@ -1648,7 +1654,7 @@ class ProcessIsolationTest {
         // the message's), before memory, the helpers and the model.
         val fbRoute = pc.indexOf("val fbCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null) FeedbackRouter.route(q) else null")
         val freeUp = pc.indexOf("val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            termux == null && memRoute == null) FreeUp.asked(q) else null")
-        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            termux == null && memRoute == null && freeAsk == null) ClaudeRouter.route(q, names) else null")
+        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            termux == null && memRoute == null && freeAsk == null) HelperRouter.route(q, names) else null")
         // 0.8: routines' phrases, then headset and car mode's, after feedback's and before memory's; 0.9: web search's "search the
         // web for …" and Termux's "run <script>" next, before memory's: the panel's order is the messages router and its echo
         // check, conversation mode, feedback, routines, headset and car, web search, Termux, memory, the helpers, the model.
