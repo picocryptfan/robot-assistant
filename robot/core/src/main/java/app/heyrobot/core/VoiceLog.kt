@@ -695,6 +695,8 @@ enum class ThermalStep(override val id: Int, override val title: String) : LogCo
 /** The stronger AI a summary went to. */
 enum class HelperCode(override val id: Int, override val title: String) : LogCode {
     CLAUDE_API(1, "Claude API"), CLAUDE_APP(2, "the Claude app"),
+    /** 1.0.0: another helper's API, or another helper's app. */
+    HELPER_API(3, "another helper's API"), HELPER_APP(4, "another helper's app"),
 }
 
 /** How a transcript went to the Claude app (SUMMARY_HELPER's third number for the app). */

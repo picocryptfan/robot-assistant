@@ -17,7 +17,8 @@ class HelperRouterTest {
     private val gpt = HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck")
     private val jarvis = HelperConfig.of(Presets.HOME, "hjar", "af_bella", "Jarvis", "http://10.0.0.5:11434/v1")
     private val deep = HelperConfig.of(Presets.DEEPSEEK, "hdee", "bf_emma")
-    private val s = RobotSettings().withHelper(gpt).withHelper(jarvis).withHelper(deep)
+    // Claude as set up before 1.0.0 (a new install has no helper), and three others.
+    private val s = RobotSettings(helpers = listOf(HelperConfig.claude())).withHelper(gpt).withHelper(jarvis).withHelper(deep)
     private val names = HelperName.all(s)
     private fun route(t: String) = ClaudeRouter.route(t, names)
 
@@ -121,7 +122,7 @@ class HelperRouterTest {
         val renamed = HelperName.of(HelperConfig.claude().copy(name = "Claudia"))
         assertEquals(listOf(listOf("claudia")), renamed.forms)
         assertTrue(renamed.misheard.isEmpty() && renamed.phonetic && !renamed.app)
-        assertEquals(listOf(listOf("chatgpt"), listOf("chat", "gpt"), listOf("chat", "g", "p", "t")), HelperName.of(gpt).forms)
+        assertEquals(listOf(listOf("chatgpt"), listOf("chat", "gpt"), listOf("chat", "g", "p", "t"), listOf("gpt"), listOf("g", "p", "t")), HelperName.of(gpt).forms)
         // Your aliases are exact forms.
         assertTrue(listOf("the", "box") in HelperName.of(jarvis.copy(aliases = listOf("the box"))).forms)
     }

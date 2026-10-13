@@ -179,7 +179,7 @@ class EscalationTest {
         assertFalse(Hedge.detect(story))
     }
 
-    private val key = RobotSettings()
+    private val key = claudeSettings()
     private fun d(s: RobotSettings = key, keySaved: Boolean = true, personal: Boolean = false, locked: Boolean = false, budget: Boolean = false,
         already: Boolean = false, fromClaude: Boolean = false, declined: Boolean = false) =
         EscalationPolicy.decide(s, keySaved, personal, locked, budget, already, fromClaude, declined)
@@ -216,11 +216,12 @@ class EscalationTest {
 
     @Test fun askClaudeOffMeansNoEscalation() {
         assertEquals(EscalationDecision.NONE, d(claudeSettings(claudeEnabled = false), keySaved = true))
-        // On by default: without a key Robot offers the Claude app, with one it checks by itself.
-        assertEquals(EscalationDecision.OFFER, d(RobotSettings(), keySaved = false))
-        assertEquals(EscalationDecision.AUTO, d(RobotSettings(), keySaved = true))
-        assertTrue(ClaudeSettings.localTool(RobotSettings(), keySaved = false))
-        assertTrue(ClaudeSettings.localTool(RobotSettings(), keySaved = true))
+        // Claude as set up before 1.0.0 (a new install has no helper): without a key Robot offers the Claude app, with one it checks by itself.
+        assertEquals(EscalationDecision.NONE, d(RobotSettings(), keySaved = true))
+        assertEquals(EscalationDecision.OFFER, d(claudeSettings(), keySaved = false))
+        assertEquals(EscalationDecision.AUTO, d(claudeSettings(), keySaved = true))
+        assertTrue(ClaudeSettings.localTool(claudeSettings(), keySaved = false))
+        assertTrue(ClaudeSettings.localTool(claudeSettings(), keySaved = true))
         assertFalse(ClaudeSettings.localTool(claudeSettings(claudeHelp = Escalation.OFF), keySaved = true))
     }
 
@@ -325,14 +326,14 @@ class EscalationTest {
     }
 
     @Test fun defaultRouteFollowsTheKey() {
-        assertEquals(ClaudeRoute.APP, ClaudeSettings.route(RobotSettings(), keySaved = false))
-        assertEquals(ClaudeRoute.API, ClaudeSettings.route(RobotSettings(), keySaved = true))
+        assertEquals(ClaudeRoute.APP, ClaudeSettings.route(claudeSettings(), keySaved = false))
+        assertEquals(ClaudeRoute.API, ClaudeSettings.route(claudeSettings(), keySaved = true))
         // Your choice stands either way.
         assertEquals(ClaudeRoute.APP, ClaudeSettings.route(claudeSettings(claudeRoute = ClaudeRoute.APP), keySaved = true))
         assertEquals(ClaudeRoute.API, ClaudeSettings.route(claudeSettings(claudeRoute = ClaudeRoute.API), keySaved = false))
         // Deleting the key doesn't turn Ask Claude off: the Claude app takes the questions.
-        assertTrue(ClaudeSettings.enabled(RobotSettings(), keySaved = false))
-        assertTrue(ClaudeSettings.enabled(RobotSettings(), keySaved = true))
+        assertTrue(ClaudeSettings.enabled(claudeSettings(), keySaved = false))
+        assertTrue(ClaudeSettings.enabled(claudeSettings(), keySaved = true))
         assertTrue(ClaudeSettings.enabled(claudeSettings(claudeEnabled = true), keySaved = false))
     }
 }

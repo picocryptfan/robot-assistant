@@ -65,8 +65,8 @@ class AskAHelperTest {
         assertEquals(ClaudeCommand.Ask("what's a black hole?"), route("Claude, what's a black hole?"))
         assertEquals(ClaudeCommand.Ask("pourquoi le ciel est bleu"), route("demande à Claude pourquoi le ciel est bleu"))
         assertEquals(ClaudeCommand.Join(), route("go get Claude"))
-        // With every helper in settings, Claude's name still means Claude, and the new phrases still mean the one Robot asks.
-        val s = RobotSettings().withHelper(HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck"))
+        // With Claude and another helper in settings, Claude's name still means Claude, and the new phrases still mean the one Robot asks.
+        val s = RobotSettings(helpers = listOf(HelperConfig.claude())).withHelper(HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck"))
         val names = HelperName.all(s)
         assertEquals(ClaudeCommand.Ask("why the sky is blue"), route("ask Claude why the sky is blue", names))
         assertEquals(ask("why the sky is blue", helper = "hgpt"), route("ask ChatGPT why the sky is blue", names))

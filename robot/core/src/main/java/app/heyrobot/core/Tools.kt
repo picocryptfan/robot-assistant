@@ -345,12 +345,15 @@ sealed class Action {
     }
 
     /**
-     * The Claude app route: open the Claude app with [text] (your question, or a short summary of the
-     * conversation; empty: the app opens without text). You press Send there; Robot steps aside.
+     * The app route: open a helper's app with [text] (your question, or a short summary of the conversation; empty: the
+     * app opens without text). You press Send there; Robot steps aside. 1.0.0, any helper with an app: [helper] the one
+     * meant (null: the one Robot checks with); [app] its package and [appName] ("ChatGPT"), filled in from your settings
+     * when the card is made (ToolExecutor), never by a model.
      */
-    data class AskClaude(val text: String) : Action() {
+    data class AskClaude(val text: String, val helper: String? = null, val app: String? = null, val appName: String? = null) : Action() {
         override val tool get() = ToolName.ASK_CLAUDE
-        override fun describe() = if (text.isBlank()) "Open the Claude app" else "Open the Claude app with: «${short(text)}»"
+        private val where get() = appName?.let { "the $it app" } ?: "the helper's app"
+        override fun describe() = if (text.isBlank()) "Open $where" else "Open $where with: «${short(text)}»"
         override fun body() = text.takeIf { it.length > SHORT }
         override val confirmLabel get() = "Open the app"
 
@@ -663,7 +666,10 @@ object ToolCalls {
                 ParsedCall.Ok(Action.AddEvent(title, whenText, m?.toInt()))
             }
             // Empty: "go get Claude" with nothing to summarise opens the app without text.
-            ToolName.ASK_CLAUDE -> ParsedCall.Ok(Action.AskClaude(longArg(a, ClaudeAppLink.MAX_CHARS, "question", "query", "q", "text", "prompt").orEmpty()))
+            // 1.0.0: [helper] names one of your helpers by id (the panel's hand-off to the one you called); the app it opens is
+            // always looked up from your settings when the card is made, never taken from the call.
+            ToolName.ASK_CLAUDE -> ParsedCall.Ok(Action.AskClaude(longArg(a, ClaudeAppLink.MAX_CHARS, "question", "query", "q", "text", "prompt").orEmpty(),
+                helper = textArg(a, 16, "helper")?.takeIf { Regex("[a-z0-9_]{1,16}").matches(it) }))
             // Both optional: no place is where you are, no day is today.
             ToolName.WEATHER -> ParsedCall.Ok(Action.Weather(textArg(a, MAX_NAME, "place", "location", "city", "where", "town"),
                 textArg(a, MAX_NAME, "day", "date", "when", "time", "days")))

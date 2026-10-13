@@ -732,6 +732,9 @@ class TurnTest {
     @Test fun theClaudeAppHandOffAlwaysShowsItsCard() = runBlocking {
         val actions = FakeActions(RobotSettings(approvals = RobotSettings.DEFAULT_APPROVALS + (ToolName.ASK_CLAUDE to Approval.AUTO)))
         actions.result = { Executed(ActionStatus.DONE, "Opened Claude.", launchedApp = true) }
+        // The app comes from your settings when the card is made (ToolExecutor), never from the call.
+        actions.prepare = { a -> Prepared.Ready((a as Action.AskClaude).copy(app = "com.anthropic.claude", appName = "Claude"),
+            note = AppHandOff.note("Claude", a.text)) }
         val view = FakeView()
         val conf = Confirmations()
         val model = FakeModel(ModelOutcome.Calls(listOf(call("ask_claude", "question" to "why is the sky blue"))))
@@ -739,11 +742,19 @@ class TurnTest {
         val turn = async { TurnRunner(model, actions, view, conf, untrusted = false, remote = false, maxRounds = 1) { "h${++ids}" }.runHandOff() }
         val id = withTimeout(5_000) { view.pending.receive() }
         assertEquals("Open the Claude app with: «why is the sky blue»", view.cards[id]!!.summary)
+        // The card says what goes and that you send it there.
+        assertEquals("Robot opens the Claude app with this text and copies it. Nothing is sent until you press Send in Claude.", view.cards[id]!!.detail)
         conf.answer(id, true)
         assertTrue(turn.await().launchedApp)
         // Nothing to say: the app opens without text.
         assertEquals(ParsedCall.Ok(Action.AskClaude("")), ToolCalls.parse(call("ask_claude")))
-        assertEquals("Open the Claude app", Action.AskClaude("").describe())
+        assertEquals("Open the Claude app", Action.AskClaude("", appName = "Claude").describe())
+        assertEquals("Open the ChatGPT app with: «why»", Action.AskClaude("why", appName = "ChatGPT").describe())
+        assertEquals("Open the helper's app", Action.AskClaude("").describe())
+        // 1.0.0: the call may name one of your helpers by id, never an app: a package or a name in it is ignored.
+        assertEquals(ParsedCall.Ok(Action.AskClaude("x", helper = "hgpt")), ToolCalls.parse(call("ask_claude", "question" to "x", "helper" to "hgpt")))
+        assertEquals(ParsedCall.Ok(Action.AskClaude("x")), ToolCalls.parse(call("ask_claude", "question" to "x", "helper" to "com.evil.app", "app" to "com.evil.app",
+            "appName" to "Evil")))
         // Locked: never.
         actions.lockedNow = true
         val v2 = FakeView()

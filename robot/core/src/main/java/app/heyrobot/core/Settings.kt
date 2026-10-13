@@ -116,8 +116,11 @@ data class RobotSettings(
     val stopKey: StopKey = StopKey.VOLUME_DOWN,
     // Helpers (0.6.0, schema 13; Ask Claude, docs/ask-claude.md, became the first of them). Null where the default depends on
     // whether the helper's API key is saved (HelperSettings).
-    /** Claude and any helper you added, in your order. A new install has Claude, as before 0.6.0. */
-    val helpers: List<HelperConfig> = listOf(HelperConfig.claude()),
+    /**
+     * The helpers you added, in your order. 1.0.0: a new install has none (before, it had Claude); a settings file keeps
+     * its own list, and one from before 0.6.0 gets Claude from its claude* fields ([legacyClaude]).
+     */
+    val helpers: List<HelperConfig> = emptyList(),
     /** "When Robot needs help"; null: Automatic once the helper Robot asks can answer through its API, Ask me first before. */
     val help: Escalation? = null,
     /** "Ask:" the helper Robot checks with; null (or a helper you removed): the first that can answer through its API. */
@@ -480,8 +483,10 @@ data class RobotSettings(
                 playback = enumOr(o.optString("playback"), d.playback),
                 stopKey = enumOr(o.optString("stopKey"), d.stopKey),
                 // Schema 13 (the helpers' unreleased 9): the list as saved (an empty one stays empty: you removed every helper);
-                // a file without it (every released one, 0.4.5's schema 12 included), Claude from its claude* fields.
-                helpers = o.optJSONArray("helpers")?.let(HelperConfig::listFromJson) ?: listOf(legacyClaude(o)),
+                // a file without it from before (every released one up to 0.4.5's schema 12), Claude from its claude* fields,
+                // as those versions had it. 1.0.0: a schema 13 file always has the list; one without has no helper, as a new install.
+                helpers = o.optJSONArray("helpers")?.let(HelperConfig::listFromJson)
+                    ?: if (o.optInt("schema", 1) >= 13) d.helpers else listOf(legacyClaude(o)),
                 help = enumValues<Escalation>().firstOrNull { it.name == o.optString(if (o.has("help")) "help" else "claudeHelp") },
                 helpDefault = o.optString("helpDefault").takeIf { it.isNotEmpty() },
                 helperBudgetCents = o.optInt(if (o.has("helperBudgetCents")) "helperBudgetCents" else "claudeBudgetCents", d.helperBudgetCents).coerceIn(0, 100_000),

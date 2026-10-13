@@ -40,8 +40,37 @@ class HelperSettingsTest {
         assertTrue(ClaudeSettings.localTool(s, keySaved = true))
     }
 
+    @Test fun aNewInstallHasNoHelper() {
+        // 1.0.0: no file (a new install), a damaged one, or a schema 13 file without the list: no helper at all, so
+        // "ask the helper" says none is set up, and Robot never brings one in by itself.
+        for (text in listOf(null, "garbage", """{"schema":13}""")) {
+            val s = RobotSettings.fromJson(text)
+            assertEquals(emptyList<HelperConfig>(), s.helpers)
+            assertNull(s.claude)
+            assertNull(HelperSettings.target(s) { true })
+            assertNull(HelperSettings.askTarget(s, { true }) { true })
+            assertNull(HelperSettings.appHelper(s, null) { false })
+            assertEquals(emptyList<HelperConfig>(), HelperSettings.summarizers(s) { true })
+            assertEquals(EscalationDecision.NONE, EscalationPolicy.decide(s, keySaved = true, personal = false, locked = false, budgetReached = false))
+        }
+        assertEquals(emptyList<HelperConfig>(), RobotSettings().helpers)
+        // Saved as it is: still none after a round trip.
+        assertEquals(emptyList<HelperConfig>(), RobotSettings.fromJson(RobotSettings().toJson().toString()).helpers)
+    }
+
+    @Test fun savedHelpersStayExactlyAsTheyAre() {
+        // Someone who had Claude (the default before 1.0.0) keeps it, with every setting, and so does a list without it.
+        val claude = HelperConfig.claude().copy(route = ClaudeRoute.APP, locked = true)
+        val gpt = HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck")
+        for (list in listOf(listOf(claude), listOf(claude, gpt), listOf(gpt), emptyList())) {
+            val s = RobotSettings(helpers = list, helpDefault = list.lastOrNull()?.id)
+            assertEquals(list, RobotSettings.fromJson(s.toJson().toString()).helpers)
+        }
+    }
+
     @Test fun anEmptyOrDefaultFileKeepsTodaysDefaults() {
-        for (text in listOf("{}", """{"schema":8}""", """{"schema":12}""", null)) {
+        // Files from before 0.6.0 (no "helpers"): Claude, as those versions had it on.
+        for (text in listOf("{}", """{"schema":8}""", """{"schema":12}""")) {
             val s = RobotSettings.fromJson(text)
             assertEquals(listOf(HelperConfig.claude()), s.helpers)
             assertNull(s.claude!!.enabled)
@@ -88,6 +117,9 @@ class HelperSettingsTest {
     }
 
     private fun gemini() = HelperConfig.of(Presets.GEMINI, "h1abcde", "am_puck")
+    private fun groq() = HelperConfig.of(Presets.GROQ, "hgroq", "bf_emma")
+    /** Claude as installs before 1.0.0 had it (on, no key: its app); a 1.0.0 install has no helper. */
+    private val legacy = RobotSettings(helpers = listOf(HelperConfig.claude()))
     private fun home(id: String = "h2", trust: Boolean = false) =
         HelperConfig.of(Presets.HOME, id, "af_bella", "Jarvis", "http://192.168.1.20:11434/v1").copy(model = "qwen3.8:27b", trust = trust)
 
@@ -118,7 +150,7 @@ class HelperSettingsTest {
     }
 
     @Test fun theHelperRobotChecksWith() {
-        val s = RobotSettings().withHelper(gemini()).withHelper(home())
+        val s = legacy.withHelper(gemini()).withHelper(home())
         fun keys(vararg ids: String): (HelperConfig) -> Boolean = { it.id in ids }
         // Nothing chosen: the first Robot can ask itself; a home server needs no key.
         assertEquals("h2", HelperSettings.target(s, keys())?.id)
@@ -130,17 +162,19 @@ class HelperSettingsTest {
         assertEquals("claude", HelperSettings.target(s.copy(helpDefault = "gone"), keys("claude"))?.id)
         assertEquals("claude", HelperSettings.target(s.copy(helpDefault = "h2").withHelper(home().copy(enabled = false)), keys("claude"))?.id)
         // No API anywhere: Claude's app (Ask me first). Nothing at all: none.
-        val onlyCloud = RobotSettings().withHelper(gemini())
+        val onlyCloud = legacy.withHelper(gemini())
         assertEquals("claude", HelperSettings.target(onlyCloud, keys())?.id)
-        assertNull(HelperSettings.target(RobotSettings(helpers = listOf(gemini())), keys()))
+        // 1.0.0: Gemini without a key opens its app too; a company without an app and without a key: none.
+        assertEquals("h1abcde", HelperSettings.target(RobotSettings(helpers = listOf(gemini())), keys())?.id)
+        assertNull(HelperSettings.target(RobotSettings(helpers = listOf(groq())), keys()))
     }
 
     @Test fun askTheHelperGoesOnlyToOneThatCanAnswer() {
         fun keys(vararg ids: String): (HelperConfig) -> Boolean = { it.id in ids }
         fun apps(vararg pkgs: String): (String) -> Boolean = { it in pkgs }
         val claudeApp = Presets.ANTHROPIC.app!!
-        // A default install: Claude on, the app route, no key. Without the app nothing can take it: none, so Robot says so.
-        val d = RobotSettings()
+        // Claude as installs before 1.0.0 had it: on, the app route, no key. Without the app nothing can take it: none, so Robot says so.
+        val d = legacy
         assertNull(HelperSettings.askTarget(d, keys(), apps()))
         // Its key saved: Claude through its API. Its app installed: Claude through the app.
         assertEquals("claude", HelperSettings.askTarget(d, keys("claude"), apps())?.id)
@@ -168,19 +202,21 @@ class HelperSettingsTest {
     @Test fun whatAHelperStillNeedsIsSaid() {
         assertEquals("Claude can't answer yet. Add its API key in Robot's settings, under Helpers, or install the Claude app.",
             HelperWords(HelperWho.of(HelperConfig.claude())).notReady)
-        assertEquals("Gemini can't answer yet. Add its API key in Robot's settings, under Helpers.", HelperWords(HelperWho.of(gemini())).notReady)
+        assertEquals("Gemini can't answer yet. Add its API key in Robot's settings, under Helpers, or install the Gemini app.", HelperWords(HelperWho.of(gemini())).notReady)
+        assertEquals("Groq can't answer yet. Add its API key in Robot's settings, under Helpers.", HelperWords(HelperWho.of(groq())).notReady)
     }
 
     @Test fun escalationForAnyHelper() {
-        val s = RobotSettings().withHelper(home()).withHelper(gemini())
+        val s = legacy.withHelper(home()).withHelper(gemini()).withHelper(groq())
         val h = home()
         fun d(target: HelperConfig?, key: Boolean = false, personal: Boolean = false, locked: Boolean = false, budget: Boolean = false,
             price: Boolean = true, search: Boolean = false, s2: RobotSettings = s) =
             EscalationPolicy.decide(s2, target, key, personal, locked, budget, priceKnown = price, needsSearch = search)
         // A home server needs no key: Automatic by default.
         assertEquals(EscalationDecision.AUTO, d(h))
-        // A company without a key and without an app: nothing to offer.
-        assertEquals(EscalationDecision.NONE, d(gemini()))
+        // A company without a key and without an app: nothing to offer. With an app (1.0.0, Gemini's): its app is offered.
+        assertEquals(EscalationDecision.NONE, d(groq()))
+        assertEquals(EscalationDecision.OFFER, d(gemini()))
         assertEquals(EscalationDecision.AUTO, d(gemini(), key = true, price = gemini().price.known))
         // Unknown price: offered, never asked by itself.
         assertEquals(EscalationDecision.OFFER, d(h, price = false))
@@ -227,7 +263,7 @@ class HelperSettingsTest {
             assertTrue(r, Hedge.detect(r))
             assertFalse(r, Hedge.needsSearch(r))
         }
-        val s = RobotSettings().withHelper(home())
+        val s = legacy.withHelper(home())
         val claude = s.claude!!
         assertTrue(claude.searching)
         val stale = Hedge.needsSearch("I don't have access to real-time information.")
@@ -279,7 +315,8 @@ class HelperSettingsTest {
         val gpt = HelperWho.of(HelperConfig.of(Presets.OPENAI, "h1", "am_puck"))
         assertEquals("Your ChatGPT key was refused. Check it in Robot's settings.", ClaudeFailure.KEY_REFUSED.say(gpt))
         assertEquals("Your OpenAI account is out of API credits. Add credits at platform.openai.com.", ClaudeFailure.NO_CREDITS.say(gpt))
-        assertEquals("Add your ChatGPT API key in Robot's settings first.", ClaudeFailure.NO_KEY.say(gpt))
+        assertEquals("Add your ChatGPT API key in Robot's settings first, or choose the ChatGPT app there.", ClaudeFailure.NO_KEY.say(gpt))
+        assertEquals("Add your Groq API key in Robot's settings first.", ClaudeFailure.NO_KEY.say(HelperWho.of(groq())))
         val jarvis = HelperWho.of(home())
         assertEquals("Jarvis isn't answering. Is the computer on, and is the phone on the same network?", ClaudeFailure.UNREACHABLE.say(jarvis))
         assertEquals("Jarvis doesn't have that model any more. Pick another one in Robot's settings, under Helpers.", ClaudeFailure.MODEL_UNAVAILABLE.say(jarvis))
@@ -334,7 +371,7 @@ class HelperSettingsTest {
         val seq = intArrayOf(0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1)
         assertEquals("hbbbbbb", HelperConfig.newId(setOf("haaaaaa")) { seq[n++] })
         // A new helper gets a voice nobody uses: not Claude's, not Robot's own speaker.
-        val s = RobotSettings()
+        val s = legacy
         assertEquals("am_fenrir", HelperSettings.freeVoice(s, robotSpeaker = 3))
         assertEquals("am_fenrir", HelperSettings.freeVoice(s.withHelper(home().copy(voice = "af_heart")), robotSpeaker = 3))
         assertEquals("am_puck", HelperSettings.freeVoice(s.withHelper(home().copy(voice = "am_fenrir")), robotSpeaker = 3))

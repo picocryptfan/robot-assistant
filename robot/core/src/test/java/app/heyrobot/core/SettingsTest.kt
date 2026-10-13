@@ -129,7 +129,8 @@ class SettingsTest {
         assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
         // Settings from 0.2.2 (no such keys) get the defaults (and, as an update, the one-time line about Safety & privacy);
         // an emptied list stays empty.
-        assertEquals(d.copy(safetyNotice = true), RobotSettings.fromJson("{}"))
+        // 1.0.0: and Claude, as every version before 0.6.0 had it (a new install has no helper).
+        assertEquals(d.copy(safetyNotice = true, helpers = listOf(HelperConfig.claude())), RobotSettings.fromJson("{}"))
         assertEquals(emptyList<WakePhrase>(), RobotSettings.fromJson(d.copy(wakePhrases = emptyList()).toJson().toString()).wakePhrases)
         // A damaged or invalid entry is dropped, never fatal.
         val j = """{"wakePhrases":[{"id":1,"text":"hey robot"},{"id":2,"text":"stop"},"x",{"id":5,"text":"jarvis","sensitivity":"NOPE"}],"bargeIn":"NOPE"}"""
@@ -186,7 +187,7 @@ class SettingsTest {
         // A 0.4.0-era file (schema 5) gets the defaults, except that live words in a conversation follow live words for questions.
         val old = RobotSettings.fromJson("""{"schema":5,"livePartials":false,"speechRate":1.2}""")
         assertEquals(false, old.convPartials)
-        assertEquals(RobotSettings().copy(livePartials = false, speechRate = 1.2f, convPartials = false, safetyNotice = true), old)
+        assertEquals(RobotSettings().copy(livePartials = false, speechRate = 1.2f, convPartials = false, safetyNotice = true, helpers = listOf(HelperConfig.claude())), old)
         assertEquals(true, RobotSettings.fromJson("""{"schema":5}""").convPartials)
         // A 0.4.0 file (schema 6) too, 0.4.4's (7), the GGUF branch's (10) and 0.4.5's (12); from schema 13 on, the two are
         // separate choices.

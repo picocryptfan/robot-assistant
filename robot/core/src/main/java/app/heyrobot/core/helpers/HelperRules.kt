@@ -68,6 +68,39 @@ object HelperSettings {
         return s.helpers.firstOrNull { apiReady(it, keySaved(it)) } ?: s.helpers.firstOrNull(::usable)
     }
 
+    /**
+     * 1.0.0: the helper whose app a hand-off opens (ask_claude, an offer's tap, a routine's step). [id]: the helper it was
+     * meant for, which must be on and have an app; without one, the helper Robot checks with when it opens an app, else
+     * the first on that does. Null: no helper on opens an app, and nothing opens.
+     */
+    fun appHelper(s: RobotSettings, id: String?, keySaved: (HelperConfig) -> Boolean): HelperConfig? {
+        if (id != null) return s.helper(id)?.takeIf { it.on && it.presetOf.app != null }
+        target(s, keySaved)?.takeIf { it.presetOf.app != null && route(it, keySaved(it)) == ClaudeRoute.APP }?.let { return it }
+        return s.helpers.firstOrNull { it.on && it.presetOf.app != null && route(it, keySaved(it)) == ClaudeRoute.APP }
+            ?: s.helpers.firstOrNull { it.on && it.presetOf.app != null }
+    }
+
+    /**
+     * 1.0.0: the helpers that can summarize a transcript: on, with their API (a key saved, or none needed). An app can't
+     * return a summary to Robot, so a helper without a key isn't one. In your order, the one you chose ("Ask:") first.
+     */
+    fun summarizers(s: RobotSettings, keySaved: (HelperConfig) -> Boolean): List<HelperConfig> {
+        val ok = s.helpers.filter { it.on && (keySaved(it) || !it.presetOf.keyRequired) }
+        val chosen = ok.firstOrNull { it.id == s.helpDefault }
+        return listOfNotNull(chosen) + ok.filter { it !== chosen }
+    }
+
+    /** "Use" on a helper's page: its app or its API, in its own name ([ClaudeRoute]'s words for Claude, as before). */
+    fun routeTitle(p: Preset, r: ClaudeRoute): String = if (p.kind == HelperKind.ANTHROPIC) r.title else when (r) {
+        ClaudeRoute.APP -> "${p.defaultName} app"
+        ClaudeRoute.API -> "${p.company} API"
+    }
+
+    fun routeDetail(p: Preset, r: ClaudeRoute): String = if (p.kind == HelperKind.ANTHROPIC) r.detail else when (r) {
+        ClaudeRoute.APP -> "Opens the ${p.defaultName} app with your question; you press Send there, with your own account. Robot doesn't hear the answer."
+        ClaudeRoute.API -> "Robot asks ${p.defaultName} itself and speaks the answer. Needs an API key with credits."
+    }
+
     /** The first Kokoro voice that neither Robot ([robotSpeaker]) nor another helper uses, for a new helper. */
     fun freeVoice(s: RobotSettings, robotSpeaker: Int?): String {
         val used = s.helpers.map { it.voice }.toSet()

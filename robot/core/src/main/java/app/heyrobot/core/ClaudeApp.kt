@@ -31,10 +31,7 @@ object ClaudeAppLink {
      * The way to hand off, or null when the app isn't installed (NO_APP, "Install Claude"). [resolves] says whether a
      * way resolves to the app's package (resolveActivity / queryIntentActivities with setPackage, on the phone).
      */
-    fun choose(installed: Boolean, resolves: (Way) -> Boolean): Way? {
-        if (!installed) return null
-        return listOf(Way.APP_LINK, Way.WEB_LINK, Way.SEND).firstOrNull(resolves) ?: Way.LAUNCH.takeIf(resolves)
-    }
+    fun choose(installed: Boolean, resolves: (Way) -> Boolean): Way? = AppHandOff.choose(PACKAGE, installed, resolves)
 
     /**
      * RFC 3986 percent-encoding of the UTF-8 bytes: everything but the unreserved `A-Z a-z 0-9 - . _ ~` is encoded, a
@@ -95,6 +92,41 @@ object ClaudeAppLink {
     }
 
     private fun oneLine(s: String) = s.replace(Regex("\\s+"), " ").trim()
+}
+
+/**
+ * 1.0.0: the hand-off to any helper's app (the Claude app's route, for every company with an Android app). Robot opens
+ * the app with the question and steps aside; you press Send there. The Claude app keeps its links first (a, b); every
+ * app is tried with a share of the text (SEND text/plain to its package), else just opened. The question always goes on
+ * the clipboard too, so it can be pasted when an app ignores the share. Never automation, never reading the app.
+ */
+object AppHandOff {
+    /** The ways tried for [pkg], in order; [Way.LAUNCH] last. */
+    fun ways(pkg: String): List<ClaudeAppLink.Way> =
+        if (pkg == ClaudeAppLink.PACKAGE) listOf(ClaudeAppLink.Way.APP_LINK, ClaudeAppLink.Way.WEB_LINK, ClaudeAppLink.Way.SEND, ClaudeAppLink.Way.LAUNCH)
+        else listOf(ClaudeAppLink.Way.SEND, ClaudeAppLink.Way.LAUNCH)
+
+    /** The first way that resolves to [pkg], or null when it isn't installed. */
+    fun choose(pkg: String, installed: Boolean, resolves: (ClaudeAppLink.Way) -> Boolean): ClaudeAppLink.Way? {
+        if (!installed) return null
+        val w = ways(pkg)
+        return w.dropLast(1).firstOrNull(resolves) ?: w.last().takeIf(resolves)
+    }
+
+    /** The card's line while it waits: what goes, to which app, and that you send it ([app]: "ChatGPT"). */
+    fun note(app: String, text: String): String =
+        if (text.isBlank()) "Robot opens the $app app. Nothing goes to $app from Robot."
+        else "Robot opens the $app app with this text and copies it. Nothing is sent until you press Send in $app."
+
+    /** What happened, for the card and the voice: [way] was used, [text] went with it (empty: the app only). */
+    fun done(app: String, way: ClaudeAppLink.Way, text: String): String = when {
+        text.isEmpty() -> "Opened $app."
+        way == ClaudeAppLink.Way.LAUNCH -> "Opened $app. Paste your question in $app: it's on the clipboard."
+        else -> "Opened $app with your question: press Send there if it isn't sent. It's on the clipboard too."
+    }
+
+    /** No helper on opens an app, or its app isn't installed. */
+    fun install(app: String?): String = if (app == null) "No helper opens an app. Set one up in Robot's settings, under Helpers." else "Install $app."
 }
 
 /**

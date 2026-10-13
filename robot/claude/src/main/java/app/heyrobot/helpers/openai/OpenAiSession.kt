@@ -84,6 +84,8 @@ class OpenAiSession(
     private val timing: Timing = Timing.of(config),
     private val retryDelayMs: Long = 1_000,
     private val clock: () -> Instant = Instant::now,
+    /** 1.0.0: a fixed system prompt in place of the spoken one (a transcript summary's, ClaudePrompt.transcriptSystem). */
+    private val system: String? = null,
 ) : HelperSession {
     private val protocol = config.presetOf.protocol
     private val responses = protocol == Protocol.RESPONSES
@@ -163,7 +165,7 @@ class OpenAiSession(
     private fun options(): ChatOptions {
         val search = config.searching
         val name = config.name
-        val system = ClaudePrompt.system(name, tools.isNotEmpty(), search)
+        val system = this.system ?: ClaudePrompt.system(name, tools.isNotEmpty(), search)
         return ChatOptions(config.model, config.presetOf.quirks, config.catalogModel?.effort ?: config.presetOf.quirks.effort, plan, tools, search, system,
             config.zdr, refused.toSet())
     }

@@ -10,8 +10,9 @@ import app.heyrobot.core.enumOr
 import org.json.JSONArray
 import org.json.JSONObject
 
-// Pure. Helpers (0.6.0): any AI Robot can hand a question to, on your say. Claude through the Anthropic API (or the
-// Claude app), another company's model through its OpenAI-compatible API, or a model on your own computer. Each is a
+// Pure. Helpers (0.6.0): any AI Robot can hand a question to, on your say. Claude through the Anthropic API, another
+// company's model through its OpenAI-compatible API, a model on your own computer, or (1.0.0) without a key, the
+// company's own app on this phone (Claude, ChatGPT, Grok, Gemini, Mistral, DeepSeek), opened with the question. Each is a
 // [HelperConfig] in settings, made from a [Preset]: how to reach it (one of three wire formats, [Protocol]), the small
 // ways the company's API differs from the common one ([Quirks], data rather than code paths), its models with what they
 // can do, and the words Settings uses. Nothing here touches the network: the clients live in the :claude module, which
@@ -113,7 +114,10 @@ data class Preset(
     val billing: String? = null,
     val dataUse: String? = null,
     val searchNote: String? = null,
-    /** The company's own app Robot can hand a question to (the Claude app only in 0.6.0). */
+    /**
+     * The company's own Android app Robot can hand a question to, by package (1.0.0: each checked against its Play Store
+     * listing on 13 Oct 2026). Without a key, questions open it ([HelperSettings.route]); you press Send there.
+     */
     val app: String? = null,
     val spoken: List<String> = emptyList(),
     val misheard: List<String> = emptyList(),
@@ -155,8 +159,8 @@ object Presets {
             CatalogModel("gpt-6-luna", "GPT-6 Luna", "The fastest and cheapest: \$0.10 in, \$0.50 out.", search = true, vision = true),
         ),
         keyWhere = "platform.openai.com › API keys", keyPrefixes = listOf("sk-"),
-        billing = "API use is paid separately from a ChatGPT subscription.", spoken = listOf("chatgpt", "chat gpt", "chat g p t"),
-        searchByDefault = true,
+        billing = "API use is paid separately from a ChatGPT subscription.", spoken = listOf("chatgpt", "chat gpt", "chat g p t", "gpt", "g p t"),
+        searchByDefault = true, app = "com.openai.chatgpt",
     )
 
     val GEMINI = Preset(
@@ -170,7 +174,7 @@ object Presets {
         keyWhere = "aistudio.google.com › Get API key", keyPrefixes = listOf("AIza"),
         billing = "API use is paid separately from a Gemini app subscription.",
         dataUse = "On Google's free tier, what you send is used to improve Google's products (its pricing page says “Used to improve our products: Yes”); on the paid tier it isn't. Robot's cost line assumes the paid tier.",
-        searchNote = "Google's search grounding isn't available through this connection.",
+        searchNote = "Google's search grounding isn't available through this connection.", app = "com.google.android.apps.bard",
     )
 
     val MISTRAL = Preset(
@@ -184,6 +188,8 @@ object Presets {
         keyWhere = "console.mistral.ai › API keys",
         billing = "Mistral's per-model prices aren't readable outside a browser, so Robot can't estimate them: enter them below from mistral.ai/pricing.",
         searchNote = "Mistral's web search works only through its Agents and Conversations APIs, not this connection.",
+        // Its app was called Le Chat until 2026 (now Vibe by Mistral); the package stayed.
+        app = "ai.mistral.chat",
     )
 
     val DEEPSEEK = Preset(
@@ -195,7 +201,7 @@ object Presets {
         ),
         keyWhere = "platform.deepseek.com › API keys", keyPrefixes = listOf("sk-"),
         billing = "Pay as you go from a balance you top up. Prices double on weekdays from 01:00 to 04:00 and 06:00 to 10:00 UTC.",
-        searchNote = "DeepSeek's API has no web search.", spoken = listOf("deepseek", "deep seek"),
+        searchNote = "DeepSeek's API has no web search.", spoken = listOf("deepseek", "deep seek"), app = "com.deepseek.chat",
     )
 
     val GROQ = Preset(
@@ -225,7 +231,7 @@ object Presets {
         "xai", HelperKind.XAI, "xAI", "xAI (Grok)", "Grok", Protocol.RESPONSES, "https://api.x.ai/v1",
         Quirks(lengthParam = "max_output_tokens", effort = EffortStyle.RESPONSES, search = SearchStyle.RESPONSES),
         listOf(CatalogModel("grok-4.7", "Grok 4.7", "\$2 per million tokens in, \$6 out; web search \$5 per 1,000.", search = true, vision = true)),
-        keyWhere = "console.x.ai › API keys", keyPrefixes = listOf("xai-"), searchByDefault = true,
+        keyWhere = "console.x.ai › API keys", keyPrefixes = listOf("xai-"), searchByDefault = true, app = "ai.x.grok",
     )
 
     val HOME = Preset(
@@ -327,7 +333,10 @@ data class HelperConfig(
         const val CLAUDE_ID = "claude"
         private val ID = Regex("[a-z0-9_]{1,16}")
 
-        /** Claude as every install has it (on; the Claude app without a key, the API with one), exactly as before 0.6.0. */
+        /**
+         * Claude as installs before 1.0.0 had it (on; the Claude app without a key, the API with one): kept for settings
+         * files from before 0.6.0 (RobotSettings.legacyClaude). 1.0.0: a new install has no helper.
+         */
         fun claude(): HelperConfig = HelperConfig(CLAUDE_ID, Presets.ANTHROPIC.id, Presets.ANTHROPIC.defaultName, ClaudeModel.DEFAULT.id, search = true)
 
         /** A new helper of [preset] ([id]: unused; [voice]: the first voice nobody else uses). */

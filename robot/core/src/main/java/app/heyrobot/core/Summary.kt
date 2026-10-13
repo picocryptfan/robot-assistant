@@ -1,5 +1,9 @@
 package app.heyrobot.core
 
+import app.heyrobot.core.helpers.HelperConfig
+import app.heyrobot.core.helpers.HelperPrice
+import app.heyrobot.core.helpers.HelperUsage
+import app.heyrobot.core.helpers.Pricing
 import org.json.JSONObject
 import java.text.Normalizer
 import java.time.Instant
@@ -328,16 +332,52 @@ enum class HelperRoute { API, APP_SHARE }
  * null when the app picks), [network] how it gets there, [retention] what the provider keeps (null: their own terms),
  * [cost] the estimated price line (null: none to Robot).
  */
-data class Disclosure(val provider: String, val model: String?, val network: String, val retention: String? = null, val cost: String? = null) {
+data class Disclosure(val provider: String, val model: String?, val network: String, val retention: String? = null, val cost: String? = null,
+    val warning: String? = null) {
     /** "Goes to: Anthropic (Claude Opus 5.5), over the internet, with your API key. ≈ 9¢." */
-    val line: String get() = "Goes to: $provider" + (model?.let { " ($it)" } ?: "") + ", $network." + (retention?.let { " $it" } ?: "") + (cost?.let { " $it." } ?: "")
+    val line: String get() = "Goes to: $provider" + (model?.let { " ($it)" } ?: "") + ", $network." + (retention?.let { " $it" } ?: "") +
+        (cost?.let { " ${it.replaceFirstChar { c -> c.uppercase() }}." } ?: "") + (warning?.let { " $it" } ?: "")
 
     companion object {
         fun claudeApi(model: ClaudeModel, dollars: Double): Disclosure =
             Disclosure("Anthropic", model.title, "over the internet, with your API key", cost = ClaudeCost.line(dollars))
 
-        fun claudeApp(): Disclosure = Disclosure("the Claude app", null, "with your claude.ai account, when you press Send there")
+        fun claudeApp(): Disclosure = app("Claude", "with your claude.ai account, when you press Send there")
+
+        /** 1.0.0: a helper's own app ("ChatGPT"): your account there, your Send. */
+        fun app(name: String, how: String = "with your own account there, when you press Send there"): Disclosure = Disclosure("the $name app", null, how)
+
+        /**
+         * 1.0.0, any helper's API: its company and model, how it gets there, and the cost line the panel shows ([cost]:
+         * [SummaryCost.line]); [budgetUsed]: today's budget for helpers (or this helper's own) is used up, said on the card.
+         */
+        fun api(h: HelperConfig, cost: String?, budgetUsed: Boolean): Disclosure =
+            Disclosure(if (h.home) "your own server" else h.presetOf.company, h.catalogModel?.title ?: h.model.ifEmpty { null },
+                if (h.home) "over your network" else "over the internet, with your API key", cost = cost,
+                warning = if (budgetUsed) SummaryCost.OVER_BUDGET else null)
     }
+}
+
+/**
+ * 1.0.0: the price of a summary by any helper, from its own price ([HelperConfig.price]: published, yours, reported or
+ * free) and the same estimate of tokens as before ([HelperCost]), for the card's line. Never a guess: a helper whose price
+ * Robot doesn't know says so.
+ */
+object SummaryCost {
+    /** The estimate in dollars for [chars] characters to [h], or null when its price isn't known. */
+    fun estimate(h: HelperConfig, chars: Int, at: Instant): Double? =
+        Pricing.dollars(h.price, HelperUsage(input = HelperCost.tokens(chars), output = HelperCost.OUTPUT_TOKENS), at)
+
+    /** "≈ 9¢", "cost unknown: Robot has no price for this model", or nothing for a free server (as the panel's cost line). */
+    fun line(h: HelperConfig, chars: Int, at: Instant): String? {
+        val d = estimate(h, chars, at)
+        return if (d == null) UNKNOWN else Pricing.line(d, free = h.price is HelperPrice.Free)
+    }
+
+    const val UNKNOWN = "cost unknown: Robot has no price for this model (you can enter it on the helper's page)"
+
+    /** As an ask you make yourself: never refused, but the card says so (Automatic would have asked first). */
+    const val OVER_BUDGET = "Today's budget for helpers is used up: this adds to it."
 }
 
 /** A helper's progress while it works. */
@@ -511,16 +551,20 @@ data class SummaryRecord(
     val consent: Boolean = false,
     val sentAt: Long = 0,
     val parts: Int = 0,
+    /** 1.0.0: the helper's name ("ChatGPT") and where it went ("OpenAI"); null in a record from before (Claude's). */
+    val helperName: String? = null,
+    val company: String? = null,
 ) {
     fun toJson(): String = JSONObject().put("by", by).put("model", model).put("via", via).put("createdAt", createdAt).put("consent", consent)
-        .put("sentAt", sentAt).put("chunks", parts).put("text", text).toString()
+        .put("sentAt", sentAt).put("chunks", parts).apply { helperName?.let { put("helper", it) }; company?.let { put("company", it) } }
+        .put("text", text).toString()
 
     /**
      * "Robot's summary — made on this phone by Gemma 4 E2B. …" (the model that made it: [model] is its BrainModel id) or
      * "Claude's summary — sent to Anthropic with your OK on 11 Oct, 14:52."
      */
     fun label(zone: ZoneId = ZoneId.systemDefault()): String = if (via == VIA_PHONE) robotLabel(model)
-    else "Claude's summary — sent to Anthropic with your OK on " +
+    else "${helperName ?: "Claude"}'s summary — sent to ${company ?: "Anthropic"} with your OK on " +
         DateTimeFormatter.ofPattern("d MMM, HH:mm", Locale.US).format(Instant.ofEpochMilli(if (sentAt > 0) sentAt else createdAt).atZone(zone)) + "."
 
     companion object {
@@ -541,7 +585,8 @@ data class SummaryRecord(
         fun fromJson(text: String?): SummaryRecord? = try {
             val o = JSONObject(text ?: return null)
             SummaryRecord(o.getString("by"), o.optString("model"), o.optString("via", VIA_PHONE), o.optLong("createdAt"), o.getString("text"),
-                o.optBoolean("consent"), o.optLong("sentAt"), o.optInt("chunks"))
+                o.optBoolean("consent"), o.optLong("sentAt"), o.optInt("chunks"), o.optString("helper").takeIf { it.isNotEmpty() },
+                o.optString("company").takeIf { it.isNotEmpty() })
         } catch (_: Exception) { null }
     }
 }
