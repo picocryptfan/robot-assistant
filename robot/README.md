@@ -6194,6 +6194,21 @@ on a card whose run ended after Stop (its result is dropped as late). (Robot's o
 "Termux updates, the update lock and the Shizuku path (1.0)" above.) Termux:API commands are read and classified (sends and calls: red line, tap only; personal
 reads mark the output personal), but their phone checks (T-21) haven't run.
 
+### On the phone (1.0.0-rc2 security fixes)
+
+Pixel 10 Pro, GrapheneOS. Watch Settings › Advanced › Voice log.
+
+1. **History's Continue after the lock screen.** Lock the phone, "hey robot, add a note: buy milk". Unlock, wait more
+   than 2 minutes, then History › that conversation › Continue, and say "go ahead": *done when* the earlier turns show
+   under "Said while the phone was locked" and the note shows a card instead of being added.
+2. **Shizuku's rish.** With rish installed (Settings › Advanced › ADB fixes) and Termux set up, type "run the command
+   rish -c id": *done when* the card shows "Runs with ADB's rights through Shizuku", a spoken yes doesn't run it and
+   only a tap does. Then ADB fixes › Run with Shizuku through Termux: *done when* it still works.
+3. **Your words, your engine.** Attach a screenshot and say "search in my browser for café crème": *done when* your
+   default engine opens at once with those words, with no card.
+4. **Who can run commands.** Before setting up Shizuku, Settings › Termux › "Apps that can run commands in Termux":
+   *done when* the list is empty.
+
 ### On the phone (0.9 Termux)
 
 Pixel 10 Pro, GrapheneOS, Android 17. Nothing of the Termux agent has run on a phone yet.

@@ -16,6 +16,13 @@ History, notes, transcripts, keys and routines don't move: share or save what yo
 
 ## 1.0.0 (unreleased)
 
+- **Fixed after rc1** (a security review of everything changed since the 1.0 audit):
+  - a Termux command run through Shizuku's `rish` shows "Runs with ADB's rights through Shizuku" and runs only when
+    you tap, never on a spoken yes;
+  - continuing from History a conversation begun on the lock screen shows its earlier turns as said while the phone was
+    locked, so they can't act as your own words;
+  - when you say "search in my browser for …", your words open without a card only in the engine you named, or your
+    default.
 - **New app ID, `ai.robot_app`** (after Robot's domain, robot-app.ai; it was `app.heyrobot`): 1.0 installs as a new app
   beside 0.9, which can't update to it. The ADB fixes and Robot's web requests name the new ID.
 - Downloads name Robot and its version (`User-Agent: Robot/<version>`) instead of Android's default, which names the
