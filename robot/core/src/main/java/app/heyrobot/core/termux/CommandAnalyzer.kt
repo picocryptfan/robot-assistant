@@ -21,6 +21,8 @@ enum class CommandWarning(val en: String, val fr: String, /** The card's red lin
     PACKAGES("Changes installed packages", "Modifie les paquets installés"),
     /** su, sudo, tsu: GrapheneOS isn't rooted, but such a command is never silent. */
     ROOT("Asks for root rights", "Demande les droits root"),
+    /** 1.0: Shizuku's rish (Settings › Advanced › ADB fixes puts it in $PREFIX/bin): a shell with ADB's rights. */
+    ADB_RIGHTS("Runs with ADB's rights through Shizuku", "S'exécute avec les droits d'ADB via Shizuku"),
     KEEPS_RUNNING("Keeps running later, without Robot", "Continue de tourner ensuite, sans Robot"),
     RUNS_FOREVER("May never end by itself: the time limit stops it", "Peut ne jamais finir : la limite de temps l'arrête"),
     /** Refused outright (TermuxPolicy): a function that starts copies of itself. */
@@ -284,6 +286,8 @@ object CommandAnalyzer {
                     "--role", "--type", "--chdir", "--chroot", "--close-from"))
                 if (inner.isEmpty()) acc += CommandWarning.NEEDS_TERMINAL else runInner(inner, c, parse, acc, depth)
             }
+            // 1.0: Shizuku's rish, which Settings › Advanced › ADB fixes puts in $PREFIX/bin: a shell with ADB's rights, read as sh is.
+            "rish" -> { acc += CommandWarning.ADB_RIGHTS; shell(args, c, parse, acc, depth) }
             "su", "tsu" -> {
                 acc += CommandWarning.ROOT
                 val code = optionValue(args, setOf("-c", "--command"))
@@ -531,7 +535,9 @@ object CommandAnalyzer {
 
     /** Programs whose effect Robot can't read from their arguments: build tools, sandboxes, Android's own shell tools. */
     private val OPAQUE = setOf("make", "gmake", "ninja", "just", "task", "script", "expect", "proot", "proot-distro", "chroot", "unshare", "nsenter",
-        "runuser", "setarch", "am", "cmd", "pm", "settings", "content", "input", "svc", "wm", "appops", "dumpsys", "termux-am", "gdb", "lldb")
+        "runuser", "setarch", "am", "cmd", "pm", "settings", "content", "input", "svc", "wm", "appops", "dumpsys", "termux-am", "gdb", "lldb",
+        // 1.0: what rish starts (Shizuku's dex run with ADB's rights), or any other dex: nothing Robot can read.
+        "app_process", "app_process32", "app_process64", "dalvikvm", "dalvikvm64")
 
     /** Options that name a program to run (ssh's ProxyCommand, tar's --to-command, rsync's -e…): the command is complex. */
     private fun runsAnotherProgram(prog: String, v: List<String>): Boolean {
@@ -820,7 +826,7 @@ object CommandAnalyzer {
     }
 
     private val REMOTE_KEPT = EnumSet.of(CommandWarning.DELETES, CommandWarning.OVERWRITES, CommandWarning.INTERNET_CODE, CommandWarning.PACKAGES,
-        CommandWarning.ROOT, CommandWarning.KEEPS_RUNNING, CommandWarning.RUNS_FOREVER, CommandWarning.FORK_BOMB, CommandWarning.SECRET, CommandWarning.HIDDEN_CHARACTERS)
+        CommandWarning.ROOT, CommandWarning.ADB_RIGHTS, CommandWarning.KEEPS_RUNNING, CommandWarning.RUNS_FOREVER, CommandWarning.FORK_BOMB, CommandWarning.SECRET, CommandWarning.HIDDEN_CHARACTERS)
 
     private fun archive(prog: String, v: List<String>, args: List<ShellWord>, acc: Acc) {
         val toStdout = hasOpt(v, 'c', "--stdout") || hasOpt(v, 't', "--test") || hasOpt(v, 'l', "--list")
