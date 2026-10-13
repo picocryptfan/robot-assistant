@@ -729,7 +729,7 @@ helpers, the engine hardening and the built-in updater; each has its section bel
 | `:app` | main + `:voice` | `ui/` (main: home, history, model manager, settings, assistant setup), `assistant/` (`:voice`: the VoiceInteractionService, the Compose panel in the session, the recognizer stub, tools, the brain binding), `sys/` (storage, model store, restart check), `boot/`, `update/` (main: the updater, Settings › About › Updates) |
 | `:brain` | `:brain`, `:llama` | `BrainService` (Messenger) and its two engines, one model at a time: `GemmaEngine`, the only code that touches LiteRT-LM (the model you chose, on the TPU, the CPU, or since 0.4.7 the GPU for the general Gemma 4 E2B where Robot offers it), and since 0.4.5 `LlamaEngine` (your own GGUF file, on the CPU), which runs llama.cpp in `LlamaService`'s isolated `:llama` process, where `LlamaNative` is the only code that loads Robot's llama.cpp library; since 0.5.0 a priority queue for the panel, translations and summaries, and one-shot requests (in both engines since 0.6.0) |
 | `:voice` | `:voice` | microphone loop (with echo cancellation while Robot speaks), Silero VAD + the wake phrases (and "STOP" while speaking), speech to text (Parakeet v3) and text to speech (Kokoro, Kitten) on sherpa-onnx, the placeholders while the voice models are missing, the voice speed test; since 0.5.0 conversation mode's segments and decoding (`ConversationEngine`) and its speakers' voice embeddings (`SpeakerEmbedder`, TitaNet-S) |
-| `:helpers` | `:voice` | Ask Claude's API client on the official Anthropic Java SDK (`AnthropicClient`, `AnthropicRequests`, `AnthropicSession`, `AnthropicHistory`, `HelperTurn`), the only code that links the SDK; since 0.6.0 also the other helpers' client on plain OkHttp (`app.heyrobot.helpers`: `HelperSession`, `OpenAiSession`, `HelperHttp`, `HelperProbe`), the only HTTP code for helpers |
+| `:helpers` | `:voice` | The helpers' clients, the only HTTP code for helpers (`app.heyrobot.helpers`: `HelperSession`, `HelperTurn`, `OpenAiSession` on plain OkHttp, `HelperHttp`, `HelperProbe`), and Anthropic's API client on the official Anthropic Java SDK (`app.heyrobot.helpers.anthropic`: `AnthropicClient`, `AnthropicRequests`, `AnthropicSession`, `AnthropicHistory`), the only code that links the SDK |
 | `:mt` | `:mt` | since 0.5.0, the fast translation engine: `MtService` (Messenger), `BergamotEngine` and `Slimt`, the only code that loads `librobotmt.so` (slimt, built by `tools/build_robotmt.sh`, not in git) |
 | `:core` | everywhere | pure logic: prompt and context window, tool specs and validation, tool groups and their router, approval gate, the date and time parser, contact ranking and phone numbers, the hand-off links, the notes store, calendar formatting, model state, the voice model manifest, IPC contract, history format, settings, no-content logging; Ask Claude's router, pre-router, hedge check, escalation policy, what Claude receives, prices and cost, failures, the Claude app link and answer extraction; the helpers' presets, rules, prices, address rule and wire formats (`core/helpers/`, 0.6.0) |
 
@@ -1487,7 +1487,7 @@ Echo cancellation (the default) unless a step says otherwise.
 18. **Off**: steps 13 to 15 get Robot's answer and no offer. Back on Automatic, "tell me about Donald Trump, not Claude":
     no offer for the rest of that conversation.
 19. Delete the key with the Claude app installed (the app route): step 13's refusal gets "Open Claude with: «…»".
-20. `adb logcat -s Robot | grep claude_`: `claude_trigger kind=HEDGE` for step 13, `kind=PRE_ROUTER` for 14 and 15;
+20. `adb logcat -s Robot | grep helper_`: `helper_trigger kind=HEDGE` for step 13, `kind=PRE_ROUTER` for 14 and 15;
     codes only, never words.
 
 **Learning names from Cheogram**
@@ -3212,7 +3212,7 @@ connection, a timeout), Robot answers itself instead, with a short notice why. G
 | Where | What |
 | --- | --- |
 | `core/helpers/` | `Helpers.kt` (presets, quirks, catalog, `HelperConfig`, names), `HelperRules.kt` (routes, the default helper, trust, words), `Pricing.kt`, `LanRule.kt`, `HelperFacts.kt`, `wire/` (Chat Completions and Responses mappers, errors, `<think>` filter) |
-| `:helpers` module, `app.heyrobot.helpers` | `HelperSession` (Claude's session implements it too), `openai/OpenAiSession`, `http/HelperHttp` (OkHttp with the LAN rules), `HelperProbe` (Test connection). The module keeps its name so the build's test tasks stay as they are |
+| `:helpers` module, `app.heyrobot.helpers` | `HelperSession` (`anthropic/AnthropicSession` implements it too), `openai/OpenAiSession`, `http/HelperHttp` (OkHttp with the LAN rules), `HelperProbe` (Test connection). Called `:claude` until 1.0.0, so its test task was `:claude:testReleaseUnitTest` |
 | `app/assistant/` | `HelperLink` (one client per helper and key), `HelperKeys`, `HelperConnectionActivity`; `PanelController` routes each turn to its helper |
 | `app/sys/` | `HelperFiles.kt` (`HelperKeyFiles`: each helper's key files and Keystore alias, as `KeystoreSecret`s; what Test connection found; the spend), `KeystoreSecret.kt` (shared with the updater's token) |
 | `app/ui/HelpersScreens.kt` | the Helpers card, Settings › Helpers, Add a helper, a helper's page |
