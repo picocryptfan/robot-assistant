@@ -459,7 +459,7 @@ enum class BriefControl {
 
         /** The control [text] is, as a whole utterance (the wake phrase and "please" around it allowed), or null. */
         fun of(text: String): BriefControl? {
-            var t = " " + ClaudeRouter.plain(text).replace(Regex("[^a-z0-9]+"), " ").trim() + " "
+            var t = " " + HelperRouter.plain(text).replace(Regex("[^a-z0-9]+"), " ").trim() + " "
             for (a in AROUND.sortedByDescending { it.length }) t = t.replace(" $a ", " ")
             return WORDS[t.trim()]
         }

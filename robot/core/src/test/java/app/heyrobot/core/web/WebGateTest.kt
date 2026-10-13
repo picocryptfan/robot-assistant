@@ -198,7 +198,7 @@ class WebGateTest {
         assertTrue("The Panthers beat the Oilers [1]." in wctx.untrusted)
         assertFalse("The Panthers beat the Oilers [1]." in wctx.personal)
         assertEquals(setOf(AskWhy.SEARCH), ready(WebGate.prepare(search("Oilers schedule"), searxng.copy(ask = WebAsk.NEVER), null, wctx, 0)).why)
-        assertTrue(app.heyrobot.core.ClaudeContext.personal(web.drop(2)).isEmpty())
+        assertTrue(app.heyrobot.core.HelperContext.personal(web.drop(2)).isEmpty())
     }
 
     @Test fun yourTownOnlyWhenAskedAndNeverCoordinates() {

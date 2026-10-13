@@ -7,18 +7,17 @@ import android.content.Context
 import android.content.Intent
 import android.os.PersistableBundle
 import app.heyrobot.assistant.HelperLink
-import app.heyrobot.claude.ClaudeListener
-import app.heyrobot.claude.ClaudeOutcome
+import app.heyrobot.core.AppHandOff
 import app.heyrobot.core.AppShareCode
 import app.heyrobot.core.ClaudeAppLink
-import app.heyrobot.core.ClaudeEffort
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudePlan
 import app.heyrobot.core.ConsentCard
 import app.heyrobot.core.Disclosure
 import app.heyrobot.core.Helper
+import app.heyrobot.core.HelperEffort
+import app.heyrobot.core.HelperFailure
 import app.heyrobot.core.HelperGate
 import app.heyrobot.core.HelperListener
+import app.heyrobot.core.HelperPlan
 import app.heyrobot.core.HelperResult
 import app.heyrobot.core.HelperRoute
 import app.heyrobot.core.RLog
@@ -28,6 +27,8 @@ import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperWho
 import app.heyrobot.core.helpers.HelperWords
 import app.heyrobot.core.helpers.Protocol
+import app.heyrobot.helpers.HelperOutcome
+import app.heyrobot.helpers.HelperTurnListener
 import app.heyrobot.sys.HandOffIntents
 import app.heyrobot.sys.HelperSpendStore
 import java.time.Instant
@@ -38,11 +39,11 @@ import kotlinx.coroutines.withContext
 // 7.2, phase 5.6): a helper's API (one question to a transcript-only session: its own prompt, no tools, no search,
 // 16,000 tokens of room) and a helper's app (a share you send yourself). Both act only on a SummaryJob, which only your
 // Send on the consent card makes (HelperGate checks it again before anything leaves). 1.0.0: any helper you set up,
-// through its own client, its own model and its own price (the class names are from when Claude was the only one).
+// through its own client, its own model and its own price.
 // Nothing here logs content.
 
 /** A helper's API ([h]): Robot gets the summary back and keeps it with the transcript. [chars]: what the card sends. */
-class ClaudeApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int, budgetUsed: Boolean = false) : Helper {
+class ApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int, budgetUsed: Boolean = false) : Helper {
     override val id: String get() = idFor(h)
     override val title: String get() = "${h.name} (API)"
     /** The card's line, with the price estimated from the text's length and the helper's own price (SummaryCost). */
@@ -63,11 +64,11 @@ class ClaudeApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int,
         if (!HelperGate.allowed(job) || job.helper != id) return HelperResult.Failed("Nothing was sent: Robot needs your OK on the card.")
         // More than one request takes: it would leave the phone only to be refused there.
         if (!ConsentCard.apiFits(job.blocks, maxInputTokens())) return HelperResult.Failed("Nothing was sent. " + ConsentCard.TOO_LONG_FOR_API)
-        if (!HelperLink.networkAllowed(ctx)) return HelperResult.Failed(ClaudeFailure.NO_INTERNET.text)
+        if (!HelperLink.networkAllowed(ctx)) return HelperResult.Failed(HelperFailure.NO_INTERNET.text)
         val session = withContext(Dispatchers.IO) { HelperLink.transcriptSession(ctx, h) } ?: return HelperResult.Failed(noKey())
         val text = StringBuilder()
         try {
-            val out = session.ask(job.blocks, ClaudePlan(ClaudeEffort.MEDIUM, MAX_TOKENS), object : ClaudeListener {
+            val out = session.ask(job.blocks, HelperPlan(HelperEffort.MEDIUM, MAX_TOKENS), object : HelperTurnListener {
                 override fun text(delta: String) {
                     text.append(delta)
                     listener.text(text.toString())
@@ -83,12 +84,12 @@ class ClaudeApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int,
             })
             costKnown = session.lastReport.costKnown
             return when (out) {
-                is ClaudeOutcome.Done -> if (text.isBlank()) HelperResult.Failed("${h.name} sent nothing back.")
+                is HelperOutcome.Done -> if (text.isBlank()) HelperResult.Failed("${h.name} sent nothing back.")
                     else HelperResult.Done(text.toString().trim(), h.model, (spent * 1_000_000).toLong())
-                ClaudeOutcome.Declined -> HelperResult.Failed("${h.name} declined to summarize this conversation.")
-                is ClaudeOutcome.Failed -> HelperResult.Failed(out.failure.say(HelperWho.of(h)))
+                HelperOutcome.Declined -> HelperResult.Failed("${h.name} declined to summarize this conversation.")
+                is HelperOutcome.Failed -> HelperResult.Failed(out.failure.say(HelperWho.of(h)))
                 // No tools were offered: a call can't come; if it did, nothing runs.
-                is ClaudeOutcome.Calls -> HelperResult.Failed("${h.name} answered with something Robot can't use.")
+                is HelperOutcome.Calls -> HelperResult.Failed("${h.name} answered with something Robot can't use.")
             }
         } finally {
             HelperLink.done(session)
@@ -101,14 +102,14 @@ class ClaudeApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int,
         return when {
             HelperLink.unavailable(h.id) -> w.keyUnavailable
             HelperLink.unreadable(h.id) -> w.keyUnreadable
-            else -> ClaudeFailure.NO_KEY.say(HelperWho.of(h))
+            else -> HelperFailure.NO_KEY.say(HelperWho.of(h))
         }
     }
 
     companion object {
-        /** Claude's id as before 1.0.0 (its log code and saved jobs); another helper's from its own id. */
-        const val ID = "claude_api"
-        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) ID else "api_${h.id}"
+        /** Claude's id as before 1.0.0 (its log code and saved jobs: stored name kept); another helper's from its own id. */
+        const val CLAUDE_JOB_ID = "claude_api"
+        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) CLAUDE_JOB_ID else "api_${h.id}"
         const val MAX_TOKENS = 16_000L
         /** A transcript of up to about 150,000 tokens goes to Claude in one request (about 10 hours of talk). */
         const val MAX_INPUT_TOKENS = 150_000
@@ -120,7 +121,7 @@ class ClaudeApiHelper(private val ctx: Context, val h: HelperConfig, chars: Int,
 }
 
 /** A helper's app ([h], one with an app): the transcript goes in a share; you press Send there, and Robot doesn't hear the answer. */
-class ClaudeAppHelper(private val ctx: Context, val h: HelperConfig) : Helper {
+class AppShareHelper(private val ctx: Context, val h: HelperConfig) : Helper {
     private val pkg: String = h.presetOf.app.orEmpty()
     private val appName: String = h.presetOf.defaultName
     override val id: String get() = idFor(h)
@@ -141,7 +142,7 @@ class ClaudeAppHelper(private val ctx: Context, val h: HelperConfig) : Helper {
         if (pkg.isEmpty() || job.appText.length > ConsentCard.APP_MAX_CHARS || !HandOffIntents.installed(ctx, pkg)) return null
         val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, job.appText).setPackage(pkg)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (HandOffIntents.resolves(ctx, pkg, ClaudeAppLink.Way.SEND)) return send to AppShareCode.SHARED
+        if (HandOffIntents.resolves(ctx, pkg, AppHandOff.Way.SEND)) return send to AppShareCode.SHARED
         // Fallback: the clipboard (marked sensitive: other people's words), then the app; you paste it there.
         val launch = ctx.packageManager.getLaunchIntentForPackage(pkg)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return null
         try {
@@ -156,7 +157,8 @@ class ClaudeAppHelper(private val ctx: Context, val h: HelperConfig) : Helper {
     }
 
     companion object {
-        const val ID = "claude_app"
-        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) ID else "app_${h.id}"
+        /** Claude's id as before 1.0.0 (its log code and saved jobs: stored name kept); another helper's from its own id. */
+        const val CLAUDE_JOB_ID = "claude_app"
+        fun idFor(h: HelperConfig): String = if (h.id == HelperConfig.CLAUDE_ID) CLAUDE_JOB_ID else "app_${h.id}"
     }
 }

@@ -19,15 +19,15 @@ object ApprovalGate {
      *
      * - Off in Settings › Actions: not done. Locked, and not one of "Works on the lock screen" (timers and alarms by
      *   default; questions always work): unlock first.
-     * - The Claude app hand-off always shows "Open Claude with: «…»". [remote], a helper asked for it (its input may come
-     *   from web pages): a card with "Card when a helper asks Robot to do something" on; and a read tool's findings go to
+     * - The hand-off to a helper's app always shows "Open the ChatGPT app with: «…»". [remote], a helper asked for it
+     *   (its input may come from web pages): a card with "Card when a helper asks Robot to do something" on; and a read tool's findings go to
      *   the helper only after a tap unless "Send personal content to helpers automatically" is on or the helper is
      *   trusted with personal content ([trusted]), and so does an action that looks something up online for it
      *   ([online]: the nearest place, found around where you are).
      * - "Ask first", or a reason the prepared action gives ([why]): not certain who or which ("Card when who-to isn't
      *   certain"), a name learned from Cheogram ("Card for names learned from Cheogram"), deleting files ("Card before
      *   deleting files"), a list to pick from (always).
-     * - [content]: the conversation carries screen text, a picture, a read tool's findings or Claude's words (content Robot
+     * - [content]: the conversation carries screen text, a picture, a read tool's findings or a helper's words (content Robot
      *   didn't write and the person didn't type). "Safety cards" decides: every action that writes or leaves asks
      *   (Always after Robot reads something), only one the person didn't ask for in their own words this turn ([asked]; When
      *   you didn't ask for it, the default), or none (Only when Robot isn't sure who). The read tools ([ToolName.reads]:
@@ -55,10 +55,10 @@ object ApprovalGate {
             // ("Use memory on the lock screen" lets it be read there, never changed).
             locked && memoryWrite(tool) -> GateDecision.NEEDS_UNLOCK
             locked && tool !in settings.lockedTools -> GateDecision.NEEDS_UNLOCK
-            tool == ToolName.ASK_CLAUDE -> GateDecision.CONFIRM
+            tool == ToolName.ASK_HELPER -> GateDecision.CONFIRM
             // 0.7: a memory the model proposes without your asking, or in a conversation with content, is a card, never silent.
             tool == ToolName.REMEMBER && (!asked || content) -> GateDecision.CONFIRM
-            remote && settings.claudeActionCards -> GateDecision.CONFIRM
+            remote && settings.helperActionCards -> GateDecision.CONFIRM
             // What a read tool finds for a helper goes to it: "Share with …" unless personal content may go by itself (for
             // every helper, or this one: [trusted], "Trusted with personal content"). So does what an online lookup finds (the
             // nearest pharmacy says where you are).

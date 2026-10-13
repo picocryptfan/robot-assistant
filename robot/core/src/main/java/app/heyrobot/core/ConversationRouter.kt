@@ -1,7 +1,7 @@
 package app.heyrobot.core
 
 // Pure. Conversation mode's voice commands (docs/conversation-mode.md 5.4), decided by code before anything reaches
-// Gemma, like ClaudeRouter: "transcribe this conversation", "translate this conversation", "be my interpreter", and
+// Gemma, like HelperRouter: "transcribe this conversation", "translate this conversation", "be my interpreter", and
 // while a session runs "stop transcribing", "pause", "resume", "summarize this conversation", in English and French.
 // A command is an imperative at the start of what was said, with only filler before it ("hey robot", "please", "can
 // you") and only polite words after it. "How do I transcribe a song?" and "Can you translate 'merci'?" are questions,
@@ -30,7 +30,7 @@ sealed class ConversationCommand {
 }
 
 object ConversationRouter {
-    /** Words allowed before a command (English and French), as their plain forms ([ClaudeRouter.plain]). */
+    /** Words allowed before a command (English and French), as their plain forms ([HelperRouter.plain]). */
     private val FILLER: List<List<String>> = listOf(
         listOf("hey", "robot"), listOf("hi", "robot"), listOf("ok", "robot"), listOf("okay", "robot"), listOf("he", "robot"),
         listOf("dis", "robot"), listOf("robot"), listOf("please"), listOf("can", "you"), listOf("could", "you"), listOf("would", "you"),
@@ -90,7 +90,7 @@ object ConversationRouter {
     )
 
     private fun words(text: String): List<String> =
-        ClaudeRouter.plain(text).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+        HelperRouter.plain(text).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
 
     private fun head(ws: List<String>): Int {
         var i = 0

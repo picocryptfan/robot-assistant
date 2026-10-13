@@ -44,29 +44,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.heyrobot.R
-import app.heyrobot.core.ModelLogic
-import app.heyrobot.core.guide.GuideState
-import app.heyrobot.core.guide.HomeGuide
-import app.heyrobot.core.guide.SetupGuide
-import androidx.compose.ui.res.stringResource
-import app.heyrobot.core.ModelStatus
-import app.heyrobot.core.ClaudeCost
-import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.Attachment
+import app.heyrobot.core.CostText
+import app.heyrobot.core.ModelLogic
+import app.heyrobot.core.ModelStatus
+import app.heyrobot.core.StoredConversation
 import app.heyrobot.core.TurnRole
 import app.heyrobot.core.VoiceBundle
 import app.heyrobot.core.VoiceModelLogic
+import app.heyrobot.core.guide.GuideState
+import app.heyrobot.core.guide.HomeGuide
+import app.heyrobot.core.guide.SetupGuide
 import app.heyrobot.ui.common.ActionView
 import app.heyrobot.ui.common.RIcons
 import app.heyrobot.ui.common.TurnActions
 import app.heyrobot.ui.common.TurnUi
 import app.heyrobot.ui.common.TurnView
+import app.heyrobot.ui.common.replyFooter
 import app.heyrobot.ui.common.keptPicture
 import app.heyrobot.ui.common.transcriptGap
-import app.heyrobot.ui.common.claudeFooter
 
 // MAIN PROCESS. Home, history and one saved conversation.
 
@@ -201,8 +201,8 @@ private fun ConversationRow(c: StoredConversation, onClick: () -> Unit) {
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // A helper took part: a small cloud, or a house when only your own server did.
-                if (c.claude) {
-                    val names = c.turns.filter { it.claude }.map { it.author }.distinct().joinToString(", ")
+                if (c.fromHelper) {
+                    val names = c.turns.filter { it.fromHelper }.map { it.author }.distinct().joinToString(", ")
                     Icon(if (c.homeOnly) RIcons.Home else RIcons.Cloud, "With $names", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.tertiary)
                     Spacer(Modifier.width(6.dp))
                 }
@@ -294,8 +294,8 @@ fun ConversationScreen(c: StoredConversation?, a: AppActions, snackbar: Snackbar
                 // The panel's look: a transcript, or the Classic look's bubbles. No buttons on the cards here.
                 TurnView(TurnUi(t.id, user, t.text, attachment = if (user) t.attachment else Attachment.NONE, thumb = pic, screenText = t.screenText,
                     actions = t.actions.mapIndexed { i, x -> ActionView("$i", x.tool, x.summary, x.status, x.detail) },
-                    stopped = t.stopped, error = t.error, helper = t.claude, readBack = t.readBack, by = t.by, home = t.home,
-                    footer = if (user) emptyList() else claudeFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { ClaudeCost.line(it / 1e6) }, t.by)),
+                    stopped = t.stopped, error = t.error, helper = t.fromHelper, readBack = t.readBack, by = t.by, home = t.home,
+                    footer = if (user) emptyList() else replyFooter(t.sources, t.costMicros.takeIf { showCost && it > 0 }?.let { CostText.line(it / 1e6) }, t.by)),
                     TurnActions.None, startsExchange = user && t.id != c.turns.first().id)
             }
         }

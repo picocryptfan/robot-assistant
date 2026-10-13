@@ -25,8 +25,8 @@ import java.time.ZonedDateTime
  */
 class AskAHelperTest {
     private val any = HelperName.ANY_ID
-    private fun route(s: String, names: List<HelperName>? = null) = if (names == null) ClaudeRouter.route(s) else ClaudeRouter.route(s, names)
-    private fun ask(q: String, helper: String = any, extra: Attachment = Attachment.NONE, deep: Boolean = false) = ClaudeCommand.Ask(q, deep, extra, helper)
+    private fun route(s: String, names: List<HelperName>? = null) = if (names == null) HelperRouter.route(s) else HelperRouter.route(s, names)
+    private fun ask(q: String, helper: String = any, extra: Attachment = Attachment.NONE, deep: Boolean = false) = HelperCommand.Ask(q, deep, extra, helper)
 
     @Test fun theNewPhrases() {
         assertEquals(ask("why the sky is blue"), route("ask the helper why the sky is blue"))
@@ -42,9 +42,9 @@ class AskAHelperTest {
         assertEquals(ask("about this screen", extra = Attachment.SCREEN), route("ask the helper about this screen"))
         assertEquals(ask("think hard about this plan", deep = true), route("ask the helper to think hard about this plan"))
         // Nothing after it: the helper joins, as "ask Claude" does, but as after a mishearing (no helper was named).
-        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("ask the helper"))
-        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("ask a helper."))
-        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("ask my helper"))
+        assertEquals(HelperCommand.Join(misheard = true, helper = any), route("ask the helper"))
+        assertEquals(HelperCommand.Join(misheard = true, helper = any), route("ask a helper."))
+        assertEquals(HelperCommand.Join(misheard = true, helper = any), route("ask my helper"))
     }
 
     @Test fun theNewFrenchPhrases() {
@@ -55,20 +55,20 @@ class AskAHelperTest {
         // The "à" not heard.
         assertEquals(ask("pourquoi le ciel est bleu"), route("demande l'assistant pourquoi le ciel est bleu"))
         assertEquals(ask("m'écrire un poème"), route("demande à l'assistant de m'écrire un poème"))
-        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("demande à un assistant"))
-        assertEquals(ClaudeCommand.Join(misheard = true, helper = any), route("demande à l'assistant"))
+        assertEquals(HelperCommand.Join(misheard = true, helper = any), route("demande à un assistant"))
+        assertEquals(HelperCommand.Join(misheard = true, helper = any), route("demande à l'assistant"))
     }
 
     @Test fun askClaudeStillWorksAsAHiddenAlias() {
-        assertEquals(ClaudeCommand.Ask("why the sky is blue"), route("ask Claude why the sky is blue"))
-        assertEquals(ClaudeCommand.Ask("why the sky is blue"), route("ask cloud why the sky is blue"))
-        assertEquals(ClaudeCommand.Ask("what's a black hole?"), route("Claude, what's a black hole?"))
-        assertEquals(ClaudeCommand.Ask("pourquoi le ciel est bleu"), route("demande à Claude pourquoi le ciel est bleu"))
-        assertEquals(ClaudeCommand.Join(), route("go get Claude"))
+        assertEquals(HelperCommand.Ask("why the sky is blue"), route("ask Claude why the sky is blue"))
+        assertEquals(HelperCommand.Ask("why the sky is blue"), route("ask cloud why the sky is blue"))
+        assertEquals(HelperCommand.Ask("what's a black hole?"), route("Claude, what's a black hole?"))
+        assertEquals(HelperCommand.Ask("pourquoi le ciel est bleu"), route("demande à Claude pourquoi le ciel est bleu"))
+        assertEquals(HelperCommand.Join(), route("go get Claude"))
         // With Claude and another helper in settings, Claude's name still means Claude, and the new phrases still mean the one Robot asks.
         val s = RobotSettings(helpers = listOf(HelperConfig.claude())).withHelper(HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck"))
         val names = HelperName.all(s)
-        assertEquals(ClaudeCommand.Ask("why the sky is blue"), route("ask Claude why the sky is blue", names))
+        assertEquals(HelperCommand.Ask("why the sky is blue"), route("ask Claude why the sky is blue", names))
         assertEquals(ask("why the sky is blue", helper = "hgpt"), route("ask ChatGPT why the sky is blue", names))
         assertEquals(ask("why the sky is blue"), route("ask the helper why the sky is blue", names))
     }
@@ -97,14 +97,14 @@ class AskAHelperTest {
         val s = RobotSettings().withHelper(trusted)
         val names = HelperName.all(s)
         val personal = setOf(Personal.CALENDAR)
-        val byName = route("ask Jarvis", names) as ClaudeCommand.Join
+        val byName = route("ask Jarvis", names) as HelperCommand.Join
         assertTrue(app.heyrobot.core.helpers.HelperTrust.joinWithoutCard(trusted, personal, byName.misheard))
         for (t in listOf("ask the helper", "ask a helper", "ask my helper", "demande à l'assistant", "demande à un assistant")) {
-            val j = route(t, names) as ClaudeCommand.Join
+            val j = route(t, names) as HelperCommand.Join
             assertFalse(t, app.heyrobot.core.helpers.HelperTrust.joinWithoutCard(trusted, personal, j.misheard))
             // Even a conversation with nothing personal in it asks first.
             val plain = listOf(ChatTurn("u1", TurnRole.USER, "what's a good name for a cat?", 0L), ChatTurn("a1", TurnRole.ASSISTANT, "Miso.", 0L))
-            assertEquals(t, "Include the conversation so far?", ClaudeContext.includeQuestion(plain, j.misheard))
+            assertEquals(t, "Include the conversation so far?", HelperContext.includeQuestion(plain, j.misheard))
         }
     }
 
@@ -113,9 +113,9 @@ class AskAHelperTest {
         for (names in listOf(null, HelperName.all(s))) for (t in listOf("thanks helper", "Thanks, helper.", "thank you helper", "thank you, the helper",
             "thanks the helper", "thanks my helper", "bye helper", "stop the helper", "that's all, helper", "hey robot, thanks helper",
             "merci l'assistant", "Merci, l’assistant !", "merci assistant", "au revoir l'assistant", "c'est tout l'assistant")) {
-            assertEquals(t, ClaudeCommand.Leave, route(t, names))
+            assertEquals(t, HelperCommand.Leave, route(t, names))
             // Never a question for the helper, in its conversation or out of it.
-            assertFalse(t, FastPath.of(route(t, names), claudeMode = true, attachment = Attachment.NONE) == FastPath.Way.CLAUDE)
+            assertFalse(t, FastPath.of(route(t, names), inHelperMode = true, attachment = Attachment.NONE) == FastPath.Way.HELPER)
             // No router before the helpers' takes it (the panel runs these first, in a helper's conversation too).
             assertNull(t, MessagesRouter.route(t))
             assertNull(t, ConversationRouter.route(t, running = false))
@@ -124,8 +124,8 @@ class AskAHelperTest {
             assertNull(t, MemoryRouting.route(t, MemorySettings(), locked = false))
         }
         // The names still leave, and "thanks" alone stays ordinary talk.
-        assertEquals(ClaudeCommand.Leave, route("thanks Claude"))
-        assertEquals(ClaudeCommand.Leave, route("thanks ChatGPT", HelperName.all(s)))
+        assertEquals(HelperCommand.Leave, route("thanks Claude"))
+        assertEquals(HelperCommand.Leave, route("thanks ChatGPT", HelperName.all(s)))
         for (t in listOf("thanks", "thank you", "merci", "thanks for the help", "thank you for helping", "thanks, that helped")) assertNull(t, route(t))
     }
 
@@ -143,25 +143,25 @@ class AskAHelperTest {
             assertNull(t, MemoryRouting.route(t, MemorySettings(), locked = false))
             assertNull(t, RoutineRouter.route(t, now))
             // A Claude command wins over texting, and these are one.
-            assertEquals(t, FastPath.Way.CLAUDE, FastPath.of(route(t), claudeMode = false, attachment = Attachment.NONE))
+            assertEquals(t, FastPath.Way.HELPER, FastPath.of(route(t), inHelperMode = false, attachment = Attachment.NONE))
         }
     }
 
     @Test fun turningTheHelperDown() {
         for (t in listOf("don't ask the helper", "do not ask a helper, you tell me", "not the helper", "without a helper please", "leave my helper out of it",
-            "ne demande pas à l'assistant", "ne demande pas à un assistant")) assertTrue(t, ClaudeRouter.declines(t))
+            "ne demande pas à l'assistant", "ne demande pas à un assistant")) assertTrue(t, HelperRouter.declines(t))
         for (t in listOf("the helper is not here", "it's not my helper, it's Sam", "he's not a helper", "ask the helper why the sky is blue",
-            "no help needed", "not helpful")) assertFalse(t, ClaudeRouter.declines(t))
+            "no help needed", "not helpful")) assertFalse(t, HelperRouter.declines(t))
         // The old words still turn Claude down.
-        assertTrue(ClaudeRouter.declines("don't ask Claude"))
+        assertTrue(HelperRouter.declines("don't ask Claude"))
     }
 
     @Test fun aYesMayNameTheHelper() {
-        assertTrue(ClaudeRouter.isYes("yes, ask the helper"))
-        assertTrue(ClaudeRouter.isYes("oui, l'assistant"))
-        assertTrue(ClaudeRouter.isYes("yes, ask Claude"))
-        assertFalse(ClaudeRouter.isYes("yes, the helper is wrong"))
-        assertFalse(ClaudeRouter.isYes("no, not the helper"))
+        assertTrue(HelperRouter.isYes("yes, ask the helper"))
+        assertTrue(HelperRouter.isYes("oui, l'assistant"))
+        assertTrue(HelperRouter.isYes("yes, ask Claude"))
+        assertFalse(HelperRouter.isYes("yes, the helper is wrong"))
+        assertFalse(HelperRouter.isYes("no, not the helper"))
     }
 
     @Test fun noHelperMayBeCalledHelperOrAssistant() {
@@ -210,7 +210,7 @@ class AskAHelperTest {
         val names = HelperName.all(s)
         assertEquals(ask("why the sky is blue", helper = "h1abcde"), route("ask helper why the sky is blue", names))
         assertEquals(ask("why the sky is blue"), route("ask the helper why the sky is blue", names))
-        assertEquals(ClaudeCommand.Leave, route("thanks helper", names))
+        assertEquals(HelperCommand.Leave, route("thanks helper", names))
         // A default name, not one you chose: the diagnostics don't hide the word "helper".
         assertFalse("Helper" in app.heyrobot.core.feedback.FeedbackPrivacy.secrets(s, null, null))
     }

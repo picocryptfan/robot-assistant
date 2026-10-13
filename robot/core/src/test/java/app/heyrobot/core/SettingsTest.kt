@@ -275,7 +275,7 @@ class SettingsTest {
     @Test fun safetySettingsDefaultsMigrationAndRoundTrip() {
         val d = RobotSettings()
         assertEquals(SafetyCards.UNASKED, d.safetyCards)
-        assertEquals(true, d.claudeActionCards)
+        assertEquals(true, d.helperActionCards)
         assertEquals(true, d.whoCards)
         assertEquals(true, d.learnedCards)
         assertEquals(true, d.deleteCards)
@@ -289,11 +289,11 @@ class SettingsTest {
         for (old in listOf("""{"schema":5,"speechRate":1.5}""", """{"schema":3}""", "{}")) {
             val o = RobotSettings.fromJson(old)
             assertEquals(old, SafetyCards.UNASKED, o.safetyCards)
-            assertEquals(old, listOf(true, true, true, true), listOf(o.claudeActionCards, o.whoCards, o.learnedCards, o.deleteCards))
+            assertEquals(old, listOf(true, true, true, true), listOf(o.helperActionCards, o.whoCards, o.learnedCards, o.deleteCards))
             assertEquals(old, LockScreen.DEFAULT, o.lockedTools)
             assertEquals(old, false, o.personalToHelpers || o.voiceYesPersonal)
         }
-        val s = d.copy(safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
+        val s = d.copy(safetyCards = SafetyCards.AFTER_READING, helperActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
             lockedTools = setOf(ToolName.FLASHLIGHT, ToolName.SET_TIMER), personalToHelpers = true, voiceYesPersonal = true)
         assertEquals(s, RobotSettings.fromJson(s.toJson().toString()))
         assertEquals(RobotSettings.SCHEMA, s.toJson().getInt("schema"))
@@ -442,10 +442,10 @@ class SettingsTest {
         wakePhrases = listOf(WakePhrase(1, "hey robot"), WakePhrase(3, "robot", WakeSensitivity.LOW, enabled = false)),
         bargeIn = BargeIn.ALWAYS, interrupt = InterruptSensitivity.HIGH, playback = Playback.CALL, stopKey = StopKey.EITHER,
         // Ask Claude's fields (0.3 to 0.4.5) become the Claude helper and every helper's budget, cost line and escalation.
-        helpers = listOf(HelperConfig.claude().copy(enabled = false, route = ClaudeRoute.API, model = ClaudeModel.SONNET.id,
-            effort = ClaudeEffortSetting.HIGH, search = false, locked = true, voice = "bf_emma")),
+        helpers = listOf(HelperConfig.claude().copy(enabled = false, route = AskRoute.API, model = AnthropicModel.SONNET.id,
+            effort = HelperEffortSetting.HIGH, search = false, locked = true, voice = "bf_emma")),
         helperShowCost = false, help = Escalation.AUTO, helperBudgetCents = 200, weatherHome = WeatherPlace("Lyon", 45.76, 4.84),
-        safetyCards = SafetyCards.AFTER_READING, claudeActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
+        safetyCards = SafetyCards.AFTER_READING, helperActionCards = false, whoCards = false, learnedCards = false, deleteCards = false,
         lockedTools = setOf(ToolName.SET_TIMER, ToolName.FLASHLIGHT), personalToHelpers = true, voiceYesPersonal = true,
         keepMedia = true, voiceCards = false, nearestOnline = NearestOnline.ALWAYS, nearestOnlineAt = 1_760_000_000_000,
         safetyNotice = true, brainModel = BrainModel.OWN.id,
@@ -495,9 +495,9 @@ class SettingsTest {
         val claude = read.claude!!
         assertEquals(listOf(HelperConfig.CLAUDE_ID), read.helpers.map { it.id })
         assertEquals(false, claude.enabled)
-        assertEquals(ClaudeRoute.API, claude.route)
-        assertEquals(ClaudeModel.SONNET, read.claudeModelChoice)
-        assertEquals(ClaudeEffortSetting.HIGH, claude.effort)
+        assertEquals(AskRoute.API, claude.route)
+        assertEquals(AnthropicModel.SONNET, read.claudeModelChoice)
+        assertEquals(HelperEffortSetting.HIGH, claude.effort)
         assertEquals(false, claude.search)
         assertEquals(true, claude.locked)
         assertEquals("bf_emma", claude.voice)

@@ -184,7 +184,7 @@ object ToolRouter {
             if (ToolGroup.MEMORY in groups && has(REMEMBER_ASK)) add(ToolName.REMEMBER)
             if (ToolGroup.MEMORY in groups && has(FORGET_ASK)) add(ToolName.FORGET)
             for (t in ToolName.entries) if (t.reads && t.group != ToolGroup.CORE && t.group in groups) add(t)
-            remove(ToolName.ASK_CLAUDE)
+            remove(ToolName.ASK_HELPER)
         }
     }
 
@@ -204,15 +204,15 @@ object ToolRouter {
 
     /**
      * The tools described for [groups], in a fixed order. Tools turned Off in settings are never described, nor
-     * send_text when the texting app is Off. ask_claude only with [askClaude] (Ask Claude on, escalation not Off:
-     * ClaudeSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch); web_search only
+     * send_text when the texting app is Off. ask_claude only with [askHelper] (a helper on, escalation not Off:
+     * HelperSettings.localTool). remember and forget only with [memory] (0.7: Settings › Memory's main switch); web_search only
      * with [web] (0.9: Settings › Web search on and set up); a Termux tool only when in [termux] (0.9: Settings › Termux on,
      * set up, and that tool on); browser_search only with [browser] (1.0: the question names a search engine or the browser).
      */
-    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askClaude: Boolean = false, memory: Boolean = false, web: Boolean = false,
+    fun tools(groups: Set<ToolGroup>, settings: RobotSettings, askHelper: Boolean = false, memory: Boolean = false, web: Boolean = false,
         termux: Set<ToolName> = emptySet(), browser: Boolean = false): List<ToolName> = ToolName.entries.filter { t ->
         t.group in groups && t.forModel && settings.approval(t) != Approval.OFF && !(t == ToolName.SEND_TEXT && settings.textApp == TextApp.OFF) &&
-            (t != ToolName.ASK_CLAUDE || askClaude) && (t.group != ToolGroup.MEMORY || memory) && (t != ToolName.WEB_SEARCH || web) && (!t.termux || t in termux) &&
+            (t != ToolName.ASK_HELPER || askHelper) && (t.group != ToolGroup.MEMORY || memory) && (t != ToolName.WEB_SEARCH || web) && (!t.termux || t in termux) &&
             (t != ToolName.BROWSER_SEARCH || browser)
     }
 

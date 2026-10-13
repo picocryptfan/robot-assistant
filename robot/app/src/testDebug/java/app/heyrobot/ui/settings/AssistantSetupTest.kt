@@ -8,7 +8,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.Presets
-import app.heyrobot.sys.ClaudeAppFacts
+import app.heyrobot.sys.AppFacts
 import app.heyrobot.ui.Page
 import app.heyrobot.ui.testing.ActionLog
 import app.heyrobot.ui.testing.PHONE
@@ -36,7 +36,7 @@ class AssistantSetupTest {
     private val claude = listOf(HelperConfig.claude())
 
     @Test fun eachMissingThingHasItsButton() {
-        val f = facts(recognizerIsRobot = false, micGranted = false).copy(claudeApp = ClaudeAppFacts(installed = true, appLink = true, webLink = false, send = true))
+        val f = facts(recognizerIsRobot = false, micGranted = false).copy(claudeApp = AppFacts(installed = true, appLink = true, webLink = false, send = true))
         rule.show { SetupScreen(f, log.actions, SnackbarHostState(), onBack = {}, helpers = claude) }
         assertEquals(emptyList<String>(), rule.touchTargetProblems())
         rule.onNode(hasText("Survives restarts")).assert(hasText("Not yet", substring = true))
@@ -74,8 +74,8 @@ class AssistantSetupTest {
         // 1.0.0: ChatGPT and Grok without keys open their apps; Groq has none. Each app's own row, by its own package.
         val helpers = listOf(HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck"), HelperConfig.of(Presets.XAI, "hgrk", "bf_emma"),
             HelperConfig.of(Presets.GROQ, "hgrq", "af_bella"))
-        val f = facts().copy(helperApps = mapOf("com.openai.chatgpt" to ClaudeAppFacts(installed = true, appLink = false, webLink = false, send = true),
-            "ai.x.grok" to ClaudeAppFacts(installed = false, appLink = false, webLink = false, send = false)))
+        val f = facts().copy(helperApps = mapOf("com.openai.chatgpt" to AppFacts(installed = true, appLink = false, webLink = false, send = true),
+            "ai.x.grok" to AppFacts(installed = false, appLink = false, webLink = false, send = false)))
         rule.show { SetupScreen(f, log.actions, SnackbarHostState(), onBack = {}, helpers = helpers) }
         rule.scrollToText("ChatGPT API key")
         rule.onNode(hasText("None: questions open the ChatGPT app instead (Settings › Helpers › ChatGPT)")).assertExists()

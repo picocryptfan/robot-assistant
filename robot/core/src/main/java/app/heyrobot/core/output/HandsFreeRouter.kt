@@ -1,10 +1,10 @@
 package app.heyrobot.core.output
 
-import app.heyrobot.core.ClaudeRouter
+import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.TextCommand
 
 // Pure. Headset and car mode by voice (design §4.3 "Phrases", §2.3 "repeat", §3.3), English and Québec French, decided by
-// code before anything reaches the model and anchored at the start of what you said like ClaudeRouter: only "hey robot",
+// code before anything reaches the model and anchored at the start of what you said like HelperRouter: only "hey robot",
 // "please", "can you", "peux-tu" and the like in front, and only "please", "now", "merci" after. The short commands must
 // be the whole utterance, so "I'm driving to Montreal tomorrow, what's the weather there" and "my car mode button is
 // broken" stay questions. Car mode's own phrases (navigate, call, messages, what's next, music) count only while car mode
@@ -44,7 +44,7 @@ object HandsFreeRouter {
     private class Tok(val w: String, val start: Int, val end: Int)
 
     private fun tokens(text: String): List<Tok> =
-        Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*").findAll(text).map { Tok(ClaudeRouter.plain(it.value), it.range.first, it.range.last + 1) }.toList()
+        Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*").findAll(text).map { Tok(HelperRouter.plain(it.value), it.range.first, it.range.last + 1) }.toList()
 
     private fun list(vararg p: String): List<List<String>> = p.map { it.split(' ') }.sortedByDescending { it.size }
 

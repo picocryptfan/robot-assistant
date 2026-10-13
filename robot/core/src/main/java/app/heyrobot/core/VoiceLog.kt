@@ -128,13 +128,14 @@ enum class VoiceEvent(val id: Int) {
     SCREEN(33),
     /** Robot set voice_recognition_service to its recognizer (it keeps it the assistant at boot): a = [RepairWhen], b = 1 if it worked. */
     RECOGNIZER_SET(34),
-    /** A request to Claude (Ask Claude, 0.3.0): a = request number in the turn (0: the question), b = [ClaudeModelCode]. */
+    // CLAUDE_*: names kept from 0.3 (Send feedback's diagnostics print them); since 0.6.0 they log every helper.
+    /** A request to a helper (0.3.0): a = request number in the turn (0: the question), b = [AnthropicModelCode] (0: other). */
     CLAUDE_SENT(35),
-    /** a = ms from the request to Claude's first stream event. */
+    /** a = ms from the request to the helper's first stream event. */
     CLAUDE_FIRST(36),
-    /** a = ms in all, b = [ClaudeEnd], c = characters shown. */
+    /** a = ms in all, b = [HelperEnd], c = characters shown. */
     CLAUDE_DONE(37),
-    /** a = [ClaudeFail]. */
+    /** a = [HelperFail]. */
     CLAUDE_FAILED(38),
     /**
      * The keyword spotter fired (0.3.1), logged before any check: a = phrase id (0: "stop"), b = [KwsSpotterCode] (which
@@ -169,18 +170,18 @@ enum class VoiceEvent(val id: Int) {
      */
     SCREEN_SHARED(60),
     /**
-     * ask_claude was left out of a question for the local model although Ask Claude could take it (0.3.1): a =
-     * [ClaudeLeftOut] (you said "not Claude" in this conversation, or the question is about the screen or a photo).
+     * ask_claude was left out of a question for the local model although a helper could take it (0.3.1): a =
+     * [HelperLeftOut] (you turned the helper down in this conversation, or the question is about the screen or a photo).
      */
     CLAUDE_LEFT_OUT(120),
     /**
-     * The local model handed a question to Claude without a word, and Claude wasn't asking right away, so Robot asked
+     * The local model handed a question to a helper without a word, and the helper wasn't asked right away, so Robot asked
      * the model again without ask_claude for its own answer (0.3.1): a = 1 if that gave an answer, 0 if not.
      */
     OWN_ANSWER(121),
     /**
      * Where a Claude request that ended in "Something went wrong with Claude" broke (0.4.0, after its CLAUDE_FAILED):
-     * a = [ClaudeStage], b = the HTTP status (0: none), c = [ClaudeErrorKind] (from the exception's class; 0: none).
+     * a = [AnthropicStage], b = the HTTP status (0: none), c = [AnthropicErrorKind] (from the exception's class; 0: none).
      */
     CLAUDE_UNKNOWN(122),
     /**
@@ -256,7 +257,7 @@ enum class VoiceEvent(val id: Int) {
     CONV_THERMAL(112),
     /** Robot's own summary: a = parts, b = seconds, c = [DoneCode]. */
     SUMMARY_LOCAL(113),
-    /** A summary by a stronger AI: a = [HelperCode], b = words ÷ 100, c = [ClaudeEnd] (API) or [AppShareCode] (app). */
+    /** A summary by a stronger AI: a = [HelperCode], b = words ÷ 100, c = [HelperEnd] (API) or [AppShareCode] (app). */
     SUMMARY_HELPER(114),
     /** a = [ExportKind]. */
     CONV_EXPORT(115),
@@ -597,25 +598,25 @@ enum class Cue(override val id: Int, override val title: String) : LogCode {
     CHIME(1, "chime"), SORRY(2, "“Sorry, I didn't catch that.”"), SORRY_NO_ANSWER(3, "“Sorry, I couldn't answer that.”"),
 }
 
-enum class ClaudeModelCode(override val id: Int, override val title: String) : LogCode {
+enum class AnthropicModelCode(override val id: Int, override val title: String) : LogCode {
     OPUS(1, "Claude Opus"), SONNET(2, "Claude Sonnet"), HAIKU(3, "Claude Haiku"), FABLE(4, "Claude Fable");
 
     companion object {
-        fun of(m: ClaudeModel): ClaudeModelCode = when (m) {
-            ClaudeModel.OPUS -> OPUS
-            ClaudeModel.SONNET -> SONNET
-            ClaudeModel.HAIKU -> HAIKU
-            ClaudeModel.FABLE -> FABLE
+        fun of(m: AnthropicModel): AnthropicModelCode = when (m) {
+            AnthropicModel.OPUS -> OPUS
+            AnthropicModel.SONNET -> SONNET
+            AnthropicModel.HAIKU -> HAIKU
+            AnthropicModel.FABLE -> FABLE
         }
     }
 }
 
-enum class ClaudeEnd(override val id: Int, override val title: String) : LogCode {
+enum class HelperEnd(override val id: Int, override val title: String) : LogCode {
     END(1, "finished"), TOOL_USE(2, "actions"), PAUSED(3, "search continues"), CUT(4, "too long"), DECLINED(5, "declined"), STOPPED(6, "stopped"),
     OTHER(7, "other");
 
     companion object {
-        fun of(stop: String?): ClaudeEnd = when (stop) {
+        fun of(stop: String?): HelperEnd = when (stop) {
             "end_turn", "stop_sequence" -> END
             "tool_use" -> TOOL_USE
             "pause_turn" -> PAUSED
@@ -626,7 +627,7 @@ enum class ClaudeEnd(override val id: Int, override val title: String) : LogCode
     }
 }
 
-enum class ClaudeFail(override val id: Int, override val title: String) : LogCode {
+enum class HelperFail(override val id: Int, override val title: String) : LogCode {
     KEY_REFUSED(1, "key refused"), NO_CREDITS(2, "no API credits"), NOT_ALLOWED(3, "not allowed"), MODEL_UNAVAILABLE(4, "model unavailable"),
     RATE_LIMITED(5, "rate limited"), OVERLOADED(6, "overloaded"), SERVER(7, "server error"), BAD_REQUEST(8, "bad request"), TOO_LONG(9, "too long"),
     NO_INTERNET(10, "no internet"), NO_NETWORK_PERMISSION(11, "no network permission"), TIMEOUT(12, "no answer in time"), NO_KEY(13, "no key"),
@@ -636,7 +637,7 @@ enum class ClaudeFail(override val id: Int, override val title: String) : LogCod
     NO_ADDRESS(19, "server's port not found yet");
 
     companion object {
-        fun of(f: ClaudeFailure): ClaudeFail = entries.firstOrNull { it.name == f.name } ?: UNKNOWN
+        fun of(f: HelperFailure): HelperFail = entries.firstOrNull { it.name == f.name } ?: UNKNOWN
     }
 }
 
@@ -709,13 +710,13 @@ enum class ExportKind(override val id: Int, override val title: String) : LogCod
 }
 
 /** Where a Claude request that failed with "Something went wrong" broke (CLAUDE_UNKNOWN). */
-enum class ClaudeStage(override val id: Int, override val title: String) : LogCode {
+enum class AnthropicStage(override val id: Int, override val title: String) : LogCode {
     REQUEST(1, "building the request"), HTTP(2, "the API's answer"), OPENING(3, "opening the connection"), SDK(4, "the SDK reading the stream"),
     ROBOT(5, "Robot reading the reply"), CLOSED(6, "a stream that ended before Claude finished"), WORKER(7, "Robot's request thread stopping"),
 }
 
 /** What kind of error it was (CLAUDE_UNKNOWN), from the exception's class only. */
-enum class ClaudeErrorKind(override val id: Int, override val title: String) : LogCode {
+enum class AnthropicErrorKind(override val id: Int, override val title: String) : LogCode {
     INVALID_DATA(1, "data the SDK couldn't read"), API_ERROR(2, "an error from the API"), SDK_OTHER(3, "another SDK error"), JSON(4, "malformed JSON"),
     IO(5, "the connection"), ILLEGAL_ARGUMENT(6, "an illegal argument"), ILLEGAL_STATE(7, "an illegal state"), NULL(8, "a missing value"),
     MISSING_CODE(9, "code missing on this phone"), OTHER(10, "another error"),
@@ -946,10 +947,10 @@ object VoiceLogText {
             }
             VoiceEvent.VOLUME_KEY -> (if (a == VolumeKeyStop.KEY_VOLUME_UP) "Volume up" else "Volume down") + " stopped Robot talking"
             VoiceEvent.SCREEN -> if (a == 1) "Screen on" else "Screen off"
-            VoiceEvent.CLAUDE_SENT -> (if (a == 0) "Question sent to the helper" else "More sent to the helper (request ${a + 1})") + " (" + code(ClaudeModelCode.entries, b) + ")"
+            VoiceEvent.CLAUDE_SENT -> (if (a == 0) "Question sent to the helper" else "More sent to the helper (request ${a + 1})") + " (" + code(AnthropicModelCode.entries, b) + ")"
             VoiceEvent.CLAUDE_FIRST -> "The helper's first event after $a ms"
-            VoiceEvent.CLAUDE_DONE -> "The helper's answer ended after " + secs(a) + " (" + code(ClaudeEnd.entries, b) + ") · $c characters"
-            VoiceEvent.CLAUDE_FAILED -> "The helper failed: " + code(ClaudeFail.entries, a)
+            VoiceEvent.CLAUDE_DONE -> "The helper's answer ended after " + secs(a) + " (" + code(HelperEnd.entries, b) + ") · $c characters"
+            VoiceEvent.CLAUDE_FAILED -> "The helper failed: " + code(HelperFail.entries, a)
             VoiceEvent.KWS_HIT -> "Spotter: " + keyword(a) + (if (b == KwsSpotterCode.IDLE.id) "" else " " + code(KwsSpotterCode.entries, b)) +
                 " · mic: " + code(MicKind.entries, c / 10) + " · echo cancellation " + code(AecState.entries, c % 10)
             VoiceEvent.KWS_SET -> "Wake phrases set: $a listened for" + (if (b > 0) " · $b the model can't spell" else "") +
@@ -961,10 +962,10 @@ object VoiceLogText {
                 (if (b > 0) " · microphone at " + String.format(Locale.US, "%.1f kHz", b / 10.0) else "") + " · " + CaptureFx.words(c)
             VoiceEvent.BARGE_HIT -> "Barge-in test heard " + keyword(a) + (if (b >= 0) " " + secs(b) + " in" else "") + ": " + code(BargeHitKind.entries, c)
             VoiceEvent.KEYBOARD -> "Keyboard over the panel: $a px high, window slid up $b px, panel padded $c px"
-            VoiceEvent.CLAUDE_LEFT_OUT -> "No helper offered to the model: " + code(ClaudeLeftOut.entries, a)
+            VoiceEvent.CLAUDE_LEFT_OUT -> "No helper offered to the model: " + code(HelperLeftOut.entries, a)
             VoiceEvent.OWN_ANSWER -> "The model handed over to a helper without a word; asked again, " + (if (a == 1) "it answered itself" else "it still gave no answer")
-            VoiceEvent.CLAUDE_UNKNOWN -> "Claude's error came from " + code(ClaudeStage.entries, a) + (if (b > 0) " · HTTP $b" else "") +
-                (if (c > 0) " · " + code(ClaudeErrorKind.entries, c) else "")
+            VoiceEvent.CLAUDE_UNKNOWN -> "Claude's error came from " + code(AnthropicStage.entries, a) + (if (b > 0) " · HTTP $b" else "") +
+                (if (c > 0) " · " + code(AnthropicErrorKind.entries, c) else "")
             VoiceEvent.CLAUDE_READ -> "Claude's reply: " + listOfNotNull(if (a > 0) count(a, "call") + " with input in one piece" else null,
                 if (b > 0) count(b, "server call") + " from Claude's code" else null, if (c > 0) count(c, "part") + " left out" else null)
                 .joinToString(" · ").ifEmpty { "nothing unusual" }
@@ -1027,7 +1028,7 @@ object VoiceLogText {
             VoiceEvent.CONV_THERMAL -> "Phone heat " + thermal(a) + ": " + code(ThermalStep.entries, b)
             VoiceEvent.SUMMARY_LOCAL -> "Robot's summary: $a parts in $b s (" + code(DoneCode.entries, c) + ")"
             VoiceEvent.SUMMARY_HELPER -> "Summary with " + code(HelperCode.entries, a) + ": about ${b * 100} words · " +
-                (if (a == HelperCode.CLAUDE_APP.id) code(AppShareCode.entries, c) else code(ClaudeEnd.entries, c))
+                (if (a == HelperCode.CLAUDE_APP.id) code(AppShareCode.entries, c) else code(HelperEnd.entries, c))
             VoiceEvent.CONV_EXPORT -> "Transcript exported: " + code(ExportKind.entries, a)
             VoiceEvent.CONV_DELETE -> (if (b == 1) "Recordings deleted, transcripts kept: " else "Transcripts deleted: ") + a
             VoiceEvent.CONV_CHECK -> "Transcription check (" + code(LangCode.entries, c) + "): $a% of words wrong over $b lines"

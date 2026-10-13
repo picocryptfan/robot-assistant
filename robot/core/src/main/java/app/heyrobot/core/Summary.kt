@@ -19,9 +19,9 @@ import kotlin.math.roundToLong
 // in levels when there are more than 12 parts; every call fits the loaded model's window by TokenEstimate (4,096 tokens,
 // or a short-context file's own since 0.4.3: its parts are smaller, and its reply room a quarter of its context). A
 // deterministic check then flags numbers, names and [times] in the summary that the transcript doesn't have. For a long
-// or important conversation Robot offers a stronger AI first, through the Helper interface: the Claude API or the Claude
-// app now, any helper from 0.6.0. A transcript goes to a helper only from a consent card listing exactly what it sends,
-// after a tap on Send: a SummaryJob can't be made any other way.
+// or important conversation Robot offers a stronger AI first, through the Helper interface: a helper's API or its app
+// (the Claude API and the Claude app in 0.5.0, any helper since 0.6.0). A transcript goes to a helper only from a
+// consent card listing exactly what it sends, after a tap on Send: a SummaryJob can't be made any other way.
 
 /** One call to Gemma: its system prompt, the user turn, and the reply's cap in streamed chunks (about tokens). */
 data class SummaryCall(val system: String, val user: String, val maxChunks: Int)
@@ -339,8 +339,8 @@ data class Disclosure(val provider: String, val model: String?, val network: Str
         (cost?.let { " ${it.replaceFirstChar { c -> c.uppercase() }}." } ?: "") + (warning?.let { " $it" } ?: "")
 
     companion object {
-        fun claudeApi(model: ClaudeModel, dollars: Double): Disclosure =
-            Disclosure("Anthropic", model.title, "over the internet, with your API key", cost = ClaudeCost.line(dollars))
+        fun claudeApi(model: AnthropicModel, dollars: Double): Disclosure =
+            Disclosure("Anthropic", model.title, "over the internet, with your API key", cost = CostText.line(dollars))
 
         fun claudeApp(): Disclosure = app("Claude", "with your claude.ai account, when you press Send there")
 
@@ -414,12 +414,12 @@ interface Helper {
 
 /**
  * Exactly what goes to a helper, and the card that says so (docs/conversation-mode.md 7.2). [blocks] are the first user
- * turn for the API (context line, the conversation line, the transcript, the request); [appText] is what the Claude app
+ * turn for the API (context line, the conversation line, the transcript, the request); [appText] is what the helper's app
  * gets. Built from the same parts, so the card can't list something the payload doesn't hold, or the other way round.
  */
 class ConsentCard private constructor(
     val transcriptId: String,
-    /** The helper's id, and its name in "Send this conversation to Claude?". */
+    /** The helper's id, and its name in "Send this conversation to Jarvis?". */
     val helper: String,
     val to: String,
     val disclosure: Disclosure,
@@ -429,7 +429,7 @@ class ConsentCard private constructor(
     val includes: String,
     /** "Replace names with “Speaker 1, 2”" is ticked. */
     val anonymized: Boolean,
-    val blocks: List<ClaudeBlock.Text>,
+    val blocks: List<HelperBlock.Text>,
     val appText: String,
     val words: Int,
     val speakers: Int,
@@ -445,12 +445,12 @@ class ConsentCard private constructor(
 
     companion object {
         const val TOGGLE = "Replace names with “Speaker 1, 2”"
-        /** The Claude app takes at most this much text in a share (about 1.5 h of talk). */
+        /** A helper's app takes at most this much text in a share (about 1.5 h of talk; the Claude app's limit). */
         const val APP_MAX_CHARS = 100_000
         const val TOO_LONG_FOR_APP = "Too long for the app; export and attach the file."
 
         /**
-         * The card for sending [t] to [helper]. [now] and [region] make the context line (ClaudePrompt.context);
+         * The card for sending [t] to [helper]. [now] and [region] make the context line (HelperPrompt.context);
          * [summaryLang] the language asked for; [anonymize] the toggle.
          */
         fun build(helper: String, to: String, disclosure: Disclosure, meta: TranscriptMeta, t: Transcript, now: ZonedDateTime, region: String,
@@ -475,7 +475,7 @@ class ConsentCard private constructor(
             }
             val ask = "Summarize this conversation in ${TranscriptExport.langName(summaryLang)}."
             val convo = "[Conversation of $day, $minutes minutes. Speakers: $who.]"
-            val blocks = listOf(ClaudeBlock.Text(ClaudePrompt.context(now, region)), ClaudeBlock.Text(convo), ClaudeBlock.Text(lines), ClaudeBlock.Text(ask))
+            val blocks = listOf(HelperBlock.Text(HelperPrompt.context(now, region)), HelperBlock.Text(convo), HelperBlock.Text(lines), HelperBlock.Text(ask))
             val words = t.words
             val langs = t.langs.map { TranscriptExport.langName(it) }
             val stats = "$minutes min · ${t.speakers.size} speaker${if (t.speakers.size == 1) "" else "s"} · ${String.format(Locale.US, "%,d", words)} words" +
@@ -491,14 +491,14 @@ class ConsentCard private constructor(
             return ((end - meta.createdAt + 30_000) / 60_000).coerceAtLeast(if (t.lines.isEmpty()) 0 else 1)
         }
 
-        /** The share text for the Claude app, or null when it is too long (the card offers export instead). */
+        /** The share text for the helper's app, or null when it is too long (the card offers export instead). */
         fun appShare(card: ConsentCard): String? = card.appText.takeIf { it.length <= APP_MAX_CHARS }
 
         /** Too long for one request to a helper's API (Helper.maxInputTokens): nothing is sent, the card offers export. */
         const val TOO_LONG_FOR_API = "Too long for one request; export it and attach the file."
 
         /** A request of [blocks] fits a helper's API that takes at most [maxTokens] in (by the card's estimate, HelperCost). */
-        fun apiFits(blocks: List<ClaudeBlock.Text>, maxTokens: Int): Boolean = HelperCost.tokens(blocks.sumOf { it.text.length }) <= maxTokens
+        fun apiFits(blocks: List<HelperBlock.Text>, maxTokens: Int): Boolean = HelperCost.tokens(blocks.sumOf { it.text.length }) <= maxTokens
     }
 }
 
@@ -509,7 +509,7 @@ class ConsentCard private constructor(
 class SummaryJob private constructor(
     val transcriptId: String,
     val helper: String,
-    val blocks: List<ClaudeBlock.Text>,
+    val blocks: List<HelperBlock.Text>,
     val appText: String,
     val anonymized: Boolean,
     val consent: Boolean,
@@ -531,7 +531,7 @@ object HelperCost {
     const val CHARS_PER_TOKEN = 3.5
     const val OUTPUT_TOKENS = 2_500L
 
-    fun estimate(model: ClaudeModel, chars: Int): Double = ClaudeCost.dollars(model, ClaudeUsage(input = tokens(chars), output = OUTPUT_TOKENS))
+    fun estimate(model: AnthropicModel, chars: Int): Double = AnthropicCost.dollars(model, TokenUsage(input = tokens(chars), output = OUTPUT_TOKENS))
 
     /** The input of a request of [chars] characters, with the system prompt, about. */
     fun tokens(chars: Int): Long = (chars / CHARS_PER_TOKEN).roundToLong() + SYSTEM_TOKENS

@@ -1,10 +1,10 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeBlock
-import app.heyrobot.core.ClaudeEffort
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudePlan
-import app.heyrobot.core.ClaudePrompt
+import app.heyrobot.core.HelperBlock
+import app.heyrobot.core.HelperEffort
+import app.heyrobot.core.HelperFailure
+import app.heyrobot.core.HelperPlan
+import app.heyrobot.core.HelperPrompt
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolSpecs
@@ -25,11 +25,11 @@ import org.junit.Test
 
 class RespWireTest {
     private val timer = ToolSpecs.of(ToolName.SET_TIMER)
-    private fun options(p: Preset = Presets.OPENAI, search: Boolean = true) = ChatOptions(p.defaultModel, p.quirks, p.quirks.effort, ClaudePlan(ClaudeEffort.HIGH, 16_000),
-        listOf(timer), search, ClaudePrompt.system(p.defaultName, true, search))
+    private fun options(p: Preset = Presets.OPENAI, search: Boolean = true) = ChatOptions(p.defaultModel, p.quirks, p.quirks.effort, HelperPlan(HelperEffort.HIGH, 16_000),
+        listOf(timer), search, HelperPrompt.system(p.defaultName, true, search))
 
     @Test fun requestIsStatelessWithToolsSearchAndEffort() {
-        val r = RespWire.request(options(), listOf(RespWire.user(listOf(ClaudeBlock.Text("hi")))))
+        val r = RespWire.request(options(), listOf(RespWire.user(listOf(HelperBlock.Text("hi")))))
         assertEquals("gpt-6.1-sol", r.getString("model"))
         assertTrue(r.getBoolean("stream"))
         // Nothing kept by OpenAI for later retrieval: the whole conversation goes each time.
@@ -55,7 +55,7 @@ class RespWireTest {
         assertEquals(Extra.ENCRYPTED_REASONING, ChatWire.toDrop(RespWire.extras(options()), emptySet(), "include[0]", 1))
         // xAI: the same shape, its own model.
         assertEquals("grok-4.7", RespWire.request(options(Presets.XAI), emptyList()).getString("model"))
-        val user = RespWire.user(listOf(ClaudeBlock.Text("what is this"), ClaudeBlock.Image(byteArrayOf(1, 2, 3))))
+        val user = RespWire.user(listOf(HelperBlock.Text("what is this"), HelperBlock.Image(byteArrayOf(1, 2, 3))))
         assertEquals("input_image", user.getJSONArray("content").getJSONObject(1).getString("type"))
         assertEquals("data:image/jpeg;base64,AQID", user.getJSONArray("content").getJSONObject(1).getString("image_url"))
         assertEquals(1, RespWire.withoutImages(user).getJSONArray("content").length())
@@ -124,10 +124,10 @@ class RespWireTest {
         assertEquals(Stop.DECLINED, play("""{"type":"response.refusal.delta","delta":"I can't"}""", """{"type":"response.completed","response":{"status":"completed"}}""").second.stop)
         val failed = RespReply()
         failed.add("""{"type":"response.failed","response":{"status":"failed","error":{"code":"server_error","message":"x"}}}""")
-        assertEquals(ClaudeFailure.SERVER, failed.error!!.failure(200))
+        assertEquals(HelperFailure.SERVER, failed.error!!.failure(200))
         val err = RespReply()
         err.add("""{"type":"error","code":"rate_limit_exceeded","message":"slow down","param":null}""")
-        assertEquals(ClaudeFailure.RATE_LIMITED, err.error!!.failure(200))
+        assertEquals(HelperFailure.RATE_LIMITED, err.error!!.failure(200))
         // No completed event: cut off.
         assertFalse(play("""{"type":"response.output_text.delta","delta":"half"}""").second.complete)
     }

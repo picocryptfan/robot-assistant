@@ -25,7 +25,7 @@ interface TextToSpeech {
     fun speak(sentence: String)
 
     /**
-     * Queues one sentence in another voice, so you hear who is talking (Claude, docs/ask-claude.md): [speaker] of the
+     * Queues one sentence in another voice, so you hear who is talking (a helper, docs/ask-claude.md): [speaker] of the
      * same loaded model (Kokoro or Kitten), or, with the phone's voice ([speaker] null), a lower pitch. [lang]: the
      * sentence's language for Kokoro ("fr" for a French sentence), null for the model's English.
      */
@@ -242,7 +242,7 @@ class AndroidTextToSpeech(ctx: Context) : TextToSpeech {
     }
 
     private companion object {
-        /** app.heyrobot.core.ClaudeVoices.SYSTEM_PITCH (the voice module doesn't read Ask Claude's settings). */
+        /** app.heyrobot.core.HelperVoices.SYSTEM_PITCH (the voice module doesn't read the helpers' settings). */
         const val OTHER_PITCH = 0.82f
         const val RISK_STOP = 1
         const val RISK_WAKE = 2

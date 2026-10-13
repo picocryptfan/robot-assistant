@@ -6,10 +6,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** "Not Claude": ClaudeRouter.declines, the words that keep a conversation with Robot (0.3.1). */
+/** "Not Claude": HelperRouter.declines, the words that keep a conversation with Robot (0.3.1). */
 class ClaudeDeclineTest {
-    private fun yes(vararg s: String) = s.forEach { assertTrue(it, ClaudeRouter.declines(it)) }
-    private fun no(vararg s: String) = s.forEach { assertFalse(it, ClaudeRouter.declines(it)) }
+    private fun yes(vararg s: String) = s.forEach { assertTrue(it, HelperRouter.declines(it)) }
+    private fun no(vararg s: String) = s.forEach { assertFalse(it, HelperRouter.declines(it)) }
 
     @Test fun thePhoneTestSentence() {
         // 0.3.1 on the phone: typed after Robot offered Claude twice for a question about the screen.
@@ -47,7 +47,7 @@ class ClaudeDeclineTest {
     }
 
     @Test fun mishearingsCountWhereOnlyAPauseOrAPoliteWordFollows() {
-        for (a in ClaudeRouter.ALIASES) {
+        for (a in HelperRouter.ALIASES) {
             yes("not $a", "Not $a.", "no $a please", "don't ask $a", "don't check with $a", "pas $a", "ne demande pas à $a", "leave $a out of it",
                 "I want you to answer, not $a")
         }
@@ -79,14 +79,14 @@ class ClaudeDeclineTest {
         // The router is anchored at the start: none of these reaches Claude, whatever the detector says.
         for (s in listOf("not Claude", "no Claude", "don't ask Claude", "please don't ask Claude", "you tell me, not Claude", "pas Claude",
             "ne demande pas à Claude", "without asking Claude", "leave Claude out of it")) {
-            assertNull(s, ClaudeRouter.route(s))
-            assertTrue(s, ClaudeRouter.declines(s))
+            assertNull(s, HelperRouter.route(s))
+            assertTrue(s, HelperRouter.declines(s))
         }
         // Asking for Claude again is a command and no refusal (the panel clears its "not Claude" then).
         for (s in listOf("ask Claude about this screen", "go get Claude", "ask cloud about black holes", "demande à Claude pourquoi le ciel est bleu")) {
-            assertTrue(s, ClaudeRouter.route(s) is ClaudeCommand.Ask || ClaudeRouter.route(s) is ClaudeCommand.Join)
-            assertFalse(s, ClaudeRouter.declines(s))
+            assertTrue(s, HelperRouter.route(s) is HelperCommand.Ask || HelperRouter.route(s) is HelperCommand.Join)
+            assertFalse(s, HelperRouter.declines(s))
         }
-        assertEquals(Attachment.SCREEN, (ClaudeRouter.route("ask Claude about this screen") as ClaudeCommand.Ask).extra)
+        assertEquals(Attachment.SCREEN, (HelperRouter.route("ask Claude about this screen") as HelperCommand.Ask).extra)
     }
 }

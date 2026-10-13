@@ -672,7 +672,7 @@ class TurnTest {
     @Test fun aHelperRunsOnlyTheToolsItWasGiven() = runBlocking {
         // A helper whose actions are off (or whose model can't use them) was given none: a call in its reply (a server
         // can answer with anything) is refused, even with every card turned off and the action asked for in your words.
-        val noCards = RobotSettings(claudeActionCards = false, safetyCards = SafetyCards.UNSURE_ONLY)
+        val noCards = RobotSettings(helperActionCards = false, safetyCards = SafetyCards.UNSURE_ONLY)
         val model = FakeModel(ModelOutcome.Calls(listOf(timer, call("add_note", "text" to "x"))))
         val actions = FakeActions(noCards)
         val view = FakeView()
@@ -690,7 +690,7 @@ class TurnTest {
     }
 
     @Test fun claudeGetsThreeToolRoundsAndStillTwoCalls() = runBlocking {
-        assertEquals(3, TurnRules.CLAUDE_MAX_ROUNDS)
+        assertEquals(3, TurnRules.HELPER_MAX_ROUNDS)
         assertEquals(2, TurnRules.MAX_CALLS)
         // Claude keeps asking: three rounds, then the turn ends; only two calls ever run.
         val model = FakeModel(ModelOutcome.Calls(listOf(call("set_timer", "minutes" to 1)))) { ModelOutcome.Calls(listOf(call("set_timer", "minutes" to 2))) }
@@ -730,10 +730,10 @@ class TurnTest {
     }
 
     @Test fun theClaudeAppHandOffAlwaysShowsItsCard() = runBlocking {
-        val actions = FakeActions(RobotSettings(approvals = RobotSettings.DEFAULT_APPROVALS + (ToolName.ASK_CLAUDE to Approval.AUTO)))
+        val actions = FakeActions(RobotSettings(approvals = RobotSettings.DEFAULT_APPROVALS + (ToolName.ASK_HELPER to Approval.AUTO)))
         actions.result = { Executed(ActionStatus.DONE, "Opened Claude.", launchedApp = true) }
         // The app comes from your settings when the card is made (ToolExecutor), never from the call.
-        actions.prepare = { a -> Prepared.Ready((a as Action.AskClaude).copy(app = "com.anthropic.claude", appName = "Claude"),
+        actions.prepare = { a -> Prepared.Ready((a as Action.AskHelper).copy(app = "com.anthropic.claude", appName = "Claude"),
             note = AppHandOff.note("Claude", a.text)) }
         val view = FakeView()
         val conf = Confirmations()
@@ -747,13 +747,13 @@ class TurnTest {
         conf.answer(id, true)
         assertTrue(turn.await().launchedApp)
         // Nothing to say: the app opens without text.
-        assertEquals(ParsedCall.Ok(Action.AskClaude("")), ToolCalls.parse(call("ask_claude")))
-        assertEquals("Open the Claude app", Action.AskClaude("", appName = "Claude").describe())
-        assertEquals("Open the ChatGPT app with: «why»", Action.AskClaude("why", appName = "ChatGPT").describe())
-        assertEquals("Open the helper's app", Action.AskClaude("").describe())
+        assertEquals(ParsedCall.Ok(Action.AskHelper("")), ToolCalls.parse(call("ask_claude")))
+        assertEquals("Open the Claude app", Action.AskHelper("", appName = "Claude").describe())
+        assertEquals("Open the ChatGPT app with: «why»", Action.AskHelper("why", appName = "ChatGPT").describe())
+        assertEquals("Open the helper's app", Action.AskHelper("").describe())
         // 1.0.0: the call may name one of your helpers by id, never an app: a package or a name in it is ignored.
-        assertEquals(ParsedCall.Ok(Action.AskClaude("x", helper = "hgpt")), ToolCalls.parse(call("ask_claude", "question" to "x", "helper" to "hgpt")))
-        assertEquals(ParsedCall.Ok(Action.AskClaude("x")), ToolCalls.parse(call("ask_claude", "question" to "x", "helper" to "com.evil.app", "app" to "com.evil.app",
+        assertEquals(ParsedCall.Ok(Action.AskHelper("x", helper = "hgpt")), ToolCalls.parse(call("ask_claude", "question" to "x", "helper" to "hgpt")))
+        assertEquals(ParsedCall.Ok(Action.AskHelper("x")), ToolCalls.parse(call("ask_claude", "question" to "x", "helper" to "com.evil.app", "app" to "com.evil.app",
             "appName" to "Evil")))
         // Locked: never.
         actions.lockedNow = true
@@ -817,7 +817,7 @@ class TurnTest {
      * off, it still waits for a tap unless "Send personal content to helpers automatically" is on.
      */
     @Test fun claudesNearestPlaceAsksLikeARead() = runBlocking {
-        val settings = RobotSettings(claudeActionCards = false)
+        val settings = RobotSettings(helperActionCards = false)
         val actions = FakeActions(settings)
         actions.prepare = { a -> Prepared.Ready(if (a is Action.MapsNavigate) a.copy(nearest = true) else a) }
         val view = FakeView()

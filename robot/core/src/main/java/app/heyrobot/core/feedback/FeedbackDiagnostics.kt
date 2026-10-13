@@ -94,7 +94,7 @@ object FeedbackDiagnostics {
             "replies" to m.replyRoute.name, "card" to m.replyCard, "voiceYes" to m.voiceYesSends, "afterReading" to m.afterReading.name, "keep" to m.keep.name,
             "translate" to m.translate, "theirLanguage" to m.offerTheirLanguage, "lockScreen" to m.locked.name, "keysKept" to messages.pins.size,
             "firstUse" to messages.firstUse.size, "withoutCard" to messages.noCard.size, "replyLanguages" to messages.replyLang.size)
-        add("Safety", "safetyCards" to s.safetyCards.name, "helperActionCards" to s.claudeActionCards, "whoCards" to s.whoCards,
+        add("Safety", "safetyCards" to s.safetyCards.name, "helperActionCards" to s.helperActionCards, "whoCards" to s.whoCards,
             "learnedNameCards" to s.learnedCards, "deleteCards" to s.deleteCards,
             "onLockScreen" to s.lockedTools.map { it.id }.sorted().joinToString(",").ifEmpty { "none" },
             "personalToHelpers" to s.personalToHelpers, "voiceYesPersonal" to s.voiceYesPersonal, "answerCardsByVoice" to s.voiceCards)

@@ -80,7 +80,7 @@ object PanelFixtures {
         UiTurn("r4", TurnRole.ASSISTANT, "My information may be out of date.", offer = Offer(api = true, text = "What's the latest on the Artemis program?",
             sends = listOf("your question"), asWell = true, name = "Jarvis")),
         UiTurn("u5", TurnRole.USER, "Why is the sky blue?"),
-        UiTurn("r5", TurnRole.ASSISTANT, "Sunlight scatters off the air's molecules, and blue light scatters the most.", claude = true, by = "Claude",
+        UiTurn("r5", TurnRole.ASSISTANT, "Sunlight scatters off the air's molecules, and blue light scatters the most.", fromHelper = true, by = "Claude",
             sources = listOf("nasa.gov")),
     ), speak = true)
 }

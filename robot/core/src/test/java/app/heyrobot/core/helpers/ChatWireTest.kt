@@ -1,11 +1,11 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeBlock
-import app.heyrobot.core.ClaudeEffort
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudePlan
-import app.heyrobot.core.ClaudePrompt
-import app.heyrobot.core.ClaudeTools
+import app.heyrobot.core.HelperBlock
+import app.heyrobot.core.HelperEffort
+import app.heyrobot.core.HelperFailure
+import app.heyrobot.core.HelperPlan
+import app.heyrobot.core.HelperPrompt
+import app.heyrobot.core.HelperTools
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolSpecs
@@ -28,11 +28,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChatWireTest {
-    private val voice = ClaudePlan(ClaudeEffort.LOW, 4_000)
+    private val voice = HelperPlan(HelperEffort.LOW, 4_000)
     private val timer = ToolSpecs.of(ToolName.SET_TIMER)
-    private fun options(p: Preset, model: String = p.defaultModel, tools: Boolean = true, search: Boolean = false, zdr: Boolean = true, plan: ClaudePlan = voice) =
+    private fun options(p: Preset, model: String = p.defaultModel, tools: Boolean = true, search: Boolean = false, zdr: Boolean = true, plan: HelperPlan = voice) =
         ChatOptions(model, p.quirks, p.model(model)?.effort ?: p.quirks.effort, plan, if (tools) listOf(timer) else emptyList(), search,
-            ClaudePrompt.system(p.defaultName, tools, search), zdr)
+            HelperPrompt.system(p.defaultName, tools, search), zdr)
 
     /** JSON compared as values (key order in the test JVM's org.json isn't the device's). */
     private fun same(expected: String, actual: JSONObject) = assertEquals(norm(JSONObject(expected)), norm(actual))
@@ -48,7 +48,7 @@ class ChatWireTest {
     @Test fun groqRequest() {
         val r = ChatWire.request(options(Presets.GROQ), listOf(user))
         same("""{"model":"openai/gpt-oss-120b","stream":true,"stream_options":{"include_usage":true},"max_completion_tokens":4000,
-            "messages":[{"role":"system","content":${JSONObject.quote(ClaudePrompt.system("Groq", true, false))}},{"role":"user","content":"why is the sky blue"}],
+            "messages":[{"role":"system","content":${JSONObject.quote(HelperPrompt.system("Groq", true, false))}},{"role":"user","content":"why is the sky blue"}],
             "tools":[{"type":"function","function":{"name":"set_timer","description":${JSONObject.quote(timer.description)},
               "parameters":{"type":"object","additionalProperties":false,"required":${JSONArray(timer.params.filter { it.required }.map { it.name })},
               "properties":${props(strict = false)}}}}],
@@ -60,7 +60,7 @@ class ChatWireTest {
     }.toString()
 
     @Test fun openRouterStrictSearchZdr() {
-        val r = ChatWire.request(options(Presets.OPENROUTER, "openai/gpt-oss-120b", search = true, plan = ClaudePlan(ClaudeEffort.HIGH, 16_000)), listOf(user))
+        val r = ChatWire.request(options(Presets.OPENROUTER, "openai/gpt-oss-120b", search = true, plan = HelperPlan(HelperEffort.HIGH, 16_000)), listOf(user))
         // No stream_options (OpenRouter: deprecated, no effect), max_tokens, the strict nullable schema, its search tool, reasoning as an object, zdr.
         assertFalse(r.has("stream_options"))
         assertEquals(16_000, r.getInt("max_tokens"))
@@ -82,8 +82,8 @@ class ChatWireTest {
         assertEquals(4000, m.getInt("max_tokens"))
         assertEquals("none", m.getString("reasoning_effort"))
         assertFalse(m.getJSONArray("tools").getJSONObject(0).getJSONObject("function").has("strict"))
-        assertEquals("high", ChatWire.request(options(Presets.MISTRAL, plan = ClaudePlan(ClaudeEffort.MEDIUM, 16_000)), listOf(user)).getString("reasoning_effort"))
-        assertEquals("max", ChatWire.request(options(Presets.DEEPSEEK, plan = ClaudePlan(ClaudeEffort.HIGH, 16_000)), listOf(user)).getString("reasoning_effort"))
+        assertEquals("high", ChatWire.request(options(Presets.MISTRAL, plan = HelperPlan(HelperEffort.MEDIUM, 16_000)), listOf(user)).getString("reasoning_effort"))
+        assertEquals("max", ChatWire.request(options(Presets.DEEPSEEK, plan = HelperPlan(HelperEffort.HIGH, 16_000)), listOf(user)).getString("reasoning_effort"))
         val g = ChatWire.request(options(Presets.GEMINI), listOf(user))
         assertTrue(g.has("stream_options") && g.has("tool_choice"))
         assertEquals("low", g.getString("reasoning_effort"))
@@ -100,7 +100,7 @@ class ChatWireTest {
         val sys = bare.getJSONArray("messages").getJSONObject(0).getString("content")
         assertTrue(sys.startsWith("You are Groq. "))
         assertFalse(sys.contains("tools") || sys.contains("web search"))
-        assertEquals(ClaudePrompt.SYSTEM, ClaudePrompt.system("Claude", tools = true, search = true))
+        assertEquals(HelperPrompt.CLAUDE_SYSTEM, HelperPrompt.system("Claude", tools = true, search = true))
     }
 
     @Test fun refusedExtrasAreDroppedInOrder() {
@@ -148,12 +148,12 @@ class ChatWireTest {
     }
 
     @Test fun userMessagesAndResults() {
-        val text = ChatWire.user(listOf(ClaudeBlock.Text("[Today is Monday.]"), ClaudeBlock.Text("why")))
+        val text = ChatWire.user(listOf(HelperBlock.Text("[Today is Monday.]"), HelperBlock.Text("why")))
         same("""{"role":"user","content":"[Today is Monday.]\n\nwhy"}""", text)
-        val pic = ChatWire.user(listOf(ClaudeBlock.Text("what is this"), ClaudeBlock.Image(byteArrayOf(1, 2, 3))))
+        val pic = ChatWire.user(listOf(HelperBlock.Text("what is this"), HelperBlock.Image(byteArrayOf(1, 2, 3))))
         same("""{"role":"user","content":[{"type":"text","text":"what is this"},{"type":"image_url","image_url":{"url":"data:image/jpeg;base64,AQID"}}]}""", pic)
         // A model that can't see: the text only.
-        same("""{"role":"user","content":"what is this"}""", ChatWire.user(listOf(ClaudeBlock.Text("what is this"), ClaudeBlock.Image(byteArrayOf(1))), images = false))
+        same("""{"role":"user","content":"what is this"}""", ChatWire.user(listOf(HelperBlock.Text("what is this"), HelperBlock.Image(byteArrayOf(1))), images = false))
         same("""{"role":"user","content":"what is this"}""", ChatWire.withoutImages(pic))
         same("""{"role":"tool","tool_call_id":"call_1","content":"{\"status\":\"done\"}"}""", ChatWire.toolResult("call_1", mapOf("status" to "done")))
     }
@@ -242,8 +242,8 @@ class ChatWireTest {
             chunk("""{"tool_calls":[{"index":1,"function":{"arguments":"\"milk\"}"}}]}""", "tool_calls"),
         )
         assertEquals(listOf("a", "b"), d.calls.map { it.first })
-        assertEquals(mapOf(ClaudeTools.BAD_JSON to true), d.calls[0].second.args)
-        assertEquals("the arguments weren't valid JSON", ClaudeTools.check(timer, d.calls[0].second.args))
+        assertEquals(mapOf(HelperTools.BAD_JSON to true), d.calls[0].second.args)
+        assertEquals("the arguments weren't valid JSON", HelperTools.check(timer, d.calls[0].second.args))
         assertEquals(mapOf("text" to "milk"), d.calls[1].second.args)
         assertTrue(d.complete)
     }
@@ -298,10 +298,10 @@ class ChatWireTest {
         assertEquals(WireError("provider_error", "502"), r.error)
         // Bodies: OpenAI, Google's list (unverified shape), Ollama, FastAPI, Mistral.
         assertEquals(WireError("insufficient_quota", "insufficient_quota"), WireErrors.parse("""{"error":{"message":"…","type":"insufficient_quota","code":"insufficient_quota"}}"""))
-        assertEquals(ClaudeFailure.NO_CREDITS, WireErrors.parse("""{"error":{"message":"…","type":"insufficient_quota","code":"insufficient_quota"}}""").failure(429))
+        assertEquals(HelperFailure.NO_CREDITS, WireErrors.parse("""{"error":{"message":"…","type":"insufficient_quota","code":"insufficient_quota"}}""").failure(429))
         assertEquals(WireError("INVALID_ARGUMENT", "400"), WireErrors.parse("""[{"error":{"code":400,"message":"…","status":"INVALID_ARGUMENT"}}]"""))
         assertEquals(WireError(null, null), WireErrors.parse("""{"error":"model 'x' not found"}"""))
-        assertEquals(ClaudeFailure.MODEL_UNAVAILABLE, WireErrors.parse("""{"error":"model 'x' not found"}""").failure(404))
+        assertEquals(HelperFailure.MODEL_UNAVAILABLE, WireErrors.parse("""{"error":"model 'x' not found"}""").failure(404))
         assertEquals(WireError(null, null), WireErrors.parse("""{"detail":"Not Found"}"""))
         assertEquals(WireError("invalid_request_error", "3051"), WireErrors.parse("""{"object":"error","message":"…","type":"invalid_request_error","code":3051}"""))
         assertEquals(WireError(null, null), WireErrors.parse("<html>502 Bad Gateway</html>"))

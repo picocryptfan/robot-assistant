@@ -204,7 +204,7 @@ object TextCommand {
     enum class Cancel { EXPLICIT, BARE }
 
     /**
-     * Cancel words, in plain words (ClaudeRouter.plain: no case, accents or apostrophes, so "don't" is "dont" and
+     * Cancel words, in plain words (HelperRouter.plain: no case, accents or apostrophes, so "don't" is "dont" and
      * "j'ai changé d'avis" is "jai change davis"). Filler may come around them and several may come together ("Nah,
      * forget it", "Never mind, cancel", "Wait, cancel that text").
      */
@@ -249,7 +249,7 @@ object TextCommand {
      * as the whole answer.
      */
     fun cancelKind(input: String, wakePhrases: List<String> = emptyList()): Cancel? {
-        val plain = ClaudeRouter.plain(stripWake(input, wakePhrases, loose = true))
+        val plain = HelperRouter.plain(stripWake(input, wakePhrases, loose = true))
         if (plain.trim { !it.isLetterOrDigit() }.replace(Regex("\\s+"), " ") in BARE) return Cancel.BARE
         val w = plain.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
         // Used up from the front, a phrase at a time; at least one must be a cancel word.
@@ -293,7 +293,7 @@ object TextCommand {
             if (!s[i].isLetterOrDigit()) { i++; continue }
             val start = i
             while (i < s.length && (s[i].isLetterOrDigit() || (s[i] in "'’" && i + 1 < s.length && s[i + 1].isLetterOrDigit()))) i++
-            out += Tok(ClaudeRouter.plain(s.substring(start, i)), start, i)
+            out += Tok(HelperRouter.plain(s.substring(start, i)), start, i)
         }
         return out
     }
@@ -309,7 +309,7 @@ object TextCommand {
      * [loose] (for telling a cancel: "Computer cancel"). Nothing else goes: "Okay, see you at 5" is the text.
      */
     fun stripWake(answer: String, phrases: List<String> = emptyList(), loose: Boolean = false): String {
-        val all = (phrases + DEFAULT_WAKE).map { p -> WakePhrases.words(p).map(ClaudeRouter::plain).filter { it.isNotEmpty() } }
+        val all = (phrases + DEFAULT_WAKE).map { p -> WakePhrases.words(p).map(HelperRouter::plain).filter { it.isNotEmpty() } }
             .filter { it.isNotEmpty() }.distinct().sortedByDescending { it.size }
         var s = answer.trim()
         while (true) {

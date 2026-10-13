@@ -6,7 +6,7 @@ import java.util.Locale
 // is a switch with a sensible default, so each person picks their own safety level. ApprovalGate reads them.
 
 /**
- * "Safety cards": when content Robot didn't write (screen text, a photo, what a read tool found, Claude's words) makes an
+ * "Safety cards": when content Robot didn't write (screen text, a photo, what a read tool found, a helper's words) makes an
  * action that writes or leaves the phone show its card even under "Just do it".
  */
 enum class SafetyCards(val title: String, val detail: String) {
@@ -159,7 +159,7 @@ object CardAnswer {
      * What [text] does to the waiting [card]: null when it isn't a plain yes or no ([of]), or it was [spoken] with
      * "Answer cards by voice" off ([voiceCards]; a typed answer still works then). A no always declines. A yes confirms,
      * except a card that needs a tap ([Waiting.tapFor]), one with several choices, or one whose tap sends personal content
-     * to Claude unless "Voice yes can send personal content" ([voiceYesPersonal]); a card with one choice takes it.
+     * to a helper unless "Voice yes can send personal content" ([voiceYesPersonal]); a card with one choice takes it.
      */
     fun reply(text: String, card: Waiting, voiceCards: Boolean, voiceYesPersonal: Boolean, spoken: Boolean, wakePhrases: List<String> = emptyList()): Reply? {
         if (spoken && !voiceCards) return null
@@ -196,7 +196,7 @@ object CardAnswer {
     fun of(text: String, wakePhrases: List<String> = emptyList()): Kind? {
         if (text.isBlank()) return null
         if (TextCommand.cancelKind(text, wakePhrases) != null) return Kind.NO
-        val w = ClaudeRouter.plain(TextCommand.stripWake(text, wakePhrases, loose = true)).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+        val w = HelperRouter.plain(TextCommand.stripWake(text, wakePhrases, loose = true)).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
         if (w.isEmpty() || w.size > MAX_WORDS) return null
         var i = 0
         var yes = false

@@ -22,7 +22,7 @@ enum class StepClass(val badge: String) {
     LOCAL_ACTION("runs by itself"),
     /** Opening an app or a draft, maps, a new event: never unattended, a Ready card you tap. */
     NEEDS_YOU("waits for you"),
-    /** Freeing memory or storage, deleting, Ask Claude, anything that sends personal content to a helper. */
+    /** Freeing memory or storage, deleting, asking a helper, anything that sends personal content to a helper. */
     NEVER("not offered"),
 }
 
@@ -128,7 +128,7 @@ object RoutineGate {
         ToolName.OPEN_APP, ToolName.MAPS_SEARCH, ToolName.MAPS_NAVIGATE, ToolName.SEND_TEXT, ToolName.DRAFT_EMAIL, ToolName.ADD_EVENT -> StepClass.NEEDS_YOU
         // 0.8: a routine never phones anyone. 0.9: a web search answers a question you ask; a routine never sends one by itself,
         // and never runs a Termux command or script (nobody is there to check its card).
-        ToolName.FREE_MEMORY, ToolName.FREE_STORAGE, ToolName.ASK_CLAUDE, ToolName.REMEMBER, ToolName.FORGET, ToolName.CALL,
+        ToolName.FREE_MEMORY, ToolName.FREE_STORAGE, ToolName.ASK_HELPER, ToolName.REMEMBER, ToolName.FORGET, ToolName.CALL,
         ToolName.WEB_SEARCH, ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND, ToolName.BROWSER_SEARCH -> StepClass.NEVER
     }
 

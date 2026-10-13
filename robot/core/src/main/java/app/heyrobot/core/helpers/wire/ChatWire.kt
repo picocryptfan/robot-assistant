@@ -1,8 +1,9 @@
 package app.heyrobot.core.helpers.wire
 
-import app.heyrobot.core.ClaudeBlock
-import app.heyrobot.core.ClaudePlan
-import app.heyrobot.core.ClaudeTools
+import app.heyrobot.core.HelperBlock
+import app.heyrobot.core.HelperContext
+import app.heyrobot.core.HelperPlan
+import app.heyrobot.core.HelperTools
 import app.heyrobot.core.Json
 import app.heyrobot.core.RawToolCall
 import app.heyrobot.core.ToolSpec
@@ -10,13 +11,13 @@ import app.heyrobot.core.helpers.EffortStyle
 import app.heyrobot.core.helpers.HelperUsage
 import app.heyrobot.core.helpers.Quirks
 import app.heyrobot.core.helpers.SearchStyle
+import java.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.Base64
 
 // Pure (org.json). OpenAI Chat Completions, the format every company's OpenAI-compatible API and every home server
 // speaks (Mistral, DeepSeek, Groq, OpenRouter, Google's compatibility layer, Ollama, LM Studio, llama.cpp, vLLM): the
-// request, the stream read one SSE payload at a time, and the rules a conversation's history must keep. The :claude
+// request, the stream read one SSE payload at a time, and the rules a conversation's history must keep. The :helpers
 // module's OpenAiSession sends and receives; everything that decides is here, tested against recorded shapes.
 //
 // The request is byte-stable for the same conversation (a fixed order, no timestamp), so providers' automatic prefix
@@ -44,7 +45,7 @@ data class ChatOptions(
     val model: String,
     val quirks: Quirks,
     val effort: EffortStyle,
-    val plan: ClaudePlan,
+    val plan: HelperPlan,
     val tools: List<ToolSpec>,
     val search: Boolean,
     val system: String,
@@ -139,7 +140,7 @@ object ChatWire {
 
     /**
      * One of Robot's tools: its properties in order and no others. Strict (OpenAI's rules): every property listed as
-     * required, the optional ones typed [type, "null"] (a null counts as absent: ClaudeTools.check). Otherwise the
+     * required, the optional ones typed [type, "null"] (a null counts as absent: HelperTools.check). Otherwise the
      * schema as Gemma has it.
      */
     fun tool(spec: ToolSpec, strict: Boolean): JSONObject {
@@ -165,18 +166,18 @@ object ChatWire {
     const val SEARCH_RESULTS = 5
 
     /**
-     * The user's message from ClaudeContext's blocks ([before]: tool results it must follow, as their own messages). Text
+     * The user's message from HelperContext's blocks ([before]: tool results it must follow, as their own messages). Text
      * only: one string, the blocks one paragraph each. With a picture ([images]: the model can see): content parts.
      */
-    fun user(blocks: List<ClaudeBlock>, images: Boolean = true): JSONObject {
-        val pics = blocks.filterIsInstance<ClaudeBlock.Image>()
-        val texts = blocks.filterIsInstance<ClaudeBlock.Text>().map { it.text }
+    fun user(blocks: List<HelperBlock>, images: Boolean = true): JSONObject {
+        val pics = blocks.filterIsInstance<HelperBlock.Image>()
+        val texts = blocks.filterIsInstance<HelperBlock.Text>().map { it.text }
         val m = JSONObject().put("role", "user")
         if (pics.isEmpty() || !images) return m.put("content", texts.joinToString("\n\n"))
         val parts = JSONArray()
         for (b in blocks) when (b) {
-            is ClaudeBlock.Text -> parts.put(JSONObject().put("type", "text").put("text", b.text))
-            is ClaudeBlock.Image -> parts.put(JSONObject().put("type", "image_url").put("image_url",
+            is HelperBlock.Text -> parts.put(JSONObject().put("type", "text").put("text", b.text))
+            is HelperBlock.Image -> parts.put(JSONObject().put("type", "image_url").put("image_url",
                 JSONObject().put("url", "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(b.jpeg))))
         }
         return m.put("content", parts)
@@ -402,10 +403,10 @@ class ChatReply {
     }
 
     companion object {
-        /** A call's arguments as plain values; text that isn't a JSON object gets [ClaudeTools.BAD_JSON] (an error result). */
+        /** A call's arguments as plain values; text that isn't a JSON object gets [HelperTools.BAD_JSON] (an error result). */
         fun parseArgs(s: String): Map<String, Any?> {
             if (s.isBlank()) return emptyMap()
-            return try { Json.toMap(JSONObject(s)) } catch (_: Exception) { mapOf(ClaudeTools.BAD_JSON to true) }
+            return try { Json.toMap(JSONObject(s)) } catch (_: Exception) { mapOf(HelperTools.BAD_JSON to true) }
         }
     }
 }

@@ -7,7 +7,7 @@ import java.util.Locale
 // ranges, link-local, 100.64.0.0/10 (CGNAT, where Tailscale gives every device an address) and IPv6 unique local
 // addresses; an IPv4-mapped IPv6 address counts as its IPv4 address. Everything else is refused for cleartext, NAT64
 // (64:ff9b::/96 maps to public IPv4) included. The rule runs on the addresses a name resolves to, at connect time (the
-// :claude module's DNS filter and network interceptor), so a name that later resolves elsewhere can't take Robot's words
+// :helpers module's DNS filter and network interceptor), so a name that later resolves elsewhere can't take Robot's words
 // to a public host. A typed address is normalized here too: userinfo, a query or a fragment, or a scheme other than
 // http and https is refused.
 

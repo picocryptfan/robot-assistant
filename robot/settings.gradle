@@ -1,4 +1,4 @@
 pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
 dependencyResolutionManagement { repositories { google(); mavenCentral() } }
 rootProject.name = 'robot'
-include ':core', ':brain', ':voice', ':claude', ':mt', ':app'
+include ':core', ':brain', ':voice', ':helpers', ':mt', ':app'

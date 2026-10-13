@@ -19,7 +19,7 @@ import app.heyrobot.core.SummaryDraft
 import app.heyrobot.core.SummaryMiss
 import app.heyrobot.core.SummaryPlanner
 import app.heyrobot.core.SummaryRecord
-import app.heyrobot.core.ClaudeEnd
+import app.heyrobot.core.HelperEnd
 import app.heyrobot.core.VoiceEvent
 import app.heyrobot.core.VoiceLog
 import app.heyrobot.sys.PeopleFiles
@@ -136,14 +136,14 @@ object SummaryJobs {
 
     /** Your Send on [card]: [helper] summarizes it (the API route). The words it sends are exactly the card's. */
     @Synchronized
-    fun send(ctx: Context, card: ConsentCard, helper: ClaudeApiHelper) {
+    fun send(ctx: Context, card: ConsentCard, helper: ApiHelper) {
         if (running) return
         val app = ctx.applicationContext
         val job = card.approve(System.currentTimeMillis())
         val h = helper.h
         _state.value = Ui(id = card.transcriptId, running = true, helper = true, helperName = h.name)
         this.job = scope.launch {
-            var end = ClaudeEnd.OTHER
+            var end = HelperEnd.OTHER
             try {
                 val r = helper.summarize(job, object : HelperListener {
                     override fun text(soFar: String) { _state.update { it.copy(streaming = soFar) } }
@@ -158,7 +158,7 @@ object SummaryJobs {
                         val t = store.load(card.transcriptId)
                         val misses = if (meta != null && t != null && !card.anonymized) SummaryCheckFor.misses(r.text, meta, t, ZoneId.systemDefault(), people(app))
                             else emptyList()
-                        end = ClaudeEnd.END
+                        end = HelperEnd.END
                         _state.update { it.copy(running = false, record = rec, number = n, misses = misses, spentDollars = helper.spent, costKnown = helper.costKnown,
                             error = if (n == null) "${h.name}'s summary came, but it couldn't be saved on this phone." else null) }
                     }
@@ -166,19 +166,19 @@ object SummaryJobs {
                     is HelperResult.Shared -> _state.update { it.copy(running = false) }
                 }
             } catch (e: CancellationException) {
-                end = ClaudeEnd.STOPPED
+                end = HelperEnd.STOPPED
                 _state.update { it.copy(running = false, error = "Stopped.", spentDollars = helper.spent, costKnown = helper.costKnown) }
                 throw e
             } finally {
                 // Event 114: which helper, words ÷ 100, how it ended.
-                VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (helper.id == ClaudeApiHelper.ID) HelperCode.CLAUDE_API else HelperCode.HELPER_API).id, card.words / 100, end.id)
+                VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (helper.id == ApiHelper.CLAUDE_JOB_ID) HelperCode.CLAUDE_API else HelperCode.HELPER_API).id, card.words / 100, end.id)
             }
         }
     }
 
     /** A helper's app got the transcript (or the clipboard did): logged, nothing kept. */
     fun shared(card: ConsentCard, how: app.heyrobot.core.AppShareCode) {
-        VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (card.helper == ClaudeAppHelper.ID) HelperCode.CLAUDE_APP else HelperCode.HELPER_APP).id, card.words / 100, how.id)
+        VoiceLog.add(VoiceEvent.SUMMARY_HELPER, (if (card.helper == AppShareHelper.CLAUDE_JOB_ID) HelperCode.CLAUDE_APP else HelperCode.HELPER_APP).id, card.words / 100, how.id)
     }
 
     fun cancel() {
@@ -187,7 +187,7 @@ object SummaryJobs {
 
     /**
      * The app deleted transcript [id] (null: all of them; Cmd.TRANSCRIPTS_DELETED): a summary of it being made stops
-     * (Robot's model reads no more of it, Claude's answer isn't waited for), and what was made of it is forgotten.
+     * (Robot's model reads no more of it, the helper's answer isn't waited for), and what was made of it is forgotten.
      */
     @Synchronized
     fun deleted(id: String?) {

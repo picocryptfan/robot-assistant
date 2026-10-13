@@ -255,7 +255,7 @@ object PromptFit {
      * The history as a chat template wants it: user and model turns alternating, starting with a user turn and ending
      * with a model turn (the new question follows). Strict templates (Gemma 3's) stop with an error otherwise, and Robot's
      * history can have two in a row: a question whose reply failed (it isn't replayed) is dropped when another follows, and
-     * two model turns in a row (Robot's reply, then Claude's) are joined.
+     * two model turns in a row (Robot's reply, then a helper's) are joined.
      */
     fun alternating(history: List<PromptTurn>): List<PromptTurn> {
         val out = ArrayList<PromptTurn>()
@@ -287,7 +287,7 @@ object PromptFit {
 
 /**
  * What reaches a model's chat template from outside Robot's own prompt never carries the model's special tokens: your
- * question with the screen's text or a document's, the history's turns (Robot's replies, Claude's answers) and, with
+ * question with the screen's text or a document's, the history's turns (Robot's replies, helpers' answers) and, with
  * LiteRT-LM's tool API, the tools' results. Both engines read the formatted conversation with its special tokens on,
  * since the template writes the turn markers as text: llama.cpp (0.4.5) tokenizes it with control tokens parsed, and
  * LiteRT-LM 0.18.0 encodes the whole rendered prompt with the model's tokenizer, which reads a SentencePiece

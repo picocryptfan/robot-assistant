@@ -174,8 +174,8 @@ data class RobotSettings(
     // Settings › Safety & privacy (0.4.0, schema 6): each rule that makes an action ask first is a switch.
     /** "Safety cards": when content Robot read makes an action ask first (older files: the new default too). */
     val safetyCards: SafetyCards = SafetyCards.UNASKED,
-    /** "Card when Claude asks Robot to do something". */
-    val claudeActionCards: Boolean = true,
+    /** "Card when a helper asks Robot to do something" (saved as "claudeActionCards", its name since 0.4.0). */
+    val helperActionCards: Boolean = true,
     /** "Card when who-to isn't certain": several people, a near match, a number or address the model wrote, a loose app name. */
     val whoCards: Boolean = true,
     /** "Card for names learned from Cheogram". */
@@ -185,9 +185,9 @@ data class RobotSettings(
     /** "Works on the lock screen": the actions allowed while locked (questions always). */
     val lockedTools: Set<ToolName> = LockScreen.DEFAULT,
     /**
-     * "Send personal content to helpers automatically" (off): Robot checking with Claude by itself may send the
-     * conversation's personal content and this question's screen or photo, and what a read tool finds for Claude goes
-     * without "Share with Claude". Claude joining ("go get Claude") still asks first.
+     * "Send personal content to helpers automatically" (off): Robot checking with a helper by itself may send the
+     * conversation's personal content and this question's screen or photo, and what a read tool finds for a helper goes
+     * without "Share with …". A helper joining ("go get Jarvis") still asks first.
      */
     val personalToHelpers: Boolean = false,
     /** "Voice yes can send personal content" (off): a spoken or typed yes may send what otherwise needs a tap. */
@@ -199,7 +199,7 @@ data class RobotSettings(
     val keepMedia: Boolean = false,
     /**
      * "Answer cards by voice" (on): while a card waits, Robot listens for "yes" or "no" when replies are spoken or the
-     * question came by voice. A yes never sends personal content to Claude unless [voiceYesPersonal].
+     * question came by voice. A yes never sends personal content to a helper unless [voiceYesPersonal].
      */
     val voiceCards: Boolean = true,
     /**
@@ -255,7 +255,7 @@ data class RobotSettings(
     /** The Claude helper, or null when you removed it. */
     val claude: HelperConfig? get() = helper(HelperConfig.CLAUDE_ID)
 
-    val claudeModelChoice: ClaudeModel get() = ClaudeModel.of(claude?.model)
+    val claudeModelChoice: AnthropicModel get() = AnthropicModel.of(claude?.model)
 
     fun helper(id: String?): HelperConfig? = helpers.firstOrNull { it.id == id }
 
@@ -312,7 +312,8 @@ data class RobotSettings(
         put("helperBudgetCents", helperBudgetCents)
         put("helperShowCost", helperShowCost)
         // The 0.4/0.5 fields, written from the Claude helper for one release: an older Robot reading this file keeps
-        // Claude as it was set (and off when you removed it). The other helpers are new to it and ignored.
+        // Claude as it was set (and off when you removed it). The other helpers are new to it and ignored. Stored names
+        // kept from 0.3 to 0.5 (claude*): renaming them would lose these settings for a downgrade.
         val c = claude
         if (c == null) put("claudeEnabled", false) else {
             c.enabled?.let { put("claudeEnabled", it) }
@@ -341,7 +342,8 @@ data class RobotSettings(
         put("meVoiceprint", meVoiceprint)
         if (convReminderAt > 0) put("convReminderAt", convReminderAt)
         put("safetyCards", safetyCards.name)
-        put("claudeActionCards", claudeActionCards)
+        // Stored name kept from 0.4.0; renaming it would lose your choice.
+        put("claudeActionCards", helperActionCards)
         put("whoCards", whoCards)
         put("learnedCards", learnedCards)
         put("deleteCards", deleteCards)
@@ -421,8 +423,8 @@ data class RobotSettings(
             ToolName.WEB_SEARCH to Approval.AUTO,
             // 1.0: not a level you set: your own words open at once, the model's show their card (BrowserGate).
             ToolName.BROWSER_SEARCH to Approval.AUTO,
-            // Not a level you set: Ask Claude's own settings decide (EscalationPolicy), and the hand-off always asks.
-            ToolName.ASK_CLAUDE to Approval.ASK,
+            // Not a level you set: the helpers' own settings decide (EscalationPolicy), and the hand-off always asks.
+            ToolName.ASK_HELPER to Approval.ASK,
             // 0.7, not levels you set either (Settings › Memory): remember runs when you asked for it (a card otherwise,
             // ApprovalGate), forget always shows its card.
             ToolName.REMEMBER to Approval.AUTO,
@@ -438,7 +440,7 @@ data class RobotSettings(
         val EVENT_MINUTES = listOf(15, 30, 45, 60, 90, 120)
 
         /** Daily budgets for all helpers offered in Settings, in cents. */
-        val CLAUDE_BUDGETS = listOf(25, 50, 100, 200, 500)
+        val HELPER_BUDGETS = listOf(25, 50, 100, 200, 500)
 
         fun clampRate(v: Float): Float = if (v.isNaN()) 1.0f else v.coerceIn(0.5f, 2.0f)
         fun clampKeep(v: Int): Int = if (v == KEEP_ALWAYS) v else v.coerceIn(0, 120)
@@ -510,7 +512,7 @@ data class RobotSettings(
                 convReminderAt = o.optLong("convReminderAt", 0).coerceAtLeast(0),
                 // Schema 6: absent from older files, which read as the defaults (the new "When you didn't ask for it" included).
                 safetyCards = enumOr(o.optString("safetyCards"), d.safetyCards),
-                claudeActionCards = o.optBoolean("claudeActionCards", d.claudeActionCards),
+                helperActionCards = o.optBoolean("claudeActionCards", d.helperActionCards),
                 whoCards = o.optBoolean("whoCards", d.whoCards),
                 learnedCards = o.optBoolean("learnedCards", d.learnedCards),
                 deleteCards = o.optBoolean("deleteCards", d.deleteCards),
@@ -553,12 +555,12 @@ data class RobotSettings(
             val c = HelperConfig.claude()
             return c.copy(
                 enabled = if (o.has("claudeEnabled")) o.optBoolean("claudeEnabled") else null,
-                route = enumValues<ClaudeRoute>().firstOrNull { it.name == o.optString("claudeRoute") },
-                model = ClaudeModel.of(o.optString("claudeModel", c.model)).id,
+                route = enumValues<AskRoute>().firstOrNull { it.name == o.optString("claudeRoute") },
+                model = AnthropicModel.of(o.optString("claudeModel", c.model)).id,
                 effort = enumOr(o.optString("claudeEffort"), c.effort),
                 search = o.optBoolean("claudeSearch", c.search),
                 locked = o.optBoolean("claudeLocked", c.locked),
-                voice = ClaudeVoices.of(o.optString("claudeVoice", c.voice)),
+                voice = HelperVoices.of(o.optString("claudeVoice", c.voice)),
             )
         }
 

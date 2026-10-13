@@ -283,7 +283,7 @@ enum class CarFunction(val tools: Set<ToolName>) {
 
 /**
  * ApprovalGate for car mode (an adapter: ApprovalGate itself is unchanged). A car function in a trusted session is
- * decided as if the phone were unlocked; everything else keeps the normal lock rules (§4.6 "Not loosened": Ask Claude,
+ * decided as if the phone were unlocked; everything else keeps the normal lock rules (§4.6 "Not loosened": asking a helper,
  * notes, email, deleting, opening apps, anything outside car mode). Every other rule (levels, cards, content) applies as
  * always.
  */

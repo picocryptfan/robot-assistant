@@ -22,7 +22,7 @@ class Voiceprint(val model: String, val vector: FloatArray, val clips: Int) {
 }
 
 object VoiceprintCodec {
-    /** In the voice process's own folder (filesDir/robot), next to the encrypted Claude key. */
+    /** In the voice process's own folder (filesDir/robot), next to the helpers' encrypted keys. */
     const val FILE = "me.voiceprint"
     /** The Android Keystore key that encrypts it (AES-256-GCM, not exportable), deleted with the file. */
     const val KEY_ALIAS = "robot_me_voiceprint"

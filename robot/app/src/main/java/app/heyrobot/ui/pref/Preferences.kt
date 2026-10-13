@@ -475,7 +475,7 @@ fun CheckboxPreference(
 }
 
 /**
- * The switch for a whole page ("Use Ask Claude"), as Settings' main switch bar: a rounded bar in primaryContainer when
+ * The switch for a whole page ("Use wake words"), as Settings' main switch bar: a rounded bar in primaryContainer when
  * on, secondaryContainer when off. Turning it off should disable the rest of the page.
  */
 @Composable

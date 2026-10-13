@@ -9,7 +9,7 @@ import java.util.UUID
 
 // Pure. Routines by voice (design §2.3 `RoutineRouter`), English and Québec French, decided by code before anything
 // reaches Gemma, anchored at the start of what you said (only "hey robot", "please" and the like in front), like
-// ClaudeRouter. "Every weekday at 7, tell me the weather and my calendar" becomes a draft routine shown on its card; it is
+// HelperRouter. "Every weekday at 7, tell me the weather and my calendar" becomes a draft routine shown on its card; it is
 // never saved without your yes (or a tap, when it came from content). Steps map through the same words as the tools, "pis"
 // counts as "et", and a part not understood is never guessed: the card names it and points to Routines. It must not
 // misfire on ordinary talk ("every time I call Bob he…", "when I was at work", "chaque fois que…") or on a reminder with a

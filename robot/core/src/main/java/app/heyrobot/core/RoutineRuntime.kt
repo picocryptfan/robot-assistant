@@ -354,7 +354,7 @@ enum class SpeechWay(override val id: Int, override val title: String) : LogCode
 /**
  * The steps Settings › Routines' editor offers (design §2.3 "Do"), each one of Robot's tools with its one argument, or a
  * routine-only step. Texts, emails and new events come from routines made by voice (two arguments each); never
- * freeing memory or storage or Ask Claude.
+ * freeing memory or storage or asking a helper.
  */
 enum class StepChoice(val title: String, val field: String? = null, val hint: String? = null) {
     BRIEF("Read your morning brief"),

@@ -68,7 +68,7 @@ data class TurnUi(
     val readBack: Boolean = false,
     val by: String? = null,
     val home: Boolean = false,
-    /** "Claude searched the web · nasa.gov", the cost. */
+    /** "Jarvis searched the web · nasa.gov", the cost. */
     val footer: List<String> = emptyList(),
     val offer: OfferView? = null,
     /** 0.7: the reply card under a reply (ui/common ReplyCard). */

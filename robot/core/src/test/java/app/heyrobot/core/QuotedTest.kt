@@ -26,7 +26,7 @@ class QuotedTest {
         val turns = listOf(user("what's my day?"), brief)
         // Every later action asks first, and a helper gets it only through its card.
         assertTrue(TurnRules.untrusted(turns))
-        assertTrue(Personal.CALENDAR in ClaudeContext.personal(turns))
+        assertTrue(Personal.CALENDAR in HelperContext.personal(turns))
         // Its words need a tap to go to a search service.
         val v = QueryCheck.check("Tremblay oncology", WebQueryContext.of(turns + user("look that up"), "look that up"))
         assertTrue("$v", v is QueryVerdict.Card && v.why == QueryCard.PERSONAL && v.why.tapOnly)

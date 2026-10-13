@@ -6,14 +6,20 @@ import android.security.keystore.UserNotAuthenticatedException
 import androidx.test.core.app.ApplicationProvider
 import app.heyrobot.assistant.HelperKeys
 import app.heyrobot.assistant.HelperLink
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudeModel
+import app.heyrobot.core.HelperFailure
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.SecretRead
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperKeyFormat
 import app.heyrobot.core.helpers.Presets
 import app.heyrobot.update.UpdateToken
+import java.io.File
+import java.io.IOException
+import java.security.KeyStoreException
+import java.security.ProviderException
+import java.security.UnrecoverableKeyException
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -26,13 +32,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.io.File
-import java.io.IOException
-import java.security.KeyStoreException
-import java.security.ProviderException
-import java.security.UnrecoverableKeyException
-import javax.crypto.KeyGenerator
-import javax.crypto.SecretKey
 
 /**
  * Every secret's callers: each helper's key in the :voice process (the panel's HelperLink, Test connection, a summary's
@@ -229,7 +228,7 @@ class KeystoreSecretReadTest {
                 // No session this time (none without the key you saved, even for your own server), and the question says
                 // why (PanelController.noKey: the helper's keyUnavailable words); the key stays saved for the next one.
                 val made = HelperLink.session(ctx, s, h, conversation = false)
-                assertTrue("${h.id} $t", made is HelperLink.Made.Not && made.failure == ClaudeFailure.NO_KEY)
+                assertTrue("${h.id} $t", made is HelperLink.Made.Not && made.failure == HelperFailure.NO_KEY)
                 assertTrue(HelperLink.unavailable(h.id))
                 assertFalse(HelperLink.unreadable(h.id))
                 assertTrue(HelperLink.keySaved(ctx, h) && HelperKeyFiles.saved(ctx, h.id))
@@ -246,7 +245,7 @@ class KeystoreSecretReadTest {
         keystore.held.clear()
         for (h in listOf(claude, groq)) {
             val made = HelperLink.session(ctx, s, h, conversation = false)
-            assertTrue(h.id, made is HelperLink.Made.Not && made.failure == ClaudeFailure.NO_KEY)
+            assertTrue(h.id, made is HelperLink.Made.Not && made.failure == HelperFailure.NO_KEY)
             assertFalse(HelperLink.unavailable(h.id))
             assertTrue(HelperLink.unreadable(h.id))
             assertFalse(HelperLink.keySaved(ctx, h) || HelperKeyFiles.saved(ctx, h.id))

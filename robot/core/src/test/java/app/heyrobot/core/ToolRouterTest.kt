@@ -73,14 +73,14 @@ class ToolRouterTest {
         val termux = setOf(ToolName.TERMUX_SCRIPT, ToolName.TERMUX_COMMAND)
         // 1.0: browser_search only when the question names an engine or the browser (BrowserRouter.named).
         val browser = ToolName.BROWSER_SEARCH
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - termux - browser,
             ToolRouter.tools(ToolGroup.entries.toSet(), d))
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.WEB_SEARCH - termux - browser,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.WEB_SEARCH - termux - browser,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, memory = true))
         // 0.9: web_search only with Settings › Web search on (and its group: the words called for it).
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - termux - browser,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - termux - browser,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, web = true))
-        assertEquals(ToolName.entries - ToolName.ASK_CLAUDE - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - browser,
+        assertEquals(ToolName.entries - ToolName.ASK_HELPER - ToolName.CALL - ToolName.REMEMBER - ToolName.FORGET - ToolName.WEB_SEARCH - browser,
             ToolRouter.tools(ToolGroup.entries.toSet(), d, termux = termux))
         assertEquals(Prompt.CORE_TOOLS + browser, ToolRouter.tools(route("look it up on Google"), d, browser = true))
         assertEquals(Prompt.CORE_TOOLS + ToolName.WEB_SEARCH + browser, ToolRouter.tools(route("look it up on DuckDuckGo"), d, web = true, browser = true))
@@ -90,7 +90,7 @@ class ToolRouterTest {
         assertEquals(Prompt.CORE_TOOLS, ToolRouter.tools(core, d, web = true))
         assertEquals(Prompt.CORE_TOOLS + ToolName.WEB_SEARCH, ToolRouter.tools(route("search the web for the Stanley Cup winner"), d, web = true))
         // ask_claude only with Ask Claude on and escalation not Off (ClaudeSettings.localTool).
-        assertEquals(Prompt.CORE_TOOLS + ToolName.ASK_CLAUDE, ToolRouter.tools(core, d, askClaude = true))
+        assertEquals(Prompt.CORE_TOOLS + ToolName.ASK_HELPER, ToolRouter.tools(core, d, askHelper = true))
         // Turned off in settings: never described. Texting app off: no send_text.
         val off = d.copy(approvals = d.approvals + (ToolName.FIND_NOTES to Approval.OFF) + (ToolName.SET_TIMER to Approval.OFF))
         val tools = ToolRouter.tools(ToolGroup.entries.toSet(), off)
@@ -154,6 +154,6 @@ class ToolRouterTest {
             assertEquals(q, emptySet<ToolName>(), asked(q).intersect(writes))
         }
         // Robot's own hand-off never counts: it always shows its card.
-        assertFalse(ToolName.ASK_CLAUDE in asked("ask Claude to open the maps"))
+        assertFalse(ToolName.ASK_HELPER in asked("ask Claude to open the maps"))
     }
 }

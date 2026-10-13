@@ -151,7 +151,7 @@ class TermuxToolsTest {
         assertTrue("busy $busy", TermuxCalls.fits(busy))
         // Every other group, Ask Claude and every optional line already described: Termux waits (PanelController drops it),
         // and what is left is PromptTest's worst case.
-        val worst = Prompt.fixedTokens(Prompt.system(now, locked = false, askClaude = true, texting = true, weather = true, phone = true, termux = line),
+        val worst = Prompt.fixedTokens(Prompt.system(now, locked = false, askHelper = true, texting = true, weather = true, phone = true, termux = line),
             ToolName.entries.toList())
         assertFalse("worst $worst", TermuxCalls.fits(worst))
         assertTrue(ContextWindow.newTurnLimit(worst + 0) < TermuxCalls.MIN_TURN_TOKENS)

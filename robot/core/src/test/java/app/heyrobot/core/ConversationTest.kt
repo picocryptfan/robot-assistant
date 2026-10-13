@@ -95,8 +95,8 @@ class ConversationTest {
         assertEquals(c, ConversationCodec.fromJson(ConversationCodec.toJson(c)))
         val prompt = c.turns.toPromptTurns().joinToString(" ") { it.text }
         assertFalse(prompt, prompt.contains("Invoice 42"))
-        assertFalse(ClaudeContext.transcript(c.turns)!!.contains("Invoice 42"))
-        assertEquals(setOf(Personal.SCREEN), ClaudeContext.personal(c.turns))
+        assertFalse(HelperContext.transcript(c.turns)!!.contains("Invoice 42"))
+        assertEquals(setOf(Personal.SCREEN), HelperContext.personal(c.turns))
         val stripped = ConversationCodec.withoutMedia(c)!!
         assertEquals(listOf<String?>(null, null), stripped.turns.map { it.picture ?: it.screenText })
         assertEquals(Attachment.SCREEN, stripped.turns[0].attachment)

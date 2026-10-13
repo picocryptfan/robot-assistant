@@ -1,14 +1,14 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeRoute
-import app.heyrobot.core.ClaudeVoices
+import app.heyrobot.core.AskRoute
+import app.heyrobot.core.HelperVoices
 import app.heyrobot.core.Escalation
 import app.heyrobot.core.Personal
 import app.heyrobot.core.RobotSettings
 
 // Pure. The rules every helper follows (0.6.0): when it is on, which way a question goes (its app or its API), who Robot
 // checks with when it needs help, what may go to a helper without a tap, and the words Robot says about it. Claude's
-// rules from 0.3 to 0.5 are these rules with the Claude helper (EscalationTest and ClaudeContextTest still hold).
+// rules from 0.3 to 0.5 are these rules with the Claude helper (EscalationTest and HelperContextTest still hold).
 
 /** Who a helper is, for the words Robot says: its name, its company and where its key comes from. */
 data class HelperWho(val name: String, val company: String, val console: String?, val app: String?, val home: Boolean) {
@@ -27,12 +27,12 @@ object HelperSettings {
      * The company's app or its API: the app until a key is saved, the API once one is, unless you chose. A helper without
      * an app always goes through its API (a home server needs no key).
      */
-    fun route(h: HelperConfig, keySaved: Boolean): ClaudeRoute =
-        if (h.presetOf.app == null) ClaudeRoute.API else h.route ?: if (keySaved) ClaudeRoute.API else ClaudeRoute.APP
+    fun route(h: HelperConfig, keySaved: Boolean): AskRoute =
+        if (h.presetOf.app == null) AskRoute.API else h.route ?: if (keySaved) AskRoute.API else AskRoute.APP
 
     /** Robot can ask [h] itself: on, the API route, and a key when it needs one. */
     fun apiReady(h: HelperConfig, keySaved: Boolean): Boolean =
-        h.on && route(h, keySaved) == ClaudeRoute.API && (keySaved || !h.presetOf.keyRequired)
+        h.on && route(h, keySaved) == AskRoute.API && (keySaved || !h.presetOf.keyRequired)
 
     /**
      * "When Robot needs help" for [h]: as chosen, else Automatic once Robot can ask it itself and Ask me first before;
@@ -43,6 +43,10 @@ object HelperSettings {
         val chosen = s.help ?: if (ready) Escalation.AUTO else Escalation.ASK
         return if (chosen == Escalation.AUTO && !ready) Escalation.ASK else chosen
     }
+
+    /** Robot may describe ask_claude to the local model for the helper it checks with ([target]; null: none, so no tool). */
+    fun localTool(s: RobotSettings, target: HelperConfig?, keySaved: Boolean): Boolean =
+        target != null && target.on && escalation(s, target, keySaved) != Escalation.OFF
 
     /**
      * The helper Robot checks with when it needs help: the one you chose ("Ask:"), when it is still there and on; else the
@@ -62,7 +66,7 @@ object HelperSettings {
     fun askTarget(s: RobotSettings, keySaved: (HelperConfig) -> Boolean, appInstalled: (String) -> Boolean): HelperConfig? {
         fun usable(h: HelperConfig): Boolean {
             val key = keySaved(h)
-            return apiReady(h, key) || (h.on && route(h, key) == ClaudeRoute.APP && h.presetOf.app?.let(appInstalled) == true)
+            return apiReady(h, key) || (h.on && route(h, key) == AskRoute.APP && h.presetOf.app?.let(appInstalled) == true)
         }
         s.helper(s.helpDefault)?.takeIf(::usable)?.let { return it }
         return s.helpers.firstOrNull { apiReady(it, keySaved(it)) } ?: s.helpers.firstOrNull(::usable)
@@ -75,8 +79,8 @@ object HelperSettings {
      */
     fun appHelper(s: RobotSettings, id: String?, keySaved: (HelperConfig) -> Boolean): HelperConfig? {
         if (id != null) return s.helper(id)?.takeIf { it.on && it.presetOf.app != null }
-        target(s, keySaved)?.takeIf { it.presetOf.app != null && route(it, keySaved(it)) == ClaudeRoute.APP }?.let { return it }
-        return s.helpers.firstOrNull { it.on && it.presetOf.app != null && route(it, keySaved(it)) == ClaudeRoute.APP }
+        target(s, keySaved)?.takeIf { it.presetOf.app != null && route(it, keySaved(it)) == AskRoute.APP }?.let { return it }
+        return s.helpers.firstOrNull { it.on && it.presetOf.app != null && route(it, keySaved(it)) == AskRoute.APP }
             ?: s.helpers.firstOrNull { it.on && it.presetOf.app != null }
     }
 
@@ -90,22 +94,22 @@ object HelperSettings {
         return listOfNotNull(chosen) + ok.filter { it !== chosen }
     }
 
-    /** "Use" on a helper's page: its app or its API, in its own name ([ClaudeRoute]'s words for Claude, as before). */
-    fun routeTitle(p: Preset, r: ClaudeRoute): String = if (p.kind == HelperKind.ANTHROPIC) r.title else when (r) {
-        ClaudeRoute.APP -> "${p.defaultName} app"
-        ClaudeRoute.API -> "${p.company} API"
+    /** "Use" on a helper's page: its app or its API, in its own name ([AskRoute]'s words for Claude, as before). */
+    fun routeTitle(p: Preset, r: AskRoute): String = if (p.kind == HelperKind.ANTHROPIC) r.title else when (r) {
+        AskRoute.APP -> "${p.defaultName} app"
+        AskRoute.API -> "${p.company} API"
     }
 
-    fun routeDetail(p: Preset, r: ClaudeRoute): String = if (p.kind == HelperKind.ANTHROPIC) r.detail else when (r) {
-        ClaudeRoute.APP -> "Opens the ${p.defaultName} app with your question; you press Send there, with your own account. Robot doesn't hear the answer."
-        ClaudeRoute.API -> "Robot asks ${p.defaultName} itself and speaks the answer. Needs an API key with credits."
+    fun routeDetail(p: Preset, r: AskRoute): String = if (p.kind == HelperKind.ANTHROPIC) r.detail else when (r) {
+        AskRoute.APP -> "Opens the ${p.defaultName} app with your question; you press Send there, with your own account. Robot doesn't hear the answer."
+        AskRoute.API -> "Robot asks ${p.defaultName} itself and speaks the answer. Needs an API key with credits."
     }
 
     /** The first Kokoro voice that neither Robot ([robotSpeaker]) nor another helper uses, for a new helper. */
     fun freeVoice(s: RobotSettings, robotSpeaker: Int?): String {
         val used = s.helpers.map { it.voice }.toSet()
-        return ClaudeVoices.KOKORO.firstOrNull { (name, id) -> name !in used && id != robotSpeaker }?.first
-            ?: ClaudeVoices.KOKORO.firstOrNull { it.second != robotSpeaker }?.first ?: ClaudeVoices.DEFAULT
+        return HelperVoices.KOKORO.firstOrNull { (name, id) -> name !in used && id != robotSpeaker }?.first
+            ?: HelperVoices.KOKORO.firstOrNull { it.second != robotSpeaker }?.first ?: HelperVoices.DEFAULT
     }
 }
 
@@ -203,7 +207,7 @@ object HelperKeyFormat {
      * character quotes the whole value). The usual start of a company's keys is only a warning ([warning]).
      */
     fun plausible(p: Preset, k: String): Boolean =
-        if (p.kind == HelperKind.ANTHROPIC) app.heyrobot.core.ClaudeKeyFormat.plausible(k) else k.length in 8..512 && k.all { it.code in 0x21..0x7E }
+        if (p.kind == HelperKind.ANTHROPIC) app.heyrobot.core.AnthropicKeyFormat.plausible(k) else k.length in 8..512 && k.all { it.code in 0x21..0x7E }
 
     /** A note when [k] doesn't start the way [p]'s keys usually do (never a refusal: a wrong guess must not block a key). */
     fun warning(p: Preset, k: String): String? =

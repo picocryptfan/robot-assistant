@@ -1,5 +1,7 @@
 package app.heyrobot.core.web
 
+import app.heyrobot.core.HelperContext
+
 // Pure. The check every query passes before it may leave the phone (design A10.3, "Queries as an exfiltration
 // channel"): an injected page, screen text or another AI's answer could make the model search for your address or a
 // number from your calendar, so the query carries only what the person could have meant to send.
@@ -26,7 +28,7 @@ data class QueryContext(
     /** Your own words, this turn's and every earlier turn's, spoken or typed; never screen text or what a tool found. */
     val said: List<String>,
     /**
-     * Content Robot didn't write: screen text, web results and pages, a helper's or Claude's answers, and Robot's own
+     * Content Robot didn't write: screen text, web results and pages, a helper's answers, and Robot's own
      * answers made from them (a web answer counts: it came from pages).
      */
     val untrusted: List<String> = emptyList(),
@@ -34,7 +36,7 @@ data class QueryContext(
     val personal: List<String> = emptyList(),
     /** The conversation carries content (TurnRules.untrusted), even when [untrusted] no longer holds its text. */
     val content: Boolean = untrusted.isNotEmpty(),
-    /** The conversation is personal (ClaudeContext.personal), even when [personal] no longer holds its text. */
+    /** The conversation is personal (HelperContext.personal), even when [personal] no longer holds its text. */
     val isPersonal: Boolean = personal.isNotEmpty(),
     /**
      * 0.7's memory: the items the model was given in this conversation (pinned and found ones). Their words never go to a

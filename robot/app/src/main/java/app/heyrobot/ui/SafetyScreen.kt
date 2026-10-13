@@ -43,7 +43,7 @@ fun SafetyScreen(s: RobotSettings, update: (RobotSettings) -> Unit, a: AppAction
             ListPreference("When Robot asks first", s.safetyCards, SafetyCards.entries, { it.title },
                 { (if (it == SafetyCards.UNASKED) "The default. " else "") + it.detail }) { update(s.copy(safetyCards = it)) }
             SwitchPreference("Card when a helper asks Robot to do something", "A helper's input may come from web pages",
-                s.claudeActionCards) { update(s.copy(claudeActionCards = it)) }
+                s.helperActionCards) { update(s.copy(helperActionCards = it)) }
             SwitchPreference("Card when who-to isn't certain", "Several matches, a near match, or a number the model wrote",
                 s.whoCards) { update(s.copy(whoCards = it)) }
             SwitchPreference("Card for names learned from notifications", "Whoever sent the message chose that name",

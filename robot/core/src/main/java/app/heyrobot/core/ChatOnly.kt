@@ -8,7 +8,7 @@ import java.util.Locale
 // history trimmed to the smaller context (ContextWindow), any call it makes anyway dropped (:brain's
 // BrainPolicy.acceptsCalls, and [ChatOnlyTurn] here). A request clearly worded as an action gets Robot's own answer
 // ([REPLY]) instead of the model's, with an offer to open Settings › Model ([NOTICE]); Robot's routes that need no model
-// (texting, Ask Claude's phrases) work as they always do, before any of this.
+// (texting, the helpers' phrases) work as they always do, before any of this.
 
 object ChatOnly {
     /** Robot's answer when you ask a chat-only model to act: what it can't do, and where to choose a model that can. */

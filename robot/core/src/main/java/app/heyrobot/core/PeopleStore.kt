@@ -14,7 +14,7 @@ import java.util.UUID
 // address book, or whom you call something else ("mom", "maman"). One JSON file in app-private storage
 // (files/people/people.json), written atomically. Three writers share it (the main app's Settings › People, the
 // assistant's cards and Cheogram pick, and the notification listener), so every change is a read, change and write
-// under a file lock both app processes take. People are personal content: never in a log, never sent to Claude unless
+// under a file lock both app processes take. People are personal content: never in a log, never sent to a helper unless
 // you include them, excluded from Android backup like the rest of Robot's files.
 
 /** Where a person came from (shown in Settings › People). */

@@ -1,7 +1,7 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeCommand
-import app.heyrobot.core.ClaudeRouter
+import app.heyrobot.core.HelperCommand
+import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.FastPath
 import app.heyrobot.core.HelperName
 import app.heyrobot.core.Phonetic
@@ -20,32 +20,32 @@ class HelperRouterTest {
     // Claude as set up before 1.0.0 (a new install has no helper), and three others.
     private val s = RobotSettings(helpers = listOf(HelperConfig.claude())).withHelper(gpt).withHelper(jarvis).withHelper(deep)
     private val names = HelperName.all(s)
-    private fun route(t: String) = ClaudeRouter.route(t, names)
+    private fun route(t: String) = HelperRouter.route(t, names)
 
     @Test fun eachHelperByItsName() {
-        assertEquals(ClaudeCommand.Ask("why the sky is blue", helper = "hgpt"), route("ask ChatGPT why the sky is blue"))
+        assertEquals(HelperCommand.Ask("why the sky is blue", helper = "hgpt"), route("ask ChatGPT why the sky is blue"))
         // Multi-word forms, the longest that fits.
-        assertEquals(ClaudeCommand.Ask("why the sky is blue", helper = "hgpt"), route("hey robot, ask chat GPT why the sky is blue"))
-        assertEquals(ClaudeCommand.Ask("about black holes", helper = "hdee"), route("ask deep seek about black holes"))
-        assertEquals(ClaudeCommand.Ask("about black holes", helper = "hdee"), route("ask DeepSeek about black holes"))
-        assertEquals(ClaudeCommand.Join(helper = "hjar"), route("go get Jarvis"))
-        assertEquals(ClaudeCommand.Join("Let's talk about my day.", helper = "hjar"), route("talk to Jarvis about my day"))
-        assertEquals(ClaudeCommand.Ask("what's the weather in Montreal?", helper = "hjar"), route("Jarvis, what's the weather in Montreal?"))
-        assertEquals(ClaudeCommand.Ask("pourquoi le ciel est bleu", helper = "hjar"), route("demande à Jarvis pourquoi le ciel est bleu"))
+        assertEquals(HelperCommand.Ask("why the sky is blue", helper = "hgpt"), route("hey robot, ask chat GPT why the sky is blue"))
+        assertEquals(HelperCommand.Ask("about black holes", helper = "hdee"), route("ask deep seek about black holes"))
+        assertEquals(HelperCommand.Ask("about black holes", helper = "hdee"), route("ask DeepSeek about black holes"))
+        assertEquals(HelperCommand.Join(helper = "hjar"), route("go get Jarvis"))
+        assertEquals(HelperCommand.Join("Let's talk about my day.", helper = "hjar"), route("talk to Jarvis about my day"))
+        assertEquals(HelperCommand.Ask("what's the weather in Montreal?", helper = "hjar"), route("Jarvis, what's the weather in Montreal?"))
+        assertEquals(HelperCommand.Ask("pourquoi le ciel est bleu", helper = "hjar"), route("demande à Jarvis pourquoi le ciel est bleu"))
         // Claude is still Claude, mishearings included.
-        assertEquals(ClaudeCommand.Join(), route("go get Claude"))
-        assertEquals(ClaudeCommand.Join(misheard = true), route("get cloud"))
-        assertEquals(ClaudeCommand.Ask("about stars"), route("ask clyde about stars"))
+        assertEquals(HelperCommand.Join(), route("go get Claude"))
+        assertEquals(HelperCommand.Join(misheard = true), route("get cloud"))
+        assertEquals(HelperCommand.Ask("about stars"), route("ask clyde about stars"))
         // Leaving works with any helper's name (and "back to Robot").
-        for (t in listOf("thanks Jarvis", "bye chat gpt", "thank you DeepSeek", "back to Robot", "merci Jarvis")) assertEquals(t, ClaudeCommand.Leave, route(t))
-        assertEquals(FastPath.Way.CLAUDE, FastPath.of(route("ask Jarvis to set a timer"), claudeMode = false, attachment = Attachment.NONE))
+        for (t in listOf("thanks Jarvis", "bye chat gpt", "thank you DeepSeek", "back to Robot", "merci Jarvis")) assertEquals(t, HelperCommand.Leave, route(t))
+        assertEquals(FastPath.Way.HELPER, FastPath.of(route("ask Jarvis to set a timer"), inHelperMode = false, attachment = Attachment.NONE))
     }
 
     @Test fun aWordThatSoundsLikeANameCountsOnlyAfterACommandVerb() {
         // "Jervis" for "Jarvis": after a command verb, marked misheard (the conversation so far needs a tap).
-        assertEquals(ClaudeCommand.Join(misheard = true, helper = "hjar"), route("go get Jervis"))
-        assertEquals(ClaudeCommand.Ask("about the weather", helper = "hjar"), route("ask Jervis about the weather"))
-        assertEquals(ClaudeCommand.Leave, route("thanks Jervis"))
+        assertEquals(HelperCommand.Join(misheard = true, helper = "hjar"), route("go get Jervis"))
+        assertEquals(HelperCommand.Ask("about the weather", helper = "hjar"), route("ask Jervis about the weather"))
+        assertEquals(HelperCommand.Leave, route("thanks Jervis"))
         // Never on its own, never addressed, never with words about a person.
         assertNull(route("Jervis, what's the weather?"))
         assertNull(route("Jervis is coming at six"))
@@ -62,22 +62,22 @@ class HelperRouterTest {
     }
 
     @Test fun notThisHelper() {
-        assertTrue(ClaudeRouter.declines("not Jarvis, you tell me", names))
-        assertTrue(ClaudeRouter.declines("don't ask ChatGPT", names))
-        assertTrue(ClaudeRouter.declines("without deep seek please", names))
-        assertTrue(ClaudeRouter.declines("leave Jarvis out of it", names))
-        assertTrue(ClaudeRouter.declines("ne demande pas à Jarvis", names))
-        assertFalse(ClaudeRouter.declines("Jarvis is not here", names))
-        assertFalse(ClaudeRouter.declines("it's not Jarvis, it's Sam", names))
-        assertFalse(ClaudeRouter.declines("don't ask Jervis to pick up milk", names))
+        assertTrue(HelperRouter.declines("not Jarvis, you tell me", names))
+        assertTrue(HelperRouter.declines("don't ask ChatGPT", names))
+        assertTrue(HelperRouter.declines("without deep seek please", names))
+        assertTrue(HelperRouter.declines("leave Jarvis out of it", names))
+        assertTrue(HelperRouter.declines("ne demande pas à Jarvis", names))
+        assertFalse(HelperRouter.declines("Jarvis is not here", names))
+        assertFalse(HelperRouter.declines("it's not Jarvis, it's Sam", names))
+        assertFalse(HelperRouter.declines("don't ask Jervis to pick up milk", names))
         // Claude's as before.
-        assertTrue(ClaudeRouter.declines("not Claude", names))
+        assertTrue(HelperRouter.declines("not Claude", names))
     }
 
     @Test fun aYesMayNameTheHelper() {
-        assertTrue(ClaudeRouter.isYes("yes, check with Jarvis", names))
-        assertTrue(ClaudeRouter.isYes("yes ask chat gpt", names))
-        assertFalse(ClaudeRouter.isYes("yes, check with Bob", names))
+        assertTrue(HelperRouter.isYes("yes, check with Jarvis", names))
+        assertTrue(HelperRouter.isYes("yes ask chat gpt", names))
+        assertFalse(HelperRouter.isYes("yes, check with Bob", names))
     }
 
     @Test fun phoneticKeys() {

@@ -54,7 +54,7 @@ class ActionCardTest {
     private val note = ActionView("a4", ToolName.ADD_NOTE, "Note: buy coffee filters", ActionStatus.DONE, "Saved", undo = true)
     private val noContacts = ActionView("a5", ToolName.SEND_TEXT, "Text **Alex**", ActionStatus.NEEDS_PERMISSION, "Contacts access isn't allowed")
     /** Conversation mode's and a helper's card: "Include the conversation so far?" with its own button words. */
-    private val include = ActionView("a6", ToolName.ASK_CLAUDE, "Include the conversation so far?", ActionStatus.PENDING,
+    private val include = ActionView("a6", ToolName.ASK_HELPER, "Include the conversation so far?", ActionStatus.PENDING,
         "Start fresh: Claude sees only what you ask from now on.", confirm = "Include", cancel = "Start fresh")
 
     /** [all]: the card with choices too (the screenshot leaves it to the panel's, for room). */

@@ -190,9 +190,9 @@ class HelperConnectionActivity : ComponentActivity() {
         val ctx = applicationContext
         keyNote = null
         val candidates = h.presetOf.baseUrl?.let { listOf(it) } ?: h.baseUrl?.let { LanRule.normalize(it)?.candidates }.orEmpty()
-        if (candidates.isEmpty()) return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NOT_LOCAL)
+        if (candidates.isEmpty()) return ProbeResult(failure = app.heyrobot.core.HelperFailure.NOT_LOCAL)
         // GrapheneOS's Network toggle is off for Robot: say so rather than "isn't answering" (nothing could be sent).
-        if (!HelperLink.networkAllowed(ctx)) return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NO_NETWORK_PERMISSION)
+        if (!HelperLink.networkAllowed(ctx)) return ProbeResult(failure = app.heyrobot.core.HelperFailure.NO_NETWORK_PERMISSION)
         val key = when (val r = HelperKeys.read(ctx, h.id)) {
             is SecretRead.Present -> r.value
             SecretRead.Absent -> null
@@ -200,20 +200,20 @@ class HelperConnectionActivity : ComponentActivity() {
             // written to the facts; Test connection again in a moment reads it again.
             is SecretRead.Unavailable -> {
                 keyNote = HelperWords(HelperWho.of(h)).keyUnavailable
-                return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NO_KEY)
+                return ProbeResult(failure = app.heyrobot.core.HelperFailure.NO_KEY)
             }
             // Removed as it was read: Settings says so, the panel's client goes, and Add key is offered.
             is SecretRead.Invalidated -> {
                 keyNote = HelperWords(HelperWho.of(h)).keyUnreadable
                 HelperLink.keyChanged(ctx, h.id)
-                return ProbeResult(failure = app.heyrobot.core.ClaudeFailure.NO_KEY, needsKey = true)
+                return ProbeResult(failure = app.heyrobot.core.HelperFailure.NO_KEY, needsKey = true)
             }
         }
         val r = try {
             HelperProbe.run(h, key, candidates, question = true, actions = actions) { dollars -> HelperSpendStore.add(ctx, h.id, dollars) }
         } catch (t: Throwable) {
             RLog.w("helper_probe", t)
-            ProbeResult(failure = app.heyrobot.core.ClaudeFailure.UNKNOWN)
+            ProbeResult(failure = app.heyrobot.core.HelperFailure.UNKNOWN)
         }
         HelperFactsStore.update(ctx, h.id) { old ->
             val model = h.model.ifEmpty { r.models.firstOrNull().orEmpty() }

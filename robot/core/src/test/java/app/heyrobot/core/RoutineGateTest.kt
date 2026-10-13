@@ -41,7 +41,7 @@ class RoutineGateTest {
         "add_event" to tool("add_event", "title" to "Gym", "when" to "tomorrow 6pm"),
         "free_memory" to RoutineStep.Tool(Action.FreeMemory(null)),
         "free_storage" to RoutineStep.Tool(Action.FreeStorage(StorageWay.FILES)),
-        "ask_claude" to RoutineStep.Tool(Action.AskClaude("news")),
+        "ask_claude" to RoutineStep.Tool(Action.AskHelper("news")),
     )
 
     private fun routine(step: RoutineStep, lock: RoutineLock = RoutineLock.FOLLOW, online: Set<OnlineUse> = setOf(OnlineUse.OPEN_METEO)) =

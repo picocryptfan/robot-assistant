@@ -7,7 +7,7 @@ import app.heyrobot.core.Attachment
 import app.heyrobot.core.BrainMsg
 import app.heyrobot.core.ChatTurn
 import app.heyrobot.core.Choice
-import app.heyrobot.core.ClaudeContext
+import app.heyrobot.core.HelperContext
 import app.heyrobot.core.OneShotKind
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.Priority
@@ -195,7 +195,7 @@ object WebQueryContext {
             if (t.role != TurnRole.ASSISTANT) continue
             if (t.actions.any { it.content && it.tool != ToolName.WEB_SEARCH } && !fresh) blindPersonal = true
             val web = t.actions.any { it.tool == ToolName.WEB_SEARCH && it.content }
-            if (t.claude || t.readBack || web) untrusted += t.text
+            if (t.fromHelper || t.readBack || web) untrusted += t.text
             val read = t.actions.filter { it.content && it.tool != ToolName.WEB_SEARCH }
             if (read.isNotEmpty()) {
                 personal += t.text
@@ -204,7 +204,7 @@ object WebQueryContext {
         }
         screen?.takeIf { it.isNotBlank() }?.let { untrusted += it }
         val content = TurnRules.untrusted(turns) || untrusted.isNotEmpty()
-        val isPersonal = ClaudeContext.personal(turns).isNotEmpty() || personal.isNotEmpty()
+        val isPersonal = HelperContext.personal(turns).isNotEmpty() || personal.isNotEmpty()
         return QueryContext(
             said = mine.filter { it.isNotBlank() },
             untrusted = untrusted,

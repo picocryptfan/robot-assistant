@@ -100,7 +100,7 @@ class CardActions(
 )
 
 /**
- * "Ask Claude?" under a reply (any helper, by its [name]): what Send would send ([sends], with the start of the screen's
+ * "Ask Jarvis?" under a reply (any helper, by its [name]): what Send would send ([sends], with the start of the screen's
  * text in [preview]), or, without an API key ([api] false), its [app] opened with [text]. [asWell]: under Robot's
  * own answer, after the local model first handed the question over.
  */
@@ -119,7 +119,7 @@ fun toolIcon(t: ToolName?): ImageVector = when (t) {
     ToolName.CALL -> RIcons.Call
     ToolName.ADD_NOTE, ToolName.FIND_NOTES -> RIcons.Note
     ToolName.ADD_EVENT, ToolName.READ_CALENDAR -> RIcons.Event
-    ToolName.ASK_CLAUDE -> RIcons.Cloud
+    ToolName.ASK_HELPER -> RIcons.Cloud
     ToolName.WEATHER -> RIcons.Sunny
     ToolName.PHONE_STATUS -> RIcons.Phone
     ToolName.FREE_MEMORY -> RIcons.Chip
@@ -215,8 +215,8 @@ fun ActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, more: Car
 }
 
 /**
- * "Ask Claude?" (any helper, by its name; "Also ask Claude?" under Robot's own answer), what Send would send and the
- * start of the screen's text; or, without an API key, the Claude app opened with the question. Nothing goes until a tap
+ * "Ask Jarvis?" (any helper, by its name; "Also ask Jarvis?" under Robot's own answer), what Send would send and the
+ * start of the screen's text; or, without an API key, the helper's app opened with the question. Nothing goes until a tap
  * on Send (or a yes, when nothing personal goes).
  */
 @Composable
@@ -252,7 +252,7 @@ fun keptPicture(b64: String?): Bitmap? = try {
 }
 
 /** The lines under a helper's reply ([by]: its name): the search and its domains, then the cost. */
-fun claudeFooter(sources: List<String>, cost: String?, by: String? = null): List<String> = listOfNotNull(
+fun replyFooter(sources: List<String>, cost: String?, by: String? = null): List<String> = listOfNotNull(
     if (sources.isNotEmpty()) "${by ?: "The helper"} searched the web · " + sources.joinToString(", ") else null,
     cost,
 )

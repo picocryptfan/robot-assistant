@@ -7,12 +7,12 @@ import app.heyrobot.core.helpers.HelperConfig
 
 fun claudeSettings(
     claudeEnabled: Boolean? = null,
-    claudeRoute: ClaudeRoute? = null,
-    claudeModel: String = ClaudeModel.DEFAULT.id,
-    claudeEffort: ClaudeEffortSetting = ClaudeEffortSetting.AUTO,
+    claudeRoute: AskRoute? = null,
+    claudeModel: String = AnthropicModel.DEFAULT.id,
+    claudeEffort: HelperEffortSetting = HelperEffortSetting.AUTO,
     claudeSearch: Boolean = true,
     claudeLocked: Boolean = false,
-    claudeVoice: String = ClaudeVoices.DEFAULT,
+    claudeVoice: String = HelperVoices.DEFAULT,
     claudeShowCost: Boolean = true,
     claudeHelp: Escalation? = null,
     claudeBudgetCents: Int = 100,
@@ -23,7 +23,7 @@ fun claudeSettings(
 )
 
 val RobotSettings.claudeEnabled: Boolean? get() = claude?.enabled
-val RobotSettings.claudeRoute: ClaudeRoute? get() = claude?.route
+val RobotSettings.claudeRoute: AskRoute? get() = claude?.route
 val RobotSettings.claudeModel: String? get() = claude?.model
 val RobotSettings.claudeSearch: Boolean get() = claude?.search == true
 val RobotSettings.claudeLocked: Boolean get() = claude?.locked == true

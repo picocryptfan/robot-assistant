@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 0.6.0, for a helper on your own network: Robot's own rule decides which http:// addresses a helper may use (core
      LanRule: loopback, private, link-local, Tailscale's 100.64/10 and IPv6 unique-local addresses only; enforced again on
-     every connection by the helper's DNS filter and network interceptor, :claude HelperHttp). This file only lets
+     every connection by the helper's DNS filter and network interceptor, :helpers HelperHttp). This file only lets
      OkHttp try. Clients for a company refuse cleartext in code too. User-added CAs are never trusted: one could read a
      company's traffic. -->
 <network-security-config>

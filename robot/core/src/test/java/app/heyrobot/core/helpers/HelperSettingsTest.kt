@@ -1,9 +1,9 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeEffortSetting
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudeModel
-import app.heyrobot.core.ClaudeRoute
+import app.heyrobot.core.HelperEffortSetting
+import app.heyrobot.core.HelperFailure
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.AskRoute
 import app.heyrobot.core.ClaudeSettings
 import app.heyrobot.core.ClaudeWords
 import app.heyrobot.core.Escalation
@@ -28,14 +28,14 @@ class HelperSettingsTest {
         val s = RobotSettings.fromJson(v031)
         assertEquals(1, s.helpers.size)
         val c = s.claude!!
-        assertEquals(HelperConfig(id = "claude", preset = "anthropic", name = "Claude", model = "claude-haiku-5-5", enabled = true, route = ClaudeRoute.API,
-            effort = ClaudeEffortSetting.HIGH, search = false, voice = "bf_emma", locked = true), c)
+        assertEquals(HelperConfig(id = "claude", preset = "anthropic", name = "Claude", model = "claude-haiku-5-5", enabled = true, route = AskRoute.API,
+            effort = HelperEffortSetting.HIGH, search = false, voice = "bf_emma", locked = true), c)
         assertEquals(Escalation.ASK, s.help)
         assertEquals(250, s.helperBudgetCents)
         assertFalse(s.helperShowCost)
         assertNull(s.helpDefault)
         // The same behaviour: route, escalation and the local tool as 0.3.1 computed them.
-        assertEquals(ClaudeRoute.API, ClaudeSettings.route(s, keySaved = false))
+        assertEquals(AskRoute.API, ClaudeSettings.route(s, keySaved = false))
         assertEquals(Escalation.ASK, ClaudeSettings.escalation(s, keySaved = true))
         assertTrue(ClaudeSettings.localTool(s, keySaved = true))
     }
@@ -60,7 +60,7 @@ class HelperSettingsTest {
 
     @Test fun savedHelpersStayExactlyAsTheyAre() {
         // Someone who had Claude (the default before 1.0.0) keeps it, with every setting, and so does a list without it.
-        val claude = HelperConfig.claude().copy(route = ClaudeRoute.APP, locked = true)
+        val claude = HelperConfig.claude().copy(route = AskRoute.APP, locked = true)
         val gpt = HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck")
         for (list in listOf(listOf(claude), listOf(claude, gpt), listOf(gpt), emptyList())) {
             val s = RobotSettings(helpers = list, helpDefault = list.lastOrNull()?.id)
@@ -75,14 +75,14 @@ class HelperSettingsTest {
             assertEquals(listOf(HelperConfig.claude()), s.helpers)
             assertNull(s.claude!!.enabled)
             assertNull(s.claude!!.route)
-            assertEquals(ClaudeModel.OPUS.id, s.claude!!.model)
+            assertEquals(AnthropicModel.OPUS.id, s.claude!!.model)
             assertTrue(s.claude!!.search && !s.claude!!.locked && !s.claude!!.trust && s.claude!!.actions)
             assertEquals(100, s.helperBudgetCents)
             assertTrue(s.helperShowCost)
             // Without a key: the Claude app, Ask me first; with one: the API, Automatic.
-            assertEquals(ClaudeRoute.APP, ClaudeSettings.route(s, false))
+            assertEquals(AskRoute.APP, ClaudeSettings.route(s, false))
             assertEquals(Escalation.ASK, ClaudeSettings.escalation(s, false))
-            assertEquals(ClaudeRoute.API, ClaudeSettings.route(s, true))
+            assertEquals(AskRoute.API, ClaudeSettings.route(s, true))
             assertEquals(Escalation.AUTO, ClaudeSettings.escalation(s, true))
         }
     }
@@ -146,7 +146,7 @@ class HelperSettingsTest {
         // An empty list stays empty: every helper was removed.
         assertEquals(emptyList<HelperConfig>(), RobotSettings.fromJson("""{"schema":9,"helpers":[]}""").helpers)
         // A Claude model Robot doesn't know is the default one, as before.
-        assertEquals(ClaudeModel.OPUS.id, RobotSettings.fromJson("""{"schema":9,"helpers":[{"id":"claude","preset":"anthropic","name":"Claude","model":"claude-9"}]}""").claude!!.model)
+        assertEquals(AnthropicModel.OPUS.id, RobotSettings.fromJson("""{"schema":9,"helpers":[{"id":"claude","preset":"anthropic","name":"Claude","model":"claude-9"}]}""").claude!!.model)
     }
 
     @Test fun theHelperRobotChecksWith() {
@@ -193,7 +193,7 @@ class HelperSettingsTest {
         assertEquals("h2", HelperSettings.askTarget(s.copy(helpDefault = "h1abcde"), keys(), apps())?.id)
         assertEquals("h2", HelperSettings.askTarget(s.copy(helpDefault = "claude"), keys(), apps())?.id)
         // Claude set to the API without a key, its app installed: not ready either way.
-        val apiOnly = d.withHelper(d.claude!!.copy(route = app.heyrobot.core.ClaudeRoute.API))
+        val apiOnly = d.withHelper(d.claude!!.copy(route = app.heyrobot.core.AskRoute.API))
         assertNull(HelperSettings.askTarget(apiOnly, keys(), apps(claudeApp)))
         // No helpers at all.
         assertNull(HelperSettings.askTarget(RobotSettings(helpers = emptyList()), keys(), apps(claudeApp)))
@@ -307,19 +307,19 @@ class HelperSettingsTest {
     @Test fun wordsTakeTheHelpersName() {
         // Claude's words are what they were.
         assertEquals("Claude declined that one.", ClaudeWords.DECLINED)
-        assertEquals("Your Claude key was refused. Check it in Robot's settings.", ClaudeFailure.KEY_REFUSED.text)
-        assertEquals("Your Anthropic account is out of API credits. Add credits at console.anthropic.com.", ClaudeFailure.NO_CREDITS.text)
-        assertEquals("Add your Claude API key in Robot's settings first, or choose the Claude app there.", ClaudeFailure.NO_KEY.text)
-        assertEquals("Robot lost track of the conversation with Claude, so Claude mode has ended. Ask again to start fresh.", ClaudeFailure.RESET.text)
+        assertEquals("Your Claude key was refused. Check it in Robot's settings.", HelperFailure.KEY_REFUSED.text)
+        assertEquals("Your Anthropic account is out of API credits. Add credits at console.anthropic.com.", HelperFailure.NO_CREDITS.text)
+        assertEquals("Add your Claude API key in Robot's settings first, or choose the Claude app there.", HelperFailure.NO_KEY.text)
+        assertEquals("Robot lost track of the conversation with Claude, so Claude mode has ended. Ask again to start fresh.", HelperFailure.RESET.text)
         assertEquals(HelperWho.CLAUDE, HelperWho.of(HelperConfig.claude()))
         val gpt = HelperWho.of(HelperConfig.of(Presets.OPENAI, "h1", "am_puck"))
-        assertEquals("Your ChatGPT key was refused. Check it in Robot's settings.", ClaudeFailure.KEY_REFUSED.say(gpt))
-        assertEquals("Your OpenAI account is out of API credits. Add credits at platform.openai.com.", ClaudeFailure.NO_CREDITS.say(gpt))
-        assertEquals("Add your ChatGPT API key in Robot's settings first, or choose the ChatGPT app there.", ClaudeFailure.NO_KEY.say(gpt))
-        assertEquals("Add your Groq API key in Robot's settings first.", ClaudeFailure.NO_KEY.say(HelperWho.of(groq())))
+        assertEquals("Your ChatGPT key was refused. Check it in Robot's settings.", HelperFailure.KEY_REFUSED.say(gpt))
+        assertEquals("Your OpenAI account is out of API credits. Add credits at platform.openai.com.", HelperFailure.NO_CREDITS.say(gpt))
+        assertEquals("Add your ChatGPT API key in Robot's settings first, or choose the ChatGPT app there.", HelperFailure.NO_KEY.say(gpt))
+        assertEquals("Add your Groq API key in Robot's settings first.", HelperFailure.NO_KEY.say(HelperWho.of(groq())))
         val jarvis = HelperWho.of(home())
-        assertEquals("Jarvis isn't answering. Is the computer on, and is the phone on the same network?", ClaudeFailure.UNREACHABLE.say(jarvis))
-        assertEquals("Jarvis doesn't have that model any more. Pick another one in Robot's settings, under Helpers.", ClaudeFailure.MODEL_UNAVAILABLE.say(jarvis))
+        assertEquals("Jarvis isn't answering. Is the computer on, and is the phone on the same network?", HelperFailure.UNREACHABLE.say(jarvis))
+        assertEquals("Jarvis doesn't have that model any more. Pick another one in Robot's settings, under Helpers.", HelperFailure.MODEL_UNAVAILABLE.say(jarvis))
         assertEquals("Jarvis is loading its model…", HelperWords(jarvis).loading)
         assertEquals("Want me to check with Jarvis?", HelperWords(jarvis).offer)
         // A saved key the Keystore couldn't read just now is kept, and Robot says so in the helper's name (the updater's
@@ -332,19 +332,19 @@ class HelperSettingsTest {
 
     @Test fun failuresReadTheCodeBeforeTheStatus() {
         // OpenAI says "out of credit" with a 429: never "busy".
-        assertEquals(ClaudeFailure.NO_CREDITS, ClaudeFailure.of(429, "insufficient_quota", "insufficient_quota"))
-        assertEquals(ClaudeFailure.NO_CREDITS, ClaudeFailure.of(429, null, "credit_balance_exhausted"))
-        assertEquals(ClaudeFailure.NO_CREDITS, ClaudeFailure.of(429, null, "monthly_spend_limit_exceeded"))
-        assertEquals(ClaudeFailure.RATE_LIMITED, ClaudeFailure.of(429, "rate_limit_error", "slow_down"))
+        assertEquals(HelperFailure.NO_CREDITS, HelperFailure.of(429, "insufficient_quota", "insufficient_quota"))
+        assertEquals(HelperFailure.NO_CREDITS, HelperFailure.of(429, null, "credit_balance_exhausted"))
+        assertEquals(HelperFailure.NO_CREDITS, HelperFailure.of(429, null, "monthly_spend_limit_exceeded"))
+        assertEquals(HelperFailure.RATE_LIMITED, HelperFailure.of(429, "rate_limit_error", "slow_down"))
         // DeepSeek and OpenRouter: 402.
-        assertEquals(ClaudeFailure.NO_CREDITS, ClaudeFailure.of(402, null))
+        assertEquals(HelperFailure.NO_CREDITS, HelperFailure.of(402, null))
         // OpenAI's overload code and Groq's 498: one retry.
-        assertEquals(ClaudeFailure.OVERLOADED, ClaudeFailure.of(503, null, "server_is_overloaded"))
-        assertEquals(ClaudeFailure.OVERLOADED, ClaudeFailure.of(498, null))
-        assertTrue(ClaudeFailure.OVERLOADED.retry)
+        assertEquals(HelperFailure.OVERLOADED, HelperFailure.of(503, null, "server_is_overloaded"))
+        assertEquals(HelperFailure.OVERLOADED, HelperFailure.of(498, null))
+        assertTrue(HelperFailure.OVERLOADED.retry)
         // Anthropic's as before.
-        assertEquals(ClaudeFailure.SERVER, ClaudeFailure.of(503, null))
-        assertEquals(ClaudeFailure.BAD_REQUEST, ClaudeFailure.of(422, null))
+        assertEquals(HelperFailure.SERVER, HelperFailure.of(503, null))
+        assertEquals(HelperFailure.BAD_REQUEST, HelperFailure.of(422, null))
     }
 
     @Test fun presetsAreWhatTheDesignVerified() {
@@ -360,10 +360,10 @@ class HelperSettingsTest {
         assertFalse(HelperConfig.of(Presets.OPENROUTER, "h1", "am_puck").search)
         assertTrue(HelperConfig.of(Presets.OPENAI, "h1", "am_puck").search)
         // Mistral thinks fully or not at all; DeepSeek's high is "max".
-        assertEquals("none", EffortStyle.MISTRAL.wire(app.heyrobot.core.ClaudeEffort.LOW))
-        assertEquals("high", EffortStyle.MISTRAL.wire(app.heyrobot.core.ClaudeEffort.MEDIUM))
-        assertEquals("max", EffortStyle.DEEPSEEK.wire(app.heyrobot.core.ClaudeEffort.HIGH))
-        assertNull(EffortStyle.NONE.wire(app.heyrobot.core.ClaudeEffort.HIGH))
+        assertEquals("none", EffortStyle.MISTRAL.wire(app.heyrobot.core.HelperEffort.LOW))
+        assertEquals("high", EffortStyle.MISTRAL.wire(app.heyrobot.core.HelperEffort.MEDIUM))
+        assertEquals("max", EffortStyle.DEEPSEEK.wire(app.heyrobot.core.HelperEffort.HIGH))
+        assertNull(EffortStyle.NONE.wire(app.heyrobot.core.HelperEffort.HIGH))
     }
 
     @Test fun newIdsAndVoices() {

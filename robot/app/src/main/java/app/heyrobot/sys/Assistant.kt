@@ -63,9 +63,9 @@ data class AssistantFacts(
     val helperFacts: Map<String, app.heyrobot.core.helpers.HelperFacts> = emptyMap(),
     /** Today's spend on all helpers and each one's (millionths of a dollar). */
     val spend: app.heyrobot.core.helpers.HelperSpend = app.heyrobot.core.helpers.HelperSpend(""),
-    val claudeApp: ClaudeAppFacts = ClaudeAppFacts(installed = false, appLink = false, webLink = false, send = false),
+    val claudeApp: AppFacts = AppFacts(installed = false, appLink = false, webLink = false, send = false),
     /** 1.0.0: the app of each helper you set up that has one, by package (the Claude app's is [claudeApp]). */
-    val helperApps: Map<String, ClaudeAppFacts> = emptyMap(),
+    val helperApps: Map<String, AppFacts> = emptyMap(),
     /** GrapheneOS's per-app Network toggle (INTERNET as a runtime permission). */
     val networkGranted: Boolean = true,
     /** 0.2.3: WRITE_SECURE_SETTINGS was granted with adb, so Robot keeps its recognizer set itself. */
@@ -92,7 +92,7 @@ data class AssistantFacts(
     val claudeKeyUnreadable: Boolean get() = app.heyrobot.core.helpers.HelperConfig.CLAUDE_ID in keysUnreadable
 
     /** What Robot found about the app of package [pkg] (null: not looked at). */
-    fun app(pkg: String?): ClaudeAppFacts? = if (pkg == app.heyrobot.core.ClaudeAppLink.PACKAGE) claudeApp else helperApps[pkg]
+    fun app(pkg: String?): AppFacts? = if (pkg == app.heyrobot.core.ClaudeAppLink.PACKAGE) claudeApp else helperApps[pkg]
 }
 
 object Assistant {

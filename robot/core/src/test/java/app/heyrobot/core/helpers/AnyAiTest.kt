@@ -2,9 +2,9 @@ package app.heyrobot.core.helpers
 
 import app.heyrobot.core.AppHandOff
 import app.heyrobot.core.ClaudeAppLink
-import app.heyrobot.core.ClaudeCommand
-import app.heyrobot.core.ClaudeRoute
-import app.heyrobot.core.ClaudeRouter
+import app.heyrobot.core.HelperCommand
+import app.heyrobot.core.AskRoute
+import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.HelperName
 import app.heyrobot.core.RobotSettings
 import org.junit.Assert.assertEquals
@@ -35,16 +35,16 @@ class AnyAiTest {
     @Test fun withoutAKeyAQuestionOpensTheApp() {
         for (p in Presets.ALL.filter { it.app != null }) {
             val h = of(p, "h1")
-            assertEquals(p.id, ClaudeRoute.APP, HelperSettings.route(h, keySaved = false))
-            assertEquals(p.id, ClaudeRoute.API, HelperSettings.route(h, keySaved = true))
+            assertEquals(p.id, AskRoute.APP, HelperSettings.route(h, keySaved = false))
+            assertEquals(p.id, AskRoute.API, HelperSettings.route(h, keySaved = true))
             // You can keep the app with a key, or choose the API without one (then it needs the key).
-            assertEquals(ClaudeRoute.APP, HelperSettings.route(h.copy(route = ClaudeRoute.APP), keySaved = true))
-            assertFalse(HelperSettings.apiReady(h.copy(route = ClaudeRoute.API), keySaved = false))
+            assertEquals(AskRoute.APP, HelperSettings.route(h.copy(route = AskRoute.APP), keySaved = true))
+            assertFalse(HelperSettings.apiReady(h.copy(route = AskRoute.API), keySaved = false))
             // Saved and read back with its route.
-            assertEquals(ClaudeRoute.APP, HelperConfig.fromJson(h.copy(route = ClaudeRoute.APP).toJson())!!.route)
+            assertEquals(AskRoute.APP, HelperConfig.fromJson(h.copy(route = AskRoute.APP).toJson())!!.route)
         }
         // Without an app, always the API.
-        assertEquals(ClaudeRoute.API, HelperSettings.route(of(Presets.GROQ, "h1").copy(route = ClaudeRoute.APP), keySaved = false))
+        assertEquals(AskRoute.API, HelperSettings.route(of(Presets.GROQ, "h1").copy(route = AskRoute.APP), keySaved = false))
         // "Ask the helper" goes to one whose app is installed, by its own package.
         val s = RobotSettings(helpers = listOf(of(Presets.OPENAI, "hgpt"), of(Presets.XAI, "hgrk")))
         assertEquals("hgrk", HelperSettings.askTarget(s, { false }) { it == "ai.x.grok" }?.id)
@@ -57,29 +57,29 @@ class AnyAiTest {
 
     @Test fun theHandOffIsBuiltPerApp() {
         // The Claude app keeps its links first; every other app gets a share, else just opens.
-        assertEquals(listOf(ClaudeAppLink.Way.APP_LINK, ClaudeAppLink.Way.WEB_LINK, ClaudeAppLink.Way.SEND, ClaudeAppLink.Way.LAUNCH),
+        assertEquals(listOf(AppHandOff.Way.APP_LINK, AppHandOff.Way.WEB_LINK, AppHandOff.Way.SEND, AppHandOff.Way.LAUNCH),
             AppHandOff.ways(ClaudeAppLink.PACKAGE))
         for (pkg in listOf("com.openai.chatgpt", "ai.x.grok", "com.google.android.apps.bard", "ai.mistral.chat", "com.deepseek.chat")) {
-            assertEquals(pkg, listOf(ClaudeAppLink.Way.SEND, ClaudeAppLink.Way.LAUNCH), AppHandOff.ways(pkg))
-            assertEquals(ClaudeAppLink.Way.SEND, AppHandOff.choose(pkg, installed = true) { true })
-            assertEquals(ClaudeAppLink.Way.LAUNCH, AppHandOff.choose(pkg, installed = true) { it == ClaudeAppLink.Way.LAUNCH })
+            assertEquals(pkg, listOf(AppHandOff.Way.SEND, AppHandOff.Way.LAUNCH), AppHandOff.ways(pkg))
+            assertEquals(AppHandOff.Way.SEND, AppHandOff.choose(pkg, installed = true) { true })
+            assertEquals(AppHandOff.Way.LAUNCH, AppHandOff.choose(pkg, installed = true) { it == AppHandOff.Way.LAUNCH })
             assertNull(AppHandOff.choose(pkg, installed = true) { false })
             assertNull(AppHandOff.choose(pkg, installed = false) { true })
             // A link the Claude app takes is never tried on another app.
-            assertEquals(ClaudeAppLink.Way.SEND, AppHandOff.choose(pkg, installed = true) { it != ClaudeAppLink.Way.APP_LINK })
+            assertEquals(AppHandOff.Way.SEND, AppHandOff.choose(pkg, installed = true) { it != AppHandOff.Way.APP_LINK })
         }
         // The Claude app as before: its own link first.
-        assertEquals(ClaudeAppLink.Way.APP_LINK, ClaudeAppLink.choose(true) { true })
-        assertEquals(ClaudeAppLink.Way.SEND, ClaudeAppLink.choose(true) { it == ClaudeAppLink.Way.SEND || it == ClaudeAppLink.Way.LAUNCH })
+        assertEquals(AppHandOff.Way.APP_LINK, ClaudeAppLink.choose(true) { true })
+        assertEquals(AppHandOff.Way.SEND, ClaudeAppLink.choose(true) { it == AppHandOff.Way.SEND || it == AppHandOff.Way.LAUNCH })
         assertNull(ClaudeAppLink.choose(false) { true })
         // The card: what goes, to which app, and that you send it there. Then what happened.
         assertEquals("Robot opens the ChatGPT app with this text and copies it. Nothing is sent until you press Send in ChatGPT.",
             AppHandOff.note("ChatGPT", "why is the sky blue"))
         assertEquals("Robot opens the Grok app. Nothing goes to Grok from Robot.", AppHandOff.note("Grok", ""))
         assertEquals("Opened Gemini with your question: press Send there if it isn't sent. It's on the clipboard too.",
-            AppHandOff.done("Gemini", ClaudeAppLink.Way.SEND, "why"))
-        assertEquals("Opened DeepSeek. Paste your question in DeepSeek: it's on the clipboard.", AppHandOff.done("DeepSeek", ClaudeAppLink.Way.LAUNCH, "why"))
-        assertEquals("Opened Mistral.", AppHandOff.done("Mistral", ClaudeAppLink.Way.LAUNCH, ""))
+            AppHandOff.done("Gemini", AppHandOff.Way.SEND, "why"))
+        assertEquals("Opened DeepSeek. Paste your question in DeepSeek: it's on the clipboard.", AppHandOff.done("DeepSeek", AppHandOff.Way.LAUNCH, "why"))
+        assertEquals("Opened Mistral.", AppHandOff.done("Mistral", AppHandOff.Way.LAUNCH, ""))
         assertEquals("Install ChatGPT.", AppHandOff.install("ChatGPT"))
         assertEquals("No helper opens an app. Set one up in Robot's settings, under Helpers.", AppHandOff.install(null))
     }
@@ -104,13 +104,13 @@ class AnyAiTest {
     }
 
     @Test fun routeWordsNameTheApp() {
-        assertEquals("Claude app", HelperSettings.routeTitle(Presets.ANTHROPIC, ClaudeRoute.APP))
-        assertEquals("Claude API", HelperSettings.routeTitle(Presets.ANTHROPIC, ClaudeRoute.API))
-        assertEquals(ClaudeRoute.APP.detail, HelperSettings.routeDetail(Presets.ANTHROPIC, ClaudeRoute.APP))
-        assertEquals("ChatGPT app", HelperSettings.routeTitle(Presets.OPENAI, ClaudeRoute.APP))
-        assertEquals("OpenAI API", HelperSettings.routeTitle(Presets.OPENAI, ClaudeRoute.API))
+        assertEquals("Claude app", HelperSettings.routeTitle(Presets.ANTHROPIC, AskRoute.APP))
+        assertEquals("Claude API", HelperSettings.routeTitle(Presets.ANTHROPIC, AskRoute.API))
+        assertEquals(AskRoute.APP.detail, HelperSettings.routeDetail(Presets.ANTHROPIC, AskRoute.APP))
+        assertEquals("ChatGPT app", HelperSettings.routeTitle(Presets.OPENAI, AskRoute.APP))
+        assertEquals("OpenAI API", HelperSettings.routeTitle(Presets.OPENAI, AskRoute.API))
         assertEquals("Opens the Grok app with your question; you press Send there, with your own account. Robot doesn't hear the answer.",
-            HelperSettings.routeDetail(Presets.XAI, ClaudeRoute.APP))
+            HelperSettings.routeDetail(Presets.XAI, AskRoute.APP))
     }
 
     // ------------------------------------------------------------------ call names
@@ -118,12 +118,12 @@ class AnyAiTest {
     /** Every way you call [name] gets to helper [id] in settings [s]. */
     private fun answersTo(s: RobotSettings, id: String, name: String) {
         val names = HelperName.all(s)
-        fun route(t: String) = ClaudeRouter.route(t, names)
-        assertEquals("ask $name", ClaudeCommand.Ask("why the sky is blue", helper = id), route("ask $name why the sky is blue"))
-        assertEquals("go get $name", ClaudeCommand.Join(helper = id), route("go get $name"))
-        assertEquals("$name, …", ClaudeCommand.Ask("what's a black hole?", helper = id), route("$name, what's a black hole?"))
-        assertEquals("demande à $name", ClaudeCommand.Ask("pourquoi le ciel est bleu", helper = id), route("demande à $name pourquoi le ciel est bleu"))
-        assertEquals("thanks $name", ClaudeCommand.Leave, route("thanks $name"))
+        fun route(t: String) = HelperRouter.route(t, names)
+        assertEquals("ask $name", HelperCommand.Ask("why the sky is blue", helper = id), route("ask $name why the sky is blue"))
+        assertEquals("go get $name", HelperCommand.Join(helper = id), route("go get $name"))
+        assertEquals("$name, …", HelperCommand.Ask("what's a black hole?", helper = id), route("$name, what's a black hole?"))
+        assertEquals("demande à $name", HelperCommand.Ask("pourquoi le ciel est bleu", helper = id), route("demande à $name pourquoi le ciel est bleu"))
+        assertEquals("thanks $name", HelperCommand.Leave, route("thanks $name"))
     }
 
     @Test fun eachPresetAnswersToTheNamesPeopleSay() {
@@ -143,8 +143,8 @@ class AnyAiTest {
         // Each alone too, the way a new install would have it.
         for (h in listOf(gpt, grok, gemini, mistral, deep)) answersTo(RobotSettings(helpers = listOf(h)), h.id, h.name)
         // Claude's mishearings still count after a command verb only.
-        assertEquals(ClaudeCommand.Join(misheard = true), ClaudeRouter.route("get cloud", HelperName.all(s)))
-        assertNull(ClaudeRouter.route("what's the cloud cover tomorrow", HelperName.all(s)))
+        assertEquals(HelperCommand.Join(misheard = true), HelperRouter.route("get cloud", HelperName.all(s)))
+        assertNull(HelperRouter.route("what's the cloud cover tomorrow", HelperName.all(s)))
         // The defaults are the names people say.
         assertEquals(listOf("Claude", "ChatGPT", "Grok", "Gemini", "Mistral", "DeepSeek"), s.helpers.map { it.name })
         // Every preset's name can be saved as it comes.
@@ -160,8 +160,8 @@ class AnyAiTest {
         answersTo(s, "hgpt", "Jarvis")
         // The preset's spellings belong to its name: once renamed, "ChatGPT" and "GPT" are no longer it.
         val names = HelperName.all(s)
-        assertNull(ClaudeRouter.route("ask ChatGPT why the sky is blue", names))
-        assertNull(ClaudeRouter.route("ask GPT why the sky is blue", names))
+        assertNull(HelperRouter.route("ask ChatGPT why the sky is blue", names))
+        assertNull(HelperRouter.route("ask GPT why the sky is blue", names))
         // An alias you add answers too.
         val aliased = s.withHelper(s.helper("hgpt")!!.copy(aliases = listOf("GPT")))
         answersTo(aliased, "hgpt", "GPT")
@@ -169,7 +169,7 @@ class AnyAiTest {
         // after a command verb, marked misheard (the conversation so far then needs a tap), as for any name.
         val claudia = RobotSettings(helpers = listOf(HelperConfig.claude().copy(name = "Claudia")))
         answersTo(claudia, "claude", "Claudia")
-        assertEquals(ClaudeCommand.Join(misheard = true, helper = "claude"), ClaudeRouter.route("go get cloud", HelperName.all(claudia)))
+        assertEquals(HelperCommand.Join(misheard = true, helper = "claude"), HelperRouter.route("go get cloud", HelperName.all(claudia)))
         // Grok renamed "Max" (a common word: allowed, with a warning) answers to Max.
         val grok = of(Presets.XAI, "hgrk")
         assertTrue(HelperNames.check("Max", "hgrk", RobotSettings(helpers = listOf(grok)), wake) is NameCheck.Warning)

@@ -2,7 +2,7 @@ package app.heyrobot.core.output
 
 import app.heyrobot.core.AskWhy
 import app.heyrobot.core.CardAnswer
-import app.heyrobot.core.ClaudeRouter
+import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.TextCommand
 import app.heyrobot.core.ToolName
@@ -126,7 +126,7 @@ object SpokenCards {
         val to = if (car) DeferTo.PARK else DeferTo.READY
         val keep = (if (car) OutputLines.KEEP_FOR_PARK else OutputLines.KEEP_FOR_LOOK).get(lang)
         fun defer(why: CardVoiceCode) = CardVoice.Defer(keep, to, why)
-        if (car && card.tool == ToolName.ASK_CLAUDE) return CardVoice.Refuse(NO_CLAUDE_DRIVING.get(lang), CardVoiceCode.REFUSED)
+        if (car && card.tool == ToolName.ASK_HELPER) return CardVoice.Refuse(NO_CLAUDE_DRIVING.get(lang), CardVoiceCode.REFUSED)
         if (!ctx.voiceCards) return defer(CardVoiceCode.VOICE_OFF)
         val tap = card.waiting.tapFor
         if (tap == AskWhy.LEARNED || tap == AskWhy.ONLINE || card.deletes || (card.waiting.personal && !ctx.voiceYesPersonal)) return defer(CardVoiceCode.MUST_SEE)
@@ -202,7 +202,7 @@ object SpokenChoice {
 
     private fun phrases(vararg p: String): List<List<String>> = p.map { it.split(' ') }
 
-    private fun words(text: String): List<String> = ClaudeRouter.plain(text).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+    private fun words(text: String): List<String> = HelperRouter.plain(text).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
 
     private fun canon(w: String): String = SYNONYMS[w] ?: w
 

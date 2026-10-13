@@ -2,12 +2,12 @@ package app.heyrobot.assistant
 
 import android.Manifest
 import android.content.Context
-import app.heyrobot.claude.ClaudeClient
-import app.heyrobot.claude.ClaudeSession
-import app.heyrobot.core.ClaudeFailure
-import app.heyrobot.core.ClaudeModel
-import app.heyrobot.core.ClaudePrompt
-import app.heyrobot.core.ClaudeTools
+import app.heyrobot.helpers.anthropic.AnthropicClient
+import app.heyrobot.helpers.anthropic.AnthropicSession
+import app.heyrobot.core.HelperFailure
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.HelperPrompt
+import app.heyrobot.core.HelperTools
 import app.heyrobot.core.RLog
 import app.heyrobot.core.RobotSettings
 import app.heyrobot.core.SecretRead
@@ -28,7 +28,7 @@ import java.time.LocalDate
 import java.util.IdentityHashMap
 import java.util.concurrent.ConcurrentHashMap
 
-// VOICE PROCESS. The panel's way to its helpers (the :claude module): one client per helper and saved key (and, for a
+// VOICE PROCESS. The panel's way to its helpers (the :helpers module): one client per helper and saved key (and, for a
 // server, its address), and a session per question or per conversation ("go get …"). A client stays open while a session
 // still uses it, so saving a new key doesn't break a conversation under way; it closes when its last session ends.
 // Keys are decrypted here only (HelperKeys.read), just before a client is made; one the Keystore can't read just now is
@@ -36,12 +36,12 @@ import java.util.concurrent.ConcurrentHashMap
 
 object HelperLink {
     /** A helper's client and how many sessions use it; [retired]: its key or address changed, or it was removed. */
-    private class Held(val claude: ClaudeClient?, val http: HelperHttp?, val stamp: Long, val address: String?) {
+    private class Held(val anthropic: AnthropicClient?, val http: HelperHttp?, val stamp: Long, val address: String?) {
         var users = 0
         var retired = false
 
         fun close() {
-            claude?.close()
+            anthropic?.close()
             http?.close()
         }
     }
@@ -103,7 +103,7 @@ object HelperLink {
     /** A new session, or why there can't be one. */
     sealed class Made {
         class Ok(val session: HelperSession) : Made()
-        class Not(val failure: ClaudeFailure) : Made()
+        class Not(val failure: HelperFailure) : Made()
     }
 
     /**
@@ -121,7 +121,7 @@ object HelperLink {
         held.users++
         val tools = tools(s, h, facts)
         val session: HelperSession = if (h.presetOf.protocol == Protocol.ANTHROPIC) {
-            ClaudeSession(held.claude!!, ClaudeModel.of(h.model), tools, h.searching, conversation)
+            AnthropicSession(held.anthropic!!, AnthropicModel.of(h.model), tools, h.searching, conversation)
         } else {
             OpenAiSession(held.http!!, h, tools, conversation, vision = h.catalogModel?.vision ?: true, dropped = facts.dropped(h.model),
                 onDropped = { e -> Thread({ HelperFactsStore.update(ctx, h.id) { it.withDropped(h.model, e) } }, "robot-helper-facts").start() })
@@ -143,10 +143,10 @@ object HelperLink {
         val held = current.getValue(h.id)
         held.users++
         val session: HelperSession = if (h.presetOf.protocol == Protocol.ANTHROPIC) {
-            ClaudeSession(held.claude!!, ClaudeModel.of(h.model), emptyList(), search = false, conversation = false, system = ClaudePrompt.TRANSCRIPT_SYSTEM)
+            AnthropicSession(held.anthropic!!, AnthropicModel.of(h.model), emptyList(), search = false, conversation = false, system = HelperPrompt.CLAUDE_TRANSCRIPT_SYSTEM)
         } else {
             OpenAiSession(held.http!!, h.copy(search = false), emptyList(), conversation = false, vision = false, dropped = facts.dropped(h.model),
-                system = ClaudePrompt.transcriptSystem(h.name))
+                system = HelperPrompt.transcriptSystem(h.name))
         }
         sessions[session] = held
         return session
@@ -157,7 +157,7 @@ object HelperLink {
         !h.actions -> emptyList()
         h.catalogModel?.tools == false -> emptyList()
         facts.noActions(h.model) -> emptyList()
-        else -> ClaudeTools.tools(s)
+        else -> HelperTools.tools(s)
     }
 
     /** The client for [h], made (its key decrypted) when there is none or its key or address changed. */
@@ -168,9 +168,9 @@ object HelperLink {
         if (stamp == 0L && needsKey) {
             saved[h.id] = false
             current.remove(h.id)?.let(::retire)
-            return Made.Not(ClaudeFailure.NO_KEY)
+            return Made.Not(HelperFailure.NO_KEY)
         }
-        val address = if (h.presetOf.protocol == Protocol.ANTHROPIC) null else facts.address(h) ?: return Made.Not(ClaudeFailure.NO_ADDRESS)
+        val address = if (h.presetOf.protocol == Protocol.ANTHROPIC) null else facts.address(h) ?: return Made.Not(HelperFailure.NO_ADDRESS)
         current[h.id]?.takeIf { it.stamp == stamp && it.address == address }?.let { return null }
         current.remove(h.id)?.let(::retire)
         val key = if (stamp == 0L) null else when (val r = HelperKeys.read(ctx, h.id)) {
@@ -178,7 +178,7 @@ object HelperLink {
             // Deleted just now.
             SecretRead.Absent -> {
                 saved[h.id] = false
-                if (needsKey) return Made.Not(ClaudeFailure.NO_KEY)
+                if (needsKey) return Made.Not(HelperFailure.NO_KEY)
                 null
             }
             is SecretRead.Invalidated -> {
@@ -186,7 +186,7 @@ object HelperLink {
                 saved[h.id] = false
                 unreadable += h.id
                 RLog.i("helper_key", "op" to RLog.Code("unreadable"))
-                if (needsKey) return Made.Not(ClaudeFailure.NO_KEY)
+                if (needsKey) return Made.Not(HelperFailure.NO_KEY)
                 null
             }
             is SecretRead.Unavailable -> {
@@ -194,11 +194,11 @@ object HelperLink {
                 // again. Nothing goes to the helper without the key you saved, even one that may not need it.
                 unavailable += h.id
                 RLog.i("helper_key", "op" to RLog.Code("unavailable"))
-                return Made.Not(ClaudeFailure.NO_KEY)
+                return Made.Not(HelperFailure.NO_KEY)
             }
         }
-        val made = if (h.presetOf.protocol == Protocol.ANTHROPIC) Held(ClaudeClient.create(key!!), null, stamp, null)
-        else Held(null, HelperHttp.create(address!!, key, h.home) ?: return Made.Not(ClaudeFailure.NOT_LOCAL), stamp, address)
+        val made = if (h.presetOf.protocol == Protocol.ANTHROPIC) Held(AnthropicClient.create(key!!), null, stamp, null)
+        else Held(null, HelperHttp.create(address!!, key, h.home) ?: return Made.Not(HelperFailure.NOT_LOCAL), stamp, address)
         current[h.id] = made
         return null
     }
@@ -226,8 +226,8 @@ object HelperLink {
     @Volatile private var warmed = false
 
     /**
-     * The panel opened: whether keys are saved and today's spend are read off the main thread, and with Claude's API
-     * ready the SDK's classes load (no network), once.
+     * The panel opened: whether keys are saved and today's spend are read off the main thread, and with the Claude helper's API
+     * ready the Anthropic SDK's classes load (no network), once.
      */
     fun warm(ctx: Context, s: RobotSettings) {
         Thread({
@@ -236,7 +236,7 @@ object HelperLink {
             val c = s.claude
             if (!warmed && c != null && c.on && saved[c.id] == true) {
                 warmed = true
-                ClaudeClient.warm()
+                AnthropicClient.warm()
             }
         }, "robot-helper-warm").apply { isDaemon = true; start() }
     }

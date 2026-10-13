@@ -1,6 +1,6 @@
 package app.heyrobot.core.output
 
-import app.heyrobot.core.ClaudeRouter
+import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.LogCode
 import app.heyrobot.core.TextCommand
 
@@ -96,7 +96,7 @@ object ReplyWords {
     /** Where the lead-in of [s] ends, or null without one. */
     private fun leadEnd(s: String): Int? {
         // Words with where they are in [s], to cut the lead off the original text.
-        val words = Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*").findAll(s).map { ClaudeRouter.plain(it.value) to it.range }.toList()
+        val words = Regex("[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*").findAll(s).map { HelperRouter.plain(it.value) to it.range }.toList()
         val split = words.flatMap { (w, r) -> w.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.map { it to r } }
         val lead = LEADS.firstOrNull { l -> l.size <= split.size && l.indices.all { split[it].first == l[it] } } ?: return null
         return split[lead.size - 1].second.last + 1

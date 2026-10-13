@@ -54,11 +54,11 @@ class VoiceLogTest {
         assertEquals(27, VoiceEvent.TTS_STOP.id)
         val codes: List<List<LogCode>> = listOf(WakeAction.entries, WakeDrop.entries, ListenWhy.entries, MicKind.entries, AecState.entries, SttEnd.entries,
             ShowSource.entries, BrainFail.entries, DoneCode.entries, PlaybackCode.entries, TtsStop.entries, NoQuestion.entries, NoReply.entries, Cue.entries,
-            EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries, ClaudeLeftOut.entries,
+            EchoVoice.entries, KwsRefusal.entries, BargeHitKind.entries, KwsSpotterCode.entries, ScreenData.entries, HelperLeftOut.entries,
             PickOutcome.entries, CheogramRoute.entries, ConvMode.entries, ConvEntry.entries, ConvStop.entries, ConvPause.entries, MtEngine.entries,
             MtVerdict.entries, LangCode.entries, IoCode.entries, MicEvent.entries, ThermalStep.entries, HelperCode.entries, AppShareCode.entries,
-            ExportKind.entries, ClaudeStage.entries, ClaudeErrorKind.entries, MtError.entries, ModelCode.entries, BackendCode.entries,
-            FallbackWhy.entries, LoadFailure.entries, ClaudeEnd.entries, ClaudeFail.entries, ClaudeModelCode.entries, LocationCode.entries,
+            ExportKind.entries, AnthropicStage.entries, AnthropicErrorKind.entries, MtError.entries, ModelCode.entries, BackendCode.entries,
+            FallbackWhy.entries, LoadFailure.entries, HelperEnd.entries, HelperFail.entries, AnthropicModelCode.entries, LocationCode.entries,
             NearbyFail.entries, RepairWhen.entries, WeatherFail.entries, WeatherSource.entries, app.heyrobot.core.helpers.HelperKind.entries,
             ProblemStage.entries, TriggerKind.entries, AlarmEnd.entries, SkipWhy.entries, StepCode.entries, StepGo.entries, MissedRun.entries,
             SpeechWay.entries, RoutineCommandCode.entries,
@@ -252,19 +252,19 @@ class VoiceLogTest {
         assertEquals("Stopped listening: #99", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.LISTEN_STOP, 99)))
         // Ask Claude kept out, and the model asked again for its own answer: codes and flags only.
         assertEquals("No helper offered to the model: you turned the helper down in this conversation",
-            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_LEFT_OUT, ClaudeLeftOut.DECLINED.id)))
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_LEFT_OUT, HelperLeftOut.DECLINED.id)))
         assertEquals("No helper offered to the model: a question about the screen: Robot answers it first",
-            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_LEFT_OUT, ClaudeLeftOut.SCREEN.id)))
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_LEFT_OUT, HelperLeftOut.SCREEN.id)))
         assertEquals("The model handed over to a helper without a word; asked again, it answered itself",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.OWN_ANSWER, 1)))
         assertEquals("The model handed over to a helper without a word; asked again, it still gave no answer",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.OWN_ANSWER, 0)))
         // Where "Something went wrong with Claude" came from, and what Robot read with care: codes and counts only.
         assertEquals("Claude's error came from the SDK reading the stream · data the SDK couldn't read",
-            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_UNKNOWN, ClaudeStage.SDK.id, 0, ClaudeErrorKind.INVALID_DATA.id)))
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_UNKNOWN, AnthropicStage.SDK.id, 0, AnthropicErrorKind.INVALID_DATA.id)))
         assertEquals("Claude's error came from the API's answer · HTTP 418 · an error from the API",
-            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_UNKNOWN, ClaudeStage.HTTP.id, 418, ClaudeErrorKind.API_ERROR.id)))
-        assertEquals("Claude's error came from a stream that ended before Claude finished", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_UNKNOWN, ClaudeStage.CLOSED.id)))
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_UNKNOWN, AnthropicStage.HTTP.id, 418, AnthropicErrorKind.API_ERROR.id)))
+        assertEquals("Claude's error came from a stream that ended before Claude finished", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_UNKNOWN, AnthropicStage.CLOSED.id)))
         assertEquals("Claude's reply: 2 calls with input in one piece · 1 server call from Claude's code",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_READ, 2, 1, 0)))
         assertEquals("Claude's reply: 1 part left out", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CLAUDE_READ, 0, 0, 1)))
@@ -365,7 +365,7 @@ class VoiceLogTest {
         assertEquals("Messages guard: a message's own words came back as a request: nothing done", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_GUARD, 3, 0, 0)))
         assertEquals("Messages not read: locked: unlock first", VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.MSG_REFUSED, 2, 0, 0)))
         assertEquals("Summary with Claude API: about 1200 words · finished",
-            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_API.id, 12, ClaudeEnd.END.id)))
+            VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.SUMMARY_HELPER, HelperCode.CLAUDE_API.id, 12, HelperEnd.END.id)))
         assertEquals("Transcription check (French): 12% of words wrong over 20 lines",
             VoiceLogText.describe(VoiceLogEntry(0, VoiceEvent.CONV_CHECK, 12, 20, LangCode.FR.id)))
         assertEquals("Segment heard again in two halves (4.2 s of speech): 3 words, then 11",

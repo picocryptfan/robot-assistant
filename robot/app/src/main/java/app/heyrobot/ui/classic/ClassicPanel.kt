@@ -479,7 +479,7 @@ fun ClassicBubbleTurn(t: TurnUi, actions: TurnActions, modifier: Modifier = Modi
         AssistantBubble(
             text = t.text, streaming = t.streaming, stopped = t.stopped, error = t.error, actions = t.cards, announce = t.announce,
             onConfirm = actions.confirm, cardActions = actions.card,
-            claude = t.helper, readBack = t.readBack, footer = t.footer, by = t.by, home = t.home,
+            fromHelper = t.helper, readBack = t.readBack, footer = t.footer, by = t.by, home = t.home,
         )
         t.web?.let { app.heyrobot.ui.common.WebAnswerCard(it, onOpen = { url -> actions.openSource(t.id, url) }, modifier = Modifier.padding(top = 6.dp)) }
         t.offer?.let { ClassicOfferCard(it, onDismiss = { actions.dismissOffer(t.id) }, onAccept = { actions.acceptOffer(t.id) }) }
@@ -540,10 +540,10 @@ private fun AttachmentTag(a: Attachment) {
 }
 
 /**
- * A reply. [claude]: a helper wrote it: a small label with its name ([by], "Claude" when it isn't known; "Claude, from
- * the app" when [readBack]; a house for a server on your network, [home]) and the dynamic colour's tertiary tone, so a
- * helper's turn is never mistaken for Robot's. [footer]: "Claude searched the web · nasa.gov" and the cost line, under
- * the bubble.
+ * A reply. [fromHelper]: a helper wrote it: a small label with its name ([by], "Helper" when it isn't known; "Claude,
+ * from the Claude app" when [readBack]; a house for a server on your network, [home]) and the dynamic colour's tertiary
+ * tone, so a helper's turn is never mistaken for Robot's. [footer]: "Jarvis searched the web · nasa.gov" and the cost
+ * line, under the bubble.
  */
 @Composable
 fun AssistantBubble(
@@ -555,7 +555,7 @@ fun AssistantBubble(
     modifier: Modifier = Modifier,
     onConfirm: ((String, Boolean) -> Unit)? = null,
     cardActions: CardActions? = null,
-    claude: Boolean = false,
+    fromHelper: Boolean = false,
     readBack: Boolean = false,
     footer: List<String> = emptyList(),
     by: String? = null,
@@ -563,7 +563,7 @@ fun AssistantBubble(
     announce: Boolean = false,
 ) {
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start) {
-        if (claude && !error) {
+        if (fromHelper && !error) {
             Row(Modifier.padding(start = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (home) RIcons.Home else RIcons.Cloud, null, Modifier.size(14.dp), tint = MaterialTheme.colorScheme.tertiary)
                 Spacer(Modifier.width(5.dp))
@@ -578,12 +578,12 @@ fun AssistantBubble(
             Surface(
                 color = when {
                     error -> MaterialTheme.colorScheme.errorContainer
-                    claude -> MaterialTheme.colorScheme.tertiaryContainer
+                    fromHelper -> MaterialTheme.colorScheme.tertiaryContainer
                     else -> MaterialTheme.colorScheme.surfaceContainerHigh
                 },
                 contentColor = when {
                     error -> MaterialTheme.colorScheme.onErrorContainer
-                    claude -> MaterialTheme.colorScheme.onTertiaryContainer
+                    fromHelper -> MaterialTheme.colorScheme.onTertiaryContainer
                     else -> MaterialTheme.colorScheme.onSurface
                 },
                 shape = RoundedCornerShape(22.dp, 22.dp, 22.dp, 6.dp),
@@ -704,9 +704,9 @@ fun ClassicActionCard(a: ActionView, onConfirm: ((String, Boolean) -> Unit)?, mo
 private val BODY_MAX = 176.dp
 
 /**
- * "Want me to check with Claude?" under a reply (any helper, by its name; "Want Claude's take as well?" under Robot's own
+ * "Want me to check with Jarvis?" under a reply (any helper, by its name; "Want Jarvis's take as well?" under Robot's own
  * answer, after the local model first handed the question over), with what Send would send (and the start of the
- * screen's text); or, without an API key, "Open Claude with: «…»". Nothing happens until the tap (or a yes, when nothing
+ * screen's text); or, for a helper's app, "Open the ChatGPT app with: «…»". Nothing happens until the tap (or a yes, when nothing
  * personal goes).
  */
 @Composable

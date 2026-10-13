@@ -144,7 +144,7 @@ class TranscriptTest {
         ChatTurn("t1", TurnRole.USER, "Set a timer for 10 minutes", 0L),
         ChatTurn("t2", TurnRole.ASSISTANT, "Timer set for 10 minutes.", 0L, actions = listOf(ActionRecord(ToolName.SET_TIMER, "Timer for 10 minutes", ActionStatus.DONE))),
         ChatTurn("t3", TurnRole.USER, "Why is the sky blue?", 0L),
-        ChatTurn("t4", TurnRole.ASSISTANT, "Sunlight scatters off the air's molecules, and blue light scatters the most.", 0L, claude = true, by = "Claude",
+        ChatTurn("t4", TurnRole.ASSISTANT, "Sunlight scatters off the air's molecules, and blue light scatters the most.", 0L, fromHelper = true, by = "Claude",
             sources = listOf("nasa.gov")),
     ))
 

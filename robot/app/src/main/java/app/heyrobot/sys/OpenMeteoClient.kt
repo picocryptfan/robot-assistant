@@ -18,7 +18,7 @@ import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
 
-// Main and voice processes. Robot's only HTTP code outside the Ask Claude SDK (0.4.0): GETs to Open-Meteo's two hosts,
+// Main and voice processes. Robot's only HTTP code outside the helpers' clients (0.4.0): GETs to Open-Meteo's two hosts,
 // for the weather tool (the :voice process, where tools run) and to look up your Home for weather once, when you save it
 // in Settings (the main process). HTTPS only, no redirects, short timeouts cut to what is left of the lookup's deadline,
 // at most 256 KB read, and a plain User-Agent (Android's default names the phone model). Stop disconnects (Abort).

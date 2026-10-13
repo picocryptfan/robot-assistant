@@ -37,7 +37,7 @@ class SherpaTextToSpeech internal constructor(
     private val kitten: ModelSlot<OfflineTts>,
 ) : TextToSpeech {
     /**
-     * [speaker]: another voice of the loaded model for this piece (Claude's), null for the chosen one; [lang] that
+     * [speaker]: another voice of the loaded model for this piece (a helper's), null for the chosen one; [lang] that
      * voice's language for this piece ("fr"), null for English.
      */
     private class Item(val text: String, val gen: Int, val speaker: Int? = null, val lang: String? = null)
@@ -74,7 +74,7 @@ class SherpaTextToSpeech internal constructor(
 
     /**
      * The voice could not be loaded: these pieces should be spoken another way (VoiceOutput uses the phone's voice),
-     * each with whether it was another voice's (Claude's), so it keeps sounding different.
+     * each with whether it was another voice's (a helper's), so it keeps sounding different.
      */
     internal var onUnavailable: ((List<Pair<String, Boolean>>) -> Unit)? = null
 
@@ -295,7 +295,7 @@ class SherpaTextToSpeech internal constructor(
         sid = other ?: c.speaker,
         speed = rate,
         // Kokoro reads French with espeak's "fr" when asked per call; English uses the model's "en-us". Another voice
-        // (Claude's) says which language its sentence is in.
+        // (a helper's) says which language its sentence is in.
         extra = (if (other == null) c.lang else otherLang)?.let { mapOf("lang" to it) },
     )
 
@@ -611,7 +611,7 @@ class VoiceOutput internal constructor(private val ctx: Context, private val she
     val usesPhoneVoice: Boolean get() = active != null && active !== sherpa
 }
 
-/** A failed voice's pieces, said by [tts] instead: another voice's (Claude's) stay in "the other voice" (a lower pitch). */
+/** A failed voice's pieces, said by [tts] instead: another voice's (a helper's) stay in "the other voice" (a lower pitch). */
 internal fun replay(pieces: List<Pair<String, Boolean>>, tts: TextToSpeech) {
     for ((text, other) in pieces) if (other) tts.speakOther(text, null) else tts.speak(text)
 }

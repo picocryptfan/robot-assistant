@@ -1,5 +1,6 @@
 package app.heyrobot.core.web
 
+import app.heyrobot.core.HelperRouter
 import app.heyrobot.core.ToolGroup
 import app.heyrobot.core.ToolName
 import app.heyrobot.core.ToolRouter
@@ -41,7 +42,7 @@ class WebRouterTest {
         assertNull(WebRouter.explicit("search the web for my notes"))
         assertNull(WebRouter.explicit("what's the weather tomorrow"))
         assertNull(WebRouter.explicit("search"))
-        // "Ask Claude to search…" is Claude's: ClaudeRouter runs before WebRouter, and the form isn't web search's either.
+        // "Ask Claude to search…" is Claude's: HelperRouter runs before WebRouter, and the form isn't web search's either.
         assertNull(WebRouter.explicit("ask Claude to search the web for the latest news"))
     }
 

@@ -372,7 +372,7 @@ cbclass=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null; do
 # sources; this checks the dex). 0.9: nor to jsoup or web search's clients and page reader (app.heyrobot.helpers.web).
 engine_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
   awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(ui|sys|boot|people|core|update)\//{ on=1 } /Class descriptor  : .Lapp\/heyrobot\/RobotApp;/{ on=1 } on' |
-  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lorg/jsoup/|Lapp/heyrobot/(assistant|voice|brain|claude|helpers|mt)/')
+  grep -cE 'Lcom/k2fsa/|Lcom/google/ai/edge/|Lcom/anthropic/|Lokhttp3/|Lorg/jsoup/|Lapp/heyrobot/(assistant|voice|brain|helpers|mt)/')
 [ "$engine_refs" = "0" ] && pass "no main-process class refers to an engine, the Anthropic SDK or jsoup (dex)" || fail "main-process classes refer to engines, the SDK or jsoup: $engine_refs"
 # 0.9 web search: jsoup and the copy of Readability4J are packaged (for the :voice process), and its set-up window, where a
 # search key is pasted, runs in :voice and isn't exported.
@@ -399,7 +399,7 @@ gh_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null;
   grep -cE 'const-string.*(https://(api\.)?github\.com|githubusercontent\.com)')
 [ "$gh_refs" = "0" ] && pass "GitHub's addresses only in core's update package (dex)" || fail "other Robot classes write GitHub's addresses: $gh_refs"
 upd_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null; done |
-  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(assistant|voice|brain|claude|helpers|mt)\//{ on=1 } on' |
+  awk '/^Class #/{ on=0 } /Class descriptor  : .Lapp\/heyrobot\/(assistant|voice|brain|helpers|mt)\//{ on=1 } on' |
   grep -cE 'Lapp/heyrobot/(update|core/update)/')
 [ "$upd_refs" = "0" ] && pass "no voice, model, helper or translation class refers to the updater (dex)" || fail "voice-side or engine classes refer to the updater: $upd_refs"
 # 0.7, Send feedback: core's feedback package, the page (ui/settings/Feedback*) and sys/Feedback* refer to no network class,
@@ -410,10 +410,10 @@ fb_refs=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" -d "$d" 2>/dev/null;
 [ "$fb_refs" = "0" ] && pass "Send feedback's classes refer to no network class and no log (dex)" || fail "Send feedback's classes refer to network or log classes: $fb_refs"
 fb_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -cE "Class descriptor  : 'Lapp/heyrobot/(core/feedback/FeedbackReport|sys/FeedbackSend|ui/settings/FeedbackSettingsKt);'"; done | awk '{ s += $1 } END { print s + 0 }')
 [ "$fb_classes" = "3" ] && pass "Send feedback's classes in the dex" || fail "Send feedback's classes in the dex: $fb_classes"
-# The SDK is packaged (the :claude module's client and the SDK's OkHttp client), for the :voice process to load, and
+# The SDK is packaged (the :helpers module's client and the SDK's OkHttp client), for the :voice process to load, and
 # (0.6.0) the other helpers' client, on plain OkHttp.
-sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/claude/ClaudeSession|app/heyrobot/helpers/openai/OpenAiSession);'"; done | wc -l)
-[ "$sdk_classes" = "3" ] && pass "Anthropic SDK client, ClaudeSession and OpenAiSession in the dex" || fail "helper client classes in the dex: $sdk_classes"
+sdk_classes=$(for d in "$dexdir"/classes*.dex; do "$BT/dexdump" "$d" 2>/dev/null | grep -E "Class descriptor  : 'L(com/anthropic/client/okhttp/AnthropicOkHttpClient|app/heyrobot/helpers/anthropic/AnthropicSession|app/heyrobot/helpers/openai/OpenAiSession);'"; done | wc -l)
+[ "$sdk_classes" = "3" ] && pass "Anthropic SDK client, AnthropicSession and OpenAiSession in the dex" || fail "helper client classes in the dex: $sdk_classes"
 # No JVM-only API that ART lacks: none of these packages is referred to anywhere in the dex, and of java.beans only
 # what Android has, plus the two annotations Jackson looks up defensively (its optional Java 7 support).
 jvm_only=$(LC_ALL=C grep -aohE 'L(java/net/http|java/awt|javax/swing|javax/naming|java/lang/management|javax/management|java/rmi|javax/script|java/util/prefs|javax/xml/bind)/[A-Za-z0-9_$/]*;' "$dexdir"/classes*.dex | sort -u | tr '\n' ' ')

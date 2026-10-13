@@ -10,6 +10,7 @@ import android.content.pm.PackageInfo
 import androidx.test.core.app.ApplicationProvider
 import app.heyrobot.core.Action
 import app.heyrobot.core.ActionStatus
+import app.heyrobot.core.AppHandOff
 import app.heyrobot.core.ClaudeAppLink
 import app.heyrobot.core.Prepared
 import app.heyrobot.core.RobotSettings
@@ -58,15 +59,15 @@ class HandOffAnyAppTest {
         for (p in Presets.ALL.filter { it.app != null && it.app != ClaudeAppLink.PACKAGE }) {
             val pkg = p.app!!
             install(pkg)
-            val i = HandOffIntents.intent(ctx, pkg, ClaudeAppLink.Way.SEND, "why is the sky blue")!!
+            val i = HandOffIntents.intent(ctx, pkg, AppHandOff.Way.SEND, "why is the sky blue")!!
             assertEquals(Intent.ACTION_SEND, i.action)
             assertEquals("text/plain", i.type)
             assertEquals(pkg, i.`package`)
             assertEquals("why is the sky blue", i.getStringExtra(Intent.EXTRA_TEXT))
             // The Claude app's own links never go to another app.
-            assertNull(HandOffIntents.intent(ctx, pkg, ClaudeAppLink.Way.APP_LINK, "x"))
-            assertNull(HandOffIntents.intent(ctx, pkg, ClaudeAppLink.Way.WEB_LINK, "x"))
-            assertEquals(ClaudeAppLink.Way.SEND, HandOffIntents.choose(ctx, pkg))
+            assertNull(HandOffIntents.intent(ctx, pkg, AppHandOff.Way.APP_LINK, "x"))
+            assertNull(HandOffIntents.intent(ctx, pkg, AppHandOff.Way.WEB_LINK, "x"))
+            assertEquals(AppHandOff.Way.SEND, HandOffIntents.choose(ctx, pkg))
             assertTrue(HandOffIntents.facts(ctx, pkg).let { it.installed && it.send && !it.appLink && !it.webLink })
         }
         // Not installed: nothing to choose.
@@ -76,18 +77,18 @@ class HandOffAnyAppTest {
     @Test fun theCardSaysWhatGoesAndThatYouSendItThere() {
         install("com.openai.chatgpt")
         val s = RobotSettings(helpers = listOf(HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck")))
-        val p = executor(s, mutableListOf()).prepare(Action.AskClaude("why is the sky blue")) as Prepared.Ready
-        val a = p.action as Action.AskClaude
+        val p = executor(s, mutableListOf()).prepare(Action.AskHelper("why is the sky blue")) as Prepared.Ready
+        val a = p.action as Action.AskHelper
         assertEquals("com.openai.chatgpt", a.app)
         assertEquals("Open the ChatGPT app with: «why is the sky blue»", a.describe())
         assertEquals("Robot opens the ChatGPT app with this text and copies it. Nothing is sent until you press Send in ChatGPT.", p.note)
         // The app isn't installed: refused before any card, naming it.
         val grok = RobotSettings(helpers = listOf(HelperConfig.of(Presets.XAI, "hgrk", "am_puck")))
-        val r = executor(grok, mutableListOf()).prepare(Action.AskClaude("hi")) as Prepared.Refused
+        val r = executor(grok, mutableListOf()).prepare(Action.AskHelper("hi")) as Prepared.Refused
         assertEquals(ActionStatus.NO_APP, r.status)
         assertEquals("Install Grok.", r.detail)
         // No helper opens an app (a new install): refused.
-        assertEquals(ActionStatus.NO_APP, (executor(RobotSettings(), mutableListOf()).prepare(Action.AskClaude("hi")) as Prepared.Refused).status)
+        assertEquals(ActionStatus.NO_APP, (executor(RobotSettings(), mutableListOf()).prepare(Action.AskHelper("hi")) as Prepared.Refused).status)
     }
 
     @Test fun theAppComesFromYourSettingsNeverFromTheCall() {
@@ -96,13 +97,13 @@ class HandOffAnyAppTest {
         val s = RobotSettings(helpers = listOf(HelperConfig.of(Presets.OPENAI, "hgpt", "am_puck")))
         val sent = mutableListOf<Intent>()
         // A call that names another app (it can't through the parser; if it did): ChatGPT's settings win.
-        val r = executor(s, sent).run(Action.AskClaude("why", app = "com.example.evil", appName = "Evil"))
+        val r = executor(s, sent).run(Action.AskHelper("why", app = "com.example.evil", appName = "Evil"))
         assertEquals(ActionStatus.DONE, r.status)
         assertEquals("com.openai.chatgpt", sent.single().`package`)
         // A helper named that has no app, or is off: nothing opens.
         val off = s.withHelper(s.helper("hgpt")!!.copy(enabled = false))
-        assertEquals(ActionStatus.NO_APP, executor(off, mutableListOf()).run(Action.AskClaude("why")).status)
-        assertEquals(ActionStatus.NO_APP, executor(s, mutableListOf()).run(Action.AskClaude("why", helper = "nobody")).status)
+        assertEquals(ActionStatus.NO_APP, executor(off, mutableListOf()).run(Action.AskHelper("why")).status)
+        assertEquals(ActionStatus.NO_APP, executor(s, mutableListOf()).run(Action.AskHelper("why", helper = "nobody")).status)
     }
 
     @Test fun theQuestionIsAlwaysOnTheClipboard() {
@@ -111,7 +112,7 @@ class HandOffAnyAppTest {
         val s = RobotSettings(helpers = listOf(HelperConfig.of(Presets.XAI, "hgrk", "am_puck"), HelperConfig.of(Presets.DEEPSEEK, "hdee", "bf_emma")))
         // A share: the app gets the text, and the clipboard has it too.
         val sent = mutableListOf<Intent>()
-        val r = executor(s, sent).run(Action.AskClaude("what's a quasar?", helper = "hgrk"))
+        val r = executor(s, sent).run(Action.AskHelper("what's a quasar?", helper = "hgrk"))
         assertEquals(ActionStatus.DONE, r.status)
         assertTrue(r.launchedApp)
         assertEquals("Opened Grok with your question: press Send there if it isn't sent. It's on the clipboard too.", r.detail)
@@ -120,13 +121,13 @@ class HandOffAnyAppTest {
         assertEquals("what's a quasar?", clip())
         // No share: just the app, and the question to paste.
         val sent2 = mutableListOf<Intent>()
-        val r2 = executor(s, sent2).run(Action.AskClaude("what's a pulsar?", helper = "hdee"))
+        val r2 = executor(s, sent2).run(Action.AskHelper("what's a pulsar?", helper = "hdee"))
         assertEquals("Opened DeepSeek. Paste your question in DeepSeek: it's on the clipboard.", r2.detail)
         assertEquals(Intent.ACTION_MAIN, sent2.single().action)
         assertEquals("com.deepseek.chat", sent2.single().component?.packageName)
         assertEquals("what's a pulsar?", clip())
         // Nothing to say: the app opens, the clipboard is left alone.
-        val r3 = executor(s, mutableListOf()).run(Action.AskClaude("", helper = "hgrk"))
+        val r3 = executor(s, mutableListOf()).run(Action.AskHelper("", helper = "hgrk"))
         assertEquals("Opened Grok.", r3.detail)
         assertEquals("what's a pulsar?", clip())
     }
@@ -135,7 +136,7 @@ class HandOffAnyAppTest {
         install(ClaudeAppLink.PACKAGE)
         val s = RobotSettings(helpers = listOf(HelperConfig.claude()))
         val sent = mutableListOf<Intent>()
-        val r = executor(s, sent).run(Action.AskClaude("why is the sky blue"))
+        val r = executor(s, sent).run(Action.AskHelper("why is the sky blue"))
         assertEquals(ActionStatus.DONE, r.status)
         // Its links don't resolve here (only a share was registered): the share, to the Claude app.
         assertEquals(Intent.ACTION_SEND, sent.single().action)

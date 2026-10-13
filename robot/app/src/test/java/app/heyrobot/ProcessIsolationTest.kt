@@ -1,11 +1,17 @@
 package app.heyrobot
 
+import app.heyrobot.core.AnthropicModel
+import app.heyrobot.core.HelperPrompt
+import app.heyrobot.core.HelperRouter
+import app.heyrobot.helpers.HelperSession
+import app.heyrobot.helpers.anthropic.AnthropicClient
+import app.heyrobot.helpers.anthropic.AnthropicSession
+import java.io.File
+import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.w3c.dom.Element
-import java.io.File
-import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Build check (source, Gradle and merged-manifest scan), as the probe's: LiteRT-LM lives only in :brain's
@@ -29,7 +35,7 @@ class ProcessIsolationTest {
     private fun java(module: String) = File(main(module), "java")
     /** Kotlin and Java (the TTS callback sherpa's JNI calls is Java), so every scan below covers both. */
     private fun sources(dir: File) = dir.walkTopDown().filter { it.isFile && (it.name.endsWith(".kt") || it.name.endsWith(".java")) }.toList()
-    private val modules = listOf("core", "brain", "voice", "claude", "mt", "app")
+    private val modules = listOf("core", "brain", "voice", "helpers", "mt", "app")
     /** Our code (not the copied sherpa-onnx API), as "module/relative/path.kt". */
     private val ours: Map<String, File> by lazy {
         modules.flatMap { m -> sources(File(java(m), "app/heyrobot")).map { "$m/${it.relativeTo(File(java(m), "app/heyrobot")).path}" to it } }.toMap()
@@ -173,7 +179,7 @@ class ProcessIsolationTest {
         assertEquals(listOf("project(':core')"), Regex("""^\s*(implementation|api)\s+(.+)$""", RegexOption.MULTILINE).findAll(deps("mt")).map { it.groupValues[2].trim() }.toList())
         assertTrue(!deps("mt").contains("externalNativeBuild") && !deps("mt").contains("ndkVersion"))
         assertTrue(deps("app").contains("implementation project(':mt')"))
-        for (m in listOf("core", "brain", "voice", "claude")) assertTrue(m, !deps(m).contains("project(':mt')"))
+        for (m in listOf("core", "brain", "voice", "helpers")) assertTrue(m, !deps(m).contains("project(':mt')"))
         // The library is never packaged by another module, and never in git (.gitignore).
         assertTrue(!File(main("voice"), "jniLibs/arm64-v8a/librobotmt.so").exists())
         assertTrue(File(root.parentFile, ".gitignore").readText().contains("robot/mt/src/main/jniLibs/"))
@@ -199,23 +205,23 @@ class ProcessIsolationTest {
         assertTrue(File(cpp, "CMakeLists.txt").readText().contains("add_library(robotmt SHARED robotmt_jni.cpp)"))
     }
 
-    /** Ask Claude: the Anthropic SDK lives only in the :claude module, which only the assistant (the :voice process) uses. */
-    @Test fun anthropicSdkOnlyInTheClaudeModule() {
+    /** Ask Claude: the Anthropic SDK lives only in the :helpers module, which only the assistant (the :voice process) uses. */
+    @Test fun anthropicSdkOnlyInTheHelpersModule() {
         val users = usersOf(Regex("""\bcom\.anthropic\b"""))
-        assertTrue(users.toString(), users.isNotEmpty() && users.all { it.startsWith("claude/") })
-        val claudeUsers = usersOf(Regex("""\bapp\.heyrobot\.claude\b"""), ours.filterKeys { !it.startsWith("claude/") })
-        assertTrue(claudeUsers.toString(), claudeUsers.isNotEmpty() && claudeUsers.all { it.startsWith("app/assistant/") })
+        assertTrue(users.toString(), users.isNotEmpty() && users.all { it.startsWith("helpers/") })
+        val anthropicUsers = usersOf(Regex("""\bapp\.heyrobot\.helpers\.anthropic\b"""), ours.filterKeys { !it.startsWith("helpers/") })
+        assertTrue(anthropicUsers.toString(), anthropicUsers.isNotEmpty() && anthropicUsers.all { it.startsWith("app/assistant/") })
         // 0.6.0: the other helpers' clients (plain OkHttp, no other SDK) live in the same module, used only by the assistant.
-        val helperUsers = usersOf(Regex("""\bapp\.heyrobot\.helpers\b"""), ours.filterKeys { !it.startsWith("claude/") })
+        val helperUsers = usersOf(Regex("""\bapp\.heyrobot\.helpers\b"""), ours.filterKeys { !it.startsWith("helpers/") })
         assertTrue(helperUsers.toString(), helperUsers.isNotEmpty() && helperUsers.all { it.startsWith("app/assistant/") })
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bokhttp3\b"""), ours.filterKeys { !it.startsWith("claude/") }))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bokhttp3\b"""), ours.filterKeys { !it.startsWith("helpers/") }))
         fun deps(m: String) = File(root, "$m/build.gradle").readText()
-        assertTrue(deps("claude").contains("com.squareup.okhttp3:okhttp:4.12.0"))
-        assertTrue(deps("claude").contains("com.anthropic:anthropic-java:"))
+        assertTrue(deps("helpers").contains("com.squareup.okhttp3:okhttp:4.12.0"))
+        assertTrue(deps("helpers").contains("com.anthropic:anthropic-java:"))
         for (m in listOf("core", "brain", "voice", "app")) assertTrue(m, !deps(m).contains("com.anthropic"))
-        for (m in listOf("core", "brain", "voice")) assertTrue(m, !deps(m).contains("project(':claude')"))
-        assertTrue(deps("app").contains("project(':claude')"))
-        assertTrue(!deps("claude").contains("litert") && !deps("claude").contains("project(':voice')") && !deps("claude").contains("project(':brain')"))
+        for (m in listOf("core", "brain", "voice")) assertTrue(m, !deps(m).contains("project(':helpers')"))
+        assertTrue(deps("app").contains("project(':helpers')"))
+        assertTrue(!deps("helpers").contains("litert") && !deps("helpers").contains("project(':voice')") && !deps("helpers").contains("project(':brain')"))
         // A helper's API key is decrypted in the :voice process only, and handed only to its client: for questions
         // (HelperLink) and for Test connection (the connection window).
         // (1.0: and TermuxSecrets, in :voice too, compares a Termux command with it, so one holding it is refused.)
@@ -227,7 +233,7 @@ class ProcessIsolationTest {
         val helperFiles = code(File(java("app"), "app/heyrobot/sys/HelperFiles.kt"))
         assertTrue(!Regex("""\.(read|save)\(ctx""").containsMatchIn(helperFiles) && !helperFiles.contains("clearClipboard"))
         // The SDK never logs (its requests carry the key), and never retries on its own.
-        val client = File(java("claude"), "app/heyrobot/claude/ClaudeClient.kt").readText()
+        val client = File(java("helpers"), "app/heyrobot/helpers/anthropic/AnthropicClient.kt").readText()
         assertTrue(client.contains(".logLevel(LogLevel.OFF)") && client.contains(".maxRetries(0)"))
     }
 
@@ -250,7 +256,7 @@ class ProcessIsolationTest {
                 k.startsWith("app/update/") || k == "app/RobotApp.kt"
         }
         assertTrue(mainFiles.size >= 25)
-        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude|mt)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|HelperLink|HelperKeys|ClaudeSession|ClaudeClient|HelperSession|OpenAiSession|HelperHttp|HelperProbe|HelperConnectionActivity|MtService|BergamotEngine|Slimt)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b""")
+        val forbidden = Regex("""\bapp\.heyrobot\.(assistant|voice|brain|claude|mt)\b|\bcom\.k2fsa\b|litertlm|\bcom\.anthropic\b|\b(GemmaEngine|BrainService|WakeWord|Listener|VoiceHub|PanelController|BrainKeeper|BrainClient|VoiceEngines|RobotSession|RobotVoiceService|HelperLink|HelperKeys|AnthropicSession|AnthropicClient|HelperSession|OpenAiSession|HelperHttp|HelperProbe|HelperConnectionActivity|MtService|BergamotEngine|Slimt)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b""")
         assertEquals(emptyList<String>(), usersOf(forbidden, mainFiles))
         // And the :voice code must not load LiteRT or the fast translation engine either (it binds :brain and :mt by class name).
         assertEquals(emptyList<String>(), usersOf(Regex("""litertlm|\bGemmaEngine\b|\bBrainService\b|\bapp\.heyrobot\.mt\b|\b(MtService|BergamotEngine|Slimt)\b"""),
@@ -900,7 +906,7 @@ class ProcessIsolationTest {
     private fun codeWithStrings(f: File): String = withoutComments(f)
 
     /**
-     * Settings › Updates. Main process only: nothing of the voice or model processes (or :claude) refers to the updater, and
+     * Settings › Updates. Main process only: nothing of the voice or model processes (or :helpers) refers to the updater, and
      * its components have no android:process. GitHubClient is the only code that goes to GitHub, over HTTPS to the hosts core's
      * GitHubHosts allows, following redirects itself; the access token is decrypted there alone and set only on a request
      * GitHubHosts.mayAuthorize allows (api.github.com). The checks before an install can't be skipped: Updater hashes the file
@@ -908,7 +914,7 @@ class ProcessIsolationTest {
      */
     @Test fun theUpdaterStaysInTheMainProcessAndItsTokenGoesOnlyToGitHubsApi() {
         val updater = Regex("""\bapp\.heyrobot\.(update|core\.update)\b|\b(Updater|UpdateStore|UpdateToken|GitHubClient|UpdateInstaller|UpdateJobs|UpdateNotices)\b""")
-        assertEquals(emptyList<String>(), usersOf(updater, ours.filterKeys { it.startsWith("voice/") || it.startsWith("brain/") || it.startsWith("claude/") ||
+        assertEquals(emptyList<String>(), usersOf(updater, ours.filterKeys { it.startsWith("voice/") || it.startsWith("brain/") || it.startsWith("helpers/") ||
             it.startsWith("mt/") || it.startsWith("app/assistant/") }))
         // Who uses what.
         // (1.0: and Termux's weekly update check, through publicJson, below.)
@@ -919,10 +925,10 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/update/UpdateInstaller.kt"), usersOf(Regex("""\bcanRequestPackageInstalls\b|getPackageArchiveInfo""")))
         // Only GitHubClient sets an Authorization header with the token, once, on a request GitHubHosts.mayAuthorize allows,
         // and never lets the platform follow a redirect with it. (0.6.0: the only other Authorization header is a helper's
-        // own key, set by the :claude module's HelperHttp in the :voice process, which never refers to the updater: above;
-        // and web search's request builder in core, SearchWire, names Kagi's key header, for the :claude module's
+        // own key, set by the :helpers module's HelperHttp in the :voice process, which never refers to the updater: above;
+        // and web search's request builder in core, SearchWire, names Kagi's key header, for the :helpers module's
         // WebTransport to send as it is, in the :voice process, 0.9.)
-        assertEquals(listOf("app/update/GitHubClient.kt", "claude/helpers/http/HelperHttp.kt", "core/core/web/SearchWire.kt"),
+        assertEquals(listOf("app/update/GitHubClient.kt", "core/core/web/SearchWire.kt", "helpers/helpers/http/HelperHttp.kt"),
             ours.filter { codeWithStrings(it.value).contains("\"Authorization\"") }.keys.sorted())
         val client = codeWithStrings(File(java("app"), "app/heyrobot/update/GitHubClient.kt"))
         val auth = client.lines().filter { it.contains("\"Authorization\"") }
@@ -999,7 +1005,7 @@ class ProcessIsolationTest {
     }
 
     /**
-     * Privacy (spec item 10): no network code but the :claude module's SDK client and, since 0.4.0, the one Open-Meteo
+     * Privacy (spec item 10): no network code but the :helpers module's SDK client and, since 0.4.0, the one Open-Meteo
      * client for the weather (DownloadManager does the model downloads), no audio files, no raw logging, never an
      * accessibility service (Ask Claude must not drive the Claude app).
      */
@@ -1007,7 +1013,7 @@ class ProcessIsolationTest {
         // java.net.IDN only spells a host name in ASCII, like URLEncoder and URI (core web WebUrl).
         assertEquals(listOf("app/sys/NominatimClient.kt", "app/sys/OpenMeteoClient.kt", "app/update/GitHubClient.kt"),
             usersOf(Regex("""\bjava\.net\.(?!URLEncoder|URI\b|IDN\b)|HttpURLConnection|HttpsURLConnection|\bSocket\b|okhttp|\bWebView\b|\bopenConnection\("""),
-            ours.filterKeys { !it.startsWith("claude/") }))
+            ours.filterKeys { !it.startsWith("helpers/") }))
         // 0.4.0: the nearest place for the maps goes only to the Nominatim server in Settings (OpenStreetMap's unless you chose
         // another, checked by core NearbyServer: HTTPS only), a second apart at most, its raw request private, and only the
         // maps tools use it (core Nearby.kt builds the URL).
@@ -1032,13 +1038,13 @@ class ProcessIsolationTest {
         // The only URLs in code (comments that cite a page don't count): Gemma's and the voice models' pinned Hugging Face
         // files and the fast translation engine's pinned Mozilla files (0.5.0), fetched by DownloadManager, the claude.ai link
         // the Claude app hand-off tries (the API's host is the SDK's own), Open-Meteo's two and Nominatim's (0.4.0), and the
-        // helpers' companies' API addresses (0.6.0, core Helpers.kt's presets, used only by the :claude module's clients in
+        // helpers' companies' API addresses (0.6.0, core Helpers.kt's presets, used only by the :helpers module's clients in
         // the :voice process, with your key, when you ask), and the example addresses Settings › Helpers shows when you type
         // your server's (text only, never fetched). Licences.kt (0.4.5) fetches none: it only checks that the licence list's
         // links (assets/licenses/components.json) are https. The updater's (GitHub's API, a release's page) are built in
         // core's GitHub.kt alone, from the repository and ids. Web search's request builders (0.9, core web SearchWire,
         // Wikipedia and OpenLibrary: Brave, Kagi, Mojeek, Wikipedia's and Open Library's API addresses) are sent by the
-        // :claude module's WebTransport in the :voice process; Settings › Web search shows an example address (text only).
+        // :helpers module's WebTransport in the :voice process; Settings › Web search shows an example address (text only).
         // 0.9: Termux's F-Droid page (core termux TermuxSetup.kt), which Settings › Termux opens in the browser; Robot fetches nothing.
         // 1.0: F-Droid's API entry for Termux (core termux TermuxUpdates.kt), which the weekly update check asks.
         // 1.0: DuckDuckGo's Instant Answer API (core web DuckDuckGo.kt), sent like the other services'; and the search engines'
@@ -1062,7 +1068,7 @@ class ProcessIsolationTest {
 
     /**
      * 0.9 web search (docs/plans/websearch-termux-design.md A6.1, A12): the HTTP clients, the page fetcher, jsoup and the
-     * copy of Readability4J live only in the :claude module (app.heyrobot.helpers.web), which only the assistant (the :voice
+     * copy of Readability4J live only in the :helpers module (app.heyrobot.helpers.web), which only the assistant (the :voice
      * process) uses; the main process never refers to them (mainProcessCodeNeverReachesEngines) and its Settings page
      * opens the set-up window by class name. A search key is read only by WebKeys, for a search (WebTool) or Test (the
      * set-up window). Pages are fetched only through PageFetcher's checks (no redirect followed by OkHttp, the public-only
@@ -1070,14 +1076,14 @@ class ProcessIsolationTest {
      */
     @Test fun webSearchStaysInTheVoiceProcessBehindItsChecks() {
         val jsoup = usersOf(Regex("""\borg\.jsoup\b"""))
-        assertTrue(jsoup.toString(), jsoup.isNotEmpty() && jsoup.all { it.startsWith("claude/helpers/web/") })
-        val webUsers = usersOf(Regex("""\bapp\.heyrobot\.helpers\.web\b"""), ours.filterKeys { !it.startsWith("claude/") })
+        assertTrue(jsoup.toString(), jsoup.isNotEmpty() && jsoup.all { it.startsWith("helpers/helpers/web/") })
+        val webUsers = usersOf(Regex("""\bapp\.heyrobot\.helpers\.web\b"""), ours.filterKeys { !it.startsWith("helpers/") })
         assertEquals(listOf("app/assistant/PanelController.kt", "app/assistant/ToolExecutor.kt", "app/assistant/WebSearchActivity.kt", "app/assistant/WebTool.kt"), webUsers)
         fun deps(m: String) = File(root, "$m/build.gradle").readText()
-        assertTrue(deps("claude").contains("org.jsoup:jsoup:1.15.1"))
+        assertTrue(deps("helpers").contains("org.jsoup:jsoup:1.15.1"))
         for (m in listOf("core", "brain", "voice", "mt", "app")) assertTrue(m, !deps(m).contains("org.jsoup"))
         // Its readability copy logs nothing (no slf4j, no Log).
-        val readability = ours.filterKeys { it.startsWith("claude/helpers/web/readability/") }
+        val readability = ours.filterKeys { it.startsWith("helpers/helpers/web/readability/") }
         assertTrue(readability.size >= 10)
         assertEquals(emptyList<String>(), usersOf(Regex("""slf4j|LoggerFactory|\bRLog\b|\bprintln\("""), readability))
         // Keys: only WebKeys reads or saves one, only WebTool and the set-up window ask it, and the main process only deletes.
@@ -1089,12 +1095,12 @@ class ProcessIsolationTest {
         assertTrue(code(File(java("app"), "app/heyrobot/ui/settings/WebSearchSettings.kt")).contains("setClassName(ctx.packageName, WebWindow.CLASS)"))
         // The page fetcher's rules: OkHttp follows no redirect (each hop is checked here), the DNS filter and the socket check
         // are on, never a proxy; the search transport follows none either.
-        val fetcher = File(java("claude"), "app/heyrobot/helpers/web/PageFetcher.kt").readText()
+        val fetcher = File(java("helpers"), "app/heyrobot/helpers/web/PageFetcher.kt").readText()
         for (rule in listOf(".followRedirects(false)", ".followSslRedirects(false)", ".dns(PublicOnlyDns(dns, rules.isPublic))",
             ".addNetworkInterceptor(PublicGuard(rules.isPublic))", ".proxy(Proxy.NO_PROXY)", "rules.redirect(url, r.header(\"Location\"), hops)")) assertTrue(rule, fetcher.contains(rule))
-        val fetcherCode = codeWithStrings(File(java("claude"), "app/heyrobot/helpers/web/PageFetcher.kt"))
+        val fetcherCode = codeWithStrings(File(java("helpers"), "app/heyrobot/helpers/web/PageFetcher.kt"))
         assertTrue(!fetcherCode.contains("cookieJar") && !fetcherCode.contains("Referer") && !fetcherCode.contains(".cache("))
-        val transport = File(java("claude"), "app/heyrobot/helpers/web/WebTransport.kt").readText()
+        val transport = File(java("helpers"), "app/heyrobot/helpers/web/WebTransport.kt").readText()
         assertTrue(transport.contains(".followRedirects(false)") && transport.contains("LanDns(dns)") && transport.contains("addNetworkInterceptor(LanGuard)"))
         // No remote image in a reply: nothing loads an image from an address.
         assertEquals(emptyList<String>(), usersOf(Regex("""\bAsyncImage\b|\bcoil\b|\bGlide\b|\bPicasso\b|BitmapFactory\.decodeStream\(.*openStream""")))
@@ -1140,14 +1146,14 @@ class ProcessIsolationTest {
             usersOf(Regex("""\bBrain(Keeper|Link|OneShots)\b"""), conv))
         assertEquals(listOf("app/assistant/conversation/ConversationTranslations.kt", "app/assistant/conversation/SummaryJobs.kt"),
             usersOf(Regex("""\bBrainOneShots\b"""), conv))
-        // Claude: only the helpers, which act on a SummaryJob (made by the card's Send) and check HelperGate first.
-        assertEquals(listOf("app/assistant/conversation/Helpers.kt"), usersOf(Regex("""\bClaude(Session|Client|Listener|Outcome)\b|\btranscriptSession\b"""), conv))
+        // A helper's API: only the helpers, which act on a SummaryJob (made by the card's Send) and check HelperGate first.
+        assertEquals(listOf("app/assistant/conversation/Helpers.kt"), usersOf(Regex("""\bAnthropic(Session|Client)\b|\bHelper(TurnListener|Outcome)\b|\btranscriptSession\b"""), conv))
         val helpers = code(File(java("app"), "app/heyrobot/assistant/conversation/Helpers.kt"))
         assertEquals(2, Regex("""HelperGate\.allowed\(job\)""").findAll(helpers).count())
         // 0.6.0: never another helper's session (any company's API, your own server, Test connection), a key or Robot's
         // actions: HelperLink only for Claude's transcript session (and whether Claude's key is saved, for the card)...
         assertEquals(emptyList<String>(), usersOf(Regex("""\bHelperLink\.session\(|\bHelper(Session|Http|Probe|Keys|KeyFiles)\b|\bOpenAiSession\b|""" +
-            """\bapp\.heyrobot\.helpers\b|\bClaudeTools\b"""), conv))
+            """\bapp\.heyrobot\.helpers\.(?!(HelperTurnListener|HelperOutcome)\b)|\bHelperTools\b"""), conv))
         assertEquals(listOf("app/assistant/conversation/Helpers.kt", "app/assistant/conversation/SummaryActivity.kt"), usersOf(Regex("""\bHelperLink\b"""), conv))
         // (and whether Claude's key couldn't be read just now or was removed, for the summary's words), nothing else of it.
         val linkUses = conv.values.flatMap { f -> Regex("""\bHelperLink\.(\w+)""").findAll(code(f)).map { it.groupValues[1] }.toList() }.toSet()
@@ -1156,12 +1162,12 @@ class ProcessIsolationTest {
         // prompt, no tools and no web search, whichever client it uses.
         val link = code(File(java("app"), "app/heyrobot/assistant/HelperLink.kt"))
         val ts = Regex("""fun transcriptSession\(ctx: Context, h: HelperConfig\): HelperSession\? \{[\s\S]*?\n    }""").find(link)!!.value
-        assertTrue(ts, Regex("""ClaudeSession\(held\.claude!!, ClaudeModel\.of\(h\.model\), emptyList\(\), search = false, conversation = false, system = ClaudePrompt\.TRANSCRIPT_SYSTEM\)""").containsMatchIn(ts))
-        assertTrue(ts, Regex("""OpenAiSession\(held\.http!!, h\.copy\(search = false\), emptyList\(\), conversation = false,.*?system = ClaudePrompt\.transcriptSystem\(h\.name\)\)""")
+        assertTrue(ts, Regex("""AnthropicSession\(held\.anthropic!!, AnthropicModel\.of\(h\.model\), emptyList\(\), search = false, conversation = false, system = HelperPrompt\.CLAUDE_TRANSCRIPT_SYSTEM\)""").containsMatchIn(ts))
+        assertTrue(ts, Regex("""OpenAiSession\(held\.http!!, h\.copy\(search = false\), emptyList\(\), conversation = false,.*?system = HelperPrompt\.transcriptSystem\(h\.name\)\)""")
             .containsMatchIn(ts.replace(Regex("\\s+"), " ")))
         assertEquals(2, Regex("""(?<!transcript)Session\(""").findAll(ts).count())
         // The summary screen and the summaries' job are in the voice process (the main app opens the screen by name).
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bSummary(Jobs|Activity)\b|\bClaude(Api|App)Helper\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bSummary(Jobs|Activity)\b|\b(ApiHelper|AppShareHelper)\b"""), ours.filterKeys { it.startsWith("app/ui/") || it.startsWith("app/sys/") }))
         // The clip reader reads what you picked; nothing in conversation mode writes audio.
         assertEquals(emptyList<String>(), usersOf(Regex("""openOutputStream|FileOutputStream|MediaMuxer|MediaRecorder|AudioRecord\b"""),
             conv.filterKeys { it.startsWith("app/assistant/") || it.startsWith("voice/") }))
@@ -1197,7 +1203,7 @@ class ProcessIsolationTest {
         assertTrue(routines.keys.toString(), routines.size >= 15)
         // No network of their own, no model, no helper; the weather goes through ToolExecutor (Open-Meteo's only client).
         assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bOpenMeteoClient\b|\bNominatimClient\b|\bBrain(Client|Keeper|Link|OneShots)\b|""" +
-            """\bHelper(Link|Session|Http)\b|\bClaude(Session|Client)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b"""), routines))
+            """\bHelper(Link|Session|Http)\b|\bAnthropic(Session|Client)\b|\bapp\.heyrobot\.helpers\b|\bokhttp3\b"""), routines))
         assertEquals(listOf("app/assistant/routines/RoutineRunner.kt"), usersOf(Regex("""\.briefWeather\(\)"""), routines))
         // Logs: codes and numbers only; never a routine's name, steps, words or a reminder.
         val leaky = Regex("""RLog\.[iw]\([^\n]*\b(name|text|lines|describe|reminder|title|said)\b""")
@@ -1401,7 +1407,7 @@ class ProcessIsolationTest {
         assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/ui/settings/MemorySettings.kt"), usersOf(Regex("""\bMemoryFiles\.vault\(""")))
         // Memory's classes stay in the app's two processes: never :brain, :mt, :voice's engines or the helpers' clients.
         val memory = Regex("""\bapp\.heyrobot\.core\.memory\b|\bMemory(Panel|Files|SettingsStore|Turn|Answer)\b|\bFileMemoryVault\b""")
-        assertEquals(emptyList<String>(), usersOf(memory, ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("voice/") || it.startsWith("claude/") }))
+        assertEquals(emptyList<String>(), usersOf(memory, ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("voice/") || it.startsWith("helpers/") }))
         // 1.0: the setup guide's Memory page writes memory.json's two switches (the key changed first, through PhoneMemoryStore);
         // Settings › Memory › Import's preview shows a file's items (MemoryImportScreen.kt), written by Settings › Memory's store.
         assertEquals(listOf("app/assistant/MemoryPanel.kt", "app/assistant/PanelController.kt", "app/sys/MemoryVault.kt", "app/ui/guide/GuideStores.kt",
@@ -1419,7 +1425,7 @@ class ProcessIsolationTest {
         assertTrue(panel.indexOf("if (mem.recall.secret) {\n            closeConvAfterTurn = true") > panel.indexOf("MemoryPanel.mark(replyId, mem.packed.retrievedIds, secret = mem.recall.secret)"))
         // A helper: memory only through its card (trusted helpers too, unless Settings › Memory says otherwise), never its tools.
         assertEquals(4, Regex("""HelperTrust\.(conversation|joinWithoutCard)\([^)]*MemoryPanel\.toTrusted\(\)\)""").findAll(panel).count())
-        assertTrue(app.heyrobot.core.ToolName.REMEMBER !in app.heyrobot.core.ClaudeTools.OFFERED && app.heyrobot.core.ToolName.FORGET !in app.heyrobot.core.ClaudeTools.OFFERED)
+        assertTrue(app.heyrobot.core.ToolName.REMEMBER !in app.heyrobot.core.HelperTools.OFFERED && app.heyrobot.core.ToolName.FORGET !in app.heyrobot.core.HelperTools.OFFERED)
         // No network, and the logs get codes and counts: no item, text, query or question in an RLog call.
         val mem = ours.filterKeys { it.startsWith("core/core/memory/") || it in setOf("app/assistant/MemoryPanel.kt", "app/sys/MemoryVault.kt",
             "app/ui/settings/MemorySettings.kt", "app/ui/settings/MemoryImportScreen.kt", "core/core/StrictJson.kt") }
@@ -1516,7 +1522,7 @@ class ProcessIsolationTest {
         val mf = code(File(java("core"), "app/heyrobot/core/messages/MessagesFile.kt"))
         assertEquals(1, Regex("""\bwriteAtomic\(""").findAll(mf).count())
         assertTrue(mf.contains("withFileLock(File(file.parentFile, LOCK))") && mf.contains("if (next != now) writeAtomic(file, next.toJson())"))
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bSocket\b|okhttp|\bWebView\b|\bHelper(Session|Link|Http)\b|\bClaude(Session|Client)\b|\bapp\.heyrobot\.(claude|helpers)\b"""), msg))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bjava\.net\b|HttpURLConnection|\bSocket\b|okhttp|\bWebView\b|\bHelper(Session|Link|Http)\b|\bAnthropic(Session|Client)\b|\bapp\.heyrobot\.helpers\b"""), msg))
         assertEquals(emptyList<String>(), usersOf(Regex("""\bLlama|\bBrainClient\b|BrainMsg\.Generate|\blitert"""), msg))
         // Logging: a fixed tag, no other argument (no name, no text, no address); the voice log takes codes and counts.
         assertEquals(emptyList<String>(), usersOf(Regex("""RLog\.[iwe]\([^)\n]*,"""), msg))
@@ -1572,7 +1578,7 @@ class ProcessIsolationTest {
         assertEquals(9, Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         assertEquals(Regex("""TurnRunner\(""").findAll(pc).count(), Regex("""messages = PanelMessages\.taint\(chat\)""").findAll(pc).count())
         // Nothing of messages in :brain or :llama's code.
-        assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.core\.messages\b"""), ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("claude/") }))
+        assertEquals(emptyList<String>(), usersOf(Regex("""\bapp\.heyrobot\.core\.messages\b"""), ours.filterKeys { it.startsWith("brain/") || it.startsWith("mt/") || it.startsWith("helpers/") }))
     }
 
     /**
@@ -1648,15 +1654,15 @@ class ProcessIsolationTest {
         // the message's), before memory, the helpers and the model.
         val fbRoute = pc.indexOf("val fbCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null) FeedbackRouter.route(q) else null")
         val freeUp = pc.indexOf("val freeAsk = if (q.isNotEmpty() && st.draft == null && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            termux == null && memRoute == null) FreeUp.asked(q) else null")
-        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            termux == null && memRoute == null && freeAsk == null) ClaudeRouter.route(q, names) else null")
+        val helpers = pc.indexOf("var cmd = if (q.isNotEmpty() && convCmd == null && msgCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            termux == null && memRoute == null && freeAsk == null) HelperRouter.route(q, names) else null")
         // 0.8: routines' phrases, then headset and car mode's, after feedback's and before memory's; 0.9: web search's "search the
         // web for …" and Termux's "run <script>" next, before memory's: the panel's order is the messages router and its echo
         // check, conversation mode, feedback, routines, headset and car, web search, Termux, memory, the helpers, the model.
         val conv = pc.indexOf("val convCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null) ConversationRouter.route(q, ConversationSession.running) else null")
-        val routines = pc.indexOf("val routineCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.claudeMode)\n            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null")
-        val handsFree = pc.indexOf("val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&\n            !_state.value.claudeMode) PanelHandsFree.route(q) else null")
-        val web = pc.indexOf("val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&\n            !_state.value.claudeMode) BrowserRouter.route(q) else null")
-        val termux = pc.indexOf("val termux = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            !_state.value.claudeMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null")
+        val routines = pc.indexOf("val routineCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !_state.value.inHelperMode)\n            PanelRoutines.route(q, TurnRules.untrusted(chat)) else null")
+        val handsFree = pc.indexOf("val handsFreeCmd = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && routineCmd == null &&\n            !_state.value.inHelperMode) PanelHandsFree.route(q) else null")
+        val web = pc.indexOf("val webQuery = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree &&\n            !_state.value.inHelperMode) BrowserRouter.route(q) else null")
+        val termux = pc.indexOf("val termux = if (q.isNotEmpty() && st.draft == null && msgCmd == null && convCmd == null && fbCmd == null && !routineOrHandsFree && webQuery == null &&\n            !_state.value.inHelperMode) TermuxTool.direct(VoiceHub.app, q, typed = !fromVoice) else null")
         assertTrue(msgRoute in 0 until conv && conv < fbRoute && fbRoute < routines && routines < handsFree && handsFree < web && web < termux &&
             termux < memRoute && memRoute < freeUp && freeUp < helpers)
         val runs = listOf("msgCmd != null -> PanelMessages.run(", "convCmd != null -> conversationCommand(", "fbCmd != null -> feedbackCommand(",

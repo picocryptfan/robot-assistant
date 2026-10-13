@@ -486,7 +486,7 @@ private fun LazyListScope.headsetCar(g: GuideCtx) {
 internal fun helpersSetUp(g: GuideCtx): Boolean =
     g.s.helpers.any { h ->
         val key = g.snap.facts?.keys?.containsKey(h.id) == true
-        h.on && (HelperSettings.apiReady(h, key) || HelperSettings.route(h, key) == app.heyrobot.core.ClaudeRoute.APP)
+        h.on && (HelperSettings.apiReady(h, key) || HelperSettings.route(h, key) == app.heyrobot.core.AskRoute.APP)
     }
 
 private fun LazyListScope.helpers(g: GuideCtx) {

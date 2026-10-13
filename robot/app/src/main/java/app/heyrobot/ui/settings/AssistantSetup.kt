@@ -13,7 +13,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import app.heyrobot.core.RepairWhen
 import app.heyrobot.core.ScreenAccess
-import app.heyrobot.core.ClaudeRoute
+import app.heyrobot.core.AskRoute
 import app.heyrobot.core.helpers.HelperConfig
 import app.heyrobot.core.helpers.HelperSettings
 import app.heyrobot.sys.AssistantFacts
@@ -184,7 +184,7 @@ private fun HelperRows(f: AssistantFacts, helpers: List<HelperConfig>, a: AppAct
             if (f.keys[h.id] != null) Mark.OK else Mark.TODO)
     }
     // An app's row only for a helper that opens it (on, without a key or set to its app): nobody else needs it installed.
-    val viaApp = helpers.filter { it.on && it.presetOf.app != null && HelperSettings.route(it, f.keys[it.id] != null) == ClaudeRoute.APP }
+    val viaApp = helpers.filter { it.on && it.presetOf.app != null && HelperSettings.route(it, f.keys[it.id] != null) == AskRoute.APP }
         .distinctBy { it.presetOf.app }
     for (h in viaApp) {
         val c = f.app(h.presetOf.app) ?: continue

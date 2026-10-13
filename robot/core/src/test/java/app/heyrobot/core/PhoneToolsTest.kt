@@ -104,7 +104,7 @@ class PhoneToolsTest {
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.PHONE_STATUS, false, d))
         assertEquals(GateDecision.RUN, ApprovalGate.decide(ToolName.PHONE_STATUS, false, d, content = true))
         assertEquals(GateDecision.NEEDS_UNLOCK, ApprovalGate.decide(ToolName.PHONE_STATUS, true, d))
-        assertFalse(ToolName.PHONE_STATUS.online || ToolName.PHONE_STATUS in ClaudeTools.OFFERED)
+        assertFalse(ToolName.PHONE_STATUS.online || ToolName.PHONE_STATUS in HelperTools.OFFERED)
         // An older settings file reads the default.
         assertEquals(Approval.AUTO, RobotSettings.fromJson("""{"schema":4}""").approval(ToolName.PHONE_STATUS))
     }
@@ -128,10 +128,10 @@ class PhoneToolsTest {
             ChatTurn("2", TurnRole.ASSISTANT, "Signal uses 12 GB.", 2,
                 actions = listOf(ActionRecord(ToolName.PHONE_STATUS, "Check your phone's storage", ActionStatus.DONE, "Read on this phone; nothing left it.", content = true))),
         )
-        assertEquals(setOf(Personal.PHONE), ClaudeContext.personal(history))
-        assertEquals("Include the conversation so far? It contains your phone's status.", ClaudeContext.includeQuestion(history))
+        assertEquals(setOf(Personal.PHONE), HelperContext.personal(history))
+        assertEquals("Include the conversation so far? It contains your phone's status.", HelperContext.includeQuestion(history))
         // Robot checking with Claude by itself sends the question only.
-        assertFalse(ClaudeContext.escalation("is that normal?", history, now, "CA").filterIsInstance<ClaudeBlock.Text>().any { it.text.contains("Signal") })
+        assertFalse(HelperContext.escalation("is that normal?", history, now, "CA").filterIsInstance<HelperBlock.Text>().any { it.text.contains("Signal") })
         assertEquals("your location and your phone's status", Personal.list(setOf(Personal.PHONE, Personal.LOCATION)))
     }
 

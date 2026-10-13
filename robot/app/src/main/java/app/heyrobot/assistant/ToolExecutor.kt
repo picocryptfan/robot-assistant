@@ -149,7 +149,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
             is Action.MapsNavigate -> Nearby.prepare(action, action.destination, nearestWanted(action.destination, action.nearest), nearestMode(), settings.nearbyServer)
             // A helper's app (1.0.0, any helper with one): which app from your settings, installed or "Install …" before any
             // card, and the card says what goes and that you press Send there.
-            is Action.AskClaude -> prepareHandOff(action)
+            is Action.AskHelper -> prepareHandOff(action)
             is Action.WebSearch -> web.prepare(action)
             // 1.0: a search in your browser: your own words open at once, the model's show their card (core web BrowserGate).
             is app.heyrobot.core.BrowserSearchAction -> BrowserSearchTool.prepare(ctx, action, said, webContext())
@@ -184,7 +184,7 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
                 is Action.FindNotes -> findNotes(action)
                 is Action.AddEvent -> addEvent(action)
                 is Action.ReadCalendar -> readCalendar(action)
-                is Action.AskClaude -> openClaude(action)
+                is Action.AskHelper -> openHelperApp(action)
                 is Action.Weather -> weather(action)
                 is Action.PhoneCheck -> phoneCheck(action)
                 is Action.FreeMemory -> freeMemory(action)
@@ -833,13 +833,13 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
      * The app [a] opens, always from your settings (HelperSettings.appHelper): the helper it names when that one is on and
      * has an app, else the one Robot checks with. Never a package or a name from the call itself. Null: none.
      */
-    private fun handOff(a: Action.AskClaude): Action.AskClaude? {
+    private fun handOff(a: Action.AskHelper): Action.AskHelper? {
         val h = HelperSettings.appHelper(settings, a.helper) { HelperLink.keySaved(ctx, it) } ?: return null
         val pkg = h.presetOf.app ?: return null
         return a.copy(helper = h.id, app = pkg, appName = h.presetOf.defaultName)
     }
 
-    private fun prepareHandOff(a: Action.AskClaude): Prepared {
+    private fun prepareHandOff(a: Action.AskHelper): Prepared {
         val r = handOff(a) ?: return Prepared.Refused(ActionStatus.NO_APP, AppHandOff.install(null))
         if (!HandOffIntents.installed(ctx, r.app!!)) return Prepared.Refused(ActionStatus.NO_APP, AppHandOff.install(r.appName))
         return Prepared.Ready(r, note = AppHandOff.note(r.appName!!, r.text))
@@ -851,15 +851,15 @@ class ToolExecutor(private val ctx: Context, private val settings: RobotSettings
      * or just the app. The question goes on the clipboard every time, for an app that ignores the share. Robot only
      * prefills; you press Send there. The log has the way, never the words.
      */
-    private fun openClaude(a: Action.AskClaude): Executed {
+    private fun openHelperApp(a: Action.AskHelper): Executed {
         val r = handOff(a) ?: return Executed(ActionStatus.NO_APP, AppHandOff.install(null))
         val pkg = r.app!!
         val name = r.appName!!
         val way = HandOffIntents.choose(ctx, pkg) ?: return Executed(ActionStatus.NO_APP, AppHandOff.install(name))
-        val text = ClaudeAppLink.cap(a.text)
+        val text = AppHandOff.cap(a.text)
         if (text.isNotEmpty()) HandOffIntents.copy(ctx, text, name)
         val i = HandOffIntents.intent(ctx, pkg, way, text) ?: return Executed(ActionStatus.NO_APP, AppHandOff.install(name))
-        RLog.i("claude_app", "way" to way, "claude" to (pkg == ClaudeAppLink.PACKAGE))
+        RLog.i("hand_off_app", "way" to way, "claude" to (pkg == ClaudeAppLink.PACKAGE))
         if (!start(i)) return Executed(ActionStatus.FAILED, "$name didn't open.")
         return Executed(ActionStatus.DONE, AppHandOff.done(name, way, text), launchedApp = true)
     }

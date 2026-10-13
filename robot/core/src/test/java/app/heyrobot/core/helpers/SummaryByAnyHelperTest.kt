@@ -1,6 +1,6 @@
 package app.heyrobot.core.helpers
 
-import app.heyrobot.core.ClaudeModel
+import app.heyrobot.core.AnthropicModel
 import app.heyrobot.core.Disclosure
 import app.heyrobot.core.HelperCost
 import app.heyrobot.core.RobotSettings
@@ -49,8 +49,8 @@ class SummaryByAnyHelperTest {
         // Another model of the same helper: its own price.
         val luna = gpt.copy(model = "gpt-6-luna")
         assertTrue(SummaryCost.estimate(luna, chars, at)!! < d)
-        // Claude as before (its prices from ClaudeModel).
-        assertEquals(HelperCost.estimate(ClaudeModel.DEFAULT, chars), SummaryCost.estimate(HelperConfig.claude(), chars, at)!!, 1e-9)
+        // Claude as before (its prices from AnthropicModel).
+        assertEquals(HelperCost.estimate(AnthropicModel.DEFAULT, chars), SummaryCost.estimate(HelperConfig.claude(), chars, at)!!, 1e-9)
         // Prices you entered win.
         val yours = mistral.copy(prices = Rates(1.0, 3.0), pricesFor = mistral.model)
         assertEquals(tokens * 1.0 / 1e6 + HelperCost.OUTPUT_TOKENS * 3.0 / 1e6, SummaryCost.estimate(yours, chars, at)!!, 1e-9)
@@ -72,7 +72,7 @@ class SummaryByAnyHelperTest {
         assertEquals("Goes to: xAI (Grok 4.7), over the internet, with your API key. ≈ 4¢. Today's budget for helpers is used up: this adds to it.",
             Disclosure.api(grok, SummaryCost.line(grok, 35_000, at), budgetUsed = true).line)
         // Claude's card as before.
-        assertEquals(Disclosure.claudeApi(ClaudeModel.DEFAULT, 0.123).line, Disclosure("Anthropic", ClaudeModel.DEFAULT.title,
+        assertEquals(Disclosure.claudeApi(AnthropicModel.DEFAULT, 0.123).line, Disclosure("Anthropic", AnthropicModel.DEFAULT.title,
             "over the internet, with your API key", cost = "≈ 12¢").line)
         // A helper's app.
         assertEquals("Goes to: the ChatGPT app, with your own account there, when you press Send there.", Disclosure.app("ChatGPT").line)

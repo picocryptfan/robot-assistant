@@ -91,7 +91,7 @@ class PanelLookTest {
     @Test fun conversationModeAndHelperTurnsInBothLooks() {
         val a = RecordingActions()
         var classic by mutableStateOf(false)
-        val include = UiAction("a9", app.heyrobot.core.ToolName.ASK_CLAUDE, "Include the conversation so far?", app.heyrobot.core.ActionStatus.PENDING,
+        val include = UiAction("a9", app.heyrobot.core.ToolName.ASK_HELPER, "Include the conversation so far?", app.heyrobot.core.ActionStatus.PENDING,
             "Start fresh: Claude sees only what you ask from now on.", confirm = "Include", cancel = "Start fresh")
         val st = PanelState("c1", phase = Phase.CONFIRMING, turns = listOf(
             UiTurn("u1", app.heyrobot.core.TurnRole.USER, "Transcribe this conversation"),

@@ -8,7 +8,7 @@ import java.net.URI
 import java.net.URLDecoder
 
 class ClaudeAppTest {
-    private val W = ClaudeAppLink.Way.entries
+    private val W = AppHandOff.Way.entries
 
     /** Every combination of a, b, c resolving (d, the launch intent, resolves whenever the app is installed). */
     @Test fun routeChooserTakesTheFirstThatResolves() {
@@ -16,12 +16,12 @@ class ClaudeAppTest {
             val a = mask and 1 != 0
             val b = mask and 2 != 0
             val c = mask and 4 != 0
-            val ok = mapOf(ClaudeAppLink.Way.APP_LINK to a, ClaudeAppLink.Way.WEB_LINK to b, ClaudeAppLink.Way.SEND to c, ClaudeAppLink.Way.LAUNCH to true)
+            val ok = mapOf(AppHandOff.Way.APP_LINK to a, AppHandOff.Way.WEB_LINK to b, AppHandOff.Way.SEND to c, AppHandOff.Way.LAUNCH to true)
             val expected = when {
-                a -> ClaudeAppLink.Way.APP_LINK
-                b -> ClaudeAppLink.Way.WEB_LINK
-                c -> ClaudeAppLink.Way.SEND
-                else -> ClaudeAppLink.Way.LAUNCH
+                a -> AppHandOff.Way.APP_LINK
+                b -> AppHandOff.Way.WEB_LINK
+                c -> AppHandOff.Way.SEND
+                else -> AppHandOff.Way.LAUNCH
             }
             assertEquals("a=$a b=$b c=$c", expected, ClaudeAppLink.choose(true) { ok.getValue(it) })
             // Not installed: nothing resolves to it, "Install Claude".
@@ -49,16 +49,16 @@ class ClaudeAppTest {
     @Test fun capAtTwoThousandOnASentence() {
         val sentence = "This sentence is exactly fifty characters long ok. "
         val long = sentence.repeat(60)
-        val cut = ClaudeAppLink.cap(long)
-        assertTrue(cut.length <= ClaudeAppLink.MAX_CHARS)
+        val cut = AppHandOff.cap(long)
+        assertTrue(cut.length <= AppHandOff.MAX_CHARS)
         assertTrue(cut.endsWith("ok."))
         // No sentence end: a space; never half an emoji.
         val words = "word ".repeat(600)
-        assertTrue(ClaudeAppLink.cap(words).let { it.length <= 2000 && it.endsWith("word") })
+        assertTrue(AppHandOff.cap(words).let { it.length <= 2000 && it.endsWith("word") })
         val emoji = "a".repeat(1999) + "😀😀"
-        val e = ClaudeAppLink.cap(emoji)
+        val e = AppHandOff.cap(emoji)
         assertTrue(e.length <= 2000 && !Character.isHighSurrogate(e.last()))
-        assertEquals("short", ClaudeAppLink.cap("  short "))
+        assertEquals("short", AppHandOff.cap("  short "))
         // The link carries the cut question.
         assertEquals(cut, URI(ClaudeAppLink.appLink(long)).query.removePrefix("q="))
     }
@@ -70,15 +70,15 @@ class ClaudeAppTest {
             ChatTurn("3", TurnRole.USER, "go get Claude", 0),
         )
         assertEquals("I asked my phone's assistant: “how long do I boil an egg”. It said: “About 9 minutes for hard-boiled”. Can you help with that?",
-            ClaudeAppLink.summary(turns))
+            AppHandOff.summary(turns))
         // A reply built on the calendar, notes or contacts is not quoted.
         val read = listOf(ChatTurn("1", TurnRole.USER, "what's tomorrow", 0),
             ChatTurn("2", TurnRole.ASSISTANT, "Dentist at 3.", 0, actions = listOf(ActionRecord(ToolName.READ_CALENDAR, "x", ActionStatus.DONE, content = true))))
-        assertEquals("I asked my phone's assistant: “what's tomorrow”. Can you help with that?", ClaudeAppLink.summary(read))
-        assertNull(ClaudeAppLink.summary(emptyList()))
-        assertNull(ClaudeAppLink.summary(listOf(ChatTurn("1", TurnRole.USER, "go get Claude", 0))))
+        assertEquals("I asked my phone's assistant: “what's tomorrow”. Can you help with that?", AppHandOff.summary(read))
+        assertNull(AppHandOff.summary(emptyList()))
+        assertNull(AppHandOff.summary(listOf(ChatTurn("1", TurnRole.USER, "go get Claude", 0))))
         // One to three sentences.
-        assertTrue(ClaudeAppLink.summary(turns)!!.split(Regex("[.?](?=\\s|$)")).filter { it.isNotBlank() }.size <= 3)
+        assertTrue(AppHandOff.summary(turns)!!.split(Regex("[.?](?=\\s|$)")).filter { it.isNotBlank() }.size <= 3)
     }
 
     @Test fun answerAfterTheHandedOffQuestion() {
