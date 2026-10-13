@@ -137,7 +137,8 @@ class SpokenChoiceTest {
     @Test fun whatMayBeAnsweredByVoice() {
         val en = SpokenLang.EN
         val headset = CardContext(SessionKind.HEADSET)
-        val car = CardContext(SessionKind.CAR)
+        // "Hold screen actions until I park" on: the driving holds (off: whatDrivingHoldsWithoutTheSwitch).
+        val car = CardContext(SessionKind.CAR, holdWhileDriving = true)
         // On the phone: the panel's card, as today.
         assertEquals(CardVoice.Panel, SpokenCards.plan(timer, CardContext(SessionKind.PHONE), en))
         // A plain card is asked.
@@ -169,7 +170,7 @@ class SpokenChoiceTest {
         for (t in listOf(ToolName.SET_TIMER, ToolName.SET_ALARM, ToolName.MAPS_NAVIGATE, ToolName.MAPS_SEARCH, ToolName.FLASHLIGHT, ToolName.ADD_NOTE)) {
             assertTrue(t.id, SpokenCards.plan(timer.copy(tool = t), car, en) is CardVoice.Ask)
         }
-        // The Claude app hand-off: refused in the car, with the reason.
+        // A helper's app hand-off: refused in the car, with the reason.
         assertEquals(CardVoice.Refuse("I can't open another app while you drive.", CardVoiceCode.REFUSED), SpokenCards.plan(timer.copy(tool = ToolName.ASK_HELPER), car, en))
         assertEquals(CardVoice.Refuse("Je ne peux pas ouvrir une autre app pendant que tu conduis.", CardVoiceCode.REFUSED),
             SpokenCards.plan(timer.copy(tool = ToolName.ASK_HELPER), car, SpokenLang.FR))
@@ -181,6 +182,46 @@ class SpokenChoiceTest {
         assertTrue(SpokenCards.plan(confirmCall, car.copy(locked = true, carTrusted = true), en) is CardVoice.Ask)
         assertTrue(SpokenCards.plan(confirmCall.copy(carFunction = false), car.copy(locked = true, carTrusted = true), en) is CardVoice.Defer)
         assertTrue(SpokenCards.plan(timer, headset.copy(locked = true), en) is CardVoice.Ask)
+    }
+
+    @Test fun whatDrivingHoldsWithoutTheSwitch() {
+        val en = SpokenLang.EN
+        val headset = CardContext(SessionKind.HEADSET)
+        val off = CardContext(SessionKind.CAR)
+        val on = off.copy(holdWhileDriving = true)
+        // Off by default.
+        assertFalse(off.holdWhileDriving)
+        // Each card the car would hold: off, asked exactly as in a headset; on, kept for parking.
+        for (t in SpokenCards.DRIVING_HOLD) {
+            val card = timer.copy(action = "Do it", tool = t)
+            assertEquals(t.id, CardVoice.Ask("Do it?", 0, false), SpokenCards.plan(card, off, en))
+            assertEquals(t.id, SpokenCards.plan(card, headset, en), SpokenCards.plan(card, off, en))
+            assertEquals(t.id, CardVoice.Defer("I'll keep that for when you park.", DeferTo.PARK, CardVoiceCode.NEEDS_SCREEN), SpokenCards.plan(card, on, en))
+        }
+        // A helper's app hand-off: off, the normal card (a plain yes, or a tap for personal content); on, refused.
+        val helper = timer.copy(action = "Ask a helper", tool = ToolName.ASK_HELPER)
+        assertEquals(CardVoice.Ask("Ask a helper?", 0, false), SpokenCards.plan(helper, off, en))
+        assertEquals(CardVoice.Refuse("I can't open another app while you drive.", CardVoiceCode.REFUSED), SpokenCards.plan(helper, on, en))
+        val personal = helper.copy(waiting = CardAnswer.Waiting(personal = true))
+        assertEquals(CardVoice.Defer("I'll keep that for when you park.", DeferTo.PARK, CardVoiceCode.MUST_SEE), SpokenCards.plan(personal, off, en))
+        assertTrue(SpokenCards.plan(personal, off.copy(voiceYesPersonal = true), en) is CardVoice.Ask)
+        assertTrue(SpokenCards.plan(helper.copy(waiting = CardAnswer.Waiting(tapFor = AskWhy.ONLINE)), off, en) is CardVoice.Defer)
+        // Never looser than outside the car: tap-only cards, "Answer cards by voice" off, more than three choices and the lock stay as they are.
+        for (t in SpokenCards.DRIVING_HOLD + ToolName.ASK_HELPER) {
+            val card = timer.copy(tool = t)
+            assertEquals(t.id, CardVoiceCode.MUST_SEE, (SpokenCards.plan(card.copy(deletes = true), off, en) as CardVoice.Defer).why)
+            assertEquals(t.id, CardVoiceCode.MUST_SEE, (SpokenCards.plan(card.copy(waiting = CardAnswer.Waiting(tapFor = AskWhy.LEARNED)), off, en) as CardVoice.Defer).why)
+            assertEquals(t.id, CardVoiceCode.VOICE_OFF, (SpokenCards.plan(card, off.copy(voiceCards = false), en) as CardVoice.Defer).why)
+            assertEquals(t.id, CardVoiceCode.LOCKED, (SpokenCards.plan(card.copy(personal = true), off.copy(locked = true), en) as CardVoice.Defer).why)
+            assertEquals(t.id, CardVoiceCode.LOCKED, (SpokenCards.plan(card.copy(personal = true), off.copy(locked = true, carTrusted = true), en) as CardVoice.Defer).why)
+            assertEquals(t.id, CardVoiceCode.WHO_UNSURE, (SpokenCards.plan(card.copy(waiting = CardAnswer.Waiting(2, AskWhy.WHO), options = twoMoms.options), off, en) as CardVoice.Defer).why)
+        }
+        // Car functions are unchanged by it.
+        assertEquals(SpokenCards.plan(twoMoms, on, en), SpokenCards.plan(twoMoms, off, en))
+        assertTrue(SpokenCards.plan(confirmCall, off.copy(locked = true, carTrusted = true), en) is CardVoice.Ask)
+        // Outside the car it counts for nothing.
+        assertEquals(SpokenCards.plan(helper, headset, en), SpokenCards.plan(helper, headset.copy(holdWhileDriving = true), en))
+        assertEquals(CardVoice.Panel, SpokenCards.plan(helper, CardContext(SessionKind.PHONE, holdWhileDriving = true), en))
     }
 
     @Test fun promptsInBothLanguages() {

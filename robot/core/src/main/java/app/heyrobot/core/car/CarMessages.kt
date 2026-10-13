@@ -27,7 +27,10 @@ import app.heyrobot.core.output.SpokenStep
 // messages HandsFreeReplies): a reply that only a tap may send (Settings › Messages' card, a locked phone) or that Robot
 // never sends itself ("Open the chat; I press Send") is kept for parking with your words, and asked again then. New texts
 // ("Text Bob I'm late") are kept for parking too, since Cheogram only takes a draft that needs Send ("New texts while
-// driving").
+// driving"). All of that parking is only with "Hold screen actions until I park" on (CarSettings.holdWhileDriving). Off
+// (the default), a reply the car can't read back and send by voice goes to the screen's own reply card, as outside the
+// car, and new texts open now; "Replies by voice" off, "Send a reply after a spoken yes" off and the lock rules still keep
+// it, as they say.
 
 /** How a hands-free reply ended. Also the voice log's CAR_REPLY b when nothing was handed over. */
 enum class ReplyEnd(override val id: Int, override val title: String) : LogCode {
@@ -37,6 +40,8 @@ enum class ReplyEnd(override val id: Int, override val title: String) : LogCode 
     NEEDS_TAP(10, "needs a tap: kept for parking"),
     /** A newer message came while you dictated: nothing sent. */
     NEW_MESSAGES(11, "a newer message came"),
+    /** "Hold screen actions until I park" off: the screen's own reply card took it, as outside the car. */
+    ON_SCREEN(12, "on the screen, as outside the car"),
 }
 
 /** Whether a new message is announced in the car ([Skip.why]: the voice log's ANNOUNCE a). */
@@ -59,6 +64,11 @@ sealed class ReplyStart {
     data class AskText(val say: String) : ReplyStart()
     /** Kept for parking ([say]); [text]: your words, asked again once you park ("" when there were none yet). */
     data class Hold(val say: String, val why: ReplyEnd, val text: String = "") : ReplyStart()
+    /**
+     * "Hold screen actions until I park" off: not read back here ([why]: what the car can't do by voice); the screen's own
+     * reply to the conversation takes your words [text], with its card, its tap and its rules, as outside the car.
+     */
+    data class OnScreen(val why: ReplyEnd, val text: String) : ReplyStart()
 }
 
 sealed class ReplyNext {
@@ -119,10 +129,31 @@ object CarMessages {
      * spoken yes" off, or too long to read back: kept for parking. Empty: asks what it should say. [voice]: 0.7's rules for
      * this conversation (core messages HandsFreeReplies); anything but [VoiceReply.BY_VOICE] is kept for parking with your
      * words, which a tap sends once you park.
+     *
+     * All of that with "Hold screen actions until I park" on ([CarSettings.holdWhileDriving]). Off: "Replies by voice" or
+     * "Send a reply after a spoken yes" off, locked without a trusted session, and 0.7's refusal are kept as above; empty
+     * asks what it should say; anything else the car can't read back and send by voice (no Reply action, a group, too long,
+     * only a tap sends it, or the chat opens) goes [ReplyStart.OnScreen], where the screen's reply applies its own rules.
      */
     fun startReply(n: MessageNotice, dictated: String, s: CarSettings, safety: HandsFreeSafety, locked: Boolean, trusted: Boolean, lang: SpokenLang,
         voice: VoiceReply): ReplyStart {
         val words = ReplyWords.body(dictated)
+        if (!s.holdWhileDriving) {
+            if (!s.voiceReplies || !safety.replyAfterSpokenYes) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.VOICE_OFF, words)
+            if (locked && !trusted) return ReplyStart.Hold(CarGate.UNLOCK_ONCE.get(lang), ReplyEnd.LOCKED, words)
+            if (voice == VoiceReply.REFUSED) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.LOCKED, words)
+            if (words.isEmpty()) return ReplyStart.AskText(WHAT_REPLY.get(lang))
+            val why = when {
+                !n.replyable -> ReplyEnd.NOT_REPLYABLE
+                n.isGroup -> ReplyEnd.GROUP
+                words.length > MAX_REPLY -> ReplyEnd.TOO_LONG
+                voice != VoiceReply.BY_VOICE -> ReplyEnd.NEEDS_TAP
+                else -> null
+            }
+            if (why != null) return ReplyStart.OnScreen(why, words)
+            val draft = ReplyDraft(n.conversationKey, n.sender, n.app, words)
+            return ReplyStart.ReadBack(draft, readBack(draft, lang))
+        }
         if (!n.replyable) return ReplyStart.Hold(CANT_REPLY.get(lang), ReplyEnd.NOT_REPLYABLE, words)
         if (n.isGroup) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.GROUP, words)
         if (!s.voiceReplies || !safety.replyAfterSpokenYes) return ReplyStart.Hold(OutputLines.KEEP_FOR_PARK.get(lang), ReplyEnd.VOICE_OFF, words)
@@ -185,6 +216,10 @@ object CarMessages {
             else "A new message just came. I'll keep your reply for when you park."
     }
 
-    /** "Text Bob I'm late" while driving: kept for parking, or Cheogram opened now (unlocked only; it needs a tap there). */
-    fun newText(s: CarSettings, locked: Boolean): NewTexts = if (s.newTexts == NewTexts.OPEN_CHEOGRAM && !locked) NewTexts.OPEN_CHEOGRAM else NewTexts.KEEP_FOR_PARKING
+    /**
+     * "Text Bob I'm late" while driving: kept for parking, or Cheogram opened now (unlocked only; it needs a tap there).
+     * With "Hold screen actions until I park" off, always as "Open Cheogram now": unlocked, it goes on as outside the car.
+     */
+    fun newText(s: CarSettings, locked: Boolean): NewTexts =
+        if ((s.newTexts == NewTexts.OPEN_CHEOGRAM || !s.holdWhileDriving) && !locked) NewTexts.OPEN_CHEOGRAM else NewTexts.KEEP_FOR_PARKING
 }

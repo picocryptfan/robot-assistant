@@ -402,10 +402,17 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
                 set(s.copy(readAloud = it))
             }
             SwitchPreference("Replies by voice", if (s.voiceReplies) "Read back word for word, then “send”, where Settings › Messages lets a spoken yes send; " +
-                "otherwise kept for when you park" else "Off: replies wait for when you park", s.voiceReplies, enabled = announcing) { set(s.copy(voiceReplies = it)) }
+                (if (s.holdWhileDriving) "otherwise kept for when you park" else "otherwise the reply card shows") else "Off: replies wait for when you park",
+                s.voiceReplies, enabled = announcing) { set(s.copy(voiceReplies = it)) }
         }
         preferenceGroup("While you drive", "drive") {
-            ListPreference("New texts while driving", s.newTexts, NewTexts.entries, { it.title }, enabled = f.on) { set(s.copy(newTexts = it)) }
+            // 1.0 (the user, 13 Oct 2026): off by default, since a passenger may be the one asking. On, today's holds.
+            SwitchPreference("Hold screen actions until I park", if (s.holdWhileDriving) "Opening apps, drafts, new texts and replies that need a tap " +
+                "wait for when you park" else "Off: anything that needs the screen opens now, as outside the car. Robot can't tell who is speaking", s.holdWhileDriving,
+                enabled = f.on) { set(s.copy(holdWhileDriving = it)) }
+            if (s.holdWhileDriving) {
+                ListPreference("New texts while driving", s.newTexts, NewTexts.entries, { it.title }, enabled = f.on) { set(s.copy(newTexts = it)) }
+            }
             val dnd = d.facts?.dndAccess == true
             SwitchPreference("Do Not Disturb while driving", when {
                 !dnd -> "Needs Do Not Disturb access: Robot switches only its own “Driving (Robot)” mode"
@@ -424,8 +431,9 @@ fun CarSettingsScreen(d: CarPageData, act: HandsFreeActions, snackbar: SnackbarH
         preferenceFooter(
             "Car mode is Robot's own hands-free mode over your car's Bluetooth, not Android Auto. When your car connects, Robot " +
                 "says “Car mode on”, talks through the car, and shows big buttons. Press your car's voice button or say “hey " +
-                "robot”, then “navigate home”, “call Mom” or “what's next”. Answers are short; anything that needs the screen, and " +
-                "new texts, wait for when you park: “From your drive” shows when car mode ends.\n\nCalls open the dialer unless " +
+                "robot”, then “navigate home”, “call Mom” or “what's next”. Answers are short. Anything that needs the screen opens " +
+                "as it would outside the car, since a passenger may be the one asking. If you drive alone, turn on “Hold screen " +
+                "actions until I park”: those things then wait, and “From your drive” shows when car mode ends.\n\nCalls open the dialer unless " +
                 "you choose to call after a spoken yes; emergency numbers always open the dialer, and Robot never calls one " +
                 "itself. Navigation opens your maps app's route preview: tap Start when you're stopped. Places are kept on this " +
                 "phone only: type or paste coordinates (in your maps app: a place › Copy coordinates), or use where you are now.",

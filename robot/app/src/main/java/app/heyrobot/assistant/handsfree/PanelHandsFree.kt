@@ -288,7 +288,8 @@ object PanelHandsFree {
         when {
             c == HandsFreeCommand.Repeat || c == HandsFreeCommand.StopListening -> if (session != null) Cmd.Voice(c) else null
             c != null -> Cmd.Voice(c)
-            // New texts while driving wait for when you park ("Open Cheogram now": unlocked, they go on as always).
+            // New texts while driving wait for when you park only with "Hold screen actions until I park" on and "Keep for
+            // when I park"; otherwise, unlocked, they go on as always (core CarMessages.newText).
             car && TextCommand.route(q, null, locked = false, typed = false, wakePhrases = wake) == TextCommand.Route.PARSE &&
                 CarMessages.newText(HandsFreeHub.car.settings, HandsFreeHub.phone().locked) == NewTexts.KEEP_FOR_PARKING ->
                 Cmd.Park(ParkCode.NEW_TEXT, q.trim(), q.trim())
@@ -406,7 +407,7 @@ object PanelHandsFree {
                 if (!direct) host.leave()
             }
             is FlowEffect.Park -> keep(ParkItem(e.code, e.summary, System.currentTimeMillis()), "call $callAsked")
-            is FlowEffect.Send -> Unit // 0.7's replies: not in this version.
+            is FlowEffect.Send, is FlowEffect.OnScreen -> Unit // 0.7's replies: not in this version.
         }
         if (text.isNotEmpty()) host.text(replyId, text.toString())
     }

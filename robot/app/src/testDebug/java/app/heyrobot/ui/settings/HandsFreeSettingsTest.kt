@@ -152,6 +152,39 @@ class HandsFreeSettingsTest {
         rule.onNodeWithText("Not set").assertExists()
     }
 
+    @Test fun holdScreenActionsUntilIParkIsOffAndHidesNewTexts() {
+        // 1.0: off by default (a passenger may be the one asking), at the top of "While you drive".
+        var file by mutableStateOf(CarFile(on = true))
+        val act = actions()
+        val write = HandsFreeActions(car = { file = it; act.car(it) })
+        rule.show { CarSettingsScreen(CarPageData(file, facts = facts(dnd = true), announce = true), write, SnackbarHostState(), onBack = {}) }
+        rule.scrollToText("Nearby devices")
+        rule.onRow("Hold screen actions until I park").assert(SemanticsMatcher.expectValue(SemanticsProperties.ToggleableState, ToggleableState.Off))
+        rule.onNodeWithText("Off: anything that needs the screen opens now, as outside the car. Robot can't tell who is speaking").assertExists()
+        // Off, new texts open now: the row that would keep them is not shown.
+        rule.onNodeWithText("New texts while driving").assertDoesNotExist()
+        assertEquals(emptyList<String>(), rule.touchTargetProblems())
+        rule.shot("settings_car_drive")
+        // On: today's holds, and "New texts while driving" back under it with its own choice.
+        rule.onRow("Hold screen actions until I park").performClick()
+        assertTrue(car!!.settings.holdWhileDriving)
+        assertEquals(CarSettings(holdWhileDriving = true), car!!.settings)
+        rule.onNodeWithText("Opening apps, drafts, new texts and replies that need a tap wait for when you park").assertExists()
+        rule.scrollToText("New texts while driving")
+        rule.onRow("New texts while driving").performClick()
+        rule.inDialog(app.heyrobot.core.car.NewTexts.OPEN_CHEOGRAM.title).performClick()
+        assertEquals(CarSettings(holdWhileDriving = true, newTexts = app.heyrobot.core.car.NewTexts.OPEN_CHEOGRAM), car!!.settings)
+        // "Replies by voice" says where a reply that needs a tap goes.
+        rule.scrollToText("Replies by voice")
+        rule.onNodeWithText("otherwise kept for when you park", substring = true).assertExists()
+        rule.scrollToText("Hold screen actions until I park")
+        rule.onRow("Hold screen actions until I park").performClick()
+        assertFalse(car!!.settings.holdWhileDriving)
+        rule.onNodeWithText("New texts while driving").assertDoesNotExist()
+        rule.scrollToText("Replies by voice")
+        rule.onNodeWithText("otherwise the reply card shows", substring = true).assertExists()
+    }
+
     @Test fun newMessagesWaitForSettingsMessages() {
         // 0.8: off until Settings › Messages announces new messages; its row opens that page.
         rule.show { HeadsetSettingsScreen(HeadsetPageData(HeadsetFile(), DeviceMemory(), facts()), actions(), SnackbarHostState(), onBack = {}) }
