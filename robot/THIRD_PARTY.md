@@ -5,7 +5,7 @@ licence; all of them (Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, MPL-2.0, CC-B
 the language ID data, GPL-3.0-or-later for espeak-ng, GPL-2.0-or-later with MPL-2.0 parts for slimt, MPL-2.0 for the
 translation models) are compatible with GPL-3.0. Native libraries, models and the espeak-ng data are not stored in git:
 `tools/fetch_third_party.sh` downloads the exact files below and checks every SHA-256 (same sources and hashes as the
-phase 0 probe, see `../probe/THIRD_PARTY.md`). The speech recognition and voice models are not in the APK at all: the app
+phase 0 probe). The speech recognition and voice models are not in the APK at all: the app
 downloads them on request (see "Downloaded by the app" below); `tools/fetch_voice_models.sh` fetches the same files on a
 computer and checks them.
 
@@ -595,6 +595,8 @@ on the build machine only; `tools/make_langid.py` uses Python's standard library
   address and uses none of its results.
 
 ## Code adapted from the phase 0 probe and the GPU lab (same author, GPL-3.0)
+
+The probe and the lab were early test apps; they are not in the public repository.
 
 The listener and wake word (probe `Listener.kt`, `WakeWord.kt`), the assistant service, recognizer stub and
 session (probe `ProbeVoiceService.kt`, `ProbeSession.kt`), the brain binding and TPU load (probe
